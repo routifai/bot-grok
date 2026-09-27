@@ -1,8 +1,10 @@
 import type { Ask } from "@aiden/contracts";
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import { AskList, useAsks } from "./asks";
 import { CardSkeletonList } from "./feed/CardSkeleton";
+import { FirstRunHint } from "./intro";
 import { EmptyState } from "./ui";
 
 /**
@@ -13,10 +15,12 @@ import { EmptyState } from "./ui";
  */
 export function WaitingSheet({
   botId,
+  botName = DEFAULT_MUSE_NAME,
   open,
   onOpenChange,
 }: {
   botId: string;
+  botName?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -31,14 +35,20 @@ export function WaitingSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
         <SheetHeader className="gap-1 border-b border-border px-6 py-5">
-          <SheetTitle className="flex items-baseline gap-2 font-display text-[26px] leading-tight tracking-[-0.01em] text-foreground">
-            {t`Waiting on you`}
-            {asks.length > 0 ? (
-              <span className="font-sans text-[14px] font-normal text-muted-foreground">
-                {asks.length}
-              </span>
-            ) : null}
-          </SheetTitle>
+          <FirstRunHint
+            hintKey="waiting-section"
+            active={asks.length > 0}
+            text={t`Everything ${botName} needs from you, in one place.`}
+          >
+            <SheetTitle className="flex items-baseline gap-2 font-display text-[26px] leading-tight tracking-[-0.01em] text-foreground">
+              {t`Waiting on you`}
+              {asks.length > 0 ? (
+                <span className="font-sans text-[14px] font-normal text-muted-foreground">
+                  {asks.length}
+                </span>
+              ) : null}
+            </SheetTitle>
+          </FirstRunHint>
         </SheetHeader>
         <div className="rk-scroll flex-1 overflow-y-auto px-6 py-5">
           {asks.length === 0 && loading ? (

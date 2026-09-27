@@ -91,6 +91,13 @@ export interface BotAvatarProps {
   face?: "muse";
   /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
   waitingCount?: number;
+  /**
+   * Forces the Muse's expression regardless of `status`/`waitingCount` — e.g. a one-time
+   * wave (`state="waiting"`, then `"idle"`) in the first-run welcome. Muse-only; ignored
+   * unless `face="muse"`. Does not affect the Ask-count badge, which still only shows for
+   * a real `waitingCount`.
+   */
+  museState?: MuseState;
 }
 
 /**
@@ -117,6 +124,7 @@ export const BotAvatar = memo(function BotAvatar({
   variant,
   face,
   waitingCount,
+  museState,
 }: BotAvatarProps) {
   const id = useId().replace(/[^a-zA-Z0-9-_]/g, "");
   const isWorking = ACTIVE_RUN_STATUSES.some((s) => s === status);
@@ -186,7 +194,7 @@ export const BotAvatar = memo(function BotAvatar({
       <MuseAvatar
         color={color ? parsed.color : DEFAULT_MUSE_COLOR}
         size={size}
-        state={museAvatarState(status, waitingCount)}
+        state={museState ?? museAvatarState(status, waitingCount)}
         waitingCount={waitingCount ?? 0}
         className={className}
       />

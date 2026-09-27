@@ -1,4 +1,5 @@
 import type { Goal } from "@aiden/contracts";
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -11,7 +12,7 @@ import { MuseColumn, MuseScreen } from "./ui";
  * Proposal, Check-in schedule, and the read-only Goal log) for the one selected.
  * Goals are created by talking to the Muse — there is no "new goal" form here.
  */
-export function GoalsScreen({ botId }: { botId: string }) {
+export function GoalsScreen({ botId, botName }: { botId: string; botName?: string }) {
   const { t } = useLingui();
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +70,11 @@ export function GoalsScreen({ botId }: { botId: string }) {
           onChanged={handleChanged}
         />
       ) : (
-        <GoalList goals={goals} onSelect={setSelectedGoalId} />
+        <GoalList
+          goals={goals}
+          botName={botName ?? DEFAULT_MUSE_NAME}
+          onSelect={setSelectedGoalId}
+        />
       )}
     </MuseScreen>
   );

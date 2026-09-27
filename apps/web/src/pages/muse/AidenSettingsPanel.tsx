@@ -1,9 +1,11 @@
 import type { Bot } from "@aiden/contracts";
 import { BOT_NAME_MAX_LENGTH } from "@aiden/contracts";
-import { Input } from "@aiden/ui-web";
+import { Button, Input } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useId, useState } from "react";
+import { authClient } from "../../lib/auth";
 import { AvatarStudioPopover } from "../shell/avatar-studio-popover";
+import { resetFirstRun } from "./intro";
 import { ProactivitySettings } from "./ProactivitySettings";
 import { Section, Surface } from "./ui";
 
@@ -22,9 +24,11 @@ export function AidenSettingsPanel({
 }) {
   const { t } = useLingui();
   const ids = useId();
+  const session = authClient.useSession();
   const [name, setName] = useState(bot.name);
   const [color, setColor] = useState(bot.color);
   const [error, setError] = useState<string | null>(null);
+  const [replayed, setReplayed] = useState(false);
 
   useEffect(() => {
     setName(bot.name);
@@ -85,6 +89,23 @@ export function AidenSettingsPanel({
       <Section title={t`Proactivity`}>
         <Surface className="p-4">
           <ProactivitySettings botId={bot.id} className="" />
+        </Surface>
+      </Section>
+
+      <Section title={t`Tour`}>
+        <Surface className="flex items-center justify-between gap-3 p-4">
+          <p className="text-[13.5px] text-muted-foreground">
+            <Trans>The welcome and first-time tips, again.</Trans>
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              resetFirstRun(session.data?.user.id);
+              setReplayed(true);
+            }}
+          >
+            {replayed ? <Trans>Done</Trans> : <Trans>Replay the intro</Trans>}
+          </Button>
         </Surface>
       </Section>
     </div>

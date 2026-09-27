@@ -1,6 +1,7 @@
 import type { Goal } from "@aiden/contracts";
 import { Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { FirstRunHint } from "../intro";
 import { EmptyState, MuseWideColumn, Progress, ScreenHeader, Section, Surface } from "../ui";
 import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
 import { GoalStatusPill } from "./GoalStatusPill";
@@ -84,9 +85,11 @@ export function GoalListSkeleton() {
 
 export function GoalList({
   goals,
+  botName,
   onSelect,
 }: {
   goals: Goal[];
+  botName: string;
   onSelect: (goalId: string) => void;
 }) {
   const { t } = useLingui();
@@ -110,7 +113,12 @@ export function GoalList({
 
   return (
     <MuseWideColumn data-testid="goals-list">
-      <ScreenHeader title={<Trans>Goals</Trans>} subtitle={subtitle} />
+      <FirstRunHint
+        hintKey="goals-section"
+        text={t`Everything ${botName} is working toward. Open one to see its plan and log.`}
+      >
+        <ScreenHeader title={<Trans>Goals</Trans>} subtitle={subtitle} />
+      </FirstRunHint>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {active.map((goal) => (
           <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />

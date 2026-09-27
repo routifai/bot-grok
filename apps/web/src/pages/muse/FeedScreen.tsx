@@ -1,4 +1,5 @@
 import type { Ask, FollowedTopic } from "@aiden/contracts";
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -8,13 +9,18 @@ import { FeedAsks } from "./feed/FeedAsks";
 import { IdeaChips } from "./feed/IdeaChips";
 import { PostList } from "./feed/PostList";
 import { TopicsRow } from "./feed/TopicsRow";
+import { FirstRunHint } from "./intro";
 import { MuseScreen, MuseWideColumn, ScreenHeader } from "./ui";
 
 // The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
 // Waiting-on-you sheet), then Posts grouped Today / Earlier, then Ideas and Followed
 // topics (docs/muse/DESIGN.md, "Screens" and "Feed").
-export function FeedScreen(props: { botId: string; onSendIdea: (text: string) => void }) {
-  const { botId, onSendIdea } = props;
+export function FeedScreen(props: {
+  botId: string;
+  botName?: string;
+  onSendIdea: (text: string) => void;
+}) {
+  const { botId, botName = DEFAULT_MUSE_NAME, onSendIdea } = props;
   const { t } = useLingui();
 
   const { asks, answer } = useAsks(botId);
@@ -114,7 +120,13 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
   return (
     <MuseScreen>
       <MuseWideColumn>
-        <ScreenHeader title={t`Feed`} subtitle={subtitle} />
+        <FirstRunHint
+          hintKey="feed-section"
+          active={(posts?.length ?? 0) > 0 || asks.length > 0}
+          text={t`Everything ${botName} has to show you, newest first.`}
+        >
+          <ScreenHeader title={t`Feed`} subtitle={subtitle} />
+        </FirstRunHint>
 
         {loadError ? <p className="pb-6 text-[13.5px] text-destructive">{loadError}</p> : null}
 

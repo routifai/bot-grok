@@ -1,3 +1,4 @@
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +16,7 @@ import type { ArtifactKind } from "../../lib/artifact-kind";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { FirstRunHint } from "./intro";
 import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import type { ArtifactSummary } from "./library/types";
@@ -31,7 +33,13 @@ const MAX_PAGES = 12;
  * create artifacts under the same bot id as the Conversation, so they all show up
  * here too without any backend change.
  */
-export function LibraryScreen({ botId }: { botId: string }) {
+export function LibraryScreen({
+  botId,
+  botName = DEFAULT_MUSE_NAME,
+}: {
+  botId: string;
+  botName?: string;
+}) {
   const { t } = useLingui();
   const [items, setItems] = useState<ArtifactSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -129,7 +137,13 @@ export function LibraryScreen({ botId }: { botId: string }) {
   return (
     <MuseScreen>
       <MuseWideColumn>
-        <ScreenHeader title={t`Library`} subtitle={t`Everything your Muse has made.`} />
+        <FirstRunHint
+          hintKey="library-section"
+          active={total > 0}
+          text={t`Everything ${botName} has made for you — pages, documents and files.`}
+        >
+          <ScreenHeader title={t`Library`} subtitle={t`Everything your Muse has made.`} />
+        </FirstRunHint>
 
         <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="relative w-full sm:max-w-[300px]">
