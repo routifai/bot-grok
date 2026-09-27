@@ -17,10 +17,15 @@ export async function runNotificationsEnabled(
     },
     select: {
       bot: { select: { notifyOnFinish: true } },
-      thread: { select: { groupId: true } },
+      thread: { select: { groupId: true, goalId: true } },
     },
   });
-  return Boolean(source && (source.thread.groupId || source.bot.notifyOnFinish));
+  // A group thread or a Goal log (docs/muse/PLAN.md B9) always notifies regardless of
+  // the per-bot notifyOnFinish preference: the person isn't watching either one the way
+  // they watch their own Conversation, so an ask left unpushed there would go unseen.
+  return Boolean(
+    source && (source.thread.groupId || source.thread.goalId || source.bot.notifyOnFinish),
+  );
 }
 
 export async function notifyRun(

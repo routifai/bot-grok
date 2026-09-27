@@ -896,9 +896,12 @@ describe("parseUpdateBotPatch", () => {
 
 describe("run notification preference", () => {
   it("silences direct messages but leaves group notifications enabled", async () => {
-    let source: { bot: { notifyOnFinish: boolean }; thread: { groupId: string | null } } | null = {
+    let source: {
+      bot: { notifyOnFinish: boolean };
+      thread: { groupId: string | null; goalId: string | null };
+    } | null = {
       bot: { notifyOnFinish: false },
-      thread: { groupId: null },
+      thread: { groupId: null, goalId: null },
     };
     const findFirst = vi.fn(async () => source);
     const prisma = { run: { findFirst } } as unknown as PrismaClient;
@@ -920,15 +923,30 @@ describe("run notification preference", () => {
       },
       select: {
         bot: { select: { notifyOnFinish: true } },
-        thread: { select: { groupId: true } },
+        thread: { select: { groupId: true, goalId: true } },
       },
     });
 
-    source = { bot: { notifyOnFinish: false }, thread: { groupId: "group-1" } };
+    source = { bot: { notifyOnFinish: false }, thread: { groupId: "group-1", goalId: null } };
     await expect(
       runNotificationsEnabled(prisma, {
         botId: "bot-1",
         threadId: "thread-1",
+        spaceId: "workspace-1",
+        userId: "user-1",
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it("always notifies for a Goal log, even with notifyOnFinish off — the person isn't watching it", async () => {
+    const source = { bot: { notifyOnFinish: false }, thread: { groupId: null, goalId: "goal-1" } };
+    const findFirst = vi.fn(async () => source);
+    const prisma = { run: { findFirst } } as unknown as PrismaClient;
+
+    await expect(
+      runNotificationsEnabled(prisma, {
+        botId: "bot-1",
+        threadId: "goal-log-thread-1",
         spaceId: "workspace-1",
         userId: "user-1",
       }),

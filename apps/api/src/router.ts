@@ -184,6 +184,7 @@ import {
   serializeSpaceMemoryConfig,
   updateMemoryProviderDefaultScope,
 } from "./memory-provider-config.js";
+import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
 import { musePreview } from "./muse-preview.js";
 import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
 import {
@@ -4925,7 +4926,9 @@ export function createRouter(deps: RouterDeps) {
         prepareVoice(deps, context.actor, input),
       ),
     },
-    // Muse edition: sample data until the backend packages land (see muse-preview.ts).
+    // Muse edition: goals/ideas/topics and the Feed's posts are still sample data
+    // until their backend packages land (see muse-preview.ts). asks.* and the
+    // Feed's asks are real (apps/api/src/muse-asks.ts).
     goals: {
       list: museOnly.goals.list.handler(({ input }) =>
         musePreview.goals.list(input.botId, input.includeClosed),
@@ -4941,12 +4944,24 @@ export function createRouter(deps: RouterDeps) {
       log: museOnly.goals.log.handler(({ input }) => musePreview.goals.log(input.goalId)),
     },
     asks: {
-      list: museOnly.asks.list.handler(({ input }) => musePreview.asks.list(input.botId)),
-      count: museOnly.asks.count.handler(({ input }) => musePreview.asks.count(input.botId)),
-      answer: museOnly.asks.answer.handler(({ input }) => musePreview.asks.answer(input)),
+      list: museOnly.asks.list.handler(({ context, input }) =>
+        listAsks(deps.prisma, context.actor, input.botId),
+      ),
+      count: museOnly.asks.count.handler(({ context, input }) =>
+        countAsks(deps.prisma, context.actor, input.botId),
+      ),
+      answer: museOnly.asks.answer.handler(({ context, input }) =>
+        answerAsk(deps, context.actor, input),
+      ),
     },
     feed: {
-      list: museOnly.feed.list.handler(({ input }) => musePreview.feed.list(input.botId)),
+      list: museOnly.feed.list.handler(async ({ context, input }) => {
+        const [asks, preview] = await Promise.all([
+          listAsks(deps.prisma, context.actor, input.botId),
+          musePreview.feed.list(input.botId),
+        ]);
+        return { asks, posts: preview.posts, nextCursor: preview.nextCursor };
+      }),
     },
     ideas: {
       list: museOnly.ideas.list.handler(({ input }) => musePreview.ideas.list(input.botId)),
