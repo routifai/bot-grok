@@ -26,8 +26,8 @@ import {
 import type { MuseSettings } from "@aiden/contracts";
 import { inQuietHours, quietHoursEnd, resolveMuseSettings } from "@aiden/core";
 import { createTopicRepos, type PrismaClient } from "@aiden/db";
-import { CONVERSATION_DEFER_MS, hasActiveRun } from "./goal-jobs.js";
 import { renderFeedTopicsTaskPrompt } from "./feed-prompts.js";
+import { CONVERSATION_DEFER_MS, hasActiveRun } from "./goal-jobs.js";
 
 /** Daily cadence, independent of the Muse's proactivity level (which only gates the
  * digest on/off, same as Goal work) — see docs/muse/PLAN.md B10. */
@@ -49,7 +49,11 @@ export interface FeedJobDeps {
 }
 
 /** Enqueues (or re-enqueues, by the same replaceKey) this Muse's next `feed.topics`. */
-export async function scheduleFeedTopics(jobs: JobPublisher, botId: string, at: Date): Promise<void> {
+export async function scheduleFeedTopics(
+  jobs: JobPublisher,
+  botId: string,
+  at: Date,
+): Promise<void> {
   await jobs.enqueue(feedTopicsJob(botId, at));
 }
 
@@ -173,7 +177,9 @@ async function handleFeedTopics(deps: FeedJobDeps, payload: { botId: string }): 
 }
 
 /** Registers `feed.topics` (docs/muse/PLAN.md B10, muse mode only). */
-export function createFeedJobHandlers(deps: FeedJobDeps): Pick<BackgroundJobHandlers, "feed.topics"> {
+export function createFeedJobHandlers(
+  deps: FeedJobDeps,
+): Pick<BackgroundJobHandlers, "feed.topics"> {
   return {
     "feed.topics": (payload) => handleFeedTopics(deps, payload),
   };

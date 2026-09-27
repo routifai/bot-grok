@@ -53,7 +53,7 @@ describe("mapFollowedTopic", () => {
 describe("createPostRepos", () => {
   function reposFor(rows: unknown[]) {
     const post = {
-      findMany: vi.fn(async () => rows),
+      findMany: vi.fn(async (_args: Record<string, unknown>) => rows),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
         ...postRow,
         ...data,
@@ -151,8 +151,9 @@ describe("createTopicRepos", () => {
   function reposFor(rows: unknown[]) {
     const followedTopic = {
       findMany: vi.fn(async () => rows),
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
-        rows.find((row) => (row as { id: string }).id === where.id) ?? null,
+      findUnique: vi.fn(
+        async ({ where }: { where: { id: string } }) =>
+          rows.find((row) => (row as { id: string }).id === where.id) ?? null,
       ),
       upsert: vi.fn(async ({ create }: { create: Record<string, unknown> }) => ({
         ...topicRow,
@@ -177,7 +178,10 @@ describe("createTopicRepos", () => {
 
   it("getTopic returns the topic with its botId, or null", async () => {
     const { repos } = reposFor([{ ...topicRow, botId: "bot-1" }]);
-    expect(await repos.getTopic("topic-1")).toEqual({ ...mapFollowedTopic(topicRow), botId: "bot-1" });
+    expect(await repos.getTopic("topic-1")).toEqual({
+      ...mapFollowedTopic(topicRow),
+      botId: "bot-1",
+    });
     expect(await repos.getTopic("missing")).toBeNull();
   });
 

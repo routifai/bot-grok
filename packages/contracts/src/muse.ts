@@ -124,7 +124,7 @@ export const PostSchema = z.object({
   goalId: Id.nullable(),
   sourceUrl: z.string().url().nullable(),
   /** Optional link to a Library artifact this Post is about. */
-  artifactId: Id.nullable(),
+  artifactId: Id.nullable().optional(),
   createdAt: z.string(),
 });
 export type Post = z.infer<typeof PostSchema>;

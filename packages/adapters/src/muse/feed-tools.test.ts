@@ -85,7 +85,9 @@ describe("followTopicFromTool", () => {
     await followTopicFromTool({ prisma: fixture.prisma, jobs }, scope, { topic: "AI agent news" });
     expect(jobs.enqueue).toHaveBeenCalledTimes(1);
 
-    await followTopicFromTool({ prisma: fixture.prisma, jobs }, scope, { topic: "Moroccan design" });
+    await followTopicFromTool({ prisma: fixture.prisma, jobs }, scope, {
+      topic: "Moroccan design",
+    });
     expect(jobs.enqueue).toHaveBeenCalledTimes(1); // still just the first-topic schedule
   });
 
@@ -100,18 +102,26 @@ describe("unfollowTopicFromTool", () => {
   it("unfollows an existing topic", async () => {
     const fixture = createFixture();
     await followTopicFromTool({ prisma: fixture.prisma }, scope, { topic: "AI agent news" });
-    const result = await unfollowTopicFromTool({ prisma: fixture.prisma }, { botId: BOT_ID }, {
-      topic: "AI agent news",
-    });
+    const result = await unfollowTopicFromTool(
+      { prisma: fixture.prisma },
+      { botId: BOT_ID },
+      {
+        topic: "AI agent news",
+      },
+    );
     expect(result).toEqual({ ok: true });
     expect(fixture.followedTopics).toHaveLength(0);
   });
 
   it("errors when the topic isn't followed", async () => {
     const fixture = createFixture();
-    const result = await unfollowTopicFromTool({ prisma: fixture.prisma }, { botId: BOT_ID }, {
-      topic: "Nothing followed",
-    });
+    const result = await unfollowTopicFromTool(
+      { prisma: fixture.prisma },
+      { botId: BOT_ID },
+      {
+        topic: "Nothing followed",
+      },
+    );
     expect(result).toEqual({ error: expect.stringContaining("Not following") });
   });
 });

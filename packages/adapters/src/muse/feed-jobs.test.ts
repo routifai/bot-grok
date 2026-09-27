@@ -24,7 +24,12 @@ function createFixture() {
   const runs: Record<string, unknown>[] = [];
 
   function matches(row: Record<string, unknown>, where: Record<string, unknown> = {}): boolean {
-    return Object.entries(where).every(([key, value]) => row[key] === value);
+    return Object.entries(where).every(([key, value]) => {
+      if (value && typeof value === "object" && "in" in (value as object)) {
+        return (value as { in: unknown[] }).in.includes(row[key]);
+      }
+      return row[key] === value;
+    });
   }
 
   function applySelect(row: Record<string, unknown>, select?: Record<string, true>) {
@@ -51,7 +56,8 @@ function createFixture() {
         if (!include) return bot;
         const result: Record<string, unknown> = { ...bot };
         if (include.thread) result.thread = threads.find((t) => t.botId === bot.id) ?? null;
-        if (include.feedLog) result.feedLog = threads.find((t) => t.feedLogBotId === bot.id) ?? null;
+        if (include.feedLog)
+          result.feedLog = threads.find((t) => t.feedLogBotId === bot.id) ?? null;
         return result;
       },
     },
@@ -303,7 +309,9 @@ describe("feed.topics: doing the work", () => {
 
 describe("nextFeedTopicsAt", () => {
   it("is null when proactivity is off", () => {
-    expect(nextFeedTopicsAt({ proactivity: "off", quietHours: null }, new Date(), "UTC")).toBeNull();
+    expect(
+      nextFeedTopicsAt({ proactivity: "off", quietHours: null }, new Date(), "UTC"),
+    ).toBeNull();
   });
 
   it("is a day out regardless of proactivity level", () => {
@@ -316,8 +324,14 @@ describe("nextFeedTopicsAt", () => {
 
   it("skips forward to the end of quiet hours when the interval would land inside one", () => {
     const now = new Date("2026-01-01T22:30:00.000Z"); // +24h lands at 22:30 the next day, inside quiet hours
-    const next = nextFeedTopicsAt({ proactivity: "normal", quietHours: "22:00-08:00" }, now, "UTC")!;
-    expect(next).toEqual(quietHoursEnd("22:00-08:00", new Date(now.getTime() + FEED_TOPICS_INTERVAL_MS), "UTC"));
+    const next = nextFeedTopicsAt(
+      { proactivity: "normal", quietHours: "22:00-08:00" },
+      now,
+      "UTC",
+    )!;
+    expect(next).toEqual(
+      quietHoursEnd("22:00-08:00", new Date(now.getTime() + FEED_TOPICS_INTERVAL_MS), "UTC"),
+    );
   });
 });
 
@@ -330,7 +344,11 @@ describe("scheduleFeedTopics / rescheduleMuseFeedForBot / scheduleFeedDigestOnFi
     await scheduleFeedTopics(d.jobs, BOT_ID, at);
 
     expect(d.jobs.enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "feed.topics", replaceKey: feedTopicsJobKey(BOT_ID), availableAt: at }),
+      expect.objectContaining({
+        name: "feed.topics",
+        replaceKey: feedTopicsJobKey(BOT_ID),
+        availableAt: at,
+      }),
     );
   });
 

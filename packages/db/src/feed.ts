@@ -51,8 +51,10 @@ const POST_CURSOR_PREFIX = "v1.";
 function encodePostCursor(cursor: { createdAt: Date; id: string }): string {
   return (
     POST_CURSOR_PREFIX +
-    Buffer.from(JSON.stringify({ createdAt: cursor.createdAt.toISOString(), id: cursor.id }), "utf8")
-      .toString("base64url")
+    Buffer.from(
+      JSON.stringify({ createdAt: cursor.createdAt.toISOString(), id: cursor.id }),
+      "utf8",
+    ).toString("base64url")
   );
 }
 

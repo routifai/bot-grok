@@ -200,7 +200,11 @@ import {
   MODEL_CANNOT_SEE_MESSAGE,
   modelAcceptsImageInput,
 } from "../model-vision.js";
-import { addTopicPostFromTool, followTopicFromTool, unfollowTopicFromTool } from "../muse/feed-tools.js";
+import {
+  addTopicPostFromTool,
+  followTopicFromTool,
+  unfollowTopicFromTool,
+} from "../muse/feed-tools.js";
 import {
   createGoalFromTool,
   getGoalFromTool,
@@ -2405,7 +2409,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "unfollow_topic") {
             return finish(
-              await unfollowTopicFromTool(deps, { botId: bot.id }, { topic: String(args.topic ?? "") }),
+              await unfollowTopicFromTool(
+                deps,
+                { botId: bot.id },
+                { topic: String(args.topic ?? "") },
+              ),
             );
           }
           if (name === "feed_add_topic_post") {

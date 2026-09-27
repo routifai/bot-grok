@@ -184,6 +184,8 @@ model Space {
   scratchpadItems             ScratchpadItem[]
   goals                       Goal[]
   ideas                       Idea[]
+  posts                       Post[]
+  followedTopics              FollowedTopic[]
   taughtSkills                TaughtSkill[]
   agentSkills                 AgentSkill[]
   connections                 Connection[]

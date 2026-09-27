@@ -228,7 +228,12 @@ async function createGoalReportPost(
   if (!input.body) return;
   await createPostRepos(prisma).createPost(
     { spaceId: input.spaceId, userId: input.userId, botId: input.botId },
-    { kind: "goal_report", title: titleFromReport(input.body), body: input.body, goalId: input.goalId },
+    {
+      kind: "goal_report",
+      title: titleFromReport(input.body),
+      body: input.body,
+      goalId: input.goalId,
+    },
   );
 }
 

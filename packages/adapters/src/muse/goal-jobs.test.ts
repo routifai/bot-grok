@@ -487,9 +487,15 @@ describe("goal.advance: doing the work", () => {
     seedMuse(fixture);
     const goal = seedGoal(fixture);
     seedGoalLog(fixture, goal.id);
-    const report = "Booked the trial lesson.\nNext: pick a textbook. Blocked: waiting on payment info.";
+    const report =
+      "Booked the trial lesson.\nNext: pick a textbook. Blocked: waiting on payment info.";
     const continueRun = vi.fn(async (runId: string) => {
-      fixture.messages.push({ id: "report-message", runId, role: "bot", blocks: [{ kind: "text", text: report }] });
+      fixture.messages.push({
+        id: "report-message",
+        runId,
+        role: "bot",
+        blocks: [{ kind: "text", text: report }],
+      });
     });
     const d = deps(fixture, continueRun);
     const handlers = createGoalJobHandlers(d);

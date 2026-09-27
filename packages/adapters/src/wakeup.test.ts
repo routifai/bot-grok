@@ -16,6 +16,7 @@ function handlers(): BackgroundJobHandlers {
     "ideas.refresh": vi.fn(async () => undefined),
     "goal.advance": vi.fn(async () => undefined),
     "goal.checkin": vi.fn(async () => undefined),
+    "feed.topics": vi.fn(async () => undefined),
   };
 }
 

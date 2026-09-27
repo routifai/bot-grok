@@ -1,7 +1,13 @@
 import type { Actor } from "@aiden/contracts";
 import { IsolationError, type PrismaClient } from "@aiden/db";
 import { describe, expect, it, vi } from "vitest";
-import { followTopic, listFeedPosts, listTopics, type MuseFeedDeps, removeTopic } from "./muse-feed.js";
+import {
+  followTopic,
+  listFeedPosts,
+  listTopics,
+  type MuseFeedDeps,
+  removeTopic,
+} from "./muse-feed.js";
 
 const actor: Actor = {
   spaceId: "space-1",
@@ -34,17 +40,20 @@ const TOPIC_ROW = {
 function fakeDeps(
   options: { postRows?: (typeof POST_ROW)[]; topicRows?: (typeof TOPIC_ROW)[] } = {},
 ) {
-  const botFindFirst = vi.fn(async ({ where }: { where: { id: string; spaceId: string; userId: string } }) => {
-    if (where.id !== BOT_ID || where.spaceId !== actor.spaceId || where.userId !== actor.userId) {
-      return null;
-    }
-    return { id: BOT_ID, thread: null, computer: null };
-  });
+  const botFindFirst = vi.fn(
+    async ({ where }: { where: { id: string; spaceId: string; userId: string } }) => {
+      if (where.id !== BOT_ID || where.spaceId !== actor.spaceId || where.userId !== actor.userId) {
+        return null;
+      }
+      return { id: BOT_ID, thread: null, computer: null };
+    },
+  );
   const postFindMany = vi.fn(async () => options.postRows ?? [POST_ROW]);
   const topicRows = options.topicRows ?? [TOPIC_ROW];
   const followedTopicFindMany = vi.fn(async () => topicRows);
-  const followedTopicFindUnique = vi.fn(async ({ where }: { where: { id: string } }) =>
-    topicRows.find((row) => row.id === where.id) ?? null,
+  const followedTopicFindUnique = vi.fn(
+    async ({ where }: { where: { id: string } }) =>
+      topicRows.find((row) => row.id === where.id) ?? null,
   );
   const followedTopicUpsert = vi.fn(async ({ create }: { create: Record<string, unknown> }) => ({
     ...TOPIC_ROW,
@@ -96,7 +105,9 @@ describe("listTopics", () => {
   it("authorizes the bot, then reads its Followed topics", async () => {
     const { deps } = fakeDeps();
     const result = await listTopics(deps, actor, BOT_ID);
-    expect(result).toEqual([{ id: "topic-1", topic: "AI agent news", createdAt: "2026-09-20T00:00:00.000Z" }]);
+    expect(result).toEqual([
+      { id: "topic-1", topic: "AI agent news", createdAt: "2026-09-20T00:00:00.000Z" },
+    ]);
   });
 });
 
@@ -106,7 +117,12 @@ describe("followTopic", () => {
     const result = await followTopic(deps, actor, { botId: BOT_ID, topic: "  AI agent news  " });
     expect(followedTopicUpsert).toHaveBeenCalledWith({
       where: { botId_topic: { botId: BOT_ID, topic: "AI agent news" } },
-      create: { spaceId: actor.spaceId, userId: actor.userId, botId: BOT_ID, topic: "AI agent news" },
+      create: {
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+        botId: BOT_ID,
+        topic: "AI agent news",
+      },
       update: {},
     });
     expect(result.id).toBe("topic-new");
