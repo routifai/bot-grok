@@ -170,7 +170,7 @@ function browserLauncherCommand(
       : []),
     "browser=$(command -v aiden-browser || command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)",
     `export DISPLAY=${layout.display} HOME=${shellQuote(env.homeDir)}`,
-    `exec "$browser" --no-sandbox --no-first-run --no-default-browser-check --disable-dev-shm-usage --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=${layout.debugPort} --user-data-dir=${shellQuote(browserProfilePathForScreen(screenId, env))} "$@"`,
+    `exec "$browser" --no-sandbox --test-type --no-first-run --no-default-browser-check --disable-dev-shm-usage --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=${layout.debugPort} --user-data-dir=${shellQuote(browserProfilePathForScreen(screenId, env))} "$@"`,
   ].join("\n");
 }
 
