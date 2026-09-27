@@ -40,7 +40,7 @@ export function ArtifactPreviewCard({
     <div
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-[border-color,box-shadow,transform] duration-150 hover:border-ring/50 hover:shadow-float motion-safe:hover:-translate-y-0.5",
-        size === "compact" && "w-[min(460px,92%)]",
+        size === "compact" && "w-[460px] max-w-full shrink-0",
       )}
     >
       <button
