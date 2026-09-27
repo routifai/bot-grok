@@ -3688,6 +3688,7 @@ export function ShellPage() {
             {museMode && active ? (
               <ContextPanel
                 botId={active.id}
+                avatarColor={active.color}
                 collapsed={contextPanelCollapsed}
                 onNavigate={setMuseView}
                 onOpenWaiting={() => setWaitingOpen(true)}
