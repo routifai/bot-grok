@@ -11,6 +11,11 @@ import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 const HTML_PREVIEW_MAX_BYTES = 200_000;
 const IMAGE_PREVIEW_MAX_BYTES = 3_000_000;
 
+// A realistic desktop viewport, scaled down to cover the (16:10) thumbnail frame
+// edge to edge — a page centered in a tiny letterboxed square just reads as broken.
+const HTML_VIEWPORT_WIDTH = 1280;
+const HTML_VIEWPORT_HEIGHT = 800;
+
 const bytesCache = new Map<string, Uint8Array>();
 
 /** The minimum an artifact card needs to render (and lazily fetch) a preview thumbnail. */
@@ -56,13 +61,45 @@ function useNearViewport(): [RefObject<HTMLDivElement | null>, boolean] {
 }
 
 /**
+ * Tracks an element's rendered width so a fixed-size viewport can be scaled to cover
+ * it exactly. Falls back to `1` (no scale-down) where `ResizeObserver` isn't available.
+ */
+function useCoverScale(viewportWidth: number): [RefObject<HTMLDivElement | null>, number, boolean] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState<number | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") {
+      setScale(1);
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setScale(width / viewportWidth);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [viewportWidth]);
+
+  return [ref, scale ?? 1, scale !== null];
+}
+
+/**
  * The one artifact preview thumbnail, shared by the Library grid and the Conversation
  * transcript's file cards. Fetches real content lazily — only once the thumbnail is
  * about to scroll into view, and only for images and small HTML pages — so a long list
  * or transcript never pulls every artifact's full bytes at once. PDFs, decks, larger
  * pages, and anything still off-screen show their type icon instead.
  */
-export function ArtifactPreviewThumbnail({ artifact }: { artifact: PreviewableArtifact }) {
+export function ArtifactPreviewThumbnail({
+  artifact,
+  onReady,
+}: {
+  artifact: PreviewableArtifact;
+  /** Fires once the real preview has content to show, so a card can fade its skeleton out. */
+  onReady?: () => void;
+}) {
   const kind = artifactKind(artifact.mimeType);
   const [ref, near] = useNearViewport();
   const eligible =
@@ -71,6 +108,12 @@ export function ArtifactPreviewThumbnail({ artifact }: { artifact: PreviewableAr
   const [bytes, setBytes] = useState<Uint8Array | null>(
     () => bytesCache.get(cacheKey(artifact)) ?? null,
   );
+
+  useEffect(() => {
+    // Nothing eligible ever gets real bytes, so its type icon is already the whole
+    // story — tell the card right away instead of leaving its skeleton stuck on.
+    if (!eligible) onReady?.();
+  }, [eligible, onReady]);
 
   useEffect(() => {
     if (!eligible || !near || bytes) return;
@@ -84,7 +127,9 @@ export function ArtifactPreviewThumbnail({ artifact }: { artifact: PreviewableAr
         setBytes(decoded);
       })
       .catch(() => {
-        // Best-effort thumbnail; the type icon stays as the fallback.
+        // Best-effort thumbnail; the type icon stays as the fallback, but the card
+        // still needs to know there's nothing more to wait for.
+        if (!cancelled) onReady?.();
       });
     return () => {
       cancelled = true;
@@ -97,9 +142,9 @@ export function ArtifactPreviewThumbnail({ artifact }: { artifact: PreviewableAr
   return (
     <div ref={ref} className="grid h-full w-full place-items-center">
       {bytes && kind === "image" ? (
-        <ImageThumbnail bytes={bytes} mimeType={artifact.mimeType} />
+        <ImageThumbnail bytes={bytes} mimeType={artifact.mimeType} onReady={onReady} />
       ) : bytes && kind === "page" ? (
-        <ScaledHtmlThumbnail bytes={bytes} title={artifact.name} />
+        <ScaledHtmlThumbnail bytes={bytes} title={artifact.name} onReady={onReady} />
       ) : (
         <Icon size={36} strokeWidth={1.5} className="text-muted-foreground/50" />
       )}
@@ -107,17 +152,46 @@ export function ArtifactPreviewThumbnail({ artifact }: { artifact: PreviewableAr
   );
 }
 
-function ImageThumbnail({ bytes, mimeType }: { bytes: Uint8Array; mimeType: string }) {
+function ImageThumbnail({
+  bytes,
+  mimeType,
+  onReady,
+}: {
+  bytes: Uint8Array;
+  mimeType: string;
+  onReady?: () => void;
+}) {
   const url = useObjectUrl(bytes, mimeType);
   if (!url) return null;
-  return <img src={url} alt="" className="h-full w-full object-cover" />;
+  return <img src={url} alt="" className="h-full w-full object-cover" onLoad={onReady} />;
 }
 
-function ScaledHtmlThumbnail({ bytes, title }: { bytes: Uint8Array; title: string }) {
+function ScaledHtmlThumbnail({
+  bytes,
+  title,
+  onReady,
+}: {
+  bytes: Uint8Array;
+  title: string;
+  onReady?: () => void;
+}) {
   const html = useMemo(() => new TextDecoder("utf-8").decode(bytes), [bytes]);
+  const [ref, scale, measured] = useCoverScale(HTML_VIEWPORT_WIDTH);
+
+  useEffect(() => {
+    if (measured) onReady?.();
+  }, [measured, onReady]);
+
   return (
-    <div className="pointer-events-none h-full w-full overflow-hidden">
-      <div className="h-[400%] w-[400%] origin-top-left scale-[0.25]">
+    <div ref={ref} className="pointer-events-none h-full w-full overflow-hidden">
+      <div
+        className="origin-top-left"
+        style={{
+          width: HTML_VIEWPORT_WIDTH,
+          height: HTML_VIEWPORT_HEIGHT,
+          transform: `scale(${scale})`,
+        }}
+      >
         <SandboxedHtmlViewer html={html} title={title} />
       </div>
     </div>

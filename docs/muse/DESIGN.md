@@ -44,7 +44,7 @@ Import from `apps/web/src/pages/muse/ui`: `MuseScreen` (takes an optional `heade
 - **Found for you (Followed-topic Post).** `Surface`, eyebrow with the topic and source host, title, two-line summary, "Read" link opening the source.
 - **Proposal.** `Surface tone="attention"`: reason in one sentence, the proposed plan as a numbered list with added items marked and removed items struck through, "Accept plan" (solid) and "Keep current" (ghost).
 - **Ideas.** Under a "Things I could start now" eyebrow: `Chip`s, grouped by area only when there are more than six.
-- **Status.** A `StatusPill` near the Muse's name: "Nova is on 2 things · last check 4m ago" (`live` while anything runs, `attention` when Asks are open).
+- **Status.** Nothing while idle. While thinking/working: a small animated face plus a shimmering verb next to the Muse's name or under it ("Thinking…", "Browsing…", "Running code…", "Writing a file…") — no border, no counters, no timestamps. While an Ask is open: a clickable `StatusPill` ("Needs you", `attention` tone) that opens Waiting. See `apps/web/src/pages/muse/chrome/useMuseLiveState.ts` and `MuseLiveStatus.tsx`.
 
 ## Screens
 
