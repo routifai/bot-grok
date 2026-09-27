@@ -19,6 +19,7 @@ import type { createRunExecutor } from "./executor.js";
 import { compactHistory } from "./history-compaction.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
+import { createFeedJobHandlers } from "./muse/feed-jobs.js";
 import { createGoalJobHandlers } from "./muse/goal-jobs.js";
 import { refreshIdeas } from "./muse/ideas.js";
 import type { EncryptedSecretStore } from "./secrets.js";
@@ -67,10 +68,17 @@ export function createBackgroundJobHandlers(deps: {
     continueRun: (runId, workerId) => deps.executor.continueRun(runId, workerId),
     workerId: deps.workerId,
   });
+  const feedJobHandlers = createFeedJobHandlers({
+    prisma: deps.prisma,
+    jobs: deps.jobs,
+    continueRun: (runId, workerId) => deps.executor.continueRun(runId, workerId),
+    workerId: deps.workerId,
+  });
 
   return {
     "goal.advance": goalJobHandlers["goal.advance"],
     "goal.checkin": goalJobHandlers["goal.checkin"],
+    "feed.topics": feedJobHandlers["feed.topics"],
     "run.continue": async (payload) => {
       await deps.executor.continueRun(payload.runId, deps.workerId);
       // Automatic messaging mirror: once the run's bot messages are durable,

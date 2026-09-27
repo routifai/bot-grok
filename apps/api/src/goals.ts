@@ -11,8 +11,8 @@ import { ORPCError } from "@orpc/server";
 import { loadMessagePage } from "./thread-message-pages.js";
 
 // B6 · Goal RPCs (docs/muse/PLAN.md). Real goals.list/get/update/acceptProposal/
-// dismissProposal/log, replacing the "goals" part of muse-preview.ts. Every route is
-// authorized the same way every other bot-scoped route is: goal -> its bot -> the
+// dismissProposal/log. Every route is authorized the same way every other bot-scoped
+// route is: goal -> its bot -> the
 // actor's own Space/user (createRepos(prisma).getBot throws IsolationError otherwise).
 // acceptProposal/dismissProposal call the same goal-proposals.ts functions `asks.answer`
 // (muse-asks.ts) uses for a Proposal Ask answered from "Waiting on you" — one apply

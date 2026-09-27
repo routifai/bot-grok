@@ -2,8 +2,8 @@ import type { Actor, MuseSettings } from "@aiden/contracts";
 import { resolveMuseSettings } from "@aiden/core";
 import { IsolationError, type PrismaClient } from "@aiden/db";
 
-// Real muse.settings / muse.updateSettings handlers (packages/contracts/src/rpc.ts),
-// replacing the "settings" part of muse-preview.ts (docs/muse/PLAN.md, B7).
+// Real muse.settings / muse.updateSettings handlers (packages/contracts/src/rpc.ts,
+// docs/muse/PLAN.md B7).
 //
 // Persistence: two nullable columns on Bot (packages/db/prisma/schema.prisma,
 // museProactivity / museQuietHours) rather than a new table. Every other per-bot setting

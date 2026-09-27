@@ -854,6 +854,9 @@ export const appContract = {
   },
   topics: {
     list: oc.input(z.object({ botId: Id })).output(z.array(FollowedTopicSchema)),
+    follow: oc
+      .input(z.object({ botId: Id, topic: z.string().min(1).max(200) }))
+      .output(FollowedTopicSchema),
     remove: oc.input(z.object({ topicId: Id })).output(z.object({ ok: z.literal(true) })),
   },
   muse: {

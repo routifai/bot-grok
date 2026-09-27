@@ -72,6 +72,7 @@ import {
   readStoredModelAuth,
   releaseComputerExecutionLease,
   replaceComputer,
+  rescheduleMuseFeedForBot,
   rescheduleMuseGoalsForBot,
   resolveAutoReviewChecker,
   resolveBotWorkspacePath,
@@ -197,8 +198,14 @@ import {
   updateMemoryProviderDefaultScope,
 } from "./memory-provider-config.js";
 import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
+import {
+  followTopic,
+  listFeedPosts,
+  listTopics,
+  type MuseFeedDeps,
+  removeTopic,
+} from "./muse-feed.js";
 import { listIdeas, type MuseIdeasDeps, refreshIdeasNow } from "./muse-ideas.js";
-import { musePreview } from "./muse-preview.js";
 import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
 import {
   chooseFocus,
@@ -664,6 +671,7 @@ export function createRouter(deps: RouterDeps) {
     deploymentModelKey: deps.env.deploymentModelKey,
     ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
   };
+  const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma, jobs: deps.jobs };
 
   return os.router({
     aiConsent: {
@@ -4997,8 +5005,6 @@ export function createRouter(deps: RouterDeps) {
         prepareVoice(deps, context.actor, input),
       ),
     },
-    // Muse edition: topics and the Feed's posts are still sample data until their backend
-    // package lands (see muse-preview.ts). goals.*, asks.*, and ideas.* are real.
     goals: {
       list: museOnly.goals.list.handler(({ context, input }) =>
         listGoals(deps, context.actor, input),
@@ -5032,11 +5038,11 @@ export function createRouter(deps: RouterDeps) {
     },
     feed: {
       list: museOnly.feed.list.handler(async ({ context, input }) => {
-        const [asks, preview] = await Promise.all([
+        const [asks, page] = await Promise.all([
           listAsks(deps.prisma, context.actor, input.botId),
-          musePreview.feed.list(),
+          listFeedPosts(museFeedDeps, context.actor, input),
         ]);
-        return { asks, posts: preview.posts, nextCursor: preview.nextCursor };
+        return { asks, posts: page.posts, nextCursor: page.nextCursor };
       }),
     },
     ideas: {
@@ -5048,9 +5054,14 @@ export function createRouter(deps: RouterDeps) {
       ),
     },
     topics: {
-      list: museOnly.topics.list.handler(() => musePreview.topics.list()),
-      remove: museOnly.topics.remove.handler(({ input }) =>
-        musePreview.topics.remove(input.topicId),
+      list: museOnly.topics.list.handler(({ context, input }) =>
+        listTopics(museFeedDeps, context.actor, input.botId),
+      ),
+      follow: museOnly.topics.follow.handler(({ context, input }) =>
+        followTopic(museFeedDeps, context.actor, input),
+      ),
+      remove: museOnly.topics.remove.handler(({ context, input }) =>
+        removeTopic(museFeedDeps, context.actor, input.topicId),
       ),
     },
     muse: {
@@ -5059,10 +5070,13 @@ export function createRouter(deps: RouterDeps) {
       ),
       updateSettings: museOnly.muse.updateSettings.handler(async ({ context, input }) => {
         const settings = await updateMuseSettings(deps, context.actor, input);
-        // docs/muse/PLAN.md B8: a changed proactivity/quiet-hours setting reschedules this
-        // Muse's Goals right away instead of waiting for their next fire.
+        // docs/muse/PLAN.md B8/B10: a changed proactivity/quiet-hours setting reschedules
+        // this Muse's Goals and Feed digest right away instead of waiting for their next fire.
         await rescheduleMuseGoalsForBot(deps, input.botId).catch((error) =>
           getLogger().error("reschedule Muse Goals after settings change", error),
+        );
+        await rescheduleMuseFeedForBot(deps, input.botId).catch((error) =>
+          getLogger().error("reschedule Muse Feed digest after settings change", error),
         );
         return settings;
       }),
