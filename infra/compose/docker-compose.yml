@@ -1,3 +1,5 @@
+name: aiden
+
 services:
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:16}
@@ -40,11 +42,25 @@ services:
       AXIOM_EDGE: ${AXIOM_EDGE:-}
       AXIOM_EDGE_URL: ${AXIOM_EDGE_URL:-}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Host-side Docker socket. Docker Desktop (macOS/Windows) and native Linux Engine both use
+      # /var/run/docker.sock; colima defaults to ~/.colima/default/docker.sock (expand it yourself,
+      # e.g. DOCKER_SOCKET_PATH=$HOME/.colima/default/docker.sock in .env — colima's own $HOME, not
+      # a literal ~). scripts/setup.sh detects this automatically.
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
       - ../../data:/data
     depends_on:
       computer:
         condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
 
   computer:
     image: aiden/computer:local
@@ -60,7 +76,11 @@ services:
     volumes:
       - ../../data:/data
 
+  # api, worker, and web build the exact same image (one Dockerfile, one context) and only differ
+  # in their command. Sharing one image tag across all three means Compose builds it once instead
+  # of three near-identical multi-hundred-MB images.
   api:
+    image: aiden/app:local
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
@@ -86,7 +106,7 @@ services:
       https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
       no_proxy: ${no_proxy:-${NO_PROXY:-}}
     ports:
-      - "127.0.0.1:3100:3100"
+      - "127.0.0.1:${AIDEN_API_PORT:-3100}:3100"
     volumes:
       - ../../data:/data
     depends_on:
@@ -94,8 +114,21 @@ services:
         condition: service_healthy
       data-init:
         condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
 
   worker:
+    image: aiden/app:local
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
@@ -128,8 +161,13 @@ services:
         condition: service_healthy
       data-init:
         condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
   web:
+    image: aiden/app:local
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
@@ -139,9 +177,10 @@ services:
       SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET in .env}
       AIDEN_HOST: ${AIDEN_HOST:-localhost}
     ports:
-      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:${AIDEN_WEB_PORT:-5173}:5173"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:

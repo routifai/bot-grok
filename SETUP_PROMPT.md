@@ -2,6 +2,13 @@
 
 Copy one of the prompts below into a coding agent.
 
+For this fork specifically, the simplest path is `./scripts/setup.sh` from a checkout — see
+[docs/SETUP.md](./docs/SETUP.md). It builds every service from source, so it always reflects this
+fork's own code. The "Published images" prompt below pulls whatever `AIDEN_IMAGE` /
+`AIDEN_COMPUTER_IMAGE` resolve to; unset, those default to this repository's own upstream project,
+not this fork — replace the download and repository URLs below with this fork's own before using
+that prompt here.
+
 ## Published images (no checkout)
 
 Prefer this when the user wants a running web UI with Docker only (no Node/pnpm clone).

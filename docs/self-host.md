@@ -2,6 +2,12 @@
 
 The signed-in product is a long-running API, a Graphile Worker, Postgres, and a computer provider (Docker supervisor, E2B, Daytona, CreateOS, or Box). It is not a static site. The marketing site in `apps/www` can be hosted separately.
 
+For a laptop install of this fork, prefer [docs/SETUP.md](./SETUP.md) (`./scripts/setup.sh`): it
+builds every service from this checkout in one step, so you get this fork's own changes rather
+than a generic upstream build. The sections below cover the underlying source checkout, the
+published-images path (what the Electron desktop app's **This computer** option installs), and
+production VM deployment.
+
 ## Local (source checkout)
 
 Same as the README quick start: `.env` from `.env.example`, Postgres via Compose, `pnpm sandbox:build`, `pnpm dev`, then [http://127.0.0.1:5173](http://127.0.0.1:5173) (or `http://localhost:5173` — both loopback hosts are trusted). Electron: `pnpm --filter @aiden/desktop dev` while that stack is up, choosing **Existing instance** with that address. The desktop app's **This computer** option instead installs and runs the published images itself with Docker Compose (see [Published images](#published-images-no-checkout)), using port 45173 by default so it can run alongside `pnpm dev`. If that port is occupied, the app selects and remembers another loopback port. The managed API gets a Docker-assigned loopback port; all desktop traffic uses the web origin.
@@ -11,6 +17,12 @@ For source development in WSL, keep the checkout and `data` directory in the Lin
 Compose bot homes mount only their own subdirectory of the application volume using Docker volume semantics. Docker's internal volume paths are never used as host bind mounts.
 
 ## Published images (no checkout)
+
+This path pulls whatever `AIDEN_IMAGE` / `AIDEN_COMPUTER_IMAGE` point at. The defaults below are
+this repository's own upstream and only carry that project's code, not this fork's Muse edition.
+Point them at images built from this fork's own CI (or leave them unset and use
+[docs/SETUP.md](./SETUP.md) instead, which always builds from this checkout) before relying on
+this path for anything other than the Electron desktop app's **This computer** option.
 
 Pull Postgres and `ghcr.io/elie222/rakazo/app` into any empty folder. No clone or image build.
 Requires Docker Engine 26+ (API 1.45+ for bot home volume subpaths), the Compose plugin, curl, and OpenSSL.
