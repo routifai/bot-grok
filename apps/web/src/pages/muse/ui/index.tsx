@@ -190,7 +190,6 @@ export function DetailRows({ rows }: { rows: { label: ReactNode; value: ReactNod
   return (
     <dl className="grid grid-cols-[88px_1fr] gap-x-4 gap-y-2 text-[13.5px]">
       {rows.map((row, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: rows are static per render
         <div key={index} className="contents">
           <dt className="pt-px font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
             {row.label}

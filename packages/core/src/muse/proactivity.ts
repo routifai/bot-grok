@@ -74,7 +74,14 @@ function zonedParts(now: Date, timeZone: string) {
 /** The offset (in minutes) to add to a UTC instant to get the wall-clock time in `timeZone`. */
 function zoneOffsetMinutes(instant: Date, timeZone: string): number {
   const local = zonedParts(instant, timeZone);
-  const asUtc = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
+  const asUtc = Date.UTC(
+    local.year,
+    local.month - 1,
+    local.day,
+    local.hour,
+    local.minute,
+    local.second,
+  );
   return (asUtc - instant.getTime()) / 60_000;
 }
 
@@ -102,7 +109,11 @@ function zonedTimeToInstant(
 
 function addCalendarDays(year: number, month: number, day: number, days: number) {
   const shifted = new Date(Date.UTC(year, month - 1, day) + days * 86_400_000);
-  return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() };
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
 }
 
 /** Whether `now` (in `timeZone`) falls inside the quiet-hours window; may wrap midnight. */
@@ -133,7 +144,14 @@ export function quietHoursEnd(
   const local = zonedParts(now, timeZone);
   const endHour = Math.floor(parsed.endMinute / 60);
   const endMinute = parsed.endMinute % 60;
-  let candidate = zonedTimeToInstant(local.year, local.month, local.day, endHour, endMinute, timeZone);
+  let candidate = zonedTimeToInstant(
+    local.year,
+    local.month,
+    local.day,
+    endHour,
+    endMinute,
+    timeZone,
+  );
   if (candidate.getTime() <= now.getTime()) {
     const next = addCalendarDays(local.year, local.month, local.day, 1);
     candidate = zonedTimeToInstant(next.year, next.month, next.day, endHour, endMinute, timeZone);

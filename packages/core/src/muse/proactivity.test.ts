@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  inQuietHours,
-  nextWorkAt,
-  proactivityIntervalMs,
-  quietHoursEnd,
-} from "./proactivity.js";
+import { inQuietHours, nextWorkAt, proactivityIntervalMs, quietHoursEnd } from "./proactivity.js";
 
 const UTC = "UTC";
 const NY = "America/New_York";
