@@ -953,7 +953,8 @@ function PreviewPane({
   );
 }
 
-function ArtifactPreview({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {
+/** Exported so the Muse Library screen can reuse the same per-mime-type preview. */
+export function ArtifactPreview({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {
   if (artifact.mimeType === "text/html") {
     const html = new TextDecoder("utf-8").decode(bytes);
     return <SandboxedHtmlViewer html={html} title={artifact.name} />;
