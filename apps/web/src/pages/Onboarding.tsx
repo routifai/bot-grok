@@ -1,7 +1,9 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
+  BOT_NAME_MAX_LENGTH,
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
+  DEFAULT_MUSE_COLOR,
   type IntegrationSetupState,
   MAX_MODEL_CONTEXT_WINDOW,
   MAX_MODEL_MAX_TOKENS,
@@ -13,8 +15,9 @@ import {
   parseModelMaxTokens,
   type ThinkingLevel,
 } from "@rakazo/contracts";
-import { createModelProbe, initialModelProbeState } from "@rakazo/core";
+import { createModelProbe, GROK_BOT_COLORS, initialModelProbeState } from "@rakazo/core";
 import {
+  BotAvatar,
   Button,
   Input,
   ModelThinkingOptions,
@@ -27,6 +30,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
+import { authClient } from "../lib/auth";
 import type { ModelCatalogEntry } from "../lib/model-auth";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
@@ -35,6 +39,8 @@ const CUSTOM_MODEL_OPTION = "__rakazo_custom_model__";
 const FIRST_BOT_NAME = "Chief";
 const FIRST_BOT_SPAWN_KEY = "onboarding:first";
 const FIRST_BOT_LOCK = "rakazo:onboarding-first-bot";
+/** A small set of colors for the Muse's identity, sky first (the default). */
+const MUSE_COLOR_OPTIONS = [...new Set([DEFAULT_MUSE_COLOR, ...GROK_BOT_COLORS])].slice(0, 6);
 
 /** Survives StrictMode remounts; concurrent first-bot creates share one in-flight attempt. */
 let firstBotEnsure: Promise<{ id: string }> | null = null;
@@ -49,18 +55,22 @@ function findFirstBot(
   return byName ? { id: byName.id } : undefined;
 }
 
-async function createOrReuseFirstBot(): Promise<{ id: string }> {
+/** In muse mode the Muse's chosen name and identity color; rakazo mode uses the "Chief" default. */
+type FirstBotProfile = { name: string; color?: string };
+
+async function createOrReuseFirstBot(profile: FirstBotProfile): Promise<{ id: string }> {
   const existing = await rpc.bots.list();
   const reuse = findFirstBot(existing);
   if (reuse) return reuse;
   try {
     const created = await rpc.bots.create({
-      name: FIRST_BOT_NAME,
+      name: profile.name,
       title: "",
       description: "",
       instructions: "",
       notifyOnFinish: true,
       spawnKey: FIRST_BOT_SPAWN_KEY,
+      ...(profile.color ? { color: profile.color } : {}),
     });
     return { id: created.id };
   } catch (error) {
@@ -78,12 +88,12 @@ async function withFirstBotLock<T>(run: () => Promise<T>): Promise<T> {
   return locks.request(FIRST_BOT_LOCK, run);
 }
 
-async function ensureFirstBot(): Promise<{ id: string }> {
+async function ensureFirstBot(profile: FirstBotProfile): Promise<{ id: string }> {
   if (firstBotEnsure) return firstBotEnsure;
   // Web Lock serializes cross-tab creates; module promise covers same-tab StrictMode.
   // spawnKey makes create idempotent when locks are unavailable.
   // Clear after settle so a later empty-space visit re-lists instead of reusing a deleted id.
-  firstBotEnsure = withFirstBotLock(createOrReuseFirstBot).finally(() => {
+  firstBotEnsure = withFirstBotLock(() => createOrReuseFirstBot(profile)).finally(() => {
     firstBotEnsure = null;
   });
   return firstBotEnsure;
@@ -101,7 +111,17 @@ export function OnboardingPage() {
   const { t } = useLingui();
   const navigate = useNavigate();
   const fieldId = useId();
-  const [step, setStep] = useState<"loading" | "model" | "integrations" | "bot">("loading");
+  const [step, setStep] = useState<
+    "loading" | "name" | "museName" | "color" | "model" | "integrations" | "bot"
+  >("loading");
+  /** Muse mode only: what to show once the name → Muse name → color steps are done. */
+  const [postIdentityStep, setPostIdentityStep] = useState<"model" | "integrations" | "bot">(
+    "model",
+  );
+  const [isMuse, setIsMuse] = useState(false);
+  const [personName, setPersonName] = useState("");
+  const [museName, setMuseName] = useState("");
+  const [museColor, setMuseColor] = useState(DEFAULT_MUSE_COLOR);
   const [integrationSetup, setIntegrationSetup] = useState<IntegrationSetupState | null>(null);
   const needsIntegrationSetup = integrationSetup?.needsSetup ?? false;
   const [integrationServers, setIntegrationServers] = useState<string[]>([]);
@@ -159,7 +179,19 @@ export function OnboardingPage() {
           setProvider(preferred.provider);
           setModelId(preferred.provider === OPENAI_COMPATIBLE_PROVIDER_ID ? "" : preferred.id);
         }
-        setStep(me.needsModel ? "model" : integrations?.needsSetup ? "integrations" : "bot");
+        const entryStep = me.needsModel
+          ? "model"
+          : integrations?.needsSetup
+            ? "integrations"
+            : "bot";
+        if (me.productMode === "muse") {
+          setIsMuse(true);
+          setPersonName(me.name ?? "");
+          setPostIdentityStep(entryStep);
+          setStep("name");
+        } else {
+          setStep(entryStep);
+        }
       })
       .catch(() => setStep("bot"));
     return () => {
@@ -341,12 +373,36 @@ export function OnboardingPage() {
     });
   }
 
+  async function saveName() {
+    const trimmed = personName.trim();
+    if (!trimmed) return;
+    setError(null);
+    const result = await authClient.updateUser({ name: trimmed });
+    if (result.error) {
+      setError(result.error.message ?? t`Could not save your name`);
+      return;
+    }
+    setStep("museName");
+  }
+
+  function saveMuseName() {
+    if (!museName.trim()) return;
+    setError(null);
+    setStep("color");
+  }
+
+  function saveMuseColor() {
+    setStep(postIdentityStep);
+  }
+
   async function createFirstBot() {
     if (createStartedRef.current) return;
     createStartedRef.current = true;
     setError(null);
     try {
-      const bot = await ensureFirstBot();
+      const bot = await ensureFirstBot(
+        isMuse ? { name: museName.trim() || t`Muse`, color: museColor } : { name: FIRST_BOT_NAME },
+      );
       for (const serverId of integrationServers) {
         await rpc.mcp.assignments.approve({ botId: bot.id, serverId });
       }
@@ -378,6 +434,91 @@ export function OnboardingPage() {
           <p className="text-muted-foreground">
             <Trans>Loading…</Trans>
           </p>
+        ) : null}
+        {step === "name" ? (
+          <div>
+            <h1 className="text-[32px] font-medium text-foreground">
+              <Trans>What should I call you?</Trans>
+            </h1>
+            <Input
+              className="mt-8"
+              value={personName}
+              onChange={(e) => setPersonName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveName();
+              }}
+              aria-label={t`Your name`}
+              placeholder={t`Your name`}
+              autoFocus
+              maxLength={120}
+            />
+            {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+            <div className="mt-6 flex gap-3">
+              <Button disabled={!personName.trim()} onClick={() => void saveName()}>
+                <Trans>Continue</Trans>
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {step === "museName" ? (
+          <div>
+            <h1 className="text-[32px] font-medium text-foreground">
+              <Trans>Name your Muse</Trans>
+            </h1>
+            <Input
+              className="mt-8"
+              value={museName}
+              onChange={(e) => setMuseName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveMuseName();
+              }}
+              aria-label={t`Muse name`}
+              placeholder={t`e.g. Nova`}
+              autoFocus
+              maxLength={BOT_NAME_MAX_LENGTH}
+            />
+            {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+            <div className="mt-6 flex gap-3">
+              <Button disabled={!museName.trim()} onClick={saveMuseName}>
+                <Trans>Continue</Trans>
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {step === "color" ? (
+          <div>
+            <h1 className="text-[32px] font-medium text-foreground">
+              <Trans>Pick a color</Trans>
+            </h1>
+            <div className="mt-8 flex justify-center">
+              <BotAvatar color={museColor} identity={museName} size={72} />
+            </div>
+            <div className="mt-8 grid grid-cols-6 place-items-center gap-2">
+              {MUSE_COLOR_OPTIONS.map((color) => {
+                const selected = museColor.toLowerCase() === color.toLowerCase();
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setMuseColor(color)}
+                    aria-label={t`Color ${color}`}
+                    aria-pressed={selected}
+                    className={`size-8 rounded-full border transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring ${
+                      selected
+                        ? "scale-105 border-transparent ring-2 ring-foreground ring-offset-2 ring-offset-background"
+                        : "border-border"
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                );
+              })}
+            </div>
+            <div className="mt-6 flex gap-3">
+              <Button onClick={saveMuseColor}>
+                <Trans>Continue</Trans>
+              </Button>
+            </div>
+          </div>
         ) : null}
         {step === "model" ? (
           <div>

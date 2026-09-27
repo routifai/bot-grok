@@ -576,7 +576,12 @@ export async function enqueueBotIntroRun(deps: RouterDeps, actor: Actor, bot: Bo
 export function createRouter(deps: RouterDeps) {
   const os = implement(appContract).$context<{ actor: Actor | null; signal?: AbortSignal }>();
   const repos = createRepos(deps.prisma);
-  const onboardingDeps = { prisma: deps.prisma, events: deps.events, connectors: deps.connectors };
+  const onboardingDeps = {
+    prisma: deps.prisma,
+    events: deps.events,
+    connectors: deps.connectors,
+    productMode: deps.env.productMode,
+  };
   const mcpOAuth = deps.mcpOAuth ?? new McpOAuthBroker(deps.prisma, deps.secrets);
   const groupRepos = createGroupRepos(deps.prisma);
   const taughtSkills = createTaughtSkillsService({
