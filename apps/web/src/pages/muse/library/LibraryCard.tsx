@@ -43,7 +43,7 @@ export function LibraryCard({
         </div>
         <div className="flex flex-col gap-1.5 p-4">
           <Eyebrow>{kindEyebrow(kind)}</Eyebrow>
-          <h3 className="line-clamp-1 text-[14.5px] font-medium text-foreground">
+          <h3 className="line-clamp-1 text-[14.5px] font-semibold text-foreground">
             {artifact.name}
           </h3>
           <p className="text-[12px] text-muted-foreground">

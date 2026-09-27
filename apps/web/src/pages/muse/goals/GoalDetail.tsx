@@ -101,7 +101,7 @@ export function GoalDetail({
       </div>
 
       <h1
-        className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.01em] text-foreground"
+        className="mt-4 font-display text-[32px] leading-[1.1] tracking-[-0.01em] text-foreground"
         dir="auto"
       >
         {goal.title}

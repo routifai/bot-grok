@@ -17,7 +17,7 @@ function GoalReportCard({ post }: { post: Post }) {
       <Eyebrow>
         {t`Finished while you were away`} · {formatRelativeDay(post.createdAt, i18n.locale)}
       </Eyebrow>
-      <div className="text-[15px] leading-[1.4] font-medium text-foreground">{post.title}</div>
+      <div className="text-[14.5px] leading-[1.4] font-semibold text-foreground">{post.title}</div>
       <div className="text-[14px] leading-[1.55] text-foreground/90">
         <ChatMarkdown>{post.body}</ChatMarkdown>
       </div>
@@ -38,7 +38,7 @@ function TopicCard({ post }: { post: Post }) {
   return (
     <Surface className="flex flex-col gap-2 px-5 py-4">
       <Eyebrow>{host ?? t`Source`}</Eyebrow>
-      <div className="text-[15px] leading-[1.4] font-medium text-foreground">{post.title}</div>
+      <div className="text-[14.5px] leading-[1.4] font-semibold text-foreground">{post.title}</div>
       <p className="line-clamp-2 text-[14px] leading-[1.55] text-foreground/90">{post.body}</p>
       {post.sourceUrl ? (
         <a

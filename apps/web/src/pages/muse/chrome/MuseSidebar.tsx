@@ -82,13 +82,13 @@ export function MuseSidebar({
           status={status}
           face="muse"
           waitingCount={askCount}
-          size={38}
+          size={44}
         />
         <span className="min-w-0">
           <span className="block truncate text-[14.5px] font-semibold text-foreground" dir="auto">
             {museName}
           </span>
-          <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
             <span
               aria-hidden="true"
               className={cn(
@@ -226,7 +226,7 @@ function NavRow({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-start text-[13.5px] transition-colors [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
+        "flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-start text-[13px] transition-colors [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
         "focus-visible:outline-2 focus-visible:outline-ring",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"

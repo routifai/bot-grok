@@ -8,7 +8,7 @@ import { FeedAsks } from "./feed/FeedAsks";
 import { IdeaChips } from "./feed/IdeaChips";
 import { PostList } from "./feed/PostList";
 import { TopicsRow } from "./feed/TopicsRow";
-import { MuseColumn, MuseScreen, ScreenHeader } from "./ui";
+import { MuseScreen, MuseWideColumn, ScreenHeader } from "./ui";
 
 // The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
 // Waiting-on-you sheet), then Posts grouped Today / Earlier, then Ideas and Followed
@@ -113,7 +113,7 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
 
   return (
     <MuseScreen>
-      <MuseColumn>
+      <MuseWideColumn>
         <ScreenHeader title={t`Feed`} subtitle={subtitle} />
 
         {loadError ? <p className="pb-6 text-[13.5px] text-destructive">{loadError}</p> : null}
@@ -121,26 +121,30 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
         {posts === null && !loadError ? (
           <CardSkeletonList />
         ) : (
-          <div className="flex flex-col gap-10 pb-16">
-            <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
-            {posts ? (
-              <PostList
-                posts={posts}
-                nextCursor={nextCursor}
-                loadingMore={loadingMore}
-                onLoadMore={() => void loadMorePosts()}
+          <div className="flex flex-col gap-10 pb-16 xl:flex-row xl:items-start xl:gap-12">
+            <div className="flex min-w-0 flex-1 flex-col gap-10">
+              <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
+              {posts ? (
+                <PostList
+                  posts={posts}
+                  nextCursor={nextCursor}
+                  loadingMore={loadingMore}
+                  onLoadMore={() => void loadMorePosts()}
+                />
+              ) : null}
+            </div>
+            <div className="flex w-full flex-col gap-10 xl:w-[300px] xl:shrink-0">
+              <IdeaChips
+                ideas={ideas ?? []}
+                refreshing={refreshingIdeas}
+                onSend={onSendIdea}
+                onRefresh={() => void handleRefreshIdeas()}
               />
-            ) : null}
-            <IdeaChips
-              ideas={ideas ?? []}
-              refreshing={refreshingIdeas}
-              onSend={onSendIdea}
-              onRefresh={() => void handleRefreshIdeas()}
-            />
-            <TopicsRow topics={topics ?? []} onRemove={handleRemoveTopic} />
+              <TopicsRow topics={topics ?? []} onRemove={handleRemoveTopic} />
+            </div>
           </div>
         )}
-      </MuseColumn>
+      </MuseWideColumn>
     </MuseScreen>
   );
 }

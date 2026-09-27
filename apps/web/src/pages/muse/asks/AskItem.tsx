@@ -102,7 +102,7 @@ export function AskItem({
           className="mt-0.5 shrink-0 text-warning"
         />
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15.5px] leading-[1.4] font-medium text-foreground">{title}</h3>
+          <h3 className="text-[14.5px] leading-[1.4] font-semibold text-foreground">{title}</h3>
           {subtitle ? (
             <div className="mt-1 text-[13.5px] leading-[1.5] text-muted-foreground">
               <ChatMarkdown>{subtitle}</ChatMarkdown>

@@ -15,6 +15,20 @@ export function MuseColumn({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
+/**
+ * Wide, left-aligned layout for screens that fill the panel instead of reading like a
+ * document (Goals, Feed, Library): generous left padding, capped at ~1120px so lines don't
+ * run edge-to-edge on a big screen, but never centered — using the space is the point.
+ */
+export function MuseWideColumn({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("flex w-full max-w-[1120px] flex-col pl-5 pr-5 sm:pl-12 sm:pr-8", className)}
+      {...props}
+    />
+  );
+}
+
 /** Scroll container for a Muse screen: full height, quiet scrollbar, generous bottom room. */
 export function MuseScreen({ className, ...props }: ComponentProps<"div">) {
   return (
@@ -36,12 +50,12 @@ export function ScreenHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex items-end justify-between gap-4 pt-12 pb-8">
+    <header className="flex items-end justify-between gap-4 pt-10 pb-6">
       <div className="min-w-0">
-        <h1 className="font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+        <h1 className="font-display text-[32px] leading-[1.1] tracking-[-0.01em] text-foreground">
           {title}
         </h1>
-        {subtitle ? <p className="mt-2 text-[14.5px] text-muted-foreground">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-2 text-[13.5px] text-muted-foreground">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </header>
