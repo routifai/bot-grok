@@ -4991,7 +4991,8 @@ const Transcript = memo(function Transcript({
         }}
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
-          museMode && "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden [overflow-wrap:anywhere] md:py-10",
+          museMode &&
+            "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden [overflow-wrap:anywhere] md:py-10",
         )}
       >
         {olderCursor != null ? (
