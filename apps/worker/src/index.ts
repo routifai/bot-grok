@@ -150,6 +150,7 @@ async function main() {
   await connector.start();
   integrationSettings.warmDirectories();
   const memoryProviders = new SpaceMemoryProviderResolver(prisma, secrets);
+  const memory = new MarkdownMemoryStore(prisma);
   const home = new LocalAgentHomeStore(dataDir);
   const artifacts = new LocalArtifactStore(dataDir);
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;
@@ -167,7 +168,7 @@ async function main() {
     runtime,
     sandbox,
     productMode,
-    memory: new MarkdownMemoryStore(prisma),
+    memory,
     memoryProviders,
     home,
     artifacts,
@@ -213,6 +214,7 @@ async function main() {
     runtime,
     secretStore: secrets,
     memoryProviders,
+    memory,
     deploymentModelKey,
     messaging,
     cloudAgent,

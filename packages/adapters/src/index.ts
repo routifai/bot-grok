@@ -80,6 +80,7 @@ export * from "./model-selection.js";
 export * from "./model-vision.js";
 // B6: apps/api/src/goals.ts and muse-asks.ts call these (the one Proposal apply path).
 export * from "./muse/goal-proposals.js";
+export * from "./muse/ideas.js";
 export * from "./none-sandbox.js";
 export * from "./openai-compatible-url.js";
 export * from "./openai-voice.js";
