@@ -3,6 +3,7 @@ import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type { GoalProposal, GoalTask } from "@rakazo/contracts";
 import { Button } from "@rakazo/ui-web";
 import { useState } from "react";
+import { Eyebrow, Surface } from "../ui";
 
 type ProposalDiff = {
   next: { title: string; added: boolean }[];
@@ -25,9 +26,9 @@ function proposalDiff(
 }
 
 /**
- * The Muse's proposed change to a Goal's plan: the reason, a diff-style view of the
- * revised plan against the current one, and Accept / Dismiss. Matches AskCard's look
- * (AskCard itself doesn't fit this shape — a Proposal isn't a message-block ask).
+ * The Muse's proposed change to a Goal's plan (docs/muse/DESIGN.md "Proposal"): the reason,
+ * the revised plan as a numbered list with added items marked and removed items struck
+ * through, and Accept plan / Keep current.
  */
 export function GoalProposalCard({
   proposal,
@@ -59,41 +60,43 @@ export function GoalProposalCard({
   }
 
   return (
-    <div
-      data-testid="goal-proposal-card"
-      className="max-w-[74%] rounded-2xl border border-border bg-card px-5 py-4"
-    >
-      <div className="text-[12.5px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+    <Surface tone="attention" data-testid="goal-proposal-card" className="p-5">
+      <Eyebrow>
         <Trans>Proposed plan</Trans>
-      </div>
+      </Eyebrow>
       <div className="mt-2 text-[15px] leading-[1.5] text-foreground">
         <ChatMarkdown>{proposal.reason}</ChatMarkdown>
       </div>
-      <ol className="mt-3 space-y-1 text-[14px] leading-[1.5]">
+      <ol className="mt-3 list-decimal space-y-1 pl-5 text-[14px] leading-[1.6] marker:text-muted-foreground/70">
         {next.map((item, index) => (
-          <li key={index} className={item.added ? "text-success" : "text-foreground"}>
-            {item.added ? <span className="sr-only">{t`Added`}</span> : null}
-            <span aria-hidden>{item.added ? "+ " : ""}</span>
+          <li
+            key={index}
+            className={item.added ? "text-success marker:text-success" : "text-foreground"}
+          >
+            {item.added ? <span className="sr-only">{t`Added: `}</span> : null}
             {item.title}
           </li>
         ))}
-        {removed.map((title, index) => (
-          <li key={`removed-${index}`} className="text-muted-foreground line-through">
-            <span className="sr-only">{t`Removed`}</span>
-            <span aria-hidden>{"- "}</span>
-            {title}
-          </li>
-        ))}
       </ol>
-      <div className="mt-3.5 flex gap-2">
+      {removed.length > 0 ? (
+        <ul className="mt-2 space-y-1 pl-5 text-[13.5px] text-muted-foreground">
+          {removed.map((title, index) => (
+            <li key={index} className="line-through">
+              <span className="sr-only">{t`Removed: `}</span>
+              {title}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="mt-4 flex gap-2">
         <Button disabled={pending !== null} onClick={() => void run("accept")}>
-          {pending === "accept" ? <Trans>Accepting…</Trans> : <Trans>Accept</Trans>}
+          {pending === "accept" ? <Trans>Accepting…</Trans> : <Trans>Accept plan</Trans>}
         </Button>
-        <Button variant="outline" disabled={pending !== null} onClick={() => void run("dismiss")}>
-          {pending === "dismiss" ? <Trans>Dismissing…</Trans> : <Trans>Dismiss</Trans>}
+        <Button variant="ghost" disabled={pending !== null} onClick={() => void run("dismiss")}>
+          {pending === "dismiss" ? <Trans>Keeping…</Trans> : <Trans>Keep current</Trans>}
         </Button>
       </div>
       {error ? <p className="mt-3 text-[13px] text-destructive">{error}</p> : null}
-    </div>
+    </Surface>
   );
 }

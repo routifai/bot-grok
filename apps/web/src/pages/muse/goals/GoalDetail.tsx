@@ -11,19 +11,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "@rakazo/ui-web";
 import { ChevronLeft } from "lucide-react";
 import { useState } from "react";
 import { rpc } from "../../../lib/rpc";
+import { MuseColumn, Section } from "../ui";
 import { CheckInEditor } from "./CheckInEditor";
-import { formatDueDate } from "./format";
+import { checkInSummary, dueMeta } from "./format";
 import { GoalLog } from "./GoalLog";
 import { GoalProposalCard } from "./GoalProposalCard";
-import { GoalTaskStatusTag } from "./GoalTaskStatusTag";
+import { GoalStatusPill } from "./GoalStatusPill";
+import { MetaLine } from "./MetaLine";
+import { PlanTimeline } from "./PlanTimeline";
 
 export function GoalDetail({
   goal,
@@ -40,7 +39,15 @@ export function GoalDetail({
   const [checkInSaving, setCheckInSaving] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const orderedTasks = [...goal.tasks].sort((a, b) => a.idx - b.idx);
-  const due = formatDueDate(goal.due, i18n.locale);
+  const due = dueMeta(goal.due, i18n.locale);
+  const checkIn = checkInSummary(goal.checkInCrons);
+  const dueLine = due ? (
+    due.kind === "absolute" ? (
+      <Trans>Due {due.date}</Trans>
+    ) : (
+      <Trans>in {due.weeks} weeks</Trans>
+    )
+  ) : null;
 
   async function setStatus(status: "active" | "paused" | "cancelled") {
     if (statusBusy) return;
@@ -80,123 +87,99 @@ export function GoalDetail({
   }
 
   return (
-    <div className="p-4" data-testid="goal-detail">
-      <div className="mb-4 flex items-center gap-2">
-        <Button variant="ghost" size="icon-sm" aria-label={t`Back`} onClick={onBack}>
-          <ChevronLeft />
-        </Button>
-        <h1
-          className="min-w-0 flex-1 truncate text-[15.5px] font-medium text-foreground"
-          dir="auto"
+    <MuseColumn data-testid="goal-detail">
+      <div className="pt-8">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 gap-1 text-muted-foreground"
+          onClick={onBack}
         >
-          {goal.title}
-        </h1>
-        {goal.status === "paused" ? (
-          <span className="shrink-0 text-[12px] text-muted-foreground">
-            <Trans>Paused</Trans>
-          </span>
-        ) : null}
+          <ChevronLeft size={15} strokeWidth={1.75} />
+          <Trans>All goals</Trans>
+        </Button>
       </div>
 
-      <div className="mb-4 flex items-center justify-between gap-3">
-        {due ? (
-          <span className="text-[13px] text-muted-foreground">
-            <Trans>Due {due}</Trans>
-          </span>
-        ) : (
-          <span />
-        )}
-        <div className="flex gap-2">
-          {goal.status === "active" ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={statusBusy}
-              onClick={() => void setStatus("paused")}
-            >
-              <Trans>Pause</Trans>
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={statusBusy}
-              onClick={() => void setStatus("active")}
-            >
-              <Trans>Resume</Trans>
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={statusBusy}
-            onClick={() => setCancelOpen(true)}
-          >
-            <Trans>Cancel</Trans>
-          </Button>
+      <h1
+        className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.01em] text-foreground"
+        dir="auto"
+      >
+        {goal.title}
+      </h1>
+
+      {goal.description ? (
+        <div className="mt-3 text-[14.5px] leading-[1.6] text-muted-foreground">
+          <ChatMarkdown>{goal.description}</ChatMarkdown>
         </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <MetaLine items={[dueLine, checkIn]} />
+        <GoalStatusPill goal={goal} className="ml-auto" />
       </div>
-      {statusError ? <p className="mb-3 text-[13px] text-destructive">{statusError}</p> : null}
 
-      <Tabs defaultValue="plan">
-        <TabsList aria-label={t`Goal`}>
-          <TabsTrigger value="plan">
-            <Trans>Plan</Trans>
-          </TabsTrigger>
-          <TabsTrigger value="log">
-            <Trans>Goal log</Trans>
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="plan">
-          {goal.description ? (
-            <div className="mt-3 text-[14.5px] leading-[1.5] text-foreground/90">
-              <ChatMarkdown>{goal.description}</ChatMarkdown>
-            </div>
-          ) : null}
+      <div className="mt-4 flex items-center gap-1.5">
+        {goal.status === "active" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            disabled={statusBusy}
+            onClick={() => void setStatus("paused")}
+          >
+            <Trans>Pause</Trans>
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            disabled={statusBusy}
+            onClick={() => void setStatus("active")}
+          >
+            <Trans>Resume</Trans>
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          disabled={statusBusy}
+          onClick={() => setCancelOpen(true)}
+        >
+          <Trans>Cancel</Trans>
+        </Button>
+      </div>
+      {statusError ? <p className="mt-2 text-[13px] text-destructive">{statusError}</p> : null}
 
-          {goal.openProposal ? (
-            <div className="mt-4">
-              <GoalProposalCard
-                proposal={goal.openProposal}
-                currentTasks={goal.tasks}
-                onAccept={acceptProposal}
-                onDismiss={dismissProposal}
-              />
-            </div>
-          ) : null}
+      {goal.openProposal ? (
+        <div className="mt-8">
+          <GoalProposalCard
+            proposal={goal.openProposal}
+            currentTasks={goal.tasks}
+            onAccept={acceptProposal}
+            onDismiss={dismissProposal}
+          />
+        </div>
+      ) : null}
 
-          <ol className="mt-4 space-y-2.5" data-testid="goal-task-list">
-            {orderedTasks.map((task) => (
-              <li key={task.id} className="flex flex-col gap-1 rounded-xl border border-border p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-[14.5px] text-foreground" dir="auto">
-                    {task.title}
-                  </span>
-                  <GoalTaskStatusTag status={task.status} />
-                </div>
-                {task.note ? (
-                  <p className="text-[13px] text-muted-foreground" dir="auto">
-                    {task.note}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ol>
+      <Section title={<Trans>Plan</Trans>} className="mt-10">
+        <PlanTimeline tasks={orderedTasks} />
+      </Section>
 
-          <div className="mt-5">
-            <CheckInEditor
-              key={goal.id}
-              crons={goal.checkInCrons}
-              timezone={goal.timezone}
-              saving={checkInSaving}
-              onSave={saveCheckIn}
-            />
-          </div>
-        </TabsContent>
-        <TabsContent value="log">
-          <GoalLog goalId={goal.id} />
-        </TabsContent>
-      </Tabs>
+      <Section title={<Trans>Check-ins</Trans>} className="mt-10">
+        <CheckInEditor
+          key={goal.id}
+          crons={goal.checkInCrons}
+          timezone={goal.timezone}
+          saving={checkInSaving}
+          onSave={saveCheckIn}
+        />
+      </Section>
+
+      <Section title={<Trans>Goal log</Trans>} className="mt-10">
+        <GoalLog goalId={goal.id} />
+      </Section>
 
       {cancelOpen ? (
         <AlertDialog
@@ -229,6 +212,6 @@ export function GoalDetail({
           </AlertDialogContent>
         </AlertDialog>
       ) : null}
-    </div>
+    </MuseColumn>
   );
 }
