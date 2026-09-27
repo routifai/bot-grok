@@ -214,6 +214,7 @@ import { HostComputerPrompt } from "./HostComputerPrompt";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { LibraryScreen } from "./muse/LibraryScreen";
+import { MuseRail } from "./muse/MuseRail";
 import { useMuseNav } from "./muse/useMuseNav";
 import { WaitingSheet } from "./muse/WaitingSheet";
 import {
@@ -2714,9 +2715,9 @@ export function ShellPage() {
         />
       ) : null}
       {museMode && active ? (
-        <AppRail
+        <MuseRail
+          botId={active.id}
           active={museView}
-          museMode
           onNavigate={setMuseView}
           avatarColor={active.color}
           avatarIdentity={active.id}

@@ -48,13 +48,10 @@ export function AppRail(props: AppRailProps) {
             color={avatarColor}
             identity={avatarIdentity}
             status={avatarStatus}
+            face="muse"
+            waitingCount={askCount}
             size={32}
           />
-          {askCount ? (
-            <span className="absolute -end-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
-              {askCount > 99 ? "99+" : askCount}
-            </span>
-          ) : null}
         </button>
         <div className="my-1 h-px w-8 bg-sidebar-border" aria-hidden="true" />
         <RailButton

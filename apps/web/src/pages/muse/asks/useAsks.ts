@@ -6,6 +6,8 @@ import { rpc } from "../../../lib/rpc";
 // constantly; Asks are rarer, so this stays light and still catches up instantly
 // on focus/visibility (same pattern as that refresh).
 const POLL_INTERVAL_MS = 15_000;
+/** Fired after an Ask is answered so every surface showing that Muse's Asks refreshes at once. */
+const ASKS_CHANGED_EVENT = "muse:asks-changed";
 
 export type AnswerAskInput = { askId: string; runId: string; answer: string };
 
@@ -54,17 +56,22 @@ export function useAsks(botId: string): UseAsksResult {
     const onVisible = () => {
       if (document.visibilityState === "visible") void refresh();
     };
+    const onChanged = (event: Event) => {
+      if ((event as CustomEvent<{ botId: string }>).detail?.botId === botId) void refresh();
+    };
     window.addEventListener("focus", onVisible);
+    window.addEventListener(ASKS_CHANGED_EVENT, onChanged);
     document.addEventListener("visibilitychange", onVisible);
     const poll = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, POLL_INTERVAL_MS);
     return () => {
       window.removeEventListener("focus", onVisible);
+      window.removeEventListener(ASKS_CHANGED_EVENT, onChanged);
       document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(poll);
     };
-  }, [refresh]);
+  }, [botId, refresh]);
 
   const answer = useCallback(
     async (input: AnswerAskInput) => {
@@ -75,7 +82,7 @@ export function useAsks(botId: string): UseAsksResult {
       });
       try {
         await rpc.asks.answer(input);
-        void refresh();
+        window.dispatchEvent(new CustomEvent(ASKS_CHANGED_EVENT, { detail: { botId } }));
       } catch (err) {
         setAsks((current) =>
           removed && !current.some((ask) => ask.id === removed?.id)
@@ -85,7 +92,7 @@ export function useAsks(botId: string): UseAsksResult {
         throw err;
       }
     },
-    [refresh],
+    [botId],
   );
 
   return { asks, count: asks.length, loading, answer };

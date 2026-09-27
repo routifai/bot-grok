@@ -145,6 +145,7 @@ vi.mock("../components/teach/TeachRecordingChrome", () => ({
   TeachStopButton: Stub,
 }));
 vi.mock("./ActivityList", () => ({ ActivityList: Stub }));
+vi.mock("./muse/WaitingSheet", () => ({ WaitingSheet: Stub }));
 vi.mock("./GroupPanel", () => ({
   CreateGroupForm: Stub,
   GroupSettings: Stub,
