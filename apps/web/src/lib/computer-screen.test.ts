@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { embeddableScreenUrl, loadComputerScreen, screenIframeSandbox } from "./computer-screen";
+import {
+  embeddableScreenUrl,
+  loadComputerScreen,
+  screenIframeSandbox,
+  screenUrlStillFresh,
+} from "./computer-screen";
 
 describe("computer screen requests", () => {
   it("shows connection failures and lets a successful retry clear them", async () => {
@@ -110,5 +115,26 @@ describe("screenIframeSandbox", () => {
       "allow-scripts allow-pointer-lock",
     );
     expect(screenIframeSandbox("http://127.0.0.1:5173/vnc.html")).toBeUndefined();
+  });
+});
+
+describe("screenUrlStillFresh", () => {
+  const now = 1_000_000_000_000;
+  const link = (expiresAt: number, policy = "view") =>
+    `http://127.0.0.1:5173/novnc/session/${policy}/${expiresAt}.abc/embed.html?autoconnect=true`;
+
+  it("keeps a capability link that is well within its lifetime", () => {
+    expect(screenUrlStillFresh(link(now + 30 * 60_000), now)).toBe(true);
+    expect(screenUrlStillFresh(link(now + 30 * 60_000, "control"), now)).toBe(true);
+  });
+
+  it("refreshes a link that is about to expire or already expired", () => {
+    expect(screenUrlStillFresh(link(now + 60_000), now)).toBe(false);
+    expect(screenUrlStillFresh(link(now - 1), now)).toBe(false);
+  });
+
+  it("refreshes anything that is not a capability link", () => {
+    expect(screenUrlStillFresh(null, now)).toBe(false);
+    expect(screenUrlStillFresh("desktop://screen", now)).toBe(false);
   });
 });

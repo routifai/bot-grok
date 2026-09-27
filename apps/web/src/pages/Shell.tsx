@@ -169,6 +169,7 @@ import {
   embeddableScreenUrl,
   loadComputerScreen,
   screenIframeSandbox,
+  screenUrlStillFresh,
 } from "../lib/computer-screen";
 import { desktopBridge } from "../lib/desktop";
 import { scheduleFocusPrompt } from "../lib/focus-prompt";
@@ -221,6 +222,7 @@ import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { LibraryScreen } from "./muse/LibraryScreen";
+import { StatusPill } from "./muse/ui";
 import { useMuseNav } from "./muse/useMuseNav";
 import { WaitingSheet } from "./muse/WaitingSheet";
 import {
@@ -730,6 +732,8 @@ export function ShellPage() {
   const activeGroupId = useRef<string | undefined>(groupId);
   activeGroupId.current = groupId;
   const screenRequest = useRef(0);
+  /** Bots whose screen link must be re-fetched (after boot, takeover, or release). */
+  const staleScreens = useRef(new Set<string>());
   const contextBot =
     botMenu?.kind === "bot" ? bots.find((bot) => bot.id === botMenu.id) : undefined;
   const contextGroup =
@@ -1010,8 +1014,13 @@ export function ShellPage() {
     return snap;
   }
 
-  async function refreshComputerScreen(id: string) {
+  async function refreshComputerScreen(id: string, options: { force?: boolean } = {}) {
     if (!computerVisible.current) return null;
+    // Re-fetching mints a new capability link, which reloads the embedded desktop (a black
+    // flash) and queues on the supervisor's per-computer screen lock. Keep a link that is
+    // still valid unless something about the screen changed (boot, control, status).
+    const held = computerCacheRef.current.get(id)?.screenUrl ?? null;
+    if (!options.force && !staleScreens.current.has(id) && screenUrlStillFresh(held)) return held;
     const request = ++screenRequest.current;
     return loadComputerScreen({
       load: () => rpc.computer.screenUrl({ botId: id }),
@@ -1020,6 +1029,7 @@ export function ShellPage() {
         (activeBotId.current === id || computerBotIdRef.current === id) &&
         computerVisible.current,
       commit: (screen) => {
+        if (!screen.error) staleScreens.current.delete(id);
         setScreenUrl(screen.url);
         setComputerError(screen.error);
         setComputerErrorFromScreen(Boolean(screen.error));
@@ -1333,7 +1343,7 @@ export function ShellPage() {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
         } else if (isComputerStatusEvent(event)) {
-          void refreshComputerScreen(active.id).catch(() => undefined);
+          void refreshComputerScreen(active.id, { force: true }).catch(() => undefined);
         }
       },
     });
@@ -2419,6 +2429,7 @@ export function ShellPage() {
         await rpc.computer.takeover({ botId: targetBotId });
         if (!stillThisBoot() || !stillThisBot()) return;
       }
+      if (needsBoot || takeControl) staleScreens.current.add(targetBotId);
       await refreshComputerFor(targetBotId);
     } catch (error) {
       if (!stillThisBoot() || !stillThisBot()) return;
@@ -2599,6 +2610,8 @@ export function ShellPage() {
       if (!botId) return;
       try {
         await rpc.computer.release({ botId, reason });
+        // Control ended: the held control link is no longer the right one.
+        staleScreens.current.add(botId);
         if (computerBotIdRef.current !== botId && activeBotId.current !== botId) return;
         setComputerOpen(false);
         const groupId = activeGroupId.current;
@@ -2637,7 +2650,7 @@ export function ShellPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => computerBot && void refreshComputerScreen(computerBot.id)}
+          onClick={() => computerBot && void refreshComputerScreen(computerBot.id, { force: true })}
         >
           <Trans>Retry screen</Trans>
         </Button>
@@ -3688,26 +3701,41 @@ export function ShellPage() {
         data-panel={panel ?? "closed"}
         className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden bg-background transition-[width] duration-150 ease-out md:relative ${
           panel && (active || activeGroup || panel === "create")
-            ? "w-full max-w-[384px] border-s border-sidebar-border md:w-[384px] md:max-w-none"
+            ? museMode
+              ? // Muse: an inset panel like <main>; the computer gets room for a real preview.
+                `w-full md:my-2 md:me-2 md:rounded-[14px] md:border md:border-border ${
+                  panel === "computer"
+                    ? "max-w-[520px] md:w-[520px] md:max-w-none"
+                    : "max-w-[400px] md:w-[400px] md:max-w-none"
+                }`
+              : "w-full max-w-[384px] border-s border-sidebar-border md:w-[384px] md:max-w-none"
             : "pointer-events-none w-0"
         }`}
       >
         {panel && (active || activeGroup || panel === "create") ? (
-          <div className="rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[384px]">
+          <div
+            className={`rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] ${
+              museMode ? (panel === "computer" ? "md:w-[520px]" : "md:w-[400px]") : "md:w-[384px]"
+            }`}
+          >
             {panel !== "routine" &&
             panel !== "create" &&
             panel !== "create-group" &&
             panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
-                <span className="text-[13.5px] text-muted-foreground">
-                  {panel === "settings" ? (
-                    <Trans>Settings</Trans>
-                  ) : active ? (
-                    (computer?.state ?? active.status)
-                  ) : (
-                    <Trans>Group</Trans>
-                  )}
-                </span>
+                {museMode && panel === "computer" && active ? (
+                  <MuseComputerTitle state={computer?.state} booting={booting} />
+                ) : (
+                  <span className="text-[13.5px] text-muted-foreground">
+                    {panel === "settings" ? (
+                      <Trans>Settings</Trans>
+                    ) : active ? (
+                      (computer?.state ?? active.status)
+                    ) : (
+                      <Trans>Group</Trans>
+                    )}
+                  </span>
+                )}
                 <div className="flex gap-1">
                   {active &&
                   panel === "computer" &&
@@ -3747,7 +3775,10 @@ export function ShellPage() {
               <div>
                 <div
                   data-testid="computer-preview"
-                  className="group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-background"
+                  className={cn(
+                    "group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-background",
+                    museMode && "rounded-xl border border-border bg-muted shadow-sm",
+                  )}
                 >
                   {computerOpen ? (
                     <div className="grid h-full place-items-center text-sm text-muted-foreground/80">
@@ -3793,9 +3824,26 @@ export function ShellPage() {
                     </button>
                   ) : null}
                 </div>
-                <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
-                  {t`${active.name}'s screen`}
-                </p>
+                {museMode ? (
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <p className="truncate text-[14px] text-muted-foreground" dir="auto">
+                      {t`Watch ${active.name} work`}
+                    </p>
+                    {!computerScreenError ? (
+                      <Button size="sm" variant="outline" onClick={() => void openComputer()}>
+                        <Maximize2 size={14} strokeWidth={1.9} aria-hidden />
+                        <Trans>Open</Trans>
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
+                    {t`${active.name}'s screen`}
+                  </p>
+                )}
+                {museMode ? (
+                  <div className="mt-8 border-t border-border pt-2" aria-hidden="true" />
+                ) : null}
                 <RoutineListHeader
                   onCreate={() => {
                     setRoutineDraft(emptyRoutineDraft());
@@ -6767,4 +6815,22 @@ function readFileAsBase64(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
     reader.readAsDataURL(file);
   });
+}
+
+/** Muse computer panel title: a plain heading and a status pill instead of the raw state. */
+function MuseComputerTitle({ state, booting }: { state?: string; booting: boolean }) {
+  const { t } = useLingui();
+  const running = state === "running";
+  const starting = booting || state === "booting";
+  const failed = state === "error";
+  return (
+    <span className="flex items-center gap-2.5">
+      <span className="text-[15.5px] font-semibold text-foreground">
+        <Trans>Computer</Trans>
+      </span>
+      <StatusPill tone={running ? "live" : starting || failed ? "attention" : "neutral"}>
+        {running ? t`Live` : starting ? t`Starting` : failed ? t`Needs a restart` : t`Asleep`}
+      </StatusPill>
+    </span>
+  );
 }

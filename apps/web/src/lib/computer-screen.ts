@@ -51,3 +51,22 @@ export function screenIframeSandbox(url: string | null) {
     return undefined;
   }
 }
+
+const SCREEN_URL_REFRESH_MARGIN_MS = 5 * 60_000;
+const SCREEN_CAPABILITY_PATH = /\/novnc\/session\/(view|control)\/(\d+)\./;
+
+/**
+ * A screen link we already hold stays in use while its capability is valid. Re-fetching it
+ * mints a new capability (new expiry, new URL), which reloads the embedded desktop and
+ * flashes black, so only non-capability links or ones near expiry count as stale.
+ */
+export function screenUrlStillFresh(
+  url: string | null | undefined,
+  now = Date.now(),
+  marginMs = SCREEN_URL_REFRESH_MARGIN_MS,
+): boolean {
+  if (!url) return false;
+  const match = SCREEN_CAPABILITY_PATH.exec(url);
+  if (!match) return false;
+  return Number(match[2]) - now > marginMs;
+}
