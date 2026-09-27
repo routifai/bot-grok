@@ -212,6 +212,8 @@ import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
+import { ConversationHeader } from "./muse/chrome/ConversationHeader";
+import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { LibraryScreen } from "./muse/LibraryScreen";
@@ -2725,6 +2727,7 @@ export function ShellPage() {
           avatarIdentity={active.id}
           avatarStatus={active.status}
           onAvatarClick={() => setWaitingOpen(true)}
+          onOpenSettings={() => openSettings("general")}
         />
       ) : (
         <AppRail active="bots" />
@@ -3400,82 +3403,111 @@ export function ShellPage() {
           )
         ) : (
           <>
-            <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
-              <div className="flex min-w-0 items-center gap-2">
-                {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
-                {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-                <button
-                  type="button"
-                  aria-label={t`Open navigation`}
-                  onClick={() => setMobileSidebarOpen(true)}
-                  className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-                >
-                  <Menu size={19} strokeWidth={1.7} />
-                </button>
-                {botsSidebarCollapsed ? (
-                  <button
-                    type="button"
-                    data-testid="restore-bots-sidebar"
-                    aria-label={t`Show bots`}
-                    title={t`Show bots`}
-                    onClick={() => setBotsSidebarCollapsedPref(false)}
-                    className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
-                  >
-                    <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  data-testid="bot-settings-trigger"
-                  onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-                  className="app-no-drag flex min-w-0 items-center gap-3"
-                >
-                  {inGroup ? (
-                    <GroupAvatar
-                      members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                      size={26}
-                    />
-                  ) : active ? (
-                    <BotAvatar
-                      color={active.color}
-                      identity={active.id}
-                      size={26}
-                      status={active.status}
-                    />
-                  ) : null}
-                  <span className="min-w-0">
-                    <span
-                      className="block truncate text-[16px] font-medium text-foreground"
-                      dir="auto"
-                    >
-                      {inGroup
-                        ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                        : (active?.name ?? t`Select a bot`)}
-                    </span>
-                  </span>
-                </button>
-              </div>
-              <div className="flex items-center gap-1">
-                {!inGroup && active ? (
+            {museMode && active ? (
+              <ConversationHeader
+                botId={active.id}
+                museName={active.name}
+                avatarColor={active.color}
+                avatarStatus={active.status}
+                running={transcriptRunning}
+                actions={
                   <button
                     type="button"
                     title={t`Agent computer`}
+                    aria-label={t`Agent computer`}
                     onClick={() => {
                       const next = panel === "computer" ? null : "computer";
                       setPanel(next);
-                      if (next === "computer" && active) {
+                      if (next === "computer") {
                         // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
                         void refreshThread(active.id).catch(() => undefined);
                       }
                     }}
                     data-active={panel === "computer" ? "" : undefined}
-                    className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                    className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                   >
-                    <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                    <Monitor size={17} strokeWidth={1.75} />
                   </button>
-                ) : null}
+                }
+              />
+            ) : (
+              <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
+                <div className="flex min-w-0 items-center gap-2">
+                  {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
+                  {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
+                  <button
+                    type="button"
+                    aria-label={t`Open navigation`}
+                    onClick={() => setMobileSidebarOpen(true)}
+                    className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
+                  >
+                    <Menu size={19} strokeWidth={1.7} />
+                  </button>
+                  {botsSidebarCollapsed ? (
+                    <button
+                      type="button"
+                      data-testid="restore-bots-sidebar"
+                      aria-label={t`Show bots`}
+                      title={t`Show bots`}
+                      onClick={() => setBotsSidebarCollapsedPref(false)}
+                      className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                    >
+                      <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    data-testid="bot-settings-trigger"
+                    onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
+                    className="app-no-drag flex min-w-0 items-center gap-3"
+                  >
+                    {inGroup ? (
+                      <GroupAvatar
+                        members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                        size={26}
+                      />
+                    ) : active ? (
+                      <BotAvatar
+                        color={active.color}
+                        identity={active.id}
+                        size={26}
+                        status={active.status}
+                      />
+                    ) : null}
+                    <span className="min-w-0">
+                      <span
+                        className="block truncate text-[16px] font-medium text-foreground"
+                        dir="auto"
+                      >
+                        {inGroup
+                          ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                          : (active?.name ?? t`Select a bot`)}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  {!inGroup && active ? (
+                    <button
+                      type="button"
+                      title={t`Agent computer`}
+                      onClick={() => {
+                        const next = panel === "computer" ? null : "computer";
+                        setPanel(next);
+                        if (next === "computer" && active) {
+                          // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                          void refreshThread(active.id).catch(() => undefined);
+                        }
+                      }}
+                      data-active={panel === "computer" ? "" : undefined}
+                      className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                    >
+                      <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            )}
             {!active && !activeGroup && initialBotsLoaded ? (
               <div className="grid flex-1 place-items-center">
                 <Button onClick={() => setPanel("create")}>
@@ -3483,9 +3515,17 @@ export function ShellPage() {
                   <Trans>Create new Bot</Trans>
                 </Button>
               </div>
+            ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
+              <EmptyConversation
+                botId={active.id}
+                personName={bootstrapMe?.name ?? ""}
+                avatarColor={active.color}
+                onSend={(text) => void sendMessage(text)}
+              />
             ) : (
               <Transcript
                 key={activeSnapshot?.threadId}
+                museMode={museMode}
                 scrollRef={messageScroll}
                 scrollRequest={scrollRequest}
                 onScrollRequestHandled={clearScrollRequest}
@@ -3531,6 +3571,7 @@ export function ShellPage() {
             {active || activeGroup ? (
               <Composer
                 key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+                museMode={museMode}
                 activeName={
                   inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
                 }
@@ -4547,6 +4588,7 @@ export function ShellPage() {
 }
 
 const Transcript = memo(function Transcript({
+  museMode,
   scrollRef,
   scrollRequest,
   onScrollRequestHandled,
@@ -4575,6 +4617,7 @@ const Transcript = memo(function Transcript({
   onSpeak,
   onOpenComputer,
 }: {
+  museMode?: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollRequest: { messageId: string; nonce: number } | null;
   onScrollRequestHandled: () => void;
@@ -4847,7 +4890,10 @@ const Transcript = memo(function Transcript({
             following.current = false;
           }
         }}
-        className="rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
+        className={cn(
+          "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
+          museMode && "mx-auto w-full max-w-[720px]",
+        )}
       >
         {olderCursor != null ? (
           <button
@@ -4860,7 +4906,8 @@ const Transcript = memo(function Transcript({
           </button>
         ) : null}
         {reactionView.visibleMessages.map((message) => {
-          if (!message.blocks.some((block) => !isToolActivityBlock(block))) return null;
+          if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
+            return null;
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
           return (
@@ -4898,8 +4945,12 @@ const Transcript = memo(function Transcript({
                       ? undefined
                       : `relative w-fit min-w-0 ${
                           message.role === "user"
-                            ? "max-w-[min(84%,calc(100%_-_6rem))]"
-                            : "max-w-[min(88%,calc(100%_-_6rem))]"
+                            ? museMode
+                              ? "max-w-[80%]"
+                              : "max-w-[min(84%,calc(100%_-_6rem))]"
+                            : museMode
+                              ? "max-w-full"
+                              : "max-w-[min(88%,calc(100%_-_6rem))]"
                         }`
                   }
                 >
@@ -4912,6 +4963,7 @@ const Transcript = memo(function Transcript({
                     />
                   )}
                   <MessageView
+                    museMode={museMode}
                     artifactTarget={artifactTarget}
                     message={message}
                     canAnswer={message.id === answerableAskMessageId}
@@ -5080,6 +5132,7 @@ const QuoteSelectionButton = memo(function QuoteSelectionButton({
 });
 
 const Composer = memo(function Composer({
+  museMode,
   activeName,
   running,
   disabled,
@@ -5106,6 +5159,7 @@ const Composer = memo(function Composer({
   onSlashOpen,
   onSlashAction,
 }: {
+  museMode?: boolean;
   activeName?: string;
   running: boolean;
   disabled?: boolean;
@@ -5436,9 +5490,11 @@ const Composer = memo(function Composer({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative z-30 m-0 min-w-0 border-0 px-3 pb-4 pt-3 md:px-6 md:pb-6 ${
-        draggingFiles ? "rounded-[14px] ring-2 ring-inset ring-ring" : ""
-      }`}
+      className={cn(
+        "relative z-30 m-0 min-w-0 border-0 px-3 pb-4 pt-3 md:px-6 md:pb-6",
+        museMode && "mx-auto w-full max-w-[720px]",
+        draggingFiles && "rounded-[14px] ring-2 ring-inset ring-ring",
+      )}
     >
       <div role="status" data-testid="composer-announcement" className="sr-only">
         {replyAnnouncement}
@@ -5616,7 +5672,10 @@ const Composer = memo(function Composer({
       ) : null}
       <div
         data-testid="composer-bar"
-        className="flex items-center gap-3.5 rounded-full border border-border bg-background py-[9px] pe-2.5 ps-3 transition-colors focus-within:border-ring"
+        className={cn(
+          "flex items-center gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-colors focus-within:border-ring",
+          museMode ? "rounded-[24px] shadow-float" : "rounded-full",
+        )}
       >
         <input
           ref={fileInputRef}
@@ -5632,7 +5691,10 @@ const Composer = memo(function Composer({
           aria-label={t`Attach file`}
           disabled={disabled}
           onClick={() => fileInputRef.current?.click()}
-          className="size-8 shrink-0 rounded-full border border-border bg-muted text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className={cn(
+            "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+            museMode ? "border-0 bg-transparent" : "border border-border bg-muted",
+          )}
         >
           <Plus size={16} strokeWidth={2} />
         </Button>
@@ -5732,7 +5794,9 @@ const Composer = memo(function Composer({
             placeholder={
               showComposerPlaceholder
                 ? activeName
-                  ? t`Message ${activeName}`
+                  ? museMode
+                    ? t`Message ${activeName}…`
+                    : t`Message ${activeName}`
                   : t`Message…`
                 : undefined
             }
@@ -5752,7 +5816,7 @@ const Composer = memo(function Composer({
         </div>
         {onVoice ? (
           <Button
-            variant="outline"
+            variant={museMode ? "ghost" : "outline"}
             size="icon"
             aria-label={t`Voice`}
             title={t`Voice`}
@@ -5770,7 +5834,12 @@ const Composer = memo(function Composer({
               aria-label={t`Send`}
               disabled={sending || !canSend || disabled}
               onClick={send}
-              className="size-8 rounded-full bg-white text-black hover:bg-white/90 shadow-sm transition-transform active:scale-95"
+              className={cn(
+                "size-8 rounded-full shadow-sm transition-transform active:scale-95",
+                museMode
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-white text-black hover:bg-white/90",
+              )}
             >
               <ArrowUp size={16} strokeWidth={2.2} />
             </Button>
@@ -5791,7 +5860,12 @@ const Composer = memo(function Composer({
             aria-label={t`Send`}
             disabled={sending || !canSend || disabled}
             onClick={send}
-            className="size-8 shrink-0 rounded-full bg-white text-black hover:bg-white/90 shadow-sm transition-transform active:scale-95 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none"
+            className={cn(
+              "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",
+              museMode
+                ? "bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-primary/20 disabled:text-primary-foreground/40 disabled:shadow-none"
+                : "bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none",
+            )}
           >
             <ArrowUp size={16} strokeWidth={2.2} />
           </Button>
@@ -6065,7 +6139,27 @@ function ComputerReleaseActions({
   );
 }
 
+/** Muse mode only: one quiet line for a tool-activity block (docs/muse/DESIGN.md "Conversation"). */
+function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] }) {
+  const label =
+    block.kind === "steps"
+      ? block.steps.map((step) => step.label).join(" · ")
+      : "text" in block
+        ? block.text
+        : undefined;
+  if (!label) return null;
+  return (
+    <div className="flex items-center gap-1.5 py-0.5 text-[12.5px] text-muted-foreground/70">
+      <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-muted-foreground/50" />
+      <span className="truncate" dir="auto">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 const MessageView = memo(function MessageView({
+  museMode,
   artifactTarget,
   canAnswer,
   message,
@@ -6086,6 +6180,7 @@ const MessageView = memo(function MessageView({
   onSpeak,
   onOpenComputer,
 }: {
+  museMode?: boolean;
   artifactTarget: ArtifactTarget;
   canAnswer: boolean;
   message: ThreadMessage;
@@ -6115,7 +6210,9 @@ const MessageView = memo(function MessageView({
     );
   const isLive = message.id.startsWith("progress:");
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
-  const visibleNarrationBlocks = message.blocks.filter((block) => !isToolActivityBlock(block));
+  const visibleNarrationBlocks = message.blocks.filter(
+    (block) => museMode || !isToolActivityBlock(block),
+  );
   const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const speakerBot = message.botId ? peerBot?.(message.botId) : undefined;
   const speakerColorDef = useMemo(
@@ -6172,11 +6269,16 @@ const MessageView = memo(function MessageView({
         <div className="flex w-fit max-w-full justify-start">
           <div
             data-testid="message-bot-bubble"
-            className="max-w-full space-y-2.5 rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+            className={cn(
+              "max-w-full space-y-2.5",
+              museMode
+                ? "text-[15px] leading-[1.65] text-foreground"
+                : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+            )}
             dir="auto"
           >
             {visibleNarrationBlocks.map((block, i) => {
-              if (block.kind === "text" || block.kind === "progress") {
+              if (block.kind === "text" || (block.kind === "progress" && !block.activity)) {
                 return (
                   <div
                     key={i}
@@ -6185,6 +6287,9 @@ const MessageView = memo(function MessageView({
                     <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
                   </div>
                 );
+              }
+              if (museMode && isToolActivityBlock(block)) {
+                return <ToolActivityStep key={i} block={block} />;
               }
               return null;
             })}
@@ -6207,7 +6312,9 @@ const MessageView = memo(function MessageView({
     <>
       {messageContext}
       {message.blocks.map((block, i) => {
-        if (isToolActivityBlock(block)) return null;
+        if (isToolActivityBlock(block)) {
+          return museMode ? <ToolActivityStep key={i} block={block} /> : null;
+        }
         if (block.kind === "handoff") {
           const from = memberName?.(block.fromBotId) ?? t`bot`;
           const to = memberName?.(block.toBotId) ?? t`bot`;
@@ -6268,7 +6375,12 @@ const MessageView = memo(function MessageView({
             <div key={i} className="flex w-fit max-w-full justify-start">
               <div
                 data-testid="message-bot-bubble"
-                className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+                className={cn(
+                  "max-w-full",
+                  museMode
+                    ? "text-[15px] leading-[1.65] text-foreground"
+                    : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+                )}
                 dir="auto"
               >
                 <ChatMarkdown streaming>{block.text}</ChatMarkdown>
@@ -6423,7 +6535,12 @@ const MessageView = memo(function MessageView({
               <div
                 data-testid="message-user-bubble"
                 data-quote-message-id={quoteMessageId}
-                className="max-w-full whitespace-pre-wrap wrap-anywhere rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground"
+                className={cn(
+                  "max-w-full whitespace-pre-wrap wrap-anywhere bg-chat-user text-chat-user-foreground",
+                  museMode
+                    ? "rounded-3xl px-5 py-3 text-[15px] leading-[1.65]"
+                    : "rounded-[20px] px-[18px] py-3 text-[15.5px] leading-[1.45]",
+                )}
                 dir="auto"
               >
                 {block.text}
@@ -6436,7 +6553,12 @@ const MessageView = memo(function MessageView({
             <div key={i} className="flex w-fit max-w-full justify-start">
               <div
                 data-testid="message-bot-bubble"
-                className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+                className={cn(
+                  "max-w-full",
+                  museMode
+                    ? "text-[15px] leading-[1.65] text-foreground"
+                    : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+                )}
                 dir="auto"
               >
                 <div data-quote-message-id={quoteMessageId}>

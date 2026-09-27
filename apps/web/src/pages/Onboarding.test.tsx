@@ -42,6 +42,7 @@ vi.mock("@rakazo/ui-web", () => {
   return {
     BotAvatar: () => <span data-testid="bot-avatar" />,
     Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
+    cn: (...parts: unknown[]) => parts.filter(Boolean).join(" "),
     Input: (props: ComponentProps<"input">) => <input {...props} />,
     ModelThinkingOptions: () => null,
     Select: Container,
@@ -114,14 +115,24 @@ function setInputValue(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-it("in muse mode, walks name -> Muse name -> color (sky preselected) -> model, in order", async () => {
+it("in muse mode, walks intro -> name -> Muse name -> color (sky preselected) -> model, in order", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.me.mockResolvedValue(baseMe({ productMode: "muse", needsModel: true }));
   const page = await renderOnboarding();
   try {
+    // Step 0: the warm introduction.
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("What should I call you?");
+        expect(page.container.textContent).toContain("Hi, I'm your new executive assistant.");
+      });
+    });
+    await act(async () => {
+      findButton(page.container, "Let's get started").click();
+    });
+
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("First, what should I call you?");
       });
     });
 
@@ -141,7 +152,7 @@ it("in muse mode, walks name -> Muse name -> color (sky preselected) -> model, i
     // Step 2: the Muse's name.
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Name your Muse");
+        expect(page.container.textContent).toContain("And what would you like to call me?");
       });
     });
     await act(async () => {
@@ -154,7 +165,7 @@ it("in muse mode, walks name -> Muse name -> color (sky preselected) -> model, i
     // Step 3: color, sky preselected.
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Pick a color");
+        expect(page.container.textContent).toContain("Pick my color.");
       });
     });
     const preselected = page.container.querySelector(
@@ -165,10 +176,12 @@ it("in muse mode, walks name -> Muse name -> color (sky preselected) -> model, i
       findButton(page.container, "Continue").click();
     });
 
-    // Step 4: model, unchanged.
+    // Step 4: model, warm copy.
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Connect a model");
+        expect(page.container.textContent).toContain(
+          "Last thing — connect the brain I'll think with.",
+        );
       });
     });
   } finally {
@@ -185,7 +198,15 @@ it("in muse mode, creates exactly one bot with the chosen name and color", async
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("What should I call you?");
+        expect(page.container.textContent).toContain("Hi, I'm your new executive assistant.");
+      });
+    });
+    await act(async () => {
+      findButton(page.container, "Let's get started").click();
+    });
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("First, what should I call you?");
       });
     });
     await act(async () => {
@@ -196,7 +217,7 @@ it("in muse mode, creates exactly one bot with the chosen name and color", async
     });
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Name your Muse");
+        expect(page.container.textContent).toContain("And what would you like to call me?");
       });
     });
     await act(async () => {
@@ -207,7 +228,7 @@ it("in muse mode, creates exactly one bot with the chosen name and color", async
     });
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Pick a color");
+        expect(page.container.textContent).toContain("Pick my color.");
       });
     });
     await act(async () => {
