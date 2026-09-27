@@ -6,6 +6,7 @@ export * from "./computers.js";
 export * from "./credential-secrets.js";
 export * from "./events.js";
 export * from "./external-conversations.js";
+export * from "./goals.js";
 export * from "./groups.js";
 export * from "./memory-config.js";
 export * from "./messages.js";
