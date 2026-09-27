@@ -11,12 +11,13 @@ published images.
   enough resources for a Postgres, four app processes, and at least one bot computer:
 
   ```bash
-  colima start --cpu 4 --memory 8
+  colima start --cpu 4 --memory 8 --disk 60
   ```
 
 - **Linux**: Docker Engine + the Compose plugin (`docker compose version` should work).
 - `openssl` and `curl` (already on macOS and most Linux distributions).
-- About 4 CPUs / 8 GB RAM free, and a few GB of disk for images and Postgres data.
+- About 4 CPUs / 8 GB RAM free, and a Docker disk of at least 40 GB (the first build needs room
+  for its cache; Docker Desktop: Settings → Resources → Disk usage limit).
 
 You do **not** need Node.js or pnpm — everything builds inside Docker.
 
@@ -118,15 +119,11 @@ restarts the stack.
 ## Troubleshooting
 
 **A bot's computer pane is black, or never leaves "starting."**
-The sandbox supervisor needs your host's Docker socket to start per-bot computer containers.
-`scripts/setup.sh` auto-detects this, but if it guessed wrong, set `DOCKER_SOCKET_PATH` in `.env`:
-
-| Setup | Socket path |
-| --- | --- |
-| Docker Desktop (macOS/Windows) | `/var/run/docker.sock` (default, leave blank) |
-| Linux Docker Engine | `/var/run/docker.sock` (default, leave blank) |
-| colima | `$HOME/.colima/default/docker.sock` |
-| colima with a custom profile | `$HOME/.colima/<profile>/docker.sock` |
+The sandbox supervisor mounts the Docker socket to start per-Aiden computers. The mount path is
+resolved inside the Docker VM, where both Docker Desktop and colima use `/var/run/docker.sock`, so
+leave `DOCKER_SOCKET_PATH` blank. Set it only for unusual setups such as rootless Docker on Linux
+(for example `/run/user/1000/docker.sock`). Never use colima's Mac-side
+`~/.colima/default/docker.sock` there: Docker can't mount a path from your Mac.
 
 After changing it, restart: `docker compose -f infra/compose/docker-compose.yml up -d --force-recreate supervisor`.
 

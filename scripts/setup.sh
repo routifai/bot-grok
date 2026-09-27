@@ -69,27 +69,16 @@ fill_if_blank ENCRYPTION_KEY "openssl rand -hex 32"
 fill_if_blank SCREEN_PROXY_SECRET "openssl rand -hex 32"
 fill_if_blank SANDBOX_SUPERVISOR_TOKEN "openssl rand -hex 32"
 
-# --- 4. Docker socket path (Docker Desktop vs colima) --------------------------------------
+# --- 4. Docker socket for the sandbox supervisor --------------------------------------------
+# The supervisor mounts the Docker socket to start per-Aiden computers. Mount paths resolve inside
+# the Docker VM, where both Docker Desktop and colima expose /var/run/docker.sock, so the compose
+# default is right for them. DOCKER_SOCKET_PATH in .env is only an override for unusual setups
+# (e.g. rootless Docker on Linux); never the Mac-side path such as ~/.colima/default/docker.sock.
 
-if [[ -z "$(env_get DOCKER_SOCKET_PATH)" ]]; then
-  detected=""
-  if [[ -S /var/run/docker.sock ]]; then
-    detected="" # compose's own default already matches; leave blank
-  elif [[ -S "$HOME/.colima/default/docker.sock" ]]; then
-    detected="$HOME/.colima/default/docker.sock"
-  else
-    ctx_socket="$(docker context inspect 2>/dev/null | grep -o '"Host": *"unix://[^"]*"' | head -n1 | sed -E 's/.*unix:\/\///; s/"$//')" || true
-    if [[ -n "$ctx_socket" && -S "$ctx_socket" ]]; then
-      detected="$ctx_socket"
-    fi
-  fi
-  if [[ -n "$detected" ]]; then
-    env_set DOCKER_SOCKET_PATH "$detected"
-    log "Detected Docker socket at $detected (colima)."
-  elif [[ ! -S /var/run/docker.sock ]]; then
-    warn "Couldn't find a Docker socket at /var/run/docker.sock or ~/.colima/default/docker.sock."
-    warn "Set DOCKER_SOCKET_PATH in .env to your Docker daemon's socket path, then re-run this script."
-  fi
+socket_override="$(env_get DOCKER_SOCKET_PATH)"
+if [[ "$socket_override" == "$HOME/.colima/"* ]]; then
+  env_set DOCKER_SOCKET_PATH ""
+  log "Cleared DOCKER_SOCKET_PATH: colima's Mac-side socket can't be mounted; the VM path is used."
 fi
 
 # --- 5. Model provider key (optional) --------------------------------------------------------

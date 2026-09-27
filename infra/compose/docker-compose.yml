@@ -42,10 +42,8 @@ services:
       AXIOM_EDGE: ${AXIOM_EDGE:-}
       AXIOM_EDGE_URL: ${AXIOM_EDGE_URL:-}
     volumes:
-      # Host-side Docker socket. Docker Desktop (macOS/Windows) and native Linux Engine both use
-      # /var/run/docker.sock; colima defaults to ~/.colima/default/docker.sock (expand it yourself,
-      # e.g. DOCKER_SOCKET_PATH=$HOME/.colima/default/docker.sock in .env — colima's own $HOME, not
-      # a literal ~). scripts/setup.sh detects this automatically.
+      # The Docker socket, resolved inside the Docker VM: /var/run/docker.sock for Docker Desktop and colima alike.
+      # DOCKER_SOCKET_PATH in .env overrides it only for unusual setups (e.g. rootless Docker).
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
       - ../../data:/data
     depends_on:
