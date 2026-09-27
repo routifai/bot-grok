@@ -14,7 +14,7 @@ import type { ComponentProps, ReactNode } from "react";
  */
 export const MUSE_TYPE = {
   /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
-  chromeTitle: "text-[15.5px] font-semibold text-foreground",
+  chromeTitle: "text-[17px] font-semibold tracking-[-0.01em] text-foreground",
   /** A big in-content heading for a screen that reads like its own page (Ideas). */
   pageTitle: "text-[28px] font-semibold leading-[1.15] tracking-[-0.01em] text-foreground",
   /** A one-line page subtitle under `pageTitle`, in the Muse's own voice. */
@@ -107,7 +107,7 @@ export function ScreenHeader({
   return (
     <header
       className={cn(
-        "flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 md:px-6",
+        "flex h-16 shrink-0 items-center justify-between gap-3 px-4 md:px-6",
         dragRegion && "app-drag",
       )}
     >
