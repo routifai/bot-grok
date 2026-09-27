@@ -191,7 +191,9 @@ function createFixture() {
       },
     },
     run: {
-      findUnique: async () => null,
+      // The `goals` tool always runs mid-turn, so its Asks name a live run
+      // (assertRunCanWriteHistory only rejects a missing or cancelled one).
+      findUnique: async () => ({ status: "running", startedAt: new Date() }),
     },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
   };
@@ -207,7 +209,7 @@ function createFixture() {
   };
 }
 
-const scope = { spaceId: "space-1", botId: "bot-1", userId: "user-1" };
+const scope = { spaceId: "space-1", botId: "bot-1", userId: "user-1", runId: "run-1" };
 
 function seedConversationThread(fixture: ReturnType<typeof createFixture>) {
   fixture.threads.push({
@@ -398,6 +400,9 @@ describe("goals tool: update_task", () => {
       text: "Which evenings work for trial lessons?",
       input: "text",
       status: "pending",
+      // The explicit marker apps/api/src/muse-asks.ts (B6) routes a blocked-Task
+      // answer on, instead of guessing the kind from the thread/shape.
+      goalTaskId: taskId,
     });
 
     // Calling update_task again while already blocked (same status) does not re-ask.

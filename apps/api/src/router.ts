@@ -177,6 +177,14 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import {
+  acceptProposal,
+  dismissProposal,
+  getGoal,
+  getGoalLog,
+  listGoals,
+  updateGoal,
+} from "./goals.js";
 import { searchIntegrationCatalog } from "./integration-catalog.js";
 import { buildMcpUpdateMaterial } from "./mcp-material.js";
 import {
@@ -4970,22 +4978,28 @@ export function createRouter(deps: RouterDeps) {
         prepareVoice(deps, context.actor, input),
       ),
     },
-    // Muse edition: goals/ideas/topics and the Feed's posts are still sample data
-    // until their backend packages land (see muse-preview.ts). asks.* and the
-    // Feed's asks are real (apps/api/src/muse-asks.ts).
+    // Muse edition: ideas/topics and the Feed's posts are still sample data until
+    // their backend packages land (see muse-preview.ts). goals.* (B6), asks.* (B9),
+    // and the Feed's asks are real (apps/api/src/goals.ts, muse-asks.ts).
     goals: {
-      list: museOnly.goals.list.handler(({ input }) =>
-        musePreview.goals.list(input.botId, input.includeClosed),
+      list: museOnly.goals.list.handler(({ context, input }) =>
+        listGoals(deps, context.actor, input),
       ),
-      get: museOnly.goals.get.handler(({ input }) => musePreview.goals.get(input.goalId)),
-      update: museOnly.goals.update.handler(({ input }) => musePreview.goals.update(input)),
-      acceptProposal: museOnly.goals.acceptProposal.handler(({ input }) =>
-        musePreview.goals.acceptProposal(input.proposalId),
+      get: museOnly.goals.get.handler(({ context, input }) =>
+        getGoal(deps, context.actor, input.goalId),
       ),
-      dismissProposal: museOnly.goals.dismissProposal.handler(({ input }) =>
-        musePreview.goals.dismissProposal(input.proposalId),
+      update: museOnly.goals.update.handler(({ context, input }) =>
+        updateGoal(deps, context.actor, input),
       ),
-      log: museOnly.goals.log.handler(({ input }) => musePreview.goals.log(input.goalId)),
+      acceptProposal: museOnly.goals.acceptProposal.handler(({ context, input }) =>
+        acceptProposal(deps, context.actor, input.proposalId),
+      ),
+      dismissProposal: museOnly.goals.dismissProposal.handler(({ context, input }) =>
+        dismissProposal(deps, context.actor, input.proposalId),
+      ),
+      log: museOnly.goals.log.handler(({ context, input }) =>
+        getGoalLog(deps, context.actor, input),
+      ),
     },
     asks: {
       list: museOnly.asks.list.handler(({ context, input }) =>
@@ -5002,19 +5016,17 @@ export function createRouter(deps: RouterDeps) {
       list: museOnly.feed.list.handler(async ({ context, input }) => {
         const [asks, preview] = await Promise.all([
           listAsks(deps.prisma, context.actor, input.botId),
-          musePreview.feed.list(input.botId),
+          musePreview.feed.list(),
         ]);
         return { asks, posts: preview.posts, nextCursor: preview.nextCursor };
       }),
     },
     ideas: {
-      list: museOnly.ideas.list.handler(({ input }) => musePreview.ideas.list(input.botId)),
-      refresh: museOnly.ideas.refresh.handler(({ input }) =>
-        musePreview.ideas.refresh(input.botId),
-      ),
+      list: museOnly.ideas.list.handler(() => musePreview.ideas.list()),
+      refresh: museOnly.ideas.refresh.handler(() => musePreview.ideas.refresh()),
     },
     topics: {
-      list: museOnly.topics.list.handler(({ input }) => musePreview.topics.list(input.botId)),
+      list: museOnly.topics.list.handler(() => musePreview.topics.list()),
       remove: museOnly.topics.remove.handler(({ input }) =>
         musePreview.topics.remove(input.topicId),
       ),

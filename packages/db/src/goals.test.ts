@@ -121,6 +121,10 @@ describe("createGoalRepos", () => {
       goal: {
         findMany: vi.fn(async () => goals),
         findUnique: vi.fn(async () => goals[0] ?? null),
+        update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          ...(goals[0] as Record<string, unknown>),
+          ...data,
+        })),
       },
     };
     return { repos: createGoalRepos(prisma as unknown as PrismaClient), prisma };
@@ -155,5 +159,24 @@ describe("createGoalRepos", () => {
     const result = await repos.getGoal("goal-1");
     expect(result?.id).toBe("goal-1");
     expect(result?.tasks).toHaveLength(1);
+  });
+
+  it("updateGoal writes only the given fields", async () => {
+    const { repos, prisma } = reposFor([baseGoal]);
+    const result = await repos.updateGoal("goal-1", { status: "paused" });
+    expect(prisma.goal.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "goal-1" }, data: { status: "paused" } }),
+    );
+    expect(result.status).toBe("paused");
+  });
+
+  it("updateGoal replaces the check-in schedule and timezone together", async () => {
+    const { repos, prisma } = reposFor([baseGoal]);
+    await repos.updateGoal("goal-1", { checkInCrons: ["0 8 * * *"], timezone: "Europe/Paris" });
+    expect(prisma.goal.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { checkInCrons: ["0 8 * * *"], timezone: "Europe/Paris" },
+      }),
+    );
   });
 });

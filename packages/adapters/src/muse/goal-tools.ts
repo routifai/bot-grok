@@ -36,6 +36,14 @@ export type GoalToolScope = {
   spaceId: string;
   botId: string;
   userId: string;
+  /**
+   * The run this tool call is executing under. Threaded onto every Ask the `goals` tool
+   * posts (below) so it names a real run (`asks.answer` / B6 looks the message up by
+   * `{id, runId}`) — the run itself need not be paused; a Proposal/blocked-Task Ask is
+   * answered by applying its effect directly (goal-proposals.ts, apps/api/src/goals.ts),
+   * never by resuming this run.
+   */
+  runId: string;
 };
 
 type NotifyTarget = { threadId: string; seq: number } | null;
@@ -66,6 +74,7 @@ async function postProposalAsk(
     spaceId: string;
     botId: string;
     threadId: string;
+    runId: string;
     goalTitle: string;
     reason: string;
     tasks: ProposedTaskInput[];
@@ -85,23 +94,36 @@ async function postProposalAsk(
   return postAskMessage(tx, input, block);
 }
 
-/** Posts a blocked-Task Ask (free-text answer) into the Conversation thread. */
+/**
+ * Posts a blocked-Task Ask (free-text answer) into the Conversation thread. `goalTaskId`
+ * is the explicit marker `asks.answer` (B6) uses to route the answer back onto this Task
+ * instead of guessing from the thread/shape (see the contract's `goalTaskId` on the "ask"
+ * block).
+ */
 async function postBlockedTaskAsk(
   tx: Prisma.TransactionClient,
-  input: { spaceId: string; botId: string; threadId: string; note: string },
+  input: {
+    spaceId: string;
+    botId: string;
+    threadId: string;
+    runId: string;
+    note: string;
+    taskId: string;
+  },
 ) {
   const block: MessageBlock = {
     kind: "ask",
     text: input.note,
     input: "text",
     status: "pending",
+    goalTaskId: input.taskId,
   };
   return postAskMessage(tx, input, block);
 }
 
 async function postAskMessage(
   tx: Prisma.TransactionClient,
-  input: { spaceId: string; botId: string; threadId: string },
+  input: { spaceId: string; botId: string; threadId: string; runId: string },
   block: MessageBlock,
 ) {
   const message = await createThreadMessageInTransaction(tx, {
@@ -109,6 +131,7 @@ async function postAskMessage(
     role: "bot",
     blocks: [block],
     botId: input.botId,
+    runId: input.runId,
   });
   const event = await appendEventInTransaction(tx, {
     spaceId: input.spaceId,
@@ -173,6 +196,7 @@ export async function createGoalFromTool(
         spaceId: scope.spaceId,
         botId: scope.botId,
         threadId: conversation.id,
+        runId: scope.runId,
         goalTitle: goal.title,
         reason: "First plan",
         tasks: proposedTasks,
@@ -259,7 +283,9 @@ export async function updateGoalTaskFromTool(
           spaceId: scope.spaceId,
           botId: scope.botId,
           threadId: conversation.id,
+          runId: scope.runId,
           note,
+          taskId: task.id,
         });
         notify = { threadId: posted.event.threadId, seq: posted.event.seq };
       }
@@ -310,6 +336,7 @@ export async function proposeGoalPlanFromTool(
         spaceId: scope.spaceId,
         botId: scope.botId,
         threadId: conversation.id,
+        runId: scope.runId,
         goalTitle: goal.title,
         reason,
         tasks: parsedTasks.data,

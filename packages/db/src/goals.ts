@@ -3,9 +3,10 @@ import {
   type GoalProposal,
   type GoalProposalTask,
   GoalProposalTaskSchema,
+  type GoalStatus,
   type GoalTask,
 } from "@aiden/contracts";
-import type { PrismaClient } from "./client.js";
+import type { Prisma, PrismaClient } from "./client.js";
 
 // Repository for Goal / GoalTask / GoalProposal (CONTEXT.md; docs/muse/PLAN.md B3).
 // Later packages (B4 the `goals` tool, B5 goals-context, B6 the goals.* RPCs) build on
@@ -133,6 +134,28 @@ export function createGoalRepos(prisma: PrismaClient) {
         include: GOAL_INCLUDE,
       });
       return goal ? mapGoal(goal) : null;
+    },
+
+    /**
+     * `goals.update` (B6): status (active/paused/cancelled — never `done`, which the
+     * Muse alone reaches by finishing every Task) and/or the check-in schedule. Only
+     * the given fields change; omitted ones are left as saved. The caller authorizes
+     * the Goal before calling this (see `requireOwnGoal` in apps/api/src/goals.ts).
+     */
+    async updateGoal(
+      goalId: string,
+      patch: { status?: GoalStatus; checkInCrons?: string[]; timezone?: string },
+    ): Promise<Goal> {
+      const data: Prisma.GoalUpdateInput = {};
+      if (patch.status !== undefined) data.status = patch.status;
+      if (patch.checkInCrons !== undefined) data.checkInCrons = patch.checkInCrons;
+      if (patch.timezone !== undefined) data.timezone = patch.timezone;
+      const goal = await prisma.goal.update({
+        where: { id: goalId },
+        data,
+        include: GOAL_INCLUDE,
+      });
+      return mapGoal(goal);
     },
   };
 }

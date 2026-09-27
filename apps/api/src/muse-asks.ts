@@ -1,4 +1,5 @@
 import { type JobPublisher, runContinueJob } from "@aiden/adapter-kit";
+import { acceptGoalProposal, dismissGoalProposal } from "@aiden/adapters";
 import {
   type Actor,
   type Ask,
@@ -6,15 +7,28 @@ import {
   type MessageBlock,
   MessageBlock as MessageBlockSchema,
 } from "@aiden/contracts";
-import { createRepos, IsolationError, type PrismaClient, type ThreadEvents } from "@aiden/db";
+import {
+  appendEventInTransaction,
+  createRepos,
+  IsolationError,
+  type PrismaClient,
+  type ThreadEvents,
+} from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
 
 // B9 · Asks list (docs/muse/PLAN.md, decision 5). An Ask is a view over a pending
 // "ask" or unanswered "choice" message block; the block itself stays the one source
-// of truth (CONTEXT.md "Ask"). This module only reads/routes; answering keeps using
-// the same commit path as `threads.answer` (packages/db/src/events.ts answerRunInput)
-// so there is exactly one place that flips a block from pending to answered.
+// of truth (CONTEXT.md "Ask"). This module only reads/routes.
+//
+// Answering (B6): most Asks (approval, question) keep going through the same commit
+// path as `threads.answer` (packages/db/src/events.ts answerRunInput), which requires
+// a paused run. A Proposal Ask or a blocked-Task Ask (both posted by the `goals` tool,
+// goal-tools.ts, straight into the Conversation — never pausing a run for them) can't
+// go through that path, so `answerAsk` below applies their effect directly instead:
+// a Proposal through `acceptGoalProposal`/`dismissGoalProposal` (the one apply path,
+// shared with the `goals.acceptProposal`/`dismissProposal` RPCs in apps/api/src/goals.ts),
+// a blocked Task by updating the `GoalTask` itself.
 
 type AskBlock = Extract<MessageBlock, { kind: "ask" }>;
 type ChoiceBlock = Extract<MessageBlock, { kind: "choice" }>;
@@ -99,26 +113,21 @@ function pendingAskBlock(blocks: MessageBlock[]): AskBlock | ChoiceBlock | null 
 }
 
 /**
- * Kind mapping rule (docs/muse/PLAN.md B9):
+ * Kind mapping rule (docs/muse/PLAN.md B9, B6):
  * 1. `approval` — the block carries an `approvalEffectId`.
  * 2. `proposal` — the message is the open `GoalProposal.askMessageId` for its Goal.
- * 3. `blocked_task` — B4 has not landed a dedicated marker for this yet, so we detect
- *    it structurally: a free-text "ask" block (`input: "text"`) sitting in a Goal-log
- *    thread that isn't an approval or a Proposal. This is a heuristic, not a real
- *    field — once B4 adds a recognisable marker (e.g. a `goalTaskId` on the block),
- *    prefer that and drop this fallback.
+ * 3. `blocked_task` — the block carries `goalTaskId`, the explicit marker `goal-tools.ts`
+ *    (`update_task`) sets on a blocked Task's Ask (B6 dropped the earlier heuristic — a
+ *    free-text ask in a Goal-log thread — because these Asks actually post to the
+ *    Conversation, not the Goal log).
  * 4. `question` — everything else (a standalone question, or a Goal-log ask offering
  *    choices rather than free text).
  */
-function classifyAskKind(params: {
-  block: AskBlock | ChoiceBlock;
-  isGoalLogThread: boolean;
-  isProposal: boolean;
-}): AskKind {
-  const { block, isGoalLogThread, isProposal } = params;
+function classifyAskKind(params: { block: AskBlock | ChoiceBlock; isProposal: boolean }): AskKind {
+  const { block, isProposal } = params;
   if (block.kind === "ask" && block.approvalEffectId) return "approval";
   if (isProposal) return "proposal";
-  if (block.kind === "ask" && isGoalLogThread && block.input === "text") return "blocked_task";
+  if (block.kind === "ask" && block.goalTaskId) return "blocked_task";
   return "question";
 }
 
@@ -146,6 +155,19 @@ async function loadOpenProposalGoalByAskMessageId(
   return byAskMessageId;
 }
 
+/** `GoalTask.id` -> its Goal, for every blocked-Task Ask found (the block's `goalTaskId`). */
+async function loadGoalIdByTaskId(
+  prisma: PrismaClient,
+  taskIds: string[],
+): Promise<Map<string, string>> {
+  if (taskIds.length === 0) return new Map();
+  const tasks = await prisma.goalTask.findMany({
+    where: { id: { in: taskIds } },
+    select: { id: true, goalId: true },
+  });
+  return new Map(tasks.map((task) => [task.id, task.goalId]));
+}
+
 /** Shared by `asks.list` and `asks.count`: same filter, same mapping. */
 async function loadAsks(prisma: PrismaClient, actor: Actor, botId: string): Promise<Ask[]> {
   const scope = await loadAskScope(prisma, actor, botId);
@@ -155,27 +177,34 @@ async function loadAsks(prisma: PrismaClient, actor: Actor, botId: string): Prom
     loadOpenProposalGoalByAskMessageId(prisma, [...scope.goalIdByThreadId.values()]),
   ]);
 
-  const asks: Ask[] = [];
+  const candidates: { row: AskCandidateRow; runId: string; block: AskBlock | ChoiceBlock }[] = [];
+  const blockedTaskIds = new Set<string>();
   for (const row of rows) {
     if (!row.runId) continue;
     const parsed = MessageBlockSchema.array().safeParse(row.blocks);
     if (!parsed.success) continue;
     const block = pendingAskBlock(parsed.data);
     if (!block) continue;
+    candidates.push({ row, runId: row.runId, block });
+    if (block.kind === "ask" && block.goalTaskId) blockedTaskIds.add(block.goalTaskId);
+  }
+  const goalIdByTaskId = await loadGoalIdByTaskId(prisma, [...blockedTaskIds]);
 
+  const asks: Ask[] = [];
+  for (const { row, runId, block } of candidates) {
     const goalIdFromThread = scope.goalIdByThreadId.get(row.threadId) ?? null;
     const proposalGoalId = proposalGoalIdByAskMessageId.get(row.id) ?? null;
-    const kind = classifyAskKind({
-      block,
-      isGoalLogThread: goalIdFromThread != null,
-      isProposal: proposalGoalId != null,
-    });
-    const goalId = proposalGoalId ?? goalIdFromThread;
+    const blockedTaskGoalId =
+      block.kind === "ask" && block.goalTaskId
+        ? (goalIdByTaskId.get(block.goalTaskId) ?? null)
+        : null;
+    const kind = classifyAskKind({ block, isProposal: proposalGoalId != null });
+    const goalId = proposalGoalId ?? blockedTaskGoalId ?? goalIdFromThread;
     const goalTitle = goalId ? (scope.goalTitleById.get(goalId) ?? null) : null;
 
     asks.push({
       id: row.id,
-      runId: row.runId,
+      runId,
       kind,
       goalId,
       goalTitle,
@@ -215,9 +244,61 @@ export interface AnswerAskDeps {
 }
 
 /**
- * Route an Ask's answer to the same commit path `threads.answer` uses
- * (`ThreadEvents.answerRunInput`), whichever thread the ask's message actually lives
- * in — the Conversation or a Goal log. `askId` is the message id (see `Ask.id`).
+ * Answers a blocked-Task Ask (marked by the block's `goalTaskId`, goal-tools.ts
+ * `update_task`): records the person's answer on the Task's note and sets it back to
+ * `pending` so the Muse picks it up again, then marks the Ask's own block answered —
+ * the same "flip the one block" shape as `markProposalAskAnswered` in
+ * goal-proposals.ts, just not tied to a Proposal.
+ */
+async function answerBlockedTaskAsk(
+  deps: AnswerAskDeps,
+  actor: Actor,
+  message: { id: string; threadId: string },
+  botId: string,
+  taskId: string,
+  answer: string,
+): Promise<void> {
+  const notify = await deps.prisma.$transaction(async (tx) => {
+    const task = await tx.goalTask.findUnique({ where: { id: taskId } });
+    if (!task) return null;
+    const note = task.note ? `${task.note}\n\nAnswer: ${answer}` : `Answer: ${answer}`;
+    await tx.goalTask.update({ where: { id: task.id }, data: { status: "pending", note } });
+
+    const row = await tx.message.findUnique({ where: { id: message.id } });
+    const parsed = MessageBlockSchema.array().safeParse(row?.blocks);
+    if (!row || !parsed.success) return null;
+    let changed = false;
+    const blocks = parsed.data.map((block) => {
+      if (block.kind === "ask" && block.goalTaskId === taskId && block.status !== "answered") {
+        changed = true;
+        return { ...block, status: "answered" as const, answer };
+      }
+      return block;
+    });
+    if (!changed) return null;
+    await tx.message.update({ where: { id: message.id }, data: { blocks } });
+    const event = await appendEventInTransaction(tx, {
+      spaceId: actor.spaceId,
+      threadId: message.threadId,
+      botId,
+      type: "thread.message.updated",
+      payload: { messageId: message.id, role: "bot", blocks },
+    });
+    // TODO(B8, docs/muse/PLAN.md "wake on answer"): enqueue `goal.advance {goalId:
+    // task.goalId}` here once the job handler lands (packages/adapters/src/
+    // background-job-handlers.ts) so the Muse resumes this Goal immediately instead
+    // of waiting for the next proactivity tick.
+    return { threadId: event.threadId, seq: event.seq };
+  });
+  if (notify) await deps.events.notify(notify.threadId, notify.seq).catch(() => undefined);
+}
+
+/**
+ * Answer an Ask, however its message answers: a Proposal or a blocked Task apply
+ * their effect directly (no run to resume); everything else routes to the same
+ * commit path `threads.answer` uses (`ThreadEvents.answerRunInput`), whichever thread
+ * the ask's message actually lives in — the Conversation or a Goal log. `askId` is
+ * the message id (see `Ask.id`).
  */
 export async function answerAsk(
   deps: AnswerAskDeps,
@@ -229,6 +310,7 @@ export async function answerAsk(
     select: {
       id: true,
       threadId: true,
+      blocks: true,
       thread: { select: { botId: true, goal: { select: { botId: true } } } },
     },
   });
@@ -239,6 +321,29 @@ export async function answerAsk(
   // one of this actor's own bots in their own Space. Covers both the Conversation
   // (thread.botId) and a Goal log (thread.goal.botId) the same way.
   await createRepos(deps.prisma).getBot(actor, targetBotId);
+
+  const openProposal = await deps.prisma.goalProposal.findFirst({
+    where: { askMessageId: message.id, status: "open" },
+    select: { id: true },
+  });
+  if (openProposal) {
+    if (input.answer !== "accept" && input.answer !== "dismiss") {
+      throw new ORPCError("BAD_REQUEST", { message: "Answer a Proposal accept or dismiss." });
+    }
+    const decide = input.answer === "accept" ? acceptGoalProposal : dismissGoalProposal;
+    const goal = await decide({ prisma: deps.prisma, events: deps.events }, openProposal.id);
+    if (!goal) {
+      throw new ORPCError("CONFLICT", { message: "This proposal is no longer open" });
+    }
+    return { ok: true as const };
+  }
+
+  const parsedBlocks = MessageBlockSchema.array().safeParse(message.blocks);
+  const pending = parsedBlocks.success ? pendingAskBlock(parsedBlocks.data) : null;
+  if (pending?.kind === "ask" && pending.goalTaskId) {
+    await answerBlockedTaskAsk(deps, actor, message, targetBotId, pending.goalTaskId, input.answer);
+    return { ok: true as const };
+  }
 
   const answered = await deps.events.answerRunInput({
     spaceId: actor.spaceId,

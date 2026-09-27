@@ -117,6 +117,13 @@ export const MessageBlock = z.discriminatedUnion("kind", [
         }),
       )
       .optional(),
+    /**
+     * Muse edition: set when this ask is a blocked-Task Ask (CONTEXT.md "Ask"; posted by
+     * `goal-tools.ts` `update_task`) — the `GoalTask` it blocks. An explicit marker rather
+     * than inferring the kind structurally (docs/muse/PLAN.md B9); `asks.answer` (B6)
+     * routes on it instead of `answerRunInput`.
+     */
+    goalTaskId: Id.optional(),
   }),
   z.object({
     kind: z.literal("choice"),

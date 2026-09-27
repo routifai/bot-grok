@@ -2340,7 +2340,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "goals") {
             const action = String(args.action ?? "");
-            const scope = { spaceId: run.spaceId, botId: bot.id, userId: run.userId };
+            const scope = { spaceId: run.spaceId, botId: bot.id, userId: run.userId, runId };
             if (action === "create") {
               return finish(
                 await createGoalFromTool(deps, scope, {
