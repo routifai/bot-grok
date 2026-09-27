@@ -18,7 +18,7 @@ import type { ArtifactKind } from "./library/kinds";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "./library/kinds";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import type { ArtifactSummary } from "./library/types";
-import { Chip, EmptyState, MuseColumn, MuseScreen, ScreenHeader } from "./ui";
+import { Chip, EmptyState, MuseScreen, MuseWideColumn, ScreenHeader } from "./ui";
 
 const LIST_PAGE_SIZE = 60;
 // Safety net against an unbounded fetch loop; a Library this size is not realistic.
@@ -128,7 +128,7 @@ export function LibraryScreen({ botId }: { botId: string }) {
 
   return (
     <MuseScreen>
-      <MuseColumn className="max-w-[1040px]">
+      <MuseWideColumn>
         <ScreenHeader title={t`Library`} subtitle={t`Everything your Muse has made.`} />
 
         <div className="flex flex-col gap-3 pb-8">
@@ -186,7 +186,7 @@ export function LibraryScreen({ botId }: { botId: string }) {
             onDelete={setPendingDelete}
           />
         )}
-      </MuseColumn>
+      </MuseWideColumn>
 
       {openArtifactId ? (
         <ArtifactPreviewDialog

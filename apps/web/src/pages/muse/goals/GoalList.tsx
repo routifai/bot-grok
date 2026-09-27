@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { Goal } from "@rakazo/contracts";
 import { Skeleton } from "@rakazo/ui-web";
-import { EmptyState, MuseColumn, Progress, ScreenHeader, Section, Surface } from "../ui";
+import { EmptyState, MuseWideColumn, Progress, ScreenHeader, Section, Surface } from "../ui";
 import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
 import { GoalStatusPill } from "./GoalStatusPill";
 
@@ -28,7 +28,7 @@ function GoalCard({ goal, onSelect }: { goal: Goal; onSelect: (goalId: string) =
       className="flex flex-col gap-2.5 p-4 outline-none"
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 truncate text-[15.5px] font-semibold text-foreground" dir="auto">
+        <h3 className="min-w-0 truncate text-[14.5px] font-semibold text-foreground" dir="auto">
           {goal.title}
         </h3>
         <GoalStatusPill goal={goal} className="shrink-0" />
@@ -63,9 +63,9 @@ function GoalCard({ goal, onSelect }: { goal: Goal; onSelect: (goalId: string) =
 /** Loading placeholder for the Goals list: a few skeleton cards under the real header. */
 export function GoalListSkeleton() {
   return (
-    <MuseColumn>
+    <MuseWideColumn>
       <ScreenHeader title={<Trans>Goals</Trans>} />
-      <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {[0, 1, 2].map((key) => (
           <Surface key={key} className="flex flex-col gap-3 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -78,7 +78,7 @@ export function GoalListSkeleton() {
           </Surface>
         ))}
       </div>
-    </MuseColumn>
+    </MuseWideColumn>
   );
 }
 
@@ -93,12 +93,12 @@ export function GoalList({
 
   if (goals.length === 0) {
     return (
-      <MuseColumn>
+      <MuseWideColumn>
         <ScreenHeader title={<Trans>Goals</Trans>} />
         <EmptyState lead={t`What do you want to achieve?`}>
           <Trans>Tell your Muse, and it becomes a Goal.</Trans>
         </EmptyState>
-      </MuseColumn>
+      </MuseWideColumn>
     );
   }
 
@@ -109,22 +109,22 @@ export function GoalList({
     waiting > 0 ? t`${activeCount} active · ${waiting} waiting on you` : t`${activeCount} active`;
 
   return (
-    <MuseColumn data-testid="goals-list">
+    <MuseWideColumn data-testid="goals-list">
       <ScreenHeader title={<Trans>Goals</Trans>} subtitle={subtitle} />
-      <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {active.map((goal) => (
           <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />
         ))}
       </div>
       {paused.length > 0 ? (
         <Section title={<Trans>Paused</Trans>} className="mt-10">
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {paused.map((goal) => (
               <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />
             ))}
           </div>
         </Section>
       ) : null}
-    </MuseColumn>
+    </MuseWideColumn>
   );
 }

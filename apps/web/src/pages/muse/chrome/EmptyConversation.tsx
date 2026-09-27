@@ -28,7 +28,7 @@ export function EmptyConversation({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
-      <BotAvatar color={avatarColor} identity={botId} face="muse" size={64} />
+      <BotAvatar color={avatarColor} identity={botId} face="muse" size={96} />
       <div className="max-w-[380px]">
         <p className="font-display text-[24px] leading-tight text-foreground">{lead}</p>
         <p className="mt-1.5 text-[14px] text-muted-foreground">

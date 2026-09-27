@@ -100,6 +100,8 @@ import {
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Paperclip,
   Pencil,
   Plus,
@@ -212,6 +214,7 @@ import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
+import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
@@ -704,6 +707,7 @@ export function ShellPage() {
   const museMode = bootstrapMe?.productMode === "muse";
   useEffect(() => applyProductMode(bootstrapMe?.productMode), [bootstrapMe?.productMode]);
   const { view: museView, setView: setMuseView } = useMuseNav();
+  const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
   const [waitingOpen, setWaitingOpen] = useState(false);
   const computerBot =
     (computerBotId ? bots.find((bot) => bot.id === computerBotId) : undefined) ?? active;
@@ -3412,235 +3416,265 @@ export function ShellPage() {
             <LibraryScreen botId={active.id} />
           )
         ) : (
-          <>
-            {museMode && active ? (
-              <ConversationHeader
-                botId={active.id}
-                museName={active.name}
-                running={transcriptRunning}
-                actions={
-                  <button
-                    type="button"
-                    title={t`Agent computer`}
-                    aria-label={t`Agent computer`}
-                    onClick={() => {
-                      const next = panel === "computer" ? null : "computer";
-                      setPanel(next);
-                      if (next === "computer") {
-                        // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                        void refreshThread(active.id).catch(() => undefined);
-                      }
-                    }}
-                    data-active={panel === "computer" ? "" : undefined}
-                    className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                  >
-                    <Monitor size={17} strokeWidth={1.75} />
-                  </button>
-                }
-              />
-            ) : (
-              <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
-                <div className="flex min-w-0 items-center gap-2">
-                  {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
-                  {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-                  <button
-                    type="button"
-                    aria-label={t`Open navigation`}
-                    onClick={() => setMobileSidebarOpen(true)}
-                    className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-                  >
-                    <Menu size={19} strokeWidth={1.7} />
-                  </button>
-                  {botsSidebarCollapsed ? (
-                    <button
-                      type="button"
-                      data-testid="restore-bots-sidebar"
-                      aria-label={t`Show bots`}
-                      title={t`Show bots`}
-                      onClick={() => setBotsSidebarCollapsedPref(false)}
-                      className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
-                    >
-                      <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    data-testid="bot-settings-trigger"
-                    onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-                    className="app-no-drag flex min-w-0 items-center gap-3"
-                  >
-                    {inGroup ? (
-                      <GroupAvatar
-                        members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                        size={26}
-                      />
-                    ) : active ? (
-                      <BotAvatar
-                        color={active.color}
-                        identity={active.id}
-                        size={26}
-                        status={active.status}
-                      />
-                    ) : null}
-                    <span className="min-w-0">
-                      <span
-                        className="block truncate text-[16px] font-medium text-foreground"
-                        dir="auto"
+          <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
+            <div className={museMode && active ? "flex min-w-0 flex-1 flex-col" : "contents"}>
+              {museMode && active ? (
+                <ConversationHeader
+                  botId={active.id}
+                  museName={active.name}
+                  running={transcriptRunning}
+                  actions={
+                    <>
+                      <button
+                        type="button"
+                        title={
+                          contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
+                        }
+                        aria-label={
+                          contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
+                        }
+                        aria-pressed={!contextPanelCollapsed}
+                        onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
+                        className="hidden h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground xl:grid"
                       >
-                        {inGroup
-                          ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                          : (active?.name ?? t`Select a bot`)}
-                      </span>
-                    </span>
-                  </button>
-                </div>
-                <div className="flex items-center gap-1">
-                  {!inGroup && active ? (
+                        {contextPanelCollapsed ? (
+                          <PanelRightOpen size={17} strokeWidth={1.75} />
+                        ) : (
+                          <PanelRightClose size={17} strokeWidth={1.75} />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        title={t`Agent computer`}
+                        aria-label={t`Agent computer`}
+                        onClick={() => {
+                          const next = panel === "computer" ? null : "computer";
+                          setPanel(next);
+                          if (next === "computer") {
+                            // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                            void refreshThread(active.id).catch(() => undefined);
+                          }
+                        }}
+                        data-active={panel === "computer" ? "" : undefined}
+                        className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                      >
+                        <Monitor size={17} strokeWidth={1.75} />
+                      </button>
+                    </>
+                  }
+                />
+              ) : (
+                <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
+                    {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
                     <button
                       type="button"
-                      title={t`Agent computer`}
-                      onClick={() => {
-                        const next = panel === "computer" ? null : "computer";
-                        setPanel(next);
-                        if (next === "computer" && active) {
-                          // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                          void refreshThread(active.id).catch(() => undefined);
-                        }
-                      }}
-                      data-active={panel === "computer" ? "" : undefined}
-                      className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                      aria-label={t`Open navigation`}
+                      onClick={() => setMobileSidebarOpen(true)}
+                      className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
                     >
-                      <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                      <Menu size={19} strokeWidth={1.7} />
                     </button>
-                  ) : null}
+                    {botsSidebarCollapsed ? (
+                      <button
+                        type="button"
+                        data-testid="restore-bots-sidebar"
+                        aria-label={t`Show bots`}
+                        title={t`Show bots`}
+                        onClick={() => setBotsSidebarCollapsedPref(false)}
+                        className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                      >
+                        <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      data-testid="bot-settings-trigger"
+                      onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
+                      className="app-no-drag flex min-w-0 items-center gap-3"
+                    >
+                      {inGroup ? (
+                        <GroupAvatar
+                          members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                          size={26}
+                        />
+                      ) : active ? (
+                        <BotAvatar
+                          color={active.color}
+                          identity={active.id}
+                          size={26}
+                          status={active.status}
+                        />
+                      ) : null}
+                      <span className="min-w-0">
+                        <span
+                          className="block truncate text-[16px] font-medium text-foreground"
+                          dir="auto"
+                        >
+                          {inGroup
+                            ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                            : (active?.name ?? t`Select a bot`)}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {!inGroup && active ? (
+                      <button
+                        type="button"
+                        title={t`Agent computer`}
+                        onClick={() => {
+                          const next = panel === "computer" ? null : "computer";
+                          setPanel(next);
+                          if (next === "computer" && active) {
+                            // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                            void refreshThread(active.id).catch(() => undefined);
+                          }
+                        }}
+                        data-active={panel === "computer" ? "" : undefined}
+                        className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                      >
+                        <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            )}
-            {!active && !activeGroup && initialBotsLoaded ? (
-              <div className="grid flex-1 place-items-center">
-                <Button onClick={() => setPanel("create")}>
-                  <Plus size={16} aria-hidden="true" />
-                  <Trans>Create new Bot</Trans>
-                </Button>
-              </div>
-            ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
-              <EmptyConversation
-                botId={active.id}
-                personName={bootstrapMe?.name ?? ""}
-                avatarColor={active.color}
-                onSend={(text) => void sendMessage(text)}
-              />
-            ) : (
-              <Transcript
-                key={activeSnapshot?.threadId}
-                museMode={museMode}
-                museFace={
-                  active
-                    ? { color: active.color, identity: active.id, status: active.status }
-                    : undefined
-                }
-                scrollRef={messageScroll}
-                scrollRequest={scrollRequest}
-                onScrollRequestHandled={clearScrollRequest}
-                artifactTarget={transcriptArtifactTarget}
-                messages={transcriptMessages}
-                olderCursor={activeSnapshot?.olderCursor ?? null}
-                loadingOlder={loadingOlder}
-                answerableAskMessageId={answerableAskMessageId}
-                running={transcriptRunning}
-                workingBots={workingBots}
-                onLoadOlder={loadOlder}
-                onOpenBot={openBot}
-                onAnswer={answerMessage}
-                onReply={(message) => {
-                  setReplyTarget(message);
-                  setReplyQuote(null);
-                }}
-                onQuote={(message, quote) => {
-                  setReplyTarget(message);
-                  setReplyQuote(quote);
-                }}
-                onReact={reactToMessage}
-                onJumpToMessage={jumpToReplyMessage}
-                onOpenPeerMessages={(peer) => {
-                  setPeerConversation(peer);
-                }}
-                memberName={resolveTranscriptMemberName}
-                peerBot={resolveTranscriptBot}
-                onRefresh={refreshActiveThread}
-                onBotChanged={refreshBots}
-                onAddRoutine={addSkillRoutine}
-                voiceReady={Boolean(voiceStatus?.ready)}
-                speakingMessageId={speakingMessageId}
-                onSpeak={speakMessage}
-                onOpenComputer={onOpenComputer}
-              />
-            )}
-            {recordingSkill ? (
-              <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-                <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
-              </div>
-            ) : null}
-            {active || activeGroup ? (
-              <Composer
-                key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
-                museMode={museMode}
-                activeName={
-                  inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
-                }
-                running={composerRunning}
-                disabled={Boolean(recordingSkill)}
-                pendingAttachments={activePendingAttachments}
-                attachmentNotice={attachmentNotice}
-                sendError={sendError}
-                runError={displayedRunError}
-                runErrorId={displayedRunErrorId}
-                onRunErrorPresented={handleRunErrorPresented}
-                onDismissError={dismissComposerError}
-                sending={sending}
-                fileInputRef={fileInputRef}
-                onAttachmentPick={onAttachmentPick}
-                onRemoveAttachment={removeAttachment}
-                onSend={sendMessage}
-                onStop={stopRun}
-                onVoice={
-                  !inGroup && active
-                    ? () => {
-                        if (!voiceStatus?.ready) {
-                          openSettings("voice");
-                          return;
+              )}
+              {!active && !activeGroup && initialBotsLoaded ? (
+                <div className="grid flex-1 place-items-center">
+                  <Button onClick={() => setPanel("create")}>
+                    <Plus size={16} aria-hidden="true" />
+                    <Trans>Create new Bot</Trans>
+                  </Button>
+                </div>
+              ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
+                <EmptyConversation
+                  botId={active.id}
+                  personName={bootstrapMe?.name ?? ""}
+                  avatarColor={active.color}
+                  onSend={(text) => void sendMessage(text)}
+                />
+              ) : (
+                <Transcript
+                  key={activeSnapshot?.threadId}
+                  museMode={museMode}
+                  museFace={
+                    active
+                      ? { color: active.color, identity: active.id, status: active.status }
+                      : undefined
+                  }
+                  scrollRef={messageScroll}
+                  scrollRequest={scrollRequest}
+                  onScrollRequestHandled={clearScrollRequest}
+                  artifactTarget={transcriptArtifactTarget}
+                  messages={transcriptMessages}
+                  olderCursor={activeSnapshot?.olderCursor ?? null}
+                  loadingOlder={loadingOlder}
+                  answerableAskMessageId={answerableAskMessageId}
+                  running={transcriptRunning}
+                  workingBots={workingBots}
+                  onLoadOlder={loadOlder}
+                  onOpenBot={openBot}
+                  onAnswer={answerMessage}
+                  onReply={(message) => {
+                    setReplyTarget(message);
+                    setReplyQuote(null);
+                  }}
+                  onQuote={(message, quote) => {
+                    setReplyTarget(message);
+                    setReplyQuote(quote);
+                  }}
+                  onReact={reactToMessage}
+                  onJumpToMessage={jumpToReplyMessage}
+                  onOpenPeerMessages={(peer) => {
+                    setPeerConversation(peer);
+                  }}
+                  memberName={resolveTranscriptMemberName}
+                  peerBot={resolveTranscriptBot}
+                  onRefresh={refreshActiveThread}
+                  onBotChanged={refreshBots}
+                  onAddRoutine={addSkillRoutine}
+                  voiceReady={Boolean(voiceStatus?.ready)}
+                  speakingMessageId={speakingMessageId}
+                  onSpeak={speakMessage}
+                  onOpenComputer={onOpenComputer}
+                />
+              )}
+              {recordingSkill ? (
+                <div className="px-6 pb-2 text-center text-[13px] text-destructive">
+                  <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
+                </div>
+              ) : null}
+              {active || activeGroup ? (
+                <Composer
+                  key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+                  museMode={museMode}
+                  activeName={
+                    inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
+                  }
+                  running={composerRunning}
+                  disabled={Boolean(recordingSkill)}
+                  pendingAttachments={activePendingAttachments}
+                  attachmentNotice={attachmentNotice}
+                  sendError={sendError}
+                  runError={displayedRunError}
+                  runErrorId={displayedRunErrorId}
+                  onRunErrorPresented={handleRunErrorPresented}
+                  onDismissError={dismissComposerError}
+                  sending={sending}
+                  fileInputRef={fileInputRef}
+                  onAttachmentPick={onAttachmentPick}
+                  onRemoveAttachment={removeAttachment}
+                  onSend={sendMessage}
+                  onStop={stopRun}
+                  onVoice={
+                    !inGroup && active
+                      ? () => {
+                          if (!voiceStatus?.ready) {
+                            openSettings("voice");
+                            return;
+                          }
+                          setCallOpen(true);
                         }
-                        setCallOpen(true);
-                      }
-                    : undefined
-                }
-                replyTarget={activeReplyTarget}
-                replyQuote={activeReplyQuote}
-                replyTargetName={replyTargetName}
-                onClearReply={clearReply}
-                mentionTargets={composerMentionTargets}
-                agentSkills={agentSkills}
-                onSlashOpen={refreshAgentSkills}
-                onSlashAction={(action) => {
-                  if (action === "chat-settings") {
-                    setPanel(inGroup ? "group-settings" : "settings");
-                    return;
+                      : undefined
                   }
-                  if (action === "settings-general") {
-                    openSettings("general");
-                    return;
-                  }
-                  if (action === "settings-usage") {
-                    void rpc.usage
-                      .summary()
-                      .then(setUsage)
-                      .catch(() => undefined);
-                    openSettings("usage");
-                  }
-                }}
+                  replyTarget={activeReplyTarget}
+                  replyQuote={activeReplyQuote}
+                  replyTargetName={replyTargetName}
+                  onClearReply={clearReply}
+                  mentionTargets={composerMentionTargets}
+                  agentSkills={agentSkills}
+                  onSlashOpen={refreshAgentSkills}
+                  onSlashAction={(action) => {
+                    if (action === "chat-settings") {
+                      setPanel(inGroup ? "group-settings" : "settings");
+                      return;
+                    }
+                    if (action === "settings-general") {
+                      openSettings("general");
+                      return;
+                    }
+                    if (action === "settings-usage") {
+                      void rpc.usage
+                        .summary()
+                        .then(setUsage)
+                        .catch(() => undefined);
+                      openSettings("usage");
+                    }
+                  }}
+                />
+              ) : null}
+            </div>
+            {museMode && active ? (
+              <ContextPanel
+                botId={active.id}
+                collapsed={contextPanelCollapsed}
+                onNavigate={setMuseView}
+                onOpenWaiting={() => setWaitingOpen(true)}
               />
             ) : null}
-          </>
+          </div>
         )}
       </main>
 
@@ -4908,7 +4942,7 @@ const Transcript = memo(function Transcript({
         }}
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
-          museMode && "mx-auto w-full max-w-[780px] gap-3 md:py-8",
+          museMode && "mx-auto w-full max-w-[720px] gap-3 md:py-8",
         )}
       >
         {olderCursor != null ? (
@@ -4961,14 +4995,14 @@ const Transcript = memo(function Transcript({
                 }
               >
                 {museGutter && museFace ? (
-                  <div className="w-7 shrink-0 pt-0.5" aria-hidden="true">
+                  <div className="w-8 shrink-0 pt-0.5" aria-hidden="true">
                     {museFaceShown ? (
                       <BotAvatar
                         color={museFace.color}
                         identity={museFace.identity}
                         status={museFace.status}
                         face="muse"
-                        size={28}
+                        size={32}
                       />
                     ) : null}
                   </div>
@@ -5846,7 +5880,10 @@ const Composer = memo(function Composer({
             autoComplete="off"
             dir="auto"
             rows={1}
-            className="max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40"
+            className={cn(
+              "max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40",
+              museMode ? "text-[14.5px]" : "text-[15.5px]",
+            )}
           />
         </div>
         {onVoice ? (
@@ -6307,7 +6344,7 @@ const MessageView = memo(function MessageView({
             className={cn(
               "max-w-full space-y-2.5",
               museMode
-                ? "text-[15px] leading-[1.65] text-foreground"
+                ? "text-[14.5px] leading-[1.6] text-foreground"
                 : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
             )}
             dir="auto"
@@ -6413,7 +6450,7 @@ const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[15px] leading-[1.65] text-foreground"
+                    ? "text-[14.5px] leading-[1.6] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
@@ -6573,7 +6610,7 @@ const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full whitespace-pre-wrap wrap-anywhere bg-chat-user text-chat-user-foreground",
                   museMode
-                    ? "rounded-3xl px-5 py-3 text-[15px] leading-[1.65]"
+                    ? "rounded-3xl px-5 py-3 text-[14.5px] leading-[1.6]"
                     : "rounded-[20px] px-[18px] py-3 text-[15.5px] leading-[1.45]",
                 )}
                 dir="auto"
@@ -6591,7 +6628,7 @@ const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[15px] leading-[1.65] text-foreground"
+                    ? "text-[14.5px] leading-[1.6] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
