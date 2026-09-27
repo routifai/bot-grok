@@ -3522,6 +3522,7 @@ export function ShellPage() {
                           identity={active.id}
                           size={26}
                           status={active.status}
+                          face={museMode ? "muse" : undefined}
                         />
                       ) : null}
                       <span className="min-w-0">
@@ -4543,14 +4544,25 @@ export function ShellPage() {
           <div
             data-testid="computer-viewport"
             className="fixed inset-x-0 top-0 flex flex-col bg-background"
-            style={{
-              height: computerViewport ? `${computerViewport.height}px` : "100dvh",
-              top: computerViewport ? `${computerViewport.offsetTop}px` : undefined,
-            }}
+            style={(() => {
+              // Window pixels grow with the Muse wide-screen zoom; divide so the view
+              // fits the window instead of overflowing it (cropped, off-center desktop).
+              const zoom = rootZoom();
+              return {
+                height: computerViewport
+                  ? `${computerViewport.height / zoom}px`
+                  : `calc(100dvh / ${zoom})`,
+                top: computerViewport ? `${computerViewport.offsetTop / zoom}px` : undefined,
+              };
+            })()}
           >
             <div
               data-testid="computer-chrome"
-              className="flex items-center justify-between gap-4 border-b border-sidebar-border px-[18px] py-3.5"
+              className={
+                museMode
+                  ? "flex h-16 items-center justify-between gap-4 border-b border-border bg-background px-5"
+                  : "flex items-center justify-between gap-4 border-b border-sidebar-border px-[18px] py-3.5"
+              }
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <BotAvatar
@@ -4558,6 +4570,7 @@ export function ShellPage() {
                   identity={computerBot.id}
                   size={28}
                   status={computerBot.status}
+                  face={museMode ? "muse" : undefined}
                 />
                 {recordingSkill ? (
                   <TeachRecordingChrome
@@ -4567,11 +4580,24 @@ export function ShellPage() {
                     variant="overlay"
                   />
                 ) : (
-                  <span className="truncate text-[15.5px] font-medium text-foreground" dir="auto">
-                    {computerLabel(computer?.mode, computerBot.name)}
+                  <span
+                    className={
+                      museMode
+                        ? "truncate text-[16px] font-semibold text-foreground"
+                        : "truncate text-[15.5px] font-medium text-foreground"
+                    }
+                    dir="auto"
+                  >
+                    {museMode
+                      ? t`${computerBot.name}'s computer`
+                      : computerLabel(computer?.mode, computerBot.name)}
                   </span>
                 )}
-                {!recordingSkill && hasControl ? (
+                {museMode && !recordingSkill && hasControl ? (
+                  <StatusPill tone={computer?.takeoverRequested ? "attention" : "live"}>
+                    {computer?.takeoverRequested ? t`Needs you` : t`You have control`}
+                  </StatusPill>
+                ) : !recordingSkill && hasControl ? (
                   computer?.takeoverRequested ? (
                     <span className="rounded-full bg-warning/15 px-[11px] py-1 text-[13px] text-warning">
                       <Trans>Needs you</Trans>
@@ -4583,7 +4609,13 @@ export function ShellPage() {
                   )
                 ) : null}
               </div>
-              <div className="flex items-center gap-3">
+              <div
+                className={
+                  museMode
+                    ? "flex items-center gap-2 [&_[data-slot=button]]:h-9 [&_[data-slot=button]]:rounded-full [&_[data-slot=button]]:text-[14px] [&_[data-slot=button]:not([aria-label])]:px-4"
+                    : "flex items-center gap-3"
+                }
+              >
                 {composerRunning ? (
                   <Button
                     type="button"
@@ -4603,6 +4635,7 @@ export function ShellPage() {
                   <ComputerReleaseActions
                     takeoverRequested={Boolean(computer?.takeoverRequested)}
                     onRelease={releaseComputer}
+                    museName={museMode ? computerBot.name : undefined}
                   />
                 ) : null}
                 {computerBot && !recordingSkill ? (
@@ -6255,12 +6288,19 @@ function applyThreadEvent(
 function ComputerReleaseActions({
   takeoverRequested,
   onRelease,
+  museName,
 }: {
   takeoverRequested: boolean;
   onRelease: (reason?: ComputerReleaseReason) => Promise<void>;
+  /** Muse mode: the primary "hand back" action names the Muse. */
+  museName?: string;
 }) {
   if (!takeoverRequested) {
-    return (
+    return museName ? (
+      <Button type="button" size="sm" onClick={() => void onRelease()}>
+        <Trans>Hand back to {museName}</Trans>
+      </Button>
+    ) : (
       <Button type="button" variant="outline" size="sm" onClick={() => void onRelease()}>
         <Trans>Release</Trans>
       </Button>
@@ -6851,4 +6891,12 @@ function MuseComputerTitle({ state, booting }: { state?: string; booting: boolea
       </StatusPill>
     </span>
   );
+}
+
+/** CSS zoom applied to #root (Muse wide-screen scaling); 1 when none. */
+function rootZoom(): number {
+  if (typeof document === "undefined") return 1;
+  const root = document.getElementById("root");
+  const zoom = root ? Number.parseFloat(getComputedStyle(root).zoom) : 1;
+  return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
 }
