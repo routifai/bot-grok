@@ -316,6 +316,12 @@ const THREAD_SNAPSHOT_TIMEOUT_MS = 2_000;
 const VOICE_STATUS_REFRESH_TIMEOUT_MS = 10_000;
 const MOBILE_SIDEBAR_SWIPE_EDGE_PX = 32;
 const MOBILE_SIDEBAR_SWIPE_DISTANCE_PX = 56;
+/** Muse glass shell (docs/muse/DESIGN.md "Background wash"): the floating panel look
+ * shared by the main content area and the Conversation column inside it — a translucent
+ * card over the wash, a hairline light border, and a soft wide shadow. Flush edge to
+ * edge on small screens; rounded once there's room for the gaps around it. */
+const MUSE_GLASS_PANEL =
+  "border border-glass-border bg-glass shadow-float backdrop-blur-xl md:rounded-2xl";
 
 function threadSnapshotSignal(parent: AbortSignal): AbortSignal {
   return AbortSignal.any([parent, AbortSignal.timeout(THREAD_SNAPSHOT_TIMEOUT_MS)]);
@@ -2713,7 +2719,7 @@ export function ShellPage() {
       data-ready={shellReady}
       className={
         museMode
-          ? "relative flex h-full min-w-0 overflow-hidden bg-sidebar text-foreground/90"
+          ? "muse-wash relative flex h-full min-w-0 overflow-hidden text-foreground/90 md:gap-2 md:p-2"
           : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
       }
       onTouchStartCapture={(event) => {
@@ -3458,28 +3464,50 @@ export function ShellPage() {
         inert={mobileSidebarOpen}
         className={
           museMode
-            ? "relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden border-s border-border bg-background shadow-[-8px_0_24px_-20px_rgb(0_0_0/0.25)] transition-[box-shadow] duration-200"
+            ? "relative z-10 flex min-w-0 flex-1 flex-col"
             : "flex min-w-0 flex-1 flex-col bg-background"
         }
       >
         {museMode && active && museView !== "conversation" ? (
-          museView === "goals" ? (
-            <GoalsScreen botId={active.id} avatarColor={active.color} onSendIdea={handleSendIdea} />
-          ) : museView === "feed" ? (
-            <FeedScreen botId={active.id} avatarColor={active.color} onSendIdea={handleSendIdea} />
-          ) : museView === "ideas" ? (
-            <IdeasScreen botId={active.id} onSendIdea={handleSendIdea} />
-          ) : (
-            <LibraryScreen
-              botId={active.id}
-              avatarColor={active.color}
-              onSendIdea={handleSendIdea}
-            />
-          )
+          <div
+            className={cn(
+              "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+              MUSE_GLASS_PANEL,
+            )}
+          >
+            {museView === "goals" ? (
+              <GoalsScreen
+                botId={active.id}
+                avatarColor={active.color}
+                onSendIdea={handleSendIdea}
+              />
+            ) : museView === "feed" ? (
+              <FeedScreen
+                botId={active.id}
+                avatarColor={active.color}
+                onSendIdea={handleSendIdea}
+              />
+            ) : museView === "ideas" ? (
+              <IdeasScreen botId={active.id} onSendIdea={handleSendIdea} />
+            ) : (
+              <LibraryScreen
+                botId={active.id}
+                avatarColor={active.color}
+                onSendIdea={handleSendIdea}
+              />
+            )}
+          </div>
         ) : (
-          <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
+          <div className={museMode && active ? "flex min-h-0 flex-1 gap-0 md:gap-2" : "contents"}>
             <div
-              className={museMode && active ? "relative flex min-w-0 flex-1 flex-col" : "contents"}
+              className={
+                museMode && active
+                  ? cn(
+                      "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+                      MUSE_GLASS_PANEL,
+                    )
+                  : "contents"
+              }
             >
               {museMode && active ? (
                 <ConversationHeader
@@ -3749,11 +3777,13 @@ export function ShellPage() {
       <aside
         data-testid="side-panel"
         data-panel={panel ?? "closed"}
-        className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden bg-background transition-[width] duration-150 ease-out md:relative ${
+        className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
+          museMode ? "border-glass-border bg-glass shadow-float backdrop-blur-xl" : "bg-background"
+        } ${
           panel && (active || activeGroup || panel === "create")
             ? museMode
               ? // Muse: an inset panel like <main>; the computer gets room for a real preview.
-                `w-full md:border-s md:border-border ${
+                `w-full md:rounded-2xl md:border ${
                   panel === "computer"
                     ? "max-w-[520px] md:w-[520px] md:max-w-none"
                     : "max-w-[400px] md:w-[400px] md:max-w-none"

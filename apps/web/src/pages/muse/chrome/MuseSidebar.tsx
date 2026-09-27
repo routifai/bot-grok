@@ -197,7 +197,7 @@ export function MuseSidebar({
       data-collapsed={collapsed || undefined}
       aria-label={t`Sections`}
       className={cn(
-        "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden px-3 pt-5 pb-4 transition-[width] duration-200 ease-out motion-reduce:transition-none",
+        "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden border border-glass-border bg-glass px-3 pt-5 pb-4 shadow-float backdrop-blur-xl transition-[width] duration-200 ease-out motion-reduce:transition-none md:rounded-2xl",
         collapsed ? "w-[84px]" : "w-[320px]",
       )}
     >
@@ -365,7 +365,7 @@ function RailRow({
     ROW,
     "group/row relative text-[16px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
     current
-      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+      ? "bg-primary/10 font-medium text-foreground"
       : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
   );
   const content = (

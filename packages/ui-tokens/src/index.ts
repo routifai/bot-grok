@@ -44,6 +44,16 @@ export type ColorTokens = {
   overlay: string;
   scrollbar: string;
   scrollbarHover: string;
+  /** Muse only: a floating panel's translucent fill, over the background wash. */
+  glass?: string;
+  /** Muse only: a floating panel's hairline border, over the background wash. */
+  "glass-border"?: string;
+  /** Muse only: the wash's first blurred color blob (sky blue family). */
+  "wash-1"?: string;
+  /** Muse only: the wash's second blurred color blob (faint lilac). */
+  "wash-2"?: string;
+  /** Muse only: the wash's third blurred color blob (faint cyan). */
+  "wash-3"?: string;
 };
 
 export const darkTokens = {
@@ -154,6 +164,13 @@ export const museLightTokens = {
   overlay: "rgba(17, 18, 22, 0.32)",
   scrollbar: "#D6D8DC",
   scrollbarHover: "#B6B9BF",
+  // Glass shell (docs/muse/DESIGN.md "Background wash"): floating panels over a soft,
+  // blurred wash of Aiden's sky blue plus a faint lilac and cyan.
+  glass: "rgba(255, 255, 255, 0.74)",
+  "glass-border": "rgba(255, 255, 255, 0.6)",
+  "wash-1": "rgba(59, 130, 246, 0.16)",
+  "wash-2": "rgba(168, 139, 250, 0.12)",
+  "wash-3": "rgba(94, 211, 217, 0.1)",
 } as const satisfies ColorTokens;
 
 export const museDarkTokens = {
@@ -189,6 +206,12 @@ export const museDarkTokens = {
   overlay: "rgba(0, 0, 0, 0.6)",
   scrollbar: "#2F3036",
   scrollbarHover: "#43454C",
+  // Deeper and lower-opacity than the light wash, so the blobs stay a quiet tint.
+  glass: "rgba(30, 31, 35, 0.74)",
+  "glass-border": "rgba(255, 255, 255, 0.07)",
+  "wash-1": "rgba(59, 130, 246, 0.1)",
+  "wash-2": "rgba(139, 92, 246, 0.09)",
+  "wash-3": "rgba(45, 175, 185, 0.08)",
 } as const satisfies ColorTokens;
 
 /** Dark palette. Prefer `tokensForAppearance` when theme-aware. */
@@ -280,9 +303,9 @@ export function cssVariableName(token: keyof ColorTokens): string {
 }
 
 function renderBlock(selector: string, colorScheme: ResolvedAppearance, palette: ColorTokens) {
-  const lines = (Object.keys(palette) as (keyof ColorTokens)[]).map(
-    (token) => `  ${cssVariableName(token)}: ${palette[token].toLowerCase()};`,
-  );
+  const lines = (Object.keys(palette) as (keyof ColorTokens)[])
+    .filter((token) => palette[token] !== undefined)
+    .map((token) => `  ${cssVariableName(token)}: ${(palette[token] as string).toLowerCase()};`);
   return `${selector} {\n  color-scheme: ${colorScheme};\n${lines.join("\n")}\n  --radius: ${RADIUS};\n}`;
 }
 

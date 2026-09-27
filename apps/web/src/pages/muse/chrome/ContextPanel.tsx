@@ -452,7 +452,7 @@ export function ContextPanel({
     <div
       data-testid="context-panel"
       className={cn(
-        "hidden w-[340px] shrink-0 flex-col gap-7 overflow-y-auto rk-scroll border-s border-border p-5",
+        "hidden w-[340px] shrink-0 flex-col gap-7 overflow-y-auto rk-scroll border border-glass-border bg-glass p-5 shadow-float backdrop-blur-xl md:rounded-2xl",
         !collapsed && "xl:flex",
       )}
     >

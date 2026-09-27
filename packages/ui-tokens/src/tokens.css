@@ -109,6 +109,11 @@
   --overlay: rgba(17, 18, 22, 0.32);
   --scrollbar: #d6d8dc;
   --scrollbar-hover: #b6b9bf;
+  --glass: rgba(255, 255, 255, 0.74);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --wash-1: rgba(59, 130, 246, 0.16);
+  --wash-2: rgba(168, 139, 250, 0.12);
+  --wash-3: rgba(94, 211, 217, 0.1);
   --radius: 0.75rem;
 }
 
@@ -146,5 +151,10 @@
   --overlay: rgba(0, 0, 0, 0.6);
   --scrollbar: #2f3036;
   --scrollbar-hover: #43454c;
+  --glass: rgba(30, 31, 35, 0.74);
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --wash-1: rgba(59, 130, 246, 0.1);
+  --wash-2: rgba(139, 92, 246, 0.09);
+  --wash-3: rgba(45, 175, 185, 0.08);
   --radius: 0.75rem;
 }
