@@ -6738,6 +6738,7 @@ const MessageView = memo(function MessageView({
                 name={block.name}
                 mimeType={block.mimeType}
                 size={block.size}
+                museMode={museMode}
               />
             </div>
           );

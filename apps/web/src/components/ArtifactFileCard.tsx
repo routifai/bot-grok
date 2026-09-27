@@ -1,4 +1,5 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
+import { isAttachmentImageMimeType } from "@aiden/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@aiden/ui-web";
 import { i18n } from "@lingui/core";
 import { t } from "@lingui/core/macro";
@@ -6,8 +7,11 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { Code2, Download, FileText, X } from "lucide-react";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import { artifactKind, isPreviewableArtifactKind, kindEyebrow } from "../lib/artifact-kind";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { downloadArtifact, downloadArtifactBytes, fetchArtifactBytes } from "../lib/artifact-open";
+import { useObjectUrl } from "../lib/use-object-url";
+import { ArtifactPreviewThumbnail } from "./ArtifactPreviewThumbnail";
 import { PdfViewer } from "./PdfViewer";
 import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 
@@ -17,6 +21,9 @@ type ArtifactFileCardProps = {
   name: string;
   mimeType: string;
   size: number;
+  /** Muse mode gets a compact preview card (same visual family as the Library) for
+   *  previewable kinds; every other mode keeps the plain row unchanged. */
+  museMode?: boolean;
 };
 
 const PREVIEWABLE_MIME_TYPES = new Set(["text/markdown", "text/html", "application/pdf"]);
@@ -29,6 +36,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const kind = artifactKind(props.mimeType);
 
   async function startDownload() {
     setDownloadError(null);
@@ -37,6 +45,62 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
     } catch {
       setDownloadError(t`Could not download ${props.name}. Try again.`);
     }
+  }
+
+  if (props.museMode && isPreviewableArtifactKind(kind)) {
+    return (
+      <>
+        <div className="flex w-[min(360px,90%)] flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground">
+          <button
+            ref={previewButton}
+            type="button"
+            aria-label={t`Preview ${props.name}`}
+            onClick={() => setPreviewOpen(true)}
+            className="flex flex-col text-left outline-none"
+          >
+            <span className="block aspect-video w-full bg-muted ring-1 ring-inset ring-border/50">
+              <ArtifactPreviewThumbnail
+                artifact={{
+                  id: props.artifactId,
+                  mimeType: props.mimeType,
+                  size: props.size,
+                  name: props.name,
+                }}
+              />
+            </span>
+            <span className="flex flex-col gap-1 px-3.5 pt-2.5 pb-1">
+              <span className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                {kindEyebrow(kind)}
+              </span>
+              <span className="truncate text-[13.5px] font-medium">{props.name}</span>
+            </span>
+          </button>
+          <div className="flex items-center justify-between px-3.5 pb-2.5">
+            <span className="text-[12px] text-muted-foreground">{formatBytes(props.size)}</span>
+            <button
+              type="button"
+              aria-label={t`Download ${props.name}`}
+              title={t`Download ${props.name}`}
+              onClick={() => void startDownload()}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Download size={15} strokeWidth={1.8} />
+            </button>
+          </div>
+        </div>
+        {downloadError ? <DownloadError message={downloadError} /> : null}
+        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+          <DialogContent
+            showCloseButton={false}
+            initialFocus={closeButton}
+            finalFocus={previewButton}
+            className="flex h-[min(88vh,900px)] w-[min(960px,94vw)] flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          >
+            <FilePreview {...props} closeButtonRef={closeButton} />
+          </DialogContent>
+        </Dialog>
+      </>
+    );
   }
 
   if (!previewable) {
@@ -209,6 +273,8 @@ function FilePreview({
           <SandboxedHtmlViewer html={state.text} title={name} />
         ) : mimeType === "application/pdf" ? (
           <PdfViewer bytes={state.bytes} title={name} />
+        ) : isAttachmentImageMimeType(mimeType) ? (
+          <ImageFilePreview bytes={state.bytes} mimeType={mimeType} name={name} />
         ) : state.text !== undefined ? (
           <article className="mx-auto w-full max-w-[760px] px-8 py-10 text-[16px] leading-7 text-foreground sm:px-12 sm:py-12">
             <ChatMarkdown>{state.text}</ChatMarkdown>
@@ -216,6 +282,24 @@ function FilePreview({
         ) : null}
       </div>
     </>
+  );
+}
+
+function ImageFilePreview({
+  bytes,
+  mimeType,
+  name,
+}: {
+  bytes: Uint8Array;
+  mimeType: string;
+  name: string;
+}) {
+  const url = useObjectUrl(bytes, mimeType);
+  if (!url) return null;
+  return (
+    <div className="grid h-full place-items-center overflow-auto bg-muted/40 p-4">
+      <img src={url} alt={name} className="max-h-full max-w-full rounded-lg shadow-sm" />
+    </div>
   );
 }
 

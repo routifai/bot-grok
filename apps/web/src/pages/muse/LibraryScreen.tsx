@@ -11,11 +11,11 @@ import {
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { ArtifactKind } from "../../lib/artifact-kind";
+import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
 import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
-import type { ArtifactKind } from "./library/kinds";
-import { artifactKind, KIND_ORDER, kindFacetLabel } from "./library/kinds";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import type { ArtifactSummary } from "./library/types";
 import { Chip, EmptyState, MuseScreen, MuseWideColumn, ScreenHeader } from "./ui";
@@ -131,8 +131,8 @@ export function LibraryScreen({ botId }: { botId: string }) {
       <MuseWideColumn>
         <ScreenHeader title={t`Library`} subtitle={t`Everything your Muse has made.`} />
 
-        <div className="flex flex-col gap-3 pb-8">
-          <div className="relative w-full max-w-[360px]">
+        <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="relative w-full sm:max-w-[300px]">
             <Search
               size={15}
               strokeWidth={1.75}
@@ -149,7 +149,7 @@ export function LibraryScreen({ botId }: { botId: string }) {
           </div>
 
           {total > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
               <Chip selected={selectedKind === "all"} onClick={() => setSelectedKind("all")}>
                 {t`All`} {total}
               </Chip>

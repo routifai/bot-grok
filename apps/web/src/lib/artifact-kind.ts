@@ -3,7 +3,7 @@ import { t } from "@lingui/core/macro";
 import type { LucideIcon } from "lucide-react";
 import { File, FileText, Image as ImageIcon, LayoutTemplate, Presentation } from "lucide-react";
 
-/** How the Library groups and labels an artifact, derived from its mime type. */
+/** How the Library (and any other artifact card) groups and labels an artifact, derived from its mime type. */
 export type ArtifactKind = "page" | "document" | "deck" | "image" | "file";
 
 const DECK_MIME_TYPES = new Set([
@@ -54,4 +54,9 @@ export function kindFacetLabel(kind: ArtifactKind): string {
     default:
       return kind;
   }
+}
+
+/** Kinds that get a real, rendered thumbnail (`ArtifactPreviewThumbnail`) rather than a type icon. */
+export function isPreviewableArtifactKind(kind: ArtifactKind): boolean {
+  return kind === "page" || kind === "image";
 }
