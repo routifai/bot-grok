@@ -70,6 +70,7 @@ import {
   readStoredModelAuth,
   releaseComputerExecutionLease,
   replaceComputer,
+  rescheduleMuseGoalsForBot,
   resolveAutoReviewChecker,
   resolveBotWorkspacePath,
   sanitizeComposioError,
@@ -5023,9 +5024,15 @@ export function createRouter(deps: RouterDeps) {
       settings: museOnly.muse.settings.handler(({ context, input }) =>
         getMuseSettings(deps, context.actor, input.botId),
       ),
-      updateSettings: museOnly.muse.updateSettings.handler(({ context, input }) =>
-        updateMuseSettings(deps, context.actor, input),
-      ),
+      updateSettings: museOnly.muse.updateSettings.handler(async ({ context, input }) => {
+        const settings = await updateMuseSettings(deps, context.actor, input);
+        // docs/muse/PLAN.md B8: a changed proactivity/quiet-hours setting reschedules this
+        // Muse's Goals right away instead of waiting for their next fire.
+        await rescheduleMuseGoalsForBot(deps, input.botId).catch((error) =>
+          getLogger().error("reschedule Muse Goals after settings change", error),
+        );
+        return settings;
+      }),
     },
   });
 }

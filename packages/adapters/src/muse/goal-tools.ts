@@ -5,6 +5,7 @@
 // Pattern: scratchpad-tools.ts. Each `*FromTool` function is called directly from the
 // executor's tool dispatch (see run-executor.ts, next to scratchpad_add) with plain
 // input already coerced from the model's tool-call args.
+import type { JobPublisher } from "@aiden/adapter-kit";
 import {
   type Goal,
   GoalProposalTaskSchema,
@@ -12,12 +13,14 @@ import {
   GoalTaskStatusSchema,
   type MessageBlock,
 } from "@aiden/contracts";
+import { nextWorkAt, resolveMuseSettings } from "@aiden/core";
 import type { Prisma, PrismaClient } from "@aiden/db";
 import {
   appendEventInTransaction,
   createGoalRepos,
   createThreadMessageInTransaction,
 } from "@aiden/db";
+import { scheduleGoalAdvance, scheduleGoalCheckin } from "./goal-jobs.js";
 import { withdrawOpenProposal } from "./goal-proposals.js";
 
 const TITLE_MAX = 200;
@@ -30,6 +33,12 @@ export type GoalToolDeps = {
   prisma: PrismaClient;
   /** Realtime fan-out for the Conversation thread an Ask was posted into. */
   events?: { notify(threadId: string, seq: number): Promise<void> };
+  /**
+   * Schedules background work for a newly created Goal (docs/muse/PLAN.md B8) —
+   * optional so existing callers/tests that only exercise the tool's plan-shape logic
+   * keep working without a job queue at hand.
+   */
+  jobs?: JobPublisher;
 };
 
 export type GoalToolScope = {
@@ -196,7 +205,36 @@ export async function createGoalFromTool(
   });
 
   await notifyIfNeeded(deps, committed.notify);
+  await scheduleFirstGoalWork(deps, committed.goal);
   return { goal: committed.goal };
+}
+
+/**
+ * Scheduling for a just-created Goal (docs/muse/PLAN.md B8): its first `goal.advance`
+ * (respecting the Muse's proactivity/quiet hours) and, if it has any, its first
+ * `goal.checkin`. Never blocks `create` on scheduling failures.
+ */
+async function scheduleFirstGoalWork(deps: GoalToolDeps, goal: Goal): Promise<void> {
+  if (!deps.jobs) return;
+  const bot = await deps.prisma.bot.findUnique({
+    where: { id: goal.botId },
+    select: { museProactivity: true, museQuietHours: true },
+  });
+  if (!bot) return;
+  const settings = resolveMuseSettings(bot);
+  const now = new Date();
+  if (settings.proactivity !== "off") {
+    const next = nextWorkAt(settings, null, now, goal.timezone);
+    if (next)
+      await scheduleGoalAdvance(deps.jobs, goal.id, goal.botId, next).catch(() => undefined);
+  }
+  if (goal.checkInCrons.length > 0) {
+    await scheduleGoalCheckin(
+      deps.jobs,
+      { id: goal.id, botId: goal.botId, checkInCrons: goal.checkInCrons, timezone: goal.timezone },
+      now,
+    ).catch(() => undefined);
+  }
 }
 
 /** `get`: one Goal with its plan and open Proposal, scoped to this Muse. */

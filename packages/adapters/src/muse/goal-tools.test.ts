@@ -1,6 +1,7 @@
+import type { JobPublisher } from "@aiden/adapter-kit";
 import type { MessageBlock } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { acceptGoalProposal, dismissGoalProposal } from "./goal-proposals.js";
 import {
   createGoalFromTool,
@@ -25,6 +26,11 @@ function createFixture() {
   const threads: Record<string, unknown>[] = [];
   const messages: Record<string, unknown>[] = [];
   const events: Record<string, unknown>[] = [];
+  // Only read by scheduleFirstGoalWork (packages/adapters/src/muse/goal-tools.ts, B8) when a
+  // test passes `jobs` in deps; default proactivity/quiet-hours (both null = defaults).
+  const bots: Record<string, unknown>[] = [
+    { id: "bot-1", museProactivity: null, museQuietHours: null },
+  ];
 
   function matches(row: Record<string, unknown>, where: Record<string, unknown> = {}): boolean {
     return Object.entries(where).every(([key, value]) => {
@@ -193,6 +199,22 @@ function createFixture() {
     run: {
       findUnique: async () => null,
     },
+    bot: {
+      findUnique: async ({
+        where,
+        select,
+      }: {
+        where: { id: string };
+        select?: Record<string, true>;
+      }) => {
+        const bot = bots.find((b) => b.id === where.id);
+        if (!bot) return null;
+        if (!select) return bot;
+        const out: Record<string, unknown> = {};
+        for (const key of Object.keys(select)) out[key] = bot[key];
+        return out;
+      },
+    },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
   };
 
@@ -204,6 +226,7 @@ function createFixture() {
     threads,
     messages,
     events,
+    bots,
   };
 }
 
@@ -273,6 +296,56 @@ describe("goals tool: create", () => {
       ],
     });
     expect(fixture.proposals[0]?.askMessageId).toBe(askMessage?.id);
+  });
+
+  it("schedules the first goal.advance and goal.checkin when a job publisher is given (docs/muse/PLAN.md B8)", async () => {
+    const fixture = createFixture();
+    seedConversationThread(fixture);
+    const jobs = { enqueue: vi.fn(async () => undefined), cancel: vi.fn(), close: vi.fn() };
+
+    const result = await createGoalFromTool(
+      { prisma: fixture.prisma, jobs: jobs as unknown as JobPublisher },
+      scope,
+      {
+        title: "Conversational Japanese before Kyoto",
+        checkIn: ["30 7 * * 1-5"],
+        tasks: ["Pick a course"],
+      },
+    );
+    if ("error" in result) throw new Error("unexpected error");
+
+    expect(jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "goal.advance",
+        payload: { goalId: result.goal.id },
+        queueName: "muse:bot-1",
+      }),
+    );
+    expect(jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "goal.checkin",
+        payload: { goalId: result.goal.id },
+        queueName: "muse:bot-1",
+      }),
+    );
+  });
+
+  it("does not schedule a goal.checkin without check-in crons", async () => {
+    const fixture = createFixture();
+    seedConversationThread(fixture);
+    const jobs = { enqueue: vi.fn(async () => undefined), cancel: vi.fn(), close: vi.fn() };
+
+    const result = await createGoalFromTool(
+      { prisma: fixture.prisma, jobs: jobs as unknown as JobPublisher },
+      scope,
+      { title: "Learn Japanese", tasks: ["Pick a course"] },
+    );
+    if ("error" in result) throw new Error("unexpected error");
+
+    expect(jobs.enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "goal.advance" }));
+    expect(jobs.enqueue).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: "goal.checkin" }),
+    );
   });
 
   it("rejects a missing title or empty task list", async () => {
@@ -606,5 +679,39 @@ describe("accepting and dismissing a Proposal (answer path)", () => {
     expect(await acceptGoalProposal({ prisma: fixture.prisma }, proposalId)).toBeNull();
     expect(await dismissGoalProposal({ prisma: fixture.prisma }, proposalId)).toBeNull();
     expect(await acceptGoalProposal({ prisma: fixture.prisma }, "missing")).toBeNull();
+  });
+
+  it("wakes the Goal's background work when a job publisher is given (docs/muse/PLAN.md B8)", async () => {
+    const fixture = createFixture();
+    seedConversationThread(fixture);
+    const created = await createGoalFromTool({ prisma: fixture.prisma }, scope, {
+      title: "Learn Japanese",
+      tasks: ["Pick a course"],
+    });
+    if ("error" in created) throw new Error("unexpected error");
+    const jobs = { enqueue: vi.fn(async () => undefined), cancel: vi.fn(), close: vi.fn() };
+
+    await acceptGoalProposal(
+      { prisma: fixture.prisma, jobs: jobs as unknown as JobPublisher },
+      created.goal.openProposal!.id,
+    );
+
+    expect(jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "goal.advance", payload: { goalId: created.goal.id } }),
+    );
+
+    // Dismiss never wakes the Goal — there is nothing new to work on.
+    const proposed = await proposeGoalPlanFromTool({ prisma: fixture.prisma }, scope, {
+      goalId: created.goal.id,
+      reason: "try something else",
+      tasks: [{ title: "Pick a different course" }],
+    });
+    if ("error" in proposed) throw new Error("unexpected error");
+    jobs.enqueue.mockClear();
+    await dismissGoalProposal(
+      { prisma: fixture.prisma, jobs: jobs as unknown as JobPublisher },
+      proposed.goal.openProposal!.id,
+    );
+    expect(jobs.enqueue).not.toHaveBeenCalled();
   });
 });

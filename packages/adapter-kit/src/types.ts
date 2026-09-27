@@ -512,6 +512,10 @@ export interface BackgroundJobPayloads {
   "messaging.deliver": { runId?: string };
   /** Reconcile durable remote-agent intent; scope is loaded from the database. */
   "cloud_agent.poll": { agentId: string };
+  /** Muse edition only (docs/muse/PLAN.md B8): work a Goal in its Goal log. */
+  "goal.advance": { goalId: string };
+  /** Muse edition only (docs/muse/PLAN.md B8): a scheduled Goal check-in in the Conversation. */
+  "goal.checkin": { goalId: string };
 }
 
 export type BackgroundJobName = keyof BackgroundJobPayloads;
@@ -524,6 +528,12 @@ export type BackgroundJob = {
     replaceKey?: string;
     /** Cap retried executions; omit to use the job queue's default. */
     maxAttempts?: number;
+    /**
+     * Graphile job queue name: jobs sharing one queueName run strictly one at a time.
+     * Muse edition only (docs/muse/PLAN.md B8): `muse:<botId>` serializes Goal work so a
+     * Muse never works two Goals at once.
+     */
+    queueName?: string;
   };
 }[BackgroundJobName];
 

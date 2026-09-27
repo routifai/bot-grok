@@ -27,6 +27,7 @@ export class GraphileJobPublisher implements JobPublisher {
       runAt: job.availableAt,
       jobKey: job.replaceKey,
       maxAttempts: job.maxAttempts,
+      queueName: job.queueName,
     });
   }
 
@@ -185,6 +186,9 @@ interface QueuedJob {
   payload: unknown;
   availableAt?: Date;
   replaceKey?: string;
+  // Carried through for parity with GraphileJobPublisher; this in-memory queue has no
+  // concurrent workers to serialize, so queueName is not otherwise enforced here.
+  queueName?: string;
 }
 
 function toQueuedJob(job: BackgroundJob): QueuedJob {
@@ -193,6 +197,7 @@ function toQueuedJob(job: BackgroundJob): QueuedJob {
     payload: wrapJobPayload(job.payload),
     availableAt: job.availableAt,
     replaceKey: job.replaceKey,
+    queueName: job.queueName,
   };
 }
 

@@ -22,6 +22,8 @@ const payloadSchemas = {
   "history.compact": z.object({ threadId: z.string().min(1) }),
   "messaging.deliver": z.object({ runId: z.string().min(1).optional() }),
   "cloud_agent.poll": z.object({ agentId: z.string().min(1) }),
+  "goal.advance": z.object({ goalId: z.string().min(1) }),
+  "goal.checkin": z.object({ goalId: z.string().min(1) }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
 export function parseBackgroundJob(name: string, payload: unknown): BackgroundJob {
@@ -154,5 +156,41 @@ export function cloudAgentPollJob(
     payload,
     replaceKey: cloudAgentPollJobKey(payload.agentId),
     ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+// Muse edition only (docs/muse/PLAN.md B8): background Goal work. One queueName per Muse
+// (`muse:<botId>`) so Graphile runs at most one goal.advance/goal.checkin at a time —
+// "the Muse works on at most one Goal at a time" (CONTEXT.md).
+export function museQueueName(botId: string): string {
+  return `muse:${botId}`;
+}
+
+export function goalAdvanceJobKey(goalId: string): string {
+  return `goal.advance:${goalId}`;
+}
+
+export function goalCheckinJobKey(goalId: string): string {
+  return `goal.checkin:${goalId}`;
+}
+
+/** `availableAt` omitted (or in the past) runs it as soon as the queue is free — used to wake a Goal. */
+export function goalAdvanceJob(goalId: string, botId: string, availableAt?: Date): BackgroundJob {
+  return {
+    name: "goal.advance",
+    payload: { goalId },
+    replaceKey: goalAdvanceJobKey(goalId),
+    queueName: museQueueName(botId),
+    ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+export function goalCheckinJob(goalId: string, botId: string, availableAt: Date): BackgroundJob {
+  return {
+    name: "goal.checkin",
+    payload: { goalId },
+    replaceKey: goalCheckinJobKey(goalId),
+    queueName: museQueueName(botId),
+    availableAt,
   };
 }

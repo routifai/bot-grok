@@ -5,6 +5,8 @@
 // tool's `propose` action (withdrawing a stale proposal) and B6's `goals.acceptProposal` /
 // `dismissProposal` RPCs (and B9's `asks.answer`) all go through the same logic instead of
 // each re-implementing the plan-replacement rules.
+
+import type { JobPublisher } from "@aiden/adapter-kit";
 import {
   type Goal,
   GoalProposalTaskSchema,
@@ -16,11 +18,18 @@ import {
   type Prisma,
   type PrismaClient,
 } from "@aiden/db";
+import { wakeGoal } from "./goal-jobs.js";
 
 export type GoalAnswerDeps = {
   prisma: PrismaClient;
   /** Realtime fan-out for the Conversation thread the Ask lived in. */
   events?: { notify(threadId: string, seq: number): Promise<void> };
+  /**
+   * Wakes the Goal's background work (docs/muse/PLAN.md B8) right after an accepted
+   * Proposal gives it a plan to work — optional so existing callers/tests that only need
+   * the plan replaced (no job queue at hand) keep working unchanged.
+   */
+  jobs?: JobPublisher;
 };
 
 type NotifyTarget = { threadId: string; seq: number } | null;
@@ -137,6 +146,11 @@ async function decideGoalProposal(
     await deps.events
       ?.notify(committed.notify.threadId, committed.notify.seq)
       .catch(() => undefined);
+  }
+  if (decision === "accept" && deps.jobs) {
+    await wakeGoal({ prisma: deps.prisma, jobs: deps.jobs }, committed.goal.id).catch(
+      () => undefined,
+    );
   }
   return committed.goal;
 }

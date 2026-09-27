@@ -36,6 +36,7 @@ function fakePrisma(
     routine: { findMany: vi.fn(async () => routines) },
     computer: { findMany: vi.fn(async () => controls) },
     messagingOutbound: { findFirst: vi.fn(async () => null) },
+    goal: { findMany: vi.fn(async () => []) },
   } as unknown as PrismaClient;
 }
 
@@ -229,6 +230,7 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: computerFindMany },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      goal: { findMany: vi.fn(async () => []) },
     } as unknown as PrismaClient;
     const { jobs, enqueue } = publisher();
     const reconciler = createJobReconciler({ prisma, jobs }, { batchSize: 2 });
@@ -292,6 +294,7 @@ describe("createJobReconciler", () => {
       routine: { findMany: routineFindMany },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      goal: { findMany: vi.fn(async () => []) },
     } as unknown as PrismaClient;
     const { jobs, enqueue } = publisher();
     const reconciler = createJobReconciler({ prisma, jobs }, { batchSize: 2 });
@@ -389,6 +392,7 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      goal: { findMany: vi.fn(async () => []) },
       message: {
         findMany: vi.fn(async () => [
           { blocks: [{ kind: "text", text: "Finished." }], clientNonce: null },
@@ -454,6 +458,7 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      goal: { findMany: vi.fn(async () => []) },
       message: {
         findMany: vi.fn(async () => [
           {
@@ -505,6 +510,7 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      goal: { findMany: vi.fn(async () => []) },
       message: {
         findMany: vi.fn(async () => [
           {
@@ -556,6 +562,7 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      goal: { findMany: vi.fn(async () => []) },
       message: {
         findMany: vi.fn(async () => [
           {
@@ -579,6 +586,90 @@ describe("createJobReconciler", () => {
       "Checking calendars…",
       "status",
     );
+  });
+});
+
+// Muse edition only (docs/muse/PLAN.md B8): every active Goal always has a pending
+// goal.advance, and one with check-in crons always has a pending goal.checkin, even after a
+// crash dropped the job (or before B8's own scheduling code ever ran for it).
+describe("createJobReconciler: Muse Goals", () => {
+  function goalPrisma(options: {
+    advance?: Array<{ id: string; botId: string; nextWorkAt: Date | null }>;
+    checkin?: Array<{
+      id: string;
+      botId: string;
+      checkInCrons: string[];
+      timezone: string;
+      createdAt: Date;
+    }>;
+  }) {
+    const advance = options.advance ?? [];
+    const checkin = options.checkin ?? [];
+    return {
+      run: { findMany: vi.fn(async () => []) },
+      routine: { findMany: vi.fn(async () => []) },
+      computer: { findMany: vi.fn(async () => []) },
+      messagingOutbound: { findFirst: vi.fn(async () => null) },
+      goal: {
+        findMany: vi.fn(async ({ where }: { where: { AND: Record<string, unknown>[] } }) =>
+          "nextWorkAt" in where.AND[0]! ? advance : checkin,
+        ),
+      },
+    } as unknown as PrismaClient;
+  }
+
+  it("restores a pending goal.advance for a due active Goal", async () => {
+    const prisma = goalPrisma({
+      advance: [{ id: "goal-1", botId: "bot-1", nextWorkAt: new Date("2026-01-01T12:00:00.000Z") }],
+    });
+    const { jobs, enqueue } = publisher();
+
+    await createJobReconciler({ prisma, jobs }).reconcileOnce();
+
+    expect(prisma.goal.findMany).toHaveBeenCalled();
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "goal.advance",
+        payload: { goalId: "goal-1" },
+        queueName: "muse:bot-1",
+        availableAt: new Date("2026-01-01T12:00:00.000Z"),
+      }),
+    );
+  });
+
+  it("restores a pending goal.checkin for an active Goal with check-in crons", async () => {
+    const prisma = goalPrisma({
+      checkin: [
+        {
+          id: "goal-2",
+          botId: "bot-1",
+          checkInCrons: ["0 8 * * *"],
+          timezone: "UTC",
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      ],
+    });
+    const { jobs, enqueue } = publisher();
+
+    await createJobReconciler({ prisma, jobs }).reconcileOnce();
+
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "goal.checkin",
+        payload: { goalId: "goal-2" },
+        queueName: "muse:bot-1",
+      }),
+    );
+  });
+
+  it("does nothing when there are no Goals due", async () => {
+    const prisma = goalPrisma({});
+    const { jobs, enqueue } = publisher();
+
+    await createJobReconciler({ prisma, jobs }).reconcileOnce();
+
+    expect(enqueue).not.toHaveBeenCalledWith(expect.objectContaining({ name: "goal.advance" }));
+    expect(enqueue).not.toHaveBeenCalledWith(expect.objectContaining({ name: "goal.checkin" }));
   });
 });
 

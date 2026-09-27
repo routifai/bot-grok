@@ -71,7 +71,15 @@ export function renderGoalsContext(goals: Goal[], maxBytes = MAX_GOALS_CONTEXT_B
   return `${preamble}${blocks.join("")}${closing}`;
 }
 
-function renderGoal(goal: Goal): string[] {
+/**
+ * One Goal's plain-text stanza (status/progress/due/check-in meta, description, Task
+ * list, open-proposal line) with no wrapping tags. Exported for `goal.checkin`'s task
+ * prompt (packages/adapters/src/muse/goal-prompts.ts, B8), which embeds a single Goal's
+ * render directly since a check-in run's thread is the Conversation, not that Goal's log
+ * (so the automatic `<goals_active>` context above would show every active Goal, not just
+ * the one being checked in).
+ */
+export function renderGoal(goal: Goal): string[] {
   const done = goal.tasks.filter((task) => task.status === "done" || task.status === "skipped");
   const meta = [`status=${goal.status}`, `progress=${done.length}/${goal.tasks.length}`];
   if (goal.due) {
