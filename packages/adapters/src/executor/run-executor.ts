@@ -41,6 +41,7 @@ import {
   humanizeToolName,
   inferAttachmentMimeType,
   isMessagingChannelRun,
+  isMuseMode,
   isOneShotRoutineCrons,
   isTerminal,
   messagingChannelId,
@@ -61,6 +62,7 @@ import {
 } from "@rakazo/core";
 import { approvalEffectKey, toolEffectIdempotencyKey } from "@rakazo/core/node/approval-effect-key";
 import {
+  createGoalRepos,
   createSpaceForMember,
   effectiveMemoryScope,
   findDefaultModelCredential,
@@ -198,6 +200,7 @@ import {
   MODEL_CANNOT_SEE_MESSAGE,
   modelAcceptsImageInput,
 } from "../model-vision.js";
+import { loadGoalsContext, renderConversationSummaryContext } from "../muse/goals-context.js";
 import {
   assertPlotDataWithinLimits,
   PLOT_TOOL_GUIDE,
@@ -832,6 +835,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const discoveredPromise = deps.connector
           ? deps.connector.discoverTools(context)
           : Promise.resolve([]);
+        // Muse mode only (B5): a Goal-log turn (thread.goalId set) sees only that Goal in
+        // full plus the Conversation's summary — never other Goal logs (decision 7).
+        const museMode = isMuseMode(deps.productMode ?? "rakazo");
+        const museGoalId = museMode ? (thread.goalId ?? null) : null;
+        const goalRepos = createGoalRepos(deps.prisma);
         const threadContext = threadContextForRun(
           run.trigger,
           {
@@ -902,21 +910,42 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 context,
               )
             : Promise.resolve(null);
-        const [discovered, currentTurnImages, memoryContext, scratchpadContext, recalled] =
-          await Promise.all([
-            discoveredPromise,
-            loadCurrentTurnImages(deps, turnBlocks, context),
-            messagingChannelRun
-              ? Promise.resolve("")
-              : loadAgentMemoryContext(deps.memory, bot.id, context),
-            messagingChannelRun
-              ? Promise.resolve("")
-              : loadAgentScratchpadContext(deps, {
-                  spaceId: run.spaceId,
-                  botId: bot.id,
-                }),
-            recallPromise,
-          ]);
+        const [
+          discovered,
+          currentTurnImages,
+          memoryContext,
+          scratchpadContext,
+          recalled,
+          goalsContext,
+          conversationSummaryRow,
+        ] = await Promise.all([
+          discoveredPromise,
+          loadCurrentTurnImages(deps, turnBlocks, context),
+          // A Goal-log run's thread has no botId, but the run always carries the owning
+          // Muse's bot.id, so memory (and, below, Goals) resolve the same way either turn.
+          messagingChannelRun
+            ? Promise.resolve("")
+            : loadAgentMemoryContext(deps.memory, bot.id, context),
+          messagingChannelRun
+            ? Promise.resolve("")
+            : loadAgentScratchpadContext(deps, {
+                spaceId: run.spaceId,
+                botId: bot.id,
+              }),
+          recallPromise,
+          museMode && !messagingChannelRun
+            ? loadGoalsContext({ goals: goalRepos }, { botId: bot.id, goalId: museGoalId })
+            : Promise.resolve(undefined),
+          museMode && museGoalId && !messagingChannelRun
+            ? deps.prisma.thread.findUnique({
+                where: { botId: bot.id },
+                select: { historyCompactionSummary: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        const conversationSummaryContext = renderConversationSummaryContext(
+          conversationSummaryRow?.historyCompactionSummary,
+        );
         const semanticMemoryEnabled = Boolean(semanticMemory) && !messagingChannelRun;
         let recalledMemory = "";
         let recallSucceeded = false;
@@ -3278,6 +3307,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   : undefined,
                 redactedScratchpadContext: scratchpadContext
                   ? redactSecrets(scratchpadContext, runSecrets)
+                  : undefined,
+                redactedGoalsContext: goalsContext
+                  ? redactSecrets(goalsContext, runSecrets)
+                  : undefined,
+                redactedConversationSummaryContext: conversationSummaryContext
+                  ? redactSecrets(conversationSummaryContext, runSecrets)
                   : undefined,
                 hasHistoricalContext: historicalContext.length > 0,
                 computerInstruction,

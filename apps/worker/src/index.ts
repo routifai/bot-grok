@@ -45,7 +45,7 @@ import {
   SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
 } from "@rakazo/adapters";
-import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
+import { resolveEncryptionKey, resolveProductMode, resolveSupervisorToken } from "@rakazo/core";
 import {
   createDb,
   createThreadEvents,
@@ -198,6 +198,7 @@ async function main() {
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
     cloudAgent,
+    productMode: resolveProductMode(process.env),
   });
 
   const jobHandlers = createBackgroundJobHandlers({

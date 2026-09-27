@@ -14,6 +14,7 @@ import type {
   SandboxProvider,
   WebProvider,
 } from "@rakazo/adapter-kit";
+import type { ProductMode } from "@rakazo/contracts";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import type { CloudAgentConnection } from "../cloud-agent-factory.js";
 import type { MemoryProviderResolver } from "../memory-provider-factory.js";
@@ -53,4 +54,6 @@ export interface ExecutorDeps {
   autoReview?: AutoReviewProvider;
   /** Aborted when createApp stop() begins so in-flight continueRun boot waits exit promptly. */
   shutdownSignal?: AbortSignal;
+  /** `RAKAZO_PRODUCT_MODE`; undefined/"rakazo" keeps every Muse-only behaviour off. */
+  productMode?: ProductMode;
 }
