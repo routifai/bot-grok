@@ -80,8 +80,8 @@ it("tapping an Idea row calls onSendIdea with its text", async () => {
   const onSendIdea = vi.fn();
   const page = await renderIdeas(onSendIdea);
   try {
-    const button = [...page.container.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent === "Plan this Sunday's run",
+    const button = [...page.container.querySelectorAll("button")].find((candidate) =>
+      candidate.textContent?.startsWith("Plan this Sunday's run"),
     );
     expect(button).toBeTruthy();
     await act(async () => {
@@ -121,8 +121,8 @@ it("refreshing calls ideas.refresh and replaces the list", async () => {
         expect(page.container.textContent).toContain("Old idea");
       });
     });
-    const refreshButton = page.container.querySelector<HTMLButtonElement>(
-      "button[aria-label='Refresh ideas']",
+    const refreshButton = [...page.container.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === "New ideas",
     );
     expect(refreshButton).toBeTruthy();
     await act(async () => {
