@@ -1,10 +1,11 @@
-import type { Goal } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR, type Goal } from "@aiden/contracts";
 import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { FirstRunHint } from "../intro";
-import { EmptyState, MUSE_TYPE, MuseWideColumn, Progress, Section, Surface } from "../ui";
+import { MUSE_TYPE, MuseWideColumn, Progress, Section, Surface } from "../ui";
 import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
 import { GoalStatusPill } from "./GoalStatusPill";
+import { type GoalStarter, GoalsIntro } from "./GoalsIntro";
 
 function GoalCard({ goal, onSelect }: { goal: Goal; onSelect: (goalId: string) => void }) {
   const { t, i18n } = useLingui();
@@ -87,30 +88,26 @@ export function GoalList({
   botName,
   onSelect,
   avatarColor,
-  suggestions,
+  starters,
   onSendIdea,
 }: {
   goals: Goal[];
   botName: string;
   onSelect: (goalId: string) => void;
   avatarColor?: string;
-  suggestions?: readonly string[];
+  starters?: readonly GoalStarter[];
   onSendIdea?: (text: string) => void;
 }) {
   const { t } = useLingui();
 
   if (goals.length === 0) {
     return (
-      <MuseWideColumn className="flex min-h-full flex-col">
-        <EmptyState
-          avatarColor={avatarColor}
-          headline={t`What do you want to achieve?`}
-          suggestions={suggestions}
-          onSuggestion={onSendIdea}
-        >
-          <Trans>Tell your Muse, and it becomes a Goal.</Trans>
-        </EmptyState>
-      </MuseWideColumn>
+      <GoalsIntro
+        botName={botName}
+        avatarColor={avatarColor ?? DEFAULT_MUSE_COLOR}
+        starters={starters ?? []}
+        onStart={onSendIdea}
+      />
     );
   }
 

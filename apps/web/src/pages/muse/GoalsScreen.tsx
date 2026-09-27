@@ -5,12 +5,28 @@ import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { GoalDetail } from "./goals/GoalDetail";
 import { GoalList, GoalListSkeleton } from "./goals/GoalList";
+import type { GoalStarter } from "./goals/GoalsIntro";
 import { MuseColumn, MuseScreen, ScreenHeader } from "./ui";
 
-const GOAL_SUGGESTIONS = [
-  "Prep the Q3 client portfolio review",
-  "Get my CFA Level II study plan on track",
-  "Automate my weekly branch KPI summary",
+const GOAL_STARTERS: readonly GoalStarter[] = [
+  {
+    title: "Prep the Q3 client portfolio review",
+    detail:
+      "I'll pull each client's holdings and returns, flag drift from their target mix, and draft talking points before every meeting.",
+    prompt: "Help me prepare the Q3 client portfolio review for my book of clients.",
+  },
+  {
+    title: "Get my CFA Level II study plan on track",
+    detail:
+      "A weekly plan to exam day. I'll check in on the hard readings and quiz you on the formulas you keep missing.",
+    prompt: "Make me a CFA Level II study plan to exam day and keep me on track.",
+  },
+  {
+    title: "Automate my weekly branch KPI summary",
+    detail:
+      "Every Monday I'll gather last week's numbers, compare them to target, and send you a one-page summary to review.",
+    prompt: "Every Monday, put together my branch KPI summary for last week versus target.",
+  },
 ];
 
 /**
@@ -73,7 +89,9 @@ export function GoalsScreen({
   const selectedGoal = goals?.find((goal) => goal.id === selectedGoalId) ?? null;
 
   return (
-    <MuseScreen header={<ScreenHeader title={<Trans>Goals</Trans>} />}>
+    <MuseScreen
+      header={goals && goals.length > 0 ? <ScreenHeader title={<Trans>Goals</Trans>} /> : undefined}
+    >
       {error ? (
         <MuseColumn>
           <p className="pt-12 text-[13.5px] text-destructive">{error}</p>
@@ -93,7 +111,7 @@ export function GoalsScreen({
           botName={botName ?? DEFAULT_MUSE_NAME}
           onSelect={setSelectedGoalId}
           avatarColor={avatarColor}
-          suggestions={GOAL_SUGGESTIONS}
+          starters={GOAL_STARTERS}
           onSendIdea={onSendIdea}
         />
       )}

@@ -215,7 +215,7 @@ it("invites the person to tell their Muse a Goal when there are none", async () 
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Tell your Muse");
+        expect(page.container.textContent).toContain("something bigger than a message");
       });
     });
   } finally {
@@ -239,7 +239,9 @@ it("tapping an empty-state suggestion chip calls onSendIdea with its text", asyn
     await act(async () => {
       button.click();
     });
-    expect(onSendIdea).toHaveBeenCalledWith("Prep the Q3 client portfolio review");
+    expect(onSendIdea).toHaveBeenCalledWith(
+      "Help me prepare the Q3 client portfolio review for my book of clients.",
+    );
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();
