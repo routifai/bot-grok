@@ -251,4 +251,49 @@ describe("Muse face", () => {
     expect(html).not.toContain("rakazo-muse-avatar");
     expect(html).toContain("grok-character-eyes");
   });
+
+  it("renders a distinct expression marker per state", () => {
+    const idle = renderToString(<BotAvatar color="#0090FF" face="muse" status="idle" />);
+    const thinking = renderToString(<BotAvatar color="#0090FF" face="muse" status="queued" />);
+    const working = renderToString(<BotAvatar color="#0090FF" face="muse" status="running" />);
+    const waiting = renderToString(<BotAvatar color="#0090FF" face="muse" waitingCount={1} />);
+
+    expect(idle).toContain("rakazo-muse-expression-idle");
+    expect(idle).toContain("rakazo-muse-mouth-idle");
+
+    expect(thinking).toContain("rakazo-muse-expression-thinking");
+    expect(thinking).toContain("rakazo-muse-mouth-thinking");
+    expect(thinking).toContain("rakazo-muse-eyebrow-right");
+
+    expect(working).toContain("rakazo-muse-expression-working");
+    expect(working).toContain("rakazo-muse-mouth-working");
+    expect(working).toContain("rakazo-muse-squint");
+
+    expect(waiting).toContain("rakazo-muse-expression-waiting");
+    expect(waiting).toContain("rakazo-muse-mouth-waiting");
+    expect(waiting).toContain("rakazo-muse-eyebrow-left");
+    expect(waiting).toContain("rakazo-muse-eyebrow-right");
+    expect(waiting).toContain("rakazo-muse-hand");
+  });
+
+  it("renders unique depth/shadow gradient ids per muse instance", () => {
+    const html = renderToString(
+      <div>
+        <BotAvatar color="#0090FF" face="muse" />
+        <BotAvatar color="#22C55E" face="muse" />
+      </div>,
+    );
+
+    const gradIds = [...html.matchAll(/id="([^"]+-(?:depth|shadow))"/g)].map((m) => m[1]);
+    expect(gradIds).toHaveLength(4);
+    expect(new Set(gradIds).size).toBe(4);
+    for (const id of gradIds) {
+      expect(html).toContain(`url(#${id})`);
+    }
+  });
+
+  it("keeps the identity color on the body under the new depth overlay", () => {
+    const html = renderToString(<BotAvatar color="#9333EA" face="muse" status="idle" />);
+    expect(html).toContain('class="rakazo-muse-body" fill="#9333EA"');
+  });
 });

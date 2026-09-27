@@ -4,7 +4,15 @@ The Muse edition should feel calm, personal, and quietly capable: ChatGPT's rest
 
 ## The Muse
 
-The Muse is **Aiden**, a friendly 3D lion mascot in blue and gold (`packages/ui-web/src/assets/aiden-*.jpg`). Everywhere small (rail, headers, cards) he is a round head crop framed by a ring in the identity color (gold by default); in big moments (welcome) he is the full sitting lion in a rounded tile (`AidenHero`). He breathes when idle, sways while working, hops with an Ask badge when waiting, and roars when clicked: a shake, two ripples in his color, and a short growl synthesized with Web Audio. He is our own character, not a bank's logo.
+The Muse is **Aiden**, drawn as a single round, friendly face (`BotAvatar` with `face="muse"`, `packages/ui-web/src/bot-avatar.tsx`). The body is a soft rounded blob filled with the bot's identity color (sky by default) and shaded with a subtle depth gradient (lighter top-left, slightly deeper bottom-right, built only from the illustration's own ink/shine constants layered over that color — never a new hex), plus a soft rim light along the top edge and a gentle contact shadow underneath. Two dark oval eyes with glints, blush cheeks, and a small gold spark on top complete the silhouette; it reads at 24–32px and is delightful at 96–160px (welcome 160px, onboarding 120px, auth 88px).
+
+His face changes with `data-muse-state` (`idle | thinking | working | waiting`, derived by `museAvatarState`, never a free string):
+- **idle** — relaxed smile, a slow blink, the spark floating.
+- **thinking** — eyes glance up-right, one eyebrow raised, a small "hmm" mouth, three thought dots pulsing.
+- **working** — eyes slightly narrowed, a small determined smile, a gentle sway, the spark spinning.
+- **waiting** — both eyebrows up, an open happy mouth, a small waving hand at one side, a hop, and the existing Ask-count badge.
+
+Expressions are structural (conditional SVG keyed on state, so they still show under `prefers-reduced-motion`); the breathing, blinking, swaying, hopping, spinning and waving are CSS animations on top, all turned off under reduced motion. He is our own character, not a bank's logo.
 
 ## Foundations
 

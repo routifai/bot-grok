@@ -480,7 +480,7 @@ export function OnboardingPage() {
         ) : null}
         {step === "intro" ? (
           <div className="flex flex-col items-center text-center">
-            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse-intro" face="muse" size={96} />
+            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse-intro" face="muse" size={120} />
             <h1 className="mt-7 font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
               <Trans>Hi, I'm your new executive assistant.</Trans>
             </h1>
@@ -561,7 +561,7 @@ export function OnboardingPage() {
               <Trans>Pick my color.</Trans>
             </h1>
             <div className="mt-8 flex justify-center">
-              <BotAvatar color={museColor} identity={museName} face="muse" size={96} />
+              <BotAvatar color={museColor} identity={museName} face="muse" size={120} />
             </div>
             <div className="mt-8 grid grid-cols-6 place-items-center gap-2">
               {MUSE_COLOR_OPTIONS.map((color) => {
