@@ -1,7 +1,6 @@
 import {
   FollowedTopicSchema,
   GoalSchema,
-  IdeaSchema,
   PostSchema,
   ThreadMessagePageSchema,
 } from "@aiden/contracts";
@@ -19,7 +18,6 @@ describe("musePreview", () => {
       ThreadMessagePageSchema.parse(musePreview.goals.log(goal.id));
     }
     PostSchema.array().parse(musePreview.feed.list(botId).posts);
-    IdeaSchema.array().parse(musePreview.ideas.list(botId));
     FollowedTopicSchema.array().parse(musePreview.topics.list(botId));
   });
 

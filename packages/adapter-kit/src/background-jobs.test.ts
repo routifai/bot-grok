@@ -4,6 +4,8 @@ import {
   HISTORY_COMPACT_MAX_ATTEMPTS,
   historyCompactJob,
   historyCompactJobKey,
+  ideasRefreshJob,
+  ideasRefreshJobKey,
   messagingDeliverJob,
   parseBackgroundJob,
 } from "./background-jobs.js";
@@ -20,6 +22,7 @@ function handlers(): BackgroundJobHandlers {
     "history.compact": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
     "cloud_agent.poll": vi.fn(async () => undefined),
+    "ideas.refresh": vi.fn(async () => undefined),
   };
 }
 
@@ -98,5 +101,32 @@ describe("historyCompactJob", () => {
 
   it("keys different threads differently", () => {
     expect(historyCompactJobKey("thread-1")).not.toBe(historyCompactJobKey("thread-2"));
+  });
+});
+
+describe("ideasRefreshJob", () => {
+  it("validates and dispatches with a replace key scoped to the bot", async () => {
+    const target = handlers();
+    await dispatchBackgroundJob(target, "ideas.refresh", { botId: "bot-1" });
+    expect(target["ideas.refresh"]).toHaveBeenCalledWith({ botId: "bot-1" });
+    expect(ideasRefreshJob("bot-1")).toEqual({
+      name: "ideas.refresh",
+      payload: { botId: "bot-1" },
+      replaceKey: ideasRefreshJobKey("bot-1"),
+    });
+  });
+
+  it("carries an availableAt when given one, for scheduling the next daily run", () => {
+    const availableAt = new Date("2026-09-28T07:00:00.000Z");
+    expect(ideasRefreshJob("bot-1", availableAt)).toEqual({
+      name: "ideas.refresh",
+      payload: { botId: "bot-1" },
+      replaceKey: "ideas.refresh:bot-1",
+      availableAt,
+    });
+  });
+
+  it("keys different bots differently", () => {
+    expect(ideasRefreshJobKey("bot-1")).not.toBe(ideasRefreshJobKey("bot-2"));
   });
 });

@@ -1,6 +1,6 @@
 import type { MessageBlock } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { acceptGoalProposal, dismissGoalProposal } from "./goal-proposals.js";
 import {
   createGoalFromTool,
@@ -606,5 +606,60 @@ describe("accepting and dismissing a Proposal (answer path)", () => {
     expect(await acceptGoalProposal({ prisma: fixture.prisma }, proposalId)).toBeNull();
     expect(await dismissGoalProposal({ prisma: fixture.prisma }, proposalId)).toBeNull();
     expect(await acceptGoalProposal({ prisma: fixture.prisma }, "missing")).toBeNull();
+  });
+});
+
+describe("acceptGoalProposal / dismissGoalProposal: ideas refresh (B11)", () => {
+  it("enqueues an ideas.refresh job for the goal's bot when a proposal is accepted", async () => {
+    const fixture = createFixture();
+    seedConversationThread(fixture);
+    const jobs = { enqueue: vi.fn(async () => undefined), cancel: vi.fn(), close: vi.fn() };
+    const created = await createGoalFromTool({ prisma: fixture.prisma }, scope, {
+      title: "Learn Japanese",
+      tasks: ["Pick a course"],
+    });
+    if ("error" in created) throw new Error("unexpected error");
+
+    await acceptGoalProposal({ prisma: fixture.prisma, jobs }, created.goal.openProposal!.id);
+
+    expect(jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "ideas.refresh", payload: { botId: scope.botId } }),
+    );
+  });
+
+  it("also enqueues on dismiss, and never throws when enqueue itself fails", async () => {
+    const fixture = createFixture();
+    seedConversationThread(fixture);
+    const jobs = {
+      enqueue: vi.fn(async () => {
+        throw new Error("queue unavailable");
+      }),
+      cancel: vi.fn(),
+      close: vi.fn(),
+    };
+    const created = await createGoalFromTool({ prisma: fixture.prisma }, scope, {
+      title: "Learn Japanese",
+      tasks: ["Pick a course"],
+    });
+    if ("error" in created) throw new Error("unexpected error");
+
+    await expect(
+      dismissGoalProposal({ prisma: fixture.prisma, jobs }, created.goal.openProposal!.id),
+    ).resolves.not.toBeNull();
+    expect(jobs.enqueue).toHaveBeenCalledOnce();
+  });
+
+  it("does nothing when no job publisher is given", async () => {
+    const fixture = createFixture();
+    seedConversationThread(fixture);
+    const created = await createGoalFromTool({ prisma: fixture.prisma }, scope, {
+      title: "Learn Japanese",
+      tasks: ["Pick a course"],
+    });
+    if ("error" in created) throw new Error("unexpected error");
+
+    await expect(
+      acceptGoalProposal({ prisma: fixture.prisma }, created.goal.openProposal!.id),
+    ).resolves.not.toBeNull();
   });
 });

@@ -3,10 +3,11 @@ import type {
   AgentRuntime,
   BackgroundJobHandlers,
   JobPublisher,
+  MemoryStore,
   MessagingSurface,
   SandboxProvider,
 } from "@aiden/adapter-kit";
-import { messagingDeliverJob } from "@aiden/adapter-kit";
+import { ideasRefreshJob, messagingDeliverJob } from "@aiden/adapter-kit";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import type { CloudAgentConnection } from "./cloud-agent-factory.js";
@@ -18,8 +19,14 @@ import type { createRunExecutor } from "./executor.js";
 import { compactHistory } from "./history-compaction.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
+import { refreshIdeas } from "./muse/ideas.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 import { expireTaughtSkillTeaching } from "./teaching-session.js";
+
+/** Ideas refresh daily (docs/muse/PLAN.md B11); a Goal status change also enqueues one
+ * immediately (see goal-proposals.ts), which this reschedule leaves untouched since the
+ * job key is shared and Graphile keeps only the most recently enqueued run time. */
+const IDEAS_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function createBackgroundJobHandlers(deps: {
   executor: ReturnType<typeof createRunExecutor>;
@@ -32,6 +39,7 @@ export function createBackgroundJobHandlers(deps: {
   runtime: AgentRuntime;
   secretStore: EncryptedSecretStore;
   memoryProviders: MemoryProviderResolver;
+  memory: MemoryStore;
   deploymentModelKey?: string;
   messaging?: MessagingSurface;
   cloudAgent?: CloudAgentConnection | null;
@@ -110,6 +118,21 @@ export function createBackgroundJobHandlers(deps: {
         },
         payload.threadId,
       );
+    },
+    "ideas.refresh": async (payload) => {
+      await refreshIdeas(
+        {
+          prisma: deps.prisma,
+          runtime: deps.runtime,
+          memory: deps.memory,
+          deploymentModelKey: deps.deploymentModelKey,
+          ...(deps.executor.resolveModel ? { resolveModel: deps.executor.resolveModel } : {}),
+        },
+        payload.botId,
+      );
+      await deps.jobs
+        .enqueue(ideasRefreshJob(payload.botId, new Date(Date.now() + IDEAS_REFRESH_INTERVAL_MS)))
+        .catch((error) => getLogger().error("ideas.refresh reschedule error", error));
     },
   };
 }

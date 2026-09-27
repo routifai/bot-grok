@@ -2,6 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type {
   AdapterContext,
   AgentHomeStore,
+  AgentRunRequest,
+  AgentRuntime,
   ArtifactStore,
   ConnectorCatalogItem,
   JobPublisher,
@@ -186,6 +188,7 @@ import {
   updateMemoryProviderDefaultScope,
 } from "./memory-provider-config.js";
 import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
+import { listIdeas, type MuseIdeasDeps, refreshIdeasNow } from "./muse-ideas.js";
 import { musePreview } from "./muse-preview.js";
 import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
 import {
@@ -476,6 +479,13 @@ export interface RouterDeps {
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
+  /** Muse edition (B11 `ideas.refresh`): the one model call over Goals/memory/Conversation. */
+  runtime: AgentRuntime;
+  resolveModel?: (scope: {
+    userId: string;
+    spaceId: string;
+    botId?: string;
+  }) => Promise<AgentRunRequest["model"]>;
   home: AgentHomeStore;
   secrets: EncryptedSecretStore;
   oauthLogins: PiOAuthLogins;
@@ -637,6 +647,14 @@ export function createRouter(deps: RouterDeps) {
     if (deps.env.productMode !== "muse") throw new ORPCError("NOT_FOUND");
     return next();
   });
+  const museIdeasDeps: MuseIdeasDeps = {
+    prisma: deps.prisma,
+    runtime: deps.runtime,
+    memory: deps.memory,
+    jobs: deps.jobs,
+    deploymentModelKey: deps.env.deploymentModelKey,
+    ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
+  };
 
   return os.router({
     aiConsent: {
@@ -4970,9 +4988,9 @@ export function createRouter(deps: RouterDeps) {
         prepareVoice(deps, context.actor, input),
       ),
     },
-    // Muse edition: goals/ideas/topics and the Feed's posts are still sample data
-    // until their backend packages land (see muse-preview.ts). asks.* and the
-    // Feed's asks are real (apps/api/src/muse-asks.ts).
+    // Muse edition: goals/topics and the Feed's posts are still sample data until
+    // their backend packages land (see muse-preview.ts). asks.*, the Feed's asks
+    // (apps/api/src/muse-asks.ts), and ideas.* (apps/api/src/muse-ideas.ts) are real.
     goals: {
       list: museOnly.goals.list.handler(({ input }) =>
         musePreview.goals.list(input.botId, input.includeClosed),
@@ -5008,9 +5026,11 @@ export function createRouter(deps: RouterDeps) {
       }),
     },
     ideas: {
-      list: museOnly.ideas.list.handler(({ input }) => musePreview.ideas.list(input.botId)),
-      refresh: museOnly.ideas.refresh.handler(({ input }) =>
-        musePreview.ideas.refresh(input.botId),
+      list: museOnly.ideas.list.handler(({ context, input }) =>
+        listIdeas(museIdeasDeps, context.actor, input.botId),
+      ),
+      refresh: museOnly.ideas.refresh.handler(({ context, input }) =>
+        refreshIdeasNow(museIdeasDeps, context.actor, input.botId),
       ),
     },
     topics: {

@@ -2,6 +2,7 @@ import type {
   AgentHomeStore,
   AgentRuntime,
   JobPublisher,
+  MemoryStore,
   MessagingSurface,
   SandboxProvider,
 } from "@aiden/adapter-kit";
@@ -12,9 +13,11 @@ import { createBackgroundJobHandlers } from "./background-job-handlers.js";
 import { createRunExecutor } from "./executor.js";
 import { compactHistory } from "./history-compaction.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
+import { refreshIdeas } from "./muse/ideas.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 
 vi.mock("./history-compaction.js", () => ({ compactHistory: vi.fn(async () => undefined) }));
+vi.mock("./muse/ideas.js", () => ({ refreshIdeas: vi.fn(async () => []) }));
 vi.mock("./messaging-delivery.js", () => ({
   deliverMessagingOutbound: vi.fn(async () => undefined),
   mirrorMessagingOutbound: vi.fn(async () => undefined),
@@ -43,6 +46,7 @@ describe("createBackgroundJobHandlers", () => {
       runtime: {} as unknown as AgentRuntime,
       secretStore: {} as unknown as EncryptedSecretStore,
       memoryProviders: { resolve: vi.fn(async () => null) },
+      memory: {} as unknown as MemoryStore,
       messaging: {} as unknown as MessagingSurface,
     });
 
@@ -69,6 +73,7 @@ describe("createBackgroundJobHandlers", () => {
     const jobs = {} as unknown as JobPublisher;
     const secretStore = {} as unknown as EncryptedSecretStore;
     const memoryProviders = { resolve: vi.fn(async () => null) };
+    const memory = {} as unknown as MemoryStore;
     const resolveModel = vi.fn();
     const handlers = createBackgroundJobHandlers({
       executor: { resolveModel } as unknown as ReturnType<typeof createRunExecutor>,
@@ -81,6 +86,7 @@ describe("createBackgroundJobHandlers", () => {
       runtime,
       secretStore,
       memoryProviders,
+      memory,
       deploymentModelKey: "openrouter-key",
     });
 
@@ -97,6 +103,54 @@ describe("createBackgroundJobHandlers", () => {
       },
       "thread-1",
     );
+  });
+
+  it("refreshes a Muse's ideas with the runtime, memory, and model key it was given, then reschedules the next daily run", async () => {
+    const prisma = {} as unknown as PrismaClient;
+    const runtime = {} as unknown as AgentRuntime;
+    const memory = {} as unknown as MemoryStore;
+    const jobs = { enqueue: vi.fn(async () => undefined) } as unknown as JobPublisher;
+    const secretStore = {} as unknown as EncryptedSecretStore;
+    const memoryProviders = { resolve: vi.fn(async () => null) };
+    const resolveModel = vi.fn();
+    const handlers = createBackgroundJobHandlers({
+      executor: { resolveModel } as unknown as ReturnType<typeof createRunExecutor>,
+      prisma,
+      sandbox: {} as unknown as SandboxProvider,
+      home: {} as unknown as AgentHomeStore,
+      jobs,
+      events: {} as unknown as ThreadEvents,
+      workerId: "worker-1",
+      runtime,
+      secretStore,
+      memoryProviders,
+      memory,
+      deploymentModelKey: "openrouter-key",
+    });
+
+    const before = Date.now();
+    await handlers["ideas.refresh"]({ botId: "bot-1" });
+
+    expect(refreshIdeas).toHaveBeenCalledWith(
+      {
+        prisma,
+        runtime,
+        memory,
+        deploymentModelKey: "openrouter-key",
+        resolveModel,
+      },
+      "bot-1",
+    );
+    expect(jobs.enqueue).toHaveBeenCalledTimes(1);
+    const [job] = (jobs.enqueue as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      { name: string; payload: { botId: string }; replaceKey?: string; availableAt?: Date },
+    ];
+    expect(job).toMatchObject({ name: "ideas.refresh", payload: { botId: "bot-1" } });
+    expect(job.replaceKey).toBe("ideas.refresh:bot-1");
+    expect(job.availableAt).toBeDefined();
+    const scheduledInMs = job.availableAt!.getTime() - before;
+    expect(scheduledInMs).toBeGreaterThan(23 * 60 * 60 * 1000);
+    expect(scheduledInMs).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 5_000);
   });
 
   it("resolves the deployment model when no user credential is configured", async () => {

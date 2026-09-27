@@ -1,18 +1,17 @@
-import type { FollowedTopic, Goal, Idea, Post, ThreadMessagePage } from "@aiden/contracts";
+import type { FollowedTopic, Goal, Post, ThreadMessagePage } from "@aiden/contracts";
 import { ORPCError } from "@orpc/server";
 
 // Sample data behind the Muse procedures so the frontend can be built and felt before the
 // backend lands (docs/muse/PLAN.md, "frontend first"). Each backend package replaces the
-// matching part; delete this file once goals, feed posts, ideas, and topics are real.
-// (muse.settings / muse.updateSettings, and asks.* / the Feed's asks, are already real:
-// see muse-settings.ts and muse-asks.ts.)
+// matching part; delete this file once goals, feed posts, and topics are real.
+// (muse.settings / muse.updateSettings, asks.* / the Feed's asks, and ideas.* are already
+// real: see muse-settings.ts, muse-asks.ts, and muse-ideas.ts.)
 // State is in memory and shared by every caller: preview only, never production data.
 
 type PreviewState = {
   goals: Goal[];
   posts: Post[];
   topics: FollowedTopic[];
-  ideas: Idea[];
 };
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -133,14 +132,6 @@ function seed(botId: string): PreviewState {
       { id: "topic-1", topic: "AI agent news", createdAt: hoursAgo(200) },
       { id: "topic-2", topic: "Moroccan design", createdAt: hoursAgo(150) },
     ],
-    ideas: [
-      idea("idea-1", "Quiz me on today's 10 Japanese phrases", "learning"),
-      idea("idea-2", "Find a ryokan in Kyoto under $200 a night", "travel"),
-      idea("idea-3", "Plan this Sunday's long run route", "health"),
-      idea("idea-4", "Summarize this week's AI agent news", "work"),
-      idea("idea-5", "Draft a Moroccan-style landing page for my portfolio", "creative"),
-      idea("idea-6", "What should I pack for Kyoto in December?", "travel"),
-    ],
   };
 }
 
@@ -160,10 +151,6 @@ function task(
     note,
     updatedAt: hoursAgo(idx + 1),
   };
-}
-
-function idea(id: string, text: string, area: string): Idea {
-  return { id, text, area, createdAt: hoursAgo(1) };
 }
 
 let state: PreviewState | undefined;
@@ -253,16 +240,6 @@ export const musePreview = {
     list(botId: string): { posts: Post[]; nextCursor: string | null } {
       const preview = current(botId);
       return { posts: preview.posts, nextCursor: null };
-    },
-  },
-  ideas: {
-    list: (botId: string): Idea[] => current(botId).ideas,
-    refresh(botId: string): Idea[] {
-      const preview = current(botId);
-      preview.ideas = [...preview.ideas.slice(1), preview.ideas[0]].filter((item): item is Idea =>
-        Boolean(item),
-      );
-      return preview.ideas;
     },
   },
   topics: {

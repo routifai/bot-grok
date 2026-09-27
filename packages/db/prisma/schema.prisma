@@ -183,6 +183,7 @@ model Space {
   routines                    Routine[]
   scratchpadItems             ScratchpadItem[]
   goals                       Goal[]
+  ideas                       Idea[]
   taughtSkills                TaughtSkill[]
   agentSkills                 AgentSkill[]
   connections                 Connection[]
@@ -380,6 +381,7 @@ model Bot {
   routines          Routine[]
   scratchpadItems   ScratchpadItem[]
   goals             Goal[]
+  ideas             Idea[]
   taughtSkills      TaughtSkill[]
   memoryDocuments   MemoryDocument[]
   agentHome         AgentHome?
@@ -821,6 +823,25 @@ model GoalProposal {
   // Partial unique index goal_proposals_goalId_open_key is created in SQL:
   // one open proposal per goal.
   @@map("goal_proposals")
+}
+
+/// A suggestion of something the person could ask the Muse next (glossary "Idea"), drawn
+/// from active Goals, memory, and the Conversation. Replaced wholesale on refresh — see
+/// docs/muse/PLAN.md B11.
+model Idea {
+  id        String   @id @default(cuid())
+  spaceId   String
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId    String
+  botId     String
+  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  text      String
+  /// Short grouping label, e.g. "learning" or "travel" — always one word.
+  area      String
+  createdAt DateTime @default(now())
+
+  @@index([botId, createdAt])
+  @@map("ideas")
 }
 
 model TaughtSkill {

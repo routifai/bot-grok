@@ -22,6 +22,7 @@ const payloadSchemas = {
   "history.compact": z.object({ threadId: z.string().min(1) }),
   "messaging.deliver": z.object({ runId: z.string().min(1).optional() }),
   "cloud_agent.poll": z.object({ agentId: z.string().min(1) }),
+  "ideas.refresh": z.object({ botId: z.string().min(1) }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
 export function parseBackgroundJob(name: string, payload: unknown): BackgroundJob {
@@ -153,6 +154,21 @@ export function cloudAgentPollJob(
     name: "cloud_agent.poll",
     payload,
     replaceKey: cloudAgentPollJobKey(payload.agentId),
+    ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+export function ideasRefreshJobKey(botId: string): string {
+  return `ideas.refresh:${botId}`;
+}
+
+/** One Muse can only ever have one pending refresh: a later enqueue (daily or Goal
+ * status change) replaces an earlier one rather than piling up. */
+export function ideasRefreshJob(botId: string, availableAt?: Date): BackgroundJob {
+  return {
+    name: "ideas.refresh",
+    payload: { botId },
+    replaceKey: ideasRefreshJobKey(botId),
     ...(availableAt ? { availableAt } : {}),
   };
 }
