@@ -39,14 +39,22 @@ body,
 /* Muse edition body type: Instrument Sans pairs with the Instrument Serif titles. */
 /* Muse edition: fixed pixel sizes read tiny on very wide windows, so scale the whole
    interface up on large screens. */
+/* Embedded frames (the computer screen, page previews) size themselves from their own
+   viewport, so they cancel the zoom and render 1:1; percentage sizes keep their boxes. */
 @media (min-width: 1600px) {
   [data-product="muse"] #root {
     zoom: 1.1;
+  }
+  [data-product="muse"] #root iframe {
+    zoom: calc(1 / 1.1);
   }
 }
 @media (min-width: 1900px) {
   [data-product="muse"] #root {
     zoom: 1.2;
+  }
+  [data-product="muse"] #root iframe {
+    zoom: calc(1 / 1.2);
   }
 }
 

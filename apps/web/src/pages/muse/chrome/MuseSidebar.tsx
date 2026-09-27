@@ -11,7 +11,7 @@ import {
   Settings,
   Target,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { MuseRailView as MuseView } from "../../../components/AppRail";
 import { rpc } from "../../../lib/rpc";
@@ -20,6 +20,15 @@ import { deriveStatusPill } from "./statusPill";
 
 const MAX_SIDEBAR_GOALS = 5;
 const COLLAPSED_KEY = "muse:sidebar-collapsed";
+
+// One layout for both states: the width animates and labels fade, so every icon keeps
+// exactly the same position whether the sidebar is expanded or collapsed. Icon centers sit
+// on one column (42px from the edge), which is also the avatar's center.
+const ROW = "flex h-11 w-full items-center gap-4 rounded-xl ps-[19px] pe-3 text-start";
+const LABEL =
+  "min-w-0 flex-1 truncate whitespace-nowrap transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0";
+const ICON_MOTION =
+  "relative grid size-[22px] shrink-0 place-items-center transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/row:-translate-y-0.5 group-hover/row:scale-[1.18] group-hover/row:-rotate-6 group-active/row:scale-95 motion-reduce:transition-none motion-reduce:transform-none [&_svg]:size-[22px] [&_svg]:stroke-[1.75]";
 
 function useSidebarCollapsed() {
   const [collapsed, setCollapsed] = useState(() => {
@@ -42,10 +51,26 @@ function useSidebarCollapsed() {
   return [collapsed, toggle] as const;
 }
 
+/** A pill that glides to whichever row the pointer is over (hidden when none). */
+function useGlide() {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [glide, setGlide] = useState<{ top: number; height: number } | null>(null);
+  const onRowEnter = (event: MouseEvent<HTMLElement>) => {
+    const list = listRef.current;
+    if (!list) return;
+    const row = event.currentTarget.getBoundingClientRect();
+    const box = list.getBoundingClientRect();
+    // Rects are in zoomed pixels; convert back to layout pixels for the transform.
+    const scale = box.height / list.offsetHeight || 1;
+    setGlide({ top: (row.top - box.top) / scale, height: row.height / scale });
+  };
+  const onLeave = () => setGlide(null);
+  return { listRef, glide, onRowEnter, onLeave };
+}
+
 /**
- * The Muse-mode sidebar (docs/muse/DESIGN.md "Sidebar"): sits on the gray window
- * canvas next to the white content panel. Aiden and what he's doing on top, the four
- * places, what's waiting on the person, the active Goals, and settings at the bottom.
+ * The Muse-mode sidebar (docs/muse/DESIGN.md "Sidebar"): Aiden and what he's doing, the
+ * four places, what's waiting, the active Goals, and settings. Collapses to an icon rail.
  */
 export function MuseSidebar({
   botId,
@@ -74,6 +99,8 @@ export function MuseSidebar({
   const { count: askCount } = useAsks(botId);
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const nav = useGlide();
 
   useEffect(() => {
     const current = ++generation.current;
@@ -92,9 +119,56 @@ export function MuseSidebar({
     };
   }, [botId]);
 
-  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const pill = deriveStatusPill({ museName, goals, running, openAskCount: askCount });
   const activeGoals = goals.filter((goal) => goal.status === "active");
+
+  const rows: Array<{
+    key: string;
+    icon: ReactNode;
+    label: string;
+    meta?: number;
+    attention?: boolean;
+    current?: boolean;
+    onClick: () => void;
+  }> = [
+    {
+      key: "conversation",
+      icon: <MessageCircle />,
+      label: t`Conversation`,
+      current: active === "conversation",
+      onClick: () => onNavigate("conversation"),
+    },
+    {
+      key: "goals",
+      icon: <Target />,
+      label: t`Goals`,
+      meta: activeGoals.length || undefined,
+      current: active === "goals",
+      onClick: () => onNavigate("goals"),
+    },
+    {
+      key: "feed",
+      icon: <Newspaper />,
+      label: t`Feed`,
+      current: active === "feed",
+      onClick: () => onNavigate("feed"),
+    },
+    {
+      key: "library",
+      icon: <Library />,
+      label: t`Library`,
+      current: active === "library",
+      onClick: () => onNavigate("library"),
+    },
+    {
+      key: "waiting",
+      icon: <Bell />,
+      label: t`Waiting on you`,
+      meta: askCount || undefined,
+      attention: askCount > 0,
+      onClick: onOpenWaiting,
+    },
+  ];
 
   return (
     <nav
@@ -102,131 +176,88 @@ export function MuseSidebar({
       data-collapsed={collapsed || undefined}
       aria-label={t`Sections`}
       className={cn(
-        "app-drag flex shrink-0 flex-col gap-7 pt-5 pb-4 transition-[width,padding] duration-200 ease-out motion-reduce:transition-none",
-        collapsed ? "w-[76px] items-center px-3" : "w-[320px] px-4",
+        "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden px-3 pt-5 pb-4 transition-[width] duration-200 ease-out motion-reduce:transition-none",
+        collapsed ? "w-[84px]" : "w-[320px]",
       )}
     >
-      <div
+      <button
+        type="button"
+        onClick={onOpenWaiting}
+        aria-label={t`Waiting on you`}
+        title={collapsed ? museName : undefined}
         className={cn(
-          "app-no-drag flex gap-2",
-          collapsed ? "flex-col items-center" : "items-start",
+          "app-no-drag flex w-full items-center gap-3.5 rounded-2xl border px-[7px] py-2 text-start transition-[background-color,border-color,box-shadow] duration-200 focus-visible:outline-2 focus-visible:outline-ring",
+          collapsed
+            ? "border-transparent bg-transparent"
+            : "border-border bg-background shadow-sm hover:shadow-float",
         )}
       >
-        {collapsed ? (
-          <RailTip label={t`Waiting on you`}>
-            <TooltipTrigger
-              onClick={onOpenWaiting}
-              aria-label={t`Waiting on you`}
-              className="group rounded-full transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] hover:scale-110 focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none"
-            >
-              <BotAvatar
-                color={color}
-                identity={botId}
-                status={status}
-                face="muse"
-                waitingCount={askCount}
-                size={44}
-              />
-            </TooltipTrigger>
-          </RailTip>
-        ) : (
-          <button
-            type="button"
-            onClick={onOpenWaiting}
-            aria-label={t`Waiting on you`}
-            className="flex min-w-0 flex-1 items-center gap-3.5 rounded-2xl border border-border bg-background px-3.5 py-3 text-start shadow-sm transition-shadow hover:shadow-float focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            <BotAvatar
-              color={color}
-              identity={botId}
-              status={status}
-              face="muse"
-              waitingCount={askCount}
-              size={44}
+        <span className="shrink-0 transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] hover:scale-110 motion-reduce:transition-none">
+          <BotAvatar
+            color={color}
+            identity={botId}
+            status={status}
+            face="muse"
+            waitingCount={askCount}
+            size={44}
+          />
+        </span>
+        <span className={cn(LABEL, "block")}>
+          <span className="block truncate text-[17px] font-semibold text-foreground" dir="auto">
+            {museName}
+          </span>
+          <span className="mt-0.5 flex items-center gap-1.5 text-[14px] text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                pill.tone === "attention" && "bg-warning",
+                pill.tone === "live" && "animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success",
+                pill.tone === "neutral" && "bg-muted-foreground/50",
+              )}
             />
-            <span className="min-w-0">
-              <span className="block truncate text-[17px] font-semibold text-foreground" dir="auto">
-                {museName}
-              </span>
-              <span className="mt-0.5 flex items-center gap-1.5 text-[14px] text-muted-foreground">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    pill.tone === "attention" && "bg-warning",
-                    pill.tone === "live" &&
-                      "animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success",
-                    pill.tone === "neutral" && "bg-muted-foreground/50",
-                  )}
-                />
-                <span className="truncate">{sidebarStatus(pill.tone, askCount, t)}</span>
-              </span>
-            </span>
-          </button>
-        )}
-        <RailTip label={collapsed ? t`Expand sidebar` : t`Collapse sidebar`}>
-          <TooltipTrigger
-            onClick={toggleCollapsed}
-            aria-label={collapsed ? t`Expand sidebar` : t`Collapse sidebar`}
-            className="group grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            {collapsed ? (
-              <PanelLeftOpen size={19} strokeWidth={1.75} />
-            ) : (
-              <PanelLeftClose size={19} strokeWidth={1.75} />
-            )}
-          </TooltipTrigger>
-        </RailTip>
+            <span className="truncate">{sidebarStatus(pill.tone, askCount, t)}</span>
+          </span>
+        </span>
+      </button>
+
+      <div
+        ref={nav.listRef}
+        role="group"
+        aria-label={t`Places`}
+        onMouseLeave={nav.onLeave}
+        className="app-no-drag relative flex flex-col gap-0.5"
+      >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-sidebar-accent/80 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
+          style={{
+            height: nav.glide?.height ?? 44,
+            transform: `translateY(${nav.glide?.top ?? 0}px)`,
+            opacity: nav.glide ? 1 : 0,
+          }}
+        />
+        {rows.map((row) => (
+          <RailRow
+            key={row.key}
+            collapsed={collapsed}
+            icon={row.icon}
+            label={row.label}
+            meta={row.meta}
+            attention={row.attention}
+            current={row.current}
+            onClick={row.onClick}
+            onMouseEnter={nav.onRowEnter}
+          />
+        ))}
       </div>
 
-      <div className={cn("app-no-drag flex flex-col gap-0.5", collapsed && "items-center")}>
-        <NavRow
-          collapsed={collapsed}
-          icon={<MessageCircle />}
-          label={<Trans>Conversation</Trans>}
-          tip={t`Conversation`}
-          active={active === "conversation"}
-          onClick={() => onNavigate("conversation")}
-        />
-        <NavRow
-          collapsed={collapsed}
-          icon={<Target />}
-          label={<Trans>Goals</Trans>}
-          tip={t`Goals`}
-          meta={activeGoals.length ? String(activeGoals.length) : undefined}
-          active={active === "goals"}
-          onClick={() => onNavigate("goals")}
-        />
-        <NavRow
-          collapsed={collapsed}
-          icon={<Newspaper />}
-          label={<Trans>Feed</Trans>}
-          tip={t`Feed`}
-          active={active === "feed"}
-          onClick={() => onNavigate("feed")}
-        />
-        <NavRow
-          collapsed={collapsed}
-          icon={<Library />}
-          label={<Trans>Library</Trans>}
-          tip={t`Library`}
-          active={active === "library"}
-          onClick={() => onNavigate("library")}
-        />
-        <NavRow
-          collapsed={collapsed}
-          icon={<Bell />}
-          label={<Trans>Waiting on you</Trans>}
-          tip={t`Waiting on you`}
-          meta={askCount ? String(askCount) : undefined}
-          attention={askCount > 0}
-          onClick={onOpenWaiting}
-        />
-      </div>
-
-      {activeGoals.length && !collapsed ? (
-        <div className="app-no-drag flex min-h-0 flex-col gap-0.5">
-          <div className="px-3.5 pb-2 text-[13.5px] font-semibold text-muted-foreground">
+      {activeGoals.length ? (
+        <div
+          aria-hidden={collapsed || undefined}
+          className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
+        >
+          <div className="ps-[19px] pb-2 text-[13.5px] font-semibold whitespace-nowrap text-muted-foreground">
             <Trans>Goals</Trans>
           </div>
           {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
@@ -237,13 +268,14 @@ export function MuseSidebar({
               <button
                 key={goal.id}
                 type="button"
+                tabIndex={collapsed ? -1 : undefined}
                 onClick={() => onNavigate("goals")}
-                className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-start text-[15px] text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
+                className="flex items-center gap-3 rounded-xl ps-[26px] pe-3 py-2.5 text-start text-[15px] whitespace-nowrap text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
               >
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "size-1.5 shrink-0 rounded-full",
+                    "size-2 shrink-0 rounded-full",
                     waiting ? "bg-warning" : "bg-muted-foreground/40",
                   )}
                 />
@@ -259,33 +291,33 @@ export function MuseSidebar({
         </div>
       ) : null}
 
-      <div className={cn("app-no-drag mt-auto flex flex-col gap-0.5", collapsed && "items-center")}>
-        <NavRow
+      <div className="app-no-drag mt-auto flex flex-col gap-0.5">
+        <RailRow
+          collapsed={collapsed}
+          icon={collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          label={collapsed ? t`Expand sidebar` : t`Collapse sidebar`}
+          onClick={toggleCollapsed}
+        />
+        <RailRow
           collapsed={collapsed}
           icon={<Settings />}
-          label={<Trans>Settings</Trans>}
-          tip={t`Settings`}
+          label={t`Settings`}
           onClick={onOpenSettings}
         />
         {personName ? (
           <div
-            className={cn(
-              "flex items-center gap-3 py-2 text-[15.5px] text-sidebar-foreground",
-              collapsed ? "justify-center" : "px-3.5",
-            )}
             title={collapsed ? personName : undefined}
+            className={cn(ROW, "mt-1 ps-[17px] text-[15.5px] text-sidebar-foreground")}
           >
             <span
               aria-hidden="true"
-              className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-[13px] font-semibold text-background"
+              className="grid size-[26px] shrink-0 place-items-center rounded-full bg-foreground text-[12.5px] font-semibold text-background"
             >
               {personName.trim().charAt(0).toUpperCase()}
             </span>
-            {collapsed ? null : (
-              <span className="truncate" dir="auto">
-                {personName}
-              </span>
-            )}
+            <span className={LABEL} dir="auto">
+              {personName}
+            </span>
           </div>
         ) : null}
       </div>
@@ -305,95 +337,54 @@ function sidebarStatus(
   return t`Ready when you are`;
 }
 
-function RailTip({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <Tooltip>
-      {children}
-      <TooltipContent side="right" sideOffset={10} className="text-[13px]">
-        {label}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-// The icon pops with a little springy tilt on hover and presses in on click.
-const ICON_MOTION =
-  "transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover:-translate-y-0.5 group-hover:scale-[1.15] group-hover:-rotate-6 group-active:scale-95 motion-reduce:transition-none motion-reduce:transform-none";
-
-function NavRow({
+function RailRow({
   icon,
   label,
-  tip,
   meta,
-  active = false,
   attention = false,
-  collapsed = false,
+  current = false,
+  collapsed,
   onClick,
+  onMouseEnter,
 }: {
   icon: ReactNode;
-  label: ReactNode;
-  tip?: string;
-  meta?: string;
-  active?: boolean;
+  label: string;
+  meta?: number;
   attention?: boolean;
-  collapsed?: boolean;
+  current?: boolean;
+  collapsed: boolean;
   onClick: () => void;
+  onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
 }) {
-  if (collapsed) {
-    return (
-      <RailTip label={tip ?? ""}>
-        <TooltipTrigger
-          onClick={onClick}
-          aria-label={tip}
-          aria-current={active ? "page" : undefined}
-          className={cn(
-            "group relative grid size-11 place-items-center rounded-xl transition-colors [&_svg]:size-5 [&_svg]:stroke-[1.75]",
-            "focus-visible:outline-2 focus-visible:outline-ring",
-            active
-              ? "bg-sidebar-accent text-foreground"
-              : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground",
-          )}
-        >
-          <span className={ICON_MOTION}>{icon}</span>
-          {meta ? (
-            <span
-              className={cn(
-                "absolute -top-0.5 -end-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                attention ? "bg-warning text-background" : "bg-foreground text-background",
-              )}
-            >
-              {meta}
-            </span>
-          ) : null}
-        </TooltipTrigger>
-      </RailTip>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "group flex h-11 items-center gap-3.5 rounded-xl px-3.5 text-start text-[16px] transition-colors [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
-        "focus-visible:outline-2 focus-visible:outline-ring",
-        active
-          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
-      )}
-    >
+  const classes = cn(
+    ROW,
+    "group/row relative text-[16px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+    current
+      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+      : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
+  );
+  const content = (
+    <>
       <span
         className={cn(
           ICON_MOTION,
-          active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground",
+          current ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground",
         )}
       >
         {icon}
+        {meta && collapsed ? (
+          <span
+            className={cn(
+              "absolute -top-2 -end-2.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
+              attention ? "bg-warning text-background" : "bg-foreground text-background",
+            )}
+          >
+            {meta}
+          </span>
+        ) : null}
       </span>
-      <span className="min-w-0 flex-1 truncate transition-transform duration-200 group-hover:translate-x-0.5">
-        {label}
-      </span>
-      {meta ? (
+      <span className={LABEL}>{label}</span>
+      {meta && !collapsed ? (
         <span
           className={cn(
             "shrink-0 rounded-full px-2 py-0.5 text-[12.5px] font-medium tabular-nums",
@@ -403,6 +394,35 @@ function NavRow({
           {meta}
         </span>
       ) : null}
-    </button>
+    </>
+  );
+  if (!collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        onMouseEnter={onMouseEnter}
+        aria-current={current ? "page" : undefined}
+        className={classes}
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        onClick={onClick}
+        onMouseEnter={onMouseEnter}
+        aria-label={label}
+        aria-current={current ? "page" : undefined}
+        className={classes}
+      >
+        {content}
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={12} className="text-[13px]">
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
