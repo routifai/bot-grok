@@ -1,6 +1,8 @@
 # Self-host secrets checklist
 
-Required and optional credentials for published-images and Compose deploys.
+Required and optional credentials for published-images and Compose deploys. For this fork's own
+laptop install, `./scripts/setup.sh` ([docs/SETUP.md](./SETUP.md)) generates all of these for you;
+this page documents what it fills in and how to do it by hand.
 
 **Never commit `.env`, never paste secret values into issues/PRs, and never
 overwrite an existing `.env` without an explicit backup and operator consent.**
