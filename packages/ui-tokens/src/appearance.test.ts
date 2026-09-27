@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  type ColorTokens,
   cssVariableName,
   darkTokens,
   lightTokens,
@@ -45,7 +44,7 @@ describe("appearance preference", () => {
   it("returns distinct light and dark token sets", () => {
     expect(tokensForAppearance("dark")).toBe(darkTokens);
     expect(tokensForAppearance("light")).toBe(lightTokens);
-    for (const key of Object.keys(darkTokens) as (keyof ColorTokens)[]) {
+    for (const key of Object.keys(darkTokens) as (keyof typeof darkTokens)[]) {
       if (key === "destructiveForeground") continue;
       expect(darkTokens[key], key).not.toBe(lightTokens[key]);
     }
