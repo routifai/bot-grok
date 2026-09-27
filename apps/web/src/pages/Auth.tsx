@@ -1,10 +1,12 @@
 import { Trans, useLingui } from "@lingui/react/macro";
+import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
 import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@rakazo/core";
-import { Button, Input, Label } from "@rakazo/ui-web";
+import { BotAvatar, Button, Input, Label } from "@rakazo/ui-web";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../lib/auth";
+import { useProductMode } from "../lib/product-mode";
 import { clearSpaceSelection } from "../lib/rpc";
 
 type AuthMode = "in" | "up" | "forgot";
@@ -30,12 +32,21 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const sent = resetSent || searchParams.get("verify") === "email";
   const [reset, setReset] = useState<PasswordResetCapabilities | null>(null);
   const passwordFieldId = mode === "in" ? "current-password" : "new-password";
+  const muse = useProductMode() === "muse";
   const title = sent ? (
     <Trans>Check your email</Trans>
   ) : mode === "in" ? (
-    <Trans>Sign in to Rakazo</Trans>
+    muse ? (
+      <Trans>Welcome back.</Trans>
+    ) : (
+      <Trans>Sign in to Rakazo</Trans>
+    )
   ) : mode === "up" ? (
-    <Trans>Create your Rakazo</Trans>
+    muse ? (
+      <Trans>Let's meet your Muse.</Trans>
+    ) : (
+      <Trans>Create your Rakazo</Trans>
+    )
   ) : (
     <Trans>Reset your password</Trans>
   );
@@ -121,7 +132,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   }
 
   return (
-    <AuthFrame onSubmit={submit} title={title}>
+    <AuthFrame onSubmit={submit} title={title} muse={muse}>
       {sent ? (
         <div className="w-full text-center">
           <Link to="/sign-in" className="font-medium text-foreground">
@@ -330,20 +341,34 @@ export function PasswordResetPage() {
 function AuthFrame({
   title,
   onSubmit,
+  muse = false,
   children,
 }: {
   title: React.ReactNode;
   onSubmit: (event: React.FormEvent) => void;
+  /** Muse mode: the Muse face and a serif title (docs/muse/DESIGN.md). */
+  muse?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-full items-center justify-center bg-background px-6 py-16 text-foreground">
-      <form onSubmit={onSubmit} className="flex w-[460px] flex-col items-center">
-        <div className="flex h-[74px] w-[74px] items-center justify-center gap-[11px] rounded-full bg-muted">
-          <span className="h-5 w-[9px] rounded-full bg-primary" />
-          <span className="h-5 w-[9px] rounded-full bg-primary" />
-        </div>
-        <h1 aria-live="polite" className="mb-9 mt-7 text-4xl font-medium tracking-tight">
+      <form onSubmit={onSubmit} className="flex w-[460px] max-w-full flex-col items-center">
+        {muse ? (
+          <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={72} />
+        ) : (
+          <div className="flex h-[74px] w-[74px] items-center justify-center gap-[11px] rounded-full bg-muted">
+            <span className="h-5 w-[9px] rounded-full bg-primary" />
+            <span className="h-5 w-[9px] rounded-full bg-primary" />
+          </div>
+        )}
+        <h1
+          aria-live="polite"
+          className={
+            muse
+              ? "mb-9 mt-6 text-center font-display text-[44px] leading-[1.05] tracking-[-0.01em]"
+              : "mb-9 mt-7 text-4xl font-medium tracking-tight"
+          }
+        >
           {title}
         </h1>
         {children}

@@ -1,4 +1,5 @@
 import type { ProductMode } from "@rakazo/contracts";
+import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "rakazo.productMode";
 
@@ -29,4 +30,32 @@ export function applyCachedProductMode(): void {
     return;
   }
   if (cached === "muse" || cached === "rakazo") applyProductMode(cached);
+}
+
+/**
+ * The product mode for pages shown before sign-in, which have no `me` yet. Starts from
+ * the cached mode (or the page attribute) and confirms it with the public `/api/product`.
+ */
+export function useProductMode(): ProductMode {
+  const [mode, setMode] = useState<ProductMode>(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.product === "muse"
+      ? "muse"
+      : "rakazo",
+  );
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/product")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { productMode?: unknown } | null) => {
+        const next = body?.productMode === "muse" ? "muse" : "rakazo";
+        if (!active) return;
+        applyProductMode(next);
+        setMode(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+  return mode;
 }

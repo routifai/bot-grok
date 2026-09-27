@@ -1,9 +1,13 @@
 import { Trans } from "@lingui/react/macro";
 import { useNavigate } from "react-router-dom";
+import { useProductMode } from "../lib/product-mode";
+import { MuseWelcome } from "./muse/intro/MuseWelcome";
 import { WindowChrome } from "./WindowChrome";
 
 export function WelcomePage() {
   const navigate = useNavigate();
+  const productMode = useProductMode();
+  if (productMode === "muse") return <MuseWelcome />;
   return (
     <div className="flex min-h-full flex-col bg-background" data-rakazo-surface="welcome">
       <div className="app-drag flex gap-2 px-5 py-[18px]">
