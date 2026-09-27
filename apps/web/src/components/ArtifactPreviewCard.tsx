@@ -68,8 +68,8 @@ export function ArtifactPreviewCard({
             <ArtifactPreviewThumbnail artifact={artifact} onReady={() => setLoaded(true)} />
           </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-card via-card/75 to-transparent px-4 pt-9 pb-3">
-            <p className="truncate text-[14px] font-semibold text-foreground">{title}</p>
-            <p className="mt-0.5 truncate font-mono text-[11px] tracking-[0.03em] text-muted-foreground">
+            <p className="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{title}</p>
+            <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
               {meta}
             </p>
           </div>
