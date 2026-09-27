@@ -185,6 +185,7 @@ import {
   updateMemoryProviderDefaultScope,
 } from "./memory-provider-config.js";
 import { musePreview } from "./muse-preview.js";
+import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
 import {
   chooseFocus,
   dismissFocus,
@@ -4960,13 +4961,12 @@ export function createRouter(deps: RouterDeps) {
       ),
     },
     muse: {
-      settings: museOnly.muse.settings.handler(({ input }) =>
-        musePreview.settings.get(input.botId),
+      settings: museOnly.muse.settings.handler(({ context, input }) =>
+        getMuseSettings(deps, context.actor, input.botId),
       ),
-      updateSettings: museOnly.muse.updateSettings.handler(({ input }) => {
-        const { botId, ...patch } = input;
-        return musePreview.settings.update(botId, patch);
-      }),
+      updateSettings: museOnly.muse.updateSettings.handler(({ context, input }) =>
+        updateMuseSettings(deps, context.actor, input),
+      ),
     },
   });
 }

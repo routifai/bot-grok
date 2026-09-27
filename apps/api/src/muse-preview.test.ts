@@ -4,7 +4,6 @@ import {
   FollowedTopicSchema,
   GoalSchema,
   IdeaSchema,
-  MuseSettingsSchema,
   ThreadMessagePageSchema,
 } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
@@ -24,7 +23,6 @@ describe("musePreview", () => {
     FeedSchema.parse(musePreview.feed.list(botId));
     IdeaSchema.array().parse(musePreview.ideas.list(botId));
     FollowedTopicSchema.array().parse(musePreview.topics.list(botId));
-    MuseSettingsSchema.parse(musePreview.settings.get(botId));
   });
 
   it("closes a Proposal everywhere when its Ask is answered", () => {
@@ -39,10 +37,5 @@ describe("musePreview", () => {
     expect(goal.tasks.map((item) => item.title)).toContain("Join a Saturday conversation club");
     expect(musePreview.asks.count(botId).count).toBe(before - 1);
     expect(musePreview.feed.list(botId).asks.some((ask) => ask.id === proposalAsk!.id)).toBe(false);
-  });
-
-  it("updates settings partially", () => {
-    const next = musePreview.settings.update(botId, { proactivity: "high" });
-    expect(next).toEqual({ proactivity: "high", quietHours: "22:00-08:00" });
   });
 });
