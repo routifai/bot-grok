@@ -1,3 +1,5 @@
+import type { MuseState } from "@rakazo/contracts";
+import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
 import type { GrokColorDef } from "@rakazo/core";
 import {
   ACTIVE_RUN_STATUSES,
@@ -85,6 +87,25 @@ export interface BotAvatarProps {
   identity?: string;
   className?: string;
   variant?: AvatarStyle;
+  /** Renders the Muse face (docs/muse/DESIGN.md) instead of the shipped mascot shapes. */
+  face?: "muse";
+  /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
+  waitingCount?: number;
+}
+
+/**
+ * `idle` / `working` / `waiting` are derived, never passed as free strings:
+ * an open Ask always wins over an active run.
+ */
+export function museAvatarState(
+  status: string | undefined,
+  waitingCount: number | undefined,
+): MuseState {
+  if ((waitingCount ?? 0) > 0) return "waiting";
+  // A run that is queued or just claimed is the Muse thinking; a running one is working.
+  if (status === "queued" || status === "leased") return "thinking";
+  if (ACTIVE_RUN_STATUSES.some((s) => s === status)) return "working";
+  return "idle";
 }
 
 export const BotAvatar = memo(function BotAvatar({
@@ -94,6 +115,8 @@ export const BotAvatar = memo(function BotAvatar({
   identity = "",
   className,
   variant,
+  face,
+  waitingCount,
 }: BotAvatarProps) {
   const id = useId().replace(/[^a-zA-Z0-9-_]/g, "");
   const isWorking = ACTIVE_RUN_STATUSES.some((s) => s === status);
@@ -155,6 +178,18 @@ export const BotAvatar = memo(function BotAvatar({
         ) : null}
         <img src={parsed.imageUrl} alt="" className="h-full w-full object-cover" />
       </div>
+    );
+  }
+
+  if (face === "muse") {
+    return (
+      <MuseAvatar
+        color={color ? parsed.color : DEFAULT_MUSE_COLOR}
+        size={size}
+        state={museAvatarState(status, waitingCount)}
+        waitingCount={waitingCount ?? 0}
+        className={className}
+      />
     );
   }
 
@@ -323,6 +358,222 @@ function OrganicAvatar({
         ))}
       </g>
     </svg>
+  );
+}
+
+/**
+ * Fixed accents for the Muse face (docs/muse/DESIGN.md). The body is the only part that
+ * takes the bot's identity color; everything else — including the gradient/rim-light
+ * overlays used for depth — is built from these constants or from the color prop, never
+ * a new hardcoded hex.
+ */
+const MUSE_FACE_INK = "#132320";
+const MUSE_FACE_CHEEK = "#FF8E86";
+const MUSE_FACE_SPARK = "#F4B63F";
+const MUSE_FACE_SHINE = "#FFFFFF";
+const MUSE_BODY_PATH =
+  "M60 24C90 24 104 44 104 68C104 94 86 108 60 108C34 108 16 94 16 68C16 44 30 24 60 24Z";
+const MUSE_SPARK_PATH = "M60 3L63 13L73 16L63 19L60 29L57 19L47 16L57 13Z";
+
+/** Below this size a numeric waiting badge stops being legible; show a dot instead. */
+const MUSE_BADGE_TEXT_MIN_SIZE = 32;
+
+/** Small mouth per state; `waiting` gets an open-mouth ellipse instead (drawn separately). */
+const MUSE_MOUTH_PATHS: Record<Exclude<MuseState, "waiting">, string> = {
+  idle: "M54 82Q60 87 66 82",
+  thinking: "M55 83Q60 80 65 83",
+  working: "M56 82Q60 85 64 82",
+};
+
+function MuseAvatar({
+  color,
+  size,
+  state,
+  waitingCount,
+  className,
+}: {
+  color: string;
+  size: number;
+  state: MuseState;
+  waitingCount: number;
+  className?: string;
+}) {
+  const showBadge = waitingCount > 0;
+  const showBadgeText = size >= MUSE_BADGE_TEXT_MIN_SIZE;
+  const badgeLabel = waitingCount > 9 ? "9+" : String(waitingCount);
+  const rawGradId = useId();
+  const gradId = rawGradId.replace(/[^a-zA-Z0-9-_]/g, "");
+  const isThinking = state === "thinking";
+  const isWorking = state === "working";
+  const isWaiting = state === "waiting";
+
+  return (
+    <div
+      className={cn(
+        "rakazo-muse-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
+        className,
+      )}
+      style={{ width: size, height: size }}
+    >
+      <svg
+        viewBox="0 0 120 120"
+        width={size}
+        height={size}
+        aria-hidden="true"
+        data-muse-state={state}
+        className="rakazo-muse-avatar overflow-visible"
+      >
+        <defs>
+          {/* Depth: lighter top-left, slightly deeper bottom-right, built only from the
+              illustration's ink/shine constants layered over the flat identity-color fill. */}
+          <linearGradient id={`${gradId}-depth`} x1="12%" y1="8%" x2="88%" y2="96%">
+            <stop offset="0%" stopColor={MUSE_FACE_SHINE} stopOpacity={0.32} />
+            <stop offset="45%" stopColor={MUSE_FACE_SHINE} stopOpacity={0} />
+            <stop offset="100%" stopColor={MUSE_FACE_INK} stopOpacity={0.16} />
+          </linearGradient>
+          <radialGradient id={`${gradId}-shadow`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={MUSE_FACE_INK} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={MUSE_FACE_INK} stopOpacity={0} />
+          </radialGradient>
+        </defs>
+        <ellipse cx={60} cy={112} rx={32} ry={6} fill={`url(#${gradId}-shadow)`} />
+        <g className="rakazo-muse-all">
+          <path className="rakazo-muse-body" fill={color} d={MUSE_BODY_PATH} />
+          <path
+            className="rakazo-muse-depth"
+            fill={`url(#${gradId}-depth)`}
+            d={MUSE_BODY_PATH}
+            pointerEvents="none"
+          />
+          <path
+            className="rakazo-muse-rim"
+            d="M28 38Q60 14 96 40"
+            fill="none"
+            stroke={MUSE_FACE_SHINE}
+            strokeOpacity={0.4}
+            strokeWidth={3}
+            strokeLinecap="round"
+          />
+          <ellipse
+            fill={MUSE_FACE_SHINE}
+            opacity={0.28}
+            cx={42}
+            cy={42}
+            rx={14}
+            ry={8}
+            transform="rotate(-24 42 42)"
+          />
+          <g className="rakazo-muse-eyes">
+            <g className="rakazo-muse-pupils">
+              <ellipse fill={MUSE_FACE_INK} cx={46} cy={66} rx={5.5} ry={7.5} />
+              <ellipse fill={MUSE_FACE_INK} cx={74} cy={66} rx={5.5} ry={7.5} />
+              <circle fill={MUSE_FACE_SHINE} cx={48} cy={63} r={1.8} />
+              <circle fill={MUSE_FACE_SHINE} cx={76} cy={63} r={1.8} />
+              {isWorking ? (
+                <g className="rakazo-muse-squint" fill={color}>
+                  <ellipse cx={46} cy={61.5} rx={6.2} ry={3.4} />
+                  <ellipse cx={74} cy={61.5} rx={6.2} ry={3.4} />
+                </g>
+              ) : null}
+            </g>
+            {isThinking ? (
+              <path
+                className="rakazo-muse-eyebrow rakazo-muse-eyebrow-right"
+                d="M69 55Q76 49 83 54"
+                stroke={MUSE_FACE_INK}
+                strokeWidth={3}
+                strokeLinecap="round"
+                fill="none"
+              />
+            ) : null}
+            {isWaiting ? (
+              <>
+                <path
+                  className="rakazo-muse-eyebrow rakazo-muse-eyebrow-left"
+                  d="M38 53Q46 46 54 52"
+                  stroke={MUSE_FACE_INK}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <path
+                  className="rakazo-muse-eyebrow rakazo-muse-eyebrow-right"
+                  d="M66 52Q74 46 82 53"
+                  stroke={MUSE_FACE_INK}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </>
+            ) : null}
+          </g>
+          <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={36} cy={80} rx={7} ry={4} />
+          <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={84} cy={80} rx={7} ry={4} />
+          <g className={cn("rakazo-muse-expression", `rakazo-muse-expression-${state}`)}>
+            {state === "waiting" ? (
+              <ellipse
+                className="rakazo-muse-mouth rakazo-muse-mouth-waiting"
+                fill={MUSE_FACE_INK}
+                cx={60}
+                cy={85}
+                rx={8}
+                ry={6}
+              />
+            ) : (
+              <path
+                className={`rakazo-muse-mouth rakazo-muse-mouth-${state}`}
+                d={MUSE_MOUTH_PATHS[state]}
+                stroke={MUSE_FACE_INK}
+                strokeWidth={3}
+                strokeLinecap="round"
+                fill="none"
+              />
+            )}
+            {isWaiting ? (
+              <g className="rakazo-muse-hand">
+                <path
+                  d="M100 66Q112 60 110 50"
+                  stroke={MUSE_FACE_INK}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <circle
+                  className="rakazo-muse-hand-palm"
+                  fill={color}
+                  stroke={MUSE_FACE_INK}
+                  strokeWidth={2}
+                  cx={110}
+                  cy={48}
+                  r={7}
+                />
+              </g>
+            ) : null}
+          </g>
+          <path className="rakazo-muse-spark" fill={MUSE_FACE_SPARK} d={MUSE_SPARK_PATH} />
+        </g>
+        <g className="rakazo-muse-thought" fill={color}>
+          <circle className="rakazo-muse-dot" cx={92} cy={22} r={5} />
+          <circle className="rakazo-muse-dot rakazo-muse-dot-2" cx={104} cy={12} r={5} />
+          <circle className="rakazo-muse-dot rakazo-muse-dot-3" cx={116} cy={2} r={5} />
+        </g>
+      </svg>
+      {showBadge ? (
+        showBadgeText ? (
+          <span
+            data-testid="muse-waiting-badge"
+            className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-none font-semibold text-destructive-foreground"
+          >
+            {badgeLabel}
+          </span>
+        ) : (
+          <span
+            data-testid="muse-waiting-dot"
+            className="absolute top-0 right-0 size-2 rounded-full bg-destructive"
+          />
+        )
+      ) : null}
+    </div>
   );
 }
 

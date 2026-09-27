@@ -16,6 +16,11 @@ describe("loadEnv", () => {
     expect(env.nodeEnv).toBe("test");
   });
 
+  it("defaults to upstream Rakazo and opts into the Muse edition", () => {
+    expect(loadEnv(base).productMode).toBe("rakazo");
+    expect(loadEnv({ ...base, RAKAZO_PRODUCT_MODE: "muse" }).productMode).toBe("muse");
+  });
+
   it("defaults Pi JSONL session recording to off", () => {
     expect(loadEnv(base).piSessionRecording).toBe(false);
     expect(loadEnv({ ...base, PI_SESSION_RECORDING: "false" }).piSessionRecording).toBe(false);

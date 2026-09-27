@@ -77,6 +77,20 @@ function matchesCalendarDateFilter(iso: string, filter: DateFilter, now: Date): 
 }
 
 export function ArtifactsPage() {
+  return (
+    <div className="flex h-full min-w-0 bg-background text-foreground/90">
+      <AppRail active="artifacts" />
+      <ArtifactsView />
+    </div>
+  );
+}
+
+/**
+ * The Artifacts browsing/preview UI, without the rail. Reused as-is for the
+ * Muse Library screen (F7): `fixedBotId` locks the listing to one bot and
+ * hides the per-bot filter chips, since a Muse account only ever has one.
+ */
+export function ArtifactsView({ fixedBotId }: { fixedBotId?: string } = {}) {
   const { artifactId } = useParams<{ artifactId?: string }>();
   const navigate = useNavigate();
   const { t } = useLingui();
@@ -87,7 +101,8 @@ export function ArtifactsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
   const listingGenerationRef = useRef(0);
-  const [activeBotId, setActiveBotId] = useState<string | null>(null);
+  const [selectedBotId, setActiveBotId] = useState<string | null>(null);
+  const activeBotId = fixedBotId ?? selectedBotId;
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -209,8 +224,7 @@ export function ArtifactsPage() {
   }
 
   return (
-    <div className="flex h-full min-w-0 bg-background text-foreground/90">
-      <AppRail active="artifacts" />
+    <>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="border-b border-border px-6 py-4">
           <div className="flex items-center justify-between gap-3">
@@ -279,17 +293,21 @@ export function ArtifactsPage() {
                 <NativeSelectOption value="week">{t`This week`}</NativeSelectOption>
                 <NativeSelectOption value="month">{t`This month`}</NativeSelectOption>
               </NativeSelect>
-              <FilterChip active={activeBotId === null} onClick={() => setActiveBotId(null)}>
-                <Trans>All bots</Trans>
-              </FilterChip>
-              {bots.map((bot) => (
-                <BotFilterChip
-                  key={bot.id}
-                  bot={bot}
-                  active={activeBotId === bot.id}
-                  onClick={() => setActiveBotId(bot.id)}
-                />
-              ))}
+              {!fixedBotId ? (
+                <>
+                  <FilterChip active={activeBotId === null} onClick={() => setActiveBotId(null)}>
+                    <Trans>All bots</Trans>
+                  </FilterChip>
+                  {bots.map((bot) => (
+                    <BotFilterChip
+                      key={bot.id}
+                      bot={bot}
+                      active={activeBotId === bot.id}
+                      onClick={() => setActiveBotId(bot.id)}
+                    />
+                  ))}
+                </>
+              ) : null}
             </div>
           ) : null}
         </header>
@@ -370,7 +388,7 @@ export function ArtifactsPage() {
           </AlertDialogContent>
         </AlertDialog>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -935,7 +953,8 @@ function PreviewPane({
   );
 }
 
-function ArtifactPreview({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {
+/** Exported so the Muse Library screen can reuse the same per-mime-type preview. */
+export function ArtifactPreview({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {
   if (artifact.mimeType === "text/html") {
     const html = new TextDecoder("utf-8").decode(bytes);
     return <SandboxedHtmlViewer html={html} title={artifact.name} />;

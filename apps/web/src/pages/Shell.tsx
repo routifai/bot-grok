@@ -179,6 +179,7 @@ import {
   revokePendingAttachmentPreviews,
 } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
+import { applyProductMode } from "../lib/product-mode";
 import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
@@ -211,6 +212,14 @@ import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
+import { ConversationHeader } from "./muse/chrome/ConversationHeader";
+import { EmptyConversation } from "./muse/chrome/EmptyConversation";
+import { MuseSidebar } from "./muse/chrome/MuseSidebar";
+import { FeedScreen } from "./muse/FeedScreen";
+import { GoalsScreen } from "./muse/GoalsScreen";
+import { LibraryScreen } from "./muse/LibraryScreen";
+import { useMuseNav } from "./muse/useMuseNav";
+import { WaitingSheet } from "./muse/WaitingSheet";
 import {
   draftFromRoutine,
   emptyRoutineDraft,
@@ -690,6 +699,12 @@ export function ShellPage() {
 
   const inGroup = Boolean(groupId);
   const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
+  // One Muse per person (docs/adr/0001-one-muse-per-person.md): with no bot list to
+  // switch between, `active` already resolves to the person's one live bot.
+  const museMode = bootstrapMe?.productMode === "muse";
+  useEffect(() => applyProductMode(bootstrapMe?.productMode), [bootstrapMe?.productMode]);
+  const { view: museView, setView: setMuseView } = useMuseNav();
+  const [waitingOpen, setWaitingOpen] = useState(false);
   const computerBot =
     (computerBotId ? bots.find((bot) => bot.id === computerBotId) : undefined) ?? active;
   computerOpenRef.current = computerOpen;
@@ -2223,6 +2238,15 @@ export function ShellPage() {
       setSending(false);
     }
   }, [sending, t]);
+  // F5/F6 (Feed, Ideas): tapping an Idea sends it in the Conversation, same
+  // path as the composer, and switches the view there.
+  const handleSendIdea = useCallback(
+    (text: string) => {
+      setMuseView("conversation");
+      void sendMessage(text);
+    },
+    [sendMessage, setMuseView],
+  );
   const stopTeaching = useCallback(async () => {
     const id = activeBotId.current;
     if (!id || teachBusy) return;
@@ -2628,7 +2652,11 @@ export function ShellPage() {
     <div
       data-testid="shell-root"
       data-ready={shellReady}
-      className="relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
+      className={
+        museMode
+          ? "relative flex h-full min-w-0 overflow-hidden bg-sidebar text-foreground/90"
+          : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
+      }
       onTouchStartCapture={(event) => {
         if (
           mobileSidebarOpen ||
@@ -2679,7 +2707,7 @@ export function ShellPage() {
       {bootstrapMe !== undefined ? (
         <HostComputerPrompt initialMe={bootstrapMe ?? undefined} />
       ) : null}
-      {mobileSidebarOpen ? (
+      {!museMode && mobileSidebarOpen ? (
         <button
           type="button"
           aria-label={t`Close navigation`}
@@ -2687,845 +2715,938 @@ export function ShellPage() {
           className="absolute inset-y-0 end-0 start-[min(calc(100%-48px),316px)] z-30 bg-overlay md:hidden"
         />
       ) : null}
-      {!mobileSidebarOpen ? (
+      {!museMode && !mobileSidebarOpen ? (
         <div
           data-testid="mobile-sidebar-swipe-edge"
           aria-hidden="true"
           className="absolute bottom-20 start-0 top-16 z-20 w-8 touch-none md:hidden"
         />
       ) : null}
-      <AppRail active="bots" />
-      <aside
-        data-testid="bots-sidebar"
-        data-collapsed={botsSidebarCollapsed ? "true" : "false"}
-        inert={botsSidebarCollapsed && !mobileSidebarOpen ? true : undefined}
-        className={`absolute inset-y-0 start-0 z-40 flex w-[calc(100%-48px)] max-w-[316px] shrink-0 flex-col border-e border-sidebar-border bg-sidebar transition-[transform,width,opacity] md:static md:z-auto md:translate-x-0 ${
-          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
-        } ${
-          botsSidebarCollapsed
-            ? "md:w-0 md:max-w-0 md:overflow-hidden md:border-e-0 md:opacity-0 md:pointer-events-none"
-            : "md:w-[316px]"
-        }`}
-      >
-        <div className="app-drag flex items-center justify-between px-[18px] pb-3 pt-4">
-          <WindowChrome />
-          <div className="relative flex items-center gap-2.5">
-            <button
-              type="button"
-              aria-label={t`Activity`}
-              aria-pressed={activityMode}
-              title={t`Activity`}
-              data-activity-mode={activityMode ? "on" : "off"}
-              onClick={toggleActivityMode}
-              className={`app-no-drag flex h-7 w-7 items-center justify-center rounded-full ${
-                activityMode
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground/70 hover:text-foreground/75"
-              }`}
-            >
-              <Bell
-                size={15}
-                strokeWidth={1.8}
-                fill={activityMode ? "currentColor" : "none"}
-                aria-hidden="true"
-              />
-            </button>
-            <button
-              type="button"
-              className="app-no-drag hidden h-7 w-7 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground/75 md:inline-flex"
-              aria-label={t`Minimize bots`}
-              title={t`Minimize bots`}
-              data-testid="minimize-bots-sidebar"
-              onClick={() => setBotsSidebarCollapsedPref(true)}
-            >
-              <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-            <Popover open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
-              <PopoverTrigger
-                className="app-no-drag text-[21px] text-muted-foreground/70 hover:text-foreground/75"
-                title={t`Create`}
-                data-testid="create-menu-trigger"
+      {museMode && active ? (
+        <MuseSidebar
+          botId={active.id}
+          museName={active.name}
+          color={active.color}
+          status={active.status}
+          running={transcriptRunning}
+          personName={bootstrapMe?.name}
+          active={museView}
+          onNavigate={setMuseView}
+          onOpenWaiting={() => setWaitingOpen(true)}
+          onOpenSettings={() => openSettings("general")}
+        />
+      ) : (
+        <AppRail active="bots" />
+      )}
+      {museMode ? null : (
+        <aside
+          data-testid="bots-sidebar"
+          data-collapsed={botsSidebarCollapsed ? "true" : "false"}
+          inert={botsSidebarCollapsed && !mobileSidebarOpen ? true : undefined}
+          className={`absolute inset-y-0 start-0 z-40 flex w-[calc(100%-48px)] max-w-[316px] shrink-0 flex-col border-e border-sidebar-border bg-sidebar transition-[transform,width,opacity] md:static md:z-auto md:translate-x-0 ${
+            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
+          } ${
+            botsSidebarCollapsed
+              ? "md:w-0 md:max-w-0 md:overflow-hidden md:border-e-0 md:opacity-0 md:pointer-events-none"
+              : "md:w-[316px]"
+          }`}
+        >
+          <div className="app-drag flex items-center justify-between px-[18px] pb-3 pt-4">
+            <WindowChrome />
+            <div className="relative flex items-center gap-2.5">
+              <button
+                type="button"
+                aria-label={t`Activity`}
+                aria-pressed={activityMode}
+                title={t`Activity`}
+                data-activity-mode={activityMode ? "on" : "off"}
+                onClick={toggleActivityMode}
+                className={`app-no-drag flex h-7 w-7 items-center justify-center rounded-full ${
+                  activityMode
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground/70 hover:text-foreground/75"
+                }`}
               >
-                +
-              </PopoverTrigger>
-              {/* Unmount with the state change so the panel it opens never coexists with the menu. */}
-              {createMenuOpen ? (
-                <PopoverContent
-                  align="end"
-                  className="app-no-drag w-auto gap-0 overflow-hidden p-0 data-closed:animate-none"
+                <Bell
+                  size={15}
+                  strokeWidth={1.8}
+                  fill={activityMode ? "currentColor" : "none"}
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                className="app-no-drag hidden h-7 w-7 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground/75 md:inline-flex"
+                aria-label={t`Minimize bots`}
+                title={t`Minimize bots`}
+                data-testid="minimize-bots-sidebar"
+                onClick={() => setBotsSidebarCollapsedPref(true)}
+              >
+                <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+              <Popover open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
+                <PopoverTrigger
+                  className="app-no-drag text-[21px] text-muted-foreground/70 hover:text-foreground/75"
+                  title={t`Create`}
+                  data-testid="create-menu-trigger"
                 >
-                  <BotCreatePicker
-                    bots={bots}
-                    onCreateBot={() => {
-                      setCreateMenuOpen(false);
+                  +
+                </PopoverTrigger>
+                {/* Unmount with the state change so the panel it opens never coexists with the menu. */}
+                {createMenuOpen ? (
+                  <PopoverContent
+                    align="end"
+                    className="app-no-drag w-auto gap-0 overflow-hidden p-0 data-closed:animate-none"
+                  >
+                    <BotCreatePicker
+                      bots={bots}
+                      onCreateBot={() => {
+                        setCreateMenuOpen(false);
+                        setMobileSidebarOpen(false);
+                        setPanel("create");
+                      }}
+                      onOpenBot={(id) => {
+                        setCreateMenuOpen(false);
+                        setMobileSidebarOpen(false);
+                        navigate(`/app/${id}`);
+                      }}
+                      onCreateGroup={() => {
+                        setCreateMenuOpen(false);
+                        setMobileSidebarOpen(false);
+                        setPanel("create-group");
+                      }}
+                      onCreateSpace={() => {
+                        setCreateMenuOpen(false);
+                        setMobileSidebarOpen(false);
+                        setNewSpaceOpen(true);
+                      }}
+                      onShowGroupInfo={() => {
+                        setCreateMenuOpen(false);
+                        setMobileSidebarOpen(false);
+                        setPickerInfoTopic("group");
+                      }}
+                      onShowSpaceInfo={() => {
+                        setCreateMenuOpen(false);
+                        setMobileSidebarOpen(false);
+                        setPickerInfoTopic("space");
+                      }}
+                    />
+                  </PopoverContent>
+                ) : null}
+              </Popover>
+            </div>
+          </div>
+          <InputGroup
+            data-testid="sidebar-search"
+            className="mx-2.5 mb-3 w-auto rounded-xl bg-card dark:bg-input border border-border text-muted-foreground focus-within:border-ring"
+          >
+            <InputGroupAddon>
+              <Search size={16} strokeWidth={1.8} aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t`Search`}
+              autoComplete="off"
+              name="sidebar-search"
+            />
+          </InputGroup>
+          <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
+            {showSpaceSearch ? (
+              <SpaceSearchResults
+                hits={searchHits}
+                loading={searchLoading}
+                onSelect={(hit) => void jumpToSearchHit(hit)}
+              />
+            ) : (
+              <>
+                {activityMode ? (
+                  <ActivityList
+                    onOpenRun={(run) => {
                       setMobileSidebarOpen(false);
-                      setPanel("create");
-                    }}
-                    onOpenBot={(id) => {
-                      setCreateMenuOpen(false);
-                      setMobileSidebarOpen(false);
-                      navigate(`/app/${id}`);
-                    }}
-                    onCreateGroup={() => {
-                      setCreateMenuOpen(false);
-                      setMobileSidebarOpen(false);
-                      setPanel("create-group");
-                    }}
-                    onCreateSpace={() => {
-                      setCreateMenuOpen(false);
-                      setMobileSidebarOpen(false);
-                      setNewSpaceOpen(true);
-                    }}
-                    onShowGroupInfo={() => {
-                      setCreateMenuOpen(false);
-                      setMobileSidebarOpen(false);
-                      setPickerInfoTopic("group");
-                    }}
-                    onShowSpaceInfo={() => {
-                      setCreateMenuOpen(false);
-                      setMobileSidebarOpen(false);
-                      setPickerInfoTopic("space");
+                      if (run.groupId) navigate(`/app/g/${run.groupId}`);
+                      else navigate(`/app/${run.botId}`);
                     }}
                   />
-                </PopoverContent>
-              ) : null}
-            </Popover>
-          </div>
-        </div>
-        <InputGroup
-          data-testid="sidebar-search"
-          className="mx-2.5 mb-3 w-auto rounded-xl bg-card dark:bg-input border border-border text-muted-foreground focus-within:border-ring"
-        >
-          <InputGroupAddon>
-            <Search size={16} strokeWidth={1.8} aria-hidden="true" />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t`Search`}
-            autoComplete="off"
-            name="sidebar-search"
-          />
-        </InputGroup>
-        <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
-          {showSpaceSearch ? (
-            <SpaceSearchResults
-              hits={searchHits}
-              loading={searchLoading}
-              onSelect={(hit) => void jumpToSearchHit(hit)}
-            />
-          ) : (
-            <>
-              {activityMode ? (
-                <ActivityList
-                  onOpenRun={(run) => {
-                    setMobileSidebarOpen(false);
-                    if (run.groupId) navigate(`/app/g/${run.groupId}`);
-                    else navigate(`/app/${run.botId}`);
-                  }}
-                />
-              ) : null}
-              {sidebarGroups.map((group) => {
-                const collapsed = Boolean(group.title) && collapsedSidebarSections.has(group.key);
-                const groupBotIds = group.bots.flatMap((item) =>
-                  item.kind === "bot" ? [item.chat.id] : [],
-                );
-                const nestedRows = nestRosterByParent(group.bots, collapsedRosterParents);
-                const treeActive = nestedRows.some((row) => row.depth > 0 || row.hasChildren);
-                const rosterParent = new Map(
-                  nestedRows.map((row) => [row.item.chat.id, row.parentId] as const),
-                );
-                // Reorder among visible siblings so keyboard and drag moves match the tree.
-                const siblingBotIds = (parentId: string | null) =>
-                  nestedRows.flatMap((row) =>
-                    row.item.kind === "bot" && row.parentId === parentId ? [row.item.chat.id] : [],
+                ) : null}
+                {sidebarGroups.map((group) => {
+                  const collapsed = Boolean(group.title) && collapsedSidebarSections.has(group.key);
+                  const groupBotIds = group.bots.flatMap((item) =>
+                    item.kind === "bot" ? [item.chat.id] : [],
                   );
-                return (
-                  <div key={group.key} data-sidebar-group={group.key}>
-                    {group.title ? (
-                      <div className="flex items-center pt-3 pb-0.5">
-                        <button
-                          type="button"
-                          className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-2.5 py-1 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground/60 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                          onClick={() => {
-                            if (group.emptySpaceId) {
-                              openSpaceChat(group.emptySpaceId, "/onboarding");
-                              return;
-                            }
-                            toggleSidebarSection(group.key);
-                          }}
-                          onContextMenu={
-                            group.sectionId
-                              ? (event) => {
-                                  event.preventDefault();
-                                  // Prefer section rename over delete-space when both apply;
-                                  // the dedicated space-actions button still opens the space menu.
-                                  const sections =
-                                    group.spaceId === bootstrapMe?.spaceId
-                                      ? botSections
-                                      : (spaces.find((space) => space.id === group.spaceId)
-                                          ?.botSections ?? []);
-                                  const section = sections.find(
-                                    (item) => item.id === group.sectionId,
-                                  );
-                                  if (!section) return;
-                                  sectionMenuAnchor.current = event.currentTarget;
-                                  setSectionMenu({
-                                    section,
-                                    spaceId: group.spaceId,
-                                    position: { x: event.clientX, y: event.clientY },
-                                  });
-                                }
-                              : group.canDeleteSpace
+                  const nestedRows = nestRosterByParent(group.bots, collapsedRosterParents);
+                  const treeActive = nestedRows.some((row) => row.depth > 0 || row.hasChildren);
+                  const rosterParent = new Map(
+                    nestedRows.map((row) => [row.item.chat.id, row.parentId] as const),
+                  );
+                  // Reorder among visible siblings so keyboard and drag moves match the tree.
+                  const siblingBotIds = (parentId: string | null) =>
+                    nestedRows.flatMap((row) =>
+                      row.item.kind === "bot" && row.parentId === parentId
+                        ? [row.item.chat.id]
+                        : [],
+                    );
+                  return (
+                    <div key={group.key} data-sidebar-group={group.key}>
+                      {group.title ? (
+                        <div className="flex items-center pt-3 pb-0.5">
+                          <button
+                            type="button"
+                            className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-2.5 py-1 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground/60 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                            onClick={() => {
+                              if (group.emptySpaceId) {
+                                openSpaceChat(group.emptySpaceId, "/onboarding");
+                                return;
+                              }
+                              toggleSidebarSection(group.key);
+                            }}
+                            onContextMenu={
+                              group.sectionId
                                 ? (event) => {
                                     event.preventDefault();
-                                    spaceMenuAnchor.current = event.currentTarget;
-                                    setSpaceMenu({
-                                      id: group.spaceId,
+                                    // Prefer section rename over delete-space when both apply;
+                                    // the dedicated space-actions button still opens the space menu.
+                                    const sections =
+                                      group.spaceId === bootstrapMe?.spaceId
+                                        ? botSections
+                                        : (spaces.find((space) => space.id === group.spaceId)
+                                            ?.botSections ?? []);
+                                    const section = sections.find(
+                                      (item) => item.id === group.sectionId,
+                                    );
+                                    if (!section) return;
+                                    sectionMenuAnchor.current = event.currentTarget;
+                                    setSectionMenu({
+                                      section,
+                                      spaceId: group.spaceId,
                                       position: { x: event.clientX, y: event.clientY },
                                     });
                                   }
-                                : undefined
-                          }
-                          aria-expanded={group.emptySpaceId ? undefined : !collapsed}
-                          aria-label={
-                            group.emptySpaceId
-                              ? t`Open ${group.title}`
-                              : collapsed
-                                ? t`Expand ${group.title}`
-                                : t`Collapse ${group.title}`
-                          }
-                        >
-                          <span className="flex min-w-0 items-center gap-1.5 truncate">
-                            {group.showLock ? (
-                              <Lock size={11} strokeWidth={2} aria-hidden="true" />
-                            ) : null}
-                            <span className="truncate">{group.title}</span>
-                          </span>
-                          {group.emptySpaceId ? null : (
-                            <ChevronDown
-                              size={14}
-                              strokeWidth={1.8}
-                              className={
-                                collapsed
-                                  ? "-rotate-90 transition-transform"
-                                  : "transition-transform"
-                              }
-                              aria-hidden="true"
-                            />
-                          )}
-                        </button>
-                        {group.canDeleteSpace ? (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t`Actions for ${group.spaceName}`}
-                            onClick={(event) => {
-                              const rect = event.currentTarget.getBoundingClientRect();
-                              spaceMenuAnchor.current = event.currentTarget;
-                              setSpaceMenu({
-                                id: group.spaceId,
-                                position: { x: rect.left, y: rect.bottom },
-                              });
-                            }}
+                                : group.canDeleteSpace
+                                  ? (event) => {
+                                      event.preventDefault();
+                                      spaceMenuAnchor.current = event.currentTarget;
+                                      setSpaceMenu({
+                                        id: group.spaceId,
+                                        position: { x: event.clientX, y: event.clientY },
+                                      });
+                                    }
+                                  : undefined
+                            }
+                            aria-expanded={group.emptySpaceId ? undefined : !collapsed}
+                            aria-label={
+                              group.emptySpaceId
+                                ? t`Open ${group.title}`
+                                : collapsed
+                                  ? t`Expand ${group.title}`
+                                  : t`Collapse ${group.title}`
+                            }
                           >
-                            <MoreHorizontal size={14} aria-hidden="true" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {!collapsed &&
-                      nestedRows.map(({ item, depth, hasChildren, parentId }) => {
-                        const parentCollapsed =
-                          hasChildren && collapsedRosterParents.has(item.chat.id);
-                        const selected =
-                          (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
-                          (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id);
-                        return (
-                          <div
-                            key={`${item.kind}:${item.chat.id}`}
-                            className="group/row relative"
-                            style={{
-                              opacity:
-                                item.kind === "bot" && draggedBotId === item.chat.id ? 0.55 : 1,
-                            }}
-                          >
-                            {hasChildren ? (
-                              <span
-                                className="absolute inset-y-0 z-10 flex w-3.5 items-center justify-center"
-                                style={{ insetInlineStart: `${10 + depth * 14}px` }}
-                              >
-                                <button
-                                  type="button"
-                                  aria-expanded={!parentCollapsed}
-                                  aria-label={
-                                    parentCollapsed
-                                      ? t`Expand ${item.chat.name}`
-                                      : t`Collapse ${item.chat.name}`
-                                  }
-                                  className="inline-flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
-                                  onClick={() => toggleRosterParent(item.chat.id)}
-                                >
-                                  <ChevronDown
-                                    size={12}
-                                    strokeWidth={2}
-                                    className={`transition-transform ${
-                                      parentCollapsed ? "-rotate-90" : ""
-                                    }`}
-                                    aria-hidden="true"
-                                  />
-                                </button>
-                              </span>
-                            ) : null}
-                            <button
-                              type="button"
-                              draggable={item.kind === "bot"}
-                              data-roster-bot-id={item.kind === "bot" ? item.chat.id : undefined}
-                              data-roster-depth={
-                                item.kind === "bot" && treeActive ? depth : undefined
-                              }
-                              aria-keyshortcuts={
-                                item.kind === "bot" ? "Alt+ArrowUp Alt+ArrowDown" : undefined
-                              }
-                              onDragStart={(event) => {
-                                if (item.kind !== "bot") return;
-                                setDraggedBotId(item.chat.id);
-                                event.dataTransfer.effectAllowed = "move";
-                                event.dataTransfer.setData("text/plain", item.chat.id);
-                              }}
-                              onDragOver={(event) => {
-                                if (
-                                  item.kind === "bot" &&
-                                  draggedBotId &&
-                                  groupBotIds.includes(draggedBotId) &&
-                                  rosterParent.get(draggedBotId) === parentId
-                                ) {
-                                  event.preventDefault();
-                                  event.dataTransfer.dropEffect = "move";
+                            <span className="flex min-w-0 items-center gap-1.5 truncate">
+                              {group.showLock ? (
+                                <Lock size={11} strokeWidth={2} aria-hidden="true" />
+                              ) : null}
+                              <span className="truncate">{group.title}</span>
+                            </span>
+                            {group.emptySpaceId ? null : (
+                              <ChevronDown
+                                size={14}
+                                strokeWidth={1.8}
+                                className={
+                                  collapsed
+                                    ? "-rotate-90 transition-transform"
+                                    : "transition-transform"
                                 }
-                              }}
-                              onDrop={(event) => {
-                                if (
-                                  item.kind !== "bot" ||
-                                  !draggedBotId ||
-                                  rosterParent.get(draggedBotId) !== parentId
-                                )
-                                  return;
-                                event.preventDefault();
-                                reorderRosterBot(draggedBotId, item.chat.id, groupBotIds);
-                                setDraggedBotId(null);
-                              }}
-                              onDragEnd={() => setDraggedBotId(null)}
-                              onKeyDown={(event) => {
-                                if (
-                                  item.kind !== "bot" ||
-                                  !event.altKey ||
-                                  (event.key !== "ArrowUp" && event.key !== "ArrowDown")
-                                )
-                                  return;
-                                const siblings = siblingBotIds(parentId);
-                                const index = siblings.indexOf(item.chat.id);
-                                const target = siblings[index + (event.key === "ArrowUp" ? -1 : 1)];
-                                if (!target) return;
-                                event.preventDefault();
-                                reorderRosterBot(item.chat.id, target, groupBotIds);
-                              }}
-                              onClick={() => {
-                                openSpaceChat(
-                                  item.chat.spaceId,
-                                  item.kind === "bot"
-                                    ? `/app/${item.chat.id}`
-                                    : `/app/g/${item.chat.id}`,
-                                );
-                              }}
-                              onContextMenu={(event) => {
-                                if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
-                                event.preventDefault();
-                                botMenuAnchor.current = event.currentTarget;
-                                setBotMenu({
-                                  kind: item.kind,
-                                  id: item.chat.id,
-                                  position: { x: event.clientX, y: event.clientY },
+                                aria-hidden="true"
+                              />
+                            )}
+                          </button>
+                          {group.canDeleteSpace ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t`Actions for ${group.spaceName}`}
+                              onClick={(event) => {
+                                const rect = event.currentTarget.getBoundingClientRect();
+                                spaceMenuAnchor.current = event.currentTarget;
+                                setSpaceMenu({
+                                  id: group.spaceId,
+                                  position: { x: rect.left, y: rect.bottom },
                                 });
                               }}
-                              className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-[10px] text-start ${
-                                item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
-                              } ${
-                                selected ? "bg-sidebar-accent" : "group-hover/row:bg-sidebar-accent"
-                              }`}
-                              style={
-                                treeActive
-                                  ? { paddingInlineStart: `${24 + depth * 14}px` }
-                                  : undefined
-                              }
                             >
-                              {item.kind === "bot" ? (
-                                <BotAvatar
-                                  color={item.chat.color}
-                                  identity={item.chat.id}
-                                  size={38}
-                                  status={item.chat.status}
-                                />
-                              ) : (
-                                <GroupAvatar
-                                  members={
-                                    item.chat.id === activeSnapshot?.groupId
-                                      ? (activeSnapshot.members ?? item.chat.members)
-                                      : item.chat.members
-                                  }
-                                  size={38}
-                                />
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-1.5">
-                                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                                    <span
-                                      dir="auto"
-                                      data-roster-bot-name={item.kind === "bot" ? "" : undefined}
-                                      className={`min-w-0 truncate text-[14px] text-foreground ${
-                                        item.chat.unread ? "font-semibold" : "font-medium"
-                                      }`}
-                                    >
-                                      {item.chat.name}
-                                    </span>
-                                    {item.chat.unread ? (
-                                      <span className="sr-only">
-                                        <Trans> (unread)</Trans>
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <div className="flex shrink-0 items-center gap-1.5">
-                                    <span className="text-[11.5px] text-muted-foreground/60 tabular-nums">
-                                      {formatRosterTime(item.chat.updatedAt)}
-                                    </span>
-                                    {item.chat.unread ? (
-                                      <span
-                                        aria-hidden="true"
-                                        className="inline-block h-2 w-2 rounded-full bg-foreground"
-                                      />
-                                    ) : null}
-                                  </div>
-                                </div>
-                                {item.kind === "bot" && item.chat.title ? (
-                                  <div className="mt-1 flex">
-                                    <span className="max-w-full truncate rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
-                                      {item.chat.title}
-                                    </span>
-                                  </div>
-                                ) : null}
-                                <div
-                                  dir="auto"
-                                  className={`mt-1 line-clamp-2 text-[12.5px] break-words whitespace-normal ${
-                                    item.chat.unread
-                                      ? "font-medium text-foreground/75"
-                                      : "text-muted-foreground/60"
-                                  }`}
+                              <MoreHorizontal size={14} aria-hidden="true" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {!collapsed &&
+                        nestedRows.map(({ item, depth, hasChildren, parentId }) => {
+                          const parentCollapsed =
+                            hasChildren && collapsedRosterParents.has(item.chat.id);
+                          const selected =
+                            (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
+                            (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id);
+                          return (
+                            <div
+                              key={`${item.kind}:${item.chat.id}`}
+                              className="group/row relative"
+                              style={{
+                                opacity:
+                                  item.kind === "bot" && draggedBotId === item.chat.id ? 0.55 : 1,
+                              }}
+                            >
+                              {hasChildren ? (
+                                <span
+                                  className="absolute inset-y-0 z-10 flex w-3.5 items-center justify-center"
+                                  style={{ insetInlineStart: `${10 + depth * 14}px` }}
                                 >
-                                  {item.kind === "bot"
-                                    ? item.chat.preview ||
-                                      (item.chat.status !== "idle" ? item.chat.status : "")
-                                    : item.chat.preview ||
-                                      item.chat.members.map((member) => member.name).join(", ")}
+                                  <button
+                                    type="button"
+                                    aria-expanded={!parentCollapsed}
+                                    aria-label={
+                                      parentCollapsed
+                                        ? t`Expand ${item.chat.name}`
+                                        : t`Collapse ${item.chat.name}`
+                                    }
+                                    className="inline-flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
+                                    onClick={() => toggleRosterParent(item.chat.id)}
+                                  >
+                                    <ChevronDown
+                                      size={12}
+                                      strokeWidth={2}
+                                      className={`transition-transform ${
+                                        parentCollapsed ? "-rotate-90" : ""
+                                      }`}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                </span>
+                              ) : null}
+                              <button
+                                type="button"
+                                draggable={item.kind === "bot"}
+                                data-roster-bot-id={item.kind === "bot" ? item.chat.id : undefined}
+                                data-roster-depth={
+                                  item.kind === "bot" && treeActive ? depth : undefined
+                                }
+                                aria-keyshortcuts={
+                                  item.kind === "bot" ? "Alt+ArrowUp Alt+ArrowDown" : undefined
+                                }
+                                onDragStart={(event) => {
+                                  if (item.kind !== "bot") return;
+                                  setDraggedBotId(item.chat.id);
+                                  event.dataTransfer.effectAllowed = "move";
+                                  event.dataTransfer.setData("text/plain", item.chat.id);
+                                }}
+                                onDragOver={(event) => {
+                                  if (
+                                    item.kind === "bot" &&
+                                    draggedBotId &&
+                                    groupBotIds.includes(draggedBotId) &&
+                                    rosterParent.get(draggedBotId) === parentId
+                                  ) {
+                                    event.preventDefault();
+                                    event.dataTransfer.dropEffect = "move";
+                                  }
+                                }}
+                                onDrop={(event) => {
+                                  if (
+                                    item.kind !== "bot" ||
+                                    !draggedBotId ||
+                                    rosterParent.get(draggedBotId) !== parentId
+                                  )
+                                    return;
+                                  event.preventDefault();
+                                  reorderRosterBot(draggedBotId, item.chat.id, groupBotIds);
+                                  setDraggedBotId(null);
+                                }}
+                                onDragEnd={() => setDraggedBotId(null)}
+                                onKeyDown={(event) => {
+                                  if (
+                                    item.kind !== "bot" ||
+                                    !event.altKey ||
+                                    (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+                                  )
+                                    return;
+                                  const siblings = siblingBotIds(parentId);
+                                  const index = siblings.indexOf(item.chat.id);
+                                  const target =
+                                    siblings[index + (event.key === "ArrowUp" ? -1 : 1)];
+                                  if (!target) return;
+                                  event.preventDefault();
+                                  reorderRosterBot(item.chat.id, target, groupBotIds);
+                                }}
+                                onClick={() => {
+                                  openSpaceChat(
+                                    item.chat.spaceId,
+                                    item.kind === "bot"
+                                      ? `/app/${item.chat.id}`
+                                      : `/app/g/${item.chat.id}`,
+                                  );
+                                }}
+                                onContextMenu={(event) => {
+                                  if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
+                                  event.preventDefault();
+                                  botMenuAnchor.current = event.currentTarget;
+                                  setBotMenu({
+                                    kind: item.kind,
+                                    id: item.chat.id,
+                                    position: { x: event.clientX, y: event.clientY },
+                                  });
+                                }}
+                                className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-[10px] text-start ${
+                                  item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
+                                } ${
+                                  selected
+                                    ? "bg-sidebar-accent"
+                                    : "group-hover/row:bg-sidebar-accent"
+                                }`}
+                                style={
+                                  treeActive
+                                    ? { paddingInlineStart: `${24 + depth * 14}px` }
+                                    : undefined
+                                }
+                              >
+                                {item.kind === "bot" ? (
+                                  <BotAvatar
+                                    color={item.chat.color}
+                                    identity={item.chat.id}
+                                    size={38}
+                                    status={item.chat.status}
+                                  />
+                                ) : (
+                                  <GroupAvatar
+                                    members={
+                                      item.chat.id === activeSnapshot?.groupId
+                                        ? (activeSnapshot.members ?? item.chat.members)
+                                        : item.chat.members
+                                    }
+                                    size={38}
+                                  />
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-1.5">
+                                    <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                                      <span
+                                        dir="auto"
+                                        data-roster-bot-name={item.kind === "bot" ? "" : undefined}
+                                        className={`min-w-0 truncate text-[14px] text-foreground ${
+                                          item.chat.unread ? "font-semibold" : "font-medium"
+                                        }`}
+                                      >
+                                        {item.chat.name}
+                                      </span>
+                                      {item.chat.unread ? (
+                                        <span className="sr-only">
+                                          <Trans> (unread)</Trans>
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                      <span className="text-[11.5px] text-muted-foreground/60 tabular-nums">
+                                        {formatRosterTime(item.chat.updatedAt)}
+                                      </span>
+                                      {item.chat.unread ? (
+                                        <span
+                                          aria-hidden="true"
+                                          className="inline-block h-2 w-2 rounded-full bg-foreground"
+                                        />
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  {item.kind === "bot" && item.chat.title ? (
+                                    <div className="mt-1 flex">
+                                      <span className="max-w-full truncate rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                                        {item.chat.title}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  <div
+                                    dir="auto"
+                                    className={`mt-1 line-clamp-2 text-[12.5px] break-words whitespace-normal ${
+                                      item.chat.unread
+                                        ? "font-medium text-foreground/75"
+                                        : "text-muted-foreground/60"
+                                    }`}
+                                  >
+                                    {item.kind === "bot"
+                                      ? item.chat.preview ||
+                                        (item.chat.status !== "idle" ? item.chat.status : "")
+                                      : item.chat.preview ||
+                                        item.chat.members.map((member) => member.name).join(", ")}
+                                  </div>
                                 </div>
-                              </div>
-                            </button>
-                          </div>
-                        );
-                      })}
-                  </div>
-                );
-              })}
-            </>
-          )}
-          {archivedBots.length + archivedGroups.length > 0 && !showSpaceSearch ? (
-            <div className="mt-2 border-t border-border pt-2">
-              <button
-                type="button"
-                aria-expanded={archivedOpen}
-                onClick={() => setArchivedOpen((open) => !open)}
-                className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[13.5px] text-muted-foreground hover:bg-sidebar-accent"
+                              </button>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            {archivedBots.length + archivedGroups.length > 0 && !showSpaceSearch ? (
+              <div className="mt-2 border-t border-border pt-2">
+                <button
+                  type="button"
+                  aria-expanded={archivedOpen}
+                  onClick={() => setArchivedOpen((open) => !open)}
+                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[13.5px] text-muted-foreground hover:bg-sidebar-accent"
+                >
+                  <span>
+                    <Trans>Archived</Trans>
+                  </span>
+                  <span>{archivedBots.length + archivedGroups.length}</span>
+                </button>
+                {archivedOpen ? (
+                  <>
+                    {archivedBots.map((bot) => (
+                      <div key={bot.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
+                        <BotAvatar
+                          color={bot.color}
+                          identity={bot.id}
+                          size={28}
+                          status={bot.status}
+                        />
+                        <span
+                          className="min-w-0 flex-1 truncate text-[14px] text-foreground/75"
+                          dir="auto"
+                        >
+                          {bot.name}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() =>
+                            void rpc.bots.restore({ botId: bot.id }).then(() => refreshBots(true))
+                          }
+                        >
+                          <Trans>Restore</Trans>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          className="text-destructive hover:text-destructive"
+                          aria-label={t`Delete ${bot.name}`}
+                          onClick={() => setDeleteTarget(bot)}
+                        >
+                          <Trans>Delete</Trans>
+                        </Button>
+                      </div>
+                    ))}
+                    {archivedGroups.map((group) => (
+                      <div
+                        key={group.id}
+                        className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+                      >
+                        <GroupAvatar members={group.members} size={28} />
+                        <span
+                          className="min-w-0 flex-1 truncate text-[14px] text-foreground/75"
+                          dir="auto"
+                        >
+                          {group.name}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() =>
+                            void rpc.groups
+                              .restore({ groupId: group.id })
+                              .then(() => refreshBots(true))
+                          }
+                        >
+                          <Trans>Restore</Trans>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          className="text-destructive hover:text-destructive"
+                          aria-label={t`Delete ${group.name}`}
+                          onClick={() => setDeleteGroupTarget(group)}
+                        >
+                          <Trans>Delete</Trans>
+                        </Button>
+                      </div>
+                    ))}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => setPluginsOpen(true)}
+            className="mx-3 mb-1 flex items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-sidebar-accent"
+          >
+            <span className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent text-foreground/80">
+              <LayoutGrid size={15} strokeWidth={1.8} />
+            </span>
+            <span className="text-[14px] font-medium text-foreground/90">
+              <Trans>Integrations</Trans>
+            </span>
+          </button>
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <PopoverTrigger
+              data-testid="user-menu-trigger"
+              className="flex items-center gap-[11px] px-[18px] py-3.5"
+            >
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-[12px] text-foreground/75">
+                {initials}
+              </span>
+              <span className="text-[14.5px] text-foreground/90">{userName}</span>
+            </PopoverTrigger>
+            {menuOpen ? (
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-[calc(316px-1.5rem)] max-w-[calc(100vw-3rem)] gap-0 p-1 data-closed:animate-none"
               >
-                <span>
-                  <Trans>Archived</Trans>
-                </span>
-                <span>{archivedBots.length + archivedGroups.length}</span>
-              </button>
-              {archivedOpen ? (
-                <>
-                  {archivedBots.map((bot) => (
-                    <div key={bot.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
-                      <BotAvatar
-                        color={bot.color}
-                        identity={bot.id}
-                        size={28}
-                        status={bot.status}
-                      />
-                      <span
-                        className="min-w-0 flex-1 truncate text-[14px] text-foreground/75"
-                        dir="auto"
-                      >
-                        {bot.name}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={() =>
-                          void rpc.bots.restore({ botId: bot.id }).then(() => refreshBots(true))
-                        }
-                      >
-                        <Trans>Restore</Trans>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className="text-destructive hover:text-destructive"
-                        aria-label={t`Delete ${bot.name}`}
-                        onClick={() => setDeleteTarget(bot)}
-                      >
-                        <Trans>Delete</Trans>
-                      </Button>
-                    </div>
-                  ))}
-                  {archivedGroups.map((group) => (
-                    <div key={group.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
-                      <GroupAvatar members={group.members} size={28} />
-                      <span
-                        className="min-w-0 flex-1 truncate text-[14px] text-foreground/75"
-                        dir="auto"
-                      >
-                        {group.name}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={() =>
-                          void rpc.groups
-                            .restore({ groupId: group.id })
-                            .then(() => refreshBots(true))
-                        }
-                      >
-                        <Trans>Restore</Trans>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className="text-destructive hover:text-destructive"
-                        aria-label={t`Delete ${group.name}`}
-                        onClick={() => setDeleteGroupTarget(group)}
-                      >
-                        <Trans>Delete</Trans>
-                      </Button>
-                    </div>
-                  ))}
-                </>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  aria-label={t`Settings`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openSettings("general");
+                  }}
+                >
+                  <Settings className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Settings</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  aria-label={t`Usage`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void rpc.usage
+                      .summary()
+                      .then(setUsage)
+                      .catch(() => undefined);
+                    openSettings("usage");
+                  }}
+                >
+                  <Gauge className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Usage</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  onClick={() =>
+                    void authClient.signOut().then(() => {
+                      clearSpaceSelection();
+                      navigate("/");
+                    })
+                  }
+                >
+                  <LogOut className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Log out</Trans>
+                </Button>
+              </PopoverContent>
+            ) : null}
+          </Popover>
+        </aside>
+      )}
+
+      {museMode ? null : (
         <button
           type="button"
-          onClick={() => setPluginsOpen(true)}
-          className="mx-3 mb-1 flex items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-sidebar-accent"
-        >
-          <span className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent text-foreground/80">
-            <LayoutGrid size={15} strokeWidth={1.8} />
-          </span>
-          <span className="text-[14px] font-medium text-foreground/90">
-            <Trans>Integrations</Trans>
-          </span>
-        </button>
-        <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <PopoverTrigger
-            data-testid="user-menu-trigger"
-            className="flex items-center gap-[11px] px-[18px] py-3.5"
-          >
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-[12px] text-foreground/75">
-              {initials}
-            </span>
-            <span className="text-[14.5px] text-foreground/90">{userName}</span>
-          </PopoverTrigger>
-          {menuOpen ? (
-            <PopoverContent
-              side="top"
-              align="start"
-              className="w-[calc(316px-1.5rem)] max-w-[calc(100vw-3rem)] gap-0 p-1 data-closed:animate-none"
-            >
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                aria-label={t`Settings`}
-                onClick={() => {
-                  setMenuOpen(false);
-                  openSettings("general");
-                }}
-              >
-                <Settings className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Settings</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                aria-label={t`Usage`}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void rpc.usage
-                    .summary()
-                    .then(setUsage)
-                    .catch(() => undefined);
-                  openSettings("usage");
-                }}
-              >
-                <Gauge className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Usage</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                onClick={() =>
-                  void authClient.signOut().then(() => {
-                    clearSpaceSelection();
-                    navigate("/");
-                  })
-                }
-              >
-                <LogOut className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Log out</Trans>
-              </Button>
-            </PopoverContent>
-          ) : null}
-        </Popover>
-      </aside>
-
-      <button
-        type="button"
-        data-testid="bots-sidebar-edge"
-        aria-label={botsSidebarCollapsed ? t`Show bots` : t`Hide bots`}
-        aria-pressed={!botsSidebarCollapsed}
-        className={`absolute inset-y-0 z-50 hidden w-2 cursor-ew-resize touch-none border-0 bg-transparent p-0 md:block ${
-          botsSidebarCollapsed ? "start-0" : "start-[308px]"
-        }`}
-        onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          botsSidebarEdgeDragRef.current = {
-            startX: event.clientX,
-            mode: botsSidebarCollapsed ? "expand" : "collapse",
-          };
-        }}
-        onPointerMove={(event) => {
-          const drag = botsSidebarEdgeDragRef.current;
-          if (!drag) return;
-          const rtl =
-            typeof document !== "undefined" &&
-            document.documentElement.getAttribute("dir") === "rtl";
-          const delta = rtl ? drag.startX - event.clientX : event.clientX - drag.startX;
-          if (drag.mode === "expand" && delta >= BOTS_SIDEBAR_EDGE_DRAG_PX) {
+          data-testid="bots-sidebar-edge"
+          aria-label={botsSidebarCollapsed ? t`Show bots` : t`Hide bots`}
+          aria-pressed={!botsSidebarCollapsed}
+          className={`absolute inset-y-0 z-50 hidden w-2 cursor-ew-resize touch-none border-0 bg-transparent p-0 md:block ${
+            botsSidebarCollapsed ? "start-0" : "start-[308px]"
+          }`}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            botsSidebarEdgeDragRef.current = {
+              startX: event.clientX,
+              mode: botsSidebarCollapsed ? "expand" : "collapse",
+            };
+          }}
+          onPointerMove={(event) => {
+            const drag = botsSidebarEdgeDragRef.current;
+            if (!drag) return;
+            const rtl =
+              typeof document !== "undefined" &&
+              document.documentElement.getAttribute("dir") === "rtl";
+            const delta = rtl ? drag.startX - event.clientX : event.clientX - drag.startX;
+            if (drag.mode === "expand" && delta >= BOTS_SIDEBAR_EDGE_DRAG_PX) {
+              botsSidebarEdgeDragRef.current = null;
+              setBotsSidebarCollapsedPref(false);
+            } else if (drag.mode === "collapse" && delta <= -BOTS_SIDEBAR_EDGE_DRAG_PX) {
+              botsSidebarEdgeDragRef.current = null;
+              setBotsSidebarCollapsedPref(true);
+            }
+          }}
+          onPointerUp={(event) => {
+            const drag = botsSidebarEdgeDragRef.current;
             botsSidebarEdgeDragRef.current = null;
-            setBotsSidebarCollapsedPref(false);
-          } else if (drag.mode === "collapse" && delta <= -BOTS_SIDEBAR_EDGE_DRAG_PX) {
+            if (!drag) return;
+            if (Math.abs(event.clientX - drag.startX) < BOTS_SIDEBAR_EDGE_DRAG_PX) {
+              setBotsSidebarCollapsedPref(!botsSidebarCollapsed);
+            }
+          }}
+          onPointerCancel={() => {
             botsSidebarEdgeDragRef.current = null;
-            setBotsSidebarCollapsedPref(true);
-          }
-        }}
-        onPointerUp={(event) => {
-          const drag = botsSidebarEdgeDragRef.current;
-          botsSidebarEdgeDragRef.current = null;
-          if (!drag) return;
-          if (Math.abs(event.clientX - drag.startX) < BOTS_SIDEBAR_EDGE_DRAG_PX) {
-            setBotsSidebarCollapsedPref(!botsSidebarCollapsed);
-          }
-        }}
-        onPointerCancel={() => {
-          botsSidebarEdgeDragRef.current = null;
-        }}
-      />
+          }}
+        />
+      )}
 
       <main
         aria-hidden={mobileSidebarOpen || undefined}
         inert={mobileSidebarOpen}
-        className="flex min-w-0 flex-1 flex-col bg-background"
+        className={
+          museMode
+            ? "my-2 me-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-border bg-background"
+            : "flex min-w-0 flex-1 flex-col bg-background"
+        }
       >
-        <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
-          <div className="flex min-w-0 items-center gap-2">
-            {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
-            {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-            <button
-              type="button"
-              aria-label={t`Open navigation`}
-              onClick={() => setMobileSidebarOpen(true)}
-              className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-            >
-              <Menu size={19} strokeWidth={1.7} />
-            </button>
-            {botsSidebarCollapsed ? (
-              <button
-                type="button"
-                data-testid="restore-bots-sidebar"
-                aria-label={t`Show bots`}
-                title={t`Show bots`}
-                onClick={() => setBotsSidebarCollapsedPref(false)}
-                className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
-              >
-                <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
-              </button>
+        {museMode && active && museView !== "conversation" ? (
+          museView === "goals" ? (
+            <GoalsScreen botId={active.id} />
+          ) : museView === "feed" ? (
+            <FeedScreen botId={active.id} onSendIdea={handleSendIdea} />
+          ) : (
+            <LibraryScreen botId={active.id} />
+          )
+        ) : (
+          <>
+            {museMode && active ? (
+              <ConversationHeader
+                botId={active.id}
+                museName={active.name}
+                running={transcriptRunning}
+                actions={
+                  <button
+                    type="button"
+                    title={t`Agent computer`}
+                    aria-label={t`Agent computer`}
+                    onClick={() => {
+                      const next = panel === "computer" ? null : "computer";
+                      setPanel(next);
+                      if (next === "computer") {
+                        // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                        void refreshThread(active.id).catch(() => undefined);
+                      }
+                    }}
+                    data-active={panel === "computer" ? "" : undefined}
+                    className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <Monitor size={17} strokeWidth={1.75} />
+                  </button>
+                }
+              />
+            ) : (
+              <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
+                <div className="flex min-w-0 items-center gap-2">
+                  {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
+                  {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
+                  <button
+                    type="button"
+                    aria-label={t`Open navigation`}
+                    onClick={() => setMobileSidebarOpen(true)}
+                    className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
+                  >
+                    <Menu size={19} strokeWidth={1.7} />
+                  </button>
+                  {botsSidebarCollapsed ? (
+                    <button
+                      type="button"
+                      data-testid="restore-bots-sidebar"
+                      aria-label={t`Show bots`}
+                      title={t`Show bots`}
+                      onClick={() => setBotsSidebarCollapsedPref(false)}
+                      className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                    >
+                      <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    data-testid="bot-settings-trigger"
+                    onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
+                    className="app-no-drag flex min-w-0 items-center gap-3"
+                  >
+                    {inGroup ? (
+                      <GroupAvatar
+                        members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                        size={26}
+                      />
+                    ) : active ? (
+                      <BotAvatar
+                        color={active.color}
+                        identity={active.id}
+                        size={26}
+                        status={active.status}
+                      />
+                    ) : null}
+                    <span className="min-w-0">
+                      <span
+                        className="block truncate text-[16px] font-medium text-foreground"
+                        dir="auto"
+                      >
+                        {inGroup
+                          ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                          : (active?.name ?? t`Select a bot`)}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  {!inGroup && active ? (
+                    <button
+                      type="button"
+                      title={t`Agent computer`}
+                      onClick={() => {
+                        const next = panel === "computer" ? null : "computer";
+                        setPanel(next);
+                        if (next === "computer" && active) {
+                          // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                          void refreshThread(active.id).catch(() => undefined);
+                        }
+                      }}
+                      data-active={panel === "computer" ? "" : undefined}
+                      className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                    >
+                      <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            )}
+            {!active && !activeGroup && initialBotsLoaded ? (
+              <div className="grid flex-1 place-items-center">
+                <Button onClick={() => setPanel("create")}>
+                  <Plus size={16} aria-hidden="true" />
+                  <Trans>Create new Bot</Trans>
+                </Button>
+              </div>
+            ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
+              <EmptyConversation
+                botId={active.id}
+                personName={bootstrapMe?.name ?? ""}
+                avatarColor={active.color}
+                onSend={(text) => void sendMessage(text)}
+              />
+            ) : (
+              <Transcript
+                key={activeSnapshot?.threadId}
+                museMode={museMode}
+                museFace={
+                  active
+                    ? { color: active.color, identity: active.id, status: active.status }
+                    : undefined
+                }
+                scrollRef={messageScroll}
+                scrollRequest={scrollRequest}
+                onScrollRequestHandled={clearScrollRequest}
+                artifactTarget={transcriptArtifactTarget}
+                messages={transcriptMessages}
+                olderCursor={activeSnapshot?.olderCursor ?? null}
+                loadingOlder={loadingOlder}
+                answerableAskMessageId={answerableAskMessageId}
+                running={transcriptRunning}
+                workingBots={workingBots}
+                onLoadOlder={loadOlder}
+                onOpenBot={openBot}
+                onAnswer={answerMessage}
+                onReply={(message) => {
+                  setReplyTarget(message);
+                  setReplyQuote(null);
+                }}
+                onQuote={(message, quote) => {
+                  setReplyTarget(message);
+                  setReplyQuote(quote);
+                }}
+                onReact={reactToMessage}
+                onJumpToMessage={jumpToReplyMessage}
+                onOpenPeerMessages={(peer) => {
+                  setPeerConversation(peer);
+                }}
+                memberName={resolveTranscriptMemberName}
+                peerBot={resolveTranscriptBot}
+                onRefresh={refreshActiveThread}
+                onBotChanged={refreshBots}
+                onAddRoutine={addSkillRoutine}
+                voiceReady={Boolean(voiceStatus?.ready)}
+                speakingMessageId={speakingMessageId}
+                onSpeak={speakMessage}
+                onOpenComputer={onOpenComputer}
+              />
+            )}
+            {recordingSkill ? (
+              <div className="px-6 pb-2 text-center text-[13px] text-destructive">
+                <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
+              </div>
             ) : null}
-            <button
-              type="button"
-              data-testid="bot-settings-trigger"
-              onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-              className="app-no-drag flex min-w-0 items-center gap-3"
-            >
-              {inGroup ? (
-                <GroupAvatar
-                  members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                  size={26}
-                />
-              ) : active ? (
-                <BotAvatar
-                  color={active.color}
-                  identity={active.id}
-                  size={26}
-                  status={active.status}
-                />
-              ) : null}
-              <span className="min-w-0">
-                <span className="block truncate text-[16px] font-medium text-foreground" dir="auto">
-                  {inGroup
-                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                    : (active?.name ?? t`Select a bot`)}
-                </span>
-              </span>
-            </button>
-          </div>
-          <div className="flex items-center gap-1">
-            {!inGroup && active ? (
-              <button
-                type="button"
-                title={t`Agent computer`}
-                onClick={() => {
-                  const next = panel === "computer" ? null : "computer";
-                  setPanel(next);
-                  if (next === "computer" && active) {
-                    // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                    void refreshThread(active.id).catch(() => undefined);
+            {active || activeGroup ? (
+              <Composer
+                key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+                museMode={museMode}
+                activeName={
+                  inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
+                }
+                running={composerRunning}
+                disabled={Boolean(recordingSkill)}
+                pendingAttachments={activePendingAttachments}
+                attachmentNotice={attachmentNotice}
+                sendError={sendError}
+                runError={displayedRunError}
+                runErrorId={displayedRunErrorId}
+                onRunErrorPresented={handleRunErrorPresented}
+                onDismissError={dismissComposerError}
+                sending={sending}
+                fileInputRef={fileInputRef}
+                onAttachmentPick={onAttachmentPick}
+                onRemoveAttachment={removeAttachment}
+                onSend={sendMessage}
+                onStop={stopRun}
+                onVoice={
+                  !inGroup && active
+                    ? () => {
+                        if (!voiceStatus?.ready) {
+                          openSettings("voice");
+                          return;
+                        }
+                        setCallOpen(true);
+                      }
+                    : undefined
+                }
+                replyTarget={activeReplyTarget}
+                replyQuote={activeReplyQuote}
+                replyTargetName={replyTargetName}
+                onClearReply={clearReply}
+                mentionTargets={composerMentionTargets}
+                agentSkills={agentSkills}
+                onSlashOpen={refreshAgentSkills}
+                onSlashAction={(action) => {
+                  if (action === "chat-settings") {
+                    setPanel(inGroup ? "group-settings" : "settings");
+                    return;
+                  }
+                  if (action === "settings-general") {
+                    openSettings("general");
+                    return;
+                  }
+                  if (action === "settings-usage") {
+                    void rpc.usage
+                      .summary()
+                      .then(setUsage)
+                      .catch(() => undefined);
+                    openSettings("usage");
                   }
                 }}
-                data-active={panel === "computer" ? "" : undefined}
-                className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
-              >
-                <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
-              </button>
+              />
             ) : null}
-          </div>
-        </div>
-        {!active && !activeGroup && initialBotsLoaded ? (
-          <div className="grid flex-1 place-items-center">
-            <Button onClick={() => setPanel("create")}>
-              <Plus size={16} aria-hidden="true" />
-              <Trans>Create new Bot</Trans>
-            </Button>
-          </div>
-        ) : (
-          <Transcript
-            key={activeSnapshot?.threadId}
-            scrollRef={messageScroll}
-            scrollRequest={scrollRequest}
-            onScrollRequestHandled={clearScrollRequest}
-            artifactTarget={transcriptArtifactTarget}
-            messages={transcriptMessages}
-            olderCursor={activeSnapshot?.olderCursor ?? null}
-            loadingOlder={loadingOlder}
-            answerableAskMessageId={answerableAskMessageId}
-            running={transcriptRunning}
-            workingBots={workingBots}
-            onLoadOlder={loadOlder}
-            onOpenBot={openBot}
-            onAnswer={answerMessage}
-            onReply={(message) => {
-              setReplyTarget(message);
-              setReplyQuote(null);
-            }}
-            onQuote={(message, quote) => {
-              setReplyTarget(message);
-              setReplyQuote(quote);
-            }}
-            onReact={reactToMessage}
-            onJumpToMessage={jumpToReplyMessage}
-            onOpenPeerMessages={(peer) => {
-              setPeerConversation(peer);
-            }}
-            memberName={resolveTranscriptMemberName}
-            peerBot={resolveTranscriptBot}
-            onRefresh={refreshActiveThread}
-            onBotChanged={refreshBots}
-            onAddRoutine={addSkillRoutine}
-            voiceReady={Boolean(voiceStatus?.ready)}
-            speakingMessageId={speakingMessageId}
-            onSpeak={speakMessage}
-            onOpenComputer={onOpenComputer}
-          />
+          </>
         )}
-        {recordingSkill ? (
-          <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-            <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
-          </div>
-        ) : null}
-        {active || activeGroup ? (
-          <Composer
-            key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
-            activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
-            running={composerRunning}
-            disabled={Boolean(recordingSkill)}
-            pendingAttachments={activePendingAttachments}
-            attachmentNotice={attachmentNotice}
-            sendError={sendError}
-            runError={displayedRunError}
-            runErrorId={displayedRunErrorId}
-            onRunErrorPresented={handleRunErrorPresented}
-            onDismissError={dismissComposerError}
-            sending={sending}
-            fileInputRef={fileInputRef}
-            onAttachmentPick={onAttachmentPick}
-            onRemoveAttachment={removeAttachment}
-            onSend={sendMessage}
-            onStop={stopRun}
-            onVoice={
-              !inGroup && active
-                ? () => {
-                    if (!voiceStatus?.ready) {
-                      openSettings("voice");
-                      return;
-                    }
-                    setCallOpen(true);
-                  }
-                : undefined
-            }
-            replyTarget={activeReplyTarget}
-            replyQuote={activeReplyQuote}
-            replyTargetName={replyTargetName}
-            onClearReply={clearReply}
-            mentionTargets={composerMentionTargets}
-            agentSkills={agentSkills}
-            onSlashOpen={refreshAgentSkills}
-            onSlashAction={(action) => {
-              if (action === "chat-settings") {
-                setPanel(inGroup ? "group-settings" : "settings");
-                return;
-              }
-              if (action === "settings-general") {
-                openSettings("general");
-                return;
-              }
-              if (action === "settings-usage") {
-                void rpc.usage
-                  .summary()
-                  .then(setUsage)
-                  .catch(() => undefined);
-                openSettings("usage");
-              }
-            }}
-          />
-        ) : null}
       </main>
+
+      {museMode && active ? (
+        <WaitingSheet botId={active.id} open={waitingOpen} onOpenChange={setWaitingOpen} />
+      ) : null}
 
       <aside
         data-testid="side-panel"
@@ -4480,6 +4601,8 @@ export function ShellPage() {
 }
 
 const Transcript = memo(function Transcript({
+  museMode,
+  museFace,
   scrollRef,
   scrollRequest,
   onScrollRequestHandled,
@@ -4508,6 +4631,9 @@ const Transcript = memo(function Transcript({
   onSpeak,
   onOpenComputer,
 }: {
+  museMode?: boolean;
+  /** Muse mode: the face shown beside the Muse's replies. */
+  museFace?: { color: string; identity: string; status?: string };
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollRequest: { messageId: string; nonce: number } | null;
   onScrollRequestHandled: () => void;
@@ -4780,7 +4906,10 @@ const Transcript = memo(function Transcript({
             following.current = false;
           }
         }}
-        className="rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
+        className={cn(
+          "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
+          museMode && "mx-auto w-full max-w-[780px] gap-3 md:py-8",
+        )}
       >
         {olderCursor != null ? (
           <button
@@ -4792,8 +4921,13 @@ const Transcript = memo(function Transcript({
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
         ) : null}
-        {reactionView.visibleMessages.map((message) => {
-          if (!message.blocks.some((block) => !isToolActivityBlock(block))) return null;
+        {reactionView.visibleMessages.map((message, messageIndex) => {
+          if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
+            return null;
+          // Muse mode: the face sits beside the first of a run of the Muse's replies.
+          const museGutter = museMode && museFace && message.role === "bot";
+          const museFaceShown =
+            museGutter && reactionView.visibleMessages[messageIndex - 1]?.role !== "bot";
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
           return (
@@ -4821,9 +4955,24 @@ const Transcript = memo(function Transcript({
                 className={
                   peerReceipt
                     ? undefined
-                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`
+                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}${
+                        museGutter ? " gap-3" : ""
+                      }`
                 }
               >
+                {museGutter && museFace ? (
+                  <div className="w-7 shrink-0 pt-0.5" aria-hidden="true">
+                    {museFaceShown ? (
+                      <BotAvatar
+                        color={museFace.color}
+                        identity={museFace.identity}
+                        status={museFace.status}
+                        face="muse"
+                        size={28}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
                 <div
                   data-testid={peerReceipt ? undefined : "message-bubble-frame"}
                   className={
@@ -4831,8 +4980,12 @@ const Transcript = memo(function Transcript({
                       ? undefined
                       : `relative w-fit min-w-0 ${
                           message.role === "user"
-                            ? "max-w-[min(84%,calc(100%_-_6rem))]"
-                            : "max-w-[min(88%,calc(100%_-_6rem))]"
+                            ? museMode
+                              ? "max-w-[80%]"
+                              : "max-w-[min(84%,calc(100%_-_6rem))]"
+                            : museMode
+                              ? "max-w-full"
+                              : "max-w-[min(88%,calc(100%_-_6rem))]"
                         }`
                   }
                 >
@@ -4845,6 +4998,7 @@ const Transcript = memo(function Transcript({
                     />
                   )}
                   <MessageView
+                    museMode={museMode}
                     artifactTarget={artifactTarget}
                     message={message}
                     canAnswer={message.id === answerableAskMessageId}
@@ -5013,6 +5167,7 @@ const QuoteSelectionButton = memo(function QuoteSelectionButton({
 });
 
 const Composer = memo(function Composer({
+  museMode,
   activeName,
   running,
   disabled,
@@ -5039,6 +5194,7 @@ const Composer = memo(function Composer({
   onSlashOpen,
   onSlashAction,
 }: {
+  museMode?: boolean;
   activeName?: string;
   running: boolean;
   disabled?: boolean;
@@ -5369,9 +5525,11 @@ const Composer = memo(function Composer({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative z-30 m-0 min-w-0 border-0 px-3 pb-4 pt-3 md:px-6 md:pb-6 ${
-        draggingFiles ? "rounded-[14px] ring-2 ring-inset ring-ring" : ""
-      }`}
+      className={cn(
+        "relative z-30 m-0 min-w-0 border-0 px-3 pb-4 pt-3 md:px-6 md:pb-6",
+        museMode && "mx-auto w-full max-w-[720px]",
+        draggingFiles && "rounded-[14px] ring-2 ring-inset ring-ring",
+      )}
     >
       <div role="status" data-testid="composer-announcement" className="sr-only">
         {replyAnnouncement}
@@ -5549,7 +5707,10 @@ const Composer = memo(function Composer({
       ) : null}
       <div
         data-testid="composer-bar"
-        className="flex items-center gap-3.5 rounded-full border border-border bg-background py-[9px] pe-2.5 ps-3 transition-colors focus-within:border-ring"
+        className={cn(
+          "flex items-center gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-colors focus-within:border-ring",
+          museMode ? "rounded-[24px] shadow-float" : "rounded-full",
+        )}
       >
         <input
           ref={fileInputRef}
@@ -5565,7 +5726,10 @@ const Composer = memo(function Composer({
           aria-label={t`Attach file`}
           disabled={disabled}
           onClick={() => fileInputRef.current?.click()}
-          className="size-8 shrink-0 rounded-full border border-border bg-muted text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className={cn(
+            "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+            museMode ? "border-0 bg-transparent" : "border border-border bg-muted",
+          )}
         >
           <Plus size={16} strokeWidth={2} />
         </Button>
@@ -5665,7 +5829,9 @@ const Composer = memo(function Composer({
             placeholder={
               showComposerPlaceholder
                 ? activeName
-                  ? t`Message ${activeName}`
+                  ? museMode
+                    ? t`Message ${activeName}…`
+                    : t`Message ${activeName}`
                   : t`Message…`
                 : undefined
             }
@@ -5685,7 +5851,7 @@ const Composer = memo(function Composer({
         </div>
         {onVoice ? (
           <Button
-            variant="outline"
+            variant={museMode ? "ghost" : "outline"}
             size="icon"
             aria-label={t`Voice`}
             title={t`Voice`}
@@ -5703,7 +5869,12 @@ const Composer = memo(function Composer({
               aria-label={t`Send`}
               disabled={sending || !canSend || disabled}
               onClick={send}
-              className="size-8 rounded-full bg-white text-black hover:bg-white/90 shadow-sm transition-transform active:scale-95"
+              className={cn(
+                "size-8 rounded-full shadow-sm transition-transform active:scale-95",
+                museMode
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-white text-black hover:bg-white/90",
+              )}
             >
               <ArrowUp size={16} strokeWidth={2.2} />
             </Button>
@@ -5724,7 +5895,12 @@ const Composer = memo(function Composer({
             aria-label={t`Send`}
             disabled={sending || !canSend || disabled}
             onClick={send}
-            className="size-8 shrink-0 rounded-full bg-white text-black hover:bg-white/90 shadow-sm transition-transform active:scale-95 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none"
+            className={cn(
+              "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",
+              museMode
+                ? "bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-primary/20 disabled:text-primary-foreground/40 disabled:shadow-none"
+                : "bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none",
+            )}
           >
             <ArrowUp size={16} strokeWidth={2.2} />
           </Button>
@@ -5998,7 +6174,27 @@ function ComputerReleaseActions({
   );
 }
 
+/** Muse mode only: one quiet line for a tool-activity block (docs/muse/DESIGN.md "Conversation"). */
+function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] }) {
+  const label =
+    block.kind === "steps"
+      ? block.steps.map((step) => step.label).join(" · ")
+      : "text" in block
+        ? block.text
+        : undefined;
+  if (!label) return null;
+  return (
+    <div className="flex items-center gap-1.5 py-0.5 text-[12.5px] text-muted-foreground/70">
+      <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-muted-foreground/50" />
+      <span className="truncate" dir="auto">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 const MessageView = memo(function MessageView({
+  museMode,
   artifactTarget,
   canAnswer,
   message,
@@ -6019,6 +6215,7 @@ const MessageView = memo(function MessageView({
   onSpeak,
   onOpenComputer,
 }: {
+  museMode?: boolean;
   artifactTarget: ArtifactTarget;
   canAnswer: boolean;
   message: ThreadMessage;
@@ -6048,7 +6245,9 @@ const MessageView = memo(function MessageView({
     );
   const isLive = message.id.startsWith("progress:");
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
-  const visibleNarrationBlocks = message.blocks.filter((block) => !isToolActivityBlock(block));
+  const visibleNarrationBlocks = message.blocks.filter(
+    (block) => museMode || !isToolActivityBlock(block),
+  );
   const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const speakerBot = message.botId ? peerBot?.(message.botId) : undefined;
   const speakerColorDef = useMemo(
@@ -6105,11 +6304,16 @@ const MessageView = memo(function MessageView({
         <div className="flex w-fit max-w-full justify-start">
           <div
             data-testid="message-bot-bubble"
-            className="max-w-full space-y-2.5 rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+            className={cn(
+              "max-w-full space-y-2.5",
+              museMode
+                ? "text-[15px] leading-[1.65] text-foreground"
+                : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+            )}
             dir="auto"
           >
             {visibleNarrationBlocks.map((block, i) => {
-              if (block.kind === "text" || block.kind === "progress") {
+              if (block.kind === "text" || (block.kind === "progress" && !block.activity)) {
                 return (
                   <div
                     key={i}
@@ -6118,6 +6322,9 @@ const MessageView = memo(function MessageView({
                     <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
                   </div>
                 );
+              }
+              if (museMode && isToolActivityBlock(block)) {
+                return <ToolActivityStep key={i} block={block} />;
               }
               return null;
             })}
@@ -6140,7 +6347,9 @@ const MessageView = memo(function MessageView({
     <>
       {messageContext}
       {message.blocks.map((block, i) => {
-        if (isToolActivityBlock(block)) return null;
+        if (isToolActivityBlock(block)) {
+          return museMode ? <ToolActivityStep key={i} block={block} /> : null;
+        }
         if (block.kind === "handoff") {
           const from = memberName?.(block.fromBotId) ?? t`bot`;
           const to = memberName?.(block.toBotId) ?? t`bot`;
@@ -6201,7 +6410,12 @@ const MessageView = memo(function MessageView({
             <div key={i} className="flex w-fit max-w-full justify-start">
               <div
                 data-testid="message-bot-bubble"
-                className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+                className={cn(
+                  "max-w-full",
+                  museMode
+                    ? "text-[15px] leading-[1.65] text-foreground"
+                    : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+                )}
                 dir="auto"
               >
                 <ChatMarkdown streaming>{block.text}</ChatMarkdown>
@@ -6356,7 +6570,12 @@ const MessageView = memo(function MessageView({
               <div
                 data-testid="message-user-bubble"
                 data-quote-message-id={quoteMessageId}
-                className="max-w-full whitespace-pre-wrap wrap-anywhere rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground"
+                className={cn(
+                  "max-w-full whitespace-pre-wrap wrap-anywhere bg-chat-user text-chat-user-foreground",
+                  museMode
+                    ? "rounded-3xl px-5 py-3 text-[15px] leading-[1.65]"
+                    : "rounded-[20px] px-[18px] py-3 text-[15.5px] leading-[1.45]",
+                )}
                 dir="auto"
               >
                 {block.text}
@@ -6369,7 +6588,12 @@ const MessageView = memo(function MessageView({
             <div key={i} className="flex w-fit max-w-full justify-start">
               <div
                 data-testid="message-bot-bubble"
-                className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+                className={cn(
+                  "max-w-full",
+                  museMode
+                    ? "text-[15px] leading-[1.65] text-foreground"
+                    : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+                )}
                 dir="auto"
               >
                 <div data-quote-message-id={quoteMessageId}>

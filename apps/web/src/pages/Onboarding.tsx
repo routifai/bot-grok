@@ -1,10 +1,14 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
+  BOT_NAME_MAX_LENGTH,
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
+  DEFAULT_MUSE_COLOR,
+  DEFAULT_MUSE_NAME,
   type IntegrationSetupState,
   MAX_MODEL_CONTEXT_WINDOW,
   MAX_MODEL_MAX_TOKENS,
+  museBotProfile,
   OPENAI_COMPATIBLE_PROVIDER_ID,
   openAiCompatibleConnectReady,
   openAiCompatibleProbeSuccessMessage,
@@ -13,9 +17,11 @@ import {
   parseModelMaxTokens,
   type ThinkingLevel,
 } from "@rakazo/contracts";
-import { createModelProbe, initialModelProbeState } from "@rakazo/core";
+import { createModelProbe, GROK_BOT_COLORS, initialModelProbeState } from "@rakazo/core";
 import {
+  BotAvatar,
   Button,
+  cn,
   Input,
   ModelThinkingOptions,
   Select,
@@ -27,7 +33,9 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
+import { authClient } from "../lib/auth";
 import type { ModelCatalogEntry } from "../lib/model-auth";
+import { applyProductMode } from "../lib/product-mode";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
 
@@ -35,6 +43,29 @@ const CUSTOM_MODEL_OPTION = "__rakazo_custom_model__";
 const FIRST_BOT_NAME = "Chief";
 const FIRST_BOT_SPAWN_KEY = "onboarding:first";
 const FIRST_BOT_LOCK = "rakazo:onboarding-first-bot";
+/** A small set of colors for the Muse's identity, sky first (the default). */
+const MUSE_COLOR_OPTIONS = [...new Set([DEFAULT_MUSE_COLOR, ...GROK_BOT_COLORS])].slice(0, 6);
+
+/** The Muse identity/model steps that show progress dots; "intro" and "bot" don't. */
+const MUSE_ONBOARDING_STEPS = ["name", "museName", "color", "model"] as const;
+
+/** Progress dots for the Muse onboarding steps (docs/muse/DESIGN.md "Onboarding"). */
+function StepDots({ step }: { step: (typeof MUSE_ONBOARDING_STEPS)[number] }) {
+  const index = MUSE_ONBOARDING_STEPS.indexOf(step);
+  return (
+    <div className="mt-8 flex justify-center gap-1.5" aria-hidden="true">
+      {MUSE_ONBOARDING_STEPS.map((candidate, i) => (
+        <span
+          key={candidate}
+          className={cn(
+            "h-1.5 w-1.5 rounded-full transition-colors",
+            i <= index ? "bg-foreground" : "bg-border",
+          )}
+        />
+      ))}
+    </div>
+  );
+}
 
 /** Survives StrictMode remounts; concurrent first-bot creates share one in-flight attempt. */
 let firstBotEnsure: Promise<{ id: string }> | null = null;
@@ -49,18 +80,28 @@ function findFirstBot(
   return byName ? { id: byName.id } : undefined;
 }
 
-async function createOrReuseFirstBot(): Promise<{ id: string }> {
+/** In muse mode the Muse's chosen name and identity color; rakazo mode uses the "Chief" default. */
+type FirstBotProfile = {
+  name: string;
+  color?: string;
+  title?: string;
+  description?: string;
+  instructions?: string;
+};
+
+async function createOrReuseFirstBot(profile: FirstBotProfile): Promise<{ id: string }> {
   const existing = await rpc.bots.list();
   const reuse = findFirstBot(existing);
   if (reuse) return reuse;
   try {
     const created = await rpc.bots.create({
-      name: FIRST_BOT_NAME,
-      title: "",
-      description: "",
-      instructions: "",
+      name: profile.name,
+      title: profile.title ?? "",
+      description: profile.description ?? "",
+      instructions: profile.instructions ?? "",
       notifyOnFinish: true,
       spawnKey: FIRST_BOT_SPAWN_KEY,
+      ...(profile.color ? { color: profile.color } : {}),
     });
     return { id: created.id };
   } catch (error) {
@@ -78,12 +119,12 @@ async function withFirstBotLock<T>(run: () => Promise<T>): Promise<T> {
   return locks.request(FIRST_BOT_LOCK, run);
 }
 
-async function ensureFirstBot(): Promise<{ id: string }> {
+async function ensureFirstBot(profile: FirstBotProfile): Promise<{ id: string }> {
   if (firstBotEnsure) return firstBotEnsure;
   // Web Lock serializes cross-tab creates; module promise covers same-tab StrictMode.
   // spawnKey makes create idempotent when locks are unavailable.
   // Clear after settle so a later empty-space visit re-lists instead of reusing a deleted id.
-  firstBotEnsure = withFirstBotLock(createOrReuseFirstBot).finally(() => {
+  firstBotEnsure = withFirstBotLock(() => createOrReuseFirstBot(profile)).finally(() => {
     firstBotEnsure = null;
   });
   return firstBotEnsure;
@@ -101,7 +142,17 @@ export function OnboardingPage() {
   const { t } = useLingui();
   const navigate = useNavigate();
   const fieldId = useId();
-  const [step, setStep] = useState<"loading" | "model" | "integrations" | "bot">("loading");
+  const [step, setStep] = useState<
+    "loading" | "intro" | "name" | "museName" | "color" | "model" | "integrations" | "bot"
+  >("loading");
+  /** Muse mode only: what to show once the name → Muse name → color steps are done. */
+  const [postIdentityStep, setPostIdentityStep] = useState<"model" | "integrations" | "bot">(
+    "model",
+  );
+  const [isMuse, setIsMuse] = useState(false);
+  const [personName, setPersonName] = useState("");
+  const [museName, setMuseName] = useState(DEFAULT_MUSE_NAME);
+  const [museColor, setMuseColor] = useState(DEFAULT_MUSE_COLOR);
   const [integrationSetup, setIntegrationSetup] = useState<IntegrationSetupState | null>(null);
   const needsIntegrationSetup = integrationSetup?.needsSetup ?? false;
   const [integrationServers, setIntegrationServers] = useState<string[]>([]);
@@ -159,7 +210,20 @@ export function OnboardingPage() {
           setProvider(preferred.provider);
           setModelId(preferred.provider === OPENAI_COMPATIBLE_PROVIDER_ID ? "" : preferred.id);
         }
-        setStep(me.needsModel ? "model" : integrations?.needsSetup ? "integrations" : "bot");
+        const entryStep = me.needsModel
+          ? "model"
+          : integrations?.needsSetup
+            ? "integrations"
+            : "bot";
+        applyProductMode(me.productMode);
+        if (me.productMode === "muse") {
+          setIsMuse(true);
+          setPersonName(me.name ?? "");
+          setPostIdentityStep(entryStep);
+          setStep("intro");
+        } else {
+          setStep(entryStep);
+        }
       })
       .catch(() => setStep("bot"));
     return () => {
@@ -341,12 +405,42 @@ export function OnboardingPage() {
     });
   }
 
+  async function saveName() {
+    const trimmed = personName.trim();
+    if (!trimmed) return;
+    setError(null);
+    const result = await authClient.updateUser({ name: trimmed });
+    if (result.error) {
+      setError(result.error.message ?? t`Could not save your name`);
+      return;
+    }
+    setStep("museName");
+  }
+
+  function saveMuseName() {
+    if (!museName.trim()) return;
+    setError(null);
+    setStep("color");
+  }
+
+  function saveMuseColor() {
+    setStep(postIdentityStep);
+  }
+
   async function createFirstBot() {
     if (createStartedRef.current) return;
     createStartedRef.current = true;
     setError(null);
     try {
-      const bot = await ensureFirstBot();
+      const bot = await ensureFirstBot(
+        isMuse
+          ? {
+              name: museName.trim() || DEFAULT_MUSE_NAME,
+              color: museColor,
+              ...museBotProfile(museName.trim() || DEFAULT_MUSE_NAME, personName),
+            }
+          : { name: FIRST_BOT_NAME },
+      );
       for (const serverId of integrationServers) {
         await rpc.mcp.assignments.approve({ botId: bot.id, serverId });
       }
@@ -372,18 +466,141 @@ export function OnboardingPage() {
   }, [step]);
 
   return (
-    <div className="min-h-full bg-background px-6 py-12">
-      <div className="mx-auto w-full max-w-[560px]">
+    <div
+      className={cn(
+        "min-h-full bg-background px-6",
+        isMuse ? "flex min-h-screen items-center justify-center py-16" : "py-12",
+      )}
+    >
+      <div className={cn("mx-auto w-full", isMuse ? "max-w-[440px]" : "max-w-[560px]")}>
         {step === "loading" ? (
           <p className="text-muted-foreground">
             <Trans>Loading…</Trans>
           </p>
         ) : null}
+        {step === "intro" ? (
+          <div className="flex flex-col items-center text-center">
+            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse-intro" face="muse" size={120} />
+            <h1 className="mt-7 font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>Hi, I'm your new executive assistant.</Trans>
+            </h1>
+            <p className="mt-3 text-[15px] text-muted-foreground">
+              <Trans>
+                I'll plan, research, draft and follow up — so your everyday things get done, and
+                done well.
+              </Trans>
+            </p>
+            <Button className="mt-8 h-12 w-full text-[15px]" onClick={() => setStep("name")}>
+              <Trans>Let's get started</Trans>
+            </Button>
+          </div>
+        ) : null}
+        {step === "name" ? (
+          <div>
+            <h1 className="font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>First, what should I call you?</Trans>
+            </h1>
+            <Input
+              className="mt-8 h-14 rounded-xl text-[16px]"
+              value={personName}
+              onChange={(e) => setPersonName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveName();
+              }}
+              aria-label={t`Your name`}
+              placeholder={t`Your name`}
+              autoFocus
+              maxLength={120}
+            />
+            {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+            <div className="mt-6">
+              <Button
+                className="h-12 w-full text-[15px]"
+                disabled={!personName.trim()}
+                onClick={() => void saveName()}
+              >
+                <Trans>Continue</Trans>
+              </Button>
+            </div>
+            <StepDots step="name" />
+          </div>
+        ) : null}
+        {step === "museName" ? (
+          <div>
+            <h1 className="font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>And what would you like to call me?</Trans>
+            </h1>
+            <Input
+              className="mt-8 h-14 rounded-xl text-[16px]"
+              value={museName}
+              onChange={(e) => setMuseName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveMuseName();
+              }}
+              aria-label={t`Muse name`}
+              placeholder={DEFAULT_MUSE_NAME}
+              autoFocus
+              maxLength={BOT_NAME_MAX_LENGTH}
+            />
+            {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+            <div className="mt-6">
+              <Button
+                className="h-12 w-full text-[15px]"
+                disabled={!museName.trim()}
+                onClick={saveMuseName}
+              >
+                <Trans>Continue</Trans>
+              </Button>
+            </div>
+            <StepDots step="museName" />
+          </div>
+        ) : null}
+        {step === "color" ? (
+          <div>
+            <h1 className="text-center font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>Pick my color.</Trans>
+            </h1>
+            <div className="mt-8 flex justify-center">
+              <BotAvatar color={museColor} identity={museName} face="muse" size={120} />
+            </div>
+            <div className="mt-8 grid grid-cols-6 place-items-center gap-2">
+              {MUSE_COLOR_OPTIONS.map((color) => {
+                const selected = museColor.toLowerCase() === color.toLowerCase();
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setMuseColor(color)}
+                    aria-label={t`Color ${color}`}
+                    aria-pressed={selected}
+                    className={`size-8 rounded-full border transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring ${
+                      selected
+                        ? "scale-105 border-transparent ring-2 ring-foreground ring-offset-2 ring-offset-background"
+                        : "border-border"
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                );
+              })}
+            </div>
+            <div className="mt-6">
+              <Button className="h-12 w-full text-[15px]" onClick={saveMuseColor}>
+                <Trans>Continue</Trans>
+              </Button>
+            </div>
+            <StepDots step="color" />
+          </div>
+        ) : null}
         {step === "model" ? (
           <div>
             <h1 className="text-[32px] font-medium text-foreground">
-              <Trans>Connect a model</Trans>
+              {isMuse ? (
+                <Trans>Last thing — connect the brain I'll think with.</Trans>
+              ) : (
+                <Trans>Connect a model</Trans>
+              )}
             </h1>
+            {isMuse ? <StepDots step="model" /> : null}
             <div className="mt-8 block text-sm font-medium text-foreground">
               <span>
                 <Trans>Provider</Trans>

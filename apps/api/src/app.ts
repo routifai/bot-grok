@@ -473,6 +473,7 @@ export async function createApp(
       openSignup: env.messagingOpenSignup,
     },
     env: {
+      productMode: env.productMode,
       agentRuntime: env.agentRuntime,
       defaultProvider: env.defaultProvider,
       defaultModel: env.defaultModel,
@@ -506,6 +507,8 @@ export async function createApp(
       credentials: true,
     }),
   );
+  // Public: signed-out pages (welcome, sign-in) need the product mode to pick their look.
+  app.get("/api/product", (c) => c.json({ productMode: env.productMode }));
   app.get("/api/auth/capabilities", (c) =>
     c.json({
       passwordReset: Boolean(email),

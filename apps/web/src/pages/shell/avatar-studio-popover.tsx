@@ -1,5 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { Trans } from "@lingui/react/macro";
+import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
 import {
   BotAvatar,
   DEFAULT_GROK_BOT_COLOR,
@@ -23,6 +24,8 @@ export interface AvatarStudioPopoverProps {
   size?: number;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** True when the app is in muse mode: offer only the face color, no shape or image choices. */
+  museMode?: boolean;
 }
 
 export function AvatarStudioPopover({
@@ -32,6 +35,7 @@ export function AvatarStudioPopover({
   size = 72,
   onChange,
   disabled = false,
+  museMode = false,
 }: AvatarStudioPopoverProps) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"bot" | "upload">("bot");
@@ -39,7 +43,7 @@ export function AvatarStudioPopover({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const parsed = parseBotAvatar(value, identity);
-  const currentColor = parsed.color || DEFAULT_GROK_BOT_COLOR;
+  const currentColor = parsed.color || (museMode ? DEFAULT_MUSE_COLOR : DEFAULT_GROK_BOT_COLOR);
   const currentShape = parsed.shapeIndex ?? 0;
 
   function selectShape(shapeIndex: number) {
@@ -47,11 +51,11 @@ export function AvatarStudioPopover({
   }
 
   function selectColor(color: string) {
-    onChange(`${color}::shape_${currentShape}`);
+    onChange(museMode ? color : `${color}::shape_${currentShape}`);
   }
 
   function resetAvatar() {
-    onChange(`${DEFAULT_GROK_BOT_COLOR}::shape_0`);
+    onChange(museMode ? DEFAULT_MUSE_COLOR : `${DEFAULT_GROK_BOT_COLOR}::shape_0`);
   }
 
   function processImageFile(file: File) {
@@ -117,7 +121,13 @@ export function AvatarStudioPopover({
         aria-label={t`Customize bot avatar`}
         data-testid="avatar-studio-trigger"
       >
-        <BotAvatar color={value} identity={identity} size={size} status={status} />
+        <BotAvatar
+          color={value}
+          identity={identity}
+          size={size}
+          status={status}
+          face={museMode ? "muse" : undefined}
+        />
         <div className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-foreground shadow-md transition-transform group-hover:scale-110">
           <Pencil size={12} strokeWidth={2.2} />
         </div>
@@ -134,7 +144,11 @@ export function AvatarStudioPopover({
               <Trans>Avatar Studio</Trans>
             </DialogTitle>
             <DialogDescription className="sr-only">
-              <Trans>Choose a bot shape, color, or upload an image</Trans>
+              {museMode ? (
+                <Trans>Choose the Muse's color</Trans>
+              ) : (
+                <Trans>Choose a bot shape, color, or upload an image</Trans>
+              )}
             </DialogDescription>
             <button
               type="button"
@@ -147,36 +161,46 @@ export function AvatarStudioPopover({
           </DialogHeader>
 
           <div className="flex flex-col items-center justify-center py-2">
-            <BotAvatar color={value} identity={identity} size={78} status={status} />
+            <BotAvatar
+              color={value}
+              identity={identity}
+              size={78}
+              status={status}
+              face={museMode ? "muse" : undefined}
+            />
           </div>
 
           <div className="flex items-center justify-between border-b border-border pb-1">
-            <div className="flex items-center rounded-full bg-muted p-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab("bot")}
-                aria-pressed={activeTab === "bot"}
-                className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                  activeTab === "bot"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Trans>Bot</Trans>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("upload")}
-                aria-pressed={activeTab === "upload"}
-                className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                  activeTab === "upload"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Trans>Upload</Trans>
-              </button>
-            </div>
+            {museMode ? (
+              <div />
+            ) : (
+              <div className="flex items-center rounded-full bg-muted p-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("bot")}
+                  aria-pressed={activeTab === "bot"}
+                  className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                    activeTab === "bot"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Trans>Bot</Trans>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("upload")}
+                  aria-pressed={activeTab === "upload"}
+                  className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                    activeTab === "upload"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Trans>Upload</Trans>
+                </button>
+              </div>
+            )}
 
             <button
               type="button"
@@ -187,7 +211,33 @@ export function AvatarStudioPopover({
             </button>
           </div>
 
-          {activeTab === "bot" ? (
+          {museMode ? (
+            <div className="pt-1" data-testid="avatar-studio-muse-color">
+              <div className="mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                <Trans>Color</Trans>
+              </div>
+              <div className="grid grid-cols-6 place-items-center gap-2">
+                {GROK_BOT_COLORS.map((color) => {
+                  const selected = currentColor.toLowerCase() === color.toLowerCase();
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => selectColor(color)}
+                      aria-label={t`Color ${color}`}
+                      aria-pressed={selected}
+                      className={`size-6 rounded-full border transition-transform hover:scale-110 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring ${
+                        selected
+                          ? "scale-105 border-transparent ring-2 ring-foreground ring-offset-2 ring-offset-popover"
+                          : "border-border"
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ) : activeTab === "bot" ? (
             <div className="space-y-4 pt-1" data-testid="avatar-studio-bot-tab">
               <div>
                 <div className="mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">

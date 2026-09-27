@@ -27,6 +27,7 @@ import {
 import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
+import { ProactivitySettings } from "../muse/ProactivitySettings";
 import { AvatarStudioPopover } from "./avatar-studio-popover";
 
 const ScratchpadSection = lazy(() =>
@@ -404,6 +405,7 @@ export function BotSettings({
           identity={bot.id}
           status={bot.status}
           size={76}
+          museMode={me?.productMode === "muse"}
           onChange={(newColor) => {
             setColor(newColor);
             void enqueueSave({ color: newColor });
@@ -468,6 +470,7 @@ export function BotSettings({
           }}
         />
       </div>
+      {me?.productMode === "muse" ? <ProactivitySettings botId={bot.id} /> : null}
       <details
         data-testid="bot-settings-advanced"
         className="group mt-5"

@@ -1,0 +1,71 @@
+import { Trans, useLingui } from "@lingui/react/macro";
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@rakazo/ui-web";
+import { Download, Lock } from "lucide-react";
+import { downloadArtifactBytes } from "../../../lib/artifact-open";
+import { ArtifactPreview } from "../../Artifacts";
+import { useArtifactContent } from "./useArtifactContent";
+
+/**
+ * The Library's "open" flow: reuses `Artifacts.tsx`'s `ArtifactPreview` (the same
+ * sandboxed HTML viewer, PDF viewer, markdown render and image view it already has)
+ * inside a floating dialog instead of the full Artifacts page's split layout.
+ */
+export function ArtifactPreviewDialog({
+  artifactId,
+  onOpenChange,
+}: {
+  artifactId: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { t } = useLingui();
+  const state = useArtifactContent(artifactId);
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[85vh] w-[92vw] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
+        <DialogHeader className="shrink-0 flex-row items-center justify-between gap-3 border-b border-border px-5 py-3.5 text-left">
+          <DialogTitle className="min-w-0 truncate pe-8 text-[15px] font-medium">
+            {state.status === "ready" ? state.artifact.name : t`Loading…`}
+          </DialogTitle>
+          {state.status === "ready" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="me-8"
+              onClick={() =>
+                downloadArtifactBytes(state.artifact.name, state.artifact.mimeType, state.bytes)
+              }
+            >
+              <Download className="me-1.5" size={14} strokeWidth={1.75} />
+              <Trans>Download</Trans>
+            </Button>
+          ) : null}
+        </DialogHeader>
+
+        <div className="relative min-h-0 flex-1">
+          {state.status === "loading" ? (
+            <div className="grid h-full place-items-center text-[13.5px] text-muted-foreground">
+              <Trans>Loading…</Trans>
+            </div>
+          ) : state.status === "error" ? (
+            <div className="grid h-full place-items-center px-6 text-center text-[13.5px] text-destructive">
+              {state.message}
+            </div>
+          ) : (
+            <>
+              <ArtifactPreview artifact={state.artifact} bytes={state.bytes} />
+              {state.artifact.mimeType === "text/html" ? (
+                <div className="pointer-events-none absolute bottom-3 end-3 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1.5 text-[11px] text-white">
+                  <Lock size={12} strokeWidth={2} />
+                  <span>
+                    <Trans>Isolated preview — no access to your account</Trans>
+                  </span>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
