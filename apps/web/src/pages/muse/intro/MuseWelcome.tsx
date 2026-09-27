@@ -1,6 +1,5 @@
 import { Trans } from "@lingui/react/macro";
-import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
-import { BotAvatar, cn } from "@rakazo/ui-web";
+import { AidenHero, cn } from "@rakazo/ui-web";
 import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -19,8 +18,8 @@ export function MuseWelcome() {
       <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
         <div className="flex w-full max-w-[680px] flex-col items-center text-center">
           <div className="relative mb-8">
-            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="aiden" face="muse" size={96} />
-            <span className="absolute -top-3 start-[88px] whitespace-nowrap rounded-2xl rounded-bl-md border border-border bg-card px-3 py-1.5 text-[13px] text-foreground shadow-float">
+            <AidenHero size={184} />
+            <span className="absolute -top-3 start-[160px] whitespace-nowrap rounded-2xl rounded-bl-md border border-border bg-card px-3 py-1.5 text-[13px] text-foreground shadow-float">
               <Trans>Hi, I'm Aiden.</Trans>
             </span>
           </div>

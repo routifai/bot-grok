@@ -196,16 +196,17 @@ describe("Muse face", () => {
     expect(museAvatarState(undefined, 1)).toBe("waiting");
   });
 
-  it("renders the muse face with the identity color on the body and the state as a data attribute", () => {
+  it("renders Aiden with the identity color on the ring and the state as a data attribute", () => {
     const html = renderToString(<BotAvatar color="#22C55E" face="muse" status="running" />);
     expect(html).toContain('data-muse-state="working"');
-    expect(html).toContain('fill="#22C55E"');
+    expect(html).toContain("#22C55E");
+    expect(html).toContain("aiden-head");
     expect(html).not.toContain("grok-character-eyes");
   });
 
   it("defaults to DEFAULT_MUSE_COLOR when no color is set", () => {
     const html = renderToString(<BotAvatar color="" face="muse" />);
-    expect(html).toContain(`fill="${DEFAULT_MUSE_COLOR}"`);
+    expect(html).toContain(DEFAULT_MUSE_COLOR);
   });
 
   it("shows a numeric waiting badge at a legible size, capped at 9+", () => {

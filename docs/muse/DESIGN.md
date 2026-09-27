@@ -4,11 +4,11 @@ The Muse edition should feel calm, personal, and quietly capable: ChatGPT's rest
 
 ## The Muse
 
-The Muse is **Aiden**, an original vinyl-toy lion (rounded-square head, layered swept mane, big glossy eyes, smiling muzzle), drawn in `packages/ui-web/src/bot-avatar.tsx`. The mane takes the identity color. Aiden breathes and blinks when idle, sways while working, hops with an Ask badge when waiting, and roars (mouth open, mane puff, gentle shake, a short synthesized growl) when clicked. It is our own character, not a bank's logo.
+The Muse is **Aiden**, a friendly 3D lion mascot in blue and gold (`packages/ui-web/src/assets/aiden-*.jpg`). Everywhere small (rail, headers, cards) he is a round head crop framed by a ring in the identity color (gold by default); in big moments (welcome) he is the full sitting lion in a rounded tile (`AidenHero`). He breathes when idle, sways while working, hops with an Ask badge when waiting, and roars when clicked: a shake, two ripples in his color, and a short growl synthesized with Web Audio. He is our own character, not a bank's logo.
 
 ## Foundations
 
-**Color.** Semantic tokens only (`@rakazo/ui-tokens`: `museLightTokens`, `museDarkTokens`). White surfaces, hairline borders, ink primary. The app stays monochrome: the Muse's identity color (warm orange `#EE8A2A` by default) is the only brand color and appears only on the Muse face. Status colors are semantic: `warning` = waiting on you, `success` = done or live, `destructive` = failed. Never hardcode a hex in a component.
+**Color.** Semantic tokens only (`@rakazo/ui-tokens`: `museLightTokens`, `museDarkTokens`). White surfaces, hairline borders, ink primary. The app stays monochrome: the Muse's identity color (gold `#F2B233` by default, Aiden's ring) is the only brand color and appears only on the Muse face. Status colors are semantic: `warning` = waiting on you, `success` = done or live, `destructive` = failed. Never hardcode a hex in a component.
 
 **Type.**
 - Geist (body, UI): 14–15px body, 13px secondary, 12px meta.

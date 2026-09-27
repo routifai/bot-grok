@@ -160,8 +160,8 @@ export const DEFAULT_MUSE_SETTINGS: MuseSettings = {
   quietHours: "22:00-08:00",
 };
 
-/** Default identity color of a new Muse: warm orange, the color of Aiden's mane. */
-export const DEFAULT_MUSE_COLOR = "#EE8A2A";
+/** Default identity color of a new Muse: Aiden's gold, used for his ring and roar ripples. */
+export const DEFAULT_MUSE_COLOR = "#F2B233";
 
 /** Default name of a new Muse. */
 export const DEFAULT_MUSE_NAME = "Aiden";

@@ -361,48 +361,43 @@ function OrganicAvatar({
 }
 
 /**
- * Fixed accents for the Muse face: Aiden, an original vinyl-toy lion (docs/muse/DESIGN.md).
- * The mane is the only part that takes the bot's identity color; everything else is part
- * of the illustration and defined once here.
+ * Aiden, the Muse (docs/muse/DESIGN.md): a head-and-shoulders crop of the Aiden mascot in a
+ * round frame. The identity color draws the frame's ring and the roar ripples.
  */
-const MUSE_FACE_INK = "#161310";
-const MUSE_FACE_HEAD = "#F2B55C";
-const MUSE_FACE_HEAD_SHADE = "#E29A3E";
-const MUSE_FACE_EAR_INNER = "#FBDDA6";
-const MUSE_FACE_MUZZLE = "#FCE6BC";
-const MUSE_FACE_MOUTH = "#7A2E2A";
-const MUSE_FACE_TONGUE = "#FF8E86";
-const MUSE_FACE_SHINE = "#FFFFFF";
+export const AIDEN_HEAD_IMAGE = new URL("./assets/aiden-head.jpg", import.meta.url).href;
+/** The full sitting Aiden, for large moments (welcome, onboarding). */
+export const AIDEN_FULL_IMAGE = new URL("./assets/aiden-full.jpg", import.meta.url).href;
 
-/** One mane tuft: a teardrop pointing away from the head's center at (60, 62). */
-function maneTuft(angle: number, radius: number, length: number, width: number): string {
-  const cx = 60;
-  const cy = 62;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const baseX = cx + radius * cos;
-  const baseY = cy + radius * sin;
-  // A slight clockwise sweep so the tufts read as hair, not petals.
-  const tipAngle = angle + 0.22;
-  const tipX = cx + (radius + length) * Math.cos(tipAngle);
-  const tipY = cy + (radius + length) * Math.sin(tipAngle);
-  const sideX = -sin * width;
-  const sideY = cos * width;
-  const f = (n: number) => n.toFixed(1);
+/** The full sitting Aiden for big moments; roars on click like the avatar. */
+export function AidenHero({ size = 200, className }: { size?: number; className?: string }) {
+  const [roaring, setRoaring] = useState(false);
+  const roarTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(roarTimer.current), []);
+  const roar = () => {
+    playLionRoar();
+    setRoaring(true);
+    clearTimeout(roarTimer.current);
+    roarTimer.current = setTimeout(() => setRoaring(false), MUSE_ROAR_MS);
+  };
   return (
-    `M${f(baseX - sideX)} ${f(baseY - sideY)}` +
-    `Q${f(tipX - sideX * 0.72)} ${f(tipY - sideY * 0.72)} ${f(tipX)} ${f(tipY)}` +
-    `Q${f(tipX + sideX * 0.72)} ${f(tipY + sideY * 0.72)} ${f(baseX + sideX)} ${f(baseY + sideY)}Z`
+    <div
+      className={cn("rakazo-muse-avatar-container relative shrink-0 select-none", className)}
+      style={{ width: size, height: size }}
+      onPointerDown={roar}
+    >
+      <div
+        aria-hidden="true"
+        data-muse-state="idle"
+        data-roaring={roaring || undefined}
+        className="rakazo-muse-avatar relative size-full"
+      >
+        <div className="rakazo-muse-all size-full overflow-hidden rounded-[28%] shadow-float">
+          <img src={AIDEN_FULL_IMAGE} alt="" draggable={false} className="size-full object-cover" />
+        </div>
+      </div>
+    </div>
   );
 }
-
-/** Two layers of tufts: a full outer ring and a lighter inner ring offset by half a tuft. */
-const MUSE_MANE_OUTER = Array.from({ length: 14 }, (_, i) =>
-  maneTuft((i / 14) * Math.PI * 2 - Math.PI / 2, 30, 25, 11),
-).join("");
-const MUSE_MANE_INNER = Array.from({ length: 14 }, (_, i) =>
-  maneTuft(((i + 0.5) / 14) * Math.PI * 2 - Math.PI / 2, 29, 19, 10),
-).join("");
 
 /** How long a click roar lasts; matches the rakazo-muse-roar keyframes. */
 const MUSE_ROAR_MS = 900;
@@ -447,73 +442,22 @@ function MuseAvatar({
       style={{ width: size, height: size }}
       onPointerDown={roar}
     >
-      <svg
-        viewBox="0 0 120 120"
-        width={size}
-        height={size}
+      <div
         aria-hidden="true"
         data-muse-state={state}
         data-roaring={roaring || undefined}
-        className="rakazo-muse-avatar overflow-visible"
+        className="rakazo-muse-avatar relative size-full"
+        style={{ color }}
       >
-        <ellipse cx={60} cy={115} rx={30} ry={3.5} fill={MUSE_FACE_INK} opacity={0.1} />
-        <g className="rakazo-muse-all">
-          <g className="rakazo-muse-mane">
-            <path fill={color} d={MUSE_MANE_OUTER} />
-            <path fill={MUSE_FACE_INK} opacity={0.14} d={MUSE_MANE_OUTER} />
-            <path fill={color} d={MUSE_MANE_INNER} />
-            <path fill={MUSE_FACE_SHINE} opacity={0.2} d={MUSE_MANE_INNER} />
-          </g>
-          <circle fill={MUSE_FACE_HEAD} cx={33} cy={34} r={11} />
-          <circle fill={MUSE_FACE_HEAD} cx={87} cy={34} r={11} />
-          <circle fill={MUSE_FACE_EAR_INNER} cx={33.5} cy={35} r={6.5} />
-          <circle fill={MUSE_FACE_EAR_INNER} cx={86.5} cy={35} r={6.5} />
-          <rect fill={MUSE_FACE_HEAD_SHADE} x={25} y={34} width={70} height={63} rx={29} />
-          <rect fill={MUSE_FACE_HEAD} x={25} y={31} width={70} height={63} rx={29} />
-          <ellipse
-            fill={MUSE_FACE_SHINE}
-            opacity={0.35}
-            cx={42}
-            cy={42}
-            rx={10}
-            ry={5}
-            transform="rotate(-20 42 42)"
-          />
-          <g stroke={MUSE_FACE_HEAD_SHADE} strokeWidth={2.4} strokeLinecap="round" fill="none">
-            <path d="M38 51Q44 48 50 50.5" />
-            <path d="M70 50.5Q76 48 82 51" />
-          </g>
-          <g className="rakazo-muse-eyes">
-            <g className="rakazo-muse-pupils">
-              <circle fill={MUSE_FACE_INK} cx={45} cy={62} r={8.5} />
-              <circle fill={MUSE_FACE_INK} cx={75} cy={62} r={8.5} />
-              <circle fill={MUSE_FACE_SHINE} cx={48} cy={58.6} r={2.8} />
-              <circle fill={MUSE_FACE_SHINE} cx={78} cy={58.6} r={2.8} />
-            </g>
-          </g>
-          <ellipse fill={MUSE_FACE_MUZZLE} cx={60} cy={82} rx={16.5} ry={11.5} />
-          <g className="rakazo-muse-mouth-closed">
-            <path
-              d="M60 80V83.5M51.5 84Q60 91 68.5 84"
-              stroke={MUSE_FACE_INK}
-              strokeWidth={2.2}
-              strokeLinecap="round"
-              fill="none"
-            />
-          </g>
-          <g className="rakazo-muse-mouth-open">
-            <ellipse fill={MUSE_FACE_MOUTH} cx={60} cy={88} rx={8} ry={7} />
-            <ellipse fill={MUSE_FACE_TONGUE} cx={60} cy={92} rx={5} ry={2.6} />
-          </g>
-          <path fill={MUSE_FACE_INK} d="M53 74Q60 70.5 67 74Q64.5 79.5 60 80.5Q55.5 79.5 53 74Z" />
-          <g fill={MUSE_FACE_INK} opacity={0.55}>
-            <circle cx={49} cy={81} r={1} />
-            <circle cx={50.5} cy={85} r={1} />
-            <circle cx={71} cy={81} r={1} />
-            <circle cx={69.5} cy={85} r={1} />
-          </g>
-        </g>
-      </svg>
+        <span className="rakazo-muse-ripple" />
+        <span className="rakazo-muse-ripple rakazo-muse-ripple-late" />
+        <div
+          className="rakazo-muse-all size-full overflow-hidden rounded-full"
+          style={{ boxShadow: `0 0 0 ${size >= 48 ? 3 : 2}px ${color}` }}
+        >
+          <img src={AIDEN_HEAD_IMAGE} alt="" draggable={false} className="size-full object-cover" />
+        </div>
+      </div>
       {showBadge ? (
         showBadgeText ? (
           <span

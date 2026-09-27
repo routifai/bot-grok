@@ -514,62 +514,44 @@
   }
 }
 
-/* Muse face (Aiden the lion): idle breathe + blink, working sway + eye scan +
-   slowly turning mane, waiting hop + pulsing mane, and a roar on click. State comes
-   from data-muse-state (derived MuseState, never a free string) and data-roaring. */
+/* Muse face (Aiden): idle breathe, working sway, waiting hop, and a roar on click
+   (shake + scale + two ripples in the identity color). State comes from
+   data-muse-state (derived MuseState, never a free string) and data-roaring. */
 .rakazo-muse-all {
-  transform-box: fill-box;
-  transform-origin: 50% 82%;
-}
-
-.rakazo-muse-pupils,
-.rakazo-muse-mane {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
+  transform-origin: 50% 85%;
 }
 
 .rakazo-muse-avatar-container {
   cursor: pointer;
 }
 
-.rakazo-muse-mouth-open {
-  display: none;
+.rakazo-muse-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.rakazo-muse-avatar[data-roaring] .rakazo-muse-mouth-open {
-  display: inline;
+.rakazo-muse-avatar[data-roaring] .rakazo-muse-ripple {
+  animation: rakazo-muse-ripple 0.9s ease-out;
 }
 
-.rakazo-muse-avatar[data-roaring] .rakazo-muse-mouth-closed {
-  display: none;
+.rakazo-muse-avatar[data-roaring] .rakazo-muse-ripple-late {
+  animation-delay: 0.18s;
 }
 
 .rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-all {
   animation: rakazo-muse-breathe 4.2s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-pupils {
-  animation: rakazo-muse-blink 5.4s ease-in-out infinite;
-}
-
 .rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-all {
   animation: rakazo-muse-sway 1.6s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-pupils {
-  animation: rakazo-muse-scan 1.6s ease-in-out infinite;
-}
-
-.rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-mane {
-  animation: rakazo-muse-spin 14s linear infinite;
-}
-
 .rakazo-muse-avatar[data-muse-state="waiting"] .rakazo-muse-all {
   animation: rakazo-muse-hop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
-}
-
-.rakazo-muse-avatar[data-muse-state="waiting"] .rakazo-muse-mane {
-  animation: rakazo-muse-mane-pulse 0.9s ease-in-out infinite;
 }
 
 /* The roar wins over every state while it plays. */
@@ -577,8 +559,15 @@
   animation: rakazo-muse-roar 0.9s cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 
-.rakazo-muse-avatar[data-roaring] .rakazo-muse-mane {
-  animation: rakazo-muse-mane-roar 0.9s ease-out;
+@keyframes rakazo-muse-ripple {
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
 }
 
 @keyframes rakazo-muse-breathe {
@@ -591,20 +580,6 @@
   }
 }
 
-@keyframes rakazo-muse-blink {
-  0%,
-  90%,
-  100% {
-    transform: scaleY(1);
-  }
-  93% {
-    transform: scaleY(0.1);
-  }
-  96% {
-    transform: scaleY(1);
-  }
-}
-
 @keyframes rakazo-muse-sway {
   0%,
   100% {
@@ -612,25 +587,6 @@
   }
   50% {
     transform: rotate(4deg) translateX(2px);
-  }
-}
-
-@keyframes rakazo-muse-scan {
-  0%,
-  100% {
-    transform: translateX(-4px);
-  }
-  50% {
-    transform: translateX(4px);
-  }
-}
-
-@keyframes rakazo-muse-spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
   }
 }
 
@@ -647,16 +603,6 @@
   }
   75% {
     transform: translateY(-2px) scale(0.98, 1.02);
-  }
-}
-
-@keyframes rakazo-muse-mane-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.06);
   }
 }
 
@@ -678,18 +624,6 @@
   }
   100% {
     transform: scale(1) rotate(0deg);
-  }
-}
-
-@keyframes rakazo-muse-mane-roar {
-  0% {
-    transform: scale(1);
-  }
-  25% {
-    transform: scale(1.18);
-  }
-  100% {
-    transform: scale(1);
   }
 }
 
@@ -720,10 +654,7 @@
   }
 
   .rakazo-muse-all,
-  .rakazo-muse-pupils,
-  .rakazo-muse-mane,
-  .rakazo-muse-avatar[data-roaring] .rakazo-muse-all,
-  .rakazo-muse-avatar[data-roaring] .rakazo-muse-mane {
+  .rakazo-muse-avatar[data-roaring] .rakazo-muse-all {
     animation: none;
   }
 }
