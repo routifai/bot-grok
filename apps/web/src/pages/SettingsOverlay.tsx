@@ -207,7 +207,11 @@ export function SettingsOverlay({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="flex items-start justify-between gap-4 px-6 pt-6 sm:px-8 sm:pt-7">
               <DialogTitle
-                className={`text-2xl font-medium text-foreground ${museMode ? "font-display" : ""}`}
+                className={
+                  museMode
+                    ? "text-[28px] font-bold tracking-[-0.025em] text-foreground"
+                    : "text-2xl font-medium text-foreground"
+                }
               >
                 {sectionTitle}
               </DialogTitle>

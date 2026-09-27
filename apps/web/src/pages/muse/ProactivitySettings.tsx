@@ -1,9 +1,10 @@
 import type { MuseSettings, Proactivity } from "@aiden/contracts";
 import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@aiden/contracts";
-import { Input, Switch, Tabs, TabsList, TabsTrigger } from "@aiden/ui-web";
+import { cn, Switch } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../../lib/rpc";
+import { MUSE_INSET_GROUP } from "./ui";
 
 const DEFAULT_QUIET_HOURS = DEFAULT_MUSE_SETTINGS.quietHours ?? "22:00-08:00";
 
@@ -25,18 +26,29 @@ function ProactivityLabel({ level }: { level: Proactivity }) {
   }
 }
 
+function ProactivityFooter({ level }: { level: Proactivity }) {
+  switch (level) {
+    case "off":
+      return <Trans>I only work when you ask.</Trans>;
+    case "low":
+      return <Trans>I check on your Goals every few hours.</Trans>;
+    case "normal":
+      return <Trans>I check on your Goals about every hour.</Trans>;
+    case "high":
+      return <Trans>I keep working on your Goals throughout the day.</Trans>;
+  }
+}
+
+const ROW = "flex min-h-[52px] items-center justify-between gap-4 px-4";
+const TIME =
+  "rounded-lg bg-muted px-2.5 py-1.5 text-[15px] tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 /**
- * How eagerly the Muse works on Goals on its own, and the window it stays quiet in.
- * Saves each change immediately (optimistic); reverts and shows the error inline on failure.
+ * How eagerly the Muse works on Goals on its own, and the window it stays quiet in, as
+ * iOS-style grouped rows. Saves each change immediately (optimistic); reverts and shows
+ * the error inline on failure.
  */
-export function ProactivitySettings({
-  botId,
-  className = "mt-6 pt-4 border-t border-border/20",
-}: {
-  botId: string;
-  /** Wrapper class; override to drop the default top divider when embedding in its own card. */
-  className?: string;
-}) {
+export function ProactivitySettings({ botId }: { botId: string }) {
   const { t } = useLingui();
   const ids = useId();
   const [settings, setSettings] = useState<MuseSettings | null>(null);
@@ -71,68 +83,109 @@ export function ProactivitySettings({
   const quietHoursOn = settings.quietHours !== null;
 
   return (
-    <div data-testid="proactivity-settings" className={className}>
-      <div className="text-[13.5px] text-muted-foreground">
-        <Trans>Proactivity</Trans>
-      </div>
-      <Tabs
-        value={settings.proactivity}
-        onValueChange={(value) => void save({ proactivity: value as Proactivity }, settings)}
-        className="mt-2"
-      >
-        <TabsList className="w-full" aria-label={t`Proactivity`}>
-          {PROACTIVITY_LEVELS.map((level) => (
-            <TabsTrigger key={level} value={level} className="flex-1">
-              <ProactivityLabel level={level} />
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-      <div className="mt-4 flex items-center justify-between">
-        <span id={`${ids}-quiet-hours-label`} className="text-[13.5px] text-muted-foreground">
-          <Trans>Quiet hours</Trans>
-        </span>
-        <Switch
-          id={`${ids}-quiet-hours`}
-          checked={quietHoursOn}
-          aria-labelledby={`${ids}-quiet-hours-label`}
-          onCheckedChange={(checked) =>
-            void save(
-              { quietHours: checked ? (settings.quietHours ?? DEFAULT_QUIET_HOURS) : null },
-              settings,
-            )
-          }
-        />
-      </div>
-      {quietHoursOn ? (
-        <div className="mt-2 flex items-center gap-2">
-          <Input
-            type="time"
-            aria-label={t`Quiet hours start`}
-            value={start}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (!value) return;
-              void save({ quietHours: `${value}-${end}` }, settings);
-            }}
-          />
-          <span aria-hidden="true" className="text-muted-foreground">
-            –
-          </span>
-          <Input
-            type="time"
-            aria-label={t`Quiet hours end`}
-            value={end}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (!value) return;
-              void save({ quietHours: `${start}-${value}` }, settings);
-            }}
-          />
+    <div data-testid="proactivity-settings" className="flex flex-col gap-8">
+      <section>
+        <h3 className="px-4 pb-2 text-[13.5px] text-muted-foreground">
+          <Trans>Working on its own</Trans>
+        </h3>
+        <div className={cn(MUSE_INSET_GROUP, "p-1.5")}>
+          <fieldset
+            aria-label={t`Proactivity`}
+            className="m-0 grid min-w-0 grid-cols-4 gap-1 rounded-[16px] border-0 bg-muted p-1"
+          >
+            {PROACTIVITY_LEVELS.map((level) => {
+              const selected = settings.proactivity === level;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  data-testid={`level-${level}`}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    if (!selected) void save({ proactivity: level }, settings);
+                  }}
+                  className={cn(
+                    "rounded-[12px] py-2 text-[14.5px] font-medium transition-[background-color,box-shadow,color] duration-200",
+                    selected
+                      ? "bg-card text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)]"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <ProactivityLabel level={level} />
+                </button>
+              );
+            })}
+          </fieldset>
         </div>
-      ) : null}
+        <p className="px-4 pt-2 text-[13px] text-muted-foreground">
+          <ProactivityFooter level={settings.proactivity} />
+        </p>
+      </section>
+
+      <section>
+        <div className={MUSE_INSET_GROUP}>
+          <div className={ROW}>
+            <span id={`${ids}-quiet-hours-label`} className="text-[16px] text-foreground">
+              <Trans>Quiet hours</Trans>
+            </span>
+            <Switch
+              id={`${ids}-quiet-hours`}
+              checked={quietHoursOn}
+              aria-labelledby={`${ids}-quiet-hours-label`}
+              onCheckedChange={(checked) =>
+                void save(
+                  { quietHours: checked ? (settings.quietHours ?? DEFAULT_QUIET_HOURS) : null },
+                  settings,
+                )
+              }
+            />
+          </div>
+          {quietHoursOn ? (
+            <>
+              <div className="ms-4 border-t border-border/70" />
+              <label className={ROW}>
+                <span className="text-[16px] text-foreground">
+                  <Trans>From</Trans>
+                </span>
+                <input
+                  type="time"
+                  aria-label={t`Quiet hours start`}
+                  value={start}
+                  className={TIME}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (!value) return;
+                    void save({ quietHours: `${value}-${end}` }, settings);
+                  }}
+                />
+              </label>
+              <div className="ms-4 border-t border-border/70" />
+              <label className={ROW}>
+                <span className="text-[16px] text-foreground">
+                  <Trans>Until</Trans>
+                </span>
+                <input
+                  type="time"
+                  aria-label={t`Quiet hours end`}
+                  value={end}
+                  className={TIME}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (!value) return;
+                    void save({ quietHours: `${start}-${value}` }, settings);
+                  }}
+                />
+              </label>
+            </>
+          ) : null}
+        </div>
+        <p className="px-4 pt-2 text-[13px] text-muted-foreground">
+          <Trans>I won't work on Goals or message you during quiet hours.</Trans>
+        </p>
+      </section>
+
       {error ? (
-        <p role="alert" className="mt-2 text-[13px] text-destructive">
+        <p role="alert" className="px-4 text-[13px] text-destructive">
           {error}
         </p>
       ) : null}

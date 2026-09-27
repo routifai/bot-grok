@@ -1,13 +1,14 @@
 import type { Bot } from "@aiden/contracts";
 import { BOT_NAME_MAX_LENGTH } from "@aiden/contracts";
-import { Button, Input } from "@aiden/ui-web";
+import { cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { authClient } from "../../lib/auth";
 import { AvatarStudioPopover } from "../shell/avatar-studio-popover";
 import { resetFirstRun } from "./intro";
 import { ProactivitySettings } from "./ProactivitySettings";
-import { Section, Surface } from "./ui";
+import { MUSE_INSET_GROUP } from "./ui";
 
 /**
  * What the person tunes about their Muse, gathered in one place (docs/muse/DESIGN.md):
@@ -47,67 +48,76 @@ export function AidenSettingsPanel({
   }
 
   return (
-    <div data-testid="aiden-settings" className="space-y-8 pb-2">
-      <Section title={t`Identity`}>
-        <Surface className="flex items-center gap-4 p-4">
-          <AvatarStudioPopover
-            value={color}
-            identity={bot.id}
-            status={bot.status}
-            size={56}
-            museMode
-            onChange={(nextColor) => {
-              setColor(nextColor);
-              void save({ color: nextColor });
-            }}
-          />
-          <div className="min-w-0 flex-1">
-            <label htmlFor={`${ids}-name`} className="block text-[13px] text-muted-foreground">
-              <Trans>Name</Trans>
-            </label>
-            <Input
-              id={`${ids}-name`}
-              value={name}
-              maxLength={BOT_NAME_MAX_LENGTH}
-              onChange={(event) => setName(event.target.value)}
-              onBlur={() => {
-                const trimmed = name.trim();
-                if (trimmed && trimmed !== bot.name) void save({ name: trimmed });
-                else setName(bot.name);
-              }}
-              className="mt-1.5"
-            />
-          </div>
-        </Surface>
+    <div data-testid="aiden-settings" className="flex flex-col gap-8 pb-4">
+      <div className={cn(MUSE_INSET_GROUP, "flex flex-col items-center px-6 pt-7 pb-5")}>
+        <AvatarStudioPopover
+          value={color}
+          identity={bot.id}
+          status={bot.status}
+          size={88}
+          museMode
+          onChange={(nextColor) => {
+            setColor(nextColor);
+            void save({ color: nextColor });
+          }}
+        />
+        <label htmlFor={`${ids}-name`} className="sr-only">
+          <Trans>Name</Trans>
+        </label>
+        <input
+          id={`${ids}-name`}
+          value={name}
+          maxLength={BOT_NAME_MAX_LENGTH}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+          onBlur={() => {
+            const trimmed = name.trim();
+            if (trimmed && trimmed !== bot.name) void save({ name: trimmed });
+            else setName(bot.name);
+          }}
+          className="mt-4 w-full max-w-[280px] rounded-xl bg-transparent px-2 py-1 text-center text-[24px] font-semibold tracking-[-0.02em] text-foreground outline-none transition-colors hover:bg-muted/60 focus:bg-muted"
+        />
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          <Trans>Tap the face to change the color</Trans>
+        </p>
         {error ? (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="mt-2 text-[13px] text-destructive">
             {error}
           </p>
         ) : null}
-      </Section>
+      </div>
 
-      <Section title={t`Proactivity`}>
-        <Surface className="p-4">
-          <ProactivitySettings botId={bot.id} className="" />
-        </Surface>
-      </Section>
+      <ProactivitySettings botId={bot.id} />
 
-      <Section title={t`Tour`}>
-        <Surface className="flex items-center justify-between gap-3 p-4">
-          <p className="text-[13.5px] text-muted-foreground">
-            <Trans>The welcome and first-time tips, again.</Trans>
-          </p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              resetFirstRun(session.data?.user.id);
-              setReplayed(true);
-            }}
-          >
-            {replayed ? <Trans>Done</Trans> : <Trans>Replay the intro</Trans>}
-          </Button>
-        </Surface>
-      </Section>
+      <div className={MUSE_INSET_GROUP}>
+        <button
+          type="button"
+          onClick={() => {
+            resetFirstRun(session.data?.user.id);
+            setReplayed(true);
+          }}
+          className="flex min-h-[52px] w-full items-center justify-between gap-4 px-4 text-start transition-colors hover:bg-accent/50 active:bg-accent"
+        >
+          <span className="text-[16px] text-foreground">
+            <Trans>Replay the intro</Trans>
+          </span>
+          {replayed ? (
+            <span className="flex items-center gap-1 text-[14px] text-muted-foreground">
+              <Check size={15} strokeWidth={2.25} aria-hidden="true" />
+              <Trans>Done</Trans>
+            </span>
+          ) : (
+            <ChevronRight
+              size={18}
+              strokeWidth={2}
+              aria-hidden="true"
+              className="text-muted-foreground/60"
+            />
+          )}
+        </button>
+      </div>
     </div>
   );
 }

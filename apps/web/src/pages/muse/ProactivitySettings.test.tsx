@@ -21,6 +21,7 @@ vi.mock("@aiden/ui-web", () => {
     <div {...props}>{children}</div>
   );
   return {
+    cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
     Input: (props: ComponentProps<"input">) => <input {...props} />,
     Switch: ({
       checked,

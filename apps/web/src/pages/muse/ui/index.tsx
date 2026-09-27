@@ -14,6 +14,10 @@ import { illustrationUrl } from "../../../lib/illustrations";
  * body font — never `font-display`, which is reserved for the signed-out welcome and
  * auth screens). Geist Mono (`label`) is for small tags only, never a whole heading.
  */
+/** iOS-style inset grouped list: one rounded card whose rows are split by inset hairlines. */
+export const MUSE_INSET_GROUP =
+  "overflow-hidden rounded-[22px] bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-14px_rgb(0_0_0/0.14)] ring-1 ring-border/60";
+
 export const MUSE_TYPE = {
   /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
   chromeTitle: "text-[17px] font-semibold tracking-[-0.01em] text-foreground",
