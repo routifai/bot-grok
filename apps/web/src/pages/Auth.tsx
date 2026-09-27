@@ -354,7 +354,7 @@ function AuthFrame({
     <div className="flex min-h-full items-center justify-center bg-background px-6 py-16 text-foreground">
       <form onSubmit={onSubmit} className="flex w-[460px] max-w-full flex-col items-center">
         {muse ? (
-          <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={72} />
+          <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={88} />
         ) : (
           <div className="flex h-[74px] w-[74px] items-center justify-center gap-[11px] rounded-full bg-muted">
             <span className="h-5 w-[9px] rounded-full bg-primary" />
