@@ -1,11 +1,10 @@
 import type { RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SandboxedHtmlViewer } from "../../../components/SandboxedHtmlViewer";
-import { decodeArtifactBase64 } from "../../../lib/artifact-open";
-import { rpc } from "../../../lib/rpc";
-import { useObjectUrl } from "../../../lib/use-object-url";
-import { artifactKind, KIND_ICON } from "./kinds";
-import type { ArtifactSummary } from "./types";
+import { artifactKind, KIND_ICON } from "../lib/artifact-kind";
+import { decodeArtifactBase64 } from "../lib/artifact-open";
+import { rpc } from "../lib/rpc";
+import { useObjectUrl } from "../lib/use-object-url";
+import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 
 // A real preview is only cheap for images and small pages, so cap both the mime
 // types and the byte size that get one; everything else keeps its type icon.
@@ -14,8 +13,18 @@ const IMAGE_PREVIEW_MAX_BYTES = 3_000_000;
 
 const bytesCache = new Map<string, Uint8Array>();
 
-function cacheKey(artifact: Pick<ArtifactSummary, "id" | "version">): string {
-  return `${artifact.id}:${artifact.version}`;
+/** The minimum an artifact card needs to render (and lazily fetch) a preview thumbnail. */
+export type PreviewableArtifact = {
+  id: string;
+  mimeType: string;
+  size: number;
+  name: string;
+  /** Included when known, so an edited artifact's cached bytes don't stick around under the same id. */
+  version?: number;
+};
+
+function cacheKey(artifact: PreviewableArtifact): string {
+  return artifact.version !== undefined ? `${artifact.id}:${artifact.version}` : artifact.id;
 }
 
 /**
@@ -47,12 +56,13 @@ function useNearViewport(): [RefObject<HTMLDivElement | null>, boolean] {
 }
 
 /**
- * The card's 16:10 preview area. Fetches real content lazily — only once the card is
- * about to scroll into view, and only for images and small HTML pages — so opening
- * the Library never pulls every artifact's full bytes at once. PDFs, decks, larger
+ * The one artifact preview thumbnail, shared by the Library grid and the Conversation
+ * transcript's file cards. Fetches real content lazily — only once the thumbnail is
+ * about to scroll into view, and only for images and small HTML pages — so a long list
+ * or transcript never pulls every artifact's full bytes at once. PDFs, decks, larger
  * pages, and anything still off-screen show their type icon instead.
  */
-export function ArtifactThumbnail({ artifact }: { artifact: ArtifactSummary }) {
+export function ArtifactPreviewThumbnail({ artifact }: { artifact: PreviewableArtifact }) {
   const kind = artifactKind(artifact.mimeType);
   const [ref, near] = useNearViewport();
   const eligible =
@@ -79,6 +89,7 @@ export function ArtifactThumbnail({ artifact }: { artifact: ArtifactSummary }) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eligible, near, bytes, artifact.id]);
 
   const Icon = KIND_ICON[kind];

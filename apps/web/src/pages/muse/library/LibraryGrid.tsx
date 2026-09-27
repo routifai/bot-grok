@@ -15,7 +15,7 @@ export function LibraryGrid({
 }) {
   return (
     <div
-      className="grid grid-cols-1 gap-4 pb-8 md:grid-cols-2 lg:grid-cols-3"
+      className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2 xl:grid-cols-3 xl:gap-6"
       data-testid="library-grid"
     >
       {items.map((item) => (
@@ -36,14 +36,14 @@ const SKELETON_COUNT = 6;
 export function LibrarySkeletonGrid() {
   return (
     <div
-      className="grid grid-cols-1 gap-4 pb-8 md:grid-cols-2 lg:grid-cols-3"
+      className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2 xl:grid-cols-3 xl:gap-6"
       aria-hidden="true"
       data-testid="library-skeleton"
     >
       {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
         <div key={index} className="flex flex-col overflow-hidden rounded-2xl border border-border">
           <Skeleton className="aspect-[16/10] w-full rounded-none" />
-          <div className="flex flex-col gap-2 p-4">
+          <div className="flex flex-col gap-2 p-5">
             <Skeleton className="h-2.5 w-12 rounded-full" />
             <Skeleton className="h-4 w-3/4 rounded-full" />
             <Skeleton className="h-3 w-1/2 rounded-full" />
