@@ -4076,7 +4076,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         detachShutdown?.();
         clearInterval(heartbeat);
         if (!retainComputerLease) {
-          if (screenRelease) {
+          // A Muse owns its computer: keep the screen someone may be watching; the next run
+          // takes it over with a newer lease and idle sleep still suspends the computer.
+          if (screenRelease && !isMuseMode(deps.productMode ?? "aiden")) {
             await deps.sandbox
               .releaseScreen?.(screenRelease.computer, screenRelease.context)
               .catch(() => undefined);
