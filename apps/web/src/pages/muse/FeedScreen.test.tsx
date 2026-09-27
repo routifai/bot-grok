@@ -7,7 +7,7 @@ import { expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   feed: { list: vi.fn() },
-  asks: { answer: vi.fn() },
+  asks: { list: vi.fn(), answer: vi.fn() },
   ideas: { list: vi.fn(), refresh: vi.fn() },
   topics: { list: vi.fn(), remove: vi.fn() },
 }));
@@ -93,8 +93,9 @@ async function renderFeed(onSendIdea: (text: string) => void = vi.fn()) {
 
 it("renders pinned Asks above Posts", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([ask({ text: "Which evenings work?" })]);
   api.feed.list.mockResolvedValue({
-    asks: [ask({ text: "Which evenings work?" })],
+    asks: [],
     posts: [post({ title: "Chose a course" })],
     nextCursor: null,
   });
@@ -114,8 +115,14 @@ it("renders pinned Asks above Posts", async () => {
 
 it("answering an Ask calls asks.answer and removes it", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  // The first load has the Ask; the refetch after answering doesn't.
+  api.asks.list
+    .mockResolvedValueOnce([
+      ask({ id: "ask-9", runId: "run-9", choices: [{ id: "mon", label: "Monday" }] }),
+    ])
+    .mockResolvedValue([]);
   api.feed.list.mockResolvedValue({
-    asks: [ask({ id: "ask-9", runId: "run-9", choices: [{ id: "mon", label: "Monday" }] })],
+    asks: [],
     posts: [],
     nextCursor: null,
   });
@@ -145,6 +152,7 @@ it("answering an Ask calls asks.answer and removes it", async () => {
 
 it("links a topic Post to its source URL", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
   api.feed.list.mockResolvedValue({
     asks: [],
     posts: [
@@ -172,6 +180,7 @@ it("links a topic Post to its source URL", async () => {
 
 it("tapping an Idea calls onSendIdea with its text", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
   api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
   api.ideas.list.mockResolvedValue([idea({ text: "Plan this Sunday's run" })]);
   api.topics.list.mockResolvedValue([]);
@@ -194,6 +203,7 @@ it("tapping an Idea calls onSendIdea with its text", async () => {
 
 it("removing a topic calls topics.remove", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
   api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
   api.ideas.list.mockResolvedValue([]);
   api.topics.list.mockResolvedValue([topic({ id: "topic-7", topic: "Moroccan design" })]);

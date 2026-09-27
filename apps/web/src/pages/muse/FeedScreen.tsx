@@ -2,18 +2,20 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type { Ask, FollowedTopic } from "@rakazo/contracts";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
+import { useAsks } from "./asks";
 import { FeedAsks } from "./feed/FeedAsks";
 import { IdeaChips } from "./feed/IdeaChips";
 import { PostList } from "./feed/PostList";
 import { TopicsRow } from "./feed/TopicsRow";
 
-// The Muse's Feed (CONTEXT.md): open Asks pinned on top, then Posts, newest first;
+// The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
+// Waiting-on-you sheet), then Posts, newest first;
 // Ideas and Followed topics live at the bottom (docs/muse/PLAN.md, F5/F6).
 export function FeedScreen(props: { botId: string; onSendIdea: (text: string) => void }) {
   const { botId, onSendIdea } = props;
   const { t } = useLingui();
 
-  const [asks, setAsks] = useState<Ask[] | null>(null);
+  const { asks, answer } = useAsks(botId);
   const [posts, setPosts] = useState<Awaited<ReturnType<typeof rpc.feed.list>>["posts"] | null>(
     null,
   );
@@ -29,7 +31,6 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
 
   useEffect(() => {
     let cancelled = false;
-    setAsks(null);
     setPosts(null);
     setNextCursor(null);
     setLoadError(null);
@@ -37,7 +38,6 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
       .list({ botId })
       .then((feed) => {
         if (cancelled) return;
-        setAsks(feed.asks);
         setPosts(feed.posts);
         setNextCursor(feed.nextCursor);
       })
@@ -73,7 +73,6 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
     setLoadingMore(true);
     try {
       const page = await rpc.feed.list({ botId, cursor: nextCursor });
-      // Asks aren't paginated: the first page already has every open Ask.
       setPosts((current) => (current ?? []).concat(page.posts));
       setNextCursor(page.nextCursor);
     } catch {
@@ -84,9 +83,8 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
     }
   }
 
-  async function handleAnswerAsk(ask: Ask, answer: string) {
-    await rpc.asks.answer({ askId: ask.id, runId: ask.runId, answer });
-    setAsks((current) => current?.filter((candidate) => candidate.id !== ask.id) ?? current);
+  async function handleAnswerAsk(ask: Ask, value: string) {
+    await answer({ askId: ask.id, runId: ask.runId, answer: value });
   }
 
   async function handleRefreshIdeas() {
@@ -113,13 +111,13 @@ export function FeedScreen(props: { botId: string; onSendIdea: (text: string) =>
 
         {loadError ? <p className="text-[13.5px] text-destructive">{loadError}</p> : null}
 
-        {asks === null && posts === null && !loadError ? (
+        {posts === null && !loadError ? (
           <p className="text-[13.5px] text-muted-foreground">
             <Trans>Loading…</Trans>
           </p>
         ) : (
           <>
-            {asks ? <FeedAsks asks={asks} onAnswer={handleAnswerAsk} /> : null}
+            <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
             {posts ? (
               <PostList
                 posts={posts}
