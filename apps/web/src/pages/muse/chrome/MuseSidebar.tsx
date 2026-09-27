@@ -64,8 +64,15 @@ function useGlide() {
     const scale = box.height / list.offsetHeight || 1;
     setGlide({ top: (row.top - box.top) / scale, height: row.height / scale });
   };
-  const onLeave = () => setGlide(null);
-  return { listRef, glide, onRowEnter, onLeave };
+  // Hide the pill when the pointer leaves the list (listener, not a handler on a div).
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const hide = () => setGlide(null);
+    list.addEventListener("mouseleave", hide);
+    return () => list.removeEventListener("mouseleave", hide);
+  }, []);
+  return { listRef, glide, onRowEnter };
 }
 
 /**
@@ -221,13 +228,7 @@ export function MuseSidebar({
         </span>
       </button>
 
-      <div
-        ref={nav.listRef}
-        role="group"
-        aria-label={t`Places`}
-        onMouseLeave={nav.onLeave}
-        className="app-no-drag relative flex flex-col gap-0.5"
-      >
+      <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
         <span
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-sidebar-accent/80 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
