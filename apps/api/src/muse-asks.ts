@@ -331,7 +331,13 @@ export async function answerAsk(
       throw new ORPCError("BAD_REQUEST", { message: "Answer a Proposal accept or dismiss." });
     }
     const decide = input.answer === "accept" ? acceptGoalProposal : dismissGoalProposal;
-    const goal = await decide({ prisma: deps.prisma, events: deps.events }, openProposal.id);
+    // jobs must be forwarded here too (not just prisma/events): an accepted Proposal
+    // wakes the Goal's background work and refreshes Ideas (goal-proposals.ts
+    // decideGoalProposal), both gated on `deps.jobs` being present.
+    const goal = await decide(
+      { prisma: deps.prisma, events: deps.events, jobs: deps.jobs },
+      openProposal.id,
+    );
     if (!goal) {
       throw new ORPCError("CONFLICT", { message: "This proposal is no longer open" });
     }

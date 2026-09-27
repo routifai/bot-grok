@@ -16,7 +16,7 @@ export const ADVANCE_GOAL_TASK_PROMPT = `Continue working on this Goal on the pe
 Instructions:
 - Work on the next pending or in-progress Task(s) using your tools. Mark a Task in_progress when you start and done when finished (goals action=update_task), adding a short note with the outcome.
 - If a Task is blocked (needs the person, credentials, or a decision), mark it blocked with a note explaining why, and move on to Tasks that do not depend on it.
-- If what you learn means the plan should change (a Task is impossible, the order is wrong, or something important is missing), use goals action=propose with the reason and the revised remaining Tasks instead of editing the plan yourself; the person accepts or dismisses it. Keep working on the still-valid Tasks while it waits.
+- If what you learn means the plan should change (a Task is impossible, the order is wrong, or something important is missing), use goals action=propose with the reason and the revised remaining Tasks instead of editing the plan yourself; the person accepts or dismisses it. Continue the still-valid Tasks while it waits.
 - Do not invent results. End your reply with a short first-person report for the person: what moved, what's next, and what's blocked — one to three sentences, nothing else. That report is posted to them directly, so it must stand on its own.`;
 
 /**
