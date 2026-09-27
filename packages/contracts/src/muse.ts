@@ -31,15 +31,25 @@ export const GoalTaskSchema = z.object({
 });
 export type GoalTask = z.infer<typeof GoalTaskSchema>;
 
-export const GoalProposalStatusSchema = z.enum(["open", "accepted", "dismissed"]);
+export const GoalProposalStatusSchema = z.enum(["open", "accepted", "dismissed", "withdrawn"]);
 export type GoalProposalStatus = z.infer<typeof GoalProposalStatusSchema>;
+
+/**
+ * One task in a proposed plan. `keepTaskId` marks a task carried over unchanged from
+ * the Goal's current plan, so the Goals screen can diff by identity instead of title.
+ */
+export const GoalProposalTaskSchema = z.object({
+  title: z.string().min(1).max(200),
+  keepTaskId: Id.optional(),
+});
+export type GoalProposalTask = z.infer<typeof GoalProposalTaskSchema>;
 
 /** A plan change the Muse suggests. `tasks` is the full proposed plan, in order. */
 export const GoalProposalSchema = z.object({
   id: Id,
   goalId: Id,
   reason: z.string(),
-  tasks: z.array(z.object({ title: z.string().min(1).max(200) })).min(1),
+  tasks: z.array(GoalProposalTaskSchema).min(1),
   status: GoalProposalStatusSchema,
   createdAt: z.string(),
 });

@@ -182,6 +182,7 @@ model Space {
   runs                        Run[]
   routines                    Routine[]
   scratchpadItems             ScratchpadItem[]
+  goals                       Goal[]
   taughtSkills                TaughtSkill[]
   agentSkills                 AgentSkill[]
   connections                 Connection[]
@@ -373,6 +374,7 @@ model Bot {
   teamChatRules          String  @default("")
   routines          Routine[]
   scratchpadItems   ScratchpadItem[]
+  goals             Goal[]
   taughtSkills      TaughtSkill[]
   memoryDocuments   MemoryDocument[]
   agentHome         AgentHome?
@@ -470,6 +472,9 @@ model Thread {
   group                       ChatGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
   externalConversationId      String?    @unique
   externalConversation        ExternalConversation? @relation(fields: [externalConversationId], references: [id], onDelete: Cascade)
+  /// A Goal log: set when this Thread is one Goal's working history (botId is null then).
+  goalId                      String?    @unique
+  goal                        Goal?      @relation(fields: [goalId], references: [id], onDelete: Cascade)
   userId                      String
   createdAt                   DateTime   @default(now())
   nextEventSeq                Int        @default(0)
@@ -742,6 +747,75 @@ model ScratchpadItem {
   @@index([spaceId, botId, status])
   @@index([spaceId, botId, updatedAt])
   @@map("scratchpad_items")
+}
+
+/// A Goal (CONTEXT.md): an outcome the person handed to the Muse, pursued over time
+/// through an ordered plan of GoalTasks. See docs/muse/PLAN.md B3.
+model Goal {
+  id             String         @id @default(cuid())
+  spaceId        String
+  space          Space          @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId         String
+  botId          String
+  bot            Bot            @relation(fields: [botId], references: [id], onDelete: Cascade)
+  title          String
+  description    String         @default("")
+  status         String         @default("active")
+  /// Calendar date only; time-of-day is not meaningful (stored at UTC midnight).
+  due            DateTime?
+  /// Check-in schedule, same cron shape as Routine.crons; empty means no check-ins.
+  checkInCrons   String[]       @default([])
+  timezone       String         @default("UTC")
+  lastWorkedAt   DateTime?
+  nextWorkAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  tasks          GoalTask[]
+  proposals      GoalProposal[]
+  /// The Goal log: a Thread with this Goal's id and no bot/group/external conversation.
+  log            Thread?
+
+  @@index([spaceId, botId, status])
+  @@index([nextWorkAt])
+  @@map("goals")
+}
+
+/// One item in a Goal's plan (glossary "Task"; `GoalTask` in code because the legacy
+/// `Task` model is an unrelated request record — see CONTEXT.md "Flagged ambiguities").
+model GoalTask {
+  id        String   @id @default(cuid())
+  goalId    String
+  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  idx       Int
+  title     String
+  status    String   @default("pending")
+  note      String   @default("")
+  updatedAt DateTime @updatedAt
+
+  // No unique constraint on (goalId, idx): accepting a Proposal reorders/replaces the
+  // whole task list, so idx values are briefly non-unique mid-transaction.
+  @@index([goalId, idx])
+  @@map("goal_tasks")
+}
+
+/// A change to the shape of a Goal's plan that the Muse suggests and the person
+/// accepts or dismisses (glossary "Proposal"). `tasks` is the full proposed plan, in
+/// order; each entry may carry `keepTaskId` for a Task carried over unchanged.
+model GoalProposal {
+  id            String     @id @default(cuid())
+  goalId        String
+  goal          Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  reason        String
+  tasks         Json
+  status        String     @default("open")
+  askMessageId  String?
+  createdAt     DateTime   @default(now())
+  decidedAt     DateTime?
+
+  @@index([goalId, status])
+  // Partial unique index goal_proposals_goalId_open_key is created in SQL:
+  // one open proposal per goal.
+  @@map("goal_proposals")
 }
 
 model TaughtSkill {
