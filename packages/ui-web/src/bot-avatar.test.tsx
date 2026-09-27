@@ -239,6 +239,13 @@ describe("Muse face", () => {
     expect(html).not.toContain("muse-waiting-dot");
   });
 
+  it("prefers an explicit museState over the status/waitingCount derivation", () => {
+    const html = renderToString(
+      <BotAvatar color="#0090FF" face="muse" status="running" waitingCount={3} museState="idle" />,
+    );
+    expect(html).toContain('data-muse-state="idle"');
+  });
+
   it("waiting wins over working in the rendered state", () => {
     const html = renderToString(
       <BotAvatar color="#0090FF" face="muse" status="running" waitingCount={2} />,

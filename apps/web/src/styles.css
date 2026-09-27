@@ -118,3 +118,10 @@ body,
     opacity: 0.3;
   }
 }
+
+/* Muse: the transcript fades out under the top edge once scrolled, like the Meta Muse
+   conversation. The mask only uses alpha, so it follows both themes. */
+[data-product="muse"] [data-fade-top][data-scrolled="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 88px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 88px);
+}

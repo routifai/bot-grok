@@ -116,6 +116,16 @@ vi.mock("@aiden/ui-web", () => {
     PopoverContent: Passthrough,
     PopoverTrigger: Passthrough,
     resolvePersonaColorDef: () => ({ hex: "#000000" }),
+    // Real behavior (packages/ui-web/src/bot-avatar.tsx): museState.ts (Shell's live
+    // Muse state derivation) calls this directly, so the mock must actually derive.
+    museAvatarState: (status: string | undefined, waitingCount: number | undefined) => {
+      if ((waitingCount ?? 0) > 0) return "waiting";
+      if (status === "queued" || status === "leased") return "thinking";
+      if (status === "running" || status === "waiting_input" || status === "waiting_takeover") {
+        return "working";
+      }
+      return "idle";
+    },
   };
 });
 
