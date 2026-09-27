@@ -86,7 +86,7 @@ float fbm(vec2 p) {
 void main() {
   float aspect = uResolution.x / max(uResolution.y, 1.0);
   vec2 p = (vUv - 0.5) * vec2(aspect, 1.0);
-  p += uPointer * 0.05;
+  p += uPointer * 0.02;
 
   float t = uTime * 0.03;
   float n1 = fbm(p * 1.1 + vec2(t, -t * 0.6));
@@ -241,7 +241,12 @@ export function AuroraBackground() {
       function renderFrame(time: number) {
         if (!renderer) return;
         uniforms.uTime.value = 6 + time * 0.001;
-        uniforms.uPointer.value.set(pointer.x, pointer.y);
+        // Drift toward the pointer rather than following it: a slow ease keeps the wash calm.
+        const current = uniforms.uPointer.value;
+        current.set(
+          current.x + (pointer.x - current.x) * 0.025,
+          current.y + (pointer.y - current.y) * 0.025,
+        );
         renderer.render(scene, camera);
       }
 
