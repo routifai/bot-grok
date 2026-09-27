@@ -36,6 +36,24 @@ body,
   font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Muse edition: content scrolls, but scrollbars stay out of sight and nothing pans
+   sideways. */
+[data-product="muse"] .rk-scroll,
+[data-product="muse"] main {
+  scrollbar-width: none;
+}
+[data-product="muse"] .rk-scroll::-webkit-scrollbar,
+[data-product="muse"] main ::-webkit-scrollbar {
+  display: none;
+}
+[data-product="muse"] main {
+  overflow-x: hidden;
+}
+[data-product="muse"] main pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 /* Muse edition body type: Instrument Sans pairs with the Instrument Serif titles. */
 /* Muse edition: fixed pixel sizes read tiny on very wide windows, so scale the whole
    interface up on large screens. */
