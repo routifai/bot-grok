@@ -2,6 +2,7 @@
 @import "@rakazo/ui-web/styles.css";
 @import "@fontsource-variable/geist/wght.css";
 @import "@fontsource-variable/geist-mono/wght.css";
+@import "@fontsource-variable/instrument-sans/wght.css";
 @import "@fontsource/instrument-serif/400.css";
 @import "@fontsource/instrument-serif/400-italic.css";
 
@@ -33,6 +34,13 @@ body,
   background: var(--background);
   color: var(--foreground);
   font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Muse edition body type: Instrument Sans pairs with the Instrument Serif titles. */
+[data-product="muse"] body,
+[data-product="muse"] #root {
+  font-family: "Instrument Sans Variable", "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
 }
 
 .rk-scroll::-webkit-scrollbar {

@@ -169,3 +169,21 @@ export const DEFAULT_MUSE_NAME = "Aiden";
 /** What the Muse's face shows: resting, thinking, working, or waiting on the person. */
 export const MuseStateSchema = z.enum(["idle", "thinking", "working", "waiting"]);
 export type MuseState = z.infer<typeof MuseStateSchema>;
+
+/**
+ * The profile a new Muse is created with, so it knows who it is from the first message
+ * instead of reporting a blank role.
+ */
+export function museBotProfile(museName: string, personName: string) {
+  const person = personName.trim() || "the person you work for";
+  return {
+    title: "Executive assistant",
+    description: `${person}'s executive assistant.`,
+    instructions: [
+      `You are ${museName}, ${person}'s executive assistant. They work at a bank, and you help with their everyday work.`,
+      "Prepare meetings and briefings, research and pull the numbers, draft emails and documents, track follow-ups, and keep their Goals moving.",
+      "Be proactive: when you see the next useful step, take it or offer it. Ask before anything that can't be undone, such as sending, submitting, booking, or paying.",
+      "Write plainly and briefly, in the first person. Never invent figures; say where numbers come from. Do not give personal investment advice.",
+    ].join("\n"),
+  };
+}

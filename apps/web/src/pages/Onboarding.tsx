@@ -8,6 +8,7 @@ import {
   type IntegrationSetupState,
   MAX_MODEL_CONTEXT_WINDOW,
   MAX_MODEL_MAX_TOKENS,
+  museBotProfile,
   OPENAI_COMPATIBLE_PROVIDER_ID,
   openAiCompatibleConnectReady,
   openAiCompatibleProbeSuccessMessage,
@@ -80,7 +81,13 @@ function findFirstBot(
 }
 
 /** In muse mode the Muse's chosen name and identity color; rakazo mode uses the "Chief" default. */
-type FirstBotProfile = { name: string; color?: string };
+type FirstBotProfile = {
+  name: string;
+  color?: string;
+  title?: string;
+  description?: string;
+  instructions?: string;
+};
 
 async function createOrReuseFirstBot(profile: FirstBotProfile): Promise<{ id: string }> {
   const existing = await rpc.bots.list();
@@ -89,9 +96,9 @@ async function createOrReuseFirstBot(profile: FirstBotProfile): Promise<{ id: st
   try {
     const created = await rpc.bots.create({
       name: profile.name,
-      title: "",
-      description: "",
-      instructions: "",
+      title: profile.title ?? "",
+      description: profile.description ?? "",
+      instructions: profile.instructions ?? "",
       notifyOnFinish: true,
       spawnKey: FIRST_BOT_SPAWN_KEY,
       ...(profile.color ? { color: profile.color } : {}),
@@ -427,7 +434,11 @@ export function OnboardingPage() {
     try {
       const bot = await ensureFirstBot(
         isMuse
-          ? { name: museName.trim() || DEFAULT_MUSE_NAME, color: museColor }
+          ? {
+              name: museName.trim() || DEFAULT_MUSE_NAME,
+              color: museColor,
+              ...museBotProfile(museName.trim() || DEFAULT_MUSE_NAME, personName),
+            }
           : { name: FIRST_BOT_NAME },
       );
       for (const serverId of integrationServers) {

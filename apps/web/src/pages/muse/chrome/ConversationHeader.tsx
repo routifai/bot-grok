@@ -1,5 +1,5 @@
+import { Trans } from "@lingui/react/macro";
 import type { Goal } from "@rakazo/contracts";
-import { BotAvatar } from "@rakazo/ui-web";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
@@ -15,15 +15,11 @@ import { deriveStatusPill } from "./statusPill";
 export function ConversationHeader({
   botId,
   museName,
-  avatarColor,
-  avatarStatus,
   running,
   actions,
 }: {
   botId: string;
   museName: string;
-  avatarColor: string;
-  avatarStatus?: string;
   running: boolean;
   actions?: ReactNode;
 }) {
@@ -49,23 +45,12 @@ export function ConversationHeader({
   const pill = deriveStatusPill({ museName, goals, running, openAskCount: askCount });
 
   return (
-    <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-4 py-3.5 md:px-6">
+    <div className="app-drag flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 md:px-6">
       <div className="flex min-w-0 items-center gap-3">
-        <BotAvatar
-          color={avatarColor}
-          identity={botId}
-          status={avatarStatus}
-          face="muse"
-          size={32}
-        />
-        <div className="min-w-0">
-          <div className="truncate text-[15px] font-semibold text-foreground" dir="auto">
-            {museName}
-          </div>
-          <StatusPill tone={pill.tone} className="mt-1">
-            {pill.text}
-          </StatusPill>
-        </div>
+        <span className="truncate text-[14px] font-semibold text-foreground">
+          <Trans>Conversation</Trans>
+        </span>
+        <StatusPill tone={pill.tone}>{pill.text}</StatusPill>
       </div>
       {actions ? (
         <div className="app-no-drag flex shrink-0 items-center gap-1">{actions}</div>

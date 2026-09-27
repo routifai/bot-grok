@@ -214,10 +214,10 @@ import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
+import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { LibraryScreen } from "./muse/LibraryScreen";
-import { MuseRail } from "./muse/MuseRail";
 import { useMuseNav } from "./muse/useMuseNav";
 import { WaitingSheet } from "./muse/WaitingSheet";
 import {
@@ -2652,7 +2652,11 @@ export function ShellPage() {
     <div
       data-testid="shell-root"
       data-ready={shellReady}
-      className="relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
+      className={
+        museMode
+          ? "relative flex h-full min-w-0 overflow-hidden bg-sidebar text-foreground/90"
+          : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
+      }
       onTouchStartCapture={(event) => {
         if (
           mobileSidebarOpen ||
@@ -2719,14 +2723,16 @@ export function ShellPage() {
         />
       ) : null}
       {museMode && active ? (
-        <MuseRail
+        <MuseSidebar
           botId={active.id}
+          museName={active.name}
+          color={active.color}
+          status={active.status}
+          running={transcriptRunning}
+          personName={bootstrapMe?.name}
           active={museView}
           onNavigate={setMuseView}
-          avatarColor={active.color}
-          avatarIdentity={active.id}
-          avatarStatus={active.status}
-          onAvatarClick={() => setWaitingOpen(true)}
+          onOpenWaiting={() => setWaitingOpen(true)}
           onOpenSettings={() => openSettings("general")}
         />
       ) : (
@@ -3391,7 +3397,11 @@ export function ShellPage() {
       <main
         aria-hidden={mobileSidebarOpen || undefined}
         inert={mobileSidebarOpen}
-        className="flex min-w-0 flex-1 flex-col bg-background"
+        className={
+          museMode
+            ? "my-2 me-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-border bg-background"
+            : "flex min-w-0 flex-1 flex-col bg-background"
+        }
       >
         {museMode && active && museView !== "conversation" ? (
           museView === "goals" ? (
@@ -3407,8 +3417,6 @@ export function ShellPage() {
               <ConversationHeader
                 botId={active.id}
                 museName={active.name}
-                avatarColor={active.color}
-                avatarStatus={active.status}
                 running={transcriptRunning}
                 actions={
                   <button
@@ -3526,6 +3534,11 @@ export function ShellPage() {
               <Transcript
                 key={activeSnapshot?.threadId}
                 museMode={museMode}
+                museFace={
+                  active
+                    ? { color: active.color, identity: active.id, status: active.status }
+                    : undefined
+                }
                 scrollRef={messageScroll}
                 scrollRequest={scrollRequest}
                 onScrollRequestHandled={clearScrollRequest}
@@ -4589,6 +4602,7 @@ export function ShellPage() {
 
 const Transcript = memo(function Transcript({
   museMode,
+  museFace,
   scrollRef,
   scrollRequest,
   onScrollRequestHandled,
@@ -4618,6 +4632,8 @@ const Transcript = memo(function Transcript({
   onOpenComputer,
 }: {
   museMode?: boolean;
+  /** Muse mode: the face shown beside the Muse's replies. */
+  museFace?: { color: string; identity: string; status?: string };
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollRequest: { messageId: string; nonce: number } | null;
   onScrollRequestHandled: () => void;
@@ -4892,7 +4908,7 @@ const Transcript = memo(function Transcript({
         }}
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
-          museMode && "mx-auto w-full max-w-[720px]",
+          museMode && "mx-auto w-full max-w-[780px] gap-3 md:py-8",
         )}
       >
         {olderCursor != null ? (
@@ -4905,9 +4921,13 @@ const Transcript = memo(function Transcript({
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
         ) : null}
-        {reactionView.visibleMessages.map((message) => {
+        {reactionView.visibleMessages.map((message, messageIndex) => {
           if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
             return null;
+          // Muse mode: the face sits beside the first of a run of the Muse's replies.
+          const museGutter = museMode && museFace && message.role === "bot";
+          const museFaceShown =
+            museGutter && reactionView.visibleMessages[messageIndex - 1]?.role !== "bot";
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
           return (
@@ -4935,9 +4955,24 @@ const Transcript = memo(function Transcript({
                 className={
                   peerReceipt
                     ? undefined
-                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`
+                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}${
+                        museGutter ? " gap-3" : ""
+                      }`
                 }
               >
+                {museGutter && museFace ? (
+                  <div className="w-7 shrink-0 pt-0.5" aria-hidden="true">
+                    {museFaceShown ? (
+                      <BotAvatar
+                        color={museFace.color}
+                        identity={museFace.identity}
+                        status={museFace.status}
+                        face="muse"
+                        size={28}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
                 <div
                   data-testid={peerReceipt ? undefined : "message-bubble-frame"}
                   className={

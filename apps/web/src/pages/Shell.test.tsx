@@ -312,8 +312,8 @@ it("hides the bot list and shows the four Muse rail entries in muse mode", async
     expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
     const rail = page.container.querySelector('[data-testid="app-rail"]');
     expect(rail).toBeTruthy();
-    const labels = [...(rail?.querySelectorAll("[aria-label]") ?? [])].map((el) =>
-      el.getAttribute("aria-label"),
+    const labels = [...(rail?.querySelectorAll("button") ?? [])].map(
+      (el) => el.getAttribute("aria-label") ?? el.textContent?.trim(),
     );
     expect(labels).toContain("Conversation");
     expect(labels).toContain("Goals");
