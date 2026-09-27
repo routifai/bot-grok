@@ -160,12 +160,12 @@ export const DEFAULT_MUSE_SETTINGS: MuseSettings = {
   quietHours: "22:00-08:00",
 };
 
-/** Default identity color of a new Muse: Aiden's gold, used for his ring and roar ripples. */
-export const DEFAULT_MUSE_COLOR = "#F2B233";
+/** Default identity color of a new Muse (sky). */
+export const DEFAULT_MUSE_COLOR = "#0090FF";
 
 /** Default name of a new Muse. */
 export const DEFAULT_MUSE_NAME = "Aiden";
 
-/** What the Muse's face shows: resting, working, or waiting on the person. */
-export const MuseStateSchema = z.enum(["idle", "working", "waiting"]);
+/** What the Muse's face shows: resting, thinking, working, or waiting on the person. */
+export const MuseStateSchema = z.enum(["idle", "thinking", "working", "waiting"]);
 export type MuseState = z.infer<typeof MuseStateSchema>;

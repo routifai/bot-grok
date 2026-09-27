@@ -1,8 +1,5 @@
 export { type AvatarStyle, AvatarStyleProvider, useAvatarStyle } from "./avatar-style.js";
 export {
-  AIDEN_FULL_IMAGE,
-  AIDEN_HEAD_IMAGE,
-  AidenHero,
   BotAvatar,
   DEFAULT_GROK_BOT_COLOR,
   GROK_BOT_COLORS,
@@ -42,5 +39,4 @@ export * from "./components/ui/toggle.js";
 export * from "./components/ui/tooltip.js";
 export { GroupAvatar, type GroupAvatarMember, type GroupAvatarProps } from "./group-avatar.js";
 export { cn } from "./lib/utils.js";
-export { playLionRoar } from "./lion-roar.js";
 export { ModelThinkingOptions } from "./model-thinking-options.js";

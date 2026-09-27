@@ -18,11 +18,10 @@ import {
 } from "@rakazo/core";
 import { tokens } from "@rakazo/ui-tokens";
 import type { CSSProperties } from "react";
-import { memo, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useId, useMemo, useSyncExternalStore } from "react";
 import type { AvatarStyle } from "./avatar-style.js";
 import { useAvatarStyle } from "./avatar-style.js";
 import { cn } from "./lib/utils.js";
-import { playLionRoar } from "./lion-roar.js";
 import "./styles.css";
 
 export type { GrokColorDef };
@@ -88,7 +87,7 @@ export interface BotAvatarProps {
   identity?: string;
   className?: string;
   variant?: AvatarStyle;
-  /** Renders the Muse face (Aiden the lion, docs/muse/DESIGN.md) instead of the shipped mascot shapes. */
+  /** Renders the Muse face (docs/muse/DESIGN.md) instead of the shipped mascot shapes. */
   face?: "muse";
   /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
   waitingCount?: number;
@@ -103,6 +102,8 @@ export function museAvatarState(
   waitingCount: number | undefined,
 ): MuseState {
   if ((waitingCount ?? 0) > 0) return "waiting";
+  // A run that is queued or just claimed is the Muse thinking; a running one is working.
+  if (status === "queued" || status === "leased") return "thinking";
   if (ACTIVE_RUN_STATUSES.some((s) => s === status)) return "working";
   return "idle";
 }
@@ -361,46 +362,16 @@ function OrganicAvatar({
 }
 
 /**
- * Aiden, the Muse (docs/muse/DESIGN.md): a head-and-shoulders crop of the Aiden mascot in a
- * round frame. The identity color draws the frame's ring and the roar ripples.
+ * Fixed accents for the Muse face (docs/muse/DESIGN.md). The body is the only part that
+ * takes the bot's identity color; everything else is part of the illustration.
  */
-export const AIDEN_HEAD_IMAGE = new URL("./assets/aiden-head.jpg", import.meta.url).href;
-/** The full sitting Aiden, for large moments (welcome, onboarding). */
-export const AIDEN_FULL_IMAGE = new URL("./assets/aiden-full.jpg", import.meta.url).href;
-
-/** The full sitting Aiden for big moments; roars on click like the avatar. */
-export function AidenHero({ size = 200, className }: { size?: number; className?: string }) {
-  const [roaring, setRoaring] = useState(false);
-  const roarTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(roarTimer.current), []);
-  const roar = () => {
-    playLionRoar();
-    setRoaring(true);
-    clearTimeout(roarTimer.current);
-    roarTimer.current = setTimeout(() => setRoaring(false), MUSE_ROAR_MS);
-  };
-  return (
-    <div
-      className={cn("rakazo-muse-avatar-container relative shrink-0 select-none", className)}
-      style={{ width: size, height: size }}
-      onPointerDown={roar}
-    >
-      <div
-        aria-hidden="true"
-        data-muse-state="idle"
-        data-roaring={roaring || undefined}
-        className="rakazo-muse-avatar relative size-full"
-      >
-        <div className="rakazo-muse-all size-full overflow-hidden rounded-[28%] shadow-float">
-          <img src={AIDEN_FULL_IMAGE} alt="" draggable={false} className="size-full object-cover" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** How long a click roar lasts; matches the rakazo-muse-roar keyframes. */
-const MUSE_ROAR_MS = 900;
+const MUSE_FACE_INK = "#132320";
+const MUSE_FACE_CHEEK = "#FF8E86";
+const MUSE_FACE_SPARK = "#F4B63F";
+const MUSE_FACE_SHINE = "#FFFFFF";
+const MUSE_BODY_PATH =
+  "M60 24C90 24 104 44 104 68C104 94 86 108 60 108C34 108 16 94 16 68C16 44 30 24 60 24Z";
+const MUSE_SPARK_PATH = "M60 3L63 13L73 16L63 19L60 29L57 19L47 16L57 13Z";
 
 /** Below this size a numeric waiting badge stops being legible; show a dot instead. */
 const MUSE_BADGE_TEXT_MIN_SIZE = 32;
@@ -421,17 +392,6 @@ function MuseAvatar({
   const showBadge = waitingCount > 0;
   const showBadgeText = size >= MUSE_BADGE_TEXT_MIN_SIZE;
   const badgeLabel = waitingCount > 9 ? "9+" : String(waitingCount);
-  const [roaring, setRoaring] = useState(false);
-  const roarTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(roarTimer.current), []);
-
-  // Clicking Aiden makes him roar. The click still reaches any surrounding button.
-  const roar = () => {
-    playLionRoar();
-    setRoaring(true);
-    clearTimeout(roarTimer.current);
-    roarTimer.current = setTimeout(() => setRoaring(false), MUSE_ROAR_MS);
-  };
 
   return (
     <div
@@ -440,24 +400,53 @@ function MuseAvatar({
         className,
       )}
       style={{ width: size, height: size }}
-      onPointerDown={roar}
     >
-      <div
+      <svg
+        viewBox="0 0 120 120"
+        width={size}
+        height={size}
         aria-hidden="true"
         data-muse-state={state}
-        data-roaring={roaring || undefined}
-        className="rakazo-muse-avatar relative size-full"
-        style={{ color }}
+        className="rakazo-muse-avatar overflow-visible"
       >
-        <span className="rakazo-muse-ripple" />
-        <span className="rakazo-muse-ripple rakazo-muse-ripple-late" />
-        <div
-          className="rakazo-muse-all size-full overflow-hidden rounded-full"
-          style={{ boxShadow: `0 0 0 ${size >= 48 ? 3 : 2}px ${color}` }}
-        >
-          <img src={AIDEN_HEAD_IMAGE} alt="" draggable={false} className="size-full object-cover" />
-        </div>
-      </div>
+        <ellipse cx={60} cy={112} rx={30} ry={4} fill={MUSE_FACE_INK} opacity={0.08} />
+        <g className="rakazo-muse-all">
+          <path className="rakazo-muse-body" fill={color} d={MUSE_BODY_PATH} />
+          <ellipse
+            fill={MUSE_FACE_SHINE}
+            opacity={0.28}
+            cx={42}
+            cy={42}
+            rx={14}
+            ry={8}
+            transform="rotate(-24 42 42)"
+          />
+          <g className="rakazo-muse-eyes">
+            <g className="rakazo-muse-pupils">
+              <ellipse fill={MUSE_FACE_INK} cx={46} cy={66} rx={5.5} ry={7.5} />
+              <ellipse fill={MUSE_FACE_INK} cx={74} cy={66} rx={5.5} ry={7.5} />
+              <circle fill={MUSE_FACE_SHINE} cx={48} cy={63} r={1.8} />
+              <circle fill={MUSE_FACE_SHINE} cx={76} cy={63} r={1.8} />
+            </g>
+          </g>
+          <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={36} cy={80} rx={7} ry={4} />
+          <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={84} cy={80} rx={7} ry={4} />
+          <path
+            className="rakazo-muse-mouth"
+            d="M54 82Q60 87 66 82"
+            stroke={MUSE_FACE_INK}
+            strokeWidth={3}
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path className="rakazo-muse-spark" fill={MUSE_FACE_SPARK} d={MUSE_SPARK_PATH} />
+        </g>
+        <g className="rakazo-muse-thought" fill={color}>
+          <circle className="rakazo-muse-dot" cx={92} cy={22} r={5} />
+          <circle className="rakazo-muse-dot rakazo-muse-dot-2" cx={104} cy={12} r={5} />
+          <circle className="rakazo-muse-dot rakazo-muse-dot-3" cx={116} cy={2} r={5} />
+        </g>
+      </svg>
       {showBadge ? (
         showBadgeText ? (
           <span

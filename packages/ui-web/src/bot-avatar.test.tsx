@@ -179,7 +179,7 @@ describe("BotAvatar", () => {
 });
 
 describe("Muse face", () => {
-  it.each([...ACTIVE_RUN_STATUSES])(
+  it.each(ACTIVE_RUN_STATUSES.filter((status) => status !== "queued" && status !== "leased"))(
     "derives the working state from active run status %s",
     (status) => {
       expect(museAvatarState(status, 0)).toBe("working");
@@ -193,20 +193,21 @@ describe("Muse face", () => {
 
   it("derives waiting when there is an open ask, even while working", () => {
     expect(museAvatarState("running", 3)).toBe("waiting");
+    expect(museAvatarState("queued", 0)).toBe("thinking");
+    expect(museAvatarState("leased", 0)).toBe("thinking");
     expect(museAvatarState(undefined, 1)).toBe("waiting");
   });
 
-  it("renders Aiden with the identity color on the ring and the state as a data attribute", () => {
+  it("renders the muse face with the identity color on the body and the state as a data attribute", () => {
     const html = renderToString(<BotAvatar color="#22C55E" face="muse" status="running" />);
     expect(html).toContain('data-muse-state="working"');
-    expect(html).toContain("#22C55E");
-    expect(html).toContain("aiden-head");
+    expect(html).toContain('fill="#22C55E"');
     expect(html).not.toContain("grok-character-eyes");
   });
 
   it("defaults to DEFAULT_MUSE_COLOR when no color is set", () => {
     const html = renderToString(<BotAvatar color="" face="muse" />);
-    expect(html).toContain(DEFAULT_MUSE_COLOR);
+    expect(html).toContain(`fill="${DEFAULT_MUSE_COLOR}"`);
   });
 
   it("shows a numeric waiting badge at a legible size, capped at 9+", () => {

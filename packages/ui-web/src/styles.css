@@ -514,60 +514,81 @@
   }
 }
 
-/* Muse face (Aiden): idle breathe, working sway, waiting hop, and a roar on click
-   (shake + scale + two ripples in the identity color). State comes from
-   data-muse-state (derived MuseState, never a free string) and data-roaring. */
+/* Muse face: idle breathe + blink, thinking glance up + thought dots, working sway +
+   eye scan + spinning spark, waiting hop + pulsing spark. State comes from
+   data-muse-state (derived MuseState, never a free string). */
 .rakazo-muse-all {
-  transform-origin: 50% 85%;
+  transform-box: fill-box;
+  transform-origin: 50% 82%;
 }
 
-.rakazo-muse-avatar-container {
-  cursor: pointer;
+.rakazo-muse-pupils,
+.rakazo-muse-spark,
+.rakazo-muse-dot {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
 }
 
-.rakazo-muse-ripple {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  border: 2px solid currentColor;
+.rakazo-muse-thought {
   opacity: 0;
-  pointer-events: none;
-}
-
-.rakazo-muse-avatar[data-roaring] .rakazo-muse-ripple {
-  animation: rakazo-muse-ripple 0.9s ease-out;
-}
-
-.rakazo-muse-avatar[data-roaring] .rakazo-muse-ripple-late {
-  animation-delay: 0.18s;
+  transition: opacity 200ms ease;
 }
 
 .rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-all {
   animation: rakazo-muse-breathe 4.2s ease-in-out infinite;
 }
 
+.rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-pupils {
+  animation: rakazo-muse-blink 5.4s ease-in-out infinite;
+}
+
+.rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-spark {
+  animation: rakazo-muse-spark-float 3.6s ease-in-out infinite;
+}
+
+.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-all {
+  animation: rakazo-muse-breathe 2.4s ease-in-out infinite;
+}
+
+.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-pupils {
+  transform: translate(4px, -4px);
+  transition: transform 300ms ease;
+}
+
+.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-thought {
+  opacity: 1;
+}
+
+.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-dot {
+  animation: rakazo-muse-dot 1.2s ease-in-out infinite;
+}
+
+.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-dot-2 {
+  animation-delay: 0.15s;
+}
+
+.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-dot-3 {
+  animation-delay: 0.3s;
+}
+
 .rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-all {
   animation: rakazo-muse-sway 1.6s ease-in-out infinite;
+}
+
+.rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-pupils {
+  animation: rakazo-muse-scan 1.6s ease-in-out infinite;
+}
+
+.rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-spark {
+  animation: rakazo-muse-spin 1.1s linear infinite;
 }
 
 .rakazo-muse-avatar[data-muse-state="waiting"] .rakazo-muse-all {
   animation: rakazo-muse-hop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
 }
 
-/* The roar wins over every state while it plays. */
-.rakazo-muse-avatar[data-roaring] .rakazo-muse-all {
-  animation: rakazo-muse-roar 0.9s cubic-bezier(0.3, 0.7, 0.4, 1);
-}
-
-@keyframes rakazo-muse-ripple {
-  0% {
-    opacity: 0.7;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.6);
-  }
+.rakazo-muse-avatar[data-muse-state="waiting"] .rakazo-muse-spark {
+  animation: rakazo-muse-spark-pulse 0.9s ease-in-out infinite;
 }
 
 @keyframes rakazo-muse-breathe {
@@ -580,6 +601,42 @@
   }
 }
 
+@keyframes rakazo-muse-blink {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+  93% {
+    transform: scaleY(0.1);
+  }
+  96% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes rakazo-muse-spark-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(4deg);
+  }
+}
+
+@keyframes rakazo-muse-dot {
+  0%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 @keyframes rakazo-muse-sway {
   0%,
   100% {
@@ -587,6 +644,25 @@
   }
   50% {
     transform: rotate(4deg) translateX(2px);
+  }
+}
+
+@keyframes rakazo-muse-scan {
+  0%,
+  100% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes rakazo-muse-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
   }
 }
 
@@ -606,24 +682,15 @@
   }
 }
 
-@keyframes rakazo-muse-roar {
-  0% {
-    transform: scale(1) rotate(0deg);
-  }
-  15% {
-    transform: scale(1.1) rotate(-3deg);
-  }
-  30% {
-    transform: scale(1.12) rotate(3deg);
-  }
-  45% {
-    transform: scale(1.12) rotate(-2deg);
-  }
-  60% {
-    transform: scale(1.1) rotate(2deg);
-  }
+@keyframes rakazo-muse-spark-pulse {
+  0%,
   100% {
-    transform: scale(1) rotate(0deg);
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.75;
   }
 }
 
@@ -654,7 +721,9 @@
   }
 
   .rakazo-muse-all,
-  .rakazo-muse-avatar[data-roaring] .rakazo-muse-all {
+  .rakazo-muse-pupils,
+  .rakazo-muse-spark,
+  .rakazo-muse-dot {
     animation: none;
   }
 }
