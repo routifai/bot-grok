@@ -1,3 +1,5 @@
+import type { MuseState } from "@rakazo/contracts";
+import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
 import type { GrokColorDef } from "@rakazo/core";
 import {
   ACTIVE_RUN_STATUSES,
@@ -85,6 +87,23 @@ export interface BotAvatarProps {
   identity?: string;
   className?: string;
   variant?: AvatarStyle;
+  /** Renders the Muse face (docs/muse/muse-face.svg) instead of the shipped mascot shapes. */
+  face?: "muse";
+  /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
+  waitingCount?: number;
+}
+
+/**
+ * `idle` / `working` / `waiting` are derived, never passed as free strings:
+ * an open Ask always wins over an active run.
+ */
+export function museAvatarState(
+  status: string | undefined,
+  waitingCount: number | undefined,
+): MuseState {
+  if ((waitingCount ?? 0) > 0) return "waiting";
+  if (ACTIVE_RUN_STATUSES.some((s) => s === status)) return "working";
+  return "idle";
 }
 
 export const BotAvatar = memo(function BotAvatar({
@@ -94,6 +113,8 @@ export const BotAvatar = memo(function BotAvatar({
   identity = "",
   className,
   variant,
+  face,
+  waitingCount,
 }: BotAvatarProps) {
   const id = useId().replace(/[^a-zA-Z0-9-_]/g, "");
   const isWorking = ACTIVE_RUN_STATUSES.some((s) => s === status);
@@ -155,6 +176,18 @@ export const BotAvatar = memo(function BotAvatar({
         ) : null}
         <img src={parsed.imageUrl} alt="" className="h-full w-full object-cover" />
       </div>
+    );
+  }
+
+  if (face === "muse") {
+    return (
+      <MuseAvatar
+        color={color ? parsed.color : DEFAULT_MUSE_COLOR}
+        size={size}
+        state={museAvatarState(status, waitingCount)}
+        waitingCount={waitingCount ?? 0}
+        className={className}
+      />
     );
   }
 
@@ -323,6 +356,124 @@ function OrganicAvatar({
         ))}
       </g>
     </svg>
+  );
+}
+
+/**
+ * Fixed accents for the Muse face (docs/muse/muse-face.svg). The body is the
+ * only part that takes the bot's identity color; everything else here is
+ * part of the illustration and defined once.
+ */
+const MUSE_FACE_INK = "#132320";
+const MUSE_FACE_CHEEK = "#FF8E86";
+const MUSE_FACE_SPARK = "#F4B63F";
+const MUSE_FACE_SHINE = "#FFFFFF";
+const MUSE_BODY_PATH =
+  "M60 24C90 24 104 44 104 68C104 94 86 108 60 108C34 108 16 94 16 68C16 44 30 24 60 24Z";
+const MUSE_SPARK_PATH = "M60 3L63 13L73 16L63 19L60 29L57 19L47 16L57 13Z";
+
+/** Below this size a numeric waiting badge stops being legible; show a dot instead. */
+const MUSE_BADGE_TEXT_MIN_SIZE = 32;
+
+function MuseAvatar({
+  color,
+  size,
+  state,
+  waitingCount,
+  className,
+}: {
+  color: string;
+  size: number;
+  state: MuseState;
+  waitingCount: number;
+  className?: string;
+}) {
+  const showBadge = waitingCount > 0;
+  const showBadgeText = size >= MUSE_BADGE_TEXT_MIN_SIZE;
+  const badgeLabel = waitingCount > 9 ? "9+" : String(waitingCount);
+
+  return (
+    <div
+      className={cn(
+        "rakazo-muse-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
+        className,
+      )}
+      style={{ width: size, height: size }}
+    >
+      <svg
+        viewBox="0 0 120 120"
+        width={size}
+        height={size}
+        aria-hidden="true"
+        data-muse-state={state}
+        className="rakazo-muse-avatar overflow-visible"
+      >
+        <ellipse cx={60} cy={112} rx={30} ry={4} fill={MUSE_FACE_INK} opacity={0.08} />
+        <g className="rakazo-muse-all">
+          <path className="rakazo-muse-body" fill={color} d={MUSE_BODY_PATH} />
+          <ellipse
+            className="rakazo-muse-shine"
+            fill={MUSE_FACE_SHINE}
+            opacity={0.28}
+            cx={42}
+            cy={42}
+            rx={14}
+            ry={8}
+            transform="rotate(-24 42 42)"
+          />
+          <g className="rakazo-muse-eyes">
+            <g className="rakazo-muse-pupils">
+              <ellipse fill={MUSE_FACE_INK} cx={46} cy={66} rx={5.5} ry={7.5} />
+              <ellipse fill={MUSE_FACE_INK} cx={74} cy={66} rx={5.5} ry={7.5} />
+              <circle fill={MUSE_FACE_SHINE} cx={48} cy={63} r={1.8} />
+              <circle fill={MUSE_FACE_SHINE} cx={76} cy={63} r={1.8} />
+            </g>
+          </g>
+          <ellipse
+            className="rakazo-muse-cheek"
+            fill={MUSE_FACE_CHEEK}
+            opacity={0.5}
+            cx={36}
+            cy={80}
+            rx={7}
+            ry={4}
+          />
+          <ellipse
+            className="rakazo-muse-cheek"
+            fill={MUSE_FACE_CHEEK}
+            opacity={0.5}
+            cx={84}
+            cy={80}
+            rx={7}
+            ry={4}
+          />
+          <path
+            className="rakazo-muse-mouth"
+            d="M54 82Q60 87 66 82"
+            stroke={MUSE_FACE_INK}
+            strokeWidth={3}
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path className="rakazo-muse-spark" fill={MUSE_FACE_SPARK} d={MUSE_SPARK_PATH} />
+        </g>
+      </svg>
+      {showBadge ? (
+        showBadgeText ? (
+          <span
+            data-testid="muse-waiting-badge"
+            className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-none font-semibold text-destructive-foreground"
+          >
+            {badgeLabel}
+          </span>
+        ) : (
+          <span
+            data-testid="muse-waiting-dot"
+            className="absolute top-0 right-0 size-2 rounded-full bg-destructive"
+          />
+        )
+      ) : null}
+    </div>
   );
 }
 

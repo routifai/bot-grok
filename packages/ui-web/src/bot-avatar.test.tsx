@@ -1,3 +1,4 @@
+import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
 import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -7,6 +8,7 @@ import {
   DEFAULT_GROK_BOT_COLOR,
   GROK_BOT_COLORS,
   GrokShapePreview,
+  museAvatarState,
   parseBotAvatar,
   resolvePersonaColorDef,
   resolvePersonaShape,
@@ -173,5 +175,78 @@ describe("BotAvatar", () => {
     expect(html).toContain("rakazo-organic-avatar");
     expect(html).toContain(`fill="${fallback.hex}"`);
     expect(html).not.toContain("#zzzzzz");
+  });
+});
+
+describe("Muse face", () => {
+  it.each([...ACTIVE_RUN_STATUSES])(
+    "derives the working state from active run status %s",
+    (status) => {
+      expect(museAvatarState(status, 0)).toBe("working");
+    },
+  );
+
+  it("derives idle when there is no active run and nothing waiting", () => {
+    expect(museAvatarState("idle", 0)).toBe("idle");
+    expect(museAvatarState(undefined, undefined)).toBe("idle");
+  });
+
+  it("derives waiting when there is an open ask, even while working", () => {
+    expect(museAvatarState("running", 3)).toBe("waiting");
+    expect(museAvatarState(undefined, 1)).toBe("waiting");
+  });
+
+  it("renders the muse face with the identity color on the body and the state as a data attribute", () => {
+    const html = renderToString(<BotAvatar color="#22C55E" face="muse" status="running" />);
+    expect(html).toContain('data-muse-state="working"');
+    expect(html).toContain('fill="#22C55E"');
+    expect(html).not.toContain("grok-character-eyes");
+  });
+
+  it("defaults to DEFAULT_MUSE_COLOR when no color is set", () => {
+    const html = renderToString(<BotAvatar color="" face="muse" />);
+    expect(html).toContain(`fill="${DEFAULT_MUSE_COLOR}"`);
+  });
+
+  it("shows a numeric waiting badge at a legible size, capped at 9+", () => {
+    const nine = renderToString(
+      <BotAvatar color="#0090FF" face="muse" size={40} waitingCount={9} />,
+    );
+    expect(nine).toContain("muse-waiting-badge");
+    expect(nine).toContain(">9<");
+
+    const ten = renderToString(
+      <BotAvatar color="#0090FF" face="muse" size={40} waitingCount={10} />,
+    );
+    expect(ten).toContain(">9+<");
+  });
+
+  it("shows a dot instead of badge text below the legible size", () => {
+    const html = renderToString(
+      <BotAvatar color="#0090FF" face="muse" size={24} waitingCount={3} />,
+    );
+    expect(html).toContain("muse-waiting-dot");
+    expect(html).not.toContain("muse-waiting-badge");
+  });
+
+  it("shows no badge when nothing is waiting", () => {
+    const html = renderToString(
+      <BotAvatar color="#0090FF" face="muse" size={40} waitingCount={0} />,
+    );
+    expect(html).not.toContain("muse-waiting-badge");
+    expect(html).not.toContain("muse-waiting-dot");
+  });
+
+  it("waiting wins over working in the rendered state", () => {
+    const html = renderToString(
+      <BotAvatar color="#0090FF" face="muse" status="running" waitingCount={2} />,
+    );
+    expect(html).toContain('data-muse-state="waiting"');
+  });
+
+  it("leaves non-muse avatars unchanged when face is omitted", () => {
+    const html = renderToString(<BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="maya" />);
+    expect(html).not.toContain("rakazo-muse-avatar");
+    expect(html).toContain("grok-character-eyes");
   });
 });
