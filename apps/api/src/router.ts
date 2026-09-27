@@ -90,7 +90,15 @@ import {
   verifyMcpInstall,
 } from "@rakazo/adapters";
 import type { Auth } from "@rakazo/auth";
-import type { Actor, Bot, ComputerStatus, McpServer, Me, SpaceNavigation } from "@rakazo/contracts";
+import type {
+  Actor,
+  Bot,
+  ComputerStatus,
+  McpServer,
+  Me,
+  ProductMode,
+  SpaceNavigation,
+} from "@rakazo/contracts";
 import {
   appContract,
   IntegrationProviderIdSchema,
@@ -176,6 +184,7 @@ import {
   serializeSpaceMemoryConfig,
   updateMemoryProviderDefaultScope,
 } from "./memory-provider-config.js";
+import { musePreview } from "./muse-preview.js";
 import {
   chooseFocus,
   dismissFocus,
@@ -477,6 +486,8 @@ export interface RouterDeps {
   /** Present when the external messaging surface is enabled. */
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
+    /** Defaults to upstream Rakazo when absent. */
+    productMode?: ProductMode;
     agentRuntime: string;
     teamChatJudgeProvider?: string;
     teamChatJudgeModel?: string;
@@ -581,6 +592,10 @@ export function createRouter(deps: RouterDeps) {
   const authed = os.use(async ({ context, next }) => {
     if (!context.actor) throw new ORPCError("UNAUTHORIZED");
     return next({ context: { ...context, actor: context.actor } });
+  });
+  const museOnly = authed.use(async ({ next }) => {
+    if (deps.env.productMode !== "muse") throw new ORPCError("NOT_FOUND");
+    return next();
   });
 
   return os.router({
@@ -4904,6 +4919,50 @@ export function createRouter(deps: RouterDeps) {
         prepareVoice(deps, context.actor, input),
       ),
     },
+    // Muse edition: sample data until the backend packages land (see muse-preview.ts).
+    goals: {
+      list: museOnly.goals.list.handler(({ input }) =>
+        musePreview.goals.list(input.botId, input.includeClosed),
+      ),
+      get: museOnly.goals.get.handler(({ input }) => musePreview.goals.get(input.goalId)),
+      update: museOnly.goals.update.handler(({ input }) => musePreview.goals.update(input)),
+      acceptProposal: museOnly.goals.acceptProposal.handler(({ input }) =>
+        musePreview.goals.acceptProposal(input.proposalId),
+      ),
+      dismissProposal: museOnly.goals.dismissProposal.handler(({ input }) =>
+        musePreview.goals.dismissProposal(input.proposalId),
+      ),
+      log: museOnly.goals.log.handler(({ input }) => musePreview.goals.log(input.goalId)),
+    },
+    asks: {
+      list: museOnly.asks.list.handler(({ input }) => musePreview.asks.list(input.botId)),
+      count: museOnly.asks.count.handler(({ input }) => musePreview.asks.count(input.botId)),
+      answer: museOnly.asks.answer.handler(({ input }) => musePreview.asks.answer(input)),
+    },
+    feed: {
+      list: museOnly.feed.list.handler(({ input }) => musePreview.feed.list(input.botId)),
+    },
+    ideas: {
+      list: museOnly.ideas.list.handler(({ input }) => musePreview.ideas.list(input.botId)),
+      refresh: museOnly.ideas.refresh.handler(({ input }) =>
+        musePreview.ideas.refresh(input.botId),
+      ),
+    },
+    topics: {
+      list: museOnly.topics.list.handler(({ input }) => musePreview.topics.list(input.botId)),
+      remove: museOnly.topics.remove.handler(({ input }) =>
+        musePreview.topics.remove(input.topicId),
+      ),
+    },
+    muse: {
+      settings: museOnly.muse.settings.handler(({ input }) =>
+        musePreview.settings.get(input.botId),
+      ),
+      updateSettings: museOnly.muse.updateSettings.handler(({ input }) => {
+        const { botId, ...patch } = input;
+        return musePreview.settings.update(botId, patch);
+      }),
+    },
   });
 }
 
@@ -5115,6 +5174,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
     avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
+    productMode: deps.env.productMode ?? "rakazo",
   };
 }
 

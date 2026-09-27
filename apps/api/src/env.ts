@@ -3,9 +3,11 @@ import {
   resolveDeploymentModel,
   resolveSandboxProvider,
 } from "@rakazo/adapters";
+import type { ProductMode } from "@rakazo/contracts";
 import {
   resolveAuthSecret,
   resolveEncryptionKey,
+  resolveProductMode,
   resolveScreenProxySecret,
   resolveSupervisorToken,
 } from "@rakazo/core";
@@ -14,6 +16,8 @@ export { resolveCloudAgentProvider, resolveSandboxProvider } from "@rakazo/adapt
 
 export interface AppEnv {
   nodeEnv: string;
+  /** Upstream Rakazo, or the single-Muse edition. */
+  productMode: ProductMode;
   desktopStackToken?: string;
   databaseUrl: string;
   realtimeDatabaseUrl: string;
@@ -104,6 +108,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const updaterToken = optional(source.RAKAZO_UPDATER_TOKEN);
   return {
     nodeEnv: source.NODE_ENV ?? "",
+    productMode: resolveProductMode(source),
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
     desktopStackToken: optional(source.RAKAZO_DESKTOP_STACK_TOKEN),

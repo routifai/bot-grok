@@ -86,6 +86,16 @@ import {
   IntegrationProviderConfigSchema,
   IntegrationSetupStateSchema,
 } from "./integration-settings.js";
+import {
+  AnswerAskInput,
+  AskSchema,
+  FeedSchema,
+  FollowedTopicSchema,
+  GoalSchema,
+  IdeaSchema,
+  MuseSettingsSchema,
+  UpdateGoalInput,
+} from "./muse.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
@@ -815,6 +825,42 @@ export const appContract = {
     list: oc.output(z.array(AgentSecretSchema)),
     put: oc.input(AgentSecretInputSchema).output(AgentSecretSchema),
     remove: oc.input(z.object({ id: Id })).output(z.object({ ok: z.literal(true) })),
+  },
+  // Muse edition. Goals are created by talking to the Muse, so there is no goals.create.
+  goals: {
+    list: oc
+      .input(z.object({ botId: Id, includeClosed: z.boolean().optional() }))
+      .output(z.array(GoalSchema)),
+    get: oc.input(z.object({ goalId: Id })).output(GoalSchema),
+    update: oc.input(UpdateGoalInput).output(GoalSchema),
+    acceptProposal: oc.input(z.object({ proposalId: Id })).output(GoalSchema),
+    dismissProposal: oc.input(z.object({ proposalId: Id })).output(GoalSchema),
+    /** The Goal log: read-only messages of the Goal's own thread. */
+    log: oc
+      .input(z.object({ goalId: Id, before: z.number().int().nonnegative().optional() }))
+      .output(ThreadMessagePageSchema),
+  },
+  asks: {
+    list: oc.input(z.object({ botId: Id })).output(z.array(AskSchema)),
+    count: oc.input(z.object({ botId: Id })).output(z.object({ count: z.number().int() })),
+    answer: oc.input(AnswerAskInput).output(z.object({ ok: z.literal(true) })),
+  },
+  feed: {
+    list: oc.input(z.object({ botId: Id, cursor: z.string().optional() })).output(FeedSchema),
+  },
+  ideas: {
+    list: oc.input(z.object({ botId: Id })).output(z.array(IdeaSchema)),
+    refresh: oc.input(z.object({ botId: Id })).output(z.array(IdeaSchema)),
+  },
+  topics: {
+    list: oc.input(z.object({ botId: Id })).output(z.array(FollowedTopicSchema)),
+    remove: oc.input(z.object({ topicId: Id })).output(z.object({ ok: z.literal(true) })),
+  },
+  muse: {
+    settings: oc.input(z.object({ botId: Id })).output(MuseSettingsSchema),
+    updateSettings: oc
+      .input(MuseSettingsSchema.partial().safeExtend({ botId: Id }))
+      .output(MuseSettingsSchema),
   },
 };
 

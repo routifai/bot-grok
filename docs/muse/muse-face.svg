@@ -1,0 +1,21 @@
+<!-- Reference drawing for the Muse face (F8). Body takes the Muse's identity color (default sky #0090FF).
+     Groups: .all (whole figure, animated per state), .eyes/.pupils (blink, scan), .spark, .badge-g (waiting only). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <ellipse class="shadow" cx="60" cy="112" rx="30" ry="4" fill="#172022" opacity=".08"/>
+  <g class="all">
+    <path class="body" fill="#0090FF" d="M60 24C90 24 104 44 104 68C104 94 86 108 60 108C34 108 16 94 16 68C16 44 30 24 60 24Z"/>
+    <ellipse class="shine" fill="#fff" opacity=".28" cx="42" cy="42" rx="14" ry="8" transform="rotate(-24 42 42)"/>
+    <g class="eyes">
+      <g class="pupils">
+        <ellipse fill="#132320" cx="46" cy="66" rx="5.5" ry="7.5"/>
+        <ellipse fill="#132320" cx="74" cy="66" rx="5.5" ry="7.5"/>
+        <circle fill="#fff" cx="48" cy="63" r="1.8"/>
+        <circle fill="#fff" cx="76" cy="63" r="1.8"/>
+      </g>
+    </g>
+    <ellipse class="cheek" fill="#FF8E86" opacity=".5" cx="36" cy="80" rx="7" ry="4"/>
+    <ellipse class="cheek" fill="#FF8E86" opacity=".5" cx="84" cy="80" rx="7" ry="4"/>
+    <path class="mouth" d="M54 82Q60 87 66 82" stroke="#132320" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <path class="spark" fill="#F4B63F" d="M60 3L63 13L73 16L63 19L60 29L57 19L47 16L57 13Z"/>
+  </g>
+</svg>
