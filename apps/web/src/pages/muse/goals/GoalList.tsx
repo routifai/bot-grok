@@ -101,6 +101,7 @@ export function GoalList({
       <MuseWideColumn className="flex min-h-full flex-col">
         <EmptyState
           avatarColor={avatarColor}
+          illustration="trophy"
           headline={t`What do you want to achieve?`}
           suggestions={suggestions}
           onSuggestion={onSendIdea}

@@ -49,7 +49,12 @@ export function WaitingSheet({
           {asks.length === 0 && loading ? (
             <CardSkeletonList count={2} />
           ) : asks.length === 0 ? (
-            <EmptyState face avatarColor={avatarColor} headline={t`You're all caught up`}>
+            <EmptyState
+              face
+              illustration="bell"
+              avatarColor={avatarColor}
+              headline={t`You're all caught up`}
+            >
               {t`When I need a decision or an answer, it'll show up here.`}
             </EmptyState>
           ) : (

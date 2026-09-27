@@ -100,6 +100,7 @@ export function FeedScreen(props: {
         ) : empty ? (
           <EmptyState
             avatarColor={avatarColor}
+            illustration="newspaper"
             headline={t`You're all caught up`}
             suggestions={FEED_SUGGESTIONS}
             onSuggestion={onSendIdea}

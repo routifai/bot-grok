@@ -12,8 +12,8 @@ import type {
   AgentRuntime,
   MemoryStore,
 } from "@aiden/adapter-kit";
-import { ILLUSTRATION_KEYS } from "@aiden/contracts";
 import type { Idea, IllustrationKey, MessageBlock } from "@aiden/contracts";
+import { ILLUSTRATION_KEYS } from "@aiden/contracts";
 import { blocksToAgentHistoryText } from "@aiden/core";
 import { createGoalRepos, createIdeaRepos, type PrismaClient } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
