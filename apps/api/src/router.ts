@@ -111,6 +111,7 @@ import {
   containsSecret,
   expandSkillReferencesInPrompt,
   hasMixedOneShotSchedule,
+  isMuseMode,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
 } from "@rakazo/core";
@@ -527,6 +528,38 @@ function mapSpaceLifecycleError(error: unknown): unknown {
     return new ORPCError("BAD_REQUEST", { message: error.message });
   }
   return error;
+}
+
+/** ADR 0001: in muse mode a person has exactly one live Muse; peer-bot creation is locked. */
+const MUSE_SINGLE_BOT_MESSAGE = "You already have a Muse. Only one Muse per person is allowed.";
+
+/** The live (non-archived) bot this person already has, if any, for the single-Muse guard. */
+async function findLiveBot(
+  deps: RouterDeps,
+  actor: Actor,
+): Promise<{ id: string; spawnKey: string | null } | null> {
+  return deps.prisma.bot.findFirst({
+    where: { spaceId: actor.spaceId, userId: actor.userId, archivedAt: null },
+    select: { id: true, spawnKey: true },
+  });
+}
+
+/**
+ * In muse mode, reject creating a second live bot unless this is the
+ * idempotent onboarding re-create of the one the person already has (matching
+ * `spawnKey`, e.g. `spawnKey: "onboarding:first"`) — that path must keep
+ * returning the existing bot instead of being locked out.
+ */
+export function assertMuseSingleBotAllowed(
+  productMode: ProductMode | undefined,
+  liveBot: { spawnKey: string | null } | null,
+  requestedSpawnKey: string | null | undefined,
+): void {
+  if (!isMuseMode(productMode ?? "rakazo") || !liveBot) return;
+  const requestedKey = requestedSpawnKey ?? null;
+  const isIdempotentRetry = requestedKey !== null && liveBot.spawnKey === requestedKey;
+  if (isIdempotentRetry) return;
+  throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
 }
 
 const BOT_INTRO_PROMPT =
@@ -1111,6 +1144,10 @@ export function createRouter(deps: RouterDeps) {
         return found;
       }),
       create: authed.bots.create.handler(async ({ context, input }) => {
+        if (isMuseMode(deps.env.productMode ?? "rakazo")) {
+          const liveBot = await findLiveBot(deps, context.actor);
+          assertMuseSingleBotAllowed(deps.env.productMode, liveBot, input.spawnKey ?? null);
+        }
         let bot: Bot;
         try {
           bot = await repos.createBot(context.actor, input);
@@ -1123,6 +1160,9 @@ export function createRouter(deps: RouterDeps) {
         return bot;
       }),
       duplicate: authed.bots.duplicate.handler(async ({ context, input }) => {
+        if (isMuseMode(deps.env.productMode ?? "rakazo")) {
+          throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
+        }
         const source = await repos.getBot(context.actor, input.botId);
         const duplicate = await repos
           .createBot(context.actor, {
@@ -1378,6 +1418,10 @@ export function createRouter(deps: RouterDeps) {
       restore: authed.bots.restore.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId, { includeArchived: true });
         if (!bot.archivedAt) return { ok: true as const };
+        if (isMuseMode(deps.env.productMode ?? "rakazo")) {
+          const liveBot = await findLiveBot(deps, context.actor);
+          if (liveBot) throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
+        }
         try {
           if (bot.computer) {
             await restoreBotUnderComputerQuota(deps.prisma, {

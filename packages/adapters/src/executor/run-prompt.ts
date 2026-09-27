@@ -19,6 +19,8 @@ export function userTurnInstructions(parts: {
   agentSkillsLine: string | undefined;
   taughtSkillsLine: string | undefined;
   replyGuidance: string;
+  /** ADR 0001: in muse mode, spawn_bot/update_bot/archive_bot/create_space are not offered. */
+  museMode?: boolean;
 }): (string | undefined)[] {
   return [
     parts.botInstructions,
@@ -38,6 +40,9 @@ export function userTurnInstructions(parts: {
     "spawn_bot creates a lasting regular bot (own chat, computer, memory) that appears in the user's bot list. If the user asked to create a bot, call spawn_bot once and stop. Do not run_subagent to demo it.",
     "update_bot updates this bot's own name (chat header / list label), title, description, avatar, and notifyOnFinish. When the user asks you to rename yourself, change your title or description, change your profile picture, or turn finish notifications on or off, call update_bot — do not claim you changed them without the tool. Pass color for a hex or encoded shape, artifact_id for an image in this space, or use_attached_image when they attached a picture on this message.",
     "run_subagent is a short helper inside this turn only. It is not a bot, has no thread, and does not show in the list. Use it for parallel work you will summarize here.",
+    parts.museMode
+      ? "You are the person's one Muse; there is no second bot to create. Use run_subagent for independent parallel work (Helpers); never create other bots."
+      : undefined,
     parts.botDirectory,
     "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
     parts.pluginLine,

@@ -1028,6 +1028,53 @@ describe("userTurnInstructions", () => {
     expect(instructions.join("\n\n")).not.toContain("Current date and time:");
   });
 
+  it("adds the Helper-only line in muse mode, right after run_subagent", () => {
+    const instructions = userTurnInstructions({
+      ...base,
+      groupContext: undefined,
+      messagingContext: undefined,
+      redactedMemoryContext: undefined,
+      redactedScratchpadContext: undefined,
+      hasHistoricalContext: false,
+      agentEnvironmentInstruction: undefined,
+      botDirectory: undefined,
+      pluginLine: undefined,
+      agentSkillsLine: undefined,
+      taughtSkillsLine: undefined,
+      museMode: true,
+    }).filter(Boolean);
+
+    expect(instructions).toEqual([
+      "Bot instructions",
+      computerLine,
+      "This entire computer workspace is your private home.",
+      ...stableMiddle,
+      "You are the person's one Muse; there is no second bot to create. Use run_subagent for independent parallel work (Helpers); never create other bots.",
+      archiveBot,
+      ...stableTail,
+    ]);
+  });
+
+  it("omits the Helper-only line outside muse mode", () => {
+    const instructions = userTurnInstructions({
+      ...base,
+      groupContext: undefined,
+      messagingContext: undefined,
+      redactedMemoryContext: undefined,
+      redactedScratchpadContext: undefined,
+      hasHistoricalContext: false,
+      agentEnvironmentInstruction: undefined,
+      botDirectory: undefined,
+      pluginLine: undefined,
+      agentSkillsLine: undefined,
+      taughtSkillsLine: undefined,
+    }).filter(Boolean);
+
+    expect(instructions.some((line) => line?.includes("there is no second bot to create"))).toBe(
+      false,
+    );
+  });
+
   it("inserts task catalog guidance after the computer line", () => {
     const instructions = userTurnInstructions({
       ...base,
@@ -1053,6 +1100,76 @@ describe("userTurnInstructions", () => {
       archiveBot,
       ...stableTail,
     ]);
+  });
+});
+
+describe("selectBuiltinToolsForRun — muse mode", () => {
+  // handoff_to_bot and message_bot are mutually exclusive on groupId already
+  // (see filterBuiltinToolsForThread), independent of product mode.
+  const DM_LOCKED_TOOL_NAMES = [
+    "spawn_bot",
+    "update_bot",
+    "archive_bot",
+    "message_bot",
+    "create_space",
+  ];
+  const baseOptions = {
+    graphicalToolsAllowed: true,
+    trigger: "user",
+    semanticMemoryEnabled: true,
+    messagingChannelRun: false,
+  } as const;
+
+  it("removes peer-bot tools but keeps run_subagent in muse mode", () => {
+    const tools = selectBuiltinToolsForRun({
+      ...baseOptions,
+      groupId: null,
+      productMode: "muse",
+    }).map((tool) => tool.name);
+    for (const name of DM_LOCKED_TOOL_NAMES) {
+      expect(tools).not.toContain(name);
+    }
+    expect(tools).toContain("run_subagent");
+  });
+
+  it("removes handoff_to_bot in muse mode even inside a group", () => {
+    const tools = selectBuiltinToolsForRun({
+      ...baseOptions,
+      groupId: "group-1",
+      productMode: "muse",
+    }).map((tool) => tool.name);
+    expect(tools).not.toContain("handoff_to_bot");
+    expect(tools).not.toContain("spawn_bot");
+  });
+
+  it("keeps peer-bot tools in rakazo mode", () => {
+    const tools = selectBuiltinToolsForRun({
+      ...baseOptions,
+      groupId: null,
+      productMode: "rakazo",
+    }).map((tool) => tool.name);
+    for (const name of DM_LOCKED_TOOL_NAMES) {
+      expect(tools).toContain(name);
+    }
+    expect(tools).toContain("run_subagent");
+  });
+
+  it("keeps handoff_to_bot in rakazo mode inside a group", () => {
+    const tools = selectBuiltinToolsForRun({
+      ...baseOptions,
+      groupId: "group-1",
+      productMode: "rakazo",
+    }).map((tool) => tool.name);
+    expect(tools).toContain("handoff_to_bot");
+  });
+
+  it("defaults to rakazo behaviour when productMode is omitted", () => {
+    const tools = selectBuiltinToolsForRun({ ...baseOptions, groupId: null }).map(
+      (tool) => tool.name,
+    );
+    for (const name of DM_LOCKED_TOOL_NAMES) {
+      expect(tools).toContain(name);
+    }
   });
 });
 

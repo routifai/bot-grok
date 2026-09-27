@@ -45,7 +45,7 @@ import {
   SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
 } from "@rakazo/adapters";
-import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
+import { resolveEncryptionKey, resolveProductMode, resolveSupervisorToken } from "@rakazo/core";
 import {
   createDb,
   createThreadEvents,
@@ -161,10 +161,12 @@ async function main() {
     });
   // One provider instance so emulator launches and polls share the same Map.
   const cloudAgent = createCloudAgentConnection();
+  const productMode = resolveProductMode(process.env);
   const executor = createRunExecutor({
     prisma,
     runtime,
     sandbox,
+    productMode,
     memory: new MarkdownMemoryStore(prisma),
     memoryProviders,
     home,
