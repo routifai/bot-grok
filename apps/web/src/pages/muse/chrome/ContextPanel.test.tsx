@@ -25,6 +25,9 @@ vi.mock("@lingui/react/macro", () => {
 });
 vi.mock("@aiden/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
+  BotAvatar: ({ face }: { face?: string }) => (
+    <div data-testid="context-panel-empty-face" data-face={face} />
+  ),
 }));
 
 import { ContextPanel, useContextPanelCollapsed } from "./ContextPanel";
@@ -130,6 +133,23 @@ function stubLocalStorage(): void {
 
 beforeEach(() => {
   stubLocalStorage();
+  // jsdom doesn't implement matchMedia, and the progress ring's draw-in reads it directly
+  // (prefers-reduced-motion); requestAnimationFrame is stubbed to run synchronously so the
+  // ring settles inside the same `act` as the render instead of leaking a pending timer.
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+    cb(0);
+    return 0;
+  });
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
 });
 
 it("renders Asks, in-progress Goals, and upcoming Check-ins from the data it's given", async () => {
@@ -153,25 +173,35 @@ it("renders Asks, in-progress Goals, and upcoming Check-ins from the data it's g
     expect(page.container.querySelector("[data-testid='context-panel-goals']")).toBeTruthy();
     expect(page.container.textContent).toContain("Conversational Japanese before Kyoto");
     expect(page.container.textContent).toContain("Daily practice streak");
+    // The ring shows done/total ("1/2": one done Task of two).
+    expect(page.container.textContent).toContain("1/2");
     await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.querySelector("[data-testid='context-panel-checkins']")).toBeTruthy();
       });
     });
 
-    const askRow = page.container
-      .querySelector("[data-testid='context-panel-asks']")
-      ?.querySelector("button");
+    const askRow = page.container.querySelector<HTMLButtonElement>(
+      "[data-testid='context-panel-ask-row']",
+    );
     await act(async () => {
       askRow?.click();
     });
     expect(page.onOpenWaiting).toHaveBeenCalled();
 
-    const goalRow = page.container
-      .querySelector("[data-testid='context-panel-goals']")
-      ?.querySelector("button");
+    const goalCard = page.container.querySelector<HTMLElement>(
+      "[data-testid='context-panel-goal-card']",
+    );
     await act(async () => {
-      goalRow?.click();
+      goalCard?.click();
+    });
+    expect(page.onNavigate).toHaveBeenCalledWith("goals");
+
+    const checkinRow = page.container.querySelector<HTMLButtonElement>(
+      "[data-testid='context-panel-checkin-row']",
+    );
+    await act(async () => {
+      checkinRow?.click();
     });
     expect(page.onNavigate).toHaveBeenCalledWith("goals");
   } finally {
@@ -180,7 +210,43 @@ it("renders Asks, in-progress Goals, and upcoming Check-ins from the data it's g
   }
 });
 
-it("hides a section with nothing in it, and shows one quiet line when everything is empty", async () => {
+it("shows a 'View all' action once there are more open Asks than fit", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([
+    ask({ id: "ask-1", text: "One" }),
+    ask({ id: "ask-2", text: "Two" }),
+    ask({ id: "ask-3", text: "Three" }),
+    ask({ id: "ask-4", text: "Four" }),
+  ]);
+  api.goals.list.mockResolvedValue([]);
+  const page = await renderPanel();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.querySelector("[data-testid='context-panel-view-all']")).toBeTruthy();
+      });
+    });
+    // Only 3 rows render even though there are 4 open Asks.
+    expect(page.container.querySelectorAll("[data-testid='context-panel-ask-row']").length).toBe(3);
+    // The section's count reflects every open Ask, not just the ones shown.
+    expect(
+      page.container.querySelector("[data-testid='context-panel-asks']")?.textContent,
+    ).toContain("4");
+
+    const viewAll = page.container.querySelector<HTMLButtonElement>(
+      "[data-testid='context-panel-view-all']",
+    );
+    await act(async () => {
+      viewAll?.click();
+    });
+    expect(page.onOpenWaiting).toHaveBeenCalled();
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("hides a section with nothing in it, and shows one quiet line with the Muse's face when everything is empty", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.goals.list.mockResolvedValue([]);
@@ -194,6 +260,7 @@ it("hides a section with nothing in it, and shows one quiet line when everything
     expect(page.container.querySelector("[data-testid='context-panel-asks']")).toBeNull();
     expect(page.container.querySelector("[data-testid='context-panel-goals']")).toBeNull();
     expect(page.container.querySelector("[data-testid='context-panel-checkins']")).toBeNull();
+    expect(page.container.querySelector("[data-testid='context-panel-empty-face']")).toBeTruthy();
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

@@ -1,21 +1,31 @@
 import type { Ask, Goal } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { nextCronDateAcross } from "@aiden/core";
-import { cn } from "@aiden/ui-web";
+import { BotAvatar, cn } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import { HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import { Bell, Clock, HelpCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MuseRailView } from "../../../components/AppRail";
+import { formatRelativeTime } from "../../../lib/relative-time";
 import { rpc } from "../../../lib/rpc";
 import { useAsks } from "../asks";
-import { nextUnfinishedTask, taskCounts } from "../goals/format";
-import { Progress } from "../ui";
+import {
+  dueMeta,
+  type GoalDisplayStatus,
+  goalDisplayStatus,
+  nextUnfinishedTask,
+  taskCounts,
+} from "../goals/format";
+import { StatusPill, Surface } from "../ui";
 
 // The right-hand context panel beside the Conversation (docs/muse/DESIGN.md, "Conversation"):
 // only what matters right now, pulled from data the shell already loads elsewhere (Asks,
 // Goals). It never fetches anything the Feed/Goals screens don't already show.
-const LIST_LIMIT = 3;
+const ASKS_LIMIT = 3;
+const GOALS_LIMIT = 3;
+const CHECKINS_LIMIT = 4;
 const GOALS_POLL_MS = 30_000;
 const STORAGE_KEY = "muse:context-panel-collapsed";
 
@@ -25,6 +35,20 @@ const ASK_ICON = {
   question: HelpCircle,
   blocked_task: HelpCircle,
 } as const;
+
+const IN_PROGRESS_TONE: Record<GoalDisplayStatus, "attention" | "live" | "neutral"> = {
+  waiting: "attention",
+  working: "live",
+  paused: "neutral",
+  onTrack: "neutral",
+};
+
+function inProgressLabel(status: GoalDisplayStatus): string {
+  if (status === "waiting") return t`Waiting on you`;
+  if (status === "working") return t`Working`;
+  if (status === "paused") return t`Paused`;
+  return t`On track`;
+}
 
 /**
  * Whether the person collapsed the context panel, persisted across sessions. Read once at
@@ -49,6 +73,23 @@ export function useContextPanelCollapsed(): [boolean, (next: boolean) => void] {
   return [collapsed, setCollapsed];
 }
 
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+function reducedMotionSnapshot(): boolean {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+function subscribeToReducedMotion(onChange: () => void): () => void {
+  const media = window.matchMedia(REDUCED_MOTION_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+/** Whether the person asked for less motion, so the progress ring can skip its draw-in. */
+function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(subscribeToReducedMotion, reducedMotionSnapshot, () => false);
+}
+
 /** The nearest upcoming check-in per active Goal that has one, soonest first. */
 function upcomingCheckIns(goals: Goal[], now: Date): { goal: Goal; next: Date }[] {
   const rows: { goal: Goal; next: Date }[] = [];
@@ -62,30 +103,289 @@ function upcomingCheckIns(goals: Goal[], now: Date): { goal: Goal; next: Date }[
     }
     if (next) rows.push({ goal, next });
   }
-  return rows.sort((a, b) => a.next.getTime() - b.next.getTime()).slice(0, LIST_LIMIT);
+  return rows.sort((a, b) => a.next.getTime() - b.next.getTime()).slice(0, CHECKINS_LIMIT);
 }
 
-/** A compact, forward-looking time for a check-in row ("in 5m", "in 2d", "Tue 9:00 AM"). */
-function formatCheckInEta(date: Date, locale: string, now: Date): string {
-  const ms = date.getTime() - now.getTime();
-  if (ms <= 0) return t`Now`;
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return t`in ${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return t`in ${hours}h`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return t`in ${days}d`;
-  return date.toLocaleDateString(locale || "en", { weekday: "short" });
+/** A date's calendar day and clock time in a given timezone, for comparing "today"/"tomorrow". */
+function checkInDateParts(
+  date: Date,
+  timezone: string,
+): { dateKey: string; hour: number; minute: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    dateKey: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: Number(get("hour")),
+    minute: get("minute"),
+  };
 }
 
-function PanelRow({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+/**
+ * A check-in's time chip in the Goal's own timezone ("Today 7:30", "Tomorrow 9:00",
+ * "Sun 9:00"), plus whether it falls today (emphasized on the "Coming up" timeline).
+ */
+function formatCheckInChip(
+  date: Date,
+  timezone: string,
+  locale: string,
+  now: Date,
+): { label: string; isToday: boolean } {
+  const target = checkInDateParts(date, timezone);
+  const today = checkInDateParts(now, timezone);
+  const tomorrow = checkInDateParts(new Date(now.getTime() + 24 * 60 * 60 * 1000), timezone);
+  const time = `${target.hour}:${target.minute}`;
+  if (target.dateKey === today.dateKey) return { label: t`Today ${time}`, isToday: true };
+  if (target.dateKey === tomorrow.dateKey) return { label: t`Tomorrow ${time}`, isToday: false };
+  const weekday = new Intl.DateTimeFormat(locale || "en", {
+    timeZone: timezone,
+    weekday: "short",
+  }).format(date);
+  return { label: `${weekday} ${time}`, isToday: false };
+}
+
+/** A section's calm header: a small icon, a plain title, and a muted count. */
+function PanelSectionHeader({
+  icon: Icon,
+  title,
+  count,
+}: {
+  icon: LucideIcon;
+  title: string;
+  count: number;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Icon
+        size={16}
+        strokeWidth={1.75}
+        aria-hidden="true"
+        className="shrink-0 text-muted-foreground"
+      />
+      <h3 className="text-[14px] font-semibold text-foreground">{title}</h3>
+      <span className="ms-auto text-[13px] tabular-nums text-muted-foreground">{count}</span>
+    </div>
+  );
+}
+
+const RING_SIZE = 36;
+const RING_STROKE = 3;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+/** A Goal's Task progress as a small ring (docs/muse/DESIGN.md "Goals"), drawing in from 0
+ * on mount unless the person prefers less motion, in which case it renders at rest. */
+function GoalRing({ done, total }: { done: number; total: number }) {
+  const reducedMotion = usePrefersReducedMotion();
+  const fraction = total > 0 ? Math.max(0, Math.min(1, done / total)) : 0;
+  const [drawn, setDrawn] = useState(reducedMotion ? fraction : 0);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setDrawn(fraction);
+      return;
+    }
+    setDrawn(0);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setDrawn(fraction));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [fraction, reducedMotion]);
+
+  const offset = RING_CIRCUMFERENCE * (1 - drawn);
+
+  return (
+    <span
+      role="img"
+      aria-label={t`${done} of ${total} Tasks done`}
+      className="relative flex size-9 shrink-0 items-center justify-center"
+    >
+      <svg
+        width={RING_SIZE}
+        height={RING_SIZE}
+        viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+        aria-hidden="true"
+        className="-rotate-90"
+      >
+        <circle
+          cx={RING_SIZE / 2}
+          cy={RING_SIZE / 2}
+          r={RING_RADIUS}
+          fill="none"
+          strokeWidth={RING_STROKE}
+          className="stroke-muted"
+        />
+        <circle
+          cx={RING_SIZE / 2}
+          cy={RING_SIZE / 2}
+          r={RING_RADIUS}
+          fill="none"
+          strokeWidth={RING_STROKE}
+          strokeLinecap="round"
+          strokeDasharray={RING_CIRCUMFERENCE}
+          strokeDashoffset={offset}
+          className={cn(
+            "stroke-foreground",
+            !reducedMotion && "transition-[stroke-dashoffset] duration-700 ease-out",
+          )}
+        />
+      </svg>
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 flex items-center justify-center text-[10px] font-medium tabular-nums text-foreground"
+      >
+        {done}/{total}
+      </span>
+    </span>
+  );
+}
+
+/** One in-progress Goal card: its ring, title, next Task, status, and due date. */
+function InProgressGoalCard({ goal, onNavigate }: { goal: Goal; onNavigate: () => void }) {
+  const { i18n } = useLingui();
+  const next = nextUnfinishedTask(goal);
+  const { done, total } = taskCounts(goal);
+  const due = dueMeta(goal.due, i18n.locale);
+  const status = goalDisplayStatus(goal);
+
+  return (
+    <Surface
+      interactive
+      role="button"
+      tabIndex={0}
+      data-testid="context-panel-goal-card"
+      aria-label={goal.title}
+      onClick={onNavigate}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onNavigate();
+        }
+      }}
+      className="flex items-start gap-3 rounded-xl p-3.5 outline-none transition-[border-color,box-shadow,transform] duration-150 motion-safe:hover:-translate-y-px"
+    >
+      <GoalRing done={done} total={total} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
+        <p
+          className="line-clamp-2 text-[14.5px] leading-snug font-medium text-foreground"
+          dir="auto"
+        >
+          {goal.title}
+        </p>
+        {next ? (
+          <p
+            className="flex min-w-0 items-center gap-1 text-[13px] text-muted-foreground"
+            dir="auto"
+          >
+            <span aria-hidden="true">→</span>
+            <span className="min-w-0 truncate">{next.title}</span>
+          </p>
+        ) : null}
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <StatusPill tone={IN_PROGRESS_TONE[status]}>{inProgressLabel(status)}</StatusPill>
+          {due ? (
+            <span className="text-[12px] text-muted-foreground">
+              {due.kind === "absolute" ? t`Due ${due.date}` : t`in ${due.weeks} weeks`}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </Surface>
+  );
+}
+
+const CHECKIN_NODE = "relative z-[1] flex size-5 shrink-0 items-center justify-center";
+
+/** One row of the "Coming up" timeline: a dot, a time chip, a bell, the Goal's title. */
+function CheckInRow({
+  goal,
+  next,
+  locale,
+  now,
+  onNavigate,
+}: {
+  goal: Goal;
+  next: Date;
+  locale: string;
+  now: Date;
+  onNavigate: () => void;
+}) {
+  const chip = formatCheckInChip(next, goal.timezone, locale, now);
+  return (
+    <li className="relative">
+      <button
+        type="button"
+        onClick={onNavigate}
+        data-testid="context-panel-checkin-row"
+        className="flex w-full items-center gap-2 rounded-lg py-1 pe-1 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <span className={CHECKIN_NODE}>
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-[7px] rounded-full ring-4 ring-background",
+              chip.isToday ? "bg-foreground" : "bg-muted-foreground/50",
+            )}
+          />
+        </span>
+        <span
+          className={cn(
+            "shrink-0 rounded-full border px-2 py-0.5 text-[11.5px] tabular-nums",
+            chip.isToday
+              ? "border-foreground/25 bg-foreground/[0.06] font-semibold text-foreground"
+              : "border-border text-muted-foreground",
+          )}
+        >
+          {chip.label}
+        </span>
+        <Bell
+          size={12}
+          strokeWidth={1.75}
+          aria-hidden="true"
+          className="shrink-0 text-muted-foreground"
+        />
+        <span className="min-w-0 flex-1 truncate text-[13.5px] text-foreground" dir="auto">
+          {goal.title}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/** One compact "Waiting on you" row: a kind icon, the Ask's title, and a relative time. */
+function WaitingRow({ ask, onOpenWaiting }: { ask: Ask; onOpenWaiting: () => void }) {
+  const Icon = ASK_ICON[ask.kind];
+  const title = ask.kind === "approval" ? t`One yes before I send this` : ask.text;
   return (
     <button
       type="button"
-      onClick={onClick}
-      className="flex w-full flex-col gap-1 rounded-lg px-2 py-1.5 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+      onClick={onOpenWaiting}
+      data-testid="context-panel-ask-row"
+      className="flex items-center gap-2.5 rounded-lg py-1.5 pe-1 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
     >
-      {children}
+      <span
+        aria-hidden="true"
+        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted"
+      >
+        <Icon size={13} strokeWidth={1.75} className="text-muted-foreground" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[14px] text-foreground" dir="auto">
+        {title}
+      </span>
+      <span className="shrink-0 text-[12px] text-muted-foreground">
+        {formatRelativeTime(ask.createdAt)}
+      </span>
     </button>
   );
 }
@@ -98,16 +398,19 @@ function PanelRow({ onClick, children }: { onClick: () => void; children: ReactN
  */
 export function ContextPanel({
   botId,
+  avatarColor = DEFAULT_MUSE_COLOR,
   collapsed,
   onNavigate,
   onOpenWaiting,
 }: {
   botId: string;
+  /** The Muse's own color, for the small face shown in the empty state. */
+  avatarColor?: string;
   collapsed: boolean;
   onNavigate: (view: MuseRailView) => void;
   onOpenWaiting: () => void;
 }) {
-  const { i18n } = useLingui();
+  const { t: tt, i18n } = useLingui();
   const { asks } = useAsks(botId);
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
@@ -129,18 +432,19 @@ export function ContextPanel({
     };
   }, [botId]);
 
-  const topAsks = asks.slice(0, LIST_LIMIT);
+  const topAsks = asks.slice(0, ASKS_LIMIT);
+  const activeGoals = useMemo(() => goals.filter((goal) => goal.status === "active"), [goals]);
   const inProgress = useMemo(() => {
-    return goals
-      .filter((goal) => goal.status === "active")
+    return [...activeGoals]
       .sort((a, b) => {
         const aTime = Date.parse(a.lastWorkedAt ?? a.updatedAt);
         const bTime = Date.parse(b.lastWorkedAt ?? b.updatedAt);
         return bTime - aTime;
       })
-      .slice(0, LIST_LIMIT);
-  }, [goals]);
-  const checkIns = useMemo(() => upcomingCheckIns(goals, new Date()), [goals]);
+      .slice(0, GOALS_LIMIT);
+  }, [activeGoals]);
+  const now = useMemo(() => new Date(), [goals]);
+  const checkIns = useMemo(() => upcomingCheckIns(goals, now), [goals, now]);
 
   const empty = topAsks.length === 0 && inProgress.length === 0 && checkIns.length === 0;
 
@@ -148,94 +452,76 @@ export function ContextPanel({
     <div
       data-testid="context-panel"
       className={cn(
-        "hidden w-[340px] shrink-0 flex-col gap-8 overflow-y-auto rk-scroll border-s border-border px-5 py-6",
+        "hidden w-[340px] shrink-0 flex-col gap-7 overflow-y-auto rk-scroll border-s border-border p-5",
         !collapsed && "xl:flex",
       )}
     >
       {empty ? (
-        <p className="text-[14.5px] text-muted-foreground">{t`You're all caught up.`}</p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
+          <BotAvatar color={avatarColor} identity={botId} face="muse" size={40} />
+          <p className="text-[14.5px] text-muted-foreground">{tt`You're all caught up.`}</p>
+        </div>
       ) : (
         <>
           {topAsks.length > 0 ? (
             <section className="flex flex-col gap-2" data-testid="context-panel-asks">
-              <h3 className="text-[13.5px] font-semibold text-foreground">{t`Waiting on you`}</h3>
+              <PanelSectionHeader icon={Bell} title={tt`Waiting on you`} count={asks.length} />
               <div className="flex flex-col gap-0.5">
-                {topAsks.map((ask: Ask) => {
-                  const Icon = ASK_ICON[ask.kind];
-                  const title = ask.kind === "approval" ? t`One yes before I send this` : ask.text;
-                  return (
-                    <PanelRow key={ask.id} onClick={onOpenWaiting}>
-                      <span className="flex items-start gap-2">
-                        <Icon
-                          size={13}
-                          strokeWidth={1.75}
-                          aria-hidden="true"
-                          className="mt-0.5 shrink-0 text-warning"
-                        />
-                        <span
-                          className="min-w-0 flex-1 truncate text-[14.5px] text-foreground"
-                          dir="auto"
-                        >
-                          {title}
-                        </span>
-                      </span>
-                    </PanelRow>
-                  );
-                })}
+                {topAsks.map((ask) => (
+                  <WaitingRow key={ask.id} ask={ask} onOpenWaiting={onOpenWaiting} />
+                ))}
               </div>
+              {asks.length > ASKS_LIMIT ? (
+                <button
+                  type="button"
+                  onClick={onOpenWaiting}
+                  data-testid="context-panel-view-all"
+                  className="self-start rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  {tt`View all`}
+                </button>
+              ) : null}
             </section>
           ) : null}
 
           {inProgress.length > 0 ? (
-            <section className="flex flex-col gap-2" data-testid="context-panel-goals">
-              <h3 className="text-[13.5px] font-semibold text-foreground">{t`In progress`}</h3>
-              <div className="flex flex-col gap-1">
-                {inProgress.map((goal) => {
-                  const next = nextUnfinishedTask(goal);
-                  const { done, total } = taskCounts(goal);
-                  return (
-                    <PanelRow key={goal.id} onClick={() => onNavigate("goals")}>
-                      <span
-                        className="truncate text-[14.5px] font-medium text-foreground"
-                        dir="auto"
-                      >
-                        {goal.title}
-                      </span>
-                      {next ? (
-                        <span className="truncate text-[13px] text-muted-foreground" dir="auto">
-                          {next.title}
-                        </span>
-                      ) : null}
-                      {total > 0 ? (
-                        <Progress value={done / total} label={t`${done} of ${total} Tasks done`} />
-                      ) : null}
-                    </PanelRow>
-                  );
-                })}
+            <section className="flex flex-col gap-2.5" data-testid="context-panel-goals">
+              <PanelSectionHeader
+                icon={Target}
+                title={tt`In progress`}
+                count={activeGoals.length}
+              />
+              <div className="flex flex-col gap-2.5">
+                {inProgress.map((goal) => (
+                  <InProgressGoalCard
+                    key={goal.id}
+                    goal={goal}
+                    onNavigate={() => onNavigate("goals")}
+                  />
+                ))}
               </div>
             </section>
           ) : null}
 
           {checkIns.length > 0 ? (
             <section className="flex flex-col gap-2" data-testid="context-panel-checkins">
-              <h3 className="text-[13.5px] font-semibold text-foreground">{t`Coming up`}</h3>
-              <div className="flex flex-col gap-0.5">
+              <PanelSectionHeader icon={Clock} title={tt`Coming up`} count={checkIns.length} />
+              <ol className="relative flex flex-col">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-2.5 start-2.5 w-px bg-border"
+                />
                 {checkIns.map(({ goal, next }) => (
-                  <PanelRow key={goal.id} onClick={() => onNavigate("goals")}>
-                    <span className="flex items-center justify-between gap-2">
-                      <span
-                        className="min-w-0 flex-1 truncate text-[14.5px] text-foreground"
-                        dir="auto"
-                      >
-                        {goal.title}
-                      </span>
-                      <span className="shrink-0 text-[13px] text-muted-foreground">
-                        {formatCheckInEta(next, i18n.locale, new Date())}
-                      </span>
-                    </span>
-                  </PanelRow>
+                  <CheckInRow
+                    key={goal.id}
+                    goal={goal}
+                    next={next}
+                    locale={i18n.locale}
+                    now={now}
+                    onNavigate={() => onNavigate("goals")}
+                  />
                 ))}
-              </div>
+              </ol>
             </section>
           ) : null}
         </>
