@@ -1,8 +1,11 @@
+import { t } from "@lingui/core/macro";
 import type { Ask } from "@rakazo/contracts";
-import { AskItem } from "../asks";
+import { AskList } from "../asks";
+import { Section } from "../ui";
 
-// Open Asks pinned on top of the Feed. Same AskItem as the Waiting-on-you sheet, so an
-// Ask looks and answers the same everywhere (CONTEXT.md: answering anywhere closes it everywhere).
+// Open Asks pinned on top of the Feed, under a "Needs you" heading. Same AskList as the
+// Waiting-on-you sheet, so an Ask looks and answers the same everywhere (CONTEXT.md:
+// answering anywhere closes it everywhere).
 export function FeedAsks({
   asks,
   onAnswer,
@@ -12,10 +15,8 @@ export function FeedAsks({
 }) {
   if (asks.length === 0) return null;
   return (
-    <div className="flex flex-col gap-3">
-      {asks.map((ask) => (
-        <AskItem key={ask.id} ask={ask} onAnswer={(value) => onAnswer(ask, value)} />
-      ))}
-    </div>
+    <Section title={t`Needs you`}>
+      <AskList asks={asks} onAnswer={onAnswer} />
+    </Section>
   );
 }

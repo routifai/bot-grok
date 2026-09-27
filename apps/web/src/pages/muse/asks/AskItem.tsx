@@ -1,3 +1,4 @@
+import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type { Ask } from "@rakazo/contracts";
@@ -5,7 +6,7 @@ import { Button, Input } from "@rakazo/ui-web";
 import { HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
-import { DetailRows, Eyebrow, Surface } from "../ui";
+import { DetailRows } from "../ui";
 
 const KIND_ICON = {
   approval: ShieldCheck,
@@ -32,12 +33,12 @@ function parseDetailRows(detail: string): { label: string; value: string }[] | n
 }
 
 /**
- * Renders one open Ask (docs/muse/DESIGN.md, "Waiting on you"): an icon and a
- * plain-language title in the Muse's voice, what it's waiting on — choices or a typed
- * answer — and where it came from. Shared by the Feed and the Waiting-on-you sheet, so an
- * Ask looks and answers the same everywhere (CONTEXT.md: answering anywhere closes it
- * everywhere). Matches the look of `AskCard.tsx` (the Conversation's own ask block), but
- * reads the `Ask` view type instead of a thread message block's shape.
+ * Renders one open Ask (docs/muse/DESIGN.md, "Waiting on you") as a single quiet inbox
+ * row: a small icon slot, a title, and one meta line saying where it came from and when.
+ * Shared by the Feed and the Waiting-on-you sheet, so an Ask looks and answers the same
+ * everywhere (CONTEXT.md: answering anywhere closes it everywhere). Matches the look of
+ * `AskCard.tsx` (the Conversation's own ask block), but reads the `Ask` view type instead
+ * of a thread message block's shape.
  */
 export function AskItem({
   ask,
@@ -46,7 +47,7 @@ export function AskItem({
 }: {
   ask: Ask;
   onAnswer: (value: string) => Promise<void>;
-  /** Called when the person taps the source eyebrow; omit to leave it inert. */
+  /** Called when the person taps the source in the meta line; omit to leave it inert. */
   onOpenSource?: () => void;
 }) {
   const { t } = useLingui();
@@ -56,7 +57,7 @@ export function AskItem({
   const submitting = pending !== null;
 
   const sourceLabel = ask.goalTitle ?? t`Conversation`;
-  const eyebrowText = `${sourceLabel} · ${formatRelativeTime(ask.createdAt)}`;
+  const metaText = t`From ${sourceLabel} · ${formatRelativeTime(ask.createdAt)}`;
   const Icon = KIND_ICON[ask.kind];
   const title = ask.kind === "approval" ? t`One yes before I send this` : ask.text;
   const subtitle =
@@ -81,85 +82,146 @@ export function AskItem({
   }
 
   return (
-    <Surface tone="attention" className="flex flex-col gap-3 px-5 py-4">
-      {onOpenSource ? (
-        <button
-          type="button"
-          onClick={onOpenSource}
-          className="self-start text-start transition-colors hover:text-foreground"
-        >
-          <Eyebrow>{eyebrowText}</Eyebrow>
-        </button>
-      ) : (
-        <Eyebrow>{eyebrowText}</Eyebrow>
-      )}
+    <div className="flex gap-3 border-l-2 border-l-warning py-4 pl-3">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"
+      >
+        <Icon size={15} strokeWidth={1.75} className="text-muted-foreground" />
+      </span>
 
-      <div className="flex items-start gap-2.5">
-        <Icon
-          size={16}
-          strokeWidth={1.75}
-          aria-hidden="true"
-          className="mt-0.5 shrink-0 text-warning"
-        />
-        <div className="min-w-0 flex-1">
-          <h3 className="text-[14.5px] leading-[1.4] font-semibold text-foreground">{title}</h3>
-          {subtitle ? (
-            <div className="mt-1 text-[13.5px] leading-[1.5] text-muted-foreground">
-              <ChatMarkdown>{subtitle}</ChatMarkdown>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <h3 className="text-[15px] leading-[1.4] font-medium text-foreground">{title}</h3>
 
-      {structuredDetail ? (
-        detailRows ? (
-          <DetailRows rows={detailRows} />
+        {onOpenSource ? (
+          <button
+            type="button"
+            onClick={onOpenSource}
+            className="self-start text-start text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {metaText}
+          </button>
         ) : (
-          <p className="whitespace-pre-wrap text-[13.5px] leading-[1.6] text-muted-foreground">
-            {structuredDetail}
-          </p>
-        )
-      ) : null}
+          <p className="text-[13px] text-muted-foreground">{metaText}</p>
+        )}
 
-      {ask.input ? (
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit(text);
-          }}
-        >
-          <Input
-            aria-label={t`Answer`}
-            type={ask.input === "secret" ? "password" : "text"}
-            autoComplete="off"
-            spellCheck={ask.input !== "secret"}
-            disabled={submitting}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder={t`Type your answer`}
-          />
-          <Button type="submit" className="self-start" disabled={!text.trim() || submitting}>
-            {submitting ? <Trans>Sending…</Trans> : <Trans>Send</Trans>}
-          </Button>
-        </form>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {ask.choices.map((choice, index) => (
-            <Button
-              key={choice.id}
-              variant={index === 0 ? "default" : "outline"}
-              className="h-auto justify-start whitespace-normal px-3.5 py-2.5 text-start font-normal"
+        {subtitle ? (
+          <div className="text-[13.5px] leading-[1.5] text-muted-foreground">
+            <ChatMarkdown>{subtitle}</ChatMarkdown>
+          </div>
+        ) : null}
+
+        {structuredDetail ? (
+          detailRows ? (
+            <DetailRows rows={detailRows} />
+          ) : (
+            <p className="whitespace-pre-wrap text-[13.5px] leading-[1.6] text-muted-foreground">
+              {structuredDetail}
+            </p>
+          )
+        ) : null}
+
+        {ask.input ? (
+          <form
+            className="flex flex-col gap-2 pt-1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit(text);
+            }}
+          >
+            <Input
+              aria-label={t`Answer`}
+              type={ask.input === "secret" ? "password" : "text"}
+              autoComplete="off"
+              spellCheck={ask.input !== "secret"}
               disabled={submitting}
-              onClick={() => void submit(choice.id)}
-            >
-              {pending === choice.id ? <Trans>Sending…</Trans> : choice.label}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder={t`Type your answer`}
+            />
+            <Button type="submit" className="self-start" disabled={!text.trim() || submitting}>
+              {submitting ? <Trans>Sending…</Trans> : <Trans>Send</Trans>}
             </Button>
-          ))}
-        </div>
-      )}
+          </form>
+        ) : (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {ask.choices.map((choice, index) => (
+              <Button
+                key={choice.id}
+                variant={index === 0 ? "default" : "ghost"}
+                disabled={submitting}
+                onClick={() => void submit(choice.id)}
+              >
+                {pending === choice.id ? <Trans>Sending…</Trans> : choice.label}
+              </Button>
+            ))}
+          </div>
+        )}
 
-      {error ? <p className="text-[13px] text-destructive">{error}</p> : null}
-    </Surface>
+        {error ? <p className="text-[13px] text-destructive">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+type AskGroupKey = "approvals" | "questions" | "plans";
+
+const ASK_GROUP_ORDER: AskGroupKey[] = ["approvals", "questions", "plans"];
+
+function askGroupKey(kind: Ask["kind"]): AskGroupKey {
+  if (kind === "approval") return "approvals";
+  if (kind === "proposal") return "plans";
+  return "questions";
+}
+
+export type AskGroup = { label: string | null; asks: Ask[] };
+
+/**
+ * Splits open Asks into small plain-heading groups (Approvals, Questions, Plans) once
+ * there are enough of them that a flat list gets hard to scan (docs/muse/DESIGN.md,
+ * "Group Asks under small plain headings only when there are more than 4"). Below that,
+ * a single ungrouped bucket (`label: null`) keeps the list flat.
+ */
+export function groupAsks(asks: Ask[]): AskGroup[] {
+  if (asks.length <= 4) return [{ label: null, asks }];
+  const labels: Record<AskGroupKey, string> = {
+    approvals: t`Approvals`,
+    questions: t`Questions`,
+    plans: t`Plans`,
+  };
+  return ASK_GROUP_ORDER.map((key) => ({
+    label: labels[key],
+    asks: asks.filter((ask) => askGroupKey(ask.kind) === key),
+  })).filter((group) => group.asks.length > 0);
+}
+
+/**
+ * A plain list of open Asks with hairline dividers between rows, grouped under small
+ * headings once there are more than a handful (`groupAsks`). Shared by the Waiting-on-you
+ * sheet and the Feed's pinned Asks so both read the same way.
+ */
+export function AskList({
+  asks,
+  onAnswer,
+}: {
+  asks: Ask[];
+  onAnswer: (ask: Ask, value: string) => Promise<void>;
+}) {
+  const groups = groupAsks(asks);
+  return (
+    <div className="flex flex-col gap-6">
+      {groups.map((group) => (
+        <div key={group.label ?? "asks"} className="flex flex-col gap-2">
+          {group.label ? (
+            <h4 className="text-[12.5px] font-medium text-muted-foreground">{group.label}</h4>
+          ) : null}
+          <div className="flex flex-col divide-y divide-border">
+            {group.asks.map((ask) => (
+              <AskItem key={ask.id} ask={ask} onAnswer={(value) => onAnswer(ask, value)} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

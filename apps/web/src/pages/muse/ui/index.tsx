@@ -214,15 +214,17 @@ export function Chip({
   );
 }
 
-/** Label/value rows, e.g. the To / Subject / Body of an email waiting for approval. */
+/**
+ * Label/value rows, e.g. the To / Subject / Body of an email waiting for approval: a
+ * compact two-column grid in a subtle muted panel, labels muted in normal case (not mono,
+ * not uppercase).
+ */
 export function DetailRows({ rows }: { rows: { label: ReactNode; value: ReactNode }[] }) {
   return (
-    <dl className="grid grid-cols-[88px_1fr] gap-x-4 gap-y-2 text-[13.5px]">
+    <dl className="grid grid-cols-[76px_1fr] gap-x-3 gap-y-1.5 rounded-lg bg-muted/50 p-3 text-[14px]">
       {rows.map((row, index) => (
         <div key={index} className="contents">
-          <dt className="pt-px font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-            {row.label}
-          </dt>
+          <dt className="text-muted-foreground">{row.label}</dt>
           <dd className="min-w-0 break-words text-foreground">{row.value}</dd>
         </div>
       ))}
