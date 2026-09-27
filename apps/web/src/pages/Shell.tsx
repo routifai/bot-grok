@@ -3830,7 +3830,11 @@ export function ShellPage() {
                     hintKey="computer-panel"
                     text={t`Watch ${active.name} work live. Take over anytime.`}
                   >
-                    <MuseComputerTitle state={computer?.state} booting={booting} />
+                    <MuseComputerTitle
+                      state={computer?.state}
+                      booting={booting}
+                      screenFailed={Boolean(computerError) && !screenUrl}
+                    />
                   </FirstRunHint>
                 ) : (
                   <span className="text-[13.5px] text-muted-foreground">
@@ -7066,18 +7070,38 @@ function readFileAsBase64(file: File): Promise<string> {
 }
 
 /** Muse computer panel title: a plain heading and a status pill instead of the raw state. */
-function MuseComputerTitle({ state, booting }: { state?: string; booting: boolean }) {
+function MuseComputerTitle({
+  state,
+  booting,
+  screenFailed,
+}: {
+  state?: string;
+  booting: boolean;
+  /** The screen link could not be loaded, so the computer is not actually viewable. */
+  screenFailed: boolean;
+}) {
   const { t } = useLingui();
-  const running = state === "running";
   const starting = booting || state === "booting";
   const failed = state === "error";
+  const unreachable = state === "running" && screenFailed;
+  const running = state === "running" && !screenFailed;
   return (
     <span className="flex items-center gap-2.5">
       <span className="text-[15.5px] font-semibold text-foreground">
         <Trans>Computer</Trans>
       </span>
-      <StatusPill tone={running ? "live" : starting || failed ? "attention" : "neutral"}>
-        {running ? t`Live` : starting ? t`Starting` : failed ? t`Needs a restart` : t`Asleep`}
+      <StatusPill
+        tone={running ? "live" : starting || failed || unreachable ? "attention" : "neutral"}
+      >
+        {running
+          ? t`Live`
+          : starting
+            ? t`Starting`
+            : unreachable
+              ? t`Can't connect`
+              : failed
+                ? t`Needs a restart`
+                : t`Asleep`}
       </StatusPill>
     </span>
   );
