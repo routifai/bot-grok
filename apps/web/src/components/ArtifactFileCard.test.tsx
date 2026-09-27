@@ -18,7 +18,9 @@ vi.mock("../lib/artifact-open", () => ({
   },
   downloadArtifact: vi.fn(),
   downloadArtifactBytes: vi.fn(),
-  fetchArtifactBytes: vi.fn(),
+  // Resolved (rather than a bare `vi.fn()`) so the dialog can actually mount its
+  // preview once opened, the way the real fetch would.
+  fetchArtifactBytes: vi.fn().mockResolvedValue(new Uint8Array()),
 }));
 vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
@@ -33,10 +35,13 @@ vi.mock("@aiden/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("@aiden/ui-web", () => {
+  const cn = (...args: unknown[]) => args.filter(Boolean).join(" ");
   const Passthrough = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
   );
   return {
+    cn,
+    buttonVariants: () => "",
     Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
     Dialog: ({ open, children }: { open?: boolean; children?: ReactNode }) =>
       open ? <div>{children}</div> : null,
@@ -86,6 +91,12 @@ async function renderCard(props: ComponentProps<typeof ArtifactFileCard>) {
   };
 }
 
+function buttonsNamed(container: HTMLElement, name: string): HTMLButtonElement[] {
+  return [...container.querySelectorAll("button")].filter(
+    (button) => button.getAttribute("aria-label") === name,
+  );
+}
+
 const html = "<h1>Ukrainian Hello</h1>";
 
 beforeEach(() => {
@@ -98,7 +109,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("shows the same live preview as the Library for a freshly attached HTML artifact", async () => {
+it("shows the same live preview as the Library for a freshly attached HTML artifact, with a quiet meta line instead of an eyebrow", async () => {
   api.getById.mockResolvedValue({
     id: "artifact-1",
     contentBase64: btoa(html),
@@ -125,7 +136,48 @@ it("shows the same live preview as the Library for a freshly attached HTML artif
     const iframe = view.container.querySelector("iframe");
     expect(iframe?.getAttribute("srcdoc")).toContain("Ukrainian Hello");
     expect(view.container.textContent).toContain("Ukrainian Hello");
-    expect(view.container.textContent).toContain("PAGE");
+    // The old standalone "PAGE" eyebrow is gone; the same information now lives in
+    // the overlay's quiet meta line.
+    expect(view.container.textContent).toContain("Page · 2.4 KB");
+    expect(view.container.textContent).not.toContain("PAGE");
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("gives the open and download actions accessible names, and opens the preview dialog when clicked", async () => {
+  api.getById.mockResolvedValue({
+    id: "artifact-1",
+    contentBase64: btoa(html),
+    mimeType: "text/html",
+  });
+
+  const view = await renderCard({
+    target: { botId: "bot-1" },
+    artifactId: "artifact-1",
+    name: "Ukrainian Hello",
+    mimeType: "text/html",
+    size: 2500,
+    museMode: true,
+  });
+  try {
+    const previewCard = buttonsNamed(view.container, "Preview Ukrainian Hello");
+    const openAction = buttonsNamed(view.container, "Open Ukrainian Hello");
+    const downloadAction = buttonsNamed(view.container, "Download Ukrainian Hello");
+    expect(previewCard).toHaveLength(1);
+    expect(openAction).toHaveLength(1);
+    expect(downloadAction).toHaveLength(1);
+
+    // The dialog isn't mounted until it's opened.
+    expect(view.container.querySelector('[aria-label="Close preview"]')).toBeNull();
+
+    await act(async () => {
+      openAction[0]?.click();
+    });
+
+    expect(view.container.querySelector('[aria-label="Close preview"]')).toBeTruthy();
+    // The dialog's own header adds a second, independent download control.
+    expect(buttonsNamed(view.container, "Download Ukrainian Hello")).toHaveLength(2);
   } finally {
     await view.cleanup();
   }
