@@ -1,18 +1,36 @@
 import type { Goal } from "@aiden/contracts";
 import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
-import { useLingui } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { GoalDetail } from "./goals/GoalDetail";
 import { GoalList, GoalListSkeleton } from "./goals/GoalList";
-import { MuseColumn, MuseScreen } from "./ui";
+import { MuseColumn, MuseScreen, ScreenHeader } from "./ui";
+
+const GOAL_SUGGESTIONS = [
+  "Prep the Q3 client portfolio review",
+  "Get my CFA Level II study plan on track",
+  "Automate my weekly branch KPI summary",
+];
 
 /**
  * The Goals screen: a list of active and paused Goals, and a detail view (plan, open
  * Proposal, Check-in schedule, and the read-only Goal log) for the one selected.
  * Goals are created by talking to the Muse — there is no "new goal" form here.
  */
-export function GoalsScreen({ botId, botName }: { botId: string; botName?: string }) {
+export function GoalsScreen({
+  botId,
+  botName,
+  avatarColor,
+  onSendIdea,
+}: {
+  botId: string;
+  botName?: string;
+  /** The Muse's identity color, for the empty state's face. */
+  avatarColor?: string;
+  /** Starts a Conversation with a suggestion from the empty state. */
+  onSendIdea?: (text: string) => void;
+}) {
   const { t } = useLingui();
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +73,7 @@ export function GoalsScreen({ botId, botName }: { botId: string; botName?: strin
   const selectedGoal = goals?.find((goal) => goal.id === selectedGoalId) ?? null;
 
   return (
-    <MuseScreen>
+    <MuseScreen header={<ScreenHeader title={<Trans>Goals</Trans>} />}>
       {error ? (
         <MuseColumn>
           <p className="pt-12 text-[13.5px] text-destructive">{error}</p>
@@ -74,6 +92,9 @@ export function GoalsScreen({ botId, botName }: { botId: string; botName?: strin
           goals={goals}
           botName={botName ?? DEFAULT_MUSE_NAME}
           onSelect={setSelectedGoalId}
+          avatarColor={avatarColor}
+          suggestions={GOAL_SUGGESTIONS}
+          onSendIdea={onSendIdea}
         />
       )}
     </MuseScreen>

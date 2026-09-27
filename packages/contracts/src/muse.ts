@@ -115,7 +115,7 @@ export const AnswerAskInput = z.object({
 export const PostKindSchema = z.enum(["goal_report", "topic"]);
 export type PostKind = z.infer<typeof PostKindSchema>;
 
-/** One Feed item. Links back to its Goal log or its web source. */
+/** One Feed item. Links back to its Goal log, its web source, or a Library artifact. */
 export const PostSchema = z.object({
   id: Id,
   kind: PostKindSchema,
@@ -123,6 +123,8 @@ export const PostSchema = z.object({
   body: z.string(),
   goalId: Id.nullable(),
   sourceUrl: z.string().url().nullable(),
+  /** Optional link to a Library artifact this Post is about. */
+  artifactId: Id.nullable().optional(),
   createdAt: z.string(),
 });
 export type Post = z.infer<typeof PostSchema>;

@@ -92,10 +92,13 @@ export interface BotAvatarProps {
   /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
   waitingCount?: number;
   /**
-   * Forces the Muse's expression regardless of `status`/`waitingCount` — e.g. a one-time
-   * wave (`state="waiting"`, then `"idle"`) in the first-run welcome. Muse-only; ignored
-   * unless `face="muse"`. Does not affect the Ask-count badge, which still only shows for
-   * a real `waitingCount`.
+   * Forces the Muse's expression regardless of `status`/`waitingCount` — either
+   * precomputed live state (derived from the active run data, e.g. `deriveMuseState`
+   * in apps/web; callers that already track live run state should pass this instead
+   * of a bot row's `status`, which is a snapshot that rarely reflects an in-flight
+   * run) or a one-time wave (`state="waiting"`, then `"idle"`) in the first-run
+   * welcome. Muse-only; ignored unless `face="muse"`. Does not affect the Ask-count
+   * badge, which still only shows for a real `waitingCount`.
    */
   museState?: MuseState;
 }
@@ -445,6 +448,16 @@ function MuseAvatar({
           </radialGradient>
         </defs>
         <ellipse cx={60} cy={112} rx={32} ry={6} fill={`url(#${gradId}-shadow)`} />
+        <circle
+          className="aiden-muse-glow"
+          cx={60}
+          cy={66}
+          r={46}
+          fill="none"
+          stroke={color}
+          strokeWidth={7}
+          pointerEvents="none"
+        />
         <g className="aiden-muse-all">
           <path className="aiden-muse-body" fill={color} d={MUSE_BODY_PATH} />
           <path

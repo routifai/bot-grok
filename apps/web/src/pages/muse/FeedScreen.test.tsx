@@ -1,18 +1,17 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from "react";
-import { act } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
+import { act, cloneElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   feed: { list: vi.fn() },
   asks: { list: vi.fn(), answer: vi.fn() },
-  ideas: { list: vi.fn(), refresh: vi.fn() },
   topics: { list: vi.fn(), remove: vi.fn() },
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: api }));
-vi.mock("../../lib/relative-time", () => ({ formatRelativeTime: () => "just now" }));
+vi.mock("../../lib/relative-time", () => ({ formatRelativeTime: () => "2h ago" }));
 vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, ""),
@@ -29,12 +28,24 @@ vi.mock("@aiden/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("@aiden/ui-web", () => ({
-  Button: (props: ComponentProps<"button">) => <button {...props} />,
+  BotAvatar: () => <div data-testid="bot-avatar" />,
+  Button: ({
+    render,
+    children,
+    ...props
+  }: { render?: ReactElement; children?: ReactNode } & ComponentProps<"button">) =>
+    render ? (
+      cloneElement(render, undefined, children)
+    ) : (
+      <button type="button" {...props}>
+        {children}
+      </button>
+    ),
   Input: (props: ComponentProps<"input">) => <input {...props} />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
-import type { Ask, FollowedTopic, Idea, Post } from "@aiden/contracts";
+import type { Ask, FollowedTopic, Post } from "@aiden/contracts";
 import { FeedScreen } from "./FeedScreen";
 
 function ask(overrides: Partial<Ask> = {}): Ask {
@@ -65,16 +76,6 @@ function post(overrides: Partial<Post> = {}): Post {
   };
 }
 
-function idea(overrides: Partial<Idea> = {}): Idea {
-  return {
-    id: "idea-1",
-    text: "Quiz me on today's phrases",
-    area: "learning",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
 function topic(overrides: Partial<FollowedTopic> = {}): FollowedTopic {
   return {
     id: "topic-1",
@@ -89,7 +90,7 @@ async function renderFeed(onSendIdea: (text: string) => void = vi.fn()) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<FeedScreen botId="bot-1" onSendIdea={onSendIdea} />);
+    root.render(<FeedScreen botId="bot-1" avatarColor="#F2B233" onSendIdea={onSendIdea} />);
   });
   return {
     container,
@@ -108,7 +109,6 @@ it("renders pinned Asks above Posts", async () => {
     posts: [post({ title: "Chose a course" })],
     nextCursor: null,
   });
-  api.ideas.list.mockResolvedValue([]);
   api.topics.list.mockResolvedValue([]);
   const page = await renderFeed();
   try {
@@ -135,7 +135,6 @@ it("answering an Ask calls asks.answer and removes it", async () => {
     posts: [],
     nextCursor: null,
   });
-  api.ideas.list.mockResolvedValue([]);
   api.topics.list.mockResolvedValue([]);
   api.asks.answer.mockResolvedValue({ ok: true });
   const page = await renderFeed();
@@ -174,7 +173,6 @@ it("links a topic Post to its source URL", async () => {
     ],
     nextCursor: null,
   });
-  api.ideas.list.mockResolvedValue([]);
   api.topics.list.mockResolvedValue([]);
   const page = await renderFeed();
   try {
@@ -187,34 +185,10 @@ it("links a topic Post to its source URL", async () => {
   }
 });
 
-it("tapping an Idea calls onSendIdea with its text", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([]);
-  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
-  api.ideas.list.mockResolvedValue([idea({ text: "Plan this Sunday's run" })]);
-  api.topics.list.mockResolvedValue([]);
-  const onSendIdea = vi.fn();
-  const page = await renderFeed(onSendIdea);
-  try {
-    const button = [...page.container.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent === "Plan this Sunday's run",
-    );
-    expect(button).toBeTruthy();
-    await act(async () => {
-      button?.click();
-    });
-    expect(onSendIdea).toHaveBeenCalledWith("Plan this Sunday's run");
-  } finally {
-    await page.cleanup();
-    vi.unstubAllGlobals();
-  }
-});
-
 it("removing a topic calls topics.remove", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
-  api.ideas.list.mockResolvedValue([]);
   api.topics.list.mockResolvedValue([topic({ id: "topic-7", topic: "Moroccan design" })]);
   api.topics.remove.mockResolvedValue({ ok: true });
   const page = await renderFeed();
@@ -229,6 +203,33 @@ it("removing a topic calls topics.remove", async () => {
     });
     expect(api.topics.remove).toHaveBeenCalledWith({ topicId: "topic-7" });
     expect(page.container.textContent).not.toContain("Moroccan design");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("shows the caught-up empty state and its suggestion chips start a Conversation", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
+  api.topics.list.mockResolvedValue([]);
+  const onSendIdea = vi.fn();
+  const page = await renderFeed(onSendIdea);
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("You're all caught up");
+      });
+    });
+    const button = [...page.container.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === "Follow fintech regulation news",
+    );
+    expect(button).toBeTruthy();
+    await act(async () => {
+      button?.click();
+    });
+    expect(onSendIdea).toHaveBeenCalledWith("Follow fintech regulation news");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

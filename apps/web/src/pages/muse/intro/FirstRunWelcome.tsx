@@ -31,14 +31,12 @@ type FirstRunCardData = {
  * stagger off, same convention as `MuseWelcome.tsx`'s `ExampleCard`).
  */
 export function FirstRunWelcome({
-  botId,
   botName,
   personName,
   avatarColor,
   onTryIt,
   onDismiss,
 }: {
-  botId: string;
   botName: string;
   personName: string;
   avatarColor: string;
@@ -99,7 +97,7 @@ export function FirstRunWelcome({
 
       <BotAvatar
         color={avatarColor || DEFAULT_MUSE_COLOR}
-        identity={botId}
+        identity="aiden"
         face="muse"
         size={96}
         museState={waving ? "waiting" : "idle"}

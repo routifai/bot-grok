@@ -201,6 +201,11 @@ import {
   modelAcceptsImageInput,
 } from "../model-vision.js";
 import {
+  addTopicPostFromTool,
+  followTopicFromTool,
+  unfollowTopicFromTool,
+} from "../muse/feed-tools.js";
+import {
   createGoalFromTool,
   getGoalFromTool,
   listGoalsFromTool,
@@ -2392,6 +2397,37 @@ export function createRunExecutor(deps: ExecutorDeps) {
               );
             }
             return finish({ error: "action must be create, get, list, update_task, or propose." });
+          }
+          if (name === "follow_topic") {
+            return finish(
+              await followTopicFromTool(
+                deps,
+                { spaceId: run.spaceId, botId: bot.id, userId: run.userId },
+                { topic: String(args.topic ?? "") },
+              ),
+            );
+          }
+          if (name === "unfollow_topic") {
+            return finish(
+              await unfollowTopicFromTool(
+                deps,
+                { botId: bot.id },
+                { topic: String(args.topic ?? "") },
+              ),
+            );
+          }
+          if (name === "feed_add_topic_post") {
+            return finish(
+              await addTopicPostFromTool(
+                deps,
+                { spaceId: run.spaceId, botId: bot.id, userId: run.userId },
+                {
+                  title: String(args.title ?? ""),
+                  body: String(args.body ?? ""),
+                  sourceUrl: String(args.sourceUrl ?? ""),
+                },
+              ),
+            );
           }
           if (name === "schedule_create") {
             const created = await createScheduleFromTool(deps, {

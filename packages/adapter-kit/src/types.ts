@@ -518,6 +518,8 @@ export interface BackgroundJobPayloads {
   "goal.advance": { goalId: string };
   /** Muse edition only (docs/muse/PLAN.md B8): a scheduled Goal check-in in the Conversation. */
   "goal.checkin": { goalId: string };
+  /** Muse edition only (docs/muse/PLAN.md B10): the daily Followed-topic research digest. */
+  "feed.topics": { botId: string };
 }
 
 export type BackgroundJobName = keyof BackgroundJobPayloads;

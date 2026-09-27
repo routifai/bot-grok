@@ -762,6 +762,43 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "follow_topic",
+    description:
+      'Keep an eye on a subject and report new findings in the Feed (CONTEXT.md "Followed topic"). Use when the person asks you to follow, watch, or keep track of a topic in conversation, e.g. "follow AI in banking news". Researched daily; not for a one-off search.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "The subject to follow, in the person's own words." },
+      },
+      required: ["topic"],
+    },
+  },
+  {
+    name: "unfollow_topic",
+    description: "Stop following a subject previously followed with follow_topic.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "The exact subject text previously followed." },
+      },
+      required: ["topic"],
+    },
+  },
+  {
+    name: "feed_add_topic_post",
+    description:
+      "Add a Followed-topic finding to the person's Feed. Use only during a Feed research session, once per finding actually found via a tool call (web_search/web_fetch) — never invent a finding or source.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short headline for the finding." },
+        body: { type: "string", description: "One to three sentences summarizing it." },
+        sourceUrl: { type: "string", description: "The http(s) URL where you found it." },
+      },
+      required: ["title", "body", "sourceUrl"],
+    },
+  },
+  {
     name: "schedule_create",
     description:
       'Create a reminder or recurring job for this bot. Use for "remind me in 10 minutes" or "every morning send a joke". Repeats: cron or every/unit (min 1 minute). One-shot: runAt, delayMinutes, or delaySeconds.',

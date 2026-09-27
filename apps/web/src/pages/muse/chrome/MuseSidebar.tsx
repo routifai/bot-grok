@@ -1,9 +1,10 @@
-import type { Goal } from "@aiden/contracts";
+import type { Goal, ThreadMessage } from "@aiden/contracts";
 import { BotAvatar, cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Bell,
   Library,
+  Lightbulb,
   MessageCircle,
   Newspaper,
   PanelLeftClose,
@@ -15,8 +16,7 @@ import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { MuseRailView as MuseView } from "../../../components/AppRail";
 import { rpc } from "../../../lib/rpc";
-import { useAsks } from "../asks";
-import { deriveStatusPill } from "./statusPill";
+import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
 
 const MAX_SIDEBAR_GOALS = 5;
 const COLLAPSED_KEY = "muse:sidebar-collapsed";
@@ -83,8 +83,8 @@ export function MuseSidebar({
   botId,
   museName,
   color,
-  status,
-  running,
+  runs,
+  messages,
   personName,
   active,
   onNavigate,
@@ -94,8 +94,8 @@ export function MuseSidebar({
   botId: string;
   museName: string;
   color: string;
-  status?: string;
-  running: boolean;
+  runs: readonly MuseLiveRun[];
+  messages: readonly ThreadMessage[] | undefined;
   personName?: string;
   active: MuseView;
   onNavigate: (view: MuseView) => void;
@@ -103,7 +103,15 @@ export function MuseSidebar({
   onOpenSettings: () => void;
 }) {
   const { t } = useLingui();
-  const { count: askCount } = useAsks(botId);
+  const {
+    state: museState,
+    label: activityLabel,
+    askCount,
+  } = useMuseLiveState({
+    botId,
+    runs,
+    messages,
+  });
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
@@ -126,7 +134,6 @@ export function MuseSidebar({
     };
   }, [botId]);
 
-  const pill = deriveStatusPill({ museName, goals, running, openAskCount: askCount });
   const activeGoals = goals.filter((goal) => goal.status === "active");
 
   const rows: Array<{
@@ -159,6 +166,13 @@ export function MuseSidebar({
       label: t`Feed`,
       current: active === "feed",
       onClick: () => onNavigate("feed"),
+    },
+    {
+      key: "ideas",
+      icon: <Lightbulb />,
+      label: t`Ideas`,
+      current: active === "ideas",
+      onClick: () => onNavigate("ideas"),
     },
     {
       key: "library",
@@ -203,7 +217,7 @@ export function MuseSidebar({
           <BotAvatar
             color={color}
             identity={botId}
-            status={status}
+            museState={museState}
             face="muse"
             waitingCount={askCount}
             size={44}
@@ -213,18 +227,20 @@ export function MuseSidebar({
           <span className="block truncate text-[17px] font-semibold text-foreground" dir="auto">
             {museName}
           </span>
-          <span className="mt-0.5 flex items-center gap-1.5 text-[14px] text-muted-foreground">
-            <span
-              aria-hidden="true"
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                pill.tone === "attention" && "bg-warning",
-                pill.tone === "live" && "animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success",
-                pill.tone === "neutral" && "bg-muted-foreground/50",
-              )}
-            />
-            <span className="truncate">{sidebarStatus(pill.tone, askCount, t)}</span>
-          </span>
+          {activityLabel ? (
+            <span className="mt-0.5 flex items-center gap-1.5 text-[14px] text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  museState === "waiting"
+                    ? "bg-warning"
+                    : "animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success",
+                )}
+              />
+              <span className="truncate">{activityLabel}</span>
+            </span>
+          ) : null}
         </span>
       </button>
 
@@ -324,18 +340,6 @@ export function MuseSidebar({
       </div>
     </nav>
   );
-}
-
-function sidebarStatus(
-  tone: "neutral" | "live" | "attention",
-  askCount: number,
-  t: ReturnType<typeof useLingui>["t"],
-): string {
-  if (tone === "attention") {
-    return askCount === 1 ? t`1 thing needs you` : t`${askCount} things need you`;
-  }
-  if (tone === "live") return t`Working on it`;
-  return t`Ready when you are`;
 }
 
 function RailRow({

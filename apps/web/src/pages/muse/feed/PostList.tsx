@@ -1,71 +1,92 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { Post } from "@aiden/contracts";
-import { Button } from "@aiden/ui-web";
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import { BotAvatar, Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Globe } from "lucide-react";
 import { useMemo } from "react";
-import { Eyebrow, Section, Surface } from "../ui";
-import { formatRelativeDay, groupPostsByRecency, sourceHost } from "./format";
+import { formatRelativeTime } from "../../../lib/relative-time";
+import { MUSE_TYPE, Section, Surface } from "../ui";
+import { groupPostsByRecency, sourceHost } from "./format";
 
-// "Finished while you were away" (docs/muse/DESIGN.md): a Goal report, marked with a
-// warning edge like a Task waiting on the person, since it's the Muse catching the
-// person up on unattended work.
-function GoalReportCard({ post }: { post: Post }) {
-  const { t, i18n } = useLingui();
+// "Finished while you were away" (docs/muse/DESIGN.md): a Goal report, in the same plain
+// card as every other Post — no accent bar, just the Muse's own face marking whose work
+// this is.
+function GoalReportCard({ post, avatarColor }: { post: Post; avatarColor?: string }) {
+  const { t } = useLingui();
   return (
-    <Surface className="flex flex-col gap-2 border-l-2 border-l-warning px-5 py-4">
-      <Eyebrow>
-        {t`Finished while you were away`} · {formatRelativeDay(post.createdAt, i18n.locale)}
-      </Eyebrow>
-      <div className="text-[14.5px] leading-[1.4] font-semibold text-foreground">{post.title}</div>
-      <div className="text-[14px] leading-[1.55] text-foreground/90">
+    <Surface className="flex flex-col gap-3 p-5">
+      <h3 className={MUSE_TYPE.cardTitle}>{post.title}</h3>
+      <div className={MUSE_TYPE.body}>
         <ChatMarkdown>{post.body}</ChatMarkdown>
       </div>
-      {post.goalId ? (
-        <span className="self-start text-[12.5px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-          <Trans>Open Goal</Trans>
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <span className={`flex items-center gap-2 ${MUSE_TYPE.meta}`}>
+          <BotAvatar
+            color={avatarColor ?? DEFAULT_MUSE_COLOR}
+            identity="aiden"
+            face="muse"
+            size={18}
+          />
+          {t`From your goal · ${formatRelativeTime(post.createdAt)}`}
         </span>
-      ) : null}
+        {post.goalId ? (
+          <Button variant="ghost" size="sm" className="text-muted-foreground">
+            <Trans>Open goal</Trans>
+          </Button>
+        ) : null}
+      </div>
     </Surface>
   );
 }
 
-// "Found for you" (docs/muse/DESIGN.md): a finding on a Followed topic, with its source
-// host as the eyebrow (a Post carries no topic name of its own) and a two-line summary.
+// "Found for you" (docs/muse/DESIGN.md): a finding on a Followed topic, its source host
+// as a quiet meta line (not a shouting eyebrow) and a two-line summary.
 function TopicCard({ post }: { post: Post }) {
   const { t } = useLingui();
   const host = sourceHost(post.sourceUrl);
   return (
-    <Surface className="flex flex-col gap-2 px-5 py-4">
-      <Eyebrow>{host ?? t`Source`}</Eyebrow>
-      <div className="text-[14.5px] leading-[1.4] font-semibold text-foreground">{post.title}</div>
-      <p className="line-clamp-2 text-[14px] leading-[1.55] text-foreground/90">{post.body}</p>
-      {post.sourceUrl ? (
-        <a
-          href={post.sourceUrl}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="inline-flex w-fit items-center gap-1 text-[12.5px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-        >
-          <Trans>Read</Trans>
-          <ExternalLink size={12} strokeWidth={1.9} aria-hidden="true" />
-        </a>
-      ) : null}
+    <Surface className="flex flex-col gap-3 p-5">
+      <h3 className={MUSE_TYPE.cardTitle}>{post.title}</h3>
+      <p className={`line-clamp-2 ${MUSE_TYPE.body}`}>{post.body}</p>
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <span className={`flex items-center gap-1.5 ${MUSE_TYPE.meta}`}>
+          <Globe size={14} strokeWidth={1.75} aria-hidden="true" />
+          {host ?? t`Source`}
+        </span>
+        {post.sourceUrl ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground"
+            render={<a href={post.sourceUrl} target="_blank" rel="noreferrer noopener" />}
+          >
+            <Trans>Read</Trans>
+            <ExternalLink size={13} strokeWidth={1.9} aria-hidden="true" />
+          </Button>
+        ) : null}
+      </div>
     </Surface>
   );
 }
 
-function PostCard({ post }: { post: Post }) {
-  return post.kind === "goal_report" ? <GoalReportCard post={post} /> : <TopicCard post={post} />;
+function PostCard({ post, avatarColor }: { post: Post; avatarColor?: string }) {
+  return post.kind === "goal_report" ? (
+    <GoalReportCard post={post} avatarColor={avatarColor} />
+  ) : (
+    <TopicCard post={post} />
+  );
 }
 
 export function PostList({
   posts,
+  avatarColor,
   nextCursor,
   loadingMore,
   onLoadMore,
 }: {
   posts: Post[];
+  avatarColor?: string;
   nextCursor: string | null;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -73,21 +94,13 @@ export function PostList({
   const { t } = useLingui();
   const { today, earlier } = useMemo(() => groupPostsByRecency(posts), [posts]);
 
-  if (posts.length === 0) {
-    return (
-      <p className="text-[13.5px] text-muted-foreground">
-        <Trans>Nothing in your Feed yet.</Trans>
-      </p>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {today.length > 0 ? (
         <Section title={t`Today`}>
           <div className="flex flex-col gap-3">
             {today.map((post) => (
-              <PostCard key={post.id} post={post} />
+              <PostCard key={post.id} post={post} avatarColor={avatarColor} />
             ))}
           </div>
         </Section>
@@ -96,7 +109,7 @@ export function PostList({
         <Section title={t`Earlier`}>
           <div className="flex flex-col gap-3">
             {earlier.map((post) => (
-              <PostCard key={post.id} post={post} />
+              <PostCard key={post.id} post={post} avatarColor={avatarColor} />
             ))}
           </div>
         </Section>

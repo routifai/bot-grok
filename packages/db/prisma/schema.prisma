@@ -184,6 +184,8 @@ model Space {
   scratchpadItems             ScratchpadItem[]
   goals                       Goal[]
   ideas                       Idea[]
+  posts                       Post[]
+  followedTopics              FollowedTopic[]
   taughtSkills                TaughtSkill[]
   agentSkills                 AgentSkill[]
   connections                 Connection[]
@@ -382,6 +384,10 @@ model Bot {
   scratchpadItems   ScratchpadItem[]
   goals             Goal[]
   ideas             Idea[]
+  posts             Post[]
+  followedTopics    FollowedTopic[]
+  /// The Feed log: this Muse's own Thread for `feed.topics` research turns (B10).
+  feedLog           Thread?           @relation("BotFeedLog")
   taughtSkills      TaughtSkill[]
   memoryDocuments   MemoryDocument[]
   agentHome         AgentHome?
@@ -482,6 +488,10 @@ model Thread {
   /// A Goal log: set when this Thread is one Goal's working history (botId is null then).
   goalId                      String?    @unique
   goal                        Goal?      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  /// The Feed log: one Muse's own working history for `feed.topics` research turns
+  /// (docs/muse/PLAN.md B10), reused across every run the same way a Goal log is.
+  feedLogBotId                String?    @unique
+  feedLogBot                  Bot?       @relation("BotFeedLog", fields: [feedLogBotId], references: [id], onDelete: Cascade)
   userId                      String
   createdAt                   DateTime   @default(now())
   nextEventSeq                Int        @default(0)
@@ -781,6 +791,7 @@ model Goal {
   proposals      GoalProposal[]
   /// The Goal log: a Thread with this Goal's id and no bot/group/external conversation.
   log            Thread?
+  posts          Post[]
 
   @@index([spaceId, botId, status])
   @@index([nextWorkAt])
@@ -842,6 +853,49 @@ model Idea {
 
   @@index([botId, createdAt])
   @@map("ideas")
+}
+
+/// One item in the Feed (glossary "Post"): either a report of what the Muse did on a
+/// Goal, or a finding about a Followed topic. docs/muse/PLAN.md B10.
+model Post {
+  id         String    @id @default(cuid())
+  spaceId    String
+  space      Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId     String
+  botId      String
+  bot        Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  kind       String
+  title      String
+  body       String
+  /// Set for a goal_report Post; the Goal it reports on. Cleared (not deleted) if the
+  /// Goal itself is ever removed — the Post is still worth keeping in the Feed.
+  goalId     String?
+  goal       Goal?     @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  sourceUrl  String?
+  /// Optional link to a Library artifact this Post is about.
+  artifactId String?
+  artifact   Artifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+
+  @@index([botId, createdAt])
+  @@map("posts")
+}
+
+/// A subject the person asked the Muse to keep an eye on (glossary "Followed topic").
+/// docs/muse/PLAN.md B10.
+model FollowedTopic {
+  id        String   @id @default(cuid())
+  spaceId   String
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId    String
+  botId     String
+  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  topic     String
+  createdAt DateTime @default(now())
+
+  @@unique([botId, topic])
+  @@index([botId, createdAt])
+  @@map("followed_topics")
 }
 
 model TaughtSkill {
@@ -1080,6 +1134,8 @@ model Artifact {
   rootArtifact   Artifact?  @relation("ArtifactVersions", fields: [rootArtifactId], references: [id], onDelete: Cascade)
   versions       Artifact[] @relation("ArtifactVersions")
   version        Int        @default(1)
+  /// Posts that link to this artifact (docs/muse/PLAN.md B10).
+  posts          Post[]
 
   @@index([spaceId, botId])
   @@index([groupId])

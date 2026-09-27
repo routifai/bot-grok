@@ -47,7 +47,6 @@ it("greets the person by name and starts with a brief wave", async () => {
   await act(async () => {
     root.render(
       <FirstRunWelcome
-        botId="bot-1"
         botName="Aiden"
         personName="Sam"
         avatarColor="#4C8BF5"
@@ -74,7 +73,6 @@ it("fills the composer with a card's example instead of sending it", async () =>
   await act(async () => {
     root.render(
       <FirstRunWelcome
-        botId="bot-1"
         botName="Aiden"
         personName="Sam"
         avatarColor="#4C8BF5"
@@ -102,7 +100,6 @@ it("dismisses without requiring a message to be sent", async () => {
   await act(async () => {
     root.render(
       <FirstRunWelcome
-        botId="bot-1"
         botName="Aiden"
         personName=""
         avatarColor="#4C8BF5"

@@ -138,6 +138,7 @@ import { AppRail } from "../components/AppRail";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { Shimmer } from "../components/ai/primitives";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -221,8 +222,11 @@ import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPan
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
+import { deriveMuseState } from "./muse/chrome/museState";
+import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveState";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
+import { IdeasScreen } from "./muse/IdeasScreen";
 import { FirstRunHint, markFirstRunSeen } from "./muse/intro";
 import { LibraryScreen } from "./muse/LibraryScreen";
 import { StatusPill } from "./muse/ui";
@@ -2791,8 +2795,8 @@ export function ShellPage() {
           botId={active.id}
           museName={active.name}
           color={active.color}
-          status={active.status}
-          running={transcriptRunning}
+          runs={currentRuns}
+          messages={activeSnapshot?.messages}
           personName={bootstrapMe?.name}
           active={museView}
           onNavigate={setMuseView}
@@ -3469,20 +3473,40 @@ export function ShellPage() {
       >
         {museMode && active && museView !== "conversation" ? (
           museView === "goals" ? (
-            <GoalsScreen botId={active.id} botName={active.name} />
+            <GoalsScreen
+              botId={active.id}
+              botName={active.name}
+              avatarColor={active.color}
+              onSendIdea={handleSendIdea}
+            />
           ) : museView === "feed" ? (
-            <FeedScreen botId={active.id} botName={active.name} onSendIdea={handleSendIdea} />
+            <FeedScreen
+              botId={active.id}
+              botName={active.name}
+              avatarColor={active.color}
+              onSendIdea={handleSendIdea}
+            />
+          ) : museView === "ideas" ? (
+            <IdeasScreen botId={active.id} onSendIdea={handleSendIdea} />
           ) : (
-            <LibraryScreen botId={active.id} botName={active.name} />
+            <LibraryScreen
+              botId={active.id}
+              botName={active.name}
+              avatarColor={active.color}
+              onSendIdea={handleSendIdea}
+            />
           )
         ) : (
           <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
-            <div className={museMode && active ? "flex min-w-0 flex-1 flex-col" : "contents"}>
+            <div
+              className={museMode && active ? "relative flex min-w-0 flex-1 flex-col" : "contents"}
+            >
               {museMode && active ? (
                 <ConversationHeader
                   botId={active.id}
-                  museName={active.name}
-                  running={transcriptRunning}
+                  color={active.color}
+                  runs={currentRuns}
+                  messages={activeSnapshot?.messages}
                   onOpenWaiting={() => setWaitingOpen(true)}
                   actions={
                     <>
@@ -3496,7 +3520,7 @@ export function ShellPage() {
                         }
                         aria-pressed={!contextPanelCollapsed}
                         onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                        className="hidden h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground xl:grid"
+                        className="hidden size-9 items-center justify-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground xl:grid"
                       >
                         {contextPanelCollapsed ? (
                           <PanelRightOpen size={17} strokeWidth={1.75} />
@@ -3517,7 +3541,7 @@ export function ShellPage() {
                           }
                         }}
                         data-active={panel === "computer" ? "" : undefined}
-                        className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                        className="grid size-9 place-items-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                       >
                         <Monitor size={17} strokeWidth={1.75} />
                       </button>
@@ -3612,7 +3636,6 @@ export function ShellPage() {
                 </div>
               ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
                 <EmptyConversation
-                  botId={active.id}
                   botName={active.name}
                   personName={bootstrapMe?.name ?? ""}
                   avatarColor={active.color}
@@ -3625,11 +3648,8 @@ export function ShellPage() {
                   museMode={museMode}
                   botDisplayName={active?.name}
                   followSignal={followSignal}
-                  museFace={
-                    active
-                      ? { color: active.color, identity: active.id, status: active.status }
-                      : undefined
-                  }
+                  museFace={active ? { color: active.color, identity: active.id } : undefined}
+                  museRuns={currentRuns}
                   scrollRef={messageScroll}
                   scrollRequest={scrollRequest}
                   onScrollRequestHandled={clearScrollRequest}
@@ -4639,6 +4659,7 @@ export function ShellPage() {
                   identity={computerBot.id}
                   size={28}
                   status={computerBot.status}
+                  museState={museMode ? deriveMuseState(currentRuns, 0) : undefined}
                   face={museMode ? "muse" : undefined}
                 />
                 {recordingSkill ? (
@@ -4795,6 +4816,7 @@ const Transcript = memo(function Transcript({
   museMode,
   museFace,
   botDisplayName,
+  museRuns,
   followSignal,
   scrollRef,
   scrollRequest,
@@ -4826,9 +4848,11 @@ const Transcript = memo(function Transcript({
 }: {
   museMode?: boolean;
   /** Muse mode: the face shown beside the Muse's replies. */
-  museFace?: { color: string; identity: string; status?: string };
+  museFace?: { color: string; identity: string };
   /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
   botDisplayName?: string;
+  /** Muse mode: the active bot's live runs, for the gutter face and bottom-of-transcript row. */
+  museRuns?: readonly MuseLiveRun[];
   /** Changes when the person sends: follow the tail again. */
   followSignal?: number;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -4860,6 +4884,11 @@ const Transcript = memo(function Transcript({
   onOpenComputer: (botId?: string) => void;
 }) {
   const { t } = useLingui();
+  const { state: museLiveState, label: museLiveLabel } = useMuseLiveState({
+    botId: museFace?.identity ?? "",
+    runs: museRuns ?? [],
+    messages,
+  });
   const [atEnd, setAtEnd] = useState(true);
   const following = useRef(true);
   const autoScrolling = useRef(false);
@@ -5098,6 +5127,8 @@ const Transcript = memo(function Transcript({
             event.currentTarget.scrollTop,
           );
           lastScrollTop.current = event.currentTarget.scrollTop;
+          // Muse fades the transcript under the top edge once it has scrolled (styles.css).
+          event.currentTarget.dataset.scrolled = String(event.currentTarget.scrollTop > 4);
           const nearEnd = transcriptIsNearEnd(event.currentTarget);
           setAtEnd(nearEnd);
           // A jump scroll owns the viewport until its animation settles; its
@@ -5113,10 +5144,11 @@ const Transcript = memo(function Transcript({
             following.current = false;
           }
         }}
+        data-fade-top=""
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
           museMode &&
-            "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden [overflow-wrap:anywhere] md:py-10",
+            "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden pt-16 [overflow-wrap:anywhere] md:pt-20 md:pb-10",
         )}
       >
         {olderCursor != null ? (
@@ -5174,7 +5206,7 @@ const Transcript = memo(function Transcript({
                       <BotAvatar
                         color={museFace.color}
                         identity={museFace.identity}
-                        status={museFace.status}
+                        museState={museLiveState}
                         face="muse"
                         size={32}
                       />
@@ -5271,7 +5303,28 @@ const Transcript = memo(function Transcript({
                 block.kind === "progress" && !isToolActivityBlock(block) && Boolean(block.text),
             ),
         ) ? (
-          <ActiveBotGlyph bots={workingBots} label={workingLabel} />
+          museMode && museFace ? (
+            museLiveLabel ? (
+              <div
+                data-testid="muse-live-row"
+                aria-hidden="true"
+                className="flex min-h-10 items-center gap-2.5 px-1"
+              >
+                <BotAvatar
+                  color={museFace.color}
+                  identity={museFace.identity}
+                  museState={museLiveState}
+                  face="muse"
+                  size={32}
+                />
+                <span className="text-[15px] text-muted-foreground">
+                  <Shimmer>{museLiveLabel}</Shimmer>
+                </span>
+              </div>
+            ) : null
+          ) : (
+            <ActiveBotGlyph bots={workingBots} label={workingLabel} />
+          )
         ) : null}
       </div>
       {quoteDraft ? (

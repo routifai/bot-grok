@@ -25,6 +25,7 @@ const payloadSchemas = {
   "ideas.refresh": z.object({ botId: z.string().min(1) }),
   "goal.advance": z.object({ goalId: z.string().min(1) }),
   "goal.checkin": z.object({ goalId: z.string().min(1) }),
+  "feed.topics": z.object({ botId: z.string().min(1) }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
 export function parseBackgroundJob(name: string, payload: unknown): BackgroundJob {
@@ -208,5 +209,25 @@ export function goalCheckinJob(goalId: string, botId: string, availableAt: Date)
     replaceKey: goalCheckinJobKey(goalId),
     queueName: museQueueName(botId),
     availableAt,
+  };
+}
+
+/**
+ * Muse edition only (docs/muse/PLAN.md B10): the daily Followed-topic research digest.
+ * Shares `museQueueName` with the Goal jobs so a Muse never researches topics at the
+ * same time it is working a Goal (CONTEXT.md: "at most one Goal is worked on at a
+ * time" — the Feed digest follows the same one-at-a-time rule).
+ */
+export function feedTopicsJobKey(botId: string): string {
+  return `feed.topics:${botId}`;
+}
+
+export function feedTopicsJob(botId: string, availableAt?: Date): BackgroundJob {
+  return {
+    name: "feed.topics",
+    payload: { botId },
+    replaceKey: feedTopicsJobKey(botId),
+    queueName: museQueueName(botId),
+    ...(availableAt ? { availableAt } : {}),
   };
 }

@@ -27,6 +27,7 @@ function createFixture() {
   const runs: Record<string, unknown>[] = [];
   const messages: Record<string, unknown>[] = [];
   const events: Record<string, unknown>[] = [];
+  const posts: Record<string, unknown>[] = [];
 
   function matches(row: Record<string, unknown>, where: Record<string, unknown> = {}): boolean {
     return Object.entries(where).every(([key, value]) => {
@@ -170,6 +171,13 @@ function createFixture() {
         return row;
       },
     },
+    post: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row = { createdAt: new Date(), ...data, id: nextId("post") };
+        posts.push(row);
+        return row;
+      },
+    },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
   };
 
@@ -184,6 +192,7 @@ function createFixture() {
     runs,
     messages,
     events,
+    posts,
   };
 }
 
@@ -413,6 +422,19 @@ describe("goal.advance: doing the work", () => {
     });
     expect(d.events.notify).toHaveBeenCalled();
 
+    // B10: the same report is also written to the Feed as a goal_report Post, titled
+    // from its first line.
+    expect(fixture.posts).toHaveLength(1);
+    expect(fixture.posts[0]).toMatchObject({
+      spaceId: SPACE_ID,
+      userId: USER_ID,
+      botId: BOT_ID,
+      kind: "goal_report",
+      title: "Booked the trial lesson. Next: pick a textbook.",
+      body: "Booked the trial lesson. Next: pick a textbook.",
+      goalId: goal.id,
+    });
+
     // lastWorkedAt is set and the next advance is scheduled by proactivity (normal = 1h).
     expect(fixture.goals[0]!.lastWorkedAt).toEqual(new Date("2026-01-01T12:00:00.000Z"));
     expect(d.jobs.enqueue).toHaveBeenCalledWith(
@@ -453,9 +475,40 @@ describe("goal.advance: doing the work", () => {
       (m) => m.threadId === "thread-conversation",
     );
     expect(conversationMessages).toHaveLength(0);
+    // No report text means no Feed Post either.
+    expect(fixture.posts).toHaveLength(0);
     // Still counts as worked: lastWorkedAt and the next advance are still set.
     expect(fixture.goals[0]!.lastWorkedAt).toEqual(new Date("2026-01-01T12:00:00.000Z"));
     expect(d.jobs.enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "goal.advance" }));
+  });
+
+  it("titles the Feed Post from the report's first line, keeping the full report as the body", async () => {
+    const fixture = createFixture();
+    seedMuse(fixture);
+    const goal = seedGoal(fixture);
+    seedGoalLog(fixture, goal.id);
+    const report =
+      "Booked the trial lesson.\nNext: pick a textbook. Blocked: waiting on payment info.";
+    const continueRun = vi.fn(async (runId: string) => {
+      fixture.messages.push({
+        id: "report-message",
+        runId,
+        role: "bot",
+        blocks: [{ kind: "text", text: report }],
+      });
+    });
+    const d = deps(fixture, continueRun);
+    const handlers = createGoalJobHandlers(d);
+
+    await handlers["goal.advance"]({ goalId: goal.id });
+
+    expect(fixture.posts).toHaveLength(1);
+    expect(fixture.posts[0]).toMatchObject({
+      kind: "goal_report",
+      title: "Booked the trial lesson.",
+      body: report,
+      goalId: goal.id,
+    });
   });
 });
 

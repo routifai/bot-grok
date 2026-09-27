@@ -1,10 +1,10 @@
 import { BotAvatar } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import { Bot, Code2, MessageCircle, Rss, Settings, Target } from "lucide-react";
+import { Bot, Code2, Lightbulb, MessageCircle, Rss, Settings, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 
-/** The four Muse-mode screens (F1). Ideas lives inside Feed; "Waiting on you" opens from the avatar. */
-export type MuseRailView = "conversation" | "goals" | "feed" | "library";
+/** The five Muse-mode screens (F1). "Waiting on you" opens from the avatar, not a rail entry. */
+export type MuseRailView = "conversation" | "goals" | "feed" | "ideas" | "library";
 
 type AppRailProps =
   | { active: "bots" | "artifacts" }
@@ -77,6 +77,13 @@ export function AppRail(props: AppRailProps) {
           onClick={() => onNavigate("feed")}
         >
           <Rss size={18} strokeWidth={1.75} />
+        </MuseRailButton>
+        <MuseRailButton
+          label={t`Ideas`}
+          active={active === "ideas"}
+          onClick={() => onNavigate("ideas")}
+        >
+          <Lightbulb size={18} strokeWidth={1.75} />
         </MuseRailButton>
         <MuseRailButton
           label={t`Library`}

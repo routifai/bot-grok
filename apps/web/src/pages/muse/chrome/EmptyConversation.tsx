@@ -1,27 +1,24 @@
-import { BotAvatar } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import { useMemo } from "react";
 import { FirstRunWelcome, useFirstRun } from "../intro";
-import { Chip } from "../ui";
+import { EmptyState } from "../ui";
 import { greetingLead } from "./greeting";
 
 /**
- * The empty Conversation (docs/muse/DESIGN.md "Conversation"): a centered Muse
- * face, a time-of-day serif greeting, one muted line, and a few suggestions
- * that send straight into the Conversation. The very first time a person sees
- * this (per `useFirstRun("welcome")`), it shows the first-run welcome instead
- * — Aiden introducing itself and how to work together (`FirstRunWelcome.tsx`)
- * — until they send a message or dismiss it.
+ * The empty Conversation (docs/muse/DESIGN.md "Conversation"): the shared `EmptyState`
+ * — the Muse's face, a time-of-day sans greeting, one muted line, and a few
+ * suggestions that send straight into the Conversation. The very first time a person
+ * sees this (per `useFirstRun("welcome")`), it shows the first-run welcome instead —
+ * Aiden introducing itself and how to work together (`FirstRunWelcome.tsx`) — until
+ * they send a message or dismiss it.
  */
 export function EmptyConversation({
-  botId,
   botName,
   personName,
   avatarColor,
   onSend,
   onTryIt,
 }: {
-  botId: string;
   botName: string;
   personName: string;
   avatarColor: string;
@@ -40,7 +37,6 @@ export function EmptyConversation({
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6">
         <FirstRunWelcome
-          botId={botId}
           botName={botName}
           personName={personName}
           avatarColor={avatarColor}
@@ -52,21 +48,13 @@ export function EmptyConversation({
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
-      <BotAvatar color={avatarColor} identity={botId} face="muse" size={96} />
-      <div className="max-w-[380px]">
-        <p className="font-display text-[24px] leading-tight text-foreground">{lead}</p>
-        <p className="mt-1.5 text-[14px] text-muted-foreground">
-          {t`Ask me anything, or tell me what you're working toward.`}
-        </p>
-      </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        {suggestions.map((text) => (
-          <Chip key={text} onClick={() => onSend(text)}>
-            {text}
-          </Chip>
-        ))}
-      </div>
-    </div>
+    <EmptyState
+      avatarColor={avatarColor}
+      headline={lead}
+      suggestions={suggestions}
+      onSuggestion={onSend}
+    >
+      {t`Ask me anything, or tell me what you're working toward.`}
+    </EmptyState>
   );
 }

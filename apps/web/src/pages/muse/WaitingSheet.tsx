@@ -5,7 +5,7 @@ import { useLingui } from "@lingui/react/macro";
 import { AskList, useAsks } from "./asks";
 import { CardSkeletonList } from "./feed/CardSkeleton";
 import { FirstRunHint } from "./intro";
-import { EmptyState } from "./ui";
+import { EmptyState, MUSE_TYPE } from "./ui";
 
 /**
  * "Waiting on you" (docs/muse/PLAN.md, F4): every open Ask, newest first, as a plain
@@ -40,7 +40,7 @@ export function WaitingSheet({
             active={asks.length > 0}
             text={t`Everything ${botName} needs from you, in one place.`}
           >
-            <SheetTitle className="flex items-baseline gap-2 font-display text-[26px] leading-tight tracking-[-0.01em] text-foreground">
+            <SheetTitle className={`flex items-baseline gap-2 ${MUSE_TYPE.pageTitle}`}>
               {t`Waiting on you`}
               {asks.length > 0 ? (
                 <span className="font-sans text-[14px] font-normal text-muted-foreground">
@@ -54,7 +54,9 @@ export function WaitingSheet({
           {asks.length === 0 && loading ? (
             <CardSkeletonList count={2} />
           ) : asks.length === 0 ? (
-            <EmptyState lead={t`You're all caught up.`}>{t`Nothing waiting on you.`}</EmptyState>
+            <EmptyState
+              headline={t`You're all caught up.`}
+            >{t`Nothing waiting on you.`}</EmptyState>
           ) : (
             <AskList asks={asks} onAnswer={handleAnswer} />
           )}

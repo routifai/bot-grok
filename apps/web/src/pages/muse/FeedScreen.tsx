@@ -1,26 +1,28 @@
 import type { Ask, FollowedTopic } from "@aiden/contracts";
 import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
-import { useLingui } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { useAsks } from "./asks";
 import { CardSkeletonList } from "./feed/CardSkeleton";
 import { FeedAsks } from "./feed/FeedAsks";
-import { IdeaChips } from "./feed/IdeaChips";
 import { PostList } from "./feed/PostList";
 import { TopicsRow } from "./feed/TopicsRow";
 import { FirstRunHint } from "./intro";
-import { MuseScreen, MuseWideColumn, ScreenHeader } from "./ui";
+import { EmptyState, MuseColumn, MuseScreen, ScreenHeader } from "./ui";
+
+const FEED_SUGGESTIONS = ["Follow fintech regulation news", "Follow AI in banking"];
 
 // The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
-// Waiting-on-you sheet), then Posts grouped Today / Earlier, then Ideas and Followed
-// topics (docs/muse/DESIGN.md, "Screens" and "Feed").
+// Waiting-on-you sheet), then Posts grouped Today / Earlier, then Followed topics as a
+// chip row. Ideas live in their own section now (F5), not here.
 export function FeedScreen(props: {
   botId: string;
   botName?: string;
-  onSendIdea: (text: string) => void;
+  avatarColor?: string;
+  onSendIdea?: (text: string) => void;
 }) {
-  const { botId, botName = DEFAULT_MUSE_NAME, onSendIdea } = props;
+  const { botId, botName = DEFAULT_MUSE_NAME, avatarColor, onSendIdea } = props;
   const { t } = useLingui();
 
   const { asks, answer } = useAsks(botId);
@@ -31,9 +33,6 @@ export function FeedScreen(props: {
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [ideas, setIdeas] = useState<Awaited<ReturnType<typeof rpc.ideas.list>> | null>(null);
-  const [refreshingIdeas, setRefreshingIdeas] = useState(false);
 
   const [topics, setTopics] = useState<FollowedTopic[] | null>(null);
 
@@ -53,14 +52,6 @@ export function FeedScreen(props: {
         if (!cancelled) {
           setLoadError(error instanceof Error ? error.message : t`Could not load the Feed.`);
         }
-      });
-    void rpc.ideas
-      .list({ botId })
-      .then((list) => {
-        if (!cancelled) setIdeas(list);
-      })
-      .catch(() => {
-        if (!cancelled) setIdeas([]);
       });
     void rpc.topics
       .list({ botId })
@@ -95,68 +86,60 @@ export function FeedScreen(props: {
     await answer({ askId: ask.id, runId: ask.runId, answer: value });
   }
 
-  async function handleRefreshIdeas() {
-    if (refreshingIdeas) return;
-    setRefreshingIdeas(true);
-    try {
-      setIdeas(await rpc.ideas.refresh({ botId }));
-    } finally {
-      setRefreshingIdeas(false);
-    }
-  }
-
   async function handleRemoveTopic(topic: FollowedTopic) {
     await rpc.topics.remove({ topicId: topic.id });
     setTopics((current) => current?.filter((candidate) => candidate.id !== topic.id) ?? current);
   }
 
-  const subtitle =
-    asks.length === 0
-      ? t`You're all caught up`
-      : asks.length === 1
-        ? t`1 thing waiting on you`
-        : t`${asks.length} things waiting on you`;
+  const empty = posts !== null && posts.length === 0 && asks.length === 0;
 
   return (
-    <MuseScreen>
-      <MuseWideColumn>
+    <MuseScreen
+      header={
         <FirstRunHint
           hintKey="feed-section"
-          active={(posts?.length ?? 0) > 0 || asks.length > 0}
+          active={posts !== null && !empty}
           text={t`Everything ${botName} has to show you, newest first.`}
         >
-          <ScreenHeader title={t`Feed`} subtitle={subtitle} />
+          <ScreenHeader title={t`Feed`} />
         </FirstRunHint>
-
-        {loadError ? <p className="pb-6 text-[13.5px] text-destructive">{loadError}</p> : null}
+      }
+    >
+      <MuseColumn className="flex min-h-full flex-col gap-8 pt-8">
+        {loadError ? <p className="text-[13.5px] text-destructive">{loadError}</p> : null}
 
         {posts === null && !loadError ? (
           <CardSkeletonList />
+        ) : empty ? (
+          <EmptyState
+            avatarColor={avatarColor}
+            headline={t`You're all caught up`}
+            suggestions={FEED_SUGGESTIONS}
+            onSuggestion={onSendIdea}
+          >
+            <Trans>I'll bring new updates and finished work here.</Trans>
+          </EmptyState>
         ) : (
-          <div className="flex flex-col gap-10 pb-16 xl:flex-row xl:items-start xl:gap-12">
-            <div className="flex min-w-0 flex-1 flex-col gap-10">
-              <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
-              {posts ? (
-                <PostList
-                  posts={posts}
-                  nextCursor={nextCursor}
-                  loadingMore={loadingMore}
-                  onLoadMore={() => void loadMorePosts()}
-                />
-              ) : null}
-            </div>
-            <div className="flex w-full flex-col gap-10 xl:w-[300px] xl:shrink-0">
-              <IdeaChips
-                ideas={ideas ?? []}
-                refreshing={refreshingIdeas}
-                onSend={onSendIdea}
-                onRefresh={() => void handleRefreshIdeas()}
+          <>
+            <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
+            {posts ? (
+              <PostList
+                posts={posts}
+                avatarColor={avatarColor}
+                nextCursor={nextCursor}
+                loadingMore={loadingMore}
+                onLoadMore={() => void loadMorePosts()}
               />
-              <TopicsRow topics={topics ?? []} onRemove={handleRemoveTopic} />
-            </div>
-          </div>
+            ) : null}
+          </>
         )}
-      </MuseWideColumn>
+
+        <TopicsRow
+          topics={topics ?? []}
+          onRemove={handleRemoveTopic}
+          onAddTopic={onSendIdea ? () => onSendIdea(t`Follow a topic for me`) : undefined}
+        />
+      </MuseColumn>
     </MuseScreen>
   );
 }
