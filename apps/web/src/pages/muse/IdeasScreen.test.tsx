@@ -20,6 +20,7 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("@aiden/ui-web", () => ({
   Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
   Skeleton: (props: ComponentProps<"div">) => <div {...props} />,
+  BotAvatar: () => <div data-testid="bot-avatar" />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
@@ -88,6 +89,47 @@ it("tapping an Idea row calls onSendIdea with its text", async () => {
       button?.click();
     });
     expect(onSendIdea).toHaveBeenCalledWith("Plan this Sunday's run");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("renders the Idea's own illustration key as its row image", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.ideas.list.mockResolvedValue([
+    idea({ text: "Draft the quarterly memo", area: "work", illustration: "rocket" }),
+  ]);
+  const page = await renderIdeas();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("Draft the quarterly memo");
+      });
+    });
+    const img = page.container.querySelector("img");
+    expect(img?.getAttribute("src")).toBe("/illustrations/rocket.png");
+    expect(img?.getAttribute("alt")).toBe("");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("falls back to the area's default illustration when the Idea has none", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.ideas.list.mockResolvedValue([
+    idea({ text: "Draft this week's client note", area: "clients" }),
+  ]);
+  const page = await renderIdeas();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("Draft this week's client note");
+      });
+    });
+    const img = page.container.querySelector("img");
+    expect(img?.getAttribute("src")).toBe("/illustrations/handshake.png");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

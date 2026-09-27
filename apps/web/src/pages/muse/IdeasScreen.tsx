@@ -2,8 +2,9 @@ import type { Idea } from "@aiden/contracts";
 import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { illustrationUrl } from "../../lib/illustrations";
 import { rpc } from "../../lib/rpc";
-import { areaLabel } from "./ideas/areaIcon";
+import { areaLabel, ideaIllustration } from "./ideas/areaIcon";
 import { EmptyState, MUSE_TYPE, MuseColumn, MuseScreen } from "./ui";
 
 /** Ideas kept in the order their area first appeared, not re-sorted alphabetically. */
@@ -37,8 +38,7 @@ function IdeaRow({
   showArea: boolean;
   onSend: (text: string) => void;
 }) {
-  // `detail` arrives with the Ideas backend's next migration; older rows have none.
-  const detail = (idea as Idea & { detail?: string | null }).detail;
+  const detail = idea.detail;
   return (
     <li
       className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:fill-mode-both motion-safe:duration-300"
@@ -49,6 +49,12 @@ function IdeaRow({
         onClick={() => onSend(idea.text)}
         className="-mx-4 flex w-[calc(100%+2rem)] items-start gap-4 rounded-2xl px-4 py-3.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
       >
+        <img
+          src={illustrationUrl(ideaIllustration(idea))}
+          alt=""
+          loading="lazy"
+          className="mt-0.5 size-9 shrink-0"
+        />
         <span className="min-w-0 flex-1">
           <span className="block text-[16px] font-medium leading-snug text-foreground">
             {idea.text}
@@ -136,7 +142,7 @@ export function IdeasScreen({
         {ideas === null ? (
           <IdeasSkeleton />
         ) : ideas.length === 0 ? (
-          <EmptyState headline={t`Nothing to suggest yet`}>
+          <EmptyState face illustration="light-bulb" headline={t`Nothing to suggest yet`}>
             <Trans>I'll show ideas here as I learn what's useful to you.</Trans>
           </EmptyState>
         ) : grouped ? (

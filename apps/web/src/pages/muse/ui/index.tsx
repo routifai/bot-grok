@@ -1,6 +1,8 @@
+import type { IllustrationKey } from "@aiden/contracts";
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { BotAvatar, cn } from "@aiden/ui-web";
 import type { ComponentProps, ReactNode } from "react";
+import { illustrationUrl } from "../../../lib/illustrations";
 
 // Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen
 // composes these so spacing, type, and surfaces stay identical across Conversation,
@@ -328,12 +330,19 @@ export function EmptyState({
   suggestions,
   onSuggestion,
   face,
+  illustration,
   className,
 }: {
   /** The Muse's identity color; defaults to gold when the screen has none handy. */
   avatarColor?: string;
   /** Show the Muse's face even without suggestions (it always shows with them). */
   face?: boolean;
+  /**
+   * A bundled 3D illustration fitting this section (e.g. a trophy for Goals, books for
+   * Library), tilted beside the Muse's face — a companion to the hero, never a
+   * replacement. Only shown alongside the face.
+   */
+  illustration?: IllustrationKey;
   headline?: ReactNode;
   children?: ReactNode;
   suggestions?: readonly string[];
@@ -350,12 +359,22 @@ export function EmptyState({
       )}
     >
       {showFace ? (
-        <BotAvatar
-          color={avatarColor ?? DEFAULT_MUSE_COLOR}
-          identity="aiden"
-          face="muse"
-          size={88}
-        />
+        <div className="relative">
+          <BotAvatar
+            color={avatarColor ?? DEFAULT_MUSE_COLOR}
+            identity="aiden"
+            face="muse"
+            size={88}
+          />
+          {illustration ? (
+            <img
+              src={illustrationUrl(illustration)}
+              alt=""
+              loading="lazy"
+              className="-right-3 -bottom-1.5 absolute size-9 rotate-[10deg] drop-shadow-sm"
+            />
+          ) : null}
+        </div>
       ) : null}
       <div className="max-w-[380px]">
         {headline ? <p className="text-[18px] font-semibold text-foreground">{headline}</p> : null}

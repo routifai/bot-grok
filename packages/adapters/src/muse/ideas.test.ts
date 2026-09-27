@@ -187,6 +187,41 @@ describe("parseIdeasCompletion", () => {
   it("returns null for an empty array", () => {
     expect(parseIdeasCompletion("[]")).toBeNull();
   });
+
+  it("keeps a valid illustration key", () => {
+    const drafts = parseIdeasCompletion(
+      '[{"text":"Do a thing","area":"work","illustration":"trophy"}]',
+    );
+    expect(drafts?.[0]?.illustration).toBe("trophy");
+  });
+
+  it("drops an illustration key outside the bundled set", () => {
+    const drafts = parseIdeasCompletion(
+      '[{"text":"Do a thing","area":"work","illustration":"not-a-real-key"}]',
+    );
+    expect(drafts?.[0]?.illustration).toBeUndefined();
+  });
+
+  it("keeps a short detail as-is", () => {
+    const drafts = parseIdeasCompletion(
+      '[{"text":"Do a thing","area":"work","detail":"I will do the thing."}]',
+    );
+    expect(drafts?.[0]?.detail).toBe("I will do the thing.");
+  });
+
+  it("caps an over-length detail rather than rejecting the idea", () => {
+    const longDetail = "x".repeat(500);
+    const drafts = parseIdeasCompletion(
+      JSON.stringify([{ text: "Do a thing", area: "work", detail: longDetail }]),
+    );
+    expect(drafts?.[0]?.detail).toHaveLength(320);
+  });
+
+  it("omits detail and illustration when absent", () => {
+    const drafts = parseIdeasCompletion('[{"text":"Do a thing","area":"work"}]');
+    expect(drafts?.[0]).not.toHaveProperty("detail");
+    expect(drafts?.[0]).not.toHaveProperty("illustration");
+  });
 });
 
 describe("refreshIdeas", () => {
@@ -295,6 +330,17 @@ describe("refreshIdeas", () => {
     const [request] = harness.runtime.run.mock.calls[0]!;
     expect(request.instructions).toContain(`exactly ${IDEAS_COUNT} objects`);
     expect(request.instructions).toContain("JSON only");
+  });
+
+  it("lists the bundled illustration keys and the detail/illustration shape in the prompt", async () => {
+    const harness = ideasHarness({ deploymentModelKey: "openrouter-key" });
+
+    await refreshIdeas(harness.deps, "bot-1");
+
+    const [request] = harness.runtime.run.mock.calls[0]!;
+    expect(request.instructions).toContain("trophy");
+    expect(request.instructions).toContain("detail");
+    expect(request.instructions).toContain("illustration");
   });
 
   it("includes the Conversation's compacted summary and recent messages as prompt data", async () => {

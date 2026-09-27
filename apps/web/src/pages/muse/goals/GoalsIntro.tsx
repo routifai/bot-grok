@@ -1,6 +1,8 @@
 import { cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Check } from "lucide-react";
+import type { IllustrationKey } from "../../../lib/illustrations";
+import { illustrationUrl } from "../../../lib/illustrations";
 import { MUSE_TYPE, MuseColumn } from "../ui";
 
 type StepState = "done" | "working" | "next";
@@ -87,6 +89,7 @@ function ExampleGoal({ color }: { color: string }) {
 }
 
 export interface GoalStarter {
+  illustration: IllustrationKey;
   title: string;
   detail: string;
   /** What gets sent to the Conversation. */
@@ -136,13 +139,21 @@ export function GoalsIntro({
                 <button
                   type="button"
                   onClick={() => onStart(starter.prompt)}
-                  className="-mx-4 flex w-[calc(100%+2rem)] flex-col rounded-2xl px-4 py-3.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
+                  className="-mx-4 flex w-[calc(100%+2rem)] items-start gap-4 rounded-2xl px-4 py-3.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
                 >
-                  <span className="text-[16px] font-medium leading-snug text-foreground">
-                    {starter.title}
-                  </span>
-                  <span className="mt-1 text-[15px] leading-[1.5] text-muted-foreground">
-                    {starter.detail}
+                  <img
+                    src={illustrationUrl(starter.illustration)}
+                    alt=""
+                    loading="lazy"
+                    className="mt-0.5 size-9 shrink-0"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[16px] font-medium leading-snug text-foreground">
+                      {starter.title}
+                    </span>
+                    <span className="mt-1 block text-[15px] leading-[1.5] text-muted-foreground">
+                      {starter.detail}
+                    </span>
                   </span>
                 </button>
               </li>

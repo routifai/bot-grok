@@ -10,18 +10,21 @@ import { MuseColumn, MuseScreen, ScreenHeader } from "./ui";
 
 const GOAL_STARTERS: readonly GoalStarter[] = [
   {
+    illustration: "briefcase",
     title: "Prep the Q3 client portfolio review",
     detail:
       "I'll pull each client's holdings and returns, flag drift from their target mix, and draft talking points before every meeting.",
     prompt: "Help me prepare the Q3 client portfolio review for my book of clients.",
   },
   {
+    illustration: "graduation-cap",
     title: "Get my CFA Level II study plan on track",
     detail:
       "A weekly plan to exam day. I'll check in on the hard readings and quiz you on the formulas you keep missing.",
     prompt: "Make me a CFA Level II study plan to exam day and keep me on track.",
   },
   {
+    illustration: "bar-chart",
     title: "Automate my weekly branch KPI summary",
     detail:
       "Every Monday I'll gather last week's numbers, compare them to target, and send you a one-page summary to review.",

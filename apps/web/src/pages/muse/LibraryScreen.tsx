@@ -189,6 +189,7 @@ export function LibraryScreen({
           ) : (
             <EmptyState
               avatarColor={avatarColor}
+              illustration="books"
               headline={t`Nothing here yet.`}
               suggestions={LIBRARY_SUGGESTIONS}
               onSuggestion={onSendIdea}
