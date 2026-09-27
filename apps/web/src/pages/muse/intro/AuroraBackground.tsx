@@ -19,7 +19,7 @@ const MAX_DEVICE_PIXEL_RATIO = 1.5;
 
 const FALLBACK_BACKGROUND = [
   "radial-gradient(ellipse 70% 55% at 16% 10%, var(--muted), transparent 60%)",
-  `radial-gradient(ellipse 60% 50% at 88% 92%, color-mix(in srgb, ${DEFAULT_MUSE_COLOR} 14%, var(--background)), transparent 65%)`,
+  `radial-gradient(ellipse 60% 50% at 88% 92%, color-mix(in srgb, ${DEFAULT_MUSE_COLOR} 30%, var(--background)), transparent 65%)`,
   "radial-gradient(ellipse 90% 75% at 50% 45%, transparent 35%, var(--background) 82%)",
   "var(--background)",
 ].join(", ");
@@ -94,15 +94,17 @@ void main() {
   float flow = fbm(p * 0.8 + vec2(n1, n2) * 0.6 + t);
 
   vec3 color = uColorBg;
-  color = mix(color, uColorMuted, smoothstep(-0.2, 0.6, n1) * 0.55);
+  color = mix(color, uColorMuted, smoothstep(-0.2, 0.6, n1) * 0.8);
   color = mix(color, uColorBorder, smoothstep(0.0, 0.8, n2) * 0.35);
-  color = mix(color, uColorAccent, smoothstep(0.35, 0.95, flow) * 0.14);
+  // Two aurora bands in the Muse color: a broad soft one and a brighter ribbon.
+  color = mix(color, mix(uColorAccent, uColorBg, 0.45), smoothstep(0.05, 0.75, n2) * 0.45);
+  color = mix(color, uColorAccent, smoothstep(0.3, 0.9, flow) * 0.38);
   color = mix(color, uColorFg, smoothstep(0.6, 1.0, n1 * n2) * 0.04);
 
   // Soft radial fade so the centered text column always reads against a calm field.
   float dist = length(vUv - 0.5);
   float vignette = smoothstep(0.12, 0.7, dist);
-  color = mix(uColorBg, color, vignette * 0.9 + 0.1);
+  color = mix(uColorBg, color, vignette * 0.55 + 0.45);
 
   gl_FragColor = vec4(color, 1.0);
 }

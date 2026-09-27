@@ -470,7 +470,9 @@ export function OnboardingPage() {
     <div
       className={cn(
         "min-h-full px-6",
-        isMuse ? "flex min-h-screen items-center justify-center py-16" : "bg-background py-12",
+        isMuse
+          ? "relative isolate flex min-h-screen items-center justify-center py-16"
+          : "bg-background py-12",
       )}
     >
       {isMuse ? <AuroraBackground /> : null}

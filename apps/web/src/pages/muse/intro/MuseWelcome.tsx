@@ -13,7 +13,7 @@ import { AuroraBackground } from "./AuroraBackground";
 export function MuseWelcome() {
   const navigate = useNavigate();
   return (
-    <div className="flex min-h-full flex-col" data-rakazo-surface="welcome">
+    <div className="relative isolate flex min-h-full flex-col" data-rakazo-surface="welcome">
       <AuroraBackground />
       <div className="app-drag flex gap-2 px-5 py-[18px]">
         <WindowChrome />

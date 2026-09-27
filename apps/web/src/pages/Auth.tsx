@@ -355,7 +355,8 @@ function AuthFrame({
     <div
       className={cn(
         "flex min-h-full items-center justify-center px-6 py-16 text-foreground",
-        muse ? undefined : "bg-background",
+        // `isolate` keeps the aurora (negative z-index) above the page background.
+        muse ? "relative isolate" : "bg-background",
       )}
     >
       {muse ? <AuroraBackground /> : null}
