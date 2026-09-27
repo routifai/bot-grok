@@ -1,13 +1,14 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
 import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@rakazo/core";
-import { BotAvatar, Button, Input, Label } from "@rakazo/ui-web";
+import { BotAvatar, Button, cn, Input, Label } from "@rakazo/ui-web";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../lib/auth";
 import { useProductMode } from "../lib/product-mode";
 import { clearSpaceSelection } from "../lib/rpc";
+import { AuroraBackground } from "./muse/intro/AuroraBackground";
 
 type AuthMode = "in" | "up" | "forgot";
 type PasswordResetCapabilities = { passwordReset: boolean; resetUrl: string | null };
@@ -43,7 +44,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     )
   ) : mode === "up" ? (
     muse ? (
-      <Trans>Let's meet Aiden.</Trans>
+      <Trans>Meet Aiden.</Trans>
     ) : (
       <Trans>Create your Rakazo</Trans>
     )
@@ -346,12 +347,18 @@ function AuthFrame({
 }: {
   title: React.ReactNode;
   onSubmit: (event: React.FormEvent) => void;
-  /** Muse mode: the Muse face and a serif title (docs/muse/DESIGN.md). */
+  /** Muse mode: the Muse face, a serif title, and the living aurora background (docs/muse/DESIGN.md). */
   muse?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-full items-center justify-center bg-background px-6 py-16 text-foreground">
+    <div
+      className={cn(
+        "flex min-h-full items-center justify-center px-6 py-16 text-foreground",
+        muse ? undefined : "bg-background",
+      )}
+    >
+      {muse ? <AuroraBackground /> : null}
       <form onSubmit={onSubmit} className="flex w-[460px] max-w-full flex-col items-center">
         {muse ? (
           <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={88} />

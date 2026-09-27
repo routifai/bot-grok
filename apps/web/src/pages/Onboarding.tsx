@@ -38,6 +38,7 @@ import type { ModelCatalogEntry } from "../lib/model-auth";
 import { applyProductMode } from "../lib/product-mode";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
+import { AuroraBackground } from "./muse/intro/AuroraBackground";
 
 const CUSTOM_MODEL_OPTION = "__rakazo_custom_model__";
 const FIRST_BOT_NAME = "Chief";
@@ -468,10 +469,11 @@ export function OnboardingPage() {
   return (
     <div
       className={cn(
-        "min-h-full bg-background px-6",
-        isMuse ? "flex min-h-screen items-center justify-center py-16" : "py-12",
+        "min-h-full px-6",
+        isMuse ? "flex min-h-screen items-center justify-center py-16" : "bg-background py-12",
       )}
     >
+      {isMuse ? <AuroraBackground /> : null}
       <div className={cn("mx-auto w-full", isMuse ? "max-w-[440px]" : "max-w-[560px]")}>
         {step === "loading" ? (
           <p className="text-muted-foreground">
@@ -482,12 +484,14 @@ export function OnboardingPage() {
           <div className="flex flex-col items-center text-center">
             <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse-intro" face="muse" size={120} />
             <h1 className="mt-7 font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
-              <Trans>Hi, I'm your new executive assistant.</Trans>
+              <Trans>
+                Hi, I'm Aiden — <em className="italic">already on it.</em>
+              </Trans>
             </h1>
             <p className="mt-3 text-[15px] text-muted-foreground">
               <Trans>
-                I'll plan, research, draft and follow up — so your everyday things get done, and
-                done well.
+                I'll plan, research, draft and follow up in the background, and always ask before
+                anything I can't undo.
               </Trans>
             </p>
             <Button className="mt-8 h-12 w-full text-[15px]" onClick={() => setStep("name")}>

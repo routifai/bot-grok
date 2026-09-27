@@ -123,7 +123,7 @@ it("in muse mode, walks intro -> name -> Muse name -> color (sky preselected) ->
     // Step 0: the warm introduction.
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Hi, I'm your new executive assistant.");
+        expect(page.container.textContent).toContain("Hi, I'm Aiden — already on it.");
       });
     });
     await act(async () => {
@@ -198,7 +198,7 @@ it("in muse mode, creates exactly one bot with the chosen name and color", async
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Hi, I'm your new executive assistant.");
+        expect(page.container.textContent).toContain("Hi, I'm Aiden — already on it.");
       });
     });
     await act(async () => {
