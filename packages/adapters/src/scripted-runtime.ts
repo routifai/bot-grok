@@ -151,6 +151,47 @@ export function inferScript(
       },
     ];
   }
+  // Muse edition (docs/muse/PLAN.md B4/B8/B10): the `goals` tool's `create` action and
+  // the `feed.topics` digest's `feed_add_topic_post` tool. Neither goal-jobs.ts's
+  // ADVANCE_GOAL_TASK_PROMPT nor feed-jobs.ts's renderFeedTopicsTaskPrompt embed a
+  // dynamic id this text-matched inference could echo back (a Goal/Task id, unlike a
+  // topic's plain name), so only Goal creation and the topic digest are scriptable here;
+  // update_task/propose need a real Task id and are driven directly against the tool
+  // handlers instead (see packages/testkit/src/muse-journeys.test.ts).
+  if (lower.includes("set up a goal") || lower.includes("create a goal")) {
+    const titleMatch = /goal\s+(?:called|named)\s+"?([^".]+?)"?\s+with tasks?:/i.exec(prompt);
+    const title = titleMatch?.[1]?.trim() ?? "New goal";
+    const tasksMatch = /tasks?:\s*(.+)$/i.exec(prompt);
+    const tasks = (tasksMatch?.[1] ?? "Get started")
+      .split(",")
+      .map((task) => task.trim())
+      .filter(Boolean);
+    return [
+      {
+        assistant: `setting up a plan for "${title}".`,
+        toolCalls: [{ name: "goals", args: { action: "create", title, tasks } }],
+        complete: true,
+      },
+    ];
+  }
+  if (lower.includes("followed topics for today's feed digest")) {
+    return [
+      {
+        assistant: "checking your followed topics for anything new.",
+        toolCalls: [
+          {
+            name: "feed_add_topic_post",
+            args: {
+              title: "New development spotted",
+              body: "Found something worth flagging on one of your followed topics.",
+              sourceUrl: "https://example.com/aiden-feed-topic-update",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ];
+  }
   // Before every content-based intent so payload text cannot steal the branch.
   if (lower.includes("message the bot named") || lower.includes("message bot named")) {
     const name = namedBot(prompt) ?? "Peer";

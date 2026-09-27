@@ -80,9 +80,15 @@ export * from "./model-selection.js";
 export * from "./model-vision.js";
 // B10: apps/api/src/muse-feed.ts (topics.follow) calls scheduleFeedDigestOnFirstTopic.
 export * from "./muse/feed-jobs.js";
+// Exercised end to end (real Postgres) by packages/testkit/src/muse-journeys.test.ts,
+// which needs these `*FromTool` handlers directly (the same functions run-executor.ts's
+// tool dispatch calls) to drive Goal Task state the scripted runtime cannot script by
+// itself (no dynamic Task ids in its purely text-matched scripts).
+export * from "./muse/feed-tools.js";
 export * from "./muse/goal-jobs.js";
 // B6: apps/api/src/goals.ts and muse-asks.ts call these (the one Proposal apply path).
 export * from "./muse/goal-proposals.js";
+export * from "./muse/goal-tools.js";
 export * from "./muse/ideas.js";
 export * from "./none-sandbox.js";
 export * from "./openai-compatible-url.js";
