@@ -211,6 +211,7 @@ import {
   transcriptMovedDown,
 } from "../lib/transcript-scroll";
 import { speaker } from "../lib/tts";
+import { SCREEN_DISCONNECTED_MESSAGE } from "../novnc-html";
 import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
@@ -736,6 +737,11 @@ export function ShellPage() {
   const screenRequest = useRef(0);
   /** Bots whose screen link must be re-fetched (after boot, takeover, or release). */
   const staleScreens = useRef(new Set<string>());
+  /** Bumped to remount the screen frames after a dropped connection. */
+  const [screenReloadKey, setScreenReloadKey] = useState(0);
+  const refreshScreenRef = useRef<(id: string, options?: { force?: boolean }) => Promise<unknown>>(
+    async () => null,
+  );
   const contextBot =
     botMenu?.kind === "bot" ? bots.find((bot) => bot.id === botMenu.id) : undefined;
   const contextGroup =
@@ -1016,6 +1022,28 @@ export function ShellPage() {
     return snap;
   }
 
+  // A dropped desktop connection (computer restarted, view session rotated) would otherwise
+  // leave the frame black: when the embedded viewer reports a disconnect, fetch a fresh link
+  // and remount the frame.
+  useEffect(() => {
+    let last = 0;
+    const onMessage = (event: MessageEvent) => {
+      if ((event.data as { type?: unknown } | null)?.type !== SCREEN_DISCONNECTED_MESSAGE) return;
+      const frames = document.querySelectorAll<HTMLIFrameElement>("iframe[data-computer-screen]");
+      if (![...frames].some((frame) => frame.contentWindow === event.source)) return;
+      const now = Date.now();
+      if (now - last < 5_000) return;
+      last = now;
+      const id = computerBotIdRef.current ?? activeBotId.current;
+      if (!id) return;
+      staleScreens.current.add(id);
+      setScreenReloadKey((current) => current + 1);
+      void refreshScreenRef.current(id, { force: true }).catch(() => undefined);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
   async function refreshComputerScreen(id: string, options: { force?: boolean } = {}) {
     if (!computerVisible.current) return null;
     // Re-fetching mints a new capability link, which reloads the embedded desktop (a black
@@ -1040,6 +1068,7 @@ export function ShellPage() {
       fallbackError: t`Could not connect to the computer screen`,
     });
   }
+  refreshScreenRef.current = refreshComputerScreen;
 
   async function loadOlderMessages() {
     const targetBotId = inGroup ? undefined : active?.id;
@@ -3794,6 +3823,8 @@ export function ShellPage() {
                     <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80" />
                   ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
                     <iframe
+                      key={`preview-${screenReloadKey}`}
+                      data-computer-screen=""
                       title={t`Bot screen preview`}
                       src={embeddedScreenUrl}
                       sandbox={screenIframeSandbox(embeddedScreenUrl)}
@@ -4682,6 +4713,8 @@ export function ShellPage() {
               ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
                 <>
                   <iframe
+                    key={`full-${screenReloadKey}`}
+                    data-computer-screen=""
                     title={t`Bot screen`}
                     src={embeddedScreenUrl}
                     sandbox={screenIframeSandbox(embeddedScreenUrl)}

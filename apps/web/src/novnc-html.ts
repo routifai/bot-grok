@@ -40,3 +40,21 @@ export function collectNovncHtml(incoming: Readable, maxBytes: number): Promise<
     });
   });
 }
+
+/** Message the embedded desktop posts to the app when its connection drops. */
+export const SCREEN_DISCONNECTED_MESSAGE = "aiden:screen-disconnected";
+
+const RFB_CREATED = /const rfb = new RFB\([^;]*\);/;
+
+/**
+ * Lets the app recover a black screen on its own: after the embed creates its noVNC
+ * connection, report disconnects to the parent so it can fetch a fresh screen link.
+ * Leaves documents without that connection line untouched.
+ */
+export function injectScreenLifecycle(html: string): string {
+  return html.replace(
+    RFB_CREATED,
+    (created) =>
+      `${created}\n      rfb.addEventListener("disconnect", () => window.parent.postMessage({ type: ${JSON.stringify(SCREEN_DISCONNECTED_MESSAGE)} }, "*"));`,
+  );
+}

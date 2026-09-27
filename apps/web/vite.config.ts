@@ -17,7 +17,7 @@ import react from "@vitejs/plugin-react";
 import type { PreviewServer, ViteDevServer } from "vite";
 import { defineConfig, loadEnv } from "vite";
 import { resolveScreenProxySecret } from "../../packages/core/src/secrets-guard.ts";
-import { collectNovncHtml, MAX_NOVNC_HTML_BYTES } from "./src/novnc-html.js";
+import { collectNovncHtml, injectScreenLifecycle, MAX_NOVNC_HTML_BYTES } from "./src/novnc-html.js";
 import {
   resolveNovncTarget,
   safeProxyHeaders,
@@ -143,7 +143,7 @@ function attachNovncProxy(server: ViteDevServer | PreviewServer, secret: string,
               .then((html) => {
                 if (downstreamFinished || res.destroyed || res.writableEnded) return;
                 downstreamFinished = true;
-                const body = injectNovncStorageShim(html);
+                const body = injectScreenLifecycle(injectNovncStorageShim(html));
                 delete responseHeaders["content-length"];
                 res.writeHead(incoming.statusCode ?? 502, responseHeaders);
                 res.end(body);
