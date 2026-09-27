@@ -1,9 +1,8 @@
 import {
-  AskSchema,
-  FeedSchema,
   FollowedTopicSchema,
   GoalSchema,
   IdeaSchema,
+  PostSchema,
   ThreadMessagePageSchema,
 } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
@@ -19,23 +18,18 @@ describe("musePreview", () => {
       GoalSchema.parse(goal);
       ThreadMessagePageSchema.parse(musePreview.goals.log(goal.id));
     }
-    AskSchema.array().parse(musePreview.asks.list(botId));
-    FeedSchema.parse(musePreview.feed.list(botId));
+    PostSchema.array().parse(musePreview.feed.list(botId).posts);
     IdeaSchema.array().parse(musePreview.ideas.list(botId));
     FollowedTopicSchema.array().parse(musePreview.topics.list(botId));
   });
 
-  it("closes a Proposal everywhere when its Ask is answered", () => {
-    const proposalAsk = musePreview.asks.list(botId).find((ask) => ask.kind === "proposal");
-    expect(proposalAsk?.goalId).toBeTruthy();
-    const before = musePreview.asks.count(botId).count;
+  it("accepts a Proposal, replacing the Goal's plan with the proposed tasks", () => {
+    const goal = musePreview.goals.list(botId).find((candidate) => candidate.openProposal);
+    expect(goal?.openProposal).toBeTruthy();
 
-    musePreview.asks.answer({ askId: proposalAsk!.id, answer: "accept" });
+    const updated = musePreview.goals.acceptProposal(goal!.openProposal!.id);
 
-    const goal = musePreview.goals.get(proposalAsk!.goalId!);
-    expect(goal.openProposal).toBeNull();
-    expect(goal.tasks.map((item) => item.title)).toContain("Join a Saturday conversation club");
-    expect(musePreview.asks.count(botId).count).toBe(before - 1);
-    expect(musePreview.feed.list(botId).asks.some((ask) => ask.id === proposalAsk!.id)).toBe(false);
+    expect(updated.openProposal).toBeNull();
+    expect(updated.tasks.map((item) => item.title)).toContain("Join a Saturday conversation club");
   });
 });

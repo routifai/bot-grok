@@ -1,23 +1,15 @@
 import { ORPCError } from "@orpc/server";
-import type {
-  Ask,
-  Feed,
-  FollowedTopic,
-  Goal,
-  Idea,
-  Post,
-  ThreadMessagePage,
-} from "@rakazo/contracts";
+import type { FollowedTopic, Goal, Idea, Post, ThreadMessagePage } from "@rakazo/contracts";
 
 // Sample data behind the Muse procedures so the frontend can be built and felt before the
 // backend lands (docs/muse/PLAN.md, "frontend first"). Each backend package replaces the
-// matching part; delete this file once goals, asks, feed, ideas, and topics are real.
-// (muse.settings / muse.updateSettings are already real: see muse-settings.ts.)
+// matching part; delete this file once goals, feed posts, ideas, and topics are real.
+// (muse.settings / muse.updateSettings, and asks.* / the Feed's asks, are already real:
+// see muse-settings.ts and muse-asks.ts.)
 // State is in memory and shared by every caller: preview only, never production data.
 
 type PreviewState = {
   goals: Goal[];
-  asks: Ask[];
   posts: Post[];
   topics: FollowedTopic[];
   ideas: Idea[];
@@ -108,53 +100,6 @@ function seed(botId: string): PreviewState {
   };
   return {
     goals: [japanese, halfMarathon],
-    asks: [
-      {
-        id: "ask-proposal-japanese",
-        runId: "run-preview-1",
-        kind: "proposal",
-        goalId: japanese.id,
-        goalTitle: japanese.title,
-        text: "Add a Saturday conversation club to the plan?",
-        detail: japanese.openProposal?.reason,
-        choices: [
-          { id: "accept", label: "Accept" },
-          { id: "dismiss", label: "Dismiss" },
-        ],
-        input: null,
-        createdAt: hoursAgo(3),
-      },
-      {
-        id: "ask-blocked-japanese",
-        runId: "run-preview-1",
-        kind: "blocked_task",
-        goalId: japanese.id,
-        goalTitle: japanese.title,
-        text: "Which evenings work for trial lessons?",
-        choices: [
-          { id: "mon-wed", label: "Mon and Wed" },
-          { id: "tue-thu", label: "Tue and Thu" },
-          { id: "any", label: "Any weekday" },
-        ],
-        input: null,
-        createdAt: hoursAgo(2),
-      },
-      {
-        id: "ask-approval-email",
-        runId: "run-preview-2",
-        kind: "approval",
-        goalId: null,
-        goalTitle: null,
-        text: "Review before sending an email to the running club organizer",
-        detail: "To: organizer@example.com\nSubject: Joining Sunday long runs",
-        choices: [
-          { id: "allow", label: "Send" },
-          { id: "deny", label: "Don't send" },
-        ],
-        input: null,
-        createdAt: hoursAgo(1),
-      },
-    ],
     posts: [
       {
         id: "post-1",
@@ -256,8 +201,6 @@ function closeProposal(goal: Goal, accept: boolean): Goal {
   }
   goal.openProposal = null;
   goal.updatedAt = new Date().toISOString();
-  if (state)
-    state.asks = state.asks.filter((ask) => !(ask.kind === "proposal" && ask.goalId === goal.id));
   return goal;
 }
 
@@ -305,24 +248,11 @@ export const musePreview = {
       };
     },
   },
-  asks: {
-    list: (botId: string): Ask[] => current(botId).asks,
-    count: (botId: string) => ({ count: current(botId).asks.length }),
-    answer(input: { askId: string; answer: string }): { ok: true } {
-      const ask = state?.asks.find((candidate) => candidate.id === input.askId);
-      if (!ask) throw new ORPCError("NOT_FOUND");
-      if (ask.kind === "proposal" && ask.goalId) {
-        const goal = findGoal(ask.goalId);
-        if (goal.openProposal) closeProposal(goal, input.answer === "accept");
-      }
-      if (state) state.asks = state.asks.filter((candidate) => candidate.id !== input.askId);
-      return { ok: true };
-    },
-  },
   feed: {
-    list(botId: string): Feed {
+    /** Posts only now: the Feed's asks come from the real `listAsks` (muse-asks.ts). */
+    list(botId: string): { posts: Post[]; nextCursor: string | null } {
       const preview = current(botId);
-      return { asks: preview.asks, posts: preview.posts, nextCursor: null };
+      return { posts: preview.posts, nextCursor: null };
     },
   },
   ideas: {
