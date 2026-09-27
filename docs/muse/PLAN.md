@@ -13,7 +13,7 @@ This plan is written for implementation agents (Claude Sonnet 5, model id `claud
 ## Ground rules
 
 - **Reuse before building.** For every piece, first use what Rakazo already has, then port from OpenMuse (github.com/OpenMuseAgent/OpenMuse, MIT, Python; clone it next to this repo), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
-- **Soft fork.** Everything Muse-specific is gated by `RAKAZO_PRODUCT_MODE=muse` (package B0). Put new code in new files; keep edits to large upstream files (`executor.ts`, `builtin-tools.ts`, `Shell.tsx`, `router.ts`, `schema.prisma`) small and additive so upstream merges stay easy. Never rename or delete upstream models, tools, or routes; hide or gate them.
+- **Our fork (ADR 0002).** Everything Muse-specific is gated by `RAKAZO_PRODUCT_MODE=muse` (package B0). Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner, but keep upstream behaviour intact when the mode is off. Do not delete upstream models, tools, or routes; hide or gate them.
 - **Naming in code.** The glossary **Task** is `GoalTask` in code (the upstream `Task` model is an unrelated request record and keeps its name). Database tables use the upstream convention (`@@map("goal_tasks")`).
 - **OpenMuse ports.** When copying prompt text or logic from OpenMuse, keep a one-line comment at the top of the file: `// Adapted from OpenMuse (MIT) — openmuse/<path>`.
 - **Out of scope for v1:** mobile screens (mobile keeps working with the Conversation only), spending limits, parallel Goal work, payments.
@@ -84,6 +84,11 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 - Procedures appended to `rpc.ts`: `goals.list/get/update/acceptProposal/dismissProposal/log`, `asks.list/count/answer`, `feed.list`, `ideas.list/refresh`, `topics.list/remove`, `muse.settings/updateSettings`. There is no `goals.create`: Goals are created by talking to the Muse (the `goals` tool, B4).
 - The API implements them in `router.ts` behind a `museOnly` guard (NOT_FOUND unless muse mode) and serves **sample data** from `apps/api/src/muse-preview.ts` (in-memory; accepting a Proposal or answering an Ask changes it). Each backend package replaces its part of the preview; delete the file when all are real.
 - Tests: `muse-preview.test.ts` validates the sample data against the schemas and the Proposal/Ask flow.
+
+### Refactor — own the run engine (ADR 0002)
+
+**R1 · Split `executor.ts`** — before B2/B5/B8
+- Behaviour-preserving split of `packages/adapters/src/executor.ts` (~5,700 lines) into focused modules under `packages/adapters/src/executor/` (e.g. prompt assembly, context assembly, tool dispatch, run lifecycle/finalize, approvals replay), with `executor.ts` kept as a thin entry that re-exports the same public API. No logic changes; every existing test passes unchanged. Muse work (B2, B5, B8) then lands in the relevant module, with Muse-specific logic in `packages/adapters/src/muse/`.
 
 ### Phase 1 — One Muse
 
@@ -200,11 +205,11 @@ B0 ─► B1 ──────────────────────�
  └──────────────────────────────── F8 ─► F9 (needs B4)
 ```
 
-Waves (frontend first — B0 and B1 are done, and the API serves sample data):
-1. ✅ B0, B1.
-2. Frontend, in parallel, against the sample data: F1, F2, F3, F4, F5, F6, F7, F8, then F9. Result: the whole Muse experience is clickable at `localhost:5173`.
-3. Backend, in parallel: B2, B3, B7.
-4. Backend, in parallel: B4, B5, B9 (replace preview asks).
+Waves:
+1. Done: B0, B1.
+2. Done: Frontend F1–F9 (plus the design passes in DESIGN.md).
+3. Backend, in parallel: R1, B3, B7.
+4. Backend, in parallel: B2, B4, B5, B9 (replace preview asks).
 5. Backend, in parallel: B6 (replace preview goals), B8, B11 (replace preview ideas).
 6. Backend: B10 (replace preview feed/topics); delete `muse-preview.ts`.
 7. End-to-end check (below).
