@@ -27,7 +27,6 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import { ProactivitySettings } from "../muse/ProactivitySettings";
 import { AvatarStudioPopover } from "./avatar-studio-popover";
 
 const ScratchpadSection = lazy(() =>
@@ -470,7 +469,8 @@ export function BotSettings({
           }}
         />
       </div>
-      {me?.productMode === "muse" ? <ProactivitySettings botId={bot.id} /> : null}
+      {/* Proactivity now lives in Settings > Aiden (SettingsOverlay), the one place the
+          person tunes their Muse; this per-bot panel would otherwise duplicate it. */}
       <details
         data-testid="bot-settings-advanced"
         className="group mt-5"

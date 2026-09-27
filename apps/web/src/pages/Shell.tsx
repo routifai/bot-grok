@@ -4539,6 +4539,13 @@ export function ShellPage() {
               setSettingsOpen(false);
               setSettingsSection("general");
             }}
+            museMode={museMode}
+            museBot={museMode ? (active ?? null) : null}
+            onMuseBotSave={async (patch) => {
+              if (!active) return;
+              await rpc.bots.update({ botId: active.id, ...patch });
+              await refreshBots();
+            }}
           />
         ) : null}
         {peerConversation && active ? (

@@ -29,7 +29,14 @@ function ProactivityLabel({ level }: { level: Proactivity }) {
  * How eagerly the Muse works on Goals on its own, and the window it stays quiet in.
  * Saves each change immediately (optimistic); reverts and shows the error inline on failure.
  */
-export function ProactivitySettings({ botId }: { botId: string }) {
+export function ProactivitySettings({
+  botId,
+  className = "mt-6 pt-4 border-t border-border/20",
+}: {
+  botId: string;
+  /** Wrapper class; override to drop the default top divider when embedding in its own card. */
+  className?: string;
+}) {
   const { t } = useLingui();
   const ids = useId();
   const [settings, setSettings] = useState<MuseSettings | null>(null);
@@ -64,7 +71,7 @@ export function ProactivitySettings({ botId }: { botId: string }) {
   const quietHoursOn = settings.quietHours !== null;
 
   return (
-    <div data-testid="proactivity-settings" className="mt-6 pt-4 border-t border-border/20">
+    <div data-testid="proactivity-settings" className={className}>
       <div className="text-[13.5px] text-muted-foreground">
         <Trans>Proactivity</Trans>
       </div>
