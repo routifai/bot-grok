@@ -1,24 +1,29 @@
-import { cn } from "@aiden/ui-web";
+import { BotAvatar, cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Check } from "lucide-react";
+import { ArrowUp, Check, ChevronRight } from "lucide-react";
+import { useState } from "react";
 import type { IllustrationKey } from "../../../lib/illustrations";
 import { illustrationUrl } from "../../../lib/illustrations";
-import { MUSE_TYPE, MuseColumn } from "../ui";
+import { MuseColumn } from "../ui";
 
 type StepState = "done" | "working" | "next";
+
+// iOS-flavoured press feedback: a quick, springy scale on press.
+const PRESS =
+  "transition-transform duration-150 ease-out active:scale-[0.98] motion-reduce:active:scale-100";
 
 function Ring({ value, color }: { value: number; color: string }) {
   const radius = 17;
   const circumference = 2 * Math.PI * radius;
   return (
-    <svg viewBox="0 0 40 40" className="size-11 shrink-0 -rotate-90" aria-hidden="true">
-      <circle cx="20" cy="20" r={radius} fill="none" strokeWidth="3.5" className="stroke-muted" />
+    <svg viewBox="0 0 40 40" className="size-12 shrink-0 -rotate-90" aria-hidden="true">
+      <circle cx="20" cy="20" r={radius} fill="none" strokeWidth="4" className="stroke-muted" />
       <circle
         cx="20"
         cy="20"
         r={radius}
         fill="none"
-        strokeWidth="3.5"
+        strokeWidth="4"
         strokeLinecap="round"
         stroke={color}
         strokeDasharray={circumference}
@@ -30,24 +35,24 @@ function Ring({ value, color }: { value: number; color: string }) {
 
 function Step({ state, children }: { state: StepState; children: string }) {
   return (
-    <li className="flex items-center gap-3 py-1.5">
+    <li className="flex items-center gap-3 py-[7px]">
       <span
         aria-hidden="true"
         className={cn(
-          "grid size-5 shrink-0 place-items-center rounded-full border",
-          state === "done" && "border-transparent bg-foreground text-background",
-          state === "working" && "border-foreground",
-          state === "next" && "border-border",
+          "grid size-[22px] shrink-0 place-items-center rounded-full",
+          state === "done" && "bg-foreground text-background",
+          state === "working" && "border-2 border-foreground",
+          state === "next" && "border-[1.5px] border-border",
         )}
       >
-        {state === "done" ? <Check size={12} strokeWidth={3} /> : null}
+        {state === "done" ? <Check size={13} strokeWidth={3} /> : null}
         {state === "working" ? (
           <span className="size-2 rounded-full bg-foreground motion-safe:animate-pulse" />
         ) : null}
       </span>
       <span
         className={cn(
-          "text-[15px]",
+          "text-[15px] tracking-[-0.01em]",
           state === "done" ? "text-muted-foreground" : "text-foreground",
           state === "working" && "font-medium",
         )}
@@ -58,33 +63,113 @@ function Step({ state, children }: { state: StepState; children: string }) {
   );
 }
 
-/** What a Goal looks like once it exists: the plan, progress, and the next check-in. */
-function ExampleGoal({ color }: { color: string }) {
+/**
+ * A Goal in motion, shown rather than explained: the Goal as a widget (progress, plan,
+ * next check-in) and, overlapping it, the kind of check-in banner the Muse sends —
+ * which is also how an Ask looks when it needs a decision.
+ */
+function GoalStage({ botName, color }: { botName: string; color: string }) {
   const { t } = useLingui();
   return (
-    <div className="relative rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <span className="absolute top-4 right-4 rounded-full bg-muted px-2 py-0.5 text-[12px] text-muted-foreground">
-        <Trans>Example</Trans>
-      </span>
-      <div className="flex items-center gap-4 pe-16">
-        <Ring value={0.4} color={color} />
-        <div className="min-w-0">
-          <p className={MUSE_TYPE.cardTitle}>
-            <Trans>Q3 client portfolio review</Trans>
-          </p>
-          <p className="mt-0.5 text-[13.5px] text-muted-foreground">
-            <Trans>2 of 5 steps · Next check-in Friday, 9:00</Trans>
-          </p>
+    <div
+      aria-hidden="true"
+      className="relative rounded-[28px] bg-muted/60 px-5 pt-5 pb-20 sm:px-8 sm:pt-8"
+    >
+      <div className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-12px_rgb(0_0_0/0.18)]">
+        <div className="flex items-center gap-4">
+          <Ring value={0.4} color={color} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">
+              <Trans>Q3 client portfolio review</Trans>
+            </p>
+            <p className="mt-0.5 text-[13.5px] text-muted-foreground">
+              <Trans>2 of 5 · Next check-in Friday, 9:00</Trans>
+            </p>
+          </div>
+        </div>
+        <ul className="mt-4 border-t border-border/70 pt-2">
+          <Step state="done">{t`Pull holdings and returns for 12 clients`}</Step>
+          <Step state="done">{t`Flag drift from each target mix`}</Step>
+          <Step state="working">{t`Draft talking points per client`}</Step>
+          <Step state="next">{t`Propose meeting slots`}</Step>
+        </ul>
+      </div>
+
+      <div className="absolute inset-x-3 -bottom-5 sm:inset-x-auto sm:end-6 sm:w-[380px]">
+        <div className="rounded-[22px] border border-glass-border bg-glass p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-card shadow-sm">
+              <BotAvatar color={color} identity={botName} face="muse" size={30} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[13px] font-semibold text-foreground">{botName}</span>
+                <span className="text-[12px] text-muted-foreground">
+                  <Trans>Fri 9:00</Trans>
+                </span>
+              </div>
+              <p className="mt-0.5 text-[14px] leading-[1.4] text-foreground">
+                <Trans>
+                  Talking points are ready for 5 of 12 clients. Two drifted more than 8% from
+                  target. Want me to propose meeting slots?
+                </Trans>
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <span className="rounded-full bg-foreground py-2 text-center text-[13.5px] font-medium text-background">
+              <Trans>Yes, go ahead</Trans>
+            </span>
+            <span className="rounded-full bg-muted py-2 text-center text-[13.5px] font-medium text-foreground">
+              <Trans>Not yet</Trans>
+            </span>
+          </div>
         </div>
       </div>
-      <ul className="mt-4 border-t border-border pt-3">
-        <Step state="done">{t`Pull holdings and returns for 12 clients`}</Step>
-        <Step state="done">{t`Flag drift from each target mix`}</Step>
-        <Step state="working">{t`Draft talking points per client`}</Step>
-        <Step state="next">{t`Propose meeting slots`}</Step>
-        <Step state="next">{t`Send prep packs the day before`}</Step>
-      </ul>
     </div>
+  );
+}
+
+function GoalComposer({
+  botName,
+  color,
+  onStart,
+}: {
+  botName: string;
+  color: string;
+  onStart: (text: string) => void;
+}) {
+  const { t } = useLingui();
+  const [text, setText] = useState("");
+  const ready = text.trim().length > 0;
+  return (
+    <form
+      className="flex h-14 items-center gap-3 rounded-full bg-card ps-2.5 pe-2 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.16)] ring-1 ring-border/70 focus-within:ring-2 focus-within:ring-ring"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready) onStart(text.trim());
+      }}
+    >
+      <BotAvatar color={color} identity={botName} face="muse" size={34} />
+      <input
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        aria-label={t`Describe a Goal`}
+        placeholder={t`What do you want to get done?`}
+        className="min-w-0 flex-1 bg-transparent text-[16px] tracking-[-0.01em] text-foreground outline-none placeholder:text-muted-foreground"
+      />
+      <button
+        type="submit"
+        aria-label={t`Start this Goal`}
+        disabled={!ready}
+        className={cn(
+          "grid size-10 shrink-0 place-items-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-25",
+          PRESS,
+        )}
+      >
+        <ArrowUp size={18} strokeWidth={2.25} />
+      </button>
+    </form>
   );
 }
 
@@ -97,9 +182,9 @@ export interface GoalStarter {
 }
 
 /**
- * The Goals page before the first Goal: it shows what a Goal is (an example with a
- * plan, progress and a check-in) and offers a few concrete starters, each of which
- * opens the Conversation with that ask.
+ * The Goals page before the first Goal, in an iOS spirit: a large title, a composer to
+ * say the Goal right here, a Goal in motion (widget plus check-in banner) instead of an
+ * explanation, and a grouped list of starters.
  */
 export function GoalsIntro({
   botName,
@@ -113,47 +198,65 @@ export function GoalsIntro({
   onStart?: (prompt: string) => void;
 }) {
   return (
-    <MuseColumn className="flex min-h-full flex-col pt-14 pb-12">
-      <header className="pb-8">
-        <h1 className={MUSE_TYPE.pageTitle}>
+    <MuseColumn className="flex min-h-full flex-col gap-10 pt-14 pb-16">
+      <header>
+        <h1 className="text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground">
           <Trans>Goals</Trans>
         </h1>
-        <p className={cn("mt-2", MUSE_TYPE.pageSubtitle)}>
+        <p className="mt-2 max-w-[560px] text-[17px] leading-[1.45] tracking-[-0.01em] text-muted-foreground">
           <Trans>
-            Give {botName} something bigger than a message. I'll plan it, work on it in the
-            background, and check in with you.
+            Give {botName} something bigger than a message. I'll plan it, keep working on it, and
+            check in with you.
           </Trans>
         </p>
+        {onStart ? (
+          <div className="mt-6">
+            <GoalComposer botName={botName} color={avatarColor} onStart={onStart} />
+          </div>
+        ) : null}
       </header>
 
-      <ExampleGoal color={avatarColor} />
+      <GoalStage botName={botName} color={avatarColor} />
 
       {onStart && starters.length > 0 ? (
-        <section className="pt-10">
-          <h2 className="pb-1 text-[17px] font-semibold text-foreground">
-            <Trans>Start with one of these</Trans>
+        <section className="pt-4">
+          <h2 className="px-1 pb-2.5 text-[15px] font-medium text-muted-foreground">
+            <Trans>Try one</Trans>
           </h2>
-          <ul className="flex flex-col">
-            {starters.map((starter) => (
+          <ul className="overflow-hidden rounded-[22px] bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-14px_rgb(0_0_0/0.14)] ring-1 ring-border/60">
+            {starters.map((starter, index) => (
               <li key={starter.title}>
                 <button
                   type="button"
                   onClick={() => onStart(starter.prompt)}
-                  className="-mx-4 flex w-[calc(100%+2rem)] items-start gap-4 rounded-2xl px-4 py-3.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
+                  className="group flex w-full items-center gap-4 px-4 text-start transition-colors hover:bg-accent/50 focus-visible:bg-accent/60 focus-visible:outline-none active:bg-accent"
                 >
                   <img
                     src={illustrationUrl(starter.illustration)}
                     alt=""
                     loading="lazy"
-                    className="mt-0.5 size-9 shrink-0"
+                    className="size-10 shrink-0"
                   />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[16px] font-medium leading-snug text-foreground">
-                      {starter.title}
+                  <span
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center gap-3 py-3.5",
+                      index > 0 && "border-t border-border/70",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[16px] font-medium tracking-[-0.01em] text-foreground">
+                        {starter.title}
+                      </span>
+                      <span className="mt-0.5 block text-[14px] leading-[1.45] text-muted-foreground">
+                        {starter.detail}
+                      </span>
                     </span>
-                    <span className="mt-1 block text-[15px] leading-[1.5] text-muted-foreground">
-                      {starter.detail}
-                    </span>
+                    <ChevronRight
+                      size={18}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      className="shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5"
+                    />
                   </span>
                 </button>
               </li>
