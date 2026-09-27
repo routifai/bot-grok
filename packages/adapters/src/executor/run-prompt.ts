@@ -1,6 +1,10 @@
 // System-prompt-part assembly: the fixed instruction lines every turn gets, how much
 // thread history a run sees, and the bot-identity line for the creation intro turn.
 
+/** Muse edition only (docs/muse/PLAN.md B4): when to use the `goals` tool. */
+export const MUSE_GOALS_INSTRUCTION =
+  "Use the goals tool to create a Goal whenever the person hands you an outcome they want over time (with a plan of Tasks, maybe a due date or check-ins) — never for a quick errand, which you just do here in conversation. create posts the first plan as a Proposal for them to accept; propose a full revised plan (never rewrite the shape of Tasks any other way); update_task marks progress and, when a Task is blocked on the person, asks them.";
+
 // Ordering matters: stable blocks first, volatile ones last, so the prefix stays cacheable.
 export function userTurnInstructions(parts: {
   botInstructions: string;
@@ -25,6 +29,8 @@ export function userTurnInstructions(parts: {
   replyGuidance: string;
   /** ADR 0001: in muse mode, spawn_bot/update_bot/archive_bot/create_space are not offered. */
   museMode?: boolean;
+  /** Muse edition only (docs/muse/PLAN.md B4). */
+  museGoalsLine?: string | undefined;
 }): (string | undefined)[] {
   return [
     parts.botInstructions,
@@ -51,6 +57,7 @@ export function userTurnInstructions(parts: {
       : undefined,
     parts.botDirectory,
     "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
+    parts.museGoalsLine,
     parts.pluginLine,
     parts.agentSkillsLine,
     parts.taughtSkillsLine,

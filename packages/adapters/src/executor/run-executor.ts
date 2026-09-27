@@ -200,6 +200,13 @@ import {
   MODEL_CANNOT_SEE_MESSAGE,
   modelAcceptsImageInput,
 } from "../model-vision.js";
+import {
+  createGoalFromTool,
+  getGoalFromTool,
+  listGoalsFromTool,
+  proposeGoalPlanFromTool,
+  updateGoalTaskFromTool,
+} from "../muse/goal-tools.js";
 import { loadGoalsContext, renderConversationSummaryContext } from "../muse/goals-context.js";
 import {
   assertPlotDataWithinLimits,
@@ -316,7 +323,12 @@ import {
 } from "./run-completion.js";
 import { persistMessageInTransaction, publishMessage, redactBlocks } from "./run-messages.js";
 import { notifyRun, renewRunLease } from "./run-notifications.js";
-import { runIdentityInstruction, threadContextForRun, userTurnInstructions } from "./run-prompt.js";
+import {
+  MUSE_GOALS_INSTRUCTION,
+  runIdentityInstruction,
+  threadContextForRun,
+  userTurnInstructions,
+} from "./run-prompt.js";
 import {
   computerRetryDelay,
   computerScreenToolResult,
@@ -2326,6 +2338,61 @@ export function createRunExecutor(deps: ExecutorDeps) {
             });
             return finish(removed);
           }
+          if (name === "goals") {
+            const action = String(args.action ?? "");
+            const scope = { spaceId: run.spaceId, botId: bot.id, userId: run.userId };
+            if (action === "create") {
+              return finish(
+                await createGoalFromTool(deps, scope, {
+                  title: String(args.title ?? ""),
+                  description:
+                    args.description !== undefined ? String(args.description) : undefined,
+                  due: args.due !== undefined ? String(args.due) : undefined,
+                  checkIn: Array.isArray(args.checkIn) ? args.checkIn.map(String) : undefined,
+                  tasks: Array.isArray(args.tasks) ? args.tasks.map(String) : [],
+                }),
+              );
+            }
+            if (action === "get") {
+              return finish(
+                await getGoalFromTool(deps, scope, { goalId: String(args.goalId ?? "") }),
+              );
+            }
+            if (action === "list") {
+              return finish(await listGoalsFromTool(deps, scope));
+            }
+            if (action === "update_task") {
+              return finish(
+                await updateGoalTaskFromTool(deps, scope, {
+                  goalId: String(args.goalId ?? ""),
+                  taskId: String(args.taskId ?? ""),
+                  status: String(args.status ?? ""),
+                  note: args.note !== undefined ? String(args.note) : undefined,
+                }),
+              );
+            }
+            if (action === "propose") {
+              const rawTasks = Array.isArray(args.tasks) ? args.tasks : [];
+              const tasks = rawTasks.map((task) => {
+                if (typeof task === "string") return { title: task };
+                const record = (task ?? {}) as Record<string, unknown>;
+                return {
+                  title: String(record.title ?? ""),
+                  ...(record.keepTaskId !== undefined
+                    ? { keepTaskId: String(record.keepTaskId) }
+                    : {}),
+                };
+              });
+              return finish(
+                await proposeGoalPlanFromTool(deps, scope, {
+                  goalId: String(args.goalId ?? ""),
+                  reason: String(args.reason ?? ""),
+                  tasks,
+                }),
+              );
+            }
+            return finish({ error: "action must be create, get, list, update_task, or propose." });
+          }
           if (name === "schedule_create") {
             const created = await createScheduleFromTool(deps, {
               spaceId: run.spaceId,
@@ -3327,6 +3394,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 taughtSkillsLine,
                 replyGuidance: runReplyGuidance(run.trigger),
                 museMode: isMuseMode(deps.productMode ?? "rakazo"),
+                museGoalsLine: isMuseMode(deps.productMode ?? "rakazo")
+                  ? MUSE_GOALS_INSTRUCTION
+                  : undefined,
               })
                 .filter((instruction): instruction is string => Boolean(instruction))
                 .join("\n\n"),

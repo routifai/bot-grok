@@ -708,6 +708,60 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "goals",
+    description:
+      "Manage the person's Goals — outcomes they want over time, each with a plan of Tasks — never quick errands, which you just do in conversation. Actions: `create` (title, description?, due? YYYY-MM-DD, checkIn? cron strings, tasks: string[] — the first plan, proposed to the person, not started yet), `get` (goalId), `list` (), `update_task` (goalId, taskId, status: pending|in_progress|done|blocked|skipped, note? — progress only; mark `blocked` with a note when you need the person, which asks them), `propose` (goalId, reason, tasks: [{title, keepTaskId?}] — a full revised plan when the shape needs to change; keepTaskId carries a Task over unchanged). Every `create` and `propose` opens an Ask in the Conversation that the person accepts or dismisses; keep working on the still-valid Tasks while you wait.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["create", "get", "list", "update_task", "propose"],
+        },
+        goalId: { type: "string" },
+        title: { type: "string", description: "create: the Goal's title." },
+        description: { type: "string" },
+        due: { type: "string", description: "Calendar date, YYYY-MM-DD." },
+        checkIn: {
+          type: "array",
+          items: { type: "string" },
+          description: "Check-in schedule as cron strings; omit for none.",
+        },
+        tasks: {
+          description:
+            "create: plain titles for the first plan (string[]). propose: the full revised plan " +
+            "([{title, keepTaskId?}]) — keepTaskId carries over a Task unchanged.",
+          oneOf: [
+            { type: "array", items: { type: "string" } },
+            {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  keepTaskId: { type: "string" },
+                },
+                required: ["title"],
+              },
+            },
+          ],
+        },
+        taskId: { type: "string", description: "update_task: the Task to update." },
+        status: {
+          type: "string",
+          enum: ["pending", "in_progress", "done", "blocked", "skipped"],
+          description: "update_task: the Task's new progress status.",
+        },
+        note: {
+          type: "string",
+          description: "update_task: progress note; required to ask about a blocked Task.",
+        },
+        reason: { type: "string", description: "propose: why the plan should change." },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "schedule_create",
     description:
       'Create a reminder or recurring job for this bot. Use for "remind me in 10 minutes" or "every morning send a joke". Repeats: cron or every/unit (min 1 minute). One-shot: runAt, delayMinutes, or delaySeconds.',
