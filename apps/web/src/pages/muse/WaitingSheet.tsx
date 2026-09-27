@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import { AskList, useAsks } from "./asks";
 import { CardSkeletonList } from "./feed/CardSkeleton";
-import { EmptyState, MUSE_TYPE } from "./ui";
+import { EmptyState } from "./ui";
 
 /**
  * "Waiting on you" (docs/muse/PLAN.md, F4): every open Ask, newest first, as a plain
@@ -13,10 +13,12 @@ import { EmptyState, MUSE_TYPE } from "./ui";
  */
 export function WaitingSheet({
   botId,
+  avatarColor,
   open,
   onOpenChange,
 }: {
   botId: string;
+  avatarColor?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -29,24 +31,27 @@ export function WaitingSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
-        <SheetHeader className="gap-1 border-b border-border px-6 py-5">
-          <SheetTitle className={`flex items-baseline gap-2 ${MUSE_TYPE.pageTitle}`}>
+      <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:sm:inset-y-3 data-[side=right]:sm:right-3 data-[side=right]:sm:h-auto data-[side=right]:sm:max-w-[440px] data-[side=right]:sm:rounded-3xl data-[side=right]:sm:border data-[side=right]:sm:border-border data-[side=right]:sm:shadow-float">
+        <SheetHeader className="flex-row items-center gap-2.5 px-6 pt-6 pb-2">
+          <SheetTitle className="text-[22px] font-semibold tracking-[-0.01em] text-foreground">
             {t`Waiting on you`}
-            {asks.length > 0 ? (
-              <span className="font-sans text-[14px] font-normal text-muted-foreground">
-                {asks.length}
-              </span>
-            ) : null}
           </SheetTitle>
+          {asks.length > 0 ? (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[13px] font-medium text-muted-foreground tabular-nums">
+              {asks.length}
+            </span>
+          ) : null}
         </SheetHeader>
-        <div className="rk-scroll flex-1 overflow-y-auto px-6 py-5">
+        <div
+          data-fade-top=""
+          className="rk-scroll flex flex-1 flex-col overflow-y-auto px-6 pt-3 pb-6"
+        >
           {asks.length === 0 && loading ? (
             <CardSkeletonList count={2} />
           ) : asks.length === 0 ? (
-            <EmptyState
-              headline={t`You're all caught up.`}
-            >{t`Nothing waiting on you.`}</EmptyState>
+            <EmptyState face avatarColor={avatarColor} headline={t`You're all caught up`}>
+              {t`When I need a decision or an answer, it'll show up here.`}
+            </EmptyState>
           ) : (
             <AskList asks={asks} onAnswer={handleAnswer} />
           )}

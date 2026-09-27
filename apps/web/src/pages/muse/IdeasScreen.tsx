@@ -4,7 +4,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import { areaLabel, ideaIcon } from "./ideas/areaIcon";
+import { areaLabel } from "./ideas/areaIcon";
 import { EmptyState, MUSE_TYPE, MuseColumn, MuseScreen } from "./ui";
 
 /** Ideas kept in the order their area first appeared, not re-sorted alphabetically. */
@@ -25,15 +25,6 @@ function groupByArea(ideas: Idea[]): { area: string; ideas: Idea[] }[] {
 /** Headings only help when they gather things: a page of one-idea groups reads as noise. */
 function worthGrouping(groups: { ideas: Idea[] }[]): boolean {
   return groups.length > 1 && groups.length <= 4 && groups.every((group) => group.ideas.length > 1);
-}
-
-function IdeaIcon({ area }: { area: string }) {
-  const Icon = ideaIcon(area);
-  return (
-    <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center pt-0.5">
-      <Icon size={22} strokeWidth={1.6} className="text-muted-foreground" />
-    </span>
-  );
 }
 
 function IdeaRow({
@@ -57,9 +48,8 @@ function IdeaRow({
       <button
         type="button"
         onClick={() => onSend(idea.text)}
-        className="-mx-3 flex w-[calc(100%+1.5rem)] items-start gap-4 rounded-2xl px-3 py-3 text-start transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
+        className="-mx-4 flex w-[calc(100%+2rem)] items-start gap-4 rounded-2xl px-4 py-3.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
       >
-        <IdeaIcon area={idea.area} />
         <span className="min-w-0 flex-1">
           <span className="block text-[16px] font-medium leading-snug text-foreground">
             {idea.text}
@@ -146,27 +136,29 @@ export function IdeasScreen({
   return (
     <MuseScreen>
       <MuseColumn className="flex min-h-full flex-col pt-14 pb-12">
-        <header className="flex items-end justify-between gap-6 pb-8">
-          <div className="min-w-0">
+        <header className="pb-8">
+          <div className="flex items-center justify-between gap-6">
             <h1 className={MUSE_TYPE.pageTitle}>
               <Trans>Ideas</Trans>
             </h1>
-            <p className={cn("mt-1.5", MUSE_TYPE.pageSubtitle)}>
-              <Trans>
-                I'm always looking for new ways to help. My favourite ideas show up here.
-              </Trans>
-            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 rounded-full text-muted-foreground"
+              disabled={refreshing || ideas === null}
+              onClick={() => void handleRefresh()}
+            >
+              <RefreshCw
+                size={14}
+                strokeWidth={1.75}
+                className={refreshing ? "animate-spin" : ""}
+              />
+              {refreshing ? t`Thinking…` : t`New ideas`}
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0 rounded-full text-muted-foreground"
-            disabled={refreshing || ideas === null}
-            onClick={() => void handleRefresh()}
-          >
-            <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? t`Thinking…` : t`New ideas`}
-          </Button>
+          <p className={cn("mt-2", MUSE_TYPE.pageSubtitle)}>
+            <Trans>I'm always looking for new ways to help. My favourite ideas show up here.</Trans>
+          </p>
         </header>
 
         {ideas === null ? (

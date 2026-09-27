@@ -30,6 +30,7 @@ vi.mock("@aiden/ui-web", () => ({
   SheetContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   SheetHeader: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
+  BotAvatar: () => <span data-testid="muse-face" />,
   Button: (props: ComponentProps<"button">) => <button {...props} />,
   Input: (props: ComponentProps<"input">) => <input {...props} />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
@@ -213,7 +214,9 @@ it("shows a short empty state when nothing is waiting", async () => {
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Nothing waiting on you.");
+        expect(page.container.textContent).toContain(
+          "When I need a decision or an answer, it'll show up here.",
+        );
       });
     });
   } finally {

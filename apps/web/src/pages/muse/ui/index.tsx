@@ -327,10 +327,13 @@ export function EmptyState({
   children,
   suggestions,
   onSuggestion,
+  face,
   className,
 }: {
   /** The Muse's identity color; defaults to gold when the screen has none handy. */
   avatarColor?: string;
+  /** Show the Muse's face even without suggestions (it always shows with them). */
+  face?: boolean;
   headline?: ReactNode;
   children?: ReactNode;
   suggestions?: readonly string[];
@@ -338,6 +341,7 @@ export function EmptyState({
   className?: string;
 }) {
   const rich = Boolean(suggestions?.length && onSuggestion);
+  const showFace = rich || face;
   return (
     <div
       className={cn(
@@ -345,7 +349,7 @@ export function EmptyState({
         className,
       )}
     >
-      {rich ? (
+      {showFace ? (
         <BotAvatar
           color={avatarColor ?? DEFAULT_MUSE_COLOR}
           identity="aiden"
