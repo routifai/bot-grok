@@ -200,7 +200,6 @@ async function main() {
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
     cloudAgent,
-    productMode,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
