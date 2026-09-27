@@ -5,15 +5,14 @@ import type {
   FollowedTopic,
   Goal,
   Idea,
-  MuseSettings,
   Post,
   ThreadMessagePage,
 } from "@rakazo/contracts";
-import { DEFAULT_MUSE_SETTINGS } from "@rakazo/contracts";
 
 // Sample data behind the Muse procedures so the frontend can be built and felt before the
 // backend lands (docs/muse/PLAN.md, "frontend first"). Each backend package replaces the
-// matching part; delete this file once goals, asks, feed, ideas, topics, and settings are real.
+// matching part; delete this file once goals, asks, feed, ideas, and topics are real.
+// (muse.settings / muse.updateSettings are already real: see muse-settings.ts.)
 // State is in memory and shared by every caller: preview only, never production data.
 
 type PreviewState = {
@@ -22,7 +21,6 @@ type PreviewState = {
   posts: Post[];
   topics: FollowedTopic[];
   ideas: Idea[];
-  settings: MuseSettings;
 };
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -198,7 +196,6 @@ function seed(botId: string): PreviewState {
       idea("idea-5", "Draft a Moroccan-style landing page for my portfolio", "creative"),
       idea("idea-6", "What should I pack for Kyoto in December?", "travel"),
     ],
-    settings: { ...DEFAULT_MUSE_SETTINGS },
   };
 }
 
@@ -343,14 +340,6 @@ export const musePreview = {
     remove(topicId: string): { ok: true } {
       if (state) state.topics = state.topics.filter((topic) => topic.id !== topicId);
       return { ok: true };
-    },
-  },
-  settings: {
-    get: (botId: string): MuseSettings => current(botId).settings,
-    update(botId: string, patch: Partial<MuseSettings>): MuseSettings {
-      const preview = current(botId);
-      preview.settings = { ...preview.settings, ...patch };
-      return preview.settings;
     },
   },
 };

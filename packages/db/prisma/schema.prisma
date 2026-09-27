@@ -371,6 +371,11 @@ model Bot {
   webhookSecretId   String?
   teamChatAmbientEnabled Boolean @default(false)
   teamChatRules          String  @default("")
+  // Muse edition (packages/contracts/src/muse.ts, MuseSettings): null means the default
+  // from DEFAULT_MUSE_SETTINGS. museProactivity is a Proactivity level; museQuietHours is
+  // a QuietHoursSchema string ("HH:MM-HH:MM") or the literal "" for "no quiet hours".
+  museProactivity   String?
+  museQuietHours    String?
   routines          Routine[]
   scratchpadItems   ScratchpadItem[]
   taughtSkills      TaughtSkill[]
