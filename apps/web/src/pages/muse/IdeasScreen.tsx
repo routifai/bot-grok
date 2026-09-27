@@ -1,7 +1,6 @@
 import type { Idea } from "@aiden/contracts";
-import { Button, cn, Skeleton } from "@aiden/ui-web";
+import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { areaLabel } from "./ideas/areaIcon";
@@ -100,7 +99,6 @@ export function IdeasScreen({
 }) {
   const { t } = useLingui();
   const [ideas, setIdeas] = useState<Idea[] | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -119,16 +117,6 @@ export function IdeasScreen({
     };
   }, [botId]);
 
-  async function handleRefresh() {
-    if (refreshing) return;
-    setRefreshing(true);
-    try {
-      setIdeas(await rpc.ideas.refresh({ botId }));
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
   const groups = useMemo(() => groupByArea(ideas ?? []), [ideas]);
   const grouped = worthGrouping(groups);
   let index = 0;
@@ -137,25 +125,9 @@ export function IdeasScreen({
     <MuseScreen>
       <MuseColumn className="flex min-h-full flex-col pt-14 pb-12">
         <header className="pb-8">
-          <div className="flex items-center justify-between gap-6">
-            <h1 className={MUSE_TYPE.pageTitle}>
-              <Trans>Ideas</Trans>
-            </h1>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0 rounded-full text-muted-foreground"
-              disabled={refreshing || ideas === null}
-              onClick={() => void handleRefresh()}
-            >
-              <RefreshCw
-                size={14}
-                strokeWidth={1.75}
-                className={refreshing ? "animate-spin" : ""}
-              />
-              {refreshing ? t`Thinking…` : t`New ideas`}
-            </Button>
-          </div>
+          <h1 className={MUSE_TYPE.pageTitle}>
+            <Trans>Ideas</Trans>
+          </h1>
           <p className={cn("mt-2", MUSE_TYPE.pageSubtitle)}>
             <Trans>I'm always looking for new ways to help. My favourite ideas show up here.</Trans>
           </p>

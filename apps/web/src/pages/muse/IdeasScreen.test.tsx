@@ -109,33 +109,3 @@ it("shows an empty state when there are no Ideas yet", async () => {
     vi.unstubAllGlobals();
   }
 });
-
-it("refreshing calls ideas.refresh and replaces the list", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.ideas.list.mockResolvedValue([idea({ id: "idea-1", text: "Old idea" })]);
-  api.ideas.refresh.mockResolvedValue([idea({ id: "idea-2", text: "Fresh idea" })]);
-  const page = await renderIdeas();
-  try {
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Old idea");
-      });
-    });
-    const refreshButton = [...page.container.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent === "New ideas",
-    );
-    expect(refreshButton).toBeTruthy();
-    await act(async () => {
-      refreshButton?.click();
-    });
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Fresh idea");
-      });
-    });
-    expect(api.ideas.refresh).toHaveBeenCalledWith({ botId: "bot-1" });
-  } finally {
-    await page.cleanup();
-    vi.unstubAllGlobals();
-  }
-});
