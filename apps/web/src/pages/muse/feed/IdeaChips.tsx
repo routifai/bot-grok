@@ -3,6 +3,11 @@ import type { Idea } from "@rakazo/contracts";
 import { Button } from "@rakazo/ui-web";
 import { RefreshCw } from "lucide-react";
 import { useMemo } from "react";
+import { Chip, Section } from "../ui";
+
+// Grouped by area only past six Ideas (docs/muse/DESIGN.md, "Ideas"): fewer than that,
+// the area labels are more chrome than signal.
+const GROUP_THRESHOLD = 6;
 
 function groupByArea(ideas: Idea[]): Map<string, Idea[]> {
   const groups = new Map<string, Idea[]>();
@@ -26,14 +31,15 @@ export function IdeaChips({
   onRefresh: () => void;
 }) {
   const { t } = useLingui();
-  const groups = useMemo(() => groupByArea(ideas), [ideas]);
+  const groups = useMemo(
+    () => (ideas.length > GROUP_THRESHOLD ? groupByArea(ideas) : null),
+    [ideas],
+  );
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-[13px] font-semibold text-foreground">
-          <Trans>Ideas</Trans>
-        </h2>
+    <Section
+      title={t`Things I could start now`}
+      action={
         <Button
           variant="ghost"
           size="icon-sm"
@@ -42,14 +48,15 @@ export function IdeaChips({
           disabled={refreshing}
           onClick={onRefresh}
         >
-          <RefreshCw size={14} strokeWidth={1.9} className={refreshing ? "animate-spin" : ""} />
+          <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? "animate-spin" : ""} />
         </Button>
-      </div>
+      }
+    >
       {ideas.length === 0 ? (
         <p className="text-[13.5px] text-muted-foreground">
           <Trans>No ideas right now.</Trans>
         </p>
-      ) : (
+      ) : groups ? (
         <div className="flex flex-col gap-3">
           {[...groups.entries()].map(([area, areaIdeas]) => (
             <div key={area} className="flex flex-col gap-1.5">
@@ -58,21 +65,23 @@ export function IdeaChips({
               </div>
               <div className="flex flex-wrap gap-2">
                 {areaIdeas.map((idea) => (
-                  <Button
-                    key={idea.id}
-                    variant="outline"
-                    size="sm"
-                    className="h-auto whitespace-normal rounded-full px-3 py-1.5 text-start font-normal"
-                    onClick={() => onSend(idea.text)}
-                  >
+                  <Chip key={idea.id} onClick={() => onSend(idea.text)}>
                     {idea.text}
-                  </Button>
+                  </Chip>
                 ))}
               </div>
             </div>
           ))}
         </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {ideas.map((idea) => (
+            <Chip key={idea.id} onClick={() => onSend(idea.text)}>
+              {idea.text}
+            </Chip>
+          ))}
+        </div>
       )}
-    </div>
+    </Section>
   );
 }

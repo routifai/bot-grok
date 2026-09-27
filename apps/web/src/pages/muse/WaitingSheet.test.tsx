@@ -8,9 +8,18 @@ import { expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ list: vi.fn(), count: vi.fn(), answer: vi.fn() }));
 vi.mock("../../lib/rpc", () => ({ rpc: { asks: api } }));
+vi.mock("../../lib/relative-time", () => ({ formatRelativeTime: () => "just now" }));
+vi.mock("@lingui/core/macro", () => ({
+  t: (parts: TemplateStringsArray, ...values: unknown[]) =>
+    parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, ""),
+}));
 vi.mock("@lingui/react/macro", () => {
-  const t = (parts: TemplateStringsArray) => parts.join("");
-  return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
+  const t = (parts: TemplateStringsArray, ...values: unknown[]) =>
+    parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, "");
+  return {
+    useLingui: () => ({ t, i18n: { locale: "en" } }),
+    Trans: ({ children }: { children: ReactNode }) => children,
+  };
 });
 vi.mock("@rakazo/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
@@ -23,6 +32,7 @@ vi.mock("@rakazo/ui-web", () => ({
   SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
   Button: (props: ComponentProps<"button">) => <button {...props} />,
   Input: (props: ComponentProps<"input">) => <input {...props} />,
+  cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
 import { WaitingSheet } from "./WaitingSheet";

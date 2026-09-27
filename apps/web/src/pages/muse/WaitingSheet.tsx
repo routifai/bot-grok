@@ -1,6 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@rakazo/ui-web";
 import { AskItem, useAsks } from "./asks";
+import { CardSkeletonList } from "./feed/CardSkeleton";
+import { EmptyState } from "./ui";
 
 /**
  * "Waiting on you" (docs/muse/PLAN.md, F4): every open Ask, newest first,
@@ -18,17 +20,21 @@ export function WaitingSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useLingui();
-  const { asks, answer } = useAsks(botId);
+  const { asks, loading, answer } = useAsks(botId);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{t`Waiting on you`}</SheetTitle>
+        <SheetHeader className="gap-1 border-b border-border px-5 py-5">
+          <SheetTitle className="font-display text-[26px] leading-tight tracking-[-0.01em] text-foreground">
+            {t`Waiting on you`}
+          </SheetTitle>
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto px-4 pb-6">
-          {asks.length === 0 ? (
-            <p className="mt-1 text-[13.5px] text-muted-foreground">{t`Nothing waiting on you.`}</p>
+        <div className="rk-scroll flex-1 overflow-y-auto px-5 py-5">
+          {asks.length === 0 && loading ? (
+            <CardSkeletonList count={2} />
+          ) : asks.length === 0 ? (
+            <EmptyState lead={t`You're all caught up.`}>{t`Nothing waiting on you.`}</EmptyState>
           ) : (
             <div className="flex flex-col gap-3">
               {asks.map((ask) => (
