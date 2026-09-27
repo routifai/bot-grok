@@ -138,6 +138,7 @@ import { AppRail } from "../components/AppRail";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { Shimmer } from "../components/ai/primitives";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -221,6 +222,7 @@ import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPan
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
+import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveState";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { LibraryScreen } from "./muse/LibraryScreen";
@@ -2782,8 +2784,8 @@ export function ShellPage() {
           botId={active.id}
           museName={active.name}
           color={active.color}
-          status={active.status}
-          running={transcriptRunning}
+          runs={currentRuns}
+          messages={activeSnapshot?.messages}
           personName={bootstrapMe?.name}
           active={museView}
           onNavigate={setMuseView}
@@ -3472,8 +3474,9 @@ export function ShellPage() {
               {museMode && active ? (
                 <ConversationHeader
                   botId={active.id}
-                  museName={active.name}
-                  running={transcriptRunning}
+                  color={active.color}
+                  runs={currentRuns}
+                  messages={activeSnapshot?.messages}
                   onOpenWaiting={() => setWaitingOpen(true)}
                   actions={
                     <>
@@ -3613,11 +3616,8 @@ export function ShellPage() {
                   key={activeSnapshot?.threadId}
                   museMode={museMode}
                   followSignal={followSignal}
-                  museFace={
-                    active
-                      ? { color: active.color, identity: active.id, status: active.status }
-                      : undefined
-                  }
+                  museFace={active ? { color: active.color, identity: active.id } : undefined}
+                  museRuns={currentRuns}
                   scrollRef={messageScroll}
                   scrollRequest={scrollRequest}
                   onScrollRequestHandled={clearScrollRequest}
@@ -4770,6 +4770,7 @@ export function ShellPage() {
 const Transcript = memo(function Transcript({
   museMode,
   museFace,
+  museRuns,
   followSignal,
   scrollRef,
   scrollRequest,
@@ -4801,7 +4802,9 @@ const Transcript = memo(function Transcript({
 }: {
   museMode?: boolean;
   /** Muse mode: the face shown beside the Muse's replies. */
-  museFace?: { color: string; identity: string; status?: string };
+  museFace?: { color: string; identity: string };
+  /** Muse mode: the active bot's live runs, for the gutter face and bottom-of-transcript row. */
+  museRuns?: readonly MuseLiveRun[];
   /** Changes when the person sends: follow the tail again. */
   followSignal?: number;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -4833,6 +4836,11 @@ const Transcript = memo(function Transcript({
   onOpenComputer: (botId?: string) => void;
 }) {
   const { t } = useLingui();
+  const { state: museLiveState, label: museLiveLabel } = useMuseLiveState({
+    botId: museFace?.identity ?? "",
+    runs: museRuns ?? [],
+    messages,
+  });
   const [atEnd, setAtEnd] = useState(true);
   const following = useRef(true);
   const autoScrolling = useRef(false);
@@ -5147,7 +5155,7 @@ const Transcript = memo(function Transcript({
                       <BotAvatar
                         color={museFace.color}
                         identity={museFace.identity}
-                        status={museFace.status}
+                        museState={museLiveState}
                         face="muse"
                         size={32}
                       />
@@ -5243,7 +5251,28 @@ const Transcript = memo(function Transcript({
                 block.kind === "progress" && !isToolActivityBlock(block) && Boolean(block.text),
             ),
         ) ? (
-          <ActiveBotGlyph bots={workingBots} label={workingLabel} />
+          museMode && museFace ? (
+            museLiveLabel ? (
+              <div
+                data-testid="muse-live-row"
+                aria-hidden="true"
+                className="flex min-h-10 items-center gap-2.5 px-1"
+              >
+                <BotAvatar
+                  color={museFace.color}
+                  identity={museFace.identity}
+                  museState={museLiveState}
+                  face="muse"
+                  size={32}
+                />
+                <span className="text-[15px] text-muted-foreground">
+                  <Shimmer>{museLiveLabel}</Shimmer>
+                </span>
+              </div>
+            ) : null
+          ) : (
+            <ActiveBotGlyph bots={workingBots} label={workingLabel} />
+          )
         ) : null}
       </div>
       {quoteDraft ? (

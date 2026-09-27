@@ -91,6 +91,13 @@ export interface BotAvatarProps {
   face?: "muse";
   /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
   waitingCount?: number;
+  /**
+   * Precomputed live state (derived from the active run data, e.g. `deriveMuseState`
+   * in apps/web). Takes priority over the `status`/`waitingCount` derivation below —
+   * callers that already track live run state should pass this instead of a bot
+   * row's `status`, which is a snapshot that rarely reflects an in-flight run.
+   */
+  museState?: MuseState;
 }
 
 /**
@@ -117,6 +124,7 @@ export const BotAvatar = memo(function BotAvatar({
   variant,
   face,
   waitingCount,
+  museState,
 }: BotAvatarProps) {
   const id = useId().replace(/[^a-zA-Z0-9-_]/g, "");
   const isWorking = ACTIVE_RUN_STATUSES.some((s) => s === status);
@@ -186,7 +194,7 @@ export const BotAvatar = memo(function BotAvatar({
       <MuseAvatar
         color={color ? parsed.color : DEFAULT_MUSE_COLOR}
         size={size}
-        state={museAvatarState(status, waitingCount)}
+        state={museState ?? museAvatarState(status, waitingCount)}
         waitingCount={waitingCount ?? 0}
         className={className}
       />
@@ -437,6 +445,16 @@ function MuseAvatar({
           </radialGradient>
         </defs>
         <ellipse cx={60} cy={112} rx={32} ry={6} fill={`url(#${gradId}-shadow)`} />
+        <circle
+          className="aiden-muse-glow"
+          cx={60}
+          cy={66}
+          r={46}
+          fill="none"
+          stroke={color}
+          strokeWidth={7}
+          pointerEvents="none"
+        />
         <g className="aiden-muse-all">
           <path className="aiden-muse-body" fill={color} d={MUSE_BODY_PATH} />
           <path
