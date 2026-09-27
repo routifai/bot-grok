@@ -1,17 +1,25 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import { isAttachmentImageMimeType } from "@aiden/contracts";
-import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@aiden/ui-web";
+import {
+  Button,
+  buttonVariants,
+  cn,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@aiden/ui-web";
 import { i18n } from "@lingui/core";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Code2, Download, FileText, X } from "lucide-react";
+import { Code2, Download, ExternalLink, FileText, Maximize2, X } from "lucide-react";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import { artifactKind, isPreviewableArtifactKind, kindEyebrow } from "../lib/artifact-kind";
+import { artifactKind, isPreviewableArtifactKind, kindLabel } from "../lib/artifact-kind";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { downloadArtifact, downloadArtifactBytes, fetchArtifactBytes } from "../lib/artifact-open";
 import { useObjectUrl } from "../lib/use-object-url";
-import { ArtifactPreviewThumbnail } from "./ArtifactPreviewThumbnail";
+import { ArtifactPreviewCard, GlassAction } from "./ArtifactPreviewCard";
 import { PdfViewer } from "./PdfViewer";
 import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 
@@ -28,6 +36,7 @@ type ArtifactFileCardProps = {
 
 const PREVIEWABLE_MIME_TYPES = new Set(["text/markdown", "text/html", "application/pdf"]);
 const TEXT_MIME_TYPES = new Set(["text/markdown", "text/html"]);
+const EMPTY_BYTES = new Uint8Array(0);
 
 export function ArtifactFileCard(props: ArtifactFileCardProps) {
   const { t } = useLingui();
@@ -50,51 +59,37 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
   if (props.museMode && isPreviewableArtifactKind(kind)) {
     return (
       <>
-        <div className="flex w-[min(360px,90%)] flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground">
-          <button
-            ref={previewButton}
-            type="button"
-            aria-label={t`Preview ${props.name}`}
-            onClick={() => setPreviewOpen(true)}
-            className="flex flex-col text-left outline-none"
-          >
-            <span className="block aspect-video w-full bg-muted ring-1 ring-inset ring-border/50">
-              <ArtifactPreviewThumbnail
-                artifact={{
-                  id: props.artifactId,
-                  mimeType: props.mimeType,
-                  size: props.size,
-                  name: props.name,
-                }}
-              />
-            </span>
-            <span className="flex flex-col gap-1 px-3.5 pt-2.5 pb-1">
-              <span className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                {kindEyebrow(kind)}
-              </span>
-              <span className="truncate text-[13.5px] font-medium">{props.name}</span>
-            </span>
-          </button>
-          <div className="flex items-center justify-between px-3.5 pb-2.5">
-            <span className="text-[12px] text-muted-foreground">{formatBytes(props.size)}</span>
-            <button
-              type="button"
-              aria-label={t`Download ${props.name}`}
-              title={t`Download ${props.name}`}
-              onClick={() => void startDownload()}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <Download size={15} strokeWidth={1.8} />
-            </button>
-          </div>
-        </div>
+        <ArtifactPreviewCard
+          size="compact"
+          artifact={{
+            id: props.artifactId,
+            mimeType: props.mimeType,
+            size: props.size,
+            name: props.name,
+          }}
+          title={props.name}
+          meta={`${kindLabel(kind)} · ${formatBytes(props.size)}`}
+          buttonLabel={t`Preview ${props.name}`}
+          buttonRef={previewButton}
+          onOpen={() => setPreviewOpen(true)}
+          actions={
+            <>
+              <GlassAction label={t`Open ${props.name}`} onClick={() => setPreviewOpen(true)}>
+                <Maximize2 size={14} strokeWidth={1.8} />
+              </GlassAction>
+              <GlassAction label={t`Download ${props.name}`} onClick={() => void startDownload()}>
+                <Download size={14} strokeWidth={1.8} />
+              </GlassAction>
+            </>
+          }
+        />
         {downloadError ? <DownloadError message={downloadError} /> : null}
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
           <DialogContent
             showCloseButton={false}
             initialFocus={closeButton}
             finalFocus={previewButton}
-            className="flex h-[min(88vh,900px)] w-[min(960px,94vw)] flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+            className="flex h-[85vh] w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-none"
           >
             <FilePreview {...props} closeButtonRef={closeButton} />
           </DialogContent>
@@ -177,6 +172,7 @@ function FilePreview({
   artifactId,
   name,
   mimeType,
+  museMode,
   closeButtonRef,
 }: ArtifactFileCardProps & { closeButtonRef: RefObject<HTMLButtonElement | null> }) {
   const { t } = useLingui();
@@ -188,6 +184,9 @@ function FilePreview({
   >({ status: "loading" });
   const targetBotId = "botId" in target ? target.botId : undefined;
   const targetGroupId = "groupId" in target ? target.groupId : undefined;
+  // Muse mode only: an object URL so the dialog can offer "Open in new tab" once the
+  // bytes are in; upstream's dialog is left exactly as it was.
+  const objectUrl = useObjectUrl(state.status === "ready" ? state.bytes : EMPTY_BYTES, mimeType);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +224,21 @@ function FilePreview({
         <DialogTitle className="min-w-0 flex-1 truncate text-[14px] leading-5 font-medium text-foreground">
           {name}
         </DialogTitle>
+        {museMode && state.status === "ready" && objectUrl ? (
+          <a
+            href={objectUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "icon-lg" }),
+              "rounded-full text-muted-foreground",
+            )}
+            aria-label={t`Open ${name} in new tab`}
+            title={t`Open in new tab`}
+          >
+            <ExternalLink />
+          </a>
+        ) : null}
         <Button
           variant="ghost"
           size="icon-lg"

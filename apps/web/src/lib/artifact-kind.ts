@@ -32,10 +32,10 @@ export const KIND_ICON: Record<ArtifactKind, LucideIcon> = {
   file: File,
 };
 
-/** The mono type eyebrow shown on each card. */
-export function kindEyebrow(kind: ArtifactKind): string {
+/** The quiet "Kind · size/time" meta line shown under a card's preview. */
+export function kindLabel(kind: ArtifactKind): string {
   if (kind === "document") return "PDF";
-  return kind.toUpperCase();
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
 /** The plural facet chip label. */
