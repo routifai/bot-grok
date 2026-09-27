@@ -68,13 +68,13 @@ export function MuseSidebar({
     <nav
       data-testid="app-rail"
       aria-label={t`Sections`}
-      className="app-drag flex w-[288px] shrink-0 flex-col gap-6 px-3.5 pt-5 pb-4"
+      className="app-drag flex w-[320px] shrink-0 flex-col gap-7 px-4 pt-5 pb-4"
     >
       <button
         type="button"
         onClick={onOpenWaiting}
         aria-label={t`Waiting on you`}
-        className="app-no-drag flex items-center gap-3 rounded-xl px-2 py-2 text-start transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
+        className="app-no-drag flex items-center gap-3.5 rounded-2xl border border-border bg-background px-3.5 py-3 text-start shadow-sm transition-shadow hover:shadow-float focus-visible:outline-2 focus-visible:outline-ring"
       >
         <BotAvatar
           color={color}
@@ -85,10 +85,10 @@ export function MuseSidebar({
           size={44}
         />
         <span className="min-w-0">
-          <span className="block truncate text-[16px] font-semibold text-foreground" dir="auto">
+          <span className="block truncate text-[17px] font-semibold text-foreground" dir="auto">
             {museName}
           </span>
-          <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <span className="mt-0.5 mt-0.5 flex items-center gap-1.5 text-[14px] text-muted-foreground">
             <span
               aria-hidden="true"
               className={cn(
@@ -140,7 +140,7 @@ export function MuseSidebar({
 
       {activeGoals.length ? (
         <div className="app-no-drag flex min-h-0 flex-col gap-0.5">
-          <div className="px-3 pb-1.5 text-[13px] font-medium text-muted-foreground">
+          <div className="px-3.5 pb-2 text-[13.5px] font-semibold text-muted-foreground">
             <Trans>Goals</Trans>
           </div>
           {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
@@ -152,7 +152,7 @@ export function MuseSidebar({
                 key={goal.id}
                 type="button"
                 onClick={() => onNavigate("goals")}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-start text-[14px] text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
+                className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-start text-[15px] text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
               >
                 <span
                   aria-hidden="true"
@@ -164,7 +164,7 @@ export function MuseSidebar({
                 <span className="min-w-0 flex-1 truncate" dir="auto">
                   {goal.title}
                 </span>
-                <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground">
+                <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
                   {done}/{goal.tasks.length}
                 </span>
               </button>
@@ -176,10 +176,10 @@ export function MuseSidebar({
       <div className="app-no-drag mt-auto flex flex-col gap-0.5">
         <NavRow icon={<Settings />} label={<Trans>Settings</Trans>} onClick={onOpenSettings} />
         {personName ? (
-          <div className="flex items-center gap-3 px-3 py-2 text-[14.5px] text-sidebar-foreground">
+          <div className="flex items-center gap-3 px-3.5 py-2 text-[15.5px] text-sidebar-foreground">
             <span
               aria-hidden="true"
-              className="grid size-7 shrink-0 place-items-center rounded-full bg-foreground text-[12px] font-semibold text-background"
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-[13px] font-semibold text-background"
             >
               {personName.trim().charAt(0).toUpperCase()}
             </span>
@@ -226,7 +226,7 @@ function NavRow({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-10 items-center gap-3 rounded-lg px-3 text-start text-[15px] transition-colors [&_svg]:size-[18px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
+        "flex h-11 items-center gap-3.5 rounded-xl px-3.5 text-start text-[16px] transition-colors [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
         "focus-visible:outline-2 focus-visible:outline-ring",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
@@ -238,7 +238,7 @@ function NavRow({
       {meta ? (
         <span
           className={cn(
-            "shrink-0 rounded-full px-2 text-[12px] font-medium tabular-nums",
+            "shrink-0 rounded-full px-2 py-0.5 text-[12.5px] font-medium tabular-nums",
             attention ? "bg-warning/15 text-warning" : "text-muted-foreground",
           )}
         >

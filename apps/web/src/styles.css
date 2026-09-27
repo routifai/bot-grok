@@ -37,6 +37,19 @@ body,
 }
 
 /* Muse edition body type: Instrument Sans pairs with the Instrument Serif titles. */
+/* Muse edition: fixed pixel sizes read tiny on very wide windows, so scale the whole
+   interface up on large screens. */
+@media (min-width: 1600px) {
+  [data-product="muse"] #root {
+    zoom: 1.1;
+  }
+}
+@media (min-width: 1900px) {
+  [data-product="muse"] #root {
+    zoom: 1.2;
+  }
+}
+
 [data-product="muse"] body,
 [data-product="muse"] #root {
   font-family: "Instrument Sans Variable", "Geist Variable", ui-sans-serif, system-ui, sans-serif;

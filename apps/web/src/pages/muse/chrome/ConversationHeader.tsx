@@ -28,16 +28,7 @@ export function ConversationHeader({
   const { t } = useLingui();
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
-  const { asks, count: askCount } = useAsks(botId);
-  // Cycle through what's waiting so the pill says what Aiden actually needs.
-  const [askIndex, setAskIndex] = useState(0);
-  useEffect(() => {
-    setAskIndex(0);
-    if (asks.length < 2) return;
-    const timer = window.setInterval(() => setAskIndex((index) => (index + 1) % asks.length), 4000);
-    return () => window.clearInterval(timer);
-  }, [asks.length]);
-  const currentAsk = asks[askIndex % Math.max(asks.length, 1)];
+  const { count: askCount } = useAsks(botId);
 
   useEffect(() => {
     const current = ++generation.current;
@@ -62,28 +53,19 @@ export function ConversationHeader({
         <span className="truncate text-[15.5px] font-semibold text-foreground">
           <Trans>Conversation</Trans>
         </span>
-        {pill.tone === "attention" && currentAsk ? (
+        {pill.tone === "attention" && askCount > 0 ? (
           <StatusPill
             tone="attention"
             onClick={onOpenWaiting}
             label={t`Open what's waiting on you`}
-            className="max-w-[min(560px,60vw)]"
           >
-            <span className="shrink-0">{t`${museName} needs you`}</span>
+            <span>{t`${museName} needs you`}</span>
             <span aria-hidden="true" className="text-muted-foreground">
               ·
             </span>
-            <span
-              key={currentAsk.id}
-              className="min-w-0 truncate font-normal text-muted-foreground animate-in fade-in slide-in-from-bottom-1 duration-300"
-            >
-              {currentAsk.text}
+            <span className="font-normal text-muted-foreground">
+              {askCount === 1 ? t`1 thing` : t`${askCount} things`}
             </span>
-            {askCount > 1 ? (
-              <span className="shrink-0 rounded-full bg-warning/15 px-1.5 text-[11.5px] tabular-nums text-warning">
-                {askIndex + 1}/{askCount}
-              </span>
-            ) : null}
           </StatusPill>
         ) : (
           <StatusPill tone={pill.tone}>{pill.text}</StatusPill>
