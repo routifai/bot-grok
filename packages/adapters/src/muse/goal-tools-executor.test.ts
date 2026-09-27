@@ -143,6 +143,10 @@ function fixture(runId = "run-1") {
         computerId: "computer-1",
         computer: { id: "computer-1", scope: "dedicated" },
       })),
+      // scheduleFirstGoalWork (packages/adapters/src/muse/goal-tools.ts, B8) reads the
+      // Muse's proactivity/quiet-hours settings after `create` to schedule its first
+      // goal.advance / goal.checkin.
+      findUnique: vi.fn(async () => ({ museProactivity: null, museQuietHours: null })),
       findMany: vi.fn(async () => []),
     },
     attempt: {

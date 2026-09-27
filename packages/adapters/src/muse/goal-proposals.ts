@@ -18,12 +18,18 @@ import {
   type PrismaClient,
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
+import { wakeGoal } from "./goal-jobs.js";
 
 export type GoalAnswerDeps = {
   prisma: PrismaClient;
   /** Realtime fan-out for the Conversation thread the Ask lived in. */
   events?: { notify(threadId: string, seq: number): Promise<void> };
-  /** Refreshes Ideas after a Proposal decision changes the Goal's plan (PLAN.md B11). */
+  /**
+   * Wakes the Goal's background work (docs/muse/PLAN.md B8) right after an accepted
+   * Proposal gives it a plan to work, and refreshes Ideas after a Proposal decision
+   * changes the Goal's plan (PLAN.md B11) — optional so existing callers/tests that only
+   * need the plan replaced (no job queue at hand) keep working unchanged.
+   */
   jobs?: JobPublisher;
 };
 
@@ -141,6 +147,11 @@ async function decideGoalProposal(
     await deps.events
       ?.notify(committed.notify.threadId, committed.notify.seq)
       .catch(() => undefined);
+  }
+  if (decision === "accept" && deps.jobs) {
+    await wakeGoal({ prisma: deps.prisma, jobs: deps.jobs }, committed.goal.id).catch(
+      () => undefined,
+    );
   }
   // A decided Proposal is the clearest "the Goal changed" signal this module sees today
   // (goal-tools.ts has no direct Goal.status transition yet), so Ideas refresh here.

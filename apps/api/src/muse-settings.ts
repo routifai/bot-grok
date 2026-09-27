@@ -1,5 +1,5 @@
-import type { Actor, MuseSettings, Proactivity } from "@aiden/contracts";
-import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@aiden/contracts";
+import type { Actor, MuseSettings } from "@aiden/contracts";
+import { resolveMuseSettings } from "@aiden/core";
 import { IsolationError, type PrismaClient } from "@aiden/db";
 
 // Real muse.settings / muse.updateSettings handlers (packages/contracts/src/rpc.ts),
@@ -23,23 +23,6 @@ export interface MuseSettingsDeps {
 
 type BotSettingsRow = { museProactivity: string | null; museQuietHours: string | null };
 
-function isProactivity(value: string | null): value is Proactivity {
-  return value !== null && (PROACTIVITY_LEVELS as readonly string[]).includes(value);
-}
-
-function toMuseSettings(row: BotSettingsRow): MuseSettings {
-  const proactivity = isProactivity(row.museProactivity)
-    ? row.museProactivity
-    : DEFAULT_MUSE_SETTINGS.proactivity;
-  const quietHours =
-    row.museQuietHours === null
-      ? DEFAULT_MUSE_SETTINGS.quietHours
-      : row.museQuietHours === ""
-        ? null
-        : row.museQuietHours;
-  return { proactivity, quietHours };
-}
-
 /** The Muse's bot must belong to the actor's space and user, like every other bot-scoped route. */
 async function requireOwnBot(
   deps: MuseSettingsDeps,
@@ -59,7 +42,7 @@ export async function getMuseSettings(
   actor: Actor,
   botId: string,
 ): Promise<MuseSettings> {
-  return toMuseSettings(await requireOwnBot(deps, actor, botId));
+  return resolveMuseSettings(await requireOwnBot(deps, actor, botId));
 }
 
 export async function updateMuseSettings(
@@ -77,5 +60,5 @@ export async function updateMuseSettings(
     data,
     select: { museProactivity: true, museQuietHours: true },
   });
-  return toMuseSettings(bot);
+  return resolveMuseSettings(bot);
 }
