@@ -15,7 +15,6 @@ import { ApprovalRulesSettings } from "../components/ApprovalRulesSettings";
 import { SuccessPop } from "../components/ai/primitives";
 import { ComputersUnavailableHint } from "../components/ComputersUnavailableHint";
 import { DesktopUpdateSection } from "../components/DesktopUpdates";
-import { SoftwareUpdateSection } from "../components/SoftwareUpdateSection";
 import { authClient } from "../lib/auth";
 import { getActiveUiLocale, setUiLocale } from "../lib/i18n";
 import {
@@ -269,15 +268,10 @@ export function ComputerSettingsPanel() {
   );
 }
 
-export function UpdatesSettingsPanel({
-  isDeploymentOwner = false,
-}: {
-  isDeploymentOwner?: boolean;
-}) {
+export function UpdatesSettingsPanel() {
   return (
     <div className="space-y-5">
       <DesktopUpdateSection />
-      <SoftwareUpdateSection isDeploymentOwner={isDeploymentOwner} />
     </div>
   );
 }

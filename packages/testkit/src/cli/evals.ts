@@ -183,8 +183,6 @@ async function main() {
             larkAppId: undefined,
             mcpStdioEnabled: false,
             mcpStdioAllowedCommands: [],
-            updaterUrl: undefined,
-            updaterToken: undefined,
           });
           return { ...handles, harnessIssues: sandbox.harnessIssues };
         },

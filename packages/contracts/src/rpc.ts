@@ -58,10 +58,6 @@ import {
   RoutineSchema,
   ScratchpadItemSchema,
   ScratchpadItemStatusSchema,
-  ServerUpdateCheckSchema,
-  ServerUpdateRequestSchema,
-  ServerUpdateRunSchema,
-  ServerUpdateStatusSchema,
   SkillPlaybookSchema,
   SpaceMemoryConfigSchema,
   SpaceNavigationSchema,
@@ -197,16 +193,6 @@ export const appContract = {
         }),
       )
       .output(DeploymentSettingsSchema),
-  },
-  /**
-   * Deployment-owner product updates. When the Compose updater sidecar is reachable, these proxy
-   * to its `/state` `/plan` `/apply` contract. Rollback stays on the sidecar for ops only and is
-   * not exposed here. Never git-fetch from the API process.
-   */
-  updater: {
-    status: oc.output(ServerUpdateStatusSchema),
-    check: oc.input(ServerUpdateRequestSchema).output(ServerUpdateCheckSchema),
-    apply: oc.input(ServerUpdateRequestSchema).output(ServerUpdateRunSchema),
   },
   models: {
     list: oc.output(z.array(ModelCatalogEntrySchema)),

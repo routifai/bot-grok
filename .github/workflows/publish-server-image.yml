@@ -1,8 +1,8 @@
 name: publish-server-image
 
-# Release tags publish the source-addressed image used by in-app updates plus the human-readable
-# semver tags. Main publishes `edge`. Pull requests build with a read-only token and an isolated
-# cache, so untrusted code can validate the images without receiving package-publish authority.
+# Release tags publish the source-addressed image plus the human-readable semver tags. Main
+# publishes `edge`. Pull requests build with a read-only token and an isolated cache, so untrusted
+# code can validate the images without receiving package-publish authority.
 on:
   push:
     branches: [main]
@@ -14,7 +14,6 @@ on:
       - "apps/**"
       - "infra/compose/**"
       - "infra/sandboxes/computer/**"
-      - "infra/updater/**"
       - "packages/**"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -60,9 +59,6 @@ jobs:
           - name: app
             dockerfile: infra/compose/Dockerfile
             context: .
-          - name: updater
-            dockerfile: infra/updater/Dockerfile
-            context: .
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
             context: infra/sandboxes/computer
@@ -103,16 +99,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [app, updater, computer]
+        name: [app, computer]
         arch: [amd64, arm64]
         include:
-          # Only the updater image contains the Docker CLI; the application image stays unprivileged.
           # The supervisor is not a separate published image: it runs from `app` on the internal network.
           - name: app
             dockerfile: infra/compose/Dockerfile
-            context: .
-          - name: updater
-            dockerfile: infra/updater/Dockerfile
             context: .
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
@@ -183,7 +175,6 @@ jobs:
       matrix:
         include:
           - name: app
-          - name: updater
           - name: computer
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

@@ -4,7 +4,7 @@ import middleware from "../middleware";
 describe("marketing site middleware", () => {
   it("negotiates Markdown on the canonical page URL", async () => {
     const response = middleware(
-      new Request("https://rakazo.com/", {
+      new Request("https://aiden.example/", {
         headers: { accept: "text/markdown,text/html;q=0.8" },
       }),
     );
@@ -19,7 +19,7 @@ describe("marketing site middleware", () => {
 
   it("gives generic agent fetches a recoverable Markdown 404", async () => {
     const response = middleware(
-      new Request("https://rakazo.com/does-not-exist", {
+      new Request("https://aiden.example/does-not-exist", {
         headers: { accept: "*/*" },
       }),
     );
@@ -29,13 +29,13 @@ describe("marketing site middleware", () => {
       "text/markdown; charset=utf-8",
     );
     await expect(response.text()).resolves.toContain(
-      "https://rakazo.com/sitemap-index.xml",
+      "https://aiden.example/sitemap-index.xml",
     );
   });
 
   it("returns 406 for representations the site does not provide", async () => {
     const response = middleware(
-      new Request("https://rakazo.com/", {
+      new Request("https://aiden.example/", {
         headers: { accept: "application/json" },
       }),
     );
@@ -49,7 +49,7 @@ describe("marketing site middleware", () => {
 
   it("continues browser requests with negotiation-safe response headers", () => {
     const response = middleware(
-      new Request("https://rakazo.com/", {
+      new Request("https://aiden.example/", {
         headers: { accept: "text/html" },
       }),
     );

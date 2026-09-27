@@ -42,5 +42,4 @@ export const SERVICE_NAMES = {
   api: "aiden-api",
   worker: "aiden-worker",
   supervisor: "aiden-sandbox-supervisor",
-  updater: "aiden-updater",
 } as const;

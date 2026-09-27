@@ -1,162 +1,43 @@
 # Aiden
 
-[![GitHub stars](https://img.shields.io/github/stars/elie222/rakazo?labelColor=black&style=for-the-badge&color=2563EB)](https://github.com/elie222/rakazo/stargazers)
-[![Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?labelColor=black&style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/RWwKa2Sn7h)
-
 ![Aiden — AI teammates you actually own](./docs/readme-hero.png)
 
-Aiden is an open-source platform for running persistent AI teammates. It is available on the web,
-as an Electron desktop app, and through an Expo mobile app. Bring your own model and computer
-provider, or run the complete stack locally.
+Aiden is one personal AI that works on your **Goals** in the background, with its own computer to
+use a browser and shell, and comes back when it needs you. It runs on the web, as an Electron
+desktop app, and through an Expo mobile app. Bring your own model and computer provider, or run
+the complete stack locally.
 
-Aiden is in beta. Learn more at [rakazo.com](https://rakazo.com).
+## What Aiden gives you
 
-## Features
+- **Goals** — hand Aiden an outcome, not a one-off prompt. It plans Tasks, works on them in the
+  background, and checks in on the schedule you set.
+- **Feed** — what Aiden has done and found, newest first, without you having to ask.
+- **Waiting on you** — every open question or approval Aiden needs, in one list, answerable from
+  anywhere.
+- **Ideas** — suggestions for what to ask next, drawn from your Goals and recent conversation.
+- **Library** — everything Aiden has made for you, from the conversation and every Goal, in one
+  place.
+- **Its own computer** — a sandboxed browser and shell so Aiden can actually do the work, not just
+  describe it.
+- Bring-your-own model credentials, and app integrations through connected tools and MCP.
 
-- Persistent bots with their own conversations, memory, routines, and history
-- Voice mode: speak replies, dictate, and call a bot. Bring your own ElevenLabs, OpenAI, Cartesia, or Fish Audio key
-- Shared Team Computers and isolated Private computers
-- Browser, terminal, file, and graphical desktop access
-- Bots that can delegate to peer bots or short-lived subagents
-- Bring-your-own model credentials through Pi
-- App integrations through Composio or Pipedream Connect, plus user-installed Treg, remote MCP, and OpenAPI tool sources
-- Docker, E2B, Daytona, CreateOS, Box, and trusted local-computer support
+## Get started
 
-## Demo
+Setup, configuration, and deployment are covered in [docs/SETUP.md](./docs/SETUP.md).
 
-https://github.com/user-attachments/assets/dccdeddb-2134-4a56-8eed-b2e591736b1c
+## Developer setup
 
-## Stack
-
-- TypeScript
-- React 19, Vite, and Tailwind CSS
-- Electron and Expo
-- Hono and oRPC
-- PostgreSQL and Prisma
-- Better Auth
-- Graphile Worker
-- Pi
-- Docker, E2B, Daytona, CreateOS, and Box
-- Composio, Pipedream Connect, MCP, and OpenAPI integrations
-
-## Run Aiden locally with Docker
-
-Builds this checkout's api, worker, web, sandbox supervisor, and computer image from source —
-so you get this fork's Muse edition, not a generic upstream build. You need Docker Desktop (or
-[colima](https://github.com/abiosoft/colima)) and this repository cloned; no Node or pnpm install.
+You need Node.js 22.22.2 or newer in the 22.x line, Node.js 24.x, or Node.js 26+; pnpm 9; and
+Docker.
 
 ```bash
-git clone <this-repository-url> aiden && cd aiden
-./scripts/setup.sh
-```
-
-The script creates `.env` with random secrets, builds the images, and starts the stack. Open
-[http://127.0.0.1:5173](http://127.0.0.1:5173) and sign up — the first account becomes the
-deployment owner. See [docs/SETUP.md](./docs/SETUP.md) for prerequisites, what gets created,
-troubleshooting, and `./scripts/stop.sh` / `./scripts/reset.sh`.
-
-For a VPS deployment with automatic HTTPS, see
-[self-hosting: Public single-VM deployment](./docs/self-host.md#public-single-vm-deployment).
-
-## Local development (source checkout)
-
-You need Node.js 22.22.2 or newer in the 22.x line, Node.js 24.x, or Node.js 26+;
-pnpm 9; and Docker. Node.js 23.x and 25.x are not supported.
-
-```bash
-git clone <this-repository-url> aiden
-cd aiden
 cp .env.example .env
-```
-
-Set `POSTGRES_PASSWORD` (for example `openssl rand -hex 16`), then put the same value in
-`DATABASE_URL`. Set `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, and `SCREEN_PROXY_SECRET` to
-independent long random values. Docker sandboxes also need a dedicated
-`SANDBOX_SUPERVISOR_TOKEN`. You can also set `OPENROUTER_API_KEY`, or connect a supported
-model provider during onboarding.
-
-Managed app catalogs are optional. Set `COMPOSIO_API_KEY` for Composio, or the
-`PIPEDREAM_CLIENT_ID`, `PIPEDREAM_CLIENT_SECRET`, and `PIPEDREAM_PROJECT_ID` trio for Pipedream
-Connect. Users can add an HTTPS MCP server, Treg endpoint, or OpenAPI JSON document from
-**Integrations** without enabling either managed catalog. Connector credentials are encrypted on the
-server and are never returned by the API.
-
-Treg is usage-metered. Self-hosters supply their own Treg token; operators embedding Treg in a
-hosted product should review [Treg's integration terms](https://treg.to/integrate.md), which require
-a written agreement for hosted resale.
-
-```bash
-docker compose --env-file .env \
-  -f infra/compose/docker-compose.yml \
-  -f infra/compose/docker-compose.postgres-host.yml \
-  up postgres -d
 pnpm install
-pnpm db:generate
-pnpm db:migrate
-pnpm sandbox:build
 pnpm dev
 ```
 
-Postgres stays network-internal in the default Compose file (same as published images). The
-`postgres-host` overlay publishes loopback `127.0.0.1:5433` for host-side `pnpm` and DB tools.
-Without the overlay, open a shell with
-`docker compose --env-file .env -f infra/compose/docker-compose.yml exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`.
-Use a URI-safe `POSTGRES_PASSWORD` (`openssl rand -hex 16`). An existing `pgdata` volume keeps the
-user, password, and database from first init, so keep those values in `.env`, or change them in
-place with `ALTER ROLE` / rename. Recreate the volume only after a backup (or when the data is
-disposable); `docker compose down -v` deletes all Postgres state.
-
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173), create an account, connect a model, and create
-your first bot.
-
-For deployment, provider selection, backups, and upgrades, see the
-[self-hosting guide](./docs/self-host.md).
-
-To use CreateOS, set `SANDBOX_PROVIDER=createos` and `CREATEOS_SANDBOX_API_KEY`.
-Optional `CREATEOS_SANDBOX_BASE_URL`, `CREATEOS_SANDBOX_SHAPE`, and
-`CREATEOS_SANDBOX_ROOTFS` default to `https://api.sb.createos.sh`, `s-2vcpu-2gb`,
-and `desktop:1`.
-
-## Desktop and mobile
-
-The Electron and Expo apps are clients of the same Aiden API used by the web app.
-
-With the development stack running, launch Electron with:
-
-```bash
-pnpm --filter @aiden/desktop dev
-```
-
-On first run the desktop app asks whether to run Aiden on this computer or connect to an existing
-server. **This computer** installs and starts the published images with Docker Compose (the same
-files as `infra/compose/install-images.sh`) under the app's data directory, so Docker Desktop,
-OrbStack, or Docker Engine must be installed; the app links to them when it is not. Installed
-builds pin the image tag to their own version; unpackaged builds pull `edge`. Developers running
-`pnpm dev` should pick **Existing instance** with `http://127.0.0.1:5173` instead. Public servers
-must use HTTPS; HTTP is accepted only for loopback and private LAN addresses (not link-local). The
-app verifies Aiden's health endpoint before saving, and later launches go straight to that
-instance. The stack keeps running after the app quits; **Stop Local Stack** in the application
-menu turns it off.
-
-Use **Change Aiden Server…** in the application menu to reconnect. Closing that window without
-saving returns to the previous instance. For development automation, set `AIDEN_WEB_URL` to point
-the shell somewhere else without changing the saved instance, or `AIDEN_FORCE_SETUP=1` to run
-setup again.
-
-Mobile build and release instructions live in [docs/mobile-release.md](./docs/mobile-release.md).
-
-## UI language
-
-The web (and Electron-hosted) UI supports English, Deutsch, 한국어, Türkçe, हिन्दी,
-Português (Brasil), 简体中文, Español, and Русский under **Settings → Language**. The Expo
-app ships English, 简体中文, Русский, and Deutsch catalogs; **Account → Language** offers
-English and 简体中文, and the other catalogs follow the device language or
-`EXPO_PUBLIC_DEFAULT_UI_LOCALE`. The marketing
-homepage (`apps/www`) is available in en/de/ko/zh via footer language links (`/`, `/de/`,
-`/ko/`, `/zh/`); other marketing pages stay English. The Russian marketing homepage and
-native Electron setup/menu remain separate follow-up work.
-
-## Development
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173), create an account, connect a model, and start
+talking to your Aiden.
 
 ```text
 apps/       web, api, worker, desktop, mobile, and public website
@@ -175,11 +56,11 @@ pnpm test:integration
 pnpm test:e2e
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow and test matrix.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development workflow and test matrix.
 
 ## Documentation
 
-- [Run locally with Docker](./docs/SETUP.md)
+- [Setup](./docs/SETUP.md)
 - [Self-hosting](./docs/self-host.md)
 - [Self-host secrets](./docs/self-host-secrets.md)
 - [Computer runtime and isolation](./docs/computer-runtime.md)
@@ -190,9 +71,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow and test m
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull
-request. For security vulnerabilities, follow [SECURITY.md](./SECURITY.md) instead of filing a public
-issue.
+request. For security vulnerabilities, follow [SECURITY.md](./SECURITY.md) instead of filing a
+public issue.
 
 Aiden is licensed under the [Apache License 2.0](./LICENSE).
-
-Questions and ideas are welcome in the [Aiden Discord community](https://discord.gg/RWwKa2Sn7h).

@@ -1,6 +1,6 @@
 import type { ProductMode } from "@aiden/contracts";
 
-/** `AIDEN_PRODUCT_MODE=muse` turns on the single-Muse edition; anything else is upstream Rakazo. */
+/** `AIDEN_PRODUCT_MODE=muse` turns on the single-Muse edition; anything else is the full Aiden mode. */
 export function resolveProductMode(source: NodeJS.ProcessEnv = process.env): ProductMode {
   return source.AIDEN_PRODUCT_MODE?.trim().toLowerCase() === "muse" ? "muse" : "aiden";
 }

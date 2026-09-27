@@ -69,7 +69,7 @@ export function selectBuiltinToolsForRun(options: {
   semanticMemoryEnabled: boolean;
   cloudAgentEnabled?: boolean;
   messagingChannelRun: boolean;
-  /** Defaults to upstream Rakazo (peer-bot tools stay available) when absent. */
+  /** Defaults to the full Aiden mode (peer-bot tools stay available) when absent. */
   productMode?: ProductMode;
 }) {
   return selectCloudAgentTools(

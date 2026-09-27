@@ -99,8 +99,8 @@ export function SettingsOverlay({
     }
   }, [section]);
 
-  // The self-updater tracks the upstream repository; this fork never offers to update
-  // from it, so "Updates" isn't a section a Muse person can land on.
+  // "Updates" only covers the desktop app's own auto-update, which isn't a section a
+  // Muse person can land on.
   useEffect(() => {
     if (museMode && section === "updates") setSection("general");
   }, [museMode, section]);
@@ -252,9 +252,7 @@ export function SettingsOverlay({
                 <UsageSettingsPanel usage={usage} panelRef={usageRef} />
               ) : null}
               {section === "computer" && showComputer ? <ComputerSettingsPanel /> : null}
-              {section === "updates" && !museMode ? (
-                <UpdatesSettingsPanel isDeploymentOwner={isDeploymentOwner} />
-              ) : null}
+              {section === "updates" && !museMode ? <UpdatesSettingsPanel /> : null}
               {section === "models" ? (
                 <ModelSettingsOverlay embedded onClose={requestClose} />
               ) : null}

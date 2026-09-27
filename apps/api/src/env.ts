@@ -16,7 +16,7 @@ export { resolveCloudAgentProvider, resolveSandboxProvider } from "@aiden/adapte
 
 export interface AppEnv {
   nodeEnv: string;
-  /** Upstream Aiden, or the single-Muse edition. */
+  /** The full Aiden mode, or the single-Muse edition. */
   productMode: ProductMode;
   desktopStackToken?: string;
   databaseUrl: string;
@@ -91,12 +91,6 @@ export interface AppEnv {
   mcpAllowPrivateEndpoint: boolean;
   port: number;
   gitSha: string | undefined;
-  /** Private Compose control-network URL for the opt-in updater sidecar. */
-  updaterUrl: string | undefined;
-  /** Bearer shared with the updater; never sent to the browser. */
-  updaterToken: string | undefined;
-  /** Current application image tag; used for compose manual-upgrade command selection. */
-  imageTag: string | undefined;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -104,8 +98,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const sandboxProvider = resolveSandboxProvider(source);
   const cloudAgentProvider = resolveCloudAgentProvider(source);
   const deploymentModel = resolveDeploymentModel(source);
-  const updaterUrl = optional(source.AIDEN_UPDATER_URL);
-  const updaterToken = optional(source.AIDEN_UPDATER_TOKEN);
   return {
     nodeEnv: source.NODE_ENV ?? "",
     productMode: resolveProductMode(source),
@@ -182,9 +174,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     mcpAllowPrivateEndpoint: source.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
     port: Number(source.API_PORT ?? 3100),
     gitSha: optional(source.GIT_SHA) ?? optional(source.AIDEN_GIT_SHA),
-    updaterUrl,
-    updaterToken,
-    imageTag: optional(source.AIDEN_IMAGE_TAG),
   };
 }
 
