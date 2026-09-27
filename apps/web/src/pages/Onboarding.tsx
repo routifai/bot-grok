@@ -491,7 +491,7 @@ export function OnboardingPage() {
               <Trans>Pick a color</Trans>
             </h1>
             <div className="mt-8 flex justify-center">
-              <BotAvatar color={museColor} identity={museName} size={72} />
+              <BotAvatar color={museColor} identity={museName} face="muse" size={72} />
             </div>
             <div className="mt-8 grid grid-cols-6 place-items-center gap-2">
               {MUSE_COLOR_OPTIONS.map((color) => {
