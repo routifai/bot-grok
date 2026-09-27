@@ -418,6 +418,7 @@ export async function createApp(
     web: createWebProvider(),
     cloudAgent,
     shutdownSignal: shutdown.signal,
+    productMode: env.productMode,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
