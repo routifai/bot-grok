@@ -8,6 +8,9 @@ import { expect, it, vi } from "vitest";
 
 const museApi = vi.hoisted(() => ({ settings: vi.fn(), updateSettings: vi.fn() }));
 vi.mock("../../lib/rpc", () => ({ rpc: { muse: museApi } }));
+vi.mock("../../lib/auth", () => ({
+  authClient: { useSession: () => ({ data: { user: { id: "user-1" } }, isPending: false }) },
+}));
 
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray) => parts.join("");
@@ -17,6 +20,7 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("@aiden/ui-web", () => ({
   cn: (...parts: unknown[]) => parts.filter(Boolean).join(" "),
   Input: (props: ComponentProps<"input">) => <input {...props} />,
+  Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
   Switch: ({
     checked,
     onCheckedChange,

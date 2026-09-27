@@ -227,6 +227,7 @@ import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveSta
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { IdeasScreen } from "./muse/IdeasScreen";
+import { FirstRunHint, markFirstRunSeen } from "./muse/intro";
 import { LibraryScreen } from "./muse/LibraryScreen";
 import { StatusPill } from "./muse/ui";
 import { useMuseNav } from "./muse/useMuseNav";
@@ -429,6 +430,9 @@ export function ShellPage() {
   const [replyQuote, setReplyQuote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // First-run "Try it" chips (muse/intro/FirstRunWelcome.tsx) fill the composer with the
+  // example rather than sending it, so the person sees it before it goes out.
+  const [composerSeed, setComposerSeed] = useState<string | null>(null);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
@@ -2096,6 +2100,9 @@ export function ShellPage() {
         hasAttachments: attachments.length > 0,
       });
       if (plan.isNoOp) return;
+      // The first real message closes the first-run welcome for good (muse/intro),
+      // wherever it was sent from — the composer directly, or a welcome card's "Try it".
+      if (museMode) markFirstRunSeen(userId, "welcome");
       const reroutedToGroup = Boolean(
         plan.rerouteGroupId && plan.rerouteGroupId !== initialGroupTarget,
       );
@@ -2230,10 +2237,12 @@ export function ShellPage() {
       activeReplyQuote,
       clearReply,
       flushPendingBrowserNotifications,
+      museMode,
       navigate,
       pendingAttachments,
       sending,
       t,
+      userId,
     ],
   );
   const followUpMessage = useCallback(async (text: string) => {
@@ -3464,14 +3473,25 @@ export function ShellPage() {
       >
         {museMode && active && museView !== "conversation" ? (
           museView === "goals" ? (
-            <GoalsScreen botId={active.id} avatarColor={active.color} onSendIdea={handleSendIdea} />
+            <GoalsScreen
+              botId={active.id}
+              botName={active.name}
+              avatarColor={active.color}
+              onSendIdea={handleSendIdea}
+            />
           ) : museView === "feed" ? (
-            <FeedScreen botId={active.id} avatarColor={active.color} onSendIdea={handleSendIdea} />
+            <FeedScreen
+              botId={active.id}
+              botName={active.name}
+              avatarColor={active.color}
+              onSendIdea={handleSendIdea}
+            />
           ) : museView === "ideas" ? (
             <IdeasScreen botId={active.id} onSendIdea={handleSendIdea} />
           ) : (
             <LibraryScreen
               botId={active.id}
+              botName={active.name}
               avatarColor={active.color}
               onSendIdea={handleSendIdea}
             />
@@ -3616,14 +3636,17 @@ export function ShellPage() {
                 </div>
               ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
                 <EmptyConversation
+                  botName={active.name}
                   personName={bootstrapMe?.name ?? ""}
                   avatarColor={active.color}
                   onSend={(text) => void sendMessage(text)}
+                  onTryIt={setComposerSeed}
                 />
               ) : (
                 <Transcript
                   key={activeSnapshot?.threadId}
                   museMode={museMode}
+                  botDisplayName={active?.name}
                   followSignal={followSignal}
                   museFace={active ? { color: active.color, identity: active.id } : undefined}
                   museRuns={currentRuns}
@@ -3690,6 +3713,8 @@ export function ShellPage() {
                   onAttachmentPick={onAttachmentPick}
                   onRemoveAttachment={removeAttachment}
                   onSend={sendMessage}
+                  seedText={composerSeed}
+                  onSeedConsumed={() => setComposerSeed(null)}
                   onStop={stopRun}
                   onVoice={
                     !inGroup && active
@@ -3779,7 +3804,12 @@ export function ShellPage() {
             panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
                 {museMode && panel === "computer" && active ? (
-                  <MuseComputerTitle state={computer?.state} booting={booting} />
+                  <FirstRunHint
+                    hintKey="computer-panel"
+                    text={t`Watch ${active.name} work live. Take over anytime.`}
+                  >
+                    <MuseComputerTitle state={computer?.state} booting={booting} />
+                  </FirstRunHint>
                 ) : (
                   <span className="text-[13.5px] text-muted-foreground">
                     {panel === "settings" ? (
@@ -4785,6 +4815,7 @@ export function ShellPage() {
 const Transcript = memo(function Transcript({
   museMode,
   museFace,
+  botDisplayName,
   museRuns,
   followSignal,
   scrollRef,
@@ -4818,6 +4849,8 @@ const Transcript = memo(function Transcript({
   museMode?: boolean;
   /** Muse mode: the face shown beside the Muse's replies. */
   museFace?: { color: string; identity: string };
+  /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
+  botDisplayName?: string;
   /** Muse mode: the active bot's live runs, for the gutter face and bottom-of-transcript row. */
   museRuns?: readonly MuseLiveRun[];
   /** Changes when the person sends: follow the tail again. */
@@ -5207,6 +5240,7 @@ const Transcript = memo(function Transcript({
                   )}
                   <MessageView
                     museMode={museMode}
+                    botDisplayName={botDisplayName}
                     artifactTarget={artifactTarget}
                     message={message}
                     canAnswer={message.id === answerableAskMessageId}
@@ -5422,6 +5456,8 @@ const Composer = memo(function Composer({
   agentSkills,
   onSlashOpen,
   onSlashAction,
+  seedText,
+  onSeedConsumed,
 }: {
   museMode?: boolean;
   activeName?: string;
@@ -5449,6 +5485,9 @@ const Composer = memo(function Composer({
   agentSkills?: AgentSkillCatalogEntry[];
   onSlashOpen?: () => void;
   onSlashAction?: (action: SlashActionId) => void;
+  /** First-run "Try it" chips (muse/intro): fills the draft and focuses it, fill-then-send. */
+  seedText?: string | null;
+  onSeedConsumed?: () => void;
 }) {
   const { t } = useLingui();
   const [draft, setDraft] = useState("");
@@ -5547,6 +5586,16 @@ const Composer = memo(function Composer({
   function focusComposer() {
     textareaRef.current?.focus();
   }
+
+  // First-run "Try it" chips seed the draft rather than sending it (fill-then-focus, so
+  // the person sees it first); the parent clears `seedText` once consumed so it can't
+  // re-fire on an unrelated re-render.
+  useEffect(() => {
+    if (!seedText) return;
+    updateDraft(seedText);
+    focusComposer();
+    onSeedConsumed?.();
+  }, [seedText]);
 
   function insertMention(mention: ComposerMention) {
     setDraft((current) => current.replace(/@([\w-]*)$/, ""));
@@ -6439,6 +6488,7 @@ function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] })
 
 const MessageView = memo(function MessageView({
   museMode,
+  botDisplayName,
   artifactTarget,
   canAnswer,
   message,
@@ -6460,6 +6510,8 @@ const MessageView = memo(function MessageView({
   onOpenComputer,
 }: {
   museMode?: boolean;
+  /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
+  botDisplayName?: string;
   artifactTarget: ArtifactTarget;
   canAnswer: boolean;
   message: ThreadMessage;
@@ -6875,13 +6927,28 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "ask") {
+          if (!museMode) {
+            return (
+              <AskCard
+                key={i}
+                block={block}
+                canAnswer={canAnswer}
+                onAnswer={(text, username) => onAnswer(message, text, username)}
+              />
+            );
+          }
           return (
-            <AskCard
+            <FirstRunHint
               key={i}
-              block={block}
-              canAnswer={canAnswer}
-              onAnswer={(text, username) => onAnswer(message, text, username)}
-            />
+              hintKey="proposal-card"
+              text={t`Accept, and ${botDisplayName ?? "Aiden"} starts on it in the background.`}
+            >
+              <AskCard
+                block={block}
+                canAnswer={canAnswer}
+                onAnswer={(text, username) => onAnswer(message, text, username)}
+              />
+            </FirstRunHint>
           );
         }
         if (block.kind === "cloud_agent") return <CloudAgentCard key={i} block={block} />;

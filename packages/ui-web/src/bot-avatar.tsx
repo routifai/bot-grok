@@ -92,10 +92,13 @@ export interface BotAvatarProps {
   /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
   waitingCount?: number;
   /**
-   * Precomputed live state (derived from the active run data, e.g. `deriveMuseState`
-   * in apps/web). Takes priority over the `status`/`waitingCount` derivation below —
-   * callers that already track live run state should pass this instead of a bot
-   * row's `status`, which is a snapshot that rarely reflects an in-flight run.
+   * Forces the Muse's expression regardless of `status`/`waitingCount` — either
+   * precomputed live state (derived from the active run data, e.g. `deriveMuseState`
+   * in apps/web; callers that already track live run state should pass this instead
+   * of a bot row's `status`, which is a snapshot that rarely reflects an in-flight
+   * run) or a one-time wave (`state="waiting"`, then `"idle"`) in the first-run
+   * welcome. Muse-only; ignored unless `face="muse"`. Does not affect the Ask-count
+   * badge, which still only shows for a real `waitingCount`.
    */
   museState?: MuseState;
 }

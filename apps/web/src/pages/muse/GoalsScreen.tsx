@@ -1,4 +1,5 @@
 import type { Goal } from "@aiden/contracts";
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -19,10 +20,12 @@ const GOAL_SUGGESTIONS = [
  */
 export function GoalsScreen({
   botId,
+  botName,
   avatarColor,
   onSendIdea,
 }: {
   botId: string;
+  botName?: string;
   /** The Muse's identity color, for the empty state's face. */
   avatarColor?: string;
   /** Starts a Conversation with a suggestion from the empty state. */
@@ -87,6 +90,7 @@ export function GoalsScreen({
       ) : (
         <GoalList
           goals={goals}
+          botName={botName ?? DEFAULT_MUSE_NAME}
           onSelect={setSelectedGoalId}
           avatarColor={avatarColor}
           suggestions={GOAL_SUGGESTIONS}

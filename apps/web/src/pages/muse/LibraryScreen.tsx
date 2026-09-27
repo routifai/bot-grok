@@ -1,3 +1,4 @@
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +43,7 @@ export function LibraryScreen({
   onSendIdea,
 }: {
   botId: string;
+  botName?: string;
   /** The Muse's identity color, for the empty state's face. */
   avatarColor?: string;
   /** Starts a Conversation with a suggestion from the empty state. */

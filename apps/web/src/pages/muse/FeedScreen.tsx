@@ -1,4 +1,5 @@
 import type { Ask, FollowedTopic } from "@aiden/contracts";
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -16,6 +17,7 @@ const FEED_SUGGESTIONS = ["Follow fintech regulation news", "Follow AI in bankin
 // chip row. Ideas live in their own section now (F5), not here.
 export function FeedScreen(props: {
   botId: string;
+  botName?: string;
   avatarColor?: string;
   onSendIdea?: (text: string) => void;
 }) {

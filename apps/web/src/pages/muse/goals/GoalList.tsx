@@ -1,6 +1,7 @@
 import type { Goal } from "@aiden/contracts";
 import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { FirstRunHint } from "../intro";
 import { EmptyState, MUSE_TYPE, MuseWideColumn, Progress, Section, Surface } from "../ui";
 import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
 import { GoalStatusPill } from "./GoalStatusPill";
@@ -83,12 +84,14 @@ export function GoalListSkeleton() {
 
 export function GoalList({
   goals,
+  botName,
   onSelect,
   avatarColor,
   suggestions,
   onSendIdea,
 }: {
   goals: Goal[];
+  botName: string;
   onSelect: (goalId: string) => void;
   avatarColor?: string;
   suggestions?: readonly string[];
@@ -119,7 +122,12 @@ export function GoalList({
 
   return (
     <MuseWideColumn className="pt-8" data-testid="goals-list">
-      <p className="pb-6 text-[13.5px] text-muted-foreground">{subtitle}</p>
+      <FirstRunHint
+        hintKey="goals-section"
+        text={t`Open a Goal to see ${botName}'s plan and what it did so far.`}
+      >
+        <p className="pb-6 text-[13.5px] text-muted-foreground">{subtitle}</p>
+      </FirstRunHint>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {active.map((goal) => (
           <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />
