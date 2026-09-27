@@ -1,5 +1,5 @@
 import type { ConnectorRegistry } from "@rakazo/adapters";
-import type { Actor, MessageBlock } from "@rakazo/contracts";
+import type { Actor, MessageBlock, ProductMode } from "@rakazo/contracts";
 import { featuredConnectorProvidersMatch } from "@rakazo/core";
 import {
   appendEventInTransaction,
@@ -14,13 +14,22 @@ import {
  * First-run conversational onboarding, seeded deterministically into the bot's
  * thread: greeting, a focus choice, and available app cards the user authorizes
  * inline. Focus must not rename the bot. No model tokens are spent.
+ *
+ * In muse mode there is no focus choice or app catalog: the Muse's first
+ * message asks for the person's first Goal instead (see `promptFirstGoal`).
  */
 
 type OnboardingDeps = {
   prisma: PrismaClient;
   events: ThreadEvents;
   connectors: ConnectorRegistry;
+  /** Defaults to upstream Rakazo (the focus-card flow) when absent. */
+  productMode?: ProductMode;
 };
+
+/** The Muse's opening line in muse mode: asks for a first Goal instead of a bot focus. */
+export const MUSE_FIRST_GOAL_PROMPT =
+  "What's one thing you want to achieve? I'll make a plan and work on it.";
 
 type FocusOption = {
   id: string;
@@ -153,6 +162,10 @@ export async function promptFocus(
 ): Promise<void> {
   const { bot, thread } = await requireBotThread(deps, actor, botId);
   const target = { spaceId: actor.spaceId, botId: bot.id, threadId: thread.id };
+  if (deps.productMode === "muse") {
+    await promptFirstGoal(deps, target);
+    return;
+  }
   const blocks: MessageBlock[] = [
     {
       kind: "choice",
@@ -172,6 +185,43 @@ export async function promptFocus(
     });
     if (recent.some((message) => message.role === "user")) return null;
     if (recent.some((message) => messageHasChoice(message.blocks as MessageBlock[]))) return null;
+    const message = await createThreadMessageInTransaction(tx, {
+      threadId: target.threadId,
+      role: "bot",
+      blocks,
+    });
+    const event = await appendEventInTransaction(tx, {
+      spaceId: target.spaceId,
+      threadId: target.threadId,
+      botId: target.botId,
+      type: "thread.message.created",
+      payload: { messageId: message.id, role: "bot", blocks },
+    });
+    return { message, event };
+  });
+  if (!committed) return;
+  await deps.events.notify(target.threadId, committed.event.seq);
+}
+
+/**
+ * Muse mode's entire first message: no focus card, no app catalog, just the
+ * opening question. Guarded the same way as the focus card (row lock + a
+ * check inside the transaction) so concurrent promptFocus calls cannot post
+ * it twice and it never overwrites something the person already sent.
+ */
+async function promptFirstGoal(
+  deps: OnboardingDeps,
+  target: { spaceId: string; botId: string; threadId: string },
+): Promise<void> {
+  const blocks: MessageBlock[] = [{ kind: "text", text: MUSE_FIRST_GOAL_PROMPT }];
+  const committed = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.$executeRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR UPDATE`;
+    const recent = await tx.message.findMany({
+      where: { threadId: target.threadId },
+      select: { id: true },
+      take: 1,
+    });
+    if (recent.length > 0) return null;
     const message = await createThreadMessageInTransaction(tx, {
       threadId: target.threadId,
       role: "bot",

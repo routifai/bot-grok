@@ -1,6 +1,11 @@
 import type * as db from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { chooseFocus, markAppConnected } from "./onboarding.js";
+import {
+  chooseFocus,
+  MUSE_FIRST_GOAL_PROMPT,
+  markAppConnected,
+  promptFocus,
+} from "./onboarding.js";
 
 const posted = vi.hoisted(() => [] as Array<{ blocks: unknown[] }>);
 vi.mock("@rakazo/db", async (original) => ({
@@ -28,6 +33,31 @@ function fixture(catalog: unknown[]) {
     events: { notify: vi.fn() },
     connectors: { managedProviders: () => [{ catalog: async () => catalog }] },
   } as unknown as Parameters<typeof chooseFocus>[0];
+  const actor = {
+    userId: "user",
+    spaceId: "space",
+    email: "user@rakazo.test",
+    isDeploymentOwner: true,
+  };
+  return { deps, actor, tx };
+}
+
+/** Fixture for `promptFocus`: an otherwise-empty thread, optionally in muse mode. */
+function promptFixture(productMode?: "rakazo" | "muse") {
+  posted.length = 0;
+  const tx = {
+    $executeRaw: vi.fn(),
+    message: { findMany: vi.fn(async () => [] as Array<{ role?: string; blocks?: unknown[] }>) },
+  };
+  const deps = {
+    prisma: {
+      bot: { findFirst: vi.fn(async () => ({ id: "bot", thread: { id: "thread" } })) },
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)),
+    },
+    events: { notify: vi.fn() },
+    connectors: { managedProviders: () => [] },
+    productMode,
+  } as unknown as Parameters<typeof promptFocus>[0];
   const actor = {
     userId: "user",
     spaceId: "space",
@@ -74,5 +104,47 @@ it("marks only the authorized connector when provider slugs collide", async () =
   expect(tx.message.update).toHaveBeenCalledWith({
     where: { id: "cards" },
     data: { blocks: [blocks[0], { ...blocks[1], status: "connected" }] },
+  });
+});
+
+describe("promptFocus product-mode branch", () => {
+  it("posts the focus choice card when productMode is rakazo (default)", async () => {
+    const { deps, actor } = promptFixture("rakazo");
+    await promptFocus(deps, actor, "bot");
+    expect(posted).toEqual([
+      expect.objectContaining({
+        blocks: [expect.objectContaining({ kind: "choice" })],
+      }),
+    ]);
+  });
+
+  it("posts the focus choice card when productMode is absent (unset RAKAZO_PRODUCT_MODE)", async () => {
+    const { deps, actor } = promptFixture(undefined);
+    await promptFocus(deps, actor, "bot");
+    expect(posted).toEqual([
+      expect.objectContaining({
+        blocks: [expect.objectContaining({ kind: "choice" })],
+      }),
+    ]);
+  });
+
+  it("posts the first-Goal question instead of a focus card when productMode is muse", async () => {
+    const { deps, actor } = promptFixture("muse");
+    await promptFocus(deps, actor, "bot");
+    expect(posted).toEqual([
+      expect.objectContaining({
+        blocks: [{ kind: "text", text: MUSE_FIRST_GOAL_PROMPT }],
+      }),
+    ]);
+    expect(posted.flatMap((message) => message.blocks)).not.toContainEqual(
+      expect.objectContaining({ kind: "choice" }),
+    );
+  });
+
+  it("does not double-post the first-Goal question when the thread already has a message", async () => {
+    const { deps, actor, tx } = promptFixture("muse");
+    tx.message.findMany = vi.fn(async () => [{ id: "already-there" }]);
+    await promptFocus(deps, actor, "bot");
+    expect(posted).toEqual([]);
   });
 });
