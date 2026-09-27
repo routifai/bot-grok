@@ -1,5 +1,6 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { Post } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { BotAvatar, Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ExternalLink, Globe } from "lucide-react";
@@ -21,7 +22,12 @@ function GoalReportCard({ post, avatarColor }: { post: Post; avatarColor?: strin
       </div>
       <div className="flex items-center justify-between gap-3 pt-1">
         <span className={`flex items-center gap-2 ${MUSE_TYPE.meta}`}>
-          <BotAvatar color={avatarColor} identity="aiden" face="muse" size={18} />
+          <BotAvatar
+            color={avatarColor ?? DEFAULT_MUSE_COLOR}
+            identity="aiden"
+            face="muse"
+            size={18}
+          />
           {t`From your goal · ${formatRelativeTime(post.createdAt)}`}
         </span>
         {post.goalId ? (

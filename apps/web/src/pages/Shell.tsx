@@ -3464,11 +3464,7 @@ export function ShellPage() {
       >
         {museMode && active && museView !== "conversation" ? (
           museView === "goals" ? (
-            <GoalsScreen
-              botId={active.id}
-              avatarColor={active.color}
-              onSendIdea={handleSendIdea}
-            />
+            <GoalsScreen botId={active.id} avatarColor={active.color} onSendIdea={handleSendIdea} />
           ) : museView === "feed" ? (
             <FeedScreen botId={active.id} avatarColor={active.color} onSendIdea={handleSendIdea} />
           ) : museView === "ideas" ? (

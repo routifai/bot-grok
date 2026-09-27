@@ -58,18 +58,26 @@ export function MuseWideColumn({ className, ...props }: ComponentProps<"div">) {
 /**
  * Scroll container for a Muse screen: an optional fixed `header` (the shared
  * `ScreenHeader` chrome, outside the scroll like the Conversation's), then a quiet
- * scrolling body with generous bottom room.
+ * scrolling body with generous bottom room. Content fades under the top edge once
+ * scrolled (`data-fade-top` + `data-scrolled`, styles.css) — the same mask the floating
+ * Conversation chrome uses over its transcript, so every section shares the effect.
  */
 export function MuseScreen({
   header,
   className,
   children,
+  onScroll,
   ...props
 }: ComponentProps<"div"> & { header?: ReactNode }) {
   return (
     <div className="flex h-full min-w-0 flex-col">
       {header}
       <div
+        data-fade-top=""
+        onScroll={(event) => {
+          event.currentTarget.dataset.scrolled = String(event.currentTarget.scrollTop > 4);
+          onScroll?.(event);
+        }}
         className={cn("rk-scroll min-w-0 flex-1 overflow-y-auto bg-background pb-24", className)}
         {...props}
       >
@@ -338,7 +346,12 @@ export function EmptyState({
       )}
     >
       {rich ? (
-        <BotAvatar color={avatarColor ?? DEFAULT_MUSE_COLOR} identity="aiden" face="muse" size={88} />
+        <BotAvatar
+          color={avatarColor ?? DEFAULT_MUSE_COLOR}
+          identity="aiden"
+          face="muse"
+          size={88}
+        />
       ) : null}
       <div className="max-w-[380px]">
         {headline ? <p className="text-[18px] font-semibold text-foreground">{headline}</p> : null}

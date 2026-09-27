@@ -117,9 +117,7 @@ async function renderGoals(botId = "bot-1", onSendIdea: (text: string) => void =
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () =>
-    root.render(<GoalsScreen botId={botId} onSendIdea={onSendIdea} />),
-  );
+  await act(async () => root.render(<GoalsScreen botId={botId} onSendIdea={onSendIdea} />));
   return {
     container,
     async cleanup() {

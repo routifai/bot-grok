@@ -44,7 +44,9 @@ export function WaitingSheet({
           {asks.length === 0 && loading ? (
             <CardSkeletonList count={2} />
           ) : asks.length === 0 ? (
-            <EmptyState headline={t`You're all caught up.`}>{t`Nothing waiting on you.`}</EmptyState>
+            <EmptyState
+              headline={t`You're all caught up.`}
+            >{t`Nothing waiting on you.`}</EmptyState>
           ) : (
             <AskList asks={asks} onAnswer={handleAnswer} />
           )}

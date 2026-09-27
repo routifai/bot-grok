@@ -14,7 +14,11 @@ const FEED_SUGGESTIONS = ["Follow fintech regulation news", "Follow AI in bankin
 // The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
 // Waiting-on-you sheet), then Posts grouped Today / Earlier, then Followed topics as a
 // chip row. Ideas live in their own section now (F5), not here.
-export function FeedScreen(props: { botId: string; avatarColor?: string; onSendIdea?: (text: string) => void }) {
+export function FeedScreen(props: {
+  botId: string;
+  avatarColor?: string;
+  onSendIdea?: (text: string) => void;
+}) {
   const { botId, avatarColor, onSendIdea } = props;
   const { t } = useLingui();
 

@@ -119,7 +119,11 @@ export function IdeasScreen({
               disabled={refreshing || ideas === null}
               onClick={() => void handleRefresh()}
             >
-              <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? "animate-spin" : ""} />
+              <RefreshCw
+                size={14}
+                strokeWidth={1.75}
+                className={refreshing ? "animate-spin" : ""}
+              />
             </Button>
           }
         />
