@@ -710,6 +710,8 @@ export function ShellPage() {
   useEffect(() => applyProductMode(bootstrapMe?.productMode), [bootstrapMe?.productMode]);
   const { view: museView, setView: setMuseView } = useMuseNav();
   const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
+  /** Bumped on every send so the transcript jumps to the bottom and follows the reply. */
+  const [followSignal, setFollowSignal] = useState(0);
   const [waitingOpen, setWaitingOpen] = useState(false);
   const computerBot =
     (computerBotId ? bots.find((bot) => bot.id === computerBotId) : undefined) ?? active;
@@ -2046,6 +2048,7 @@ export function ShellPage() {
       const initialBotTarget = activeBotId.current;
       const initialGroupTarget = activeGroupId.current;
       if ((!initialBotTarget && !initialGroupTarget) || sending) return;
+      setFollowSignal((current) => current + 1);
       const originThreadKey = initialGroupTarget ?? initialBotTarget;
       const attachments = attachmentsForThread(pendingAttachments, originThreadKey);
       const plan = resolveComposerSendPlan({
@@ -3573,6 +3576,7 @@ export function ShellPage() {
                 <Transcript
                   key={activeSnapshot?.threadId}
                   museMode={museMode}
+                  followSignal={followSignal}
                   museFace={
                     active
                       ? { color: active.color, identity: active.id, status: active.status }
@@ -4686,6 +4690,7 @@ export function ShellPage() {
 const Transcript = memo(function Transcript({
   museMode,
   museFace,
+  followSignal,
   scrollRef,
   scrollRequest,
   onScrollRequestHandled,
@@ -4717,6 +4722,8 @@ const Transcript = memo(function Transcript({
   museMode?: boolean;
   /** Muse mode: the face shown beside the Muse's replies. */
   museFace?: { color: string; identity: string; status?: string };
+  /** Changes when the person sends: follow the tail again. */
+  followSignal?: number;
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollRequest: { messageId: string; nonce: number } | null;
   onScrollRequestHandled: () => void;
@@ -4913,6 +4920,16 @@ const Transcript = memo(function Transcript({
   useLayoutEffect(() => {
     if (following.current) snapToEnd();
   }, [messages, running, snapToEnd]);
+
+  // Sending always brings the conversation back to the latest message and follows the
+  // reply, even if the person had scrolled up.
+  useLayoutEffect(() => {
+    if (!followSignal) return;
+    following.current = true;
+    autoScrolling.current = false;
+    setAtEnd(true);
+    snapToEnd();
+  }, [followSignal, snapToEnd]);
 
   useLayoutEffect(() => {
     const button = jumpButtonRef.current;
