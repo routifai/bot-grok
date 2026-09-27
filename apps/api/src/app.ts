@@ -65,7 +65,7 @@ import {
   toTeamChatInbound,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
-import { signupPolicyFromEnv } from "@rakazo/core";
+import { signupAllowlistBootUpdate, signupPolicyFromEnv } from "@rakazo/core";
 import type { Pool, PrismaClient } from "@rakazo/db";
 import {
   createDb,
@@ -186,7 +186,8 @@ export async function createApp(
   if (!deploymentSettings.signupPolicyInitialized) {
     // Older versions created this row with schema defaults even though auth
     // still enforced the environment policy. Copy that effective policy once
-    // so upgrades preserve behavior before Settings becomes authoritative.
+    // so upgrades preserve behavior. Later starts reapply a non-empty
+    // SIGNUP_ALLOWLIST; a blank value leaves the stored list alone.
     await prisma.deploymentSettings.updateMany({
       where: { id: "default", signupPolicyInitialized: false },
       data: {
@@ -195,6 +196,19 @@ export async function createApp(
         signupPolicyInitialized: true,
       },
     });
+  } else {
+    const signupAllowlist = signupAllowlistBootUpdate(
+      deploymentSettings.signupAllowlist,
+      env.signupAllowlist,
+      true,
+    );
+    if (signupAllowlist !== null) {
+      await prisma.deploymentSettings.update({
+        where: { id: "default" },
+        data: { signupAllowlist },
+      });
+      logger.info("applied SIGNUP_ALLOWLIST from the environment");
+    }
   }
 
   const jobKind = env.wakeupDriver;
