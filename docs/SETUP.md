@@ -57,6 +57,25 @@ To instead configure a model for every account on this deployment, set `OPENROUT
 `ANTHROPIC_API_KEY`) in `.env` and re-run `./scripts/setup.sh` (or
 `docker compose -f infra/compose/docker-compose.yml up -d api worker` to restart just those two).
 
+## Use your own model server (LiteLLM, vLLM, Ollama, LM Studio)
+
+Aiden works with any OpenAI-compatible server.
+
+1. Open **Settings → Models** and pick **OpenAI-compatible**.
+2. Paste the server address. Aiden adds `/v1` when it's missing.
+   - If the server runs on the same laptop, use `http://host.docker.internal:<port>`
+     (for LiteLLM usually `http://host.docker.internal:4000`). Inside the containers,
+     `localhost` is the container itself.
+   - A server elsewhere on your network: use its LAN address or hostname.
+3. Paste the server's API key (for LiteLLM, a virtual key or the master key) and pick
+   the models it exposes.
+4. So Aiden can see its computer's screen, list the models that accept images in `.env`
+   and restart:
+
+   ```bash
+   AIDEN_OPENAI_COMPATIBLE_VISION_MODELS=gpt-4o,claude-sonnet
+   ```
+
 ## What gets created
 
 | Thing | Where |
