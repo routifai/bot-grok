@@ -1,8 +1,8 @@
+import type { Ask, Goal } from "@aiden/contracts";
+import { nextCronDateAcross } from "@aiden/core";
+import { cn } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import type { Ask, Goal } from "@rakazo/contracts";
-import { nextCronDateAcross } from "@rakazo/core";
-import { cn } from "@rakazo/ui-web";
 import { HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

@@ -13,9 +13,9 @@ import type {
   NotificationProvider,
   SandboxProvider,
   WebProvider,
-} from "@rakazo/adapter-kit";
-import type { ProductMode } from "@rakazo/contracts";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+} from "@aiden/adapter-kit";
+import type { ProductMode } from "@aiden/contracts";
+import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import type { CloudAgentConnection } from "../cloud-agent-factory.js";
 import type { MemoryProviderResolver } from "../memory-provider-factory.js";
 import type { RemoteTransportDependencies } from "../remote-mcp.js";
@@ -54,6 +54,6 @@ export interface ExecutorDeps {
   autoReview?: AutoReviewProvider;
   /** Aborted when createApp stop() begins so in-flight continueRun boot waits exit promptly. */
   shutdownSignal?: AbortSignal;
-  /** `RAKAZO_PRODUCT_MODE` (ADR 0002): undefined/"rakazo" keeps every Muse-only behaviour off. */
+  /** `AIDEN_PRODUCT_MODE` (ADR 0002): undefined/"aiden" keeps every Muse-only behaviour off. */
   productMode?: ProductMode;
 }

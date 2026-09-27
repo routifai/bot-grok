@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@rakazo/contracts";
-import { redactSecrets } from "@rakazo/core";
+import type { MessageBlock } from "@aiden/contracts";
+import { redactSecrets } from "@aiden/core";
 
 const MAX_APPROVAL_SUMMARY_LENGTH = 500;
 const MAX_APPROVAL_DETAIL_LENGTH = 4_000;

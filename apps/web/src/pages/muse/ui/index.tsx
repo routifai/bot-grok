@@ -1,4 +1,4 @@
-import { cn } from "@rakazo/ui-web";
+import { cn } from "@aiden/ui-web";
 import type { ComponentProps, ReactNode } from "react";
 
 // Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen

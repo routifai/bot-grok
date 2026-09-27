@@ -1,6 +1,6 @@
+import { type CronPreset, cronFromPreset, defaultCronPreset, presetFromCron } from "@aiden/core";
+import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { type CronPreset, cronFromPreset, defaultCronPreset, presetFromCron } from "@rakazo/core";
-import { Button } from "@rakazo/ui-web";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { RoutineSchedule } from "../../RoutineSchedule";

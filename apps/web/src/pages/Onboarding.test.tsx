@@ -37,7 +37,7 @@ vi.mock("@lingui/react/macro", () => {
     parts.reduce((acc, part, i) => acc + part + (i < values.length ? String(values[i]) : ""), "");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
-vi.mock("@rakazo/ui-web", () => {
+vi.mock("@aiden/ui-web", () => {
   const Container = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     BotAvatar: () => <span data-testid="bot-avatar" />,
@@ -53,7 +53,7 @@ vi.mock("@rakazo/ui-web", () => {
   };
 });
 
-import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { OnboardingPage } from "./Onboarding";
 
 function baseMe(overrides: Partial<Record<string, unknown>> = {}) {
@@ -70,7 +70,7 @@ function baseMe(overrides: Partial<Record<string, unknown>> = {}) {
     canChooseHostComputer: false,
     sandboxProvider: "docker",
     avatarStyle: "robot",
-    productMode: "rakazo",
+    productMode: "aiden",
     ...overrides,
   };
 }
@@ -248,9 +248,9 @@ it("in muse mode, creates exactly one bot with the chosen name and color", async
   }
 });
 
-it("in rakazo mode, skips straight to the model step (unchanged flow)", async () => {
+it("in aiden mode, skips straight to the model step (unchanged flow)", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.me.mockResolvedValue(baseMe({ productMode: "rakazo", needsModel: true }));
+  api.me.mockResolvedValue(baseMe({ productMode: "aiden", needsModel: true }));
   const page = await renderOnboarding();
   try {
     await act(async () => {

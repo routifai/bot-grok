@@ -1,4 +1,4 @@
-import { Skeleton } from "@rakazo/ui-web";
+import { Skeleton } from "@aiden/ui-web";
 import { LibraryCard } from "./LibraryCard";
 import type { ArtifactSummary } from "./types";
 

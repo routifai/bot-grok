@@ -1,7 +1,7 @@
-import { Label } from "@rakazo/ui-web/components/ui/label";
-import { Separator } from "@rakazo/ui-web/components/ui/separator";
+import { Label } from "@aiden/ui-web/components/ui/label";
+import { Separator } from "@aiden/ui-web/components/ui/separator";
 
-import { cn } from "@rakazo/ui-web/lib/utils";
+import { cn } from "@aiden/ui-web/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import { useMemo } from "react";
 

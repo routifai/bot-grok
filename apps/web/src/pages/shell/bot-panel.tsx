@@ -1,5 +1,3 @@
-import { t } from "@lingui/core/macro";
-import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   AgentSkillCatalogEntry,
   Bot,
@@ -9,12 +7,12 @@ import type {
   ModelCredential,
   ThinkingLevel,
   VoiceInfo,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import {
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import {
   Button,
   Input,
@@ -23,7 +21,9 @@ import {
   Switch,
   Textarea,
   Toggle,
-} from "@rakazo/ui-web";
+} from "@aiden/ui-web";
+import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";

@@ -1,4 +1,4 @@
-import { ONCE_ROUTINE_CRON } from "@rakazo/core";
+import { ONCE_ROUTINE_CRON } from "@aiden/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   cancelScheduleFromTool,

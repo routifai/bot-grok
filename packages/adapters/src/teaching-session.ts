@@ -4,16 +4,16 @@ import type {
   ControlLeaseRef,
   JobPublisher,
   SandboxProvider,
-} from "@rakazo/adapter-kit";
-import { computerControlExpireJobKey, skillTeachingExpireJobKey } from "@rakazo/adapter-kit";
-import type { Actor, MessageBlock, TaughtSkill } from "@rakazo/contracts";
+} from "@aiden/adapter-kit";
+import { computerControlExpireJobKey, skillTeachingExpireJobKey } from "@aiden/adapter-kit";
+import type { Actor, MessageBlock, TaughtSkill } from "@aiden/contracts";
 import {
   buildPlaybookFromRecording,
   computerInputForDomKey,
   type SkillPlaybook,
   type TeachRecordingEvent,
   type TeachSnapshot,
-} from "@rakazo/core";
+} from "@aiden/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
@@ -21,7 +21,7 @@ import {
   type Prisma,
   type PrismaClient,
   type ThreadEvents,
-} from "@rakazo/db";
+} from "@aiden/db";
 import { scheduleComputerSleep } from "./computer-idle.js";
 import { toComputerRef } from "./computer-support.js";
 

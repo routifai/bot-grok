@@ -1,5 +1,5 @@
+import { DEFAULT_MODEL_MAX_TOKENS } from "@aiden/contracts";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { DEFAULT_MODEL_MAX_TOKENS } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
 import { conversationSessionId, isOpenCodeProvider, reliableStreamOptions } from "./pi-runtime.js";
 import { MODEL_STREAM_MAX_RETRIES, MODEL_STREAM_TIMEOUT_MS } from "./pi-runtime-limits.js";
@@ -67,7 +67,7 @@ describe("Pi runtime transport", () => {
         transport: "auto",
         headers: {
           "x-opencode-session": "thread-1:bot-1",
-          "x-opencode-client": "rakazo",
+          "x-opencode-client": "aiden",
           "X-Custom": "1",
         },
       });
@@ -82,7 +82,7 @@ describe("Pi runtime transport", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(result.headers?.["x-opencode-session"]).toBe(result.sessionId);
-    expect(result.headers?.["x-opencode-client"]).toBe("rakazo");
+    expect(result.headers?.["x-opencode-client"]).toBe("aiden");
     expect(result.timeoutMs).toBe(MODEL_STREAM_TIMEOUT_MS);
   });
 

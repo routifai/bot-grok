@@ -1,5 +1,5 @@
-import type { Actor } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
+import type { Actor } from "@aiden/contracts";
+import type { PrismaClient } from "@aiden/db";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import {

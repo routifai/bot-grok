@@ -62,10 +62,10 @@ describe("the images compose file", () => {
     ]);
     for (const service of appServices) {
       expect(compose.services[service]?.image).toContain("ghcr.io/elie222/rakazo/app");
-      expect(compose.services[service]?.image).toContain("RAKAZO_IMAGE_TAG");
+      expect(compose.services[service]?.image).toContain("AIDEN_IMAGE_TAG");
     }
     expect(compose.services.computer?.image).toContain("ghcr.io/elie222/rakazo/computer");
-    expect(compose.services.computer?.image).toContain("RAKAZO_COMPUTER_IMAGE_TAG");
+    expect(compose.services.computer?.image).toContain("AIDEN_COMPUTER_IMAGE_TAG");
     expect(compose.services.postgres?.image).toMatch(
       /^\$\{POSTGRES_IMAGE:-postgres:16@sha256:[0-9a-f]{64}\}$/,
     );
@@ -165,8 +165,8 @@ describe("the images compose file", () => {
   });
 
   it("publishes the web UI on loopback only", () => {
-    expect(compose.services.web?.ports).toEqual(["127.0.0.1:${RAKAZO_WEB_PORT:-5173}:5173"]);
-    expect(compose.services.api?.ports).toEqual(["127.0.0.1:${RAKAZO_API_PORT:-3100}:3100"]);
+    expect(compose.services.web?.ports).toEqual(["127.0.0.1:${AIDEN_WEB_PORT:-5173}:5173"]);
+    expect(compose.services.api?.ports).toEqual(["127.0.0.1:${AIDEN_API_PORT:-3100}:3100"]);
     for (const key of ["BETTER_AUTH_URL", "WEB_ORIGIN", "API_URL"]) {
       expect(compose.services.api?.environment?.[key]).toBe(`\${${key}:-http://127.0.0.1:5173}`);
     }

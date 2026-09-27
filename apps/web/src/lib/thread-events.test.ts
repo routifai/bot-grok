@@ -1,10 +1,5 @@
-import type {
-  ComputerStatus,
-  ProductEvent,
-  ThreadMessage,
-  ThreadSnapshot,
-} from "@rakazo/contracts";
-import { withLiveStreamingProgress } from "@rakazo/core";
+import type { ComputerStatus, ProductEvent, ThreadMessage, ThreadSnapshot } from "@aiden/contracts";
+import { withLiveStreamingProgress } from "@aiden/core";
 import { describe, expect, it } from "vitest";
 import {
   activeThreadRuns,

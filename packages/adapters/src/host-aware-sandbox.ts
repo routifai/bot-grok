@@ -10,8 +10,8 @@ import type {
   ProcessEvent,
   SandboxProvider,
   ScreenRequest,
-} from "@rakazo/adapter-kit";
-import type { PrismaClient } from "@rakazo/db";
+} from "@aiden/adapter-kit";
+import type { PrismaClient } from "@aiden/db";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
 import { createSandboxProvider, type SandboxProviderOptions } from "./sandbox-factory.js";
 

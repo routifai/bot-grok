@@ -1,11 +1,11 @@
-import type { ProductMode } from "@rakazo/contracts";
+import type { ProductMode } from "@aiden/contracts";
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "rakazo.productMode";
+const STORAGE_KEY = "aiden.productMode";
 
 /**
  * Marks the page with the product mode so the Muse palette (`[data-product="muse"]` in
- * `@rakazo/ui-tokens`) applies. Cached so the next load paints in the right palette
+ * `@aiden/ui-tokens`) applies. Cached so the next load paints in the right palette
  * before `me` arrives.
  */
 export function applyProductMode(
@@ -29,7 +29,7 @@ export function applyCachedProductMode(): void {
   } catch {
     return;
   }
-  if (cached === "muse" || cached === "rakazo") applyProductMode(cached);
+  if (cached === "muse" || cached === "aiden") applyProductMode(cached);
 }
 
 /**
@@ -40,14 +40,14 @@ export function useProductMode(): ProductMode {
   const [mode, setMode] = useState<ProductMode>(() =>
     typeof document !== "undefined" && document.documentElement.dataset.product === "muse"
       ? "muse"
-      : "rakazo",
+      : "aiden",
   );
   useEffect(() => {
     let active = true;
     void fetch("/api/product")
       .then((response) => (response.ok ? response.json() : null))
       .then((body: { productMode?: unknown } | null) => {
-        const next = body?.productMode === "muse" ? "muse" : "rakazo";
+        const next = body?.productMode === "muse" ? "muse" : "aiden";
         if (!active) return;
         applyProductMode(next);
         setMode(next);

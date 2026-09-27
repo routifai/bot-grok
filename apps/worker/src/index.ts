@@ -1,6 +1,6 @@
-import type { JobPublisher, JobWorkerHost } from "@rakazo/adapter-kit";
-import { ComposioConnector, IntegrationProviderSettings } from "@rakazo/adapters";
-import { loadRootEnv } from "@rakazo/core/node/load-root-env";
+import type { JobPublisher, JobWorkerHost } from "@aiden/adapter-kit";
+import { ComposioConnector, IntegrationProviderSettings } from "@aiden/adapters";
+import { loadRootEnv } from "@aiden/core/node/load-root-env";
 
 loadRootEnv();
 
@@ -44,17 +44,17 @@ import {
   ScriptedAgentRuntime,
   SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
-} from "@rakazo/adapters";
-import { resolveEncryptionKey, resolveProductMode, resolveSupervisorToken } from "@rakazo/core";
+} from "@aiden/adapters";
+import { resolveEncryptionKey, resolveProductMode, resolveSupervisorToken } from "@aiden/core";
 import {
   createDb,
   createThreadEvents,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
-} from "@rakazo/db";
-import { SERVICE_NAMES } from "@rakazo/logging";
-import { createRootLogger } from "@rakazo/logging/axiom";
-import { MarkdownMemoryStore } from "@rakazo/memory";
+} from "@aiden/db";
+import { SERVICE_NAMES } from "@aiden/logging";
+import { createRootLogger } from "@aiden/logging/axiom";
+import { MarkdownMemoryStore } from "@aiden/memory";
 
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
@@ -68,7 +68,7 @@ async function main() {
   // larger max just competes for Postgres max_connections (53300).
   const { prisma, pool } = createDb(databaseUrl, {
     poolMax: parsePositiveInteger(process.env.DB_POOL_MAX, 8),
-    applicationName: "rakazo-worker",
+    applicationName: "aiden-worker",
   });
   const realtime = new PostgresRealtimeFanout({
     connectionString: process.env.REALTIME_DATABASE_URL ?? databaseUrl,

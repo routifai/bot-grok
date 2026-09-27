@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
+import type { MessageBlock } from "@aiden/contracts";
+import type { PrismaClient } from "@aiden/db";
 import { describe, expect, it } from "vitest";
 import { acceptGoalProposal, dismissGoalProposal } from "./goal-proposals.js";
 import {
@@ -12,7 +12,7 @@ import {
 
 // An in-memory Prisma-shaped store, just enough for goal-tools.ts / goal-proposals.ts to
 // run their real transactions (including the real createThreadMessageInTransaction /
-// appendEventInTransaction from @rakazo/db) without a database. Mirrors the one
+// appendEventInTransaction from @aiden/db) without a database. Mirrors the one
 // GOAL_INCLUDE shape (tasks by idx asc, at most one open proposal) used everywhere Goal
 // rows are read.
 function createFixture() {

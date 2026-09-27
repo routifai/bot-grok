@@ -1,9 +1,9 @@
 // Redacted audit trail for tool-call completions: what to log on `agent.tool.completed`
 // without leaking secrets or the full result payload.
-import type { AgentToolCompletion } from "@rakazo/adapter-kit";
-import { redactSecrets } from "@rakazo/core";
-import type { ThreadEvents } from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+import type { AgentToolCompletion } from "@aiden/adapter-kit";
+import { redactSecrets } from "@aiden/core";
+import type { ThreadEvents } from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import { isToolPauseResult } from "../approval-effect.js";
 import { sanitizeConnectorError } from "../connector-safety.js";
 

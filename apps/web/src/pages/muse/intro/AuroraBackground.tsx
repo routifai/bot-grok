@@ -1,4 +1,4 @@
-import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { useEffect, useRef } from "react";
 import type * as ThreeNamespace from "three";
 

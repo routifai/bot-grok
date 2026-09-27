@@ -6,7 +6,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "X-Generator: @lingui/cli\n"
 "Language: hi\n"
-"Project-Id-Version: rakazo-web\n"
+"Project-Id-Version: aiden-web\n"
 "Report-Msgid-Bugs-To: \n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
@@ -774,8 +774,8 @@ msgid "Choose file"
 msgstr "फ़ाइल चुनें"
 
 #: src/pages/ModelSettingsOverlay.tsx:383
-msgid "Choose which connected model Rakazo uses."
-msgstr "चुनें कि Rakazo किस कनेक्टेड मॉडल का उपयोग करे।"
+msgid "Choose which connected model Aiden uses."
+msgstr "चुनें कि Aiden किस कनेक्टेड मॉडल का उपयोग करे।"
 
 #: src/pages/shell/dialogs.tsx:319
 msgid "Clear"
@@ -1471,8 +1471,8 @@ msgid "Create space"
 msgstr ""
 
 #: src/pages/Auth.tsx:38
-msgid "Create your Rakazo"
-msgstr "अपना Rakazo बनाएं"
+msgid "Create your Aiden"
+msgstr "अपना Aiden बनाएं"
 
 #: src/components/AskCard.tsx:21
 msgid "Created"
@@ -2835,8 +2835,8 @@ msgid "Paste a replacement key"
 msgstr "बदलने के लिए नई कुंजी पेस्ट करें"
 
 #: src/pages/ModelSettingsOverlay.tsx:503
-msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
-msgstr "अपने सर्वर से OpenAI-संगत पता पेस्ट करें। ज़रूरत होने पर Rakazo /v1 जोड़ देता है।"
+msgid "Paste the OpenAI-compatible address from your server. Aiden adds /v1 if needed."
+msgstr "अपने सर्वर से OpenAI-संगत पता पेस्ट करें। ज़रूरत होने पर Aiden /v1 जोड़ देता है।"
 
 #: src/pages/VoiceSettingsOverlay.tsx:255
 msgid "Paste your API key"
@@ -3161,8 +3161,8 @@ msgid "Retry screen"
 msgstr ""
 
 #: src/pages/McpOAuthCallback.tsx:62
-msgid "Return to Rakazo"
-msgstr "Rakazo पर लौटें"
+msgid "Return to Aiden"
+msgstr "Aiden पर लौटें"
 
 #. placeholder {0}: doc.revision
 #: src/pages/KnowledgeSection.tsx:180
@@ -3468,8 +3468,8 @@ msgid "Sign in"
 msgstr "साइन इन करें"
 
 #: src/pages/Auth.tsx:36
-msgid "Sign in to Rakazo"
-msgstr "Rakazo में साइन इन करें"
+msgid "Sign in to Aiden"
+msgstr "Aiden में साइन इन करें"
 
 #: src/pages/Auth.tsx:223
 #: src/pages/Welcome.tsx:32
@@ -3743,8 +3743,8 @@ msgid "This server is already connected. Disconnect it first to authorize again.
 msgstr "यह सर्वर पहले से कनेक्टेड है। पुनः ऑथराइज़ करने के लिए पहले इसे डिस्कनेक्ट करें।"
 
 #: src/pages/ModelSettingsOverlay.tsx:839
-msgid "This subscription sign-in is not available in Rakazo yet. Use a deployment credential or choose another provider."
-msgstr "यह सब्सक्रिप्शन साइन-इन अभी Rakazo में उपलब्ध नहीं है। किसी डिप्लॉयमेंट क्रेडेंशियल का उपयोग करें या दूसरा प्रोवाइडर चुनें।"
+msgid "This subscription sign-in is not available in Aiden yet. Use a deployment credential or choose another provider."
+msgstr "यह सब्सक्रिप्शन साइन-इन अभी Aiden में उपलब्ध नहीं है। किसी डिप्लॉयमेंट क्रेडेंशियल का उपयोग करें या दूसरा प्रोवाइडर चुनें।"
 
 #: src/pages/Artifacts.tsx:279
 msgid "This week"

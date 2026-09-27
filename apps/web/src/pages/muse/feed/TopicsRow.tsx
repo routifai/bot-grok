@@ -1,6 +1,6 @@
+import type { FollowedTopic } from "@aiden/contracts";
+import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { FollowedTopic } from "@rakazo/contracts";
-import { Button } from "@rakazo/ui-web";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { Section } from "../ui";

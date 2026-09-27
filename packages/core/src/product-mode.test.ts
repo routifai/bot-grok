@@ -3,18 +3,18 @@ import { isMuseMode, resolveProductMode } from "./product-mode.js";
 
 describe("resolveProductMode", () => {
   it("defaults to upstream Rakazo", () => {
-    expect(resolveProductMode({})).toBe("rakazo");
-    expect(resolveProductMode({ RAKAZO_PRODUCT_MODE: "" })).toBe("rakazo");
-    expect(resolveProductMode({ RAKAZO_PRODUCT_MODE: "something-else" })).toBe("rakazo");
+    expect(resolveProductMode({})).toBe("aiden");
+    expect(resolveProductMode({ AIDEN_PRODUCT_MODE: "" })).toBe("aiden");
+    expect(resolveProductMode({ AIDEN_PRODUCT_MODE: "something-else" })).toBe("aiden");
   });
 
   it("turns on the Muse edition", () => {
-    expect(resolveProductMode({ RAKAZO_PRODUCT_MODE: "muse" })).toBe("muse");
-    expect(resolveProductMode({ RAKAZO_PRODUCT_MODE: " Muse " })).toBe("muse");
+    expect(resolveProductMode({ AIDEN_PRODUCT_MODE: "muse" })).toBe("muse");
+    expect(resolveProductMode({ AIDEN_PRODUCT_MODE: " Muse " })).toBe("muse");
   });
 
   it("answers isMuseMode", () => {
     expect(isMuseMode("muse")).toBe(true);
-    expect(isMuseMode("rakazo")).toBe(false);
+    expect(isMuseMode("aiden")).toBe(false);
   });
 });

@@ -5,6 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { brotliCompressSync, gzipSync } from "node:zlib";
+import { abortableDelay } from "@aiden/core";
+import { loadRootEnv } from "@aiden/core/node/load-root-env";
+import { createThreadMessage, type PrismaClient } from "@aiden/db";
 import { serve } from "@hono/node-server";
 import {
   type CDPSession,
@@ -13,9 +16,6 @@ import {
   expect,
   type Page,
 } from "@playwright/test";
-import { abortableDelay } from "@rakazo/core";
-import { loadRootEnv } from "@rakazo/core/node/load-root-env";
-import { createThreadMessage, type PrismaClient } from "@rakazo/db";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
 import {
@@ -50,7 +50,7 @@ if (webPort === apiPort) {
 const webOrigin = `http://127.0.0.1:${webPort}`;
 const apiOrigin = `http://127.0.0.1:${apiPort}`;
 const reportDirectory = path.join(root, ".context/performance");
-const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "rakazo-desktop-performance-"));
+const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "aiden-desktop-performance-"));
 
 const container = await new PostgreSqlContainer("postgres:16-alpine").start();
 let preview: ChildProcess | undefined;
@@ -162,21 +162,21 @@ function performanceEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
     OPENROUTER_API_KEY: "",
     E2B_API_KEY: "",
     DAYTONA_API_KEY: "",
-    BETTER_AUTH_SECRET: "rakazo-benchmark-auth-secret-over-32-characters",
-    ENCRYPTION_KEY: "rakazo-benchmark-encryption-key-over-32-characters",
-    SANDBOX_SUPERVISOR_TOKEN: "rakazo-benchmark-supervisor-token-over-32-characters",
-    SCREEN_PROXY_SECRET: "rakazo-benchmark-screen-proxy-secret-over-32-characters",
+    BETTER_AUTH_SECRET: "aiden-benchmark-auth-secret-over-32-characters",
+    ENCRYPTION_KEY: "aiden-benchmark-encryption-key-over-32-characters",
+    SANDBOX_SUPERVISOR_TOKEN: "aiden-benchmark-supervisor-token-over-32-characters",
+    SCREEN_PROXY_SECRET: "aiden-benchmark-screen-proxy-secret-over-32-characters",
     BETTER_AUTH_URL: webOrigin,
     WEB_ORIGIN: webOrigin,
     API_PORT: String(apiPort),
     API_URL: apiOrigin,
     API_PROXY_TARGET: apiOrigin,
     WEB_PORT: String(webPort),
-    RAKAZO_HOST: "127.0.0.1",
-    RAKAZO_WEB_URL: webOrigin,
-    RAKAZO_DISABLE_BUNDLED_RENDERER: remoteRenderer ? "1" : "0",
-    RAKAZO_DISABLE_WARM_WINDOW: disableWarmWindow ? "1" : "0",
-    RAKAZO_PERFORMANCE_ASSET_DELAY_MS: String(assetDelayMs),
+    AIDEN_HOST: "127.0.0.1",
+    AIDEN_WEB_URL: webOrigin,
+    AIDEN_DISABLE_BUNDLED_RENDERER: remoteRenderer ? "1" : "0",
+    AIDEN_DISABLE_WARM_WINDOW: disableWarmWindow ? "1" : "0",
+    AIDEN_PERFORMANCE_ASSET_DELAY_MS: String(assetDelayMs),
     DATA_DIR: path.join(temporaryRoot, "data"),
     SIGNUPS_ENABLED: "true",
     SIGNUP_ALLOWLIST: "",
@@ -187,12 +187,12 @@ function performanceEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
 }
 
 function buildProductionArtifacts(env: NodeJS.ProcessEnv) {
-  run("pnpm", ["--filter", "@rakazo/desktop", "pack:dir"], env);
+  run("pnpm", ["--filter", "@aiden/desktop", "pack:dir"], env);
 }
 
 function migrateDatabase(env: NodeJS.ProcessEnv) {
-  run("pnpm", ["--filter", "@rakazo/db", "generate"], env);
-  run("pnpm", ["--filter", "@rakazo/db", "exec", "prisma", "migrate", "deploy"], env);
+  run("pnpm", ["--filter", "@aiden/db", "generate"], env);
+  run("pnpm", ["--filter", "@aiden/db", "exec", "prisma", "migrate", "deploy"], env);
 }
 
 function run(command: string, args: string[], env: NodeJS.ProcessEnv) {
@@ -204,7 +204,7 @@ function startPreview(env: NodeJS.ProcessEnv) {
     "pnpm",
     [
       "--filter",
-      "@rakazo/web",
+      "@aiden/web",
       "exec",
       "vite",
       "preview",
@@ -220,9 +220,9 @@ function startPreview(env: NodeJS.ProcessEnv) {
 
 async function packagedExecutable() {
   const out = path.join(desktopRoot, "out");
-  const candidates = process.platform === "darwin" ? await findNamed(out, "Rakazo.app") : [];
+  const candidates = process.platform === "darwin" ? await findNamed(out, "Aiden.app") : [];
   if (process.platform === "darwin" && candidates[0]) {
-    return path.join(candidates[0], "Contents/MacOS/Rakazo");
+    return path.join(candidates[0], "Contents/MacOS/Aiden");
   }
   const desktopRequire = createRequire(path.join(desktopRoot, "package.json"));
   return desktopRequire("electron") as string;
@@ -259,7 +259,7 @@ async function prepareAuthenticatedProfile(benchmark: BenchmarkContext, profile:
     const stamp = Date.now();
     await page.goto(`${webOrigin}/sign-up`);
     await page.getByPlaceholder("Your name").fill("Benchmark User");
-    await page.getByPlaceholder("Your email address").fill(`benchmark-${stamp}@rakazo.test`);
+    await page.getByPlaceholder("Your email address").fill(`benchmark-${stamp}@aiden.test`);
     await page.getByPlaceholder("Password").fill("password12");
     await page.getByRole("button", { name: "Create account" }).click();
     await page
@@ -350,8 +350,8 @@ async function launchDesktop(
     executablePath: benchmark.executablePath,
     env: {
       ...benchmark.env,
-      RAKAZO_PERFORMANCE_USER_DATA: profile,
-      RAKAZO_PERFORMANCE_CLEAR_CACHE: clearCache ? "1" : "0",
+      AIDEN_PERFORMANCE_USER_DATA: profile,
+      AIDEN_PERFORMANCE_CLEAR_CACHE: clearCache ? "1" : "0",
     },
   });
   const page = await app.firstWindow();
@@ -516,7 +516,7 @@ async function measureInteractions(app: ElectronApplication, page: Page) {
     const target = document.querySelector<HTMLInputElement>('input[placeholder^="Message "]');
     if (!target) throw new Error("Composer is missing");
     const samples: number[] = [];
-    (window as typeof window & { __rakazoKeyPaintSamples?: number[] }).__rakazoKeyPaintSamples =
+    (window as typeof window & { __aidenKeyPaintSamples?: number[] }).__aidenKeyPaintSamples =
       samples;
     target.addEventListener("keydown", () => {
       const started = performance.now();
@@ -526,13 +526,13 @@ async function measureInteractions(app: ElectronApplication, page: Page) {
   await page.keyboard.type("a".repeat(characterCount), { delay: 16 });
   await page.waitForFunction(
     (count) =>
-      ((window as typeof window & { __rakazoKeyPaintSamples?: number[] }).__rakazoKeyPaintSamples
+      ((window as typeof window & { __aidenKeyPaintSamples?: number[] }).__aidenKeyPaintSamples
         ?.length ?? 0) >= count,
     characterCount,
   );
   const keyPaintMs = await page.evaluate(
     () =>
-      (window as typeof window & { __rakazoKeyPaintSamples?: number[] }).__rakazoKeyPaintSamples ??
+      (window as typeof window & { __aidenKeyPaintSamples?: number[] }).__aidenKeyPaintSamples ??
       [],
   );
   const typingAfter = await cdpMetrics(session);
@@ -749,7 +749,7 @@ function environmentFingerprint(versions: { electron?: string; chrome?: string }
 
 async function measureBundles() {
   const web = await directorySize(path.join(webRoot, "dist"));
-  const applications = await findNamed(path.join(desktopRoot, "out"), "Rakazo.app");
+  const applications = await findNamed(path.join(desktopRoot, "out"), "Aiden.app");
   const desktop = applications[0] ? await directorySize(applications[0]) : null;
   return { web, desktop };
 }
@@ -813,7 +813,7 @@ function roundedSummary(values: number[]): NumericSummary {
 
 function renderMarkdown(report: PerformanceReport) {
   const summary = report.summary;
-  return `# Rakazo desktop performance — ${report.label}
+  return `# Aiden desktop performance — ${report.label}
 
 - Commit: \`${report.environment.gitSha.slice(0, 12)}\`
 - Platform: ${report.environment.platform}/${report.environment.arch}

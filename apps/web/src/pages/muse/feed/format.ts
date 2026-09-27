@@ -1,5 +1,5 @@
+import type { Post } from "@aiden/contracts";
 import { t } from "@lingui/core/macro";
-import type { Post } from "@rakazo/contracts";
 
 function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();

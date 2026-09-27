@@ -4,7 +4,7 @@ import {
   IdeaSchema,
   PostSchema,
   ThreadMessagePageSchema,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import { describe, expect, it } from "vitest";
 import { musePreview } from "./muse-preview.js";
 

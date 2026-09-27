@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Ask, Goal } from "@rakazo/contracts";
+import type { Ask, Goal } from "@aiden/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -23,7 +23,7 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@rakazo/ui-web", () => ({
+vi.mock("@aiden/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 

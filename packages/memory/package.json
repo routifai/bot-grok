@@ -1,5 +1,5 @@
 {
-  "name": "@rakazo/memory",
+  "name": "@aiden/memory",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -15,8 +15,8 @@
     "test": "vitest run --root ../.. packages/memory/src"
   },
   "dependencies": {
-    "@rakazo/adapter-kit": "workspace:*",
-    "@rakazo/db": "workspace:*"
+    "@aiden/adapter-kit": "workspace:*",
+    "@aiden/db": "workspace:*"
   },
   "devDependencies": {
     "typescript": "7.0.2",

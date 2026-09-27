@@ -1,11 +1,11 @@
-import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@rakazo/ui-web";
+} from "@aiden/ui-web";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { Download, Ellipsis } from "lucide-react";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { Eyebrow, Surface } from "../ui";

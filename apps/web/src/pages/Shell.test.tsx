@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-// jsdom does not implement these; Shell (and the real @rakazo/ui-web components
+// jsdom does not implement these; Shell (and the real @aiden/ui-web components
 // it renders) use them unconditionally on mount.
 beforeEach(() => {
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -83,11 +83,11 @@ vi.mock("@lingui/react/macro", () => ({
   Trans: ({ children }: { children?: ReactNode }) => children,
 }));
 
-vi.mock("@rakazo/chat-ui/web", () => ({
+vi.mock("@aiden/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@rakazo/ui-web", () => {
+vi.mock("@aiden/ui-web", () => {
   // Passes every prop straight onto a <div> (event handlers included) so
   // data-testid/aria-label/onClick still work for assertions and clicks even
   // though this isn't the real Base UI component.
@@ -242,7 +242,7 @@ function me(overrides: Partial<Record<string, unknown>> = {}) {
     canChooseHostComputer: false,
     sandboxProvider: "docker",
     avatarStyle: "robot",
-    productMode: "rakazo",
+    productMode: "aiden",
     ...overrides,
   };
 }
@@ -292,9 +292,9 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   };
 }
 
-it("keeps the classic rail and bot list in rakazo mode", async () => {
+it("keeps the classic rail and bot list in aiden mode", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const page = await renderShell(bootstrap({ me: me({ productMode: "rakazo" }) }));
+  const page = await renderShell(bootstrap({ me: me({ productMode: "aiden" }) }));
   try {
     const rail = page.container.querySelector('[data-testid="app-rail"]');
     expect(rail).toBeTruthy();

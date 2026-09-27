@@ -1,4 +1,4 @@
-import type { Goal } from "@rakazo/contracts";
+import type { Goal } from "@aiden/contracts";
 import { describe, expect, it } from "vitest";
 import {
   type GoalsContextRepo,

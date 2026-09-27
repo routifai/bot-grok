@@ -1,14 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type {
-  AdapterContext,
-  BackgroundJobPayloads,
-  CloudAgentSnapshot,
-} from "@rakazo/adapter-kit";
-import { CloudAgentRequestRejected, runContinueJob } from "@rakazo/adapter-kit";
-import type { MessageBlock } from "@rakazo/contracts";
-import { cloudAgentHttpsUrl } from "@rakazo/core";
-import { appendEventInTransaction, type CloudAgent, Prisma } from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+import type { AdapterContext, BackgroundJobPayloads, CloudAgentSnapshot } from "@aiden/adapter-kit";
+import { CloudAgentRequestRejected, runContinueJob } from "@aiden/adapter-kit";
+import type { MessageBlock } from "@aiden/contracts";
+import { cloudAgentHttpsUrl } from "@aiden/core";
+import { appendEventInTransaction, type CloudAgent, Prisma } from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import { cloudAgentsEnabled } from "./cloud-agent-factory.js";
 import { type CloudAgentDeps, cloudAgentBlock, enqueueCloudAgent } from "./cloud-agent-service.js";
 import { cloudAgentLaunchSchema, cloudAgentPromptSchema } from "./cloud-agent-tools.js";

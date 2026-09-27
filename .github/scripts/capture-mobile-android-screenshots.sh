@@ -2,8 +2,8 @@
 set -euo pipefail
 
 report_dir="test-report/mobile-screenshots"
-run_log="${RUNNER_TEMP:?}/rakazo-mobile-screenshots.log"
-android_log="${RUNNER_TEMP:?}/rakazo-mobile-android.log"
+run_log="${RUNNER_TEMP:?}/aiden-mobile-screenshots.log"
+android_log="${RUNNER_TEMP:?}/aiden-mobile-android.log"
 android_log_pid=""
 
 mkdir -p "$report_dir"

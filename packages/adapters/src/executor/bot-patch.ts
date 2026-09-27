@@ -3,7 +3,7 @@ import {
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 
 export type UpdateBotPatch = {
   name?: string;

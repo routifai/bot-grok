@@ -1,5 +1,4 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { implement, ORPCError } from "@orpc/server";
 import type {
   AdapterContext,
   AgentHomeStore,
@@ -8,7 +7,7 @@ import type {
   JobPublisher,
   MemoryStore,
   SandboxProvider,
-} from "@rakazo/adapter-kit";
+} from "@aiden/adapter-kit";
 import {
   computerControlExpireJobKey,
   messagingDeliverJob,
@@ -16,7 +15,7 @@ import {
   routineWakeupJob,
   runContinueJob,
   runJobKey,
-} from "@rakazo/adapter-kit";
+} from "@aiden/adapter-kit";
 import type {
   CloudAgentConnection,
   ComposioProvider,
@@ -27,7 +26,7 @@ import type {
   MemoryProviderResolver,
   PiOAuthLogins,
   RemoteConnectorDependencies,
-} from "@rakazo/adapters";
+} from "@aiden/adapters";
 import {
   acquireComputerExecutionLease,
   applyTeachingDesktopInput,
@@ -88,8 +87,8 @@ import {
   validateModelAuthAvailability,
   validateStoredModelAuth,
   verifyMcpInstall,
-} from "@rakazo/adapters";
-import type { Auth } from "@rakazo/auth";
+} from "@aiden/adapters";
+import type { Auth } from "@aiden/auth";
 import type {
   Actor,
   Bot,
@@ -98,13 +97,13 @@ import type {
   Me,
   ProductMode,
   SpaceNavigation,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import {
   appContract,
   IntegrationProviderIdSchema,
   OPENAI_COMPATIBLE_PROVIDER_ID,
   usableModelId,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   AttachmentValidationError,
@@ -114,8 +113,8 @@ import {
   isMuseMode,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
-} from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+} from "@aiden/core";
+import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import {
   appendEventInTransaction,
   BotSectionNameConflictError,
@@ -156,8 +155,9 @@ import {
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
   touchGroupUpdatedAt,
-} from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+} from "@aiden/db";
+import { getLogger } from "@aiden/logging";
+import { implement, ORPCError } from "@orpc/server";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { aiConsentStatus, allowAiConsent } from "./ai-consent.js";
@@ -556,7 +556,7 @@ export function assertMuseSingleBotAllowed(
   liveBot: { spawnKey: string | null } | null,
   requestedSpawnKey: string | null | undefined,
 ): void {
-  if (!isMuseMode(productMode ?? "rakazo") || !liveBot) return;
+  if (!isMuseMode(productMode ?? "aiden") || !liveBot) return;
   const requestedKey = requestedSpawnKey ?? null;
   const isIdempotentRetry = requestedKey !== null && liveBot.spawnKey === requestedKey;
   if (isIdempotentRetry) return;
@@ -1145,7 +1145,7 @@ export function createRouter(deps: RouterDeps) {
         return found;
       }),
       create: authed.bots.create.handler(async ({ context, input }) => {
-        if (isMuseMode(deps.env.productMode ?? "rakazo")) {
+        if (isMuseMode(deps.env.productMode ?? "aiden")) {
           const liveBot = await findLiveBot(deps, context.actor);
           assertMuseSingleBotAllowed(deps.env.productMode, liveBot, input.spawnKey ?? null);
         }
@@ -1161,7 +1161,7 @@ export function createRouter(deps: RouterDeps) {
         return bot;
       }),
       duplicate: authed.bots.duplicate.handler(async ({ context, input }) => {
-        if (isMuseMode(deps.env.productMode ?? "rakazo")) {
+        if (isMuseMode(deps.env.productMode ?? "aiden")) {
           throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
         }
         const source = await repos.getBot(context.actor, input.botId);
@@ -1419,7 +1419,7 @@ export function createRouter(deps: RouterDeps) {
       restore: authed.bots.restore.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId, { includeArchived: true });
         if (!bot.archivedAt) return { ok: true as const };
-        if (isMuseMode(deps.env.productMode ?? "rakazo")) {
+        if (isMuseMode(deps.env.productMode ?? "aiden")) {
           const liveBot = await findLiveBot(deps, context.actor);
           if (liveBot) throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
         }
@@ -5238,7 +5238,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
     avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
-    productMode: deps.env.productMode ?? "rakazo",
+    productMode: deps.env.productMode ?? "aiden",
   };
 }
 

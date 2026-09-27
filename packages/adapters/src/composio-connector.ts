@@ -1,4 +1,3 @@
-import { Composio } from "@composio/core";
 import type {
   AdapterContext,
   ConnectedConnector,
@@ -8,8 +7,9 @@ import type {
   ConnectorProvider,
   ConnectorTool,
   ManagedConnectorProvider,
-} from "@rakazo/adapter-kit";
-import { getLogger } from "@rakazo/logging";
+} from "@aiden/adapter-kit";
+import { getLogger } from "@aiden/logging";
+import { Composio } from "@composio/core";
 import {
   composioToolkitDirectory,
   mergeCatalogWithConnected,
@@ -345,7 +345,7 @@ export class ComposioConnector implements ComposioProvider {
   }
 
   private async loadDirectory(): Promise<ToolkitDirectoryEntry[]> {
-    const session = await this.sessionFor("__rakazo_catalog__");
+    const session = await this.sessionFor("__aiden_catalog__");
     const toolkits = await collectPages((cursor) => session.toolkits({ limit: 50, cursor }));
     return toolkits.map((toolkit) => ({
       slug: toolkit.slug,

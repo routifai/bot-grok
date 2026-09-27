@@ -1,8 +1,8 @@
+import { ChatMarkdown } from "@aiden/chat-ui/web";
+import type { ThreadMessage } from "@aiden/contracts";
+import { isToolActivityBlock } from "@aiden/core";
+import { Button, cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@rakazo/chat-ui/web";
-import type { ThreadMessage } from "@rakazo/contracts";
-import { isToolActivityBlock } from "@rakazo/core";
-import { Button, cn } from "@rakazo/ui-web";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { formatLogTimestamp } from "./format";

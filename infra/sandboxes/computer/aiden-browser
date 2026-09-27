@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-RAKAZO_HOME="${HOME:-/home/rakazo}"
+AIDEN_HOME="${HOME:-/home/aiden}"
 # Page-browser tools and desktop launchers share the assigned display profile.
 DISPLAY_NUM="${DISPLAY:-:1}"
 DISPLAY_NUM="${DISPLAY_NUM#:}"
@@ -12,14 +12,14 @@ esac
 while [ "${DISPLAY_NUM#0}" != "$DISPLAY_NUM" ]; do DISPLAY_NUM="${DISPLAY_NUM#0}"; done
 DISPLAY_NUM="${DISPLAY_NUM:-0}"
 DEBUG_PORT=$((9221 + DISPLAY_NUM))
-if [ -n "${RAKAZO_BROWSER_PROFILE:-}" ]; then
-  PROFILE="$RAKAZO_BROWSER_PROFILE"
-elif [ -s "/tmp/rakazo/browser-profile-$DISPLAY_NUM" ]; then
-  PROFILE="$(cat "/tmp/rakazo/browser-profile-$DISPLAY_NUM")"
+if [ -n "${AIDEN_BROWSER_PROFILE:-}" ]; then
+  PROFILE="$AIDEN_BROWSER_PROFILE"
+elif [ -s "/tmp/aiden/browser-profile-$DISPLAY_NUM" ]; then
+  PROFILE="$(cat "/tmp/aiden/browser-profile-$DISPLAY_NUM")"
 else
   case "$DISPLAY_NUM" in
-    1) PROFILE="$RAKAZO_HOME/.browser-profiles/chromium" ;;
-    *) PROFILE="$RAKAZO_HOME/.browser-profiles/chromium-screen-$DISPLAY_NUM" ;;
+    1) PROFILE="$AIDEN_HOME/.browser-profiles/chromium" ;;
+    *) PROFILE="$AIDEN_HOME/.browser-profiles/chromium-screen-$DISPLAY_NUM" ;;
   esac
 fi
 mkdir -p "$PROFILE"

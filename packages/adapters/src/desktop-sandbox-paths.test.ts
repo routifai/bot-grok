@@ -4,25 +4,25 @@ import { isAllowedDesktopPath, normalizeDesktopWorkspacePath } from "./desktop-s
 
 describe("desktop sandbox path rules", () => {
   it("compares Windows roots case-insensitively without accepting siblings or other drives", () => {
-    const roots = ["C:\\Users\\Owner\\Rakazo\\bot"];
+    const roots = ["C:\\Users\\Owner\\Aiden\\bot"];
 
+    expect(isAllowedDesktopPath("c:\\users\\owner\\aiden\\BOT\\notes.txt", roots, path.win32)).toBe(
+      true,
+    );
     expect(
-      isAllowedDesktopPath("c:\\users\\owner\\rakazo\\BOT\\notes.txt", roots, path.win32),
-    ).toBe(true);
-    expect(
-      isAllowedDesktopPath("C:\\Users\\Owner\\Rakazo\\bot-other\\notes.txt", roots, path.win32),
+      isAllowedDesktopPath("C:\\Users\\Owner\\Aiden\\bot-other\\notes.txt", roots, path.win32),
     ).toBe(false);
     expect(isAllowedDesktopPath("D:\\notes.txt", roots, path.win32)).toBe(false);
   });
 
   it("handles explicitly allowed UNC roots without accepting sibling shares", () => {
-    const roots = ["\\\\server\\share\\rakazo\\bot"];
+    const roots = ["\\\\server\\share\\aiden\\bot"];
 
     expect(
-      isAllowedDesktopPath("\\\\SERVER\\share\\rakazo\\BOT\\notes.txt", roots, path.win32),
+      isAllowedDesktopPath("\\\\SERVER\\share\\aiden\\BOT\\notes.txt", roots, path.win32),
     ).toBe(true);
     expect(
-      isAllowedDesktopPath("\\\\server\\share-other\\rakazo\\bot\\notes.txt", roots, path.win32),
+      isAllowedDesktopPath("\\\\server\\share-other\\aiden\\bot\\notes.txt", roots, path.win32),
     ).toBe(false);
   });
 

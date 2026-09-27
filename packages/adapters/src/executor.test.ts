@@ -1,6 +1,6 @@
-import type { MessageBlock } from "@rakazo/contracts";
-import { ONCE_ROUTINE_CRON } from "@rakazo/core";
-import type { PrismaClient } from "@rakazo/db";
+import type { MessageBlock } from "@aiden/contracts";
+import { ONCE_ROUTINE_CRON } from "@aiden/core";
+import type { PrismaClient } from "@aiden/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   appendToolCompletionAudit,
@@ -1160,11 +1160,11 @@ describe("selectBuiltinToolsForRun — muse mode", () => {
     expect(tools).not.toContain("spawn_bot");
   });
 
-  it("keeps peer-bot tools in rakazo mode", () => {
+  it("keeps peer-bot tools in aiden mode", () => {
     const tools = selectBuiltinToolsForRun({
       ...baseOptions,
       groupId: null,
-      productMode: "rakazo",
+      productMode: "aiden",
     }).map((tool) => tool.name);
     for (const name of DM_LOCKED_TOOL_NAMES) {
       expect(tools).toContain(name);
@@ -1172,16 +1172,16 @@ describe("selectBuiltinToolsForRun — muse mode", () => {
     expect(tools).toContain("run_subagent");
   });
 
-  it("keeps handoff_to_bot in rakazo mode inside a group", () => {
+  it("keeps handoff_to_bot in aiden mode inside a group", () => {
     const tools = selectBuiltinToolsForRun({
       ...baseOptions,
       groupId: "group-1",
-      productMode: "rakazo",
+      productMode: "aiden",
     }).map((tool) => tool.name);
     expect(tools).toContain("handoff_to_bot");
   });
 
-  it("defaults to rakazo behaviour when productMode is omitted", () => {
+  it("defaults to aiden behaviour when productMode is omitted", () => {
     const tools = selectBuiltinToolsForRun({ ...baseOptions, groupId: null }).map(
       (tool) => tool.name,
     );

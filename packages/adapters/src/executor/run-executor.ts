@@ -10,20 +10,20 @@ import type {
   ConnectorCall,
   SandboxProvider,
   SemanticMemoryProvider,
-} from "@rakazo/adapter-kit";
+} from "@aiden/adapter-kit";
 import {
   historyCompactJob,
   routineJobKey,
   routineWakeupJob,
   runContinueJob,
-} from "@rakazo/adapter-kit";
-import type { MessageBlock, RunStatus } from "@rakazo/contracts";
+} from "@aiden/adapter-kit";
+import type { MessageBlock, RunStatus } from "@aiden/contracts";
 import {
   ATTACHMENT_MAX_BYTES,
   BotSecretName,
   botSecretSubmissionSchema,
   isAttachmentImageMimeType,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import {
   type ActionApprovalRule,
   appendTextSegment,
@@ -59,8 +59,8 @@ import {
   toolRequiresExplicitApproval,
   unattendedTriggerToolRequiresApproval,
   userTurnMessageForRun,
-} from "@rakazo/core";
-import { approvalEffectKey, toolEffectIdempotencyKey } from "@rakazo/core/node/approval-effect-key";
+} from "@aiden/core";
+import { approvalEffectKey, toolEffectIdempotencyKey } from "@aiden/core/node/approval-effect-key";
 import {
   createGoalRepos,
   createSpaceForMember,
@@ -74,8 +74,8 @@ import {
   type Prisma,
   parseComputerMode,
   SpaceLimitError,
-} from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+} from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import {
   connectAgent,
   messageConnectedAgent,
@@ -849,7 +849,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           : Promise.resolve([]);
         // Muse mode only (B5): a Goal-log turn (thread.goalId set) sees only that Goal in
         // full plus the Conversation's summary — never other Goal logs (decision 7).
-        const museMode = isMuseMode(deps.productMode ?? "rakazo");
+        const museMode = isMuseMode(deps.productMode ?? "aiden");
         const museGoalId = museMode ? (thread.goalId ?? null) : null;
         const goalRepos = createGoalRepos(deps.prisma);
         const threadContext = threadContextForRun(
@@ -2137,7 +2137,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 "bash",
                 "-c",
                 BACKGROUND_WORK_LAUNCH,
-                "rakazo-background-launch",
+                "aiden-background-launch",
                 // Marker id must match sleepComputerIfIdle's probe (DB id), not ComputerRef.id
                 // (providerRef via toComputerRef). Scope launches to this run for cancel teardown.
                 storedComputer.id,
@@ -3393,8 +3393,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 agentSkillsLine,
                 taughtSkillsLine,
                 replyGuidance: runReplyGuidance(run.trigger),
-                museMode: isMuseMode(deps.productMode ?? "rakazo"),
-                museGoalsLine: isMuseMode(deps.productMode ?? "rakazo")
+                museMode: isMuseMode(deps.productMode ?? "aiden"),
+                museGoalsLine: isMuseMode(deps.productMode ?? "aiden")
                   ? MUSE_GOALS_INSTRUCTION
                   : undefined,
               })

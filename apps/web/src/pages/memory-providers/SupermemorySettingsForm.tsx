@@ -1,5 +1,5 @@
+import { Button, Field, FieldLabel, Input, Toggle } from "@aiden/ui-web";
 import { Trans } from "@lingui/react/macro";
-import { Button, Field, FieldLabel, Input, Toggle } from "@rakazo/ui-web";
 import { useId, useState } from "react";
 import type { MemoryProviderConnectionDraft, MemoryProviderSettingsFormProps } from "./registry";
 

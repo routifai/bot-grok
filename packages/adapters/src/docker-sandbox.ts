@@ -15,9 +15,9 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@rakazo/adapter-kit";
-import { boundedSandboxCommandTimeoutMs, resolveSupervisorToken } from "@rakazo/core";
-import { outgoingCorrelationHeaders } from "@rakazo/logging";
+} from "@aiden/adapter-kit";
+import { boundedSandboxCommandTimeoutMs, resolveSupervisorToken } from "@aiden/core";
+import { outgoingCorrelationHeaders } from "@aiden/logging";
 import {
   boundedComputerActions,
   clampRounded,
@@ -131,12 +131,12 @@ export class DockerSandboxProvider implements SandboxProvider {
   private headers(context: AdapterContext, botId?: string) {
     return {
       authorization: `Bearer ${this.supervisorToken}`,
-      "x-rakazo-space-id": context.spaceId,
+      "x-aiden-space-id": context.spaceId,
       ...outgoingCorrelationHeaders(),
-      ...(botId ? { "x-rakazo-bot-id": botId } : {}),
-      ...(context.botId ? { "x-rakazo-screen-id": context.botId } : {}),
-      ...(context.screenLeaseId ? { "x-rakazo-screen-lease-id": context.screenLeaseId } : {}),
-      ...(context.cancelRunWork ? { "x-rakazo-cancel-run-work": "1" } : {}),
+      ...(botId ? { "x-aiden-bot-id": botId } : {}),
+      ...(context.botId ? { "x-aiden-screen-id": context.botId } : {}),
+      ...(context.screenLeaseId ? { "x-aiden-screen-lease-id": context.screenLeaseId } : {}),
+      ...(context.cancelRunWork ? { "x-aiden-cancel-run-work": "1" } : {}),
     };
   }
 
@@ -551,9 +551,9 @@ function requestDeadline(timeoutMs: number, message: string) {
 }
 
 function dockerCwd(cwd: string | undefined) {
-  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/rakazo") return "/home/rakazo";
-  const relative = cwd.startsWith("/home/rakazo/")
-    ? cwd.slice("/home/rakazo/".length)
+  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/aiden") return "/home/aiden";
+  const relative = cwd.startsWith("/home/aiden/")
+    ? cwd.slice("/home/aiden/".length)
     : normalizeWorkspacePath(cwd);
-  return path.posix.join("/home/rakazo", relative);
+  return path.posix.join("/home/aiden", relative);
 }

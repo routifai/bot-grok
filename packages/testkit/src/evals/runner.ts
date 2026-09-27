@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { type AgentRuntime, type JobPublisher, runJobKey } from "@rakazo/adapter-kit";
-import { MessagingTeamChatEmulator } from "@rakazo/adapters";
-import type { ModelConnectInput, RunStatus } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES, isTerminal } from "@rakazo/core";
-import type { createDb } from "@rakazo/db";
+import { type AgentRuntime, type JobPublisher, runJobKey } from "@aiden/adapter-kit";
+import { MessagingTeamChatEmulator } from "@aiden/adapters";
+import type { ModelConnectInput, RunStatus } from "@aiden/contracts";
+import { ACTIVE_RUN_STATUSES, isTerminal } from "@aiden/core";
+import type { createDb } from "@aiden/db";
 import { discardBotIntroRun } from "../discard-bot-intro.js";
 import { sessionCookieHeader } from "../index.js";
 import type { EvalCase, Evidence } from "./cases.js";

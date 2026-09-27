@@ -1,4 +1,4 @@
-import type { ConnectorTool } from "@rakazo/adapter-kit";
+import type { ConnectorTool } from "@aiden/adapter-kit";
 import { describe, expect, it } from "vitest";
 import { selectMemoryTools } from "./memory-tools.js";
 

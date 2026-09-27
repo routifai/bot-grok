@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@rakazo/db";
+import type { PrismaClient } from "@aiden/db";
 import { listScratchpadItems, type ScratchpadToolDeps } from "./scratchpad-tools.js";
 
 const MAX_SCRATCHPAD_CONTEXT_BYTES = 4 * 1024;

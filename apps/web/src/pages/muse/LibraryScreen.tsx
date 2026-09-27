@@ -1,4 +1,3 @@
-import { Trans, useLingui } from "@lingui/react/macro";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,7 +7,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@rakazo/ui-web";
+} from "@aiden/ui-web";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";

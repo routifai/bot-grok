@@ -1,5 +1,5 @@
+import type { FollowedTopic, Goal, Idea, Post, ThreadMessagePage } from "@aiden/contracts";
 import { ORPCError } from "@orpc/server";
-import type { FollowedTopic, Goal, Idea, Post, ThreadMessagePage } from "@rakazo/contracts";
 
 // Sample data behind the Muse procedures so the frontend can be built and felt before the
 // backend lands (docs/muse/PLAN.md, "frontend first"). Each backend package replaces the

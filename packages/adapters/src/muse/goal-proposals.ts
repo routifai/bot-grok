@@ -9,13 +9,13 @@ import {
   type Goal,
   GoalProposalTaskSchema,
   MessageBlock as MessageBlockSchema,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import {
   appendEventInTransaction,
   createGoalRepos,
   type Prisma,
   type PrismaClient,
-} from "@rakazo/db";
+} from "@aiden/db";
 
 export type GoalAnswerDeps = {
   prisma: PrismaClient;

@@ -5,10 +5,10 @@ import type {
   ArtifactStore,
   JobPublisher,
   SandboxProvider,
-} from "@rakazo/adapter-kit";
-import { routineJobKey, runContinueJob, runJobKey } from "@rakazo/adapter-kit";
-import { type Actor, type Bot, type ComputerMode, GROUP_MEMBER_MIN } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
+} from "@aiden/adapter-kit";
+import { routineJobKey, runContinueJob, runJobKey } from "@aiden/adapter-kit";
+import { type Actor, type Bot, type ComputerMode, GROUP_MEMBER_MIN } from "@aiden/contracts";
+import { ACTIVE_RUN_STATUSES } from "@aiden/core";
 import {
   cancelRunsInTransaction,
   computerScopeKey,
@@ -18,8 +18,8 @@ import {
   type Prisma,
   type PrismaClient,
   withTransactionRetry,
-} from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+} from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import { toComputerRef } from "./computer-support.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
 import { resolveAgentHomePath } from "./home.js";

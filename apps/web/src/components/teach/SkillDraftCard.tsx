@@ -1,7 +1,7 @@
+import type { SkillPlaybook } from "@aiden/contracts";
+import { formatSkillRunPrompt } from "@aiden/core";
+import { Button, Input, Label, Textarea } from "@aiden/ui-web";
 import { Trans } from "@lingui/react/macro";
-import type { SkillPlaybook } from "@rakazo/contracts";
-import { formatSkillRunPrompt } from "@rakazo/core";
-import { Button, Input, Label, Textarea } from "@rakazo/ui-web";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 

@@ -1,19 +1,19 @@
 import { createHash } from "node:crypto";
-import { ORPCError } from "@orpc/server";
 import {
   aiRecipient,
   cloudAgentsEnabled,
   parseModelSecret,
   selectConfiguredModel,
   toStringRecord,
-} from "@rakazo/adapters";
-import type { Actor, AiConsentQuery, AiConsentStatus, AiRecipient } from "@rakazo/contracts";
-import { AI_DISCLOSURE_VERSION, AI_PRIVACY_URL } from "@rakazo/contracts";
+} from "@aiden/adapters";
+import type { Actor, AiConsentQuery, AiConsentStatus, AiRecipient } from "@aiden/contracts";
+import { AI_DISCLOSURE_VERSION, AI_PRIVACY_URL } from "@aiden/contracts";
 import {
   findDefaultModelCredential,
   findDefaultVoiceCredential,
   findModelCredential,
-} from "@rakazo/db";
+} from "@aiden/db";
+import { ORPCError } from "@orpc/server";
 import type { RouterDeps } from "./router.js";
 import { resolveThreadTarget } from "./thread-target.js";
 

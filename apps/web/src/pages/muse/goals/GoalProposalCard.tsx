@@ -1,7 +1,7 @@
+import { ChatMarkdown } from "@aiden/chat-ui/web";
+import type { GoalProposal, GoalTask } from "@aiden/contracts";
+import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@rakazo/chat-ui/web";
-import type { GoalProposal, GoalTask } from "@rakazo/contracts";
-import { Button } from "@rakazo/ui-web";
 import { useState } from "react";
 import { Eyebrow, Surface } from "../ui";
 

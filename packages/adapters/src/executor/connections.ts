@@ -1,6 +1,6 @@
 // Reconciling stored Connection rows against the live Composio plugin listing, and
 // selecting which connections a run should see (composio-connector.js does the diffing).
-import type { PrismaClient } from "@rakazo/db";
+import type { PrismaClient } from "@aiden/db";
 import type { PluginConnectionRow } from "../composio-connector.js";
 import { planLiveConnectionSync } from "../composio-connector.js";
 import type { ExecutorDeps } from "./types.js";

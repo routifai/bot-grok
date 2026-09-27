@@ -6,8 +6,8 @@ import {
   parseSkillMd,
   type SkillRecord,
   type SkillSource,
-} from "@rakazo/core";
-import type { PrismaClient } from "@rakazo/db";
+} from "@aiden/core";
+import type { PrismaClient } from "@aiden/db";
 import { BUILTIN_AGENT_SKILLS } from "./builtin-skills.js";
 
 export const SKILL_TOOL_NAMES = new Set([

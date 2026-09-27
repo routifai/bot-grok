@@ -7,8 +7,8 @@ import type {
   BrowserSnapshotResult,
   ComputerRef,
   SandboxProvider,
-} from "@rakazo/adapter-kit";
-import { FakeBrowserProvider, pageBrowserSessionKey } from "@rakazo/adapters";
+} from "@aiden/adapter-kit";
+import { FakeBrowserProvider, pageBrowserSessionKey } from "@aiden/adapters";
 
 export const CONTACTS_CSV =
   "name,email\nAlex Example,alex@example.test\nSam Example,sam@example.test\n";

@@ -1,4 +1,4 @@
-import type * as db from "@rakazo/db";
+import type * as db from "@aiden/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   chooseFocus,
@@ -8,7 +8,7 @@ import {
 } from "./onboarding.js";
 
 const posted = vi.hoisted(() => [] as Array<{ blocks: unknown[] }>);
-vi.mock("@rakazo/db", async (original) => ({
+vi.mock("@aiden/db", async (original) => ({
   ...(await original<typeof db>()),
   createThreadMessageInTransaction: vi.fn(async (_tx, input) => {
     posted.push(input);
@@ -36,14 +36,14 @@ function fixture(catalog: unknown[]) {
   const actor = {
     userId: "user",
     spaceId: "space",
-    email: "user@rakazo.test",
+    email: "user@aiden.test",
     isDeploymentOwner: true,
   };
   return { deps, actor, tx };
 }
 
 /** Fixture for `promptFocus`: an otherwise-empty thread, optionally in muse mode. */
-function promptFixture(productMode?: "rakazo" | "muse") {
+function promptFixture(productMode?: "aiden" | "muse") {
   posted.length = 0;
   const tx = {
     $executeRaw: vi.fn(),
@@ -61,7 +61,7 @@ function promptFixture(productMode?: "rakazo" | "muse") {
   const actor = {
     userId: "user",
     spaceId: "space",
-    email: "user@rakazo.test",
+    email: "user@aiden.test",
     isDeploymentOwner: true,
   };
   return { deps, actor, tx };
@@ -108,8 +108,8 @@ it("marks only the authorized connector when provider slugs collide", async () =
 });
 
 describe("promptFocus product-mode branch", () => {
-  it("posts the focus choice card when productMode is rakazo (default)", async () => {
-    const { deps, actor } = promptFixture("rakazo");
+  it("posts the focus choice card when productMode is aiden (default)", async () => {
+    const { deps, actor } = promptFixture("aiden");
     await promptFocus(deps, actor, "bot");
     expect(posted).toEqual([
       expect.objectContaining({
@@ -118,7 +118,7 @@ describe("promptFocus product-mode branch", () => {
     ]);
   });
 
-  it("posts the focus choice card when productMode is absent (unset RAKAZO_PRODUCT_MODE)", async () => {
+  it("posts the focus choice card when productMode is absent (unset AIDEN_PRODUCT_MODE)", async () => {
     const { deps, actor } = promptFixture(undefined);
     await promptFocus(deps, actor, "bot");
     expect(posted).toEqual([

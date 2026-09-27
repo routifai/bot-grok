@@ -1,12 +1,12 @@
-import type { AgentRunRequest } from "@rakazo/adapter-kit";
-import type { Actor } from "@rakazo/contracts";
-import { usableModelId } from "@rakazo/contracts";
+import type { AgentRunRequest } from "@aiden/adapter-kit";
+import type { Actor } from "@aiden/contracts";
+import { usableModelId } from "@aiden/contracts";
 import {
   chooseModelCredential,
   type findDefaultModelCredential,
   findModelCredential,
   type PrismaClient,
-} from "@rakazo/db";
+} from "@aiden/db";
 import type { ModelCredentialAuthKind } from "./pi-catalog-availability.js";
 import {
   catalogModelAvailableForAuth,

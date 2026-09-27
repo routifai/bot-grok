@@ -3,14 +3,14 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { serve } from "@hono/node-server";
 import {
   ComposioEmulator,
   EmailEmulator,
   PipedreamConnector,
   ThirdPartyConnectorEmulator,
-} from "@rakazo/adapters";
-import { createThreadMessage, type PrismaClient } from "@rakazo/db";
+} from "@aiden/adapters";
+import { createThreadMessage, type PrismaClient } from "@aiden/db";
+import { serve } from "@hono/node-server";
 import { sessionCookieHeader } from "../index.js";
 import { runProcess } from "./process.js";
 
@@ -38,7 +38,7 @@ async function main() {
   await mkdir(REPORT_DIR, { recursive: true });
   await mkdir(DATA_DIR, { recursive: true });
 
-  execFileSync("pnpm", ["--filter", "@rakazo/db", "exec", "prisma", "migrate", "deploy"], {
+  execFileSync("pnpm", ["--filter", "@aiden/db", "exec", "prisma", "migrate", "deploy"], {
     cwd: path.join(ROOT, "packages", "db"),
     env: process.env,
     stdio: "inherit",
@@ -95,19 +95,19 @@ async function main() {
           "--output",
           path.join(REPORT_DIR, `${flow}.html`),
           "-e",
-          `RAKAZO_SCREENSHOT_EMAIL=${EMAIL}`,
+          `AIDEN_SCREENSHOT_EMAIL=${EMAIL}`,
           "-e",
-          `RAKAZO_SCREENSHOT_PASSWORD=${PASSWORD}`,
+          `AIDEN_SCREENSHOT_PASSWORD=${PASSWORD}`,
           "-e",
-          `RAKAZO_SCREENSHOT_BOT_ID=${fixture.botId}`,
+          `AIDEN_SCREENSHOT_BOT_ID=${fixture.botId}`,
           "-e",
-          `RAKAZO_SCREENSHOT_GROUP_ID=${fixture.groupId}`,
+          `AIDEN_SCREENSHOT_GROUP_ID=${fixture.groupId}`,
           "-e",
-          `RAKAZO_SCREENSHOT_ROUTINE_ID=${fixture.routineId}`,
+          `AIDEN_SCREENSHOT_ROUTINE_ID=${fixture.routineId}`,
           "-e",
-          `RAKAZO_NOTIFICATION_VIDEO=${path.join(REPORT_DIR, "notification-demo")}`,
+          `AIDEN_NOTIFICATION_VIDEO=${path.join(REPORT_DIR, "notification-demo")}`,
           "-e",
-          `RAKAZO_EXPAND_NOTIFICATIONS_URL=${EXPAND_NOTIFICATIONS_URL}`,
+          `AIDEN_EXPAND_NOTIFICATIONS_URL=${EXPAND_NOTIFICATIONS_URL}`,
           path.join(FLOW_DIR, `${flow}.yaml`),
         ],
         process.env,

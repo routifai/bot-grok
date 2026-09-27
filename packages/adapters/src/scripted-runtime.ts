@@ -3,8 +3,8 @@ import type {
   AgentRunRequest,
   AgentRuntime,
   AgentRuntimeEvent,
-} from "@rakazo/adapter-kit";
-import { abortableDelay, inferHandoffTargetName } from "@rakazo/core";
+} from "@aiden/adapter-kit";
+import { abortableDelay, inferHandoffTargetName } from "@aiden/core";
 
 const running = new Map<string, AbortController>();
 
@@ -462,7 +462,7 @@ code-b
         toolCalls: [
           {
             name: "destination.write",
-            args: { collection: "notes", title: "Rakazo result", body: prompt },
+            args: { collection: "notes", title: "Aiden result", body: prompt },
           },
         ],
         complete: true,

@@ -1,8 +1,8 @@
 // Resolving a run's model credential into the key/oauth/capabilities the runtime needs,
 // serialized per secret so a concurrent refresh cannot race itself, plus the small
 // model-fallback helpers used while picking which model/provider a run will call.
-import type { AgentModelOAuthCredential, AgentRunRequest, AgentRuntime } from "@rakazo/adapter-kit";
-import { OPENAI_COMPATIBLE_PROVIDER_ID } from "@rakazo/contracts";
+import type { AgentModelOAuthCredential, AgentRunRequest, AgentRuntime } from "@aiden/adapter-kit";
+import { OPENAI_COMPATIBLE_PROVIDER_ID } from "@aiden/contracts";
 import { resolveDeploymentModel } from "../deployment-model.js";
 import { UnavailableModelForAuthError, validateModelAuthAvailability } from "../model-selection.js";
 import { modelIdSupportsImages } from "../model-vision.js";

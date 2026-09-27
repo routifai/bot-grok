@@ -1,6 +1,6 @@
+import type { Actor } from "@aiden/contracts";
+import type { PrismaClient } from "@aiden/db";
 import { RPCHandler } from "@orpc/server/fetch";
-import type { Actor } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { assertMuseSingleBotAllowed, createRouter, type RouterDeps } from "./router.js";
 
@@ -11,7 +11,7 @@ import { assertMuseSingleBotAllowed, createRouter, type RouterDeps } from "./rou
 
 describe("assertMuseSingleBotAllowed", () => {
   it("never blocks outside muse mode", () => {
-    expect(() => assertMuseSingleBotAllowed("rakazo", { spawnKey: null }, null)).not.toThrow();
+    expect(() => assertMuseSingleBotAllowed("aiden", { spawnKey: null }, null)).not.toThrow();
     expect(() =>
       assertMuseSingleBotAllowed(undefined, { spawnKey: "onboarding:first" }, null),
     ).not.toThrow();
@@ -44,7 +44,7 @@ describe("assertMuseSingleBotAllowed", () => {
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@rakazo.test",
+  email: "user@aiden.test",
   isDeploymentOwner: true,
 };
 
@@ -73,7 +73,7 @@ function createdBotRow(spawnKey: string | null) {
 }
 
 function routerDeps(
-  productMode: "muse" | "rakazo",
+  productMode: "muse" | "aiden",
   guardLiveBot: { id: string; spawnKey: string | null } | null,
   createdSpawnKey: string | null = null,
 ) {
@@ -114,7 +114,7 @@ function routerDeps(
       screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
-    dataDir: "/tmp/rakazo-bots-muse-guard-test",
+    dataDir: "/tmp/aiden-bots-muse-guard-test",
   } as unknown as RouterDeps;
   return { deps, findFirst, transaction, handler: new RPCHandler(createRouter(deps)) };
 }
@@ -167,8 +167,8 @@ describe("bots.create — muse single-Muse guard", () => {
     expect(response.status).toBe(200);
   });
 
-  it("leaves rakazo mode unaffected", async () => {
-    const { handler, findFirst } = routerDeps("rakazo", { id: "bot-live", spawnKey: null });
+  it("leaves aiden mode unaffected", async () => {
+    const { handler, findFirst } = routerDeps("aiden", { id: "bot-live", spawnKey: null });
 
     const { response } = await call(handler, "bots/create", { name: "Another bot" });
 
@@ -192,7 +192,7 @@ describe("bots.duplicate — muse single-Muse guard", () => {
 });
 
 describe("bots.restore — muse single-Muse guard", () => {
-  function restoreDeps(productMode: "muse" | "rakazo", otherLiveBot: boolean) {
+  function restoreDeps(productMode: "muse" | "aiden", otherLiveBot: boolean) {
     const findFirst = vi.fn(async ({ where }: { where: { archivedAt?: unknown } }) => {
       if ("archivedAt" in where && where.archivedAt === null) {
         return otherLiveBot ? { id: "bot-live-other", spawnKey: null } : null;
@@ -218,7 +218,7 @@ describe("bots.restore — muse single-Muse guard", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/rakazo-bots-muse-guard-test",
+      dataDir: "/tmp/aiden-bots-muse-guard-test",
     } as unknown as RouterDeps;
     return { handler: new RPCHandler(createRouter(deps)), update };
   }
@@ -240,8 +240,8 @@ describe("bots.restore — muse single-Muse guard", () => {
     expect(response.status).toBe(200);
   });
 
-  it("leaves rakazo mode unaffected", async () => {
-    const { handler } = restoreDeps("rakazo", true);
+  it("leaves aiden mode unaffected", async () => {
+    const { handler } = restoreDeps("aiden", true);
 
     const { response } = await call(handler, "bots/restore", { botId: "bot-archived" });
 

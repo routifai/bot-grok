@@ -93,23 +93,21 @@ describe("desktop session permissions", () => {
     expect(policy.check("notifications", { embeddingOrigin: url }, null)).toBe(false);
   });
 
-  it.each([
-    "rakazo-model-oauth",
-    "rakazo-mcp-oauth",
-    "rakazo-app-connect",
-    "rakazo-plugin-connect",
-  ])("allows %s navigation without granting permissions to its popup", (name) => {
-    const policy = policyFixture();
-    expect(shouldOpenInAppPopup(new URL(appUrl).origin, providerUrl, name)).toBe(true);
-    const popup = { ...policy.contents, getURL: () => providerUrl } as WebContents;
-    for (const permission of ["media", "notifications", "clipboard-sanitized-write"] as const) {
-      expect(policy.request(permission, { requestingUrl: providerUrl }, popup)).toBe(false);
-      expect(policy.check(permission, { requestingUrl: providerUrl }, popup)).toBe(false);
-      // A same-origin callback or forged first-party URL does not turn a popup into the app.
-      expect(policy.request(permission, {}, popup)).toBe(false);
-      expect(policy.check(permission, {}, popup)).toBe(false);
-    }
-  });
+  it.each(["aiden-model-oauth", "aiden-mcp-oauth", "aiden-app-connect", "aiden-plugin-connect"])(
+    "allows %s navigation without granting permissions to its popup",
+    (name) => {
+      const policy = policyFixture();
+      expect(shouldOpenInAppPopup(new URL(appUrl).origin, providerUrl, name)).toBe(true);
+      const popup = { ...policy.contents, getURL: () => providerUrl } as WebContents;
+      for (const permission of ["media", "notifications", "clipboard-sanitized-write"] as const) {
+        expect(policy.request(permission, { requestingUrl: providerUrl }, popup)).toBe(false);
+        expect(policy.check(permission, { requestingUrl: providerUrl }, popup)).toBe(false);
+        // A same-origin callback or forged first-party URL does not turn a popup into the app.
+        expect(policy.request(permission, {}, popup)).toBe(false);
+        expect(policy.check(permission, {}, popup)).toBe(false);
+      }
+    },
+  );
 
   it("denies both same-origin and third-party subframes", () => {
     const policy = policyFixture();

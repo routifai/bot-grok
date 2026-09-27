@@ -24,7 +24,7 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray) => parts.join(""),
 }));
-vi.mock("@rakazo/ui-web", () => {
+vi.mock("@aiden/ui-web", () => {
   const cn = (...args: unknown[]) => args.filter(Boolean).join(" ");
   const Passthrough = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>

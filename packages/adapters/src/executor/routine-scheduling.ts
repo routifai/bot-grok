@@ -1,6 +1,6 @@
 // Deferring a routine's next wakeup job when it is scheduled far enough in the future.
-import type { JobPublisher } from "@rakazo/adapter-kit";
-import { routineWakeupJob } from "@rakazo/adapter-kit";
+import type { JobPublisher } from "@aiden/adapter-kit";
+import { routineWakeupJob } from "@aiden/adapter-kit";
 
 export async function deferFutureRoutine(
   jobs: JobPublisher,

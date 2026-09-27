@@ -4,14 +4,14 @@ import { parse as parseShellCommand } from "shell-quote";
 
 const SHELL_INTERPRETER_NAMES = /^(?:bash|sh|dash|zsh|ksh|fish)$/;
 const STATIC_SHELL_EXPANSIONS: Readonly<Record<string, string>> = {
-  HOME: "/home/rakazo",
-  LOGNAME: "rakazo",
-  PATH: "/home/rakazo/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-  PWD: "/home/rakazo",
+  HOME: "/home/aiden",
+  LOGNAME: "aiden",
+  PATH: "/home/aiden/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  PWD: "/home/aiden",
   TMPDIR: "/tmp",
-  USER: "rakazo",
-  WORKSPACE: "/home/rakazo/workspace",
-  XDG_CONFIG_HOME: "/home/rakazo/.config",
+  USER: "aiden",
+  WORKSPACE: "/home/aiden/workspace",
+  XDG_CONFIG_HOME: "/home/aiden/.config",
 };
 const SAFE_SHELL_CONTROL_OPS = new Set([
   "&&",

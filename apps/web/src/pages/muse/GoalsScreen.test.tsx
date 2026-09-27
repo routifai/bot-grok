@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Goal } from "@rakazo/contracts";
+import type { Goal } from "@aiden/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -29,10 +29,10 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@rakazo/chat-ui/web", () => ({
+vi.mock("@aiden/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@rakazo/ui-web", () => {
+vi.mock("@aiden/ui-web", () => {
   const Container = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     AlertDialog: Container,

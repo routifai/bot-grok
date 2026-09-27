@@ -1,6 +1,5 @@
-import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@rakazo/chat-ui/web";
-import type { Goal } from "@rakazo/contracts";
+import { ChatMarkdown } from "@aiden/chat-ui/web";
+import type { Goal } from "@aiden/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,7 +10,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
-} from "@rakazo/ui-web";
+} from "@aiden/ui-web";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronLeft } from "lucide-react";
 import { useState } from "react";
 import { rpc } from "../../../lib/rpc";

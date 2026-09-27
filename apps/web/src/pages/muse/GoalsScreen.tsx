@@ -1,5 +1,5 @@
+import type { Goal } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
-import type { Goal } from "@rakazo/contracts";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { GoalDetail } from "./goals/GoalDetail";

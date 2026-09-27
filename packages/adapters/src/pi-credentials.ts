@@ -1,3 +1,4 @@
+import type { AgentModelOAuthCredential } from "@aiden/adapter-kit";
 import type {
   AuthOperationOptions,
   Credential,
@@ -5,7 +6,6 @@ import type {
   CredentialStore,
   OAuthCredential,
 } from "@earendil-works/pi-ai";
-import type { AgentModelOAuthCredential } from "@rakazo/adapter-kit";
 
 export function toOAuthCredential(value: AgentModelOAuthCredential): OAuthCredential {
   return { ...value, type: "oauth" };
@@ -13,7 +13,7 @@ export function toOAuthCredential(value: AgentModelOAuthCredential): OAuthCreden
 
 /**
  * Request-scoped Pi store for one already-authorized provider. Pi's default
- * in-memory store cannot see Rakazo's encrypted database; refreshes are
+ * in-memory store cannot see Aiden's encrypted database; refreshes are
  * serialized here and published back for encryption.
  */
 export class PiRuntimeCredentialStore implements CredentialStore {

@@ -1,6 +1,6 @@
+import type { Goal } from "@aiden/contracts";
+import { Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Goal } from "@rakazo/contracts";
-import { Skeleton } from "@rakazo/ui-web";
 import { EmptyState, MuseWideColumn, Progress, ScreenHeader, Section, Surface } from "../ui";
 import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
 import { GoalStatusPill } from "./GoalStatusPill";

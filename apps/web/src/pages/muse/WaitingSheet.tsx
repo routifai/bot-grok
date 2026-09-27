@@ -1,6 +1,6 @@
+import type { Ask } from "@aiden/contracts";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import type { Ask } from "@rakazo/contracts";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@rakazo/ui-web";
 import { AskList, useAsks } from "./asks";
 import { CardSkeletonList } from "./feed/CardSkeleton";
 import { EmptyState } from "./ui";

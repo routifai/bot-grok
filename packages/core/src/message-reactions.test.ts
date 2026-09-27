@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@rakazo/contracts";
+import type { MessageBlock } from "@aiden/contracts";
 import { describe, expect, it } from "vitest";
 import { messageReaction, projectMessageReactions } from "./message-reactions.js";
 

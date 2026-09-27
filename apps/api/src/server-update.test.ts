@@ -23,7 +23,7 @@ afterEach(async () => {
 
 describe("server update install kind", () => {
   async function tempRoot(withGit: boolean) {
-    const root = await mkdtemp(path.join(tmpdir(), "rakazo-update-"));
+    const root = await mkdtemp(path.join(tmpdir(), "aiden-update-"));
     roots.push(root);
     if (withGit) await mkdir(path.join(root, ".git"));
     return root;
@@ -219,7 +219,7 @@ describe("sidecar proxy auth and no-git-apply", () => {
       }
       return new Response(JSON.stringify({ error: "unexpected" }), { status: 500 });
     });
-    const root = await mkdtemp(path.join(tmpdir(), "rakazo-proxy-"));
+    const root = await mkdtemp(path.join(tmpdir(), "aiden-proxy-"));
     roots.push(root);
     const config: UpdaterProxyConfig = {
       url: URL,

@@ -2,21 +2,21 @@ import {
   resolveCloudAgentProvider,
   resolveDeploymentModel,
   resolveSandboxProvider,
-} from "@rakazo/adapters";
-import type { ProductMode } from "@rakazo/contracts";
+} from "@aiden/adapters";
+import type { ProductMode } from "@aiden/contracts";
 import {
   resolveAuthSecret,
   resolveEncryptionKey,
   resolveProductMode,
   resolveScreenProxySecret,
   resolveSupervisorToken,
-} from "@rakazo/core";
+} from "@aiden/core";
 
-export { resolveCloudAgentProvider, resolveSandboxProvider } from "@rakazo/adapters";
+export { resolveCloudAgentProvider, resolveSandboxProvider } from "@aiden/adapters";
 
 export interface AppEnv {
   nodeEnv: string;
-  /** Upstream Rakazo, or the single-Muse edition. */
+  /** Upstream Aiden, or the single-Muse edition. */
   productMode: ProductMode;
   desktopStackToken?: string;
   databaseUrl: string;
@@ -104,14 +104,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const sandboxProvider = resolveSandboxProvider(source);
   const cloudAgentProvider = resolveCloudAgentProvider(source);
   const deploymentModel = resolveDeploymentModel(source);
-  const updaterUrl = optional(source.RAKAZO_UPDATER_URL);
-  const updaterToken = optional(source.RAKAZO_UPDATER_TOKEN);
+  const updaterUrl = optional(source.AIDEN_UPDATER_URL);
+  const updaterToken = optional(source.AIDEN_UPDATER_TOKEN);
   return {
     nodeEnv: source.NODE_ENV ?? "",
     productMode: resolveProductMode(source),
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
-    desktopStackToken: optional(source.RAKAZO_DESKTOP_STACK_TOKEN),
+    desktopStackToken: optional(source.AIDEN_DESKTOP_STACK_TOKEN),
     authSecret,
     authUrl: source.BETTER_AUTH_URL ?? source.WEB_ORIGIN ?? "http://127.0.0.1:5173",
     webOrigin: source.WEB_ORIGIN ?? "http://127.0.0.1:5173",
@@ -168,7 +168,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     larkEncryptKey: optional(source.LARK_ENCRYPT_KEY),
     larkDomain: optional(source.LARK_DOMAIN),
     messagingOpenSignup: source.MESSAGING_OPEN_SIGNUP === "true",
-    teamChatBotId: optional(source.TEAM_CHAT_BOT_ID) ?? optional(source.SLACK_RAKAZO_BOT_ID),
+    teamChatBotId: optional(source.TEAM_CHAT_BOT_ID) ?? optional(source.SLACK_AIDEN_BOT_ID),
     teamChatJudgeProvider: optional(source.TEAM_CHAT_JUDGE_PROVIDER),
     teamChatJudgeModel: optional(source.TEAM_CHAT_JUDGE_MODEL),
     defaultProvider: deploymentModel.provider,
@@ -181,10 +181,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
       .filter(Boolean),
     mcpAllowPrivateEndpoint: source.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
     port: Number(source.API_PORT ?? 3100),
-    gitSha: optional(source.GIT_SHA) ?? optional(source.RAKAZO_GIT_SHA),
+    gitSha: optional(source.GIT_SHA) ?? optional(source.AIDEN_GIT_SHA),
     updaterUrl,
     updaterToken,
-    imageTag: optional(source.RAKAZO_IMAGE_TAG),
+    imageTag: optional(source.AIDEN_IMAGE_TAG),
   };
 }
 

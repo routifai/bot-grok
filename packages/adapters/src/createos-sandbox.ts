@@ -14,9 +14,9 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@rakazo/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
-import { stopBrowserProfileCommand } from "@rakazo/core/node/desktop-runtime";
+} from "@aiden/adapter-kit";
+import { boundedSandboxCommandTimeoutMs } from "@aiden/core";
+import { stopBrowserProfileCommand } from "@aiden/core/node/desktop-runtime";
 import { sandboxIdleMs } from "./computer-idle.js";
 import { screenSessionKey } from "./computer-screens.js";
 import {
@@ -33,13 +33,13 @@ import {
 } from "./computer-workspace.js";
 import { readBodyCapped } from "./web-ssrf.js";
 
-const CREATEOS_WORKSPACE = "/home/desktop/rakazo-home";
+const CREATEOS_WORKSPACE = "/home/desktop/aiden-home";
 const CREATEOS_CHROMIUM_PROFILE = `${CREATEOS_WORKSPACE}/.browser-profiles/chromium`;
 const CREATEOS_FIREFOX_PROFILE = `${CREATEOS_WORKSPACE}/.browser-profiles/firefox`;
-const CREATEOS_CHROMIUM_PID = "/tmp/rakazo/createos-chromium.pid";
+const CREATEOS_CHROMIUM_PID = "/tmp/aiden/createos-chromium.pid";
 const CREATEOS_DRAINING_SCREEN = "draining:";
-const CREATEOS_SCREEN_MAP_PATH = `${CREATEOS_WORKSPACE}/.rakazo/screens.json`;
-export const CREATEOS_SCREEN_MAP_SENTINEL = "RAKAZO_SCREEN_MAP_V1";
+const CREATEOS_SCREEN_MAP_PATH = `${CREATEOS_WORKSPACE}/.aiden/screens.json`;
+export const CREATEOS_SCREEN_MAP_SENTINEL = "AIDEN_SCREEN_MAP_V1";
 const CREATEOS_SCREEN_MAP_NEED_CREATE = "NEED_CREATE";
 const DEFAULT_CREATEOS_BASE_URL = "https://api.sb.createos.sh";
 const CREATEOS_INGRESS_ZONE = "sb.createos.sh";
@@ -975,7 +975,7 @@ print(json.dumps(out))
               "google-chrome",
               "--new-tab",
               shellQuote(uri),
-              ">/tmp/rakazo-chrome.log 2>&1 </dev/null &",
+              ">/tmp/aiden-chrome.log 2>&1 </dev/null &",
             ].join(" "),
             "else",
             [
@@ -1009,7 +1009,7 @@ print(json.dumps(out))
               "--remote-debugging-port=9222",
               `--user-data-dir=${shellQuote(profile)}`,
               shellQuote(uri),
-              ">/tmp/rakazo-chrome.log 2>&1 </dev/null &",
+              ">/tmp/aiden-chrome.log 2>&1 </dev/null &",
             ].join(" "),
             "fi",
           ].join(" "),
@@ -1386,7 +1386,7 @@ function isTransientCreateOSHttpStatus(status: number): boolean {
 }
 
 function shouldSkipCreateOSWorkspaceFile(relative: string): boolean {
-  if (relative === ".rakazo" || relative.startsWith(".rakazo/")) return true;
+  if (relative === ".aiden" || relative.startsWith(".aiden/")) return true;
   if (
     relative.startsWith(`${BROWSER_PROFILE_DIR}/`) &&
     relative.split("/").some((segment) => BROWSER_PROFILE_CACHE_DIRS.has(segment))
@@ -1429,7 +1429,7 @@ function isAllowedCreateOSScreenHost(hostname: string, baseHost: string): boolea
 }
 
 function createosCwd(cwd: string | undefined): string {
-  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/rakazo" || cwd === "/home/desktop") {
+  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/aiden" || cwd === "/home/desktop") {
     return CREATEOS_WORKSPACE;
   }
   if (cwd === CREATEOS_WORKSPACE || cwd.startsWith(`${CREATEOS_WORKSPACE}/`)) return cwd;

@@ -2,26 +2,26 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: rakazo
+      POSTGRES_USER: aiden
       POSTGRES_PASSWORD: topology-only-password
-      POSTGRES_DB: rakazo
+      POSTGRES_DB: aiden
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rakazo -d rakazo"]
+      test: ["CMD-SHELL", "pg_isready -U aiden -d aiden"]
       interval: 2s
       timeout: 5s
       retries: 30
 
   computer-image:
-    image: ${TOPOLOGY_COMPUTER_IMAGE:-rakazo/computer:topology}
+    image: ${TOPOLOGY_COMPUTER_IMAGE:-aiden/computer:topology}
     build:
       context: ../sandboxes/computer
     command: ["true"]
     restart: "no"
 
   app-image:
-    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
+    image: ${TOPOLOGY_APP_IMAGE:-aiden/app:topology}
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile.topology
@@ -29,8 +29,8 @@ services:
     restart: "no"
 
   supervisor:
-    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
-    command: ["pnpm", "--filter", "@rakazo/sandbox-supervisor", "start"]
+    image: ${TOPOLOGY_APP_IMAGE:-aiden/app:topology}
+    command: ["pnpm", "--filter", "@aiden/sandbox-supervisor", "start"]
     user: root
     environment:
       NODE_ENV: production
@@ -39,10 +39,10 @@ services:
       SUPERVISOR_PORT: "7091"
       SANDBOX_SUPERVISOR_TOKEN: topology-only-supervisor-token-at-least-32-characters
       DOCKER_SOCKET: /var/run/docker.sock
-      RAKAZO_COMPUTER_IMAGE: ${TOPOLOGY_COMPUTER_IMAGE:-rakazo/computer:topology}
-      RAKAZO_COMPUTER_MEMORY: ${RAKAZO_COMPUTER_MEMORY:-2g}
-      RAKAZO_COMPUTER_CPUS: ${RAKAZO_COMPUTER_CPUS:-2}
-      RAKAZO_COMPUTER_PIDS_LIMIT: ${RAKAZO_COMPUTER_PIDS_LIMIT:-2048}
+      AIDEN_COMPUTER_IMAGE: ${TOPOLOGY_COMPUTER_IMAGE:-aiden/computer:topology}
+      AIDEN_COMPUTER_MEMORY: ${AIDEN_COMPUTER_MEMORY:-2g}
+      AIDEN_COMPUTER_CPUS: ${AIDEN_COMPUTER_CPUS:-2}
+      AIDEN_COMPUTER_PIDS_LIMIT: ${AIDEN_COMPUTER_PIDS_LIMIT:-2048}
       SANDBOX_SCREEN_NETWORK: isolated
       LOG_LEVEL: info
     volumes:
@@ -64,14 +64,14 @@ services:
       retries: 30
 
   api:
-    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
+    image: ${TOPOLOGY_APP_IMAGE:-aiden/app:topology}
     command:
       - bash
       - -lc
-      - pnpm --filter @rakazo/db exec prisma migrate deploy && pnpm --filter @rakazo/api start
+      - pnpm --filter @aiden/db exec prisma migrate deploy && pnpm --filter @aiden/api start
     environment: &app-environment
       NODE_ENV: production
-      DATABASE_URL: postgres://rakazo:topology-only-password@postgres:5432/rakazo
+      DATABASE_URL: postgres://aiden:topology-only-password@postgres:5432/aiden
       DATA_DIR: /data
       BETTER_AUTH_SECRET: topology-only-auth-secret-at-least-32-characters
       SCREEN_PROXY_SECRET: topology-only-screen-proxy-secret-at-least-32-characters
@@ -118,12 +118,12 @@ services:
       retries: 45
 
   web:
-    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
-    command: ["pnpm", "--filter", "@rakazo/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
+    image: ${TOPOLOGY_APP_IMAGE:-aiden/app:topology}
+    command: ["pnpm", "--filter", "@aiden/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
     environment:
       NODE_ENV: production
       API_PROXY_TARGET: http://api:3100
-      RAKAZO_HOST: localhost
+      AIDEN_HOST: localhost
       SCREEN_PROXY_SECRET: topology-only-screen-proxy-secret-at-least-32-characters
     depends_on:
       api:
@@ -139,8 +139,8 @@ services:
       retries: 30
 
   worker:
-    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
-    command: ["pnpm", "--filter", "@rakazo/worker", "start"]
+    image: ${TOPOLOGY_APP_IMAGE:-aiden/app:topology}
+    command: ["pnpm", "--filter", "@aiden/worker", "start"]
     environment: *app-environment
     volumes:
       - appdata:/data

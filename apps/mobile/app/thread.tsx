@@ -1,16 +1,12 @@
-import { ChatMarkdown } from "@rakazo/chat-ui/native";
+import { ChatMarkdown } from "@aiden/chat-ui/native";
 import type {
   AgentSkillCatalogEntry,
   Connection,
   ConnectionCatalogItem,
   MessageBlock,
   Routine,
-} from "@rakazo/contracts";
-import {
-  canReactToThreadMessage,
-  MESSAGE_REACTIONS,
-  type MessageReaction,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
+import { canReactToThreadMessage, MESSAGE_REACTIONS, type MessageReaction } from "@aiden/contracts";
 import {
   abortableDelay,
   attachmentsForThread,
@@ -32,7 +28,7 @@ import {
   truncateSlashDescription,
   userVisibleMessages,
   withLiveStreamingProgress,
-} from "@rakazo/core";
+} from "@aiden/core";
 import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";

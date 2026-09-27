@@ -1,6 +1,6 @@
-import type { MuseState } from "@rakazo/contracts";
-import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
-import type { GrokColorDef } from "@rakazo/core";
+import type { MuseState } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import type { GrokColorDef } from "@aiden/core";
 import {
   ACTIVE_RUN_STATUSES,
   avatarIdentitySeed,
@@ -15,8 +15,8 @@ import {
   SHIPPED_BOT_AVATAR_VIEWBOX,
   shippedBotAvatarShapePath,
   shippedHash,
-} from "@rakazo/core";
-import { tokens } from "@rakazo/ui-tokens";
+} from "@aiden/core";
+import { tokens } from "@aiden/ui-tokens";
 import type { CSSProperties } from "react";
 import { memo, useId, useMemo, useSyncExternalStore } from "react";
 import type { AvatarStyle } from "./avatar-style.js";
@@ -141,7 +141,7 @@ export const BotAvatar = memo(function BotAvatar({
     return (
       <div
         className={cn(
-          "rakazo-bot-avatar relative overflow-hidden rounded-full flex items-center justify-center select-none bg-secondary shrink-0 border border-border",
+          "aiden-bot-avatar relative overflow-hidden rounded-full flex items-center justify-center select-none bg-secondary shrink-0 border border-border",
           className,
         )}
         data-working={isWorking}
@@ -155,7 +155,7 @@ export const BotAvatar = memo(function BotAvatar({
       >
         {isWorking ? (
           <svg
-            className="rakazo-bot-avatar-ring absolute pointer-events-none"
+            className="aiden-bot-avatar-ring absolute pointer-events-none"
             style={{
               inset: -4,
               width: size + 8,
@@ -208,7 +208,7 @@ export const BotAvatar = memo(function BotAvatar({
   return (
     <div
       className={cn(
-        "rakazo-bot-avatar grok-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
+        "aiden-bot-avatar grok-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
         className,
       )}
       style={{
@@ -218,7 +218,7 @@ export const BotAvatar = memo(function BotAvatar({
       data-working={isWorking}
     >
       <svg
-        className="rakazo-bot-avatar-ring absolute pointer-events-none"
+        className="aiden-bot-avatar-ring absolute pointer-events-none"
         style={{
           inset: -4,
           width: size + 8,
@@ -309,7 +309,7 @@ function OrganicAvatar({
     <svg
       viewBox="-60 -60 120 120"
       aria-hidden="true"
-      className={cn("rakazo-organic-avatar overflow-visible select-none", className)}
+      className={cn("aiden-organic-avatar overflow-visible select-none", className)}
       data-working={isWorking}
       data-shape-family={seed % 10}
       data-eye-pattern={seed % 4}
@@ -322,12 +322,12 @@ function OrganicAvatar({
       {(["idle", "working"] as const).map((mode) => (
         <path
           key={mode}
-          className={`rakazo-organic-avatar-body rakazo-organic-avatar-body-${mode}`}
+          className={`aiden-organic-avatar-body aiden-organic-avatar-body-${mode}`}
           d={shapeA}
           fill={color}
           style={
             {
-              "--rakazo-organic-path": `path("${shapeA}")`,
+              "--aiden-organic-path": `path("${shapeA}")`,
               filter:
                 mode === "working"
                   ? `drop-shadow(0 0 ${Math.round(size * 0.16)}px ${color})`
@@ -349,7 +349,7 @@ function OrganicAvatar({
         {(["idle", "working"] as const).map((mode) => (
           <g
             key={mode}
-            className={`rakazo-organic-avatar-eyes rakazo-organic-avatar-eyes-${mode}`}
+            className={`aiden-organic-avatar-eyes aiden-organic-avatar-eyes-${mode}`}
             fill={tokens.background}
           >
             <rect x="-14" y="-12" width="7" height="24" rx="3.5" />
@@ -410,7 +410,7 @@ function MuseAvatar({
   return (
     <div
       className={cn(
-        "rakazo-muse-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
+        "aiden-muse-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
         className,
       )}
       style={{ width: size, height: size }}
@@ -421,7 +421,7 @@ function MuseAvatar({
         height={size}
         aria-hidden="true"
         data-muse-state={state}
-        className="rakazo-muse-avatar overflow-visible"
+        className="aiden-muse-avatar overflow-visible"
       >
         <defs>
           {/* Depth: lighter top-left, slightly deeper bottom-right, built only from the
@@ -437,16 +437,16 @@ function MuseAvatar({
           </radialGradient>
         </defs>
         <ellipse cx={60} cy={112} rx={32} ry={6} fill={`url(#${gradId}-shadow)`} />
-        <g className="rakazo-muse-all">
-          <path className="rakazo-muse-body" fill={color} d={MUSE_BODY_PATH} />
+        <g className="aiden-muse-all">
+          <path className="aiden-muse-body" fill={color} d={MUSE_BODY_PATH} />
           <path
-            className="rakazo-muse-depth"
+            className="aiden-muse-depth"
             fill={`url(#${gradId}-depth)`}
             d={MUSE_BODY_PATH}
             pointerEvents="none"
           />
           <path
-            className="rakazo-muse-rim"
+            className="aiden-muse-rim"
             d="M28 38Q60 14 96 40"
             fill="none"
             stroke={MUSE_FACE_SHINE}
@@ -463,14 +463,14 @@ function MuseAvatar({
             ry={8}
             transform="rotate(-24 42 42)"
           />
-          <g className="rakazo-muse-eyes">
-            <g className="rakazo-muse-pupils">
+          <g className="aiden-muse-eyes">
+            <g className="aiden-muse-pupils">
               <ellipse fill={MUSE_FACE_INK} cx={46} cy={66} rx={5.5} ry={7.5} />
               <ellipse fill={MUSE_FACE_INK} cx={74} cy={66} rx={5.5} ry={7.5} />
               <circle fill={MUSE_FACE_SHINE} cx={48} cy={63} r={1.8} />
               <circle fill={MUSE_FACE_SHINE} cx={76} cy={63} r={1.8} />
               {isWorking ? (
-                <g className="rakazo-muse-squint" fill={color}>
+                <g className="aiden-muse-squint" fill={color}>
                   <ellipse cx={46} cy={61.5} rx={6.2} ry={3.4} />
                   <ellipse cx={74} cy={61.5} rx={6.2} ry={3.4} />
                 </g>
@@ -478,7 +478,7 @@ function MuseAvatar({
             </g>
             {isThinking ? (
               <path
-                className="rakazo-muse-eyebrow rakazo-muse-eyebrow-right"
+                className="aiden-muse-eyebrow aiden-muse-eyebrow-right"
                 d="M69 55Q76 49 83 54"
                 stroke={MUSE_FACE_INK}
                 strokeWidth={3}
@@ -489,7 +489,7 @@ function MuseAvatar({
             {isWaiting ? (
               <>
                 <path
-                  className="rakazo-muse-eyebrow rakazo-muse-eyebrow-left"
+                  className="aiden-muse-eyebrow aiden-muse-eyebrow-left"
                   d="M38 53Q46 46 54 52"
                   stroke={MUSE_FACE_INK}
                   strokeWidth={3}
@@ -497,7 +497,7 @@ function MuseAvatar({
                   fill="none"
                 />
                 <path
-                  className="rakazo-muse-eyebrow rakazo-muse-eyebrow-right"
+                  className="aiden-muse-eyebrow aiden-muse-eyebrow-right"
                   d="M66 52Q74 46 82 53"
                   stroke={MUSE_FACE_INK}
                   strokeWidth={3}
@@ -509,10 +509,10 @@ function MuseAvatar({
           </g>
           <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={36} cy={80} rx={7} ry={4} />
           <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={84} cy={80} rx={7} ry={4} />
-          <g className={cn("rakazo-muse-expression", `rakazo-muse-expression-${state}`)}>
+          <g className={cn("aiden-muse-expression", `aiden-muse-expression-${state}`)}>
             {state === "waiting" ? (
               <ellipse
-                className="rakazo-muse-mouth rakazo-muse-mouth-waiting"
+                className="aiden-muse-mouth aiden-muse-mouth-waiting"
                 fill={MUSE_FACE_INK}
                 cx={60}
                 cy={85}
@@ -521,7 +521,7 @@ function MuseAvatar({
               />
             ) : (
               <path
-                className={`rakazo-muse-mouth rakazo-muse-mouth-${state}`}
+                className={`aiden-muse-mouth aiden-muse-mouth-${state}`}
                 d={MUSE_MOUTH_PATHS[state]}
                 stroke={MUSE_FACE_INK}
                 strokeWidth={3}
@@ -530,7 +530,7 @@ function MuseAvatar({
               />
             )}
             {isWaiting ? (
-              <g className="rakazo-muse-hand">
+              <g className="aiden-muse-hand">
                 <path
                   d="M100 66Q112 60 110 50"
                   stroke={MUSE_FACE_INK}
@@ -539,7 +539,7 @@ function MuseAvatar({
                   fill="none"
                 />
                 <circle
-                  className="rakazo-muse-hand-palm"
+                  className="aiden-muse-hand-palm"
                   fill={color}
                   stroke={MUSE_FACE_INK}
                   strokeWidth={2}
@@ -550,12 +550,12 @@ function MuseAvatar({
               </g>
             ) : null}
           </g>
-          <path className="rakazo-muse-spark" fill={MUSE_FACE_SPARK} d={MUSE_SPARK_PATH} />
+          <path className="aiden-muse-spark" fill={MUSE_FACE_SPARK} d={MUSE_SPARK_PATH} />
         </g>
-        <g className="rakazo-muse-thought" fill={color}>
-          <circle className="rakazo-muse-dot" cx={92} cy={22} r={5} />
-          <circle className="rakazo-muse-dot rakazo-muse-dot-2" cx={104} cy={12} r={5} />
-          <circle className="rakazo-muse-dot rakazo-muse-dot-3" cx={116} cy={2} r={5} />
+        <g className="aiden-muse-thought" fill={color}>
+          <circle className="aiden-muse-dot" cx={92} cy={22} r={5} />
+          <circle className="aiden-muse-dot aiden-muse-dot-2" cx={104} cy={12} r={5} />
+          <circle className="aiden-muse-dot aiden-muse-dot-3" cx={116} cy={2} r={5} />
         </g>
       </svg>
       {showBadge ? (
@@ -636,7 +636,7 @@ export function Wordmark({ className }: { className?: string }) {
         <span className="h-4 w-[7px] rounded-full bg-primary" />
       </div>
       <span className="font-[Aeonik,ui-sans-serif] text-[28px] tracking-tight text-foreground">
-        Rakazo
+        Aiden
       </span>
     </div>
   );

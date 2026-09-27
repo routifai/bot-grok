@@ -1,7 +1,7 @@
+import type { MuseSettings, Proactivity } from "@aiden/contracts";
+import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@aiden/contracts";
+import { Input, Switch, Tabs, TabsList, TabsTrigger } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { MuseSettings, Proactivity } from "@rakazo/contracts";
-import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@rakazo/contracts";
-import { Input, Switch, Tabs, TabsList, TabsTrigger } from "@rakazo/ui-web";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../../lib/rpc";
 

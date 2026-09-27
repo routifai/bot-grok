@@ -1,14 +1,14 @@
-import type { AdapterContext, JobPublisher } from "@rakazo/adapter-kit";
-import { cloudAgentPollJob } from "@rakazo/adapter-kit";
-import { cloudAgentBlockFromPayload } from "@rakazo/core";
+import type { AdapterContext, JobPublisher } from "@aiden/adapter-kit";
+import { cloudAgentPollJob } from "@aiden/adapter-kit";
+import { cloudAgentBlockFromPayload } from "@aiden/core";
 import {
   appendEventInTransaction,
   type CloudAgent,
   createThreadMessageInTransaction,
   type PrismaClient,
   type ThreadEvents,
-} from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+} from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import { type CloudAgentConnection, cloudAgentsEnabled } from "./cloud-agent-factory.js";
 import { cloudAgentLaunchSchema, cloudAgentReplySchema } from "./cloud-agent-tools.js";
 

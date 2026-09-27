@@ -1,6 +1,6 @@
+import type { Goal } from "@aiden/contracts";
+import { BotAvatar, cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Goal } from "@rakazo/contracts";
-import { BotAvatar, cn, Tooltip, TooltipContent, TooltipTrigger } from "@rakazo/ui-web";
 import {
   Bell,
   Library,

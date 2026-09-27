@@ -1,7 +1,7 @@
 // Run finalize semantics: whether a finish notification/unread flag fires, the silent-reply
 // and long-work-progress guidance shown to the model, and shaping the final message blocks.
-import type { MessageBlock } from "@rakazo/contracts";
-import { truncatedPlainText } from "@rakazo/core";
+import type { MessageBlock } from "@aiden/contracts";
+import { truncatedPlainText } from "@aiden/core";
 import { isExactNoResponse, NO_RESPONSE, stripNoResponseReply } from "../silent-reply.js";
 
 export function runSendsFinishNotification(trigger: string): boolean {

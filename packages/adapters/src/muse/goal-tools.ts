@@ -11,13 +11,13 @@ import {
   type GoalTaskStatus,
   GoalTaskStatusSchema,
   type MessageBlock,
-} from "@rakazo/contracts";
-import type { Prisma, PrismaClient } from "@rakazo/db";
+} from "@aiden/contracts";
+import type { Prisma, PrismaClient } from "@aiden/db";
 import {
   appendEventInTransaction,
   createGoalRepos,
   createThreadMessageInTransaction,
-} from "@rakazo/db";
+} from "@aiden/db";
 import { withdrawOpenProposal } from "./goal-proposals.js";
 
 const TITLE_MAX = 200;

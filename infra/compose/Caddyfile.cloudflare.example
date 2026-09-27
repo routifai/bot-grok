@@ -13,16 +13,16 @@
 	lb_try_interval 250ms
 }
 
-http://{$RAKAZO_HOST:app.example.com} {
+http://{$AIDEN_HOST:app.example.com} {
 	import cloudflare_only
-	redir https://{$RAKAZO_HOST:app.example.com}{uri} 308
+	redir https://{$AIDEN_HOST:app.example.com}{uri} 308
 }
 
 :80 {
 	abort
 }
 
-{$RAKAZO_HOST:app.example.com} {
+{$AIDEN_HOST:app.example.com} {
 	import cloudflare_only
 	encode zstd gzip
 

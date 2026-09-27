@@ -2,8 +2,8 @@
 // run executor: which builtin tools a run gets, workspace checkpoint debouncing,
 // and wrapping a computer/browser tool result with screen-availability retries.
 
-import type { ProductMode } from "@rakazo/contracts";
-import { isMuseMode } from "@rakazo/core";
+import type { ProductMode } from "@aiden/contracts";
+import { isMuseMode } from "@aiden/core";
 import { builtinAgentTools } from "../builtin-tools.js";
 import { selectCloudAgentTools } from "../cloud-agent-tools-select.js";
 import { withComputerScreenAvailability } from "../computer-screens.js";
@@ -98,7 +98,7 @@ export function selectBuiltinToolsForRun(options: {
     )
     .filter(
       (tool) =>
-        !isMuseMode(options.productMode ?? "rakazo") || !MUSE_LOCKED_TOOL_NAMES.has(tool.name),
+        !isMuseMode(options.productMode ?? "aiden") || !MUSE_LOCKED_TOOL_NAMES.has(tool.name),
     );
 }
 

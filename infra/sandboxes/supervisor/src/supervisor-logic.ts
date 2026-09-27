@@ -5,7 +5,7 @@ import {
   shellQuote,
   stopBrowserCommand,
   stopExtraScreenCommand,
-} from "@rakazo/core/node/desktop-runtime";
+} from "@aiden/core/node/desktop-runtime";
 
 export {
   browserProfilePathForScreen,
@@ -15,11 +15,11 @@ export {
   quiesceBrowserProfilesCommand,
   stopBrowserCommand,
   stopExtraScreenCommand,
-} from "@rakazo/core/node/desktop-runtime";
+} from "@aiden/core/node/desktop-runtime";
 
 import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
-import { canReleaseScreenLease, canTakeScreenLease } from "@rakazo/core";
+import { canReleaseScreenLease, canTakeScreenLease } from "@aiden/core";
 import { z } from "zod";
 import { type SandboxInput, xdotoolCommand } from "./computer-spec.js";
 
@@ -43,7 +43,7 @@ export const computerActionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("launch"), application: z.string(), uri: z.string().optional() }),
 ]);
 
-export { BROWSER_APPLICATIONS as DOCKER_BROWSER_ALIASES } from "@rakazo/core/node/desktop-runtime";
+export { BROWSER_APPLICATIONS as DOCKER_BROWSER_ALIASES } from "@aiden/core/node/desktop-runtime";
 
 export function assertRequestIdentity(
   botId: string | undefined,
@@ -60,8 +60,8 @@ export function hasComputerIdentity(
   botId: string,
   spaceId: string,
 ) {
-  const labeledSpaceId = labels?.["rakazo.spaceId"] ?? labels?.["rakazo.workspaceId"];
-  return labels?.["rakazo.botId"] === botId && labeledSpaceId === spaceId;
+  const labeledSpaceId = labels?.["aiden.spaceId"] ?? labels?.["aiden.workspaceId"];
+  return labels?.["aiden.botId"] === botId && labeledSpaceId === spaceId;
 }
 
 export function hasValidBearerToken(authorization: string | undefined, expectedToken: string) {
@@ -352,7 +352,7 @@ export function containerActionStep(
     argv = [
       "env",
       `DISPLAY=${display}`,
-      ...(browserProfile ? [`RAKAZO_BROWSER_PROFILE=${browserProfile}`] : []),
+      ...(browserProfile ? [`AIDEN_BROWSER_PROFILE=${browserProfile}`] : []),
       "xdg-open",
       target,
     ];
@@ -361,8 +361,8 @@ export function containerActionStep(
     argv = [
       "env",
       `DISPLAY=${display}`,
-      ...(browser && browserProfile ? [`RAKAZO_BROWSER_PROFILE=${browserProfile}`] : []),
-      browser ? "rakazo-browser" : action.application,
+      ...(browser && browserProfile ? [`AIDEN_BROWSER_PROFILE=${browserProfile}`] : []),
+      browser ? "aiden-browser" : action.application,
       ...(action.uri ? [action.uri] : []),
     ];
   }
@@ -387,7 +387,7 @@ export function normalizeWorkspaceRelative(value: string) {
 }
 
 export function workspaceTarget(relative: string) {
-  return relative ? path.posix.join("/home/rakazo", relative) : "/home/rakazo";
+  return relative ? path.posix.join("/home/aiden", relative) : "/home/aiden";
 }
 
 export function sandboxTimeoutCommand(argv: string[], timeoutMs: number, completionMarker: string) {

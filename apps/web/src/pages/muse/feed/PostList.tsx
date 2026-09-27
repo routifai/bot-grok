@@ -1,7 +1,7 @@
+import { ChatMarkdown } from "@aiden/chat-ui/web";
+import type { Post } from "@aiden/contracts";
+import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@rakazo/chat-ui/web";
-import type { Post } from "@rakazo/contracts";
-import { Button } from "@rakazo/ui-web";
 import { ExternalLink } from "lucide-react";
 import { useMemo } from "react";
 import { Eyebrow, Section, Surface } from "../ui";

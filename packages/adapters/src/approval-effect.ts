@@ -1,4 +1,4 @@
-import type { AgentToolExecutionResult } from "@rakazo/adapter-kit";
+import type { AgentToolExecutionResult } from "@aiden/adapter-kit";
 
 export type ApprovalPausedToolResult = AgentToolExecutionResult & { terminate: true };
 

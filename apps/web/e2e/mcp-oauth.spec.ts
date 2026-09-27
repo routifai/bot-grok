@@ -1,11 +1,11 @@
+import type { McpServer } from "@aiden/contracts";
 import { expect, type Route, test } from "@playwright/test";
-import type { McpServer } from "@rakazo/contracts";
 import { MCP_OAUTH_CHANNEL } from "../src/lib/mcp-connect";
 import { captureScreenshot, completeOnboarding, signup } from "./helpers";
 
 test("connects an MCP server through the OAuth popup callback", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `mcp-oauth-${stamp}@rakazo.test`, "password12", "MCP OAuth");
+  await signup(page, `mcp-oauth-${stamp}@aiden.test`, "password12", "MCP OAuth");
   await completeOnboarding(page);
 
   let oauthStatus: McpServer["oauthStatus"] = "none";

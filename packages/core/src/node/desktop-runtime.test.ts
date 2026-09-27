@@ -93,9 +93,7 @@ function fixture() {
           // Lifecycle processes are stubbed here; the opt-in Docker smoke runs the real commands.
           "flock() { :; }",
           `bash() { return ${failLifecycle ? 1 : 0}; }`,
-          script
-            .replaceAll("/tmp/rakazo/desktop-assignments", root)
-            .replaceAll("/tmp/rakazo", root),
+          script.replaceAll("/tmp/aiden/desktop-assignments", root).replaceAll("/tmp/aiden", root),
         ].join("\n"),
       ],
       { encoding: "utf8", timeout: 5000 },
@@ -110,29 +108,29 @@ function fixture() {
 describe("shared Linux desktop lifecycle", () => {
   it("allocates live slots past 1000 bots, keeps assignments across callers, and rejects stale leases", () => {
     const f = fixture();
-    expect(f.ensure("a").stdout).toContain("RAKAZO_DESKTOP=0:view-a");
-    expect(f.ensure("b").stdout).toContain("RAKAZO_DESKTOP=1:view-b");
-    expect(f.ensure("a", "new:2").stdout).toContain("RAKAZO_DESKTOP=0:view-a");
+    expect(f.ensure("a").stdout).toContain("AIDEN_DESKTOP=0:view-a");
+    expect(f.ensure("b").stdout).toContain("AIDEN_DESKTOP=1:view-b");
+    expect(f.ensure("a", "new:2").stdout).toContain("AIDEN_DESKTOP=0:view-a");
     expect(f.ensure("a", "run:1").status).toBe(75);
     expect(f.release("a", "run:3").status).toBe(75);
     expect(f.release("a", "new:1").status).toBe(75);
     for (let i = 2; i < 1000; i++)
       writeFileSync(path.join(f.root, `seed-${i}.slot`), `${i}\nseed:1\nunused\n`);
-    expect(f.ensure("bot-1000").stdout).toContain("RAKAZO_DESKTOP=1000:view-bot-1000");
+    expect(f.ensure("bot-1000").stdout).toContain("AIDEN_DESKTOP=1000:view-bot-1000");
     expect(f.release("a", "new:2").status).toBe(0);
-    expect(f.ensure("c").stdout).toContain("RAKAZO_DESKTOP=0:view-c");
-    expect(f.ensure("b").stdout).toContain("RAKAZO_DESKTOP=1:view-b");
+    expect(f.ensure("c").stdout).toContain("AIDEN_DESKTOP=0:view-c");
+    expect(f.ensure("b").stdout).toContain("AIDEN_DESKTOP=1:view-b");
   });
 
   it("reserves failed startup and teardown slots until a successful retry", () => {
     const f = fixture();
     expect(f.ensure("a", "run:1", true).status).toBe(1);
-    expect(f.ensure("b").stdout).toContain("RAKAZO_DESKTOP=1:view-b");
-    expect(f.ensure("a").stdout).toContain("RAKAZO_DESKTOP=0:view-a");
+    expect(f.ensure("b").stdout).toContain("AIDEN_DESKTOP=1:view-b");
+    expect(f.ensure("a").stdout).toContain("AIDEN_DESKTOP=0:view-a");
     expect(f.release("a", "run:1", true).status).toBe(1);
-    expect(f.ensure("c").stdout).toContain("RAKAZO_DESKTOP=2:view-c");
+    expect(f.ensure("c").stdout).toContain("AIDEN_DESKTOP=2:view-c");
     expect(f.release("a").status).toBe(0);
-    expect(f.ensure("d").stdout).toContain("RAKAZO_DESKTOP=0:view-d");
+    expect(f.ensure("d").stdout).toContain("AIDEN_DESKTOP=0:view-d");
   });
 
   it("does not create a screen on control release and keeps newer fences", () => {
@@ -172,9 +170,9 @@ describe("shared Linux desktop lifecycle", () => {
       path.join(f.root, "browser-profile-20"),
       "/home/user/work/.browser-profiles/live",
     );
-    expect(f.ensure("a").stdout).toContain("RAKAZO_DESKTOP=1:view-a");
-    expect(f.ensure("b").stdout).toContain("RAKAZO_DESKTOP=2:view-b");
-    expect(f.ensure("a").stdout).toContain("RAKAZO_DESKTOP=1:view-a");
+    expect(f.ensure("a").stdout).toContain("AIDEN_DESKTOP=1:view-a");
+    expect(f.ensure("b").stdout).toContain("AIDEN_DESKTOP=2:view-b");
+    expect(f.ensure("a").stdout).toContain("AIDEN_DESKTOP=1:view-a");
   });
 
   it("continues resetting valid displays after invalid or out-of-range markers", () => {
@@ -190,7 +188,7 @@ describe("shared Linux desktop lifecycle", () => {
         [
           "pkill() { :; }; sleep() { :; }",
           `bash() { printf '%s\\n' "$5" >>${shellQuote(record)}; }`,
-          resetDesktopRuntimeCommand(env).replaceAll("/tmp/rakazo", f.root),
+          resetDesktopRuntimeCommand(env).replaceAll("/tmp/aiden", f.root),
         ].join("\n"),
       ],
       { encoding: "utf8", timeout: 5000 },
@@ -213,7 +211,7 @@ describe("shared Linux desktop lifecycle", () => {
     expect(
       patterns.some((pattern) =>
         pattern.test(
-          "/usr/bin/x11vnc -display :21 -rfbport 0 -unixsock /tmp/rakazo/sockets/view-21-token -forever",
+          "/usr/bin/x11vnc -display :21 -rfbport 0 -unixsock /tmp/aiden/sockets/view-21-token -forever",
         ),
       ),
     ).toBe(true);
@@ -316,7 +314,7 @@ describe("shared Linux desktop lifecycle", () => {
           homeDir: home,
           workspaceDir: home,
           browserProfilesDir: profiles,
-        }).replaceAll("/tmp/rakazo", path.join(root, "runtime"));
+        }).replaceAll("/tmp/aiden", path.join(root, "runtime"));
         expect(command).toContain("Browser.close");
         waitForReady(joinedReady);
         const result = spawnSync("bash", ["-eu", "-c", command], {

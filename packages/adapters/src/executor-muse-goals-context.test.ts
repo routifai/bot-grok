@@ -1,4 +1,4 @@
-import type { AgentRunRequest } from "@rakazo/adapter-kit";
+import type { AgentRunRequest } from "@aiden/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
 import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
 import { createRunExecutor } from "./executor.js";
@@ -43,7 +43,7 @@ async function runFixture({
   goalId,
   conversationSummary,
 }: {
-  productMode?: "muse" | "rakazo";
+  productMode?: "muse" | "aiden";
   goalId?: string | null;
   conversationSummary?: string | null;
 }) {
@@ -223,7 +223,7 @@ async function runFixture({
 
 describe("Goals in context (B5)", () => {
   it("adds neither Goals nor a Conversation summary outside muse mode", async () => {
-    const instructions = await runFixture({ productMode: "rakazo", goalId: "goal-a" });
+    const instructions = await runFixture({ productMode: "aiden", goalId: "goal-a" });
     expect(instructions).not.toContain("<goals_active>");
     expect(instructions).not.toContain("<conversation_summary>");
   });

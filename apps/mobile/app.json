@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Rakazo",
-    "slug": "rakazo",
+    "name": "Aiden",
+    "slug": "aiden",
     "owner": "inbox-zero",
-    "scheme": "rakazo",
+    "scheme": "aiden",
     "version": "1.0.3",
     "orientation": "default",
     "userInterfaceStyle": "dark",
@@ -33,8 +33,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Rakazo uses your photo library so you can attach images to a bot message.",
-          "cameraPermission": "Rakazo uses the camera so you can attach photos to a bot message.",
+          "photosPermission": "Aiden uses your photo library so you can attach images to a bot message.",
+          "cameraPermission": "Aiden uses the camera so you can attach photos to a bot message.",
           "microphonePermission": false
         }
       ],
@@ -43,24 +43,24 @@
       "./plugins/with-scene-lifecycle"
     ],
     "ios": {
-      "bundleIdentifier": "com.rakazo.app",
+      "bundleIdentifier": "com.aiden.app",
       "buildNumber": "1",
       "supportsTablet": false,
-      "icon": "../../packages/ui-tokens/assets/Rakazo.icon",
+      "icon": "../../packages/ui-tokens/assets/Aiden.icon",
       "config": {
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "NSCameraUsageDescription": "Rakazo uses the camera so you can attach photos to a bot message.",
-        "NSPhotoLibraryUsageDescription": "Rakazo uses your photo library so you can attach images to a bot message.",
-        "NSLocalNetworkUsageDescription": "Rakazo connects to a self-hosted Rakazo server on your local network.",
+        "NSCameraUsageDescription": "Aiden uses the camera so you can attach photos to a bot message.",
+        "NSPhotoLibraryUsageDescription": "Aiden uses your photo library so you can attach images to a bot message.",
+        "NSLocalNetworkUsageDescription": "Aiden connects to a self-hosted Aiden server on your local network.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
       }
     },
     "android": {
-      "package": "com.rakazo.app",
+      "package": "com.aiden.app",
       "versionCode": 10,
       "softwareKeyboardLayoutMode": "resize",
       "icon": "./assets/icon.png",

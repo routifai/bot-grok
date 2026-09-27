@@ -1,10 +1,10 @@
 // Context assembly for image attachments: loading the current turn's images, hydrating
 // recent history turns' images within a byte/count budget, and the unavailable-image
 // markers and instructions shown to the model when an attachment could not be loaded.
-import type { AgentRunRequest } from "@rakazo/adapter-kit";
-import type { MessageBlock } from "@rakazo/contracts";
-import { ATTACHMENT_MAX_BYTES, isAttachmentImageMimeType } from "@rakazo/contracts";
-import { blocksToAgentHistoryText } from "@rakazo/core";
+import type { AgentRunRequest } from "@aiden/adapter-kit";
+import type { MessageBlock } from "@aiden/contracts";
+import { ATTACHMENT_MAX_BYTES, isAttachmentImageMimeType } from "@aiden/contracts";
+import { blocksToAgentHistoryText } from "@aiden/core";
 import type { ExecutorDeps } from "./types.js";
 
 const TURN_ATTACHMENT_UNAVAILABLE =

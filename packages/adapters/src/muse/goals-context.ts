@@ -3,7 +3,7 @@
 // status icons, and an open-proposal line) that the run prompt can hand to the model as
 // data. Wiring follows packages/adapters/src/scratchpad-context.ts: byte-capped, block by
 // block, with the same truncate-on-overflow behaviour.
-import type { Goal, GoalTask } from "@rakazo/contracts";
+import type { Goal, GoalTask } from "@aiden/contracts";
 
 const MAX_GOALS_CONTEXT_BYTES = 8 * 1024;
 const MAX_CONVERSATION_SUMMARY_CONTEXT_BYTES = 4 * 1024;

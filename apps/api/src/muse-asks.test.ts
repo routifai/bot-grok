@@ -1,13 +1,13 @@
-import { runContinueJob } from "@rakazo/adapter-kit";
-import type { Actor } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
+import { runContinueJob } from "@aiden/adapter-kit";
+import type { Actor } from "@aiden/contracts";
+import type { PrismaClient } from "@aiden/db";
 import { describe, expect, it, vi } from "vitest";
 import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
 
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@rakazo.test",
+  email: "user@aiden.test",
   isDeploymentOwner: true,
 };
 

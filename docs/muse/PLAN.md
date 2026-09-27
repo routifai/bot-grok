@@ -1,6 +1,6 @@
 # Muse edition — implementation plan
 
-Turn Rakazo into a single proactive personal agent in the shape of Meta's Muse: one **Muse** per person that pursues **Goals** in the background, comes back with **Asks**, and keeps a **Feed**, **Ideas**, and a **Library**.
+Turn Aiden into a single proactive personal agent in the shape of Meta's Muse: one **Muse** per person that pursues **Goals** in the background, comes back with **Asks**, and keeps a **Feed**, **Ideas**, and a **Library**.
 
 This plan is written for implementation agents (Claude Sonnet 5, model id `claude-sonnet-5`) working in parallel as a **backend** stream and a **frontend** stream. Each work package below is sized for one agent in one isolated worktree.
 
@@ -12,8 +12,8 @@ This plan is written for implementation agents (Claude Sonnet 5, model id `claud
 
 ## Ground rules
 
-- **Reuse before building.** For every piece, first use what Rakazo already has, then port from OpenMuse (github.com/OpenMuseAgent/OpenMuse, MIT, Python; clone it next to this repo), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
-- **Our fork (ADR 0002).** Everything Muse-specific is gated by `RAKAZO_PRODUCT_MODE=muse` (package B0). Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner, but keep upstream behaviour intact when the mode is off. Do not delete upstream models, tools, or routes; hide or gate them.
+- **Reuse before building.** For every piece, first use what Aiden already has, then port from OpenMuse (github.com/OpenMuseAgent/OpenMuse, MIT, Python; clone it next to this repo), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
+- **Our fork (ADR 0002).** Everything Muse-specific is gated by `AIDEN_PRODUCT_MODE=muse` (package B0). Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner, but keep upstream behaviour intact when the mode is off. Do not delete upstream models, tools, or routes; hide or gate them.
 - **Naming in code.** The glossary **Task** is `GoalTask` in code (the upstream `Task` model is an unrelated request record and keeps its name). Database tables use the upstream convention (`@@map("goal_tasks")`).
 - **OpenMuse ports.** When copying prompt text or logic from OpenMuse, keep a one-line comment at the top of the file: `// Adapted from OpenMuse (MIT) — openmuse/<path>`.
 - **Out of scope for v1:** mobile screens (mobile keeps working with the Conversation only), spending limits, parallel Goal work, payments.
@@ -47,11 +47,11 @@ Migrations go in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql
 | 10 | Feed = open Asks pinned on top, then Posts (Goal reports and Followed-topic findings). |
 | 11 | Goal work follows the same approval rules as the Conversation. |
 | 12 | Web and Electron first. |
-| 13 | Onboarding: Rakazo's steps + name and face; ends by asking for the first Goal. Face is the new Muse avatar, default color sky `#0090FF`. |
+| 13 | Onboarding: Aiden's steps + name and face; ends by asking for the first Goal. Face is the new Muse avatar, default color sky `#0090FF`. |
 
 ## Map: what exists, what is ported, what is new
 
-| Need | Rakazo already has (reuse) | OpenMuse (port) | New |
+| Need | Aiden already has (reuse) | OpenMuse (port) | New |
 |---|---|---|---|
 | Waking without the person | Graphile jobs, `background-job-handlers.ts`, `job-reconciler.ts`, `routine.wakeup` | — | `goal.advance`, `goal.checkin` job handlers |
 | Check-in schedules | `Routine.crons` + `timezone`, `schedule-tools.ts`, `RoutineSchedule.tsx` | — | reuse the same cron shape on Goal |
@@ -75,7 +75,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 0 — Foundations
 
 **B0 · Product mode** — ✅ done
-- `resolveProductMode(env)` / `isMuseMode(mode)` in `packages/core/src/product-mode.ts`; `RAKAZO_PRODUCT_MODE` documented in `.env.example`.
+- `resolveProductMode(env)` / `isMuseMode(mode)` in `packages/core/src/product-mode.ts`; `AIDEN_PRODUCT_MODE` documented in `.env.example`.
 - API env carries `productMode`; the `me` payload (and so `bootstrap`) exposes `productMode` to the web app. The worker calls `resolveProductMode(process.env)` directly when it first needs it (B2/B8).
 - Tests: `product-mode.test.ts`, `env.test.ts`.
 
@@ -186,7 +186,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 6 — Face and first run
 
 **F8 · Muse face** — depends on B1
-- Add the Muse face to `packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn as Aiden, an original vinyl-toy lion (see DESIGN.md "The Muse"). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@rakazo/ui-tokens`; no new hex in components except the identity color default (`DEFAULT_MUSE_COLOR`) defined once.
+- Add the Muse face to `packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn as Aiden, an original vinyl-toy lion (see DESIGN.md "The Muse"). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@aiden/ui-tokens`; no new hex in components except the identity color default (`DEFAULT_MUSE_COLOR`) defined once.
 
 **F9 · Onboarding** — depends on F8, B4
 - Extend `pages/Onboarding.tsx` (and `apps/api/src/onboarding.ts` if the server drives steps): your name → Muse name → color of the Muse face (sky default) → model → land in the Conversation, where the Muse's first message asks for the first Goal. When the person answers, the Muse calls `goals.create`, which posts the first plan as a Proposal (B4).
@@ -223,7 +223,7 @@ Waves:
 
 ## End-to-end check (definition of done)
 
-With `RAKAZO_PRODUCT_MODE=muse`, on a fresh account:
+With `AIDEN_PRODUCT_MODE=muse`, on a fresh account:
 1. Onboarding asks your name, the Muse's name and face (sky by default) and model, then opens the Conversation, where the Muse asks for a first Goal.
 2. "I want conversational Japanese before my Kyoto trip in December" → the Muse drafts a plan; it appears as a Proposal in the Conversation, in Waiting on you, and on top of the Feed. Accepting it in any one place clears all three.
 3. The avatar hops with a count while the Proposal is open, sways while the Muse works, rests when idle.
@@ -234,4 +234,4 @@ With `RAKAZO_PRODUCT_MODE=muse`, on a fresh account:
 8. Ideas shows six suggestions; tapping one sends it.
 9. Library shows files made in both the Conversation and Goal logs.
 10. There is no way to create a second bot in the UI, and the Muse has no bot-creation tools.
-11. Unset `RAKAZO_PRODUCT_MODE` → the app behaves exactly like upstream Rakazo.
+11. Unset `AIDEN_PRODUCT_MODE` → the app behaves exactly like upstream Rakazo.

@@ -6,7 +6,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "X-Generator: @lingui/cli\n"
 "Language: fr\n"
-"Project-Id-Version: rakazo-web\n"
+"Project-Id-Version: aiden-web\n"
 "Report-Msgid-Bugs-To: \n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
@@ -774,8 +774,8 @@ msgid "Choose file"
 msgstr "Choisir un fichier"
 
 #: src/pages/ModelSettingsOverlay.tsx:383
-msgid "Choose which connected model Rakazo uses."
-msgstr "Choisissez le modèle connecté utilisé par Rakazo."
+msgid "Choose which connected model Aiden uses."
+msgstr "Choisissez le modèle connecté utilisé par Aiden."
 
 #: src/pages/shell/dialogs.tsx:319
 msgid "Clear"
@@ -1471,8 +1471,8 @@ msgid "Create space"
 msgstr "Créer un espace"
 
 #: src/pages/Auth.tsx:38
-msgid "Create your Rakazo"
-msgstr "Créez votre Rakazo"
+msgid "Create your Aiden"
+msgstr "Créez votre Aiden"
 
 #: src/components/AskCard.tsx:21
 msgid "Created"
@@ -2835,8 +2835,8 @@ msgid "Paste a replacement key"
 msgstr "Collez une clé de remplacement"
 
 #: src/pages/ModelSettingsOverlay.tsx:503
-msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
-msgstr "Collez l'adresse compatible OpenAI de votre serveur. Rakazo ajoute /v1 si nécessaire."
+msgid "Paste the OpenAI-compatible address from your server. Aiden adds /v1 if needed."
+msgstr "Collez l'adresse compatible OpenAI de votre serveur. Aiden ajoute /v1 si nécessaire."
 
 #: src/pages/VoiceSettingsOverlay.tsx:255
 msgid "Paste your API key"
@@ -3161,8 +3161,8 @@ msgid "Retry screen"
 msgstr "Réessayer l'écran"
 
 #: src/pages/McpOAuthCallback.tsx:62
-msgid "Return to Rakazo"
-msgstr "Retour à Rakazo"
+msgid "Return to Aiden"
+msgstr "Retour à Aiden"
 
 #. placeholder {0}: doc.revision
 #: src/pages/KnowledgeSection.tsx:180
@@ -3468,8 +3468,8 @@ msgid "Sign in"
 msgstr "Se connecter"
 
 #: src/pages/Auth.tsx:36
-msgid "Sign in to Rakazo"
-msgstr "Connectez-vous à Rakazo"
+msgid "Sign in to Aiden"
+msgstr "Connectez-vous à Aiden"
 
 #: src/pages/Auth.tsx:223
 #: src/pages/Welcome.tsx:32
@@ -3743,8 +3743,8 @@ msgid "This server is already connected. Disconnect it first to authorize again.
 msgstr "Ce serveur est déjà connecté. Déconnectez-le d'abord pour l'autoriser à nouveau."
 
 #: src/pages/ModelSettingsOverlay.tsx:839
-msgid "This subscription sign-in is not available in Rakazo yet. Use a deployment credential or choose another provider."
-msgstr "Cette connexion par abonnement n'est pas encore disponible dans Rakazo. Utilisez un identifiant de déploiement ou choisissez un autre fournisseur."
+msgid "This subscription sign-in is not available in Aiden yet. Use a deployment credential or choose another provider."
+msgstr "Cette connexion par abonnement n'est pas encore disponible dans Aiden. Utilisez un identifiant de déploiement ou choisissez un autre fournisseur."
 
 #: src/pages/Artifacts.tsx:279
 msgid "This week"

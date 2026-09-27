@@ -1,7 +1,7 @@
+import type { EncryptedSecretStore } from "@aiden/adapters";
+import type { Actor } from "@aiden/contracts";
+import { Prisma, type PrismaClient, withTransactionRetry } from "@aiden/db";
 import { ORPCError } from "@orpc/server";
-import type { EncryptedSecretStore } from "@rakazo/adapters";
-import type { Actor } from "@rakazo/contracts";
-import { Prisma, type PrismaClient, withTransactionRetry } from "@rakazo/db";
 
 type AgentSecretDeps = {
   prisma: PrismaClient;

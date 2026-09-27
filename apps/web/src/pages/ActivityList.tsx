@@ -1,7 +1,7 @@
+import type { RunActivityRow } from "@aiden/contracts";
 import { i18n } from "@lingui/core";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { RunActivityRow } from "@rakazo/contracts";
 import { useEffect, useState } from "react";
 import { rpc } from "../lib/rpc";
 

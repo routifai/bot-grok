@@ -1,5 +1,4 @@
-import { ORPCError } from "@orpc/server";
-import type { AdapterContext } from "@rakazo/adapter-kit";
+import type { AdapterContext } from "@aiden/adapter-kit";
 import {
   createVoiceProvider,
   type EncryptedSecretStore,
@@ -9,9 +8,9 @@ import {
   MAX_TRANSCRIBE_BYTES,
   NoVoiceConfigured,
   voiceCatalogEntry,
-} from "@rakazo/adapters";
-import type { Actor, VoiceCredential, VoiceStatus } from "@rakazo/contracts";
-import { toUtterances } from "@rakazo/core";
+} from "@aiden/adapters";
+import type { Actor, VoiceCredential, VoiceStatus } from "@aiden/contracts";
+import { toUtterances } from "@aiden/core";
 import {
   deleteUnreferencedCredentialSecret,
   findDefaultVoiceCredential,
@@ -21,7 +20,8 @@ import {
   Prisma,
   type PrismaClient,
   selectSpaceVoicePreference,
-} from "@rakazo/db";
+} from "@aiden/db";
+import { ORPCError } from "@orpc/server";
 import type { Context, Hono } from "hono";
 import { readBoundedBody } from "./http-body.js";
 import { withSerializableRetry } from "./serializable-retry.js";

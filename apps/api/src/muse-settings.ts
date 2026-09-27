@@ -1,6 +1,6 @@
-import type { Actor, MuseSettings, Proactivity } from "@rakazo/contracts";
-import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@rakazo/contracts";
-import { IsolationError, type PrismaClient } from "@rakazo/db";
+import type { Actor, MuseSettings, Proactivity } from "@aiden/contracts";
+import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@aiden/contracts";
+import { IsolationError, type PrismaClient } from "@aiden/db";
 
 // Real muse.settings / muse.updateSettings handlers (packages/contracts/src/rpc.ts),
 // replacing the "settings" part of muse-preview.ts (docs/muse/PLAN.md, B7).

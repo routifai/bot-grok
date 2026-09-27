@@ -1,10 +1,5 @@
-import type {
-  AdapterContext,
-  CommandRequest,
-  ComputerRef,
-  ProcessEvent,
-} from "@rakazo/adapter-kit";
-import { FakeSandboxProvider } from "@rakazo/adapters";
+import type { AdapterContext, CommandRequest, ComputerRef, ProcessEvent } from "@aiden/adapter-kit";
+import { FakeSandboxProvider } from "@aiden/adapters";
 
 /** A model must not receive successful shell results for commands the fixture never ran. */
 export class EvalSandboxProvider extends FakeSandboxProvider {
@@ -15,7 +10,7 @@ export class EvalSandboxProvider extends FakeSandboxProvider {
     request: CommandRequest,
     context: AdapterContext,
   ): AsyncIterable<ProcessEvent> {
-    if (request.argv[3] === "rakazo-background-launch") {
+    if (request.argv[3] === "aiden-background-launch") {
       const issue = "Shell execution is unavailable in this offline eval sandbox.";
       if (!this.harnessIssues.includes(issue)) this.harnessIssues.push(issue);
       yield { type: "stderr", data: issue };

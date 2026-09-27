@@ -1,4 +1,4 @@
-/** The repository a stock Rakazo deployment tracks. */
+/** The repository a stock Aiden deployment tracks. */
 export const OFFICIAL_REPO_URL = "https://github.com/elie222/rakazo";
 export const DEFAULT_UPDATE_BRANCH = "main";
 export const DEFAULT_UPDATE_REMOTE = "origin";
@@ -215,19 +215,19 @@ export function updateSteps(input: UpdatePlanInput): UpdateStep[] {
       id: "generate",
       label: "Regenerate the database client",
       command: "pnpm",
-      args: ["--filter", "@rakazo/db", "run", "generate"],
+      args: ["--filter", "@aiden/db", "run", "generate"],
     },
     {
       id: "build",
       label: "Build the web app",
       command: "pnpm",
-      args: ["--filter", "@rakazo/web", "run", "build"],
+      args: ["--filter", "@aiden/web", "run", "build"],
     },
     {
       id: "migrate",
       label: "Apply database migrations",
       command: "pnpm",
-      args: ["--filter", "@rakazo/db", "run", "migrate"],
+      args: ["--filter", "@aiden/db", "run", "migrate"],
     },
   );
   return steps;
@@ -237,7 +237,7 @@ export type RestartSupervisor =
   | { kind: "systemd" | "pm2" | "declared"; label: string }
   | { kind: "none"; label: null };
 
-export const RESTART_SUPERVISOR_ENV = "RAKAZO_UPDATE_RESTART_SUPERVISOR";
+export const RESTART_SUPERVISOR_ENV = "AIDEN_UPDATE_RESTART_SUPERVISOR";
 
 /**
  * Whether something outside this process will start it again after it exits. Docker restart
@@ -256,9 +256,9 @@ export function detectRestartSupervisor(
 
 export function restartSupervisorAdvice(supervisor: RestartSupervisor): string {
   if (supervisor.kind !== "none") {
-    return `Rakazo will exit after updating and ${supervisor.label} will start it on the new code.`;
+    return `Aiden will exit after updating and ${supervisor.label} will start it on the new code.`;
   }
-  return `No process supervisor was detected, so Rakazo will not exit on its own. Restart the API, worker, and web processes yourself, or set ${RESTART_SUPERVISOR_ENV} to the supervisor that restarts them (for example "docker" with restart: unless-stopped, or run under systemd with Restart=always).`;
+  return `No process supervisor was detected, so Aiden will not exit on its own. Restart the API, worker, and web processes yourself, or set ${RESTART_SUPERVISOR_ENV} to the supervisor that restarts them (for example "docker" with restart: unless-stopped, or run under systemd with Restart=always).`;
 }
 
 export type UpdateAvailability =

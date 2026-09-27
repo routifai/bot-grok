@@ -1,6 +1,6 @@
+import type { Idea } from "@aiden/contracts";
+import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Idea } from "@rakazo/contracts";
-import { Button } from "@rakazo/ui-web";
 import { RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 import { Chip, Section } from "../ui";

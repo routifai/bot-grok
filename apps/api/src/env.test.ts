@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadEnv } from "./env.js";
 
 const base = {
-  DATABASE_URL: "postgres://rakazo:rakazo@127.0.0.1:5433/rakazo",
+  DATABASE_URL: "postgres://aiden:aiden@127.0.0.1:5433/aiden",
   NODE_ENV: "test",
 };
 
@@ -17,8 +17,8 @@ describe("loadEnv", () => {
   });
 
   it("defaults to upstream Rakazo and opts into the Muse edition", () => {
-    expect(loadEnv(base).productMode).toBe("rakazo");
-    expect(loadEnv({ ...base, RAKAZO_PRODUCT_MODE: "muse" }).productMode).toBe("muse");
+    expect(loadEnv(base).productMode).toBe("aiden");
+    expect(loadEnv({ ...base, AIDEN_PRODUCT_MODE: "muse" }).productMode).toBe("muse");
   });
 
   it("defaults Pi JSONL session recording to off", () => {
@@ -174,7 +174,7 @@ describe("loadEnv", () => {
   it("exposes a deployed git revision when GIT_SHA is set", () => {
     expect(loadEnv(base).gitSha).toBeUndefined();
     expect(loadEnv({ ...base, GIT_SHA: "  3c6e209  " }).gitSha).toBe("3c6e209");
-    expect(loadEnv({ ...base, RAKAZO_GIT_SHA: "abc1234" }).gitSha).toBe("abc1234");
+    expect(loadEnv({ ...base, AIDEN_GIT_SHA: "abc1234" }).gitSha).toBe("abc1234");
   });
 
   it("loads optional updater sidecar wiring without requiring the token at boot", () => {
@@ -182,8 +182,8 @@ describe("loadEnv", () => {
     expect(loadEnv(base).updaterToken).toBeUndefined();
     const env = loadEnv({
       ...base,
-      RAKAZO_UPDATER_URL: " http://updater:7092 ",
-      RAKAZO_UPDATER_TOKEN: " fake-review-updater-token-000000000000 ",
+      AIDEN_UPDATER_URL: " http://updater:7092 ",
+      AIDEN_UPDATER_TOKEN: " fake-review-updater-token-000000000000 ",
     });
     expect(env.updaterUrl).toBe("http://updater:7092");
     expect(env.updaterToken).toBe("fake-review-updater-token-000000000000");
@@ -194,12 +194,12 @@ describe("loadEnv", () => {
       loadEnv({
         ...base,
         SMTP_URL: " smtps://user:secret@smtp.example.test:465 ",
-        EMAIL_FROM: " Rakazo <no-reply@example.test> ",
+        EMAIL_FROM: " Aiden <no-reply@example.test> ",
         EMAIL_EMULATOR: "true",
       }),
     ).toMatchObject({
       smtpUrl: "smtps://user:secret@smtp.example.test:465",
-      emailFrom: "Rakazo <no-reply@example.test>",
+      emailFrom: "Aiden <no-reply@example.test>",
       emailEmulator: true,
     });
     expect(

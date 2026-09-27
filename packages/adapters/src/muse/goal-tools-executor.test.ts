@@ -3,7 +3,7 @@
 // createRunExecutor + a scripted tool call, the same harness executor-effect-idempotency.
 // test.ts uses for scratchpad_add. goal-tools.test.ts covers the business logic in depth;
 // this file only covers the wiring.
-import type { AgentRunRequest } from "@rakazo/adapter-kit";
+import type { AgentRunRequest } from "@aiden/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
 import type * as AutoReviewModule from "../auto-review.js";
 import type * as ComputerLifecycleModule from "../computer-lifecycle.js";

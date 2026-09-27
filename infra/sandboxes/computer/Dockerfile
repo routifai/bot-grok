@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY xcapture.c .
-RUN cc -O3 -fPIC -shared -Wall -Wextra -Werror -o librakazo-xcapture.so xcapture.c \
+RUN cc -O3 -fPIC -shared -Wall -Wextra -Werror -o libaiden-xcapture.so xcapture.c \
     -lX11 -lXext -lXdamage -lXfixes -lXtst -lpng
 
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
@@ -43,37 +43,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     unzip \
   && rm -rf /var/lib/apt/lists/* \
-  && groupadd --gid 1000 rakazo \
-  && useradd --uid 1000 --gid rakazo --create-home --shell /bin/bash rakazo \
-  && mkdir -p /etc/rakazo/fluxbox \
+  && groupadd --gid 1000 aiden \
+  && useradd --uid 1000 --gid aiden --create-home --shell /bin/bash aiden \
+  && mkdir -p /etc/aiden/fluxbox \
   && printf '%s\n' '#!/bin/sh' 'exec xsetroot -solid "#111113" "$@"' > /usr/bin/fbsetbg \
   && chmod +x /usr/bin/fbsetbg \
   && ln -sfn /bin/true /usr/bin/xmessage
 ENV DISPLAY=:1
-ENV HOME=/home/rakazo
-WORKDIR /home/rakazo
+ENV HOME=/home/aiden
+WORKDIR /home/aiden
 # --chmod normalizes modes: a restrictive host umask (e.g. 077 on hardened hosts) would
 # otherwise leave these files unreadable to USER 1000 at runtime.
-COPY --chmod=755 start.sh /usr/local/bin/rakazo-computer
-COPY --chmod=755 control.py /usr/local/bin/rakazo-computer-control
-COPY --from=capture-builder /build/librakazo-xcapture.so /usr/local/lib/librakazo-xcapture.so
-COPY --chmod=755 rakazo-browser /usr/local/bin/rakazo-browser
-COPY --chmod=755 rakazo-page-browser /usr/local/bin/rakazo-page-browser
-COPY --chmod=644 rakazo-browser.desktop /usr/share/applications/rakazo-browser.desktop
-COPY --chmod=644 fluxbox.init /etc/rakazo/fluxbox/init
-COPY --chmod=644 fluxbox.apps /etc/rakazo/fluxbox/apps
-COPY --chmod=644 fluxbox.menu /etc/rakazo/fluxbox/menu
+COPY --chmod=755 start.sh /usr/local/bin/aiden-computer
+COPY --chmod=755 control.py /usr/local/bin/aiden-computer-control
+COPY --from=capture-builder /build/libaiden-xcapture.so /usr/local/lib/libaiden-xcapture.so
+COPY --chmod=755 aiden-browser /usr/local/bin/aiden-browser
+COPY --chmod=755 aiden-page-browser /usr/local/bin/aiden-page-browser
+COPY --chmod=644 aiden-browser.desktop /usr/share/applications/aiden-browser.desktop
+COPY --chmod=644 fluxbox.init /etc/aiden/fluxbox/init
+COPY --chmod=644 fluxbox.apps /etc/aiden/fluxbox/apps
+COPY --chmod=644 fluxbox.menu /etc/aiden/fluxbox/menu
 COPY --chmod=644 embed.html /usr/share/novnc/embed.html
 COPY --chmod=644 clipboard-bridge.js /usr/share/novnc/clipboard-bridge.js
 COPY --chmod=644 mobile-keyboard.js /usr/share/novnc/mobile-keyboard.js
 # Login shells source this after Debian's /etc/profile resets PATH. The home
 # volume hides /etc/skel, so ~/.local/bin has to be restored from the image.
-COPY --chmod=644 rakazo-local-bin.sh /etc/profile.d/rakazo-local-bin.sh
+COPY --chmod=644 aiden-local-bin.sh /etc/profile.d/aiden-local-bin.sh
 # Strip CR so shebangs work even if the build context came from a CRLF checkout.
 RUN ldconfig \
-  && sed -i 's/\r$//' /usr/local/bin/rakazo-computer /usr/local/bin/rakazo-computer-control /usr/local/bin/rakazo-browser /usr/local/bin/rakazo-page-browser \
-    /etc/rakazo/fluxbox/init /etc/rakazo/fluxbox/apps /etc/rakazo/fluxbox/menu \
-    /etc/profile.d/rakazo-local-bin.sh
+  && sed -i 's/\r$//' /usr/local/bin/aiden-computer /usr/local/bin/aiden-computer-control /usr/local/bin/aiden-browser /usr/local/bin/aiden-page-browser \
+    /etc/aiden/fluxbox/init /etc/aiden/fluxbox/apps /etc/aiden/fluxbox/menu \
+    /etc/profile.d/aiden-local-bin.sh
 EXPOSE 7070 6080 6081 6082 6083 6084 6085 6086 6087 6088 6089 6090 6091 6092 6093 6094 6095
 USER 1000:1000
-CMD ["/usr/local/bin/rakazo-computer"]
+CMD ["/usr/local/bin/aiden-computer"]

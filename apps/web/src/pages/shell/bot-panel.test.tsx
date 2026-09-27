@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot, Me } from "@rakazo/contracts";
+import type { Bot, Me } from "@aiden/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -25,7 +25,7 @@ vi.mock("../muse/ProactivitySettings", () => ({
     <div data-testid="proactivity-settings-stub">{botId}</div>
   ),
 }));
-vi.mock("@rakazo/ui-web", () => {
+vi.mock("@aiden/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
   );
@@ -130,7 +130,7 @@ it("mounts the proactivity control in muse mode", async () => {
 
 it("hides the proactivity control outside muse mode", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.me.mockResolvedValue(me("rakazo"));
+  api.me.mockResolvedValue(me("aiden"));
   const { container, root } = render();
   try {
     await act(async () =>

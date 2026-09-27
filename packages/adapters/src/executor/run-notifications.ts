@@ -1,7 +1,7 @@
 // Run-level push notifications (finish / approval-needed / failure) and lease renewal.
-import type { NotificationMessage } from "@rakazo/adapter-kit";
-import type { PrismaClient } from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+import type { NotificationMessage } from "@aiden/adapter-kit";
+import type { PrismaClient } from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import type { ExecutorDeps } from "./types.js";
 
 export async function runNotificationsEnabled(

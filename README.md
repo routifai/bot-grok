@@ -1,15 +1,15 @@
-# Rakazo
+# Aiden
 
 [![GitHub stars](https://img.shields.io/github/stars/elie222/rakazo?labelColor=black&style=for-the-badge&color=2563EB)](https://github.com/elie222/rakazo/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?labelColor=black&style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/RWwKa2Sn7h)
 
-![Rakazo — AI teammates you actually own](./docs/readme-hero.png)
+![Aiden — AI teammates you actually own](./docs/readme-hero.png)
 
-Rakazo is an open-source platform for running persistent AI teammates. It is available on the web,
+Aiden is an open-source platform for running persistent AI teammates. It is available on the web,
 as an Electron desktop app, and through an Expo mobile app. Bring your own model and computer
 provider, or run the complete stack locally.
 
-Rakazo is in beta. Learn more at [rakazo.com](https://rakazo.com).
+Aiden is in beta. Learn more at [rakazo.com](https://rakazo.com).
 
 ## Features
 
@@ -44,12 +44,12 @@ https://github.com/user-attachments/assets/dccdeddb-2134-4a56-8eed-b2e591736b1c
 You need Docker Engine, the Compose plugin, curl, and OpenSSL. No clone or Node install.
 
 ```bash
-mkdir -p rakazo && cd rakazo &&
+mkdir -p aiden && cd aiden &&
 curl -fsSLO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/install-images.sh &&
 bash install-images.sh
 ```
 
-The installer downloads the Compose files, creates `.env` with random secrets, and starts Rakazo.
+The installer downloads the Compose files, creates `.env` with random secrets, and starts Aiden.
 It preserves an existing `.env` when rerun.
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173), create an account, and connect a model.
@@ -59,8 +59,8 @@ with the matching API key.
 Default image tag is `edge` (main builds, `linux/amd64` + `linux/arm64`). Details and tags:
 [self-hosting guide](./docs/self-host.md#published-images-no-checkout).
 
-On restricted networks, override the installer download base (`RAKAZO_DOWNLOAD_BASE`), skip
-existing Compose files (`--local` / `RAKAZO_DOWNLOAD_SKIP_EXISTING`), or mirror the bootstrap
+On restricted networks, override the installer download base (`AIDEN_DOWNLOAD_BASE`), skip
+existing Compose files (`--local` / `AIDEN_DOWNLOAD_SKIP_EXISTING`), or mirror the bootstrap
 script URL — see
 [Restricted networks / mirror downloads](./docs/self-host.md#restricted-networks--mirror-downloads).
 
@@ -73,7 +73,7 @@ the desktop app, the mobile app, or a browser.
 
 ```bash
 bash install-images.sh --prepare-only
-# edit .env: SANDBOX_PROVIDER=box (or e2b / daytona / createos) with its API key, RAKAZO_HOST=your.domain
+# edit .env: SANDBOX_PROVIDER=box (or e2b / daytona / createos) with its API key, AIDEN_HOST=your.domain
 bash install-images.sh
 ```
 
@@ -88,7 +88,7 @@ pnpm 9; and Docker. Node.js 23.x and 25.x are not supported.
 
 ```bash
 git clone https://github.com/elie222/rakazo.git
-cd rakazo
+cd aiden
 cp .env.example .env
 ```
 
@@ -142,28 +142,28 @@ and `desktop:1`.
 
 ## Desktop and mobile
 
-The Electron and Expo apps are clients of the same Rakazo API used by the web app.
+The Electron and Expo apps are clients of the same Aiden API used by the web app.
 
 With the development stack running, launch Electron with:
 
 ```bash
-pnpm --filter @rakazo/desktop dev
+pnpm --filter @aiden/desktop dev
 ```
 
-On first run the desktop app asks whether to run Rakazo on this computer or connect to an existing
+On first run the desktop app asks whether to run Aiden on this computer or connect to an existing
 server. **This computer** installs and starts the published images with Docker Compose (the same
 files as `infra/compose/install-images.sh`) under the app's data directory, so Docker Desktop,
 OrbStack, or Docker Engine must be installed; the app links to them when it is not. Installed
 builds pin the image tag to their own version; unpackaged builds pull `edge`. Developers running
 `pnpm dev` should pick **Existing instance** with `http://127.0.0.1:5173` instead. Public servers
 must use HTTPS; HTTP is accepted only for loopback and private LAN addresses (not link-local). The
-app verifies Rakazo's health endpoint before saving, and later launches go straight to that
+app verifies Aiden's health endpoint before saving, and later launches go straight to that
 instance. The stack keeps running after the app quits; **Stop Local Stack** in the application
 menu turns it off.
 
-Use **Change Rakazo Server…** in the application menu to reconnect. Closing that window without
-saving returns to the previous instance. For development automation, set `RAKAZO_WEB_URL` to point
-the shell somewhere else without changing the saved instance, or `RAKAZO_FORCE_SETUP=1` to run
+Use **Change Aiden Server…** in the application menu to reconnect. Closing that window without
+saving returns to the previous instance. For development automation, set `AIDEN_WEB_URL` to point
+the shell somewhere else without changing the saved instance, or `AIDEN_FORCE_SETUP=1` to run
 setup again.
 
 Mobile build and release instructions live in [docs/mobile-release.md](./docs/mobile-release.md).
@@ -215,6 +215,6 @@ Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) befo
 request. For security vulnerabilities, follow [SECURITY.md](./SECURITY.md) instead of filing a public
 issue.
 
-Rakazo is licensed under the [Apache License 2.0](./LICENSE).
+Aiden is licensed under the [Apache License 2.0](./LICENSE).
 
-Questions and ideas are welcome in the [Rakazo Discord community](https://discord.gg/RWwKa2Sn7h).
+Questions and ideas are welcome in the [Aiden Discord community](https://discord.gg/RWwKa2Sn7h).

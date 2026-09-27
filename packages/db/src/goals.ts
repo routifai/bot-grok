@@ -4,7 +4,7 @@ import {
   type GoalProposalTask,
   GoalProposalTaskSchema,
   type GoalTask,
-} from "@rakazo/contracts";
+} from "@aiden/contracts";
 import type { PrismaClient } from "./client.js";
 
 // Repository for Goal / GoalTask / GoalProposal (CONTEXT.md; docs/muse/PLAN.md B3).

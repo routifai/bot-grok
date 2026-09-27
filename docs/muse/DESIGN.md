@@ -16,7 +16,7 @@ Expressions are structural (conditional SVG keyed on state, so they still show u
 
 ## Foundations
 
-**Color.** Semantic tokens only (`@rakazo/ui-tokens`: `museLightTokens`, `museDarkTokens`). White surfaces, hairline borders, ink primary. The app stays monochrome: the Muse's identity color (gold `#F2B233` by default, Aiden's ring) is the only brand color and appears only on the Muse face. Status colors are semantic: `warning` = waiting on you, `success` = done or live, `destructive` = failed. Never hardcode a hex in a component.
+**Color.** Semantic tokens only (`@aiden/ui-tokens`: `museLightTokens`, `museDarkTokens`). White surfaces, hairline borders, ink primary. The app stays monochrome: the Muse's identity color (gold `#F2B233` by default, Aiden's ring) is the only brand color and appears only on the Muse face. Status colors are semantic: `warning` = waiting on you, `success` = done or live, `destructive` = failed. Never hardcode a hex in a component.
 
 **Type.**
 - Geist (body, UI): 14–15px body, 13px secondary, 12px meta.
@@ -29,7 +29,7 @@ Expressions are structural (conditional SVG keyed on state, so they still show u
 
 ## Building blocks
 
-Import from `apps/web/src/pages/muse/ui`: `MuseScreen`, `MuseColumn`, `ScreenHeader`, `Section`, `Eyebrow`, `Surface` (`default | attention | quiet`, `interactive`), `StatusPill` (`neutral | live | attention | done`), `Chip`, `DetailRows`, `Progress`, `EmptyState`. Use them before writing new chrome. Buttons, inputs, tabs, sheets, dialogs come from `@rakazo/ui-web`. Icons: `lucide-react`, 16px, `strokeWidth={1.75}`.
+Import from `apps/web/src/pages/muse/ui`: `MuseScreen`, `MuseColumn`, `ScreenHeader`, `Section`, `Eyebrow`, `Surface` (`default | attention | quiet`, `interactive`), `StatusPill` (`neutral | live | attention | done`), `Chip`, `DetailRows`, `Progress`, `EmptyState`. Use them before writing new chrome. Buttons, inputs, tabs, sheets, dialogs come from `@aiden/ui-web`. Icons: `lucide-react`, 16px, `strokeWidth={1.75}`.
 
 ## Card patterns (from the Aiden concept)
 

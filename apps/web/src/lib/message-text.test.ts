@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@rakazo/contracts";
+import type { ThreadMessage } from "@aiden/contracts";
 import { describe, expect, it } from "vitest";
 import { copyableMessageText } from "./message-text.js";
 

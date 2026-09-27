@@ -1,10 +1,10 @@
-import type { BackgroundJobHandlers } from "@rakazo/adapter-kit";
+import type { BackgroundJobHandlers } from "@aiden/adapter-kit";
 import {
   HISTORY_COMPACT_MAX_ATTEMPTS,
   historyCompactJob,
   messagingDeliverJob,
-} from "@rakazo/adapter-kit";
-import { createLogger, createTestSink, installLogger, wrapJobPayload } from "@rakazo/logging";
+} from "@aiden/adapter-kit";
+import { createLogger, createTestSink, installLogger, wrapJobPayload } from "@aiden/logging";
 import type { Runner } from "graphile-worker";
 import { makeWorkerUtils } from "graphile-worker";
 import type { Pool } from "pg";
@@ -179,7 +179,7 @@ describe("GraphileJobWorkerHost runner lifecycle", () => {
     const first = mockRunner();
     run.mockResolvedValueOnce(first.runner);
     const sink = createTestSink();
-    installLogger(createLogger({ service: "rakazo-worker", sinks: [sink] }));
+    installLogger(createLogger({ service: "aiden-worker", sinks: [sink] }));
     const host = new GraphileJobWorkerHost({} as Pool, {
       sleep: async () => undefined,
     });
@@ -219,7 +219,7 @@ describe("GraphileJobWorkerHost runner lifecycle", () => {
       });
     } finally {
       await host.stop();
-      installLogger(createLogger({ service: "rakazo-worker", level: "off", sinks: [] }));
+      installLogger(createLogger({ service: "aiden-worker", level: "off", sinks: [] }));
     }
 
     expect(sink.events).toEqual([

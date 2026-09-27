@@ -1,5 +1,5 @@
-import { runContinueJob } from "@rakazo/adapter-kit";
-import type { BotMessageIntent, MessageBlock } from "@rakazo/contracts";
+import { runContinueJob } from "@aiden/adapter-kit";
+import type { BotMessageIntent, MessageBlock } from "@aiden/contracts";
 import {
   BOT_MESSAGE_MAX_LENGTH,
   botMessageContext,
@@ -8,14 +8,14 @@ import {
   clampBotMessage,
   nextBotMessageHop,
   resolveBotAddress,
-} from "@rakazo/core";
+} from "@aiden/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   type PrismaClient,
   withTransactionRetry,
-} from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+} from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import type { ExecutorDeps } from "./executor.js";
 
 /**

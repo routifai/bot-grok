@@ -1,6 +1,6 @@
 // Requeuing a run whose computer is switching or busy: releasing the lease, choosing
 // queued vs. waiting_takeover, and scheduling the retry with backoff.
-import { runContinueJob } from "@rakazo/adapter-kit";
+import { runContinueJob } from "@aiden/adapter-kit";
 import type { TakeoverResumeCheckpoint } from "../takeover-resume.js";
 import { TAKEOVER_RESUME_CHECKPOINTS } from "../takeover-resume.js";
 import { computerRetryDelay } from "./run-tools.js";

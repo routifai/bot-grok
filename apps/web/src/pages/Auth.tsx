@@ -1,7 +1,7 @@
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@aiden/core";
+import { BotAvatar, Button, cn, Input, Label } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { DEFAULT_MUSE_COLOR } from "@rakazo/contracts";
-import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@rakazo/core";
-import { BotAvatar, Button, cn, Input, Label } from "@rakazo/ui-web";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -40,13 +40,13 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     muse ? (
       <Trans>Welcome back.</Trans>
     ) : (
-      <Trans>Sign in to Rakazo</Trans>
+      <Trans>Sign in to Aiden</Trans>
     )
   ) : mode === "up" ? (
     muse ? (
       <Trans>Meet Aiden.</Trans>
     ) : (
-      <Trans>Create your Rakazo</Trans>
+      <Trans>Create your Aiden</Trans>
     )
   ) : (
     <Trans>Reset your password</Trans>

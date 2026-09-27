@@ -1,10 +1,10 @@
 // Persisting thread messages produced during a run: redacting secrets from blocks
 // before they are stored, and writing the message + its event in one transaction.
-import type { MessageBlock } from "@rakazo/contracts";
-import { redactSecrets } from "@rakazo/core";
-import type { Prisma } from "@rakazo/db";
-import { appendEventInTransaction, createThreadMessageInTransaction } from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+import type { MessageBlock } from "@aiden/contracts";
+import { redactSecrets } from "@aiden/core";
+import type { Prisma } from "@aiden/db";
+import { appendEventInTransaction, createThreadMessageInTransaction } from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import type { ExecutorDeps } from "./types.js";
 
 export function redactBlocks(blocks: MessageBlock[], secrets: string[]): MessageBlock[] {

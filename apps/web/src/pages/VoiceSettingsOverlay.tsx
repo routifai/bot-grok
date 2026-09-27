@@ -1,5 +1,4 @@
-import { Trans, useLingui } from "@lingui/react/macro";
-import type { VoiceCatalogEntry, VoiceCredential, VoiceInfo, VoiceStatus } from "@rakazo/contracts";
+import type { VoiceCatalogEntry, VoiceCredential, VoiceInfo, VoiceStatus } from "@aiden/contracts";
 import {
   Button,
   Dialog,
@@ -11,7 +10,8 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-} from "@rakazo/ui-web";
+} from "@aiden/ui-web";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { XIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { rpc } from "../lib/rpc";

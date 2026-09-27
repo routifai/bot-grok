@@ -7,7 +7,7 @@
 
   <application>
     <service
-      android:name=".RakazoNotificationService"
+      android:name=".AidenNotificationService"
       android:exported="false"
       android:foregroundServiceType="remoteMessaging" />
   </application>

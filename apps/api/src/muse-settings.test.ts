@@ -1,13 +1,13 @@
+import type { Actor } from "@aiden/contracts";
+import type { PrismaClient } from "@aiden/db";
 import { RPCHandler } from "@orpc/server/fetch";
-import type { Actor } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { createRouter, type RouterDeps } from "./router.js";
 
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@rakazo.test",
+  email: "user@aiden.test",
   isDeploymentOwner: true,
 };
 
@@ -32,7 +32,7 @@ function museSettingsDeps(botRow: BotRow | null) {
       screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
-    dataDir: "/tmp/rakazo-muse-settings-test",
+    dataDir: "/tmp/aiden-muse-settings-test",
   } as unknown as RouterDeps;
   return { findFirst, update, deps, handler: new RPCHandler(createRouter(deps)) };
 }

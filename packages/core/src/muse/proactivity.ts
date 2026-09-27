@@ -6,7 +6,7 @@
 // `Profile.quiet_hours_end` becomes `quietHoursEnd`. Unlike OpenMuse (server local time),
 // the quiet-hours window here is evaluated in the person's own IANA time zone.
 
-import type { MuseSettings, Proactivity } from "@rakazo/contracts";
+import type { MuseSettings, Proactivity } from "@aiden/contracts";
 
 /** Local-time window with no background work, "HH:MM-HH:MM"; may wrap midnight. */
 type QuietHours = string;

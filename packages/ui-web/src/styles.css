@@ -1,6 +1,6 @@
 @import "tw-animate-css";
 @import "./shadcn.css";
-@import "@rakazo/ui-tokens/css";
+@import "@aiden/ui-tokens/css";
 
 @source "./**/*.{ts,tsx}";
 
@@ -55,7 +55,7 @@
   }
 }
 
-@keyframes rakazo-avatar-spin {
+@keyframes aiden-avatar-spin {
   0% {
     transform: rotate(0deg);
   }
@@ -64,141 +64,141 @@
   }
 }
 
-.rakazo-bot-avatar-ring {
-  animation: rakazo-avatar-spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+.aiden-bot-avatar-ring {
+  animation: aiden-avatar-spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   opacity: 0;
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.rakazo-bot-avatar {
+.aiden-bot-avatar {
   transition: box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.rakazo-bot-avatar[data-working="true"] .rakazo-bot-avatar-ring {
+.aiden-bot-avatar[data-working="true"] .aiden-bot-avatar-ring {
   opacity: 1;
 }
 
-.rakazo-bot-avatar-eyes {
-  animation: var(--rakazo-eye-animation-name) var(--rakazo-eye-animation-duration)
-    var(--rakazo-eye-animation-easing) var(--rakazo-eye-animation-delay) infinite;
+.aiden-bot-avatar-eyes {
+  animation: var(--aiden-eye-animation-name) var(--aiden-eye-animation-duration)
+    var(--aiden-eye-animation-easing) var(--aiden-eye-animation-delay) infinite;
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.rakazo-bot-avatar-eyes-working {
+.aiden-bot-avatar-eyes-working {
   opacity: 0;
 }
 
-.rakazo-bot-avatar[data-working="true"] .rakazo-bot-avatar-eyes-idle {
+.aiden-bot-avatar[data-working="true"] .aiden-bot-avatar-eyes-idle {
   opacity: 0;
 }
 
-.rakazo-bot-avatar[data-working="true"] .rakazo-bot-avatar-eyes-working {
+.aiden-bot-avatar[data-working="true"] .aiden-bot-avatar-eyes-working {
   opacity: 1;
 }
 
-.rakazo-organic-avatar-body {
+.aiden-organic-avatar-body {
   transform-origin: center;
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.rakazo-organic-avatar-body-idle {
-  animation: rakazo-organic-idle 5.6s ease-in-out infinite;
+.aiden-organic-avatar-body-idle {
+  animation: aiden-organic-idle 5.6s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar-body-working {
+.aiden-organic-avatar-body-working {
   opacity: 0;
 }
 
-.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-body-idle {
+.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-body-idle {
   opacity: 0;
 }
 
-.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-body-working {
+.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-body-working {
   opacity: 1;
 }
 
-.rakazo-organic-avatar-eyes {
+.aiden-organic-avatar-eyes {
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.rakazo-organic-avatar-eyes-working {
+.aiden-organic-avatar-eyes-working {
   opacity: 0;
 }
 
-.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-eyes-idle {
+.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-eyes-idle {
   opacity: 0;
 }
 
-.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-eyes-working {
+.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-eyes-working {
   opacity: 1;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="0"] .rakazo-organic-avatar-eyes-idle {
-  animation: rakazo-eyes-idle-0 5.8s ease-in-out infinite;
+.aiden-organic-avatar[data-eye-pattern="0"] .aiden-organic-avatar-eyes-idle {
+  animation: aiden-eyes-idle-0 5.8s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="1"] .rakazo-organic-avatar-eyes-idle {
-  animation: rakazo-eyes-idle-1 6.4s ease-in-out -1.7s infinite;
+.aiden-organic-avatar[data-eye-pattern="1"] .aiden-organic-avatar-eyes-idle {
+  animation: aiden-eyes-idle-1 6.4s ease-in-out -1.7s infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="2"] .rakazo-organic-avatar-eyes-idle {
-  animation: rakazo-eyes-idle-2 5.2s ease-in-out -3.1s infinite;
+.aiden-organic-avatar[data-eye-pattern="2"] .aiden-organic-avatar-eyes-idle {
+  animation: aiden-eyes-idle-2 5.2s ease-in-out -3.1s infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="3"] .rakazo-organic-avatar-eyes-idle {
-  animation: rakazo-eyes-idle-3 6.8s ease-in-out -2.3s infinite;
+.aiden-organic-avatar[data-eye-pattern="3"] .aiden-organic-avatar-eyes-idle {
+  animation: aiden-eyes-idle-3 6.8s ease-in-out -2.3s infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="0"] .rakazo-organic-avatar-eyes-working {
-  animation: rakazo-organic-eyes-loop-0 6.6s ease-in-out infinite;
+.aiden-organic-avatar[data-eye-pattern="0"] .aiden-organic-avatar-eyes-working {
+  animation: aiden-organic-eyes-loop-0 6.6s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="1"] .rakazo-organic-avatar-eyes-working {
-  animation: rakazo-organic-eyes-loop-1 7.2s ease-in-out -1.4s infinite;
+.aiden-organic-avatar[data-eye-pattern="1"] .aiden-organic-avatar-eyes-working {
+  animation: aiden-organic-eyes-loop-1 7.2s ease-in-out -1.4s infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="2"] .rakazo-organic-avatar-eyes-working {
-  animation: rakazo-organic-eyes-loop-2 6.1s ease-in-out -3.2s infinite;
+.aiden-organic-avatar[data-eye-pattern="2"] .aiden-organic-avatar-eyes-working {
+  animation: aiden-organic-eyes-loop-2 6.1s ease-in-out -3.2s infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="3"] .rakazo-organic-avatar-eyes-working {
-  animation: rakazo-organic-eyes-loop-3 7.8s ease-in-out -2.1s infinite;
+.aiden-organic-avatar[data-eye-pattern="3"] .aiden-organic-avatar-eyes-working {
+  animation: aiden-organic-eyes-loop-3 7.8s ease-in-out -2.1s infinite;
 }
 
-/* Durations mirror @rakazo/core WORKING_AVATAR_DURATIONS_MS (avatar-motion). */
-.rakazo-organic-avatar[data-shape-family="0"] .rakazo-organic-avatar-body-working {
-  animation: rakazo-organic-float 1.8s ease-in-out infinite;
+/* Durations mirror @aiden/core WORKING_AVATAR_DURATIONS_MS (avatar-motion). */
+.aiden-organic-avatar[data-shape-family="0"] .aiden-organic-avatar-body-working {
+  animation: aiden-organic-float 1.8s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-shape-family="1"] .rakazo-organic-avatar-body-working {
-  animation: rakazo-organic-stretch 1.35s ease-in-out infinite;
+.aiden-organic-avatar[data-shape-family="1"] .aiden-organic-avatar-body-working {
+  animation: aiden-organic-stretch 1.35s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-shape-family="2"] .rakazo-organic-avatar-body-working,
-.rakazo-organic-avatar[data-shape-family="8"] .rakazo-organic-avatar-body-working {
-  animation: rakazo-organic-sway 1.6s ease-in-out infinite;
+.aiden-organic-avatar[data-shape-family="2"] .aiden-organic-avatar-body-working,
+.aiden-organic-avatar[data-shape-family="8"] .aiden-organic-avatar-body-working {
+  animation: aiden-organic-sway 1.6s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-shape-family="3"] .rakazo-organic-avatar-body-working,
-.rakazo-organic-avatar[data-shape-family="4"] .rakazo-organic-avatar-body-working {
-  animation: rakazo-organic-turn 2.4s ease-in-out infinite;
+.aiden-organic-avatar[data-shape-family="3"] .aiden-organic-avatar-body-working,
+.aiden-organic-avatar[data-shape-family="4"] .aiden-organic-avatar-body-working {
+  animation: aiden-organic-turn 2.4s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-shape-family="5"] .rakazo-organic-avatar-body-working,
-.rakazo-organic-avatar[data-shape-family="9"] .rakazo-organic-avatar-body-working {
-  animation: rakazo-organic-squash 1.35s ease-in-out infinite;
+.aiden-organic-avatar[data-shape-family="5"] .aiden-organic-avatar-body-working,
+.aiden-organic-avatar[data-shape-family="9"] .aiden-organic-avatar-body-working {
+  animation: aiden-organic-squash 1.35s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-shape-family="6"] .rakazo-organic-avatar-body-working {
-  animation: rakazo-organic-pulse 1.1s ease-in-out infinite;
+.aiden-organic-avatar[data-shape-family="6"] .aiden-organic-avatar-body-working {
+  animation: aiden-organic-pulse 1.1s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-shape-family="7"] .rakazo-organic-avatar-body-working {
+.aiden-organic-avatar[data-shape-family="7"] .aiden-organic-avatar-body-working {
   transform-origin: center 20%;
-  animation: rakazo-organic-ring 1.35s ease-in-out infinite;
+  animation: aiden-organic-ring 1.35s ease-in-out infinite;
 }
 
-@keyframes rakazo-organic-float {
+@keyframes aiden-organic-float {
   0%,
   100% {
     transform: translateY(2px) scaleX(1.02);
@@ -208,7 +208,7 @@
   }
 }
 
-@keyframes rakazo-organic-idle {
+@keyframes aiden-organic-idle {
   0%,
   100% {
     transform: translateY(1.2px) scale(1.012, 0.988);
@@ -218,7 +218,7 @@
   }
 }
 
-@keyframes rakazo-organic-stretch {
+@keyframes aiden-organic-stretch {
   0%,
   100% {
     transform: translateY(2px) scale(1.04, 0.96);
@@ -228,7 +228,7 @@
   }
 }
 
-@keyframes rakazo-organic-sway {
+@keyframes aiden-organic-sway {
   0%,
   100% {
     transform: rotate(-3deg) translateX(-1px);
@@ -238,7 +238,7 @@
   }
 }
 
-@keyframes rakazo-organic-turn {
+@keyframes aiden-organic-turn {
   0%,
   100% {
     transform: rotate(-4deg) scale(0.98);
@@ -248,7 +248,7 @@
   }
 }
 
-@keyframes rakazo-organic-squash {
+@keyframes aiden-organic-squash {
   0%,
   100% {
     transform: scale(1.04, 0.96);
@@ -258,7 +258,7 @@
   }
 }
 
-@keyframes rakazo-organic-pulse {
+@keyframes aiden-organic-pulse {
   0%,
   100% {
     transform: scale(0.96);
@@ -268,7 +268,7 @@
   }
 }
 
-@keyframes rakazo-organic-ring {
+@keyframes aiden-organic-ring {
   0%,
   100% {
     transform: rotate(-4deg);
@@ -281,7 +281,7 @@
   }
 }
 
-@keyframes rakazo-organic-eyes-loop-0 {
+@keyframes aiden-organic-eyes-loop-0 {
   0%,
   100% {
     transform: translate(-9%, 1%) scaleY(0.94);
@@ -309,7 +309,7 @@
   }
 }
 
-@keyframes rakazo-organic-eyes-loop-1 {
+@keyframes aiden-organic-eyes-loop-1 {
   0%,
   100% {
     transform: translate(0, -8%) scale(1.06);
@@ -334,7 +334,7 @@
   }
 }
 
-@keyframes rakazo-organic-eyes-loop-2 {
+@keyframes aiden-organic-eyes-loop-2 {
   0%,
   100% {
     transform: scale(0.9, 1.08);
@@ -359,7 +359,7 @@
   }
 }
 
-@keyframes rakazo-organic-eyes-loop-3 {
+@keyframes aiden-organic-eyes-loop-3 {
   0%,
   100% {
     transform: translateY(7%) scaleY(0.9);
@@ -384,7 +384,7 @@
   }
 }
 
-@keyframes rakazo-eyes-idle-0 {
+@keyframes aiden-eyes-idle-0 {
   0%,
   32%,
   100% {
@@ -412,7 +412,7 @@
   }
 }
 
-@keyframes rakazo-eyes-idle-1 {
+@keyframes aiden-eyes-idle-1 {
   0%,
   25%,
   100% {
@@ -440,7 +440,7 @@
   }
 }
 
-@keyframes rakazo-eyes-idle-2 {
+@keyframes aiden-eyes-idle-2 {
   0%,
   28%,
   100% {
@@ -468,7 +468,7 @@
   }
 }
 
-@keyframes rakazo-eyes-idle-3 {
+@keyframes aiden-eyes-idle-3 {
   0%,
   24%,
   100% {
@@ -496,7 +496,7 @@
   }
 }
 
-@keyframes rakazo-eyes-working {
+@keyframes aiden-eyes-working {
   0% {
     transform: translate(-4px, 0) scale(0.92, 0.95);
   }
@@ -517,89 +517,89 @@
 /* Muse face: idle breathe + blink, thinking glance up + thought dots, working sway +
    eye scan + spinning spark, waiting hop + pulsing spark. State comes from
    data-muse-state (derived MuseState, never a free string). */
-.rakazo-muse-all {
+.aiden-muse-all {
   transform-box: fill-box;
   transform-origin: 50% 82%;
 }
 
-.rakazo-muse-pupils,
-.rakazo-muse-spark,
-.rakazo-muse-dot {
+.aiden-muse-pupils,
+.aiden-muse-spark,
+.aiden-muse-dot {
   transform-box: fill-box;
   transform-origin: 50% 50%;
 }
 
-.rakazo-muse-thought {
+.aiden-muse-thought {
   opacity: 0;
   transition: opacity 200ms ease;
 }
 
 /* Rendered only for data-muse-state="waiting" (see bot-avatar.tsx), so it only needs its
    own wave animation, no cross-state visibility toggle. */
-.rakazo-muse-hand {
+.aiden-muse-hand {
   transform-box: fill-box;
   transform-origin: 15% 88%;
-  animation: rakazo-muse-wave 0.6s ease-in-out infinite;
+  animation: aiden-muse-wave 0.6s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-all {
-  animation: rakazo-muse-breathe 4.2s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="idle"] .aiden-muse-all {
+  animation: aiden-muse-breathe 4.2s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-pupils {
-  animation: rakazo-muse-blink 5.4s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="idle"] .aiden-muse-pupils {
+  animation: aiden-muse-blink 5.4s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="idle"] .rakazo-muse-spark {
-  animation: rakazo-muse-spark-float 3.6s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="idle"] .aiden-muse-spark {
+  animation: aiden-muse-spark-float 3.6s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-all {
-  animation: rakazo-muse-breathe 2.4s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-all {
+  animation: aiden-muse-breathe 2.4s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-pupils {
+.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-pupils {
   transform: translate(4px, -4px);
   transition: transform 300ms ease;
 }
 
-.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-thought {
+.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-thought {
   opacity: 1;
 }
 
-.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-dot {
-  animation: rakazo-muse-dot 1.2s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-dot {
+  animation: aiden-muse-dot 1.2s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-dot-2 {
+.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-dot-2 {
   animation-delay: 0.15s;
 }
 
-.rakazo-muse-avatar[data-muse-state="thinking"] .rakazo-muse-dot-3 {
+.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-dot-3 {
   animation-delay: 0.3s;
 }
 
-.rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-all {
-  animation: rakazo-muse-sway 1.6s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="working"] .aiden-muse-all {
+  animation: aiden-muse-sway 1.6s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-pupils {
-  animation: rakazo-muse-scan 1.6s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="working"] .aiden-muse-pupils {
+  animation: aiden-muse-scan 1.6s ease-in-out infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="working"] .rakazo-muse-spark {
-  animation: rakazo-muse-spin 1.1s linear infinite;
+.aiden-muse-avatar[data-muse-state="working"] .aiden-muse-spark {
+  animation: aiden-muse-spin 1.1s linear infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="waiting"] .rakazo-muse-all {
-  animation: rakazo-muse-hop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+.aiden-muse-avatar[data-muse-state="waiting"] .aiden-muse-all {
+  animation: aiden-muse-hop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
 }
 
-.rakazo-muse-avatar[data-muse-state="waiting"] .rakazo-muse-spark {
-  animation: rakazo-muse-spark-pulse 0.9s ease-in-out infinite;
+.aiden-muse-avatar[data-muse-state="waiting"] .aiden-muse-spark {
+  animation: aiden-muse-spark-pulse 0.9s ease-in-out infinite;
 }
 
-@keyframes rakazo-muse-breathe {
+@keyframes aiden-muse-breathe {
   0%,
   100% {
     transform: translateY(0) scale(1, 1);
@@ -609,7 +609,7 @@
   }
 }
 
-@keyframes rakazo-muse-blink {
+@keyframes aiden-muse-blink {
   0%,
   90%,
   100% {
@@ -623,7 +623,7 @@
   }
 }
 
-@keyframes rakazo-muse-spark-float {
+@keyframes aiden-muse-spark-float {
   0%,
   100% {
     transform: translateY(0) rotate(-4deg);
@@ -633,7 +633,7 @@
   }
 }
 
-@keyframes rakazo-muse-dot {
+@keyframes aiden-muse-dot {
   0%,
   100% {
     transform: scale(0.6);
@@ -645,7 +645,7 @@
   }
 }
 
-@keyframes rakazo-muse-sway {
+@keyframes aiden-muse-sway {
   0%,
   100% {
     transform: rotate(-4deg) translateX(-2px);
@@ -655,7 +655,7 @@
   }
 }
 
-@keyframes rakazo-muse-scan {
+@keyframes aiden-muse-scan {
   0%,
   100% {
     transform: translateX(-5px);
@@ -665,7 +665,7 @@
   }
 }
 
-@keyframes rakazo-muse-spin {
+@keyframes aiden-muse-spin {
   0% {
     transform: rotate(0deg);
   }
@@ -674,7 +674,7 @@
   }
 }
 
-@keyframes rakazo-muse-hop {
+@keyframes aiden-muse-hop {
   0%,
   100% {
     transform: translateY(0) scale(1, 1);
@@ -690,7 +690,7 @@
   }
 }
 
-@keyframes rakazo-muse-spark-pulse {
+@keyframes aiden-muse-spark-pulse {
   0%,
   100% {
     transform: scale(1);
@@ -702,7 +702,7 @@
   }
 }
 
-@keyframes rakazo-muse-wave {
+@keyframes aiden-muse-wave {
   0%,
   100% {
     transform: rotate(-8deg);
@@ -713,36 +713,36 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rakazo-bot-avatar-ring,
-  .rakazo-bot-avatar-eyes {
+  .aiden-bot-avatar-ring,
+  .aiden-bot-avatar-eyes {
     animation: none;
     transition: none;
   }
 
-  .rakazo-bot-avatar {
+  .aiden-bot-avatar {
     transition: none;
   }
 
-  .rakazo-bot-avatar-visor {
+  .aiden-bot-avatar-visor {
     transition: none;
   }
 
-  .rakazo-organic-avatar[data-shape-family] .rakazo-organic-avatar-body {
+  .aiden-organic-avatar[data-shape-family] .aiden-organic-avatar-body {
     animation: none;
-    d: var(--rakazo-organic-path);
+    d: var(--aiden-organic-path);
     transition: none;
   }
 
-  .rakazo-organic-avatar[data-eye-pattern] .rakazo-organic-avatar-eyes {
+  .aiden-organic-avatar[data-eye-pattern] .aiden-organic-avatar-eyes {
     animation: none;
     transition: none;
   }
 
-  .rakazo-muse-all,
-  .rakazo-muse-pupils,
-  .rakazo-muse-spark,
-  .rakazo-muse-dot,
-  .rakazo-muse-hand {
+  .aiden-muse-all,
+  .aiden-muse-pupils,
+  .aiden-muse-spark,
+  .aiden-muse-dot,
+  .aiden-muse-hand {
     animation: none;
   }
 }

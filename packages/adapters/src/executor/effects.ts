@@ -1,12 +1,12 @@
 // External-effect bookkeeping: recording an at-most-once tool effect (with legacy key
 // reconciliation), completing it, and the sandbox command runner mutating tool handlers use.
-import type { ComputerRef, SandboxProvider } from "@rakazo/adapter-kit";
-import { sandboxCommandTimeoutMs } from "@rakazo/core";
+import type { ComputerRef, SandboxProvider } from "@aiden/adapter-kit";
+import { sandboxCommandTimeoutMs } from "@aiden/core";
 import {
   isToolEffectIdempotencyKey,
   legacyScopedToolEffectIdempotencyKey,
   stableJsonValue,
-} from "@rakazo/core/node/approval-effect-key";
+} from "@aiden/core/node/approval-effect-key";
 import { completeExternalEffect } from "../approval-effect.js";
 import type { ExecutorDeps } from "./types.js";
 

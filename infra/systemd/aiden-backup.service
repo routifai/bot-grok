@@ -1,12 +1,12 @@
 [Unit]
-Description=Create and verify a Rakazo production backup
+Description=Create and verify a Aiden production backup
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
-EnvironmentFile=-/etc/rakazo/backup.env
-ExecStart=/usr/local/sbin/rakazo-backup
+EnvironmentFile=-/etc/aiden/backup.env
+ExecStart=/usr/local/sbin/aiden-backup
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

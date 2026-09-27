@@ -18,7 +18,7 @@ afterEach(() => {
 it("marks the page in muse mode and clears it otherwise", () => {
   applyProductMode("muse");
   expect(document.documentElement.dataset.product).toBe("muse");
-  applyProductMode("rakazo");
+  applyProductMode("aiden");
   expect(document.documentElement.dataset.product).toBeUndefined();
 });
 

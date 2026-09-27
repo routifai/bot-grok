@@ -28,7 +28,7 @@ function write(file: string, content: string) {
 }
 
 function fixture() {
-  const root = mkdtempSync(path.join(os.tmpdir(), "rakazo-backup-"));
+  const root = mkdtempSync(path.join(os.tmpdir(), "aiden-backup-"));
   temporaryDirectories.push(root);
   const checkout = path.join(root, "checkout with spaces");
   const snapshots = path.join(root, "snapshots");
@@ -41,8 +41,8 @@ function fixture() {
     let source = readFileSync(path.join(repoRoot, script), "utf8");
     if (script.endsWith("backup-prod.sh")) {
       // Relocate only the fixed output directory: never write to real host backups.
-      expect(source).toContain('BACKUP_ROOT="/var/backups/rakazo"');
-      source = source.replace('BACKUP_ROOT="/var/backups/rakazo"', `BACKUP_ROOT="${snapshots}"`);
+      expect(source).toContain('BACKUP_ROOT="/var/backups/aiden"');
+      source = source.replace('BACKUP_ROOT="/var/backups/aiden"', `BACKUP_ROOT="${snapshots}"`);
     }
     write(path.join(checkout, script), source);
   }
@@ -157,7 +157,7 @@ describe("development backup failures", () => {
     write(path.join(f.checkout, "data/home.txt"), "example home");
     expect(f.run("scripts/backup.sh", ["example"]).status).toBe(0);
     const output = path.join(f.checkout, "backups/example");
-    expect(readFileSync(path.join(output, "rakazo.sql"), "utf8")).toContain("CREATE TABLE");
+    expect(readFileSync(path.join(output, "aiden.sql"), "utf8")).toContain("CREATE TABLE");
     expect(contents(path.join(output, "homes.tgz"))).toContain("data/home.txt");
     expect(f.commands()[0].includes("--env-file")).toBe(hasEnv);
     if (hasEnv) expect(f.commands()[0]).toContain(path.join(f.checkout, ".env"));
@@ -167,7 +167,7 @@ describe("development backup failures", () => {
     const f = fixture();
     if (scenario === "skipped") write(path.join(f.checkout, "data/home.txt"), "example home");
     const result = f.run("scripts/backup.sh", ["example"], {
-      RAKAZO_BACKUP_SKIP_HOMES: scenario === "skipped" ? "1" : "0",
+      AIDEN_BACKUP_SKIP_HOMES: scenario === "skipped" ? "1" : "0",
     });
     expect(result.status, result.stderr).toBe(0);
     expect(contents(path.join(f.checkout, "backups/example/homes.tgz"))).toBe("");
@@ -251,14 +251,14 @@ describe("development restore failures", () => {
 describe("production backup deployment and archive behavior", () => {
   it.each([false, true])("uses the configured deployment directory: %s", (custom) => {
     const f = fixture();
-    const deployment = custom ? f.checkout : "/srv/rakazo";
+    const deployment = custom ? f.checkout : "/srv/aiden";
     const result = f.run(
       "infra/compose/backup-prod.sh",
       [],
-      custom ? { RAKAZO_DEPLOY_DIR: deployment } : {},
+      custom ? { AIDEN_DEPLOY_DIR: deployment } : {},
     );
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("Verified Rakazo backup");
+    expect(result.stdout).toContain("Verified Aiden backup");
     for (const command of f.commands().filter((args) => args[0] === "compose")) {
       expect(command.slice(0, 5)).toEqual([
         "compose",
@@ -271,16 +271,13 @@ describe("production backup deployment and archive behavior", () => {
   });
 
   it("provides optional systemd configuration for installed copies", () => {
-    const service = readFileSync(
-      path.join(repoRoot, "infra/systemd/rakazo-backup.service"),
-      "utf8",
-    );
-    expect(service).toContain("EnvironmentFile=-/etc/rakazo/backup.env");
+    const service = readFileSync(path.join(repoRoot, "infra/systemd/aiden-backup.service"), "utf8");
+    expect(service).toContain("EnvironmentFile=-/etc/aiden/backup.env");
   });
 
   it("rejects relative deployment paths before any backup commands", () => {
     const f = fixture();
-    const result = f.run("infra/compose/backup-prod.sh", [], { RAKAZO_DEPLOY_DIR: "relative" });
+    const result = f.run("infra/compose/backup-prod.sh", [], { AIDEN_DEPLOY_DIR: "relative" });
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("absolute path");
     expect(f.commands()).toEqual([]);
@@ -292,7 +289,7 @@ describe("production backup deployment and archive behavior", () => {
     const result = f.run("infra/compose/backup-prod.sh", [], { CHANGED_TAR: "1" });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain("file changed as we read it");
-    expect(result.stdout).toContain("Verified Rakazo backup");
+    expect(result.stdout).toContain("Verified Aiden backup");
     const snapshot = result.stdout.trim().split("written to ")[1];
     expect(contents(path.join(snapshot, "appdata.tgz"))).toContain("home.txt");
     expect(existsSync(path.join(snapshot, "SHA256SUMS"))).toBe(true);
@@ -306,7 +303,7 @@ describe("production backup deployment and archive behavior", () => {
       const f = fixture();
       const result = f.run("infra/compose/backup-prod.sh", [], failure);
       expect(result.status).not.toBe(0);
-      expect(result.stdout).not.toContain("Verified Rakazo backup");
+      expect(result.stdout).not.toContain("Verified Aiden backup");
     },
   );
 });

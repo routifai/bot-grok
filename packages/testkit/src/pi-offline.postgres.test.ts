@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ComposioEmulator } from "@rakazo/adapters";
+import { ComposioEmulator } from "@aiden/adapters";
 import { describe, expect, it } from "vitest";
 import { discardBotIntroRun } from "./discard-bot-intro.js";
 import { sessionCookieHeader } from "./index.js";
@@ -47,7 +47,7 @@ describe.skipIf(!databaseAvailable)("offline Pi product journey", () => {
         },
       ],
     });
-    const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-offline-product-"));
+    const dataDir = await mkdtemp(path.join(tmpdir(), "aiden-offline-product-"));
     let stop: (() => Promise<void>) | undefined;
     try {
       const { createApp } = await import("../../../apps/api/src/app.ts");
@@ -69,7 +69,7 @@ describe.skipIf(!databaseAvailable)("offline Pi product journey", () => {
         method: "POST",
         headers: { "content-type": "application/json", origin: fixtureOrigin },
         body: JSON.stringify({
-          email: `offline-pi-${randomUUID()}@rakazo.test`,
+          email: `offline-pi-${randomUUID()}@aiden.test`,
           password: "password12",
           name: "Offline fixture",
         }),

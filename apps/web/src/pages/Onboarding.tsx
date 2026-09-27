@@ -1,4 +1,3 @@
-import { Trans, useLingui } from "@lingui/react/macro";
 import {
   BOT_NAME_MAX_LENGTH,
   DEFAULT_MODEL_CONTEXT_WINDOW,
@@ -16,8 +15,8 @@ import {
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
   type ThinkingLevel,
-} from "@rakazo/contracts";
-import { createModelProbe, GROK_BOT_COLORS, initialModelProbeState } from "@rakazo/core";
+} from "@aiden/contracts";
+import { createModelProbe, GROK_BOT_COLORS, initialModelProbeState } from "@aiden/core";
 import {
   BotAvatar,
   Button,
@@ -29,7 +28,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@rakazo/ui-web";
+} from "@aiden/ui-web";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
@@ -40,10 +40,10 @@ import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
 import { AuroraBackground } from "./muse/intro/AuroraBackground";
 
-const CUSTOM_MODEL_OPTION = "__rakazo_custom_model__";
+const CUSTOM_MODEL_OPTION = "__aiden_custom_model__";
 const FIRST_BOT_NAME = "Chief";
 const FIRST_BOT_SPAWN_KEY = "onboarding:first";
-const FIRST_BOT_LOCK = "rakazo:onboarding-first-bot";
+const FIRST_BOT_LOCK = "aiden:onboarding-first-bot";
 /** A small set of colors for the Muse's identity, sky first (the default). */
 const MUSE_COLOR_OPTIONS = [...new Set([DEFAULT_MUSE_COLOR, ...GROK_BOT_COLORS])].slice(0, 6);
 
@@ -81,7 +81,7 @@ function findFirstBot(
   return byName ? { id: byName.id } : undefined;
 }
 
-/** In muse mode the Muse's chosen name and identity color; rakazo mode uses the "Chief" default. */
+/** In muse mode the Muse's chosen name and identity color; aiden mode uses the "Chief" default. */
 type FirstBotProfile = {
   name: string;
   color?: string;

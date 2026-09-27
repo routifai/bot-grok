@@ -1,5 +1,4 @@
-import { Trans, useLingui } from "@lingui/react/macro";
-import type { AgentSkill, AgentSkillCatalogEntry, MemoryDocument } from "@rakazo/contracts";
+import type { AgentSkill, AgentSkillCatalogEntry, MemoryDocument } from "@aiden/contracts";
 import {
   Button,
   Skeleton,
@@ -8,7 +7,8 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
-} from "@rakazo/ui-web";
+} from "@aiden/ui-web";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { downloadArtifactBytes } from "../lib/artifact-open";
 import { rpc } from "../lib/rpc";

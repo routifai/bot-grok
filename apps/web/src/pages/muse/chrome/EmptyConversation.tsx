@@ -1,5 +1,5 @@
+import { BotAvatar } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import { BotAvatar } from "@rakazo/ui-web";
 import { useMemo } from "react";
 import { Chip } from "../ui";
 import { greetingLead } from "./greeting";

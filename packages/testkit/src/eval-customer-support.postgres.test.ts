@@ -67,7 +67,7 @@ describe.skipIf(!databaseAvailable)("offline Slack customer-support eval", () =>
         },
       ],
     });
-    const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-customer-eval-"));
+    const dataDir = await mkdtemp(path.join(tmpdir(), "aiden-customer-eval-"));
     try {
       const { createApp } = await import("../../../apps/api/src/app.ts");
       const scenario = EVAL_CASES.find((candidate) => candidate.id === "slack-customer-update")!;

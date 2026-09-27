@@ -24,13 +24,13 @@ describe("release-watch diagnosis", () => {
     expect(assessReleaseWatchRoutinePrompt("check updates").diagnosis).toBe("vague_routine_prompt");
     expect(
       assessReleaseWatchRoutinePrompt(
-        "Open Bing and search for rakazo releases on the computer browser.",
+        "Open Bing and search for aiden releases on the computer browser.",
       ).diagnosis,
     ).toBe("browser_used_instead_of_integrations");
 
     const good = assessReleaseWatchRoutinePrompt(
       [
-        "Daily: use GITHUB_LIST_RELEASES for owner elie222 repo rakazo.",
+        "Daily: use GITHUB_LIST_RELEASES for owner elie222 repo aiden.",
         "Summarize new release tags and capability notes from release bodies.",
         "Prefer the GitHub plugin tools; do not browse or Bing-search.",
       ].join(" "),
@@ -42,7 +42,7 @@ describe("release-watch diagnosis", () => {
     const missingTools = diagnoseReleaseWatchRun({
       availableToolNames: ["computer_observe", "computer_act"],
       calledToolNames: ["computer_act"],
-      routinePrompt: "Stay current on rakazo somehow.",
+      routinePrompt: "Stay current on aiden somehow.",
       resultText: "I searched Bing and hit an error.",
       seededReleaseTags: ["v0.4.2"],
     });
