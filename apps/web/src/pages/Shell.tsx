@@ -3423,6 +3423,7 @@ export function ShellPage() {
                   botId={active.id}
                   museName={active.name}
                   running={transcriptRunning}
+                  onOpenWaiting={() => setWaitingOpen(true)}
                   actions={
                     <>
                       <button
@@ -4942,7 +4943,7 @@ const Transcript = memo(function Transcript({
         }}
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
-          museMode && "mx-auto w-full max-w-[720px] gap-3 md:py-8",
+          museMode && "mx-auto w-full max-w-[820px] gap-4 md:py-10",
         )}
       >
         {olderCursor != null ? (
@@ -5561,7 +5562,7 @@ const Composer = memo(function Composer({
       onDrop={handleDrop}
       className={cn(
         "relative z-30 m-0 min-w-0 border-0 px-3 pb-4 pt-3 md:px-6 md:pb-6",
-        museMode && "mx-auto w-full max-w-[720px]",
+        museMode && "mx-auto w-full max-w-[820px]",
         draggingFiles && "rounded-[14px] ring-2 ring-inset ring-ring",
       )}
     >
@@ -5882,7 +5883,7 @@ const Composer = memo(function Composer({
             rows={1}
             className={cn(
               "max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40",
-              museMode ? "text-[14.5px]" : "text-[15.5px]",
+              museMode ? "text-[16px]" : "text-[15.5px]",
             )}
           />
         </div>
@@ -6344,7 +6345,7 @@ const MessageView = memo(function MessageView({
             className={cn(
               "max-w-full space-y-2.5",
               museMode
-                ? "text-[14.5px] leading-[1.6] text-foreground"
+                ? "text-[16px] leading-[1.65] text-foreground"
                 : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
             )}
             dir="auto"
@@ -6450,7 +6451,7 @@ const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[14.5px] leading-[1.6] text-foreground"
+                    ? "text-[16px] leading-[1.65] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
@@ -6610,7 +6611,7 @@ const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full whitespace-pre-wrap wrap-anywhere bg-chat-user text-chat-user-foreground",
                   museMode
-                    ? "rounded-3xl px-5 py-3 text-[14.5px] leading-[1.6]"
+                    ? "rounded-3xl px-5 py-3 text-[16px] leading-[1.6]"
                     : "rounded-[20px] px-[18px] py-3 text-[15.5px] leading-[1.45]",
                 )}
                 dir="auto"
@@ -6628,7 +6629,7 @@ const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[14.5px] leading-[1.6] text-foreground"
+                    ? "text-[16px] leading-[1.65] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"

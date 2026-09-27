@@ -67,7 +67,7 @@ export function Eyebrow({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       className={cn(
-        "font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground",
+        "font-mono text-[11.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground",
         className,
       )}
       {...props}
@@ -134,31 +134,60 @@ type PillTone = "neutral" | "live" | "attention" | "done";
 export function StatusPill({
   tone = "neutral",
   className,
+  onClick,
+  label,
   children,
 }: {
   tone?: PillTone;
   className?: string;
+  /** Makes the pill a button, e.g. to open what's waiting. */
+  onClick?: () => void;
+  /** Accessible name when the pill is a button. */
+  label?: string;
   children: ReactNode;
 }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-[12px] font-medium text-muted-foreground",
-        className,
-      )}
-    >
+  const content = (
+    <>
       <span
         aria-hidden="true"
-        className={cn(
-          "size-1.5 rounded-full",
-          tone === "neutral" && "bg-muted-foreground/60",
-          tone === "live" && "animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success",
-          tone === "attention" && "bg-warning",
-          tone === "done" && "bg-success",
-        )}
-      />
+        className="relative flex size-2 shrink-0 items-center justify-center"
+      >
+        {tone === "attention" || tone === "live" ? (
+          <span
+            className={cn(
+              "absolute inline-flex size-full animate-ping rounded-full opacity-60 motion-reduce:animate-none",
+              tone === "attention" ? "bg-warning" : "bg-success",
+            )}
+          />
+        ) : null}
+        <span
+          className={cn(
+            "relative size-1.5 rounded-full",
+            tone === "neutral" && "bg-muted-foreground/60",
+            tone === "live" && "bg-success",
+            tone === "attention" && "bg-warning",
+            tone === "done" && "bg-success",
+          )}
+        />
+      </span>
       {children}
-    </span>
+    </>
+  );
+  const classes = cn(
+    "inline-flex min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-[13px] font-medium",
+    tone === "attention"
+      ? "border-warning/40 bg-warning/[0.08] text-foreground"
+      : "border-border bg-card text-muted-foreground",
+    onClick &&
+      "cursor-pointer transition-colors hover:border-warning/70 focus-visible:outline-2 focus-visible:outline-ring",
+    className,
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} aria-label={label} className={classes}>
+      {content}
+    </button>
+  ) : (
+    <span className={classes}>{content}</span>
   );
 }
 

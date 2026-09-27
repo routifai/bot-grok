@@ -10,7 +10,7 @@ import type { MuseRailView } from "../../../components/AppRail";
 import { rpc } from "../../../lib/rpc";
 import { useAsks } from "../asks";
 import { nextUnfinishedTask, taskCounts } from "../goals/format";
-import { Eyebrow, Progress } from "../ui";
+import { Progress } from "../ui";
 
 // The right-hand context panel beside the Conversation (docs/muse/DESIGN.md, "Conversation"):
 // only what matters right now, pulled from data the shell already loads elsewhere (Asks,
@@ -148,17 +148,17 @@ export function ContextPanel({
     <div
       data-testid="context-panel"
       className={cn(
-        "hidden w-[300px] shrink-0 flex-col gap-8 overflow-y-auto rk-scroll border-s border-border px-5 py-6",
+        "hidden w-[340px] shrink-0 flex-col gap-8 overflow-y-auto rk-scroll border-s border-border px-5 py-6",
         !collapsed && "xl:flex",
       )}
     >
       {empty ? (
-        <p className="text-[13px] text-muted-foreground">{t`You're all caught up.`}</p>
+        <p className="text-[14.5px] text-muted-foreground">{t`You're all caught up.`}</p>
       ) : (
         <>
           {topAsks.length > 0 ? (
             <section className="flex flex-col gap-2" data-testid="context-panel-asks">
-              <Eyebrow>{t`Waiting on you`}</Eyebrow>
+              <h3 className="text-[13.5px] font-semibold text-foreground">{t`Waiting on you`}</h3>
               <div className="flex flex-col gap-0.5">
                 {topAsks.map((ask: Ask) => {
                   const Icon = ASK_ICON[ask.kind];
@@ -173,7 +173,7 @@ export function ContextPanel({
                           className="mt-0.5 shrink-0 text-warning"
                         />
                         <span
-                          className="min-w-0 flex-1 truncate text-[13px] text-foreground"
+                          className="min-w-0 flex-1 truncate text-[14.5px] text-foreground"
                           dir="auto"
                         >
                           {title}
@@ -188,18 +188,21 @@ export function ContextPanel({
 
           {inProgress.length > 0 ? (
             <section className="flex flex-col gap-2" data-testid="context-panel-goals">
-              <Eyebrow>{t`In progress`}</Eyebrow>
+              <h3 className="text-[13.5px] font-semibold text-foreground">{t`In progress`}</h3>
               <div className="flex flex-col gap-1">
                 {inProgress.map((goal) => {
                   const next = nextUnfinishedTask(goal);
                   const { done, total } = taskCounts(goal);
                   return (
                     <PanelRow key={goal.id} onClick={() => onNavigate("goals")}>
-                      <span className="truncate text-[13px] font-medium text-foreground" dir="auto">
+                      <span
+                        className="truncate text-[14.5px] font-medium text-foreground"
+                        dir="auto"
+                      >
                         {goal.title}
                       </span>
                       {next ? (
-                        <span className="truncate text-[12px] text-muted-foreground" dir="auto">
+                        <span className="truncate text-[13px] text-muted-foreground" dir="auto">
                           {next.title}
                         </span>
                       ) : null}
@@ -215,18 +218,18 @@ export function ContextPanel({
 
           {checkIns.length > 0 ? (
             <section className="flex flex-col gap-2" data-testid="context-panel-checkins">
-              <Eyebrow>{t`Coming up`}</Eyebrow>
+              <h3 className="text-[13.5px] font-semibold text-foreground">{t`Coming up`}</h3>
               <div className="flex flex-col gap-0.5">
                 {checkIns.map(({ goal, next }) => (
                   <PanelRow key={goal.id} onClick={() => onNavigate("goals")}>
                     <span className="flex items-center justify-between gap-2">
                       <span
-                        className="min-w-0 flex-1 truncate text-[13px] text-foreground"
+                        className="min-w-0 flex-1 truncate text-[14.5px] text-foreground"
                         dir="auto"
                       >
                         {goal.title}
                       </span>
-                      <span className="shrink-0 text-[12px] text-muted-foreground">
+                      <span className="shrink-0 text-[13px] text-muted-foreground">
                         {formatCheckInEta(next, i18n.locale, new Date())}
                       </span>
                     </span>
