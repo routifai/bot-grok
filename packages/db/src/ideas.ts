@@ -1,4 +1,4 @@
-import type { Idea } from "@aiden/contracts";
+import type { Idea, IllustrationKey } from "@aiden/contracts";
 import type { PrismaClient } from "./client.js";
 
 // Repository for Idea (CONTEXT.md "Idea"; docs/muse/PLAN.md B11). Ideas are always
@@ -9,6 +9,8 @@ interface IdeaRow {
   id: string;
   text: string;
   area: string;
+  detail: string | null;
+  illustration: string | null;
   createdAt: Date;
 }
 
@@ -17,6 +19,10 @@ export function mapIdea(row: IdeaRow): Idea {
     id: row.id,
     text: row.text,
     area: row.area,
+    detail: row.detail,
+    // Stored as plain text; the adapter only ever writes a validated IllustrationKey
+    // (packages/adapters/src/muse/ideas.ts), so this cast just reflects that contract.
+    illustration: row.illustration as IllustrationKey | null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -24,6 +30,8 @@ export function mapIdea(row: IdeaRow): Idea {
 export interface IdeaDraft {
   text: string;
   area: string;
+  detail?: string | null;
+  illustration?: IllustrationKey | null;
 }
 
 export function createIdeaRepos(prisma: PrismaClient) {
@@ -38,7 +46,7 @@ export function createIdeaRepos(prisma: PrismaClient) {
      * Replace every one of a Muse's Ideas with a fresh batch, in one transaction. Explicit
      * per-row `createdAt` offsets preserve the model's suggested order: every insert in one
      * transaction otherwise shares the same `now()`, and the contract has no separate
-     * ordering field (CONTEXT.md "Idea" lists only id/text/area/createdAt).
+     * ordering field (CONTEXT.md "Idea").
      */
     async replaceIdeas(
       scope: { botId: string; spaceId: string; userId: string },
@@ -55,6 +63,8 @@ export function createIdeaRepos(prisma: PrismaClient) {
             botId: scope.botId,
             text: draft.text,
             area: draft.area,
+            detail: draft.detail ?? null,
+            illustration: draft.illustration ?? null,
             createdAt: new Date(now + index),
           })),
         });

@@ -6,6 +6,8 @@ const baseRow = {
   id: "idea-1",
   text: "Quiz me on today's 10 Japanese phrases",
   area: "learning",
+  detail: "I'll ask you today's 10 phrases and check your answers.",
+  illustration: "books" as const,
   createdAt: new Date("2026-09-20T00:00:00.000Z"),
 };
 
@@ -15,7 +17,16 @@ describe("mapIdea", () => {
       id: "idea-1",
       text: "Quiz me on today's 10 Japanese phrases",
       area: "learning",
+      detail: "I'll ask you today's 10 phrases and check your answers.",
+      illustration: "books",
       createdAt: "2026-09-20T00:00:00.000Z",
+    });
+  });
+
+  it("maps null detail and illustration through unchanged (pre-migration rows)", () => {
+    expect(mapIdea({ ...baseRow, detail: null, illustration: null })).toMatchObject({
+      detail: null,
+      illustration: null,
     });
   });
 });
@@ -27,6 +38,8 @@ type CreateManyArgs = {
     botId: string;
     text: string;
     area: string;
+    detail: string | null;
+    illustration: string | null;
     createdAt: Date;
   }>;
 };
@@ -58,7 +71,12 @@ describe("createIdeaRepos", () => {
   it("replaceIdeas deletes the previous batch and inserts the new one wholesale", async () => {
     const { repos, idea } = reposFor([baseRow]);
     const drafts = [
-      { text: "Plan this Sunday's long run route", area: "health" },
+      {
+        text: "Plan this Sunday's long run route",
+        area: "health",
+        detail: "I can lay out a 10K route and a pace to hit your goal time.",
+        illustration: "trophy" as const,
+      },
       { text: "Draft a landing page for my portfolio", area: "creative" },
     ];
     const result = await repos.replaceIdeas(
@@ -76,7 +94,11 @@ describe("createIdeaRepos", () => {
       botId: "bot-1",
       text: drafts[0]!.text,
       area: "health",
+      detail: drafts[0]!.detail,
+      illustration: "trophy",
     });
+    // A draft with no detail/illustration (e.g. from an older model output) defaults to null.
+    expect(createArgs.data[1]).toMatchObject({ detail: null, illustration: null });
     // Explicit createdAt offsets preserve draft order across a single-transaction insert.
     expect(createArgs.data[0]!.createdAt.getTime()).toBeLessThan(
       createArgs.data[1]!.createdAt.getTime(),

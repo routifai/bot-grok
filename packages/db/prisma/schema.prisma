@@ -846,10 +846,18 @@ model Idea {
   userId    String
   botId     String
   bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
-  text      String
+  /// Short first-person title, e.g. "I can keep your $1M goal on a monthly pace".
+  text        String
   /// Short grouping label, e.g. "learning" or "travel" — always one word.
-  area      String
-  createdAt DateTime @default(now())
+  area        String
+  /// 1-3 sentence explanation of concretely what the Muse would do. Nullable so rows
+  /// from before this field existed keep parsing.
+  detail       String?
+  /// Bundled 3D illustration key for this Idea's row (see @aiden/contracts
+  /// IllustrationKeySchema). Nullable: older rows and unrecognized model output fall
+  /// back to an area-keyed default on the client.
+  illustration String?
+  createdAt   DateTime @default(now())
 
   @@index([botId, createdAt])
   @@map("ideas")
