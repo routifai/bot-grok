@@ -3,7 +3,7 @@ import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import { fetchGithubStars, formatStarCount } from "../github";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { DOCS_URL, GITHUB_URL } from "../site";
+import { DOCS_URL } from "../site";
 
 const stars = await fetchGithubStars();
 const starsLabel = stars === null ? "Star" : formatStarCount(stars);
@@ -11,14 +11,14 @@ const starsLabel = stars === null ? "Star" : formatStarCount(stars);
 
 <BaseLayout
   title="About · Aiden"
-  description="How Aiden is building an open source Grok Bot alternative that people can understand and control."
+  description="How Aiden builds a personal AI teammate that people can understand and control."
 >
   <div class="container">
     <Header starsLabel={starsLabel} />
     <main id="main" class="privacy-copy">
       <h1>About Aiden</h1>
       <p>
-        Aiden is an open source Grok Bot alternative for persistent AI teammates: bots that can use a browser and shell,
+        Aiden is a personal AI teammate: bots that can use a browser and shell,
         remember the work around a job, run routines on a schedule, and ask for approval when they reach a
         boundary. It is designed for practical operational work rather than one-off chat.
       </p>
@@ -29,12 +29,11 @@ const starsLabel = stars === null ? "Star" : formatStarCount(stars);
         lets operators keep model keys, browser sessions, and deployment infrastructure under their own
         control. The same bots and routines work across the web, desktop, and mobile clients.
       </p>
-      <h2>Open by default</h2>
+      <h2>Self-hostable</h2>
       <p>
-        Aiden is maintained by Inbox Zero Inc. and released under the Apache-2.0 license. The project accepts
-        public issues and contributions on <a href={GITHUB_URL}>GitHub</a>. To run Aiden on your own
+        Aiden is released under the Apache-2.0 license. To run Aiden on your own
         infrastructure, start with the <a href={DOCS_URL}>self-hosting guide</a>. For product or account help,
-        email <a href="mailto:hello@rakazo.com">hello@rakazo.com</a>.
+        email <a href="mailto:hello@aiden.example">hello@aiden.example</a>.
       </p>
     </main>
     <Footer />

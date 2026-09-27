@@ -2,7 +2,8 @@
 
 ## Reporting vulnerabilities
 
-Email **security@rakazo.com** only. Do not open public GitHub issues for security bugs.
+Use GitHub's private vulnerability reporting for this repository (Security tab → **Report a
+vulnerability**). Do not open public GitHub issues for security bugs.
 
 Please include:
 
@@ -11,11 +12,6 @@ Please include:
 - Whether the issue is already public
 
 We will acknowledge your report and work on a fix. Please do not file a public issue for unfixed vulnerabilities.
-
-## Other contact
-
-- General support: **support@rakazo.com**
-- Maintainer: **elie@rakazo.com**
 
 ## Scope
 

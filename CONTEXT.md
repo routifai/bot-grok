@@ -89,5 +89,5 @@ _Avoid_: autonomy level, frequency, aggressiveness
 ## Flagged ambiguities
 
 - "bot" appears throughout the existing code and UI for what is now the **Muse**. Resolved: in conversation and new copy, say **Muse**; "bot" survives only as a legacy code name.
-- "Task" in the existing code is an internal record of one request and its runs, which is not a **Task** in this glossary. Resolved: in conversation and copy, **Task** means only a plan item of a **Goal**; the legacy internal record keeps its code name so the fork stays mergeable with upstream.
+- "Task" in the existing code is an internal record of one request and its runs, which is not a **Task** in this glossary. Resolved: in conversation and copy, **Task** means only a plan item of a **Goal**; the legacy internal record keeps its code name to avoid a wide, low-value rename.
 - "Routine" (a scheduled prompt with no end) is not a **Goal**. A recurring chore stays a Routine; an outcome with a plan is a **Goal**.

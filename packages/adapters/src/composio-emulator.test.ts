@@ -248,6 +248,26 @@ describe("ComposioEmulator", () => {
 
   it("exposes seeded GitHub release tools without live OAuth", async () => {
     const emulator = new ComposioEmulator();
+    emulator.seedGithubReleases([
+      {
+        owner: "octocat",
+        repo: "widget",
+        tag: "v0.4.2",
+        name: "v0.4.2 — routine tools + connector emulators",
+        body: "Routines can bind connector tools. Composio emulator covers GitHub releases offline.",
+        publishedAt: "2026-08-28T12:00:00.000Z",
+        htmlUrl: "https://example.test/octocat/widget/releases/tag/v0.4.2",
+      },
+      {
+        owner: "octocat",
+        repo: "widget",
+        tag: "v0.4.1",
+        name: "v0.4.1 — computer + plugin guidance",
+        body: "Prefer connected plugins over browsing when reading app data.",
+        publishedAt: "2026-08-20T12:00:00.000Z",
+        htmlUrl: "https://example.test/octocat/widget/releases/tag/v0.4.1",
+      },
+    ]);
     const connectedContext = {
       ...context,
       connectedConnections: [
@@ -268,7 +288,7 @@ describe("ComposioEmulator", () => {
     for await (const event of emulator.execute(
       {
         tool: "GITHUB_LIST_RELEASES",
-        args: { owner: "elie222", repo: "aiden" },
+        args: { owner: "octocat", repo: "widget" },
         executionId: "github-list-releases",
       },
       connectedContext,

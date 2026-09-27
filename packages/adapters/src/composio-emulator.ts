@@ -9,11 +9,19 @@ import {
   type ComposioProvider,
   filterCatalog,
 } from "./composio-connector.js";
-import {
-  DEFAULT_AIDEN_EMULATED_RELEASES,
-  type EmulatedGithubRelease,
-  RELEASE_WATCH_GITHUB_TOOL_NAMES,
-} from "./release-watch.js";
+
+/** Composio-style GitHub tools the emulator exposes for release watching. */
+const GITHUB_RELEASE_TOOL_NAMES = ["GITHUB_LIST_RELEASES", "GITHUB_GET_RELEASE"] as const;
+
+export type EmulatedGithubRelease = {
+  owner: string;
+  repo: string;
+  tag: string;
+  name: string;
+  body: string;
+  publishedAt: string;
+  htmlUrl: string;
+};
 
 const DEFAULT_CATALOG: ReadonlyArray<Omit<ComposioCatalogItem, "connected">> = [
   { slug: "GMAIL", name: "Gmail", logo: null, noAuth: false },
@@ -288,8 +296,8 @@ function githubReleaseTools(): ConnectorTool[] {
       inputSchema: {
         type: "object",
         properties: {
-          owner: { type: "string", description: "Repository owner, e.g. elie222" },
-          repo: { type: "string", description: "Repository name, e.g. aiden" },
+          owner: { type: "string", description: "Repository owner, e.g. octocat" },
+          repo: { type: "string", description: "Repository name, e.g. widget" },
         },
         required: ["owner", "repo"],
       },
@@ -331,7 +339,7 @@ function findAccountIndex(refs: readonly string[], connectionRef: string): numbe
 export class ComposioEmulator implements ComposioProvider {
   private readonly connectedByUser = new Map<string, string[]>();
   private readonly mailboxesByUser = new Map<string, Mailbox>();
-  private githubReleases: EmulatedGithubRelease[] = [...DEFAULT_AIDEN_EMULATED_RELEASES];
+  private githubReleases: EmulatedGithubRelease[] = [];
   private nextAccountSeq = 0;
   readonly executions: Array<{
     userId: string;
@@ -403,7 +411,7 @@ export class ComposioEmulator implements ComposioProvider {
     const args = call.args ?? {};
     const result = call.tool.startsWith("GMAIL_")
       ? this.executeGmail(call.tool, args, context.userId)
-      : (RELEASE_WATCH_GITHUB_TOOL_NAMES as readonly string[]).includes(call.tool) ||
+      : (GITHUB_RELEASE_TOOL_NAMES as readonly string[]).includes(call.tool) ||
           call.tool === "GITHUB_EMULATED_ACTION"
         ? this.executeGithub(call.tool, args)
         : { ok: true, tool: call.tool, args };
@@ -465,8 +473,8 @@ export class ComposioEmulator implements ComposioProvider {
   }
 
   private executeGithub(tool: string, args: Record<string, unknown>): Record<string, unknown> {
-    const owner = String(args.owner ?? args.owner_name ?? "elie222");
-    const repo = String(args.repo ?? args.repository ?? "aiden");
+    const owner = String(args.owner ?? args.owner_name ?? "");
+    const repo = String(args.repo ?? args.repository ?? "");
     const matched = this.githubReleases.filter(
       (release) =>
         release.owner.toLowerCase() === owner.toLowerCase() &&

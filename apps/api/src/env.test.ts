@@ -16,7 +16,7 @@ describe("loadEnv", () => {
     expect(env.nodeEnv).toBe("test");
   });
 
-  it("defaults to upstream Rakazo and opts into the Muse edition", () => {
+  it("defaults to the full Aiden mode and opts into the Muse edition", () => {
     expect(loadEnv(base).productMode).toBe("aiden");
     expect(loadEnv({ ...base, AIDEN_PRODUCT_MODE: "muse" }).productMode).toBe("muse");
   });
@@ -175,18 +175,6 @@ describe("loadEnv", () => {
     expect(loadEnv(base).gitSha).toBeUndefined();
     expect(loadEnv({ ...base, GIT_SHA: "  3c6e209  " }).gitSha).toBe("3c6e209");
     expect(loadEnv({ ...base, AIDEN_GIT_SHA: "abc1234" }).gitSha).toBe("abc1234");
-  });
-
-  it("loads optional updater sidecar wiring without requiring the token at boot", () => {
-    expect(loadEnv(base).updaterUrl).toBeUndefined();
-    expect(loadEnv(base).updaterToken).toBeUndefined();
-    const env = loadEnv({
-      ...base,
-      AIDEN_UPDATER_URL: " http://updater:7092 ",
-      AIDEN_UPDATER_TOKEN: " fake-review-updater-token-000000000000 ",
-    });
-    expect(env.updaterUrl).toBe("http://updater:7092");
-    expect(env.updaterToken).toBe("fake-review-updater-token-000000000000");
   });
 
   it("loads SMTP configuration and keeps the email emulator out of production", () => {

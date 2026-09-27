@@ -12,12 +12,13 @@ Compose bot homes mount only their own subdirectory of the application volume us
 
 ## Published images (no checkout)
 
-Pull Postgres and `ghcr.io/elie222/rakazo/app` into any empty folder. No clone or image build.
-Requires Docker Engine 26+ (API 1.45+ for bot home volume subpaths), the Compose plugin, curl, and OpenSSL.
+Pull Postgres and the published `ghcr.io/<your-namespace>/aiden/app` image into any empty folder.
+No clone or image build. Requires Docker Engine 26+ (API 1.45+ for bot home volume subpaths), the
+Compose plugin, curl, and OpenSSL.
 
 ```bash
 mkdir -p aiden && cd aiden &&
-curl -fsSLO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/install-images.sh &&
+curl -fsSLO <raw-url-of-install-images.sh-in-your-repository> &&
 bash install-images.sh
 ```
 
@@ -29,7 +30,7 @@ optional providers before startup, run `bash install-images.sh --prepare-only`, 
 run `bash install-images.sh`. Flags may be combined in either order: `--prepare-only`, `--local`.
 
 `SANDBOX_PROVIDER` defaults to `docker`. The images Compose file runs a sandbox supervisor
-(from the app image, on the internal network only) and pulls `ghcr.io/elie222/rakazo/computer`.
+(from the app image, on the internal network only) and pulls the published computer image.
 Signup and local Docker computers work without an E2B account. Optional remote providers: set
 `SANDBOX_PROVIDER` to `e2b`, `daytona`, `createos`, or `box` and add the matching API key. The published-images
 Compose stack requires `SANDBOX_SUPERVISOR_TOKEN` for every provider; leave it empty and `compose up` fails closed.
@@ -172,12 +173,11 @@ or `off` (default `info`). Production defaults to `LOG_FORMAT=json`; development
 unless you set `json` or `pretty`.
 
 Axiom is optional. Set both `AXIOM_TOKEN` and `AXIOM_DATASET` for ingest to one shared dataset.
-Services set `service.name` (`aiden-api`, `aiden-worker`, `aiden-sandbox-supervisor`,
-`aiden-updater`). A partial Axiom config logs a one-time warning and stays off. `AXIOM_EDGE` is a
-regional hostname; `AXIOM_EDGE_URL` must be https and wins when both are set.
+Services set `service.name` (`aiden-api`, `aiden-worker`, `aiden-sandbox-supervisor`). A partial
+Axiom config logs a one-time warning and stays off. `AXIOM_EDGE` is a regional hostname;
+`AXIOM_EDGE_URL` must be https and wins when both are set.
 
-Compose passes these into the API, worker, supervisor, and updater. Computer containers and updater
-child commands do not receive them.
+Compose passes these into the API, worker, and supervisor. Computer containers do not receive them.
 
 Optional:
 
@@ -252,7 +252,7 @@ Optional messaging platforms (iMessage, Slack, WhatsApp, Telegram, Feishu/Lark) 
 The Electron desktop app is a client of the same API. Docker and E2B still apply. On first launch, Electron asks the deployment owner whether bots should keep using Docker or run on this Mac as you. `SANDBOX_PROVIDER=desktop` is a separate, explicit provider that always runs commands on the service host.
 
 - **Published images** (`docker-compose.images.yml`) default to `SANDBOX_PROVIDER=docker` with a
-  local supervisor and published `ghcr.io/elie222/rakazo/computer` image. No E2B account required.
+  local supervisor and a published computer image. No E2B account required.
   Optional: set `e2b`, `daytona`, `createos`, or `box` plus the matching API key for remote computers.
 - **Docker** is the quick-start default for published images and for a source checkout / full local
   Compose stack. Workspace bots share a persistent Team Computer by default; Private computers are
@@ -295,7 +295,7 @@ output directory of any failed run.
 
 `infra/compose/docker-compose.prod.yml` runs the hosted product with Postgres, the API, worker, web app,
 and automatic HTTPS through Caddy. It uses E2B for bot computers, so the VM never exposes a Docker
-supervisor or browser containers. The root-equivalent updater sidecar is an explicit opt-in profile.
+supervisor or browser containers.
 
 Before deploying to a new Ubuntu host, create and verify a key-only `deploy` account, then apply the
 idempotent host-hardening baseline. It disables SSH passwords and root login, rate-limits SSH, allows
@@ -321,9 +321,6 @@ container logs, default no-new-privileges, and the kernel NAT path instead of Do
    `OPENROUTER_API_KEY`, the API key for your selected sandbox provider,
    `AIDEN_HOST`, and the three public origins. Set `AIDEN_DEPLOY_DIR` when the checkout is not at
    the supported Linux default, `/srv/aiden`. Use URL-safe random values for database credentials.
-   If you enable the `updater` profile, also set a dedicated `AIDEN_UPDATER_TOKEN` (at least 32
-   characters) that differs from `BETTER_AUTH_SECRET`, `SANDBOX_SUPERVISOR_TOKEN`, and
-   `SCREEN_PROXY_SECRET`.
 3. Keep registration allowlisted while the service is private:
 
 ```env
@@ -342,11 +339,9 @@ AGENT_RUNTIME=pi
 WAKEUP_DRIVER=graphile
 DATA_DIR=/data
 # Absolute path of this checkout as the Docker daemon sees it. /srv/aiden is the Linux default;
-# set this explicitly for every other layout. See "The deploy directory must be one path" below.
+# set this explicitly for every other layout (for example Docker Desktop's VM-mounted paths).
 AIDEN_DEPLOY_DIR=/srv/aiden
 AIDEN_IMAGE_TAG=local
-# Optional: required only with `--profile updater`.
-# AIDEN_UPDATER_TOKEN=replace-with-32-plus-character-updater-token
 ```
 
 4. Build the images from your checkout and start the stack, then verify its public health endpoint:
@@ -361,7 +356,7 @@ curl --fail https://app.example.com/health
 
 **Build, do not pull, for a first deployment.** `AIDEN_IMAGE_TAG` ships as `local`, a tag no
 registry serves, so the commands above build `api`, `worker`, and `web` from the checkout you just
-cloned. The opt-in command under [Updater sidecar](#updater-sidecar) builds `updater` when needed.
+cloned.
 
 Passing `GIT_SHA` is what makes `GET /health` report a `"revision"`; a locally built image has no
 other way to know its commit. Prebuilt images from the registry bake it in at publish time, so when
@@ -376,9 +371,9 @@ The root `.env` is excluded from both Git and the Docker build context. The data
 and Caddy certificates live in named Docker volumes.
 
 The production Compose file pins Postgres and Caddy to multi-architecture manifest digests, and the
-published application/updater builds pin their base-image digests. Refresh those pins deliberately
-when taking upstream security updates; changing only the visible major tag does not change the
-content while a digest is present.
+published application build pins its base-image digest. Refresh those pins deliberately when taking
+base-image security updates; changing only the visible major tag does not change the content while
+a digest is present.
 
 For the single-VM production layout, install `infra/compose/backup-prod.sh` as
 `/usr/local/sbin/aiden-backup` and enable the supplied `aiden-backup.timer`. It creates a verified
@@ -430,12 +425,6 @@ are running. The API's start command runs `prisma migrate deploy` before it serv
 failure keeps health red. A failed CLI recreate does not auto-roll back; recover with the previous
 `AIDEN_IMAGE_TAG` (or rebuild `local`) and `up -d --wait --pull never`.
 
-The updater sidecar has its own image and tag so an update never recreates the process performing
-it. Move it deliberately by setting `AIDEN_UPDATER_IMAGE_TAG` to the full `sha-<commit>` tag, then
-running `docker compose … pull updater && docker compose … up -d --wait --pull never updater`.
-Sidecar `/apply` and `/rollback` recover a failed recreate by redeploying the previously cached
-image when possible; if that also fails, they report a possible mixed-version runtime.
-
 Source checkouts (not Compose) still upgrade the old way: pull, rebuild with
 `GIT_SHA=$(git rev-parse HEAD)`, run `pnpm --filter @aiden/db migrate`, then restart API and worker.
 Product contracts stay compatible across cloud and self-hosted.
@@ -476,171 +465,44 @@ this repository that is:
 
 | Image | Contents |
 | --- | --- |
-| `ghcr.io/elie222/rakazo/app` | api, worker, web, and sandbox supervisor — one image, multiple commands |
-| `ghcr.io/elie222/rakazo/computer` | Linux desktop used as each bot computer |
-| `ghcr.io/elie222/rakazo/updater` | the updater sidecar, plus the Docker CLI |
+| `ghcr.io/<your-namespace>/aiden/app` | api, worker, web, and sandbox supervisor — one image, multiple commands |
+| `ghcr.io/<your-namespace>/aiden/computer` | Linux desktop used as each bot computer |
 
 `infra/compose/docker-compose.images.yml` is the no-checkout path for those app and computer tags
 plus Postgres. The supervisor runs from the app image on the internal network only (not a separate
 published supervisor image, and no host port). Production Compose (`docker-compose.prod.yml`) can
 also pull the same app tags once `AIDEN_IMAGE_TAG` is set to a published value.
 
-If you deploy from your own fork, set `AIDEN_IMAGE` and `AIDEN_UPDATER_IMAGE` to your namespace —
-your CI cannot publish into someone else's.
+If you publish your own images, set `AIDEN_IMAGE` to your namespace — your CI cannot publish into
+someone else's.
 
 | Tag | Published on | Moves? |
 | --- | --- | --- |
 | `local` | nothing — built locally by `up --build` | rebuilt in place |
-| `local-<full-commit>` | nothing — built on the server by a fork update | never |
 | `vX.Y.Z`, `vX.Y` | release tags | conventionally no / on patch releases |
 | `latest` | stable `vX.Y.Z` tags only (not prereleases) | yes, to the newest stable release |
-| `sha-<full-commit>` | every push and manual run | source-addressed; used by the updater sidecar |
+| `sha-<full-commit>` | every push and manual run | source-addressed |
 | `edge` | pushes to main | yes, to the newest main build |
 
 Every publish, including `edge` from main merges, is multi-arch (`amd64` + `arm64`): each
 architecture builds natively on its own runner and one manifest is assembled per image. Until a
-stable `vX.Y.Z` has been published, GHCR may only have `edge` and `sha-*` tags; do not pin
+stable `vX.Y.Z` has been published, the registry may only have `edge` and `sha-*` tags; do not pin
 `latest` unless that tag exists in the registry.
 
 Building the images yourself does not need QEMU. `docker compose up --build` builds for the host's
-own architecture, and a fork publishing multi-arch images should do what `publish-server-image.yml`
-does: build each architecture on a native runner (GitHub Actions provides `ubuntu-24.04-arm` for
-public repositories) and merge the digests into one manifest. QEMU emulation
-(`docker/setup-qemu-action`, `binfmt`) still works if you have no native arm64 machine, but it is
-many times slower, hours rather than minutes for the `computer` image.
+own architecture, and publishing multi-arch images should do what `publish-server-image.yml` does:
+build each architecture on a native runner (GitHub Actions provides `ubuntu-24.04-arm` for public
+repositories) and merge the digests into one manifest. QEMU emulation (`docker/setup-qemu-action`,
+`binfmt`) still works if you have no native arm64 machine, but it is many times slower, hours
+rather than minutes for the `computer` image.
 
-The updater resolves the newest stable `vX.Y.Z` source tag but deploys its `sha-<full-commit>` image,
-not `latest` or a moving minor tag. A registry tag is not an OCI digest and GHCR package writers can
-replace it, so the trust boundary remains this repository's publishing credentials. The workflow
-reduces that boundary by using SHA-pinned actions, read-only pull-request jobs, digest-pinned base
-images, SBOM/provenance output, and a GitHub build attestation. Operators who require registry-level
-content addressing can pin `AIDEN_IMAGE` outside the automatic updater to a verified digest.
-
-Rollback never contacts the registry: it redeploys the previous tag from the local Docker cache,
-so a later tag move cannot change rollback content. Do not prune the previous application image
-until the next update has been accepted. If it is missing, rollback fails closed instead of pulling
-new content under an old tag.
+Rollback never contacts the registry: redeploy the previous tag from the local Docker cache with
+`AIDEN_IMAGE_TAG`, so a later tag move cannot change rollback content. Do not prune the previous
+application image until the next update has been accepted.
 
 To populate the registry the first time, run the workflow manually (`workflow_dispatch`) or push a
 `v*` tag. A manual run produces `sha-<full-commit>`; only a stable `vX.Y.Z` tag (no prerelease
-suffix) produces `latest`, and any `v*` tag produces semver tags. The updater ignores prereleases
-and refuses the official path until a stable `vX.Y.Z` exists.
-
-### Updater sidecar
-
-Compose production deployments offer an opt-in `updater` profile on a private `control` network.
-Normal deployments do not start it or require its credential. To enable it, set a dedicated
-`AIDEN_UPDATER_TOKEN` and explicitly start the profile:
-
-```bash
-docker compose --env-file .env -f infra/compose/docker-compose.prod.yml \
-  --profile updater up -d --build updater
-```
-
-It exposes `/health`, `/state`, `/plan`, `/apply`, and `/rollback` at `http://updater:7092` with
-`AIDEN_UPDATER_TOKEN`. Operator CLI upgrades above do not need it; the sidecar is for automated
-apply/rollback over that private HTTP API.
-
-The API cannot update itself — its image has no `.git`, and nothing inside the container would
-restart it — so the work happens in a separate `updater` container that outlives the recreate:
-
-- *Official repository:* resolves the newest stable release and its source commit with
-  `git ls-remote --tags`, pins the corresponding full `sha-<commit>` image tag in `.env`, keeps the
-  outgoing tag in `AIDEN_IMAGE_TAG_PREVIOUS`, explicitly pulls the new image, then runs
-  `up -d --wait --pull never`. No build runs on the server.
-- *Fork (Advanced):* a fork has no published images, so the sidecar fast-forwards the checkout in
-  `AIDEN_DEPLOY_DIR` and runs `up -d --build`. This builds on the server and takes minutes rather
-  than seconds. Point it only at a fork you control and have reviewed — the sidecar runs that
-  Compose file through a root-equivalent Docker socket.
-
-Updates and rollbacks run one at a time. A failed pull leaves running services alone; a failed recreate restores the previous environment
-pin and attempts to redeploy the cached previous image. A failed fork build also restores the
-pre-update branch and commit (including when checkout succeeded but merge did not) so a later
-manual `--build` cannot deploy the rejected or unintended revision. Database migrations are not
-reversed. The sidecar never recreates itself, never touches Postgres or Caddy, and never runs
-migrations — that ordering belongs to the API start command.
-
-Only `https://` and `ssh://` git remotes are accepted. Merges are fast-forward only. A dirty or
-untracked source tree fails closed before anything runs (the application Dockerfile uses `COPY . .`).
-
-### The deploy directory must be one path
-
-`AIDEN_DEPLOY_DIR` is bind-mounted into the updater at the same path it is read from
-(`${AIDEN_DEPLOY_DIR}:${AIDEN_DEPLOY_DIR}`), and that is load-bearing rather than tidy. Production
-Compose defaults both sides to `/srv/aiden`; set the variable for any other layout. When the
-updater runs `docker compose -p <project> --file $AIDEN_DEPLOY_DIR/infra/compose/docker-compose.prod.yml up -d`,
-the Compose CLI *inside* the container expands this file's relative bind mounts — `../../.env`,
-`./Caddyfile.prod` — against that path and hands the results to the daemon. The daemon has to be
-able to resolve the same strings, or it silently creates empty directories where your `.env` and
-Caddyfile should be. Compose makes the effective `-p` value available for interpolation but does
-not automatically put it in a container's environment, so the production file explicitly assigns
-`COMPOSE_PROJECT_NAME` to the updater. A standalone sidecar can instead set
-`AIDEN_COMPOSE_PROJECT_NAME`; the final fallback is `aiden-prod`. Without that propagation, a
-stack started with `-p something-else` would be left alone while a second project with a new empty
-Postgres volume came up beside it.
-
-### Deployments that layer a Compose overlay
-
-`AIDEN_COMPOSE_FILE` takes a list, separated the way Compose's own `COMPOSE_FILE` is
-(`:` by default, or whatever `COMPOSE_PATH_SEPARATOR` says). Each entry becomes its own `--file`,
-in the order given, so the updater reconciles the same stack the operator runs by hand:
-
-```
-AIDEN_COMPOSE_FILE=infra/compose/docker-compose.prod.yml:ops/compose/overlay.yml
-```
-
-Every entry is validated separately and must stay inside `AIDEN_DEPLOY_DIR`.
-
-If the overlay adds a service built from the application image, name it in
-`AIDEN_UPDATE_SERVICES` (comma separated) so it is pulled, recreated and rolled back with the
-rest. Otherwise an update leaves that service running the previous code:
-
-```
-AIDEN_UPDATE_SERVICES=supervisor
-```
-
-These names are appended to the built-in `api`, `worker`, `web`, never substituted for them, so no
-value here can drop a core service from an update.
-
-The value therefore has to be the path **the daemon** sees, which is not always the path your shell
-sees:
-
-- **Linux.** The daemon shares the host filesystem, so the checkout path is the answer:
-  `/srv/aiden` is the default and supported production layout. Set `AIDEN_DEPLOY_DIR` explicitly
-  when the checkout is elsewhere.
-- **Docker Desktop (Windows/macOS).** The daemon runs in a VM that mounts your drive somewhere else.
-  On Windows, `C:` appears at `/run/desktop/mnt/host/c`, so a checkout at `C:\Users\you\aiden` is
-  `AIDEN_DEPLOY_DIR=/run/desktop/mnt/host/c/Users/you/aiden`. Host Git may use `core.autocrlf=true`; the updater ignores CR-only diffs so that does not block `/apply`. Verify the mount before deploying:
-
-```bash
-docker compose --env-file .env -f infra/compose/docker-compose.prod.yml \
-  --profile updater run --rm updater git -C "$AIDEN_DEPLOY_DIR" log --oneline -1
-```
-
-  That must print your checkout's HEAD. The two tempting wrong answers both fail: a native Windows
-  path is rejected by the daemon (`mount denied: … too many colons`, because the drive letter's
-  colon collides with the bind-mount separator), and `/mnt/c/...` fails *silently* — the container
-  starts, the mount is an empty directory, and the updater simply reports no checkout.
-
-### The updater's privileges
-
-The updater holds the Docker socket, which is root-equivalent on the host. It is scoped as narrowly
-as that allows:
-
-- No `ports`, so nothing is published on the host.
-- Only on the dedicated `control` network shared with the API. Caddy is not attached, so the
-  reverse proxy has no route to the updater.
-- Every route except `/health` requires the shared bearer token, compared in constant time.
-- The process environment carries only updater settings (`AIDEN_UPDATER_TOKEN`, deploy path,
-  image name, project name). Application secrets stay in the bind-mounted `.env` that Compose
-  reads for interpolation; they are not loaded into this container.
-- The Docker CLI lives only in the updater image. The api, worker, and web containers keep
-  `cap_drop: ALL` and no socket.
-
-Enabling the `updater` profile requires `AIDEN_UPDATER_TOKEN` to be a dedicated random value (at
-least 32 characters in production). It must differ from `BETTER_AUTH_SECRET`,
-`SANDBOX_SUPERVISOR_TOKEN`, and `SCREEN_PROXY_SECRET`. Leave the profile disabled if you would
-rather not grant the capability.
+suffix) produces `latest`, and any `v*` tag produces semver tags.
 
 ## Other deployment layouts
 

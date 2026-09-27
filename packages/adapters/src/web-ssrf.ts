@@ -109,7 +109,7 @@ export async function fetchSafeWebText(
       resolve,
       dispatcher,
       maxBytes,
-      userAgent: options.userAgent ?? "Aiden/0.1 (+https://github.com/elie222/rakazo)",
+      userAgent: options.userAgent ?? "Aiden/0.1",
       headers: options.headers,
       signal,
       redirectsRemaining: MAX_REDIRECTS,

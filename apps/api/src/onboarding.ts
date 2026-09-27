@@ -23,7 +23,7 @@ type OnboardingDeps = {
   prisma: PrismaClient;
   events: ThreadEvents;
   connectors: ConnectorRegistry;
-  /** Defaults to upstream Rakazo (the focus-card flow) when absent. */
+  /** Defaults to the full Aiden mode (the focus-card flow) when absent. */
   productMode?: ProductMode;
 };
 

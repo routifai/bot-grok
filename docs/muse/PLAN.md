@@ -234,4 +234,4 @@ With `AIDEN_PRODUCT_MODE=muse`, on a fresh account:
 8. Ideas shows six suggestions; tapping one sends it.
 9. Library shows files made in both the Conversation and Goal logs.
 10. There is no way to create a second bot in the UI, and the Muse has no bot-creation tools.
-11. Unset `AIDEN_PRODUCT_MODE` → the app behaves exactly like upstream Rakazo.
+11. Unset `AIDEN_PRODUCT_MODE` → the app behaves exactly like the full Aiden mode.

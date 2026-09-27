@@ -278,7 +278,6 @@ jobs:
       cancel-in-progress: false
     environment:
       name: production
-      url: https://app.rakazo.com
     steps:
       - name: Configure production SSH identity
         env:

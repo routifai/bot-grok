@@ -43,9 +43,9 @@ describe("agent content negotiation", () => {
   });
 
   it("publishes specific when-to-use instructions for agents", () => {
-    expect(HOME_MARKDOWN).toContain("open source Grok Bot alternative");
-    expect(ABOUT_MARKDOWN).toContain("open source Grok Bot alternative");
-    expect(AGENT_INSTRUCTIONS).toContain("open source Grok Bot alternative");
+    expect(HOME_MARKDOWN).toContain("Grok Bot alternative");
+    expect(ABOUT_MARKDOWN).toContain("Grok Bot alternative");
+    expect(AGENT_INSTRUCTIONS).toContain("Grok Bot alternative");
     expect(AGENT_INSTRUCTIONS).toContain("## When to use Aiden");
     expect(AGENT_INSTRUCTIONS).toContain("## How an agent should use Aiden");
     expect(AGENT_INSTRUCTIONS).toContain("Self-hosting is available now");

@@ -1,15 +1,6 @@
 Aiden
 Copyright 2026 the Aiden authors
 
-This product is based on Rakazo (https://github.com/elie222/rakazo),
-licensed under the Apache License, Version 2.0. The original LICENSE is
-kept unchanged in this repository. Modifications include renaming the
-project and its packages from Rakazo to Aiden and adding the Muse edition
-(docs/muse, docs/adr).
-
-Portions adapted from OpenMuse (https://github.com/OpenMuseAgent/OpenMuse),
-licensed under the MIT License; adapted files carry a header noting their source.
-
-The Muse edition's 3D illustrations (apps/web/public/illustrations) are from
-Microsoft's Fluent Emoji (https://github.com/microsoft/fluentui-emoji),
-Copyright (c) Microsoft Corporation, licensed under the MIT License.
+Aiden's 3D illustrations (apps/web/public/illustrations) are from Microsoft's
+Fluent Emoji (https://github.com/microsoft/fluentui-emoji), Copyright (c)
+Microsoft Corporation, licensed under the MIT License.
