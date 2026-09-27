@@ -222,6 +222,7 @@ import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPan
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
+import { deriveMuseState } from "./muse/chrome/museState";
 import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveState";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
@@ -4615,6 +4616,7 @@ export function ShellPage() {
                   identity={computerBot.id}
                   size={28}
                   status={computerBot.status}
+                  museState={museMode ? deriveMuseState(currentRuns, 0) : undefined}
                   face={museMode ? "muse" : undefined}
                 />
                 {recordingSkill ? (
