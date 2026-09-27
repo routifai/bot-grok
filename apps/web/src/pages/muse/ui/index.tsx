@@ -16,9 +16,9 @@ export const MUSE_TYPE = {
   /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
   chromeTitle: "text-[17px] font-semibold tracking-[-0.01em] text-foreground",
   /** A big in-content heading for a screen that reads like its own page (Ideas). */
-  pageTitle: "text-[28px] font-semibold leading-[1.15] tracking-[-0.01em] text-foreground",
+  pageTitle: "text-[32px] font-semibold leading-[1.1] tracking-[-0.015em] text-foreground",
   /** A one-line page subtitle under `pageTitle`, in the Muse's own voice. */
-  pageSubtitle: "text-[15.5px] leading-[1.5] text-muted-foreground",
+  pageSubtitle: "text-[17px] leading-[1.5] text-muted-foreground",
   /** A group heading inside a screen ("Productivity", "Paused", "Plan"). */
   sectionTitle: "text-[15px] font-semibold text-foreground",
   /** A card's or row's own title (a Goal, a Post, a Library item, an Idea). */
@@ -327,10 +327,13 @@ export function EmptyState({
   children,
   suggestions,
   onSuggestion,
+  face,
   className,
 }: {
   /** The Muse's identity color; defaults to gold when the screen has none handy. */
   avatarColor?: string;
+  /** Show the Muse's face even without suggestions (it always shows with them). */
+  face?: boolean;
   headline?: ReactNode;
   children?: ReactNode;
   suggestions?: readonly string[];
@@ -338,6 +341,7 @@ export function EmptyState({
   className?: string;
 }) {
   const rich = Boolean(suggestions?.length && onSuggestion);
+  const showFace = rich || face;
   return (
     <div
       className={cn(
@@ -345,7 +349,7 @@ export function EmptyState({
         className,
       )}
     >
-      {rich ? (
+      {showFace ? (
         <BotAvatar
           color={avatarColor ?? DEFAULT_MUSE_COLOR}
           identity="aiden"

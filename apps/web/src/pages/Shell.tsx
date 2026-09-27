@@ -3743,7 +3743,12 @@ export function ShellPage() {
       </main>
 
       {museMode && active ? (
-        <WaitingSheet botId={active.id} open={waitingOpen} onOpenChange={setWaitingOpen} />
+        <WaitingSheet
+          botId={active.id}
+          avatarColor={active.color}
+          open={waitingOpen}
+          onOpenChange={setWaitingOpen}
+        />
       ) : null}
 
       <aside
@@ -5197,6 +5202,7 @@ const Transcript = memo(function Transcript({
                       side={message.role === "user" ? "start" : "end"}
                       onReply={onReply}
                       onReact={onReact}
+                      conversational={!museMode}
                     />
                   )}
                   <MessageView
@@ -6253,11 +6259,14 @@ function MessageHoverActions({
   side,
   onReply,
   onReact,
+  conversational = true,
 }: {
   message: ThreadMessage;
   side: "start" | "end";
   onReply: (message: ThreadMessage) => void;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
+  /** Team-chat actions (reactions, reply threads); a one-on-one Muse keeps just More. */
+  conversational?: boolean;
 }) {
   const { t } = useLingui();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -6278,7 +6287,7 @@ function MessageHoverActions({
   return (
     <MessageHoverMetadata pinned={moreOpen || reactionsOpen} side={side}>
       <div data-testid="message-hover-actions" className="flex items-center gap-0.5">
-        {canReactToThreadMessage(message) ? (
+        {conversational && canReactToThreadMessage(message) ? (
           <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
             <PopoverTrigger
               aria-label={t`React`}
@@ -6311,14 +6320,16 @@ function MessageHoverActions({
             </PopoverContent>
           </Popover>
         ) : null}
-        <button
-          type="button"
-          aria-label={t`Reply`}
-          onClick={() => onReply(message)}
-          className={`${iconButtonClass} hidden [@media(hover:hover)_and_(pointer:fine)]:grid`}
-        >
-          <Reply size={15} strokeWidth={1.7} />
-        </button>
+        {conversational ? (
+          <button
+            type="button"
+            aria-label={t`Reply`}
+            onClick={() => onReply(message)}
+            className={`${iconButtonClass} hidden [@media(hover:hover)_and_(pointer:fine)]:grid`}
+          >
+            <Reply size={15} strokeWidth={1.7} />
+          </button>
+        ) : null}
         <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
           <DropdownMenuTrigger
             aria-label={t`More`}
