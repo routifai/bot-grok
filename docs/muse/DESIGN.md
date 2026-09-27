@@ -18,18 +18,24 @@ Expressions are structural (conditional SVG keyed on state, so they still show u
 
 **Color.** Semantic tokens only (`@aiden/ui-tokens`: `museLightTokens`, `museDarkTokens`). White surfaces, hairline borders, ink primary. The app stays monochrome: the Muse's identity color (gold `#F2B233` by default, Aiden's ring) is the only brand color and appears only on the Muse face. Status colors are semantic: `warning` = waiting on you, `success` = done or live, `destructive` = failed. Never hardcode a hex in a component.
 
-**Type.**
-- Geist (body, UI): 14–15px body, 13px secondary, 12px meta.
-- Instrument Serif (`font-display`): screen titles (40px), empty-state leads (24px), the Muse's greeting. Never for body text or buttons. Italic sparingly for one emphasized word.
-- Geist Mono (`font-mono`): eyebrows and labels only — 10.5–11px, uppercase, `tracking-[0.08em]`.
+**Type.** One scale (`MUSE_TYPE` in `apps/web/src/pages/muse/ui`), Instrument Sans everywhere in-app — it's the edition's inherited body font, never set explicitly per component:
+- `chromeTitle` (15.5px semibold): the screen's name in the shared top bar.
+- `pageTitle` (28px semibold): a screen that reads like its own page (Ideas' hero, a Goal's own title).
+- `sectionTitle` (15px semibold): a group heading inside a screen ("Plan", "Paused", "Productivity").
+- `cardTitle` (16px semibold): a card's or row's own title (a Goal, a Post, a Library item, an Idea).
+- `body` (15px, relaxed leading): reading text inside a card or row.
+- `meta` (13px, muted): a quiet fact line — dates, counts, sources.
+- `label` (`font-mono`, 11px, uppercase, `tracking-[0.08em]`): a small tag, sparingly — never a whole heading.
 
-**Space and shape.** Content in a centered 720px column (`MuseColumn`), 32px side padding on desktop, 20px on phones. Cards: 16px radius, 1px border, 16–20px padding, no shadow at rest. Elevation (`shadow-float`) only for things that float: the composer, popovers, sheets, hovered interactive cards. Gaps between cards 12px; between sections 40px.
+Instrument Serif (`font-display`) is reserved for the signed-out welcome and auth screens; it never appears on an in-app section header or empty state.
+
+**Space and shape.** Content in a centered 720px column (`MuseColumn`) or, for screens that fill the panel (Goals, Library), a wide left-aligned one (`MuseWideColumn`); 32px side padding on desktop, 20px on phones. Cards: 16px radius, 1px border, 16–20px padding, no shadow at rest. Elevation (`shadow-float`) only for things that float: the composer, popovers, sheets, hovered interactive cards. Gaps between cards 12px; between sections 40px.
 
 **Motion.** 150ms color/border transitions; nothing bounces except the Muse face. Respect `prefers-reduced-motion`.
 
 ## Building blocks
 
-Import from `apps/web/src/pages/muse/ui`: `MuseScreen`, `MuseColumn`, `ScreenHeader`, `Section`, `Eyebrow`, `Surface` (`default | attention | quiet`, `interactive`), `StatusPill` (`neutral | live | attention | done`), `Chip`, `DetailRows`, `Progress`, `EmptyState`. Use them before writing new chrome. Buttons, inputs, tabs, sheets, dialogs come from `@aiden/ui-web`. Icons: `lucide-react`, 16px, `strokeWidth={1.75}`.
+Import from `apps/web/src/pages/muse/ui`: `MuseScreen` (takes an optional `header`), `ScreenHeader` (the one top chrome bar — same height, border and title style everywhere, shared by the Conversation and every other section), `MuseColumn`, `MuseWideColumn`, `Section`, `Eyebrow`, `Surface` (`default | attention | quiet`, `interactive`), `StatusPill` (`neutral | live | attention | done`), `Chip`, `DetailRows`, `Progress`, `EmptyState` (the Muse's face, a headline, one line, and optional suggestion chips that start a Conversation). Use them before writing new chrome. Buttons, inputs, tabs, sheets, dialogs come from `@aiden/ui-web`. Icons: `lucide-react`, 16px, `strokeWidth={1.75}`.
 
 ## Card patterns (from the Aiden concept)
 
@@ -42,11 +48,14 @@ Import from `apps/web/src/pages/muse/ui`: `MuseScreen`, `MuseColumn`, `ScreenHea
 
 ## Screens
 
-- **Rail.** 64px, `bg-sidebar`, the Muse face (40px, with its state and Ask badge) at the top, then Conversation, Goals, Feed, Library as icon + 10.5px label, active item on `bg-sidebar-accent` with ink icon. Settings at the bottom.
-- **Conversation.** Header with the Muse's name and the status pill. Messages in the 720px column; the person's messages in soft `chat-user` bubbles on the right, the Muse's replies without a bubble. The composer floats (`shadow-float`, 24px radius) with placeholder "Message Nova…".
-- **Goals.** `ScreenHeader` "Goals" with a one-line subtitle ("2 active · 1 waiting on you"). Each Goal is an interactive `Surface`: title, next Task, `Progress` (done/total), due date, and a `StatusPill` for its state (working / waiting on you / paused). Detail: title in serif, the plan as a vertical timeline (status icon per Task, notes in muted text), the Proposal card on top when open, Check-ins and the Goal log below.
-- **Feed.** `ScreenHeader` "Feed". Open Asks first (attention cards), then "Today" / "Earlier" sections of Posts, then Ideas, then Followed topics as removable chips.
-- **Library.** `ScreenHeader` "Library" with a search field and facet `Chip`s (All, Pages, Documents, Decks, Images, …, with counts). A responsive grid (2–3 columns) of preview cards: a 16:10 preview area (thumbnail or a large type icon on `bg-muted`), a mono type eyebrow, title, "Updated 2h ago · from Goal X", and quiet actions on hover.
+Every section shares one `ScreenHeader` chrome bar at the top (same height, padding, border and title style as the Conversation's, with a right-side actions slot) and the same column widths and top spacing below it.
+
+- **Rail.** 64px, `bg-sidebar`, the Muse face (40px, with its state and Ask badge) at the top, then Conversation, Goals, Feed, Ideas, Library as icon + 10.5px label, active item on `bg-sidebar-accent` with ink icon. Settings at the bottom.
+- **Conversation.** `ScreenHeader` with the Muse's name and the status pill inline. Messages in the 720px column; the person's messages in soft `chat-user` bubbles on the right, the Muse's replies without a bubble. The composer floats (`shadow-float`, 24px radius) with placeholder "Message Nova…". Empty: the shared `EmptyState`.
+- **Goals.** `ScreenHeader` "Goals". Each Goal is an interactive `Surface`: title, next Task, `Progress` (done/total), due date, and a `StatusPill` for its state (working / waiting on you / paused). Detail: title in the page-title scale, the plan as a vertical timeline (status icon per Task, notes in muted text), the Proposal card on top when open, Check-ins and the Goal log below. Empty: the shared `EmptyState` with a few Goal suggestions.
+- **Feed.** `ScreenHeader` "Feed", single centered column. Open Asks first (attention cards), then "Today" / "Earlier" sections of Posts as plain cards (no accent bar; the Muse's own face marks a Goal report, a quiet source line marks a topic finding), then Followed topics as a chip row with a trailing "Follow a topic" chip. Empty (no Asks, no Posts): the shared `EmptyState`.
+- **Ideas.** `ScreenHeader` "Ideas" with a refresh action. A big page title and a one-line first-person subtitle, then Ideas grouped by area under a sentence-case heading: a quiet icon tile, the idea's own text as the row's title, and a hover arrow. Tapping a row starts a Conversation with it.
+- **Library.** `ScreenHeader` "Library" with a search field and facet `Chip`s (All, Pages, Documents, Decks, Images, …, with counts). A responsive grid (2–3 columns) of preview cards: a 16:10 preview area (thumbnail or a large type icon on `bg-muted`), a mono type eyebrow, title, "Updated 2h ago · from Goal X", and quiet actions on hover. Empty: the shared `EmptyState` with a few Library suggestions.
 - **Waiting on you.** A right sheet with the same Ask cards as the Feed, newest first.
 - **Onboarding.** One centered 440px column, serif question as the title ("What should I call you?"), one input, one ink button; the Muse face large on the color step.
 

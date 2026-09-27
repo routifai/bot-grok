@@ -43,6 +43,7 @@ vi.mock("@aiden/ui-web", () => {
     AlertDialogFooter: Container,
     AlertDialogHeader: Container,
     AlertDialogTitle: Container,
+    BotAvatar: () => <div data-testid="bot-avatar" />,
     Button: ({
       variant: _variant,
       size: _size,
@@ -112,11 +113,13 @@ function goal(overrides: Partial<Goal> = {}): Goal {
   };
 }
 
-async function renderGoals(botId = "bot-1") {
+async function renderGoals(botId = "bot-1", onSendIdea: (text: string) => void = vi.fn()) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(<GoalsScreen botId={botId} />));
+  await act(async () =>
+    root.render(<GoalsScreen botId={botId} onSendIdea={onSendIdea} />),
+  );
   return {
     container,
     async cleanup() {
@@ -217,6 +220,28 @@ it("invites the person to tell their Muse a Goal when there are none", async () 
         expect(page.container.textContent).toContain("Tell your Muse");
       });
     });
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("tapping an empty-state suggestion chip calls onSendIdea with its text", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.list.mockResolvedValue([]);
+  const onSendIdea = vi.fn();
+  const page = await renderGoals("bot-1", onSendIdea);
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("Prep the Q3 client portfolio review");
+      });
+    });
+    const button = findButton(page.container, "Prep the Q3 client portfolio review");
+    await act(async () => {
+      button.click();
+    });
+    expect(onSendIdea).toHaveBeenCalledWith("Prep the Q3 client portfolio review");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

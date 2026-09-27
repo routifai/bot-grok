@@ -1,7 +1,7 @@
 import type { Goal } from "@aiden/contracts";
-import { Skeleton } from "@aiden/ui-web";
+import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { EmptyState, MuseWideColumn, Progress, ScreenHeader, Section, Surface } from "../ui";
+import { EmptyState, MUSE_TYPE, MuseWideColumn, Progress, Section, Surface } from "../ui";
 import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
 import { GoalStatusPill } from "./GoalStatusPill";
 
@@ -28,7 +28,7 @@ function GoalCard({ goal, onSelect }: { goal: Goal; onSelect: (goalId: string) =
       className="flex flex-col gap-2.5 p-4 outline-none"
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 truncate text-[14.5px] font-semibold text-foreground" dir="auto">
+        <h3 className={cn("min-w-0 truncate", MUSE_TYPE.cardTitle)} dir="auto">
           {goal.title}
         </h3>
         <GoalStatusPill goal={goal} className="shrink-0" />
@@ -60,11 +60,10 @@ function GoalCard({ goal, onSelect }: { goal: Goal; onSelect: (goalId: string) =
   );
 }
 
-/** Loading placeholder for the Goals list: a few skeleton cards under the real header. */
+/** Loading placeholder for the Goals list: a few skeleton cards. */
 export function GoalListSkeleton() {
   return (
-    <MuseWideColumn>
-      <ScreenHeader title={<Trans>Goals</Trans>} />
+    <MuseWideColumn className="pt-8">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {[0, 1, 2].map((key) => (
           <Surface key={key} className="flex flex-col gap-3 p-4">
@@ -85,17 +84,27 @@ export function GoalListSkeleton() {
 export function GoalList({
   goals,
   onSelect,
+  avatarColor,
+  suggestions,
+  onSendIdea,
 }: {
   goals: Goal[];
   onSelect: (goalId: string) => void;
+  avatarColor?: string;
+  suggestions?: readonly string[];
+  onSendIdea?: (text: string) => void;
 }) {
   const { t } = useLingui();
 
   if (goals.length === 0) {
     return (
-      <MuseWideColumn>
-        <ScreenHeader title={<Trans>Goals</Trans>} />
-        <EmptyState lead={t`What do you want to achieve?`}>
+      <MuseWideColumn className="flex min-h-full flex-col">
+        <EmptyState
+          avatarColor={avatarColor}
+          headline={t`What do you want to achieve?`}
+          suggestions={suggestions}
+          onSuggestion={onSendIdea}
+        >
           <Trans>Tell your Muse, and it becomes a Goal.</Trans>
         </EmptyState>
       </MuseWideColumn>
@@ -109,8 +118,8 @@ export function GoalList({
     waiting > 0 ? t`${activeCount} active · ${waiting} waiting on you` : t`${activeCount} active`;
 
   return (
-    <MuseWideColumn data-testid="goals-list">
-      <ScreenHeader title={<Trans>Goals</Trans>} subtitle={subtitle} />
+    <MuseWideColumn className="pt-8" data-testid="goals-list">
+      <p className="pb-6 text-[13.5px] text-muted-foreground">{subtitle}</p>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {active.map((goal) => (
           <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />

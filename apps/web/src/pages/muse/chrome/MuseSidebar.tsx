@@ -4,6 +4,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Bell,
   Library,
+  Lightbulb,
   MessageCircle,
   Newspaper,
   PanelLeftClose,
@@ -159,6 +160,13 @@ export function MuseSidebar({
       label: t`Feed`,
       current: active === "feed",
       onClick: () => onNavigate("feed"),
+    },
+    {
+      key: "ideas",
+      icon: <Lightbulb />,
+      label: t`Ideas`,
+      current: active === "ideas",
+      onClick: () => onNavigate("ideas"),
     },
     {
       key: "library",

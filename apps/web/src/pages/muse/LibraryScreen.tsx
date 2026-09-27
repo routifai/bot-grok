@@ -24,6 +24,11 @@ const LIST_PAGE_SIZE = 60;
 // Safety net against an unbounded fetch loop; a Library this size is not realistic.
 const MAX_PAGES = 12;
 
+const LIBRARY_SUGGESTIONS = [
+  "Draft a one-pager on the new mortgage product",
+  "Build a client meeting brief template",
+];
+
 /**
  * F7 · Library. Everything the Muse has made — pages, documents, files — from the
  * Conversation and every Goal log, searchable in one grid. `artifacts.listSpace` is
@@ -31,7 +36,17 @@ const MAX_PAGES = 12;
  * create artifacts under the same bot id as the Conversation, so they all show up
  * here too without any backend change.
  */
-export function LibraryScreen({ botId }: { botId: string }) {
+export function LibraryScreen({
+  botId,
+  avatarColor,
+  onSendIdea,
+}: {
+  botId: string;
+  /** The Muse's identity color, for the empty state's face. */
+  avatarColor?: string;
+  /** Starts a Conversation with a suggestion from the empty state. */
+  onSendIdea?: (text: string) => void;
+}) {
   const { t } = useLingui();
   const [items, setItems] = useState<ArtifactSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -127,10 +142,8 @@ export function LibraryScreen({ botId }: { botId: string }) {
   const visibleKinds = KIND_ORDER.filter((kind) => (facetCounts.get(kind) ?? 0) > 0);
 
   return (
-    <MuseScreen>
-      <MuseWideColumn>
-        <ScreenHeader title={t`Library`} subtitle={t`Everything your Muse has made.`} />
-
+    <MuseScreen header={<ScreenHeader title={t`Library`} />}>
+      <MuseWideColumn className="flex min-h-full flex-col pt-8">
         <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="relative w-full sm:max-w-[300px]">
             <Search
@@ -172,12 +185,17 @@ export function LibraryScreen({ botId }: { botId: string }) {
           loadError ? (
             <p className="py-10 text-[14px] text-destructive">{loadError}</p>
           ) : (
-            <EmptyState lead={t`Nothing here yet.`}>
+            <EmptyState
+              avatarColor={avatarColor}
+              headline={t`Nothing here yet.`}
+              suggestions={LIBRARY_SUGGESTIONS}
+              onSuggestion={onSendIdea}
+            >
               {t`Pages, documents and files your Muse makes will appear here.`}
             </EmptyState>
           )
         ) : filtered && filtered.length === 0 ? (
-          <EmptyState>{t`Nothing matches your search.`}</EmptyState>
+          <EmptyState headline={t`Nothing matches your search.`} />
         ) : (
           <LibraryGrid
             items={filtered ?? []}

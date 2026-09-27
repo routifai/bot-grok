@@ -32,6 +32,7 @@ vi.mock("@aiden/ui-web", () => {
   const ButtonMock = (props: ComponentProps<"button">) => <button type="button" {...props} />;
   return {
     cn,
+    BotAvatar: () => <div data-testid="bot-avatar" />,
     AlertDialog: ({ open, children }: { open?: boolean; children?: ReactNode }) =>
       open ? <div>{children}</div> : null,
     AlertDialogAction: ButtonMock,
@@ -97,12 +98,12 @@ function findButton(container: HTMLElement, text: string) {
   );
 }
 
-async function renderLibrary() {
+async function renderLibrary(onSendIdea: (text: string) => void = vi.fn()) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<LibraryScreen botId="bot-1" />);
+    root.render(<LibraryScreen botId="bot-1" avatarColor="#F2B233" onSendIdea={onSendIdea} />);
   });
   return {
     container,
@@ -222,6 +223,31 @@ it("shows the empty state when the Library has nothing yet", async () => {
     expect(page.container.textContent).toContain(
       "Pages, documents and files your Muse makes will appear here.",
     );
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("tapping an empty-state suggestion chip calls onSendIdea with its text", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.listSpace.mockResolvedValue({ items: [], nextCursor: null });
+  const onSendIdea = vi.fn();
+  const page = await renderLibrary(onSendIdea);
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain(
+          "Draft a one-pager on the new mortgage product",
+        );
+      });
+    });
+    const button = findButton(page.container, "Draft a one-pager on the new mortgage product");
+    expect(button).toBeTruthy();
+    await act(async () => {
+      button?.click();
+    });
+    expect(onSendIdea).toHaveBeenCalledWith("Draft a one-pager on the new mortgage product");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

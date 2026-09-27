@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { useAsks } from "../asks";
-import { StatusPill } from "../ui";
+import { ScreenHeader, StatusPill } from "../ui";
 import { deriveStatusPill } from "./statusPill";
 
 /**
@@ -48,12 +48,12 @@ export function ConversationHeader({
   const pill = deriveStatusPill({ museName, goals, running, openAskCount: askCount });
 
   return (
-    <div className="app-drag flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 md:px-6">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="truncate text-[15.5px] font-semibold text-foreground">
-          <Trans>Conversation</Trans>
-        </span>
-        {pill.tone === "attention" && askCount > 0 ? (
+    <ScreenHeader
+      dragRegion
+      title={<Trans>Conversation</Trans>}
+      actions={actions}
+      meta={
+        pill.tone === "attention" && askCount > 0 ? (
           <StatusPill
             tone="attention"
             onClick={onOpenWaiting}
@@ -69,11 +69,8 @@ export function ConversationHeader({
           </StatusPill>
         ) : (
           <StatusPill tone={pill.tone}>{pill.text}</StatusPill>
-        )}
-      </div>
-      {actions ? (
-        <div className="app-no-drag flex shrink-0 items-center gap-1">{actions}</div>
-      ) : null}
-    </div>
+        )
+      }
+    />
   );
 }

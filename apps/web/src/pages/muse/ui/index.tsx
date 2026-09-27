@@ -1,9 +1,35 @@
-import { cn } from "@aiden/ui-web";
+import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import { BotAvatar, cn } from "@aiden/ui-web";
 import type { ComponentProps, ReactNode } from "react";
 
 // Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen
-// composes these so spacing, type, and surfaces stay identical across Goals, Feed,
-// Library, and Waiting on you. Colors come only from the semantic tokens.
+// composes these so spacing, type, and surfaces stay identical across Conversation,
+// Goals, Feed, Ideas, Library, and Waiting on you. Colors come only from the semantic
+// tokens; type comes only from the scale below.
+
+/**
+ * The one Muse type scale. Instrument Sans everywhere (it's the edition's inherited
+ * body font — never `font-display`, which is reserved for the signed-out welcome and
+ * auth screens). Geist Mono (`label`) is for small tags only, never a whole heading.
+ */
+export const MUSE_TYPE = {
+  /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
+  chromeTitle: "text-[15.5px] font-semibold text-foreground",
+  /** A big in-content heading for a screen that reads like its own page (Ideas). */
+  pageTitle: "text-[28px] font-semibold leading-[1.15] tracking-[-0.01em] text-foreground",
+  /** A one-line page subtitle under `pageTitle`, in the Muse's own voice. */
+  pageSubtitle: "text-[15.5px] leading-[1.5] text-muted-foreground",
+  /** A group heading inside a screen ("Productivity", "Paused", "Plan"). */
+  sectionTitle: "text-[15px] font-semibold text-foreground",
+  /** A card's or row's own title (a Goal, a Post, a Library item, an Idea). */
+  cardTitle: "text-[16px] font-semibold leading-snug text-foreground",
+  /** Regular reading text inside a card or row. */
+  body: "text-[15px] leading-[1.55] text-foreground/90",
+  /** A quiet fact line — dates, counts, sources. */
+  meta: "text-[13px] text-muted-foreground",
+  /** A small mono label, sparingly (a card's type tag) — never a whole heading. */
+  label: "font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground",
+} as const;
 
 /** Centered reading column shared by every Muse screen. */
 export function MuseColumn({ className, ...props }: ComponentProps<"div">) {
@@ -29,35 +55,63 @@ export function MuseWideColumn({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-/** Scroll container for a Muse screen: full height, quiet scrollbar, generous bottom room. */
-export function MuseScreen({ className, ...props }: ComponentProps<"div">) {
+/**
+ * Scroll container for a Muse screen: an optional fixed `header` (the shared
+ * `ScreenHeader` chrome, outside the scroll like the Conversation's), then a quiet
+ * scrolling body with generous bottom room.
+ */
+export function MuseScreen({
+  header,
+  className,
+  children,
+  ...props
+}: ComponentProps<"div"> & { header?: ReactNode }) {
   return (
-    <div
-      className={cn("rk-scroll h-full min-w-0 overflow-y-auto bg-background pb-24", className)}
-      {...props}
-    />
+    <div className="flex h-full min-w-0 flex-col">
+      {header}
+      <div
+        className={cn("rk-scroll min-w-0 flex-1 overflow-y-auto bg-background pb-24", className)}
+        {...props}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
-/** Serif screen title with an optional one-line subtitle and trailing actions. */
+/**
+ * The one top chrome bar, shared by every Muse section (docs/muse/DESIGN.md): same
+ * height, padding and hairline border as the Conversation's, a title, optional inline
+ * `meta` next to it (a status pill, a count), and a right-side `actions` slot.
+ */
 export function ScreenHeader({
   title,
-  subtitle,
+  meta,
   actions,
+  /** True for a header that also serves as the desktop window's drag region. */
+  dragRegion = false,
 }: {
   title: ReactNode;
-  subtitle?: ReactNode;
+  meta?: ReactNode;
   actions?: ReactNode;
+  dragRegion?: boolean;
 }) {
   return (
-    <header className="flex items-end justify-between gap-4 pt-10 pb-6">
-      <div className="min-w-0">
-        <h1 className="font-display text-[32px] leading-[1.1] tracking-[-0.01em] text-foreground">
-          {title}
-        </h1>
-        {subtitle ? <p className="mt-2 text-[13.5px] text-muted-foreground">{subtitle}</p> : null}
+    <header
+      className={cn(
+        "flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 md:px-6",
+        dragRegion && "app-drag",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span className={cn("truncate", MUSE_TYPE.chromeTitle)}>{title}</span>
+        {meta}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className={cn("flex shrink-0 items-center gap-1", dragRegion && "app-no-drag")}>
+          {actions}
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -75,7 +129,7 @@ export function Eyebrow({ className, ...props }: ComponentProps<"span">) {
   );
 }
 
-/** Section inside a screen: an eyebrow title and its content. */
+/** Section inside a screen: a plain sentence-case title and its content. */
 export function Section({
   title,
   action,
@@ -91,7 +145,7 @@ export function Section({
     <section className={cn("flex flex-col gap-3", className)}>
       {title || action ? (
         <div className="flex items-center justify-between gap-3">
-          {title ? <Eyebrow>{title}</Eyebrow> : <span />}
+          {title ? <h2 className={MUSE_TYPE.sectionTitle}>{title}</h2> : <span />}
           {action}
         </div>
       ) : null}
@@ -252,14 +306,57 @@ export function Progress({ value, label }: { value: number; label: string }) {
   );
 }
 
-/** One quiet line for empty states, optionally with a serif lead. */
-export function EmptyState({ lead, children }: { lead?: ReactNode; children: ReactNode }) {
+/**
+ * The one empty state (docs/muse/DESIGN.md): centered in the available space, the
+ * Muse's face, a plain sans headline, one muted line, and — when `suggestions` and
+ * `onSuggestion` are both given — a few chips that start a Conversation with that
+ * prompt. Omit both for a quieter inline message (e.g. "nothing matches your search"),
+ * which drops the face and chips but keeps the same centered, breathing layout.
+ */
+export function EmptyState({
+  avatarColor,
+  headline,
+  children,
+  suggestions,
+  onSuggestion,
+  className,
+}: {
+  /** The Muse's identity color; defaults to gold when the screen has none handy. */
+  avatarColor?: string;
+  headline?: ReactNode;
+  children?: ReactNode;
+  suggestions?: readonly string[];
+  onSuggestion?: (text: string) => void;
+  className?: string;
+}) {
+  const rich = Boolean(suggestions?.length && onSuggestion);
   return (
-    <div className="flex flex-col items-start gap-1 py-10">
-      {lead ? (
-        <p className="font-display text-[24px] leading-tight text-foreground">{lead}</p>
+    <div
+      className={cn(
+        "flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center",
+        className,
+      )}
+    >
+      {rich ? (
+        <BotAvatar color={avatarColor ?? DEFAULT_MUSE_COLOR} identity="aiden" face="muse" size={88} />
       ) : null}
-      <p className="text-[14px] text-muted-foreground">{children}</p>
+      <div className="max-w-[380px]">
+        {headline ? <p className="text-[18px] font-semibold text-foreground">{headline}</p> : null}
+        {children ? (
+          <p className={cn("text-[14px] text-muted-foreground", headline ? "mt-1.5" : undefined)}>
+            {children}
+          </p>
+        ) : null}
+      </div>
+      {rich ? (
+        <div className="flex flex-wrap justify-center gap-2 pt-1">
+          {suggestions?.map((text) => (
+            <Chip key={text} onClick={() => onSuggestion?.(text)}>
+              {text}
+            </Chip>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

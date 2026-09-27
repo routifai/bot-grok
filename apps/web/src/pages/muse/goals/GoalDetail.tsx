@@ -10,12 +10,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
+  cn,
 } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronLeft } from "lucide-react";
 import { useState } from "react";
 import { rpc } from "../../../lib/rpc";
-import { MuseColumn, Section } from "../ui";
+import { MUSE_TYPE, MuseColumn, Section } from "../ui";
 import { CheckInEditor } from "./CheckInEditor";
 import { checkInSummary, dueMeta } from "./format";
 import { GoalLog } from "./GoalLog";
@@ -100,10 +101,7 @@ export function GoalDetail({
         </Button>
       </div>
 
-      <h1
-        className="mt-4 font-display text-[32px] leading-[1.1] tracking-[-0.01em] text-foreground"
-        dir="auto"
-      >
+      <h1 className={cn("mt-4", MUSE_TYPE.pageTitle)} dir="auto">
         {goal.title}
       </h1>
 

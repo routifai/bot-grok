@@ -223,6 +223,7 @@ import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
+import { IdeasScreen } from "./muse/IdeasScreen";
 import { LibraryScreen } from "./muse/LibraryScreen";
 import { StatusPill } from "./muse/ui";
 import { useMuseNav } from "./muse/useMuseNav";
@@ -3460,11 +3461,21 @@ export function ShellPage() {
       >
         {museMode && active && museView !== "conversation" ? (
           museView === "goals" ? (
-            <GoalsScreen botId={active.id} />
+            <GoalsScreen
+              botId={active.id}
+              avatarColor={active.color}
+              onSendIdea={handleSendIdea}
+            />
           ) : museView === "feed" ? (
-            <FeedScreen botId={active.id} onSendIdea={handleSendIdea} />
+            <FeedScreen botId={active.id} avatarColor={active.color} onSendIdea={handleSendIdea} />
+          ) : museView === "ideas" ? (
+            <IdeasScreen botId={active.id} onSendIdea={handleSendIdea} />
           ) : (
-            <LibraryScreen botId={active.id} />
+            <LibraryScreen
+              botId={active.id}
+              avatarColor={active.color}
+              onSendIdea={handleSendIdea}
+            />
           )
         ) : (
           <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
@@ -3603,7 +3614,6 @@ export function ShellPage() {
                 </div>
               ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
                 <EmptyConversation
-                  botId={active.id}
                   personName={bootstrapMe?.name ?? ""}
                   avatarColor={active.color}
                   onSend={(text) => void sendMessage(text)}
