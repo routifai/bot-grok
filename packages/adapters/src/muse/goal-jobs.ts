@@ -38,13 +38,15 @@ import {
 import {
   appendEventInTransaction,
   createGoalRepos,
+  createPostRepos,
   createThreadMessageInTransaction,
   type PrismaClient,
 } from "@aiden/db";
 import { ADVANCE_GOAL_TASK_PROMPT, renderCheckInTaskPrompt } from "./goal-prompts.js";
 
-/** The Conversation always goes first (decision 8); a busy one defers Goal work by this long. */
-const CONVERSATION_DEFER_MS = 60_000;
+/** The Conversation always goes first (decision 8); a busy one defers Goal work by this long.
+ * Reused by feed-jobs.ts (B10): the Feed's `feed.topics` digest defers the same way. */
+export const CONVERSATION_DEFER_MS = 60_000;
 
 export interface GoalJobEvents {
   notify(threadId: string, seq: number): Promise<void>;
@@ -72,7 +74,9 @@ async function loadGoalWithBot(prisma: PrismaClient, goalId: string) {
   return { goal, bot };
 }
 
-async function hasActiveRun(prisma: PrismaClient, threadId: string): Promise<boolean> {
+/** Whether a thread has a run in flight. Reused by feed-jobs.ts (B10): the Feed digest
+ * also steps aside for the Conversation (decision 8). */
+export async function hasActiveRun(prisma: PrismaClient, threadId: string): Promise<boolean> {
   const run = await prisma.run.findFirst({
     where: { threadId, status: { in: [...ACTIVE_RUN_STATUSES] } },
     select: { id: true },
@@ -204,29 +208,28 @@ async function postConversationReport(
   await deps.events.notify(notify.threadId, notify.seq).catch(() => undefined);
 }
 
-/**
- * B10 (docs/muse/PLAN.md) adds the Post model; until it lands there is nothing to create
- * here. Feature-detected with a soft cast so this file does not hard-depend on a model
- * that may not exist yet in the generated Prisma client.
- */
-async function maybeCreateGoalReportPost(
+const GOAL_REPORT_TITLE_MAX = 200;
+const DEFAULT_GOAL_REPORT_TITLE = "Goal update";
+
+/** The report's first non-empty line, as the Feed Post's title — a short summary of what moved. */
+function titleFromReport(body: string): string {
+  const firstLine = body
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return firstLine ? firstLine.slice(0, GOAL_REPORT_TITLE_MAX) : DEFAULT_GOAL_REPORT_TITLE;
+}
+
+/** Writes this advance's report to the Feed as a `goal_report` Post (docs/muse/PLAN.md B10). */
+async function createGoalReportPost(
   prisma: PrismaClient,
-  input: { botId: string; goalId: string; body: string },
+  input: { spaceId: string; userId: string; botId: string; goalId: string; body: string },
 ): Promise<void> {
   if (!input.body) return;
-  const client = prisma as unknown as {
-    post?: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> };
-  };
-  if (!client.post) return;
-  await client.post.create({
-    data: {
-      botId: input.botId,
-      kind: "goal_report",
-      title: "Goal update",
-      body: input.body,
-      goalId: input.goalId,
-    },
-  });
+  await createPostRepos(prisma).createPost(
+    { spaceId: input.spaceId, userId: input.userId, botId: input.botId },
+    { kind: "goal_report", title: titleFromReport(input.body), body: input.body, goalId: input.goalId },
+  );
 }
 
 async function handleGoalAdvance(deps: GoalJobDeps, payload: { goalId: string }): Promise<void> {
@@ -296,7 +299,9 @@ async function handleGoalAdvance(deps: GoalJobDeps, payload: { goalId: string })
       text: reportText,
     });
   }
-  await maybeCreateGoalReportPost(deps.prisma, {
+  await createGoalReportPost(deps.prisma, {
+    spaceId: goal.spaceId,
+    userId: goal.userId,
     botId: bot.id,
     goalId: goal.id,
     body: reportText,

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   dispatchBackgroundJob,
+  feedTopicsJob,
+  feedTopicsJobKey,
   goalAdvanceJob,
   goalAdvanceJobKey,
   goalCheckinJob,
@@ -30,6 +32,7 @@ function handlers(): BackgroundJobHandlers {
     "ideas.refresh": vi.fn(async () => undefined),
     "goal.advance": vi.fn(async () => undefined),
     "goal.checkin": vi.fn(async () => undefined),
+    "feed.topics": vi.fn(async () => undefined),
   };
 }
 
@@ -182,5 +185,36 @@ describe("Muse Goal jobs (docs/muse/PLAN.md B8)", () => {
     await dispatchBackgroundJob(target, "goal.checkin", { goalId: "goal-1" });
     expect(target["goal.checkin"]).toHaveBeenCalledWith({ goalId: "goal-1" });
     expect(() => parseBackgroundJob("goal.advance", { goalId: "" })).toThrow();
+  });
+});
+
+describe("Muse Feed jobs (docs/muse/PLAN.md B10)", () => {
+  it("shares the Muse's Goal-work queueName so feed.topics never runs alongside goal.advance/checkin", () => {
+    expect(feedTopicsJob("bot-1").queueName).toBe(museQueueName("bot-1"));
+  });
+
+  it("builds a feed.topics job with a replace key scoped to the Muse", () => {
+    expect(feedTopicsJob("bot-1")).toEqual({
+      name: "feed.topics",
+      payload: { botId: "bot-1" },
+      replaceKey: feedTopicsJobKey("bot-1"),
+      queueName: "muse:bot-1",
+    });
+    const at = new Date("2026-09-28T07:30:00.000Z");
+    expect(feedTopicsJob("bot-1", at)).toEqual({
+      name: "feed.topics",
+      payload: { botId: "bot-1" },
+      replaceKey: feedTopicsJobKey("bot-1"),
+      queueName: "muse:bot-1",
+      availableAt: at,
+    });
+    expect(feedTopicsJobKey("bot-1")).not.toBe(feedTopicsJobKey("bot-2"));
+  });
+
+  it("validates and dispatches feed.topics", async () => {
+    const target = handlers();
+    await dispatchBackgroundJob(target, "feed.topics", { botId: "bot-1" });
+    expect(target["feed.topics"]).toHaveBeenCalledWith({ botId: "bot-1" });
+    expect(() => parseBackgroundJob("feed.topics", { botId: "" })).toThrow();
   });
 });
