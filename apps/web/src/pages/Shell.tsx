@@ -169,6 +169,7 @@ import {
   embeddableScreenUrl,
   loadComputerScreen,
   screenIframeSandbox,
+  screenLinkKey,
   screenUrlStillFresh,
 } from "../lib/computer-screen";
 import { desktopBridge } from "../lib/desktop";
@@ -737,6 +738,8 @@ export function ShellPage() {
   const screenRequest = useRef(0);
   /** Bots whose screen link must be re-fetched (after boot, takeover, or release). */
   const staleScreens = useRef(new Set<string>());
+  // What each held screen link was minted for; see screenLinkKey.
+  const screenLinkKeys = useRef(new Map<string, string>());
   /** Bumped to remount the screen frames after a dropped connection. */
   const [screenReloadKey, setScreenReloadKey] = useState(0);
   const refreshScreenRef = useRef<(id: string, options?: { force?: boolean }) => Promise<unknown>>(
@@ -1060,6 +1063,7 @@ export function ShellPage() {
         computerVisible.current,
       commit: (screen) => {
         if (!screen.error) staleScreens.current.delete(id);
+        screenLinkKeys.current.set(id, screenLinkKey(computerRef.current));
         setScreenUrl(screen.url);
         setComputerError(screen.error);
         setComputerErrorFromScreen(Boolean(screen.error));
@@ -1374,7 +1378,9 @@ export function ShellPage() {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
         } else if (isComputerStatusEvent(event)) {
-          void refreshComputerScreen(active.id, { force: true }).catch(() => undefined);
+          const force =
+            screenLinkKeys.current.get(active.id) !== screenLinkKey(computerRef.current);
+          void refreshComputerScreen(active.id, { force }).catch(() => undefined);
         }
       },
     });

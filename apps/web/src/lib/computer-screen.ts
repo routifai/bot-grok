@@ -1,3 +1,5 @@
+import type { ComputerStatus } from "@aiden/contracts";
+
 export interface ComputerScreenResult {
   url: string | null;
   error: string | null;
@@ -69,4 +71,17 @@ export function screenUrlStillFresh(
   const match = SCREEN_CAPABILITY_PATH.exec(url);
   if (!match) return false;
   return Number(match[2]) - now > marginMs;
+}
+
+/**
+ * What a screen link depends on. Each run briefly reconnects the computer (booting, then
+ * running) and hands control to the bot and back; neither changes the link, so only a lost
+ * screen or the person taking or returning control needs a new one.
+ */
+export function screenLinkKey(
+  status: Pick<ComputerStatus, "state" | "controlHolder" | "screenAvailable"> | null,
+): string {
+  if (!status) return "none";
+  const live = status.state === "running" || status.state === "booting";
+  return `${live && status.screenAvailable ? "live" : status.state}:${status.controlHolder === "user" ? "user" : "bot"}`;
 }

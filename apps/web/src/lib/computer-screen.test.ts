@@ -3,6 +3,7 @@ import {
   embeddableScreenUrl,
   loadComputerScreen,
   screenIframeSandbox,
+  screenLinkKey,
   screenUrlStillFresh,
 } from "./computer-screen";
 
@@ -136,5 +137,22 @@ describe("screenUrlStillFresh", () => {
   it("refreshes anything that is not a capability link", () => {
     expect(screenUrlStillFresh(null, now)).toBe(false);
     expect(screenUrlStillFresh("desktop://screen", now)).toBe(false);
+  });
+});
+
+describe("screenLinkKey", () => {
+  const live = { state: "running", controlHolder: "none", screenAvailable: true } as const;
+
+  it("ignores the reconnect hop and bot control each run makes", () => {
+    const key = screenLinkKey(live);
+    expect(screenLinkKey({ ...live, state: "booting" })).toBe(key);
+    expect(screenLinkKey({ ...live, controlHolder: "bot" })).toBe(key);
+  });
+
+  it("changes when the screen goes away or the person takes control", () => {
+    const key = screenLinkKey(live);
+    expect(screenLinkKey({ ...live, screenAvailable: false })).not.toBe(key);
+    expect(screenLinkKey({ ...live, state: "suspended" })).not.toBe(key);
+    expect(screenLinkKey({ ...live, controlHolder: "user" })).not.toBe(key);
   });
 });
