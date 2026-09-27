@@ -43,7 +43,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     )
   ) : mode === "up" ? (
     muse ? (
-      <Trans>Let's meet your Muse.</Trans>
+      <Trans>Let's meet Aiden.</Trans>
     ) : (
       <Trans>Create your Rakazo</Trans>
     )

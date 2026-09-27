@@ -4,6 +4,7 @@ import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
   DEFAULT_MUSE_COLOR,
+  DEFAULT_MUSE_NAME,
   type IntegrationSetupState,
   MAX_MODEL_CONTEXT_WINDOW,
   MAX_MODEL_MAX_TOKENS,
@@ -143,7 +144,7 @@ export function OnboardingPage() {
   );
   const [isMuse, setIsMuse] = useState(false);
   const [personName, setPersonName] = useState("");
-  const [museName, setMuseName] = useState("");
+  const [museName, setMuseName] = useState(DEFAULT_MUSE_NAME);
   const [museColor, setMuseColor] = useState(DEFAULT_MUSE_COLOR);
   const [integrationSetup, setIntegrationSetup] = useState<IntegrationSetupState | null>(null);
   const needsIntegrationSetup = integrationSetup?.needsSetup ?? false;
@@ -425,7 +426,9 @@ export function OnboardingPage() {
     setError(null);
     try {
       const bot = await ensureFirstBot(
-        isMuse ? { name: museName.trim() || t`Muse`, color: museColor } : { name: FIRST_BOT_NAME },
+        isMuse
+          ? { name: museName.trim() || DEFAULT_MUSE_NAME, color: museColor }
+          : { name: FIRST_BOT_NAME },
       );
       for (const serverId of integrationServers) {
         await rpc.mcp.assignments.approve({ botId: bot.id, serverId });
@@ -524,7 +527,7 @@ export function OnboardingPage() {
                 if (e.key === "Enter") saveMuseName();
               }}
               aria-label={t`Muse name`}
-              placeholder={t`e.g. Nova`}
+              placeholder={DEFAULT_MUSE_NAME}
               autoFocus
               maxLength={BOT_NAME_MAX_LENGTH}
             />

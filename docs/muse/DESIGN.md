@@ -2,9 +2,13 @@
 
 The Muse edition should feel calm, personal, and quietly capable: ChatGPT's restraint, Wispr Flow's warmth and spacing, and the richness of the Aiden concept's cards (a deck preview, "finished while you were away", "one yes before I send this"). Light-first, with a matching dark theme. Everything here applies only in Muse mode (`[data-product="muse"]`); upstream Rakazo keeps its look.
 
+## The Muse
+
+The Muse is **Aiden**, an original vinyl-toy lion (rounded-square head, layered swept mane, big glossy eyes, smiling muzzle), drawn in `packages/ui-web/src/bot-avatar.tsx`. The mane takes the identity color. Aiden breathes and blinks when idle, sways while working, hops with an Ask badge when waiting, and roars (mouth open, mane puff, gentle shake, a short synthesized growl) when clicked. It is our own character, not a bank's logo.
+
 ## Foundations
 
-**Color.** Semantic tokens only (`@rakazo/ui-tokens`: `museLightTokens`, `museDarkTokens`). White surfaces, hairline borders, ink primary. The app stays monochrome: the Muse's identity color (sky `#0090FF` by default) is the only brand color and appears only on the Muse face. Status colors are semantic: `warning` = waiting on you, `success` = done or live, `destructive` = failed. Never hardcode a hex in a component.
+**Color.** Semantic tokens only (`@rakazo/ui-tokens`: `museLightTokens`, `museDarkTokens`). White surfaces, hairline borders, ink primary. The app stays monochrome: the Muse's identity color (warm orange `#EE8A2A` by default) is the only brand color and appears only on the Muse face. Status colors are semantic: `warning` = waiting on you, `success` = done or live, `destructive` = failed. Never hardcode a hex in a component.
 
 **Type.**
 - Geist (body, UI): 14–15px body, 13px secondary, 12px meta.

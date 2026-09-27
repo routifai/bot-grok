@@ -19,9 +19,9 @@ export function MuseWelcome() {
       <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
         <div className="flex w-full max-w-[680px] flex-col items-center text-center">
           <div className="relative mb-8">
-            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={96} />
+            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="aiden" face="muse" size={96} />
             <span className="absolute -top-3 start-[88px] whitespace-nowrap rounded-2xl rounded-bl-md border border-border bg-card px-3 py-1.5 text-[13px] text-foreground shadow-float">
-              <Trans>Hi, I'm your Muse.</Trans>
+              <Trans>Hi, I'm Aiden.</Trans>
             </span>
           </div>
 
@@ -32,20 +32,24 @@ export function MuseWelcome() {
           </h1>
           <p className="mt-5 max-w-[520px] text-[17px] leading-[1.55] text-muted-foreground text-balance">
             <Trans>
-              I plan your week, research what matters, draft the emails and follow up, so the
-              everyday gets done, and done well.
+              I prep your meetings, pull the numbers, draft the client emails and follow up, so your
+              everyday work gets done, and done well.
             </Trans>
           </p>
 
           <div className="mt-10 grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
-            <ExampleCard eyebrow={<Trans>Plans</Trans>} tilt="-rotate-1" delay="0s">
-              <Trans>Moved your 1:1 so you can make the 6 pm run.</Trans>
+            <ExampleCard eyebrow={<Trans>Prepares</Trans>} tilt="-rotate-1" delay="0s">
+              <Trans>
+                Your briefing for Thursday's credit committee is ready, risks on page 2.
+              </Trans>
             </ExampleCard>
             <ExampleCard eyebrow={<Trans>Watches</Trans>} tilt="rotate-1" delay="0.6s">
-              <Trans>The Lisbon fare dropped to $684. Want me to book it?</Trans>
+              <Trans>USD/CAD moved past 1.38. Want me to refresh the client note?</Trans>
             </ExampleCard>
             <ExampleCard eyebrow={<Trans>Drafts</Trans>} tilt="-rotate-[0.5deg]" delay="1.2s">
-              <Trans>Thursday's update for Dana is ready for your yes.</Trans>
+              <Trans>
+                The quarterly review email for your client is drafted and ready for your yes.
+              </Trans>
             </ExampleCard>
           </div>
 
@@ -54,7 +58,7 @@ export function MuseWelcome() {
             onClick={() => navigate("/sign-up")}
             className="app-no-drag mt-11 inline-flex items-center gap-2 rounded-full bg-primary px-7 py-3.5 text-[16px] font-medium text-primary-foreground transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none motion-reduce:hover:scale-100"
           >
-            <Trans>Meet your Muse</Trans>
+            <Trans>Meet Aiden</Trans>
             <ArrowRight size={17} strokeWidth={2} aria-hidden="true" />
           </button>
           <Link

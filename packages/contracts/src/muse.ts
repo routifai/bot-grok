@@ -160,8 +160,11 @@ export const DEFAULT_MUSE_SETTINGS: MuseSettings = {
   quietHours: "22:00-08:00",
 };
 
-/** Default identity color of a new Muse (sky). */
-export const DEFAULT_MUSE_COLOR = "#0090FF";
+/** Default identity color of a new Muse: warm orange, the color of Aiden's mane. */
+export const DEFAULT_MUSE_COLOR = "#EE8A2A";
+
+/** Default name of a new Muse. */
+export const DEFAULT_MUSE_NAME = "Aiden";
 
 /** What the Muse's face shows: resting, working, or waiting on the person. */
 export const MuseStateSchema = z.enum(["idle", "working", "waiting"]);

@@ -65,7 +65,7 @@ Migrations go in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql
 | Push when an Ask opens | `notifications.registerPush`, VAPID web push | — | trigger on new Ask |
 | Library | `apps/web/src/pages/Artifacts.tsx`, `artifacts.*` RPCs | — | include Goal-log artifacts |
 | Feed / Ideas | — | feed + ideas behaviour in `openmuse/server/service.py` (`feed_posts`, ideas) | `Post`, `FollowedTopic`, `Idea` + daily jobs |
-| Avatar with states | `packages/ui-web/src/bot-avatar.tsx` (`BotAvatar`, `data-working`), avatar studio (color picker only) | idle / working / waiting state idea (`web/src/components/Avatar.tsx`) | Muse face (`docs/muse/muse-face.svg`) replacing the Grok mascot shapes in muse mode + `waiting` state |
+| Avatar with states | `packages/ui-web/src/bot-avatar.tsx` (`BotAvatar`, `data-working`), avatar studio (color picker only) | idle / working / waiting state idea (`web/src/components/Avatar.tsx`) | Muse face (Aiden the lion, see DESIGN.md) replacing the Grok mascot shapes in muse mode + `waiting` state |
 | Onboarding | `apps/web/src/pages/Onboarding.tsx`, `apps/api/src/onboarding.ts` | first-run order (your name → Muse name → face → model) | name + face step, first-Goal handoff |
 
 ## Work packages
@@ -181,7 +181,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 6 — Face and first run
 
 **F8 · Muse face** — depends on B1
-- Add the Muse face to `packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn from `docs/muse/muse-face.svg` (soft round body in the identity color, eyes, cheeks, smile, spark on top). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@rakazo/ui-tokens`; no new hex in components except the identity color default `#0090FF` defined once.
+- Add the Muse face to `packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn as Aiden, an original vinyl-toy lion (see DESIGN.md "The Muse"). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@rakazo/ui-tokens`; no new hex in components except the identity color default (`DEFAULT_MUSE_COLOR`) defined once.
 
 **F9 · Onboarding** — depends on F8, B4
 - Extend `pages/Onboarding.tsx` (and `apps/api/src/onboarding.ts` if the server drives steps): your name → Muse name → color of the Muse face (sky default) → model → land in the Conversation, where the Muse's first message asks for the first Goal. When the person answers, the Muse calls `goals.create`, which posts the first plan as a Proposal (B4).
