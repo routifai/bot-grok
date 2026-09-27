@@ -2,12 +2,28 @@
 // run executor: which builtin tools a run gets, workspace checkpoint debouncing,
 // and wrapping a computer/browser tool result with screen-availability retries.
 
+import type { ProductMode } from "@rakazo/contracts";
+import { isMuseMode } from "@rakazo/core";
 import { builtinAgentTools } from "../builtin-tools.js";
 import { selectCloudAgentTools } from "../cloud-agent-tools-select.js";
 import { withComputerScreenAvailability } from "../computer-screens.js";
 import { selectMemoryTools } from "../memory-tools.js";
 import { filterImageReturningComputerTools } from "../model-vision.js";
 import { filterBuiltinToolsForRun, filterBuiltinToolsForThread } from "../schedule-tools.js";
+
+/**
+ * ADR 0001: in muse mode there is exactly one Muse per person, so peer-bot
+ * creation and management tools are locked out of the runtime's tool list.
+ * `run_subagent` (a Helper, not a bot) stays available.
+ */
+export const MUSE_LOCKED_TOOL_NAMES = new Set([
+  "spawn_bot",
+  "update_bot",
+  "archive_bot",
+  "message_bot",
+  "handoff_to_bot",
+  "create_space",
+]);
 
 export function createRunWorkspaceCheckpoint(checkpoint: () => Promise<unknown>) {
   let dirty = false;
@@ -53,6 +69,8 @@ export function selectBuiltinToolsForRun(options: {
   semanticMemoryEnabled: boolean;
   cloudAgentEnabled?: boolean;
   messagingChannelRun: boolean;
+  /** Defaults to upstream Rakazo (peer-bot tools stay available) when absent. */
+  productMode?: ProductMode;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -69,14 +87,19 @@ export function selectBuiltinToolsForRun(options: {
       options.semanticMemoryEnabled,
     ),
     Boolean(options.cloudAgentEnabled),
-  ).filter(
-    (tool) =>
-      !options.messagingChannelRun ||
-      (!["remember", "save_memory", "recall_memory", "forget_memory", "task_catalog"].includes(
-        tool.name,
-      ) &&
-        !tool.name.startsWith("scratchpad_")),
-  );
+  )
+    .filter(
+      (tool) =>
+        !options.messagingChannelRun ||
+        (!["remember", "save_memory", "recall_memory", "forget_memory", "task_catalog"].includes(
+          tool.name,
+        ) &&
+          !tool.name.startsWith("scratchpad_")),
+    )
+    .filter(
+      (tool) =>
+        !isMuseMode(options.productMode ?? "rakazo") || !MUSE_LOCKED_TOOL_NAMES.has(tool.name),
+    );
 }
 
 export const PAGE_BROWSER_TOOL_NAMES = new Set([

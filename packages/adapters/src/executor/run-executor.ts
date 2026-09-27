@@ -1118,6 +1118,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             semanticMemoryEnabled,
             cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
             messagingChannelRun,
+            productMode: deps.productMode,
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -3325,6 +3326,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 agentSkillsLine,
                 taughtSkillsLine,
                 replyGuidance: runReplyGuidance(run.trigger),
+                museMode: isMuseMode(deps.productMode ?? "rakazo"),
               })
                 .filter((instruction): instruction is string => Boolean(instruction))
                 .join("\n\n"),

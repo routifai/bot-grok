@@ -54,6 +54,6 @@ export interface ExecutorDeps {
   autoReview?: AutoReviewProvider;
   /** Aborted when createApp stop() begins so in-flight continueRun boot waits exit promptly. */
   shutdownSignal?: AbortSignal;
-  /** `RAKAZO_PRODUCT_MODE`; undefined/"rakazo" keeps every Muse-only behaviour off. */
+  /** `RAKAZO_PRODUCT_MODE` (ADR 0002): undefined/"rakazo" keeps every Muse-only behaviour off. */
   productMode?: ProductMode;
 }

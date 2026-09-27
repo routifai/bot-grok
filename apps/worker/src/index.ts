@@ -161,10 +161,12 @@ async function main() {
     });
   // One provider instance so emulator launches and polls share the same Map.
   const cloudAgent = createCloudAgentConnection();
+  const productMode = resolveProductMode(process.env);
   const executor = createRunExecutor({
     prisma,
     runtime,
     sandbox,
+    productMode,
     memory: new MarkdownMemoryStore(prisma),
     memoryProviders,
     home,
