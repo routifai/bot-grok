@@ -179,6 +179,7 @@ import {
   revokePendingAttachmentPreviews,
 } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
+import { applyProductMode } from "../lib/product-mode";
 import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
@@ -699,6 +700,7 @@ export function ShellPage() {
   // One Muse per person (docs/adr/0001-one-muse-per-person.md): with no bot list to
   // switch between, `active` already resolves to the person's one live bot.
   const museMode = bootstrapMe?.productMode === "muse";
+  useEffect(() => applyProductMode(bootstrapMe?.productMode), [bootstrapMe?.productMode]);
   const { view: museView, setView: setMuseView } = useMuseNav();
   const [waitingOpen, setWaitingOpen] = useState(false);
   const computerBot =

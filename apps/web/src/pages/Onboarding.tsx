@@ -32,6 +32,7 @@ import { useNavigate } from "react-router-dom";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
 import { authClient } from "../lib/auth";
 import type { ModelCatalogEntry } from "../lib/model-auth";
+import { applyProductMode } from "../lib/product-mode";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
 
@@ -184,6 +185,7 @@ export function OnboardingPage() {
           : integrations?.needsSetup
             ? "integrations"
             : "bot";
+        applyProductMode(me.productMode);
         if (me.productMode === "muse") {
           setIsMuse(true);
           setPersonName(me.name ?? "");
