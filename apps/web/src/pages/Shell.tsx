@@ -3471,7 +3471,9 @@ export function ShellPage() {
           )
         ) : (
           <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
-            <div className={museMode && active ? "flex min-w-0 flex-1 flex-col" : "contents"}>
+            <div
+              className={museMode && active ? "relative flex min-w-0 flex-1 flex-col" : "contents"}
+            >
               {museMode && active ? (
                 <ConversationHeader
                   botId={active.id}
@@ -3491,7 +3493,7 @@ export function ShellPage() {
                         }
                         aria-pressed={!contextPanelCollapsed}
                         onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                        className="hidden h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground xl:grid"
+                        className="hidden size-9 items-center justify-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground xl:grid"
                       >
                         {contextPanelCollapsed ? (
                           <PanelRightOpen size={17} strokeWidth={1.75} />
@@ -3512,7 +3514,7 @@ export function ShellPage() {
                           }
                         }}
                         data-active={panel === "computer" ? "" : undefined}
-                        className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                        className="grid size-9 place-items-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                       >
                         <Monitor size={17} strokeWidth={1.75} />
                       </button>
@@ -5081,6 +5083,8 @@ const Transcript = memo(function Transcript({
             event.currentTarget.scrollTop,
           );
           lastScrollTop.current = event.currentTarget.scrollTop;
+          // Muse fades the transcript under the top edge once it has scrolled (styles.css).
+          event.currentTarget.dataset.scrolled = String(event.currentTarget.scrollTop > 4);
           const nearEnd = transcriptIsNearEnd(event.currentTarget);
           setAtEnd(nearEnd);
           // A jump scroll owns the viewport until its animation settles; its
@@ -5096,10 +5100,11 @@ const Transcript = memo(function Transcript({
             following.current = false;
           }
         }}
+        data-fade-top=""
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
           museMode &&
-            "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden [overflow-wrap:anywhere] md:py-10",
+            "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden pt-16 [overflow-wrap:anywhere] md:pt-20 md:pb-10",
         )}
       >
         {olderCursor != null ? (

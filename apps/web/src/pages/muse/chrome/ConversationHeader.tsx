@@ -1,13 +1,13 @@
 import type { ThreadMessage } from "@aiden/contracts";
-import { Trans } from "@lingui/react/macro";
 import type { ReactNode } from "react";
 import { MuseLiveStatus } from "./MuseLiveStatus";
 import type { MuseLiveRun } from "./useMuseLiveState";
 
 /**
- * The Conversation header (docs/muse/DESIGN.md "Conversation" / "Status"): a plain
- * title, the live Muse indicator next to it, and whatever quiet header controls the
- * shell still needs (the computer toggle). Idle shows no indicator at all.
+ * The Conversation's floating chrome (docs/muse/DESIGN.md "Conversation" / "Status"): no
+ * title bar and no border. It floats over the transcript, which fades out beneath it.
+ * The live Muse indicator sits in the center (nothing while idle), and quiet round
+ * controls (the context panel, the computer) sit on the right.
  */
 export function ConversationHeader({
   botId,
@@ -25,11 +25,8 @@ export function ConversationHeader({
   onOpenWaiting?: () => void;
 }) {
   return (
-    <div className="app-drag flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 md:px-6">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="truncate text-[15.5px] font-semibold text-foreground">
-          <Trans>Conversation</Trans>
-        </span>
+    <div className="app-drag pointer-events-none absolute inset-x-0 top-0 z-10 flex h-16 items-center justify-center px-4 md:px-6">
+      <div className="app-no-drag pointer-events-auto">
         <MuseLiveStatus
           botId={botId}
           color={color}
@@ -39,7 +36,9 @@ export function ConversationHeader({
         />
       </div>
       {actions ? (
-        <div className="app-no-drag flex shrink-0 items-center gap-1">{actions}</div>
+        <div className="app-no-drag pointer-events-auto absolute inset-y-0 end-4 flex items-center gap-1.5 md:end-6">
+          {actions}
+        </div>
       ) : null}
     </div>
   );
