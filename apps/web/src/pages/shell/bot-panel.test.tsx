@@ -20,11 +20,6 @@ vi.mock("@lingui/core/macro", () => ({ t: (parts: TemplateStringsArray) => parts
 vi.mock("./avatar-studio-popover", () => ({ AvatarStudioPopover: () => <div /> }));
 vi.mock("../ScratchpadSection", () => ({ ScratchpadSection: () => <div /> }));
 vi.mock("../KnowledgeSection", () => ({ KnowledgeSection: () => <div /> }));
-vi.mock("../muse/ProactivitySettings", () => ({
-  ProactivitySettings: ({ botId }: { botId: string }) => (
-    <div data-testid="proactivity-settings-stub">{botId}</div>
-  ),
-}));
 vi.mock("@aiden/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
@@ -102,7 +97,7 @@ function render() {
   return { container, root };
 }
 
-it("mounts the proactivity control in muse mode", async () => {
+it("never renders a proactivity control (it now lives in Settings > Aiden)", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.me.mockResolvedValue(me("muse"));
   const { container, root } = render();
@@ -120,33 +115,7 @@ it("mounts the proactivity control in muse mode", async () => {
       ),
     );
     await act(async () => undefined);
-    expect(container.querySelector('[data-testid="proactivity-settings-stub"]')).not.toBeNull();
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-    vi.unstubAllGlobals();
-  }
-});
-
-it("hides the proactivity control outside muse mode", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.me.mockResolvedValue(me("aiden"));
-  const { container, root } = render();
-  try {
-    await act(async () =>
-      root.render(
-        <BotSettings
-          bot={bot()}
-          memoryProviderConfigured={false}
-          onSkillsChange={() => undefined}
-          onSave={async () => undefined}
-          onExport={async () => undefined}
-          onClear={() => undefined}
-        />,
-      ),
-    );
-    await act(async () => undefined);
-    expect(container.querySelector('[data-testid="proactivity-settings-stub"]')).toBeNull();
+    expect(container.querySelector('[data-testid="proactivity-settings"]')).toBeNull();
   } finally {
     await act(async () => root.unmount());
     container.remove();

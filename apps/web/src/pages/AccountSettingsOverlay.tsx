@@ -37,6 +37,10 @@ export type SettingsGeneralProps = {
   messagingEnabled?: boolean;
   onOpenMessaging?: () => void;
   isDeploymentOwner?: boolean;
+  /** Muse mode (docs/muse/DESIGN.md): rounds cards to the Muse's hairline-card tone,
+   * and hides Avatars (the Muse always wears its face) and Messaging (built around
+   * linking a channel to one of several bots, which a one-Muse product doesn't have). */
+  museMode?: boolean;
 };
 
 export function GeneralSettingsPanels({
@@ -47,6 +51,7 @@ export function GeneralSettingsPanels({
   messagingEnabled = false,
   onOpenMessaging,
   isDeploymentOwner = false,
+  museMode = false,
 }: SettingsGeneralProps) {
   const { t } = useLingui();
   const [locale, setLocale] = useState<UiLocale>(() => getActiveUiLocale());
@@ -60,6 +65,11 @@ export function GeneralSettingsPanels({
   const streamRepliesId = useId();
   const [avatarPending, setAvatarPending] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  // Muse cards use the same 16px-radius, filled hairline-card tone as the rest of the
+  // Muse screens (docs/muse/DESIGN.md); upstream keeps its existing look untouched.
+  const cardClass = museMode
+    ? "rounded-2xl border border-border bg-card px-4 py-4"
+    : "rounded-xl border border-border px-4 py-4";
 
   function chooseLocale(next: UiLocale) {
     if (next === locale) return;
@@ -86,7 +96,7 @@ export function GeneralSettingsPanels({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-border px-4 py-4">
+      <section className={cardClass}>
         <h3 className="text-[15px] font-medium text-foreground">
           <Trans>Account</Trans>
         </h3>
@@ -94,10 +104,12 @@ export function GeneralSettingsPanels({
         {email ? <p className="mt-1 text-[13px] text-muted-foreground/70">{email}</p> : null}
       </section>
 
-      <ChangePasswordSection email={email} />
+      <ChangePasswordSection email={email} museMode={museMode} />
 
-      {messagingEnabled && onOpenMessaging ? (
-        <section className="rounded-xl border border-border px-4 py-4">
+      {/* Messaging links an external channel to one bot from a roster; the Muse has no
+          roster, so this doesn't apply in muse mode (docs/adr/0001-one-muse-per-person.md). */}
+      {messagingEnabled && onOpenMessaging && !museMode ? (
+        <section className={cardClass}>
           <h3 className="text-[15px] font-medium text-foreground">
             <Trans>Messaging</Trans>
           </h3>
@@ -110,7 +122,7 @@ export function GeneralSettingsPanels({
         </section>
       ) : null}
 
-      <section className="rounded-xl border border-border px-4 py-4">
+      <section className={cardClass}>
         <h3 className="text-[15px] font-medium text-foreground">
           <Trans>Appearance</Trans>
         </h3>
@@ -123,47 +135,48 @@ export function GeneralSettingsPanels({
         />
       </section>
 
-      <section className="rounded-xl border border-border px-4 py-4">
+      <section className={cardClass}>
         <h3 className="text-[15px] font-medium text-foreground">
           <Trans>Language</Trans>
         </h3>
         <UiLocalePicker value={locale} onChange={chooseLocale} />
       </section>
 
-      <section
-        className="rounded-xl border border-border px-4 py-4"
-        data-testid="avatar-style-select"
-      >
-        <h3 className="text-[15px] font-medium text-foreground">
-          <Trans>Avatars</Trans>
-        </h3>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {(["robot", "organic"] as const).map((style) => (
-            <Toggle
-              key={style}
-              variant="outline"
-              pressed={style === avatarStyle}
-              disabled={avatarPending}
-              onPressedChange={() => void chooseAvatarStyle(style)}
-              data-testid={`avatar-style-${style}`}
-              className="h-auto justify-start gap-3 px-3.5 py-3 text-[14px] font-normal"
-            >
-              <BotAvatar
-                color="#D9508A"
-                identity="avatar-style-preview"
-                size={32}
-                variant={style}
-              />
-              <span>{style === "robot" ? <Trans>Robot</Trans> : <Trans>Organic</Trans>}</span>
-            </Toggle>
-          ))}
-        </div>
-        {avatarError ? (
-          <p role="alert" className="mt-3 text-[12.5px] text-destructive">
-            {avatarError}
-          </p>
-        ) : null}
-      </section>
+      {/* The Muse always wears its own face; its color is set from Settings > Aiden,
+          which reuses this same avatar studio (docs/muse/DESIGN.md). */}
+      {!museMode ? (
+        <section className={cardClass} data-testid="avatar-style-select">
+          <h3 className="text-[15px] font-medium text-foreground">
+            <Trans>Avatars</Trans>
+          </h3>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {(["robot", "organic"] as const).map((style) => (
+              <Toggle
+                key={style}
+                variant="outline"
+                pressed={style === avatarStyle}
+                disabled={avatarPending}
+                onPressedChange={() => void chooseAvatarStyle(style)}
+                data-testid={`avatar-style-${style}`}
+                className="h-auto justify-start gap-3 px-3.5 py-3 text-[14px] font-normal"
+              >
+                <BotAvatar
+                  color="#D9508A"
+                  identity="avatar-style-preview"
+                  size={32}
+                  variant={style}
+                />
+                <span>{style === "robot" ? <Trans>Robot</Trans> : <Trans>Organic</Trans>}</span>
+              </Toggle>
+            ))}
+          </div>
+          {avatarError ? (
+            <p role="alert" className="mt-3 text-[12.5px] text-destructive">
+              {avatarError}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {isDeploymentOwner ? (
         <Button variant="outline" render={<Link to="/integrations/setup" />}>
@@ -171,7 +184,10 @@ export function GeneralSettingsPanels({
         </Button>
       ) : null}
 
-      <details data-testid="advanced-settings" className="group rounded-xl border border-border">
+      <details
+        data-testid="advanced-settings"
+        className={`group border-border ${museMode ? "rounded-2xl border" : "rounded-xl border"}`}
+      >
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 text-[14px] text-foreground/75">
           <span>
             <span className="block text-[15px] text-foreground">
@@ -266,7 +282,13 @@ export function UpdatesSettingsPanel({
   );
 }
 
-function ChangePasswordSection({ email }: { email?: string | null }) {
+function ChangePasswordSection({
+  email,
+  museMode = false,
+}: {
+  email?: string | null;
+  museMode?: boolean;
+}) {
   const { t } = useLingui();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -306,7 +328,13 @@ function ChangePasswordSection({ email }: { email?: string | null }) {
   }
 
   return (
-    <section className="rounded-xl border border-border px-4 py-4">
+    <section
+      className={
+        museMode
+          ? "rounded-2xl border border-border bg-card px-4 py-4"
+          : "rounded-xl border border-border px-4 py-4"
+      }
+    >
       <h3 className="text-[15px] font-medium text-foreground">
         <Trans>Password</Trans>
       </h3>

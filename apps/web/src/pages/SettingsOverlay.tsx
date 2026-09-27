@@ -1,7 +1,17 @@
-import type { AvatarStyle, SpaceMemoryConfig } from "@aiden/contracts";
+import type { AvatarStyle, Bot, SpaceMemoryConfig } from "@aiden/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import { Brain, CloudDownload, Cpu, Gauge, Monitor, Settings, Volume2, XIcon } from "lucide-react";
+import {
+  Brain,
+  CloudDownload,
+  Cpu,
+  Gauge,
+  Monitor,
+  Settings,
+  Sparkles,
+  Volume2,
+  XIcon,
+} from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
 import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
 import {
@@ -12,9 +22,11 @@ import {
 } from "./AccountSettingsOverlay";
 import { MemorySettingsOverlay } from "./MemorySettingsOverlay";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
+import { AidenSettingsPanel } from "./muse/AidenSettingsPanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
 export type SettingsSection =
+  | "aiden"
   | "general"
   | "models"
   | "memory"
@@ -44,6 +56,9 @@ export function SettingsOverlay({
   onMemoryConfigChange,
   onClose,
   onVoiceStatusMaybeChanged,
+  museMode = false,
+  museBot,
+  onMuseBotSave,
 }: {
   email?: string | null;
   name: string;
@@ -59,6 +74,11 @@ export function SettingsOverlay({
   onMemoryConfigChange: (config: SpaceMemoryConfig | null) => void;
   onClose: () => void;
   onVoiceStatusMaybeChanged?: () => void | Promise<void>;
+  /** In Muse mode: gates Avatars/Updates off and adds the Aiden section (docs/muse/DESIGN.md). */
+  museMode?: boolean;
+  /** The person's one Muse bot; required to render the Aiden section. */
+  museBot?: Bot | null;
+  onMuseBotSave?: (patch: { name?: string; color?: string }) => Promise<void>;
 }) {
   const { t } = useLingui();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -79,14 +99,23 @@ export function SettingsOverlay({
     }
   }, [section]);
 
+  // The self-updater tracks the upstream repository; this fork never offers to update
+  // from it, so "Updates" isn't a section a Muse person can land on.
+  useEffect(() => {
+    if (museMode && section === "updates") setSection("general");
+  }, [museMode, section]);
+
   const navItems: NavItem[] = [
+    ...(museMode
+      ? [{ id: "aiden" as const, label: museBot?.name || t`Aiden`, icon: Sparkles }]
+      : []),
     { id: "general", label: t`General`, icon: Settings },
     { id: "models", label: t`Models`, icon: Cpu },
     { id: "memory", label: t`Memory`, icon: Brain },
     { id: "voice", label: t`Voice`, icon: Volume2 },
     { id: "usage", label: t`Usage`, icon: Gauge },
     ...(showComputer ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
-    { id: "updates", label: t`Updates`, icon: CloudDownload },
+    ...(museMode ? [] : [{ id: "updates" as const, label: t`Updates`, icon: CloudDownload }]),
   ];
 
   const sectionTitle =
@@ -175,7 +204,9 @@ export function SettingsOverlay({
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="flex items-start justify-between gap-4 px-6 pt-6 sm:px-8 sm:pt-7">
-              <DialogTitle className="text-2xl font-medium text-foreground">
+              <DialogTitle
+                className={`text-2xl font-medium text-foreground ${museMode ? "font-display" : ""}`}
+              >
                 {sectionTitle}
               </DialogTitle>
               <DialogClose
@@ -194,6 +225,9 @@ export function SettingsOverlay({
                   : "rk-scroll overflow-y-auto overscroll-contain px-6 pb-6 pt-5 sm:px-8 sm:pb-8"
               }`}
             >
+              {section === "aiden" && museMode && museBot && onMuseBotSave ? (
+                <AidenSettingsPanel bot={museBot} onSave={onMuseBotSave} />
+              ) : null}
               {section === "general" ? (
                 <GeneralSettingsPanels
                   email={email}
@@ -205,13 +239,14 @@ export function SettingsOverlay({
                     onOpenMessaging ? () => leaveSettings(onOpenMessaging) : undefined
                   }
                   isDeploymentOwner={isDeploymentOwner}
+                  museMode={museMode}
                 />
               ) : null}
               {section === "usage" ? (
                 <UsageSettingsPanel usage={usage} panelRef={usageRef} />
               ) : null}
               {section === "computer" && showComputer ? <ComputerSettingsPanel /> : null}
-              {section === "updates" ? (
+              {section === "updates" && !museMode ? (
                 <UpdatesSettingsPanel isDeploymentOwner={isDeploymentOwner} />
               ) : null}
               {section === "models" ? (
