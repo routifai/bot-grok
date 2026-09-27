@@ -1,10 +1,13 @@
 import {
+  goalAdvanceJob,
+  goalCheckinJob,
   type JobPublisher,
   messagingDeliverJob,
   routineWakeupJob,
   runContinueJob,
 } from "@aiden/adapter-kit";
 import type { MessageBlock } from "@aiden/contracts";
+import { nextCronDateAcross } from "@aiden/core";
 import type { Pool, PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import type { PoolClient } from "pg";
@@ -16,6 +19,9 @@ const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 100;
 const ROUTINE_LOOKAHEAD_MS = 60_000;
 const CONTROL_LOOKAHEAD_MS = 60_000;
+// Muse edition only (docs/muse/PLAN.md B8): same lookahead as Routines above, applied to
+// Goal.nextWorkAt.
+const GOAL_ADVANCE_LOOKAHEAD_MS = ROUTINE_LOOKAHEAD_MS;
 // Two keys give Aiden's lock a namespace without relying on a hash that might collide
 // with an application using the one-key advisory-lock API.
 const RECONCILIATION_LOCK_NAMESPACE = 1_380_019_075;
@@ -117,6 +123,14 @@ export function createJobReconciler(
   let routineCursor: Cursor | undefined;
   let controlCursor: ControlCursor | undefined;
   let controlScanDeadline: Date | undefined;
+  // Muse edition only (docs/muse/PLAN.md B8): every active Goal always has a pending
+  // goal.advance (cursor on nextWorkAt, mirroring routineCursor) and, if it has any check-in
+  // crons, a pending goal.checkin (cursor on createdAt — there is no persisted "next
+  // check-in" column; scheduleGoalCheckin's replaceKey makes re-enqueuing the freshly
+  // recomputed next occurrence every tick idempotent, exactly like routineCursor's re-enqueue
+  // of routineWakeupJob above).
+  let goalAdvanceCursor: Cursor | undefined;
+  let goalCheckinCursor: Cursor | undefined;
 
   const reconcileOnce = async () => {
     if (reconciling) return reconciling;
@@ -165,7 +179,31 @@ export function createJobReconciler(
             }
           : { controlLeaseExpiresAt: null, id: { gt: controlCursor.id } }
         : undefined;
-      const [runs, routines, controls, dueOutbound, unmirroredMessagingRuns] = await Promise.all([
+      const goalAdvanceCursorFilter = goalAdvanceCursor
+        ? {
+            OR: [
+              { nextWorkAt: { gt: goalAdvanceCursor.at } },
+              { nextWorkAt: goalAdvanceCursor.at, id: { gt: goalAdvanceCursor.id } },
+            ],
+          }
+        : undefined;
+      const goalCheckinCursorFilter = goalCheckinCursor
+        ? {
+            OR: [
+              { createdAt: { gt: goalCheckinCursor.at } },
+              { createdAt: goalCheckinCursor.at, id: { gt: goalCheckinCursor.id } },
+            ],
+          }
+        : undefined;
+      const [
+        runs,
+        routines,
+        controls,
+        dueOutbound,
+        unmirroredMessagingRuns,
+        goalsNeedingAdvance,
+        goalsNeedingCheckin,
+      ] = await Promise.all([
         deps.prisma.run.findMany({
           where: {
             AND: [
@@ -237,6 +275,33 @@ export function createJobReconciler(
           orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
           take: batchSize,
           select: { id: true },
+        }),
+        // Muse edition only (docs/muse/PLAN.md B8): active Goals whose next advance is due
+        // soon. Harmless (and not queried) in aiden mode, where no Goal rows ever exist.
+        deps.prisma.goal.findMany({
+          where: {
+            AND: [
+              {
+                status: "active",
+                nextWorkAt: { lte: new Date(now.getTime() + GOAL_ADVANCE_LOOKAHEAD_MS) },
+              },
+              ...(goalAdvanceCursorFilter ? [goalAdvanceCursorFilter] : []),
+            ],
+          },
+          orderBy: [{ nextWorkAt: "asc" }, { id: "asc" }],
+          take: batchSize,
+          select: { id: true, botId: true, nextWorkAt: true },
+        }),
+        deps.prisma.goal.findMany({
+          where: {
+            AND: [
+              { status: "active", checkInCrons: { isEmpty: false } },
+              ...(goalCheckinCursorFilter ? [goalCheckinCursorFilter] : []),
+            ],
+          },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: batchSize,
+          select: { id: true, botId: true, checkInCrons: true, timezone: true, createdAt: true },
         }),
       ]);
 
@@ -321,6 +386,15 @@ export function createJobReconciler(
         ),
         ...(dueOutbound ? [deps.jobs.enqueue(messagingDeliverJob())] : []),
         ...unmirroredMessagingRuns.map((run) => deps.jobs.enqueue(messagingDeliverJob(run.id))),
+        ...goalsNeedingAdvance.flatMap((goal) =>
+          goal.nextWorkAt
+            ? [deps.jobs.enqueue(goalAdvanceJob(goal.id, goal.botId, goal.nextWorkAt))]
+            : [],
+        ),
+        ...goalsNeedingCheckin.flatMap((goal) => {
+          const next = nextCronDateAcross(goal.checkInCrons, now, goal.timezone);
+          return next ? [deps.jobs.enqueue(goalCheckinJob(goal.id, goal.botId, next))] : [];
+        }),
       ]);
 
       const lastRun = runs.at(-1);
@@ -339,6 +413,16 @@ export function createJobReconciler(
           ? { at: lastControl.controlLeaseExpiresAt, id: lastControl.id }
           : undefined;
       if (!controlCursor) controlScanDeadline = undefined;
+      const lastGoalAdvance = goalsNeedingAdvance.at(-1);
+      goalAdvanceCursor =
+        goalsNeedingAdvance.length === batchSize && lastGoalAdvance?.nextWorkAt
+          ? { at: lastGoalAdvance.nextWorkAt, id: lastGoalAdvance.id }
+          : undefined;
+      const lastGoalCheckin = goalsNeedingCheckin.at(-1);
+      goalCheckinCursor =
+        goalsNeedingCheckin.length === batchSize && lastGoalCheckin
+          ? { at: lastGoalCheckin.createdAt, id: lastGoalCheckin.id }
+          : undefined;
     })().finally(() => {
       reconciling = undefined;
     });

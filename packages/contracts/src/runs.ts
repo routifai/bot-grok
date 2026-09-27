@@ -22,6 +22,8 @@ export const RunActivityRowSchema = z.object({
     "messaging",
     "cloud_agent",
     "created",
+    /** Muse edition only (docs/muse/PLAN.md B8): background work in a Goal's log thread. */
+    "goal_advance",
   ]),
   notificationsEnabled: z.boolean(),
   promptSnippet: z.string(),

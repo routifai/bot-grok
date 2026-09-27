@@ -6,10 +6,46 @@
 // `Profile.quiet_hours_end` becomes `quietHoursEnd`. Unlike OpenMuse (server local time),
 // the quiet-hours window here is evaluated in the person's own IANA time zone.
 
-import type { MuseSettings, Proactivity } from "@aiden/contracts";
+import {
+  DEFAULT_MUSE_SETTINGS,
+  type MuseSettings,
+  PROACTIVITY_LEVELS,
+  type Proactivity,
+} from "@aiden/contracts";
 
 /** Local-time window with no background work, "HH:MM-HH:MM"; may wrap midnight. */
 type QuietHours = string;
+
+/** The Bot columns `MuseSettings` is stored in (apps/api/src/muse-settings.ts, B7). */
+export interface MuseSettingsRow {
+  museProactivity: string | null;
+  museQuietHours: string | null;
+}
+
+/**
+ * `MuseSettingsRow` -> `MuseSettings`, applying the stored defaults: `museProactivity` NULL
+ * means `DEFAULT_MUSE_SETTINGS.proactivity`; `museQuietHours` NULL means
+ * `DEFAULT_MUSE_SETTINGS.quietHours`, while `""` is the explicit "quiet hours off" (`null`
+ * in the contract) so it round-trips distinctly from "never set". Shared by
+ * apps/api/src/muse-settings.ts (muse.settings RPCs) and the Goal job handlers
+ * (packages/adapters/src/muse/goal-jobs.ts, B8) so both read a Bot row the same way.
+ */
+export function resolveMuseSettings(row: MuseSettingsRow): MuseSettings {
+  const proactivity = isProactivity(row.museProactivity)
+    ? row.museProactivity
+    : DEFAULT_MUSE_SETTINGS.proactivity;
+  const quietHours =
+    row.museQuietHours === null
+      ? DEFAULT_MUSE_SETTINGS.quietHours
+      : row.museQuietHours === ""
+        ? null
+        : row.museQuietHours;
+  return { proactivity, quietHours };
+}
+
+function isProactivity(value: string | null): value is Proactivity {
+  return value !== null && (PROACTIVITY_LEVELS as readonly string[]).includes(value);
+}
 
 const HOUR_MS = 60 * 60_000;
 
