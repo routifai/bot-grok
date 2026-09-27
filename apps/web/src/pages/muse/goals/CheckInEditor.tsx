@@ -38,17 +38,13 @@ export function CheckInEditor({
   }
 
   return (
-    <div>
-      <div className="flex items-baseline gap-2 text-sm text-muted-foreground">
-        <Trans>Check-in</Trans>
-        <span className="text-xs text-muted-foreground/70">{timezone}</span>
-      </div>
+    <div className="flex flex-col gap-2.5">
       {schedules.length === 0 ? (
-        <p className="mt-2 text-[13px] text-muted-foreground/80">
+        <p className="text-[13.5px] text-muted-foreground">
           <Trans>None</Trans>
         </p>
       ) : (
-        <div className="mt-2 space-y-2">
+        <div className="flex flex-col gap-2">
           {schedules.map((preset, index) => (
             <div key={index} className="relative">
               <RoutineSchedule
@@ -68,16 +64,20 @@ export function CheckInEditor({
           ))}
         </div>
       )}
-      <Button
-        variant="outline"
-        className="mt-2 h-auto w-full rounded-xl py-2.5"
-        onClick={() => update([...schedules, defaultCronPreset()])}
-      >
-        <Plus />
-        <Trans>Add check-in</Trans>
-      </Button>
+      <div className="flex items-center justify-between gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => update([...schedules, defaultCronPreset()])}
+        >
+          <Plus />
+          <Trans>Add check-in</Trans>
+        </Button>
+        <span className="text-[12px] text-muted-foreground/70">{timezone}</span>
+      </div>
       {dirty ? (
-        <div className="mt-2 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <Button size="sm" disabled={saving} onClick={() => void save()}>
             {saving ? <Trans>Saving…</Trans> : <Trans>Save</Trans>}
           </Button>

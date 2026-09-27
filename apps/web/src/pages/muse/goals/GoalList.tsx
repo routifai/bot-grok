@@ -1,6 +1,86 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { Goal } from "@rakazo/contracts";
-import { formatDueDate, nextUnfinishedTask } from "./format";
+import { Skeleton } from "@rakazo/ui-web";
+import { EmptyState, MuseColumn, Progress, ScreenHeader, Section, Surface } from "../ui";
+import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
+import { GoalStatusPill } from "./GoalStatusPill";
+
+function GoalCard({ goal, onSelect }: { goal: Goal; onSelect: (goalId: string) => void }) {
+  const { t, i18n } = useLingui();
+  const next = nextUnfinishedTask(goal);
+  const { done, total } = taskCounts(goal);
+  const due = dueMeta(goal.due, i18n.locale);
+
+  return (
+    <Surface
+      interactive
+      role="button"
+      tabIndex={0}
+      data-testid="goal-row"
+      aria-label={goal.title}
+      onClick={() => onSelect(goal.id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(goal.id);
+        }
+      }}
+      className="flex flex-col gap-2.5 p-4 outline-none"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="min-w-0 truncate text-[15.5px] font-semibold text-foreground" dir="auto">
+          {goal.title}
+        </h3>
+        <GoalStatusPill goal={goal} className="shrink-0" />
+      </div>
+      {next ? (
+        <p className="truncate text-[13.5px] text-muted-foreground" dir="auto">
+          <Trans>Next: {next.title}</Trans>
+        </p>
+      ) : null}
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <Progress
+            value={total > 0 ? done / total : 0}
+            label={t`${done} of ${total} Tasks done`}
+          />
+        </div>
+        <span className="shrink-0 text-[12px] text-muted-foreground">{t`${done} of ${total}`}</span>
+      </div>
+      {due ? (
+        <p className="text-[12.5px] text-muted-foreground">
+          {due.kind === "absolute" ? (
+            <Trans>Due {due.date}</Trans>
+          ) : (
+            <Trans>in {due.weeks} weeks</Trans>
+          )}
+        </p>
+      ) : null}
+    </Surface>
+  );
+}
+
+/** Loading placeholder for the Goals list: a few skeleton cards under the real header. */
+export function GoalListSkeleton() {
+  return (
+    <MuseColumn>
+      <ScreenHeader title={<Trans>Goals</Trans>} />
+      <div className="flex flex-col gap-3">
+        {[0, 1, 2].map((key) => (
+          <Surface key={key} className="flex flex-col gap-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-5 w-24 rounded-full" />
+            </div>
+            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="h-1 w-full rounded-full" />
+            <Skeleton className="h-3 w-1/5" />
+          </Surface>
+        ))}
+      </div>
+    </MuseColumn>
+  );
+}
 
 export function GoalList({
   goals,
@@ -9,55 +89,42 @@ export function GoalList({
   goals: Goal[];
   onSelect: (goalId: string) => void;
 }) {
-  const { t, i18n } = useLingui();
+  const { t } = useLingui();
 
   if (goals.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center p-8 text-center text-[14.5px] text-muted-foreground">
-        <Trans>Tell your Muse what you'd like to achieve — it becomes a Goal.</Trans>
-      </div>
+      <MuseColumn>
+        <ScreenHeader title={<Trans>Goals</Trans>} />
+        <EmptyState lead={t`What do you want to achieve?`}>
+          <Trans>Tell your Muse, and it becomes a Goal.</Trans>
+        </EmptyState>
+      </MuseColumn>
     );
   }
 
+  const active = goals.filter((goal) => goal.status !== "paused");
+  const paused = goals.filter((goal) => goal.status === "paused");
+  const { active: activeCount, waiting } = goalsSummary(goals);
+  const subtitle =
+    waiting > 0 ? t`${activeCount} active · ${waiting} waiting on you` : t`${activeCount} active`;
+
   return (
-    <div className="p-4" data-testid="goals-list">
-      <h1 className="mb-3 text-[15.5px] font-medium text-foreground">
-        <Trans>Goals</Trans>
-      </h1>
-      <div className="space-y-1">
-        {goals.map((goal) => {
-          const next = nextUnfinishedTask(goal);
-          const due = formatDueDate(goal.due, i18n.locale);
-          return (
-            <button
-              key={goal.id}
-              type="button"
-              data-testid="goal-row"
-              onClick={() => onSelect(goal.id)}
-              className="flex w-full flex-col gap-0.5 rounded-xl px-3 py-2.5 text-start hover:bg-accent"
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className="min-w-0 flex-1 truncate text-[14.5px] font-medium text-foreground"
-                  dir="auto"
-                >
-                  {goal.title}
-                </span>
-                {goal.openProposal ? (
-                  <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
-                    <span aria-hidden className="size-1.5 rounded-full bg-foreground/60" />
-                    <span className="sr-only">{t`Proposal waiting`}</span>
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2 text-[12.5px] text-muted-foreground/80">
-                {next ? <span className="min-w-0 truncate">{next.title}</span> : null}
-                {due ? <span className="shrink-0">{due}</span> : null}
-              </div>
-            </button>
-          );
-        })}
+    <MuseColumn data-testid="goals-list">
+      <ScreenHeader title={<Trans>Goals</Trans>} subtitle={subtitle} />
+      <div className="flex flex-col gap-3">
+        {active.map((goal) => (
+          <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />
+        ))}
       </div>
-    </div>
+      {paused.length > 0 ? (
+        <Section title={<Trans>Paused</Trans>} className="mt-10">
+          <div className="flex flex-col gap-3">
+            {paused.map((goal) => (
+              <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />
+            ))}
+          </div>
+        </Section>
+      ) : null}
+    </MuseColumn>
   );
 }

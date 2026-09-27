@@ -51,10 +51,12 @@ vi.mock("@rakazo/ui-web", () => {
     Input: (props: ComponentProps<"input">) => <input {...props} />,
     NativeSelect: (props: ComponentProps<"select">) => <select {...props} />,
     NativeSelectOption: (props: ComponentProps<"option">) => <option {...props} />,
+    Skeleton: (props: ComponentProps<"div">) => <div {...props} />,
     Tabs: Container,
     TabsList: Container,
     TabsTrigger: Container,
     TabsContent: Container,
+    cn: (...inputs: unknown[]) => inputs.filter(Boolean).join(" "),
   };
 });
 

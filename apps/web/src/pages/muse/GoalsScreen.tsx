@@ -1,9 +1,10 @@
-import { Trans, useLingui } from "@lingui/react/macro";
+import { useLingui } from "@lingui/react/macro";
 import type { Goal } from "@rakazo/contracts";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { GoalDetail } from "./goals/GoalDetail";
-import { GoalList } from "./goals/GoalList";
+import { GoalList, GoalListSkeleton } from "./goals/GoalList";
+import { MuseColumn, MuseScreen } from "./ui";
 
 /**
  * The Goals screen: a list of active and paused Goals, and a detail view (plan, open
@@ -50,28 +51,26 @@ export function GoalsScreen({ botId }: { botId: string }) {
     });
   }
 
-  if (error) {
-    return <p className="p-4 text-[13.5px] text-destructive">{error}</p>;
-  }
-  if (goals === null) {
-    return (
-      <p className="p-4 text-[13.5px] text-muted-foreground">
-        <Trans>Loading…</Trans>
-      </p>
-    );
-  }
+  const selectedGoal = goals?.find((goal) => goal.id === selectedGoalId) ?? null;
 
-  const selectedGoal = goals.find((goal) => goal.id === selectedGoalId) ?? null;
-  if (selectedGoal) {
-    return (
-      <GoalDetail
-        key={selectedGoal.id}
-        goal={selectedGoal}
-        onBack={() => setSelectedGoalId(null)}
-        onChanged={handleChanged}
-      />
-    );
-  }
-
-  return <GoalList goals={goals} onSelect={setSelectedGoalId} />;
+  return (
+    <MuseScreen>
+      {error ? (
+        <MuseColumn>
+          <p className="pt-12 text-[13.5px] text-destructive">{error}</p>
+        </MuseColumn>
+      ) : goals === null ? (
+        <GoalListSkeleton />
+      ) : selectedGoal ? (
+        <GoalDetail
+          key={selectedGoal.id}
+          goal={selectedGoal}
+          onBack={() => setSelectedGoalId(null)}
+          onChanged={handleChanged}
+        />
+      ) : (
+        <GoalList goals={goals} onSelect={setSelectedGoalId} />
+      )}
+    </MuseScreen>
+  );
 }
