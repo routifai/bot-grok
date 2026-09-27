@@ -3416,7 +3416,7 @@ export function ShellPage() {
         inert={mobileSidebarOpen}
         className={
           museMode
-            ? "my-2 me-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-border bg-background"
+            ? "relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden border-s border-border bg-background shadow-[-8px_0_24px_-20px_rgb(0_0_0/0.25)] transition-[box-shadow] duration-200"
             : "flex min-w-0 flex-1 flex-col bg-background"
         }
       >
@@ -3703,7 +3703,7 @@ export function ShellPage() {
           panel && (active || activeGroup || panel === "create")
             ? museMode
               ? // Muse: an inset panel like <main>; the computer gets room for a real preview.
-                `w-full md:my-2 md:me-2 md:rounded-[14px] md:border md:border-border ${
+                `w-full md:border-s md:border-border ${
                   panel === "computer"
                     ? "max-w-[520px] md:w-[520px] md:max-w-none"
                     : "max-w-[400px] md:w-[400px] md:max-w-none"
