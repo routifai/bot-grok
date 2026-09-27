@@ -19,6 +19,7 @@ import { createModelProbe, GROK_BOT_COLORS, initialModelProbeState } from "@raka
 import {
   BotAvatar,
   Button,
+  cn,
   Input,
   ModelThinkingOptions,
   Select,
@@ -42,6 +43,27 @@ const FIRST_BOT_SPAWN_KEY = "onboarding:first";
 const FIRST_BOT_LOCK = "rakazo:onboarding-first-bot";
 /** A small set of colors for the Muse's identity, sky first (the default). */
 const MUSE_COLOR_OPTIONS = [...new Set([DEFAULT_MUSE_COLOR, ...GROK_BOT_COLORS])].slice(0, 6);
+
+/** The Muse identity/model steps that show progress dots; "intro" and "bot" don't. */
+const MUSE_ONBOARDING_STEPS = ["name", "museName", "color", "model"] as const;
+
+/** Progress dots for the Muse onboarding steps (docs/muse/DESIGN.md "Onboarding"). */
+function StepDots({ step }: { step: (typeof MUSE_ONBOARDING_STEPS)[number] }) {
+  const index = MUSE_ONBOARDING_STEPS.indexOf(step);
+  return (
+    <div className="mt-8 flex justify-center gap-1.5" aria-hidden="true">
+      {MUSE_ONBOARDING_STEPS.map((candidate, i) => (
+        <span
+          key={candidate}
+          className={cn(
+            "h-1.5 w-1.5 rounded-full transition-colors",
+            i <= index ? "bg-foreground" : "bg-border",
+          )}
+        />
+      ))}
+    </div>
+  );
+}
 
 /** Survives StrictMode remounts; concurrent first-bot creates share one in-flight attempt. */
 let firstBotEnsure: Promise<{ id: string }> | null = null;
@@ -113,7 +135,7 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const fieldId = useId();
   const [step, setStep] = useState<
-    "loading" | "name" | "museName" | "color" | "model" | "integrations" | "bot"
+    "loading" | "intro" | "name" | "museName" | "color" | "model" | "integrations" | "bot"
   >("loading");
   /** Muse mode only: what to show once the name → Muse name → color steps are done. */
   const [postIdentityStep, setPostIdentityStep] = useState<"model" | "integrations" | "bot">(
@@ -190,7 +212,7 @@ export function OnboardingPage() {
           setIsMuse(true);
           setPersonName(me.name ?? "");
           setPostIdentityStep(entryStep);
-          setStep("name");
+          setStep("intro");
         } else {
           setStep(entryStep);
         }
@@ -430,20 +452,42 @@ export function OnboardingPage() {
   }, [step]);
 
   return (
-    <div className="min-h-full bg-background px-6 py-12">
-      <div className="mx-auto w-full max-w-[560px]">
+    <div
+      className={cn(
+        "min-h-full bg-background px-6",
+        isMuse ? "flex min-h-screen items-center justify-center py-16" : "py-12",
+      )}
+    >
+      <div className={cn("mx-auto w-full", isMuse ? "max-w-[440px]" : "max-w-[560px]")}>
         {step === "loading" ? (
           <p className="text-muted-foreground">
             <Trans>Loading…</Trans>
           </p>
         ) : null}
+        {step === "intro" ? (
+          <div className="flex flex-col items-center text-center">
+            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse-intro" face="muse" size={96} />
+            <h1 className="mt-7 font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>Hi, I'm your new executive assistant.</Trans>
+            </h1>
+            <p className="mt-3 text-[15px] text-muted-foreground">
+              <Trans>
+                I'll plan, research, draft and follow up — so your everyday things get done, and
+                done well.
+              </Trans>
+            </p>
+            <Button className="mt-8 h-12 w-full text-[15px]" onClick={() => setStep("name")}>
+              <Trans>Let's get started</Trans>
+            </Button>
+          </div>
+        ) : null}
         {step === "name" ? (
           <div>
-            <h1 className="text-[32px] font-medium text-foreground">
-              <Trans>What should I call you?</Trans>
+            <h1 className="font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>First, what should I call you?</Trans>
             </h1>
             <Input
-              className="mt-8"
+              className="mt-8 h-14 rounded-xl text-[16px]"
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
               onKeyDown={(e) => {
@@ -455,20 +499,25 @@ export function OnboardingPage() {
               maxLength={120}
             />
             {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-            <div className="mt-6 flex gap-3">
-              <Button disabled={!personName.trim()} onClick={() => void saveName()}>
+            <div className="mt-6">
+              <Button
+                className="h-12 w-full text-[15px]"
+                disabled={!personName.trim()}
+                onClick={() => void saveName()}
+              >
                 <Trans>Continue</Trans>
               </Button>
             </div>
+            <StepDots step="name" />
           </div>
         ) : null}
         {step === "museName" ? (
           <div>
-            <h1 className="text-[32px] font-medium text-foreground">
-              <Trans>Name your Muse</Trans>
+            <h1 className="font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>And what would you like to call me?</Trans>
             </h1>
             <Input
-              className="mt-8"
+              className="mt-8 h-14 rounded-xl text-[16px]"
               value={museName}
               onChange={(e) => setMuseName(e.target.value)}
               onKeyDown={(e) => {
@@ -480,20 +529,25 @@ export function OnboardingPage() {
               maxLength={BOT_NAME_MAX_LENGTH}
             />
             {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-            <div className="mt-6 flex gap-3">
-              <Button disabled={!museName.trim()} onClick={saveMuseName}>
+            <div className="mt-6">
+              <Button
+                className="h-12 w-full text-[15px]"
+                disabled={!museName.trim()}
+                onClick={saveMuseName}
+              >
                 <Trans>Continue</Trans>
               </Button>
             </div>
+            <StepDots step="museName" />
           </div>
         ) : null}
         {step === "color" ? (
           <div>
-            <h1 className="text-[32px] font-medium text-foreground">
-              <Trans>Pick a color</Trans>
+            <h1 className="text-center font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+              <Trans>Pick my color.</Trans>
             </h1>
             <div className="mt-8 flex justify-center">
-              <BotAvatar color={museColor} identity={museName} face="muse" size={72} />
+              <BotAvatar color={museColor} identity={museName} face="muse" size={96} />
             </div>
             <div className="mt-8 grid grid-cols-6 place-items-center gap-2">
               {MUSE_COLOR_OPTIONS.map((color) => {
@@ -515,18 +569,24 @@ export function OnboardingPage() {
                 );
               })}
             </div>
-            <div className="mt-6 flex gap-3">
-              <Button onClick={saveMuseColor}>
+            <div className="mt-6">
+              <Button className="h-12 w-full text-[15px]" onClick={saveMuseColor}>
                 <Trans>Continue</Trans>
               </Button>
             </div>
+            <StepDots step="color" />
           </div>
         ) : null}
         {step === "model" ? (
           <div>
             <h1 className="text-[32px] font-medium text-foreground">
-              <Trans>Connect a model</Trans>
+              {isMuse ? (
+                <Trans>Last thing — connect the brain I'll think with.</Trans>
+              ) : (
+                <Trans>Connect a model</Trans>
+              )}
             </h1>
+            {isMuse ? <StepDots step="model" /> : null}
             <div className="mt-8 block text-sm font-medium text-foreground">
               <span>
                 <Trans>Provider</Trans>
