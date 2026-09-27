@@ -8,7 +8,7 @@ import { expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({
   feed: { list: vi.fn() },
   asks: { list: vi.fn(), answer: vi.fn() },
-  topics: { list: vi.fn(), remove: vi.fn() },
+  topics: { list: vi.fn(), remove: vi.fn(), follow: vi.fn() },
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: api }));
 vi.mock("../../lib/relative-time", () => ({ formatRelativeTime: () => "2h ago" }));
@@ -209,27 +209,36 @@ it("removing a topic calls topics.remove", async () => {
   }
 });
 
-it("shows the caught-up empty state and its suggestion chips start a Conversation", async () => {
+it("on an empty Feed, a suggested topic is followed in one tap", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
   api.topics.list.mockResolvedValue([]);
-  const onSendIdea = vi.fn();
-  const page = await renderFeed(onSendIdea);
+  api.topics.follow.mockResolvedValue({
+    id: "topic-9",
+    topic: "AI in banking",
+    createdAt: new Date().toISOString(),
+  });
+  const page = await renderFeed(vi.fn());
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("You're all caught up");
+        expect(page.container.textContent).toContain("Topics I follow for you");
       });
     });
     const button = [...page.container.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent === "Follow fintech regulation news",
+      (candidate) => candidate.textContent === "AI in banking",
     );
     expect(button).toBeTruthy();
     await act(async () => {
       button?.click();
     });
-    expect(onSendIdea).toHaveBeenCalledWith("Follow fintech regulation news");
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("Checked daily");
+      });
+    });
+    expect(api.topics.follow).toHaveBeenCalledWith({ botId: "bot-1", topic: "AI in banking" });
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

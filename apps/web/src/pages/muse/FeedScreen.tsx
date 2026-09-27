@@ -1,16 +1,15 @@
 import type { Ask, FollowedTopic } from "@aiden/contracts";
-import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR, DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { useAsks } from "./asks";
 import { CardSkeletonList } from "./feed/CardSkeleton";
 import { FeedAsks } from "./feed/FeedAsks";
+import { FeedPreview } from "./feed/FeedPreview";
 import { PostList } from "./feed/PostList";
-import { TopicsRow } from "./feed/TopicsRow";
-import { EmptyState, MuseColumn, MuseScreen, ScreenHeader } from "./ui";
-
-const FEED_SUGGESTIONS = ["Follow fintech regulation news", "Follow AI in banking"];
+import { TopicsCard } from "./feed/TopicsCard";
+import { MuseColumn, MuseScreen } from "./ui";
 
 // The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
 // Waiting-on-you sheet), then Posts grouped Today / Earlier, then Followed topics as a
@@ -21,7 +20,7 @@ export function FeedScreen(props: {
   avatarColor?: string;
   onSendIdea?: (text: string) => void;
 }) {
-  const { botId, avatarColor, onSendIdea } = props;
+  const { botId, botName = DEFAULT_MUSE_NAME, avatarColor = DEFAULT_MUSE_COLOR } = props;
   const { t } = useLingui();
 
   const { asks, answer } = useAsks(botId);
@@ -85,6 +84,11 @@ export function FeedScreen(props: {
     await answer({ askId: ask.id, runId: ask.runId, answer: value });
   }
 
+  async function handleFollowTopic(topic: string) {
+    const followed = await rpc.topics.follow({ botId, topic });
+    setTopics((current) => [...(current ?? []), followed]);
+  }
+
   async function handleRemoveTopic(topic: FollowedTopic) {
     await rpc.topics.remove({ topicId: topic.id });
     setTopics((current) => current?.filter((candidate) => candidate.id !== topic.id) ?? current);
@@ -92,23 +96,43 @@ export function FeedScreen(props: {
 
   const empty = posts !== null && posts.length === 0 && asks.length === 0;
 
+  const topicsSection = (
+    <section>
+      <h2 className="px-1 pb-2.5 text-[15px] font-medium text-muted-foreground">
+        <Trans>Topics I follow for you</Trans>
+      </h2>
+      <TopicsCard topics={topics ?? []} onFollow={handleFollowTopic} onRemove={handleRemoveTopic} />
+    </section>
+  );
+
   return (
-    <MuseScreen header={<ScreenHeader title={t`Feed`} />}>
-      <MuseColumn className="flex min-h-full flex-col gap-8 pt-8">
+    <MuseScreen>
+      <MuseColumn className="flex min-h-full flex-col gap-10 pt-14 pb-16">
+        <header>
+          <h1 className="text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground">
+            <Trans>Feed</Trans>
+          </h1>
+          <p className="mt-2 max-w-[560px] text-[17px] leading-[1.45] tracking-[-0.01em] text-muted-foreground">
+            <Trans>
+              What I finished while you were away, and what's new on the topics you follow.
+            </Trans>
+          </p>
+        </header>
+
         {loadError ? <p className="text-[13.5px] text-destructive">{loadError}</p> : null}
 
         {posts === null && !loadError ? (
           <CardSkeletonList />
         ) : empty ? (
-          <EmptyState
-            avatarColor={avatarColor}
-            illustration="newspaper"
-            headline={t`You're all caught up`}
-            suggestions={FEED_SUGGESTIONS}
-            onSuggestion={onSendIdea}
-          >
-            <Trans>I'll bring new updates and finished work here.</Trans>
-          </EmptyState>
+          <>
+            {topicsSection}
+            <section>
+              <h2 className="px-1 pb-2.5 text-[15px] font-medium text-muted-foreground">
+                <Trans>A morning with me looks like this</Trans>
+              </h2>
+              <FeedPreview botName={botName} color={avatarColor} />
+            </section>
+          </>
         ) : (
           <>
             <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
@@ -121,14 +145,9 @@ export function FeedScreen(props: {
                 onLoadMore={() => void loadMorePosts()}
               />
             ) : null}
+            {topicsSection}
           </>
         )}
-
-        <TopicsRow
-          topics={topics ?? []}
-          onRemove={handleRemoveTopic}
-          onAddTopic={onSendIdea ? () => onSendIdea(t`Follow a topic for me`) : undefined}
-        />
       </MuseColumn>
     </MuseScreen>
   );
