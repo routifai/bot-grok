@@ -12,10 +12,9 @@ import { declaredVisionModelIds, inputModalities } from "./model-modalities.js";
  *
  * Pi's built-in catalog only ships hosted providers, so a model running on the
  * operator's own machine has no catalog entry to select. This registers one
- * from environment configuration. The server is keyless: `resolve` returns a
- * placeholder because OpenAI-compatible local servers ignore the header, but
- * Models treats a provider with no resolvable auth as unconfigured and hides
- * its models.
+ * from environment configuration. Servers that need a key (a LiteLLM proxy, for
+ * example) get `AIDEN_LOCAL_MODELS_API_KEY`; keyless ones get a placeholder, because
+ * Models treats a provider with no resolvable auth as unconfigured and hides its models.
  */
 export const LOCAL_PROVIDER_ID = "local";
 
@@ -92,13 +91,16 @@ export function localProvider(): Provider | undefined {
   if (!ids.length) return undefined;
   return createProvider({
     id: LOCAL_PROVIDER_ID,
-    name: "Local (Ollama / LM Studio)",
+    name: "Model server (OpenAI-compatible)",
     baseUrl: localBaseUrl(),
     auth: {
       apiKey: {
         name: "Local model server",
         resolve: async () => ({
-          auth: { apiKey: "local", baseUrl: localBaseUrl() },
+          auth: {
+            apiKey: process.env.AIDEN_LOCAL_MODELS_API_KEY?.trim() || "local",
+            baseUrl: localBaseUrl(),
+          },
           source: "local model server",
         }),
       },

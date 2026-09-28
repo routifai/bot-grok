@@ -47,35 +47,36 @@ When it finishes, open **http://127.0.0.1:5173**.
 The **first account you register becomes the deployment owner**. There's no separate admin
 setup step — just sign up like any other user.
 
-## Adding a model
+## Choosing the model
 
-If you skipped the model key during setup, connect one from the UI: during onboarding, or later
-under **Settings → Models**. Add a provider API key (OpenRouter, Anthropic, and others), or use
-ChatGPT Plus/Pro, GitHub Copilot, or SuperGrok / X Premium sign-in instead of a raw key. Bots
-cannot answer messages until a model is connected one way or the other.
+Set the model once in `.env`. Aiden then uses it for everyone, and nobody is asked to connect a
+model in the app. After editing `.env`, re-run `./scripts/setup.sh`.
 
-To instead configure a model for every account on this deployment, set `OPENROUTER_API_KEY` (or
-`ANTHROPIC_API_KEY`) in `.env` and re-run `./scripts/setup.sh` (or
-`docker compose -f infra/compose/docker-compose.yml up -d api worker` to restart just those two).
+**OpenRouter or Anthropic**
 
-## Use your own model server (LiteLLM, vLLM, Ollama, LM Studio)
+```bash
+PI_DEFAULT_PROVIDER=openrouter      # or anthropic
+OPENROUTER_API_KEY=sk-or-...        # or ANTHROPIC_API_KEY=sk-ant-...
+PI_DEFAULT_MODEL=                   # optional; blank uses Aiden's default for that provider
+```
 
-Aiden works with any OpenAI-compatible server.
+**Your own OpenAI-compatible server (LiteLLM, vLLM, Ollama, LM Studio)**
 
-1. Open **Settings → Models** and pick **OpenAI-compatible**.
-2. Paste the server address. Aiden adds `/v1` when it's missing.
-   - If the server runs on the same laptop, use `http://host.docker.internal:<port>`
-     (for LiteLLM usually `http://host.docker.internal:4000`). Inside the containers,
-     `localhost` is the container itself.
-   - A server elsewhere on your network: use its LAN address or hostname.
-3. Paste the server's API key (for LiteLLM, a virtual key or the master key) and pick
-   the models it exposes.
-4. So Aiden can see its computer's screen, list the models that accept images in `.env`
-   and restart:
+```bash
+PI_DEFAULT_PROVIDER=local
+AIDEN_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # LiteLLM on this machine
+AIDEN_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
+AIDEN_LOCAL_MODELS_API_KEY=sk-litellm-...                     # only if the server needs a key
+AIDEN_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
+```
 
-   ```bash
-   AIDEN_OPENAI_COMPATIBLE_VISION_MODELS=gpt-4o,claude-sonnet
-   ```
+- Inside Docker, `localhost` is the container itself, so a server on your laptop is
+  `host.docker.internal`. A server elsewhere on your network: use its LAN address or hostname.
+- List the image-capable models in `AIDEN_LOCAL_VISION_MODELS` so Aiden can see its computer's
+  screen.
+
+People can still connect their own model under **Settings → Models** if you leave all of this
+blank.
 
 ## What gets created
 

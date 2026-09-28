@@ -115,7 +115,7 @@ fi
 
 # --- 5. Model provider key (optional) --------------------------------------------------------
 
-if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" ]]; then
+if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" && -z "$(env_get AIDEN_LOCAL_MODELS)" ]]; then
   if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
     env_set OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
     log "Using OPENROUTER_API_KEY from the environment."
@@ -136,7 +136,7 @@ if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" ]]
       log "No deployment-wide model key set. Connect one per-account in the UI after sign-up."
     fi
   else
-    log "No deployment-wide model key set (non-interactive run). Connect one per-account in the UI after sign-up, or set OPENROUTER_API_KEY / ANTHROPIC_API_KEY before re-running."
+    log "No deployment-wide model key set (non-interactive run). Connect one per-account in the UI after sign-up, or set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / AIDEN_LOCAL_MODELS (see docs/SETUP.md) and re-run."
   fi
 else
   log "Model key already configured in .env."

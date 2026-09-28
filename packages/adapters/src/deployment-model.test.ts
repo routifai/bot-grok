@@ -20,4 +20,22 @@ describe("resolveDeploymentModel", () => {
       resolveDeploymentModel({ OPENROUTER_API_KEY: "or-key", PI_DEFAULT_PROVIDER: "anthropic" }),
     ).toEqual({ provider: "anthropic", model: "claude-sonnet-5", key: undefined });
   });
+
+  it("uses the operator's own OpenAI-compatible server when asked", () => {
+    const local = {
+      PI_DEFAULT_PROVIDER: "local",
+      AIDEN_LOCAL_MODELS: "gpt-4o, claude-sonnet",
+      AIDEN_LOCAL_MODELS_API_KEY: "sk-litellm",
+    };
+    expect(resolveDeploymentModel(local)).toEqual({
+      provider: "local",
+      model: "gpt-4o",
+      key: "sk-litellm",
+    });
+    // A keyless server still counts as configured, so nobody is asked to connect a model.
+    const { AIDEN_LOCAL_MODELS_API_KEY: _key, ...keyless } = local;
+    expect(resolveDeploymentModel(keyless).key).toBe("local");
+    // No model list means no local deployment model.
+    expect(resolveDeploymentModel({ PI_DEFAULT_PROVIDER: "local" }).key).toBeUndefined();
+  });
 });
