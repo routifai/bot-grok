@@ -202,3 +202,40 @@ export async function assertOpenedDirectoryBeneathRoot(
 ): Promise<void> {
   await assertFdBeneathRoot(handle, rootPath);
 }
+
+type SpawnAs = (
+  command: string,
+  args: string[],
+  options: { uid: number; gid: number; stdio: "ignore"; timeout: number },
+) => { status: number | null };
+
+/**
+ * macOS file sharing (Docker Desktop and colima) reports every shared file as owned by
+ * whoever is looking, so the supervisor (root) sees the home as root-owned even though the
+ * computer user can write it. Settle it by asking as that user: the home must look like its
+ * own, and a probe file must write and delete. A genuinely wrong-owned Linux home still fails.
+ */
+export function homeWritableAsUser(
+  root: string,
+  uid: number,
+  gid: number,
+  spawnAs: SpawnAs,
+): boolean {
+  const probe = [
+    `[ "$(stat -c %u "$1")" = "${uid}" ]`,
+    'p="$1/.aiden-write-probe-$$"',
+    ': > "$p"',
+    'rm -f "$p"',
+  ].join(" && ");
+  try {
+    const result = spawnAs("sh", ["-c", probe, "sh", root], {
+      uid,
+      gid,
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}

@@ -13,7 +13,11 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertComputerHomeWritable, assertOpenedDirectoryBeneathRoot } from "./home-ownership.js";
+import {
+  assertComputerHomeWritable,
+  assertOpenedDirectoryBeneathRoot,
+  homeWritableAsUser,
+} from "./home-ownership.js";
 
 const roots: string[] = [];
 const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
@@ -186,4 +190,28 @@ describe("computer home ownership", () => {
       }
     },
   );
+});
+
+describe("homeWritableAsUser", () => {
+  it("asks as the computer user whether the home is its own and writable", () => {
+    const calls: Array<{ args: string[]; uid: number; gid: number }> = [];
+    const ok = homeWritableAsUser("/data/homes/team-1", 1000, 1000, (_command, args, options) => {
+      calls.push({ args, uid: options.uid, gid: options.gid });
+      return { status: 0 };
+    });
+    expect(ok).toBe(true);
+    expect(calls[0]).toMatchObject({ uid: 1000, gid: 1000 });
+    expect(calls[0]?.args.at(-1)).toBe("/data/homes/team-1");
+    expect(calls[0]?.args[1]).toContain('= "1000"');
+  });
+
+  it("says no when the probe fails or cannot run", () => {
+    expect(homeWritableAsUser("/h", 1000, 1000, () => ({ status: 1 }))).toBe(false);
+    expect(homeWritableAsUser("/h", 1000, 1000, () => ({ status: null }))).toBe(false);
+    expect(
+      homeWritableAsUser("/h", 1000, 1000, () => {
+        throw new Error("EPERM");
+      }),
+    ).toBe(false);
+  });
 });

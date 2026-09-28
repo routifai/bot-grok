@@ -637,6 +637,8 @@ export function ShellPage() {
   // Screen-load failures can sit beside a still-valid embed URL; boot and
   // takeover failures must stay visible even when a URL remains.
   const [computerErrorFromScreen, setComputerErrorFromScreen] = useState(false);
+  // Consecutive failed screen loads; drives the automatic retry below.
+  const [screenFailures, setScreenFailures] = useState(0);
   useEffect(() => {
     if (!computerOpen) {
       setComputerViewport(null);
@@ -1061,6 +1063,21 @@ export function ShellPage() {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
+  // A screen that failed to load (often because the computer was still booting) retries on its
+  // own with backoff while the computer view is open, instead of waiting for Retry screen.
+  useEffect(() => {
+    if (screenFailures === 0 || screenFailures > 8) return;
+    const timer = window.setTimeout(
+      () => {
+        if (!computerVisible.current) return;
+        const id = computerBotIdRef.current ?? activeBotId.current;
+        if (id) void refreshScreenRef.current(id, { force: true }).catch(() => undefined);
+      },
+      Math.min(15_000, 2_000 * 2 ** (screenFailures - 1)),
+    );
+    return () => window.clearTimeout(timer);
+  }, [screenFailures]);
+
   async function refreshComputerScreen(id: string, options: { force?: boolean } = {}) {
     if (!computerVisible.current) return null;
     // Re-fetching mints a new capability link, which reloads the embedded desktop (a black
@@ -1081,6 +1098,7 @@ export function ShellPage() {
         setScreenUrl(screen.url);
         setComputerError(screen.error);
         setComputerErrorFromScreen(Boolean(screen.error));
+        setScreenFailures((count) => (screen.error ? count + 1 : 0));
         cacheComputerFor(id, { screenUrl: screen.url });
       },
       fallbackError: t`Could not connect to the computer screen`,

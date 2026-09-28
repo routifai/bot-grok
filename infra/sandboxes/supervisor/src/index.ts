@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
@@ -46,7 +47,7 @@ import {
   screenUrlWithToken,
   xdotoolCommand,
 } from "./computer-spec.js";
-import { assertComputerHomeWritable } from "./home-ownership.js";
+import { assertComputerHomeWritable, homeWritableAsUser } from "./home-ownership.js";
 import {
   assertRequestIdentity,
   attemptComputerControl,
@@ -232,7 +233,12 @@ app.post("/computers", async (c) => {
           runtimeInfo || hostUid === undefined || hostGid === undefined || hostUid === 0
             ? COMPUTER_GID
             : hostGid;
-        await assertComputerHomeWritable(serviceHomePath, effectiveUid, effectiveGid);
+        await assertComputerHomeWritable(serviceHomePath, effectiveUid, effectiveGid).catch(
+          (error: unknown) => {
+            if (homeWritableAsUser(serviceHomePath, effectiveUid, effectiveGid, spawnSync)) return;
+            throw error;
+          },
+        );
         const name = containerNameFor(body.botId);
         const createdNetwork =
           screenNetworkMode === "internal" ? undefined : await ensureBotNetwork(body.botId);
