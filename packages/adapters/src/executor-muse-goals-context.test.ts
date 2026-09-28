@@ -185,6 +185,7 @@ async function runFixture({
     scratchpadItem: { findMany: vi.fn(async () => []) },
     externalEffect: { findMany: vi.fn(async () => []) },
     artifact: { findMany: vi.fn(async () => []) },
+    episode: { findMany: vi.fn(async () => []) },
     goal: {
       findMany: vi.fn(async ({ where }: { where: { botId: string; status?: { in: string[] } } }) =>
         goals

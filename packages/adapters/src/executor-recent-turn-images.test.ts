@@ -128,6 +128,7 @@ async function runWithModel(modelId: string) {
     agentSkill: { findMany: vi.fn(async () => []) },
     scratchpadItem: { findMany: vi.fn(async () => []) },
     goal: { findMany: vi.fn(async () => []) },
+    episode: { findMany: vi.fn(async () => []) },
     externalEffect: { findMany: vi.fn(async () => []) },
     artifact: {
       findMany: vi.fn(async () => [

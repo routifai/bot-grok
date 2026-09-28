@@ -83,9 +83,14 @@ export function selectBuiltinToolsForRun(options: {
     .filter(
       (tool) =>
         !options.messagingChannelRun ||
-        (!["remember", "save_memory", "recall_memory", "forget_memory", "task_catalog"].includes(
-          tool.name,
-        ) &&
+        (![
+          "remember",
+          "save_memory",
+          "recall_memory",
+          "forget_memory",
+          "task_catalog",
+          "recall_episodes",
+        ].includes(tool.name) &&
           !tool.name.startsWith("scratchpad_")),
     )
     .filter((tool) => !MUSE_LOCKED_TOOL_NAMES.has(tool.name));

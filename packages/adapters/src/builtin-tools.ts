@@ -762,6 +762,23 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "recall_episodes",
+    description:
+      'Look up past tasks you did for this person (what they asked, what you found, links, when). Use it when they refer to earlier work: "last time", "remember when", "what did we find about…".',
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to search for, in a few words." },
+        limit: {
+          type: "number",
+          description: "Max episodes to return, 1-10. Defaults to 5.",
+        },
+      },
+      required: ["query"],
+    },
+    readOnly: true,
+  },
+  {
     name: "follow_topic",
     description:
       'Keep an eye on a subject and report new findings in the Feed (CONTEXT.md "Followed topic"). Use when the person asks you to follow, watch, or keep track of a topic in conversation, e.g. "follow AI in banking news". Researched daily; not for a one-off search.',

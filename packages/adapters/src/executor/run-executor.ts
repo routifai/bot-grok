@@ -49,8 +49,10 @@ import {
   nextFence,
   planActionGate,
   promptInvokesSkill,
+  rankEpisodes,
   redactSecrets,
   renderBotDirectory,
+  renderEpisodesContext,
   resolveActionApprovalDetail,
   type ToolCallStreak,
   toolRequiresApproval,
@@ -198,6 +200,7 @@ import {
   MODEL_CANNOT_SEE_MESSAGE,
   modelAcceptsImageInput,
 } from "../model-vision.js";
+import { recallEpisodesFromTool, recordEpisode } from "../muse/episodes.js";
 import {
   addTopicPostFromTool,
   followTopicFromTool,
@@ -353,6 +356,7 @@ const READ_ONLY_AGENT_TOOLS = new Set([
   "run_subagent",
   "task_catalog",
   "recall_memory",
+  "recall_episodes",
   "schedule_list",
   "scratchpad_list",
   "skill_read",
@@ -364,6 +368,39 @@ const READ_ONLY_AGENT_TOOLS = new Set([
 ]);
 
 const MAX_MODEL_FILE_BYTES = 250_000;
+
+/** Triggers whose finished turn is worth an episodic-memory record (docs/muse/PLAN.md). */
+const EPISODE_RECORDED_TRIGGERS = new Set([
+  "user",
+  "resume",
+  "follow_up",
+  "routine",
+  "goal_advance",
+  "skill",
+]);
+
+/** How many of the bot's most recent episodes `<past_episodes>` context is ranked over. */
+const EPISODES_CONTEXT_LOOKBACK = 300;
+const EPISODES_CONTEXT_LIMIT = 3;
+
+/**
+ * The bot's most relevant recent episodes for this turn's prompt, ranked and rendered as
+ * `<past_episodes>` context (packages/core/src/muse/episodes.ts). `undefined` when there's
+ * nothing relevant.
+ */
+async function loadEpisodesContext(
+  deps: Pick<ExecutorDeps, "prisma">,
+  input: { botId: string; query: string },
+): Promise<string | undefined> {
+  const episodes = await deps.prisma.episode.findMany({
+    where: { botId: input.botId },
+    orderBy: { createdAt: "desc" },
+    take: EPISODES_CONTEXT_LOOKBACK,
+    select: { title: true, summary: true, links: true, createdAt: true },
+  });
+  const ranked = rankEpisodes(input.query, episodes, { limit: EPISODES_CONTEXT_LIMIT });
+  return renderEpisodesContext(ranked);
+}
 
 const BUILTIN_AGENT_TOOL_NAMES = new Set(builtinAgentTools.map((tool) => tool.name));
 
@@ -928,6 +965,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           recalled,
           goalsContext,
           conversationSummaryRow,
+          episodesContext,
         ] = await Promise.all([
           discoveredPromise,
           loadCurrentTurnImages(deps, turnBlocks, context),
@@ -952,6 +990,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 select: { historyCompactionSummary: true },
               })
             : Promise.resolve(null),
+          !messagingChannelRun && run.trigger !== "created"
+            ? loadEpisodesContext(deps, { botId: bot.id, query: task.prompt })
+            : Promise.resolve(undefined),
         ]);
         const conversationSummaryContext = renderConversationSummaryContext(
           conversationSummaryRow?.historyCompactionSummary,
@@ -2400,6 +2441,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             return finish({ error: "action must be create, get, list, update_task, or propose." });
           }
+          if (name === "recall_episodes") {
+            return finish(
+              await recallEpisodesFromTool(
+                deps,
+                { botId: bot.id },
+                {
+                  query: args.query !== undefined ? String(args.query) : undefined,
+                  limit: typeof args.limit === "number" ? args.limit : undefined,
+                },
+              ),
+            );
+          }
           if (name === "follow_topic") {
             return finish(
               await followTopicFromTool(
@@ -3417,6 +3470,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 redactedGoalsContext: goalsContext
                   ? redactSecrets(goalsContext, runSecrets)
                   : undefined,
+                redactedEpisodesContext: episodesContext
+                  ? redactSecrets(episodesContext, runSecrets)
+                  : undefined,
                 redactedConversationSummaryContext: conversationSummaryContext
                   ? redactSecrets(conversationSummaryContext, runSecrets)
                   : undefined,
@@ -3970,6 +4026,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
               },
               { askedInText: replyAsksToSaveSkill(text), request: task.prompt },
             ).catch((error) => getLogger().error("skill offer follow-up", error));
+          }
+          if (EPISODE_RECORDED_TRIGGERS.has(run.trigger)) {
+            await recordEpisode(
+              deps,
+              {
+                id: runId,
+                spaceId: run.spaceId,
+                userId: run.userId,
+                botId: bot.id,
+                threadId: thread.id,
+                goalId: museGoalId,
+                trigger: run.trigger,
+              },
+              { request: task.prompt, reply: text },
+            ).catch((error) => getLogger().error("record episode", error));
           }
           if (completed.continuationRunId) {
             await deps.jobs

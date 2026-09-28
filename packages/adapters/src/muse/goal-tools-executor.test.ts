@@ -276,6 +276,7 @@ function fixture(runId = "run-1") {
     agentSecret: { findMany: vi.fn(async () => []) },
     agentSkill: { findMany: vi.fn(async () => []) },
     scratchpadItem: { findMany: vi.fn(async () => []) },
+    episode: { findMany: vi.fn(async () => []), upsert: vi.fn(async () => ({ id: "episode-1" })) },
     actionApprovalRule: { findMany: vi.fn(async () => []) },
     actionAutoReviewPreference: { findUnique: vi.fn(async () => ({ enabled: false })) },
     externalEffect,

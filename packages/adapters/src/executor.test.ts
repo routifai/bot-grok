@@ -952,6 +952,7 @@ describe("userTurnInstructions", () => {
     "You are the person's one Muse; there is no second bot to create. Use run_subagent for independent parallel work (Helpers); never create other bots.",
   ];
   const offerSkillLine = expect.stringContaining("offer_skill is the only way to offer a skill");
+  const episodesLine = expect.stringContaining("recall_episodes tool instead of guessing");
   const museGoalsLine = expect.stringContaining("Use the goals tool to create a Goal");
   const replyGuidance =
     "During long work, send a few short progress updates with message_user so the user can see what you are doing. Keep them brief and high-signal (a sentence or two, not a dump). Do not narrate every tool call. Thinking stays private. message_user is capped at 500 characters and will be silently cut off if you exceed it \u2014 never put your final answer, a report, or any long-form deliverable in it. Always put the complete final answer in your normal reply, never split across message_user calls, and never assume a message_user update already delivered your content.";
@@ -998,6 +999,7 @@ describe("userTurnInstructions", () => {
       "Agent environment",
       ...stableMiddle,
       offerSkillLine,
+      episodesLine,
       "Bot directory",
       museGoalsLine,
       "Connected plugins: none",
@@ -1028,6 +1030,7 @@ describe("userTurnInstructions", () => {
       "This entire computer workspace is your private home.",
       ...stableMiddle,
       offerSkillLine,
+      episodesLine,
       museGoalsLine,
       ...stableTail,
     ]);
@@ -1058,6 +1061,7 @@ describe("userTurnInstructions", () => {
       "This entire computer workspace is your private home.",
       ...stableMiddle,
       offerSkillLine,
+      episodesLine,
       museGoalsLine,
       ...stableTail,
     ]);
@@ -1874,6 +1878,7 @@ description: Prepare standup notes
       agentSkill: { findMany: vi.fn(async () => []) },
       scratchpadItem: { findMany: vi.fn(async () => []) },
       goal: { findMany: vi.fn(async () => []) },
+      episode: { findMany: vi.fn(async () => []) },
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,
