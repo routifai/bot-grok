@@ -3778,7 +3778,9 @@ export function ShellPage() {
               <ContextPanel
                 botId={active.id}
                 avatarColor={active.color}
-                collapsed={contextPanelCollapsed}
+                // The computer (or settings) side panel takes that column; two side panels
+                // would crush the conversation.
+                collapsed={contextPanelCollapsed || panel !== null}
                 onNavigate={setMuseView}
                 onOpenWaiting={() => setWaitingOpen(true)}
               />

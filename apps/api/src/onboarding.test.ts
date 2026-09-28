@@ -1,11 +1,6 @@
 import type * as db from "@aiden/db";
 import { describe, expect, it, vi } from "vitest";
-import {
-  chooseFocus,
-  MUSE_FIRST_GOAL_PROMPT,
-  markAppConnected,
-  promptFocus,
-} from "./onboarding.js";
+import { chooseFocus, markAppConnected, promptFocus } from "./onboarding.js";
 
 const posted = vi.hoisted(() => [] as Array<{ blocks: unknown[] }>);
 vi.mock("@aiden/db", async (original) => ({
@@ -128,22 +123,8 @@ describe("promptFocus product-mode branch", () => {
     ]);
   });
 
-  it("posts the first-Goal question instead of a focus card when productMode is muse", async () => {
+  it("posts nothing in muse mode: the web app's first-run welcome introduces the Muse", async () => {
     const { deps, actor } = promptFixture("muse");
-    await promptFocus(deps, actor, "bot");
-    expect(posted).toEqual([
-      expect.objectContaining({
-        blocks: [{ kind: "text", text: MUSE_FIRST_GOAL_PROMPT }],
-      }),
-    ]);
-    expect(posted.flatMap((message) => message.blocks)).not.toContainEqual(
-      expect.objectContaining({ kind: "choice" }),
-    );
-  });
-
-  it("does not double-post the first-Goal question when the thread already has a message", async () => {
-    const { deps, actor, tx } = promptFixture("muse");
-    tx.message.findMany = vi.fn(async () => [{ id: "already-there" }]);
     await promptFocus(deps, actor, "bot");
     expect(posted).toEqual([]);
   });

@@ -595,6 +595,8 @@ export async function enqueueBotIntroRun(deps: RouterDeps, actor: Actor, bot: Bo
   // extra automatic run there competes with whatever response a test or eval
   // harness queued next, for a bot it doesn't otherwise get to opt out of.
   if (deps.env.agentRuntime === "scripted") return;
+  // The Muse edition's first-run welcome introduces Aiden instead, without spending a run.
+  if (deps.env.productMode === "muse") return;
   if ((await modelSetup(deps, actor)).needsModel) return;
   const run = await deps.prisma.$transaction(async (tx) => {
     const task = await tx.task.create({

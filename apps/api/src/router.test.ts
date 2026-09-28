@@ -1064,7 +1064,13 @@ describe("bot intro run", () => {
   } satisfies Actor;
   const bot = { id: "bot-1", threadId: "thread-1" } as unknown as Bot;
 
-  function introDeps(options: { agentRuntime?: string; hasCredential?: boolean } = {}) {
+  function introDeps(
+    options: {
+      agentRuntime?: string;
+      hasCredential?: boolean;
+      productMode?: "aiden" | "muse";
+    } = {},
+  ) {
     let calls = 0;
     const create = vi.fn(({ data }: { data: object }) => {
       calls += 1;
@@ -1084,7 +1090,10 @@ describe("bot intro run", () => {
         deploymentSettings: { findUnique: vi.fn().mockResolvedValue(null) },
       },
       jobs: { enqueue },
-      env: { agentRuntime: options.agentRuntime ?? "pi" },
+      env: {
+        agentRuntime: options.agentRuntime ?? "pi",
+        productMode: options.productMode ?? "aiden",
+      },
     } as unknown as RouterDeps;
     return { create, enqueue, deps };
   }
@@ -1122,6 +1131,15 @@ describe("bot intro run", () => {
     const { create, enqueue, deps } = introDeps();
 
     await enqueueBotIntroRun(deps, actor, { id: "bot-1", threadId: null } as unknown as Bot);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("does nothing in the Muse edition, where the first-run welcome introduces Aiden", async () => {
+    const { create, enqueue, deps } = introDeps({ productMode: "muse" });
+
+    await enqueueBotIntroRun(deps, actor, bot);
 
     expect(create).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
