@@ -96,7 +96,11 @@ const WARM_WINDOW_TTL_MS = warmWindowTtlMs(process.env.AIDEN_WARM_WINDOW_TTL_MS)
 const updaterEnvironment = {
   packaged: app.isPackaged,
   version: app.getVersion(),
-  disabled: process.env.AIDEN_DISABLE_AUTO_UPDATE === "1",
+  // This repo is private, so there is no public release feed for electron-updater to
+  // check against (see apps/desktop/package.json, no `build.publish` target). Re-enable
+  // by restoring a publish target and switching this back to an environment flag once a
+  // release feed exists again.
+  disabled: true,
 };
 const desktopUpdater = new DesktopUpdateController(
   updaterEnvironment,

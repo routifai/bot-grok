@@ -77,12 +77,6 @@
         "AppImage"
       ]
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "elie222",
-        "repo": "aiden"
-      }
-    ]
+    "publish": null
   }
 }

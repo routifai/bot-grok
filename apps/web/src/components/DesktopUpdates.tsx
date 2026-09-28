@@ -127,7 +127,9 @@ export function DesktopUpdatesProvider({ children }: { children: ReactNode }) {
 
 export function DesktopUpdateSection() {
   const updates = useContext(UpdatesContext);
-  if (!updates?.state) return null;
+  // "unsupported" covers both dev (unpackaged) and every packaged build today: auto-update
+  // is disabled repo-wide (apps/desktop/src/main.ts) since this repo has no release feed.
+  if (!updates?.state || updates.state.phase === "unsupported") return null;
   const { state, busy, error, act, confirmedCheck } = updates;
   const ready = state.phase === "ready";
   const downloading = state.phase === "available" || state.phase === "downloading";
