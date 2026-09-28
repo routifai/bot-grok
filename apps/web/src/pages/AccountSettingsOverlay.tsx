@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ApprovalRulesSettings } from "../components/ApprovalRulesSettings";
 import { SuccessPop } from "../components/ai/primitives";
 import { ComputersUnavailableHint } from "../components/ComputersUnavailableHint";
@@ -21,6 +21,7 @@ import {
   getResponseStreamingPreference,
   setResponseStreamingPreference,
 } from "../lib/response-streaming";
+import { clearSpaceSelection } from "../lib/rpc";
 import {
   type AppearancePreference,
   getUiAppearancePreference,
@@ -53,6 +54,7 @@ export function GeneralSettingsPanels({
   museMode = false,
 }: SettingsGeneralProps) {
   const { t } = useLingui();
+  const navigate = useNavigate();
   const [locale, setLocale] = useState<UiLocale>(() => getActiveUiLocale());
   const localeRequestRef = useRef(0);
   const [appearance, setAppearance] = useState<AppearancePreference>(() =>
@@ -64,6 +66,18 @@ export function GeneralSettingsPanels({
   const streamRepliesId = useId();
   const [avatarPending, setAvatarPending] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function logOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await authClient.signOut();
+    } finally {
+      clearSpaceSelection();
+      navigate("/sign-in", { replace: true });
+    }
+  }
   // Muse cards use the same 16px-radius, filled hairline-card tone as the rest of the
   // Muse screens (docs/muse/DESIGN.md); upstream keeps its existing look untouched.
   const cardClass = museMode
@@ -101,6 +115,14 @@ export function GeneralSettingsPanels({
         </h3>
         <p className="mt-3 text-[14px] text-foreground/75">{name}</p>
         {email ? <p className="mt-1 text-[13px] text-muted-foreground/70">{email}</p> : null}
+        <Button
+          variant="outline"
+          className="mt-3 rounded-full"
+          disabled={signingOut}
+          onClick={() => void logOut()}
+        >
+          {signingOut ? <Trans>Logging out…</Trans> : <Trans>Log out</Trans>}
+        </Button>
       </section>
 
       <ChangePasswordSection email={email} museMode={museMode} />
