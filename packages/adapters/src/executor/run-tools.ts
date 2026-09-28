@@ -2,19 +2,17 @@
 // run executor: which builtin tools a run gets, workspace checkpoint debouncing,
 // and wrapping a computer/browser tool result with screen-availability retries.
 
-import type { ProductMode } from "@aiden/contracts";
-import { isMuseMode } from "@aiden/core";
 import { builtinAgentTools } from "../builtin-tools.js";
 import { selectCloudAgentTools } from "../cloud-agent-tools-select.js";
 import { withComputerScreenAvailability } from "../computer-screens.js";
 import { selectMemoryTools } from "../memory-tools.js";
 import { filterImageReturningComputerTools } from "../model-vision.js";
-import { filterBuiltinToolsForRun, filterBuiltinToolsForThread } from "../schedule-tools.js";
+import { filterBuiltinToolsForRun } from "../schedule-tools.js";
 
 /**
- * ADR 0001: in muse mode there is exactly one Muse per person, so peer-bot
- * creation and management tools are locked out of the runtime's tool list.
- * `run_subagent` (a Helper, not a bot) stays available.
+ * ADR 0001: there is exactly one Muse per person, so peer-bot creation and
+ * management tools are locked out of the runtime's tool list. `run_subagent`
+ * (a Helper, not a bot) stays available.
  */
 export const MUSE_LOCKED_TOOL_NAMES = new Set([
   "spawn_bot",
@@ -24,9 +22,6 @@ export const MUSE_LOCKED_TOOL_NAMES = new Set([
   "handoff_to_bot",
   "create_space",
 ]);
-
-/** Tools that only make sense in the Muse edition (they post Asks answered via `asks.answer`). */
-export const MUSE_ONLY_TOOL_NAMES = new Set(["offer_skill"]);
 
 export function createRunWorkspaceCheckpoint(checkpoint: () => Promise<unknown>) {
   let dirty = false;
@@ -67,23 +62,17 @@ export function selectBuiltinToolsForRun(options: {
   graphicalToolsAllowed: boolean;
   /** Page browser tools need a graphical computer (Chrome), not model vision. */
   pageBrowserAllowed?: boolean;
-  groupId: string | null;
   trigger: string;
   semanticMemoryEnabled: boolean;
   cloudAgentEnabled?: boolean;
   messagingChannelRun: boolean;
-  /** Defaults to the full Aiden mode (peer-bot tools stay available) when absent. */
-  productMode?: ProductMode;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
       filterBuiltinToolsForRun(
-        filterBuiltinToolsForThread(
-          filterPageBrowserTools(
-            filterImageReturningComputerTools(builtinAgentTools, options.graphicalToolsAllowed),
-            options.pageBrowserAllowed ?? options.graphicalToolsAllowed,
-          ),
-          options.groupId,
+        filterPageBrowserTools(
+          filterImageReturningComputerTools(builtinAgentTools, options.graphicalToolsAllowed),
+          options.pageBrowserAllowed ?? options.graphicalToolsAllowed,
         ),
         options.trigger,
       ),
@@ -99,11 +88,7 @@ export function selectBuiltinToolsForRun(options: {
         ) &&
           !tool.name.startsWith("scratchpad_")),
     )
-    .filter((tool) =>
-      isMuseMode(options.productMode ?? "aiden")
-        ? !MUSE_LOCKED_TOOL_NAMES.has(tool.name)
-        : !MUSE_ONLY_TOOL_NAMES.has(tool.name),
-    );
+    .filter((tool) => !MUSE_LOCKED_TOOL_NAMES.has(tool.name));
 }
 
 export const PAGE_BROWSER_TOOL_NAMES = new Set([

@@ -276,8 +276,7 @@ export function createJobReconciler(
           take: batchSize,
           select: { id: true },
         }),
-        // Muse edition only (docs/muse/PLAN.md B8): active Goals whose next advance is due
-        // soon. Harmless (and not queried) in aiden mode, where no Goal rows ever exist.
+        // Muse edition (docs/muse/PLAN.md B8): active Goals whose next advance is due soon.
         deps.prisma.goal.findMany({
           where: {
             AND: [

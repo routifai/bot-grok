@@ -5,7 +5,7 @@ import { createRunExecutor } from "./executor.js";
 
 // Executor-level coverage for B5 (docs/muse/PLAN.md): a Goal-log turn sees its own Goal in
 // full plus the Conversation's summary, never another Goal's details; a Conversation turn
-// sees the list of active Goals; muse mode off adds neither.
+// sees the list of active Goals.
 
 vi.mock("./computer-lifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof ComputerLifecycleModule>()),
@@ -39,11 +39,9 @@ interface GoalTaskRow {
 }
 
 async function runFixture({
-  productMode,
   goalId,
   conversationSummary,
 }: {
-  productMode?: "muse" | "aiden";
   goalId?: string | null;
   conversationSummary?: string | null;
 }) {
@@ -211,7 +209,6 @@ async function runFixture({
     events: { append: vi.fn(async () => undefined), finalizeRun },
     jobs: { enqueue: vi.fn(async () => undefined) },
     secrets: [],
-    productMode,
   } as unknown as Parameters<typeof createRunExecutor>[0]);
 
   await executor.continueRun(run.id, "worker-1");
@@ -222,14 +219,8 @@ async function runFixture({
 }
 
 describe("Goals in context (B5)", () => {
-  it("adds neither Goals nor a Conversation summary outside muse mode", async () => {
-    const instructions = await runFixture({ productMode: "aiden", goalId: "goal-a" });
-    expect(instructions).not.toContain("<goals_active>");
-    expect(instructions).not.toContain("<conversation_summary>");
-  });
-
   it("lists every active Goal on a Conversation turn", async () => {
-    const instructions = await runFixture({ productMode: "muse", goalId: null });
+    const instructions = await runFixture({ goalId: null });
     expect(instructions).toContain("<goals_active>");
     expect(instructions).toContain("Conversational Japanese before Kyoto");
     expect(instructions).toContain("A different Goal entirely");
@@ -238,7 +229,6 @@ describe("Goals in context (B5)", () => {
 
   it("includes only its own Goal in full, plus the Conversation summary, on a Goal-log turn", async () => {
     const instructions = await runFixture({
-      productMode: "muse",
       goalId: "goal-a",
       conversationSummary: "The person is planning a Kyoto trip in December.",
     });

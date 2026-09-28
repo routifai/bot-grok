@@ -1,6 +1,5 @@
 import type { PrismaClient } from "@aiden/db";
 import { describe, expect, it, vi } from "vitest";
-import { MUSE_ONLY_TOOL_NAMES } from "../executor/run-tools.js";
 import { offerSkillFromTool } from "./skill-offer.js";
 
 const scope = { spaceId: "space-1", botId: "bot-1", userId: "user-1", runId: "run-1" };
@@ -74,9 +73,5 @@ describe("offerSkillFromTool", () => {
     const result = await offerSkillFromTool(deps, scope, { content: CONTENT });
     expect(String(result.error)).toContain("already saved");
     expect(messageCreate).not.toHaveBeenCalled();
-  });
-
-  it("is a Muse-only tool", () => {
-    expect(MUSE_ONLY_TOOL_NAMES.has("offer_skill")).toBe(true);
   });
 });
