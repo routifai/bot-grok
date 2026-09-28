@@ -146,6 +146,7 @@ async function postAskMessage(
     spaceId: input.spaceId,
     threadId: input.threadId,
     botId: input.botId,
+    runId: input.runId,
     type: "thread.message.created",
     payload: { messageId: message.id, role: "bot", blocks: [block] },
   });

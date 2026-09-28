@@ -72,6 +72,7 @@ export async function offerSkillFromTool(
       spaceId: scope.spaceId,
       threadId,
       botId: scope.botId,
+      runId: scope.runId,
       type: "thread.message.created",
       payload: { messageId: message.id, role: "bot", blocks: [block] },
     });
