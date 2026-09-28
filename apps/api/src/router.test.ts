@@ -22,6 +22,7 @@ describe("account preferences", () => {
           email: "user@aiden.test",
           name: "Test User",
           avatarStyle,
+          timezone: "UTC",
         }),
       },
       spaceModelPreference: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -94,6 +95,44 @@ describe("account preferences", () => {
     });
   });
 
+  it("persists a valid time zone", async () => {
+    const { update, actor, handler } = preferencesDeps("robot");
+
+    const { response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/preferences/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: { timezone: "America/Toronto" } }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { timezone: "America/Toronto" },
+    });
+  });
+
+  it("falls back an invalid time zone to UTC instead of rejecting the call", async () => {
+    const { update, actor, handler } = preferencesDeps("robot");
+
+    const { response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/preferences/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: { timezone: "Not/AZone" } }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { timezone: "UTC" },
+    });
+  });
+
   it("rejects avatar styles outside robot|organic", async () => {
     const { update, actor, handler } = preferencesDeps("robot");
 
@@ -141,6 +180,7 @@ describe("model setup gate", () => {
           email: "user@aiden.test",
           name: "Test User",
           avatarStyle: "robot",
+          timezone: "UTC",
         }),
       },
       spaceModelPreference: { findFirst: vi.fn().mockResolvedValue(null) },

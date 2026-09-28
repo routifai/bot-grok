@@ -117,6 +117,7 @@ import {
   isMuseMode,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
+  validTimezoneOrUtc,
 } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import {
@@ -687,10 +688,12 @@ export function createRouter(deps: RouterDeps) {
     me: authed.me.handler(async ({ context }): Promise<Me> => meDto(deps, context.actor)),
     preferences: {
       update: authed.preferences.update.handler(async ({ context, input }): Promise<Me> => {
-        await deps.prisma.user.update({
-          where: { id: context.actor.userId },
-          data: { avatarStyle: input.avatarStyle },
-        });
+        const data: { avatarStyle?: string; timezone?: string } = {};
+        if (input.avatarStyle !== undefined) data.avatarStyle = input.avatarStyle;
+        if (input.timezone !== undefined) data.timezone = validTimezoneOrUtc(input.timezone);
+        if (Object.keys(data).length > 0) {
+          await deps.prisma.user.update({ where: { id: context.actor.userId }, data });
+        }
         return meDto(deps, context.actor);
       }),
     },
@@ -5237,6 +5240,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
     avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
+    timezone: user.timezone,
     productMode: deps.env.productMode ?? "aiden",
   };
 }

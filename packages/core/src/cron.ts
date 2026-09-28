@@ -229,7 +229,8 @@ export function nextCronDateAcrossStrict(
   return earliest;
 }
 
-function validTimezoneOrUtc(timezone: string): string {
+/** An IANA zone name if `timezone` is one Intl recognizes, else the "UTC" fallback. */
+export function validTimezoneOrUtc(timezone: string): string {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
     return timezone;

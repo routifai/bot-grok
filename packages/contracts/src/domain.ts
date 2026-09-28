@@ -1126,6 +1126,9 @@ export const MeSchema = z.object({
   canChooseHostComputer: z.boolean(),
   sandboxProvider: z.string(),
   avatarStyle: AvatarStyleSchema,
+  // IANA zone name; drives quiet hours and the daily Followed-topic digest
+  // (packages/core/src/muse/proactivity.ts, packages/adapters/src/muse/feed-jobs.ts).
+  timezone: z.string(),
   productMode: ProductModeSchema,
 });
 export type Me = z.infer<typeof MeSchema>;

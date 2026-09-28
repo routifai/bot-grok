@@ -172,7 +172,13 @@ export const appContract = {
   health: oc.output(z.object({ ok: z.literal(true), version: z.string() })),
   me: oc.output(MeSchema),
   preferences: {
-    update: oc.input(z.object({ avatarStyle: AvatarStyleSchema })).output(MeSchema),
+    // `timezone` is validated server-side (invalid IANA names fall back to "UTC");
+    // the web app sends the browser's zone once per session (ProactivitySettings.tsx).
+    update: oc
+      .input(
+        z.object({ avatarStyle: AvatarStyleSchema.optional(), timezone: z.string().optional() }),
+      )
+      .output(MeSchema),
   },
   spaces: {
     list: oc.output(SpaceNavigationSchema),
