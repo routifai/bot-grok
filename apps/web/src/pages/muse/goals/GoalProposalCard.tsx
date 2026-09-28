@@ -3,7 +3,6 @@ import type { GoalProposal, GoalTask } from "@aiden/contracts";
 import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useState } from "react";
-import { Eyebrow, Surface } from "../ui";
 
 type ProposalDiff = {
   next: { title: string; added: boolean }[];
@@ -59,44 +58,73 @@ export function GoalProposalCard({
     }
   }
 
+  const first = currentTasks.length === 0;
   return (
-    <Surface tone="attention" data-testid="goal-proposal-card" className="p-5">
-      <Eyebrow>
-        <Trans>Proposed plan</Trans>
-      </Eyebrow>
-      <div className="mt-2 text-[15px] leading-[1.5] text-foreground">
-        <ChatMarkdown>{proposal.reason}</ChatMarkdown>
-      </div>
-      <ol className="mt-3 list-decimal space-y-1 pl-5 text-[14px] leading-[1.6] marker:text-muted-foreground/70">
+    <section
+      data-testid="goal-proposal-card"
+      className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-14px_rgb(0_0_0/0.16)] ring-1 ring-warning/30"
+    >
+      <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">
+        {first ? <Trans>Here's my plan</Trans> : <Trans>I'd like to change the plan</Trans>}
+      </h2>
+      {!first && proposal.reason ? (
+        <div className="mt-1 text-[14.5px] leading-[1.5] text-muted-foreground">
+          <ChatMarkdown>{proposal.reason}</ChatMarkdown>
+        </div>
+      ) : null}
+      <ol className="mt-3 flex flex-col gap-2">
         {next.map((item, index) => (
+          <li key={`${index}-${item.title}`} className="flex gap-3 text-[15px] leading-[1.45]">
+            <span className="w-4 shrink-0 text-end tabular-nums text-muted-foreground">
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1 text-foreground" dir="auto">
+              {item.title}
+              {item.added && !first ? (
+                <span className="ms-2 text-[12.5px] font-medium text-success">
+                  <Trans>New</Trans>
+                </span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+        {removed.map((title, index) => (
           <li
-            key={index}
-            className={item.added ? "text-success marker:text-success" : "text-foreground"}
+            key={`removed-${index}-${title}`}
+            className="flex gap-3 text-[14.5px] text-muted-foreground"
           >
-            {item.added ? <span className="sr-only">{t`Added: `}</span> : null}
-            {item.title}
+            <span className="w-4 shrink-0" />
+            <span className="min-w-0 flex-1 line-through" dir="auto">
+              <span className="sr-only">{t`Removed: `}</span>
+              {title}
+            </span>
           </li>
         ))}
       </ol>
-      {removed.length > 0 ? (
-        <ul className="mt-2 space-y-1 pl-5 text-[13.5px] text-muted-foreground">
-          {removed.map((title, index) => (
-            <li key={index} className="line-through">
-              <span className="sr-only">{t`Removed: `}</span>
-              {title}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <div className="mt-4 flex gap-2">
-        <Button disabled={pending !== null} onClick={() => void run("accept")}>
-          {pending === "accept" ? <Trans>Accepting…</Trans> : <Trans>Accept plan</Trans>}
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button
+          className="rounded-full px-4"
+          disabled={pending !== null}
+          onClick={() => void run("accept")}
+        >
+          {pending === "accept" ? (
+            <Trans>Starting…</Trans>
+          ) : first ? (
+            <Trans>Start this plan</Trans>
+          ) : (
+            <Trans>Use the new plan</Trans>
+          )}
         </Button>
-        <Button variant="ghost" disabled={pending !== null} onClick={() => void run("dismiss")}>
-          {pending === "dismiss" ? <Trans>Keeping…</Trans> : <Trans>Keep current</Trans>}
+        <Button
+          variant="ghost"
+          className="rounded-full px-4"
+          disabled={pending !== null}
+          onClick={() => void run("dismiss")}
+        >
+          {first ? <Trans>Not now</Trans> : <Trans>Keep current</Trans>}
         </Button>
       </div>
       {error ? <p className="mt-3 text-[13px] text-destructive">{error}</p> : null}
-    </Surface>
+    </section>
   );
 }

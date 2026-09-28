@@ -19,11 +19,11 @@ test("two users are isolated and a bot completes durable work", async ({ browser
   const stamp = Date.now();
   await signup(pageA, `ada-${stamp}@aiden.test`, "password12", "Ada", testInfo);
   await completeOnboarding(pageA, testInfo);
-  await expect(pageA.getByText("Aiden").first()).toBeVisible();
+  await expect(pageA.getByText("Nova").first()).toBeVisible();
 
   await signup(pageB, `bob-${stamp}@aiden.test`, "password12", "Bob");
   await completeOnboarding(pageB);
-  await expect(pageB.getByText("Aiden").first()).toBeVisible();
+  await expect(pageB.getByText("Nova").first()).toBeVisible();
   await expect(pageB.getByText("Ada", { exact: true })).toHaveCount(0);
 
   const composer = pageA.getByPlaceholder(/Message/);

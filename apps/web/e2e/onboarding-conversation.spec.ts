@@ -25,9 +25,9 @@ test("focus choice suggests apps and preserves a completed connection", async ({
 
   await page.getByRole("button", { name: /Day-to-day work/ }).click();
   // The focus step suggests apps but must not rename the bot: the default
-  // Muse name ("Aiden") is preserved.
-  await expect(page.locator("main").getByText("Aiden", { exact: true })).toBeVisible();
-  await expect(page.getByPlaceholder("Message Aiden")).toBeVisible();
+  // Muse name ("Nova") is preserved.
+  await expect(page.locator("main").getByText("Nova", { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder("Message Nova")).toBeVisible();
   await expect(page.getByText("Slack", { exact: true })).toBeVisible();
   await expect(page.getByText("Gmail", { exact: true })).toBeVisible();
   const connectionCards = page.getByRole("group", { name: / connection$/ });

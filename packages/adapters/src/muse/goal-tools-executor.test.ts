@@ -214,6 +214,9 @@ function fixture(runId = "run-1") {
     task: {
       findUniqueOrThrow: vi.fn(async () => ({ id: run.taskId, prompt: "Set up a Goal" })),
     },
+    user: {
+      findUnique: vi.fn(async () => ({ timezone: "UTC" })),
+    },
     goal: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const now = new Date();

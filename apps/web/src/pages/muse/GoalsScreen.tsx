@@ -1,12 +1,12 @@
 import type { Goal } from "@aiden/contracts";
-import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
-import { Trans, useLingui } from "@lingui/react/macro";
+import { DEFAULT_MUSE_COLOR, DEFAULT_MUSE_NAME } from "@aiden/contracts";
+import { useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { GoalDetail } from "./goals/GoalDetail";
 import { GoalList, GoalListSkeleton } from "./goals/GoalList";
 import type { GoalStarter } from "./goals/GoalsIntro";
-import { MuseColumn, MuseScreen, ScreenHeader } from "./ui";
+import { MuseColumn, MuseScreen } from "./ui";
 
 const GOAL_STARTERS: readonly GoalStarter[] = [
   {
@@ -92,9 +92,7 @@ export function GoalsScreen({
   const selectedGoal = goals?.find((goal) => goal.id === selectedGoalId) ?? null;
 
   return (
-    <MuseScreen
-      header={goals && goals.length > 0 ? <ScreenHeader title={<Trans>Goals</Trans>} /> : undefined}
-    >
+    <MuseScreen>
       {error ? (
         <MuseColumn>
           <p className="pt-12 text-[13.5px] text-destructive">{error}</p>
@@ -105,6 +103,7 @@ export function GoalsScreen({
         <GoalDetail
           key={selectedGoal.id}
           goal={selectedGoal}
+          color={avatarColor ?? DEFAULT_MUSE_COLOR}
           onBack={() => setSelectedGoalId(null)}
           onChanged={handleChanged}
         />

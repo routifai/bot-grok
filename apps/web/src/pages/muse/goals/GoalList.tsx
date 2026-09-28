@@ -1,85 +1,127 @@
 import { DEFAULT_MUSE_COLOR, type Goal } from "@aiden/contracts";
-import { cn, Skeleton } from "@aiden/ui-web";
+import { Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { FirstRunHint } from "../intro";
-import { MUSE_TYPE, MuseWideColumn, Progress, Section, Surface } from "../ui";
-import { dueMeta, goalsSummary, nextUnfinishedTask, taskCounts } from "./format";
-import { GoalStatusPill } from "./GoalStatusPill";
+import { MUSE_TYPE, MuseColumn, Section } from "../ui";
+import { dueMeta, goalDisplayStatus, goalsSummary, taskCounts } from "./format";
 import { type GoalStarter, GoalsIntro } from "./GoalsIntro";
+import { GoalRing, GoalStep, type GoalStepState, stepStateOf } from "./visuals";
 
-function GoalCard({ goal, onSelect }: { goal: Goal; onSelect: (goalId: string) => void }) {
+/** The plan steps a card previews: live Tasks, or the proposed first plan before it starts. */
+function previewSteps(goal: Goal): { title: string; state: GoalStepState }[] {
+  if (goal.tasks.length > 0) {
+    return [...goal.tasks]
+      .sort((a, b) => a.idx - b.idx)
+      .map((task) => ({ title: task.title, state: stepStateOf(task.status) }));
+  }
+  return (goal.openProposal?.tasks ?? []).map((task) => ({ title: task.title, state: "next" }));
+}
+
+const PREVIEW_STEPS = 4;
+
+function GoalCard({
+  goal,
+  color,
+  onSelect,
+}: {
+  goal: Goal;
+  color: string;
+  onSelect: (goalId: string) => void;
+}) {
   const { t, i18n } = useLingui();
-  const next = nextUnfinishedTask(goal);
   const { done, total } = taskCounts(goal);
   const due = dueMeta(goal.due, i18n.locale);
+  const status = goalDisplayStatus(goal);
+  const steps = previewSteps(goal);
+  // Show the step being worked on in context: start the preview just before it.
+  const firstOpen = Math.max(
+    0,
+    steps.findIndex((step) => step.state !== "done"),
+  );
+  const start = Math.max(0, Math.min(firstOpen - 1, steps.length - PREVIEW_STEPS));
+  const shown = steps.slice(start, start + PREVIEW_STEPS);
+  const hidden = steps.length - shown.length;
+  const firstPlan = goal.tasks.length === 0 && goal.openProposal;
+
+  const meta = [
+    firstPlan ? t`${steps.length} steps planned` : t`${done} of ${total}`,
+    due ? (due.kind === "absolute" ? t`Due ${due.date}` : t`in ${due.weeks} weeks`) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <Surface
-      interactive
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       data-testid="goal-row"
       aria-label={goal.title}
       onClick={() => onSelect(goal.id)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect(goal.id);
-        }
-      }}
-      className="flex flex-col gap-2.5 p-4 outline-none"
+      className="w-full rounded-[22px] bg-card p-5 text-start shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-14px_rgb(0_0_0/0.16)] ring-1 ring-border/50 transition-[transform,box-shadow] duration-200 hover:shadow-[0_1px_2px_rgb(0_0_0/0.05),0_16px_40px_-14px_rgb(0_0_0/0.22)] active:scale-[0.99] motion-reduce:active:scale-100"
     >
-      <div className="flex items-start justify-between gap-3">
-        <h3 className={cn("min-w-0 truncate", MUSE_TYPE.cardTitle)} dir="auto">
-          {goal.title}
-        </h3>
-        <GoalStatusPill goal={goal} className="shrink-0" />
-      </div>
-      {next ? (
-        <p className="truncate text-[13.5px] text-muted-foreground" dir="auto">
-          <Trans>Next: {next.title}</Trans>
-        </p>
-      ) : null}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
+        <GoalRing value={total > 0 ? done / total : 0} color={color} />
         <div className="min-w-0 flex-1">
-          <Progress
-            value={total > 0 ? done / total : 0}
-            label={t`${done} of ${total} Tasks done`}
-          />
+          <h3
+            className="truncate text-[17px] font-semibold tracking-[-0.02em] text-foreground"
+            dir="auto"
+          >
+            {goal.title}
+          </h3>
+          <p className="mt-0.5 truncate text-[13.5px] text-muted-foreground">{meta}</p>
         </div>
-        <span className="shrink-0 text-[12px] text-muted-foreground">{t`${done} of ${total}`}</span>
+        {status === "waiting" ? (
+          <span className="shrink-0 text-[13px] font-medium text-warning">
+            {firstPlan ? <Trans>Plan to review</Trans> : <Trans>Needs you</Trans>}
+          </span>
+        ) : status === "paused" ? (
+          <span className="shrink-0 text-[13px] text-muted-foreground">
+            <Trans>Paused</Trans>
+          </span>
+        ) : status === "working" ? (
+          <span className="shrink-0 text-[13px] text-muted-foreground">
+            <Trans>Working</Trans>
+          </span>
+        ) : null}
       </div>
-      {due ? (
-        <p className="text-[12.5px] text-muted-foreground">
-          {due.kind === "absolute" ? (
-            <Trans>Due {due.date}</Trans>
-          ) : (
-            <Trans>in {due.weeks} weeks</Trans>
-          )}
-        </p>
+      {shown.length > 0 ? (
+        <ul className="mt-4 border-t border-border/70 pt-2">
+          {shown.map((step, index) => (
+            <GoalStep key={`${start + index}-${step.title}`} state={step.state}>
+              {step.title}
+            </GoalStep>
+          ))}
+          {hidden > 0 ? (
+            <li className="ps-[34px] pt-1 text-[13px] text-muted-foreground">
+              <Trans>{hidden} more</Trans>
+            </li>
+          ) : null}
+        </ul>
       ) : null}
-    </Surface>
+    </button>
   );
 }
 
 /** Loading placeholder for the Goals list: a few skeleton cards. */
 export function GoalListSkeleton() {
   return (
-    <MuseWideColumn className="pt-8">
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {[0, 1, 2].map((key) => (
-          <Surface key={key} className="flex flex-col gap-3 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-5 w-24 rounded-full" />
+    <MuseColumn className="pt-10">
+      <Skeleton className="h-9 w-32" />
+      <Skeleton className="mt-3 mb-7 h-4 w-24" />
+      <div className="flex flex-col gap-4">
+        {[0, 1].map((key) => (
+          <div key={key} className="rounded-[22px] bg-card p-5 ring-1 ring-border/50">
+            <div className="flex items-center gap-4">
+              <Skeleton className="size-12 rounded-full" />
+              <div className="flex-1">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="mt-2 h-3 w-1/4" />
+              </div>
             </div>
-            <Skeleton className="h-3 w-1/3" />
-            <Skeleton className="h-1 w-full rounded-full" />
-            <Skeleton className="h-3 w-1/5" />
-          </Surface>
+            <Skeleton className="mt-5 h-3 w-2/3" />
+            <Skeleton className="mt-3 h-3 w-1/2" />
+          </div>
         ))}
       </div>
-    </MuseWideColumn>
+    </MuseColumn>
   );
 }
 
@@ -115,30 +157,29 @@ export function GoalList({
   const paused = goals.filter((goal) => goal.status === "paused");
   const { active: activeCount, waiting } = goalsSummary(goals);
   const subtitle =
-    waiting > 0 ? t`${activeCount} active · ${waiting} waiting on you` : t`${activeCount} active`;
+    waiting > 0 ? t`${activeCount} active · ${waiting} need you` : t`${activeCount} active`;
+  const color = avatarColor ?? DEFAULT_MUSE_COLOR;
 
   return (
-    <MuseWideColumn className="pt-8" data-testid="goals-list">
-      <FirstRunHint
-        hintKey="goals-section"
-        text={t`Open a Goal to see ${botName}'s plan and what it did so far.`}
-      >
-        <p className="pb-6 text-[13.5px] text-muted-foreground">{subtitle}</p>
-      </FirstRunHint>
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+    <MuseColumn className="pt-10 pb-16" data-testid="goals-list">
+      <h1 className={MUSE_TYPE.pageTitle}>
+        <Trans>Goals</Trans>
+      </h1>
+      <p className="mt-1.5 pb-7 text-[15px] text-muted-foreground">{subtitle}</p>
+      <div className="flex flex-col gap-4">
         {active.map((goal) => (
-          <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />
+          <GoalCard key={goal.id} goal={goal} color={color} onSelect={onSelect} />
         ))}
       </div>
       {paused.length > 0 ? (
         <Section title={<Trans>Paused</Trans>} className="mt-10">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="flex flex-col gap-4">
             {paused.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} onSelect={onSelect} />
+              <GoalCard key={goal.id} goal={goal} color={color} onSelect={onSelect} />
             ))}
           </div>
         </Section>
       ) : null}
-    </MuseWideColumn>
+    </MuseColumn>
   );
 }

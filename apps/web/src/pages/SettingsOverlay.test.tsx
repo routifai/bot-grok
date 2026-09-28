@@ -64,6 +64,12 @@ vi.mock("./MemorySettingsOverlay", () => ({
 vi.mock("./VoiceSettingsOverlay", () => ({
   VoiceSettingsOverlay: () => <div data-testid="voice-panel" />,
 }));
+vi.mock("./muse/settings/GeneralPanel", () => ({
+  GeneralPanel: () => <div data-testid="general-panel" data-muse-mode="true" />,
+}));
+vi.mock("./muse/settings/ModelPanel", () => ({ ModelPanel: () => <div /> }));
+vi.mock("./muse/settings/MemoryPanel", () => ({ MemoryPanel: () => <div /> }));
+vi.mock("./muse/settings/VoicePanel", () => ({ VoicePanel: () => <div /> }));
 vi.mock("./muse/AidenSettingsPanel", () => ({
   AidenSettingsPanel: ({
     bot,
@@ -163,7 +169,7 @@ it("upstream mode: shows Avatars-capable General and Updates, no Aiden section",
   }
 });
 
-it("muse mode: adds Aiden first, drops Updates, and flags General as muse", async () => {
+it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse General panel", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { container, root } = render();
   try {
@@ -178,7 +184,7 @@ it("muse mode: adds Aiden first, drops Updates, and flags General as muse", asyn
       ),
     );
     const ids = navIds(container);
-    expect(ids).toEqual(["aiden", "general", "models", "memory", "voice", "usage"]);
+    expect(ids).toEqual(["aiden", "general", "models", "memory", "voice"]);
     expect(ids).not.toContain("updates");
     expect(container.querySelector('[data-testid="settings-nav-aiden"]')?.textContent).toContain(
       "Nova",

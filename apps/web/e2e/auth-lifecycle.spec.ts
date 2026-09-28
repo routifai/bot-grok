@@ -48,7 +48,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
 
   await page.waitForURL(/\/app\/[^/]+$/);
   const protectedBotPath = new URL(page.url()).pathname;
-  await expect(page.getByPlaceholder("Message Aiden")).toBeVisible();
+  await expect(page.getByPlaceholder("Message Nova")).toBeVisible();
 
   await page.getByRole("button", { name: new RegExp(userName, "i") }).click();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
@@ -78,14 +78,14 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await expect(page.getByText(/Your team of always-on agents/)).toBeVisible();
   await page.getByRole("button", { name: /Sign up/ }).click();
   await expect(page).toHaveURL(/\/sign-up$/);
-  await expect(page.getByRole("heading", { name: "Meet Aiden." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Meet Nova." })).toBeVisible();
   await page.goto("/");
   await captureScreenshot(page, testInfo, "37-logged-out-welcome");
 
   await page.goto(protectedBotPath);
   await page.waitForURL((url) => url.pathname === "/sign-in");
   await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
-  await expect(page.getByText("Aiden", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Nova", { exact: true })).toHaveCount(0);
   await expect(page.getByText(userName, { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Email")).toHaveAttribute("autocomplete", "username");
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute(
@@ -110,10 +110,10 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await page.waitForURL((url) => url.pathname === protectedBotPath, {
     timeout: 20_000,
   });
-  const composer = page.getByRole("combobox", { name: "Message Aiden" });
+  const composer = page.getByRole("combobox", { name: "Message Nova" });
   await expect(composer).toHaveAttribute("name", "chat-message");
   await expect(composer).toHaveAttribute("autocomplete", "off");
-  await expect(composer).toHaveAttribute("aria-label", "Message Aiden");
+  await expect(composer).toHaveAttribute("aria-label", "Message Nova");
   await expect(page.getByRole("button", { name: new RegExp(userName, "i") })).toBeVisible();
 
   await composer.fill("line one");

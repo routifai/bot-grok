@@ -1,67 +1,15 @@
 import { BotAvatar, cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ArrowUp, Check, ChevronRight } from "lucide-react";
+import { ArrowUp, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { IllustrationKey } from "../../../lib/illustrations";
 import { illustrationUrl } from "../../../lib/illustrations";
 import { MuseColumn } from "../ui";
-
-type StepState = "done" | "working" | "next";
+import { GoalRing, GoalStep } from "./visuals";
 
 // iOS-flavoured press feedback: a quick, springy scale on press.
 const PRESS =
   "transition-transform duration-150 ease-out active:scale-[0.98] motion-reduce:active:scale-100";
-
-function Ring({ value, color }: { value: number; color: string }) {
-  const radius = 17;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <svg viewBox="0 0 40 40" className="size-12 shrink-0 -rotate-90" aria-hidden="true">
-      <circle cx="20" cy="20" r={radius} fill="none" strokeWidth="4" className="stroke-muted" />
-      <circle
-        cx="20"
-        cy="20"
-        r={radius}
-        fill="none"
-        strokeWidth="4"
-        strokeLinecap="round"
-        stroke={color}
-        strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - value)}
-      />
-    </svg>
-  );
-}
-
-function Step({ state, children }: { state: StepState; children: string }) {
-  return (
-    <li className="flex items-center gap-3 py-[7px]">
-      <span
-        aria-hidden="true"
-        className={cn(
-          "grid size-[22px] shrink-0 place-items-center rounded-full",
-          state === "done" && "bg-foreground text-background",
-          state === "working" && "border-2 border-foreground",
-          state === "next" && "border-[1.5px] border-border",
-        )}
-      >
-        {state === "done" ? <Check size={13} strokeWidth={3} /> : null}
-        {state === "working" ? (
-          <span className="size-2 rounded-full bg-foreground motion-safe:animate-pulse" />
-        ) : null}
-      </span>
-      <span
-        className={cn(
-          "text-[15px] tracking-[-0.01em]",
-          state === "done" ? "text-muted-foreground" : "text-foreground",
-          state === "working" && "font-medium",
-        )}
-      >
-        {children}
-      </span>
-    </li>
-  );
-}
 
 /**
  * A Goal in motion, shown rather than explained: the Goal as a widget (progress, plan,
@@ -77,7 +25,7 @@ function GoalStage({ botName, color }: { botName: string; color: string }) {
     >
       <div className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-12px_rgb(0_0_0/0.18)]">
         <div className="flex items-center gap-4">
-          <Ring value={0.4} color={color} />
+          <GoalRing value={0.4} color={color} />
           <div className="min-w-0 flex-1">
             <p className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">
               <Trans>Q3 client portfolio review</Trans>
@@ -88,10 +36,10 @@ function GoalStage({ botName, color }: { botName: string; color: string }) {
           </div>
         </div>
         <ul className="mt-4 border-t border-border/70 pt-2">
-          <Step state="done">{t`Pull holdings and returns for 12 clients`}</Step>
-          <Step state="done">{t`Flag drift from each target mix`}</Step>
-          <Step state="working">{t`Draft talking points per client`}</Step>
-          <Step state="next">{t`Propose meeting slots`}</Step>
+          <GoalStep state="done">{t`Pull holdings and returns for 12 clients`}</GoalStep>
+          <GoalStep state="done">{t`Flag drift from each target mix`}</GoalStep>
+          <GoalStep state="working">{t`Draft talking points per client`}</GoalStep>
+          <GoalStep state="next">{t`Propose meeting slots`}</GoalStep>
         </ul>
       </div>
 

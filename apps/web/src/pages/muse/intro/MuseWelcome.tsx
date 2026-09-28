@@ -34,8 +34,8 @@ export function MuseWelcome() {
           </h1>
           <p className="mt-5 max-w-[520px] text-[17px] leading-[1.55] text-muted-foreground text-balance">
             <Trans>
-              Nova prepares your meetings, researches, drafts and follows up in the background —
-              and always asks before anything it can't undo.
+              Nova prepares your meetings, researches, drafts and follows up in the background — and
+              always asks before anything it can't undo.
             </Trans>
           </p>
 

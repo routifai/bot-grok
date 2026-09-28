@@ -23,6 +23,10 @@ import {
 import { MemorySettingsOverlay } from "./MemorySettingsOverlay";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { AidenSettingsPanel } from "./muse/AidenSettingsPanel";
+import { GeneralPanel } from "./muse/settings/GeneralPanel";
+import { MemoryPanel } from "./muse/settings/MemoryPanel";
+import { ModelPanel } from "./muse/settings/ModelPanel";
+import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
 export type SettingsSection =
@@ -110,10 +114,10 @@ export function SettingsOverlay({
       ? [{ id: "aiden" as const, label: museBot?.name || t`Nova`, icon: Sparkles }]
       : []),
     { id: "general", label: t`General`, icon: Settings },
-    { id: "models", label: t`Models`, icon: Cpu },
+    { id: "models", label: museMode ? t`Model` : t`Models`, icon: Cpu },
     { id: "memory", label: t`Memory`, icon: Brain },
     { id: "voice", label: t`Voice`, icon: Volume2 },
-    { id: "usage", label: t`Usage`, icon: Gauge },
+    ...(museMode ? [] : [{ id: "usage" as const, label: t`Usage`, icon: Gauge }]),
     ...(showComputer ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
     ...(museMode ? [] : [{ id: "updates" as const, label: t`Updates`, icon: CloudDownload }]),
   ];
@@ -167,7 +171,7 @@ export function SettingsOverlay({
           section === "usage" ? (usageRef.current ?? panelRef.current) : panelRef.current
         }
         className={`flex max-h-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-h-[calc(100%-5rem)] ${
-          widePane
+          widePane && !museMode
             ? "h-[min(760px,calc(100%-2rem))] w-[min(1080px,calc(100%-2rem))] sm:max-w-[1080px]"
             : "h-[min(720px,calc(100%-2rem))] w-[min(920px,calc(100%-2rem))] sm:max-w-[920px]"
         }`}
@@ -226,7 +230,7 @@ export function SettingsOverlay({
 
             <div
               className={`min-h-0 flex-1 ${
-                section === "models" || section === "voice" || section === "memory"
+                !museMode && (section === "models" || section === "voice" || section === "memory")
                   ? "flex flex-col overflow-hidden"
                   : "rk-scroll overflow-y-auto overscroll-contain px-6 pb-6 pt-5 sm:px-8 sm:pb-8"
               }`}
@@ -234,7 +238,10 @@ export function SettingsOverlay({
               {section === "aiden" && museMode && museBot && onMuseBotSave ? (
                 <AidenSettingsPanel bot={museBot} onSave={onMuseBotSave} />
               ) : null}
-              {section === "general" ? (
+              {section === "general" && museMode ? (
+                <GeneralPanel name={name} email={email} isDeploymentOwner={isDeploymentOwner} />
+              ) : null}
+              {section === "general" && !museMode ? (
                 <GeneralSettingsPanels
                   email={email}
                   name={name}
@@ -253,10 +260,14 @@ export function SettingsOverlay({
               ) : null}
               {section === "computer" && showComputer ? <ComputerSettingsPanel /> : null}
               {section === "updates" && !museMode ? <UpdatesSettingsPanel /> : null}
-              {section === "models" ? (
+              {section === "models" && museMode ? <ModelPanel /> : null}
+              {section === "models" && !museMode ? (
                 <ModelSettingsOverlay embedded onClose={requestClose} />
               ) : null}
-              {section === "memory" ? (
+              {section === "memory" && museMode && museBot ? (
+                <MemoryPanel botId={museBot.id} />
+              ) : null}
+              {section === "memory" && !museMode ? (
                 <MemorySettingsOverlay
                   embedded
                   onClose={requestClose}
@@ -265,7 +276,8 @@ export function SettingsOverlay({
                   onBusyChange={setMemoryBusy}
                 />
               ) : null}
-              {section === "voice" ? (
+              {section === "voice" && museMode ? <VoicePanel onBusyChange={setVoiceBusy} /> : null}
+              {section === "voice" && !museMode ? (
                 <VoiceSettingsOverlay embedded onClose={requestClose} onBusyChange={setVoiceBusy} />
               ) : null}
             </div>

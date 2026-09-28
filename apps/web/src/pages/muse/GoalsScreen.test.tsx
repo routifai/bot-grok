@@ -49,6 +49,13 @@ vi.mock("@aiden/ui-web", () => {
       size: _size,
       ...props
     }: ComponentProps<"button"> & { variant?: string; size?: string }) => <button {...props} />,
+    DropdownMenu: Container,
+    DropdownMenuContent: Container,
+    DropdownMenuItem: ({
+      variant: _variant,
+      ...props
+    }: ComponentProps<"button"> & { variant?: string }) => <button type="button" {...props} />,
+    DropdownMenuTrigger: Container,
     Input: (props: ComponentProps<"input">) => <input {...props} />,
     NativeSelect: (props: ComponentProps<"select">) => <select {...props} />,
     NativeSelectOption: (props: ComponentProps<"option">) => <option {...props} />,
@@ -188,7 +195,7 @@ it("accepts an open Proposal and renders the new plan", async () => {
       page.container.querySelector<HTMLButtonElement>("[data-testid='goal-row']")?.click();
     });
     await act(async () => {
-      findButton(page.container, "Accept").click();
+      findButton(page.container, "Use the new plan").click();
     });
     await act(async () => {
       await vi.waitFor(() => {

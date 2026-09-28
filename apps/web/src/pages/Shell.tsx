@@ -5509,7 +5509,7 @@ const MessageView = memo(function MessageView({
             <FirstRunHint
               key={i}
               hintKey="proposal-card"
-              text={t`Accept, and ${botDisplayName ?? "Nova"} starts on it in the background.`}
+              text={t`Start it, and ${botDisplayName ?? "Nova"} works on it in the background.`}
             >
               <AskCard
                 block={block}

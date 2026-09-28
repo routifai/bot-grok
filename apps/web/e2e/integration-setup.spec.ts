@@ -45,7 +45,7 @@ test("setup exposes all integration choices and saves only the selected provider
     .poll(() => saved)
     .toEqual([{ json: { provider: "composio", apiKey: "fake-composio-key" } }]);
   await expect(page.getByRole("heading", { name: "Create your first bot" })).toHaveCount(0);
-  await expect(page.getByRole("combobox", { name: "Message Aiden" })).toBeVisible({
+  await expect(page.getByRole("combobox", { name: "Message Nova" })).toBeVisible({
     timeout: 20_000,
   });
 });
@@ -125,7 +125,7 @@ test("direct MCP connects a catalog result without asking for a URL and assigns 
   const response = await assigned;
   expect(response.request().postDataJSON().json.serverId).toBe(serverId);
   await page.waitForURL(/\/app\//);
-  await expect(page.getByRole("combobox", { name: "Message Aiden" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Message Nova" })).toBeVisible();
 });
 
 test("Executor reconnect saves a replacement token before authorization", async ({ page }) => {

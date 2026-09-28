@@ -78,7 +78,7 @@ test("custom connections persist reasoning support and bot thinking", async ({
     clearedCredentials.find((entry) => entry.modelId === "arbitrary-model")?.maxImagesPerPrompt,
   ).toBeUndefined();
   await page.getByRole("button", { name: "Close model settings" }).click();
-  await page.locator("main").getByRole("button", { name: "Aiden", exact: true }).click();
+  await page.locator("main").getByRole("button", { name: "Nova", exact: true }).click();
   const settings = page.getByTestId("bot-settings");
   await expect(settings).toBeVisible();
   const advanced = settings.getByTestId("bot-settings-advanced");
@@ -104,7 +104,7 @@ test("custom connections persist reasoning support and bot thinking", async ({
   await settings.getByRole("button", { name: "Save", exact: true }).click();
   await saved;
   await page.reload();
-  await page.locator("main").getByRole("button", { name: "Aiden", exact: true }).click();
+  await page.locator("main").getByRole("button", { name: "Nova", exact: true }).click();
   await expect(settings).toBeVisible();
   await advanced.evaluate((element) => {
     (element as HTMLDetailsElement).open = true;

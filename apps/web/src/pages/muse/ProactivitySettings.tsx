@@ -67,7 +67,6 @@ export function ProactivitySettings({ botId }: { botId: string }) {
     };
   }, [botId]);
 
-
   async function save(patch: Partial<MuseSettings>, previous: MuseSettings) {
     setSettings({ ...previous, ...patch });
     setError(null);

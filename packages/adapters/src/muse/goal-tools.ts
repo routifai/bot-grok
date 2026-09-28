@@ -87,19 +87,32 @@ async function postProposalAsk(
     goalTitle: string;
     reason: string;
     tasks: ProposedTaskInput[];
+    /** A new Goal's first plan: there is no current plan to keep. */
+    first?: boolean;
   },
 ) {
   const detailLines = input.tasks.map((task, index) => `${index + 1}. ${task.title}`);
-  const block: MessageBlock = {
-    kind: "ask",
-    text: `Accept the plan for "${input.goalTitle}"?`,
-    detail: [input.reason, ...detailLines].join("\n"),
-    status: "pending",
-    actions: [
-      { id: "accept", label: "Accept plan" },
-      { id: "dismiss", label: "Keep current" },
-    ],
-  };
+  const block: MessageBlock = input.first
+    ? {
+        kind: "ask",
+        text: `Here's my plan for "${input.goalTitle}"`,
+        detail: detailLines.join("\n"),
+        status: "pending",
+        actions: [
+          { id: "accept", label: "Start this plan" },
+          { id: "dismiss", label: "Not now" },
+        ],
+      }
+    : {
+        kind: "ask",
+        text: `Change the plan for "${input.goalTitle}"?`,
+        detail: [input.reason, ...detailLines].join("\n"),
+        status: "pending",
+        actions: [
+          { id: "accept", label: "Use the new plan" },
+          { id: "dismiss", label: "Keep current" },
+        ],
+      };
   return postAskMessage(tx, input, block);
 }
 
@@ -181,6 +194,11 @@ export async function createGoalFromTool(
     : [];
 
   const committed = await deps.prisma.$transaction(async (tx) => {
+    // Check-ins and quiet hours for this Goal run in the person's own zone.
+    const owner = await tx.user.findUnique({
+      where: { id: scope.userId },
+      select: { timezone: true },
+    });
     const goal = await tx.goal.create({
       data: {
         spaceId: scope.spaceId,
@@ -190,6 +208,7 @@ export async function createGoalFromTool(
         description,
         due,
         checkInCrons,
+        timezone: owner?.timezone ?? "UTC",
       },
     });
     // The Goal log: a Thread with this Goal's id and no bot/group/external conversation.
@@ -210,6 +229,7 @@ export async function createGoalFromTool(
         goalTitle: goal.title,
         reason: "First plan",
         tasks: proposedTasks,
+        first: true,
       });
       askMessageId = posted.message.id;
       notify = { threadId: posted.event.threadId, seq: posted.event.seq };

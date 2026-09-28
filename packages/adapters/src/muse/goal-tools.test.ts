@@ -64,6 +64,9 @@ function createFixture() {
   }
 
   const client = {
+    user: {
+      findUnique: async () => ({ timezone: "America/Toronto" }),
+    },
     goal: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const now = new Date();
@@ -293,8 +296,8 @@ describe("goals tool: create", () => {
       kind: "ask",
       status: "pending",
       actions: [
-        { id: "accept", label: "Accept plan" },
-        { id: "dismiss", label: "Keep current" },
+        { id: "accept", label: "Start this plan" },
+        { id: "dismiss", label: "Not now" },
       ],
     });
     expect(fixture.proposals[0]?.askMessageId).toBe(askMessage?.id);

@@ -93,7 +93,7 @@ export function AskCard({
   return (
     <div
       data-testid={secretInput ? "secret-ask-card" : undefined}
-      className="max-w-[74%] rounded-2xl border border-border bg-card px-5 py-4"
+      className="max-w-[74%] rounded-2xl border border-border bg-card px-5 py-4 sm:min-w-[340px]"
     >
       <div className="text-[15.5px] leading-[1.5] text-foreground">
         <ChatMarkdown>{block.text}</ChatMarkdown>
@@ -104,10 +104,8 @@ export function AskCard({
         </div>
       ) : null}
       {block.detail && !secretInput ? (
-        block.skillOffer ? (
-          <p className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.5] text-muted-foreground">
-            {block.detail}
-          </p>
+        !approvalActions ? (
+          <AskDetail text={block.detail} />
         ) : (
           <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
             {block.detail}
@@ -127,6 +125,20 @@ export function AskCard({
       ) : !canAnswer ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-muted-foreground">
           <Trans>No longer active</Trans>
+        </div>
+      ) : askActions?.length && !approvalActions && askActions.length <= 2 ? (
+        <div className="mt-4 flex gap-2">
+          {askActions.map((action, index) => (
+            <Button
+              key={action.id}
+              variant={index === 0 ? "default" : "ghost"}
+              className="shrink-0 rounded-full px-4"
+              disabled={submitting}
+              onClick={() => void submitAnswer(action.id)}
+            >
+              {pendingAction === action.id ? <Trans>Sending…</Trans> : action.label}
+            </Button>
+          ))}
         </div>
       ) : askActions?.length ? (
         <div className="mt-3.5 space-y-1.5">
@@ -226,6 +238,32 @@ export function AskCard({
         </div>
       )}
       {error ? <p className="mt-3 text-[13px] text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+/** An Ask's supporting text: a numbered plan renders as a list, anything else as a paragraph. */
+function AskDetail({ text }: { text: string }) {
+  const lines = text.split("\n").filter((line) => line.trim());
+  const steps = lines.filter((line) => /^\d+\.\s/.test(line));
+  const intro = lines.filter((line) => !/^\d+\.\s/.test(line));
+  return (
+    <div className="mt-2 text-[14.5px] leading-[1.5]">
+      {intro.length > 0 ? (
+        <p className="whitespace-pre-wrap text-muted-foreground">{intro.join("\n")}</p>
+      ) : null}
+      {steps.length > 0 ? (
+        <ol className="mt-2 flex flex-col gap-1.5">
+          {steps.map((line, index) => (
+            <li key={`${index}-${line}`} className="flex gap-2.5 text-foreground">
+              <span className="w-4 shrink-0 text-end tabular-nums text-muted-foreground">
+                {index + 1}
+              </span>
+              <span className="min-w-0">{line.replace(/^\d+\.\s+/, "")}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
     </div>
   );
 }

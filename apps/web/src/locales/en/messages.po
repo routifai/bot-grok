@@ -58,6 +58,10 @@ msgstr "{0} rollup hours"
 msgid "{0} runs · {1} tokens"
 msgstr "{0} runs · {1} tokens"
 
+#. placeholder {0}: steps.length
+msgid "{0} steps planned"
+msgstr "{0} steps planned"
+
 #. placeholder {0}: bot.name
 msgid "{0} will still respond to direct mentions."
 msgstr "{0} will still respond to direct mentions."
@@ -73,8 +77,8 @@ msgstr "{0}'s screen"
 msgid "{activeCount} active"
 msgstr "{activeCount} active"
 
-msgid "{activeCount} active · {waiting} waiting on you"
-msgstr "{activeCount} active · {waiting} waiting on you"
+msgid "{activeCount} active · {waiting} need you"
+msgstr "{activeCount} active · {waiting} need you"
 
 msgid "{botName}’s computer"
 msgstr "{botName}’s computer"
@@ -85,8 +89,14 @@ msgstr "{days}d ago"
 msgid "{done} of {total}"
 msgstr "{done} of {total}"
 
+msgid "{done} of {total} done"
+msgstr "{done} of {total} done"
+
 msgid "{done} of {total} Tasks done"
 msgstr "{done} of {total} Tasks done"
+
+msgid "{hidden} more"
+msgstr "{hidden} more"
 
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
@@ -137,16 +147,6 @@ msgstr "About groups"
 msgid "About spaces"
 msgstr "About spaces"
 
-msgid "Accept plan"
-msgstr "Accept plan"
-
-#. placeholder {0}: botDisplayName ?? "Nova"
-msgid "Accept, and {0} starts on it in the background."
-msgstr "Accept, and {0} starts on it in the background."
-
-msgid "Accepting…"
-msgstr "Accepting…"
-
 msgid "Access token"
 msgstr "Access token"
 
@@ -181,6 +181,9 @@ msgstr "Active model"
 msgid "Add"
 msgstr "Add"
 
+msgid "Add a check-in"
+msgstr "Add a check-in"
+
 msgid "Add a model in Settings to use this."
 msgstr "Add a model in Settings to use this."
 
@@ -204,9 +207,6 @@ msgstr "Add an HTTPS server URL."
 
 msgid "Add another"
 msgstr "Add another"
-
-msgid "Add check-in"
-msgstr "Add check-in"
 
 msgid "Add Executor"
 msgstr "Add Executor"
@@ -247,9 +247,6 @@ msgstr "Add trigger"
 msgid "Added"
 msgstr "Added"
 
-msgid "Added: "
-msgstr "Added: "
-
 msgid "Adding…"
 msgstr "Adding…"
 
@@ -273,9 +270,6 @@ msgstr "All"
 
 msgid "All bots"
 msgstr "All bots"
-
-msgid "All goals"
-msgstr "All goals"
 
 msgid "All time"
 msgstr "All time"
@@ -349,6 +343,9 @@ msgstr "Approval boundaries"
 
 msgid "Approvals"
 msgstr "Approvals"
+
+msgid "Approvals choose which actions wait for your OK."
+msgstr "Approvals choose which actions wait for your OK."
 
 msgid "Approve"
 msgstr "Approve"
@@ -721,6 +718,10 @@ msgstr "Confirm password"
 msgid "Connect"
 msgstr "Connect"
 
+#. placeholder {0}: selected.name
+msgid "Connect {0}"
+msgstr "Connect {0}"
+
 msgid "Connect API key"
 msgstr "Connect API key"
 
@@ -826,6 +827,9 @@ msgstr "Could not connect {0}"
 msgid "Could not connect this provider"
 msgstr "Could not connect this provider"
 
+msgid "Could not connect this service."
+msgstr "Could not connect this service."
+
 msgid "Could not connect this voice provider"
 msgstr "Could not connect this voice provider"
 
@@ -883,6 +887,9 @@ msgstr "Could not disconnect OAuth"
 msgid "Could not disconnect this voice provider"
 msgstr "Could not disconnect this voice provider"
 
+msgid "Could not disconnect."
+msgstr "Could not disconnect."
+
 msgid "Could not dismiss"
 msgstr "Could not dismiss"
 
@@ -917,6 +924,9 @@ msgstr "Could not load integrations"
 msgid "Could not load MCP servers"
 msgstr "Could not load MCP servers"
 
+msgid "Could not load memory."
+msgstr "Could not load memory."
+
 msgid "Could not load model settings"
 msgstr "Could not load model settings"
 
@@ -935,6 +945,9 @@ msgstr "Could not load the Feed."
 msgid "Could not load the Goal log"
 msgstr "Could not load the Goal log"
 
+msgid "Could not load the model."
+msgstr "Could not load the model."
+
 msgid "Could not load this artifact."
 msgstr "Could not load this artifact."
 
@@ -944,11 +957,17 @@ msgstr "Could not load this chat."
 msgid "Could not load this file."
 msgstr "Could not load this file."
 
+msgid "Could not load this service."
+msgstr "Could not load this service."
+
 msgid "Could not load this."
 msgstr "Could not load this."
 
 msgid "Could not load voice settings"
 msgstr "Could not load voice settings"
+
+msgid "Could not load voice settings."
+msgstr "Could not load voice settings."
 
 msgid "Could not load your Library."
 msgstr "Could not load your Library."
@@ -958,6 +977,9 @@ msgstr "Could not open local settings. Start the local server and create its own
 
 msgid "Could not open this skill."
 msgstr "Could not open this skill."
+
+msgid "Could not play a sample."
+msgstr "Could not play a sample."
 
 msgid "Could not play a test clip"
 msgstr "Could not play a test clip"
@@ -1024,6 +1046,9 @@ msgstr "Could not save that choice"
 
 msgid "Could not save that voice"
 msgstr "Could not save that voice"
+
+msgid "Could not save that voice."
+msgstr "Could not save that voice."
 
 msgid "Could not save this choice"
 msgstr "Could not save this choice"
@@ -1223,6 +1248,10 @@ msgstr "Direct MCP"
 msgid "Disconnect"
 msgstr "Disconnect"
 
+#. placeholder {0}: selected.name
+msgid "Disconnect {0}"
+msgstr "Disconnect {0}"
+
 msgid "Disconnecting…"
 msgstr "Disconnecting…"
 
@@ -1272,6 +1301,9 @@ msgstr "Download {name}"
 
 msgid "Download as markdown"
 msgstr "Download as markdown"
+
+msgid "Download as Markdown"
+msgstr "Download as Markdown"
 
 msgid "Download Executor"
 msgstr "Download Executor"
@@ -1487,8 +1519,8 @@ msgstr "Give {botName} something bigger than a message. I'll plan it, keep worki
 msgid "Give me a Goal, I'll keep going"
 msgstr "Give me a Goal, I'll keep going"
 
-msgid "Goal log"
-msgstr "Goal log"
+msgid "Goal options"
+msgstr "Goal options"
 
 msgid "Goals"
 msgstr "Goals"
@@ -1534,6 +1566,9 @@ msgstr "Hear a sample"
 
 msgid "Help me prepare the Q3 client portfolio review"
 msgstr "Help me prepare the Q3 client portfolio review"
+
+msgid "Here's my plan"
+msgstr "Here's my plan"
 
 msgid "Hi {trimmedName}, I'm {botName}. Here's how we'll work together."
 msgstr "Hi {trimmedName}, I'm {botName}. Here's how we'll work together."
@@ -1589,11 +1624,20 @@ msgstr "I keep working on your Goals throughout the day."
 msgid "I only work when you ask."
 msgstr "I only work when you ask."
 
+msgid "I read these before every conversation. Edit anything that's wrong."
+msgstr "I read these before every conversation. Edit anything that's wrong."
+
 msgid "I won't work on Goals or message you during quiet hours."
 msgstr "I won't work on Goals or message you during quiet hours."
 
+msgid "I'd like to change the plan"
+msgstr "I'd like to change the plan"
+
 msgid "I'll ask when I need you"
 msgstr "I'll ask when I need you"
+
+msgid "I'll message you with progress at these times. Times use {timezone}."
+msgstr "I'll message you with progress at these times. Times use {timezone}."
 
 msgid "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
 msgstr "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
@@ -1702,9 +1746,6 @@ msgstr "Keep it"
 
 msgid "Keep memories"
 msgstr "Keep memories"
-
-msgid "Keeping…"
-msgstr "Keeping…"
 
 msgid "key"
 msgstr "key"
@@ -1938,6 +1979,9 @@ msgstr "Model updated."
 msgid "Models"
 msgstr "Models"
 
+msgid "Models and their keys are set on the server, in the .env file. Restart Nova after changing them."
+msgstr "Models and their keys are set on the server, in the .env file. Restart Nova after changing them."
+
 msgid "Models for the server owner’s default space."
 msgstr "Models for the server owner’s default space."
 
@@ -1984,6 +2028,9 @@ msgstr "Needs a restart"
 msgid "Needs you"
 msgstr "Needs you"
 
+msgid "New"
+msgstr "New"
+
 msgid "New bot"
 msgstr "New bot"
 
@@ -2001,10 +2048,6 @@ msgstr "New skill"
 
 msgid "New space"
 msgstr "New space"
-
-#. placeholder {0}: next.title
-msgid "Next: {0}"
-msgstr "Next: {0}"
 
 msgid "No agent connections yet."
 msgstr "No agent connections yet."
@@ -2087,9 +2130,6 @@ msgstr "No tools available."
 msgid "No trigger"
 msgstr "No trigger"
 
-msgid "None"
-msgstr "None"
-
 msgid "None yet"
 msgstr "None yet"
 
@@ -2104,6 +2144,9 @@ msgstr "Not in the plugin catalog"
 
 msgid "Not now"
 msgstr "Not now"
+
+msgid "Not set"
+msgstr "Not set"
 
 msgid "Not yet"
 msgstr "Not yet"
@@ -2125,6 +2168,9 @@ msgstr "Nothing to suggest yet"
 
 msgid "Nothing yet"
 msgstr "Nothing yet"
+
+msgid "Nothing yet."
+msgstr "Nothing yet."
 
 msgid "Notifications"
 msgstr "Notifications"
@@ -2177,9 +2223,6 @@ msgstr "Open {0}"
 
 msgid "Open {name} in new tab"
 msgstr "Open {name} in new tab"
-
-msgid "Open a Goal to see {botName}'s plan and what it did so far."
-msgstr "Open a Goal to see {botName}'s plan and what it did so far."
 
 msgid "Open goal"
 msgstr "Open goal"
@@ -2289,8 +2332,17 @@ msgstr "Plan"
 msgid "Plan my week"
 msgstr "Plan my week"
 
+msgid "Plan to review"
+msgstr "Plan to review"
+
+msgid "Plan waiting for you"
+msgstr "Plan waiting for you"
+
 msgid "Plans"
 msgstr "Plans"
+
+msgid "Play a sample"
+msgstr "Play a sample"
 
 msgid "Playing…"
 msgstr "Playing…"
@@ -2322,9 +2374,6 @@ msgstr "Project ID"
 
 msgid "Propose meeting slots"
 msgstr "Propose meeting slots"
-
-msgid "Proposed plan"
-msgstr "Proposed plan"
 
 msgid "Provider"
 msgstr "Provider"
@@ -2603,6 +2652,9 @@ msgstr "Save"
 msgid "Save changes"
 msgstr "Save changes"
 
+msgid "Save check-ins"
+msgstr "Save check-ins"
+
 msgid "Saved"
 msgstr "Saved"
 
@@ -2696,6 +2748,9 @@ msgstr "Sentry alert"
 msgid "Serenity endpoint is required."
 msgstr "Serenity endpoint is required."
 
+msgid "Server"
+msgstr "Server"
+
 msgid "Server integrations"
 msgstr "Server integrations"
 
@@ -2704,6 +2759,9 @@ msgstr "Server name"
 
 msgid "Server URL"
 msgstr "Server URL"
+
+msgid "Service"
+msgstr "Service"
 
 msgid "Settings"
 msgstr "Settings"
@@ -2740,6 +2798,9 @@ msgstr "Show more"
 
 msgid "Show password"
 msgstr "Show password"
+
+msgid "Show replies as they're written"
+msgstr "Show replies as they're written"
 
 msgid "Show settings"
 msgstr "Show settings"
@@ -2809,14 +2870,27 @@ msgstr "Speak this reply"
 msgid "Speaking…"
 msgstr "Speaking…"
 
+msgid "Speaks and listens"
+msgstr "Speaks and listens"
+
+msgid "Speaks only"
+msgstr "Speaks only"
+
 msgid "Start a new goal"
 msgstr "Start a new goal"
+
+#. placeholder {0}: botDisplayName ?? "Nova"
+msgid "Start it, and {0} works on it in the background."
+msgstr "Start it, and {0} works on it in the background."
 
 msgid "Start recording"
 msgstr "Start recording"
 
 msgid "Start this Goal"
 msgstr "Start this Goal"
+
+msgid "Start this plan"
+msgstr "Start this plan"
 
 msgid "Starting"
 msgstr "Starting"
@@ -2907,11 +2981,17 @@ msgstr "Teams message"
 msgid "Teams not enabled"
 msgstr "Teams not enabled"
 
+msgid "Tell me something to remember, like how you like reports written."
+msgstr "Tell me something to remember, like how you like reports written."
+
 msgid "Test"
 msgstr "Test"
 
 msgid "Test run"
 msgstr "Test run"
+
+msgid "The key is stored encrypted and only used for voice."
+msgstr "The key is stored encrypted and only used for voice."
 
 msgid "The Muse stops working on this Goal."
 msgstr "The Muse stops working on this Goal."
@@ -2983,6 +3063,9 @@ msgstr "Three of your clients renew this quarter. Fixed looks better than it did
 
 msgid "Time of day"
 msgstr "Time of day"
+
+msgid "Times use {timezone}."
+msgstr "Times use {timezone}."
 
 msgid "Title"
 msgstr "Title"
@@ -3092,6 +3175,9 @@ msgstr "Use a found model"
 msgid "Use default guidance"
 msgstr "Use default guidance"
 
+msgid "Use the new plan"
+msgstr "Use the new plan"
+
 msgid "Use this model"
 msgstr "Use this model"
 
@@ -3160,6 +3246,12 @@ msgstr "What do you want to get done?"
 msgid "What I finished while you were away, and what's new on the topics you follow."
 msgstr "What I finished while you were away, and what's new on the topics you follow."
 
+msgid "What I remember"
+msgstr "What I remember"
+
+msgid "What I've done"
+msgstr "What I've done"
+
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
 
@@ -3192,6 +3284,9 @@ msgstr "Where should bots run?"
 
 msgid "Working"
 msgstr "Working"
+
+msgid "Working on it"
+msgstr "Working on it"
 
 msgid "Working on its own"
 msgstr "Working on its own"
