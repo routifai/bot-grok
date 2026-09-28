@@ -67,7 +67,7 @@ export function VoicePanel({ onBusyChange }: { onBusyChange?: (busy: boolean) =>
   const voiceId = credential?.voiceId || voices[0]?.id || "";
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-7" data-testid="voice-settings">
       <SettingsGroup title={<Trans>Service</Trans>}>
         {catalog.map((entry) => {
           const connected = credentials.some((cred) => cred.provider === entry.id);
@@ -127,7 +127,7 @@ export function VoicePanel({ onBusyChange }: { onBusyChange?: (busy: boolean) =>
               type="password"
               aria-label={t`API key`}
               placeholder={t`API key`}
-              autoComplete="off"
+              autoComplete="new-password"
               value={apiKey}
               disabled={busy}
               onChange={(event) => setApiKey(event.target.value)}
@@ -169,7 +169,7 @@ export function VoicePanel({ onBusyChange }: { onBusyChange?: (busy: boolean) =>
             </label>
           ) : null}
           <SettingsLinkRow
-            label={<Trans>Play a sample</Trans>}
+            label={<Trans>Hear a sample</Trans>}
             onClick={() =>
               void run(async () => {
                 const { speaker } = await import("../../../lib/tts.js");
@@ -189,7 +189,7 @@ export function VoicePanel({ onBusyChange }: { onBusyChange?: (busy: boolean) =>
             }
             className={`${SETTINGS_ROW} text-start text-[16px] text-destructive transition-colors hover:bg-accent/50`}
           >
-            <Trans>Disconnect {selected.name}</Trans>
+            <Trans>Disconnect</Trans>
           </button>
         </SettingsGroup>
       ) : null}

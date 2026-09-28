@@ -15,7 +15,12 @@ export default defineConfig({
   testDir: "./e2e",
   forbidOnly: Boolean(process.env.CI),
   fullyParallel: false,
-  workers: realSandbox ? 1 : undefined,
+  // PLAYWRIGHT_WORKERS caps parallel browsers on a busy laptop; CI uses the default.
+  workers: realSandbox
+    ? 1
+    : process.env.PLAYWRIGHT_WORKERS
+      ? Number(process.env.PLAYWRIGHT_WORKERS)
+      : undefined,
   timeout: boxSandbox ? 600_000 : realSandbox ? 300_000 : 120_000,
   expect: { timeout: boxSandbox ? 300_000 : realSandbox ? 90_000 : 20_000 },
   reporter: reporters,

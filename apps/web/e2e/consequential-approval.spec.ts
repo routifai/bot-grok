@@ -24,11 +24,11 @@ test("actions run by default while optional confirmations live in advanced user 
   const settings = await openUserSettings(page);
   await expect(settings).toHaveAttribute("role", "dialog");
   await expect(settings).toBeFocused();
-  await expect(settings.getByText("Optional controls most people never need")).toBeVisible();
+  await expect(settings.getByRole("button", { name: "Approvals" })).toBeVisible();
   await expect(settings.getByRole("heading", { name: "Action confirmations" })).not.toBeVisible();
   await captureScreenshot(page, testInfo, "51-user-settings-advanced-collapsed");
 
-  await settings.getByText("Advanced", { exact: true }).click();
+  await settings.getByRole("button", { name: "Approvals" }).click();
   await expect(settings.getByRole("heading", { name: "Action confirmations" })).toBeVisible();
   await expect(settings.getByText("No exceptions. Actions run automatically.")).toBeVisible();
   await expect(settings.getByTestId("auto-review-toggle")).toBeVisible();

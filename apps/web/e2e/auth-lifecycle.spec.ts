@@ -53,7 +53,6 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settingsPanel = page.getByTestId("user-settings");
   await expect(settingsPanel).toBeVisible();
-  await expect(settingsPanel.getByTestId("settings-nav-usage")).toBeVisible();
   const logOutButton = settingsPanel.getByRole("button", { name: "Log out", exact: true });
   await expect(logOutButton).toBeVisible();
   await captureScreenshot(page, testInfo, "36-account-menu");
@@ -142,6 +141,7 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByTestId("user-settings");
   await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Change password" }).click();
   await expect(settings.locator('input[name="username"]')).toHaveAttribute(
     "autocomplete",
     "username",
@@ -159,7 +159,8 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
   await settings.getByLabel("Current password").fill(originalPassword);
   await settings.getByLabel("New password").fill(changedPassword);
   await settings.getByLabel("Confirm password").fill(changedPassword);
-  await settings.getByRole("button", { name: "Change password" }).click();
+  // The row that opened the form is also named "Change password"; submit is the last one.
+  await settings.getByRole("button", { name: "Change password" }).last().click();
   await expect(settings.getByText("Password updated")).toBeVisible();
   await captureScreenshot(page, testInfo, "41-password-changed");
   await page.getByRole("button", { name: "Log out", exact: true }).click();

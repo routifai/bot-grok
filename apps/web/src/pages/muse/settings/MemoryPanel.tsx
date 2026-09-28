@@ -36,13 +36,15 @@ export function MemoryPanel({ botId }: { botId: string }) {
   if (error) return <p className="px-4 text-[13px] text-destructive">{error}</p>;
   if (docs === null) return <Skeleton className="h-[106px] w-full rounded-[22px]" />;
 
-  // A note is worth showing once it holds more than its heading and the seed line.
-  const withContent = docs.filter((doc) => {
+  // Both notes always show so the person can start one; seed-only notes read as empty.
+  const hasContent = (doc: MemoryDocument) => {
     const line = firstLine(doc.content);
-    return line && line !== SEED_LINE;
-  });
+    return Boolean(line) && line !== SEED_LINE;
+  };
+  const withContent = docs.filter(hasContent);
+
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-7" data-testid="memory-panel">
       <SettingsGroup
         title={<Trans>What I remember</Trans>}
         footer={
@@ -53,16 +55,17 @@ export function MemoryPanel({ botId }: { botId: string }) {
           )
         }
       >
-        {withContent.length === 0 ? (
+        {docs.length === 0 ? (
           <p className="px-4 py-4 text-[15px] text-muted-foreground">
             <Trans>Nothing yet.</Trans>
           </p>
         ) : (
-          withContent.map((doc) =>
+          docs.map((doc) =>
             openId === doc.id ? (
               <MemoryEditor
                 key={doc.id}
                 doc={doc}
+                startEmpty={!hasContent(doc)}
                 onClose={() => setOpenId(null)}
                 onSaved={(updated) =>
                   setDocs((current) =>
@@ -74,7 +77,7 @@ export function MemoryPanel({ botId }: { botId: string }) {
               <SettingsLinkRow
                 key={doc.id}
                 label={memoryTitle(doc)}
-                value={firstLine(doc.content)}
+                value={hasContent(doc) ? firstLine(doc.content) : t`Empty`}
                 onClick={() => setOpenId(doc.id)}
               />
             ),
@@ -104,15 +107,19 @@ export function MemoryPanel({ botId }: { botId: string }) {
 
 function MemoryEditor({
   doc,
+  startEmpty,
   onClose,
   onSaved,
 }: {
   doc: MemoryDocument;
+  /** A note that only holds its placeholder opens blank. */
+  startEmpty: boolean;
   onClose: () => void;
   onSaved: (doc: MemoryDocument) => void;
 }) {
   const { t } = useLingui();
-  const [draft, setDraft] = useState(doc.content);
+  const initial = startEmpty ? "" : doc.content;
+  const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -151,7 +158,7 @@ function MemoryEditor({
         </Button>
         <Button
           className="rounded-full"
-          disabled={busy || draft === doc.content}
+          disabled={busy || draft === initial}
           onClick={() => void save()}
         >
           <Trans>Save</Trans>

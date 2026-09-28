@@ -1248,10 +1248,6 @@ msgstr "Direct MCP"
 msgid "Disconnect"
 msgstr "Disconnect"
 
-#. placeholder {0}: selected.name
-msgid "Disconnect {0}"
-msgstr "Disconnect {0}"
-
 msgid "Disconnecting…"
 msgstr "Disconnecting…"
 
@@ -1347,6 +1343,9 @@ msgstr "Edit Profile"
 
 msgid "Email"
 msgstr "Email"
+
+msgid "Empty"
+msgstr "Empty"
 
 msgid "Engage when... Ignore..."
 msgstr "Engage when... Ignore..."
@@ -2346,9 +2345,6 @@ msgstr "Plan waiting for you"
 
 msgid "Plans"
 msgstr "Plans"
-
-msgid "Play a sample"
-msgstr "Play a sample"
 
 msgid "Playing…"
 msgstr "Playing…"

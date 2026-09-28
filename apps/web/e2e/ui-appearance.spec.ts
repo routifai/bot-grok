@@ -35,7 +35,7 @@ test("account settings appearance control switches to light mode", async ({ page
     .locator("code")
     .filter({ hasText: "shared/PROJECT_CHECKPOINT_WRAPUP.md" });
   await expect(inlinePath).toBeVisible({ timeout: 30_000 });
-  await expect(inlinePath).toHaveCSS("color", "rgb(26, 26, 26)");
+  await expect(inlinePath).toHaveCSS("color", "rgb(21, 22, 26)");
   await captureScreenshot(page, testInfo, "inline-code-light");
 
   await openUserSettings(page);

@@ -45,8 +45,12 @@ export async function completeIdentitySteps(page: Page): Promise<void> {
  * step, landing in the Muse's chat with no form to fill.
  */
 export async function completeOnboarding(page: Page, testInfo?: TestInfo) {
-  await page.waitForURL(/\/(onboarding|app)/, { timeout: 20_000 });
-  if (page.url().includes("/app")) return;
+  // Sign-up lands on /app for a moment before the app sends a new person to onboarding, so
+  // the URL alone can't say onboarding is done: wait for the welcome or a ready composer.
+  const welcome = page.getByRole("button", { name: "Let's get started" });
+  const ready = page.getByPlaceholder(/^Message /).first();
+  await welcome.or(ready).waitFor({ timeout: 30_000 });
+  if (await ready.isVisible().catch(() => false)) return;
 
   await completeIdentitySteps(page);
 
