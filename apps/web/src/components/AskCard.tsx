@@ -104,9 +104,15 @@ export function AskCard({
         </div>
       ) : null}
       {block.detail && !secretInput ? (
-        <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
-          {block.detail}
-        </pre>
+        block.skillOffer ? (
+          <p className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.5] text-muted-foreground">
+            {block.detail}
+          </p>
+        ) : (
+          <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
+            {block.detail}
+          </pre>
+        )
       ) : null}
       {block.status === "answered" ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-success">

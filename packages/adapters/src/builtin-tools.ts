@@ -869,7 +869,8 @@ export const builtinAgentTools: ConnectorTool[] = [
         },
         why: {
           type: "string",
-          description: "One short sentence on why this is worth saving, shown with the offer.",
+          description:
+            'One short sentence to the person on why it\'s worth saving, e.g. "You check these rates often." Address them as you; never say "the user".',
         },
       },
       required: ["content"],

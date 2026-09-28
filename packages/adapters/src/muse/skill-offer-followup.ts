@@ -55,7 +55,7 @@ export function replyAsksToSaveSkill(text: string): boolean {
 export async function queueSkillOfferFollowUp(
   deps: { prisma: PrismaClient; jobs: Pick<JobPublisher, "enqueue"> },
   run: { id: string; spaceId: string; botId: string; threadId: string; userId: string },
-  options: { askedInText: boolean; now?: Date },
+  options: { askedInText: boolean; request?: string; now?: Date },
 ): Promise<boolean> {
   const tools = await deps.prisma.event.findMany({
     where: { runId: run.id, type: "agent.tool.completed" },
@@ -88,7 +88,14 @@ export async function queueSkillOfferFollowUp(
         botId: run.botId,
         threadId: run.threadId,
         userId: run.userId,
-        prompt: options.askedInText ? SKILL_OFFER_FOLLOW_UP_PROMPT : SKILL_OFFER_REVIEW_PROMPT,
+        prompt: [
+          options.askedInText ? SKILL_OFFER_FOLLOW_UP_PROMPT : SKILL_OFFER_REVIEW_PROMPT,
+          options.request?.trim()
+            ? `The request you just finished: "${options.request.trim().slice(0, 600)}"`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         status: "queued",
       },
     });

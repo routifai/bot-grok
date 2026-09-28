@@ -5295,7 +5295,10 @@ const Transcript = memo(function Transcript({
                     botDisplayName={botDisplayName}
                     artifactTarget={artifactTarget}
                     message={message}
-                    canAnswer={message.id === answerableAskMessageId}
+                    canAnswer={
+                      message.id === answerableAskMessageId ||
+                      Boolean(museMode && hasOpenMuseAsk(message))
+                    }
                     onOpenBot={onOpenBot}
                     onOpenPeerMessages={onOpenPeerMessages}
                     onAnswer={onAnswer}
@@ -6355,6 +6358,23 @@ function formatRosterTime(isoDate?: string | null): string {
   }
 }
 
+/**
+ * Muse Asks that apply their own effect (skill offers, Goal Proposals, blocked Tasks) stay
+ * answerable after their run ends; asks.answer checks they're still open.
+ */
+function hasOpenMuseAsk(message: ThreadMessage): boolean {
+  return message.blocks.some(
+    (block) =>
+      block.kind === "ask" &&
+      block.status !== "answered" &&
+      Boolean(
+        block.skillOffer ||
+          block.goalTaskId ||
+          block.actions?.some((action) => action.id === "accept"),
+      ),
+  );
+}
+
 function MessageHoverActions({
   message,
   side,
@@ -6979,7 +6999,8 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "ask") {
-          if (!museMode) {
+          const isProposal = block.actions?.some((action) => action.id === "accept") ?? false;
+          if (!museMode || !isProposal) {
             return (
               <AskCard
                 key={i}

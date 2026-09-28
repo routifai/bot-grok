@@ -3984,7 +3984,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 threadId: thread.id,
                 userId: run.userId,
               },
-              { askedInText: replyAsksToSaveSkill(text) },
+              { askedInText: replyAsksToSaveSkill(text), request: task.prompt },
             ).catch((error) => getLogger().error("skill offer follow-up", error));
           }
           if (completed.continuationRunId) {
