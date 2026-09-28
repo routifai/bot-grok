@@ -1,5 +1,7 @@
 # Aiden is standalone: no upstream, no fork
 
+> **Update:** the multi-bot mode has since been retired and the `AIDEN_PRODUCT_MODE` switch removed; Muse is the only behaviour, unconditionally. The paragraph below is left as the historical record of the decision at the time.
+
 ADR 0002 still described this codebase as a fork that pulled upstream fixes selectively. In practice the two products have fully diverged: Muse, Goals, the Feed, and the Aiden-specific product surface are most of what the codebase now does, the remaining shared modules have been refactored freely, and no change has been pulled from upstream in a long time. Calling it a fork no longer describes reality and invites confusion about where updates come from.
 
 Aiden is its own product, not a fork. There is no upstream remote, no merge or sync process, and no expectation that a file's history ties it to another project. The `AIDEN_PRODUCT_MODE` switch (`muse` vs `aiden`) stays for now purely as an internal product-mode toggle between the single-Muse edition and the full multi-bot edition; it carries no fork or merge-compatibility meaning and will be simplified in a later cleanup once the multi-bot mode is retired.

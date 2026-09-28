@@ -8,12 +8,6 @@ import {
   signup,
 } from "./helpers";
 
-function sidebarBotButton(page: Page, name: RegExp | string) {
-  return page.locator("[data-sidebar-group] [data-roster-bot-id]").filter({
-    has: page.locator("[data-roster-bot-name]").filter({ hasText: name }),
-  });
-}
-
 test.describe.configure({ mode: "serial" });
 
 test("two users are isolated and a bot completes durable work", async ({ browser }, testInfo) => {
@@ -25,11 +19,11 @@ test("two users are isolated and a bot completes durable work", async ({ browser
   const stamp = Date.now();
   await signup(pageA, `ada-${stamp}@aiden.test`, "password12", "Ada", testInfo);
   await completeOnboarding(pageA, testInfo);
-  await expect(pageA.getByText("Chief").first()).toBeVisible();
+  await expect(pageA.getByText("Aiden").first()).toBeVisible();
 
   await signup(pageB, `bob-${stamp}@aiden.test`, "password12", "Bob");
   await completeOnboarding(pageB);
-  await expect(pageB.getByText("Chief").first()).toBeVisible();
+  await expect(pageB.getByText("Aiden").first()).toBeVisible();
   await expect(pageB.getByText("Ada", { exact: true })).toHaveCount(0);
 
   const composer = pageA.getByPlaceholder(/Message/);
@@ -299,176 +293,6 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await captureScreenshot(page, testInfo, "11d-provider-emulators");
 
   await page.getByRole("button", { name: "Close integrations" }).click();
-
-  await page.getByText("Chief").first().click();
-  const gear = page.getByRole("button", { name: "Show settings" });
-  if (!(await gear.isVisible().catch(() => false))) {
-    await page.getByTitle("Agent computer").click();
-  }
-  await gear.click();
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export" }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/chief-export\.json/i);
-  const settings = page.getByTestId("bot-settings");
-  await expect(settings.getByRole("button", { name: "Archive bot" })).toHaveCount(0);
-  await expect(settings.getByRole("button", { name: "Delete bot" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Close panel" }).click();
-
-  await page.locator("aside").first().getByRole("button", { name: /Chief/ }).first().click({
-    button: "right",
-  });
-  const botMenu = page.getByRole("menu", { name: "Actions for Chief" });
-  await expect(botMenu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
-  await botMenu.getByRole("menuitem", { name: "Delete" }).click();
-  await expect(page.getByRole("radio", { name: /Keep memories/ })).toBeChecked();
-  await expect(page.getByRole("radio", { name: /Delete memories too/ })).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await captureScreenshot(page, testInfo, "12-bot-settings");
-});
-
-test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) => {
-  const browserErrors: string[] = [];
-  const failedRequests: string[] = [];
-  page.on("pageerror", (error) => browserErrors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") browserErrors.push(message.text());
-  });
-  page.on("requestfailed", (request) => {
-    failedRequests.push(
-      `${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`,
-    );
-  });
-  const stamp = Date.now();
-  const email = `shell-${stamp}@aiden.test`;
-  await signup(page, email, "password12", "Shell");
-  await completeOnboarding(page);
-  await page.evaluate(() => {
-    Object.defineProperty(globalThis.crypto, "randomUUID", {
-      value: undefined,
-      configurable: true,
-    });
-  });
-
-  const composer = page.locator('textarea[name="chat-message"]');
-  await composer.fill("spawn a bot named Scout to research venues");
-  await page.keyboard.press("Enter");
-  await expect(sidebarBotButton(page, /Scout/)).toBeVisible({
-    timeout: 30_000,
-  });
-  await captureScreenshot(page, testInfo, "13-spawned-bot");
-
-  await page
-    .locator("[data-sidebar-group]")
-    .getByRole("button", { name: /^Chief/ })
-    .click();
-  await composer.fill("keep working until I stop you");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(page.getByTestId("composer-steering-status")).toHaveCount(0);
-  await expect(page.getByText("Messages sent now guide the next turn.")).toHaveCount(0);
-  await expect(page.getByText(/^Steer /)).toHaveCount(0);
-  await expect(composer).toHaveAttribute("placeholder", "Message Chief");
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
-  await composer.fill("Use the newer report and keep the answer short.");
-  await page.keyboard.press("Tab");
-  await expect(
-    page.getByTestId("composer-bar").getByRole("button", { name: "Voice", exact: true }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(
-    page.getByTestId("transcript").getByText("Use the newer report and keep the answer short."),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-  await captureScreenshot(page, testInfo, "14-active-bot-work");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-  await expect(composer).toHaveAttribute("placeholder", "Message Chief");
-  await captureScreenshot(page, testInfo, "14-active-bot-work-mobile");
-  await page.setViewportSize({ width: 1280, height: 720 });
-  expect(browserErrors).toEqual([]);
-  expect(failedRequests).toEqual([]);
-  let releaseStopRequest: () => void = () => undefined;
-  let markStopRequestStarted: () => void = () => undefined;
-  const stopRequestStarted = new Promise<void>((resolve) => {
-    markStopRequestStarted = resolve;
-  });
-  await page.route("**/rpc/threads/stop", async (route) => {
-    markStopRequestStarted();
-    await new Promise<void>((release) => {
-      releaseStopRequest = release;
-    });
-    await route.continue();
-  });
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await stopRequestStarted;
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeDisabled();
-  releaseStopRequest();
-  // Idle Send stays disabled with an empty draft; wait for Stop to leave instead.
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0, {
-    timeout: 30_000,
-  });
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
-
-  await page.context().clearCookies();
-  await page.goto("/sign-in");
-  await page.getByPlaceholder("Your email address").fill(email);
-  await page.getByPlaceholder("Password").fill("password12");
-  await page.getByRole("button", { name: "Continue with email" }).click();
-  await page.waitForURL(/\/app/, { timeout: 20_000 });
-  await expect(sidebarBotButton(page, /^Chief/)).toBeVisible();
-  await expect(sidebarBotButton(page, /Scout/)).toBeVisible();
-  await captureScreenshot(page, testInfo, "15-restored-session");
-});
-
-test("bot context menu pins, duplicates, edits, and confirms deletion", async ({
-  page,
-}, testInfo) => {
-  const stamp = Date.now();
-  await signup(page, `menu-${stamp}@aiden.test`, "password12", "Menu");
-  await completeOnboarding(page);
-
-  const chief = page.getByRole("button", { name: /Chief/ }).first();
-  await chief.click({ button: "right" });
-  await expect(page.getByRole("menu", { name: "Actions for Chief" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Edit Profile" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Duplicate" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
-  await captureScreenshot(page, testInfo, "16-bot-context-menu");
-  await page.getByRole("menuitem", { name: "Mark as Unread" }).click();
-
-  // Chief is the open bot, so the auto-read on window focus must not undo the manual mark.
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await chief.click({ button: "right" });
-  await expect(page.getByRole("menuitem", { name: "Mark as Read" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Mark as Read" }).click();
-
-  await chief.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
-
-  await chief.click({ button: "right" });
-  await expect(page.getByRole("menuitem", { name: "Unpin", exact: true })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Duplicate" }).click();
-  await expect(page.getByText("Chief copy").first()).toBeVisible();
-  await captureScreenshot(page, testInfo, "17-pinned-and-duplicated-bot");
-
-  const copy = page.getByRole("button", { name: /Chief copy/ }).first();
-  await copy.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Delete" }).click();
-  await expect(page.getByRole("alertdialog", { name: "Delete Chief copy?" })).toBeVisible();
-  await captureScreenshot(page, testInfo, "18-delete-confirmation");
-  await page.getByRole("button", { name: "Cancel" }).click();
-
-  await chief.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Edit Profile" }).click();
-  await expect(page.locator("label:has-text('Name') input")).toHaveValue("Chief");
-  await captureScreenshot(page, testInfo, "19-edit-profile");
 });
 
 async function threadRunStatus(page: Page) {

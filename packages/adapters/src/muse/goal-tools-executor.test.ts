@@ -239,6 +239,9 @@ function fixture(runId = "run-1") {
           return goal ? (include ? withRelations(goal) : goal) : null;
         },
       ),
+      // Every turn's goals context (packages/adapters/src/muse/goals-context.ts) lists
+      // active Goals for the bot; empty at the start of these fixtures either way.
+      findMany: vi.fn(async () => []),
     },
     goalTask: {
       findMany: vi.fn(async () => []),

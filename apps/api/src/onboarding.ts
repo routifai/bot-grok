@@ -1,5 +1,5 @@
 import type { ConnectorRegistry } from "@aiden/adapters";
-import type { Actor, MessageBlock, ProductMode } from "@aiden/contracts";
+import type { Actor, MessageBlock } from "@aiden/contracts";
 import { featuredConnectorProvidersMatch } from "@aiden/core";
 import {
   appendEventInTransaction,
@@ -11,20 +11,17 @@ import {
 } from "@aiden/db";
 
 /**
- * First-run conversational onboarding, seeded deterministically into the bot's
- * thread: greeting, a focus choice, and available app cards the user authorizes
- * inline. Focus must not rename the bot. No model tokens are spent.
- *
- * In muse mode nothing is seeded: the first-run welcome in the web app introduces
- * the Muse, so the conversation stays empty until the person speaks.
+ * First-run conversational onboarding. The web app's first-run welcome introduces
+ * the Muse, so `promptFocus` posts nothing and the conversation stays empty until
+ * the person speaks; `chooseFocus`/`dismissFocus`/`markAppConnected` remain here
+ * for the focus-card flow those callers still route through, but with no card
+ * ever posted they never see a pending choice to act on.
  */
 
 type OnboardingDeps = {
   prisma: PrismaClient;
   events: ThreadEvents;
   connectors: ConnectorRegistry;
-  /** Defaults to the full Aiden mode (the focus-card flow) when absent. */
-  productMode?: ProductMode;
 };
 
 type FocusOption = {
@@ -138,64 +135,24 @@ export async function startOnboarding(
   const { thread } = await requireBotThread(deps, actor, botId);
   const existing = await deps.prisma.message.count({ where: { threadId: thread.id } });
   if (existing > 0) return;
-  // Fresh chats start empty (same as web). The focus card is posted later via
-  // promptFocus so non-first bots can wait ~10s for free typing, or skip if the
-  // user already engaged.
-}
-
-function messageHasChoice(blocks: MessageBlock[]): boolean {
-  return blocks.some((block) => block.kind === "choice");
+  // Fresh chats start empty (same as web); promptFocus never posts in the Muse edition.
 }
 
 function messageHasPendingChoice(blocks: MessageBlock[]): boolean {
   return blocks.some((block) => block.kind === "choice" && !block.answerId);
 }
 
+/**
+ * The Muse edition posts nothing here: the first-run welcome introduces Aiden and how to
+ * work together, and the conversation stays empty until the person speaks. Still validates
+ * bot ownership so a bad botId keeps throwing IsolationError as before.
+ */
 export async function promptFocus(
   deps: OnboardingDeps,
   actor: Actor,
   botId: string,
 ): Promise<void> {
-  const { bot, thread } = await requireBotThread(deps, actor, botId);
-  const target = { spaceId: actor.spaceId, botId: bot.id, threadId: thread.id };
-  // The Muse edition posts nothing here: the first-run welcome introduces Aiden and how to
-  // work together, and the conversation stays empty until the person speaks.
-  if (deps.productMode === "muse") return;
-  const blocks: MessageBlock[] = [
-    {
-      kind: "choice",
-      question: "What do you want me on first?",
-      options: FOCUS_OPTIONS.map(({ id, letter, label }) => ({ id, letter, label })),
-    },
-  ];
-  // Check + insert + event in one transaction so concurrent promptFocus calls
-  // cannot duplicate cards, and a concurrent user send cannot publish first.
-  const committed = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // Serialize concurrent promptFocus callers on this thread before the gate check.
-    await tx.$executeRaw`SELECT id FROM threads WHERE id = ${thread.id} FOR UPDATE`;
-    const recent = await tx.message.findMany({
-      where: { threadId: thread.id },
-      select: { role: true, blocks: true },
-      orderBy: { createdAt: "asc" },
-    });
-    if (recent.some((message) => message.role === "user")) return null;
-    if (recent.some((message) => messageHasChoice(message.blocks as MessageBlock[]))) return null;
-    const message = await createThreadMessageInTransaction(tx, {
-      threadId: target.threadId,
-      role: "bot",
-      blocks,
-    });
-    const event = await appendEventInTransaction(tx, {
-      spaceId: target.spaceId,
-      threadId: target.threadId,
-      botId: target.botId,
-      type: "thread.message.created",
-      payload: { messageId: message.id, role: "bot", blocks },
-    });
-    return { message, event };
-  });
-  if (!committed) return;
-  await deps.events.notify(target.threadId, committed.event.seq);
+  await requireBotThread(deps, actor, botId);
 }
 
 export async function dismissFocus(

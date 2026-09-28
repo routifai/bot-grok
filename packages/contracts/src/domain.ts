@@ -3,7 +3,6 @@ import { BotAvatarValueSchema } from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
 import { Id, MemoryScope, RunStatus, SandboxKind } from "./ids.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
-import { ProductModeSchema } from "./muse.js";
 
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
 export type ComputerMode = z.infer<typeof ComputerModeSchema>;
@@ -1129,7 +1128,6 @@ export const MeSchema = z.object({
   // IANA zone name; drives quiet hours and the daily Followed-topic digest
   // (packages/core/src/muse/proactivity.ts, packages/adapters/src/muse/feed-jobs.ts).
   timezone: z.string(),
-  productMode: ProductModeSchema,
 });
 export type Me = z.infer<typeof MeSchema>;
 

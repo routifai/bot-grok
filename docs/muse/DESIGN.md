@@ -1,6 +1,6 @@
 # Muse design
 
-The Muse edition should feel calm, personal, and quietly capable: ChatGPT's restraint, Wispr Flow's warmth and spacing, and the richness of the Aiden concept's cards (a deck preview, "finished while you were away", "one yes before I send this"). Light-first, with a matching dark theme. Everything here applies only in Muse mode (`[data-product="muse"]`); the full Aiden mode keeps its look.
+The Muse edition should feel calm, personal, and quietly capable: ChatGPT's restraint, Wispr Flow's warmth and spacing, and the richness of the Aiden concept's cards (a deck preview, "finished while you were away", "one yes before I send this"). Light-first, with a matching dark theme. Muse is Aiden's only edition now (the old multi-bot mode has been retired); the styling here is still scoped under `[data-product="muse"]`, which the app sets unconditionally.
 
 ## The Muse
 

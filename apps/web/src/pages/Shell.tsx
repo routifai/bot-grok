@@ -2,7 +2,6 @@ import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type {
   AgentSkillCatalogEntry,
   Bot,
-  BotSection,
   ComputerMode,
   ComputerReleaseReason,
   ComputerStatus,
@@ -12,8 +11,6 @@ import type {
   Me,
   ProductEvent,
   Routine,
-  SearchHit,
-  Space,
   SpaceMemoryConfig,
   TaughtSkill,
   ThreadMessage,
@@ -35,7 +32,6 @@ import {
   type ComposerMention,
   clampMentionHighlightIndex,
   cronFromPreset,
-  groupBotsForSidebar,
   inferAttachmentMimeType,
   isActive,
   isPeerReceiptBlocks,
@@ -43,10 +39,8 @@ import {
   isToolActivityBlock,
   latestAnswerableAskMessageId,
   mentionChipKey,
-  nestRosterByParent,
   plainTextFromMarkdown,
   projectMessageReactions,
-  reorderBotTo,
   resolveComposerSendPlan,
   resolveMentionPickerKey,
   runThreadSubscription,
@@ -70,9 +64,6 @@ import {
   DropdownMenuTrigger,
   GroupAvatar,
   type GroupAvatarMember,
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -84,35 +75,23 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import {
   ArrowDown,
   ArrowUp,
-  Bell,
   Box,
-  ChevronDown,
   Clock,
   Copy,
-  Gauge,
-  LayoutGrid,
-  Lock,
-  LogOut,
   Maximize2,
-  Menu,
   Mic,
   Monitor,
   MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Paperclip,
-  Pencil,
   Plus,
   Puzzle,
   Reply,
-  Search,
   Settings,
   Smile,
   Square,
   TextQuote,
-  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -151,15 +130,9 @@ import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
 import { TeachComputerOverlayControl } from "../components/teach/TeachComputerOverlay";
 import { TeachRecordingChrome, TeachStopButton } from "../components/teach/TeachRecordingChrome";
-import { readActivityMode, writeActivityMode } from "../lib/activity-mode";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { authClient } from "../lib/auth";
 import { takeInitialBootstrap } from "../lib/bootstrap";
-import {
-  BOTS_SIDEBAR_EDGE_DRAG_PX,
-  readBotsSidebarCollapsed,
-  writeBotsSidebarCollapsed,
-} from "../lib/bots-sidebar-pref";
 import {
   deliverBrowserNotification as deliverNativeBrowserNotification,
   requestBrowserNotificationPermission,
@@ -173,7 +146,6 @@ import {
   screenLinkKey,
   screenUrlStillFresh,
 } from "../lib/computer-screen";
-import { desktopBridge } from "../lib/desktop";
 import { scheduleFocusPrompt } from "../lib/focus-prompt";
 import { localTimezone } from "../lib/local-timezone";
 import { copyableMessageText } from "../lib/message-text";
@@ -184,10 +156,9 @@ import {
   revokePendingAttachmentPreviews,
 } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
-import { applyProductMode } from "../lib/product-mode";
 import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
-import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
+import { rpc } from "../lib/rpc";
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import { sharedInflight } from "../lib/shared-inflight";
 import {
@@ -214,9 +185,7 @@ import {
 } from "../lib/transcript-scroll";
 import { speaker } from "../lib/tts";
 import { SCREEN_DISCONNECTED_MESSAGE } from "../novnc-html";
-import { ActivityList } from "./ActivityList";
-import type { ContextMenuPosition } from "./BotContextMenu";
-import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
+import { GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
 import { notifyAsksChanged } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
@@ -243,19 +212,8 @@ import {
   routineNeedsOneShotArm,
 } from "./RoutineEditor";
 import type { SettingsSection } from "./SettingsOverlay";
-import { SpaceSearchResults } from "./SpaceSearch";
 import { BotSettings, CreateBotForm } from "./shell/bot-panel";
-import { BotCreatePicker } from "./shell/bot-picker";
-import { CommandPalette, isCommandPaletteHotkey } from "./shell/command-palette";
-import {
-  ClearConversationDialog,
-  DeleteBotDialog,
-  DeleteItemDialog,
-  NewBotSectionDialog,
-  NewSpaceDialog,
-  PickerInfoDialog,
-  RenameBotSectionDialog,
-} from "./shell/dialogs";
+import { ClearConversationDialog, DeleteItemDialog } from "./shell/dialogs";
 import {
   AppConnectCard,
   ArtifactImage,
@@ -263,11 +221,7 @@ import {
   ChoiceCard,
   McpApprovalCard,
 } from "./shell/message-cards";
-import { WindowChrome } from "./WindowChrome";
 
-const BotContextMenu = lazy(() =>
-  import("./BotContextMenu").then((module) => ({ default: module.BotContextMenu })),
-);
 const MessagingSettingsOverlay = lazy(() =>
   import("./MessagingSettingsOverlay").then((module) => ({
     default: module.MessagingSettingsOverlay,
@@ -316,8 +270,6 @@ const FALLBACK_BOT_COLOR = "#85858A";
 const THREAD_SNAPSHOT_TIMEOUT_MS = 2_000;
 /** Bound Settings leave so a hung voice status refresh cannot block dismissal. */
 const VOICE_STATUS_REFRESH_TIMEOUT_MS = 10_000;
-const MOBILE_SIDEBAR_SWIPE_EDGE_PX = 32;
-const MOBILE_SIDEBAR_SWIPE_DISTANCE_PX = 56;
 /** Muse glass shell (docs/muse/DESIGN.md "Background wash"): the floating panel look
  * shared by the main content area and the Conversation column inside it — a translucent
  * card over the wash, a hairline light border, and a soft wide shadow. Flush edge to
@@ -337,55 +289,6 @@ function voiceStatusRefreshTimeout(): Promise<never> {
   });
 }
 
-function collapsedSidebarSectionsStorageKey(userId: string | null | undefined): string | null {
-  if (!userId) return null;
-  return `aiden:collapsed-sidebar-sections:${userId}`;
-}
-
-function collapsedRosterParentsStorageKey(userId: string | null | undefined): string | null {
-  if (!userId) return null;
-  return `aiden:collapsed-roster-parents:${userId}`;
-}
-
-function readCollapsedIdSet(storageKey: string | null): Set<string> {
-  if (!storageKey) return new Set();
-  try {
-    const value = window.localStorage.getItem(storageKey);
-    const keys: unknown = value ? JSON.parse(value) : [];
-    return new Set(
-      Array.isArray(keys) ? keys.filter((key): key is string => typeof key === "string") : [],
-    );
-  } catch {
-    return new Set();
-  }
-}
-
-function toggleCollapsedIdSet(
-  previous: ReadonlySet<string>,
-  id: string,
-  storageKey: string | null,
-): Set<string> {
-  const next = new Set(previous);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  if (storageKey) {
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify([...next]));
-    } catch {
-      // Keep the UI usable when storage is unavailable.
-    }
-  }
-  return next;
-}
-
-function readCollapsedSidebarSections(userId: string | null | undefined): Set<string> {
-  return readCollapsedIdSet(collapsedSidebarSectionsStorageKey(userId));
-}
-
-function readCollapsedRosterParents(userId: string | null | undefined): Set<string> {
-  return readCollapsedIdSet(collapsedRosterParentsStorageKey(userId));
-}
-
 export function ShellPage() {
   const { t } = useLingui();
   const { botId, groupId } = useParams();
@@ -402,27 +305,7 @@ export function ShellPage() {
   const [bots, setBots] = useState<Bot[]>([]);
   const botsRef = useRef(bots);
   botsRef.current = bots;
-  const botOrderEpochRef = useRef(0);
-  const pendingBotOrderRef = useRef<string[] | null>(null);
-  const savingBotOrderRef = useRef(false);
-  const [botSections, setBotSections] = useState<BotSection[]>([]);
-  const [spaces, setSpaces] = useState<Space[]>([]);
-  const [archivedBots, setArchivedBots] = useState<Bot[]>([]);
-  const [archivedGroups, setArchivedGroups] = useState<Group[]>([]);
-  const [archivedOpen, setArchivedOpen] = useState(false);
-  const [collapsedSidebarSections, setCollapsedSidebarSections] = useState(() => new Set<string>());
-  const [collapsedRosterParents, setCollapsedRosterParents] = useState(() => new Set<string>());
 
-  useEffect(() => {
-    setCollapsedSidebarSections(readCollapsedSidebarSections(userId));
-    setCollapsedRosterParents(readCollapsedRosterParents(userId));
-  }, [userId]);
-  useEffect(() => {
-    setBotsSidebarCollapsed(readBotsSidebarCollapsed(userId));
-  }, [userId]);
-  const [query, setQuery] = useState("");
-  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<ThreadSnapshot | null>(null);
   const snapshotRef = useRef<ThreadSnapshot | null>(null);
   const streamResponses = useSyncExternalStore(
@@ -532,86 +415,12 @@ export function ShellPage() {
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [dismissedRunErrorIds, setDismissedRunErrorIds] =
     useState<ReadonlySet<string>>(readSeenRunErrorIds);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const mobileSidebarSwipeRef = useRef<{ startX: number; startY: number } | null>(null);
-  const [draggedBotId, setDraggedBotId] = useState<string | null>(null);
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
-  const [botsSidebarCollapsed, setBotsSidebarCollapsed] = useState(false);
   const focusPromptAbortRef = useRef<AbortController | null>(null);
   const focusPromptBotIdRef = useRef<string | null>(null);
-  const botsSidebarEdgeDragRef = useRef<{ startX: number; mode: "expand" | "collapse" } | null>(
-    null,
-  );
-  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  const [pickerInfoTopic, setPickerInfoTopic] = useState<"group" | "space" | null>(null);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 768px)");
-    function closeMobileSidebar() {
-      if (desktop.matches) setMobileSidebarOpen(false);
-    }
-    closeMobileSidebar();
-    desktop.addEventListener("change", closeMobileSidebar);
-    return () => desktop.removeEventListener("change", closeMobileSidebar);
-  }, []);
-  const [activityMode, setActivityMode] = useState(readActivityMode);
-  const toggleActivityMode = useCallback(() => {
-    setActivityMode((on) => {
-      const next = !on;
-      writeActivityMode(next);
-      return next;
-    });
-  }, []);
-  const [botMenu, setBotMenu] = useState<{
-    kind: "bot" | "group";
-    id: string;
-    position: ContextMenuPosition;
-  } | null>(null);
-  // The context menu anchors to the pointer, so return focus to the row that opened it.
-  const botMenuAnchor = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (botMenu || !botMenuAnchor.current) return;
-    botMenuAnchor.current.focus();
-    botMenuAnchor.current = null;
-  }, [botMenu]);
-  const [deleteTarget, setDeleteTarget] = useState<Bot | null>(null);
-  const [deleteGroupTarget, setDeleteGroupTarget] = useState<Group | null>(null);
-  const [deleteSpaceTarget, setDeleteSpaceTarget] = useState<Space | null>(null);
-  const [spaceMenu, setSpaceMenu] = useState<{
-    id: string;
-    position: ContextMenuPosition;
-  } | null>(null);
-  const spaceMenuAnchor = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (spaceMenu || !spaceMenuAnchor.current) return;
-    spaceMenuAnchor.current.focus();
-    spaceMenuAnchor.current = null;
-  }, [spaceMenu]);
-  const closeSpaceMenu = useCallback(() => setSpaceMenu(null), []);
   const [clearTarget, setClearTarget] = useState<
     { kind: "bot"; chat: Bot } | { kind: "group"; chat: Group } | null
   >(null);
-  const [newSectionTarget, setNewSectionTarget] = useState<
-    { kind: "bot"; chat: Bot } | { kind: "group"; chat: Group } | null
-  >(null);
-  const [renameSectionTarget, setRenameSectionTarget] = useState<{
-    section: BotSection;
-    spaceId: string;
-  } | null>(null);
-  const [sectionMenu, setSectionMenu] = useState<{
-    section: BotSection;
-    spaceId: string;
-    position: ContextMenuPosition;
-  } | null>(null);
-  const sectionMenuAnchor = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (sectionMenu || !sectionMenuAnchor.current) return;
-    sectionMenuAnchor.current.focus();
-    sectionMenuAnchor.current = null;
-  }, [sectionMenu]);
-  const closeSectionMenu = useCallback(() => setSectionMenu(null), []);
   const [booting, setBooting] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
@@ -725,8 +534,7 @@ export function ShellPage() {
   const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
   // One Muse per person (docs/adr/0001-one-muse-per-person.md): with no bot list to
   // switch between, `active` already resolves to the person's one live bot.
-  const museMode = bootstrapMe?.productMode === "muse";
-  useEffect(() => applyProductMode(bootstrapMe?.productMode), [bootstrapMe?.productMode]);
+  const museMode = true;
   const { view: museView, setView: setMuseView } = useMuseNav();
   const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
   /** Bumped on every send so the transcript jumps to the bottom and follows the reply. */
@@ -762,12 +570,6 @@ export function ShellPage() {
   const refreshScreenRef = useRef<(id: string, options?: { force?: boolean }) => Promise<unknown>>(
     async () => null,
   );
-  const contextBot =
-    botMenu?.kind === "bot" ? bots.find((bot) => bot.id === botMenu.id) : undefined;
-  const contextGroup =
-    botMenu?.kind === "group" ? groups.find((group) => group.id === botMenu.id) : undefined;
-  const contextChat = contextBot ?? contextGroup;
-  const closeBotMenu = useCallback(() => setBotMenu(null), []);
   const updateBotUnread = useCallback((id: string, unread: boolean) => {
     setBots((current) => {
       const bot = current.find((candidate) => candidate.id === id);
@@ -782,19 +584,6 @@ export function ShellPage() {
       await rpc.threads.markRead({ botId: id });
       manuallyUnread.current.delete(id);
       updateBotUnread(id, false);
-    },
-    [updateBotUnread],
-  );
-  const markBotUnread = useCallback(
-    async (id: string) => {
-      manuallyUnread.current.add(id);
-      try {
-        await rpc.threads.markUnread({ botId: id });
-      } catch (err) {
-        manuallyUnread.current.delete(id);
-        throw err;
-      }
-      updateBotUnread(id, true);
     },
     [updateBotUnread],
   );
@@ -876,11 +665,9 @@ export function ShellPage() {
   );
 
   const refreshBots = useCallback(
-    async (includeArchived = false, replaceBotOrder = false) => {
+    async (includeArchived = false) => {
       markOnce("rk:renderer:bots-request-start");
       const request = ++botsRefreshEpoch.current;
-      const botOrderEpoch = botOrderEpochRef.current;
-      const preserveBotOrder = savingBotOrderRef.current || pendingBotOrderRef.current !== null;
       const archivedRequest = includeArchived ? ++archivedBotsRefreshEpoch.current : null;
       botsRefreshInFlight.current += 1;
       try {
@@ -889,7 +676,7 @@ export function ShellPage() {
           includeArchived ? rpc.bots.listArchived() : Promise.resolve(null),
           includeArchived ? rpc.groups.listArchived() : Promise.resolve(null),
         ]);
-        const { bots: list, botSections: sections, groups: groupList } = navigation.current;
+        const { bots: list, groups: groupList } = navigation.current;
         markOnce("rk:renderer:bots-response");
         const botsFresh = request === botsRefreshEpoch.current;
         const archivedFresh =
@@ -898,18 +685,9 @@ export function ShellPage() {
         // includeArchived request still owns archivedBotsRefreshEpoch — apply
         // whichever slices are still current.
         if (!botsFresh && !archivedFresh) return;
-        if (archivedFresh && archived) setArchivedBots(archived);
-        if (archivedFresh && archivedGroupList) setArchivedGroups(archivedGroupList);
         if (!botsFresh) return;
-        if (
-          botOrderEpoch === botOrderEpochRef.current &&
-          (replaceBotOrder || (!preserveBotOrder && !savingBotOrderRef.current))
-        ) {
-          setBots(list);
-        }
-        setBotSections(sections);
+        setBots(list);
         setGroups(groupList);
-        setSpaces(navigation.spaces);
         setInitialBotsLoaded(true);
         botsRefreshApplied.current = request;
         if (
@@ -1174,11 +952,7 @@ export function ShellPage() {
         const applyBotLists = appliedAtStart === botsRefreshApplied.current;
         if (applyBotLists) {
           setBots(bootstrap.bots);
-          setBotSections(bootstrap.botSections);
-          setArchivedBots(bootstrap.archivedBots);
-          setArchivedGroups(bootstrap.archivedGroups);
           setGroups(groupList);
-          setSpaces(bootstrap.spaces);
           setInitialBotsLoaded(true);
         }
         if (!groupId && bootstrap.thread) {
@@ -1514,199 +1288,6 @@ export function ShellPage() {
       abort.abort();
     };
   }, [activeGroup?.id, groupId, notifyBrowserForEvent]);
-
-  const sidebarGroups = useMemo(() => {
-    const needle = query.toLowerCase();
-    const sidebarSpaces =
-      spaces.length > 0
-        ? spaces.map((space) =>
-            space.id === bootstrapMe?.spaceId ? { ...space, bots, groups, botSections } : space,
-          )
-        : bootstrapMe
-          ? [
-              {
-                id: bootstrapMe.spaceId,
-                name: "Personal",
-                isDefault: true,
-                hasContent: true,
-                canDelete: false,
-                bots,
-                groups,
-                botSections,
-              },
-            ]
-          : [];
-    const showSpaceNames = sidebarSpaces.length > 1;
-    return sidebarSpaces.flatMap((space) => {
-      const visibleBots = space.bots.filter((bot) =>
-        `${bot.name} ${bot.title ?? ""} ${bot.preview ?? ""}`.toLowerCase().includes(needle),
-      );
-      const visibleGroups = space.groups.filter((group) =>
-        `${group.name} ${group.preview}`.toLowerCase().includes(needle),
-      );
-      const sections = groupBotsForSidebar(
-        [
-          ...visibleBots.map((chat) => ({ kind: "bot" as const, chat })),
-          ...visibleGroups.map((chat) => ({ kind: "group" as const, chat })),
-        ].map((item) => ({
-          ...item,
-          id: item.chat.id,
-          parentBotId: item.kind === "bot" ? item.chat.parentBotId : null,
-          pinned: item.chat.pinned,
-          sectionId: item.chat.sectionId,
-        })),
-        space.botSections,
-      ).map((group, index) => ({
-        ...group,
-        sectionId: group.key.startsWith("section:") ? group.key.slice("section:".length) : null,
-        key: showSpaceNames ? `space:${space.id}:${group.key}` : group.key,
-        title: showSpaceNames
-          ? group.title
-            ? `${space.name} · ${group.title}`
-            : space.name
-          : group.title,
-        showLock: showSpaceNames,
-        emptySpaceId: undefined as string | undefined,
-        spaceId: space.id,
-        spaceName: space.name,
-        canDeleteSpace: index === 0 && space.canDelete === true,
-      }));
-      if (sections.length > 0) return sections;
-      // Keep empty spaces selectable; chat clicks are the only switch control.
-      if (!showSpaceNames) return [];
-      if (needle && (space.bots.length > 0 || space.groups.length > 0)) return [];
-      return [
-        {
-          key: `space:${space.id}:empty`,
-          title: space.name,
-          bots: [],
-          sectionId: null,
-          showLock: true,
-          emptySpaceId: space.id,
-          spaceId: space.id,
-          spaceName: space.name,
-          canDeleteSpace: space.canDelete === true,
-        },
-      ];
-    });
-  }, [bootstrapMe, botSections, bots, groups, spaces, query]);
-
-  const openSpaceChat = useCallback(
-    (spaceId: string, path: string) => {
-      setMobileSidebarOpen(false);
-      const previousSpaceId = selectedSpaceId();
-      // Persist the active space (including primary) so voice/RPC headers match the chat.
-      const selectionStored = selectSpace(spaceId);
-      if (!selectionStored) return;
-      const previousEffective = previousSpaceId ?? bootstrapMe?.spaceId;
-      const boundaryChanged = previousEffective !== spaceId;
-      // Soft-navigate within the same space; reload only when the auth boundary changes
-      // so bootstrapped bots/groups match the request header.
-      if (boundaryChanged) {
-        window.location.assign(path);
-        return;
-      }
-      navigate(path);
-    },
-    [bootstrapMe?.spaceId, navigate],
-  );
-  const flushBotOrder = useCallback(async () => {
-    if (savingBotOrderRef.current) return;
-    savingBotOrderRef.current = true;
-    try {
-      while (pendingBotOrderRef.current) {
-        const botIds = pendingBotOrderRef.current;
-        pendingBotOrderRef.current = null;
-        try {
-          await rpc.bots.reorder({ botIds });
-        } catch {
-          // Keep a newer order queued during this failed save; only roll back
-          // when nothing else is pending.
-          if (pendingBotOrderRef.current === null) {
-            await refreshBots(false, true).catch(() => undefined);
-          }
-        }
-      }
-    } finally {
-      savingBotOrderRef.current = false;
-      // A reorder may have arrived while saving=true and returned early.
-      if (pendingBotOrderRef.current) {
-        void flushBotOrder();
-      }
-    }
-  }, [refreshBots]);
-  const reorderRosterBot = useCallback(
-    (sourceId: string, targetId: string, groupBotIds: string[]) => {
-      if (!groupBotIds.includes(sourceId) || !groupBotIds.includes(targetId)) return;
-      const current = botsRef.current;
-      const reordered = reorderBotTo(current, sourceId, targetId);
-      if (reordered === current) return;
-      const next = [...reordered];
-      botOrderEpochRef.current += 1;
-      botsRef.current = next;
-      setBots(next);
-      pendingBotOrderRef.current = next.map((bot) => bot.id);
-      void flushBotOrder();
-    },
-    [flushBotOrder],
-  );
-  const toggleSidebarSection = useCallback(
-    (key: string) => {
-      setCollapsedSidebarSections((previous) =>
-        toggleCollapsedIdSet(previous, key, collapsedSidebarSectionsStorageKey(userId)),
-      );
-    },
-    [userId],
-  );
-  const toggleRosterParent = useCallback(
-    (botId: string) => {
-      setCollapsedRosterParents((previous) =>
-        toggleCollapsedIdSet(previous, botId, collapsedRosterParentsStorageKey(userId)),
-      );
-    },
-    [userId],
-  );
-  const spaceQuery = query.trim();
-  const showSpaceSearch = spaceQuery.length > 0;
-
-  useEffect(() => {
-    if (!showSpaceSearch) {
-      setSearchHits([]);
-      setSearchLoading(false);
-      return;
-    }
-    const abort = new AbortController();
-    const timer = window.setTimeout(() => {
-      setSearchLoading(true);
-      void rpc.search
-        .query({ q: spaceQuery })
-        .then((result) => {
-          if (!abort.signal.aborted) setSearchHits(result.hits);
-        })
-        .catch(() => {
-          if (!abort.signal.aborted) setSearchHits([]);
-        })
-        .finally(() => {
-          if (!abort.signal.aborted) setSearchLoading(false);
-        });
-    }, 200);
-    return () => {
-      abort.abort();
-      window.clearTimeout(timer);
-    };
-  }, [showSpaceSearch, spaceQuery]);
-
-  async function jumpToSearchHit(hit: SearchHit) {
-    setQuery("");
-    setSearchHits([]);
-    const params = new URLSearchParams();
-    if (hit.messageId) params.set("m", hit.messageId);
-    if (hit.routineId) params.set("routine", hit.routineId);
-    navigate({
-      pathname: hit.groupId ? `/app/g/${hit.groupId}` : `/app/${hit.botId}`,
-      search: params.toString() ? `?${params.toString()}` : undefined,
-    });
-  }
 
   async function jumpToMessage(target: { botId?: string; groupId?: string; messageId: string }) {
     const threadTarget = searchHitThreadTarget(target);
@@ -2402,25 +1983,10 @@ export function ShellPage() {
     if (text && id) void speaker.speak(text, { botId: id, messageId: message.id });
   }, []);
 
-  async function createGroup(input: { name: string; botIds: string[] }) {
-    const group = await rpc.groups.create(input);
-    setGroups((current) =>
-      current.some((item) => item.id === group.id) ? current : [group, ...current],
-    );
-    navigate(`/app/g/${group.id}`);
-    setPanel(null);
-    await refreshBots().catch(() => undefined);
-  }
-
   function cancelFocusPrompt() {
     focusPromptAbortRef.current?.abort();
     focusPromptAbortRef.current = null;
     focusPromptBotIdRef.current = null;
-  }
-
-  function setBotsSidebarCollapsedPref(collapsed: boolean) {
-    setBotsSidebarCollapsed(collapsed);
-    writeBotsSidebarCollapsed(userId, collapsed);
   }
 
   function openSettings(section: SettingsSection = "general") {
@@ -2633,16 +2199,6 @@ export function ShellPage() {
   }, [computerOpen]);
 
   useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (!isCommandPaletteHotkey(event)) return;
-      event.preventDefault();
-      setCommandPaletteOpen((open) => !open);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  useEffect(() => {
     const heartbeatBotId = computerBot?.id ?? active?.id;
     if ((panel !== "computer" && !computerOpen) || !heartbeatBotId || computer?.state !== "running")
       return;
@@ -2741,12 +2297,6 @@ export function ShellPage() {
     ) : null;
 
   const userName = session.data?.user.name ?? t`You`;
-  const initials = userName
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
   const shell = (
     <div
@@ -2757,47 +2307,6 @@ export function ShellPage() {
           ? "muse-wash relative flex h-full min-w-0 overflow-hidden text-foreground/90 md:gap-2 md:p-2"
           : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
       }
-      onTouchStartCapture={(event) => {
-        if (
-          mobileSidebarOpen ||
-          event.touches.length !== 1 ||
-          window.matchMedia("(min-width: 768px)").matches
-        ) {
-          mobileSidebarSwipeRef.current = null;
-          return;
-        }
-        const touch = event.touches[0];
-        if (!touch) return;
-        const rtl = document.documentElement.getAttribute("dir") === "rtl";
-        const startsAtEdge = rtl
-          ? touch.clientX >= window.innerWidth - MOBILE_SIDEBAR_SWIPE_EDGE_PX
-          : touch.clientX <= MOBILE_SIDEBAR_SWIPE_EDGE_PX;
-        mobileSidebarSwipeRef.current = startsAtEdge
-          ? { startX: touch.clientX, startY: touch.clientY }
-          : null;
-      }}
-      onTouchEndCapture={(event) => {
-        const swipe = mobileSidebarSwipeRef.current;
-        mobileSidebarSwipeRef.current = null;
-        const touch = event.changedTouches[0];
-        if (
-          !swipe ||
-          !touch ||
-          mobileSidebarOpen ||
-          window.matchMedia("(min-width: 768px)").matches
-        ) {
-          return;
-        }
-        const rtl = document.documentElement.getAttribute("dir") === "rtl";
-        const horizontal = rtl ? swipe.startX - touch.clientX : touch.clientX - swipe.startX;
-        const vertical = Math.abs(touch.clientY - swipe.startY);
-        if (horizontal >= MOBILE_SIDEBAR_SWIPE_DISTANCE_PX && horizontal > vertical * 1.25) {
-          setMobileSidebarOpen(true);
-        }
-      }}
-      onTouchCancelCapture={() => {
-        mobileSidebarSwipeRef.current = null;
-      }}
     >
       <ComputerUpdateProgress
         onCompleted={() => {
@@ -2807,22 +2316,7 @@ export function ShellPage() {
       {bootstrapMe !== undefined ? (
         <HostComputerPrompt initialMe={bootstrapMe ?? undefined} />
       ) : null}
-      {!museMode && mobileSidebarOpen ? (
-        <button
-          type="button"
-          aria-label={t`Close navigation`}
-          onClick={() => setMobileSidebarOpen(false)}
-          className="absolute inset-y-0 end-0 start-[min(calc(100%-48px),316px)] z-30 bg-overlay md:hidden"
-        />
-      ) : null}
-      {!museMode && !mobileSidebarOpen ? (
-        <div
-          data-testid="mobile-sidebar-swipe-edge"
-          aria-hidden="true"
-          className="absolute bottom-20 start-0 top-16 z-20 w-8 touch-none md:hidden"
-        />
-      ) : null}
-      {museMode && active ? (
+      {active ? (
         <MuseSidebar
           botId={active.id}
           museName={active.name}
@@ -2838,665 +2332,8 @@ export function ShellPage() {
       ) : (
         <AppRail active="bots" />
       )}
-      {museMode ? null : (
-        <aside
-          data-testid="bots-sidebar"
-          data-collapsed={botsSidebarCollapsed ? "true" : "false"}
-          inert={botsSidebarCollapsed && !mobileSidebarOpen ? true : undefined}
-          className={`absolute inset-y-0 start-0 z-40 flex w-[calc(100%-48px)] max-w-[316px] shrink-0 flex-col border-e border-sidebar-border bg-sidebar transition-[transform,width,opacity] md:static md:z-auto md:translate-x-0 ${
-            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
-          } ${
-            botsSidebarCollapsed
-              ? "md:w-0 md:max-w-0 md:overflow-hidden md:border-e-0 md:opacity-0 md:pointer-events-none"
-              : "md:w-[316px]"
-          }`}
-        >
-          <div className="app-drag flex items-center justify-between px-[18px] pb-3 pt-4">
-            <WindowChrome />
-            <div className="relative flex items-center gap-2.5">
-              <button
-                type="button"
-                aria-label={t`Activity`}
-                aria-pressed={activityMode}
-                title={t`Activity`}
-                data-activity-mode={activityMode ? "on" : "off"}
-                onClick={toggleActivityMode}
-                className={`app-no-drag flex h-7 w-7 items-center justify-center rounded-full ${
-                  activityMode
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground/70 hover:text-foreground/75"
-                }`}
-              >
-                <Bell
-                  size={15}
-                  strokeWidth={1.8}
-                  fill={activityMode ? "currentColor" : "none"}
-                  aria-hidden="true"
-                />
-              </button>
-              <button
-                type="button"
-                className="app-no-drag hidden h-7 w-7 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground/75 md:inline-flex"
-                aria-label={t`Minimize bots`}
-                title={t`Minimize bots`}
-                data-testid="minimize-bots-sidebar"
-                onClick={() => setBotsSidebarCollapsedPref(true)}
-              >
-                <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden="true" />
-              </button>
-              <Popover open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
-                <PopoverTrigger
-                  className="app-no-drag text-[21px] text-muted-foreground/70 hover:text-foreground/75"
-                  title={t`Create`}
-                  data-testid="create-menu-trigger"
-                >
-                  +
-                </PopoverTrigger>
-                {/* Unmount with the state change so the panel it opens never coexists with the menu. */}
-                {createMenuOpen ? (
-                  <PopoverContent
-                    align="end"
-                    className="app-no-drag w-auto gap-0 overflow-hidden p-0 data-closed:animate-none"
-                  >
-                    <BotCreatePicker
-                      bots={bots}
-                      onCreateBot={() => {
-                        setCreateMenuOpen(false);
-                        setMobileSidebarOpen(false);
-                        setPanel("create");
-                      }}
-                      onOpenBot={(id) => {
-                        setCreateMenuOpen(false);
-                        setMobileSidebarOpen(false);
-                        navigate(`/app/${id}`);
-                      }}
-                      onCreateGroup={() => {
-                        setCreateMenuOpen(false);
-                        setMobileSidebarOpen(false);
-                        setPanel("create-group");
-                      }}
-                      onCreateSpace={() => {
-                        setCreateMenuOpen(false);
-                        setMobileSidebarOpen(false);
-                        setNewSpaceOpen(true);
-                      }}
-                      onShowGroupInfo={() => {
-                        setCreateMenuOpen(false);
-                        setMobileSidebarOpen(false);
-                        setPickerInfoTopic("group");
-                      }}
-                      onShowSpaceInfo={() => {
-                        setCreateMenuOpen(false);
-                        setMobileSidebarOpen(false);
-                        setPickerInfoTopic("space");
-                      }}
-                    />
-                  </PopoverContent>
-                ) : null}
-              </Popover>
-            </div>
-          </div>
-          <InputGroup
-            data-testid="sidebar-search"
-            className="mx-2.5 mb-3 w-auto rounded-xl bg-card dark:bg-input border border-border text-muted-foreground focus-within:border-ring"
-          >
-            <InputGroupAddon>
-              <Search size={16} strokeWidth={1.8} aria-hidden="true" />
-            </InputGroupAddon>
-            <InputGroupInput
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t`Search`}
-              autoComplete="off"
-              name="sidebar-search"
-            />
-          </InputGroup>
-          <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
-            {showSpaceSearch ? (
-              <SpaceSearchResults
-                hits={searchHits}
-                loading={searchLoading}
-                onSelect={(hit) => void jumpToSearchHit(hit)}
-              />
-            ) : (
-              <>
-                {activityMode ? (
-                  <ActivityList
-                    onOpenRun={(run) => {
-                      setMobileSidebarOpen(false);
-                      if (run.groupId) navigate(`/app/g/${run.groupId}`);
-                      else navigate(`/app/${run.botId}`);
-                    }}
-                  />
-                ) : null}
-                {sidebarGroups.map((group) => {
-                  const collapsed = Boolean(group.title) && collapsedSidebarSections.has(group.key);
-                  const groupBotIds = group.bots.flatMap((item) =>
-                    item.kind === "bot" ? [item.chat.id] : [],
-                  );
-                  const nestedRows = nestRosterByParent(group.bots, collapsedRosterParents);
-                  const treeActive = nestedRows.some((row) => row.depth > 0 || row.hasChildren);
-                  const rosterParent = new Map(
-                    nestedRows.map((row) => [row.item.chat.id, row.parentId] as const),
-                  );
-                  // Reorder among visible siblings so keyboard and drag moves match the tree.
-                  const siblingBotIds = (parentId: string | null) =>
-                    nestedRows.flatMap((row) =>
-                      row.item.kind === "bot" && row.parentId === parentId
-                        ? [row.item.chat.id]
-                        : [],
-                    );
-                  return (
-                    <div key={group.key} data-sidebar-group={group.key}>
-                      {group.title ? (
-                        <div className="flex items-center pt-3 pb-0.5">
-                          <button
-                            type="button"
-                            className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-2.5 py-1 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground/60 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                            onClick={() => {
-                              if (group.emptySpaceId) {
-                                openSpaceChat(group.emptySpaceId, "/onboarding");
-                                return;
-                              }
-                              toggleSidebarSection(group.key);
-                            }}
-                            onContextMenu={
-                              group.sectionId
-                                ? (event) => {
-                                    event.preventDefault();
-                                    // Prefer section rename over delete-space when both apply;
-                                    // the dedicated space-actions button still opens the space menu.
-                                    const sections =
-                                      group.spaceId === bootstrapMe?.spaceId
-                                        ? botSections
-                                        : (spaces.find((space) => space.id === group.spaceId)
-                                            ?.botSections ?? []);
-                                    const section = sections.find(
-                                      (item) => item.id === group.sectionId,
-                                    );
-                                    if (!section) return;
-                                    sectionMenuAnchor.current = event.currentTarget;
-                                    setSectionMenu({
-                                      section,
-                                      spaceId: group.spaceId,
-                                      position: { x: event.clientX, y: event.clientY },
-                                    });
-                                  }
-                                : group.canDeleteSpace
-                                  ? (event) => {
-                                      event.preventDefault();
-                                      spaceMenuAnchor.current = event.currentTarget;
-                                      setSpaceMenu({
-                                        id: group.spaceId,
-                                        position: { x: event.clientX, y: event.clientY },
-                                      });
-                                    }
-                                  : undefined
-                            }
-                            aria-expanded={group.emptySpaceId ? undefined : !collapsed}
-                            aria-label={
-                              group.emptySpaceId
-                                ? t`Open ${group.title}`
-                                : collapsed
-                                  ? t`Expand ${group.title}`
-                                  : t`Collapse ${group.title}`
-                            }
-                          >
-                            <span className="flex min-w-0 items-center gap-1.5 truncate">
-                              {group.showLock ? (
-                                <Lock size={11} strokeWidth={2} aria-hidden="true" />
-                              ) : null}
-                              <span className="truncate">{group.title}</span>
-                            </span>
-                            {group.emptySpaceId ? null : (
-                              <ChevronDown
-                                size={14}
-                                strokeWidth={1.8}
-                                className={
-                                  collapsed
-                                    ? "-rotate-90 transition-transform"
-                                    : "transition-transform"
-                                }
-                                aria-hidden="true"
-                              />
-                            )}
-                          </button>
-                          {group.canDeleteSpace ? (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={t`Actions for ${group.spaceName}`}
-                              onClick={(event) => {
-                                const rect = event.currentTarget.getBoundingClientRect();
-                                spaceMenuAnchor.current = event.currentTarget;
-                                setSpaceMenu({
-                                  id: group.spaceId,
-                                  position: { x: rect.left, y: rect.bottom },
-                                });
-                              }}
-                            >
-                              <MoreHorizontal size={14} aria-hidden="true" />
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {!collapsed &&
-                        nestedRows.map(({ item, depth, hasChildren, parentId }) => {
-                          const parentCollapsed =
-                            hasChildren && collapsedRosterParents.has(item.chat.id);
-                          const selected =
-                            (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
-                            (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id);
-                          return (
-                            <div
-                              key={`${item.kind}:${item.chat.id}`}
-                              className="group/row relative"
-                              style={{
-                                opacity:
-                                  item.kind === "bot" && draggedBotId === item.chat.id ? 0.55 : 1,
-                              }}
-                            >
-                              {hasChildren ? (
-                                <span
-                                  className="absolute inset-y-0 z-10 flex w-3.5 items-center justify-center"
-                                  style={{ insetInlineStart: `${10 + depth * 14}px` }}
-                                >
-                                  <button
-                                    type="button"
-                                    aria-expanded={!parentCollapsed}
-                                    aria-label={
-                                      parentCollapsed
-                                        ? t`Expand ${item.chat.name}`
-                                        : t`Collapse ${item.chat.name}`
-                                    }
-                                    className="inline-flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
-                                    onClick={() => toggleRosterParent(item.chat.id)}
-                                  >
-                                    <ChevronDown
-                                      size={12}
-                                      strokeWidth={2}
-                                      className={`transition-transform ${
-                                        parentCollapsed ? "-rotate-90" : ""
-                                      }`}
-                                      aria-hidden="true"
-                                    />
-                                  </button>
-                                </span>
-                              ) : null}
-                              <button
-                                type="button"
-                                draggable={item.kind === "bot"}
-                                data-roster-bot-id={item.kind === "bot" ? item.chat.id : undefined}
-                                data-roster-depth={
-                                  item.kind === "bot" && treeActive ? depth : undefined
-                                }
-                                aria-keyshortcuts={
-                                  item.kind === "bot" ? "Alt+ArrowUp Alt+ArrowDown" : undefined
-                                }
-                                onDragStart={(event) => {
-                                  if (item.kind !== "bot") return;
-                                  setDraggedBotId(item.chat.id);
-                                  event.dataTransfer.effectAllowed = "move";
-                                  event.dataTransfer.setData("text/plain", item.chat.id);
-                                }}
-                                onDragOver={(event) => {
-                                  if (
-                                    item.kind === "bot" &&
-                                    draggedBotId &&
-                                    groupBotIds.includes(draggedBotId) &&
-                                    rosterParent.get(draggedBotId) === parentId
-                                  ) {
-                                    event.preventDefault();
-                                    event.dataTransfer.dropEffect = "move";
-                                  }
-                                }}
-                                onDrop={(event) => {
-                                  if (
-                                    item.kind !== "bot" ||
-                                    !draggedBotId ||
-                                    rosterParent.get(draggedBotId) !== parentId
-                                  )
-                                    return;
-                                  event.preventDefault();
-                                  reorderRosterBot(draggedBotId, item.chat.id, groupBotIds);
-                                  setDraggedBotId(null);
-                                }}
-                                onDragEnd={() => setDraggedBotId(null)}
-                                onKeyDown={(event) => {
-                                  if (
-                                    item.kind !== "bot" ||
-                                    !event.altKey ||
-                                    (event.key !== "ArrowUp" && event.key !== "ArrowDown")
-                                  )
-                                    return;
-                                  const siblings = siblingBotIds(parentId);
-                                  const index = siblings.indexOf(item.chat.id);
-                                  const target =
-                                    siblings[index + (event.key === "ArrowUp" ? -1 : 1)];
-                                  if (!target) return;
-                                  event.preventDefault();
-                                  reorderRosterBot(item.chat.id, target, groupBotIds);
-                                }}
-                                onClick={() => {
-                                  openSpaceChat(
-                                    item.chat.spaceId,
-                                    item.kind === "bot"
-                                      ? `/app/${item.chat.id}`
-                                      : `/app/g/${item.chat.id}`,
-                                  );
-                                }}
-                                onContextMenu={(event) => {
-                                  if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
-                                  event.preventDefault();
-                                  botMenuAnchor.current = event.currentTarget;
-                                  setBotMenu({
-                                    kind: item.kind,
-                                    id: item.chat.id,
-                                    position: { x: event.clientX, y: event.clientY },
-                                  });
-                                }}
-                                className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-[10px] text-start ${
-                                  item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
-                                } ${
-                                  selected
-                                    ? "bg-sidebar-accent"
-                                    : "group-hover/row:bg-sidebar-accent"
-                                }`}
-                                style={
-                                  treeActive
-                                    ? { paddingInlineStart: `${24 + depth * 14}px` }
-                                    : undefined
-                                }
-                              >
-                                {item.kind === "bot" ? (
-                                  <BotAvatar
-                                    color={item.chat.color}
-                                    identity={item.chat.id}
-                                    size={38}
-                                    status={item.chat.status}
-                                  />
-                                ) : (
-                                  <GroupAvatar
-                                    members={
-                                      item.chat.id === activeSnapshot?.groupId
-                                        ? (activeSnapshot.members ?? item.chat.members)
-                                        : item.chat.members
-                                    }
-                                    size={38}
-                                  />
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-1.5">
-                                    <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                                      <span
-                                        dir="auto"
-                                        data-roster-bot-name={item.kind === "bot" ? "" : undefined}
-                                        className={`min-w-0 truncate text-[14px] text-foreground ${
-                                          item.chat.unread ? "font-semibold" : "font-medium"
-                                        }`}
-                                      >
-                                        {item.chat.name}
-                                      </span>
-                                      {item.chat.unread ? (
-                                        <span className="sr-only">
-                                          <Trans> (unread)</Trans>
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-1.5">
-                                      <span className="text-[11.5px] text-muted-foreground/60 tabular-nums">
-                                        {formatRosterTime(item.chat.updatedAt)}
-                                      </span>
-                                      {item.chat.unread ? (
-                                        <span
-                                          aria-hidden="true"
-                                          className="inline-block h-2 w-2 rounded-full bg-foreground"
-                                        />
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                  {item.kind === "bot" && item.chat.title ? (
-                                    <div className="mt-1 flex">
-                                      <span className="max-w-full truncate rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
-                                        {item.chat.title}
-                                      </span>
-                                    </div>
-                                  ) : null}
-                                  <div
-                                    dir="auto"
-                                    className={`mt-1 line-clamp-2 text-[12.5px] break-words whitespace-normal ${
-                                      item.chat.unread
-                                        ? "font-medium text-foreground/75"
-                                        : "text-muted-foreground/60"
-                                    }`}
-                                  >
-                                    {item.kind === "bot"
-                                      ? item.chat.preview ||
-                                        (item.chat.status !== "idle" ? item.chat.status : "")
-                                      : item.chat.preview ||
-                                        item.chat.members.map((member) => member.name).join(", ")}
-                                  </div>
-                                </div>
-                              </button>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  );
-                })}
-              </>
-            )}
-            {archivedBots.length + archivedGroups.length > 0 && !showSpaceSearch ? (
-              <div className="mt-2 border-t border-border pt-2">
-                <button
-                  type="button"
-                  aria-expanded={archivedOpen}
-                  onClick={() => setArchivedOpen((open) => !open)}
-                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[13.5px] text-muted-foreground hover:bg-sidebar-accent"
-                >
-                  <span>
-                    <Trans>Archived</Trans>
-                  </span>
-                  <span>{archivedBots.length + archivedGroups.length}</span>
-                </button>
-                {archivedOpen ? (
-                  <>
-                    {archivedBots.map((bot) => (
-                      <div key={bot.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
-                        <BotAvatar
-                          color={bot.color}
-                          identity={bot.id}
-                          size={28}
-                          status={bot.status}
-                        />
-                        <span
-                          className="min-w-0 flex-1 truncate text-[14px] text-foreground/75"
-                          dir="auto"
-                        >
-                          {bot.name}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() =>
-                            void rpc.bots.restore({ botId: bot.id }).then(() => refreshBots(true))
-                          }
-                        >
-                          <Trans>Restore</Trans>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="text-destructive hover:text-destructive"
-                          aria-label={t`Delete ${bot.name}`}
-                          onClick={() => setDeleteTarget(bot)}
-                        >
-                          <Trans>Delete</Trans>
-                        </Button>
-                      </div>
-                    ))}
-                    {archivedGroups.map((group) => (
-                      <div
-                        key={group.id}
-                        className="flex items-center gap-2 rounded-lg px-2.5 py-2"
-                      >
-                        <GroupAvatar members={group.members} size={28} />
-                        <span
-                          className="min-w-0 flex-1 truncate text-[14px] text-foreground/75"
-                          dir="auto"
-                        >
-                          {group.name}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() =>
-                            void rpc.groups
-                              .restore({ groupId: group.id })
-                              .then(() => refreshBots(true))
-                          }
-                        >
-                          <Trans>Restore</Trans>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="text-destructive hover:text-destructive"
-                          aria-label={t`Delete ${group.name}`}
-                          onClick={() => setDeleteGroupTarget(group)}
-                        >
-                          <Trans>Delete</Trans>
-                        </Button>
-                      </div>
-                    ))}
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={() => setPluginsOpen(true)}
-            className="mx-3 mb-1 flex items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-sidebar-accent"
-          >
-            <span className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent text-foreground/80">
-              <LayoutGrid size={15} strokeWidth={1.8} />
-            </span>
-            <span className="text-[14px] font-medium text-foreground/90">
-              <Trans>Integrations</Trans>
-            </span>
-          </button>
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <PopoverTrigger
-              data-testid="user-menu-trigger"
-              className="flex items-center gap-[11px] px-[18px] py-3.5"
-            >
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-[12px] text-foreground/75">
-                {initials}
-              </span>
-              <span className="text-[14.5px] text-foreground/90">{userName}</span>
-            </PopoverTrigger>
-            {menuOpen ? (
-              <PopoverContent
-                side="top"
-                align="start"
-                className="w-[calc(316px-1.5rem)] max-w-[calc(100vw-3rem)] gap-0 p-1 data-closed:animate-none"
-              >
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start font-normal"
-                  aria-label={t`Settings`}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    openSettings("general");
-                  }}
-                >
-                  <Settings className="text-muted-foreground" strokeWidth={1.75} />
-                  <Trans>Settings</Trans>
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start font-normal"
-                  aria-label={t`Usage`}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void rpc.usage
-                      .summary()
-                      .then(setUsage)
-                      .catch(() => undefined);
-                    openSettings("usage");
-                  }}
-                >
-                  <Gauge className="text-muted-foreground" strokeWidth={1.75} />
-                  <Trans>Usage</Trans>
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start font-normal"
-                  onClick={() =>
-                    void authClient.signOut().then(() => {
-                      clearSpaceSelection();
-                      navigate("/");
-                    })
-                  }
-                >
-                  <LogOut className="text-muted-foreground" strokeWidth={1.75} />
-                  <Trans>Log out</Trans>
-                </Button>
-              </PopoverContent>
-            ) : null}
-          </Popover>
-        </aside>
-      )}
-
-      {museMode ? null : (
-        <button
-          type="button"
-          data-testid="bots-sidebar-edge"
-          aria-label={botsSidebarCollapsed ? t`Show bots` : t`Hide bots`}
-          aria-pressed={!botsSidebarCollapsed}
-          className={`absolute inset-y-0 z-50 hidden w-2 cursor-ew-resize touch-none border-0 bg-transparent p-0 md:block ${
-            botsSidebarCollapsed ? "start-0" : "start-[308px]"
-          }`}
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            botsSidebarEdgeDragRef.current = {
-              startX: event.clientX,
-              mode: botsSidebarCollapsed ? "expand" : "collapse",
-            };
-          }}
-          onPointerMove={(event) => {
-            const drag = botsSidebarEdgeDragRef.current;
-            if (!drag) return;
-            const rtl =
-              typeof document !== "undefined" &&
-              document.documentElement.getAttribute("dir") === "rtl";
-            const delta = rtl ? drag.startX - event.clientX : event.clientX - drag.startX;
-            if (drag.mode === "expand" && delta >= BOTS_SIDEBAR_EDGE_DRAG_PX) {
-              botsSidebarEdgeDragRef.current = null;
-              setBotsSidebarCollapsedPref(false);
-            } else if (drag.mode === "collapse" && delta <= -BOTS_SIDEBAR_EDGE_DRAG_PX) {
-              botsSidebarEdgeDragRef.current = null;
-              setBotsSidebarCollapsedPref(true);
-            }
-          }}
-          onPointerUp={(event) => {
-            const drag = botsSidebarEdgeDragRef.current;
-            botsSidebarEdgeDragRef.current = null;
-            if (!drag) return;
-            if (Math.abs(event.clientX - drag.startX) < BOTS_SIDEBAR_EDGE_DRAG_PX) {
-              setBotsSidebarCollapsedPref(!botsSidebarCollapsed);
-            }
-          }}
-          onPointerCancel={() => {
-            botsSidebarEdgeDragRef.current = null;
-          }}
-        />
-      )}
 
       <main
-        aria-hidden={mobileSidebarOpen || undefined}
-        inert={mobileSidebarOpen}
         className={
           museMode
             ? "relative z-10 flex min-w-0 flex-1 flex-col"
@@ -3597,28 +2434,6 @@ export function ShellPage() {
               ) : (
                 <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
                   <div className="flex min-w-0 items-center gap-2">
-                    {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
-                    {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-                    <button
-                      type="button"
-                      aria-label={t`Open navigation`}
-                      onClick={() => setMobileSidebarOpen(true)}
-                      className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-                    >
-                      <Menu size={19} strokeWidth={1.7} />
-                    </button>
-                    {botsSidebarCollapsed ? (
-                      <button
-                        type="button"
-                        data-testid="restore-bots-sidebar"
-                        aria-label={t`Show bots`}
-                        title={t`Show bots`}
-                        onClick={() => setBotsSidebarCollapsedPref(false)}
-                        className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
-                      >
-                        <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
-                      </button>
-                    ) : null}
                     <button
                       type="button"
                       data-testid="bot-settings-trigger"
@@ -3848,10 +2663,7 @@ export function ShellPage() {
               museMode ? (panel === "computer" ? "md:w-[520px]" : "md:w-[400px]") : "md:w-[384px]"
             }`}
           >
-            {panel !== "routine" &&
-            panel !== "create" &&
-            panel !== "create-group" &&
-            panel !== "group-settings" ? (
+            {panel !== "routine" && panel !== "create" && panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
                 {museMode && panel === "computer" && active ? (
                   <FirstRunHint
@@ -4014,13 +2826,6 @@ export function ShellPage() {
                   );
                 })}
               </div>
-            ) : null}
-            {panel === "create-group" ? (
-              <CreateGroupForm
-                bots={bots}
-                onCancel={() => setPanel(null)}
-                onCreate={(input) => createGroup(input)}
-              />
             ) : null}
             {panel === "group-settings" && activeGroup ? (
               <GroupSettings
@@ -4246,299 +3051,6 @@ export function ShellPage() {
       </aside>
 
       <Suspense fallback={null}>
-        {contextChat && botMenu ? (
-          <BotContextMenu
-            bot={contextChat}
-            position={botMenu.position}
-            onClose={closeBotMenu}
-            sections={botSections}
-            onTogglePinned={() => {
-              setBotMenu(null);
-              const request = contextBot
-                ? rpc.bots.update({ botId: contextBot.id, pinned: !contextBot.pinned })
-                : rpc.groups.update({
-                    groupId: contextGroup!.id,
-                    pinned: !contextGroup!.pinned,
-                  });
-              void request.then(() => refreshBots());
-            }}
-            onToggleUnread={() => {
-              const unread = !contextChat.unread;
-              setBotMenu(null);
-              if (contextBot) {
-                const request = unread ? markBotUnread(contextBot.id) : markBotRead(contextBot.id);
-                void request.catch(() => undefined);
-              } else {
-                const request = unread
-                  ? rpc.threads.markUnread({ groupId: contextGroup!.id })
-                  : rpc.threads.markRead({ groupId: contextGroup!.id });
-                void request
-                  .then(() =>
-                    setGroups((current) =>
-                      current.map((group) =>
-                        group.id === contextGroup!.id ? { ...group, unread } : group,
-                      ),
-                    ),
-                  )
-                  .catch(() => undefined);
-              }
-            }}
-            onMoveToSection={(sectionId) => {
-              setBotMenu(null);
-              if (sectionId === contextChat.sectionId) return;
-              const request = contextBot
-                ? rpc.bots.update({ botId: contextBot.id, sectionId })
-                : rpc.groups.update({ groupId: contextGroup!.id, sectionId });
-              void request.then(() => refreshBots());
-            }}
-            onCreateSection={() => {
-              setNewSectionTarget(
-                contextBot
-                  ? { kind: "bot", chat: contextBot }
-                  : { kind: "group", chat: contextGroup! },
-              );
-              setBotMenu(null);
-            }}
-            onRenameSection={(sectionId) => {
-              const section = botSections.find((item) => item.id === sectionId);
-              const spaceId = bootstrapMe?.spaceId;
-              if (section && spaceId) setRenameSectionTarget({ section, spaceId });
-              setBotMenu(null);
-            }}
-            onEdit={() => {
-              navigate(contextBot ? `/app/${contextBot.id}` : `/app/g/${contextGroup!.id}`);
-              setPanel(contextBot ? "settings" : "group-settings");
-              setBotMenu(null);
-            }}
-            onDuplicate={() => {
-              setBotMenu(null);
-              const request = contextBot
-                ? rpc.bots.duplicate({ botId: contextBot.id })
-                : rpc.groups.duplicate({ groupId: contextGroup!.id });
-              void request.then(async (chat) => {
-                await refreshBots();
-                navigate(contextBot ? `/app/${chat.id}` : `/app/g/${chat.id}`);
-              });
-            }}
-            onClear={() => {
-              setClearTarget(
-                contextBot
-                  ? { kind: "bot", chat: contextBot }
-                  : { kind: "group", chat: contextGroup! },
-              );
-              setBotMenu(null);
-            }}
-            onArchive={() => {
-              setBotMenu(null);
-              const request = contextBot
-                ? rpc.bots.archive({ botId: contextBot.id })
-                : rpc.groups.archive({ groupId: contextGroup!.id });
-              void request.then(() => refreshBots(true));
-            }}
-            onDelete={() => {
-              if (contextBot) setDeleteTarget(contextBot);
-              else setDeleteGroupTarget(contextGroup!);
-              setBotMenu(null);
-            }}
-          />
-        ) : null}
-
-        {spaceMenu ? (
-          <DropdownMenu
-            open
-            onOpenChange={(open) => {
-              if (!open) closeSpaceMenu();
-            }}
-          >
-            {/* Invisible anchor at the pointer position, mirroring the bot menu. */}
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  aria-hidden
-                  className="fixed size-0 p-0 opacity-0"
-                  style={{ left: spaceMenu.position.x, top: spaceMenu.position.y }}
-                />
-              }
-            />
-            <DropdownMenuContent
-              aria-label={t`Actions for space`}
-              align="start"
-              sideOffset={0}
-              className="w-[220px]"
-            >
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => {
-                  const target = spaces.find((space) => space.id === spaceMenu.id);
-                  if (target) setDeleteSpaceTarget(target);
-                  setSpaceMenu(null);
-                }}
-              >
-                <Trash2 />
-                {t`Delete space`}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-
-        {deleteTarget ? (
-          <DeleteBotDialog
-            bot={deleteTarget}
-            onCancel={() => setDeleteTarget(null)}
-            onConfirm={async (deleteMemories) => {
-              await rpc.bots.remove({ botId: deleteTarget.id, deleteMemories });
-              setDeleteTarget(null);
-              setPanel(null);
-              await refreshBots(true);
-            }}
-          />
-        ) : null}
-
-        {deleteGroupTarget ? (
-          <DeleteItemDialog
-            item={deleteGroupTarget}
-            noun="group"
-            onCancel={() => setDeleteGroupTarget(null)}
-            onConfirm={async () => {
-              await rpc.groups.remove({ groupId: deleteGroupTarget.id });
-              setDeleteGroupTarget(null);
-              setPanel(null);
-              await refreshBots(true);
-            }}
-          />
-        ) : null}
-
-        {deleteSpaceTarget ? (
-          <DeleteItemDialog
-            item={deleteSpaceTarget}
-            noun="space"
-            description={
-              <Trans>Only empty spaces can be deleted. Delete its bots and groups first.</Trans>
-            }
-            onCancel={() => setDeleteSpaceTarget(null)}
-            onConfirm={async () => {
-              const targetId = deleteSpaceTarget.id;
-              const result = await rpc.spaces.remove({ spaceId: targetId });
-              setDeleteSpaceTarget(null);
-              setPanel(null);
-              const effectiveSpaceId = selectedSpaceId() ?? bootstrapMe?.spaceId;
-              if (effectiveSpaceId === targetId) {
-                // The auth boundary changed, so reload like a space switch.
-                if (selectSpace(result.activeSpaceId)) {
-                  window.location.assign("/app");
-                  return;
-                }
-              }
-              await refreshBots(true);
-            }}
-          />
-        ) : null}
-
-        {newSectionTarget ? (
-          <NewBotSectionDialog
-            bot={newSectionTarget.chat}
-            onCancel={() => setNewSectionTarget(null)}
-            onConfirm={async (name) => {
-              await rpc.botSections.create(
-                newSectionTarget.kind === "bot"
-                  ? { botId: newSectionTarget.chat.id, name }
-                  : { groupId: newSectionTarget.chat.id, name },
-              );
-              setNewSectionTarget(null);
-              await refreshBots();
-            }}
-          />
-        ) : null}
-
-        {renameSectionTarget ? (
-          <RenameBotSectionDialog
-            section={renameSectionTarget.section}
-            onCancel={() => setRenameSectionTarget(null)}
-            onConfirm={async (name) => {
-              await rpc.botSections.update(
-                {
-                  sectionId: renameSectionTarget.section.id,
-                  name,
-                },
-                { context: { spaceId: renameSectionTarget.spaceId } },
-              );
-              setRenameSectionTarget(null);
-              await refreshBots();
-            }}
-          />
-        ) : null}
-
-        {sectionMenu ? (
-          <DropdownMenu
-            open
-            onOpenChange={(open) => {
-              if (!open) closeSectionMenu();
-            }}
-          >
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  aria-hidden
-                  className="fixed size-0 p-0 opacity-0"
-                  style={{ left: sectionMenu.position.x, top: sectionMenu.position.y }}
-                />
-              }
-            />
-            <DropdownMenuContent
-              aria-label={t`Actions for ${sectionMenu.section.name}`}
-              align="start"
-              sideOffset={0}
-              className="w-[220px]"
-            >
-              <DropdownMenuItem
-                onClick={() => {
-                  setRenameSectionTarget({
-                    section: sectionMenu.section,
-                    spaceId: sectionMenu.spaceId,
-                  });
-                  setSectionMenu(null);
-                }}
-              >
-                <Pencil />
-                {t`Rename section`}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-
-        <CommandPalette
-          open={commandPaletteOpen}
-          onOpenChange={setCommandPaletteOpen}
-          bots={bots}
-          onSelectBot={(id) => {
-            setMobileSidebarOpen(false);
-            navigate(`/app/${id}`);
-          }}
-        />
-
-        {newSpaceOpen ? (
-          <NewSpaceDialog
-            onCancel={() => setNewSpaceOpen(false)}
-            onConfirm={async (name) => {
-              const space = await rpc.spaces.create({ name });
-              if (!selectSpace(space.id)) {
-                setNewSpaceOpen(false);
-                await refreshBots();
-                return;
-              }
-              window.location.assign("/onboarding");
-            }}
-          />
-        ) : null}
-
-        {pickerInfoTopic ? (
-          <PickerInfoDialog topic={pickerInfoTopic} onClose={() => setPickerInfoTopic(null)} />
-        ) : null}
-
         {clearTarget ? (
           <ClearConversationDialog
             bot={clearTarget.chat}
@@ -6327,37 +4839,6 @@ function accessibleReplyExcerpt(text: string, max = 120): string {
   // Reserve a slot for the ellipsis; never split a surrogate pair at the cut.
   const end = (normalized.charCodeAt(max - 2) & 0xfc00) === 0xd800 ? max - 2 : max - 1;
   return `${normalized.slice(0, end).trimEnd()}…`;
-}
-
-function formatRosterTime(isoDate?: string | null): string {
-  if (!isoDate) return "";
-  try {
-    const d = new Date(isoDate);
-    if (Number.isNaN(d.getTime())) return "";
-    const locale = i18n.locale || "en";
-    const now = new Date();
-    const isToday =
-      d.getDate() === now.getDate() &&
-      d.getMonth() === now.getMonth() &&
-      d.getFullYear() === now.getFullYear();
-    if (isToday) {
-      return d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
-    }
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const isYesterday =
-      d.getDate() === yesterday.getDate() &&
-      d.getMonth() === yesterday.getMonth() &&
-      d.getFullYear() === yesterday.getFullYear();
-    if (isYesterday) return t`Yesterday`;
-    const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays < 7) {
-      return d.toLocaleDateString(locale, { weekday: "short" });
-    }
-    return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
-  } catch {
-    return "";
-  }
 }
 
 /**

@@ -37,8 +37,8 @@ function fixture(catalog: unknown[]) {
   return { deps, actor, tx };
 }
 
-/** Fixture for `promptFocus`: an otherwise-empty thread, optionally in muse mode. */
-function promptFixture(productMode?: "aiden" | "muse") {
+/** Fixture for `promptFocus`: an otherwise-empty thread. */
+function promptFixture() {
   posted.length = 0;
   const tx = {
     $executeRaw: vi.fn(),
@@ -51,7 +51,6 @@ function promptFixture(productMode?: "aiden" | "muse") {
     },
     events: { notify: vi.fn() },
     connectors: { managedProviders: () => [] },
-    productMode,
   } as unknown as Parameters<typeof promptFocus>[0];
   const actor = {
     userId: "user",
@@ -102,29 +101,9 @@ it("marks only the authorized connector when provider slugs collide", async () =
   });
 });
 
-describe("promptFocus product-mode branch", () => {
-  it("posts the focus choice card when productMode is aiden (default)", async () => {
-    const { deps, actor } = promptFixture("aiden");
-    await promptFocus(deps, actor, "bot");
-    expect(posted).toEqual([
-      expect.objectContaining({
-        blocks: [expect.objectContaining({ kind: "choice" })],
-      }),
-    ]);
-  });
-
-  it("posts the focus choice card when productMode is absent (unset AIDEN_PRODUCT_MODE)", async () => {
-    const { deps, actor } = promptFixture(undefined);
-    await promptFocus(deps, actor, "bot");
-    expect(posted).toEqual([
-      expect.objectContaining({
-        blocks: [expect.objectContaining({ kind: "choice" })],
-      }),
-    ]);
-  });
-
-  it("posts nothing in muse mode: the web app's first-run welcome introduces the Muse", async () => {
-    const { deps, actor } = promptFixture("muse");
+describe("promptFocus", () => {
+  it("posts nothing: the web app's first-run welcome introduces the Muse", async () => {
+    const { deps, actor } = promptFixture();
     await promptFocus(deps, actor, "bot");
     expect(posted).toEqual([]);
   });

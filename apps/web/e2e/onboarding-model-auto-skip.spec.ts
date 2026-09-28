@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, signup } from "./helpers";
+import { captureScreenshot, completeIdentitySteps, signup } from "./helpers";
 
 test("onboarding skips model connect when a default model is already available", async ({
   page,
@@ -35,6 +35,8 @@ test("onboarding skips model connect when a default model is already available",
     `Model auto skip ${stamp}`,
   );
 
+  await completeIdentitySteps(page);
+
   await expect(page.getByRole("heading", { name: "Connect a model" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Server integrations" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Create your first bot" })).toHaveCount(0);
@@ -48,14 +50,11 @@ test("onboarding skips model connect when a default model is already available",
 
   expect((await createRequest).postDataJSON()).toMatchObject({
     json: {
-      name: "Chief",
-      title: "",
-      description: "",
-      instructions: "",
+      name: "Aiden",
       spawnKey: "onboarding:first",
     },
   });
-  await expect(page.getByRole("combobox", { name: "Message Chief" })).toBeVisible({
+  await expect(page.getByRole("combobox", { name: "Message Aiden" })).toBeVisible({
     timeout: 20_000,
   });
   await captureScreenshot(page, testInfo, "onboarding-model-auto-skip");

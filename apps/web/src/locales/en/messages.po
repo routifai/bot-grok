@@ -13,9 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-msgid " (unread)"
-msgstr " (unread)"
-
 #. placeholder {0}: group.entries.length
 msgid "{0, plural, one {# model} other {# models}}"
 msgstr "{0, plural, one {# model} other {# models}}"
@@ -115,9 +112,6 @@ msgstr "{remaining} left · bot is watching, not acting"
 msgid "{size} B"
 msgstr "{size} B"
 
-msgid "{title}, {label}"
-msgstr "{title}, {label}"
-
 msgid "{toolCount, plural, one {# tool} other {# tools}}"
 msgstr "{toolCount, plural, one {# tool} other {# tools}}"
 
@@ -175,22 +169,14 @@ msgid "Action confirmations"
 msgstr "Action confirmations"
 
 #. placeholder {0}: bot.name
-#. placeholder {0}: group.spaceName
-#. placeholder {0}: sectionMenu.section.name
 msgid "Actions for {0}"
 msgstr "Actions for {0}"
-
-msgid "Actions for space"
-msgstr "Actions for space"
 
 msgid "Active"
 msgstr "Active"
 
 msgid "Active model"
 msgstr "Active model"
-
-msgid "Activity"
-msgstr "Activity"
 
 msgid "Add"
 msgstr "Add"
@@ -382,9 +368,6 @@ msgstr "Archive"
 msgid "archived"
 msgstr "archived"
 
-msgid "Archived"
-msgstr "Archived"
-
 msgid "Archived. Chat, memory, and files kept."
 msgstr "Archived. Chat, memory, and files kept."
 
@@ -551,9 +534,6 @@ msgstr "Cancel Goal"
 msgid "Cancel new bot"
 msgstr "Cancel new bot"
 
-msgid "Cancel new group"
-msgstr "Cancel new group"
-
 msgid "Cancel reply"
 msgstr "Cancel reply"
 
@@ -611,17 +591,11 @@ msgstr "Checked daily"
 msgid "Checking…"
 msgstr "Checking…"
 
-msgid "Choose a bot shape, color, or upload an image"
-msgstr "Choose a bot shape, color, or upload an image"
-
 msgid "Choose a bot…"
 msgstr "Choose a bot…"
 
 msgid "Choose a new password"
 msgstr "Choose a new password"
-
-msgid "Choose file"
-msgstr "Choose file"
 
 msgid "Choose the Muse's color"
 msgstr "Choose the Muse's color"
@@ -675,9 +649,6 @@ msgstr "Close messaging settings"
 msgid "Close model settings"
 msgstr "Close model settings"
 
-msgid "Close navigation"
-msgstr "Close navigation"
-
 msgid "Close panel"
 msgstr "Close panel"
 
@@ -695,11 +666,6 @@ msgstr "Cloud"
 
 msgid "Code"
 msgstr "Code"
-
-#. placeholder {0}: group.title
-#. placeholder {0}: item.chat.name
-msgid "Collapse {0}"
-msgstr "Collapse {0}"
 
 msgid "Collapse sidebar"
 msgstr "Collapse sidebar"
@@ -760,9 +726,6 @@ msgstr "Confirm password"
 
 msgid "Connect"
 msgstr "Connect"
-
-msgid "Connect a model"
-msgstr "Connect a model"
 
 msgid "Connect API key"
 msgstr "Connect API key"
@@ -880,9 +843,6 @@ msgstr "Could not continue"
 
 msgid "Could not create bot"
 msgstr "Could not create bot"
-
-msgid "Could not create group"
-msgstr "Could not create group"
 
 msgid "Could not create section"
 msgstr "Could not create section"
@@ -1135,9 +1095,6 @@ msgstr "Create a section and move {0} into it."
 msgid "Create account"
 msgstr "Create account"
 
-msgid "Create group"
-msgstr "Create group"
-
 msgid "Create new Bot"
 msgstr "Create new Bot"
 
@@ -1152,9 +1109,6 @@ msgstr "Create Routine"
 
 msgid "Create space"
 msgstr "Create space"
-
-msgid "Create your Aiden"
-msgstr "Create your Aiden"
 
 msgid "Created"
 msgstr "Created"
@@ -1222,8 +1176,6 @@ msgid "Delete \"{0}\"?"
 msgstr "Delete \"{0}\"?"
 
 #. placeholder {0}: artifact.name
-#. placeholder {0}: bot.name
-#. placeholder {0}: group.name
 msgid "Delete {0}"
 msgstr "Delete {0}"
 
@@ -1237,9 +1189,6 @@ msgstr "Delete group"
 
 msgid "Delete memories too"
 msgstr "Delete memories too"
-
-msgid "Delete space"
-msgstr "Delete space"
 
 msgid "Delete this skill?"
 msgstr "Delete this skill?"
@@ -1348,9 +1297,6 @@ msgstr "Draft talking points per client"
 msgid "Drafts"
 msgstr "Drafts"
 
-msgid "Drag, drop, or paste an image"
-msgstr "Drag, drop, or paste an image"
-
 #. placeholder {0}: due.date
 msgid "Due {0}"
 msgstr "Due {0}"
@@ -1419,11 +1365,6 @@ msgstr "Executor token"
 msgid "Expand"
 msgstr "Expand"
 
-#. placeholder {0}: group.title
-#. placeholder {0}: item.chat.name
-msgid "Expand {0}"
-msgstr "Expand {0}"
-
 msgid "Expand sidebar"
 msgstr "Expand sidebar"
 
@@ -1441,9 +1382,6 @@ msgstr "Extra high"
 
 msgid "failed"
 msgstr "failed"
-
-msgid "Failed"
-msgstr "Failed"
 
 msgid "Failed to send message"
 msgstr "Failed to send message"
@@ -1618,9 +1556,6 @@ msgstr "Hi, I'm Aiden."
 msgid "Hi, this is how I'll sound when I read replies out loud."
 msgstr "Hi, this is how I'll sound when I read replies out loud."
 
-msgid "Hide bots"
-msgstr "Hide bots"
-
 msgid "Hide context panel"
 msgstr "Hide context panel"
 
@@ -1686,9 +1621,6 @@ msgstr "If you heard that, voice is ready."
 
 msgid "Ignore"
 msgstr "Ignore"
-
-msgid "Image upload area"
-msgstr "Image upload area"
 
 msgid "Images"
 msgstr "Images"
@@ -1843,9 +1775,6 @@ msgstr "Load more"
 msgid "Load older"
 msgstr "Load older"
 
-msgid "Loading activity…"
-msgstr "Loading activity…"
-
 msgid "Loading integrations…"
 msgstr "Loading integrations…"
 
@@ -1878,9 +1807,6 @@ msgstr "Local access lets bots run commands without asking. Avoid it on shared o
 
 msgid "Local Server Settings"
 msgstr "Local Server Settings"
-
-msgid "Log out"
-msgstr "Log out"
 
 msgid "Low"
 msgstr "Low"
@@ -1942,9 +1868,6 @@ msgstr "Meet Aiden."
 msgid "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
 msgstr "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
 
-msgid "Members (pick {GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
-msgstr "Members (pick {GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
-
 msgid "Memory"
 msgstr "Memory"
 
@@ -1996,9 +1919,6 @@ msgstr "Minimal"
 
 msgid "Minimize"
 msgstr "Minimize"
-
-msgid "Minimize bots"
-msgstr "Minimize bots"
 
 msgid "minute"
 msgstr "minute"
@@ -2061,29 +1981,17 @@ msgstr "Name"
 msgid "Name this bot"
 msgstr "Name this bot"
 
-msgid "Name this group"
-msgstr "Name this group"
-
 msgid "Name this routine"
 msgstr "Name this routine"
 
 msgid "Needs a restart"
 msgstr "Needs a restart"
 
-msgid "Needs input"
-msgstr "Needs input"
-
-msgid "Needs takeover"
-msgstr "Needs takeover"
-
 msgid "Needs you"
 msgstr "Needs you"
 
 msgid "New bot"
 msgstr "New bot"
-
-msgid "New group"
-msgstr "New group"
 
 msgid "New open-work item"
 msgstr "New open-work item"
@@ -2227,9 +2135,6 @@ msgstr "Nothing yet"
 msgid "Notifications"
 msgstr "Notifications"
 
-msgid "Now"
-msgstr "Now"
-
 #. placeholder {0}: selected.label
 msgid "Now using {0}."
 msgstr "Now using {0}."
@@ -2262,14 +2167,10 @@ msgstr "On track"
 msgid "One yes before I send this"
 msgstr "One yes before I send this"
 
-msgid "Only empty spaces can be deleted. Delete its bots and groups first."
-msgstr "Only empty spaces can be deleted. Delete its bots and groups first."
-
 msgid "Open"
 msgstr "Open"
 
 #. placeholder {0}: artifact.name
-#. placeholder {0}: group.title
 #. placeholder {0}: props.name
 msgid "Open {0}"
 msgstr "Open {0}"
@@ -2288,9 +2189,6 @@ msgstr "Open in full window"
 
 msgid "Open in new tab"
 msgstr "Open in new tab"
-
-msgid "Open navigation"
-msgstr "Open navigation"
 
 msgid "Open what's waiting on you"
 msgstr "Open what's waiting on you"
@@ -2449,9 +2347,6 @@ msgstr "Questions"
 msgid "Questions and approvals collect in Waiting on you; answer in one tap."
 msgstr "Questions and approvals collect in Waiting on you; answer in one tap."
 
-msgid "Queued"
-msgstr "Queued"
-
 msgid "Quiet hours"
 msgstr "Quiet hours"
 
@@ -2487,9 +2382,6 @@ msgstr "Recall and write"
 
 msgid "Recall only"
 msgstr "Recall only"
-
-msgid "Recent"
-msgstr "Recent"
 
 msgid "Reconnect OAuth"
 msgstr "Reconnect OAuth"
@@ -2644,9 +2536,6 @@ msgstr "Resetting…"
 msgid "Restart to update"
 msgstr "Restart to update"
 
-msgid "Restore"
-msgstr "Restore"
-
 msgid "Restore the last saved workspace. Unsaved work on the computer is lost."
 msgstr "Restore the last saved workspace. Unsaved work on the computer is lost."
 
@@ -2698,9 +2587,6 @@ msgstr "Run time must be in the future."
 
 msgid "running"
 msgstr "running"
-
-msgid "Running"
-msgstr "Running"
 
 msgid "Running · Stop"
 msgstr "Running · Stop"
@@ -2831,9 +2717,6 @@ msgstr "Settings: Usage"
 msgid "Setup help"
 msgstr "Setup help"
 
-msgid "Shape"
-msgstr "Shape"
-
 msgid "Shared"
 msgstr "Shared"
 
@@ -2842,9 +2725,6 @@ msgstr "Shared chat with 2-6 bots. They all reply in the same thread."
 
 msgid "Shared documents"
 msgstr "Shared documents"
-
-msgid "Show bots"
-msgstr "Show bots"
 
 msgid "Show computer"
 msgstr "Show computer"
@@ -2866,9 +2746,6 @@ msgstr "Show settings"
 
 msgid "Sign in"
 msgstr "Sign in"
-
-msgid "Sign in to Aiden"
-msgstr "Sign in to Aiden"
 
 msgid "Sign up"
 msgstr "Sign up"
@@ -3200,9 +3077,6 @@ msgstr "Updating Team Computer"
 msgid "Updating…"
 msgstr "Updating…"
 
-msgid "Upload"
-msgstr "Upload"
-
 msgid "Usage"
 msgstr "Usage"
 
@@ -3328,9 +3202,6 @@ msgstr "Working…"
 msgid "Yes, go ahead"
 msgstr "Yes, go ahead"
 
-msgid "Yesterday"
-msgstr "Yesterday"
-
 msgid "You"
 msgstr "You"
 
@@ -3363,6 +3234,3 @@ msgstr "Your email address"
 
 msgid "Your name"
 msgstr "Your name"
-
-msgid "Your team of always-on agents<0/>that you can give real work to."
-msgstr "Your team of always-on agents<0/>that you can give real work to."

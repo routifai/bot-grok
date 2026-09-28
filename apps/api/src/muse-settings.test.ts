@@ -25,7 +25,6 @@ function museSettingsDeps(botRow: BotRow | null) {
   const deps = {
     prisma,
     env: {
-      productMode: "muse",
       defaultProvider: "fake",
       defaultModel: "fake-model",
       webOrigin: "http://127.0.0.1:5173",

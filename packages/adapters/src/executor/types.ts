@@ -14,7 +14,6 @@ import type {
   SandboxProvider,
   WebProvider,
 } from "@aiden/adapter-kit";
-import type { ProductMode } from "@aiden/contracts";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import type { CloudAgentConnection } from "../cloud-agent-factory.js";
 import type { MemoryProviderResolver } from "../memory-provider-factory.js";
@@ -54,6 +53,4 @@ export interface ExecutorDeps {
   autoReview?: AutoReviewProvider;
   /** Aborted when createApp stop() begins so in-flight continueRun boot waits exit promptly. */
   shutdownSignal?: AbortSignal;
-  /** `AIDEN_PRODUCT_MODE` (ADR 0002): undefined/"aiden" keeps every Muse-only behaviour off. */
-  productMode?: ProductMode;
 }

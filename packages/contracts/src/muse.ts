@@ -4,10 +4,6 @@ import { Id } from "./ids.js";
 // Shapes for the Muse edition. Words follow CONTEXT.md: Goal, Task (GoalTask in code),
 // Proposal, Ask, Post, Followed topic, Idea, Proactivity.
 
-export const PRODUCT_MODES = ["aiden", "muse"] as const;
-export const ProductModeSchema = z.enum(PRODUCT_MODES);
-export type ProductMode = z.infer<typeof ProductModeSchema>;
-
 export const GoalStatusSchema = z.enum(["active", "paused", "done", "cancelled"]);
 export type GoalStatus = z.infer<typeof GoalStatusSchema>;
 

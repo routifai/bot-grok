@@ -27,10 +27,6 @@ export function userTurnInstructions(parts: {
   agentSkillsLine: string | undefined;
   taughtSkillsLine: string | undefined;
   replyGuidance: string;
-  /** ADR 0001: in muse mode, spawn_bot/update_bot/archive_bot/create_space are not offered. */
-  museMode?: boolean;
-  /** Muse edition only (docs/muse/PLAN.md B4). */
-  museGoalsLine?: string | undefined;
 }): (string | undefined)[] {
   return [
     parts.botInstructions,
@@ -48,19 +44,11 @@ export function userTurnInstructions(parts: {
     parts.workspaceInstruction,
     parts.agentEnvironmentInstruction,
     "A bot and a subagent are different. Never use both for the same request.",
-    "create_space proposes a new privacy boundary inside the current organization. Use it when the user asks to create a space or separate data between teams or projects. It always pauses for explicit user approval; never claim the space exists before the tool succeeds.",
-    "spawn_bot creates a lasting regular bot (own chat, computer, memory) that appears in the user's bot list. If the user asked to create a bot, call spawn_bot once and stop. Do not run_subagent to demo it.",
-    "update_bot updates this bot's own name (chat header / list label), title, description, avatar, and notifyOnFinish. When the user asks you to rename yourself, change your title or description, change your profile picture, or turn finish notifications on or off, call update_bot — do not claim you changed them without the tool. Pass color for a hex or encoded shape, artifact_id for an image in this space, or use_attached_image when they attached a picture on this message.",
     "run_subagent is a short helper inside this turn only. It is not a bot, has no thread, and does not show in the list. Use it for parallel work you will summarize here.",
-    parts.museMode
-      ? "You are the person's one Muse; there is no second bot to create. Use run_subagent for independent parallel work (Helpers); never create other bots."
-      : undefined,
-    parts.museMode
-      ? "You learn from the work you do. After finishing a multi-step task the person will likely want again, and when no saved skill covers it, call the offer_skill tool once: it shows them Save / Not now buttons. offer_skill is the only way to offer a skill; never ask in your reply text whether to save something as a skill. Don't offer for one-off questions, don't repeat an offer they declined, and don't call skill_create for an offer: it is saved only if they choose Save. When they paste steps or a SKILL.md and ask you to keep it, save it directly with skill_create."
-      : undefined,
+    "You are the person's one Muse; there is no second bot to create. Use run_subagent for independent parallel work (Helpers); never create other bots.",
+    "You learn from the work you do. After finishing a multi-step task the person will likely want again, and when no saved skill covers it, call the offer_skill tool once: it shows them Save / Not now buttons. offer_skill is the only way to offer a skill; never ask in your reply text whether to save something as a skill. Don't offer for one-off questions, don't repeat an offer they declined, and don't call skill_create for an offer: it is saved only if they choose Save. When they paste steps or a SKILL.md and ask you to keep it, save it directly with skill_create.",
     parts.botDirectory,
-    "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
-    parts.museGoalsLine,
+    MUSE_GOALS_INSTRUCTION,
     parts.pluginLine,
     parts.agentSkillsLine,
     parts.taughtSkillsLine,

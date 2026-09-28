@@ -13,7 +13,7 @@ This plan is written for implementation agents (Claude Sonnet 5, model id `claud
 ## Ground rules
 
 - **Reuse before building.** For every piece, first use what Aiden already has, then port from OpenMuse (github.com/OpenMuseAgent/OpenMuse, MIT, Python; clone it next to this repo), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
-- **Our fork (ADR 0002).** Everything Muse-specific is gated by `AIDEN_PRODUCT_MODE=muse` (package B0). Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner, but keep upstream behaviour intact when the mode is off. Do not delete upstream models, tools, or routes; hide or gate them.
+- **Our fork (ADR 0002).** Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner. This used to mean gating everything behind `AIDEN_PRODUCT_MODE=muse` and keeping the old multi-bot behaviour intact when the mode was off (package B0); that flag and the old mode it guarded have since been deleted outright (see B0 below), so there is no other mode left to preserve.
 - **Naming in code.** The glossary **Task** is `GoalTask` in code (the upstream `Task` model is an unrelated request record and keeps its name). Database tables use the upstream convention (`@@map("goal_tasks")`).
 - **OpenMuse ports.** When copying prompt text or logic from OpenMuse, keep a one-line comment at the top of the file: `// Adapted from OpenMuse (MIT) — openmuse/<path>`.
 - **Out of scope for v1:** mobile screens (mobile keeps working with the Conversation only), spending limits, parallel Goal work, payments.
@@ -74,13 +74,11 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 
 ### Phase 0 — Foundations
 
-**B0 · Product mode** — ✅ done
-- `resolveProductMode(env)` / `isMuseMode(mode)` in `packages/core/src/product-mode.ts`; `AIDEN_PRODUCT_MODE` documented in `.env.example`.
-- API env carries `productMode`; the `me` payload (and so `bootstrap`) exposes `productMode` to the web app. The worker calls `resolveProductMode(process.env)` directly when it first needs it (B2/B8).
-- Tests: `product-mode.test.ts`, `env.test.ts`.
+**B0 · Product mode** — ✅ done, later removed
+- The `AIDEN_PRODUCT_MODE` flag (`resolveProductMode`/`isMuseMode` in `packages/core/src/product-mode.ts`, `productMode` on the API env and the `me`/`bootstrap` payload) let the old multi-bot mode coexist with Muse during the port. Once the port was verified, the old mode and the flag were deleted outright: Muse is now the only behaviour, unconditionally.
 
 **B1 · Contracts (hand-off to frontend)** — ✅ done
-- Shapes in `packages/contracts/src/muse.ts`: `ProductMode`, `Goal`, `GoalTask`, `GoalProposal`, `Ask` (a view over a pending ask/choice block: `id` = message id, `runId`, `kind`, `goalId`, `goalTitle`, `text`, `detail`, `choices`, `input`), `Post`, `Feed` (asks + posts), `FollowedTopic`, `Idea`, `MuseSettings` (+ `DEFAULT_MUSE_SETTINGS`), `MuseState`, `DEFAULT_MUSE_COLOR`.
+- Shapes in `packages/contracts/src/muse.ts`: `Goal`, `GoalTask`, `GoalProposal`, `Ask` (a view over a pending ask/choice block: `id` = message id, `runId`, `kind`, `goalId`, `goalTitle`, `text`, `detail`, `choices`, `input`), `Post`, `Feed` (asks + posts), `FollowedTopic`, `Idea`, `MuseSettings` (+ `DEFAULT_MUSE_SETTINGS`), `MuseState`, `DEFAULT_MUSE_COLOR`.
 - Procedures appended to `rpc.ts`: `goals.list/get/update/acceptProposal/dismissProposal/log`, `asks.list/count/answer`, `feed.list`, `ideas.list/refresh`, `topics.list/remove`, `muse.settings/updateSettings`. There is no `goals.create`: Goals are created by talking to the Muse (the `goals` tool, B4).
 - The API implements them in `router.ts` behind a `museOnly` guard (NOT_FOUND unless muse mode) and serves **sample data** from `apps/api/src/muse-preview.ts` (in-memory; accepting a Proposal or answering an Ask changes it). Each backend package replaces its part of the preview; delete the file when all are real.
 - Tests: `muse-preview.test.ts` validates the sample data against the schemas and the Proposal/Ask flow.
@@ -223,7 +221,7 @@ Waves:
 
 ## End-to-end check (definition of done)
 
-With `AIDEN_PRODUCT_MODE=muse`, on a fresh account:
+On a fresh account:
 1. Onboarding asks your name, the Muse's name and face (sky by default) and model, then opens the Conversation, where the Muse asks for a first Goal.
 2. "I want conversational Japanese before my Kyoto trip in December" → the Muse drafts a plan; it appears as a Proposal in the Conversation, in Waiting on you, and on top of the Feed. Accepting it in any one place clears all three.
 3. The avatar hops with a count while the Proposal is open, sways while the Muse works, rests when idle.
@@ -234,4 +232,3 @@ With `AIDEN_PRODUCT_MODE=muse`, on a fresh account:
 8. Ideas shows six suggestions; tapping one sends it.
 9. Library shows files made in both the Conversation and Goal logs.
 10. There is no way to create a second bot in the UI, and the Muse has no bot-creation tools.
-11. Unset `AIDEN_PRODUCT_MODE` → the app behaves exactly like the full Aiden mode.

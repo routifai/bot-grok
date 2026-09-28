@@ -6,7 +6,6 @@ import { randomUUID } from "node:crypto";
 import type {
   AdapterContext,
   AgentRunRequest,
-  ComputerRef,
   ConnectorCall,
   SandboxProvider,
   SemanticMemoryProvider,
@@ -41,7 +40,6 @@ import {
   humanizeToolName,
   inferAttachmentMimeType,
   isMessagingChannelRun,
-  isMuseMode,
   isOneShotRoutineCrons,
   isTerminal,
   messagingChannelId,
@@ -330,12 +328,7 @@ import {
 } from "./run-completion.js";
 import { persistMessageInTransaction, publishMessage, redactBlocks } from "./run-messages.js";
 import { notifyRun, renewRunLease } from "./run-notifications.js";
-import {
-  MUSE_GOALS_INSTRUCTION,
-  runIdentityInstruction,
-  threadContextForRun,
-  userTurnInstructions,
-} from "./run-prompt.js";
+import { runIdentityInstruction, threadContextForRun, userTurnInstructions } from "./run-prompt.js";
 import {
   computerRetryDelay,
   computerScreenToolResult,
@@ -700,7 +693,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let leaseValid = true;
       let lastLeaseCheckAt = 0;
       let retainComputerLease = false;
-      let screenRelease: { computer: ComputerRef; context: AdapterContext } | undefined;
       let runAbortController: AbortController | null = null;
       let detachShutdown: (() => void) | undefined;
       const heartbeat = setInterval(() => {
@@ -854,10 +846,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const discoveredPromise = deps.connector
           ? deps.connector.discoverTools(context)
           : Promise.resolve([]);
-        // Muse mode only (B5): a Goal-log turn (thread.goalId set) sees only that Goal in
-        // full plus the Conversation's summary — never other Goal logs (decision 7).
-        const museMode = isMuseMode(deps.productMode ?? "aiden");
-        const museGoalId = museMode ? (thread.goalId ?? null) : null;
+        // A Goal-log turn (thread.goalId set) sees only that Goal in full plus the
+        // Conversation's summary — never other Goal logs (decision 7).
+        const museGoalId = thread.goalId ?? null;
         const goalRepos = createGoalRepos(deps.prisma);
         const threadContext = threadContextForRun(
           run.trigger,
@@ -952,10 +943,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 botId: bot.id,
               }),
           recallPromise,
-          museMode && !messagingChannelRun
+          !messagingChannelRun
             ? loadGoalsContext({ goals: goalRepos }, { botId: bot.id, goalId: museGoalId })
             : Promise.resolve(undefined),
-          museMode && museGoalId && !messagingChannelRun
+          museGoalId && !messagingChannelRun
             ? deps.prisma.thread.findUnique({
                 where: { botId: bot.id },
                 select: { historyCompactionSummary: true },
@@ -1066,7 +1057,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const storedComputer = bot.computer;
         const computerMode = parseComputerMode(storedComputer.scope);
         const computer = await provisionComputer(deps, storedComputer.id, context, "bot");
-        screenRelease = { computer, context };
         scheduleComputerSleep(deps.jobs, storedComputer.id);
         const workspaceCheckpoint = createRunWorkspaceCheckpoint(() =>
           checkpointRunComputerWorkspace(deps, storedComputer, computer, context),
@@ -1132,12 +1122,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
           ...selectBuiltinToolsForRun({
             graphicalToolsAllowed,
             pageBrowserAllowed,
-            groupId: thread.groupId,
             trigger: run.trigger,
             semanticMemoryEnabled,
             cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
             messagingChannelRun,
-            productMode: deps.productMode,
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -3443,10 +3431,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 agentSkillsLine,
                 taughtSkillsLine,
                 replyGuidance: runReplyGuidance(run.trigger),
-                museMode: isMuseMode(deps.productMode ?? "aiden"),
-                museGoalsLine: isMuseMode(deps.productMode ?? "aiden")
-                  ? MUSE_GOALS_INSTRUCTION
-                  : undefined,
               })
                 .filter((instruction): instruction is string => Boolean(instruction))
                 .join("\n\n"),
@@ -3974,7 +3958,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             markUnread: completionMarksUnread(run.trigger, text),
           });
           if (!completed) return;
-          if (isMuseMode(deps.productMode ?? "aiden") && run.trigger === "user") {
+          if (run.trigger === "user") {
             await queueSkillOfferFollowUp(
               deps,
               {
@@ -4141,11 +4125,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
         if (!retainComputerLease) {
           // A Muse owns its computer: keep the screen someone may be watching; the next run
           // takes it over with a newer lease and idle sleep still suspends the computer.
-          if (screenRelease && !isMuseMode(deps.productMode ?? "aiden")) {
-            await deps.sandbox
-              .releaseScreen?.(screenRelease.computer, screenRelease.context)
-              .catch(() => undefined);
-          }
           await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
         }
         await deps.prisma.attempt

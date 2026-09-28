@@ -45,7 +45,7 @@ import {
   SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
 } from "@aiden/adapters";
-import { resolveEncryptionKey, resolveProductMode, resolveSupervisorToken } from "@aiden/core";
+import { resolveEncryptionKey, resolveSupervisorToken } from "@aiden/core";
 import {
   createDb,
   createThreadEvents,
@@ -162,12 +162,10 @@ async function main() {
     });
   // One provider instance so emulator launches and polls share the same Map.
   const cloudAgent = createCloudAgentConnection();
-  const productMode = resolveProductMode(process.env);
   const executor = createRunExecutor({
     prisma,
     runtime,
     sandbox,
-    productMode,
     memory,
     memoryProviders,
     home,

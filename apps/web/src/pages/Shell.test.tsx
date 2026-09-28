@@ -157,10 +157,8 @@ vi.mock("../components/teach/TeachRecordingChrome", () => ({
   TeachRecordingChrome: Stub,
   TeachStopButton: Stub,
 }));
-vi.mock("./ActivityList", () => ({ ActivityList: Stub }));
 vi.mock("./muse/WaitingSheet", () => ({ WaitingSheet: Stub }));
 vi.mock("./GroupPanel", () => ({
-  CreateGroupForm: Stub,
   GroupSettings: Stub,
   memberName: () => "",
 }));
@@ -175,20 +173,9 @@ vi.mock("./RoutineEditor", () => ({
   routineTriggerSummary: () => "",
 }));
 vi.mock("./SettingsOverlay", () => ({ SettingsOverlay: Stub }));
-vi.mock("./SpaceSearch", () => ({ SpaceSearchResults: Stub }));
 vi.mock("./shell/bot-panel", () => ({ BotSettings: Stub, CreateBotForm: Stub }));
-vi.mock("./shell/bot-picker", () => ({ BotCreatePicker: Stub }));
-vi.mock("./shell/command-palette", () => ({
-  CommandPalette: Stub,
-  isCommandPaletteHotkey: () => false,
-}));
 vi.mock("./shell/dialogs", () => ({
-  NewSpaceDialog: Stub,
-  PickerInfoDialog: Stub,
-  NewBotSectionDialog: Stub,
-  RenameBotSectionDialog: Stub,
   ClearConversationDialog: Stub,
-  DeleteBotDialog: Stub,
   DeleteItemDialog: Stub,
 }));
 vi.mock("./shell/message-cards", () => ({
@@ -198,8 +185,6 @@ vi.mock("./shell/message-cards", () => ({
   ChartBlockView: Stub,
   ArtifactImage: Stub,
 }));
-vi.mock("./WindowChrome", () => ({ WindowChrome: Stub }));
-vi.mock("./BotContextMenu", () => ({ BotContextMenu: Stub }));
 
 import { ShellPage } from "./Shell";
 
@@ -252,7 +237,6 @@ function me(overrides: Partial<Record<string, unknown>> = {}) {
     canChooseHostComputer: false,
     sandboxProvider: "docker",
     avatarStyle: "robot",
-    productMode: "aiden",
     ...overrides,
   };
 }
@@ -302,24 +286,9 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   };
 }
 
-it("keeps the classic rail and bot list in aiden mode", async () => {
+it("hides the bot list and shows the four Muse rail entries", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const page = await renderShell(bootstrap({ me: me({ productMode: "aiden" }) }));
-  try {
-    const rail = page.container.querySelector('[data-testid="app-rail"]');
-    expect(rail).toBeTruthy();
-    expect(rail?.textContent ?? "").not.toContain("Goals");
-    expect(rail?.textContent ?? "").not.toContain("Feed");
-    expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeTruthy();
-    expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeTruthy();
-  } finally {
-    await page.cleanup();
-  }
-});
-
-it("hides the bot list and shows the four Muse rail entries in muse mode", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const page = await renderShell(bootstrap({ me: me({ productMode: "muse" }) }));
+  const page = await renderShell(bootstrap({ me: me() }));
   try {
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();

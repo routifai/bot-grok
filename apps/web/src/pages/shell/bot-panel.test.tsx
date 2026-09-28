@@ -86,8 +86,8 @@ function bot(): Bot {
   };
 }
 
-function me(productMode: Me["productMode"]): Me {
-  return { productMode } as Me;
+function me(): Me {
+  return {} as Me;
 }
 
 function render() {
@@ -99,7 +99,7 @@ function render() {
 
 it("never renders a proactivity control (it now lives in Settings > Aiden)", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.me.mockResolvedValue(me("muse"));
+  api.me.mockResolvedValue(me());
   const { container, root } = render();
   try {
     await act(async () =>
