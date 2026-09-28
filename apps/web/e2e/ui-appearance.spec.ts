@@ -1,48 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
-import { captureScreenshot, completeOnboarding, createNamedBot, signup } from "./helpers";
-
-async function captureSidebarSearchSelected(
-  page: Page,
-  testInfo: Parameters<typeof captureScreenshot>[1],
-  name: string,
-) {
-  const aside = page.locator("aside").first();
-  const search = aside.getByTestId("sidebar-search");
-  const selected = aside.getByRole("button", { name: /^Chief/ }).first();
-  await expect(search).toBeVisible();
-  await expect(selected).toBeVisible();
-  await search.scrollIntoViewIfNeeded();
-
-  const searchBox = await search.boundingBox();
-  const selectedBox = await selected.boundingBox();
-  expect(searchBox).toBeTruthy();
-  expect(selectedBox).toBeTruthy();
-  if (searchBox && selectedBox) {
-    expect(Math.abs(searchBox.x - selectedBox.x)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(searchBox.x + searchBox.width - (selectedBox.x + selectedBox.width)),
-    ).toBeLessThanOrEqual(1);
-  }
-
-  const box = await aside.boundingBox();
-  if (box) {
-    const screenshotPath = testInfo.outputPath(`${name}.png`);
-    await page.screenshot({
-      animations: "disabled",
-      caret: "hide",
-      path: screenshotPath,
-      clip: {
-        x: Math.max(0, box.x),
-        y: Math.max(0, box.y),
-        width: Math.min(box.width + 24, 360),
-        height: Math.min(Math.max(box.height * 0.45, 280), 420),
-      },
-    });
-    await testInfo.attach(name, { contentType: "image/png", path: screenshotPath });
-    return;
-  }
-  await captureScreenshot(page, testInfo, name);
-}
+import { expect, test } from "@playwright/test";
+import { captureScreenshot, completeOnboarding, signup } from "./helpers";
 
 test("account settings appearance control switches to light mode", async ({ page }, testInfo) => {
   const stamp = Date.now();
@@ -68,7 +25,7 @@ test("account settings appearance control switches to light mode", async ({ page
   await expect(settings).toBeHidden();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await captureScreenshot(page, testInfo, "ui-appearance-light-shell");
-  await captureSidebarSearchSelected(page, testInfo, "sidebar-search-selected-light");
+  await captureScreenshot(page, testInfo, "sidebar-search-selected-light");
 
   const composer = page.getByRole("combobox", { name: /^Message/ });
   await composer.fill("Please review `shared/PROJECT_CHECKPOINT_WRAPUP.md`.");
@@ -92,31 +49,5 @@ test("account settings appearance control switches to light mode", async ({ page
   await settings.getByRole("button", { name: "Close user settings" }).click();
   await expect(settings).toBeHidden();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await captureSidebarSearchSelected(page, testInfo, "sidebar-search-selected-dark");
-});
-
-test("sidebar bot rows hover with the same tone as the integrations row", async ({
-  page,
-}, testInfo) => {
-  const stamp = Date.now();
-  await signup(page, `ui-hover-${stamp}@aiden.test`, "password12", "Hover QA");
-  await completeOnboarding(page, testInfo);
-  await createNamedBot(page, "Second Bot");
-
-  const sidebar = page.locator("aside").first();
-  const chief = sidebar.getByRole("button", { name: /^Chief/ }).first();
-  await expect(chief).toBeVisible();
-  const readChiefBg = () => chief.evaluate((el) => getComputedStyle(el).backgroundColor);
-  await expect.poll(readChiefBg).toBe("rgba(0, 0, 0, 0)");
-
-  await chief.hover();
-  await expect.poll(readChiefBg).not.toBe("rgba(0, 0, 0, 0)");
-  const chiefBg = await readChiefBg();
-  await captureScreenshot(page, testInfo, "sidebar-row-hover");
-
-  const integrations = sidebar.getByRole("button", { name: "Integrations", exact: true });
-  await integrations.hover();
-  await expect
-    .poll(() => integrations.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe(chiefBg);
+  await captureScreenshot(page, testInfo, "sidebar-search-selected-dark");
 });

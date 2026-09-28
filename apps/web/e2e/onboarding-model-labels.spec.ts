@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, signup } from "./helpers";
+import { captureScreenshot, completeIdentitySteps, signup } from "./helpers";
 
 test("onboarding uses compact model selects without misleading latest labels", async ({
   page,
@@ -22,7 +22,10 @@ test("onboarding uses compact model selects without misleading latest labels", a
 
   const stamp = Date.now();
   await signup(page, `model-labels-${stamp}@aiden.test`, "password12", `Model labels ${stamp}`);
-  await expect(page.getByRole("heading", { name: "Connect a model" })).toBeVisible({
+  await completeIdentitySteps(page);
+  await expect(
+    page.getByRole("heading", { name: "Last thing — connect the brain I'll think with." }),
+  ).toBeVisible({
     timeout: 20_000,
   });
 

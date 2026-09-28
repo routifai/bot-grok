@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, signup } from "./helpers";
+import { captureScreenshot, completeIdentitySteps, signup } from "./helpers";
+
+const MODEL_STEP_HEADING = "Last thing — connect the brain I'll think with.";
 
 test("onboarding requires a model when the deployment has none", async ({ page }, testInfo) => {
   await page.route("**/rpc/me", async (route) => {
@@ -20,7 +22,8 @@ test("onboarding requires a model when the deployment has none", async ({ page }
 
   const stamp = Date.now();
   await signup(page, `model-required-${stamp}@aiden.test`, "password12", `Model required ${stamp}`);
-  await expect(page.getByRole("heading", { name: "Connect a model" })).toBeVisible({
+  await completeIdentitySteps(page);
+  await expect(page.getByRole("heading", { name: MODEL_STEP_HEADING })).toBeVisible({
     timeout: 20_000,
   });
 
@@ -47,9 +50,10 @@ for (const unavailable of ["empty", "failed"] as const) {
     );
     const stamp = Date.now();
     await signup(page, `catalog-${unavailable}-${stamp}@aiden.test`, "password12", "Model setup");
-    await expect(page.getByRole("heading", { name: "Connect a model" })).toBeVisible();
+    await completeIdentitySteps(page);
+    await expect(page.getByRole("heading", { name: MODEL_STEP_HEADING })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
     await expect(page.getByRole("heading", { name: "Create your first bot" })).toHaveCount(0);
-    await expect(page.getByRole("combobox", { name: "Message Chief" })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message Aiden" })).toHaveCount(0);
   });
 }

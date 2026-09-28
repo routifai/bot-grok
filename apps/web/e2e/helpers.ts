@@ -24,26 +24,41 @@ export async function rpc<T>(page: Page, procedure: string, body: unknown): Prom
   return parsed.json as T;
 }
 
+/**
+ * Drives the Muse identity steps (intro → name → Muse name → color), each
+ * pre-filled with a usable default so "Continue" is enough. Leaves the page
+ * on whatever step comes after (Server integrations, model connect, or bot).
+ */
+export async function completeIdentitySteps(page: Page): Promise<void> {
+  const intro = page.getByRole("button", { name: "Let's get started", exact: true });
+  await intro.waitFor({ timeout: 20_000 });
+  await intro.click();
+
+  const continueButton = page.getByRole("button", { name: "Continue", exact: true });
+  await continueButton.click(); // name (pre-filled from the signed-up account name)
+  await continueButton.click(); // Muse name (pre-filled with the default name)
+  await continueButton.click(); // Muse color (default color selected)
+}
+
+/**
+ * Drives the Muse identity steps, then the optional Server integrations
+ * step, landing in the Muse's chat with no form to fill.
+ */
 export async function completeOnboarding(page: Page, testInfo?: TestInfo) {
   await page.waitForURL(/\/(onboarding|app)/, { timeout: 20_000 });
-  // Optional Server integrations step (needsSetup). Skip when shown, then the
-  // first bot is created automatically — land in Chief's chat with no form.
+  if (page.url().includes("/app")) return;
+
+  await completeIdentitySteps(page);
+
   const integrations = page.getByRole("heading", { name: "Server integrations", exact: true });
-  const chief = page.getByText("Chief").first();
-  await integrations.or(chief).or(page.getByText("Opening chat…")).waitFor({ timeout: 20_000 });
-  if ((await chief.isVisible().catch(() => false)) && page.url().includes("/app")) {
-    if (testInfo) {
-      await captureScreenshot(page, testInfo, "03-create-first-bot");
-      await captureScreenshot(page, testInfo, "06-onboarding-complete");
-    }
-    return;
-  }
+  const composer = page.getByPlaceholder(/^Message /).first();
+  await integrations.or(composer).or(page.getByText("Opening chat…")).waitFor({ timeout: 20_000 });
   if (await integrations.isVisible().catch(() => false)) {
     if (testInfo) await captureScreenshot(page, testInfo, "02-connect-apps");
     await page.getByRole("button", { name: "Skip", exact: true }).click();
   }
   await page.waitForURL(/\/app\//, { timeout: 20_000 });
-  await expect(page.getByText("Chief").first()).toBeVisible();
+  await expect(composer).toBeVisible();
   if (testInfo) {
     await captureScreenshot(page, testInfo, "03-create-first-bot");
     await captureScreenshot(page, testInfo, "06-onboarding-complete");
@@ -58,7 +73,7 @@ export async function signup(
   testInfo?: TestInfo,
 ) {
   await page.goto("/sign-up");
-  await expect(page.getByRole("heading", { name: "Create your Aiden" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Meet Aiden." })).toBeVisible();
   if (testInfo) await captureScreenshot(page, testInfo, "01-sign-up");
   await page.getByPlaceholder("Your name").fill(name);
   await page.getByPlaceholder("Your email address").fill(email);
@@ -77,51 +92,9 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
   await testInfo.attach(name, { contentType: "image/png", path: screenshotPath });
 }
 
-export async function openNewBot(page: Page) {
-  await page.getByTestId("create-menu-trigger").click();
-  await page.getByTestId("create-new-bot").click();
-  await expect(page.getByTestId("side-panel")).toHaveAttribute("data-panel", "create");
-  await expect(page.getByTestId("create-bot-form")).toBeVisible();
-}
-
-export async function openNewGroup(page: Page) {
-  await page.getByTestId("create-menu-trigger").click();
-  await page.getByTestId("create-new-group").click();
-}
-
 export async function openNewSpace(page: Page) {
   await page.getByTestId("create-menu-trigger").click();
   await page.getByTestId("create-new-space").click();
-}
-
-/** Open the create form from the + picker, submit, and wait for the new chat. */
-export async function createBotFromPicker(
-  page: Page,
-  options: {
-    name?: string;
-    title?: string;
-    description?: string;
-    computerMode?: "team" | "dedicated";
-  } = {},
-) {
-  const name = options.name ?? "New Bot";
-  await openNewBot(page);
-  const form = page.getByTestId("create-bot-form");
-  await form.locator("label:has-text('Name') input").fill(name);
-  if (options.title != null) {
-    await form.locator("label:has-text('Title') input").fill(options.title);
-  }
-  if (options.description != null) {
-    await form.locator("label:has-text('Description') textarea").fill(options.description);
-  }
-  if (options.computerMode === "dedicated") {
-    await form.getByTestId("create-bot-private").click();
-  } else if (options.computerMode === "team") {
-    await form.getByTestId("create-bot-team").click();
-  }
-  await form.getByRole("button", { name: "Create", exact: true }).click();
-  await page.waitForURL(/\/app\/[^/]+$/);
-  await expect(page.getByTestId("side-panel")).toHaveAttribute("data-panel", "closed");
 }
 
 /** Open the user Settings overlay, optionally switching to a sidebar section. */
@@ -137,22 +110,4 @@ export async function openUserSettings(
     await settings.getByTestId(`settings-nav-${section}`).click();
   }
   return settings;
-}
-
-/** Create a named bot via RPC for test setup (skips the + picker). */
-export async function createNamedBot(
-  page: Page,
-  name: string,
-  options: { computerMode?: "team" | "dedicated" } = {},
-) {
-  const bot = await rpc<{ id: string; name: string }>(page, "bots/create", {
-    name,
-    title: "",
-    description: "",
-    notifyOnFinish: true,
-    computerMode: options.computerMode ?? "team",
-  });
-  await page.goto(`/app/${bot.id}`);
-  await expect(page.getByPlaceholder(`Message ${name}`)).toBeVisible();
-  return bot.id;
 }
