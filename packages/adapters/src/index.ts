@@ -91,6 +91,7 @@ export * from "./muse/goal-proposals.js";
 export * from "./muse/goal-tools.js";
 export * from "./muse/ideas.js";
 export * from "./muse/skill-offer.js";
+export * from "./muse/skill-offer-followup.js";
 export * from "./none-sandbox.js";
 export * from "./openai-compatible-url.js";
 export * from "./openai-voice.js";

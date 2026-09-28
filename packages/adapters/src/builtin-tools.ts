@@ -859,7 +859,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "offer_skill",
     description:
-      "Offer to save what you just did as a reusable skill. Call it once, after finishing a multi-step task the person is likely to ask for again (a recurring report, a lookup, a routine chore), when no saved skill already covers it and the person hasn't said no to this kind of offer. It posts a Save / Not now question; nothing is saved unless they choose Save. Write the SKILL.md the same way as skill_create: YAML frontmatter with name and description, then the steps. Keep it generic: no account names, channels, or inboxes.",
+      "Offer to save what you just did as a reusable skill; this is the only way to offer one (never ask about saving a skill in your reply text). Call it once, after finishing a multi-step task the person is likely to ask for again (a recurring report, a lookup, a routine chore), when no saved skill already covers it and the person hasn't said no to this kind of offer. It posts a Save / Not now question; nothing is saved unless they choose Save. Write the SKILL.md the same way as skill_create: YAML frontmatter with name and description, then the steps. Keep it generic: no account names, channels, or inboxes.",
     inputSchema: {
       type: "object",
       properties: {

@@ -28,7 +28,7 @@ export const LONG_WORK_PROGRESS_GUIDANCE =
 export const ROUTINE_SILENT_REPLY_GUIDANCE = `If this routine's prompt says to stay silent when there is nothing to report, the entire final assistant reply must be exactly ${NO_RESPONSE} — no surrounding prose, no variants, no progress updates, no all-clear, and no meta note that you are staying silent. Do not call message_user unless you have something to report.`;
 
 export function runAllowsSilentEmpty(trigger: string): boolean {
-  return trigger === "routine";
+  return trigger === "routine" || trigger === "skill_offer";
 }
 
 export function runPromotesMidTurnNarration(trigger: string): boolean {

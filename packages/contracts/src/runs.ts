@@ -24,6 +24,8 @@ export const RunActivityRowSchema = z.object({
     "created",
     /** Muse edition only (docs/muse/PLAN.md B8): background work in a Goal's log thread. */
     "goal_advance",
+    /** Muse edition: a quiet follow-up turn that turns a text-only skill offer into the real one. */
+    "skill_offer",
   ]),
   notificationsEnabled: z.boolean(),
   promptSnippet: z.string(),

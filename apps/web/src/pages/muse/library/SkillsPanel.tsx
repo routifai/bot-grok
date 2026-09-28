@@ -44,16 +44,16 @@ export function SkillsPanel({ avatarColor }: { avatarColor?: string }) {
 
   useEffect(() => {
     void load();
-    // biome-ignore lint/correctness/useExhaustiveDependencies: load once on mount
   }, []);
 
   if (skills === null) {
     return <div className="h-40 animate-pulse rounded-[22px] bg-muted/60" aria-hidden="true" />;
   }
   if (error) return <p className="py-10 text-[14px] text-destructive">{error}</p>;
-  const mine = skills.filter((skill) => skill.source === "user");
-  const builtin = skills.filter((skill) => skill.source !== "user");
-  if (mine.length === 0 && builtin.length === 0) {
+  // Only what the Muse learned is listed; built-in and plugin skills stay available to it
+  // but aren't the person's to manage here.
+  const learned = skills.filter((skill) => skill.source === "user");
+  if (learned.length === 0) {
     return (
       <EmptyState
         face
@@ -68,10 +68,7 @@ export function SkillsPanel({ avatarColor }: { avatarColor?: string }) {
 
   return (
     <div className="flex flex-col gap-8">
-      {mine.length > 0 ? <SkillGroup title={t`Learned`} skills={mine} onOpen={setOpenId} /> : null}
-      {builtin.length > 0 ? (
-        <SkillGroup title={t`Built in`} skills={builtin} onOpen={setOpenId} />
-      ) : null}
+      <SkillGroup title={t`Learned`} skills={learned} onOpen={setOpenId} />
       {openId ? (
         <SkillSheet
           skillId={openId}

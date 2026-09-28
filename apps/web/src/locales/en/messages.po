@@ -526,9 +526,6 @@ msgstr "Brain label"
 msgid "Browse MCP servers"
 msgstr "Browse MCP servers"
 
-msgid "Built in"
-msgstr "Built in"
-
 msgid "Built-in skills can't be edited."
 msgstr "Built-in skills can't be edited."
 
