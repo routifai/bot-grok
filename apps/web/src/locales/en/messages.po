@@ -3224,6 +3224,9 @@ msgstr "Use this model"
 msgid "Username"
 msgstr "Username"
 
+msgid "Uses your time zone, {timezone}."
+msgstr "Uses your time zone, {timezone}."
+
 msgid "Verify and add"
 msgstr "Verify and add"
 

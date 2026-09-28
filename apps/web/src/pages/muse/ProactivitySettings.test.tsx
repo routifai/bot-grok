@@ -6,7 +6,9 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ settings: vi.fn(), updateSettings: vi.fn() }));
-vi.mock("../../lib/rpc", () => ({ rpc: { muse: api } }));
+const preferences = vi.hoisted(() => ({ update: vi.fn().mockResolvedValue({}) }));
+vi.mock("../../lib/rpc", () => ({ rpc: { muse: api, preferences } }));
+vi.mock("../../lib/local-timezone", () => ({ localTimezone: () => "America/Toronto" }));
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray) => parts.join("");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
@@ -86,6 +88,8 @@ it("renders the default proactivity level and quiet hours", async () => {
     ).toBe("true");
     const times = [...container.querySelectorAll("input[type=time]")] as HTMLInputElement[];
     expect(times.map((input) => input.value)).toEqual(["22:00", "08:00"]);
+    expect(container.textContent).toContain("America/Toronto");
+    expect(preferences.update).toHaveBeenCalledWith({ timezone: "America/Toronto" });
   } finally {
     await act(async () => root.unmount());
     container.remove();

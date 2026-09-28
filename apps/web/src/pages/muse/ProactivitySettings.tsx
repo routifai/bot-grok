@@ -3,6 +3,7 @@ import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@aiden/contracts";
 import { cn, Switch } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useId, useState } from "react";
+import { localTimezone } from "../../lib/local-timezone";
 import { rpc } from "../../lib/rpc";
 import { MUSE_INSET_GROUP } from "./ui";
 
@@ -53,6 +54,7 @@ export function ProactivitySettings({ botId }: { botId: string }) {
   const ids = useId();
   const [settings, setSettings] = useState<MuseSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const timezone = localTimezone();
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +66,13 @@ export function ProactivitySettings({ botId }: { botId: string }) {
       cancelled = true;
     };
   }, [botId]);
+
+  // The only place that currently learns the person's time zone: quiet hours and the
+  // daily Followed-topic digest (packages/adapters/src/muse/feed-jobs.ts) both read
+  // User.timezone. Best effort — a failed save just leaves the previous value in place.
+  useEffect(() => {
+    void rpc.preferences.update({ timezone }).catch(() => undefined);
+  }, [timezone]);
 
   async function save(patch: Partial<MuseSettings>, previous: MuseSettings) {
     setSettings({ ...previous, ...patch });
@@ -181,6 +190,9 @@ export function ProactivitySettings({ botId }: { botId: string }) {
         </div>
         <p className="px-4 pt-2 text-[13px] text-muted-foreground">
           <Trans>I won't work on Goals or message you during quiet hours.</Trans>
+        </p>
+        <p className="px-4 pt-1 text-[13px] text-muted-foreground">
+          <Trans>Uses your time zone, {timezone}.</Trans>
         </p>
       </section>
 
