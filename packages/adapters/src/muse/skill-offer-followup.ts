@@ -16,7 +16,7 @@ export const SKILL_OFFER_REVIEW_PROMPT =
   "nothing. Either way, your entire reply must be exactly NO_RESPONSE.";
 
 /** Tools that mean the Muse did real work, as opposed to messaging or bookkeeping. */
-const WORK_TOOLS = new Set([
+export const WORK_TOOLS = new Set([
   "web_search",
   "web_fetch",
   "browser_navigate",
