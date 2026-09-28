@@ -18,6 +18,7 @@ function createFixture() {
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const bots: Record<string, unknown>[] = [];
+  const users: Record<string, unknown>[] = [{ id: USER_ID, timezone: "UTC" }];
   const threads: Record<string, unknown>[] = [];
   const followedTopics: Record<string, unknown>[] = [];
   const tasks: Record<string, unknown>[] = [];
@@ -59,6 +60,18 @@ function createFixture() {
         if (include.feedLog)
           result.feedLog = threads.find((t) => t.feedLogBotId === bot.id) ?? null;
         return result;
+      },
+    },
+    user: {
+      findUnique: async ({
+        where,
+        select,
+      }: {
+        where: { id: string };
+        select?: Record<string, true>;
+      }) => {
+        const user = users.find((u) => u.id === where.id);
+        return user ? applySelect(user, select) : null;
       },
     },
     thread: {
@@ -103,6 +116,7 @@ function createFixture() {
   return {
     prisma: client as unknown as PrismaClient,
     bots,
+    users,
     threads,
     followedTopics,
     tasks,
@@ -139,6 +153,11 @@ function seedMuse(fixture: Fixture, overrides: Record<string, unknown> = {}) {
   };
   fixture.threads.push(conversation);
   return conversation;
+}
+
+function setOwnerTimezone(fixture: Fixture, timezone: string) {
+  const owner = fixture.users.find((u) => u.id === USER_ID);
+  if (owner) owner.timezone = timezone;
 }
 
 function seedTopic(fixture: Fixture, topic: string) {
@@ -220,6 +239,35 @@ describe("feed.topics: quiet hours", () => {
         payload: { botId: BOT_ID },
         availableAt: expectedEnd,
         queueName: museQueueName(BOT_ID),
+      }),
+    );
+  });
+
+  it("evaluates quiet hours in the Muse owner's time zone, not UTC", async () => {
+    // 09:00 UTC in January is 04:00 in Toronto (UTC-5): outside 22:00-08:00 in UTC,
+    // inside it in Toronto.
+    vi.setSystemTime(new Date("2026-01-01T09:00:00.000Z"));
+    const fixture = createFixture();
+    seedMuse(fixture);
+    setOwnerTimezone(fixture, "America/Toronto");
+    seedTopic(fixture, "AI agent news");
+    const d = deps(fixture);
+    const handlers = createFeedJobHandlers(d);
+
+    await handlers["feed.topics"]({ botId: BOT_ID });
+
+    expect(fixture.runs).toHaveLength(0);
+    expect(d.continueRun).not.toHaveBeenCalled();
+    const expectedEnd = quietHoursEnd(
+      "22:00-08:00",
+      new Date("2026-01-01T09:00:00.000Z"),
+      "America/Toronto",
+    )!;
+    expect(d.jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "feed.topics",
+        payload: { botId: BOT_ID },
+        availableAt: expectedEnd,
       }),
     );
   });
@@ -372,6 +420,27 @@ describe("scheduleFeedTopics / rescheduleMuseFeedForBot / scheduleFeedDigestOnFi
 
     expect(d.jobs.enqueue).toHaveBeenCalledWith(
       expect.objectContaining({ name: "feed.topics", payload: { botId: BOT_ID } }),
+    );
+  });
+
+  it("rescheduleMuseFeedForBot skips quiet hours in the Muse owner's time zone", async () => {
+    // +24h from 22:30 Toronto (03:30 UTC the next day) lands at 22:30 Toronto again,
+    // inside the default 22:00-08:00 window; the same instant in UTC is outside it.
+    vi.setSystemTime(new Date("2026-01-02T03:30:00.000Z"));
+    const fixture = createFixture();
+    seedMuse(fixture, { museQuietHours: "22:00-08:00" });
+    setOwnerTimezone(fixture, "America/Toronto");
+    const d = deps(fixture);
+
+    await rescheduleMuseFeedForBot(d, BOT_ID);
+
+    const expected = nextFeedTopicsAt(
+      { proactivity: "normal", quietHours: "22:00-08:00" },
+      new Date("2026-01-02T03:30:00.000Z"),
+      "America/Toronto",
+    )!;
+    expect(d.jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "feed.topics", availableAt: expected }),
     );
   });
 

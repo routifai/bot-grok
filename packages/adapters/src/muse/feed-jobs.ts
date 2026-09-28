@@ -33,12 +33,11 @@ import { CONVERSATION_DEFER_MS, hasActiveRun } from "./goal-jobs.js";
  * digest on/off, same as Goal work) — see docs/muse/PLAN.md B10. */
 export const FEED_TOPICS_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-/**
- * No per-bot timezone exists yet (unlike `Goal.timezone` / `Routine.timezone`): quiet
- * hours for this per-Muse digest are evaluated in UTC, the same default those models
- * fall back to when unset.
- */
-const FEED_TIMEZONE = "UTC";
+/** The Muse owner's IANA zone (`User.timezone`); falls back to UTC for a missing owner. */
+async function ownerTimezone(prisma: Pick<PrismaClient, "user">, userId: string): Promise<string> {
+  const owner = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+  return owner?.timezone ?? "UTC";
+}
 
 export interface FeedJobDeps {
   prisma: PrismaClient;
@@ -83,12 +82,12 @@ export function nextFeedTopicsAt(
  * full day.
  */
 export async function rescheduleMuseFeedForBot(
-  deps: { prisma: Pick<PrismaClient, "bot">; jobs: JobPublisher },
+  deps: { prisma: Pick<PrismaClient, "bot" | "user">; jobs: JobPublisher },
   botId: string,
 ): Promise<void> {
   const bot = await deps.prisma.bot.findUnique({
     where: { id: botId },
-    select: { museProactivity: true, museQuietHours: true },
+    select: { userId: true, museProactivity: true, museQuietHours: true },
   });
   if (!bot) return;
   const settings = resolveMuseSettings(bot);
@@ -96,7 +95,8 @@ export async function rescheduleMuseFeedForBot(
     await deps.jobs.cancel(feedTopicsJobKey(botId)).catch(() => undefined);
     return;
   }
-  const next = nextFeedTopicsAt(settings, new Date(), FEED_TIMEZONE);
+  const timezone = await ownerTimezone(deps.prisma, bot.userId);
+  const next = nextFeedTopicsAt(settings, new Date(), timezone);
   if (next) await scheduleFeedTopics(deps.jobs, botId, next);
 }
 
@@ -108,7 +108,7 @@ export async function rescheduleMuseFeedForBot(
  * throws — scheduling failures never block the follow itself.
  */
 export async function scheduleFeedDigestOnFirstTopic(
-  deps: { prisma: Pick<PrismaClient, "bot">; jobs: JobPublisher },
+  deps: { prisma: Pick<PrismaClient, "bot" | "user">; jobs: JobPublisher },
   botId: string,
   topicCount: number,
 ): Promise<void> {
@@ -126,9 +126,10 @@ async function handleFeedTopics(deps: FeedJobDeps, payload: { botId: string }): 
   const settings = resolveMuseSettings(bot);
   if (settings.proactivity === "off") return; // Resumes via rescheduleMuseFeedForBot when turned back on.
 
+  const timezone = await ownerTimezone(deps.prisma, bot.userId);
   const now = new Date();
-  if (inQuietHours(settings.quietHours, now, FEED_TIMEZONE)) {
-    const end = quietHoursEnd(settings.quietHours, now, FEED_TIMEZONE);
+  if (inQuietHours(settings.quietHours, now, timezone)) {
+    const end = quietHoursEnd(settings.quietHours, now, timezone);
     if (end) await scheduleFeedTopics(deps.jobs, bot.id, end);
     return;
   }
@@ -172,7 +173,7 @@ async function handleFeedTopics(deps: FeedJobDeps, payload: { botId: string }): 
     await deps.continueRun(run.id, deps.workerId);
   }
 
-  const next = nextFeedTopicsAt(settings, now, FEED_TIMEZONE);
+  const next = nextFeedTopicsAt(settings, now, timezone);
   if (next) await scheduleFeedTopics(deps.jobs, bot.id, next);
 }
 

@@ -49,7 +49,10 @@ function createFixture() {
       },
     },
     bot: {
-      findUnique: async () => ({ museProactivity: null, museQuietHours: null }),
+      findUnique: async () => ({ userId: USER_ID, museProactivity: null, museQuietHours: null }),
+    },
+    user: {
+      findUnique: async () => ({ timezone: "UTC" }),
     },
   };
 
