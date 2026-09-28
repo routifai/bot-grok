@@ -542,7 +542,7 @@ export const ZH_MESSAGES: Record<string, string> = {
   "Open in full window": "在全窗口中打开",
   "OpenAPI JSON": "OpenAPI JSON",
   "Opened its thread.": "已打开其对话。",
-  "Paste the OpenAI-compatible address from your server. Aiden adds /v1 if needed.":
+  "Paste the OpenAI-compatible address from your server. Nova adds /v1 if needed.":
     "粘贴你服务器的 OpenAI 兼容地址。如有需要，Aiden 会自动补上 /v1。",
   Paused: "已暂停",
   Prompt: "提示词",
