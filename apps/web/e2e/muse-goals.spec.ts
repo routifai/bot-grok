@@ -9,7 +9,8 @@ test("a goal set up in the Conversation shows in Goals", async ({ page }, testIn
     page,
     "Set up a goal called Q3 portfolio review with tasks: gather statements, draft summary",
   );
-  await expect(page.getByText('setting up a plan for "Q3 portfolio review".')).toBeVisible({
+  // The reply streams before the tool call lands; the plan card means the Goal exists.
+  await expect(page.getByText('Here\'s my plan for "Q3 portfolio review"')).toBeVisible({
     timeout: AGENT_REPLY_TIMEOUT,
   });
 
