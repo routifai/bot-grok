@@ -200,16 +200,17 @@ test("rendered markdown selections survive server quote derivation", async ({ pa
   );
 
   // A quote-free reply falls back to the parent's preview — flattened, not raw Markdown.
-  const rail = sourceRow.getByTestId("message-hover-rail");
-  await expect
-    .poll(async () => {
-      await sourceRow.hover();
-      return rail.evaluate((element) => getComputedStyle(element).opacity);
-    })
-    .toBe("1");
-  await rail.getByRole("button", { name: "Reply" }).click();
-  await composer.fill(`reply-plain-${stamp}`);
-  await page.getByRole("button", { name: "Send", exact: true }).click();
+  // The hover Reply icon only shows for team-chat threads (conversational mode); a
+  // one-on-one Muse keeps just "More", so drive the same threads/send path directly.
+  const sourceMessageId = await sourceRow.getAttribute("data-message-id");
+  expect(sourceMessageId).toBeTruthy();
+  const botId = activeBotId(page);
+  await rpc(page, "threads/send", {
+    botId,
+    clientNonce: `plain-reply-${stamp}`,
+    text: `reply-plain-${stamp}`,
+    replyToMessageId: sourceMessageId,
+  });
   const plainReply = transcript
     .locator("[data-message-id]")
     .filter({ has: page.getByTestId("message-user-bubble") })
