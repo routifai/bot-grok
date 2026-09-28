@@ -191,6 +191,7 @@ model Space {
   posts                       Post[]
   followedTopics              FollowedTopic[]
   taughtSkills                TaughtSkill[]
+  episodes                    Episode[]
   agentSkills                 AgentSkill[]
   connections                 Connection[]
   capabilities                CapabilityInstall[]
@@ -393,6 +394,7 @@ model Bot {
   /// The Feed log: this Muse's own Thread for `feed.topics` research turns (B10).
   feedLog                Thread?           @relation("BotFeedLog")
   taughtSkills           TaughtSkill[]
+  episodes               Episode[]
   memoryDocuments        MemoryDocument[]
   agentHome              AgentHome?
   browserProfile         BrowserProfile?
@@ -933,6 +935,30 @@ model TaughtSkill {
   // Partial unique index taught_skills_botId_recording_key is created in SQL:
   // one recording session per bot.
   @@map("taught_skills")
+}
+
+/// Episodic memory: one short, dated record per finished task, written automatically
+/// (packages/adapters/src/muse/episodes.ts) and recalled by run-executor and the
+/// recall_episodes tool. runId is unique so a resumed run never creates a duplicate.
+model Episode {
+  id        String   @id @default(cuid())
+  spaceId   String
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId    String
+  botId     String
+  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  runId     String   @unique
+  threadId  String
+  goalId    String?
+  trigger   String
+  title     String
+  summary   String
+  tools     String[] @default([])
+  links     String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@index([botId, createdAt])
+  @@map("episodes")
 }
 
 /// Claude Agent Skills: SKILL.md recipes shared across assistants (not per-bot).

@@ -4,6 +4,7 @@ export * from "./cancel-runs.js";
 export * from "./client.js";
 export * from "./computers.js";
 export * from "./credential-secrets.js";
+export * from "./episodes.js";
 export * from "./events.js";
 export * from "./external-conversations.js";
 export * from "./feed.js";
