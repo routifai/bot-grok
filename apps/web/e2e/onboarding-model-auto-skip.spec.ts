@@ -50,11 +50,11 @@ test("onboarding skips model connect when a default model is already available",
 
   expect((await createRequest).postDataJSON()).toMatchObject({
     json: {
-      name: "Aiden",
+      name: "Nova",
       spawnKey: "onboarding:first",
     },
   });
-  await expect(page.getByRole("combobox", { name: "Message Aiden" })).toBeVisible({
+  await expect(page.getByRole("combobox", { name: "Message Nova" })).toBeVisible({
     timeout: 20_000,
   });
   await captureScreenshot(page, testInfo, "onboarding-model-auto-skip");

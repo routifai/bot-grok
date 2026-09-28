@@ -77,10 +77,7 @@ test("account settings language picker includes Russian and persists it", async 
   await signup(page, `ui-locale-ru-${stamp}@aiden.test`, "password12", "Locale QA");
   await completeOnboarding(page, testInfo);
 
-  await page.getByTestId("user-menu-trigger").click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const settings = page.getByTestId("user-settings");
-  await expect(settings).toBeVisible();
+  const settings = await openUserSettings(page);
 
   const picker = settings.getByTestId("ui-locale-select");
   await picker.click();
@@ -105,10 +102,7 @@ test("account settings language picker includes French and persists it", async (
   await signup(page, `ui-locale-fr-${stamp}@aiden.test`, "password12", "Locale QA");
   await completeOnboarding(page, testInfo);
 
-  await page.getByTestId("user-menu-trigger").click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const settings = page.getByTestId("user-settings");
-  await expect(settings).toBeVisible();
+  const settings = await openUserSettings(page);
 
   const picker = settings.getByTestId("ui-locale-select");
   await picker.click();

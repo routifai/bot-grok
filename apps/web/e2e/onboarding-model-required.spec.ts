@@ -54,6 +54,6 @@ for (const unavailable of ["empty", "failed"] as const) {
     await expect(page.getByRole("heading", { name: MODEL_STEP_HEADING })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
     await expect(page.getByRole("heading", { name: "Create your first bot" })).toHaveCount(0);
-    await expect(page.getByRole("combobox", { name: "Message Aiden" })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message Nova" })).toHaveCount(0);
   });
 }
