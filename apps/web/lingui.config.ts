@@ -1,4 +1,5 @@
 import { defineConfig } from "@lingui/conf";
+import { formatter } from "@lingui/format-po";
 
 export default defineConfig({
   sourceLocale: "en",
@@ -12,5 +13,7 @@ export default defineConfig({
       exclude: ["**/locales/**", "**/*.test.*"],
     },
   ],
+  // No file:line origins: catalogs change only when messages do, so CI can diff them.
+  format: formatter({ origins: false }),
   compileNamespace: "es",
 });

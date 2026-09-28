@@ -26,6 +26,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - name: Translation catalogs are up to date
+        run: |
+          pnpm --filter @aiden/web intl:extract
+          git diff --exit-code -- apps/web/src/locales || {
+            echo "::error::Run 'pnpm --filter @aiden/web intl:extract' and commit the catalogs."
+            exit 1
+          }
 
   check:
     name: Typecheck
