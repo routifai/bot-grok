@@ -963,6 +963,13 @@ async function managedScreen(
   screenLeaseId: string | undefined,
 ) {
   const { container, info } = await managedContainer(id, botId, spaceId);
+  // Control, observe and page-browser calls reach the computer over its own network. The
+  // screen path joined it before; a run that acts before anyone opens the screen must too.
+  if (screenNetworkMode === "isolated") {
+    const runtime = supervisorInfo ?? (await inspectSupervisorContainer());
+    const networkName = info.HostConfig.NetworkMode;
+    if (runtime && networkName) await connectComposeScreenPeers(networkName, runtime);
+  }
   return withComputerScreenLock(id, () =>
     ensureManagedScreen(id, container, info, botId, screenId, screenLeaseId),
   );
