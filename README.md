@@ -25,6 +25,8 @@ desktop and on your phone.
 
 ## Run it
 
+New here? Follow **[QUICKSTART.md](./QUICKSTART.md)**: from zero to your own Aiden, step by step.
+
 With Docker (Docker Desktop or colima):
 
 ```bash
