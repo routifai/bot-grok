@@ -9,6 +9,11 @@ const POLL_INTERVAL_MS = 15_000;
 /** Fired after an Ask is answered so every surface showing that Muse's Asks refreshes at once. */
 const ASKS_CHANGED_EVENT = "muse:asks-changed";
 
+/** Tell every open Asks list (Waiting on you, the context panel, badges) to refresh. */
+export function notifyAsksChanged(botId: string): void {
+  window.dispatchEvent(new CustomEvent(ASKS_CHANGED_EVENT, { detail: { botId } }));
+}
+
 export type AnswerAskInput = { askId: string; runId: string; answer: string };
 
 export type UseAsksResult = {
@@ -82,7 +87,7 @@ export function useAsks(botId: string): UseAsksResult {
       });
       try {
         await rpc.asks.answer(input);
-        window.dispatchEvent(new CustomEvent(ASKS_CHANGED_EVENT, { detail: { botId } }));
+        notifyAsksChanged(botId);
       } catch (err) {
         setAsks((current) =>
           removed && !current.some((ask) => ask.id === removed?.id)

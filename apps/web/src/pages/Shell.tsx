@@ -218,6 +218,7 @@ import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
+import { notifyAsksChanged } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
@@ -2039,6 +2040,7 @@ export function ShellPage() {
         // Muse Asks (Proposals, blocked Tasks, skill offers) apply their own effect; asks.answer
         // routes each kind and falls back to the run-input path for ordinary questions.
         await rpc.asks.answer({ askId: message.id, runId: message.runId ?? "", answer: text });
+        notifyAsksChanged(botId);
       } else {
         await rpc.threads.answer({
           ...(groupId ? { groupId } : { botId: botId! }),
