@@ -2,23 +2,18 @@
 import Button from "../components/Button.astro";
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
-import { fetchGithubStars, formatStarCount } from "../github";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { DOCS_URL } from "../site";
-
-const stars = await fetchGithubStars();
-const starsLabel = stars === null ? "Star" : formatStarCount(stars);
 ---
 
-<BaseLayout title="Page not found · Aiden" description="The requested Aiden page does not exist.">
+<BaseLayout title="Page not found · Nova" description="The requested Nova page does not exist.">
   <div class="container">
-    <Header starsLabel={starsLabel} />
+    <Header />
     <main id="main" class="privacy-copy">
       <h1>Page not found</h1>
-      <p>The page you requested does not exist. Return home or continue with the self-hosting guide.</p>
+      <p>The page you requested does not exist. Return home or get in touch with support.</p>
       <div class="cta-actions">
         <Button href="/">Home</Button>
-        <Button href={DOCS_URL} variant="secondary" external>Read the docs</Button>
+        <Button href="/support/" variant="secondary">Contact support</Button>
       </div>
     </main>
     <Footer />

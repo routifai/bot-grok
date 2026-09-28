@@ -1,29 +1,24 @@
 ---
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
-import { fetchGithubStars, formatStarCount } from "../github";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { DOCS_URL, GITHUB_URL } from "../site";
-
-const stars = await fetchGithubStars();
-const starsLabel = stars === null ? "Star" : formatStarCount(stars);
 ---
 
-<BaseLayout title="Support · Aiden" description="Get help with the Aiden app and self-hosted Aiden.">
+<BaseLayout title="Support · Nova" description="Get help with the Nova app and self-hosted Nova.">
   <div class="container">
-    <Header starsLabel={starsLabel} />
+    <Header />
     <main id="main" class="privacy-copy">
-      <h1>Aiden support</h1>
+      <h1>Nova support</h1>
       <p>
-        For help with the Aiden mobile app or a hosted Aiden account, email{" "}
-        <a href="mailto:hello@aiden.example">hello@aiden.example</a>. Include the email address on your
+        For help with the Nova mobile app or a hosted Nova account, email{" "}
+        <a href="mailto:hello@nova.example">hello@nova.example</a>. Include the email address on your
         account, what you expected to happen, and any error message you saw. Do not send passwords, API keys,
         access tokens, or other secrets.
       </p>
-      <h2>Self-hosted Aiden</h2>
+      <h2>Self-hosted Nova</h2>
       <p>
-        Start with the <a href={DOCS_URL}>self-hosting guide</a>. For reproducible bugs or feature requests,
-        open an issue in the <a href={`${GITHUB_URL}/issues`}>Aiden GitHub repository</a>.
+        For self-hosting setup help or to report a bug or feature request, email{" "}
+        <a href="mailto:hello@nova.example">hello@nova.example</a>.
       </p>
       <h2>Account deletion</h2>
       <p>

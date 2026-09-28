@@ -33,8 +33,8 @@ describe("agent content negotiation", () => {
   });
 
   it("maps canonical and trailing-slash page paths to Markdown documents", () => {
-    expect(getMarkdownDocument("/")).toContain("# Aiden");
-    expect(getMarkdownDocument("/about/")).toContain("# About Aiden");
+    expect(getMarkdownDocument("/")).toContain("# Nova");
+    expect(getMarkdownDocument("/about/")).toContain("# About Nova");
     expect(getMarkdownAlternate("/")).toBe("/index.md");
     expect(getMarkdownAlternate("/support/")).toBe("/support.md");
     expect(getMarkdownDocument("/missing")).toBeUndefined();
@@ -46,13 +46,13 @@ describe("agent content negotiation", () => {
     expect(HOME_MARKDOWN).toContain("Grok Bot alternative");
     expect(ABOUT_MARKDOWN).toContain("Grok Bot alternative");
     expect(AGENT_INSTRUCTIONS).toContain("Grok Bot alternative");
-    expect(AGENT_INSTRUCTIONS).toContain("## When to use Aiden");
-    expect(AGENT_INSTRUCTIONS).toContain("## How an agent should use Aiden");
+    expect(AGENT_INSTRUCTIONS).toContain("## When to use Nova");
+    expect(AGENT_INSTRUCTIONS).toContain("## How an agent should use Nova");
     expect(AGENT_INSTRUCTIONS).toContain("Self-hosting is available now");
   });
 
   it("returns cache-safe Markdown responses and omits bodies for HEAD", async () => {
-    const response = markdownResponse("# Aiden\n");
+    const response = markdownResponse("# Nova\n");
     expect(response.headers.get("content-type")).toBe(
       "text/markdown; charset=utf-8",
     );
@@ -60,9 +60,9 @@ describe("agent content negotiation", () => {
       '</llms.txt>; rel="describedby"; type="text/plain"',
     );
     expect(response.headers.get("vary")).toBe("Accept, Accept-Encoding");
-    await expect(response.text()).resolves.toBe("# Aiden\n");
+    await expect(response.text()).resolves.toBe("# Nova\n");
 
-    const headResponse = markdownResponse("# Aiden\n", "HEAD", 404);
+    const headResponse = markdownResponse("# Nova\n", "HEAD", 404);
     expect(headResponse.status).toBe(404);
     await expect(headResponse.text()).resolves.toBe("");
   });

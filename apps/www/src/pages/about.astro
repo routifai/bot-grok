@@ -1,39 +1,34 @@
 ---
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
-import { fetchGithubStars, formatStarCount } from "../github";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { DOCS_URL } from "../site";
-
-const stars = await fetchGithubStars();
-const starsLabel = stars === null ? "Star" : formatStarCount(stars);
 ---
 
 <BaseLayout
-  title="About · Aiden"
-  description="How Aiden builds a personal AI teammate that people can understand and control."
+  title="About · Nova"
+  description="How Nova builds a personal AI teammate that people can understand and control."
 >
   <div class="container">
-    <Header starsLabel={starsLabel} />
+    <Header />
     <main id="main" class="privacy-copy">
-      <h1>About Aiden</h1>
+      <h1>About Nova</h1>
       <p>
-        Aiden is a personal AI teammate: bots that can use a browser and shell,
+        Nova is a personal AI teammate: bots that can use a browser and shell,
         remember the work around a job, run routines on a schedule, and ask for approval when they reach a
         boundary. It is designed for practical operational work rather than one-off chat.
       </p>
       <h2>Why we are building it</h2>
       <p>
-        Useful agents should be understandable and controllable by the people who run them. Aiden keeps
+        Useful agents should be understandable and controllable by the people who run them. Nova keeps
         routines in readable Markdown, supports multiple model providers, records actions in an audit log, and
         lets operators keep model keys, browser sessions, and deployment infrastructure under their own
         control. The same bots and routines work across the web, desktop, and mobile clients.
       </p>
       <h2>Self-hostable</h2>
       <p>
-        Aiden is released under the Apache-2.0 license. To run Aiden on your own
-        infrastructure, start with the <a href={DOCS_URL}>self-hosting guide</a>. For product or account help,
-        email <a href="mailto:hello@aiden.example">hello@aiden.example</a>.
+        Nova is a private, closed product. To run Nova on your own
+        infrastructure, email <a href="mailto:hello@nova.example">hello@nova.example</a> for setup help. For product or account help,
+        email <a href="mailto:hello@nova.example">hello@nova.example</a>.
       </p>
     </main>
     <Footer />

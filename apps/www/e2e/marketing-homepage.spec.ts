@@ -21,12 +21,10 @@ test.describe("marketing homepage", () => {
     await expect(selfHost).toBeVisible();
     await expect(selfHost.getByRole("heading", { level: 2 })).toBeVisible();
     await expect(selfHost.getByRole("button", { name: /Get started/i })).toBeVisible();
-    await expect(selfHost.getByRole("link", { name: /View on GitHub/i })).toBeVisible();
-    await expect(selfHost.getByRole("link", { name: /Read the docs/i })).toBeVisible();
 
     await expect(selfHost.locator("pre")).toHaveCount(0);
     await expect(selfHost).not.toContainText(
-      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir aiden/i,
+      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir nova/i,
     );
 
     await expect(async () => {
@@ -40,7 +38,7 @@ test.describe("marketing homepage", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("heading")).toBeVisible();
     await expect(dialog).not.toContainText(
-      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir aiden/i,
+      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir nova/i,
     );
     await captureScreenshot(page, testInfo, "02-marketing-get-started");
   });
@@ -54,12 +52,10 @@ test.describe("marketing homepage", () => {
     await expect(selfHost).toBeVisible();
     await expect(selfHost.getByRole("heading", { level: 2 })).toHaveText("电脑归你所有");
     await expect(selfHost.getByRole("button", { name: "开始使用" })).toBeVisible();
-    await expect(selfHost.getByRole("link", { name: "在 GitHub 上查看" })).toBeVisible();
-    await expect(selfHost.getByRole("link", { name: "阅读文档" })).toBeVisible();
 
     await expect(selfHost.locator("pre")).toHaveCount(0);
     await expect(selfHost).not.toContainText(
-      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir aiden/i,
+      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir nova/i,
     );
 
     await expect(async () => {
@@ -73,7 +69,7 @@ test.describe("marketing homepage", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("heading")).toHaveText("你想如何开始？");
     await expect(dialog).not.toContainText(
-      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir aiden/i,
+      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir nova/i,
     );
     await captureScreenshot(page, testInfo, "04-marketing-zh-get-started");
   });

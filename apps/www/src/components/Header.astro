@@ -7,18 +7,14 @@ import {
   localeHomePath,
   type Locale,
 } from "../i18n/locales";
-import { DOCS_URL, GITHUB_URL } from "../site";
-import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
 type Props = {
-  starsLabel: string;
   locale?: Locale;
   copy?: HomeCopy["nav"];
   homeHref?: string;
 };
 
-const { starsLabel } = Astro.props;
 const locale = Astro.props.locale ?? DEFAULT_LOCALE;
 const copy = Astro.props.copy ?? getHomeCopy(locale).nav;
 const homeHref = Astro.props.homeHref ?? localeHomePath(locale);
@@ -27,11 +23,8 @@ const NAV_LINKS = [
   { href: localeHashPath(locale, "demo"), label: copy.product },
   { href: localeHashPath(locale, "roster"), label: copy.bots },
   { href: localeHashPath(locale, "selfhost"), label: copy.selfHost },
-  { href: localeHashPath(locale, "open-source"), label: copy.openSource },
-  { href: DOCS_URL, label: copy.docs, external: true },
+  { href: localeHashPath(locale, "deploy"), label: copy.plans },
 ];
-
-const externalAttrs = { target: "_blank", rel: "noreferrer" };
 ---
 
 <header class="site-header">
@@ -40,7 +33,7 @@ const externalAttrs = { target: "_blank", rel: "noreferrer" };
     <nav class="site-nav" aria-label={copy.primary}>
       {
         NAV_LINKS.map((link) => (
-          <a href={link.href} {...(link.external ? externalAttrs : {})}>
+          <a href={link.href}>
             {link.label}
           </a>
         ))
@@ -48,12 +41,10 @@ const externalAttrs = { target: "_blank", rel: "noreferrer" };
     </nav>
   </div>
   <div class="site-header__right">
-    <a class="star-pill" href={GITHUB_URL} target="_blank" rel="noreferrer">
-      <span aria-hidden="true">★</span>
-      <span>{starsLabel}</span>
-    </a>
     <div class="site-header__cta">
-      <Button href={GITHUB_URL} size="sm" external>{copy.viewOnGithub}</Button>
+      <button class="button button--primary button--small" type="button" data-get-started-open>
+        {copy.getStarted}
+      </button>
     </div>
     <details class="site-menu" data-site-menu>
       <summary class="site-menu__toggle" aria-label={copy.menu}>
@@ -67,7 +58,7 @@ const externalAttrs = { target: "_blank", rel: "noreferrer" };
       <nav class="site-menu__panel" aria-label={copy.primary}>
         {
           NAV_LINKS.map((link) => (
-            <a href={link.href} {...(link.external ? externalAttrs : {})}>
+            <a href={link.href}>
               {link.label}
             </a>
           ))

@@ -4,17 +4,17 @@ type Props = {
   label?: string;
 };
 
-const { href = "/", label = "Aiden home" } = Astro.props as Props;
+const { href = "/", label = "Nova home" } = Astro.props as Props;
 ---
 
 <a class="brand-lockup" href={href} aria-label={label}>
   <img
     class="brand-lockup__mark"
-    src="/brand/aiden-mark.svg"
+    src="/brand/nova-mark.svg"
     width="36"
     height="36"
     alt=""
     aria-hidden="true"
   />
-  <span class="brand-lockup__word">aiden</span>
+  <span class="brand-lockup__word">nova</span>
 </a>
