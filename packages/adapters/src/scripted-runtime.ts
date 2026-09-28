@@ -158,6 +158,45 @@ export function inferScript(
   // topic's plain name), so only Goal creation and the topic digest are scriptable here;
   // update_task/propose need a real Task id and are driven directly against the tool
   // handlers instead (see packages/testkit/src/muse-journeys.test.ts).
+  // Muse skill offers (muse/skill-offer-followup.ts): both follow-up prompts name offer_skill
+  // and quote the finished request, so this runs before any branch that request could match.
+  if (lower.includes("call offer_skill")) {
+    const request = /the request you just finished: "([\s\S]*)"/i.exec(prompt)?.[1] ?? "";
+    const topic = /gather\s+(.+?)\s+into\b/i.exec(request)?.[1]?.trim() ?? "the weekly summary";
+    const name = `gather-${topic
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`;
+    const content = [
+      "---",
+      `name: ${name}`,
+      `description: Gather ${topic} into short notes.`,
+      "---",
+      "",
+      `1. Look up ${topic}.`,
+      "2. Write one note per source.",
+      "3. Summarize what changed.",
+      "",
+    ].join("\n");
+    return [
+      {
+        toolCalls: [{ name: "offer_skill", args: { content, why: "You ask for this often." } }],
+      },
+      { assistant: "NO_RESPONSE", complete: true },
+    ];
+  }
+  // Multi-step work: three file writes count as real work, so a skill offer follows.
+  if (lower.includes("gather") && lower.includes("into three notes")) {
+    return [
+      { assistant: "gathering that into three notes." },
+      { toolCalls: [{ name: "write_file", args: { path: "notes/one.md", content: "# One\n" } }] },
+      { toolCalls: [{ name: "write_file", args: { path: "notes/two.md", content: "# Two\n" } }] },
+      {
+        toolCalls: [{ name: "write_file", args: { path: "notes/three.md", content: "# Three\n" } }],
+      },
+      { assistant: "done. three notes are in my home.", complete: true },
+    ];
+  }
   if (lower.includes("set up a goal") || lower.includes("create a goal")) {
     const titleMatch = /goal\s+(?:called|named)\s+"?([^".]+?)"?\s+with tasks?:/i.exec(prompt);
     const title = titleMatch?.[1]?.trim() ?? "New goal";
