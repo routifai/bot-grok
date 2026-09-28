@@ -468,7 +468,7 @@ export function OnboardingPage() {
             <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse-intro" face="muse" size={120} />
             <h1 className="mt-7 font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
               <Trans>
-                Hi, I'm Aiden — <em className="italic">already on it.</em>
+                Hi, I'm Nova — <em className="italic">already on it.</em>
               </Trans>
             </h1>
             <p className="mt-3 text-[15px] text-muted-foreground">

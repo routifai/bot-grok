@@ -714,7 +714,7 @@ function installApplicationMenu() {
   };
   const changeServer: Electron.MenuItemConstructorOptions = {
     id: "change-aiden-server",
-    label: "Change Aiden Server…",
+    label: "Change Nova Server…",
     accelerator: "CmdOrCtrl+Shift+K",
     click: () => showSetupWindow(),
   };
@@ -792,7 +792,7 @@ async function probeServer(rawUrl: string, signal?: AbortSignal): Promise<Deskto
         ok: false,
         status: response.status,
         url,
-        error: "That address redirects elsewhere. Enter the final Aiden server address.",
+        error: "That address redirects elsewhere. Enter the final Nova server address.",
       };
     }
     if (!response.ok) {
@@ -809,7 +809,7 @@ async function probeServer(rawUrl: string, signal?: AbortSignal): Promise<Deskto
         ok: false,
         status: response.status,
         url,
-        error: "That address did not respond like a Aiden server.",
+        error: "That address did not respond like a Nova server.",
       };
     }
     return {
@@ -1215,7 +1215,7 @@ app.whenReady().then(async () => {
         if (managedUrl === null || !(await localStack.matchesDesiredStack())) {
           return {
             ok: false,
-            error: "The app-managed Aiden services are not ready. Retry setup.",
+            error: "The app-managed Nova services are not ready. Retry setup.",
           };
         }
         openSetup = { mode: "new", serverUrl: managedUrl };

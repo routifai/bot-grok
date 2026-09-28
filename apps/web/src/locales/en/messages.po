@@ -140,7 +140,7 @@ msgstr "About spaces"
 msgid "Accept plan"
 msgstr "Accept plan"
 
-#. placeholder {0}: botDisplayName ?? "Aiden"
+#. placeholder {0}: botDisplayName ?? "Nova"
 msgid "Accept, and {0} starts on it in the background."
 msgstr "Accept, and {0} starts on it in the background."
 
@@ -267,12 +267,6 @@ msgstr "Agent connections"
 
 msgid "Agents:"
 msgstr "Agents:"
-
-msgid "Aiden"
-msgstr "Aiden"
-
-msgid "Aiden prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
-msgstr "Aiden prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
 
 msgid "All"
 msgstr "All"
@@ -600,8 +594,8 @@ msgstr "Choose a new password"
 msgid "Choose the Muse's color"
 msgstr "Choose the Muse's color"
 
-msgid "Choose which connected model Aiden uses."
-msgstr "Choose which connected model Aiden uses."
+msgid "Choose which connected model Nova uses."
+msgstr "Choose which connected model Nova uses."
 
 msgid "Clear"
 msgstr "Clear"
@@ -1547,11 +1541,11 @@ msgstr "Hi {trimmedName}, I'm {botName}. Here's how we'll work together."
 msgid "Hi, I'm {botName}. Here's how we'll work together."
 msgstr "Hi, I'm {botName}. Here's how we'll work together."
 
-msgid "Hi, I'm Aiden — <0>already on it.</0>"
-msgstr "Hi, I'm Aiden — <0>already on it.</0>"
+msgid "Hi, I'm Nova — <0>already on it.</0>"
+msgstr "Hi, I'm Nova — <0>already on it.</0>"
 
-msgid "Hi, I'm Aiden."
-msgstr "Hi, I'm Aiden."
+msgid "Hi, I'm Nova."
+msgstr "Hi, I'm Nova."
 
 msgid "Hi, this is how I'll sound when I read replies out loud."
 msgstr "Hi, this is how I'll sound when I read replies out loud."
@@ -1859,11 +1853,11 @@ msgstr "MCP servers"
 msgid "Medium"
 msgstr "Medium"
 
-msgid "Meet Aiden"
-msgstr "Meet Aiden"
+msgid "Meet Nova"
+msgstr "Meet Nova"
 
-msgid "Meet Aiden."
-msgstr "Meet Aiden."
+msgid "Meet Nova."
+msgstr "Meet Nova."
 
 msgid "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
 msgstr "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
@@ -2135,6 +2129,12 @@ msgstr "Nothing yet"
 msgid "Notifications"
 msgstr "Notifications"
 
+msgid "Nova"
+msgstr "Nova"
+
+msgid "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
+msgstr "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
+
 #. placeholder {0}: selected.label
 msgid "Now using {0}."
 msgstr "Now using {0}."
@@ -2259,8 +2259,8 @@ msgstr "Passwords do not match"
 msgid "Paste a replacement key"
 msgstr "Paste a replacement key"
 
-msgid "Paste the OpenAI-compatible address from your server. Aiden adds /v1 if needed."
-msgstr "Paste the OpenAI-compatible address from your server. Aiden adds /v1 if needed."
+msgid "Paste the OpenAI-compatible address from your server. Nova adds /v1 if needed."
+msgstr "Paste the OpenAI-compatible address from your server. Nova adds /v1 if needed."
 
 msgid "Paste your API key"
 msgstr "Paste your API key"
@@ -2551,8 +2551,8 @@ msgstr "Retry now"
 msgid "Retry screen"
 msgstr "Retry screen"
 
-msgid "Return to Aiden"
-msgstr "Return to Aiden"
+msgid "Return to Nova"
+msgstr "Return to Nova"
 
 #. placeholder {0}: doc.revision
 msgid "rev {0}"
@@ -2972,8 +2972,8 @@ msgstr "This server did not request browser authorization."
 msgid "This server is already connected. Disconnect it first to authorize again."
 msgstr "This server is already connected. Disconnect it first to authorize again."
 
-msgid "This subscription sign-in is not available in Aiden yet. Use a deployment credential or choose another provider."
-msgstr "This subscription sign-in is not available in Aiden yet. Use a deployment credential or choose another provider."
+msgid "This subscription sign-in is not available in Nova yet. Use a deployment credential or choose another provider."
+msgstr "This subscription sign-in is not available in Nova yet. Use a deployment credential or choose another provider."
 
 msgid "This week"
 msgstr "This week"

@@ -23,7 +23,7 @@ export function MuseWelcome() {
           <div className="relative mb-7">
             <BotAvatar color={DEFAULT_MUSE_COLOR} identity="aiden" face="muse" size={148} />
             <span className="absolute -top-3 start-[134px] whitespace-nowrap rounded-2xl rounded-bl-md border border-border bg-card px-3 py-1.5 text-[13px] text-foreground shadow-float">
-              <Trans>Hi, I'm Aiden.</Trans>
+              <Trans>Hi, I'm Nova.</Trans>
             </span>
           </div>
 
@@ -34,7 +34,7 @@ export function MuseWelcome() {
           </h1>
           <p className="mt-5 max-w-[520px] text-[17px] leading-[1.55] text-muted-foreground text-balance">
             <Trans>
-              Aiden prepares your meetings, researches, drafts and follows up in the background —
+              Nova prepares your meetings, researches, drafts and follows up in the background —
               and always asks before anything it can't undo.
             </Trans>
           </p>
@@ -58,7 +58,7 @@ export function MuseWelcome() {
             onClick={() => navigate("/sign-up")}
             className="app-no-drag mt-10 inline-flex items-center gap-2 rounded-full bg-primary px-7 py-3.5 text-[16px] font-medium text-primary-foreground transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none motion-reduce:hover:scale-100"
           >
-            <Trans>Meet Aiden</Trans>
+            <Trans>Meet Nova</Trans>
             <ArrowRight size={17} strokeWidth={2} aria-hidden="true" />
           </button>
           <Link

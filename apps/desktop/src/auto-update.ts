@@ -73,7 +73,7 @@ export function classifyUpdaterFailure(error: unknown): UpdaterFailure {
   if (SIGNATURE.some((needle) => text.includes(needle))) {
     return {
       kind: "signature",
-      message: "This update could not be verified. Reinstall Aiden from a trusted download.",
+      message: "This update could not be verified. Reinstall Nova from a trusted download.",
     };
   }
   return {

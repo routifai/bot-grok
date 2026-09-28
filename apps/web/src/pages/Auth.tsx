@@ -37,7 +37,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   ) : mode === "in" ? (
     <Trans>Welcome back.</Trans>
   ) : mode === "up" ? (
-    <Trans>Meet Aiden.</Trans>
+    <Trans>Meet Nova.</Trans>
   ) : (
     <Trans>Reset your password</Trans>
   );

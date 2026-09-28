@@ -1,6 +1,6 @@
-# Aiden quickstart
+# Nova quickstart
 
-From zero to your own Aiden in about 15 minutes. Everything runs in Docker on your machine; you
+From zero to your own Nova in about 15 minutes. Everything runs in Docker on your machine; you
 don't need Node.js or pnpm.
 
 ## 1. Before you start
@@ -15,12 +15,12 @@ don't need Node.js or pnpm.
 ## 2. Get the code
 
 ```bash
-git clone <repo-url> aiden
-cd aiden
+git clone <repo-url> nova
+cd nova
 git checkout muse
 ```
 
-## 3. Tell Aiden which model to use
+## 3. Tell Nova which model to use
 
 Create `.env` from the template and fill in the model section:
 
@@ -46,7 +46,7 @@ AIDEN_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that ac
 ```
 
 - Use `host.docker.internal`, not `localhost`: inside Docker, `localhost` is the container itself.
-- List image-capable models in `AIDEN_LOCAL_VISION_MODELS` so Aiden can see its computer's screen.
+- List image-capable models in `AIDEN_LOCAL_VISION_MODELS` so Nova can see its computer's screen.
 
 Everything else in `.env` (passwords, secrets) is generated for you in the next step.
 
@@ -61,12 +61,12 @@ The first run builds everything (a few minutes). It ends with the address to ope
 
 When it's running, `docker ps` shows five containers: `aiden-postgres-1`, `aiden-api-1`,
 `aiden-worker-1`, `aiden-web-1`, `aiden-supervisor-1`. An `aiden-bot-…` container appears the first
-time Aiden uses its computer.
+time Nova uses its computer.
 
 ## 5. First time in the app
 
 1. **Sign up.** The first account on this install is the owner.
-2. **Name your Aiden** and pick its color.
+2. **Name your Nova** and pick its color.
 3. **Say hi.** Try one of the suggestions, or give it a goal: "Help me prepare the Q3 client
    portfolio review." Its computer boots on first use (about 20–30 seconds).
 
@@ -75,7 +75,7 @@ time Aiden uses its computer.
 | What | Command |
 | --- | --- |
 | Update to the latest version | `git pull && ./scripts/setup.sh` |
-| Stop Aiden | `./scripts/stop.sh` |
+| Stop Nova | `./scripts/stop.sh` |
 | Start it again | `./scripts/setup.sh` |
 | Wipe everything and start fresh | `./scripts/reset.sh` (asks you to confirm) |
 | See logs | `docker compose -f infra/compose/docker-compose.yml logs -f api` |

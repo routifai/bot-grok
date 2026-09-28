@@ -122,7 +122,7 @@ it("walks intro -> name -> Muse name -> color (sky preselected) -> model, in ord
     // Step 0: the warm introduction.
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Hi, I'm Aiden — already on it.");
+        expect(page.container.textContent).toContain("Hi, I'm Nova — already on it.");
       });
     });
     await act(async () => {
@@ -197,7 +197,7 @@ it("creates exactly one bot with the chosen name and color", async () => {
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Hi, I'm Aiden — already on it.");
+        expect(page.container.textContent).toContain("Hi, I'm Nova — already on it.");
       });
     });
     await act(async () => {

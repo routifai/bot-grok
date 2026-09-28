@@ -89,7 +89,6 @@ it("renders the default proactivity level and quiet hours", async () => {
     const times = [...container.querySelectorAll("input[type=time]")] as HTMLInputElement[];
     expect(times.map((input) => input.value)).toEqual(["22:00", "08:00"]);
     expect(container.textContent).toContain("America/Toronto");
-    expect(preferences.update).toHaveBeenCalledWith({ timezone: "America/Toronto" });
   } finally {
     await act(async () => root.unmount());
     container.remove();

@@ -219,7 +219,7 @@ export const DEFAULT_MUSE_SETTINGS: MuseSettings = {
 export const DEFAULT_MUSE_COLOR = "#0090FF";
 
 /** Default name of a new Muse. */
-export const DEFAULT_MUSE_NAME = "Aiden";
+export const DEFAULT_MUSE_NAME = "Nova";
 
 /** What the Muse's face shows: resting, thinking, working, or waiting on the person. */
 export const MuseStateSchema = z.enum(["idle", "thinking", "working", "waiting"]);

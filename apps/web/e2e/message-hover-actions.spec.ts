@@ -40,7 +40,8 @@ async function expectRailAtRest(page: Page, row: Locator) {
   });
   await expect(rail).toHaveCSS("opacity", "0");
   await expect(rail).toHaveCSS("pointer-events", "none");
-  await expect(row.getByTestId("message-hover-time")).toHaveCSS("opacity", "0");
+  const time = row.getByTestId("message-hover-time");
+  if (await time.count()) await expect(time).toHaveCSS("opacity", "0");
 }
 
 test("message hover shows beside-bubble actions; reply links to parent", async ({
@@ -68,15 +69,8 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
 
   const botRail = await revealHoverRail(botRow);
   const botToolbar = botRow.getByTestId("message-hover-actions");
-  const botTime = botRow.getByTestId("message-hover-time");
-  await expect(botTime).toHaveCSS("opacity", "1");
-  const botTimeBox = await botTime.boundingBox();
-  const botRowBox = await botRow.boundingBox();
-  expect(botTimeBox).not.toBeNull();
-  expect(botRowBox).not.toBeNull();
-  expect(
-    Math.abs(botTimeBox!.x + botTimeBox!.width - botRowBox!.x - botRowBox!.width),
-  ).toBeLessThan(2);
+  // Replies span the column, so only the person's own messages show a hover time.
+  await expect(botRow.getByTestId("message-hover-time")).toHaveCount(0);
 
   await expect(botToolbar.getByRole("button", { name: "Reply" })).toBeVisible();
   await expect(botToolbar.getByRole("button", { name: "More" })).toBeVisible();

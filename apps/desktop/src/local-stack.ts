@@ -259,8 +259,8 @@ export function stackFailureMessage(
       return "Docker Compose is missing. Install Docker Desktop or the docker-compose-plugin, then retry.";
     case "other":
       return phase === "pulling"
-        ? "Downloading Aiden images failed. Check the output below, then retry."
-        : "Aiden services did not start. Check the output below, then retry.";
+        ? "Downloading Nova images failed. Check the output below, then retry."
+        : "Nova services did not start. Check the output below, then retry.";
   }
 }
 

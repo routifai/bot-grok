@@ -425,6 +425,16 @@ export function ShellPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
   const [bootstrapMe, setBootstrapMe] = useState<Me | null>();
+  // Quiet hours and the daily topic digest run in the person's zone; keep it in step with
+  // this browser (and a trip or DST-free move) without asking.
+  const savedTimezone = bootstrapMe?.timezone;
+  useEffect(() => {
+    if (!savedTimezone) return;
+    const timezone = localTimezone();
+    if (timezone !== savedTimezone) {
+      void rpc.preferences.update({ timezone }).catch(() => undefined);
+    }
+  }, [savedTimezone]);
   const [routineDraft, setRoutineDraft] = useState<RoutineDraftState>(emptyRoutineDraft());
   const [routineWebhookSecret, setRoutineWebhookSecret] = useState<string | null>(null);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
@@ -3742,7 +3752,9 @@ const Transcript = memo(function Transcript({
               data-message-id={message.id}
               className={peerReceipt ? "relative py-0.5" : "group/message relative hover:z-20"}
             >
-              {!peerReceipt && !message.id.startsWith("progress:") ? (
+              {/* Replies run the full column width, so a hover time there sits on the text;
+                  only the person's own right-aligned messages leave room for it. */}
+              {!peerReceipt && message.role === "user" && !message.id.startsWith("progress:") ? (
                 <time
                   dateTime={message.createdAt}
                   data-testid="message-hover-time"
@@ -5497,7 +5509,7 @@ const MessageView = memo(function MessageView({
             <FirstRunHint
               key={i}
               hintKey="proposal-card"
-              text={t`Accept, and ${botDisplayName ?? "Aiden"} starts on it in the background.`}
+              text={t`Accept, and ${botDisplayName ?? "Nova"} starts on it in the background.`}
             >
               <AskCard
                 block={block}

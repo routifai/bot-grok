@@ -67,12 +67,6 @@ export function ProactivitySettings({ botId }: { botId: string }) {
     };
   }, [botId]);
 
-  // The only place that currently learns the person's time zone: quiet hours and the
-  // daily Followed-topic digest (packages/adapters/src/muse/feed-jobs.ts) both read
-  // User.timezone. Best effort — a failed save just leaves the previous value in place.
-  useEffect(() => {
-    void rpc.preferences.update({ timezone }).catch(() => undefined);
-  }, [timezone]);
 
   async function save(patch: Partial<MuseSettings>, previous: MuseSettings) {
     setSettings({ ...previous, ...patch });

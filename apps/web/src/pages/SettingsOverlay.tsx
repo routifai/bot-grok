@@ -107,7 +107,7 @@ export function SettingsOverlay({
 
   const navItems: NavItem[] = [
     ...(museMode
-      ? [{ id: "aiden" as const, label: museBot?.name || t`Aiden`, icon: Sparkles }]
+      ? [{ id: "aiden" as const, label: museBot?.name || t`Nova`, icon: Sparkles }]
       : []),
     { id: "general", label: t`General`, icon: Settings },
     { id: "models", label: t`Models`, icon: Cpu },
