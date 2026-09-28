@@ -30,7 +30,9 @@ test("teach a task records interaction and saves a draft", async ({ page }, test
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
   const chrome = page.getByTestId("computer-chrome");
   await expect(chrome.getByText("You have control", { exact: true })).toBeVisible();
-  await expect(chrome.getByRole("button", { name: "Release", exact: true })).toBeVisible();
+  await expect(
+    chrome.getByRole("button", { name: "Hand back to Nova", exact: true }),
+  ).toBeVisible();
   await expect(chrome.getByTestId("teach-start-button")).toBeVisible();
   const more = chrome.getByTestId("computer-more-button");
   if (await more.isVisible().catch(() => false)) {
