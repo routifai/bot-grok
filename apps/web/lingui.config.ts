@@ -2,6 +2,8 @@ import { defineConfig } from "@lingui/conf";
 
 export default defineConfig({
   sourceLocale: "en",
+  // Untranslated strings show in English instead of their message ids.
+  fallbackLocales: { default: "en" },
   locales: ["en", "de", "ko", "tr", "hi", "pt-BR", "zh-CN", "es", "ru", "fr"],
   catalogs: [
     {
