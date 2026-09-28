@@ -69,6 +69,38 @@ fill_if_blank ENCRYPTION_KEY "openssl rand -hex 32"
 fill_if_blank SCREEN_PROXY_SECRET "openssl rand -hex 32"
 fill_if_blank SANDBOX_SUPERVISOR_TOKEN "openssl rand -hex 32"
 
+# --- 3b. Free ports, and URLs that match them ------------------------------------------------
+# If 5173/3100 are taken by something else (another dev server), move to the next free port. The
+# app's own URLs (sign-in callbacks, allowed origins) must use the same web port, so keep the
+# loopback ones in sync; custom hostnames are left alone.
+
+port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+next_free_port() {
+  local port="$1"
+  while port_in_use "$port"; do port=$((port + 1)); done
+  echo "$port"
+}
+stack_running() { docker ps --format '{{.Names}}' | grep -qx "$1"; }
+
+web_port="$(env_get AIDEN_WEB_PORT)"; web_port="${web_port:-5173}"
+if ! stack_running aiden-web-1 && port_in_use "$web_port"; then
+  web_port="$(next_free_port "$web_port")"
+  env_set AIDEN_WEB_PORT "$web_port"
+  log "Port in use; the web app will use port $web_port."
+fi
+api_port="$(env_get AIDEN_API_PORT)"; api_port="${api_port:-3100}"
+if ! stack_running aiden-api-1 && port_in_use "$api_port"; then
+  api_port="$(next_free_port "$api_port")"
+  env_set AIDEN_API_PORT "$api_port"
+  log "Port in use; the API will use port $api_port."
+fi
+for key in BETTER_AUTH_URL WEB_ORIGIN API_URL; do
+  current="$(env_get "$key")"
+  if [[ -z "$current" || "$current" =~ ^http://(127\.0\.0\.1|localhost):[0-9]+/?$ ]]; then
+    env_set "$key" "http://127.0.0.1:${web_port}"
+  fi
+done
+
 # --- 4. Docker socket for the sandbox supervisor --------------------------------------------
 # The supervisor mounts the Docker socket to start per-Aiden computers. Mount paths resolve inside
 # the Docker VM, where both Docker Desktop and colima expose /var/run/docker.sock, so the compose

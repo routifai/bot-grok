@@ -143,9 +143,10 @@ Each of `api` and `worker` keeps its own bounded Postgres pool (`api` defaults t
 `.env` to size both processes explicitly (see `.env.example` for details), then restart.
 
 **Port already in use (3100 or 5173).**
-Something else is bound to that port — often the maintainer's own `pnpm dev` stack, which uses
-the same defaults. Set `AIDEN_API_PORT` and/or `AIDEN_WEB_PORT` in `.env` to free ports, then
-re-run `./scripts/setup.sh`.
+`./scripts/setup.sh` moves to the next free port on its own and prints the address to open. It
+also points the app's own URLs (`BETTER_AUTH_URL`, `WEB_ORIGIN`, `API_URL`) at that port. To choose
+ports yourself, set `AIDEN_WEB_PORT` / `AIDEN_API_PORT` in `.env` and re-run the script; don't
+change only the port, or sign-in and the page's product settings won't match.
 
 **Still stuck?** See the full [self-hosting guide](./self-host.md) for provider setup, SMTP,
 messaging integrations, and the single-VM production deployment path.
