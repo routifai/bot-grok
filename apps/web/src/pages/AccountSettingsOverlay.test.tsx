@@ -110,10 +110,10 @@ it("muse mode: hides Avatars and Messaging", async () => {
     await act(async () => root.render(<GeneralSettingsPanels {...baseProps} museMode />));
     expect(container.querySelector('[data-testid="avatar-style-select"]')).toBeNull();
     expect(container.textContent).not.toContain("Messaging");
-    // Everything else stays: Account, Password, Appearance, Language, Advanced.
+    // Everything else stays: Account, Password, Appearance, Advanced. English only: no Language.
     expect(container.textContent).toContain("Account");
     expect(container.textContent).toContain("Appearance");
-    expect(container.textContent).toContain("Language");
+    expect(container.textContent).not.toContain("Language");
   } finally {
     await act(async () => root.unmount());
     container.remove();

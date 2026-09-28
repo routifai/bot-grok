@@ -1,4 +1,3 @@
-import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import {
   AlertDialog,
   AlertDialogAction,

@@ -134,12 +134,14 @@ export function GeneralSettingsPanels({
         />
       </section>
 
-      <section className={cardClass}>
-        <h3 className="text-[15px] font-medium text-foreground">
-          <Trans>Language</Trans>
-        </h3>
-        <UiLocalePicker value={locale} onChange={chooseLocale} />
-      </section>
+      {UI_LOCALES.length > 1 ? (
+        <section className={cardClass}>
+          <h3 className="text-[15px] font-medium text-foreground">
+            <Trans>Language</Trans>
+          </h3>
+          <UiLocalePicker value={locale} onChange={chooseLocale} />
+        </section>
+      ) : null}
 
       {/* The Muse always wears its own face; its color is set from Settings > Aiden,
           which reuses this same avatar studio (docs/muse/DESIGN.md). */}
