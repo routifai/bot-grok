@@ -22,7 +22,7 @@ export function ArtifactPreviewDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] w-[92vw] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
+      <DialogContent className="flex h-[90vh] w-[94vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl sm:rounded-3xl">
         <DialogHeader className="shrink-0 flex-row items-center justify-between gap-3 border-b border-border px-5 py-3.5 text-left">
           <DialogTitle className="min-w-0 truncate pe-8 text-[15px] font-medium">
             {state.status === "ready" ? state.artifact.name : t`Loading…`}

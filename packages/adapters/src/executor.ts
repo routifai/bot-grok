@@ -33,6 +33,7 @@ export {
 export { createRunExecutor } from "./executor/run-executor.js";
 export { runNotificationsEnabled } from "./executor/run-notifications.js";
 export {
+  MUSE_VOICE_INSTRUCTION,
   runIdentityInstruction,
   threadContextForRun,
   userTurnInstructions,
