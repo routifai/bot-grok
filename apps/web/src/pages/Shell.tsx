@@ -1630,7 +1630,12 @@ export function ShellPage() {
       if (museMode && botId) {
         // Muse Asks (Proposals, blocked Tasks, skill offers) apply their own effect; asks.answer
         // routes each kind and falls back to the run-input path for ordinary questions.
-        await rpc.asks.answer({ askId: message.id, runId: message.runId ?? "", answer: text });
+        await rpc.asks.answer({
+          askId: message.id,
+          runId: message.runId ?? "",
+          answer: text,
+          ...(username ? { username } : {}),
+        });
         notifyAsksChanged(botId);
       } else {
         await rpc.threads.answer({

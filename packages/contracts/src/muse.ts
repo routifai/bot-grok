@@ -112,6 +112,8 @@ export const AnswerAskInput = z.object({
   askId: Id,
   runId: Id,
   answer: z.string().min(1),
+  /** Only for a login card; `answer` carries its password. */
+  username: z.string().optional(),
 });
 
 export const PostKindSchema = z.enum(["goal_report", "topic"]);
