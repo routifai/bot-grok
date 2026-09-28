@@ -31,7 +31,6 @@ export * from "./model-oauth.js";
 export * from "./model-probe.js";
 export * from "./model-providers.js";
 export * from "./muse/proactivity.js";
-export * from "./product-mode.js";
 export * from "./response-bytes.js";
 export * from "./run-state.js";
 export * from "./sandbox-command.js";
