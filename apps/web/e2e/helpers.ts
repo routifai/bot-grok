@@ -73,7 +73,7 @@ export async function signup(
   testInfo?: TestInfo,
 ) {
   await page.goto("/sign-up");
-  await expect(page.getByRole("heading", { name: "Meet Aiden." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Meet Nova." })).toBeVisible();
   if (testInfo) await captureScreenshot(page, testInfo, "01-sign-up");
   await page.getByPlaceholder("Your name").fill(name);
   await page.getByPlaceholder("Your email address").fill(email);
@@ -100,9 +100,8 @@ export async function openNewSpace(page: Page) {
 /** Open the user Settings overlay, optionally switching to a sidebar section. */
 export async function openUserSettings(
   page: Page,
-  section?: "general" | "models" | "memory" | "voice" | "usage" | "computer" | "updates",
+  section?: "general" | "models" | "memory" | "voice" | "usage" | "computer" | "updates" | "aiden",
 ) {
-  await page.getByTestId("user-menu-trigger").click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByTestId("user-settings");
   await expect(settings).toBeVisible();
