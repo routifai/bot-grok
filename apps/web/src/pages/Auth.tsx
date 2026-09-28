@@ -1,12 +1,11 @@
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@aiden/core";
-import { BotAvatar, Button, cn, Input, Label } from "@aiden/ui-web";
+import { BotAvatar, Button, Input, Label } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../lib/auth";
-import { useProductMode } from "../lib/product-mode";
 import { clearSpaceSelection } from "../lib/rpc";
 import { AuroraBackground } from "./muse/intro/AuroraBackground";
 
@@ -33,21 +32,12 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const sent = resetSent || searchParams.get("verify") === "email";
   const [reset, setReset] = useState<PasswordResetCapabilities | null>(null);
   const passwordFieldId = mode === "in" ? "current-password" : "new-password";
-  const muse = useProductMode() === "muse";
   const title = sent ? (
     <Trans>Check your email</Trans>
   ) : mode === "in" ? (
-    muse ? (
-      <Trans>Welcome back.</Trans>
-    ) : (
-      <Trans>Sign in to Aiden</Trans>
-    )
+    <Trans>Welcome back.</Trans>
   ) : mode === "up" ? (
-    muse ? (
-      <Trans>Meet Aiden.</Trans>
-    ) : (
-      <Trans>Create your Aiden</Trans>
-    )
+    <Trans>Meet Aiden.</Trans>
   ) : (
     <Trans>Reset your password</Trans>
   );
@@ -133,7 +123,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   }
 
   return (
-    <AuthFrame onSubmit={submit} title={title} muse={muse}>
+    <AuthFrame onSubmit={submit} title={title}>
       {sent ? (
         <div className="w-full text-center">
           <Link to="/sign-in" className="font-medium text-foreground">
@@ -342,40 +332,21 @@ export function PasswordResetPage() {
 function AuthFrame({
   title,
   onSubmit,
-  muse = false,
   children,
 }: {
   title: React.ReactNode;
   onSubmit: (event: React.FormEvent) => void;
-  /** Muse mode: the Muse face, a serif title, and the living aurora background (docs/muse/DESIGN.md). */
-  muse?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className={cn(
-        "flex min-h-full items-center justify-center px-6 py-16 text-foreground",
-        // `isolate` keeps the aurora (negative z-index) above the page background.
-        muse ? "relative isolate" : "bg-background",
-      )}
-    >
-      {muse ? <AuroraBackground /> : null}
+    // `isolate` keeps the aurora (negative z-index) above the page background.
+    <div className="relative isolate flex min-h-full items-center justify-center px-6 py-16 text-foreground">
+      <AuroraBackground />
       <form onSubmit={onSubmit} className="flex w-[460px] max-w-full flex-col items-center">
-        {muse ? (
-          <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={88} />
-        ) : (
-          <div className="flex h-[74px] w-[74px] items-center justify-center gap-[11px] rounded-full bg-muted">
-            <span className="h-5 w-[9px] rounded-full bg-primary" />
-            <span className="h-5 w-[9px] rounded-full bg-primary" />
-          </div>
-        )}
+        <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={88} />
         <h1
           aria-live="polite"
-          className={
-            muse
-              ? "mb-9 mt-6 text-center font-display text-[44px] leading-[1.05] tracking-[-0.01em]"
-              : "mb-9 mt-7 text-4xl font-medium tracking-tight"
-          }
+          className="mb-9 mt-6 text-center font-display text-[44px] leading-[1.05] tracking-[-0.01em]"
         >
           {title}
         </h1>

@@ -70,7 +70,6 @@ function baseMe(overrides: Partial<Record<string, unknown>> = {}) {
     canChooseHostComputer: false,
     sandboxProvider: "docker",
     avatarStyle: "robot",
-    productMode: "aiden",
     ...overrides,
   };
 }
@@ -115,9 +114,9 @@ function setInputValue(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-it("in muse mode, walks intro -> name -> Muse name -> color (sky preselected) -> model, in order", async () => {
+it("walks intro -> name -> Muse name -> color (sky preselected) -> model, in order", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.me.mockResolvedValue(baseMe({ productMode: "muse", needsModel: true }));
+  api.me.mockResolvedValue(baseMe({ needsModel: true }));
   const page = await renderOnboarding();
   try {
     // Step 0: the warm introduction.
@@ -190,10 +189,10 @@ it("in muse mode, walks intro -> name -> Muse name -> color (sky preselected) ->
   }
 });
 
-it("in muse mode, creates exactly one bot with the chosen name and color", async () => {
+it("creates exactly one bot with the chosen name and color", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.bots.create.mockClear();
-  api.me.mockResolvedValue(baseMe({ productMode: "muse", needsModel: false }));
+  api.me.mockResolvedValue(baseMe({ needsModel: false }));
   const page = await renderOnboarding();
   try {
     await act(async () => {
@@ -242,25 +241,6 @@ it("in muse mode, creates exactly one bot with the chosen name and color", async
     expect(api.bots.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Nova", color: DEFAULT_MUSE_COLOR }),
     );
-  } finally {
-    await page.cleanup();
-    vi.unstubAllGlobals();
-  }
-});
-
-it("in aiden mode, skips straight to the model step (unchanged flow)", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.me.mockResolvedValue(baseMe({ productMode: "aiden", needsModel: true }));
-  const page = await renderOnboarding();
-  try {
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Connect a model");
-      });
-    });
-    expect(page.container.textContent).not.toContain("What should I call you?");
-    expect(page.container.textContent).not.toContain("Name your Muse");
-    expect(page.container.textContent).not.toContain("Pick a color");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

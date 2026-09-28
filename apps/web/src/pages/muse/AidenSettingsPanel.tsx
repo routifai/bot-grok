@@ -55,7 +55,6 @@ export function AidenSettingsPanel({
           identity={bot.id}
           status={bot.status}
           size={88}
-          museMode
           onChange={(nextColor) => {
             setColor(nextColor);
             void save({ color: nextColor });

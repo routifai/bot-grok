@@ -35,7 +35,6 @@ import { useNavigate } from "react-router-dom";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
 import { authClient } from "../lib/auth";
 import type { ModelCatalogEntry } from "../lib/model-auth";
-import { applyProductMode } from "../lib/product-mode";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
 import { AuroraBackground } from "./muse/intro/AuroraBackground";
@@ -81,7 +80,7 @@ function findFirstBot(
   return byName ? { id: byName.id } : undefined;
 }
 
-/** In muse mode the Muse's chosen name and identity color; aiden mode uses the "Chief" default. */
+/** The Muse's chosen name and identity color. */
 type FirstBotProfile = {
   name: string;
   color?: string;
@@ -146,11 +145,10 @@ export function OnboardingPage() {
   const [step, setStep] = useState<
     "loading" | "intro" | "name" | "museName" | "color" | "model" | "integrations" | "bot"
   >("loading");
-  /** Muse mode only: what to show once the name → Muse name → color steps are done. */
+  /** What to show once the name → Muse name → color steps are done. */
   const [postIdentityStep, setPostIdentityStep] = useState<"model" | "integrations" | "bot">(
     "model",
   );
-  const [isMuse, setIsMuse] = useState(false);
   const [personName, setPersonName] = useState("");
   const [museName, setMuseName] = useState(DEFAULT_MUSE_NAME);
   const [museColor, setMuseColor] = useState(DEFAULT_MUSE_COLOR);
@@ -216,15 +214,9 @@ export function OnboardingPage() {
           : integrations?.needsSetup
             ? "integrations"
             : "bot";
-        applyProductMode(me.productMode);
-        if (me.productMode === "muse") {
-          setIsMuse(true);
-          setPersonName(me.name ?? "");
-          setPostIdentityStep(entryStep);
-          setStep("intro");
-        } else {
-          setStep(entryStep);
-        }
+        setPersonName(me.name ?? "");
+        setPostIdentityStep(entryStep);
+        setStep("intro");
       })
       .catch(() => setStep("bot"));
     return () => {
@@ -433,15 +425,11 @@ export function OnboardingPage() {
     createStartedRef.current = true;
     setError(null);
     try {
-      const bot = await ensureFirstBot(
-        isMuse
-          ? {
-              name: museName.trim() || DEFAULT_MUSE_NAME,
-              color: museColor,
-              ...museBotProfile(museName.trim() || DEFAULT_MUSE_NAME, personName),
-            }
-          : { name: FIRST_BOT_NAME },
-      );
+      const bot = await ensureFirstBot({
+        name: museName.trim() || DEFAULT_MUSE_NAME,
+        color: museColor,
+        ...museBotProfile(museName.trim() || DEFAULT_MUSE_NAME, personName),
+      });
       for (const serverId of integrationServers) {
         await rpc.mcp.assignments.approve({ botId: bot.id, serverId });
       }
@@ -467,16 +455,9 @@ export function OnboardingPage() {
   }, [step]);
 
   return (
-    <div
-      className={cn(
-        "min-h-full px-6",
-        isMuse
-          ? "relative isolate flex min-h-screen items-center justify-center py-16"
-          : "bg-background py-12",
-      )}
-    >
-      {isMuse ? <AuroraBackground /> : null}
-      <div className={cn("mx-auto w-full", isMuse ? "max-w-[440px]" : "max-w-[560px]")}>
+    <div className="relative isolate flex min-h-screen items-center justify-center px-6 py-16">
+      <AuroraBackground />
+      <div className="mx-auto w-full max-w-[440px]">
         {step === "loading" ? (
           <p className="text-muted-foreground">
             <Trans>Loading…</Trans>
@@ -600,13 +581,9 @@ export function OnboardingPage() {
         {step === "model" ? (
           <div>
             <h1 className="text-[32px] font-medium text-foreground">
-              {isMuse ? (
-                <Trans>Last thing — connect the brain I'll think with.</Trans>
-              ) : (
-                <Trans>Connect a model</Trans>
-              )}
+              <Trans>Last thing — connect the brain I'll think with.</Trans>
             </h1>
-            {isMuse ? <StepDots step="model" /> : null}
+            <StepDots step="model" />
             <div className="mt-8 block text-sm font-medium text-foreground">
               <span>
                 <Trans>Provider</Trans>

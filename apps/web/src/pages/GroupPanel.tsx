@@ -1,7 +1,7 @@
 import { type Bot, GROUP_MEMBER_MAX, GROUP_MEMBER_MIN, type Group } from "@aiden/contracts";
 import { BotAvatar, Button, Input } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Check, X } from "lucide-react";
+import { Check } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
 function validSelection(name: string, selected: readonly string[]) {
@@ -61,88 +61,6 @@ function MemberPicker({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-export function CreateGroupForm({
-  bots,
-  onCancel,
-  onCreate,
-}: {
-  bots: Bot[];
-  onCancel: () => void;
-  onCreate: (input: { name: string; botIds: string[] }) => Promise<void>;
-}) {
-  const { t } = useLingui();
-  const nameId = useId();
-  const [name, setName] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function create() {
-    if (submitting || !validSelection(name, selected)) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await onCreate({ name: name.trim(), botIds: selected });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t`Could not create group`);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-[13.5px] text-muted-foreground">
-          <Trans>New group</Trans>
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t`Cancel new group`}
-          onClick={onCancel}
-          className="text-muted-foreground"
-        >
-          <X />
-        </Button>
-      </div>
-      {error ? (
-        <p role="alert" className="mb-3 text-[13px] text-destructive">
-          {error}
-        </p>
-      ) : null}
-      <label htmlFor={nameId} className="block text-sm text-muted-foreground">
-        <Trans>Name</Trans>
-        <Input
-          id={nameId}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t`Name this group`}
-          className="mt-2"
-        />
-      </label>
-      <div className="mt-5 text-sm text-muted-foreground">
-        <Trans>
-          Members (pick {GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})
-        </Trans>
-      </div>
-      <MemberPicker
-        bots={bots}
-        selected={selected}
-        onChange={setSelected}
-        maxHeight="max-h-[280px]"
-      />
-      <Button
-        className="mt-5 w-full"
-        disabled={submitting || !validSelection(name, selected)}
-        onClick={() => void create()}
-      >
-        {submitting ? <Trans>Creating…</Trans> : <Trans>Create group</Trans>}
-      </Button>
     </div>
   );
 }

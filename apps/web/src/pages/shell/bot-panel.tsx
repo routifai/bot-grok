@@ -404,7 +404,6 @@ export function BotSettings({
           identity={bot.id}
           status={bot.status}
           size={76}
-          museMode={me?.productMode === "muse"}
           onChange={(newColor) => {
             setColor(newColor);
             void enqueueSave({ color: newColor });

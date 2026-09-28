@@ -1,30 +1,12 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { applyCachedProductMode, applyProductMode } from "./product-mode";
-
-beforeEach(() => {
-  const store = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => store.set(key, value),
-  });
-});
+import { afterEach, expect, it } from "vitest";
+import { applyMuseProductMode } from "./product-mode";
 
 afterEach(() => {
   delete document.documentElement.dataset.product;
-  vi.unstubAllGlobals();
 });
 
-it("marks the page in muse mode and clears it otherwise", () => {
-  applyProductMode("muse");
-  expect(document.documentElement.dataset.product).toBe("muse");
-  applyProductMode("aiden");
-  expect(document.documentElement.dataset.product).toBeUndefined();
-});
-
-it("reapplies the cached mode on the next load", () => {
-  applyProductMode("muse");
-  delete document.documentElement.dataset.product;
-  applyCachedProductMode();
+it("marks the page for the Muse palette", () => {
+  applyMuseProductMode();
   expect(document.documentElement.dataset.product).toBe("muse");
 });
