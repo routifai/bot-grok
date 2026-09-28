@@ -900,6 +900,9 @@ msgstr "Could not download {0}. Try again."
 msgid "Could not download {name}. Try again."
 msgstr "Could not download {name}. Try again."
 
+msgid "Could not forget this."
+msgstr "Could not forget this."
+
 msgid "Could not install connector"
 msgstr "Could not install connector"
 
@@ -932,6 +935,9 @@ msgstr "Could not load model settings"
 
 msgid "Could not load more"
 msgstr "Could not load more"
+
+msgid "Could not load past tasks."
+msgstr "Could not load past tasks."
 
 msgid "Could not load skill"
 msgstr "Could not load skill"
@@ -1471,6 +1477,9 @@ msgstr "Follow a topic"
 msgid "Follow a topic, like OSFI guidance"
 msgstr "Follow a topic, like OSFI guidance"
 
+msgid "Forget this"
+msgstr "Forget this"
+
 msgid "Forgot password?"
 msgstr "Forgot password?"
 
@@ -1625,6 +1634,9 @@ msgstr "I only work when you ask."
 
 msgid "I read these before every conversation. Edit anything that's wrong."
 msgstr "I read these before every conversation. Edit anything that's wrong."
+
+msgid "I use these to pick up where we left off."
+msgstr "I use these to pick up where we left off."
 
 msgid "I won't work on Goals or message you during quiet hours."
 msgstr "I won't work on Goals or message you during quiet hours."
@@ -3265,6 +3277,9 @@ msgstr "What this bot is for"
 
 msgid "What to return"
 msgstr "What to return"
+
+msgid "What we've done"
+msgstr "What we've done"
 
 msgid "When a webhook fires"
 msgstr "When a webhook fires"

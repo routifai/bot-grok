@@ -1,10 +1,14 @@
-import type { MemoryDocument } from "@aiden/contracts";
+import type { Episode, MemoryDocument } from "@aiden/contracts";
 import { Button, Skeleton } from "@aiden/ui-web";
+import { i18n } from "@lingui/core";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useState } from "react";
 import { downloadArtifactBytes } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { SettingsGroup, SettingsLinkRow } from "./kit";
+
+/** How many recent episodes the "What we've done" group shows. */
+const EPISODES_LIMIT = 20;
 
 /**
  * Settings > Memory: what Nova keeps between conversations. Each note opens in place so the
@@ -15,6 +19,9 @@ export function MemoryPanel({ botId }: { botId: string }) {
   const [docs, setDocs] = useState<MemoryDocument[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [episodes, setEpisodes] = useState<Episode[] | null>(null);
+  const [episodesError, setEpisodesError] = useState<string | null>(null);
+  const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,6 +34,21 @@ export function MemoryPanel({ botId }: { botId: string }) {
       })
       .catch(() => {
         if (!cancelled) setError(t`Could not load memory.`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [botId, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    rpc.episodes
+      .list({ botId, limit: EPISODES_LIMIT })
+      .then((rows) => {
+        if (!cancelled) setEpisodes(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setEpisodesError(t`Could not load past tasks.`);
       });
     return () => {
       cancelled = true;
@@ -79,6 +101,43 @@ export function MemoryPanel({ botId }: { botId: string }) {
                 label={memoryTitle(doc)}
                 value={hasContent(doc) ? firstLine(doc.content) : t`Empty`}
                 onClick={() => setOpenId(doc.id)}
+              />
+            ),
+          )
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup
+        title={<Trans>What we've done</Trans>}
+        footer={<Trans>I use these to pick up where we left off.</Trans>}
+      >
+        {episodesError ? (
+          <p className="px-4 py-4 text-[13px] text-destructive">{episodesError}</p>
+        ) : episodes === null ? (
+          <Skeleton className="h-[52px] w-full" />
+        ) : episodes.length === 0 ? (
+          <p className="px-4 py-4 text-[15px] text-muted-foreground">
+            <Trans>Nothing yet.</Trans>
+          </p>
+        ) : (
+          episodes.map((episode) =>
+            openEpisodeId === episode.id ? (
+              <EpisodeDetail
+                key={episode.id}
+                episode={episode}
+                onClose={() => setOpenEpisodeId(null)}
+                onForgotten={() =>
+                  setEpisodes((current) =>
+                    (current ?? []).filter((entry) => entry.id !== episode.id),
+                  )
+                }
+              />
+            ) : (
+              <SettingsLinkRow
+                key={episode.id}
+                label={episode.title}
+                value={formatEpisodeDate(episode.createdAt)}
+                onClick={() => setOpenEpisodeId(episode.id)}
               />
             ),
           )
@@ -166,6 +225,84 @@ function MemoryEditor({
       </div>
     </div>
   );
+}
+
+/** An episode expanded in place: summary, links, and a quiet way to forget it. */
+function EpisodeDetail({
+  episode,
+  onClose,
+  onForgotten,
+}: {
+  episode: Episode;
+  onClose: () => void;
+  onForgotten: () => void;
+}) {
+  const { t } = useLingui();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function forget() {
+    setBusy(true);
+    setError(null);
+    try {
+      await rpc.episodes.remove({ episodeId: episode.id });
+      onForgotten();
+      onClose();
+    } catch {
+      setError(t`Could not forget this.`);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-4">
+      <p className="text-[16px] text-foreground">{episode.title}</p>
+      <p className="text-[14.5px] leading-[1.55] text-muted-foreground" dir="auto">
+        {episode.summary}
+      </p>
+      {episode.links.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {episode.links.map((link) => (
+            <li key={link} className="min-w-0 truncate">
+              <a
+                href={link}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[13.5px] text-primary underline-offset-4 hover:underline"
+              >
+                {link}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-[13px] text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex items-center justify-between gap-2">
+        <Button variant="ghost" className="rounded-full" disabled={busy} onClick={onClose}>
+          <Trans>Close</Trans>
+        </Button>
+        <Button
+          variant="ghost"
+          className="rounded-full text-destructive hover:bg-destructive/10"
+          disabled={busy}
+          onClick={() => void forget()}
+        >
+          <Trans>Forget this</Trans>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Short date for an episode row, e.g. "Sep 28" — no year, like relative-time.ts. */
+function formatEpisodeDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(i18n.locale || "en", { month: "short", day: "numeric" });
 }
 
 /** Nova's own notes vs. what it keeps about the person across every chat. */
