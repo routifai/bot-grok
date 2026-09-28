@@ -150,6 +150,17 @@ def allowed_xdotool_argv(argv):
     return False
 
 
+def describe_argv(argv):
+    """Name a rejected action (program and xdotool op, never typed text) for logs and the model."""
+    if not isinstance(argv, list) or len(argv) < 3:
+        return "malformed"
+    index = control_command_index(argv)
+    command = str(argv[index]) if index < len(argv) else "missing"
+    if command == "xdotool" and index + 1 < len(argv):
+        return f"xdotool {argv[index + 1]}"
+    return command.rsplit("/", 1)[-1][:40]
+
+
 def control_command_index(argv):
     """Locate the executable after the optional supervisor-owned browser profile."""
     return 3 if len(argv) > 2 and argv[2].startswith("AIDEN_BROWSER_PROFILE=") else 2
@@ -275,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     argv = step.get("argv")
                     if not allowed_control_argv(argv, display):
-                        raise RuntimeError("unsupported computer action")
+                        raise RuntimeError(f"unsupported computer action: {describe_argv(argv)}")
                     with NATIVE_LOCK:
                         source = native_capture(display)
                         handled = source.act(argv) if source else 0

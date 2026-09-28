@@ -2,10 +2,19 @@ import type { Ask } from "@aiden/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 
-// Gentle poll: Shell's bot-list refresh (Shell.tsx) uses 3s because bots change
-// constantly; Asks are rarer, so this stays light and still catches up instantly
-// on focus/visibility (same pattern as that refresh).
-const POLL_INTERVAL_MS = 15_000;
+// Asks change rarely and every answer refreshes them at once (notifyAsksChanged), so the
+// poll only catches Asks posted in the background; focus and visibility also refresh.
+const POLL_INTERVAL_MS = 30_000;
+/** Several surfaces read Asks at once (badge, context panel, sheet): they share one request. */
+const inFlight = new Map<string, Promise<Ask[]>>();
+
+function listAsks(botId: string): Promise<Ask[]> {
+  const pending = inFlight.get(botId);
+  if (pending) return pending;
+  const request = rpc.asks.list({ botId }).finally(() => inFlight.delete(botId));
+  inFlight.set(botId, request);
+  return request;
+}
 /** Fired after an Ask is answered so every surface showing that Muse's Asks refreshes at once. */
 const ASKS_CHANGED_EVENT = "muse:asks-changed";
 
@@ -45,7 +54,7 @@ export function useAsks(botId: string): UseAsksResult {
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
     try {
-      const next = await rpc.asks.list({ botId });
+      const next = await listAsks(botId);
       if (id !== requestId.current) return;
       setAsks(newestFirst(next));
     } catch {

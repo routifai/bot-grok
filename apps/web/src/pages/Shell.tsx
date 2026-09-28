@@ -1014,7 +1014,8 @@ export function ShellPage() {
     const poll = window.setInterval(() => {
       if (botsRefreshInFlight.current > 0) return;
       refreshVisibleBots();
-    }, 3_000);
+      // Live events and focus refresh the Muse right away; this only catches drift.
+    }, 10_000);
     return () => {
       cancelled = true;
       window.clearTimeout(refreshTimer);

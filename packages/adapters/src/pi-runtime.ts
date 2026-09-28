@@ -68,6 +68,44 @@ interface ToolCallBudget {
   exceeded: boolean;
   limit: number;
   inFlight: number;
+  /** Tool calls that failed in a row; any success resets it. */
+  failureStreak: number;
+  /** Set when the turn stops for a reason other than the call limit. */
+  stopMessage?: string;
+}
+
+/** After this many failures in a row the model is told to stop retrying the same approach. */
+const FAILURE_STREAK_WARNING = 3;
+/**
+ * After this many the turn ends. Each tool call is another model request carrying the whole
+ * prompt and often a screenshot, so a stuck loop is expensive and never helps the person.
+ */
+const FAILURE_STREAK_STOP = 8;
+const FAILURE_STREAK_HINT =
+  "Several steps in a row have failed. Stop retrying the same approach: try a clearly different one once, or tell the person what is blocking you and ask how to proceed.";
+const FAILURE_STREAK_STOP_MESSAGE = `I stopped after ${FAILURE_STREAK_STOP} failed steps in a row instead of retrying further. Tell me how you'd like to proceed, or try again in a moment.`;
+
+function returnedToolError(result: unknown): boolean {
+  const payload = (result as { details?: unknown } | null)?.details ?? result;
+  if (!payload || typeof payload !== "object") return false;
+  const record = payload as { error?: unknown; isError?: unknown; ok?: unknown };
+  return (
+    (record.error !== undefined && record.error !== null) ||
+    record.isError === true ||
+    record.ok === false
+  );
+}
+
+/** Updates the streak after a tool call; ends the turn once it reaches the stop threshold. */
+function recordToolOutcome(host: ToolHost, failed: boolean): number {
+  const budget = host.toolCallBudget;
+  budget.failureStreak = failed ? budget.failureStreak + 1 : 0;
+  if (budget.failureStreak >= FAILURE_STREAK_STOP && !budget.exceeded) {
+    budget.exceeded = true;
+    budget.stopMessage = FAILURE_STREAK_STOP_MESSAGE;
+    host.queue.push({ type: "progress", text: "Stopped: too many failed steps in a row." });
+  }
+  return budget.failureStreak;
 }
 // Optional fuse is process-local. continueRun on another worker starts at zero.
 const toolCallBudgetsByRun = new Map<string, ToolCallBudget>();
@@ -425,7 +463,7 @@ export class PiAgentRuntime implements AgentRuntime {
           throw new Error(sanitizeProviderError(model.provider, error));
         }
         if (budgetExceeded) {
-          const budgetMessage = toolCallBudgetExceededMessage(host.toolCallBudget.limit);
+          const budgetMessage = toolCallBudgetExceededMessage(host.toolCallBudget);
           if (streamed.trim()) {
             const suffix = `\n\n${budgetMessage}`;
             queue.push({ type: "text", text: suffix });
@@ -996,9 +1034,22 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
             details: { error: "no executor" },
           };
         })();
-        return boundAgentToolResult(result as AgentToolResult<unknown>);
+        const bounded = boundAgentToolResult(result as AgentToolResult<unknown>);
+        if (!returnedToolError(bounded)) {
+          recordToolOutcome(host, false);
+          return bounded;
+        }
+        if (recordToolOutcome(host, true) < FAILURE_STREAK_WARNING) return bounded;
+        return {
+          ...bounded,
+          content: [...(bounded.content ?? []), { type: "text", text: FAILURE_STREAK_HINT }],
+        } as AgentToolResult<unknown>;
       } catch (error) {
         failure = error;
+        if (recordToolOutcome(host, true) >= FAILURE_STREAK_WARNING) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`${message}\n\n${FAILURE_STREAK_HINT}`);
+        }
         throw error;
       } finally {
         endToolCall(host);
@@ -1195,7 +1246,7 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
       return `Subagent failed: ${message}`;
     }
     const budgetMessage = budgetExceeded
-      ? toolCallBudgetExceededMessage(host.toolCallBudget.limit)
+      ? toolCallBudgetExceededMessage(host.toolCallBudget)
       : undefined;
     const result =
       budgetMessage && streamed.trim()
@@ -1682,8 +1733,11 @@ interface ToolHost {
   pausePending: boolean;
 }
 
-function toolCallBudgetExceededMessage(limit: number) {
-  return `I stopped after reaching the limit of ${limit} tool calls in this turn. Send another message to continue.`;
+function toolCallBudgetExceededMessage(budget: ToolCallBudget) {
+  return (
+    budget.stopMessage ??
+    `I stopped after reaching the limit of ${budget.limit} tool calls in this turn. Send another message to continue.`
+  );
 }
 
 function toolCallBudgetFor(runId: string): ToolCallBudget {
@@ -1698,6 +1752,7 @@ function toolCallBudgetFor(runId: string): ToolCallBudget {
     exceeded: false,
     limit: maxToolCallsPerTurn(),
     inFlight: 0,
+    failureStreak: 0,
   };
   if (budget.limit > 0) toolCallBudgetsByRun.set(runId, budget);
   return budget;
@@ -1715,13 +1770,13 @@ function maybeAbortToolCallBudget(host: ToolHost) {
 
 function beginToolCall(host: ToolHost): boolean {
   const budget = host.toolCallBudget;
-  if (budget.limit <= 0) {
-    budget.count += 1;
-    return true;
-  }
   if (budget.exceeded) {
     maybeAbortToolCallBudget(host);
     return false;
+  }
+  if (budget.limit <= 0) {
+    budget.count += 1;
+    return true;
   }
   budget.count += 1;
   if (budget.count <= budget.limit) {

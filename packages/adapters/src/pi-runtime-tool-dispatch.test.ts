@@ -1037,6 +1037,46 @@ describe("Pi connector tool dispatch", () => {
     });
   });
 
+  it("ends the turn after eight failed tool calls in a row instead of retrying forever", async () => {
+    fakeAgentState.mode = "parent-limit";
+    const executeTool = vi.fn(async () => ({ ok: false, error: "CDP not ready on port 9222" }));
+    const runtime = new PiAgentRuntime();
+    const events: unknown[] = [];
+
+    for await (const event of runtime.run(
+      {
+        botId: "b",
+        threadId: "t",
+        runId: "failure-streak",
+        prompt: "find a puppy picture",
+        instructions: "Use shell.",
+        history: [],
+        tools: [shellTool],
+        model: { provider: "test", id: "dispatch-test-model" },
+        executeTool,
+      },
+      {
+        operationId: "2c",
+        traceId: "2c",
+        spaceId: "w",
+        userId: "u",
+        signal: new AbortController().signal,
+      },
+    )) {
+      events.push(event);
+    }
+
+    expect(executeTool).toHaveBeenCalledTimes(8);
+    expect(events).toContainEqual({
+      type: "progress",
+      text: "Stopped: too many failed steps in a row.",
+    });
+    expect(events.at(-1)).toEqual({
+      type: "done",
+      text: "I stopped after 8 failed steps in a row instead of retrying further. Tell me how you'd like to proceed, or try again in a moment.",
+    });
+  });
+
   it("shares an optional tool-call fuse with subagents and still emits a final message", async () => {
     process.env.MAX_TOOL_CALLS_PER_TURN = "80";
     fakeAgentState.mode = "subagent-limit";
