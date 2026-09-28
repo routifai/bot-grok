@@ -128,9 +128,12 @@ export function FeedScreen(props: {
             {topicsSection}
             <section>
               <h2 className="px-1 pb-2.5 text-[15px] font-medium text-muted-foreground">
-                <Trans>A morning with me looks like this</Trans>
+                <Trans>Example: what a morning with me looks like</Trans>
               </h2>
-              <FeedPreview botName={botName} color={avatarColor} />
+              <div className="relative">
+                <ExampleTag />
+                <FeedPreview botName={botName} color={avatarColor} />
+              </div>
             </section>
           </>
         ) : (
@@ -150,5 +153,14 @@ export function FeedScreen(props: {
         )}
       </MuseColumn>
     </MuseScreen>
+  );
+}
+
+/** Marks sample content so it is never mistaken for the person's own Feed. */
+function ExampleTag() {
+  return (
+    <span className="absolute top-3 end-3 z-10 rounded-full bg-background/80 px-2.5 py-1 text-[12px] font-medium text-muted-foreground ring-1 ring-border/60 backdrop-blur">
+      <Trans>Example</Trans>
+    </span>
   );
 }

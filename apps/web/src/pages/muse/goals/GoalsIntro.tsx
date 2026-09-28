@@ -19,58 +19,61 @@ const PRESS =
 function GoalStage({ botName, color }: { botName: string; color: string }) {
   const { t } = useLingui();
   return (
-    <div
-      aria-hidden="true"
-      className="relative rounded-[28px] bg-muted/60 px-5 pt-5 pb-20 sm:px-8 sm:pt-8"
-    >
-      <div className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-12px_rgb(0_0_0/0.18)]">
-        <div className="flex items-center gap-4">
-          <GoalRing value={0.4} color={color} />
-          <div className="min-w-0 flex-1">
-            <p className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">
-              <Trans>Q3 client portfolio review</Trans>
-            </p>
-            <p className="mt-0.5 text-[13.5px] text-muted-foreground">
-              <Trans>2 of 5 · Next check-in Friday, 9:00</Trans>
-            </p>
-          </div>
-        </div>
-        <ul className="mt-4 border-t border-border/70 pt-2">
-          <GoalStep state="done">{t`Pull holdings and returns for 12 clients`}</GoalStep>
-          <GoalStep state="done">{t`Flag drift from each target mix`}</GoalStep>
-          <GoalStep state="working">{t`Draft talking points per client`}</GoalStep>
-          <GoalStep state="next">{t`Propose meeting slots`}</GoalStep>
-        </ul>
-      </div>
-
-      <div className="absolute inset-x-3 -bottom-5 sm:inset-x-auto sm:end-6 sm:w-[380px]">
-        <div className="rounded-[22px] border border-glass-border bg-glass p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
-          <div className="flex items-start gap-3">
-            <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-card shadow-sm">
-              <BotAvatar color={color} identity={botName} face="muse" size={30} />
-            </span>
+    <div className="relative rounded-[28px] bg-muted/60 px-5 pt-5 pb-20 sm:px-8 sm:pt-8">
+      {/* Sample content: labelled so it is never read as one of the person's Goals. */}
+      <span className="absolute top-2 end-3 z-10 rounded-full bg-background/80 px-2.5 py-1 text-[12px] font-medium text-muted-foreground ring-1 ring-border/60 backdrop-blur">
+        <Trans>Example</Trans>
+      </span>
+      <div aria-hidden="true">
+        <div className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-12px_rgb(0_0_0/0.18)]">
+          <div className="flex items-center gap-4">
+            <GoalRing value={0.4} color={color} />
             <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[13px] font-semibold text-foreground">{botName}</span>
-                <span className="text-[12px] text-muted-foreground">
-                  <Trans>Fri 9:00</Trans>
-                </span>
-              </div>
-              <p className="mt-0.5 text-[14px] leading-[1.4] text-foreground">
-                <Trans>
-                  Talking points are ready for 5 of 12 clients. Two drifted more than 8% from
-                  target. Want me to propose meeting slots?
-                </Trans>
+              <p className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">
+                <Trans>Q3 client portfolio review</Trans>
+              </p>
+              <p className="mt-0.5 text-[13.5px] text-muted-foreground">
+                <Trans>2 of 5 · Next check-in Friday, 9:00</Trans>
               </p>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <span className="rounded-full bg-foreground py-2 text-center text-[13.5px] font-medium text-background">
-              <Trans>Yes, go ahead</Trans>
-            </span>
-            <span className="rounded-full bg-muted py-2 text-center text-[13.5px] font-medium text-foreground">
-              <Trans>Not yet</Trans>
-            </span>
+          <ul className="mt-4 border-t border-border/70 pt-2">
+            <GoalStep state="done">{t`Pull holdings and returns for 12 clients`}</GoalStep>
+            <GoalStep state="done">{t`Flag drift from each target mix`}</GoalStep>
+            <GoalStep state="working">{t`Draft talking points per client`}</GoalStep>
+            <GoalStep state="next">{t`Propose meeting slots`}</GoalStep>
+          </ul>
+        </div>
+
+        <div className="absolute inset-x-3 -bottom-5 sm:inset-x-auto sm:end-6 sm:w-[380px]">
+          <div className="rounded-[22px] border border-glass-border bg-glass p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
+            <div className="flex items-start gap-3">
+              <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-card shadow-sm">
+                <BotAvatar color={color} identity={botName} face="muse" size={30} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[13px] font-semibold text-foreground">{botName}</span>
+                  <span className="text-[12px] text-muted-foreground">
+                    <Trans>Fri 9:00</Trans>
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[14px] leading-[1.4] text-foreground">
+                  <Trans>
+                    Talking points are ready for 5 of 12 clients. Two drifted more than 8% from
+                    target. Want me to propose meeting slots?
+                  </Trans>
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <span className="rounded-full bg-foreground py-2 text-center text-[13.5px] font-medium text-background">
+                <Trans>Yes, go ahead</Trans>
+              </span>
+              <span className="rounded-full bg-muted py-2 text-center text-[13.5px] font-medium text-foreground">
+                <Trans>Not yet</Trans>
+              </span>
+            </div>
           </div>
         </div>
       </div>

@@ -138,9 +138,6 @@ msgstr "2 of 5 · Next check-in Friday, 9:00"
 msgid "A bit of everything"
 msgstr "A bit of everything"
 
-msgid "A morning with me looks like this"
-msgstr "A morning with me looks like this"
-
 msgid "About groups"
 msgstr "About groups"
 
@@ -1389,6 +1386,12 @@ msgstr "Every month"
 
 msgid "Every week"
 msgstr "Every week"
+
+msgid "Example"
+msgstr "Example"
+
+msgid "Example: what a morning with me looks like"
+msgstr "Example: what a morning with me looks like"
 
 msgid "Executor token"
 msgstr "Executor token"
