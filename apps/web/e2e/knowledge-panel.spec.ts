@@ -1,16 +1,17 @@
 import { readFile } from "node:fs/promises";
 import type { MemoryDocument } from "@aiden/contracts";
 import { expect, test } from "@playwright/test";
-import {
-  activeBotId,
-  captureScreenshot,
-  completeOnboarding,
-  openUserSettings,
-  rpc,
-  signup,
-} from "./helpers";
+import { captureScreenshot, completeOnboarding, openUserSettings, rpc, signup } from "./helpers";
 
-test("memory and skills are readable and editable in the app", async ({ page }, testInfo) => {
+// The bot-scoped Knowledge panel (per-bot memory + skill editor, reached through the old
+// bot-settings side panel) has no reachable UI in Nova: the trigger only rendered in the
+// pre-Muse header, which is now dead code (Shell.tsx always runs museMode). Skills are
+// managed from the Library screen instead (a different, demonstration-driven UI with no
+// manual create/edit form), so this spec now covers only the still-reachable space-wide
+// shared memory documents in Settings -> Memory.
+test("space-wide shared memory documents are readable, editable, and exportable", async ({
+  page,
+}, testInfo) => {
   const stamp = Date.now();
   const userName = `Knowledge ${stamp}`;
   await signup(page, `knowledge-${stamp}@aiden.test`, "password12", userName);
@@ -18,8 +19,6 @@ test("memory and skills are readable and editable in the app", async ({ page }, 
   await page.goto("/app");
   await page.waitForURL(/\/app\/[^/]+$/);
 
-  // Space-wide documents live in Settings → Memory. Open that before bot
-  // settings so the Knowledge Memory tab cannot steal this click.
   await openUserSettings(page, "memory");
   await expect(page.getByLabel("Close memory settings")).toBeVisible();
   const spaceDocs = page.getByTestId("space-memory-documents");
@@ -61,7 +60,7 @@ test("memory and skills are readable and editable in the app", async ({ page }, 
   expect(sharedDocuments).toContainEqual(
     expect.objectContaining({ content: `# Memory\n\n${marker}\n`, revision: 2 }),
   );
-  // Export must fetch fresh content and exclude the bot's private document.
+  // Export must fetch fresh content.
   const sharedDocument = sharedDocuments.find((doc) => doc.path === "MEMORY.md")!;
   const latestMarker = `Latest shared memory ${stamp}`;
   await rpc(page, "memory/update", { documentId: sharedDocument.id, content: latestMarker });
@@ -72,133 +71,6 @@ test("memory and skills are readable and editable in the app", async ({ page }, 
   const exported = await readFile((await download.path())!, "utf8");
   expect(exported).toContain(latestMarker);
   expect(exported).not.toContain(marker);
-  expect(exported).not.toContain("# Aiden");
   await page.getByLabel("Close memory settings").click();
   await expect(page.getByLabel("Close memory settings")).toHaveCount(0);
-
-  // The bot's Knowledge section lives under Advanced in its settings panel.
-  await page
-    .locator("main")
-    .getByRole("button", { name: /^Aiden/ })
-    .click();
-  const settings = page.getByTestId("bot-settings");
-  await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeVisible();
-  await settings.getByText("Advanced", { exact: true }).click();
-  const knowledge = settings.getByTestId("bot-knowledge");
-  await expect(knowledge).toBeVisible();
-  await expect(knowledge.getByRole("tablist", { name: "Knowledge" })).toBeVisible();
-
-  // Bot creation seeds MEMORY.md (`# Aiden`); edit it and assert the revision bumps.
-  const botMemory = knowledge.getByTestId("bot-knowledge-memory");
-  const botMemoryRow = botMemory.getByRole("button", { name: /MEMORY\.md/ });
-  await expect(botMemoryRow).toBeVisible();
-  await botMemoryRow.click();
-  const botDocEditor = botMemory.locator("textarea");
-  await expect(botDocEditor).toHaveValue(/# Aiden/);
-  const botMarker = `Bot memory e2e ${stamp}`;
-  await botDocEditor.fill(`# Aiden\n\n${botMarker}\n`);
-  await botMemory.getByRole("button", { name: "Save", exact: true }).scrollIntoViewIfNeeded();
-  await captureScreenshot(page, testInfo, "80-knowledge-bot-memory");
-  await botMemory.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(botMemory.getByText("rev 2")).toBeVisible();
-  expect(
-    await rpc<MemoryDocument[]>(page, "memory/list", {
-      botId: activeBotId(page),
-      scope: "bot",
-    }),
-  ).toContainEqual(expect.objectContaining({ content: `# Aiden\n\n${botMarker}\n`, revision: 2 }));
-  await botMemoryRow.click();
-  await expect(botDocEditor).toHaveValue(new RegExp(botMarker));
-  await botMemory.getByRole("button", { name: "Cancel", exact: true }).click();
-
-  // Skills: create one through the editor, reopen it, edit, then delete it.
-  // Builtin catalog is currently empty; user skills still cover create/edit/delete.
-  await knowledge.getByRole("tab", { name: "Skills", exact: true }).click();
-  await knowledge.getByRole("button", { name: "New skill", exact: true }).click();
-  const editor = knowledge.locator("textarea");
-  await editor.fill(
-    [
-      "---",
-      "name: greet-politely",
-      "description: Say hello before anything else.",
-      "---",
-      "",
-      "Always open with a greeting.",
-    ].join("\n"),
-  );
-  await captureScreenshot(page, testInfo, "81-knowledge-skill-editor");
-  await knowledge.getByRole("button", { name: "Save", exact: true }).click();
-  const skillRow = knowledge.getByRole("button", { name: /greet-politely/ });
-  await expect(skillRow).toBeVisible();
-  await expect(knowledge.getByText("Say hello before anything else.")).toBeVisible();
-  await captureScreenshot(page, testInfo, "82-knowledge-skill-listed");
-  const composer = page.getByRole("combobox", { name: /^Message/ });
-  await composer.fill("/");
-  await expect(
-    page.getByRole("button", { name: "Skill greet-politely", exact: true }),
-  ).toBeVisible();
-  await composer.fill("");
-
-  // A provider-owned skill uses the same viewer without mutation controls.
-  await page.route(
-    "**/rpc/agentSkills/get",
-    async (route) => {
-      const response = await route.fetch();
-      const body = await response.json();
-      await route.fulfill({
-        response,
-        json: { ...body, json: { ...body.json, readOnly: true, source: "plugin" } },
-      });
-    },
-    { times: 1 },
-  );
-  await skillRow.click();
-  await expect(editor).toHaveAttribute("readonly", "");
-  await expect(knowledge.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
-  await expect(knowledge.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
-  await knowledge.getByRole("button", { name: "Close", exact: true }).click();
-  await skillRow.click();
-  await expect(editor).toHaveValue(/Always open with a greeting/);
-  await editor.fill(
-    [
-      "---",
-      "name: greet-politely",
-      "description: Say hello before anything else.",
-      "---",
-      "",
-      "Open with a warm greeting.",
-    ].join("\n"),
-  );
-  let releaseSkillRefresh!: () => void;
-  const skillRefreshGate = new Promise<void>((resolve) => {
-    releaseSkillRefresh = resolve;
-  });
-  await page.route(
-    "**/rpc/agentSkills/list",
-    async (route) => {
-      await skillRefreshGate;
-      await route.continue();
-    },
-    { times: 1 },
-  );
-  await knowledge.getByRole("button", { name: "Save", exact: true }).click();
-  try {
-    await expect(editor).toBeHidden();
-    await expect(skillRow).toBeDisabled();
-    await captureScreenshot(page, testInfo, "85-skill-refresh-pending");
-  } finally {
-    releaseSkillRefresh();
-  }
-  await skillRow.click();
-  await expect(editor).toHaveValue(/warm greeting/);
-  await knowledge.getByRole("button", { name: "Delete", exact: true }).click();
-  await knowledge.getByRole("button", { name: "Confirm delete", exact: true }).click();
-  await expect(skillRow).toBeHidden();
-  await composer.fill("/");
-  await expect(page.getByRole("button", { name: "Skill greet-politely", exact: true })).toHaveCount(
-    0,
-  );
-  expect(await rpc<Array<{ name: string }>>(page, "agentSkills/list", {})).not.toContainEqual(
-    expect.objectContaining({ name: "greet-politely" }),
-  );
 });

@@ -46,10 +46,17 @@ test("agent-attached Markdown opens a rendered preview and can be downloaded", a
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Project preview" })).toBeVisible();
   const closeButton = dialog.getByRole("button", { name: "Close preview" });
+  const openInNewTab = dialog.getByRole("link", { name: "Open preview.md in new tab" });
   const downloadButton = dialog.getByRole("button", { name: "Download preview.md" });
   await expect(closeButton).toBeFocused();
+  // Muse mode's header adds an "Open in new tab" link before Download, so Tab from
+  // Close (the last header control) wraps to it first.
+  await page.keyboard.press("Tab");
+  await expect(openInNewTab).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(downloadButton).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(openInNewTab).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(closeButton).toBeFocused();
   await captureScreenshot(page, testInfo, "markdown-preview-open");
