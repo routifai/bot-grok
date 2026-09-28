@@ -82,7 +82,13 @@ export const UpdateGoalInput = z.object({
   timezone: z.string().optional(),
 });
 
-export const AskKindSchema = z.enum(["approval", "question", "proposal", "blocked_task"]);
+export const AskKindSchema = z.enum([
+  "approval",
+  "question",
+  "proposal",
+  "blocked_task",
+  "skill_offer",
+]);
 export type AskKind = z.infer<typeof AskKindSchema>;
 
 /**

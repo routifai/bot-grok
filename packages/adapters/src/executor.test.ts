@@ -1068,6 +1068,7 @@ describe("userTurnInstructions", () => {
       "This entire computer workspace is your private home.",
       ...stableMiddle,
       "You are the person's one Muse; there is no second bot to create. Use run_subagent for independent parallel work (Helpers); never create other bots.",
+      expect.stringContaining("call offer_skill once"),
       archiveBot,
       ...stableTail,
     ]);

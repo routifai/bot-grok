@@ -1,5 +1,5 @@
 import { type JobPublisher, runContinueJob } from "@aiden/adapter-kit";
-import { acceptGoalProposal, dismissGoalProposal } from "@aiden/adapters";
+import { acceptGoalProposal, dismissGoalProposal, skillCreateFromTool } from "@aiden/adapters";
 import {
   type Actor,
   type Ask,
@@ -128,6 +128,7 @@ function classifyAskKind(params: { block: AskBlock | ChoiceBlock; isProposal: bo
   if (block.kind === "ask" && block.approvalEffectId) return "approval";
   if (isProposal) return "proposal";
   if (block.kind === "ask" && block.goalTaskId) return "blocked_task";
+  if (block.kind === "ask" && block.skillOffer) return "skill_offer";
   return "question";
 }
 
@@ -294,6 +295,56 @@ async function answerBlockedTaskAsk(
 }
 
 /**
+ * A skill offer (`offer_skill`): "save" creates the agent skill from the offered SKILL.md,
+ * anything else declines. Either way the Ask is marked answered; there is no run to resume.
+ */
+async function answerSkillOffer(
+  deps: AnswerAskDeps,
+  actor: Actor,
+  message: { id: string; threadId: string },
+  botId: string,
+  answer: string,
+): Promise<void> {
+  const row = await deps.prisma.message.findUnique({ where: { id: message.id } });
+  const parsed = MessageBlockSchema.array().safeParse(row?.blocks);
+  const offer = parsed.success
+    ? parsed.data.find(
+        (block) => block.kind === "ask" && block.skillOffer && block.status !== "answered",
+      )
+    : undefined;
+  if (!parsed.success || offer?.kind !== "ask" || !offer.skillOffer) {
+    throw new ORPCError("CONFLICT", { message: "This offer was already answered" });
+  }
+  const save = answer === "save";
+  if (save) {
+    const created = await skillCreateFromTool(
+      deps.prisma,
+      { spaceId: actor.spaceId, userId: actor.userId },
+      { content: offer.skillOffer.content },
+    );
+    if ("error" in created && !/already exists/.test(String(created.error))) {
+      throw new ORPCError("BAD_REQUEST", { message: String(created.error) });
+    }
+  }
+  const blocks = parsed.data.map((block) =>
+    block === offer
+      ? { ...block, status: "answered" as const, answer: save ? "Saved" : "Not now" }
+      : block,
+  );
+  const event = await deps.prisma.$transaction(async (tx) => {
+    await tx.message.update({ where: { id: message.id }, data: { blocks } });
+    return appendEventInTransaction(tx, {
+      spaceId: actor.spaceId,
+      threadId: message.threadId,
+      botId,
+      type: "thread.message.updated",
+      payload: { messageId: message.id, role: "bot", blocks },
+    });
+  });
+  await deps.events.notify(message.threadId, event.seq).catch(() => undefined);
+}
+
+/**
  * Answer an Ask, however its message answers: a Proposal or a blocked Task apply
  * their effect directly (no run to resume); everything else routes to the same
  * commit path `threads.answer` uses (`ThreadEvents.answerRunInput`), whichever thread
@@ -348,6 +399,10 @@ export async function answerAsk(
   const pending = parsedBlocks.success ? pendingAskBlock(parsedBlocks.data) : null;
   if (pending?.kind === "ask" && pending.goalTaskId) {
     await answerBlockedTaskAsk(deps, actor, message, targetBotId, pending.goalTaskId, input.answer);
+    return { ok: true as const };
+  }
+  if (pending?.kind === "ask" && pending.skillOffer) {
+    await answerSkillOffer(deps, actor, message, targetBotId, input.answer);
     return { ok: true as const };
   }
 

@@ -124,6 +124,18 @@ export const MessageBlock = z.discriminatedUnion("kind", [
      * routes on it instead of `answerRunInput`.
      */
     goalTaskId: Id.optional(),
+    /**
+     * Muse edition: set when the Muse offers to save something it just did as a reusable
+     * skill (`offer_skill`). Answering "save" creates the agent skill from this SKILL.md;
+     * `asks.answer` routes on it instead of `answerRunInput`.
+     */
+    skillOffer: z
+      .object({
+        name: z.string().max(80),
+        description: z.string().max(2000),
+        content: z.string().max(100_000),
+      })
+      .optional(),
   }),
   z.object({
     kind: z.literal("choice"),

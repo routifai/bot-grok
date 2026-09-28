@@ -526,6 +526,12 @@ msgstr "Brain label"
 msgid "Browse MCP servers"
 msgstr "Browse MCP servers"
 
+msgid "Built in"
+msgstr "Built in"
+
+msgid "Built-in skills can't be edited."
+msgstr "Built-in skills can't be edited."
+
 msgid "Call"
 msgstr "Call"
 
@@ -914,6 +920,9 @@ msgstr "Could not delete this artifact."
 msgid "Could not delete this."
 msgstr "Could not delete this."
 
+msgid "Could not delete."
+msgstr "Could not delete."
+
 msgid "Could not disconnect memory provider"
 msgstr "Could not disconnect memory provider"
 
@@ -966,6 +975,9 @@ msgstr "Could not load more"
 msgid "Could not load skill"
 msgstr "Could not load skill"
 
+msgid "Could not load skills."
+msgstr "Could not load skills."
+
 msgid "Could not load the Feed."
 msgstr "Could not load the Feed."
 
@@ -992,6 +1004,9 @@ msgstr "Could not load your Library."
 
 msgid "Could not open local settings. Start the local server and create its owner account, then try again."
 msgstr "Could not open local settings. Start the local server and create its owner account, then try again."
+
+msgid "Could not open this skill."
+msgstr "Could not open this skill."
 
 msgid "Could not play a test clip"
 msgstr "Could not play a test clip"
@@ -1064,6 +1079,9 @@ msgstr "Could not save this choice"
 
 msgid "Could not save your name"
 msgstr "Could not save your name"
+
+msgid "Could not save."
+msgstr "Could not save."
 
 msgid "Could not search catalog"
 msgstr "Could not search catalog"
@@ -1225,6 +1243,9 @@ msgstr "Delete memories too"
 
 msgid "Delete space"
 msgstr "Delete space"
+
+msgid "Delete this skill?"
+msgstr "Delete this skill?"
 
 msgid "deleted"
 msgstr "deleted"
@@ -1727,6 +1748,9 @@ msgstr "Isolated"
 msgid "Isolated preview — no access to your account"
 msgstr "Isolated preview — no access to your account"
 
+msgid "It won't be used anymore. This can't be undone."
+msgstr "It won't be used anymore. This can't be undone."
+
 msgid "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 msgstr "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 
@@ -1774,6 +1798,9 @@ msgstr "Last thing — connect the brain I'll think with."
 msgid "Later"
 msgstr "Later"
 
+msgid "Learned"
+msgstr "Learned"
+
 msgid "Leave"
 msgstr "Leave"
 
@@ -1782,6 +1809,9 @@ msgstr "Let's get started"
 
 msgid "Library"
 msgstr "Library"
+
+msgid "Library view"
+msgstr "Library view"
 
 msgid "Light"
 msgstr "Light"
@@ -1857,6 +1887,9 @@ msgstr "Log out"
 
 msgid "Low"
 msgstr "Low"
+
+msgid "Made for you"
+msgstr "Made for you"
 
 msgid "Make sure nothing is still running on this computer."
 msgstr "Make sure nothing is still running on this computer."
@@ -2684,6 +2717,9 @@ msgstr "Runs when this bot receives a verified message from this provider."
 msgid "Save"
 msgstr "Save"
 
+msgid "Save changes"
+msgstr "Save changes"
+
 msgid "Saved"
 msgstr "Saved"
 
@@ -2840,9 +2876,15 @@ msgstr "Sign in to Aiden"
 msgid "Sign up"
 msgstr "Sign up"
 
+msgid "Skill"
+msgstr "Skill"
+
 #. placeholder {0}: skill.name
 msgid "Skill {0}"
 msgstr "Skill {0}"
+
+msgid "Skill instructions"
+msgstr "Skill instructions"
 
 msgid "Skills"
 msgstr "Skills"
@@ -3258,6 +3300,9 @@ msgstr "What to return"
 
 msgid "When a webhook fires"
 msgstr "When a webhook fires"
+
+msgid "When I do something you'll want again, I'll offer to save it. You can also teach me on my computer, or paste steps and ask me to keep them."
+msgstr "When I do something you'll want again, I'll offer to save it. You can also teach me on my computer, or paste steps and ask me to keep them."
 
 msgid "When I need a decision or an answer, it'll show up here."
 msgstr "When I need a decision or an answer, it'll show up here."

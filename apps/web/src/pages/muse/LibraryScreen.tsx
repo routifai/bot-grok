@@ -7,6 +7,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  cn,
 } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Search } from "lucide-react";
@@ -17,6 +18,7 @@ import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-
 import { rpc } from "../../lib/rpc";
 import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
+import { SkillsPanel } from "./library/SkillsPanel";
 import type { ArtifactSummary } from "./library/types";
 import { Chip, EmptyState, MuseScreen, MuseWideColumn, ScreenHeader } from "./ui";
 
@@ -51,6 +53,7 @@ export function LibraryScreen({
   const { t } = useLingui();
   const [items, setItems] = useState<ArtifactSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [view, setView] = useState<"made" | "skills">("made");
   const [query, setQuery] = useState("");
   const [selectedKind, setSelectedKind] = useState<ArtifactKind | "all">("all");
   const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
@@ -145,66 +148,98 @@ export function LibraryScreen({
   return (
     <MuseScreen header={<ScreenHeader title={t`Library`} />}>
       <MuseWideColumn className="flex min-h-full flex-col pt-8">
-        <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="relative w-full sm:max-w-[300px]">
-            <Search
-              size={15}
-              strokeWidth={1.75}
-              className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-            />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t`Search your Library…`}
-              aria-label={t`Search your Library`}
-              className="w-full rounded-full border border-border bg-card py-2 ps-10 pe-4 text-[13.5px] text-foreground outline-none transition-colors focus:border-ring"
-            />
-          </div>
-
-          {total > 0 ? (
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Chip selected={selectedKind === "all"} onClick={() => setSelectedKind("all")}>
-                {t`All`} {total}
-              </Chip>
-              {visibleKinds.map((kind) => (
-                <Chip
-                  key={kind}
-                  selected={selectedKind === kind}
-                  onClick={() => setSelectedKind(kind)}
-                >
-                  {kindFacetLabel(kind)} {facetCounts.get(kind)}
-                </Chip>
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        {items === null ? (
-          <LibrarySkeletonGrid />
-        ) : items.length === 0 ? (
-          loadError ? (
-            <p className="py-10 text-[14px] text-destructive">{loadError}</p>
-          ) : (
-            <EmptyState
-              avatarColor={avatarColor}
-              illustration="books"
-              headline={t`Nothing here yet.`}
-              suggestions={LIBRARY_SUGGESTIONS}
-              onSuggestion={onSendIdea}
+        <fieldset
+          aria-label={t`Library view`}
+          className="m-0 mb-6 grid w-full min-w-0 max-w-[340px] grid-cols-2 gap-1 rounded-[16px] border-0 bg-muted p-1"
+        >
+          {(
+            [
+              ["made", t`Made for you`],
+              ["skills", t`Skills`],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={view === id}
+              onClick={() => setView(id)}
+              className={cn(
+                "rounded-[12px] py-2 text-[14.5px] font-medium transition-[background-color,box-shadow,color] duration-200",
+                view === id
+                  ? "bg-card text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)]"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              {t`Pages, documents and files your Muse makes will appear here.`}
-            </EmptyState>
-          )
-        ) : filtered && filtered.length === 0 ? (
-          <EmptyState headline={t`Nothing matches your search.`} />
+              {label}
+            </button>
+          ))}
+        </fieldset>
+        {view === "skills" ? (
+          <SkillsPanel avatarColor={avatarColor} />
         ) : (
-          <LibraryGrid
-            items={filtered ?? []}
-            onOpen={(item) => setOpenArtifactId(item.id)}
-            onDownload={(item) => void handleDownload(item)}
-            onDelete={setPendingDelete}
-          />
+          <>
+            <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="relative w-full sm:max-w-[300px]">
+                <Search
+                  size={15}
+                  strokeWidth={1.75}
+                  className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={t`Search your Library…`}
+                  aria-label={t`Search your Library`}
+                  className="w-full rounded-full border border-border bg-card py-2 ps-10 pe-4 text-[13.5px] text-foreground outline-none transition-colors focus:border-ring"
+                />
+              </div>
+
+              {total > 0 ? (
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  <Chip selected={selectedKind === "all"} onClick={() => setSelectedKind("all")}>
+                    {t`All`} {total}
+                  </Chip>
+                  {visibleKinds.map((kind) => (
+                    <Chip
+                      key={kind}
+                      selected={selectedKind === kind}
+                      onClick={() => setSelectedKind(kind)}
+                    >
+                      {kindFacetLabel(kind)} {facetCounts.get(kind)}
+                    </Chip>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {items === null ? (
+              <LibrarySkeletonGrid />
+            ) : items.length === 0 ? (
+              loadError ? (
+                <p className="py-10 text-[14px] text-destructive">{loadError}</p>
+              ) : (
+                <EmptyState
+                  avatarColor={avatarColor}
+                  illustration="books"
+                  headline={t`Nothing here yet.`}
+                  suggestions={LIBRARY_SUGGESTIONS}
+                  onSuggestion={onSendIdea}
+                >
+                  {t`Pages, documents and files your Muse makes will appear here.`}
+                </EmptyState>
+              )
+            ) : filtered && filtered.length === 0 ? (
+              <EmptyState headline={t`Nothing matches your search.`} />
+            ) : (
+              <LibraryGrid
+                items={filtered ?? []}
+                onOpen={(item) => setOpenArtifactId(item.id)}
+                onDownload={(item) => void handleDownload(item)}
+                onDelete={setPendingDelete}
+              />
+            )}
+          </>
         )}
       </MuseWideColumn>
 

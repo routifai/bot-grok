@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { parseSkillMd } from "./agent-skill.js";
 import {
   buildPlaybookFromRecording,
   formatSkillRunPrompt,
   promptInvokesSkill,
+  taughtSkillToSkillMd,
 } from "./teach-playbook.js";
 
 describe("promptInvokesSkill", () => {
@@ -140,5 +142,30 @@ describe("formatSkillRunPrompt for a test run", () => {
 
   it("keeps a normal run free of test instructions", () => {
     expect(formatSkillRunPrompt("Search RBC careers", playbook)).not.toContain("clean state");
+  });
+});
+
+describe("taughtSkillToSkillMd", () => {
+  it("turns a saved taught skill into a valid SKILL.md with its playbook", () => {
+    const skill = taughtSkillToSkillMd(
+      "Search RBC careers",
+      {
+        whenToUse: "When asked to find RBC job listings",
+        inputs: [],
+        steps: ["Click the search box.", 'Type "RBC careers".'],
+        howToCheck: "Results show RBC careers.",
+        whatToReturn: "A short summary.",
+        approvalBoundaries: "Ask before sending anything.",
+        failureHandling: "Stop and ask.",
+      },
+      "Search Google for RBC careers",
+    );
+    const parsed = parseSkillMd(skill.content);
+    expect(parsed).toMatchObject({
+      name: "Search RBC careers",
+      description: "When asked to find RBC job listings",
+    });
+    expect(skill.content).toContain("1. Click the search box.");
+    expect(skill.content).toContain("## How to check");
   });
 });

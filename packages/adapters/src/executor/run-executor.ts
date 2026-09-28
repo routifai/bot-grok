@@ -213,6 +213,7 @@ import {
   updateGoalTaskFromTool,
 } from "../muse/goal-tools.js";
 import { loadGoalsContext, renderConversationSummaryContext } from "../muse/goals-context.js";
+import { offerSkillFromTool } from "../muse/skill-offer.js";
 import {
   assertPlotDataWithinLimits,
   PLOT_TOOL_GUIDE,
@@ -2342,6 +2343,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
               itemId: String(args.itemId ?? ""),
             });
             return finish(removed);
+          }
+          if (name === "offer_skill") {
+            return finish(
+              await offerSkillFromTool(
+                deps,
+                { spaceId: run.spaceId, botId: bot.id, userId: run.userId, runId },
+                {
+                  content: args.content !== undefined ? String(args.content) : undefined,
+                  why: args.why !== undefined ? String(args.why) : undefined,
+                },
+              ),
+            );
           }
           if (name === "goals") {
             const action = String(args.action ?? "");

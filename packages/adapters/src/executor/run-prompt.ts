@@ -55,6 +55,9 @@ export function userTurnInstructions(parts: {
     parts.museMode
       ? "You are the person's one Muse; there is no second bot to create. Use run_subagent for independent parallel work (Helpers); never create other bots."
       : undefined,
+    parts.museMode
+      ? "You learn from the work you do. After finishing a multi-step task the person will likely want again, and when no saved skill covers it, call offer_skill once so they can save it with one tap. Don't offer for one-off questions, don't repeat an offer they declined, and don't call skill_create for an offer: it is saved only if they choose Save. When they paste steps or a SKILL.md and ask you to keep it, save it directly with skill_create."
+      : undefined,
     parts.botDirectory,
     "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
     parts.museGoalsLine,

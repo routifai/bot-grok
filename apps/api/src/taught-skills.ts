@@ -27,6 +27,8 @@ import {
   releaseTeachingComputerControlForBot,
   scheduleComputerControlExpiry,
   screenLeaseIdForRun,
+  skillCreateFromTool,
+  skillUpdateFromTool,
   type TeachComputerInput,
   teachingControlLeaseExpiresAt,
 } from "@aiden/adapters";
@@ -37,6 +39,7 @@ import {
   formatSkillRunPrompt,
   type SkillPlaybook,
   type TeachRecordingEvent,
+  taughtSkillToSkillMd,
   teachRecordingTtlMs,
 } from "@aiden/core";
 import {
@@ -46,6 +49,7 @@ import {
   type PrismaClient,
   type ThreadEvents,
 } from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
 
 type TaughtSkillRow = {
@@ -327,6 +331,30 @@ export async function stopTeachingSession(
   return mapTaughtSkill(finalized);
 }
 
+/**
+ * A saved taught skill also becomes an agent skill (SKILL.md), so the Muse follows it in
+ * ordinary conversation like any other skill; saving again refreshes that agent skill.
+ * Best effort: the taught skill itself is already saved.
+ */
+async function publishTaughtSkillAsAgentSkill(
+  deps: { prisma: PrismaClient },
+  actor: Actor,
+  name: string,
+  playbook: SkillPlaybook,
+  goal: string,
+): Promise<void> {
+  const skill = taughtSkillToSkillMd(name, playbook, goal);
+  const owner = { spaceId: actor.spaceId, userId: actor.userId };
+  try {
+    const created = await skillCreateFromTool(deps.prisma, owner, { content: skill.content });
+    if ("error" in created && /already exists/.test(String(created.error))) {
+      await skillUpdateFromTool(deps.prisma, owner, { name: skill.name, content: skill.content });
+    }
+  } catch (error) {
+    getLogger().error("taught skill agent skill publish", error);
+  }
+}
+
 export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
   return {
     async list(actor: Actor, botId: string): Promise<TaughtSkill[]> {
@@ -493,6 +521,13 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
         playbook: parsePlaybook(row.playbook),
         status: "saved",
       });
+      await publishTaughtSkillAsAgentSkill(
+        deps,
+        actor,
+        row.name,
+        parsePlaybook(row.playbook),
+        row.goal,
+      );
       if (bot?.thread) {
         await deps.events.append({
           spaceId: actor.spaceId,

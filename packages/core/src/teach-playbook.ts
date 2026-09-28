@@ -1,3 +1,5 @@
+import { buildSkillMd } from "./agent-skill.js";
+
 export type TeachRecordingEvent = {
   at: string;
   kind: "pointer" | "key" | "clipboard" | "snapshot" | "scroll";
@@ -208,4 +210,35 @@ export function formatSkillRunPrompt(name: string, playbook: SkillPlaybook, test
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * A saved taught skill as an agent skill (SKILL.md), so the Muse finds and follows it in
+ * ordinary conversation like any other skill, not only when the skill is named.
+ */
+export function taughtSkillToSkillMd(
+  name: string,
+  playbook: SkillPlaybook,
+  goal: string,
+): { name: string; description: string; content: string } {
+  const skillName = name.trim().slice(0, 80) || goal.trim().slice(0, 80);
+  const description = (playbook.whenToUse || goal).trim().slice(0, 2000) || skillName;
+  const body = [
+    "Taught by demonstration on the computer.",
+    playbook.inputs.length
+      ? `## Inputs\n${playbook.inputs.map((input) => `- ${input}`).join("\n")}`
+      : "",
+    `## Steps\n${playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
+    `## How to check\n${playbook.howToCheck}`,
+    `## Return\n${playbook.whatToReturn}`,
+    `## Approval boundaries\n${playbook.approvalBoundaries}`,
+    `## If something fails\n${playbook.failureHandling}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return {
+    name: skillName,
+    description,
+    content: buildSkillMd({ name: skillName, description, body }),
+  };
 }

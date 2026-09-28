@@ -2035,20 +2035,26 @@ export function ShellPage() {
       const botId = activeBotId.current;
       const groupId = activeGroupId.current;
       if (!botId && !groupId) return;
-      await rpc.threads.answer({
-        ...(groupId ? { groupId } : { botId: botId! }),
-        runId: message.runId ?? "",
-        messageId: message.id,
-        answer: text,
-        ...(username ? { username } : {}),
-      });
+      if (museMode && botId) {
+        // Muse Asks (Proposals, blocked Tasks, skill offers) apply their own effect; asks.answer
+        // routes each kind and falls back to the run-input path for ordinary questions.
+        await rpc.asks.answer({ askId: message.id, runId: message.runId ?? "", answer: text });
+      } else {
+        await rpc.threads.answer({
+          ...(groupId ? { groupId } : { botId: botId! }),
+          runId: message.runId ?? "",
+          messageId: message.id,
+          answer: text,
+          ...(username ? { username } : {}),
+        });
+      }
       if (groupId && activeGroupId.current === groupId) {
         await refreshGroupThreadRef.current(groupId);
       } else if (botId && activeBotId.current === botId) {
         await refreshThreadRef.current(botId);
       }
     },
-    [],
+    [museMode],
   );
   const reactToMessage = useCallback(
     async (message: ThreadMessage, reaction: MessageReaction) => {

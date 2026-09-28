@@ -11,9 +11,10 @@ vi.mock("@aiden/adapters", async (importOriginal) => ({
   ...(await importOriginal<typeof AidenAdaptersModule>()),
   acceptGoalProposal: vi.fn(),
   dismissGoalProposal: vi.fn(),
+  skillCreateFromTool: vi.fn(),
 }));
 
-import { acceptGoalProposal, dismissGoalProposal } from "@aiden/adapters";
+import { acceptGoalProposal, dismissGoalProposal, skillCreateFromTool } from "@aiden/adapters";
 import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
 
 beforeEach(() => {
@@ -223,6 +224,30 @@ describe("countAsks", () => {
     expect(counted.count).toBe(4);
   });
 });
+
+const SKILL_CONTENT = "---\nname: weekly-rate-watch\ndescription: Rates update\n---\n\n1. Search.";
+const SKILL_OFFER_MESSAGE = {
+  id: "msg-skill-offer",
+  threadId: CONVERSATION_THREAD_ID,
+  botId: BOT_ID,
+  blocks: [
+    {
+      kind: "ask",
+      text: 'Save "weekly-rate-watch" as a skill?',
+      status: "pending",
+      actions: [
+        { id: "save", label: "Save skill" },
+        { id: "dismiss", label: "Not now" },
+      ],
+      skillOffer: {
+        name: "weekly-rate-watch",
+        description: "Rates update",
+        content: SKILL_CONTENT,
+      },
+    },
+  ],
+  thread: { botId: BOT_ID, goal: null },
+};
 
 const APPROVAL_MESSAGE = {
   id: "msg-approval-ask",
@@ -486,5 +511,44 @@ describe("answerAsk", () => {
     await expect(
       answerAsk(deps, actor, { askId: "msg-proposal", runId: "run-2", answer: "accept" }),
     ).rejects.toThrow(/no longer open/);
+  });
+
+  it("saves a skill offer as an agent skill and closes the Ask, without resuming a run", async () => {
+    vi.mocked(skillCreateFromTool).mockResolvedValue({ ok: true, id: "skill-1" });
+    const { deps, answerRunInput, messageUpdate, notify } = fakeAnswerDeps({
+      message: SKILL_OFFER_MESSAGE,
+    });
+
+    await answerAsk(deps, actor, { askId: SKILL_OFFER_MESSAGE.id, runId: "run-1", answer: "save" });
+
+    expect(skillCreateFromTool).toHaveBeenCalledWith(
+      deps.prisma,
+      { spaceId: actor.spaceId, userId: actor.userId },
+      { content: SKILL_CONTENT },
+    );
+    expect(messageUpdate).toHaveBeenCalledWith({
+      where: { id: SKILL_OFFER_MESSAGE.id },
+      data: {
+        blocks: [expect.objectContaining({ kind: "ask", status: "answered", answer: "Saved" })],
+      },
+    });
+    expect(notify).toHaveBeenCalled();
+    expect(answerRunInput).not.toHaveBeenCalled();
+  });
+
+  it("declines a skill offer without saving anything", async () => {
+    const { deps, messageUpdate } = fakeAnswerDeps({ message: SKILL_OFFER_MESSAGE });
+
+    await answerAsk(deps, actor, {
+      askId: SKILL_OFFER_MESSAGE.id,
+      runId: "run-1",
+      answer: "dismiss",
+    });
+
+    expect(skillCreateFromTool).not.toHaveBeenCalled();
+    expect(messageUpdate).toHaveBeenCalledWith({
+      where: { id: SKILL_OFFER_MESSAGE.id },
+      data: { blocks: [expect.objectContaining({ status: "answered", answer: "Not now" })] },
+    });
   });
 });

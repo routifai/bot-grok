@@ -3,7 +3,7 @@ import type { Ask } from "@aiden/contracts";
 import { Button, Input } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { DetailRows } from "../ui";
@@ -13,6 +13,7 @@ const KIND_ICON = {
   proposal: Sparkles,
   question: HelpCircle,
   blocked_task: HelpCircle,
+  skill_offer: BookmarkPlus,
 } as const;
 
 /**
@@ -61,7 +62,11 @@ export function AskItem({
   const Icon = KIND_ICON[ask.kind];
   const title = ask.kind === "approval" ? t`One yes before I send this` : ask.text;
   const subtitle =
-    ask.kind === "approval" ? ask.text : ask.kind === "proposal" ? ask.detail : undefined;
+    ask.kind === "approval"
+      ? ask.text
+      : ask.kind === "proposal" || ask.kind === "skill_offer"
+        ? ask.detail
+        : undefined;
   const structuredDetail = ask.kind === "approval" ? ask.detail : undefined;
   const detailRows = structuredDetail ? parseDetailRows(structuredDetail) : null;
 
@@ -170,7 +175,7 @@ const ASK_GROUP_ORDER: AskGroupKey[] = ["approvals", "questions", "plans"];
 
 function askGroupKey(kind: Ask["kind"]): AskGroupKey {
   if (kind === "approval") return "approvals";
-  if (kind === "proposal") return "plans";
+  if (kind === "proposal" || kind === "skill_offer") return "plans";
   return "questions";
 }
 

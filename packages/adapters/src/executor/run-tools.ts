@@ -25,6 +25,9 @@ export const MUSE_LOCKED_TOOL_NAMES = new Set([
   "create_space",
 ]);
 
+/** Tools that only make sense in the Muse edition (they post Asks answered via `asks.answer`). */
+export const MUSE_ONLY_TOOL_NAMES = new Set(["offer_skill"]);
+
 export function createRunWorkspaceCheckpoint(checkpoint: () => Promise<unknown>) {
   let dirty = false;
   return {
@@ -96,9 +99,10 @@ export function selectBuiltinToolsForRun(options: {
         ) &&
           !tool.name.startsWith("scratchpad_")),
     )
-    .filter(
-      (tool) =>
-        !isMuseMode(options.productMode ?? "aiden") || !MUSE_LOCKED_TOOL_NAMES.has(tool.name),
+    .filter((tool) =>
+      isMuseMode(options.productMode ?? "aiden")
+        ? !MUSE_LOCKED_TOOL_NAMES.has(tool.name)
+        : !MUSE_ONLY_TOOL_NAMES.has(tool.name),
     );
 }
 

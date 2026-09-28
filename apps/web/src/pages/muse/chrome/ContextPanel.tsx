@@ -5,7 +5,7 @@ import { BotAvatar, cn } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import type { LucideIcon } from "lucide-react";
-import { Bell, Clock, HelpCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { Bell, BookmarkPlus, Clock, HelpCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MuseRailView } from "../../../components/AppRail";
 import { formatRelativeTime } from "../../../lib/relative-time";
@@ -34,6 +34,7 @@ const ASK_ICON = {
   proposal: Sparkles,
   question: HelpCircle,
   blocked_task: HelpCircle,
+  skill_offer: BookmarkPlus,
 } as const;
 
 const IN_PROGRESS_TONE: Record<GoalDisplayStatus, "attention" | "live" | "neutral"> = {
