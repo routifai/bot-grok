@@ -187,7 +187,12 @@ export function promptInvokesSkill(prompt: string, name: string): boolean {
 
 export function formatSkillRunPrompt(name: string, playbook: SkillPlaybook, test = false): string {
   const safety = test
-    ? "This is a safe test run. Do not send, spend, delete, or publish anything."
+    ? [
+        "This is a safe test run. Do not send, spend, delete, or publish anything.",
+        "Start from a clean state: before step 1, leave whatever the screen shows now (for example",
+        "open a new blank browser tab), so the result is not already on screen. Then perform every",
+        "step yourself, and only report the check as passed if your own steps produced it.",
+      ].join(" ")
     : "";
   return [
     `Run taught skill: ${name}`,

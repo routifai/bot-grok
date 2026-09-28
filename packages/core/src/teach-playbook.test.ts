@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildPlaybookFromRecording, promptInvokesSkill } from "./teach-playbook.js";
+import {
+  buildPlaybookFromRecording,
+  formatSkillRunPrompt,
+  promptInvokesSkill,
+} from "./teach-playbook.js";
 
 describe("promptInvokesSkill", () => {
   it("matches an explicit request to run the skill", () => {
@@ -113,5 +117,28 @@ describe("buildPlaybookFromRecording", () => {
       { at: "2026-01-01T00:00:00.000Z", kind: "scroll", type: "down", text: "3" },
     ]);
     expect(playbook.steps).toEqual(["Scroll down 3 times."]);
+  });
+});
+
+describe("formatSkillRunPrompt for a test run", () => {
+  const playbook = {
+    whenToUse: "Search Google",
+    inputs: [],
+    steps: ["Click the search box.", 'Type "RBC careers".', "Press Enter."],
+    howToCheck: "The results page shows RBC careers.",
+    whatToReturn: "A short summary.",
+    approvalBoundaries: "Ask before sending anything.",
+    failureHandling: "Stop and ask.",
+  };
+
+  it("makes a test replay the steps from a clean state", () => {
+    const prompt = formatSkillRunPrompt("Search RBC careers", playbook, true);
+    expect(prompt).toContain("Start from a clean state");
+    expect(prompt).toContain("perform every step yourself");
+    expect(prompt).toContain("1. Click the search box.");
+  });
+
+  it("keeps a normal run free of test instructions", () => {
+    expect(formatSkillRunPrompt("Search RBC careers", playbook)).not.toContain("clean state");
   });
 });
