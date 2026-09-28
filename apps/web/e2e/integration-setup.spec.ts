@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, completeIdentitySteps, completeOnboarding, signup } from "./helpers";
+import {
+  captureScreenshot,
+  completeIdentitySteps,
+  completeOnboarding,
+  openUserSettings,
+  signup,
+} from "./helpers";
 
 test("setup exposes all integration choices and saves only the selected provider", async ({
   page,
@@ -248,10 +254,8 @@ test("configured server owners manage providers from settings", async ({ page },
   await signup(page, `configured-owner-${Date.now()}@aiden.test`, "password12", "Server Owner");
   await expect(page.getByRole("heading", { name: "Server integrations" })).toBeHidden();
   await completeOnboarding(page);
-  await page.getByTestId("user-menu-trigger").click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const settings = page.getByTestId("user-settings");
-  const link = settings.getByRole("link", { name: "Server integrations", exact: true });
+  const settings = await openUserSettings(page);
+  const link = settings.getByRole("button", { name: "Integrations", exact: true });
   await expect(link).toBeVisible();
   await captureScreenshot(page, testInfo, "server-integrations-settings");
   await link.click();

@@ -46,8 +46,8 @@ test("onboarding uses compact model selects without misleading latest labels", a
   // newer models carry no marker. Rendered as-is it tells the user the opposite of the truth.
   expect(labels.filter((label) => /\blatest\b/i.test(label))).toEqual([]);
 
-  // Select a non-default model and keep its user-facing alias visible in the compact trigger.
-  const alias = labels.find((label) => label.includes("(auto-updates)"));
+  // Select a non-default model and keep its label visible in the compact trigger.
+  const alias = labels[1];
   expect(alias).toBeTruthy();
   await page.getByRole("option", { name: alias! }).click();
   await expect(models).toContainText(alias!);

@@ -9,6 +9,7 @@ import {
   getResponseStreamingPreference,
   setResponseStreamingPreference,
 } from "../../../lib/response-streaming";
+import { clearSpaceSelection } from "../../../lib/rpc";
 import {
   type AppearancePreference,
   getUiAppearancePreference,
@@ -43,6 +44,18 @@ export function GeneralPanel({
   );
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function logOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await authClient.signOut();
+    } finally {
+      clearSpaceSelection();
+      navigate("/sign-in", { replace: true });
+    }
+  }
 
   return (
     <div className="flex flex-col gap-7">
@@ -114,6 +127,17 @@ export function GeneralPanel({
           />
         </SettingsGroup>
       ) : null}
+
+      <SettingsGroup>
+        <button
+          type="button"
+          disabled={signingOut}
+          onClick={() => void logOut()}
+          className={`${SETTINGS_ROW} text-start text-[16px] text-destructive transition-colors hover:bg-accent/50 disabled:opacity-60`}
+        >
+          {signingOut ? <Trans>Logging out…</Trans> : <Trans>Log out</Trans>}
+        </button>
+      </SettingsGroup>
     </div>
   );
 }

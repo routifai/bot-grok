@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { captureScreenshot, completeOnboarding, openUserSettings, signup } from "./helpers";
 
-test("settings shell is two-pane and deep-links Models Memory Voice Usage", async ({
+test("settings: Nova, General, Model, Memory and Voice, one size, iOS rows", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
@@ -9,66 +9,48 @@ test("settings shell is two-pane and deep-links Models Memory Voice Usage", asyn
   await signup(page, `settings-shell-${stamp}@aiden.test`, "password12", userName);
   await completeOnboarding(page);
 
-  await page.getByTestId("user-menu-trigger").click();
-  const menu = page.locator('[data-slot="popover-content"]');
-  await expect(menu.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
-  await expect(menu.getByRole("button", { name: "Usage", exact: true })).toBeVisible();
-  await expect(menu.getByRole("button", { name: "Log out", exact: true })).toBeVisible();
-  await expect(menu.getByRole("button", { name: "Models", exact: true })).toHaveCount(0);
-  await captureScreenshot(page, testInfo, "settings-account-menu-lean");
-  await page.keyboard.press("Escape");
-
   const settings = await openUserSettings(page);
-  await expect(settings.getByTestId("settings-nav")).toBeVisible();
+  const nav = settings.getByTestId("settings-nav");
+  await expect(nav.getByRole("button")).toHaveText(["Nova", "General", "Model", "Memory", "Voice"]);
   await expect(settings.getByTestId("settings-nav-general")).toHaveAttribute(
     "aria-current",
     "page",
   );
-  await expect(settings.getByRole("heading", { name: "General", exact: true })).toBeVisible();
-  await expect(settings.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
-  await expect(settings.getByRole("heading", { name: "Replies", exact: true })).toHaveCount(0);
-  await settings.getByTestId("advanced-settings").locator("summary").click();
+
+  // General: account rows, a collapsed password form, streaming, and Log out.
+  await expect(settings.getByText(userName, { exact: true })).toBeVisible();
+  await expect(settings.getByLabel("Current password")).toHaveCount(0);
+  await settings.getByRole("button", { name: "Change password" }).click();
+  await expect(settings.getByLabel("Current password")).toBeVisible();
   const streamReplies = settings.getByTestId("response-streaming-toggle");
-  await expect(streamReplies).toBeVisible();
   await expect(streamReplies).not.toBeChecked();
-  await expect(settings.getByText("Stream replies", { exact: true })).toBeVisible();
-  await streamReplies.scrollIntoViewIfNeeded();
-  await captureScreenshot(page, testInfo, "settings-shell-general");
   await streamReplies.click();
   await expect(streamReplies).toBeChecked();
   await expect
     .poll(() => page.evaluate(() => window.localStorage.getItem("aiden.responseStreaming")))
     .toBe("on");
+  await expect(settings.getByRole("button", { name: "Log out", exact: true })).toBeVisible();
+  await captureScreenshot(page, testInfo, "settings-general");
+  const size = await settings.boundingBox();
 
   await settings.getByTestId("settings-nav-models").click();
   await expect(settings).toHaveAttribute("data-settings-section", "models");
-  await expect(settings.getByRole("heading", { name: "Models", exact: true })).toBeVisible();
-  await expect(settings.getByTestId("model-settings")).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-models");
+  await expect(settings.getByText("Models and their keys are set on the server")).toBeVisible();
+  await captureScreenshot(page, testInfo, "settings-model");
 
   await settings.getByTestId("settings-nav-memory").click();
   await expect(settings).toHaveAttribute("data-settings-section", "memory");
-  await expect(settings.getByRole("heading", { name: "Memory", exact: true })).toBeVisible();
-  await expect(settings.getByTestId("memory-settings")).toBeVisible();
-  const memory = settings.getByTestId("memory-settings");
-  await expect(memory.getByLabel("Provider")).toBeVisible();
-  await memory.getByLabel("Provider").selectOption("serenity");
-  await expect(memory.getByLabel("MCP endpoint")).toBeVisible();
-  await expect(memory.getByLabel("Bearer token")).toBeVisible();
-  await expect(memory.getByRole("button", { name: "Recall only" })).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-memory-serenity");
+  await expect(settings.getByText("What I remember")).toBeVisible();
+  await captureScreenshot(page, testInfo, "settings-memory");
 
   await settings.getByTestId("settings-nav-voice").click();
   await expect(settings).toHaveAttribute("data-settings-section", "voice");
-  await expect(settings.getByRole("heading", { name: "Voice", exact: true })).toBeVisible();
-  await expect(settings.getByTestId("voice-settings")).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-voice");
+  await expect(settings.getByText("Service", { exact: true })).toBeVisible();
+  await captureScreenshot(page, testInfo, "settings-voice");
+
+  // Every section keeps the dialog the same size.
+  expect(await settings.boundingBox()).toEqual(size);
 
   await page.getByRole("button", { name: "Close voice settings" }).click();
   await expect(page.getByTestId("user-settings")).toHaveCount(0);
-
-  await openUserSettings(page, "usage");
-  await expect(page.getByTestId("user-settings")).toHaveAttribute("data-settings-section", "usage");
-  await expect(page.getByTestId("usage-settings")).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-usage");
 });

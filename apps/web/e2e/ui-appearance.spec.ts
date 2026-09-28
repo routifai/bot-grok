@@ -1,18 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, completeOnboarding, signup } from "./helpers";
+import { captureScreenshot, completeOnboarding, openUserSettings, signup } from "./helpers";
 
 test("account settings appearance control switches to light mode", async ({ page }, testInfo) => {
   const stamp = Date.now();
   await signup(page, `ui-appearance-${stamp}@aiden.test`, "password12", "Appearance QA");
   await completeOnboarding(page, testInfo);
 
-  await page.getByTestId("user-menu-trigger").click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const settings = page.getByTestId("user-settings");
-  await expect(settings).toBeVisible();
+  const settings = await openUserSettings(page);
   await expect(settings.getByRole("heading", { name: "Appearance", exact: true })).toBeVisible();
 
-  const picker = settings.getByTestId("ui-appearance-select");
+  const picker = settings.getByTestId("ui-appearance");
   await expect(picker).toBeVisible();
   await captureScreenshot(page, testInfo, "ui-appearance-control");
 
@@ -41,9 +38,7 @@ test("account settings appearance control switches to light mode", async ({ page
   await expect(inlinePath).toHaveCSS("color", "rgb(26, 26, 26)");
   await captureScreenshot(page, testInfo, "inline-code-light");
 
-  await page.getByTestId("user-menu-trigger").click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(settings).toBeVisible();
+  await openUserSettings(page);
   await settings.getByTestId("ui-appearance-dark").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await settings.getByRole("button", { name: "Close user settings" }).click();

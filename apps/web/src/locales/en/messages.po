@@ -1843,6 +1843,12 @@ msgstr "Local access lets bots run commands without asking. Avoid it on shared o
 msgid "Local Server Settings"
 msgstr "Local Server Settings"
 
+msgid "Log out"
+msgstr "Log out"
+
+msgid "Logging out…"
+msgstr "Logging out…"
+
 msgid "Low"
 msgstr "Low"
 
