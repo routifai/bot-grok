@@ -53,7 +53,7 @@ test("saves a website login from a username and password card without echoing ei
   await page.setViewportSize({ width: 1280, height: 720 });
 
   // Saving clears both fields immediately, including when the save fails.
-  await page.route("**/rpc/threads/answer", (route) =>
+  await page.route("**/rpc/asks/answer", (route) =>
     route.fulfill({
       status: 400,
       json: { json: { defined: false, code: "BAD_REQUEST", status: 400, message: "fail" } },
@@ -63,7 +63,7 @@ test("saves a website login from a username and password card without echoing ei
   await expect(card.getByText("Could not submit this answer", { exact: true })).toBeVisible();
   await expect(passwordField).toHaveValue("");
   await expect(usernameField).toHaveValue("");
-  await page.unroute("**/rpc/threads/answer");
+  await page.unroute("**/rpc/asks/answer");
 
   await usernameField.fill(username);
   await passwordField.fill(password);

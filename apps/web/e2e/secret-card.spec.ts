@@ -51,7 +51,7 @@ test("renders masked secret card and saves without putting the value in chat", a
   const failureGate = new Promise<void>((resolve) => {
     releaseFailure = resolve;
   });
-  await page.route("**/rpc/threads/answer", async (route) => {
+  await page.route("**/rpc/asks/answer", async (route) => {
     await failureGate;
     await route.fulfill({
       status: 400,
@@ -70,7 +70,7 @@ test("renders masked secret card and saves without putting the value in chat", a
   await expect(card.getByText("Could not submit this answer", { exact: true })).toBeVisible();
   await expect(page.getByText(secretValue)).toHaveCount(0);
   await expect(secretField).toHaveValue("");
-  await page.unroute("**/rpc/threads/answer");
+  await page.unroute("**/rpc/asks/answer");
 
   await secretField.fill(secretValue);
   await card.getByRole("button", { name: "Save", exact: true }).click();

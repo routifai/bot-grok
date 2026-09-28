@@ -354,7 +354,7 @@ async function answerSkillOffer(
 export async function answerAsk(
   deps: AnswerAskDeps,
   actor: Actor,
-  input: { askId: string; runId: string; answer: string },
+  input: { askId: string; runId: string; answer: string; username?: string },
 ): Promise<{ ok: true }> {
   const message = await deps.prisma.message.findFirst({
     where: { id: input.askId, runId: input.runId, role: "bot" },
@@ -413,6 +413,7 @@ export async function answerAsk(
     messageId: message.id,
     answeredByUserId: actor.userId,
     answer: input.answer,
+    username: input.username,
   });
   if (!answered) {
     throw new ORPCError("CONFLICT", { message: "This prompt is no longer awaiting an answer" });

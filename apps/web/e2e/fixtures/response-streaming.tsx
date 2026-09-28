@@ -4,6 +4,7 @@ import { isToolActivityBlock, withLiveStreamingProgress } from "@aiden/core";
 import { DEFAULT_GROK_BOT_COLOR } from "@aiden/ui-web";
 import { I18nProvider } from "@lingui/react";
 import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import { ActiveBotGlyph } from "../../src/components/ai/CollaborationMarker";
 import { bootstrapI18n, i18n } from "../../src/lib/i18n";
 import { setResponseStreamingPreference } from "../../src/lib/response-streaming";
@@ -195,20 +196,22 @@ function ThreadFixture({ snapshot }: { snapshot: ThreadSnapshot }) {
 
 function SettingsFixture() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <p data-testid="fixture-note" className="px-4 py-3 text-[12.5px] text-muted-foreground/80">
-        {fixtureNote()}
-      </p>
-      <SettingsOverlay
-        email="owner@example.test"
-        name="Owner"
-        avatarStyle="robot"
-        onAvatarStyleChange={() => Promise.resolve()}
-        memoryConfig={null}
-        onMemoryConfigChange={() => {}}
-        onClose={() => {}}
-      />
-    </main>
+    <MemoryRouter>
+      <main className="min-h-screen bg-background text-foreground">
+        <p data-testid="fixture-note" className="px-4 py-3 text-[12.5px] text-muted-foreground/80">
+          {fixtureNote()}
+        </p>
+        <SettingsOverlay
+          email="owner@example.test"
+          name="Owner"
+          avatarStyle="robot"
+          onAvatarStyleChange={() => Promise.resolve()}
+          memoryConfig={null}
+          onMemoryConfigChange={() => {}}
+          onClose={() => {}}
+        />
+      </main>
+    </MemoryRouter>
   );
 }
 

@@ -50,33 +50,20 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   const protectedBotPath = new URL(page.url()).pathname;
   await expect(page.getByPlaceholder("Message Nova")).toBeVisible();
 
-  await page.getByRole("button", { name: new RegExp(userName, "i") }).click();
-  await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Usage", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
-  await expect(
-    page
-      .locator('[data-slot="popover-content"]')
-      .getByRole("button", { name: "Models", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page
-      .locator('[data-slot="popover-content"]')
-      .getByRole("button", { name: "Memory", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page
-      .locator('[data-slot="popover-content"]')
-      .getByRole("button", { name: "Voice", exact: true }),
-  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settingsPanel = page.getByTestId("user-settings");
+  await expect(settingsPanel).toBeVisible();
+  await expect(settingsPanel.getByTestId("settings-nav-usage")).toBeVisible();
+  const logOutButton = settingsPanel.getByRole("button", { name: "Log out", exact: true });
+  await expect(logOutButton).toBeVisible();
   await captureScreenshot(page, testInfo, "36-account-menu");
 
-  await page.getByRole("button", { name: "Log out" }).click();
+  await logOutButton.click();
   await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
   await page.goto("/");
   await expect(page.locator('[data-aiden-surface="welcome"]')).toBeVisible();
-  await expect(page.getByText(/Your team of always-on agents/)).toBeVisible();
-  await page.getByRole("button", { name: /Sign up/ }).click();
+  await expect(page.getByText(/Your AI, already on it\./)).toBeVisible();
+  await page.getByRole("button", { name: /Meet Nova/ }).click();
   await expect(page).toHaveURL(/\/sign-up$/);
   await expect(page.getByRole("heading", { name: "Meet Nova." })).toBeVisible();
   await page.goto("/");
@@ -114,7 +101,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await expect(composer).toHaveAttribute("name", "chat-message");
   await expect(composer).toHaveAttribute("autocomplete", "off");
   await expect(composer).toHaveAttribute("aria-label", "Message Nova");
-  await expect(page.getByRole("button", { name: new RegExp(userName, "i") })).toBeVisible();
+  await expect(page.getByText(userName, { exact: true })).toBeVisible();
 
   await composer.fill("line one");
   const heightBeforeNewline = await composer.evaluate((el) => el.getBoundingClientRect().height);
@@ -152,18 +139,9 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
   await completeOnboarding(page);
   await page.waitForURL(/\/app\/[^/]+$/);
 
-  await page.getByTestId("user-menu-trigger").click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByTestId("user-settings");
   await expect(settings).toBeVisible();
-  await expect(page.getByTestId("sidebar-search").locator("input")).toHaveAttribute(
-    "autocomplete",
-    "off",
-  );
-  await expect(page.getByTestId("sidebar-search").locator("input")).toHaveAttribute(
-    "name",
-    "sidebar-search",
-  );
   await expect(settings.locator('input[name="username"]')).toHaveAttribute(
     "autocomplete",
     "username",
@@ -184,10 +162,7 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
   await settings.getByRole("button", { name: "Change password" }).click();
   await expect(settings.getByText("Password updated")).toBeVisible();
   await captureScreenshot(page, testInfo, "41-password-changed");
-  await settings.getByRole("button", { name: "Close user settings" }).click();
-
-  await page.getByRole("button", { name: new RegExp(userName, "i") }).click();
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page.getByRole("link", { name: "Forgot password?" })).toBeVisible();
   await page.getByRole("link", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
