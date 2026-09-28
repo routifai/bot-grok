@@ -13,7 +13,7 @@ describe("desktop release workflow", () => {
   it("cannot execute contributor pull-request code with release credentials", () => {
     expect(workflow).not.toMatch(/^\s*pull_request:/m);
     expect(workflow).toContain("permissions:\n  contents: read");
-    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(3);
+    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(2);
   });
 
   it("pins every third-party action to an immutable commit", () => {
@@ -24,7 +24,7 @@ describe("desktop release workflow", () => {
     }
   });
 
-  it("requires signed platform builds before a single publication job", () => {
+  it("requires signed platform builds and never publishes a release", () => {
     expect(workflow).toContain("-c.forceCodeSigning=true");
     expect(workflow).toContain("codesign --verify --deep --strict");
     expect(workflow).toContain("Get-AuthenticodeSignature");
@@ -32,12 +32,12 @@ describe("desktop release workflow", () => {
     expect(workflow).toContain("attestations: write");
     expect(workflow).toContain("actions/attest-build-provenance@");
     expect(workflow).not.toContain("--publish always");
+    expect(workflow).not.toContain("gh release");
+    expect(workflow).not.toContain("--draft");
     expect(workflow).toContain("DESKTOP_MAC_CSC_LINK");
     expect(workflow).toContain("DESKTOP_WIN_CSC_LINK");
     expect(workflow).not.toMatch(/secrets\.DESKTOP_CSC_(?:LINK|KEY_PASSWORD)/);
     expect(workflow).not.toContain("cache: pnpm");
-    expect(workflow).toContain("apps/desktop/out/latest*.yml");
-    expect(workflow).not.toContain("apps/desktop/out/*.yml");
   });
 
   it("notarizes macOS with a short-lived App Store Connect API key file", () => {
@@ -71,27 +71,26 @@ describe("desktop release workflow", () => {
     expect(workflow.split("windows-2022")).toHaveLength(2);
     expect(workflow).toContain(`WINDOWS_BUILT: ${expression("needs.validate.outputs.windows")}`);
     expect(workflow).toContain('if [[ "$WINDOWS_BUILT" == "true" ]]; then');
-    expect(workflow).toContain("feeds+=(release-artifacts/latest.yml)");
+    expect(workflow).toContain("compgen -G 'release-artifacts/*.exe' >/dev/null");
   });
 
-  it("pins every platform update feed to the official GitHub owner and repo", () => {
-    expect(workflow).toContain('grep -Fqx "provider: github"');
-    expect(workflow).toContain('grep -Fqx "owner: elie222"');
-    expect(workflow).toContain('grep -Fqx "repo: aiden"');
-    expect(workflow).toContain("Verify Linux update feed is pinned to the official GitHub channel");
-    expect(workflow).toContain("Windows update config missing");
-    expect(workflow).toContain("RELEASE_VERSION:");
-    expect(workflow).toContain('grep -Fqx "version: $RELEASE_VERSION"');
+  it("has no reference to the original upstream repository", () => {
+    expect(workflow).not.toMatch(/elie222/);
   });
 
-  it("publishes only a complete stable, upgrade-only feed", () => {
+  it("builds artifacts only: no GitHub release, no update feed", () => {
     expect(workflow).toContain("^v([0-9]+)\\.([0-9]+)\\.([0-9]+)$");
-    expect(workflow).toContain("must be newer than published release");
-    expect(workflow).toContain("group: release-desktop-stable");
-    expect(workflow).toContain("latest.yml");
-    expect(workflow).toContain("latest-mac.yml");
-    expect(workflow).toContain("latest-linux.yml");
-    expect(workflow).toContain("--draft --generate-notes");
-    expect(workflow).toContain("--draft=false --latest");
+    expect(workflow).not.toContain("app-update.yml");
+    expect(workflow).not.toContain("latest.yml");
+    expect(workflow).not.toContain("latest-mac.yml");
+    expect(workflow).not.toContain("latest-linux.yml");
+    expect(workflow).not.toContain("release create");
+    expect(workflow).not.toContain("release edit");
+    expect(workflow).toContain("compgen -G 'release-artifacts/*.dmg' >/dev/null");
+    expect(workflow).toContain("compgen -G 'release-artifacts/*.zip' >/dev/null");
+    expect(workflow).toContain("compgen -G 'release-artifacts/*.AppImage' >/dev/null");
+    expect(workflow).toContain("sha256sum > SHA256SUMS");
+    expect(workflow).toContain("actions/upload-artifact@");
+    expect(workflow).toContain("name: desktop-release-");
   });
 });
