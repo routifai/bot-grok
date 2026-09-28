@@ -15,8 +15,6 @@ if (!process.env.VERIFY_PROVIDERS) {
     delete process.env.REALTIME_DATABASE_URL;
   }
 }
-// Existing suites exercise the older multi-bot mode; Muse suites opt in explicitly.
-process.env.AIDEN_PRODUCT_MODE ??= "aiden";
 delete process.env.AXIOM_TOKEN;
 delete process.env.AXIOM_DATASET;
 if (!process.env.VERIFY_LOGGING) {

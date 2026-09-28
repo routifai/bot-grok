@@ -50,7 +50,6 @@ describeJourney("Muse edition journey", () => {
       dataDir,
       sandboxProvider: "fake",
       agentRuntime: "scripted",
-      productMode: "muse",
       composio: new ComposioEmulator(),
     });
     app = handles.app;
