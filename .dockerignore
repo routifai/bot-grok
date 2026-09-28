@@ -23,3 +23,16 @@ playwright-report
 test-results
 verify-report
 *.log
+
+# Local tooling state: agent worktrees are full repo copies, and the code index is local only.
+.claude
+.codegraph
+docs
+# The server image builds only api, worker and web. Keep the other workspaces' manifests so the
+# lockfile still matches the workspace, but leave their sources out of the build context.
+apps/mobile/*
+!apps/mobile/package.json
+apps/desktop/*
+!apps/desktop/package.json
+apps/www/*
+!apps/www/package.json

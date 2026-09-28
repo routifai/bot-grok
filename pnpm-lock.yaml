@@ -74,6 +74,9 @@ importers:
       hono:
         specifier: 4.13.7
         version: 4.13.7
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -387,6 +390,9 @@ importers:
       '@aiden/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
     devDependencies:
       typescript:
         specifier: 7.0.2

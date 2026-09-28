@@ -15,7 +15,8 @@
     "@aiden/core": "workspace:*",
     "@aiden/db": "workspace:*",
     "@aiden/logging": "workspace:*",
-    "@aiden/memory": "workspace:*"
+    "@aiden/memory": "workspace:*",
+    "tsx": "4.23.13"
   },
   "devDependencies": {
     "typescript": "7.0.2",
