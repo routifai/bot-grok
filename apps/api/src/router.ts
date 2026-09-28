@@ -93,15 +93,7 @@ import {
   verifyMcpInstall,
 } from "@aiden/adapters";
 import type { Auth } from "@aiden/auth";
-import type {
-  Actor,
-  Bot,
-  ComputerStatus,
-  McpServer,
-  Me,
-  ProductMode,
-  SpaceNavigation,
-} from "@aiden/contracts";
+import type { Actor, ComputerStatus, McpServer, Me, SpaceNavigation } from "@aiden/contracts";
 import {
   appContract,
   IntegrationProviderIdSchema,
@@ -114,7 +106,6 @@ import {
   containsSecret,
   expandSkillReferencesInPrompt,
   hasMixedOneShotSchedule,
-  isMuseMode,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
 } from "@aiden/core";
@@ -508,8 +499,6 @@ export interface RouterDeps {
   /** Present when the external messaging surface is enabled. */
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
-    /** Defaults to the full Aiden mode when absent. */
-    productMode?: ProductMode;
     agentRuntime: string;
     teamChatJudgeProvider?: string;
     teamChatJudgeModel?: string;
@@ -546,7 +535,7 @@ function mapSpaceLifecycleError(error: unknown): unknown {
   return error;
 }
 
-/** ADR 0001: in muse mode a person has exactly one live Muse; peer-bot creation is locked. */
+/** ADR 0001: a person has exactly one live Muse; peer-bot creation is locked. */
 const MUSE_SINGLE_BOT_MESSAGE = "You already have a Muse. Only one Muse per person is allowed.";
 
 /** The live (non-archived) bot this person already has, if any, for the single-Muse guard. */
@@ -561,68 +550,20 @@ async function findLiveBot(
 }
 
 /**
- * In muse mode, reject creating a second live bot unless this is the
- * idempotent onboarding re-create of the one the person already has (matching
+ * ADR 0001: reject creating a second live bot unless this is the idempotent
+ * onboarding re-create of the one the person already has (matching
  * `spawnKey`, e.g. `spawnKey: "onboarding:first"`) — that path must keep
  * returning the existing bot instead of being locked out.
  */
 export function assertMuseSingleBotAllowed(
-  productMode: ProductMode | undefined,
   liveBot: { spawnKey: string | null } | null,
   requestedSpawnKey: string | null | undefined,
 ): void {
-  if (!isMuseMode(productMode ?? "aiden") || !liveBot) return;
+  if (!liveBot) return;
   const requestedKey = requestedSpawnKey ?? null;
   const isIdempotentRetry = requestedKey !== null && liveBot.spawnKey === requestedKey;
   if (isIdempotentRetry) return;
   throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
-}
-
-const BOT_INTRO_PROMPT =
-  "You were just created. In one reply, say what you understood your role to be from your title, description and instructions, and ask for anything you need to get started.";
-
-/**
- * A freshly created bot otherwise sits silent until someone hands it real work,
- * so a misunderstood role goes unnoticed until it costs a run. Queue one
- * invisible-prompt turn (like a routine or skill test run) so its first
- * message states how it read its own instructions. The executor gives the
- * "created" trigger no tools (see executor.ts), so this turn can only speak.
- */
-export async function enqueueBotIntroRun(deps: RouterDeps, actor: Actor, bot: Bot): Promise<void> {
-  const threadId = bot.threadId;
-  if (!threadId) return;
-  // Scripted is the deterministic test/eval runtime, not a real deployment: an
-  // extra automatic run there competes with whatever response a test or eval
-  // harness queued next, for a bot it doesn't otherwise get to opt out of.
-  if (deps.env.agentRuntime === "scripted") return;
-  // The Muse edition's first-run welcome introduces Aiden instead, without spending a run.
-  if (deps.env.productMode === "muse") return;
-  if ((await modelSetup(deps, actor)).needsModel) return;
-  const run = await deps.prisma.$transaction(async (tx) => {
-    const task = await tx.task.create({
-      data: {
-        spaceId: actor.spaceId,
-        botId: bot.id,
-        threadId,
-        userId: actor.userId,
-        prompt: BOT_INTRO_PROMPT,
-        status: "queued",
-      },
-    });
-    return tx.run.create({
-      data: {
-        spaceId: actor.spaceId,
-        botId: bot.id,
-        threadId,
-        taskId: task.id,
-        userId: actor.userId,
-        status: "queued",
-        trigger: "created",
-      },
-      select: { id: true },
-    });
-  });
-  await deps.jobs.enqueue(runContinueJob(run.id));
 }
 
 export function createRouter(deps: RouterDeps) {
@@ -632,7 +573,6 @@ export function createRouter(deps: RouterDeps) {
     prisma: deps.prisma,
     events: deps.events,
     connectors: deps.connectors,
-    productMode: deps.env.productMode,
   };
   const mcpOAuth = deps.mcpOAuth ?? new McpOAuthBroker(deps.prisma, deps.secrets);
   const groupRepos = createGroupRepos(deps.prisma);
@@ -650,10 +590,9 @@ export function createRouter(deps: RouterDeps) {
     if (!context.actor) throw new ORPCError("UNAUTHORIZED");
     return next({ context: { ...context, actor: context.actor } });
   });
-  const museOnly = authed.use(async ({ next }) => {
-    if (deps.env.productMode !== "muse") throw new ORPCError("NOT_FOUND");
-    return next();
-  });
+  // Muse is the only edition now; these routes (Goals, Asks, Feed, Ideas, followed
+  // topics, Muse settings) no longer need a mode gate, but the alias documents intent.
+  const museOnly = authed;
   const museIdeasDeps: MuseIdeasDeps = {
     prisma: deps.prisma,
     runtime: deps.runtime,
@@ -1149,62 +1088,17 @@ export function createRouter(deps: RouterDeps) {
         return found;
       }),
       create: authed.bots.create.handler(async ({ context, input }) => {
-        if (isMuseMode(deps.env.productMode ?? "aiden")) {
-          const liveBot = await findLiveBot(deps, context.actor);
-          assertMuseSingleBotAllowed(deps.env.productMode, liveBot, input.spawnKey ?? null);
-        }
-        let bot: Bot;
+        const liveBot = await findLiveBot(deps, context.actor);
+        assertMuseSingleBotAllowed(liveBot, input.spawnKey ?? null);
         try {
-          bot = await repos.createBot(context.actor, input);
+          return await repos.createBot(context.actor, input);
         } catch (error) {
           throw mapSpaceLifecycleError(error);
         }
-        await enqueueBotIntroRun(deps, context.actor, bot).catch((error) => {
-          getLogger().error("bot intro run enqueue", error);
-        });
-        return bot;
       }),
-      duplicate: authed.bots.duplicate.handler(async ({ context, input }) => {
-        if (isMuseMode(deps.env.productMode ?? "aiden")) {
-          throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
-        }
-        const source = await repos.getBot(context.actor, input.botId);
-        const duplicate = await repos
-          .createBot(context.actor, {
-            name: duplicateBotName(source.name),
-            title: source.title,
-            description: source.description,
-            instructions: source.instructions,
-            notifyOnFinish: source.notifyOnFinish,
-            color: source.color,
-            computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
-            modelProvider: source.modelProvider,
-            modelId: source.modelId,
-            thinkingLevel: source.thinkingLevel,
-          })
-          .catch((error: unknown) => {
-            throw mapSpaceLifecycleError(error);
-          });
-        const assignments = await deps.prisma.botMcpServer.findMany({
-          where: {
-            botId: source.id,
-            spaceId: context.actor.spaceId,
-            userId: context.actor.userId,
-          },
-        });
-        if (assignments.length) {
-          await deps.prisma.botMcpServer.createMany({
-            data: assignments.map((assignment) => ({
-              spaceId: context.actor.spaceId,
-              userId: context.actor.userId,
-              botId: duplicate.id,
-              serverId: assignment.serverId,
-              allowAllTools: assignment.allowAllTools,
-              allowedTools: assignment.allowedTools as Prisma.InputJsonValue,
-            })),
-          });
-        }
-        return duplicate;
+      // ADR 0001: a person has exactly one live Muse, so duplicating it is always locked.
+      duplicate: authed.bots.duplicate.handler(async () => {
+        throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
       }),
       reorder: authed.bots.reorder.handler(async ({ context, input }) => {
         await repos.reorderBots(context.actor, input.botIds);
@@ -1423,10 +1317,8 @@ export function createRouter(deps: RouterDeps) {
       restore: authed.bots.restore.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId, { includeArchived: true });
         if (!bot.archivedAt) return { ok: true as const };
-        if (isMuseMode(deps.env.productMode ?? "aiden")) {
-          const liveBot = await findLiveBot(deps, context.actor);
-          if (liveBot) throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
-        }
+        const liveBot = await findLiveBot(deps, context.actor);
+        if (liveBot) throw new ORPCError("FORBIDDEN", { message: MUSE_SINGLE_BOT_MESSAGE });
         try {
           if (bot.computer) {
             await restoreBotUnderComputerQuota(deps.prisma, {
@@ -5237,7 +5129,6 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
     avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
-    productMode: deps.env.productMode ?? "aiden",
   };
 }
 

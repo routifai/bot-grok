@@ -16,11 +16,6 @@ describe("loadEnv", () => {
     expect(env.nodeEnv).toBe("test");
   });
 
-  it("defaults to the Muse edition and keeps the older mode only on request", () => {
-    expect(loadEnv(base).productMode).toBe("muse");
-    expect(loadEnv({ ...base, AIDEN_PRODUCT_MODE: "aiden" }).productMode).toBe("aiden");
-  });
-
   it("defaults Pi JSONL session recording to off", () => {
     expect(loadEnv(base).piSessionRecording).toBe(false);
     expect(loadEnv({ ...base, PI_SESSION_RECORDING: "false" }).piSessionRecording).toBe(false);

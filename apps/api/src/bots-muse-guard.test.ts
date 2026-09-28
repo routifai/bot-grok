@@ -4,40 +4,33 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { describe, expect, it, vi } from "vitest";
 import { assertMuseSingleBotAllowed, createRouter, type RouterDeps } from "./router.js";
 
-// ADR 0001: in muse mode a person has exactly one live Muse. `bots.create`,
-// `bots.duplicate`, and `bots.restore` must reject creating a second live bot,
-// except the idempotent onboarding re-create (matching spawnKey), which must
-// keep returning the existing bot rather than being locked out.
+// ADR 0001: a person has exactly one live Muse. `bots.create`, `bots.duplicate`,
+// and `bots.restore` must reject creating a second live bot, except the
+// idempotent onboarding re-create (matching spawnKey), which must keep
+// returning the existing bot rather than being locked out.
 
 describe("assertMuseSingleBotAllowed", () => {
-  it("never blocks outside muse mode", () => {
-    expect(() => assertMuseSingleBotAllowed("aiden", { spawnKey: null }, null)).not.toThrow();
-    expect(() =>
-      assertMuseSingleBotAllowed(undefined, { spawnKey: "onboarding:first" }, null),
-    ).not.toThrow();
+  it("allows the first create when there is no live bot", () => {
+    expect(() => assertMuseSingleBotAllowed(null, null)).not.toThrow();
   });
 
-  it("allows the first create in muse mode when there is no live bot", () => {
-    expect(() => assertMuseSingleBotAllowed("muse", null, null)).not.toThrow();
-  });
-
-  it("rejects a second create in muse mode with no matching spawnKey", () => {
-    expect(() => assertMuseSingleBotAllowed("muse", { spawnKey: null }, null)).toThrow(
+  it("rejects a second create with no matching spawnKey", () => {
+    expect(() => assertMuseSingleBotAllowed({ spawnKey: null }, null)).toThrow(
       /already have a Muse/,
     );
     expect(() =>
-      assertMuseSingleBotAllowed("muse", { spawnKey: "onboarding:first" }, "something-else"),
+      assertMuseSingleBotAllowed({ spawnKey: "onboarding:first" }, "something-else"),
     ).toThrow(/already have a Muse/);
   });
 
   it("allows the idempotent onboarding re-create (matching spawnKey)", () => {
     expect(() =>
-      assertMuseSingleBotAllowed("muse", { spawnKey: "onboarding:first" }, "onboarding:first"),
+      assertMuseSingleBotAllowed({ spawnKey: "onboarding:first" }, "onboarding:first"),
     ).not.toThrow();
   });
 
   it("never treats a missing requested key as matching a bot with no spawnKey", () => {
-    expect(() => assertMuseSingleBotAllowed("muse", { spawnKey: null }, null)).toThrow();
+    expect(() => assertMuseSingleBotAllowed({ spawnKey: null }, null)).toThrow();
   });
 });
 
@@ -73,7 +66,6 @@ function createdBotRow(spawnKey: string | null) {
 }
 
 function routerDeps(
-  productMode: "muse" | "aiden",
   guardLiveBot: { id: string; spawnKey: string | null } | null,
   createdSpawnKey: string | null = null,
 ) {
@@ -105,8 +97,6 @@ function routerDeps(
   const deps = {
     prisma,
     env: {
-      productMode,
-      // Skips enqueueBotIntroRun's model lookup: irrelevant to the guard.
       agentRuntime: "scripted",
       defaultProvider: "fake",
       defaultModel: "fake-model",
@@ -131,8 +121,8 @@ async function call(handler: RPCHandler<{ actor: Actor | null }>, path: string, 
 }
 
 describe("bots.create — muse single-Muse guard", () => {
-  it("rejects a second create in muse mode when a live bot already exists", async () => {
-    const { handler, transaction } = routerDeps("muse", { id: "bot-live", spawnKey: null });
+  it("rejects a second create when a live bot already exists", async () => {
+    const { handler, transaction } = routerDeps({ id: "bot-live", spawnKey: null });
 
     const { response } = await call(handler, "bots/create", { name: "Another Muse" });
 
@@ -142,8 +132,8 @@ describe("bots.create — muse single-Muse guard", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it("allows the first create in muse mode when there is no live bot yet", async () => {
-    const { handler } = routerDeps("muse", null);
+  it("allows the first create when there is no live bot yet", async () => {
+    const { handler } = routerDeps(null);
 
     const { response } = await call(handler, "bots/create", { name: "My Muse" });
 
@@ -154,7 +144,6 @@ describe("bots.create — muse single-Muse guard", () => {
 
   it("keeps the onboarding idempotent re-create working (matching spawnKey)", async () => {
     const { handler } = routerDeps(
-      "muse",
       { id: "bot-existing", spawnKey: "onboarding:first" },
       "onboarding:first",
     );
@@ -166,21 +155,11 @@ describe("bots.create — muse single-Muse guard", () => {
 
     expect(response.status).toBe(200);
   });
-
-  it("leaves aiden mode unaffected", async () => {
-    const { handler, findFirst } = routerDeps("aiden", { id: "bot-live", spawnKey: null });
-
-    const { response } = await call(handler, "bots/create", { name: "Another bot" });
-
-    expect(response.status).toBe(200);
-    // The muse-only guard query never runs outside muse mode.
-    expect(findFirst).not.toHaveBeenCalled();
-  });
 });
 
 describe("bots.duplicate — muse single-Muse guard", () => {
-  it("is locked in muse mode", async () => {
-    const { handler, findFirst } = routerDeps("muse", null);
+  it("is always locked", async () => {
+    const { handler, findFirst } = routerDeps(null);
 
     const { response } = await call(handler, "bots/duplicate", { botId: "bot-1" });
 
@@ -192,7 +171,7 @@ describe("bots.duplicate — muse single-Muse guard", () => {
 });
 
 describe("bots.restore — muse single-Muse guard", () => {
-  function restoreDeps(productMode: "muse" | "aiden", otherLiveBot: boolean) {
+  function restoreDeps(otherLiveBot: boolean) {
     const findFirst = vi.fn(async ({ where }: { where: { archivedAt?: unknown } }) => {
       if ("archivedAt" in where && where.archivedAt === null) {
         return otherLiveBot ? { id: "bot-live-other", spawnKey: null } : null;
@@ -211,7 +190,6 @@ describe("bots.restore — muse single-Muse guard", () => {
     const deps = {
       prisma,
       env: {
-        productMode,
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
@@ -223,8 +201,8 @@ describe("bots.restore — muse single-Muse guard", () => {
     return { handler: new RPCHandler(createRouter(deps)), update };
   }
 
-  it("rejects restoring a second live bot in muse mode", async () => {
-    const { handler, update } = restoreDeps("muse", true);
+  it("rejects restoring a second live bot", async () => {
+    const { handler, update } = restoreDeps(true);
 
     const { response } = await call(handler, "bots/restore", { botId: "bot-archived" });
 
@@ -233,15 +211,7 @@ describe("bots.restore — muse single-Muse guard", () => {
   });
 
   it("allows restoring when it is the person's only bot", async () => {
-    const { handler } = restoreDeps("muse", false);
-
-    const { response } = await call(handler, "bots/restore", { botId: "bot-archived" });
-
-    expect(response.status).toBe(200);
-  });
-
-  it("leaves aiden mode unaffected", async () => {
-    const { handler } = restoreDeps("aiden", true);
+    const { handler } = restoreDeps(false);
 
     const { response } = await call(handler, "bots/restore", { botId: "bot-archived" });
 

@@ -3,11 +3,9 @@ import {
   resolveDeploymentModel,
   resolveSandboxProvider,
 } from "@aiden/adapters";
-import type { ProductMode } from "@aiden/contracts";
 import {
   resolveAuthSecret,
   resolveEncryptionKey,
-  resolveProductMode,
   resolveScreenProxySecret,
   resolveSupervisorToken,
 } from "@aiden/core";
@@ -16,8 +14,6 @@ export { resolveCloudAgentProvider, resolveSandboxProvider } from "@aiden/adapte
 
 export interface AppEnv {
   nodeEnv: string;
-  /** The full Aiden mode, or the single-Muse edition. */
-  productMode: ProductMode;
   desktopStackToken?: string;
   databaseUrl: string;
   realtimeDatabaseUrl: string;
@@ -100,7 +96,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const deploymentModel = resolveDeploymentModel(source);
   return {
     nodeEnv: source.NODE_ENV ?? "",
-    productMode: resolveProductMode(source),
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
     desktopStackToken: optional(source.AIDEN_DESKTOP_STACK_TOKEN),
