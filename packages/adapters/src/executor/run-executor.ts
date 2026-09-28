@@ -3974,18 +3974,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
             markUnread: completionMarksUnread(run.trigger, text),
           });
           if (!completed) return;
-          if (
-            isMuseMode(deps.productMode ?? "aiden") &&
-            run.trigger === "user" &&
-            replyAsksToSaveSkill(text)
-          ) {
-            await queueSkillOfferFollowUp(deps, {
-              id: runId,
-              spaceId: run.spaceId,
-              botId: bot.id,
-              threadId: thread.id,
-              userId: run.userId,
-            }).catch((error) => getLogger().error("skill offer follow-up", error));
+          if (isMuseMode(deps.productMode ?? "aiden") && run.trigger === "user") {
+            await queueSkillOfferFollowUp(
+              deps,
+              {
+                id: runId,
+                spaceId: run.spaceId,
+                botId: bot.id,
+                threadId: thread.id,
+                userId: run.userId,
+              },
+              { askedInText: replyAsksToSaveSkill(text) },
+            ).catch((error) => getLogger().error("skill offer follow-up", error));
           }
           if (completed.continuationRunId) {
             await deps.jobs
