@@ -78,6 +78,22 @@ export const UpdateGoalInput = z.object({
   timezone: z.string().optional(),
 });
 
+/**
+ * Episodic memory (CONTEXT.md "Episode"): one short, dated record of a finished task,
+ * written automatically and recalled by the Muse or shown to the person in Memory
+ * settings.
+ */
+export const EpisodeSchema = z.object({
+  id: Id,
+  title: z.string(),
+  summary: z.string(),
+  links: z.array(z.string()),
+  tools: z.array(z.string()),
+  goalId: Id.nullable(),
+  createdAt: z.string(),
+});
+export type Episode = z.infer<typeof EpisodeSchema>;
+
 export const AskKindSchema = z.enum([
   "approval",
   "question",

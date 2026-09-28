@@ -85,6 +85,7 @@ import {
 import {
   AnswerAskInput,
   AskSchema,
+  EpisodeSchema,
   FeedSchema,
   FollowedTopicSchema,
   GoalSchema,
@@ -856,6 +857,12 @@ export const appContract = {
     updateSettings: oc
       .input(MuseSettingsSchema.partial().safeExtend({ botId: Id }))
       .output(MuseSettingsSchema),
+  },
+  episodes: {
+    list: oc
+      .input(z.object({ botId: Id, limit: z.number().int().positive().max(200).optional() }))
+      .output(z.array(EpisodeSchema)),
+    remove: oc.input(z.object({ episodeId: Id })).output(z.object({ ok: z.literal(true) })),
   },
 };
 

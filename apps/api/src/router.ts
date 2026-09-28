@@ -190,6 +190,7 @@ import {
   updateMemoryProviderDefaultScope,
 } from "./memory-provider-config.js";
 import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
+import { listEpisodes, type MuseEpisodesDeps, removeEpisode } from "./muse-episodes.js";
 import {
   followTopic,
   listFeedPosts,
@@ -603,6 +604,7 @@ export function createRouter(deps: RouterDeps) {
     ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
   };
   const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma, jobs: deps.jobs };
+  const museEpisodesDeps: MuseEpisodesDeps = { prisma: deps.prisma };
 
   return os.router({
     aiConsent: {
@@ -4944,6 +4946,14 @@ export function createRouter(deps: RouterDeps) {
         );
         return settings;
       }),
+    },
+    episodes: {
+      list: museOnly.episodes.list.handler(({ context, input }) =>
+        listEpisodes(museEpisodesDeps, context.actor, input),
+      ),
+      remove: museOnly.episodes.remove.handler(({ context, input }) =>
+        removeEpisode(museEpisodesDeps, context.actor, input.episodeId),
+      ),
     },
   });
 }
