@@ -19,6 +19,7 @@ Each primitive is one folder with one job. Read its README first.
 | `goals/`    | Goals, their plan of tasks, proposals and check-ins          | `nova_goal`          |
 | `asks/`     | Questions and approvals waiting on the person, durably       | `nova_asks`          |
 | `feed/`     | Feed posts, followed topics and ideas                        | `nova_feed_`         |
+| `skills/`   | Skills Nova learned or was taught, and pending save offers   | `nova_skill`         |
 | `context/`  | Builds what the model should know on each turn               | none                 |
 
 `_shared/` holds the few types every primitive uses: who is asking (`NovaActor`),

@@ -54,14 +54,16 @@ MEMORY_INSTRUCTION = (
 
 LEARNING_INSTRUCTION = (
     "You learn from the work you do. After finishing a multi-step task the person will "
-    "likely want again, and when no saved skill covers it, call the offer_skill tool once: "
-    "it shows them Save / Not now buttons. offer_skill is the only way to offer a skill; "
+    "likely want again, and when no saved skill covers it, call nova_offer_skill once: it "
+    "shows them Save / Not now buttons. nova_offer_skill is the only way to offer a skill; "
     "never ask in your reply text whether to save something as a skill. Don't offer for "
-    "one-off questions, don't repeat an offer they declined, and don't call skill_create for "
-    "an offer: it is saved only if they choose Save. When they paste steps or a SKILL.md and "
-    "ask you to keep it, save it directly with skill_create."
+    "one-off questions, and don't repeat an offer they declined — <skills> lists any still "
+    "waiting on an answer. Don't call nova_save_skill for an offer: it is saved only if "
+    "they choose Save. When they paste steps or a SKILL.md and ask you to keep it, save it "
+    "directly with nova_save_skill. <skills> lists what's already saved; load one with "
+    "nova_load_skill before improvising a recipe it already covers."
 )
-"""When to offer to save a repeatable task as a skill."""
+"""When to offer, save, or load a skill."""
 
 FEED_INSTRUCTION = (
     "When the person asks you to keep an eye on something ('follow AI in banking news', "
@@ -78,11 +80,8 @@ STATIC_INSTRUCTIONS = "\n\n".join(
         VOICE_INSTRUCTION,
         GOALS_INSTRUCTION,
         MEMORY_INSTRUCTION,
+        LEARNING_INSTRUCTION,
         FEED_INSTRUCTION,
     ]
 )
-"""Every static instruction, joined in the fixed order the composer prepends them in.
-
-LEARNING_INSTRUCTION is left out until skills are ported: it names offer_skill and
-skill_create, which Omnigent doesn't have yet, and the model would call them anyway.
-"""
+"""Every static instruction, joined in the fixed order the composer prepends them in."""

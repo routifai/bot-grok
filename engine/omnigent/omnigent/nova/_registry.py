@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 # Order matters only for context: sections also carry their own priority.
-PRIMITIVES = ("memory", "episodes", "goals", "asks", "feed", "context")
+PRIMITIVES = ("memory", "episodes", "goals", "asks", "feed", "skills", "context")
 
 SectionProvider = Callable[[ContextRequest], Awaitable[ContextSection | None]]
 
