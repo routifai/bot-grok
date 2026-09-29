@@ -716,6 +716,11 @@ async def _best_effort_stop(
 # custom-lint: disable-next=workspace-scoped-cache -- set of Task objects
 _detached_stop_tasks: set[asyncio.Task[None]] = set()
 
+# Strong references to Nova's fire-and-forget episode recording, for the same
+# reason (see omnigent/nova/episodes/observer.py).
+# custom-lint: disable-next=workspace-scoped-cache -- set of Task objects
+_nova_episode_tasks: set[asyncio.Task[None]] = set()
+
 # Deferred archive stops still inside the undo grace, keyed by session id.
 # Scheduling a stop cancels the session's prior pending one, and an unarchive
 # cancels it outright — so a stale timer from an earlier archive can't fire
@@ -7979,6 +7984,24 @@ async def _relay_runner_stream_once(
                                         session_id,
                                         _usage_conv,
                                     )
+
+                            # Nova: best-effort episode recording for a
+                            # private session's finished turn.
+                            # Fire-and-forget and internally guarded (see
+                            # omnigent/nova/episodes/observer.py) so a
+                            # failure here can never affect this relay.
+                            if current_response_id is not None:
+                                from omnigent.nova.episodes.observer import (
+                                    on_turn_completed as _nova_on_turn_completed,
+                                )
+
+                                _nova_task = asyncio.create_task(
+                                    _nova_on_turn_completed(
+                                        conversation_store, session_id, current_response_id
+                                    )
+                                )
+                                _nova_episode_tasks.add(_nova_task)
+                                _nova_task.add_done_callback(_nova_episode_tasks.discard)
 
                     # Reset the turn-scoped response_id on any
                     # terminal event so it doesn't leak to the
