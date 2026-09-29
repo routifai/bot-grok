@@ -305,6 +305,11 @@ if _hindsight_available():
         }
     )
 
+# Nova's primitives contribute built-in tools (omnigent/nova/*/tools.py).
+from omnigent.nova import tools as _nova_tools  # noqa: E402
+
+_BUILTIN_REGISTRY.update(_nova_tools())
+
 # Canonical set of every reserved builtin name. Derived from
 # the registry so there is a single source of truth — no drift
 # between the reserved-name check and the factory dispatch.

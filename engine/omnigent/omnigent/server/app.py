@@ -3263,6 +3263,19 @@ def create_app(
         prefix="/v1",
         tags=["sharing"],
     )
+    # Nova: personal-AI primitives (omnigent/nova), mounted under /v1/nova.
+    if permission_store is not None:
+        from omnigent.nova import include_routers as _include_nova_routers
+        from omnigent.nova._shared import NovaDeps
+
+        _include_nova_routers(
+            app,
+            NovaDeps(
+                storage_location=permission_store.storage_location,
+                auth_provider=auth_provider,
+                conversation_store=conversation_store,
+            ),
+        )
     # First-class projects (owner-private session containers). Mounted only
     # when a project store is wired; the endpoints self-scope to the caller.
     if project_store is not None:
