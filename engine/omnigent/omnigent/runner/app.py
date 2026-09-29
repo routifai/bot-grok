@@ -177,6 +177,11 @@ from omnigent.runner.subagent_routing import (
     routing_class_from_snapshot,
     session_routing_class,
 )
+from omnigent.runtime.context_provider import (
+    context_provider_configured,
+    extract_turn_input_text,
+    fetch_deployment_context,
+)
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager, NoLiveHarnessError
 from omnigent.runtime.prompt import (
     build_instructions,
@@ -1311,6 +1316,56 @@ class InstructionComposition:
 # system_prompt param. See the harness-conditional swap in
 # _stream_message_to_harness.
 _GATED_COMPOSED_INSTRUCTION_HARNESSES = frozenset({"opencode-native", "hermes"})
+
+
+async def _append_deployment_context(
+    instructions: str | None,
+    *,
+    server_client: httpx.AsyncClient,
+    session_id: str,
+    agent_name: str | None,
+    harness_name: str | None,
+    turn_input: str,
+) -> str | None:
+    """Append the ``OMNIGENT_CONTEXT_PROVIDER_URL`` deployment-context hook
+    result to a turn's composed instructions.
+
+    A no-op (returns ``instructions`` unchanged, no network call at all) when
+    the provider URL is unset — this runs on every turn, so unconfigured
+    deployments must not pay even a env-lookup-triggered branch cost beyond
+    the cheap unset check. Session labels are only fetched when a provider
+    is actually configured.
+
+    :param instructions: The turn's already-composed instructions (author +
+        framework text), or ``None``.
+    :param server_client: Omnigent server client, used to resolve the
+        session's labels.
+    :param session_id: Session/conversation id.
+    :param agent_name: The dispatched agent's name/id for this turn.
+    :param harness_name: Canonical harness name for this turn.
+    :param turn_input: The latest user message text for this turn.
+    :returns: *instructions* with the deployment-context block appended, or
+        unchanged when unconfigured/unavailable/empty.
+    """
+    if not context_provider_configured():
+        return instructions
+    labels = await _session_labels_for_runner_spawn(
+        server_client=server_client,
+        session_id=session_id,
+    )
+    block = await fetch_deployment_context(
+        session_id=session_id,
+        agent_name=agent_name,
+        harness=harness_name,
+        # The runner doesn't see the authenticated caller identity — that's
+        # resolved by the server's auth layer, upstream of this process.
+        user_id=None,
+        labels=labels,
+        turn_input=turn_input,
+    )
+    if not block:
+        return instructions
+    return (instructions or "") + block
 
 
 def _wrap_as_message_event(body: _JsonObject) -> _JsonObject:
@@ -8884,6 +8939,14 @@ def create_runner_app(
                             _bg_delivery.value,
                             extra={"session_id": conv},
                         )
+            instructions = await _append_deployment_context(
+                instructions,
+                server_client=server_client,
+                session_id=conv,
+                agent_name=_dispatched_agent_id,
+                harness_name=harness_name,
+                turn_input=extract_turn_input_text(msg_body.get("content")),
+            )
 
         ctx = TurnDispatch(
             agent_id=_dispatched_agent_id,
@@ -9501,6 +9564,17 @@ def create_runner_app(
                                     _instr_spec_ds, _per_req_instr, []
                                 ),
                             }
+                        _base_instr_ds = cast(str | None, _instr_body.get("instructions"))
+                        _instr_with_context = await _append_deployment_context(
+                            _base_instr_ds,
+                            server_client=server_client,
+                            session_id=conv_id,
+                            agent_name=_turn_agent_id,
+                            harness_name=harness_name,
+                            turn_input=extract_turn_input_text(body.get("input")),
+                        )
+                        if _instr_with_context != _base_instr_ds:
+                            _instr_body = {**_instr_body, "instructions": _instr_with_context}
                         if _authored_ds and harness_name:
                             _ds_caps = harness_capabilities().get(harness_name)
                             _ds_delivery = (
