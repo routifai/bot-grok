@@ -17,6 +17,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const BUNDLES = [
   { dir: "nova-pi", name: "nova-pi", harness: "pi", modelEnv: "NOVA_PI_MODEL" },
   { dir: "nova-claude", name: "nova-claude", harness: "claude-sdk", modelEnv: "NOVA_CLAUDE_MODEL" },
+  {
+    dir: "nova-openai",
+    name: "nova-openai",
+    harness: "openai-agents",
+    modelEnv: "NOVA_OPENAI_MODEL",
+  },
+  { dir: "nova-codex", name: "nova-codex", harness: "codex", modelEnv: "NOVA_CODEX_MODEL" },
 ];
 
 function render(template, values) {

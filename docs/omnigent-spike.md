@@ -3,7 +3,8 @@
 Nova is moving its agent loop onto [Omnigent](https://github.com/omnigent-ai/omnigent) (vendored
 read-only at `engine/omnigent/`, upstream `omnigent-main`): Omnigent runs the agent loop, tools,
 policies, and harness switching; Nova stays the context layer and product UI. This spike lets one
-Nova Conversation turn run on Omnigent (the `pi` or `claude-sdk` harness) with Nova's person
+Nova Conversation turn run on Omnigent, on whichever harness the person has chosen for their Muse
+(`pi`, `claude`, `openai`, or `codex` — see "Choosing a harness" below), with Nova's person
 context injected into the instructions, entirely behind the `NOVA_ENGINE=omnigent` flag. With the
 flag unset, nothing here changes — the existing engine (`packages/adapters/src/executor/`) is
 untouched and still the default.
@@ -23,18 +24,27 @@ untouched and still the default.
   no memory, scratchpad, Goals, or episodes. See
   `packages/adapters/src/omnigent/context-provider.test.ts` for the canary-string isolation
   tests.
-- **Agent bundles** — `infra/omnigent/agents/nova-pi/` and `infra/omnigent/agents/nova-claude/`,
-  each a directory-bundle agent (`config.yaml` + `AGENTS.md`) generated from one shared template
-  (`infra/omnigent/templates/`) by `node infra/omnigent/render-agents.mjs`, so the two harness
+- **Agent bundles** — `infra/omnigent/agents/nova-{pi,claude,openai,codex}/`, each a
+  directory-bundle agent (`config.yaml` + `AGENTS.md`) generated from one shared template
+  (`infra/omnigent/templates/`) by `node infra/omnigent/render-agents.mjs`, so the four harness
   variants differ only in `executor.config.harness`/`model`. Tools are `web_search` and
   `web_fetch` builtins only for week 1. `AGENTS.md` just says to follow
   `<deployment_context>` — all the real per-turn instructions arrive through the context-provider
   hook.
+- **Harness catalog** — `packages/adapters/src/omnigent/harnesses.ts` is the single source of
+  truth mapping each `NovaHarnessId` (`pi` | `claude` | `openai` | `codex`,
+  `packages/contracts/src/engine.ts`) to its built-in agent bundle name and to the env var that
+  must be set for it to be usable. `engine.info` / `engine.setHarness`
+  (`packages/contracts/src/rpc.ts`, implemented in `apps/api/src/engine-info.ts`) let a person
+  see and choose their Muse's harness; the choice persists on `Bot.museHarness`.
 - **Gateway** — `packages/adapters/src/omnigent/client.ts` (a small typed REST client:
-  create/get sessions, post a message event, stream SSE, list items — no SDK, just `fetch` and a
-  tiny SSE parser mirroring `apps/mobile/lib/api.ts`'s `subscribeThread`) and
-  `packages/adapters/src/omnigent/gateway.ts` (`runTurnOnOmnigent`): gets or creates the Muse's
-  Omnigent session (one per bot, id stored in the new `omnigent_sessions` table), posts the
+  create/get sessions, post a message event, stream SSE, list items, switch a session's agent —
+  no SDK, just `fetch` and a tiny SSE parser mirroring `apps/mobile/lib/api.ts`'s
+  `subscribeThread`) and `packages/adapters/src/omnigent/gateway.ts` (`runTurnOnOmnigent`): gets
+  or creates the Muse's Omnigent session (one per bot, id and current agent name stored in the
+  `omnigent_sessions` table), switches the session to the bot's chosen harness first if it's
+  running a different one (`POST /sessions/{id}/switch-agent`, idle-only — a failed switch is
+  logged and the turn continues on the session's current agent instead of failing), posts the
   turn's message, waits for `response.completed`, and writes the final assistant text into the
   Nova thread with the same `ThreadEvents.finalizeRun` helper the existing engine uses — so the
   web app shows it like any other bot reply.
@@ -44,6 +54,21 @@ untouched and still the default.
   is unset. Both `apps/worker` and `apps/api` (which also runs job handlers when
   `WAKEUP_DRIVER=memory`) wire this identically through
   `packages/adapters/src/omnigent/env.ts`'s `omnigentGatewayDepsFromEnv`.
+
+### Choosing a harness
+
+`engine.info({ botId })` returns whether the engine is enabled, the Muse's currently active
+harness (`null` when disabled, otherwise defaulting to `"pi"`), and the full harness catalog with
+per-harness availability computed from the API process's own env (missing key → `available:
+false` and an `unavailableReason` naming the variable to set). `engine.setHarness({ botId,
+harness })` persists a choice to `Bot.museHarness`, rejecting an unavailable harness or a call
+made while the engine isn't enabled. A person can switch mid-Conversation: the next turn's
+gateway call detects the mismatch against the session's recorded agent and calls switch-agent
+before posting the turn (see "Gateway" above).
+
+`Bot.museHarness` is `null` by default, meaning "use the deployment default" — today's single
+`OMNIGENT_AGENT_NAME` env var, resolved to a harness id for backwards compatibility with a
+deployment that hasn't adopted per-Muse choice yet.
 
 ### Eligibility (what actually runs on Omnigent)
 
@@ -59,9 +84,12 @@ this integration doesn't cover those yet.
 | `NOVA_ENGINE` | `apps/api`, `apps/worker` | Set to `omnigent` to route eligible runs through the gateway. Unset (default) keeps the existing engine. |
 | `OMNIGENT_URL` | `apps/api`, `apps/worker` | Base URL of the Omnigent server, e.g. `http://127.0.0.1:8000`. Required when `NOVA_ENGINE=omnigent`. |
 | `OMNIGENT_PROXY_SECRET` | `apps/api`, `apps/worker` | Shared secret sent as `X-Omnigent-Proxy-Secret` on every gateway call, alongside `X-Forwarded-Email` (the person's email) for Omnigent's header-auth mode. Required when `NOVA_ENGINE=omnigent`. |
-| `OMNIGENT_AGENT_NAME` | `apps/api`, `apps/worker` | Which built-in agent bundle to run turns on. Defaults to `nova-pi`; set to `nova-claude` to use the Claude Agent SDK harness instead. |
+| `OMNIGENT_AGENT_NAME` | `apps/api`, `apps/worker` | Which built-in agent bundle a Muse runs on when it has no `museHarness` choice of its own (deployment default). Defaults to `nova-pi`; set to `nova-claude`/`nova-openai`/`nova-codex` to change it. Superseded per-Muse by `engine.setHarness`. |
 | `OMNIGENT_CONTEXT_PROVIDER_SECRET` | `apps/api` | Bearer secret the context-provider route requires. **Unset 404s the route entirely** — set this to enable the endpoint. |
-| `NOVA_PI_MODEL` / `NOVA_CLAUDE_MODEL` | Omnigent server process | Model id substituted into the generated `nova-pi`/`nova-claude` bundles' `executor.config.model` (`${NOVA_PI_MODEL}` / `${NOVA_CLAUDE_MODEL}`). Omnigent expands `${VAR}` server-side for built-in agents loaded via `OMNIGENT_BUILTIN_AGENT_DIRS`. Use a model id valid for that harness's configured provider, e.g. a Databricks/Anthropic Claude model id. |
+| `OPENROUTER_API_KEY` / `AIDEN_LOCAL_MODELS_URL` | `apps/api` | Either makes the `pi` harness available in `engine.info`'s catalog (Pi routes through OpenRouter or a locally configured OpenAI-compatible server). |
+| `ANTHROPIC_API_KEY` | `apps/api` | Makes the `claude` harness (Claude Agent SDK) available in `engine.info`'s catalog. |
+| `OPENAI_API_KEY` | `apps/api` | Makes both the `openai` (OpenAI Agents SDK) and `codex` (OpenAI's coding agent) harnesses available in `engine.info`'s catalog. |
+| `NOVA_PI_MODEL` / `NOVA_CLAUDE_MODEL` / `NOVA_OPENAI_MODEL` / `NOVA_CODEX_MODEL` | Omnigent server process | Model id substituted into the matching generated bundle's `executor.config.model` (`${NOVA_PI_MODEL}`, etc.). Omnigent expands `${VAR}` server-side for built-in agents loaded via `OMNIGENT_BUILTIN_AGENT_DIRS`. Use a model id valid for that harness's configured provider, e.g. a Databricks/Anthropic Claude model id for `NOVA_CLAUDE_MODEL`. |
 
 ## Running Omnigent locally against Nova
 
@@ -71,7 +99,7 @@ From the repo root, with Nova's API running on `127.0.0.1:3100` (the default):
 export OMNIGENT_CONTEXT_PROVIDER_URL=http://127.0.0.1:3100/internal/omnigent/context
 export OMNIGENT_CONTEXT_PROVIDER_SECRET=some-long-random-dev-secret
 export OMNIGENT_AUTH_HEADER_SECRET=some-long-random-dev-secret   # see Open Questions below
-export OMNIGENT_BUILTIN_AGENT_DIRS="$(pwd)/infra/omnigent/agents/nova-pi:$(pwd)/infra/omnigent/agents/nova-claude"
+export OMNIGENT_BUILTIN_AGENT_DIRS="$(pwd)/infra/omnigent/agents/nova-pi:$(pwd)/infra/omnigent/agents/nova-claude:$(pwd)/infra/omnigent/agents/nova-openai:$(pwd)/infra/omnigent/agents/nova-codex"
 
 uv run --project engine/omnigent omnigent server
 ```
@@ -130,8 +158,14 @@ additive and unused by the existing engine.
   progress line; week 1 skips it entirely (`response.output_item.*` events for non-message items
   are ignored) since the turn is otherwise text-only.
 - **Agent id lookup happens once per bot, not cached across bots.** `ensureOmnigentSession` calls
-  `GET /api/agents` by name the first time a bot talks to Omnigent, then remembers the session id
-  from then on. If the built-in agent bundle is ever re-registered under a new id (e.g. after
-  changing its `name`), existing bots will keep talking to the *session* they already created
-  (unaffected) but a *new* bot's first turn would resolve whatever id currently answers to that
-  name — should be fine as long as bundle names stay stable.
+  `GET /api/agents` by name the first time a bot talks to Omnigent (and again on every harness
+  switch), then remembers the session id from then on. If the built-in agent bundle is ever
+  re-registered under a new id (e.g. after changing its `name`), existing bots will keep talking
+  to the *session* they already created (unaffected) but a *new* bot's first turn — or a
+  switch — would resolve whatever id currently answers to that name — should be fine as long as
+  bundle names stay stable.
+- **Harness switching has no user-visible feedback beyond the next reply.** A failed
+  switch-agent call (session unexpectedly busy, target bundle failed to load) is only logged; the
+  turn still completes on the previous harness with no signal to the person that their choice
+  didn't take effect yet. The next turn retries the switch. Worth surfacing if this turns out to
+  happen often in practice.
