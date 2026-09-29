@@ -1487,7 +1487,12 @@ def _response_failed_payload(
     source: str = "execution",
 ) -> _JsonObject:
     """Build a failure envelope with required error fields and a legacy mirror."""
-    failure_error = {**_normalize_turn_error(error), **error}
+    # Normalized fields go LAST: _normalize_turn_error guarantees non-empty
+    # code/message, but merging it first let a raw error's own blank/missing
+    # "message" (present as a key with "" or None, not merely absent) win the
+    # spread and reach the client as a message-less response.failed/response.error
+    # event. Any other field *error* carries (e.g. "type") still passes through.
+    failure_error = {**error, **_normalize_turn_error(error)}
     return {
         "type": "response.failed",
         "source": source,

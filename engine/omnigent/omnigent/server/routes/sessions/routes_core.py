@@ -194,6 +194,8 @@ from omnigent.server.routes._sessions.orchestration import (
 from omnigent.server.schemas import (
     AutomaticSessionRenameRequest,
     AutomaticSessionRenameResponse,
+    BuiltinToolExecuteRequest,
+    BuiltinToolExecuteResponse,
     CreatedSessionResponse,
     DeploymentContextRequest,
     DeploymentContextResponse,
@@ -1380,6 +1382,80 @@ def register_core_routes(
             turn_input=body.turn_input,
         )
         return DeploymentContextResponse(block=block)
+
+    @router.post(
+        "/sessions/{session_id}/builtin-tools/execute",
+        response_model=BuiltinToolExecuteResponse,
+        # Internal runner callback — hidden like deployment-context above.
+        include_in_schema=False,
+    )
+    async def execute_builtin_tool_on_server(
+        request: Request,
+        response: Response,
+        session_id: str,
+        body: BuiltinToolExecuteRequest,
+    ) -> BuiltinToolExecuteResponse:
+        """
+        Run a server-only builtin tool on the runner's behalf.
+
+        Nova's ``nova_*`` tools (memory, goals, episodes, asks, feed, skills)
+        need the Omnigent database — the conversation store, permission
+        grants, and Nova's own tables — which a runner process (a person's
+        laptop or a sandbox container) has no access to. The runner POSTs
+        here instead of dispatching the call in-process; only names in
+        ``SERVER_BUILTIN_NAMES`` may run this way. The server resolves the
+        session's conversation id and identity itself rather than trusting
+        anything a runner could forward.
+
+        Only the session owner may call it, exactly like
+        ``deployment-context`` above: both runner kinds (a managed-sandbox
+        runner with a bearer token minted for the owner, and a local
+        ``omnigent host`` runner with the owner's own credential)
+        authenticate as the owner already.
+
+        :param request: The incoming FastAPI request (for auth).
+        :param response: The FastAPI response (for cache headers).
+        :param session_id: Session/conversation identifier.
+        :param body: The tool name and its JSON-encoded arguments.
+        :returns: ``{"output": "..."}`` — the tool's raw ``invoke`` result.
+        :raises OmnigentError: 404 if no session exists / not accessible;
+            400 if ``tool_name`` is not a server-executable builtin.
+        """
+        from omnigent.tools.base import ToolContext
+        from omnigent.tools.builtins import SERVER_BUILTIN_NAMES, get_builtin_tool
+
+        response.headers["Cache-Control"] = "no-store"
+        user_id = _get_user_id(request, auth_provider)
+        access = await _require_access_and_level(
+            user_id, session_id, LEVEL_OWNER, permission_store, conversation_store
+        )
+        conv = access.conversation
+        if conv is None:
+            conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+        if conv is None:
+            raise _session_not_found()
+
+        if body.tool_name not in SERVER_BUILTIN_NAMES:
+            raise OmnigentError(
+                f"{body.tool_name!r} is not a server-executable builtin tool",
+                code=ErrorCode.INVALID_INPUT,
+            )
+        tool = get_builtin_tool(body.tool_name)
+        if tool is None:  # pragma: no cover — SERVER_BUILTIN_NAMES always registers
+            raise OmnigentError(
+                f"builtin tool {body.tool_name!r} is not registered",
+                code=ErrorCode.INVALID_INPUT,
+            )
+
+        # The server sets conversation_id and agent_id from its own resolved
+        # session row — never from anything the runner could have supplied.
+        ctx = ToolContext(
+            task_id=session_id,
+            agent_id=conv.agent_id or "server-builtin-tool",
+            conversation_id=session_id,
+        )
+        output = await asyncio.to_thread(tool.invoke, body.arguments, ctx)
+        return BuiltinToolExecuteResponse(output=output)
 
     # ── GET /sessions ───────────────────────────────────────────
 

@@ -1855,6 +1855,37 @@ class DeploymentContextResponse(BaseModel):
     block: str = ""
 
 
+class BuiltinToolExecuteRequest(BaseModel):
+    """
+    Request body for ``POST /v1/sessions/{id}/builtin-tools/execute``.
+
+    Sent by the runner when the LLM calls a server-only builtin (Nova's
+    ``nova_*`` family — see ``SERVER_BUILTIN_NAMES`` in
+    ``omnigent/tools/builtins/__init__.py``): one that needs the Omnigent
+    database, which a runner process has no access to.
+
+    :param tool_name: The builtin's registered name, e.g. ``"nova_remember"``.
+        Must be a member of ``SERVER_BUILTIN_NAMES`` — the server rejects
+        anything else.
+    :param arguments: The LLM's JSON-encoded arguments string, forwarded
+        verbatim to the tool's ``invoke``.
+    """
+
+    tool_name: str
+    arguments: str = "{}"
+
+
+class BuiltinToolExecuteResponse(BaseModel):
+    """
+    Response body for ``POST /v1/sessions/{id}/builtin-tools/execute``.
+
+    :param output: The tool's ``invoke`` return value — a JSON string the
+        runner forwards to the harness verbatim as the tool's result.
+    """
+
+    output: str
+
+
 # Stages of a managed-sandbox launch, in pipeline order: the sandbox
 # is provisioned, the repository workspace is cloned into it (skipped
 # when the session has no repo workspace), the in-sandbox host starts

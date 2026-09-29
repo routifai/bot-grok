@@ -11821,6 +11821,32 @@ def test_response_failed_event_llm_source_is_preserved() -> None:
     assert payload["source"] == "llm"
 
 
+@pytest.mark.parametrize("blank_message", ["", None])
+def test_response_failed_payload_never_carries_a_blank_message(blank_message: str | None) -> None:
+    """A caller's own blank/missing ``message`` must not survive the merge.
+
+    ``_normalize_turn_error`` computes a safe fallback message, but merging
+    it BEFORE the raw error let the raw error's own ``"message": ""`` (or
+    ``None``) key win the dict-spread and reach the client as a message-less
+    ``response.failed`` event — exactly the "generic turn failed with no
+    message" symptom. Regression for that merge order.
+    """
+    from omnigent.runner.app import _response_failed_payload
+
+    payload = _response_failed_payload({"code": "runner_error", "message": blank_message})
+    assert payload["error"]["message"]
+    assert payload["response"]["error"]["message"]
+
+
+def test_response_failed_payload_keeps_a_real_message() -> None:
+    """A caller's real message is untouched by the normalize-then-merge."""
+    from omnigent.runner.app import _response_failed_payload
+
+    payload = _response_failed_payload({"code": "connection_error", "message": "socket reset"})
+    assert payload["error"]["message"] == "socket reset"
+    assert payload["error"]["code"] == "connection_error"
+
+
 # ---------------------------------------------------------------------------
 # Steering an in-flight sub-agent turn instead of bouncing the send.
 #

@@ -127,6 +127,17 @@ def test_builtin_names_size_matches_registry() -> None:
                 "hindsight_retain",
                 "hindsight_recall",
                 "hindsight_reflect",
+                # Nova (omnigent/nova): run on the server; see SERVER_BUILTIN_NAMES.
+                "nova_remember",
+                "nova_recall_episodes",
+                "nova_goals",
+                "nova_ask_user",
+                "nova_follow_topic",
+                "nova_unfollow_topic",
+                "nova_post_to_feed",
+                "nova_offer_skill",
+                "nova_save_skill",
+                "nova_load_skill",
                 # Framework-owned (need runtime context, not
                 # user-instantiable). Policy ASKs surface as
                 # MCP-shape elicitations on the SSE stream and

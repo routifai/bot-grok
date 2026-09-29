@@ -75,6 +75,7 @@ from omnigent.tools.builtins.web_search import WebSearchTool
 __all__ = [
     "BUILTIN_NAMES",
     "INSTANTIABLE_BUILTINS",
+    "SERVER_BUILTIN_NAMES",
     "ListCommentsTool",
     "LoadSkillTool",
     "NimbleExtractTool",
@@ -308,7 +309,18 @@ if _hindsight_available():
 # Nova's primitives contribute built-in tools (omnigent/nova/*/tools.py).
 from omnigent.nova import tools as _nova_tools  # noqa: E402
 
-_BUILTIN_REGISTRY.update(_nova_tools())
+_nova_tool_factories = _nova_tools()
+_BUILTIN_REGISTRY.update(_nova_tool_factories)
+
+# Nova's tools read/write the Omnigent database (conversation store,
+# permission grants, Nova's own tables) through process-global state that
+# only the server initializes. A runner process — a person's laptop or a
+# sandbox container — has no such access, so these names must never be
+# executed in-process on the runner; the runner instead proxies them to a
+# server endpoint (see ``execute_tool`` in omnigent/runner/tool_dispatch.py).
+# Derived from the same factories registered above so there is one source
+# of truth for "which builtins are Nova's".
+SERVER_BUILTIN_NAMES: frozenset[str] = frozenset(_nova_tool_factories.keys())
 
 # Canonical set of every reserved builtin name. Derived from
 # the registry so there is a single source of truth — no drift

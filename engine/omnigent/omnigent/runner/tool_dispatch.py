@@ -11,6 +11,10 @@ Tool categories:
 - _REST_TOOLS: call server REST APIs (sys_call_async, sys_cancel_async)
 - _FILE_TOOLS: call server file APIs (sys_upload/download/list_files)
 - _TERMINAL_TOOLS: runner-local TerminalRegistry
+- SERVER_BUILTIN_NAMES (omnigent.tools.builtins): Nova's ``nova_*`` tools,
+  which need the Omnigent database — proxied to
+  ``POST /v1/sessions/{id}/builtin-tools/execute`` over ``server_client``,
+  the same posture as ``_SCHEDULED_TASK_TOOLS`` / ``_POLICY_TOOLS``
 - MCP tools: spec-defined; dispatched via RunnerMcpManager passed
   in by proxy_stream (designs/RUNNER_MCP.md). Not in the static
   allow-list because names vary per spec.
@@ -66,6 +70,7 @@ from omnigent.runtime import pending_elicitations
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result, native_image_payload
 from omnigent.tools import ToolManager
 from omnigent.tools.base import Tool, ToolContext
+from omnigent.tools.builtins import SERVER_BUILTIN_NAMES
 from omnigent.tools.builtins._arguments import parse_json_object_arguments
 from omnigent.tools.builtins.async_inbox import (
     SysCallAsyncTool,
@@ -483,6 +488,10 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     # what discovers host-scope skills (``.agents/skills`` and friends), and a
     # native session's only tool surface is this relay.
     | _SKILL_TOOLS
+    # Nova's ``nova_*`` builtins ride the relay too — without this, a native
+    # session (claude-native/codex-native/pi-native) never sees them at all,
+    # since the relay is its only tool surface (see module docstring).
+    | SERVER_BUILTIN_NAMES
 )
 
 
@@ -869,6 +878,7 @@ _ALL_LOCAL_TOOLS = (
     | _AGENT_TOOLS
     | _POLICY_TOOLS
     | _SCHEDULED_TASK_TOOLS
+    | SERVER_BUILTIN_NAMES
 )
 _PLACEHOLDER_CWDS = (None, "", ".", "./")
 
@@ -4654,6 +4664,59 @@ async def _execute_scheduled_task_tool(
     return json.dumps(resp.json())
 
 
+async def _execute_server_builtin_tool(
+    tool_name: str,
+    arguments: str,
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None,
+) -> str:
+    """
+    Runner-local handler for builtins whose ``invoke`` needs the Omnigent database.
+
+    Nova's ``nova_*`` family (memory, goals, episodes, asks, feed, skills)
+    reads/writes the conversation store, permission grants, and Nova's own
+    tables — state a runner process (a person's laptop or a sandbox
+    container) has no access to. The runner proxies the Omnigent server's
+    ``/v1/sessions/{id}/builtin-tools/execute`` endpoint instead, same
+    posture as :func:`_execute_scheduled_task_tool` / :func:`_execute_policy_tool`.
+    The server resolves the conversation id and caller identity itself from
+    the session, rather than trusting anything the runner could forward.
+
+    :param tool_name: One of :data:`SERVER_BUILTIN_NAMES`.
+    :param arguments: JSON-encoded arguments string from the LLM.
+    :param server_client: HTTP client pointed at the Omnigent server;
+        ``None`` returns an error string.
+    :param conversation_id: The session this call belongs to; required to
+        route the request to the right session's endpoint.
+    :returns: Tool output string (the underlying ``Tool.invoke`` result).
+    """
+    if server_client is None:
+        return json.dumps({"error": f"{tool_name} requires server access"})
+    if not conversation_id:
+        return json.dumps({"error": f"{tool_name} requires an active session"})
+    try:
+        resp = await server_client.post(
+            f"/v1/sessions/{conversation_id}/builtin-tools/execute",
+            json={"tool_name": tool_name, "arguments": arguments},
+            timeout=30.0,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"{tool_name} failed: {exc}"})
+    if resp.status_code >= 400:
+        return json.dumps(
+            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
+        )
+    try:
+        body = resp.json()
+    except ValueError:
+        return json.dumps({"error": f"{tool_name}: malformed server response"})
+    output = body.get("output") if isinstance(body, dict) else None
+    if not isinstance(output, str):
+        return json.dumps({"error": f"{tool_name}: malformed server response"})
+    return output
+
+
 @dataclass
 class _ParsedTitle:
     """
@@ -6678,6 +6741,13 @@ async def execute_tool(
             output = await _execute_browser_tool(
                 tool_name,
                 args,
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+        elif tool_name in SERVER_BUILTIN_NAMES:
+            output = await _execute_server_builtin_tool(
+                tool_name,
+                arguments,
                 server_client=server_client,
                 conversation_id=conversation_id,
             )
