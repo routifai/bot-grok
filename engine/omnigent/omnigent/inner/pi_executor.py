@@ -68,6 +68,7 @@ from omnigent.models.pi_model_compatibility import (
 )
 from omnigent.onboarding.provider_config import CHAT_WIRE_API, RESPONSES_WIRE_API
 from omnigent.runner.identity import OMNIGENT_SESSION_ENV_VAR
+from omnigent.runtime.mcp_tool_result import decode_mcp_image_result
 from omnigent.spec.types import RetryPolicy
 from omnigent.util.json_types import JsonObject as _JsonObject
 from omnigent.util.json_types import JsonValue
@@ -348,6 +349,16 @@ class _ToolServer:
             resolved = await raw if asyncio.iscoroutine(raw) or asyncio.isfuture(raw) else raw
             if not isinstance(resolved, dict):
                 resolved = {"result": resolved}
+            # A bridged MCP tool's image envelope decodes to real content
+            # blocks (text + {type: "image", data, mimeType}) so the JS
+            # extension can hand Pi actual image parts instead of JSON-
+            # stringifying the envelope into inert text. Other results are
+            # untouched — the JS side falls back to its existing behavior
+            # when "content" is absent.
+            image_result = decode_mcp_image_result(resolved)
+            if image_result is not None:
+                mcp = image_result.to_mcp()
+                return {"result": resolved, "content": mcp["content"], "isError": mcp["isError"]}
             return {"result": resolved}
         except Exception as exc:  # noqa: BLE001 — tool errors are surfaced via the JSON response envelope
             return {"error": str(exc)}
@@ -499,6 +510,11 @@ function callTool(toolName, args, callId) {{
             client.end();
             if (resp.error) {{
               finish(errorResult(resp.error));
+            }} else if (Array.isArray(resp.content)) {{
+              // Image-bearing MCP result: pass the decoded content parts
+              // (text and {{type:"image",data,mimeType}}) straight through
+              // instead of JSON-stringifying them into inert text.
+              finish({{ content: resp.content, isError: !!resp.isError }});
             }} else {{
               const text = typeof resp.result === "string"
                 ? resp.result

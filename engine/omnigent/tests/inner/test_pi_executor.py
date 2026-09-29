@@ -43,6 +43,8 @@ from omnigent.inner.pi_executor import (
 from omnigent.models.model_catalog import ModelEntry
 from omnigent.models.model_metadata import ModelMetadata, ModelWireAPI
 from omnigent.runtime.harnesses._scaffold import PolicyVerdictPayload
+from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
+from tests._image_fixtures import _TINY_PNG_BASE64
 
 
 def _cancel_all_tasks(loop):
@@ -939,6 +941,136 @@ class TestToolServer(unittest.TestCase):
 
             writer.close()
             await server.stop()
+
+        _run(_test())
+
+    def test_image_envelope_result_yields_content_parts_over_tcp(self):
+        """An MCP image envelope decodes to real content parts, not text.
+
+        A bridged tool result that is the ``decode_mcp_image_result`` envelope
+        (e.g. a screenshot tool) must reach the wire as a ``content`` array of
+        text/image blocks so the generated Pi extension can hand Pi real
+        image parts, instead of being JSON-stringified into inert text.
+        """
+
+        async def _test():
+            server = _ToolServer()
+            await server.start()
+
+            envelope = json.loads(
+                encode_mcp_image_result(
+                    [
+                        {"type": "text", "text": "a screenshot"},
+                        {
+                            "type": "image",
+                            "data": _TINY_PNG_BASE64,
+                            "mimeType": "image/png",
+                        },
+                    ],
+                    is_error=False,
+                )
+            )
+
+            async def executor(name, args):
+                return envelope
+
+            server._tool_executor = executor
+
+            reader, writer = await asyncio.open_connection("127.0.0.1", server.port)
+            request = (
+                json.dumps(
+                    {"id": "req-img", "token": server.token, "tool": "screenshot", "args": {}}
+                )
+                + "\n"
+            )
+            writer.write(request.encode())
+            await writer.drain()
+
+            response_line = await asyncio.wait_for(reader.readline(), timeout=5.0)
+            response = json.loads(response_line)
+            self.assertEqual(response["id"], "req-img")
+            self.assertFalse(response["isError"])
+            self.assertEqual(
+                response["content"],
+                [
+                    {"type": "text", "text": "a screenshot"},
+                    {"type": "image", "data": _TINY_PNG_BASE64, "mimeType": "image/png"},
+                ],
+            )
+
+            writer.close()
+            await server.stop()
+
+        _run(_test())
+
+    def test_plain_result_has_no_content_field(self):
+        """A plain (non-image) tool result is unchanged: no ``content`` key."""
+
+        async def _test():
+            server = _ToolServer()
+            await server.start()
+
+            async def executor(name, args):
+                return {"sum": args.get("a", 0) + args.get("b", 0)}
+
+            server._tool_executor = executor
+
+            reader, writer = await asyncio.open_connection("127.0.0.1", server.port)
+            request = (
+                json.dumps(
+                    {
+                        "id": "req-plain",
+                        "token": server.token,
+                        "tool": "add",
+                        "args": {"a": 1, "b": 2},
+                    }
+                )
+                + "\n"
+            )
+            writer.write(request.encode())
+            await writer.drain()
+
+            response_line = await asyncio.wait_for(reader.readline(), timeout=5.0)
+            response = json.loads(response_line)
+            self.assertEqual(response["result"]["sum"], 3)
+            self.assertNotIn("content", response)
+
+            writer.close()
+            await server.stop()
+
+        _run(_test())
+
+    def test_generated_bridge_passes_through_image_content_parts(self):
+        """End-to-end (Python TCP server + real Node extension): an image
+        envelope result surfaces to Pi's ``execute()`` as a real image
+        content part, not a JSON-stringified text blob.
+        """
+
+        async def _test():
+            server = _ToolServer()
+            port = await server.start()
+
+            envelope = json.loads(
+                encode_mcp_image_result(
+                    [{"type": "image", "data": _TINY_PNG_BASE64, "mimeType": "image/png"}],
+                    is_error=False,
+                )
+            )
+
+            async def executor(name, args, *, call_id=None):
+                return envelope
+
+            server._tool_executor = executor
+            try:
+                result = await self._run_generated_bridge_tool(port=port, token=server.token)
+            finally:
+                await server.stop()
+
+            self.assertFalse(result["isError"])
+            self.assertEqual(
+                result["content"],
+                [{"type": "image", "data": _TINY_PNG_BASE64, "mimeType": "image/png"}],
+            )
 
         _run(_test())
 
