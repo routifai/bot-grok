@@ -32,6 +32,7 @@ import {
   McpOAuthBroker,
   messagingEnvFromProcess,
   messagingPlatformsFromEnv,
+  omnigentGatewayDepsFromEnv,
   PiAgentRuntime,
   PipedreamConnector,
   PostgresRealtimeFanout,
@@ -162,6 +163,13 @@ async function main() {
     });
   // One provider instance so emulator launches and polls share the same Map.
   const cloudAgent = createCloudAgentConnection();
+  const runtimeSecrets = [
+    deploymentModelKey ?? "",
+    process.env.COMPOSIO_API_KEY ?? "",
+    process.env.CURSOR_API_KEY ?? "",
+    process.env.TYPESAFE_API_KEY ?? "",
+  ].filter(Boolean);
+  const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
   const executor = createRunExecutor({
     prisma,
     runtime,
@@ -183,12 +191,7 @@ async function main() {
         signal: AbortSignal.timeout(15_000),
       });
     },
-    secrets: [
-      deploymentModelKey ?? "",
-      process.env.COMPOSIO_API_KEY ?? "",
-      process.env.CURSOR_API_KEY ?? "",
-      process.env.TYPESAFE_API_KEY ?? "",
-    ].filter(Boolean),
+    secrets: runtimeSecrets,
     secretStore: secrets,
     mcpAllowPrivateEndpoint: process.env.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
     deploymentModelKey,
@@ -216,6 +219,7 @@ async function main() {
     deploymentModelKey,
     messaging,
     cloudAgent,
+    omnigent,
   });
   // graphile-worker run() connects through the shared pool. createPool already
   // retries connect() on 53300 a finite number of times. Keep retrying start

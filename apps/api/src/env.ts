@@ -87,6 +87,12 @@ export interface AppEnv {
   mcpAllowPrivateEndpoint: boolean;
   port: number;
   gitSha: string | undefined;
+  /**
+   * Bearer secret Omnigent's context-provider hook must present (docs/omnigent-spike.md);
+   * unset 404s the route. NOVA_ENGINE and the rest of the Omnigent gateway wiring are read
+   * straight off process.env by `omnigentGatewayDepsFromEnv`, shared with apps/worker.
+   */
+  omnigentContextProviderSecret: string | undefined;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -169,6 +175,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     mcpAllowPrivateEndpoint: source.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
     port: Number(source.API_PORT ?? 3100),
     gitSha: optional(source.GIT_SHA) ?? optional(source.AIDEN_GIT_SHA),
+    omnigentContextProviderSecret: optional(source.OMNIGENT_CONTEXT_PROVIDER_SECRET),
   };
 }
 

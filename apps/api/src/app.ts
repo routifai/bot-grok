@@ -46,6 +46,7 @@ import {
   McpConnector,
   McpOAuthBroker,
   messagingPlatformsFromEnv,
+  omnigentGatewayDepsFromEnv,
   PiAgentRuntime,
   PiOAuthLogins,
   PipedreamConnector,
@@ -96,6 +97,7 @@ import {
   wakeMessageRoutines,
 } from "./messaging-inbound.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
+import { mountOmnigentContextRoute } from "./omnigent-context.js";
 import { mountApiRequestBodyLimits } from "./request-body-limit.js";
 import { createRouter } from "./router.js";
 import { mountScreenTarget } from "./screen-proxy.js";
@@ -379,6 +381,13 @@ export async function createApp(
     CLOUD_AGENT_SPACE_ID: env.cloudAgentSpaceId,
   });
   const shutdown = new AbortController();
+  const runtimeSecrets = [
+    env.deploymentModelKey ?? "",
+    env.composioApiKey ?? "",
+    env.cursorApiKey ?? "",
+    process.env.TYPESAFE_API_KEY ?? "",
+  ].filter(Boolean);
+  const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
   const executor = createRunExecutor({
     prisma,
     runtime,
@@ -400,12 +409,7 @@ export async function createApp(
         signal: AbortSignal.timeout(15_000),
       });
     },
-    secrets: [
-      env.deploymentModelKey ?? "",
-      env.composioApiKey ?? "",
-      env.cursorApiKey ?? "",
-      process.env.TYPESAFE_API_KEY ?? "",
-    ].filter(Boolean),
+    secrets: runtimeSecrets,
     secretStore: secrets,
     secretHttp: remoteConnectors,
     mcpAllowPrivateEndpoint: env.mcpAllowPrivateEndpoint,
@@ -435,6 +439,7 @@ export async function createApp(
     deploymentModelKey: env.deploymentModelKey,
     messaging,
     cloudAgent,
+    omnigent,
   });
   if (inMemoryJobs) {
     await inMemoryJobs.start(jobHandlers);
@@ -558,6 +563,12 @@ export async function createApp(
     return actor;
   });
   mountWebhookHttpRoutes(app, { prisma, secrets, events, jobs });
+  mountOmnigentContextRoute(app, {
+    prisma,
+    memory,
+    secrets: runtimeSecrets,
+    contextProviderSecret: env.omnigentContextProviderSecret,
+  });
   // Shared with stop so a shutdown during retry delays does not restart polling.
   let messagingStopped = false;
   let clearMessagingRetryDelay: (() => void) | undefined;
