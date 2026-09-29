@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/react/macro";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../components/ui/button.js";
@@ -69,7 +70,7 @@ type FormField =
 
 export function CanvasForm({
   fields,
-  submitLabel = "Submit",
+  submitLabel,
   onAnswer,
   disabled,
 }: {
@@ -78,6 +79,8 @@ export function CanvasForm({
   onAnswer?: CanvasAnswer;
   disabled?: boolean;
 }) {
+  const { t } = useLingui();
+  const resolvedSubmitLabel = submitLabel || t`Submit`;
   const [values, setValues] = useState<Record<string, string | boolean>>(() =>
     Object.fromEntries(
       fields.map((field) => [field.name, field.kind === "toggle" ? Boolean(field.default) : ""]),
@@ -135,7 +138,7 @@ export function CanvasForm({
               }
             >
               <NativeSelectOption value="" disabled>
-                {"Choose…"}
+                {t`Choose…`}
               </NativeSelectOption>
               {field.options.map((option) => (
                 <NativeSelectOption key={option.value} value={option.value}>
@@ -162,7 +165,7 @@ export function CanvasForm({
         className="self-start rounded-full"
         disabled={settled || pending}
       >
-        {submitted ? "Sent" : submitLabel}
+        {submitted ? t`Sent` : resolvedSubmitLabel}
       </Button>
     </form>
   );

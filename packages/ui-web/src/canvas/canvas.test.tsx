@@ -1,7 +1,17 @@
 import type { CanvasNode } from "@aiden/contracts";
+import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CanvasView } from "./CanvasTree.js";
+
+// The lingui babel macro only runs through apps/web's Vite build; plain vitest never
+// compiles it, so `t`/`Trans` throw unless mocked here (same shim other tests in this repo
+// use for the same reason).
+vi.mock("@lingui/react/macro", () => {
+  const t = (parts: TemplateStringsArray, ...values: unknown[]) =>
+    parts.reduce((acc, part, i) => acc + part + (i < values.length ? String(values[i]) : ""), "");
+  return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
+});
 
 describe("CanvasView", () => {
   it("renders a mixed layout/content tree", () => {

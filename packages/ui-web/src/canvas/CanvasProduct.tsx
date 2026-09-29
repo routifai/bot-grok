@@ -1,5 +1,7 @@
+import { useLingui } from "@lingui/react/macro";
 import { Check, Minus, Star, X } from "lucide-react";
 import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button.js";
 import { cn } from "../lib/utils.js";
 import { initials, monogramColor } from "./canvas-colors.js";
@@ -29,6 +31,7 @@ export function CanvasItemCard({
   ctaLabel?: string;
   ctaUrl?: string;
 }) {
+  const { t } = useLingui();
   const badgeText = monogram || initials(title);
   const badgeColor = monogramColor(title, color);
   return (
@@ -111,7 +114,7 @@ export function CanvasItemCard({
           className="mt-auto self-start rounded-full"
           render={<a href={ctaUrl} target="_blank" rel="noreferrer noopener" />}
         >
-          {ctaLabel || "Learn more"}
+          {ctaLabel || t`Learn more`}
         </Button>
       ) : null}
     </article>
@@ -121,14 +124,22 @@ export function CanvasItemCard({
 type CellValue = string | number | boolean | null;
 
 function CellContent({ value }: { value: CellValue }) {
+  const { t } = useLingui();
   if (value === true)
-    return <Check size={15} strokeWidth={2.4} className="text-success" aria-label="Yes" />;
+    return <Check size={15} strokeWidth={2.4} className="text-success" aria-label={t`Yes`} />;
   if (value === false)
-    return <X size={15} strokeWidth={2.4} className="text-muted-foreground/60" aria-label="No" />;
+    return (
+      <X size={15} strokeWidth={2.4} className="text-muted-foreground/60" aria-label={t`No`} />
+    );
   if (value === null)
-    return <Minus size={13} className="text-muted-foreground/50" aria-label="Not applicable" />;
+    return <Minus size={13} className="text-muted-foreground/50" aria-label={t`Not applicable`} />;
   return <span className="tabular-nums">{value}</span>;
 }
+
+/** Sticky first column so the attribute name stays put while the rest scrolls; the fade
+ * hints there's more to see. Needs its own opaque background — it paints over whatever
+ * column has scrolled underneath it. */
+const STICKY_LABEL_CELL = "sticky left-0 z-10";
 
 export function CanvasComparisonTable({
   columns,
@@ -139,61 +150,103 @@ export function CanvasComparisonTable({
   rows: { label: string; cells: { columnId: string; value: CellValue; winner?: boolean }[] }[];
   footer?: string;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showRightFade, setShowRightFade] = useState(false);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const update = () => {
+      setShowRightFade(node.scrollWidth - node.clientWidth - node.scrollLeft > 1);
+    };
+    update();
+    node.addEventListener("scroll", update, { passive: true });
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    resizeObserver?.observe(node);
+    return () => {
+      node.removeEventListener("scroll", update);
+      resizeObserver?.disconnect();
+    };
+  }, []);
+
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px] border-collapse text-[13px]">
-          <thead>
-            <tr className="border-b border-border bg-muted/60">
-              <th scope="col" className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                {""}
-              </th>
-              {columns.map((column) => (
+      <div className="relative">
+        <div ref={scrollRef} className="overflow-x-auto">
+          <table className="w-full min-w-[480px] border-collapse text-[13px]">
+            <thead>
+              <tr className="border-b border-border bg-muted/60">
                 <th
-                  key={column.id}
                   scope="col"
-                  className="px-4 py-2.5 text-left font-medium text-muted-foreground"
+                  className={cn(
+                    STICKY_LABEL_CELL,
+                    "bg-muted px-4 py-2.5 text-left font-medium text-muted-foreground",
+                  )}
                 >
-                  {column.label}
+                  {""}
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const byColumn = new Map(row.cells.map((cell) => [cell.columnId, cell]));
-              return (
-                <tr key={row.label} className="border-b border-border last:border-0">
-                  <th scope="row" className="px-4 py-2.5 text-left font-medium text-foreground">
-                    {row.label}
+                {columns.map((column) => (
+                  <th
+                    key={column.id}
+                    scope="col"
+                    className="px-4 py-2.5 text-left font-medium text-muted-foreground"
+                  >
+                    {column.label}
                   </th>
-                  {columns.map((column) => {
-                    const cell = byColumn.get(column.id);
-                    return (
-                      <td
-                        key={column.id}
-                        className={cn(
-                          "px-4 py-2.5 text-foreground/85",
-                          cell?.winner ? "bg-success/8 font-medium text-foreground" : undefined,
-                        )}
-                      >
-                        {cell ? (
-                          <CellContent value={cell.value} />
-                        ) : (
-                          <Minus
-                            size={13}
-                            className="text-muted-foreground/40"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const byColumn = new Map(row.cells.map((cell) => [cell.columnId, cell]));
+                return (
+                  <tr key={row.label} className="border-b border-border last:border-0">
+                    <th
+                      scope="row"
+                      className={cn(
+                        STICKY_LABEL_CELL,
+                        "bg-card px-4 py-2.5 text-left font-medium text-foreground",
+                      )}
+                    >
+                      {row.label}
+                    </th>
+                    {columns.map((column) => {
+                      const cell = byColumn.get(column.id);
+                      return (
+                        <td
+                          key={column.id}
+                          className={cn(
+                            "px-4 py-2.5 text-foreground/85",
+                            cell?.winner ? "bg-success/8 font-medium text-foreground" : undefined,
+                          )}
+                        >
+                          {cell ? (
+                            <CellContent value={cell.value} />
+                          ) : (
+                            <Minus
+                              size={13}
+                              className="text-muted-foreground/40"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {/* Scroll-shadow hint: more columns are off-screen to the right. */}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-card to-transparent transition-opacity duration-200",
+            showRightFade ? "opacity-100" : "opacity-0",
+          )}
+        />
       </div>
       {footer ? (
         <div className="border-t border-border px-4 py-2.5 text-[12.5px] text-muted-foreground">

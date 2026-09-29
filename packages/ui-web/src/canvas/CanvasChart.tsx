@@ -1,15 +1,16 @@
+import { useLingui } from "@lingui/react/macro";
 import { useEffect, useState } from "react";
 import { seriesColor } from "./canvas-colors.js";
+import { useContainerWidth } from "./use-container-width.js";
 import { useReducedMotion } from "./use-reduced-motion.js";
 
 type Point = { label: string; value: number };
 type Series = { name?: string; data: Point[] };
 
-const WIDTH = 640;
-const HEIGHT = 260;
-const MARGIN = { top: 12, right: 12, bottom: 28, left: 44 };
-const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right;
-const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom;
+const MARGIN = { top: 28, right: 12, bottom: 28, left: 44 };
+/** A true zero still gets a visible sliver at the baseline; an invisible bar reads as
+ * missing data, not "zero". */
+const ZERO_BAR_STUB = 2;
 
 function formatNumber(value: number, unit?: string): string {
   const decimals = Math.abs(value) < 10 && !Number.isInteger(value) ? 1 : 0;
@@ -43,12 +44,13 @@ function niceTicks(min: number, max: number, targetCount: number): number[] {
 
 /** Text-only summary of every point, read by screen readers instead of the SVG shapes. */
 function ChartDataTable({ series, unit }: { series: Series[]; unit?: string }) {
+  const { t } = useLingui();
   return (
     <table className="sr-only">
       <tbody>
         {series.map((s, seriesIndex) => (
           <tr key={s.name ?? seriesIndex}>
-            <th scope="row">{s.name ?? "Value"}</th>
+            <th scope="row">{s.name || t`Value`}</th>
             {s.data.map((point) => (
               <td key={point.label}>
                 {point.label}: {formatNumber(point.value, unit)}
@@ -62,24 +64,30 @@ function ChartDataTable({ series, unit }: { series: Series[]; unit?: string }) {
 }
 
 function ChartAxes({
+  width,
+  height,
   ticks,
   categories,
   unit,
 }: {
+  width: number;
+  height: number;
   ticks: number[];
   categories: string[];
   unit?: string;
 }) {
-  const categoryWidth = PLOT_WIDTH / Math.max(1, categories.length);
+  const plotWidth = width - MARGIN.left - MARGIN.right;
+  const plotHeight = height - MARGIN.top - MARGIN.bottom;
+  const categoryWidth = plotWidth / Math.max(1, categories.length);
   return (
     <g>
       {ticks.map((tick, index) => {
-        const y = MARGIN.top + PLOT_HEIGHT * (1 - index / (ticks.length - 1 || 1));
+        const y = MARGIN.top + plotHeight * (1 - index / (ticks.length - 1 || 1));
         return (
           <g key={tick}>
             <line
               x1={MARGIN.left}
-              x2={WIDTH - MARGIN.right}
+              x2={width - MARGIN.right}
               y1={y}
               y2={y}
               className="stroke-border"
@@ -90,7 +98,7 @@ function ChartAxes({
               y={y}
               textAnchor="end"
               dominantBaseline="middle"
-              className="fill-muted-foreground text-[10px] tabular-nums"
+              className="fill-muted-foreground text-[11px] tabular-nums"
             >
               {formatNumber(tick, unit)}
             </text>
@@ -101,11 +109,11 @@ function ChartAxes({
         <text
           key={label}
           x={MARGIN.left + categoryWidth * (index + 0.5)}
-          y={HEIGHT - 8}
+          y={height - 8}
           textAnchor="middle"
-          className="fill-muted-foreground text-[10px]"
+          className="fill-muted-foreground text-[11px]"
         >
-          {label.length > 10 ? `${label.slice(0, 9)}…` : label}
+          {label.length > 12 ? `${label.slice(0, 11)}…` : label}
         </text>
       ))}
     </g>
@@ -113,10 +121,14 @@ function ChartAxes({
 }
 
 function BarChart({
+  width,
+  height,
   series,
   unit,
   stacked,
 }: {
+  width: number;
+  height: number;
   series: Series[];
   unit?: string;
   stacked: boolean;
@@ -129,6 +141,8 @@ function BarChart({
     return () => cancelAnimationFrame(id);
   }, [reducedMotion]);
 
+  const plotWidth = width - MARGIN.left - MARGIN.right;
+  const plotHeight = height - MARGIN.top - MARGIN.bottom;
   const categories = series[0]?.data.map((point) => point.label) ?? [];
   const stackTotals = categories.map((_, index) =>
     series.reduce((sum, s) => sum + (s.data[index]?.value ?? 0), 0),
@@ -143,60 +157,91 @@ function BarChart({
   // Bars scale against the rounded axis top, not the raw max, so the tallest bar lines up
   // with its nearest gridline instead of always touching the plot's edge.
   const maxValue = ticks[ticks.length - 1] ?? rawMax;
-  const categoryWidth = PLOT_WIDTH / Math.max(1, categories.length);
+  const categoryWidth = plotWidth / Math.max(1, categories.length);
   const groupWidth = categoryWidth * 0.68;
   const barWidth = stacked ? groupWidth : groupWidth / series.length;
+  const baselineY = MARGIN.top + plotHeight;
 
   return (
-    <svg
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      role="presentation"
-      className="w-full"
-      style={{ maxHeight: HEIGHT }}
-    >
-      <ChartAxes ticks={ticks} categories={categories} unit={unit} />
+    <svg viewBox={`0 0 ${width} ${height}`} role="presentation" className="block w-full">
+      <ChartAxes width={width} height={height} ticks={ticks} categories={categories} unit={unit} />
       {categories.map((_, categoryIndex) => {
-        let stackedY = MARGIN.top + PLOT_HEIGHT;
-        return series.map((s, seriesIndex) => {
-          const value = s.data[categoryIndex]?.value ?? 0;
-          const barHeight = (value / maxValue) * PLOT_HEIGHT;
-          const x = stacked
-            ? MARGIN.left + categoryWidth * categoryIndex + (categoryWidth - barWidth) / 2
-            : MARGIN.left +
-              categoryWidth * categoryIndex +
-              (categoryWidth - groupWidth) / 2 +
-              barWidth * seriesIndex;
-          const y = stacked ? stackedY - barHeight : MARGIN.top + PLOT_HEIGHT - barHeight;
-          if (stacked) stackedY -= barHeight;
-          const color = seriesColor(seriesIndex, series.length);
-          return (
-            <rect
-              key={`${categoryIndex}-${seriesIndex}`}
-              x={x}
-              y={grown ? y : MARGIN.top + PLOT_HEIGHT}
-              width={barWidth}
-              height={grown ? barHeight : 0}
-              rx={3}
-              className={color ? undefined : "fill-primary"}
-              style={{
-                ...(color ? { fill: color } : {}),
-                transition: "y 600ms ease-out, height 600ms ease-out",
-              }}
-            >
-              <title>
-                {s.name ? `${s.name} — ` : ""}
-                {categories[categoryIndex]}: {formatNumber(value, unit)}
-              </title>
-            </rect>
-          );
-        });
+        let stackedY = baselineY;
+        const total = stackTotals[categoryIndex] ?? 0;
+        return (
+          <g key={categoryIndex}>
+            {series.map((s, seriesIndex) => {
+              const value = s.data[categoryIndex]?.value ?? 0;
+              const rawHeight = (value / maxValue) * plotHeight;
+              const barHeight = value === 0 ? ZERO_BAR_STUB : rawHeight;
+              const x = stacked
+                ? MARGIN.left + categoryWidth * categoryIndex + (categoryWidth - barWidth) / 2
+                : MARGIN.left +
+                  categoryWidth * categoryIndex +
+                  (categoryWidth - groupWidth) / 2 +
+                  barWidth * seriesIndex;
+              const y = stacked ? stackedY - barHeight : baselineY - barHeight;
+              if (stacked) stackedY -= barHeight;
+              const color = seriesColor(seriesIndex, series.length);
+              // A single series labels every bar; a stack labels only its total (once),
+              // above the topmost segment, to avoid stamping a number on every sliver.
+              const showLabel = stacked ? seriesIndex === series.length - 1 : true;
+              const labelValue = stacked ? total : value;
+              const labelY = (stacked ? stackedY : y) - 6;
+              return (
+                <g key={seriesIndex}>
+                  <rect
+                    x={x}
+                    y={grown ? y : baselineY}
+                    width={barWidth}
+                    height={grown ? barHeight : 0}
+                    rx={3}
+                    className={color ? undefined : "fill-primary"}
+                    style={{
+                      ...(color ? { fill: color } : {}),
+                      transition: "y 600ms ease-out, height 600ms ease-out",
+                    }}
+                  >
+                    <title>
+                      {s.name ? `${s.name} — ` : ""}
+                      {categories[categoryIndex]}: {formatNumber(value, unit)}
+                    </title>
+                  </rect>
+                  {showLabel ? (
+                    <text
+                      x={x + barWidth / 2}
+                      y={grown ? labelY : baselineY - 6}
+                      textAnchor="middle"
+                      className="fill-foreground text-[11px] font-medium tabular-nums"
+                      style={{ transition: "y 600ms ease-out", opacity: grown ? 1 : 0 }}
+                    >
+                      {formatNumber(labelValue, unit)}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
+          </g>
+        );
       })}
       <ChartDataTable series={series} unit={unit} />
     </svg>
   );
 }
 
-function LineChart({ series, unit, filled }: { series: Series[]; unit?: string; filled: boolean }) {
+function LineChart({
+  width,
+  height,
+  series,
+  unit,
+  filled,
+}: {
+  width: number;
+  height: number;
+  series: Series[];
+  unit?: string;
+  filled: boolean;
+}) {
   const reducedMotion = useReducedMotion();
   const [visible, setVisible] = useState(reducedMotion);
   useEffect(() => {
@@ -205,6 +250,8 @@ function LineChart({ series, unit, filled }: { series: Series[]; unit?: string; 
     return () => cancelAnimationFrame(id);
   }, [reducedMotion]);
 
+  const plotWidth = width - MARGIN.left - MARGIN.right;
+  const plotHeight = height - MARGIN.top - MARGIN.bottom;
   const categories = series[0]?.data.map((point) => point.label) ?? [];
   const values = series.flatMap((s) => s.data.map((p) => p.value));
   const rawMin = Math.min(0, ...values);
@@ -212,19 +259,14 @@ function LineChart({ series, unit, filled }: { series: Series[]; unit?: string; 
   const ticks = niceTicks(rawMin, rawMax, 4);
   const domainMin = ticks[0] ?? rawMin;
   const domainMax = ticks[ticks.length - 1] ?? rawMax;
-  const categoryWidth = PLOT_WIDTH / Math.max(1, categories.length - 1 || 1);
+  const categoryWidth = plotWidth / Math.max(1, categories.length - 1 || 1);
   const scaleY = (value: number) =>
-    MARGIN.top + PLOT_HEIGHT * (1 - (value - domainMin) / (domainMax - domainMin));
+    MARGIN.top + plotHeight * (1 - (value - domainMin) / (domainMax - domainMin));
   const baseline = scaleY(Math.max(domainMin, 0));
 
   return (
-    <svg
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      role="presentation"
-      className="w-full"
-      style={{ maxHeight: HEIGHT }}
-    >
-      <ChartAxes ticks={ticks} categories={categories} unit={unit} />
+    <svg viewBox={`0 0 ${width} ${height}`} role="presentation" className="block w-full">
+      <ChartAxes width={width} height={height} ticks={ticks} categories={categories} unit={unit} />
       {series.map((s, seriesIndex) => {
         const color = seriesColor(seriesIndex, series.length);
         const points = s.data.map((point, index) => ({
@@ -304,7 +346,17 @@ function arcPath(
   ].join(" ");
 }
 
-function PieChart({ series, unit, donut }: { series: Series[]; unit?: string; donut: boolean }) {
+function PieChart({
+  size,
+  series,
+  unit,
+  donut,
+}: {
+  size: number;
+  series: Series[];
+  unit?: string;
+  donut: boolean;
+}) {
   const reducedMotion = useReducedMotion();
   const [visible, setVisible] = useState(reducedMotion);
   useEffect(() => {
@@ -318,9 +370,9 @@ function PieChart({ series, unit, donut }: { series: Series[]; unit?: string; do
     1,
     data.reduce((sum, point) => sum + Math.max(0, point.value), 0),
   );
-  const cx = HEIGHT / 2;
-  const cy = HEIGHT / 2;
-  const rOuter = HEIGHT / 2 - 10;
+  const cx = size / 2;
+  const cy = size / 2;
+  const rOuter = size / 2 - 10;
   const rInner = donut ? rOuter * 0.6 : 0;
   let angle = 0;
   const slices = data.map((point, index) => {
@@ -338,12 +390,12 @@ function PieChart({ series, unit, donut }: { series: Series[]; unit?: string; do
   return (
     <div className="flex flex-wrap items-center gap-6">
       <svg
-        viewBox={`0 0 ${HEIGHT} ${HEIGHT}`}
+        viewBox={`0 0 ${size} ${size}`}
         role="presentation"
         className="shrink-0"
         style={{
-          width: HEIGHT,
-          height: HEIGHT,
+          width: size,
+          height: size,
           opacity: visible ? 1 : 0,
           transition: "opacity 500ms ease-out",
         }}
@@ -383,6 +435,12 @@ function PieChart({ series, unit, donut }: { series: Series[]; unit?: string; do
   );
 }
 
+/** Below this the axis, tick labels, and bar values stop being legible — enforced
+ * regardless of how narrow the host container is. */
+const MIN_CHART_HEIGHT = 180;
+const MAX_CHART_HEIGHT = 320;
+const FALLBACK_CHART_WIDTH = 560;
+
 export function CanvasChart({
   kind,
   title,
@@ -394,9 +452,12 @@ export function CanvasChart({
   series: Series[];
   unit?: string;
 }) {
+  const [containerRef, width] = useContainerWidth(FALLBACK_CHART_WIDTH);
+  const height = Math.min(MAX_CHART_HEIGHT, Math.max(MIN_CHART_HEIGHT, Math.round(width * 0.4)));
   const summary = `${kind} chart${title ? ` — ${title}` : ""}, ${series[0]?.data.length ?? 0} categories`;
   return (
     <figure
+      ref={containerRef}
       className="m-0 min-w-0 rounded-2xl border border-border bg-card p-4"
       aria-label={summary}
     >
@@ -406,13 +467,30 @@ export function CanvasChart({
         </figcaption>
       ) : null}
       {kind === "bar" || kind === "stackedBar" ? (
-        <BarChart series={series} unit={unit} stacked={kind === "stackedBar"} />
+        <BarChart
+          width={width}
+          height={height}
+          series={series}
+          unit={unit}
+          stacked={kind === "stackedBar"}
+        />
       ) : null}
       {kind === "line" || kind === "area" ? (
-        <LineChart series={series} unit={unit} filled={kind === "area"} />
+        <LineChart
+          width={width}
+          height={height}
+          series={series}
+          unit={unit}
+          filled={kind === "area"}
+        />
       ) : null}
       {kind === "pie" || kind === "donut" ? (
-        <PieChart series={series} unit={unit} donut={kind === "donut"} />
+        <PieChart
+          size={Math.min(height, 220)}
+          series={series}
+          unit={unit}
+          donut={kind === "donut"}
+        />
       ) : null}
     </figure>
   );
