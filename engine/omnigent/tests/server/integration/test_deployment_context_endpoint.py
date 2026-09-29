@@ -11,9 +11,8 @@ trusting values a runner could supply for an arbitrary session.
 Uses the same ``auth_app``/``auth_client`` header-impersonation pattern as
 ``tests/server/integration/test_session_agent_owner.py`` (a real
 ``SqlAlchemyPermissionStore`` + header ``AuthProvider``, ``X-Forwarded-Email``
-impersonates the caller) so the authorization mirrors the sibling
-``GET /sessions/{id}/labels`` runner callback exactly: any caller with at
-least ``LEVEL_READ`` on the session is allowed, and the server never trusts
+impersonates the caller). Only the session owner may call it (the block can
+carry the owner's private context), and the server never trusts
 runner-supplied identity/labels.
 """
 
@@ -31,6 +30,7 @@ from fastapi import FastAPI
 
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
+from omnigent.server.auth import LEVEL_EDIT
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
@@ -145,6 +145,30 @@ async def test_other_user_without_grant_is_denied(
         headers={"X-Forwarded-Email": BOB},
     )
     assert resp.status_code == 404, resp.text
+
+
+async def test_collaborator_with_a_grant_is_denied(
+    auth_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Someone the session is shared with cannot read the owner's context."""
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER_URL", _PROVIDER_URL)
+    agent = await create_test_agent(auth_client, name="ctx-agent-shared", user=ALICE)
+    session_id = agent["_session_id"]
+    shared = await auth_client.put(
+        f"/v1/sessions/{session_id}/permissions",
+        json={"user_id": BOB, "level": LEVEL_EDIT},
+        headers={"X-Forwarded-Email": ALICE},
+    )
+    assert shared.status_code in (200, 204), shared.text
+
+    with respx.mock:
+        # No route registered: the provider must never be called for Bob.
+        resp = await auth_client.post(
+            f"/v1/sessions/{session_id}/deployment-context",
+            json={"agent_name": "a", "harness": "pi", "turn_input": "hi"},
+            headers={"X-Forwarded-Email": BOB},
+        )
+    assert resp.status_code in (403, 404), resp.text
 
 
 async def test_unknown_session_returns_404(

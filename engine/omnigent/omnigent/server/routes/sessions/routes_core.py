@@ -1338,15 +1338,13 @@ def register_core_routes(
         owner) and ``labels`` itself from its own stores rather than
         trusting values a runner could supply for an arbitrary session.
 
-        Authorization mirrors ``GET /sessions/{id}/labels`` above (the
-        existing runner-callback pattern for per-session data): any
-        caller with at least ``LEVEL_READ`` on the session is allowed.
-        In practice that's either the runner bound to this session (a
-        managed-sandbox runner authenticates with a bearer
-        :meth:`AuthProvider.mint_runner_token` minted for the session's
-        owner — see ``omnigent/server/auth.py``) or the owner's own
-        logged-in session (a local ``omnigent host`` runner reuses the
-        owner's own credential).
+        Only the session owner may call it. The block can carry the
+        owner's private context (memory, goals), so a collaborator the
+        session is shared with must not be able to read it. Both runner
+        kinds authenticate as the owner: a managed-sandbox runner with a
+        bearer :meth:`AuthProvider.mint_runner_token` minted for the owner
+        (see ``omnigent/server/auth.py``), and a local ``omnigent host``
+        runner with the owner's own credential.
 
         :param request: The incoming FastAPI request (for auth).
         :param response: The FastAPI response (for cache headers).
@@ -1360,7 +1358,7 @@ def register_core_routes(
         response.headers["Cache-Control"] = "no-store"
         user_id = _get_user_id(request, auth_provider)
         access = await _require_access_and_level(
-            user_id, session_id, LEVEL_READ, permission_store, conversation_store
+            user_id, session_id, LEVEL_OWNER, permission_store, conversation_store
         )
         conv = access.conversation
         if conv is None:
@@ -1369,9 +1367,8 @@ def register_core_routes(
             raise _session_not_found()
         if not context_provider_configured():
             return DeploymentContextResponse(block="")
-        # The session owner, not the caller: a managed-sandbox runner
-        # authenticates as the owner already, but a shared session's
-        # caller may hold only a collaborator grant.
+        # The caller is the owner (checked above); resolved from the store
+        # anyway so the provider never sees an identity the caller chose.
         owner_id = _get_session_owner_id(session_id, permission_store) or user_id
         labels = labels_with_closed_status(_labels_for_viewer(conv.labels, owner_id), conv.title)
         block = await fetch_deployment_context(
