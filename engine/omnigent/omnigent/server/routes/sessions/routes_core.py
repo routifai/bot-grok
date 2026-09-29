@@ -52,6 +52,10 @@ from omnigent.runtime import (
     user_session_stream,
 )
 from omnigent.runtime.agent_cache import AgentCache
+from omnigent.runtime.context_provider import (
+    context_provider_configured,
+    fetch_deployment_context,
+)
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
 from omnigent.server._elicitation_registry import (
     _harness_elicitation_owners,
@@ -79,6 +83,9 @@ from omnigent.server.host_registry import HostRegistry, RunnerExitReports
 from omnigent.server.permissions import check_session_access
 from omnigent.server.routes._auth_helpers import (
     get_permission_level as _get_permission_level,
+)
+from omnigent.server.routes._auth_helpers import (
+    get_session_owner_id as _get_session_owner_id,
 )
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
@@ -188,6 +195,8 @@ from omnigent.server.schemas import (
     AutomaticSessionRenameRequest,
     AutomaticSessionRenameResponse,
     CreatedSessionResponse,
+    DeploymentContextRequest,
+    DeploymentContextResponse,
     PaginatedList,
     ProjectSessionCreateRequest,
     ReadStatePutRequest,
@@ -1302,6 +1311,78 @@ def register_core_routes(
             # user's pin key to a native harness bridge).
             labels=labels_with_closed_status(_labels_for_viewer(conv.labels, user_id), conv.title),
         )
+
+    @router.post(
+        "/sessions/{session_id}/deployment-context",
+        response_model=DeploymentContextResponse,
+        # Internal runner callback — hidden from the public API reference,
+        # like the sibling POST /sessions/{id}/events ingestion route.
+        include_in_schema=False,
+    )
+    async def get_deployment_context(
+        request: Request,
+        response: Response,
+        session_id: str,
+        body: DeploymentContextRequest,
+    ) -> DeploymentContextResponse:
+        """
+        Call the deployment's context-provider hook on the runner's behalf.
+
+        The ``OMNIGENT_CONTEXT_PROVIDER_URL`` / ``_SECRET`` hook must be
+        called from the server, never from a runner — a runner can be a
+        user's own laptop (``omnigent host``) and must never hold the
+        provider secret, and a local runner may not even be able to reach
+        the provider network. The runner instead POSTs here once per turn
+        with the turn-local fields it knows (``agent_name``, ``harness``,
+        ``turn_input``); the server resolves ``user_id`` (the session
+        owner) and ``labels`` itself from its own stores rather than
+        trusting values a runner could supply for an arbitrary session.
+
+        Authorization mirrors ``GET /sessions/{id}/labels`` above (the
+        existing runner-callback pattern for per-session data): any
+        caller with at least ``LEVEL_READ`` on the session is allowed.
+        In practice that's either the runner bound to this session (a
+        managed-sandbox runner authenticates with a bearer
+        :meth:`AuthProvider.mint_runner_token` minted for the session's
+        owner — see ``omnigent/server/auth.py``) or the owner's own
+        logged-in session (a local ``omnigent host`` runner reuses the
+        owner's own credential).
+
+        :param request: The incoming FastAPI request (for auth).
+        :param response: The FastAPI response (for cache headers).
+        :param session_id: Session/conversation identifier.
+        :param body: Turn-local fields the runner cannot resolve itself.
+        :returns: ``{"block": "..."}`` — already wrapped in
+            ``<deployment_context>``, or ``""`` when unconfigured,
+            empty, or unavailable.
+        :raises OmnigentError: 404 if no session exists / not accessible.
+        """
+        response.headers["Cache-Control"] = "no-store"
+        user_id = _get_user_id(request, auth_provider)
+        access = await _require_access_and_level(
+            user_id, session_id, LEVEL_READ, permission_store, conversation_store
+        )
+        conv = access.conversation
+        if conv is None:
+            conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+        if conv is None:
+            raise _session_not_found()
+        if not context_provider_configured():
+            return DeploymentContextResponse(block="")
+        # The session owner, not the caller: a managed-sandbox runner
+        # authenticates as the owner already, but a shared session's
+        # caller may hold only a collaborator grant.
+        owner_id = _get_session_owner_id(session_id, permission_store) or user_id
+        labels = labels_with_closed_status(_labels_for_viewer(conv.labels, owner_id), conv.title)
+        block = await fetch_deployment_context(
+            session_id=session_id,
+            agent_name=body.agent_name,
+            harness=body.harness,
+            user_id=owner_id,
+            labels=labels,
+            turn_input=body.turn_input,
+        )
+        return DeploymentContextResponse(block=block)
 
     # ── GET /sessions ───────────────────────────────────────────
 

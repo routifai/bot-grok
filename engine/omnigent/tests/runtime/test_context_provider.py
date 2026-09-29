@@ -14,6 +14,7 @@ import httpx
 import pytest
 import respx
 
+from omnigent.runtime import context_provider as _context_provider_module
 from omnigent.runtime.context_provider import (
     _warned_sessions,
     context_provider_configured,
@@ -275,6 +276,36 @@ async def test_failure_warns_once_per_session(
         if r.levelname == "WARNING" and "repeat-session" in r.getMessage()
     ]
     assert len(warnings_after_forget) == 2  # the original + the one after forget_session
+
+
+async def test_warned_sessions_is_bounded_to_an_lru(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``_warned_sessions`` never grows past the configured cap.
+
+    The server (not a single runner) now calls this hook, so it sees every
+    session in the deployment over the process lifetime — an unbounded set
+    here would leak memory forever. Least-recently-warned sessions are
+    evicted first. The cap is monkeypatched down so the test stays fast
+    instead of exercising the real 1024-entry ``_WARNED_SESSIONS_MAX``.
+    """
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER_URL", _URL)
+    monkeypatch.setattr(_context_provider_module, "_WARNED_SESSIONS_MAX", 5)
+    with respx.mock:
+        respx.post(_URL).mock(return_value=httpx.Response(500))
+        for i in range(15):
+            await fetch_deployment_context(
+                session_id=f"session-{i}",
+                agent_name="a",
+                harness="codex",
+                user_id=None,
+                labels={},
+                turn_input="",
+            )
+    assert len(_warned_sessions) == 5
+    # The earliest sessions were evicted first...
+    assert "session-0" not in _warned_sessions
+    assert "session-9" not in _warned_sessions
+    # ...while the most recent ones are still tracked.
+    assert "session-14" in _warned_sessions
 
 
 # ── extract_turn_input_text ──────────────────────────────────────────

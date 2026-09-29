@@ -267,6 +267,17 @@ Or point a one-off run at the server directly:
 omnigent run path/to/agent.yaml --server https://your-host
 ```
 
+A runner started this way is still just your machine talking to the server
+over your login token — it never holds deployment secrets. In particular, if
+you've wired up a per-turn deployment context provider
+(`OMNIGENT_CONTEXT_PROVIDER_URL` / `OMNIGENT_CONTEXT_PROVIDER_SECRET`), those
+two env vars only need to be set on the **server**. The server calls the
+provider on the runner's behalf (via
+`POST /v1/sessions/{id}/deployment-context`) and resolves the session's owner
+and labels itself — a local runner asks for a turn's context but never sees
+the provider URL or secret, so your laptop stays safe to run even against a
+deployment whose provider endpoint it couldn't otherwise reach.
+
 ## Run hosts in cloud sandboxes
 
 Don't want a laptop to be the host? Run the host in a cloud sandbox instead.

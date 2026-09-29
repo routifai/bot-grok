@@ -1820,6 +1820,41 @@ class SessionLabelsResponse(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
 
 
+class DeploymentContextRequest(BaseModel):
+    """
+    Request body for ``POST /v1/sessions/{id}/deployment-context``.
+
+    Sent by the runner once per turn so the server — which holds the
+    ``OMNIGENT_CONTEXT_PROVIDER_SECRET`` — can call the deployment's
+    context provider on the runner's behalf. The runner never sees the
+    provider URL or secret; a local (``omnigent host``) runner must not
+    hold either.
+
+    :param agent_name: The dispatched agent's name/id for this turn,
+        e.g. ``"research-agent"``. ``None`` when not resolved.
+    :param harness: Canonical harness name for this turn, e.g. ``"pi"``.
+        ``None`` when not resolved.
+    :param turn_input: The latest user message text for this turn.
+        Truncated server-side before being forwarded to the provider.
+    """
+
+    agent_name: str | None = None
+    harness: str | None = None
+    turn_input: str = ""
+
+
+class DeploymentContextResponse(BaseModel):
+    """
+    Response body for ``POST /v1/sessions/{id}/deployment-context``.
+
+    :param block: The already-wrapped ``<deployment_context>...</deployment_context>``
+        block to append to the turn's composed instructions, or ``""``
+        when the provider is unconfigured, empty, or unavailable.
+    """
+
+    block: str = ""
+
+
 # Stages of a managed-sandbox launch, in pipeline order: the sandbox
 # is provisioned, the repository workspace is cloned into it (skipped
 # when the session has no repo workspace), the in-sandbox host starts

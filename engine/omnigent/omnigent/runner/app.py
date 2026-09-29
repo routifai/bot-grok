@@ -177,11 +177,7 @@ from omnigent.runner.subagent_routing import (
     routing_class_from_snapshot,
     session_routing_class,
 )
-from omnigent.runtime.context_provider import (
-    context_provider_configured,
-    extract_turn_input_text,
-    fetch_deployment_context,
-)
+from omnigent.runtime.context_provider import extract_turn_input_text
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager, NoLiveHarnessError
 from omnigent.runtime.prompt import (
     build_instructions,
@@ -1318,6 +1314,25 @@ class InstructionComposition:
 _GATED_COMPOSED_INSTRUCTION_HARNESSES = frozenset({"opencode-native", "hermes"})
 
 
+# Total request budget for the runner's per-turn deployment-context call to
+# the server. Short: a slow or wedged server (or the provider it calls on
+# our behalf) must not noticeably delay a turn.
+_DEPLOYMENT_CONTEXT_TIMEOUT_S = 2.5
+
+# Sessions already warned about a failed deployment-context call to the
+# server, so a wedged/unreachable server logs once per session rather than
+# once per turn. Module-level (like the sessions this runner process
+# serves, this set's lifetime is the process's) rather than closure-local,
+# so the standalone helper function below doesn't need a reference threaded
+# through every call site.
+_deployment_context_call_warned: set[str] = set()
+
+
+def _forget_deployment_context_warning(session_id: str) -> None:
+    """Drop the warn-once bookkeeping for a finished/evicted session."""
+    _deployment_context_call_warned.discard(session_id)
+
+
 async def _append_deployment_context(
     instructions: str | None,
     *,
@@ -1326,44 +1341,64 @@ async def _append_deployment_context(
     agent_name: str | None,
     harness_name: str | None,
     turn_input: str,
+    provider_configured: bool | None,
 ) -> str | None:
-    """Append the ``OMNIGENT_CONTEXT_PROVIDER_URL`` deployment-context hook
-    result to a turn's composed instructions.
+    """Append the deployment-context hook's result to a turn's composed
+    instructions.
 
-    A no-op (returns ``instructions`` unchanged, no network call at all) when
-    the provider URL is unset — this runs on every turn, so unconfigured
-    deployments must not pay even a env-lookup-triggered branch cost beyond
-    the cheap unset check. Session labels are only fetched when a provider
-    is actually configured.
+    The runner never calls the ``OMNIGENT_CONTEXT_PROVIDER_URL`` hook (or
+    reads its secret) directly — a runner can be a user's own laptop
+    (``omnigent host``), which must never hold the provider secret and may
+    not even be able to reach the provider network. Instead this POSTs to
+    the server's ``/sessions/{id}/deployment-context`` callback, which
+    resolves the session's owner/labels itself and calls the hook.
+
+    Fails open on any error, timeout, or non-200/malformed response:
+    *instructions* is returned unchanged and the failure is logged once per
+    ``session_id`` — this must never fail or delay a turn.
 
     :param instructions: The turn's already-composed instructions (author +
         framework text), or ``None``.
-    :param server_client: Omnigent server client, used to resolve the
-        session's labels.
+    :param server_client: Omnigent server client.
     :param session_id: Session/conversation id.
     :param agent_name: The dispatched agent's name/id for this turn.
     :param harness_name: Canonical harness name for this turn.
     :param turn_input: The latest user message text for this turn.
+    :param provider_configured: The server's last-advertised
+        ``deployment_context_provider_configured`` flag (from the session-init
+        snapshot), or ``None`` when not yet known. ``False`` skips the call
+        entirely — no network round-trip on a turn for a deployment with no
+        provider. Anything else (``True`` or unknown) attempts the call, so
+        an unknown state never wrongly skips a configured provider.
     :returns: *instructions* with the deployment-context block appended, or
-        unchanged when unconfigured/unavailable/empty.
+        unchanged when unconfigured/unavailable/empty/failed.
     """
-    if not context_provider_configured():
+    if provider_configured is False:
         return instructions
-    labels = await _session_labels_for_runner_spawn(
-        server_client=server_client,
-        session_id=session_id,
-    )
-    block = await fetch_deployment_context(
-        session_id=session_id,
-        agent_name=agent_name,
-        harness=harness_name,
-        # The runner doesn't see the authenticated caller identity — that's
-        # resolved by the server's auth layer, upstream of this process.
-        user_id=None,
-        labels=labels,
-        turn_input=turn_input,
-    )
-    if not block:
+    try:
+        response = await server_client.post(
+            f"/v1/sessions/{urllib.parse.quote(session_id, safe='')}/deployment-context",
+            json={
+                "agent_name": agent_name or "",
+                "harness": harness_name or "",
+                "turn_input": turn_input,
+            },
+            timeout=_DEPLOYMENT_CONTEXT_TIMEOUT_S,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        if session_id not in _deployment_context_call_warned:
+            _deployment_context_call_warned.add(session_id)
+            _logger.warning(
+                "deployment-context server call failed for session=%s: %s",
+                session_id,
+                exc,
+                extra={"session_id": session_id},
+            )
+        return instructions
+    block = data.get("block") if isinstance(data, dict) else None
+    if not isinstance(block, str) or not block:
         return instructions
     return (instructions or "") + block
 
@@ -5151,6 +5186,7 @@ def create_runner_app(
         _session_agent_ids.pop(session_id, None)
         _session_tool_schemas.pop(session_id, None)
         _instruction_delivery_warned.pop(session_id, None)
+        _forget_deployment_context_warning(session_id)
         _session_sub_agent_resolved.pop(session_id, None)
         if _binding := _session_comment_relays.pop(session_id, None):
             _binding.relay.close()
@@ -8939,6 +8975,7 @@ def create_runner_app(
                             _bg_delivery.value,
                             extra={"session_id": conv},
                         )
+            _dc_envelope = _fresh_session_init_envelope(conv)
             instructions = await _append_deployment_context(
                 instructions,
                 server_client=server_client,
@@ -8946,6 +8983,11 @@ def create_runner_app(
                 agent_name=_dispatched_agent_id,
                 harness_name=harness_name,
                 turn_input=extract_turn_input_text(msg_body.get("content")),
+                provider_configured=(
+                    _dc_envelope.snapshot.deployment_context_provider_configured
+                    if _dc_envelope is not None
+                    else None
+                ),
             )
 
         ctx = TurnDispatch(
@@ -9565,6 +9607,7 @@ def create_runner_app(
                                 ),
                             }
                         _base_instr_ds = cast(str | None, _instr_body.get("instructions"))
+                        _dc_envelope_ds = _fresh_session_init_envelope(conv_id)
                         _instr_with_context = await _append_deployment_context(
                             _base_instr_ds,
                             server_client=server_client,
@@ -9572,6 +9615,11 @@ def create_runner_app(
                             agent_name=_turn_agent_id,
                             harness_name=harness_name,
                             turn_input=extract_turn_input_text(body.get("input")),
+                            provider_configured=(
+                                _dc_envelope_ds.snapshot.deployment_context_provider_configured
+                                if _dc_envelope_ds is not None
+                                else None
+                            ),
                         )
                         if _instr_with_context != _base_instr_ds:
                             _instr_body = {**_instr_body, "instructions": _instr_with_context}

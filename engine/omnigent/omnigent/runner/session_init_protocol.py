@@ -32,6 +32,13 @@ class RunnerSessionInitSnapshot(BaseModel):  # type: ignore[explicit-any]  # Pyd
     parent_session_id: str | None = None
     root_session_id: str | None = None
     inference_config: dict[str, object] | None = None
+    # Whether the deployment's ``OMNIGENT_CONTEXT_PROVIDER_URL`` hook is
+    # configured, as seen by the *server* process. Lets the runner skip its
+    # per-turn ``POST /sessions/{id}/deployment-context`` call entirely when
+    # a deployment has no provider, without an extra round-trip to find
+    # that out — the flag reflects server-side env, not runner-side env,
+    # since only the server ever reads the provider URL/secret now.
+    deployment_context_provider_configured: bool = False
 
 
 class RunnerSessionInitEnvelope(BaseModel):  # type: ignore[explicit-any]  # Pydantic uses Any
@@ -66,6 +73,7 @@ def build_runner_session_init_payload(
 ) -> dict[str, object]:
     """Build the versioned initialization fields appended to the legacy body."""
     from omnigent.inference_config import snapshot_runtime_config
+    from omnigent.runtime.context_provider import context_provider_configured
 
     if conversation.agent_id is None:
         raise ValueError("runner session initialization requires an agent_id")
@@ -92,6 +100,7 @@ def build_runner_session_init_payload(
             parent_session_id=conversation.parent_conversation_id,
             root_session_id=conversation.root_conversation_id,
             inference_config=snapshot_runtime_config(conversation.inference_snapshot),
+            deployment_context_provider_configured=context_provider_configured(),
         ),
     )
     return {

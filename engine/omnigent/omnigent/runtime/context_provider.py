@@ -5,27 +5,34 @@ runner) inject extra instructions into a session's turn without growing
 conversation history — the injected text is appended to the composed system
 instructions for the turn, never persisted as a conversation item.
 
-Configured with two env vars, read by the runner (which composes per-turn
-instructions before forwarding a turn to a harness):
+Configured with two env vars, read by the **server only** — never by a
+runner. A runner can be a user's own laptop (``omnigent host``), which must
+never hold the provider secret and may not even be able to reach the
+provider network; the runner instead calls
+``POST /v1/sessions/{id}/deployment-context`` on the server (see
+``omnigent/server/routes/sessions/routes_core.py``), which resolves
+``user_id``/``labels`` from its own stores and calls this module:
 
 - ``OMNIGENT_CONTEXT_PROVIDER_URL``: unset (the default) is a complete
   no-op — nothing is fetched, nothing is appended, and no state is kept.
 - ``OMNIGENT_CONTEXT_PROVIDER_SECRET``: sent as ``Authorization: Bearer
   <secret>``. May be unset (an empty bearer token is sent) but should be
-  set whenever the URL is reachable by anyone other than the runner.
+  set whenever the URL is reachable by anyone other than the server.
 
 Contract: ``POST <url>`` with a JSON body of session/turn context (see
 :func:`fetch_deployment_context`); a 200 response
 ``{"instructions": "..."}`` is wrapped in a ``<deployment_context>`` block
 and appended to the turn's composed instructions. Any error, timeout, or
-non-200 response is logged once per session and otherwise ignored — this
-hook must never fail or delay a turn.
+non-200 response is logged once per session (bounded to an LRU of
+``_WARNED_SESSIONS_MAX`` sessions) and otherwise ignored — this hook must
+never fail or delay a turn.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from collections import OrderedDict
 from collections.abc import Mapping
 from typing import Any
 
@@ -48,8 +55,14 @@ _URL_ENV = "OMNIGENT_CONTEXT_PROVIDER_URL"
 _SECRET_ENV = "OMNIGENT_CONTEXT_PROVIDER_SECRET"
 
 # Sessions already warned about a failed fetch, so a wedged/unreachable
-# provider logs once per session rather than once per turn.
-_warned_sessions: set[str] = set()
+# provider logs once per session rather than once per turn. Bounded to an
+# LRU of _WARNED_SESSIONS_MAX: this endpoint is called by the server (which
+# may see far more sessions over its lifetime than a single runner ever
+# did), so an unbounded set here would leak memory for the life of the
+# process. Least-recently-warned entries are evicted first; a session that
+# keeps failing every turn stays warm and never gets evicted.
+_WARNED_SESSIONS_MAX = 1024
+_warned_sessions: OrderedDict[str, None] = OrderedDict()
 
 
 def _provider_url() -> str | None:
@@ -122,7 +135,9 @@ async def fetch_deployment_context(
         data = response.json()
     except (httpx.HTTPError, ValueError) as exc:
         if session_id not in _warned_sessions:
-            _warned_sessions.add(session_id)
+            _warned_sessions[session_id] = None
+            if len(_warned_sessions) > _WARNED_SESSIONS_MAX:
+                _warned_sessions.popitem(last=False)
             logger.warning(
                 "context provider request failed for session=%s url=%s: %s",
                 session_id,
@@ -139,7 +154,7 @@ async def fetch_deployment_context(
 
 def forget_session(session_id: str) -> None:
     """Drop the warn-once bookkeeping for a finished/evicted session."""
-    _warned_sessions.discard(session_id)
+    _warned_sessions.pop(session_id, None)
 
 
 def extract_turn_input_text(content: object) -> str:

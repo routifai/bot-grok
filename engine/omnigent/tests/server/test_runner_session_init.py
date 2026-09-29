@@ -221,6 +221,38 @@ def test_reconnect_init_envelope_carries_fork_history_directives(db_uri: str) ->
     assert metadata.fork_source_external_id == "src-claude-sid"
 
 
+def test_init_payload_advertises_deployment_context_provider_state(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The envelope's provider flag reflects the *server's* env, not the runner's.
+
+    ``build_runner_session_init_payload`` runs in the server process (it's
+    called from ``omnigent/server/routes/sessions/routes_core.py`` and
+    ``omnigent/server/runner_session_init.py``), so
+    ``context_provider_configured()`` here reads the server's own
+    ``OMNIGENT_CONTEXT_PROVIDER_URL`` — this is the cheap channel that lets
+    the runner skip its per-turn deployment-context call entirely when the
+    deployment has no provider, without an extra round-trip to find that
+    out.
+    """
+    agent_store = SqlAlchemyAgentStore(db_uri)
+    conversation_store = SqlAlchemyConversationStore(db_uri)
+    agent = agent_store.create(generate_agent_id(), "provider-flag-agent", "bundle/loc")
+    conv = conversation_store.create_conversation(agent_id=agent.id)
+
+    monkeypatch.delenv("OMNIGENT_CONTEXT_PROVIDER_URL", raising=False)
+    payload = build_runner_session_init_payload(conv, server_version="0.6.0.dev0")
+    envelope = parse_runner_session_init_envelope(payload)
+    assert envelope is not None
+    assert envelope.snapshot.deployment_context_provider_configured is False
+
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER_URL", "https://provider.test/context")
+    payload = build_runner_session_init_payload(conv, server_version="0.6.0.dev0")
+    envelope = parse_runner_session_init_envelope(payload)
+    assert envelope is not None
+    assert envelope.snapshot.deployment_context_provider_configured is True
+
+
 @pytest.mark.asyncio
 async def test_recovery_has_own_readiness_and_stable_identity_across_failed_posts() -> None:
     registry, client = _Registry(), _Client()
