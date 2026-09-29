@@ -385,6 +385,10 @@ model Bot {
   // a QuietHoursSchema string ("HH:MM-HH:MM") or the literal "" for "no quiet hours".
   museProactivity        String?
   museQuietHours         String?
+  /// Which Omnigent harness (packages/contracts/src/engine.ts, NovaHarnessId) this Muse's
+  /// Conversation turns run on. Null means the deployment default (OMNIGENT_AGENT_NAME's
+  /// harness, "pi" unless overridden) — see packages/adapters/src/omnigent/harnesses.ts.
+  museHarness            String?
   routines               Routine[]
   scratchpadItems        ScratchpadItem[]
   goals                  Goal[]
@@ -970,6 +974,10 @@ model OmnigentSession {
   botId             String   @unique
   bot               Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   omnigentSessionId String
+  /// Built-in Omnigent agent bundle name (e.g. "nova-pi") this session currently runs on;
+  /// kept in sync by packages/adapters/src/omnigent/gateway.ts when a turn's resolved
+  /// harness (Bot.museHarness) differs and switch-agent succeeds.
+  agentName         String   @default("nova-pi")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
