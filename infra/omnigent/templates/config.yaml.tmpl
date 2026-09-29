@@ -1,0 +1,25 @@
+# GENERATED FILE — do not edit by hand. Edit infra/omnigent/templates/config.yaml.tmpl (or the
+# BUNDLES list in infra/omnigent/render-agents.mjs), then run `node infra/omnigent/render-agents.mjs`.
+#
+# Nova bundle for Omnigent (docs/omnigent-spike.md, NOVA_ENGINE=omnigent week 1 spike). Nova's
+# person context arrives per turn through the context-provider hook, wrapped by Omnigent in
+# <deployment_context> (see apps/api/src/omnigent-context.ts) — this bundle only carries the
+# harness/model choice and the two week-1 builtin tools.
+spec_version: 1
+name: {{NAME}}
+description: >-
+  Nova, the person's personal AI, running on the {{HARNESS}} harness
+  (docs/omnigent-spike.md).
+
+instructions: AGENTS.md
+
+executor:
+  type: omnigent
+  config:
+    harness: {{HARNESS}}
+    model: ${{{MODEL_ENV}}}
+
+tools:
+  builtins:
+    - web_search
+    - web_fetch
