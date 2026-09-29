@@ -44,6 +44,12 @@ export interface ComposeOmnigentContextInput {
   labels: Record<string, string>;
   /** The turn's message text, used only to rank past episodes. */
   turnInput: string;
+  /**
+   * The session owner Omnigent's server resolved (the identity Nova sent as X-Forwarded-Email).
+   * When present it must be the labelled person's email, so labels alone never pick whose context
+   * is returned.
+   */
+  ownerEmail?: string | null;
 }
 
 /**
@@ -74,6 +80,13 @@ export async function composeOmnigentContext(
     },
   });
   if (!bot || bot.userId !== userId || bot.spaceId !== spaceId) return "";
+  if (input.ownerEmail) {
+    const owner = await deps.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (owner?.email.toLowerCase() !== input.ownerEmail.toLowerCase()) return "";
+  }
 
   const botInstructions = runIdentityInstruction(bot, "user");
   const staticInstructions = [MUSE_VOICE_INSTRUCTION, MUSE_GOALS_INSTRUCTION].join("\n\n");

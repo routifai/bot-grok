@@ -23,6 +23,7 @@ export interface OmnigentContextRouteDeps extends OmnigentContextDeps {
 interface OmnigentContextRequest {
   labels: Record<string, string>;
   turn_input: string;
+  user_id: string | null;
 }
 
 function parseRequestBody(raw: string): OmnigentContextRequest | null {
@@ -42,7 +43,8 @@ function parseRequestBody(raw: string): OmnigentContextRequest | null {
     }
   }
   const turnInput = typeof record.turn_input === "string" ? record.turn_input : "";
-  return { labels, turn_input: turnInput };
+  const userId = typeof record.user_id === "string" && record.user_id ? record.user_id : null;
+  return { labels, turn_input: turnInput, user_id: userId };
 }
 
 export function mountOmnigentContextRoute(app: Hono, deps: OmnigentContextRouteDeps): void {
@@ -60,9 +62,11 @@ export function mountOmnigentContextRoute(app: Hono, deps: OmnigentContextRouteD
 
     // Never let a slow compose (or an unexpected error) blow Omnigent's 2s deadline.
     const instructions = await Promise.race([
-      composeOmnigentContext(deps, { labels: parsed.labels, turnInput: parsed.turn_input }).catch(
-        () => "",
-      ),
+      composeOmnigentContext(deps, {
+        labels: parsed.labels,
+        turnInput: parsed.turn_input,
+        ownerEmail: parsed.user_id ?? null,
+      }).catch(() => ""),
       new Promise<string>((resolve) => setTimeout(() => resolve(""), RESPOND_BY_MS)),
     ]);
     return c.json({ instructions });

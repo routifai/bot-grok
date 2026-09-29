@@ -32,7 +32,9 @@ function fakeMemory(overrides?: Partial<MemoryStore>): MemoryStore {
 function fakePrisma(overrides?: Record<string, unknown>): PrismaClient {
   const base = {
     bot: { findUnique: vi.fn(async () => BOT) },
-    user: { findUnique: vi.fn(async () => ({ timezone: "America/Toronto" })) },
+    user: {
+      findUnique: vi.fn(async () => ({ timezone: "America/Toronto", email: "sam@nova.test" })),
+    },
     taughtSkill: { findMany: vi.fn(async () => []) },
     agentSkill: { findMany: vi.fn(async () => []) },
     episode: { findMany: vi.fn(async () => []) },
@@ -253,6 +255,22 @@ describe("composeOmnigentContext", () => {
     const result = await composeOmnigentContext(
       { prisma, memory: fakeMemory(), secrets: [] },
       { labels: PRIVATE_LABELS, turnInput: "hi" },
+    );
+    expect(result).toBe("");
+  });
+
+  it("returns context when the server-resolved owner is the labelled person", async () => {
+    const result = await composeOmnigentContext(
+      { prisma: fakePrisma(), memory: fakeMemory(), secrets: [] },
+      { labels: PRIVATE_LABELS, turnInput: "hi", ownerEmail: "SAM@nova.test" },
+    );
+    expect(result).not.toBe("");
+  });
+
+  it("returns empty instructions when the session owner is someone else", async () => {
+    const result = await composeOmnigentContext(
+      { prisma: fakePrisma(), memory: fakeMemory(), secrets: [] },
+      { labels: PRIVATE_LABELS, turnInput: "hi", ownerEmail: "someone-else@nova.test" },
     );
     expect(result).toBe("");
   });
