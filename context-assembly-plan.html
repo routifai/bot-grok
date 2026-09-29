@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Assembly Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F2F3F5;--surface:#FFFFFF;--ink:#12141A;--muted:#596070;--line:#D8DDE4;--soft:#E9ECF0;
+  --accent:#2F5FBF;--accent-soft:#E3EAF8;--ok:#1F7A55;--ok-soft:#DDF1E7;--warn:#A0660C;--warn-soft:#FBEFD9;--bad:#B23A2A;--bad-soft:#F8E3DF;
+  --pi:#6A4FB8;--codex:#1F7A55;--claude:#C2682E;
+  --z-prefix:#2F5FBF;--z-mid:#7A8190;--z-tail:#C27A1A;
+  --serif:"Instrument Serif",Georgia,serif;--sans:"Instrument Sans",system-ui,-apple-system,sans-serif;--mono:"Geist Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#0D0F13;--surface:#15181E;--ink:#E7EAEE;--muted:#98A0AB;--line:#282E37;--soft:#1C2027;
+  --accent:#7FA2EA;--accent-soft:#1A2640;--ok:#5CC49A;--ok-soft:#14302A;--warn:#E3A546;--warn-soft:#30250F;--bad:#E58A73;--bad-soft:#3A1F1A;
+  --pi:#A895E6;--codex:#5CC49A;--claude:#E9955E;--z-prefix:#7FA2EA;--z-mid:#6B7280;--z-tail:#E0A04A;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#0D0F13;--surface:#15181E;--ink:#E7EAEE;--muted:#98A0AB;--line:#282E37;--soft:#1C2027;
+  --accent:#7FA2EA;--accent-soft:#1A2640;--ok:#5CC49A;--ok-soft:#14302A;--warn:#E3A546;--warn-soft:#30250F;--bad:#E58A73;--bad-soft:#3A1F1A;
+  --pi:#A895E6;--codex:#5CC49A;--claude:#E9955E;--z-prefix:#7FA2EA;--z-mid:#6B7280;--z-tail:#E0A04A;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;padding-inline:20px;padding-block:0 96px}
+.wrap{max-width:1060px;margin:0 auto}
+h1,h2,h3{font-weight:400;margin:0;text-wrap:balance}
+h1{font-family:var(--serif);font-size:clamp(46px,7.4vw,80px);line-height:1}
+h1 em{color:var(--accent)}
+h2{font-family:var(--serif);font-size:clamp(30px,4vw,40px);line-height:1.1}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:72ch}
+.lede{font-size:19px;color:var(--muted);margin-top:16px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header{padding-block:56px 30px;display:grid;gap:12px}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px}
+nav.toc a{font-family:var(--mono);font-size:12px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:99px;padding:5px 11px;background:var(--surface)}
+nav.toc a:hover,nav.toc a:focus-visible{border-color:var(--accent);outline:none}
+section{padding-block:44px;border-top:1px solid var(--line);display:grid;gap:18px}
+code{font-family:var(--mono);font-size:.85em;background:var(--soft);padding:1px 5px;border-radius:5px}
+.muted{color:var(--muted)}
+.scroll{overflow-x:auto}
+.gloss{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:grid;gap:6px;max-width:820px;font-size:15px;color:var(--muted)}
+.gloss b{color:var(--ink)}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:840px){.cols,.two{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:8px;align-content:start}
+.card p,.card li{font-size:15px;color:var(--muted)}
+.card ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.card b{color:var(--ink)}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}.tag.warn{background:var(--warn-soft);color:var(--warn)}.tag.bad{background:var(--bad-soft);color:var(--bad)}
+.h{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;font-weight:500}
+.h i{width:10px;height:10px;border-radius:3px;display:inline-block}
+table{border-collapse:collapse;width:100%;min-width:820px;font-size:14px}
+th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+td:first-child{font-weight:600}
+figure{margin:0;display:grid;gap:10px}
+figcaption{font-size:14px;color:var(--muted);max-width:80ch}
+.dia{color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+svg text{font-family:var(--sans);font-size:12px;fill:currentColor}
+svg .m{font-family:var(--mono);font-size:11px}
+.zone{display:grid;grid-template-columns:110px 1fr;gap:12px}
+.zone .lab{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;display:flex;flex-direction:column;justify-content:center}
+.zone .lab b{color:var(--ink);font-size:12px}
+.zone .bl{display:flex;flex-wrap:wrap;gap:6px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
+.zone.p .bl{border-left:4px solid var(--z-prefix)}.zone.m .bl{border-left:4px solid var(--z-mid)}.zone.t .bl{border-left:4px solid var(--z-tail)}
+.b{font-family:var(--mono);font-size:12px;padding:4px 9px;border-radius:7px;background:var(--soft)}
+.zones{display:grid;gap:6px}
+@media (max-width:600px){.zone{grid-template-columns:1fr}.zone .lab{text-align:left}}
+.ladder{display:grid;gap:6px}
+.rung{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.rung .n{font-family:var(--serif);font-size:26px;color:var(--accent);text-align:center}
+.rung p{font-size:14px;color:var(--muted)}
+.rung b{color:var(--ink)}
+.phases{display:grid;gap:10px}
+.ph{display:grid;grid-template-columns:120px 1fr;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px}
+@media (max-width:640px){.ph{grid-template-columns:1fr}}
+.ph .k{font-family:var(--mono);font-size:12px;color:var(--accent);display:grid;gap:4px;align-content:start}
+.ph .k b{font-family:var(--serif);font-size:30px;color:var(--ink);font-weight:400;line-height:1}
+.ph ul{margin:0;padding-left:18px;display:grid;gap:3px;font-size:14px;color:var(--muted)}
+.ph .acc{font-size:14px;border-top:1px dashed var(--line);padding-top:8px;margin-top:6px;color:var(--muted)}
+.ph .acc b{color:var(--ok)}
+pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;color:var(--ink)}
+.src{display:grid;gap:4px;font-size:13px;color:var(--muted)}.src a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Findings + implementation plan · Omnigent · 2026-09-29</span>
+  <h1>Context assembly on Omnigent, <em>for Pi, Codex and Claude SDK</em></h1>
+  <p class="lede">A long-lived main session whose prompt is built by a context assembler every time it wakes up, delegating work to task sessions or lighter options. Three harnesses: <code>pi</code>, <code>codex</code>, <code>claude-sdk</code>. The user picks one, or we pick it. Every code reference points into <code>engine/omnigent/omnigent/</code>.</p>
+  <div class="gloss">
+    <span><b>Session</b>: an Omnigent session. The <b>main session</b> talks to the user and lives for months; <b>task sessions</b> do bounded work and live for minutes.</span>
+    <span><b>Prompt</b>: what a model receives. <b>The user's prompt</b> is what they type; <b>the assembled prompt</b> is what the assembler builds for the main session on each <b>wake-up</b> (the user's prompt, a finished task, or a timer).</span>
+    <span><b>Record</b>: everything Omnigent stores for a session. <b>Task list</b>: the durable table of delegated work.</span>
+  </div>
+  <nav class="toc" aria-label="Sections"><a href="#flow">How it works today</a><a href="#harnesses">The three harnesses</a><a href="#reuse">What we reuse</a><a href="#knows">Who knows what</a><a href="#prompt">Assembled prompt</a><a href="#warm">Fresh vs warm</a><a href="#ladder">Delegation</a><a href="#choice">Harness choice</a><a href="#wiring">Wiring</a><a href="#plan">Plan</a><a href="#risks">Risks</a></nav>
+</header>
+
+<section id="flow">
+  <span class="eyebrow">Finding 1</span>
+  <h2>How a message reaches a harness today</h2>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 1000 250" role="img" aria-label="Server stores items; runner loads them once from the latest compaction item into _session_histories and appends; the full list goes to executor.run_turn; fresh executor state uses the list, warm state sends only new items; close_session resets to fresh." style="width:100%;min-width:880px;height:auto">
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="10" y="80" width="150" height="90" rx="10"/><rect x="210" y="60" width="260" height="130" rx="10" stroke="var(--accent)" stroke-width="2"/><rect x="520" y="80" width="190" height="90" rx="10"/><rect x="760" y="20" width="230" height="80" rx="10"/><rect x="760" y="150" width="230" height="80" rx="10"/>
+        <line x1="160" y1="125" x2="208" y2="125" marker-end="url(#a)"/><line x1="470" y1="125" x2="518" y2="125" marker-end="url(#a)"/>
+        <path d="M710 115 C735 115 735 60 758 60" marker-end="url(#a)"/><path d="M710 135 C735 135 735 190 758 190" marker-end="url(#a)"/>
+        <path d="M990 150 C1000 130 1000 120 990 100" marker-end="url(#a)" stroke-dasharray="4 3"/>
+      </g>
+      <text x="85" y="112" text-anchor="middle" font-weight="600">Server</text><text x="85" y="132" text-anchor="middle" class="m">every item</text><text x="85" y="150" text-anchor="middle" class="m" opacity=".7">GET …/items</text>
+      <text x="340" y="86" text-anchor="middle" font-weight="600">Runner · runner/app.py</text>
+      <text x="340" y="110" text-anchor="middle" class="m">_load_history_as_input()</text><text x="340" y="128" text-anchor="middle" class="m" opacity=".7">from the latest compaction item</text>
+      <text x="340" y="150" text-anchor="middle" class="m">_session_histories[conv]</text><text x="340" y="168" text-anchor="middle" class="m" opacity=".7">cached, appended each turn</text>
+      <text x="615" y="110" text-anchor="middle" font-weight="600">Executor adapter</text><text x="615" y="130" text-anchor="middle" class="m">run_turn(messages=list)</text><text x="615" y="148" text-anchor="middle" class="m" opacity=".7">_executor_adapter.py:207</text>
+      <text x="875" y="48" text-anchor="middle" font-weight="600">Fresh state</text><text x="875" y="68" text-anchor="middle" class="m">uses the whole list</text>
+      <text x="875" y="178" text-anchor="middle" font-weight="600">Warm state</text><text x="875" y="198" text-anchor="middle" class="m">sends only new items</text>
+      <text x="930" y="128" text-anchor="end" class="m">close_session</text>
+    </svg>
+    </div>
+    <figcaption>Every harness is handed the whole list every turn. Whether it uses it, or relies on its own memory, depends only on whether its per-session state is alive. <code>Executor.close_session</code> (<code>inner/executor.py</code>) resets it; Omnigent already does this on interrupt so "the next turn starts a fresh thread and replays full history" (<code>inner/codex_executor.py</code> ~4614).</figcaption>
+  </figure>
+</section>
+
+<section id="harnesses">
+  <span class="eyebrow">Finding 2</span>
+  <h2>The three harnesses, side by side</h2>
+  <div class="scroll"><table>
+    <thead><tr><th></th><th><span class="h"><i style="background:var(--pi)"></i>pi</span></th><th><span class="h"><i style="background:var(--codex)"></i>codex</span></th><th><span class="h"><i style="background:var(--claude)"></i>claude-sdk</span></th></tr></thead>
+    <tbody>
+      <tr><td>Runs as</td><td><code>pi --mode rpc --no-session</code> subprocess</td><td>Codex app-server thread</td><td>resident <code>ClaudeSDKClient</code></td></tr>
+      <tr><td>Instruction delivery</td><td>composed-per-turn</td><td>composed-per-turn</td><td>composed-session-snapshot</td></tr>
+      <tr><td>While warm</td><td>process holds history; new message only</td><td>thread holds history; latest message (<code>_prompt_for_turn</code>)</td><td>client holds history; trailing user message</td></tr>
+      <tr><td>New instructions while warm</td><td><span class="tag warn">restarts process</span> on any system-prompt change (<code>_ensure_rpc</code>)</td><td><span class="tag ok">yes</span></td><td><span class="tag bad">no</span> options only at client creation (<code>_get_or_create_client</code>)</td></tr>
+      <tr><td><code>close_session</code></td><td>ends the process</td><td>drops session + thread id</td><td><code>_clients.pop</code></td></tr>
+      <tr><td>Fresh start uses the list as</td><td><span class="tag warn">flattened text</span> (<code>_build_pi_prompt</code>)</td><td><code>_build_initial_prompt(messages)</code> into a new thread</td><td><span class="tag warn">flattened text</span> prefix (<code>_build_prompt(resume_session=False)</code>)</td></tr>
+      <tr><td>Fresh-start cost</td><td>a process start</td><td>a thread start</td><td>a Claude Code process start (seconds)</td></tr>
+      <tr><td>Own compaction</td><td>Pi internal</td><td>Codex auto-compact</td><td>Claude native; Omnigent's is bypassed</td></tr>
+      <tr><td>Vendor memory switch</td><td><code>context_files: false</code>; <code>system_prompt_mode</code></td><td>private <code>CODEX_HOME</code>, but global <code>AGENTS.md</code> symlinked in</td><td><code>skills_filter: "none"</code> → <code>setting_sources=[]</code> (<code>_resolve_skills_option</code>)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted" style="font-size:14px">All three can be made to depend only on what we give them. They differ in cost, and <code>pi</code> and <code>claude-sdk</code> currently rebuild from flattened text, losing tool-call structure (fixed in Phase 7).</p>
+</section>
+
+<section id="reuse">
+  <span class="eyebrow">Finding 3</span>
+  <h2>What Omnigent already gives us</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Need</th><th>Omnigent today</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Per-wake-up instructions</td><td><code>runtime/context_provider.py</code> + <code>POST /v1/sessions/{id}/deployment-context</code> (<code>server/routes/sessions/routes_core.py</code>), called by <code>_append_deployment_context</code> (<code>runner/app.py</code> ~1336); owner-only, fails open</td><td><span class="tag ok">reuse</span></td></tr>
+      <tr><td>Bounded history</td><td><code>compaction</code> item + <code>_convert_raw_items_to_input</code></td><td><span class="tag ok">reuse</span></td></tr>
+      <tr><td>Fresh harness</td><td><code>Executor.close_session</code></td><td><span class="tag ok">reuse</span></td></tr>
+      <tr><td>Sub-work in a session</td><td><code>sys_session_create</code> / <code>sys_session_send</code> (<code>tools/builtins/spawn.py</code>), child tree, harness per child</td><td><span class="tag ok">reuse</span></td></tr>
+      <tr><td>Wake the main session</td><td><code>POST /v1/sessions/{id}/events</code>; the runner posts one when a child finishes (<code>runner/app.py</code> ~2447); codex-native children are special-cased (~8373)</td><td><span class="tag warn">move to server</span></td></tr>
+      <tr><td>Guard rails</td><td><code>spawn_bounds</code>, <code>blast_radius</code>, <code>headless_subagent_purpose_guard</code>, <code>worktree_guard</code> (<code>policies/builtins/orchestration.py</code>)</td><td><span class="tag ok">reuse</span></td></tr>
+      <tr><td>Timers</td><td>scheduled tasks (<code>server/routes/scheduled_tasks.py</code>)</td><td><span class="tag ok">reuse</span></td></tr>
+      <tr><td>Harness per session</td><td><code>harness_override</code>; <code>switch-agent</code></td><td><span class="tag ok">reuse</span></td></tr>
+      <tr><td>Durable task list</td><td>only <code>session_todos</code> (display snapshot, <code>native/session_todos.py</code>)</td><td><span class="tag bad">missing</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="knows">
+  <span class="eyebrow">Design 1</span>
+  <h2>Who knows what</h2>
+  <div class="two">
+    <div class="card"><span class="tag">main session</span><h3>Knows only the assembled prompt</h3><ul><li>Plus its own base prompt and tool definitions</li><li>History: the record from the latest summary</li><li>Harness discarded or revalidated every wake-up</li><li>Vendor memory off</li><li>Emits replies and <code>spawn_task</code> calls</li></ul></div>
+    <div class="card"><span class="tag ok">task session</span><h3>Starts from a brief, then works natively</h3><ul><li>Brief + context pack (earlier decisions, dependent reports)</li><li>Harness keeps and compacts its own history for minutes</li><li>Vendor memory off</li><li>Ends with one <code>finish_task</code> report (~1,500 tokens), files by reference</li></ul></div>
+  </div>
+</section>
+
+<section id="prompt">
+  <span class="eyebrow">Design 2</span>
+  <h2>The assembled prompt, and why the record can grow forever</h2>
+  <div class="zones">
+    <div class="zone p"><div class="lab"><b>Prefix</b>stable</div><div class="bl"><span class="b">rules</span><span class="b">tool contract</span><span class="b">delegation policy</span><span class="b">skills catalog</span><span class="b">core memory vN</span></div></div>
+    <div class="zone m"><div class="lab"><b>Middle</b>append-only</div><div class="bl"><span class="b">summary (compaction item)</span><span class="b">items since it</span><span class="b">task events + reports</span></div></div>
+    <div class="zone t"><div class="lab"><b>Tail</b>per wake-up</div><div class="bl"><span class="b">open tasks recap</span><span class="b">recalled memory</span><span class="b">trigger</span><span class="b">time</span></div></div>
+  </div>
+  <p>Prefix and tail go through the deployment-context hook. The middle is the runner's normal history input. A background summarizer writes our summary <b>as an Omnigent <code>compaction</code> item</b> once 100 items are unsummarized, folding the oldest 50 and advancing a cursor only if no other job moved it. The runner loads from that item and drops its cache, so the input stays bounded while the record keeps every item.</p>
+</section>
+
+<section id="warm">
+  <span class="eyebrow">Design 3</span>
+  <h2>Fresh every wake-up, or warm while still valid</h2>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 960 200" role="img" aria-label="On wake-up: if prefix digest unchanged and no new compaction item, keep the warm harness and send only new items plus the tail; otherwise close_session and rebuild from the assembled prompt." style="width:100%;min-width:780px;height:auto">
+      <defs><marker id="w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="10" y="70" width="140" height="56" rx="10"/><rect x="200" y="50" width="280" height="96" rx="12" stroke="var(--accent)" stroke-width="2"/><rect x="560" y="20" width="390" height="64" rx="10" stroke="var(--ok)"/><rect x="560" y="116" width="390" height="64" rx="10" stroke="var(--warn)"/>
+        <line x1="150" y1="98" x2="198" y2="98" marker-end="url(#w)"/><path d="M480 85 C520 85 520 52 558 52" marker-end="url(#w)"/><path d="M480 111 C520 111 520 148 558 148" marker-end="url(#w)"/>
+      </g>
+      <text x="80" y="96" text-anchor="middle" font-weight="600">Wake-up</text><text x="80" y="114" text-anchor="middle" class="m" opacity=".7">any trigger</text>
+      <text x="340" y="80" text-anchor="middle" font-weight="600">Still valid?</text><text x="340" y="100" text-anchor="middle" class="m">prefix digest unchanged</text><text x="340" y="118" text-anchor="middle" class="m">and no new compaction item</text>
+      <text x="530" y="66" text-anchor="middle" class="m">yes</text><text x="530" y="140" text-anchor="middle" class="m">no</text>
+      <text x="755" y="46" text-anchor="middle" font-weight="600">Keep warm</text><text x="755" y="66" text-anchor="middle" class="m">send new items + tail (transient)</text>
+      <text x="755" y="142" text-anchor="middle" font-weight="600">close_session, rebuild</text><text x="755" y="162" text-anchor="middle" class="m">from summary + items + prefix + tail</text>
+    </svg>
+    </div>
+    <figcaption>A warm harness is safe exactly when its memory equals what we would send: same prefix, same summary, append-only items. Phase 2 always rebuilds (simple, correct); Phase 6 adds the validity check to save cost, which matters most for <code>claude-sdk</code>.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="card"><span class="h"><i style="background:var(--pi)"></i>pi</span><p>A system-prompt change restarts the process, so to stay warm the <b>tail must travel in the turn input</b> as a tagged transient block, not in the system prompt.</p></div>
+    <div class="card"><span class="h"><i style="background:var(--codex)"></i>codex</span><p>Takes new instructions every turn while warm, so the tail can stay in instructions. The easiest of the three.</p></div>
+    <div class="card"><span class="h"><i style="background:var(--claude)"></i>claude-sdk</span><p>Instructions are frozen per client, so the tail goes in the turn input like Pi. It gets the most from staying warm, because a fresh start costs a process.</p></div>
+  </div>
+</section>
+
+<section id="ladder">
+  <span class="eyebrow">Design 4</span>
+  <h2>Delegation: the lightest rung that fits</h2>
+  <div class="ladder">
+    <div class="rung"><span class="n">1</span><p><b>Answer directly.</b> Questions, facts, anything already in the assembled prompt.</p><span class="tag ok">exists</span></div>
+    <div class="rung"><span class="n">2</span><p><b>Tool or workflow.</b> Known steps: search, fetch, compute, check.</p><span class="tag ok">exists</span></div>
+    <div class="rung"><span class="n">3</span><p><b>Helper inside the wake-up.</b> A nested agent with a clean prompt; result returned as a tool result; ≤ 4 parallel, no nesting, capped output. No new session.</p><span class="tag warn">Phase 8</span></div>
+    <div class="rung"><span class="n">4</span><p><b>Background helper.</b> Like 3, but outlives the wake-up and wakes the main session when done.</p><span class="tag">later</span></div>
+    <div class="rung"><span class="n">5</span><p><b>Worker from a pool.</b> Reuse a warm task session via <code>sys_session_send(session_id)</code>, reset between tasks.</p><span class="tag warn">Phase 4</span></div>
+    <div class="rung"><span class="n">6</span><p><b>New task session.</b> <code>sys_session_create</code>: own sandbox, permissions, runner, or full isolation.</p><span class="tag warn">Phase 4</span></div>
+  </div>
+  <p class="muted" style="font-size:14px">Rungs 3–6 all write one task list row, end with one <code>finish_task</code>-shaped report, and (asynchronous rungs) one wake-up event. Caps: <code>spawn_bounds</code> 5 per wake-up, ≤ 4 running per main session, depth 1, ≤ 2 retries, USD and time budget per task.</p>
+</section>
+
+<section id="choice">
+  <span class="eyebrow">Design 5</span>
+  <h2>The user picks the harness, or we do</h2>
+  <div class="two">
+    <div class="card"><h3>User picks</h3><p>Per main session, stored as <code>harness_override</code> and changed with <code>switch-agent</code>. Switching is safe: the next wake-up rebuilds from the record, and the conversation carries over.</p></div>
+    <div class="card"><h3>We pick</h3><ul><li><b>Main session default:</b> <span class="h"><i style="background:var(--pi)"></i>pi</span>, the cheapest fresh start with per-turn instructions.</li><li><span class="h"><i style="background:var(--codex)"></i>codex</span> when recent work is mostly code in a repo.</li><li><span class="h"><i style="background:var(--claude)"></i>claude-sdk</span> for long writing or document work, or a stated Claude preference; run warm-while-valid.</li><li><b>Task sessions</b> choose per task: codex for code changes, claude-sdk for long documents and complex edits, pi for research and light tools.</li></ul></div>
+  </div>
+</section>
+
+<section id="wiring">
+  <span class="eyebrow">Wiring</span>
+  <h2>How the pieces connect</h2>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 1000 440" role="img" aria-label="User's prompt goes to the server record and the runner. The runner asks the server's deployment-context endpoint, which calls the assembler reading the store, for prefix and tail. The runner loads history from the latest compaction item, checks validity, and calls the executor for pi, codex or claude-sdk. Items go back to the record. spawn_task writes the task list and starts rungs; finish_task reports and a wake-up event return. The summarizer writes compaction items and invalidates the runner cache." style="width:100%;min-width:880px;height:auto">
+      <defs><marker id="z" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="10" y="40" width="120" height="56" rx="10"/>
+        <rect x="190" y="20" width="300" height="200" rx="14"/>
+        <rect x="210" y="60" width="120" height="44" rx="8" stroke="var(--accent)" stroke-width="2"/><rect x="350" y="60" width="120" height="44" rx="8"/>
+        <rect x="210" y="120" width="260" height="80" rx="8"/>
+        <rect x="560" y="20" width="420" height="200" rx="14"/>
+        <rect x="580" y="140" width="120" height="60" rx="8" stroke="var(--pi)"/><rect x="720" y="140" width="120" height="60" rx="8" stroke="var(--codex)"/><rect x="860" y="140" width="100" height="60" rx="8" stroke="var(--claude)"/>
+        <rect x="190" y="300" width="300" height="120" rx="14"/>
+        <rect x="560" y="300" width="420" height="120" rx="14"/>
+        <line x1="130" y1="68" x2="208" y2="80" marker-end="url(#z)"/>
+        <line x1="470" y1="82" x2="578" y2="82" marker-end="url(#z)" marker-start="url(#z)"/>
+        <line x1="340" y1="220" x2="340" y2="298" marker-end="url(#z)"/>
+        <line x1="770" y1="220" x2="770" y2="298" marker-end="url(#z)"/>
+        <path d="M560 360 H492" marker-end="url(#z)"/>
+      </g>
+      <text x="70" y="64" text-anchor="middle" font-weight="600">User</text><text x="70" y="82" text-anchor="middle" class="m" opacity=".7">user's prompt</text>
+      <text x="340" y="44" text-anchor="middle" font-weight="600">Omnigent server</text>
+      <text x="270" y="80" text-anchor="middle" class="m">assembler</text><text x="270" y="96" text-anchor="middle" class="m" opacity=".7">provide()</text>
+      <text x="410" y="80" text-anchor="middle" class="m">deployment-</text><text x="410" y="96" text-anchor="middle" class="m">context</text>
+      <text x="340" y="146" text-anchor="middle" class="m">record · task list · memory</text><text x="340" y="166" text-anchor="middle" class="m" opacity=".7">spawn_task · finish_task · wake-ups</text><text x="340" y="184" text-anchor="middle" class="m" opacity=".7">summary cursor</text>
+      <text x="524" y="74" text-anchor="middle" class="m">prefix+tail</text>
+      <text x="770" y="44" text-anchor="middle" font-weight="600">Runner</text>
+      <text x="770" y="72" text-anchor="middle" class="m">_session_histories (from latest compaction)</text>
+      <text x="770" y="92" text-anchor="middle" class="m">valid? else close_session</text>
+      <text x="770" y="112" text-anchor="middle" class="m">run_turn(messages)</text>
+      <text x="640" y="166" text-anchor="middle" font-weight="600">pi</text><text x="640" y="184" text-anchor="middle" class="m" opacity=".7">main default</text>
+      <text x="780" y="166" text-anchor="middle" font-weight="600">codex</text><text x="780" y="184" text-anchor="middle" class="m" opacity=".7">code</text>
+      <text x="910" y="166" text-anchor="middle" font-weight="600">claude-sdk</text><text x="910" y="184" text-anchor="middle" class="m" opacity=".7">docs · Claude</text>
+      <text x="340" y="326" text-anchor="middle" font-weight="600">Background</text>
+      <text x="340" y="350" text-anchor="middle" class="m">summarizer → compaction item</text><text x="340" y="370" text-anchor="middle" class="m" opacity=".7">→ runner drops its cache</text><text x="340" y="390" text-anchor="middle" class="m" opacity=".7">scheduled task</text>
+      <text x="770" y="326" text-anchor="middle" font-weight="600">Delegation</text>
+      <text x="770" y="350" text-anchor="middle" class="m">rung 3 helper · rung 5 worker · rung 6 new session</text><text x="770" y="370" text-anchor="middle" class="m" opacity=".7">sys_session_create / sys_session_send</text><text x="770" y="390" text-anchor="middle" class="m" opacity=".7">finish_task → task list → wake-up</text>
+      <text x="355" y="262" class="m">items, task rows</text>
+      <text x="785" y="262" class="m">spawn / report</text>
+    </svg>
+    </div>
+  </figure>
+  <div class="scroll"><table>
+    <thead><tr><th>Component</th><th>Lives in</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td>Context assembler <code>provide(session) → prefix, tail</code></td><td>server, behind <code>OMNIGENT_CONTEXT_PROVIDER</code> (<code>runtime/context_provider.py</code>)</td><td><span class="tag warn">new module</span> existing hook</td></tr>
+      <tr><td>Label <code>omnigent.fresh_prompt=true</code></td><td>session labels</td><td><span class="tag warn">new</span></td></tr>
+      <tr><td>Validity check + <code>close_session</code> after a turn</td><td><code>runtime/harnesses/_executor_adapter.py</code></td><td><span class="tag warn">new logic</span></td></tr>
+      <tr><td>Tail as a transient turn block (pi, claude-sdk)</td><td>runner turn dispatch (<code>runner/app.py</code>)</td><td><span class="tag warn">new</span></td></tr>
+      <tr><td>Summarizer → compaction item + cache drop</td><td>scheduled task + <code>runner/app.py</code></td><td><span class="tag warn">new</span></td></tr>
+      <tr><td>Omnigent compaction off for labelled sessions</td><td>agent spec <code>compaction</code></td><td><span class="tag">config</span></td></tr>
+      <tr><td>Vendor memory off</td><td>bundles: <code>context_files: false</code>, <code>skills_filter: "none"</code>; codex home without global <code>AGENTS.md</code></td><td><span class="tag">config</span> + small change</td></tr>
+      <tr><td>Task list store and routes</td><td>server stores + routes</td><td><span class="tag warn">new</span></td></tr>
+      <tr><td><code>spawn_task</code>, <code>finish_task</code>, <code>open_result</code></td><td><code>tools/builtins/</code>, server-side, wrapping <code>spawn.py</code></td><td><span class="tag warn">new</span></td></tr>
+      <tr><td>Wake on terminal child status</td><td>server (replaces runner notice and the codex-native exception)</td><td><span class="tag warn">new</span></td></tr>
+      <tr><td><code>run_helper</code> (rung 3)</td><td>executors</td><td><span class="tag warn">new</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="plan">
+  <span class="eyebrow">Implementation plan</span>
+  <h2>Nine phases, each shippable, each with a test</h2>
+  <div class="phases">
+    <div class="ph"><div class="k"><b>0</b>spike · 2–3 days</div><div><ul><li>Does one executor instance serve several sessions (<code>_ensure_executor</code>)? Does <code>close_session</code> of one affect another?</li><li>Does closing after every turn drop steering messages queued mid-turn?</li><li>Exact <code>codex</code> <code>_build_initial_prompt</code> replay format.</li><li>Can the runner send a transient tail block that isn't persisted as the user's text?</li><li>Can <code>claude-sdk</code> resume from a transcript built from items (reuse <code>harnesses/claude_native/main.py</code> <code>_ensure_local_claude_resume_transcript</code>)?</li></ul><p class="acc"><b>Accept:</b> a written answer with file:line for each.</p></div></div>
+    <div class="ph"><div class="k"><b>1</b>assembler</div><div><ul><li>Plug the assembler into <code>OMNIGENT_CONTEXT_PROVIDER</code>; <code>provide()</code> returns prefix and tail with stable ordering, byte budgets, untrusted-data framing.</li></ul><p class="acc"><b>Accept:</b> on all three harnesses a wake-up's model input contains the assembler's prefix and tail.</p></div></div>
+    <div class="ph"><div class="k"><b>2</b>fresh + memory off</div><div><ul><li>Label <code>omnigent.fresh_prompt</code>; the adapter calls <code>close_session</code> after each completed turn on labelled sessions.</li><li>Bundles: <code>context_files: false</code>, <code>skills_filter: "none"</code>, codex home without the global <code>AGENTS.md</code>.</li></ul><p class="acc"><b>Accept:</b> per harness, a fact changed only in the prefix between wake-ups is answered with the new value; a planted host <code>CLAUDE.md</code>/<code>AGENTS.md</code> never appears.</p></div></div>
+    <div class="ph"><div class="k"><b>3</b>bounded history</div><div><ul><li>Summarizer as a scheduled task: fold 50 at 100 unsummarized, compare-and-set cursor, write a <code>compaction</code> item; the runner drops <code>_session_histories[conv]</code>. Omnigent compaction off for labelled sessions.</li></ul><p class="acc"><b>Accept:</b> a synthetic 3,000-item session keeps harness input under a fixed budget; the record still returns every item.</p></div></div>
+    <div class="ph"><div class="k"><b>4</b>task list · rungs 5–6</div><div><ul><li>Task list store; <code>spawn_task</code> (goal, deliverable, harness, depends_on, budget, scope) over <code>sys_session_create</code>/<code>sys_session_send</code>; <code>finish_task</code>; <code>open_result</code>; fallback summarizer; server-side wake; caps.</li></ul><p class="acc"><b>Accept:</b> fan-out of two, a dependent chain, a failing task with capped retries, a blocked task whose question reaches the user and resumes the same task session.</p></div></div>
+    <div class="ph"><div class="k"><b>5</b>harness choice</div><div><ul><li>Pick <code>pi</code>/<code>codex</code>/<code>claude-sdk</code> per main session; the auto policy; <code>switch-agent</code> between wake-ups.</li></ul><p class="acc"><b>Accept:</b> switching mid-life keeps the conversation and holds quality on the eval set.</p></div></div>
+    <div class="ph"><div class="k"><b>6</b>warm-while-valid</div><div><ul><li>Prefix digest + compaction marker check; keep warm when valid; tail as a transient block for <code>pi</code>/<code>claude-sdk</code>, in instructions for <code>codex</code>.</li></ul><p class="acc"><b>Accept:</b> <code>claude-sdk</code> median wake-up latency drops with identical answers; prompt-cache hit rate reported.</p></div></div>
+    <div class="ph"><div class="k"><b>7</b>structured fresh starts</div><div><ul><li><code>pi</code>: a <code>pi-sdk</code> executor on <code>pi-agent-core</code> taking structured messages, or a Pi session file. <code>claude-sdk</code>: resume transcript built from items. <code>codex</code>: structured replay if Phase 0 found text.</li></ul><p class="acc"><b>Accept:</b> a tool result from three wake-ups ago is still usable after a fresh start.</p></div></div>
+    <div class="ph"><div class="k"><b>8</b>helper · rung 3</div><div><ul><li><code>run_helper</code> on each executor: nested loop with a clean prompt, ≤ 4 in parallel, capped result.</li></ul><p class="acc"><b>Accept:</b> a research fan-out completes in one wake-up with no new sessions created.</p></div></div>
+  </div>
+  <div class="card"><h3>Evaluation, from Phase 2 on</h3><p>Fixed sessions: question answering, one task, fan-out, dependent chain, failing task, a 200-wake-up session. Measured: tokens per wake-up, prompt-cache hit rate, latency, cost, answer quality against a single-harness baseline, and how often each rung is used (over-delegation check).</p></div>
+</section>
+
+<section id="risks">
+  <span class="eyebrow">Risks</span>
+  <h2>What could go wrong, and the answer to each</h2>
+  <div class="two">
+    <div class="card"><h3>Reports are the ceiling</h3><p>The main session only knows what reports say. Required <code>confidence</code> and <code>open_question</code>, files by reference, and <code>open_result</code> to check.</p></div>
+    <div class="card"><h3>Flattened fresh starts</h3><p><code>pi</code> and <code>claude-sdk</code> lose tool-call structure on a rebuild until Phase 7. Keep summaries tight and tool results referenced.</p></div>
+    <div class="card"><h3>claude-sdk start cost</h3><p>A Claude Code process per fresh wake-up. Phase 6 keeps it warm while valid.</p></div>
+    <div class="card"><h3>Over-delegation</h3><p>Published multi-agent systems cost about 15× the tokens of chat. The ladder and the eval keep delegation honest.</p></div>
+  </div>
+  <div class="src"><span>Design principles from external sources: compressed sub-agent results (<a href="https://www.anthropic.com/engineering/multi-agent-research-system">Anthropic, multi-agent research</a>); stable prefix, append-only context, recited plan, visible errors (<a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">Manus</a>); shared decisions for dependent work (<a href="https://cognition.com/blog/dont-build-multi-agents">Cognition</a>); memory off the hot path (<a href="https://www.letta.com/blog/sleep-time-compute/">Letta</a>); quality drops with length (<a href="https://www.zenml.io/llmops-database/context-rot-evaluating-llm-performance-degradation-with-increasing-input-tokens">context rot</a>).</span><span>The same content as Markdown: <code>context-assembly-plan.md</code> at the repo root.</span></div>
+</section>
+</div>
+</body>
+</html>
