@@ -411,7 +411,7 @@ overrides this auto-selection.
 |---|---|---|
 | `accounts` (deploy default) | Standalone deploy, no external IdP: built-in username/password with first-user-is-admin bootstrap and UI-based invites. Opt in with `OMNIGENT_AUTH_ENABLED=1` (and no OIDC vars). | Set `OMNIGENT_ACCOUNTS_COOKIE_SECRET` (or let `bootstrap.sh` mint it) and `OMNIGENT_ACCOUNTS_BASE_URL` (public URL). On first boot, set the admin password via the web Create-admin form, the terminal prompt, or `--admin-password` / `OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD`. |
 | `oidc` | Standalone deploy with your own IdP: server handles the full login flow | Set `OMNIGENT_AUTH_ENABLED=1` and the `OMNIGENT_OIDC_*` env vars; the presence of `OMNIGENT_OIDC_ISSUER` selects OIDC (or pin `OMNIGENT_AUTH_PROVIDER=oidc`). Requires HTTPS (the session cookie uses the `__Host-` prefix). |
-| `header` | Behind an existing SSO proxy (oauth2-proxy, AWS ALB OIDC, Cloudflare Access, Tailscale Funnel, …) that injects an identity header | The default when `OMNIGENT_AUTH_ENABLED` is off; or pin `OMNIGENT_AUTH_PROVIDER=header`. Reads `X-Forwarded-Email` by default; set `OMNIGENT_AUTH_HEADER` for proxies that use another name (e.g. `Cf-Access-Authenticated-User-Email`), and `OMNIGENT_AUTH_HEADER_STRIP_PREFIX=accounts.google.com:` for Google IAP. Proxy MUST strip any inbound copy of the header from clients. Missing headers are always rejected. |
+| `header` | Behind an existing SSO proxy (oauth2-proxy, AWS ALB OIDC, Cloudflare Access, Tailscale Funnel, …) that injects an identity header | The default when `OMNIGENT_AUTH_ENABLED` is off; or pin `OMNIGENT_AUTH_PROVIDER=header`. Reads `X-Forwarded-Email` by default; set `OMNIGENT_AUTH_HEADER` for proxies that use another name (e.g. `Cf-Access-Authenticated-User-Email`), and `OMNIGENT_AUTH_HEADER_STRIP_PREFIX=accounts.google.com:` for Google IAP. Proxy MUST strip any inbound copy of the header from clients. Missing headers are always rejected. Optionally set `OMNIGENT_AUTH_HEADER_SECRET` and have the proxy stamp a matching `X-Omnigent-Proxy-Secret` header, so a request that bypasses the proxy can't forge identity. |
 
 > [!NOTE]
 > **Managed sandboxes need `header`/`oidc` or single-user auth.** Each session's
@@ -535,6 +535,22 @@ doesn't **strip** any client-supplied copy of the identity header before
 forwarding, anyone can impersonate anyone by sending the header themselves.
 Getting this wrong exposes every user's sessions, conversation history, tool
 output, and files to every other caller.
+
+Set `OMNIGENT_AUTH_HEADER_SECRET` to require the proxy to also stamp a
+matching `X-Omnigent-Proxy-Secret` header on every request it forwards. This
+closes the gap where a client that can reach the server directly (bypassing
+the proxy) could otherwise forge identity just by knowing the header's name:
+without the secret, a request carrying the identity header but a missing or
+wrong `X-Omnigent-Proxy-Secret` is treated as unauthenticated, exactly like a
+request with no identity header at all.
+
+```dotenv
+OMNIGENT_AUTH_PROVIDER=header
+OMNIGENT_AUTH_HEADER_SECRET=<random-shared-secret>
+```
+
+Configure the same value in your proxy so it forwards
+`X-Omnigent-Proxy-Secret: <random-shared-secret>` on every request.
 
 **For almost everyone, use built-in `accounts` (the default in these
 deploys) or `oidc`**; both authenticate users at the server with no proxy to

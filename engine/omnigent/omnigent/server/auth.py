@@ -11,7 +11,11 @@ selected via the ``OMNIGENT_AUTH_PROVIDER`` env var:
   Requests without the header are rejected (401) unless the server
   was explicitly started as a single-user local runtime
   (``OMNIGENT_LOCAL_SINGLE_USER=1``), in which case they fall back
-  to the reserved ``"local"`` user.
+  to the reserved ``"local"`` user. Optionally, ``OMNIGENT_AUTH_HEADER_SECRET``
+  requires a matching ``X-Omnigent-Proxy-Secret`` request header alongside the
+  identity header — without it, a header-mode deployment trusts *any* request
+  that sets the identity header, which is only safe when the network
+  guarantees requests can't bypass the trusted proxy.
 - ``"oidc"``: reads the ``__Host-ap_session`` signed cookie minted
   after a full OIDC authorization-code+PKCE login flow.
 - ``"accounts"``: same signed cookie machinery as OIDC, but minted
@@ -28,6 +32,7 @@ and closed over by route factories — no per-request import cost.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import ipaddress
 import logging
 import os
@@ -36,7 +41,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from starlette.requests import HTTPConnection
 
@@ -118,6 +123,20 @@ _DEFAULT_AUTH_HEADER = "X-Forwarded-Email"
 # email used everywhere else. Unset (the default) strips nothing. See
 # :func:`resolve_auth_header_strip_prefix`.
 _AUTH_HEADER_STRIP_PREFIX_ENV = "OMNIGENT_AUTH_HEADER_STRIP_PREFIX"
+
+# Optional shared secret that gates header-mode identity. Header auth alone
+# trusts *any* request carrying the identity header — safe only when a
+# proxy the network topology guarantees is unbypassable sets it. Setting
+# this requires the request to also carry a matching ``X-Omnigent-Proxy-
+# Secret`` header, so a client that can reach the server directly (bypassing
+# the proxy) can no longer forge identity. Unset (the default) keeps the
+# prior trust-the-header behavior. See :func:`resolve_auth_header_secret`.
+_AUTH_HEADER_SECRET_ENV = "OMNIGENT_AUTH_HEADER_SECRET"
+
+# Header a trusted proxy sets alongside the identity header, proving the
+# request actually came through it rather than directly from a client that
+# happens to know the identity header's name.
+_PROXY_SECRET_HEADER = "X-Omnigent-Proxy-Secret"
 
 LEVEL_READ = 1
 LEVEL_EDIT = 2
@@ -322,6 +341,21 @@ def resolve_auth_header_strip_prefix() -> str:
     return os.environ.get(_AUTH_HEADER_STRIP_PREFIX_ENV, "").strip()
 
 
+def resolve_auth_header_secret() -> str | None:
+    """Resolve the shared secret gating header-mode identity, if configured.
+
+    Reads ``OMNIGENT_AUTH_HEADER_SECRET``. When set, header-mode identity is
+    only accepted alongside a matching ``X-Omnigent-Proxy-Secret`` request
+    header (see :meth:`UnifiedAuthProvider._check_header`); a request lacking
+    the header or presenting the wrong value is treated as unauthenticated,
+    exactly like a request with no identity header at all. Unset (``None``)
+    keeps the prior behavior of trusting the identity header alone.
+
+    :returns: The configured secret, or ``None`` when unset/empty.
+    """
+    return os.environ.get(_AUTH_HEADER_SECRET_ENV, "").strip() or None
+
+
 def _auth_enabled() -> bool:
     """Whether multi-user auth is opted in via the enable switch.
 
@@ -462,6 +496,13 @@ class UnifiedAuthProvider(AuthProvider):
         back to ``""`` (strip nothing; see
         :func:`resolve_auth_header_strip_prefix`). Only consulted in
         header mode. Tests pass an explicit prefix.
+    :param header_secret: Shared secret gating header-mode identity — when
+        set, a request must also carry a matching ``X-Omnigent-Proxy-Secret``
+        header or its identity header is ignored (treated as absent).
+        ``None`` (the default) resolves from ``OMNIGENT_AUTH_HEADER_SECRET``
+        at construction, falling back to no secret required (see
+        :func:`resolve_auth_header_secret`). Only consulted in header mode.
+        Tests pass an explicit secret.
     """
 
     def __init__(
@@ -472,6 +513,7 @@ class UnifiedAuthProvider(AuthProvider):
         local_single_user: bool | None = None,
         header_name: str | None = None,
         header_strip_prefix: str | None = None,
+        header_secret: str | None = None,
     ) -> None:
         self._source = source
         self._oidc_config = oidc_config
@@ -484,6 +526,9 @@ class UnifiedAuthProvider(AuthProvider):
             header_strip_prefix
             if header_strip_prefix is not None
             else resolve_auth_header_strip_prefix()
+        )
+        self._header_secret = (
+            header_secret if header_secret is not None else resolve_auth_header_secret()
         )
         self._cookie_cache: dict[str, tuple[str, float]] = {}
         # Set by create_app when a device-grant store is wired. Returns
@@ -742,12 +787,22 @@ class UnifiedAuthProvider(AuthProvider):
         server's only user IS the local user and no proxy exists to
         inject identity.
 
+        When :attr:`_header_secret` is set (``OMNIGENT_AUTH_HEADER_SECRET``),
+        the identity header is honored only alongside a request header
+        ``X-Omnigent-Proxy-Secret`` equal to it (constant-time compare). A
+        request presenting the identity header without the matching secret
+        is treated exactly like a request with no identity header at all —
+        it does not 401 on its own; it falls through to the same
+        single-user/absent-header handling below.
+
         :param request: The incoming HTTP request or WebSocket.
         :returns: User ID from the header; ``"local"`` when the
             header is absent on a single-user local runtime; else
             ``None`` (→ 401).
         """
         email = request.headers.get(self._header_name)
+        if email and self._header_secret is not None and not self._proxy_secret_ok(request):
+            email = None
         if email:
             if self._header_strip_prefix:
                 email = email.removeprefix(self._header_strip_prefix)
@@ -757,6 +812,22 @@ class UnifiedAuthProvider(AuthProvider):
         if self._local_single_user:
             return RESERVED_USER_LOCAL
         return None
+
+    def _proxy_secret_ok(self, request: HTTPConnection) -> bool:
+        """Whether the request carries the configured proxy secret.
+
+        Compared in constant time; the header value is never logged. Only
+        meaningful when :attr:`_header_secret` is set — callers must check
+        that first.
+
+        :param request: The incoming HTTP request or WebSocket.
+        :returns: ``True`` only when ``X-Omnigent-Proxy-Secret`` is present
+            and equals :attr:`_header_secret`.
+        """
+        presented = request.headers.get(_PROXY_SECRET_HEADER)
+        return isinstance(presented, str) and hmac.compare_digest(
+            presented, cast(str, self._header_secret)
+        )
 
 
 class AccountAuthorityMiddleware:
