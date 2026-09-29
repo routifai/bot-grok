@@ -7,7 +7,7 @@ what is re-exported below.
 
 from __future__ import annotations
 
-from omnigent.nova._shared import NovaActor
+from omnigent.nova._shared import NovaActor, lazy_store
 from omnigent.nova.skills.entities import OfferStatus, Skill, SkillOffer
 from omnigent.nova.skills.service import (
     CONTENT_MAX_CHARS,
@@ -35,12 +35,6 @@ __all__ = [
     "parse_skill_md",
 ]
 
-# Lazily built, process-wide store/service used by tools.py and context.py —
-# the places with no NovaDeps to thread a storage_location through. routes.py
-# has deps and calls create_store directly instead.
-_store: SkillStore | None = None
-
-
 def create_store(storage_location: str) -> SkillStore:
     """Build the skills store for *storage_location*.
 
@@ -50,25 +44,11 @@ def create_store(storage_location: str) -> SkillStore:
     return SqlAlchemySkillStore(storage_location)
 
 
-def _runtime_store() -> SkillStore:
-    """The store used where no :class:`NovaDeps` is available.
-
-    Mirrors ``omnigent.nova.memory``'s ``_runtime_store()``: ``tools.py`` and
-    ``context.py`` are called from deep inside the runtime, not from a route
-    handler, so neither has a ``NovaDeps`` to read ``storage_location`` from.
-    Both go through Omnigent's already-initialized conversation store
-    instead, which lives in the same operational database. Cached for the
-    process.
-
-    Tests that need an isolated store patch this function directly (e.g.
-    ``monkeypatch.setattr(skills, "_runtime_store", lambda: store)``).
-    """
-    global _store
-    if _store is None:
-        from omnigent.runtime import get_conversation_store
-
-        _store = create_store(get_conversation_store().storage_location)
-    return _store
+# The store used where no NovaDeps is available: tools.py and context.py.
+# See omnigent.nova._shared.storage.lazy_store. Tests that need an isolated
+# store patch this directly, e.g.
+# ``monkeypatch.setattr(skills, "_runtime_store", lambda: store)``.
+_runtime_store = lazy_store(create_store)
 
 
 def _runtime_service() -> SkillService:

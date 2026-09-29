@@ -44,6 +44,14 @@ where a session sits (`Scope`), a context section, and text helpers.
 Tests live in `tests/nova/<primitive>/`. Migrations live in the normal Omnigent
 chain (`omnigent/db/migrations/versions/nova_*`).
 
+## Serving Nova's context
+
+`context/provide` (see `context/README.md`) is Nova's in-process context
+composer. Set `OMNIGENT_CONTEXT_PROVIDER=nova` (see
+`omnigent/runtime/context_provider.py` and `deploy/README.md`) to have the
+server call it directly for `POST /v1/sessions/{id}/deployment-context`
+instead of an external HTTP provider — no separate context service to run.
+
 ## Rules
 
 1. **One way in.** Import another primitive only through its package

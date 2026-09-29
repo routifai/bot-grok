@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, Request
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.nova._shared import NovaDeps, actor_from_request
-from omnigent.nova.episodes import _runtime
+from omnigent.nova.episodes import create_store
 from omnigent.nova.episodes.entities import Episode
 
 _DEFAULT_LIMIT = 20
@@ -38,14 +38,10 @@ def _to_response(episode: Episode) -> dict[str, Any]:
 def create_router(deps: NovaDeps) -> APIRouter:
     """Build the episodes router (``/v1/nova/episodes``).
 
-    :param deps: Server-owned dependencies; also configures the store this
-        primitive's tool and turn-completion observer read
-        (see ``_runtime.py``).
+    :param deps: Server-owned dependencies.
     :returns: A configured :class:`APIRouter`.
     """
-    _runtime.configure(deps.storage_location)
-    store = _runtime.store()
-    assert store is not None  # configure() above always sets it
+    store = create_store(deps.storage_location)
     router = APIRouter()
 
     @router.get("/episodes")

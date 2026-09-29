@@ -15,7 +15,7 @@ from typing import Any
 
 from omnigent.errors import OmnigentError
 from omnigent.nova import asks as _asks
-from omnigent.nova._shared import NovaActor, Scope, scope_from_labels
+from omnigent.nova._shared import private_actor
 from omnigent.nova.asks.entities import AskAction, AskKind
 from omnigent.tools.base import Tool, ToolContext
 
@@ -117,7 +117,7 @@ class NovaAskUserTool(Tool):
         assert isinstance(question, str)
         assert isinstance(options, list)
 
-        actor, refusal = _resolve_private_actor(ctx)
+        actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return json.dumps({"error": refusal})
         assert actor is not None
@@ -139,39 +139,6 @@ class NovaAskUserTool(Tool):
         return json.dumps(
             {"status": "waiting_for_answer", "message": "Waiting for the person's choice."}
         )
-
-
-def _resolve_private_actor(ctx: ToolContext) -> tuple[NovaActor | None, str | None]:
-    """Resolve the calling session's owner as a :class:`NovaActor`.
-
-    Mirrors ``_resolve_private_actor`` in ``omnigent/nova/memory/tools.py``
-    (not yet lifted into ``_shared`` — duplicated here until the maintainer
-    moves it): same identity resolution (a conversation id's owner via the
-    conversation store's ``get_session_owner``, the grant Omnigent already
-    uses to attribute session cost) and the same private-scope refusal a
-    built-in tool needs but a route never does.
-
-    :param ctx: The tool's execution context.
-    :returns: ``(actor, None)`` on success, or ``(None, reason)`` — a reason
-        the tool should return as its ``"error"`` — on refusal.
-    """
-    if ctx.conversation_id is None:
-        return None, "no active session to ask from"
-
-    from omnigent.db.db_models import current_workspace_id
-    from omnigent.runtime import get_conversation_store
-
-    conversation_store = get_conversation_store()
-    conversation = conversation_store.get_conversation(ctx.conversation_id)
-    if conversation is None:
-        return None, "session not found"
-    if scope_from_labels(conversation.labels or {}) is not Scope.PRIVATE:
-        return None, "nova_ask_user is only available in a private session"
-
-    owner = conversation_store.get_session_owner(ctx.conversation_id)
-    if owner is None:
-        return None, "session has no owner"
-    return NovaActor(user_id=owner, workspace_id=current_workspace_id()), None
 
 
 def _create(config: dict[str, str]) -> Tool:

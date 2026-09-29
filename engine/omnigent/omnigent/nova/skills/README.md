@@ -91,10 +91,8 @@ anything missing or owned by someone else.
   saves directly, no offer.
 - `nova_load_skill(name)` — returns a saved skill's full `content`.
 
-All three resolve the calling session's owner from `ctx.conversation_id`
-(`_resolve_private_actor`, duplicated from `memory/tools.py` and
-`asks/tools.py` — not yet lifted into `_shared`) and refuse outside a
-private session.
+All three resolve the calling session's owner from `ctx.conversation_id` via
+`omnigent.nova._shared.private_actor` and refuse outside a private session.
 
 ## Context (`context.py`)
 

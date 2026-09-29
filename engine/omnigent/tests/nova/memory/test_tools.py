@@ -90,18 +90,17 @@ def test_refuses_a_project_scoped_session(
     assert "private" in result["error"]
 
 
-def test_allows_an_unlabeled_session(
+def test_refuses_an_unlabeled_session(
     wired_store: SqlAlchemyMemoryStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No ``nova.scope`` label defaults to PRIVATE (see ``scope_from_labels``):
-    a session only loses access to private data once explicitly marked
-    otherwise, never by omission."""
+    """Only an explicit ``nova.scope=private`` is private: an unlabelled
+    session (any non-Nova session) can't write to someone's memory."""
     _wire_conversations(
         monkeypatch, {"conv1": _FakeConversation({})}, {"conv1": "alice@example.com"}
     )
     ctx = ToolContext(task_id="t", agent_id="a", conversation_id="conv1")
     result = json.loads(NovaRememberTool().invoke('{"content": "x"}', ctx))
-    assert result["ok"] is True
+    assert "private" in result["error"]
 
 
 def test_refuses_with_no_conversation_id(wired_store: SqlAlchemyMemoryStore) -> None:

@@ -20,13 +20,16 @@ and `userTurnInstructions`' ordering).
   each capped to its own `max_bytes`, the whole capped at 48 KiB by dropping
   lowest-priority sections first. One preamble line marks the tagged sections
   as data, not instructions. The result is redacted with `request.secrets`.
-- `provide(owner_user_id, labels, turn_input, session_id, workspace_id=0) -> str`
+- `provide(owner_user_id, labels, turn_input, session_id, workspace_id=0, secrets=()) -> str`
   — the in-process replacement for the old HTTP provider: builds a
   `ContextRequest` (actor from `owner_user_id`, scope from `labels` via
   `scope_from_labels`, timezone from `omnigent.nova.memory.get_profile` when
   that primitive exists, else `"UTC"`) and returns `compose(...)`. Returns
-  `""` when `owner_user_id` is `None`. The maintainer wires this into
-  `omnigent/runtime/context_provider.py`; nothing here imports that module.
+  `""` when `owner_user_id` is `None`. `secrets` is redacted from the result
+  on top of whatever each section already redacts on its own — the caller's
+  own known secrets (e.g. a provider secret it holds), not Nova's. Called
+  from `omnigent/runtime/context_provider.py` when
+  `OMNIGENT_CONTEXT_PROVIDER=nova`; nothing here imports that module.
 
 ## Files
 

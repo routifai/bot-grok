@@ -26,7 +26,9 @@ def _owned_conversation(
     from omnigent.runtime import get_conversation_store
     from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
 
-    conv = get_conversation_store().create_conversation(labels=labels)
+    conv = get_conversation_store().create_conversation(
+        labels={"nova.scope": "private"} if labels is None else labels
+    )
     perms = SqlAlchemyPermissionStore(db_uri)
     perms.ensure_user(user_id)
     perms.grant(user_id, conv.id, 4)  # LEVEL_OWNER

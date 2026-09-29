@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from omnigent.nova import episodes as _episodes
 from omnigent.nova._shared import ContextRequest, ContextSection, Scope, cap_utf8, redact
-from omnigent.nova.episodes import _runtime
 from omnigent.nova.episodes.service import rank_episodes, render_episodes
 
 # How many of the person's most recent episodes ranking considers.
@@ -20,15 +20,12 @@ async def context_section(request: ContextRequest) -> ContextSection | None:
 
     :param request: The turn's context request.
     :returns: A ``"past_episodes"`` section, or ``None`` when the scope is
-        not private, no store is configured, or nothing is relevant.
+        not private or nothing is relevant.
     """
     if request.scope is not Scope.PRIVATE:
         return None
 
-    store = _runtime.store()
-    if store is None:
-        return None
-
+    store = _episodes._runtime_store()
     episodes = store.list_recent(actor=request.actor, limit=_LOOKBACK_EPISODES)
     ranked = rank_episodes(request.turn_input, episodes, limit=_TOP_EPISODES)
     body = render_episodes(ranked, _MAX_BYTES)

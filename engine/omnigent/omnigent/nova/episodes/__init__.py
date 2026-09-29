@@ -5,6 +5,7 @@ is re-exported here — never ``omnigent.nova.episodes.<internal module>``
 directly (Nova rule #1).
 """
 
+from omnigent.nova._shared import lazy_store
 from omnigent.nova.episodes.entities import Episode
 from omnigent.nova.episodes.service import (
     NO_RESPONSE,
@@ -15,6 +16,7 @@ from omnigent.nova.episodes.service import (
     record_turn,
     render_episodes,
 )
+from omnigent.nova.episodes.sqlalchemy_store import SqlAlchemyEpisodeStore
 from omnigent.nova.episodes.store import EpisodeStore
 
 __all__ = [
@@ -24,7 +26,25 @@ __all__ = [
     "Episode",
     "EpisodeStore",
     "build_episode",
+    "create_store",
     "rank_episodes",
     "record_turn",
     "render_episodes",
 ]
+
+
+def create_store(storage_location: str) -> EpisodeStore:
+    """Build the episode store for *storage_location*.
+
+    :param storage_location: The Omnigent operational database's URI.
+    :returns: A ready-to-use :class:`EpisodeStore`.
+    """
+    return SqlAlchemyEpisodeStore(storage_location)
+
+
+# The store used where no NovaDeps is available: tools.py
+# (nova_recall_episodes), context.py and observer.py. See
+# omnigent.nova._shared.storage.lazy_store. Tests that need an isolated
+# store patch this directly, e.g.
+# ``monkeypatch.setattr(episodes, "_runtime_store", lambda: store)``.
+_runtime_store = lazy_store(create_store)

@@ -5,25 +5,33 @@ runner) inject extra instructions into a session's turn without growing
 conversation history — the injected text is appended to the composed system
 instructions for the turn, never persisted as a conversation item.
 
-Configured with two env vars, read by the **server only** — never by a
-runner. A runner can be a user's own laptop (``omnigent host``), which must
-never hold the provider secret and may not even be able to reach the
-provider network; the runner instead calls
-``POST /v1/sessions/{id}/deployment-context`` on the server (see
-``omnigent/server/routes/sessions/routes_core.py``), which resolves
-``user_id``/``labels`` from its own stores and calls this module:
+Configured with env vars, read by the **server only** — never by a runner. A
+runner can be a user's own laptop (``omnigent host``), which must never hold
+the provider secret and may not even be able to reach the provider network;
+the runner instead calls ``POST /v1/sessions/{id}/deployment-context`` on the
+server (see ``omnigent/server/routes/sessions/routes_core.py``), which
+resolves ``user_id``/``labels`` from its own stores and calls this module:
 
+- ``OMNIGENT_CONTEXT_PROVIDER``: ``"nova"`` calls Nova's own context composer
+  in-process (:func:`omnigent.nova.context.provide`) — no network hop, no
+  secret. Unset, ``"http"``, or any other value keeps the HTTP path below,
+  driven by ``OMNIGENT_CONTEXT_PROVIDER_URL``.
 - ``OMNIGENT_CONTEXT_PROVIDER_URL``: unset (the default) is a complete
   no-op — nothing is fetched, nothing is appended, and no state is kept.
+  Ignored in ``"nova"`` mode.
 - ``OMNIGENT_CONTEXT_PROVIDER_SECRET``: sent as ``Authorization: Bearer
-  <secret>``. May be unset (an empty bearer token is sent) but should be
-  set whenever the URL is reachable by anyone other than the server.
+  <secret>`` on the HTTP path. May be unset (an empty bearer token is sent)
+  but should be set whenever the URL is reachable by anyone other than the
+  server. In ``"nova"`` mode there is no request to authenticate, but this
+  value (if set) is still passed to the composer to redact, in case it ever
+  turns up verbatim in a person's own data.
 
 Contract: ``POST <url>`` with a JSON body of session/turn context (see
 :func:`fetch_deployment_context`); a 200 response
 ``{"instructions": "..."}`` is wrapped in a ``<deployment_context>`` block
-and appended to the turn's composed instructions. Any error, timeout, or
-non-200 response is logged once per session (bounded to an LRU of
+and appended to the turn's composed instructions. Nova mode wraps and caps
+the composer's output the same way. Any error, timeout, non-200 response, or
+(in Nova mode) exception is logged once per session (bounded to an LRU of
 ``_WARNED_SESSIONS_MAX`` sessions) and otherwise ignored — this hook must
 never fail or delay a turn.
 """
@@ -51,8 +59,10 @@ _MAX_TURN_INPUT_CHARS = 4000
 # or malicious provider must not be able to blow up the prompt.
 _MAX_RESPONSE_BYTES = 64 * 1024
 
+_MODE_ENV = "OMNIGENT_CONTEXT_PROVIDER"
 _URL_ENV = "OMNIGENT_CONTEXT_PROVIDER_URL"
 _SECRET_ENV = "OMNIGENT_CONTEXT_PROVIDER_SECRET"
+_NOVA_MODE = "nova"
 
 # Sessions already warned about a failed fetch, so a wedged/unreachable
 # provider logs once per session rather than once per turn. Bounded to an
@@ -63,6 +73,15 @@ _SECRET_ENV = "OMNIGENT_CONTEXT_PROVIDER_SECRET"
 # keeps failing every turn stays warm and never gets evicted.
 _WARNED_SESSIONS_MAX = 1024
 _warned_sessions: OrderedDict[str, None] = OrderedDict()
+
+
+def _provider_mode() -> str:
+    """The configured provider mode: ``"nova"`` or ``"http"`` (the default).
+
+    Any value other than ``"nova"`` (unset, ``"http"``, or anything else)
+    keeps the existing HTTP path, driven by ``_provider_url()`` below.
+    """
+    return os.environ.get(_MODE_ENV, "").strip().lower() or "http"
 
 
 def _provider_url() -> str | None:
@@ -83,8 +102,24 @@ def _truncate_utf8(text: str, max_bytes: int) -> str:
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
+def _warn_once(session_id: str, message: str) -> None:
+    """Log *message* at most once per ``session_id`` (see ``_WARNED_SESSIONS_MAX``)."""
+    if session_id in _warned_sessions:
+        return
+    _warned_sessions[session_id] = None
+    if len(_warned_sessions) > _WARNED_SESSIONS_MAX:
+        _warned_sessions.popitem(last=False)
+    logger.warning(message, extra={"session_id": session_id})
+
+
 def context_provider_configured() -> bool:
-    """Whether a context-provider URL is configured (cheap no-op check)."""
+    """Whether a context provider is configured (cheap no-op check).
+
+    ``"nova"`` mode is always configured (no URL to check); the HTTP path is
+    configured only when its URL is set.
+    """
+    if _provider_mode() == _NOVA_MODE:
+        return True
     return _provider_url() is not None
 
 
@@ -99,10 +134,11 @@ async def fetch_deployment_context(
 ) -> str:
     """Fetch this turn's deployment-injected instructions, wrapped for appending.
 
-    No-op (returns ``""``) when ``OMNIGENT_CONTEXT_PROVIDER_URL`` is unset.
-    On any error, timeout, or non-200 response, logs a warning once per
-    ``session_id`` and returns ``""`` so the turn proceeds unaffected —
-    this must never raise.
+    No-op (returns ``""``) when unconfigured (see
+    :func:`context_provider_configured`). On any error, timeout, non-200
+    response, or (in ``"nova"`` mode) exception, logs a warning once per
+    ``session_id`` and returns ``""`` so the turn proceeds unaffected — this
+    must never raise.
 
     :param session_id: Omnigent session/conversation id.
     :param agent_name: The dispatched agent's name/id, e.g. ``"research-agent"``.
@@ -115,6 +151,11 @@ async def fetch_deployment_context(
         block to append to the composed instructions, or ``""`` when
         unconfigured, empty, or unavailable.
     """
+    if _provider_mode() == _NOVA_MODE:
+        return await _fetch_from_nova(
+            session_id=session_id, user_id=user_id, labels=labels, turn_input=turn_input
+        )
+
     url = _provider_url()
     if url is None:
         return ""
@@ -134,20 +175,55 @@ async def fetch_deployment_context(
         response.raise_for_status()
         data = response.json()
     except (httpx.HTTPError, ValueError) as exc:
-        if session_id not in _warned_sessions:
-            _warned_sessions[session_id] = None
-            if len(_warned_sessions) > _WARNED_SESSIONS_MAX:
-                _warned_sessions.popitem(last=False)
-            logger.warning(
-                "context provider request failed for session=%s url=%s: %s",
-                session_id,
-                url,
-                exc,
-                extra={"session_id": session_id},
-            )
+        _warn_once(
+            session_id,
+            f"context provider request failed for session={session_id} url={url}: {exc}",
+        )
         return ""
     instructions = data.get("instructions") if isinstance(data, dict) else None
     if not isinstance(instructions, str) or not instructions:
+        return ""
+    return _wrap(_truncate_utf8(instructions, _MAX_RESPONSE_BYTES))
+
+
+async def _fetch_from_nova(
+    *,
+    session_id: str,
+    user_id: str | None,
+    labels: Mapping[str, str] | None,
+    turn_input: str | None,
+) -> str:
+    """In-process counterpart to the HTTP path above, for ``OMNIGENT_CONTEXT_PROVIDER=nova``.
+
+    Calls Nova's own context composer directly — no network hop, no secret
+    to send — but keeps the same wrap/cap/fail-open contract as the HTTP
+    path, so a caller (``routes_core.py``) sees no difference between modes.
+
+    :param session_id: Omnigent session/conversation id.
+    :param user_id: The session owner's user id, resolved by the caller; not
+        taken from the runner.
+    :param labels: The session's conversation labels.
+    :param turn_input: The latest user message text, or ``None``/``""``.
+    :returns: The wrapped, capped block, or ``""`` on any failure or when
+        Nova has nothing to add.
+    """
+    from omnigent.db.db_models import current_workspace_id
+    from omnigent.nova.context import provide
+
+    secret = os.environ.get(_SECRET_ENV, "")
+    try:
+        instructions = await provide(
+            owner_user_id=user_id,
+            labels=labels or {},
+            turn_input=turn_input or "",
+            session_id=session_id,
+            workspace_id=current_workspace_id(),
+            secrets=(secret,) if secret else (),
+        )
+    except Exception as exc:  # this hook must never fail a turn
+        _warn_once(session_id, f"Nova context provider failed for session={session_id}: {exc}")
+        return ""
+    if not instructions:
         return ""
     return _wrap(_truncate_utf8(instructions, _MAX_RESPONSE_BYTES))
 

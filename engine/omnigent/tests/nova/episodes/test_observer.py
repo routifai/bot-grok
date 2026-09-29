@@ -18,8 +18,8 @@ from omnigent.entities.conversation import (
     MessageData,
 )
 from omnigent.entities.pagination import PagedList
+from omnigent.nova import episodes as _episodes
 from omnigent.nova._shared import NovaActor
-from omnigent.nova.episodes import _runtime
 from omnigent.nova.episodes.entities import Episode
 from omnigent.nova.episodes.observer import on_turn_completed
 from omnigent.nova.episodes.store import EpisodeStore
@@ -34,7 +34,7 @@ def _conversation(labels: dict[str, str] | None = None) -> Conversation:
         created_at=1_700_000_000,
         updated_at=1_700_000_000,
         root_conversation_id=SESSION_ID,
-        labels=labels or {},
+        labels={"nova.scope": "private"} if labels is None else labels,
     )
 
 
@@ -254,10 +254,14 @@ async def test_skips_turn_with_no_work_tool() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_store_configured_is_a_quiet_noop(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Other tests (routes/tools) may have already called `_runtime.configure`
-    # in this process; force the unconfigured state this test means to cover.
-    monkeypatch.setattr(_runtime, "_store", None)
+async def test_a_broken_runtime_store_is_a_quiet_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No `store=` argument: falls back to `_episodes._runtime_store()`, which
+    # here raises (e.g. the runtime was never initialized) — must still not
+    # break the caller's relay loop.
+    def _boom() -> EpisodeStore:
+        raise RuntimeError("runtime not initialized")
+
+    monkeypatch.setattr(_episodes, "_runtime_store", _boom)
     conversation_store = _FakeConversationStore(
         conversation=_conversation(),
         owner_user_id="alice@example.com",
@@ -267,7 +271,6 @@ async def test_no_store_configured_is_a_quiet_noop(monkeypatch: pytest.MonkeyPat
             _user_message("do something"),
         ],
     )
-    # No `store=` argument: falls back to `_runtime.store()`, which is None.
     await on_turn_completed(conversation_store, SESSION_ID, TURN_ID, store=None)
 
 

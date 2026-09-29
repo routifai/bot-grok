@@ -337,3 +337,160 @@ def test_extract_turn_input_text_ignores_non_user_roles() -> None:
 def test_extract_turn_input_text_handles_none_and_empty() -> None:
     assert extract_turn_input_text(None) == ""
     assert extract_turn_input_text([]) == ""
+
+
+# ── OMNIGENT_CONTEXT_PROVIDER=nova (in-process) ──────────────────────
+
+
+def test_nova_mode_is_configured_without_a_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", "nova")
+    monkeypatch.delenv("OMNIGENT_CONTEXT_PROVIDER_URL", raising=False)
+    assert context_provider_configured()
+
+
+@pytest.mark.parametrize("mode", [None, "", "http"])
+async def test_non_nova_mode_keeps_the_http_path(
+    monkeypatch: pytest.MonkeyPatch, mode: str | None
+) -> None:
+    if mode is None:
+        monkeypatch.delenv("OMNIGENT_CONTEXT_PROVIDER", raising=False)
+    else:
+        monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", mode)
+    monkeypatch.delenv("OMNIGENT_CONTEXT_PROVIDER_URL", raising=False)
+    assert not context_provider_configured()
+
+    async def _boom(*args: object, **kwargs: object) -> str:
+        raise AssertionError("must not call Nova's provider outside nova mode")
+
+    monkeypatch.setattr("omnigent.nova.context.provide", _boom)
+    result = await fetch_deployment_context(
+        session_id="s-http",
+        agent_name="a",
+        harness="codex",
+        user_id=None,
+        labels={},
+        turn_input="",
+    )
+    assert result == ""
+
+
+async def test_nova_mode_calls_provide_with_the_resolved_owner_and_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", "nova")
+    captured: dict[str, object] = {}
+
+    async def _fake_provide(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "Nova's own instructions"
+
+    monkeypatch.setattr("omnigent.nova.context.provide", _fake_provide)
+
+    result = await fetch_deployment_context(
+        session_id="sess-nova-1",
+        agent_name="research-agent",
+        harness="pi",
+        user_id="alice@example.com",
+        labels={"nova.scope": "private"},
+        turn_input="what's the weather",
+    )
+
+    assert result == "\n\n<deployment_context>\nNova's own instructions\n</deployment_context>"
+    assert captured["owner_user_id"] == "alice@example.com"
+    assert captured["labels"] == {"nova.scope": "private"}
+    assert captured["turn_input"] == "what's the weather"
+    assert captured["session_id"] == "sess-nova-1"
+    assert captured["workspace_id"] == 0
+
+
+async def test_nova_mode_passes_the_provider_secret_to_redact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", "nova")
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER_SECRET", "sekrit")
+    captured: dict[str, object] = {}
+
+    async def _fake_provide(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return ""
+
+    monkeypatch.setattr("omnigent.nova.context.provide", _fake_provide)
+    await fetch_deployment_context(
+        session_id="sess-nova-2",
+        agent_name="a",
+        harness="codex",
+        user_id="alice@example.com",
+        labels={},
+        turn_input="",
+    )
+    assert captured["secrets"] == ("sekrit",)
+
+
+async def test_nova_mode_empty_instructions_yields_empty_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", "nova")
+
+    async def _fake_provide(**kwargs: object) -> str:
+        del kwargs
+        return ""
+
+    monkeypatch.setattr("omnigent.nova.context.provide", _fake_provide)
+    result = await fetch_deployment_context(
+        session_id="sess-nova-3",
+        agent_name="a",
+        harness="codex",
+        user_id=None,
+        labels={},
+        turn_input="",
+    )
+    assert result == ""
+
+
+async def test_nova_mode_response_capped_at_64kib(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", "nova")
+    huge = "a" * (100 * 1024)
+
+    async def _fake_provide(**kwargs: object) -> str:
+        del kwargs
+        return huge
+
+    monkeypatch.setattr("omnigent.nova.context.provide", _fake_provide)
+    result = await fetch_deployment_context(
+        session_id="sess-nova-4",
+        agent_name="a",
+        harness="codex",
+        user_id="alice@example.com",
+        labels={},
+        turn_input="",
+    )
+    inner = result.removeprefix("\n\n<deployment_context>\n").removesuffix(
+        "\n</deployment_context>"
+    )
+    assert len(inner.encode("utf-8")) <= 64 * 1024
+
+
+async def test_nova_mode_a_raising_provider_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", "nova")
+
+    async def _boom(**kwargs: object) -> str:
+        del kwargs
+        raise RuntimeError("Nova blew up")
+
+    monkeypatch.setattr("omnigent.nova.context.provide", _boom)
+    with caplog.at_level("WARNING"):
+        result = await fetch_deployment_context(
+            session_id="sess-nova-5",
+            agent_name="a",
+            harness="codex",
+            user_id="alice@example.com",
+            labels={},
+            turn_input="",
+        )
+    assert result == ""
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "sess-nova-5" in warnings[0].getMessage()

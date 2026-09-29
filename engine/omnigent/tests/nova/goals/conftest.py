@@ -52,7 +52,7 @@ def goal_runtime(db_uri: str, tmp_path: Path) -> Iterator[None]:
     from omnigent.stores.artifact_store.local import LocalArtifactStore
     from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 
-    goals._store = None
+    goals._runtime_store.reset()
     artifact_store = LocalArtifactStore(str(tmp_path / "artifacts"))
     runtime.init(
         conversation_store=SqlAlchemyConversationStore(db_uri),
@@ -63,4 +63,4 @@ def goal_runtime(db_uri: str, tmp_path: Path) -> Iterator[None]:
     try:
         yield
     finally:
-        goals._store = None
+        goals._runtime_store.reset()

@@ -11,8 +11,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from omnigent.nova._shared import NovaActor, Scope, scope_from_labels
-from omnigent.nova.episodes import _runtime
+from omnigent.nova import episodes as _episodes
+from omnigent.nova._shared import private_actor
 from omnigent.nova.episodes.service import record_turn
 from omnigent.nova.episodes.store import EpisodeStore
 
@@ -36,18 +36,18 @@ async def on_turn_completed(
 ) -> None:
     """Best-effort: record the turn that just completed as an episode.
 
-    No-ops (quietly) when: no store is configured, the session is not a
-    private Nova session, its owner cannot be resolved, no prior user message
-    is found within the lookback window, or the turn is not eligible per
+    No-ops (quietly) when: the session is not a private Nova session, its
+    owner cannot be resolved, no prior user message is found within the
+    lookback window, or the turn is not eligible per
     :func:`omnigent.nova.episodes.service.record_turn` (no work tool used, or
     an empty/``NO_RESPONSE`` reply).
 
     :param conversation_store: The server's :class:`ConversationStore`.
     :param session_id: The session the turn ran in.
     :param turn_id: The turn's response id, for idempotent recording.
-    :param store: The episode store to write to; defaults to the store
-        ``routes.create_router`` configured at startup. Tests pass one
-        explicitly instead of relying on that global.
+    :param store: The episode store to write to; defaults to this
+        primitive's shared runtime store. Tests pass one explicitly instead
+        of relying on that global.
     """
     try:
         await _on_turn_completed(conversation_store, session_id, turn_id, store=store)
@@ -62,18 +62,12 @@ async def _on_turn_completed(
     *,
     store: EpisodeStore | None,
 ) -> None:
-    episode_store = store or _runtime.store()
-    if episode_store is None:
-        return
+    episode_store = store or _episodes._runtime_store()
 
-    conversation = await asyncio.to_thread(conversation_store.get_conversation, session_id)
-    if conversation is None or scope_from_labels(conversation.labels) is not Scope.PRIVATE:
-        return
-
-    owner_user_id = await asyncio.to_thread(
-        conversation_store.get_session_owner, session_id, owner_only=True
+    actor, _refusal = await asyncio.to_thread(
+        private_actor, session_id, conversation_store=conversation_store
     )
-    if owner_user_id is None:
+    if actor is None:
         return
 
     page = await asyncio.to_thread(
@@ -83,11 +77,6 @@ async def _on_turn_completed(
     if request is None or reply is None:
         return
 
-    # Ambient per-request workspace, exactly as omnigent.nova._shared.identity
-    # builds a NovaActor from a request; there is no request here.
-    from omnigent.db.db_models import current_workspace_id
-
-    actor = NovaActor(user_id=owner_user_id, workspace_id=current_workspace_id())
     record_turn(
         episode_store,
         actor=actor,

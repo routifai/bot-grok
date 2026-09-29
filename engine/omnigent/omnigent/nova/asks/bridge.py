@@ -31,7 +31,7 @@ from typing import Any
 
 from omnigent.errors import OmnigentError
 from omnigent.nova import asks as _asks
-from omnigent.nova._shared import NovaActor, Scope, scope_from_labels
+from omnigent.nova._shared import private_actor
 from omnigent.nova.asks.entities import Ask, AskAction, AskKind
 from omnigent.nova.asks.service import AskService
 
@@ -85,35 +85,16 @@ def on_session_event(conversation_id: str, event: dict[str, Any]) -> None:
         )
 
 
-def _private_session_owner(conversation_id: str) -> str | None:
-    """Resolve a private session's owner, or ``None`` if it isn't one.
-
-    Mirrors ``_resolve_private_actor`` in ``omnigent/nova/memory/tools.py``
-    (not yet lifted into ``_shared`` — duplicated here until the maintainer
-    moves it), adapted to a silent no-op instead of a model-facing refusal
-    string: this runs on the SSE publish path, not in response to a tool
-    call, so there is no one to hand an error message to.
-
-    :param conversation_id: The session to resolve.
-    :returns: The owning user id, or ``None`` if the session is unknown,
-        not private, or has no owner.
-    """
-    from omnigent.runtime import get_conversation_store
-
-    conversation_store = get_conversation_store()
-    conversation = conversation_store.get_conversation(conversation_id)
-    if conversation is None or scope_from_labels(conversation.labels or {}) is not Scope.PRIVATE:
-        return None
-    return conversation_store.get_session_owner(conversation_id)
-
-
 def _mirror_elicitation(conversation_id: str, elicitation_id: str, event: dict[str, Any]) -> None:
     """The dependency-touching body of :func:`on_session_event`.
 
     Isolated from it so the try/except in the caller can wrap this whole body.
     """
-    owner = _private_session_owner(conversation_id)
-    if not owner:
+    actor, _refusal = private_actor(conversation_id)
+    if actor is None:
+        # Silent, not a model-facing refusal: this runs on the SSE publish
+        # path, not in response to a tool call, so there is no one to hand
+        # an error message to.
         return
     ask_store = _asks._runtime_store()
     if ask_store.get_by_elicitation(elicitation_id) is not None:
@@ -124,9 +105,6 @@ def _mirror_elicitation(conversation_id: str, elicitation_id: str, event: dict[s
     params = event.get("params")
     params = params if isinstance(params, dict) else {}
     text = str(params.get("message") or "Nova needs your input")
-    from omnigent.db.db_models import current_workspace_id
-
-    actor = NovaActor(user_id=owner, workspace_id=current_workspace_id())
     try:
         AskService(ask_store).open_ask(
             actor=actor,

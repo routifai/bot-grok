@@ -245,3 +245,59 @@ async def test_server_resolves_owner_and_labels_not_the_request_body(
     body = captured["body"]
     assert body["user_id"] == ALICE
     assert body["labels"]["team"] == "growth"
+
+
+# ── OMNIGENT_CONTEXT_PROVIDER=nova (in-process) ──────────────────────
+
+
+async def test_nova_mode_private_session_gets_static_and_private_content(
+    auth_client: httpx.AsyncClient, db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``OMNIGENT_CONTEXT_PROVIDER=nova``: the owner of a session scoped
+    private (``nova.scope=private``) gets a block with Nova's static
+    instructions plus that person's own private data; a session that isn't
+    scoped private (``nova.scope=project``) gets only the static part —
+    the private section never leaks into it, even for the same owner.
+    """
+    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER", "nova")
+    monkeypatch.delenv("OMNIGENT_CONTEXT_PROVIDER_URL", raising=False)
+
+    from omnigent.nova._shared import NovaActor
+    from omnigent.nova.memory import create_store, remember
+    from omnigent.nova.memory.entities import NoteKind
+
+    remember(
+        NovaActor(user_id=ALICE, workspace_id=0),
+        "Alice prefers oat milk.",
+        NoteKind.ABOUT_YOU,
+        store=create_store(db_uri),
+    )
+
+    private_agent = await create_test_agent(auth_client, name="ctx-nova-private", user=ALICE)
+    private_session_id = private_agent["_session_id"]
+    await _set_labels(auth_client, private_session_id, ALICE, {"nova.scope": "private"})
+
+    project_agent = await create_test_agent(auth_client, name="ctx-nova-project", user=ALICE)
+    project_session_id = project_agent["_session_id"]
+    await _set_labels(auth_client, project_session_id, ALICE, {"nova.scope": "project"})
+
+    private_resp = await auth_client.post(
+        f"/v1/sessions/{private_session_id}/deployment-context",
+        json={"agent_name": "a", "harness": "pi", "turn_input": "hi"},
+        headers={"X-Forwarded-Email": ALICE},
+    )
+    assert private_resp.status_code == 200, private_resp.text
+    private_block = private_resp.json()["block"]
+    # A phrase from Nova's static instructions (omnigent/nova/context/instructions.py).
+    assert "nova_ask_user" in private_block
+    assert "Alice prefers oat milk." in private_block
+
+    project_resp = await auth_client.post(
+        f"/v1/sessions/{project_session_id}/deployment-context",
+        json={"agent_name": "a", "harness": "pi", "turn_input": "hi"},
+        headers={"X-Forwarded-Email": ALICE},
+    )
+    assert project_resp.status_code == 200, project_resp.text
+    project_block = project_resp.json()["block"]
+    assert "nova_ask_user" in project_block
+    assert "Alice prefers oat milk." not in project_block

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from omnigent.nova import episodes as _episodes
 from omnigent.nova._shared import ContextRequest, NovaActor, Scope
-from omnigent.nova.episodes import _runtime
 from omnigent.nova.episodes.context import context_section
 from omnigent.nova.episodes.entities import Episode
 from omnigent.nova.episodes.sqlalchemy_store import SqlAlchemyEpisodeStore
@@ -30,7 +30,7 @@ def _request(**overrides: object) -> ContextRequest:
 def configured_store(db_uri: str, monkeypatch: pytest.MonkeyPatch) -> SqlAlchemyEpisodeStore:
     """A real store, wired the way ``routes.create_router`` wires it."""
     store = SqlAlchemyEpisodeStore(db_uri)
-    monkeypatch.setattr(_runtime, "_store", store)
+    monkeypatch.setattr(_episodes, "_runtime_store", lambda: store)
     return store
 
 
@@ -53,13 +53,6 @@ def _record(
 async def test_returns_none_for_project_scope(configured_store: SqlAlchemyEpisodeStore) -> None:
     _record(configured_store, title="Mortgage rates", summary="Found a good rate.", created_at=1)
     section = await context_section(_request(scope=Scope.PROJECT, turn_input="mortgage rates"))
-    assert section is None
-
-
-@pytest.mark.asyncio
-async def test_returns_none_when_no_store_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_runtime, "_store", None)
-    section = await context_section(_request(turn_input="mortgage rates"))
     assert section is None
 
 

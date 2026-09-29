@@ -79,7 +79,7 @@ def _conversation(labels: dict[str, str] | None = None) -> Conversation:
         created_at=1_700_000_000,
         updated_at=1_700_000_000,
         root_conversation_id=SESSION_ID,
-        labels=labels or {},
+        labels={"nova.scope": "private"} if labels is None else labels,
     )
 
 
@@ -213,19 +213,23 @@ def test_requires_a_session() -> None:
     assert "error" in result
 
 
-def test_no_store_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_falls_back_to_the_runtime_store_when_none_injected(
+    monkeypatch: pytest.MonkeyPatch, db_uri: str
+) -> None:
+    """With no ``store=`` given, the tool reads this primitive's shared runtime store."""
     _patch_conversation_store(
         monkeypatch,
         _FakeConversationStore(conversation=_conversation(), owner_user_id="alice@example.com"),
     )
-    tool = NovaRecallEpisodesTool()  # no store injected, and _runtime not configured here
-    from omnigent.nova.episodes import _runtime
+    from omnigent.nova import episodes as _episodes
+    from omnigent.nova.episodes.sqlalchemy_store import SqlAlchemyEpisodeStore
 
-    monkeypatch.setattr(_runtime, "_store", None)
+    monkeypatch.setattr(_episodes, "_runtime_store", lambda: SqlAlchemyEpisodeStore(db_uri))
+    tool = NovaRecallEpisodesTool()  # no store injected
 
     result = json.loads(tool.invoke(json.dumps({"query": "t"}), _ctx()))
 
-    assert "error" in result
+    assert result["episodes"] == []
 
 
 def test_clamps_limit_to_valid_range(monkeypatch: pytest.MonkeyPatch) -> None:

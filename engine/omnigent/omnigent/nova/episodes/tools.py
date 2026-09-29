@@ -13,8 +13,8 @@ import datetime
 import json
 from typing import Any
 
-from omnigent.nova._shared import NovaActor, Scope, scope_from_labels
-from omnigent.nova.episodes import _runtime
+from omnigent.nova import episodes as _episodes
+from omnigent.nova._shared import private_actor
 from omnigent.nova.episodes.entities import Episode
 from omnigent.nova.episodes.service import rank_episodes
 from omnigent.nova.episodes.store import EpisodeStore
@@ -32,9 +32,9 @@ class NovaRecallEpisodesTool(Tool):
 
     def __init__(self, store: EpisodeStore | None = None) -> None:
         """
-        :param store: The episode store to read from; defaults to the store
-            ``routes.create_router`` configured at startup. Tests pass one
-            explicitly instead of relying on that global.
+        :param store: The episode store to read from; defaults to this
+            primitive's shared runtime store. Tests pass one explicitly
+            instead of relying on that global.
         """
         self._store = store
 
@@ -101,14 +101,12 @@ class NovaRecallEpisodesTool(Tool):
             return json.dumps({"error": error})
         assert args is not None
 
-        actor, refusal = _resolve_private_actor(ctx)
+        actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return json.dumps({"error": refusal})
         assert actor is not None
 
-        store = self._store or _runtime.store()
-        if store is None:
-            return json.dumps({"error": "episodes are not available on this server"})
+        store = self._store or _episodes._runtime_store()
 
         query = str(args.get("query", "")).strip()
         limit = _clamp_limit(args.get("limit"))
@@ -125,38 +123,6 @@ class NovaRecallEpisodesTool(Tool):
             else "No past episodes yet."
         )
         return json.dumps({"episodes": [_to_recall_item(e) for e in recent], "note": note})
-
-
-def _resolve_private_actor(ctx: ToolContext) -> tuple[NovaActor | None, str | None]:
-    """Resolve the calling session's owner as a :class:`NovaActor`.
-
-    Mirrors ``omnigent.nova.memory.tools._resolve_private_actor`` — the same
-    identity resolution (a conversation id to its owner via the conversation
-    store's ``get_session_owner``, plus the private-scope check a route never
-    needs) every tool that reads or writes owner-scoped state from inside a
-    running session repeats. Not yet a shared helper in ``_shared``.
-
-    :param ctx: The tool's execution context.
-    :returns: ``(actor, None)`` on success, or ``(None, reason)`` — a reason
-        the tool should return as its ``"error"`` — on refusal.
-    """
-    if ctx.conversation_id is None:
-        return None, "nova_recall_episodes requires a session"
-
-    from omnigent.db.db_models import current_workspace_id
-    from omnigent.runtime import get_conversation_store
-
-    conversation_store = get_conversation_store()
-    conversation = conversation_store.get_conversation(ctx.conversation_id)
-    if conversation is None:
-        return None, "session not found"
-    if scope_from_labels(conversation.labels) is not Scope.PRIVATE:
-        return None, "nova_recall_episodes only runs in a private Nova session"
-
-    owner = conversation_store.get_session_owner(ctx.conversation_id)
-    if owner is None:
-        return None, "session has no owner"
-    return NovaActor(user_id=owner, workspace_id=current_workspace_id()), None
 
 
 def _clamp_limit(limit: Any) -> int:

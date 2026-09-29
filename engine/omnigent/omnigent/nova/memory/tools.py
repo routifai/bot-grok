@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from omnigent.nova import memory as _memory
-from omnigent.nova._shared import NovaActor, Scope, scope_from_labels
+from omnigent.nova._shared import private_actor
 from omnigent.nova.memory.entities import NoteKind
 from omnigent.nova.memory.service import DEFAULT_PATH, remember
 from omnigent.tools.base import Tool, ToolContext
@@ -105,50 +105,13 @@ class NovaRememberTool(Tool):
         if not isinstance(path, str) or not path.strip():
             return json.dumps({"error": "'path' must be a non-empty string"})
 
-        actor, refusal = _resolve_private_actor(ctx)
+        actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return json.dumps({"error": refusal})
         assert actor is not None
 
         note = remember(actor, content, kind, path, store=_memory._runtime_store())
         return json.dumps({"ok": True, "id": note.id, "revision": note.revision})
-
-
-def _resolve_private_actor(ctx: ToolContext) -> tuple[NovaActor | None, str | None]:
-    """Resolve the calling session's owner as a :class:`NovaActor`.
-
-    No other built-in tool resolves "whose durable data is this" from a tool
-    call's session — ``search_conversations`` only reads via the conversation
-    store's search, and nothing else writes owner-scoped state from inside a
-    running session. This is the counterpart to ``actor_from_request``
-    (``_shared/identity.py``) for that case: same identity, resolved from a
-    conversation id via the conversation store's ``get_session_owner`` (the
-    grant Omnigent already uses to attribute session cost, see
-    ``runtime/policies/builder.py``) instead of an HTTP request. It also
-    carries the private-scope check a route never needs, because a route is
-    always the person's own private surface.
-
-    :param ctx: The tool's execution context.
-    :returns: ``(actor, None)`` on success, or ``(None, reason)`` — a reason
-        the tool should return as its ``"error"`` — on refusal.
-    """
-    if ctx.conversation_id is None:
-        return None, "no active session to remember for"
-
-    from omnigent.db.db_models import current_workspace_id
-    from omnigent.runtime import get_conversation_store
-
-    conversation_store = get_conversation_store()
-    conversation = conversation_store.get_conversation(ctx.conversation_id)
-    if conversation is None:
-        return None, "session not found"
-    if scope_from_labels(conversation.labels) is not Scope.PRIVATE:
-        return None, "nova_remember is only available in a private session"
-
-    owner = conversation_store.get_session_owner(ctx.conversation_id)
-    if owner is None:
-        return None, "session has no owner"
-    return NovaActor(user_id=owner, workspace_id=current_workspace_id()), None
 
 
 def _create_nova_remember(config: dict[str, str]) -> Tool:

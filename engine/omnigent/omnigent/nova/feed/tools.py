@@ -20,45 +20,11 @@ from typing import Any
 
 from omnigent.errors import OmnigentError
 from omnigent.nova import feed as _feed
-from omnigent.nova._shared import NovaActor, Scope, scope_from_labels
+from omnigent.nova._shared import private_actor
 from omnigent.nova.feed.service import FeedService
 from omnigent.tools.base import Tool, ToolContext
 
 _logger = logging.getLogger(__name__)
-
-
-def _resolve_private_actor(ctx: ToolContext) -> tuple[NovaActor | None, str | None]:
-    """Resolve the calling session's owner as a :class:`NovaActor`.
-
-    Same pattern as ``omnigent.nova.memory.tools._resolve_private_actor`` —
-    copied rather than imported (each primitive is self-contained; the
-    maintainer plans to move this into ``_shared`` once more than one
-    primitive needs it). Resolves identity from a conversation id via the
-    conversation store's ``get_session_owner``, the counterpart to
-    ``actor_from_request`` (``_shared/identity.py``) for a tool call instead
-    of an HTTP request.
-
-    :param ctx: The tool's execution context.
-    :returns: ``(actor, None)`` on success, or ``(None, reason)`` — a reason
-        the tool should surface as its result — on refusal.
-    """
-    if ctx.conversation_id is None:
-        return None, "no active session to use the feed for"
-
-    from omnigent.db.db_models import current_workspace_id
-    from omnigent.runtime import get_conversation_store
-
-    conversation_store = get_conversation_store()
-    conversation = conversation_store.get_conversation(ctx.conversation_id)
-    if conversation is None:
-        return None, "session not found"
-    if scope_from_labels(conversation.labels) is not Scope.PRIVATE:
-        return None, "this tool is only available in the person's own private session"
-
-    owner = conversation_store.get_session_owner(ctx.conversation_id)
-    if owner is None:
-        return None, "session has no owner"
-    return NovaActor(user_id=owner, workspace_id=current_workspace_id()), None
 
 
 def _service() -> FeedService:
@@ -102,7 +68,7 @@ class NovaFollowTopicTool(Tool):
         }
 
     def invoke(self, arguments: str, ctx: ToolContext) -> str:
-        actor, refusal = _resolve_private_actor(ctx)
+        actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return f"Error: {refusal}"
         assert actor is not None
@@ -151,7 +117,7 @@ class NovaUnfollowTopicTool(Tool):
         }
 
     def invoke(self, arguments: str, ctx: ToolContext) -> str:
-        actor, refusal = _resolve_private_actor(ctx)
+        actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return f"Error: {refusal}"
         assert actor is not None
@@ -210,7 +176,7 @@ class NovaPostToFeedTool(Tool):
         }
 
     def invoke(self, arguments: str, ctx: ToolContext) -> str:
-        actor, refusal = _resolve_private_actor(ctx)
+        actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return f"Error: {refusal}"
         assert actor is not None

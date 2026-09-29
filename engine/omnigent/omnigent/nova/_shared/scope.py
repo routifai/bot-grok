@@ -23,11 +23,13 @@ class Scope(StrEnum):
 def scope_from_labels(labels: Mapping[str, str]) -> Scope:
     """Read a session's scope from its labels.
 
-    Anything unrecognised is treated as ``PROJECT``, so a mislabelled session
-    can only ever see less, never more.
+    Only an explicit ``nova.scope=private`` is private. A missing or
+    unrecognised label is ``PROJECT``, so an unlabelled session (any
+    non-Nova Omnigent session, or a shared one) never sees private data.
 
     :param labels: The session's conversation labels.
     :returns: The scope.
     """
-    value = labels.get(SCOPE_LABEL, Scope.PRIVATE.value)
-    return Scope.PRIVATE if value == Scope.PRIVATE.value else Scope.PROJECT
+    if labels.get(SCOPE_LABEL) == Scope.PRIVATE.value:
+        return Scope.PRIVATE
+    return Scope.PROJECT

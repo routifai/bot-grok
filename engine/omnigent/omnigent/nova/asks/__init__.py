@@ -7,6 +7,7 @@ what is re-exported below.
 
 from __future__ import annotations
 
+from omnigent.nova._shared import lazy_store
 from omnigent.nova.asks.entities import Ask, AskAction, AskKind, AskStatus
 from omnigent.nova.asks.service import AskService
 from omnigent.nova.asks.sqlalchemy_store import SqlAlchemyAskStore
@@ -22,12 +23,6 @@ __all__ = [
     "create_store",
 ]
 
-# Lazily built, process-wide store used by tools.py, context.py and
-# bridge.py — the places with no NovaDeps to thread a storage_location
-# through. routes.py has deps and calls create_store directly instead.
-_store: AskStore | None = None
-
-
 def create_store(storage_location: str) -> AskStore:
     """Build the Ask store for *storage_location*.
 
@@ -37,29 +32,11 @@ def create_store(storage_location: str) -> AskStore:
     return SqlAlchemyAskStore(storage_location)
 
 
-def _runtime_store() -> AskStore:
-    """The store used where no :class:`~omnigent.nova._shared.NovaDeps` is available.
-
-    ``tools.py`` (``nova_ask_user``), ``context.py`` and ``bridge.py`` are
-    called from deep inside the runtime — a tool invocation or the SSE
-    publish chokepoint — not from a route handler, so none of them has a
-    ``NovaDeps`` to read ``storage_location`` from. All three go through
-    Omnigent's already-initialized conversation store instead, which lives
-    in the same operational database (see ``NovaDeps(storage_location=...)``
-    in ``server/app.py``) — one configuration path, not two. Cached for the
-    process; :func:`omnigent.db.utils.get_or_create_engine` already caches
-    the underlying engine by URI, so this is a small convenience on top, not
-    the only thing keeping repeated calls cheap.
-
-    Tests that need an isolated store patch this function directly (e.g.
-    ``monkeypatch.setattr(asks, "_runtime_store", lambda: store)``).
-    """
-    global _store
-    if _store is None:
-        from omnigent.runtime import get_conversation_store
-
-        _store = create_store(get_conversation_store().storage_location)
-    return _store
+# The store used where no NovaDeps is available: tools.py (nova_ask_user),
+# context.py and bridge.py. See omnigent.nova._shared.storage.lazy_store.
+# Tests that need an isolated store patch this directly, e.g.
+# ``monkeypatch.setattr(asks, "_runtime_store", lambda: store)``.
+_runtime_store = lazy_store(create_store)
 
 
 def _runtime_service() -> AskService:

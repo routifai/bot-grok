@@ -278,6 +278,13 @@ and labels itself — a local runner asks for a turn's context but never sees
 the provider URL or secret, so your laptop stays safe to run even against a
 deployment whose provider endpoint it couldn't otherwise reach.
 
+Running Nova (`omnigent/nova/`)? Set `OMNIGENT_CONTEXT_PROVIDER=nova` on the
+server instead of a URL, and it calls Nova's own context composer in-process
+for that same endpoint — no external provider to run or secret to hold at
+all. `OMNIGENT_CONTEXT_PROVIDER_URL` is ignored in this mode; leaving
+`OMNIGENT_CONTEXT_PROVIDER` unset (or setting it to `http`) keeps the URL-based
+provider above.
+
 ## Run hosts in cloud sandboxes
 
 Don't want a laptop to be the host? Run the host in a cloud sandbox instead.

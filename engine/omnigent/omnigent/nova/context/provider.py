@@ -21,6 +21,7 @@ async def provide(
     turn_input: str,
     session_id: str,
     workspace_id: int = 0,
+    secrets: tuple[str, ...] = (),
 ) -> str:
     """Build one turn's context for the session owner.
 
@@ -32,6 +33,9 @@ async def provide(
     :param session_id: The Omnigent session id.
     :param workspace_id: The Omnigent workspace id; ``0`` on single-workspace
         servers.
+    :param secrets: Values the caller already knows must never appear in the
+        composed context (e.g. a provider secret it holds); redacted on top
+        of whatever each section already redacts on its own.
     :returns: The composed context, or ``""`` when there is no owner.
     """
     if owner_user_id is None:
@@ -43,6 +47,7 @@ async def provide(
         session_id=session_id,
         turn_input=turn_input,
         timezone=_resolve_timezone(actor),
+        secrets=secrets,
     )
     return await compose(request)
 

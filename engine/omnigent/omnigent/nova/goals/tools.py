@@ -8,23 +8,15 @@ tool actions; they are the person's own calls, made through ``routes.py``.
 
 **Owner resolution.** A tool only gets a :class:`~omnigent.tools.base.ToolContext`
 (task/agent/workspace/conversation id) — no :class:`NovaActor` is handed in.
-This tool resolves the acting person from ``ctx.conversation_id`` via the
-global :class:`~omnigent.stores.conversation_store.ConversationStore`
-(``omnigent.runtime.get_conversation_store()``, the same accessor
-``search_conversations`` uses): the conversation's labels decide its
-:class:`Scope` (refusing anything but ``PRIVATE``), and ``get_session_owner``
-gives the owning user id. Same shape as ``_resolve_private_actor`` in
-``omnigent/nova/memory/tools.py`` — duplicated here rather than imported
-(Rule 1: a primitive imports another only through its public package, and
-this helper isn't part of either one's public surface) until it moves to
-``_shared``.
+This tool resolves the acting person from ``ctx.conversation_id`` via
+``omnigent.nova._shared.private_actor``.
 
 **Store access.** ``tools.py`` is built at import time, before any
 ``NovaDeps`` exists (see ``omnigent/nova/_registry.py``), so it cannot take a
 ``storage_location`` the way ``routes.py`` does. It uses
 ``omnigent.nova.goals._runtime_store()`` instead — the same lazily-built,
 process-wide store ``context.py`` uses, pointed at the same database as
-``ConversationStore`` (mirrors ``omnigent.nova.memory``'s ``_runtime_store``).
+``ConversationStore`` (``omnigent.nova._shared.storage.lazy_store``).
 """
 
 from __future__ import annotations
@@ -34,38 +26,12 @@ from typing import Any
 
 from omnigent.errors import OmnigentError
 from omnigent.nova import goals as _goals
-from omnigent.nova._shared import NovaActor, Scope, scope_from_labels
+from omnigent.nova._shared import private_actor
 from omnigent.nova.goals import service
 from omnigent.nova.goals.entities import ProposedTask, TaskStatus
 from omnigent.tools.base import Tool, ToolContext
 
 _ACTIONS = ("create", "propose", "update_task")
-
-
-def _resolve_private_actor(ctx: ToolContext) -> tuple[NovaActor | None, str | None]:
-    """Resolve the calling session's owner as a :class:`NovaActor`.
-
-    :param ctx: The tool's execution context.
-    :returns: ``(actor, None)`` on success, or ``(None, reason)`` — a reason
-        the tool should return as its ``"error"`` — on refusal.
-    """
-    if ctx.conversation_id is None:
-        return None, "no active session for nova_goals"
-
-    from omnigent.db.db_models import current_workspace_id
-    from omnigent.runtime import get_conversation_store
-
-    conversation_store = get_conversation_store()
-    conversation = conversation_store.get_conversation(ctx.conversation_id)
-    if conversation is None:
-        return None, "session not found"
-    if scope_from_labels(conversation.labels) is not Scope.PRIVATE:
-        return None, "nova_goals is only available in a private session"
-
-    owner = conversation_store.get_session_owner(ctx.conversation_id)
-    if owner is None:
-        return None, "session has no owner"
-    return NovaActor(user_id=owner, workspace_id=current_workspace_id()), None
 
 
 class NovaGoalsTool(Tool):
@@ -172,7 +138,7 @@ class NovaGoalsTool(Tool):
         if action not in _ACTIONS:
             return json.dumps({"error": f"action must be one of {', '.join(_ACTIONS)}."})
 
-        actor, refusal = _resolve_private_actor(ctx)
+        actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return json.dumps({"error": refusal})
         assert actor is not None
