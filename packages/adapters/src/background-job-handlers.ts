@@ -22,6 +22,8 @@ import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-d
 import { createFeedJobHandlers } from "./muse/feed-jobs.js";
 import { createGoalJobHandlers } from "./muse/goal-jobs.js";
 import { refreshIdeas } from "./muse/ideas.js";
+import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
+import { runTurnOnOmnigent } from "./omnigent/gateway.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 import { expireTaughtSkillTeaching } from "./teaching-session.js";
 
@@ -45,6 +47,12 @@ export function createBackgroundJobHandlers(deps: {
   deploymentModelKey?: string;
   messaging?: MessagingSurface;
   cloudAgent?: CloudAgentConnection | null;
+  /**
+   * NOVA_ENGINE=omnigent spike (docs/omnigent-spike.md): when set, an eligible run.continue
+   * (a plain user message on a Muse's own private Conversation) runs on Omnigent instead of
+   * the built-in executor. Unset keeps today's engine byte-for-byte unchanged.
+   */
+  omnigent?: OmnigentGatewayDeps;
 }): BackgroundJobHandlers {
   const deliverMessaging = async (runId?: string) => {
     if (!deps.messaging) return;
@@ -80,7 +88,12 @@ export function createBackgroundJobHandlers(deps: {
     "goal.checkin": goalJobHandlers["goal.checkin"],
     "feed.topics": feedJobHandlers["feed.topics"],
     "run.continue": async (payload) => {
-      await deps.executor.continueRun(payload.runId, deps.workerId);
+      const ranOnOmnigent = deps.omnigent
+        ? await runTurnOnOmnigent(deps.omnigent, payload.runId, deps.workerId)
+        : false;
+      if (!ranOnOmnigent) {
+        await deps.executor.continueRun(payload.runId, deps.workerId);
+      }
       // Automatic messaging mirror: once the run's bot messages are durable,
       // copy them into the outbox. Never let mirror failures fail the run.
       if (deps.messaging) {
