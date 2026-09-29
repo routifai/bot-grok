@@ -395,6 +395,7 @@ model Bot {
   feedLog                Thread?           @relation("BotFeedLog")
   taughtSkills           TaughtSkill[]
   episodes               Episode[]
+  omnigentSession        OmnigentSession?
   memoryDocuments        MemoryDocument[]
   agentHome              AgentHome?
   browserProfile         BrowserProfile?
@@ -959,6 +960,20 @@ model Episode {
 
   @@index([botId, createdAt])
   @@map("episodes")
+}
+
+/// NOVA_ENGINE=omnigent spike (docs/omnigent-spike.md): the Omnigent session id backing one
+/// Muse's Conversation, so every turn continues the same session instead of starting a new
+/// one. One row per bot; week 1 only ever creates a "private"-scope session.
+model OmnigentSession {
+  id                String   @id @default(cuid())
+  botId             String   @unique
+  bot               Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  omnigentSessionId String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("omnigent_sessions")
 }
 
 /// Claude Agent Skills: SKILL.md recipes shared across assistants (not per-bot).
