@@ -5924,6 +5924,7 @@ async def _provision_managed_sandbox(
     relaunch_host: Host | None,
     provider: str | None = None,
     agent_name: str | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> ManagedHostLaunch | None:
     """
     Run the provision phase of a background managed launch.
@@ -5947,6 +5948,8 @@ async def _provision_managed_sandbox(
     :param agent_name: Server-resolved built-in agent name the session
         runs, stamped as the runner Pod's ``omnigent.ai/agent`` classifier
         (Kubernetes only), or ``None`` to leave it unstamped.
+    :param labels: The session's current labels, forwarded to the launcher's
+        ``prepare_for_launch`` — see :func:`omnigent.server.managed_hosts.launch_managed_host`.
     :returns: The launch result, or ``None`` when the launch failed
         (the tracker entry is already settled with the reason).
     """
@@ -5972,6 +5975,7 @@ async def _provision_managed_sandbox(
                 host_store=host_store,
                 repos=repos,
                 agent_name=agent_name,
+                labels=labels,
                 on_stage=_on_stage,
             )
         return await launch_managed_host(
@@ -5981,6 +5985,7 @@ async def _provision_managed_sandbox(
             repos=repos,
             provider=provider,
             agent_name=agent_name,
+            labels=labels,
             on_stage=_on_stage,
         )
     except HTTPException as exc:

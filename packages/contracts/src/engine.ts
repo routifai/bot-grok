@@ -25,11 +25,20 @@ export const EngineHarnessSchema = z.object({
 });
 export type EngineHarness = z.infer<typeof EngineHarnessSchema>;
 
+// Where a Muse's Omnigent runner (the harness's shell/file/browser tools) actually executes —
+// docs/omnigent-spike.md "Nova computer" runner launcher. "computer": Omnigent's server launches
+// the runner inside this Muse's own sandbox computer (Nova's per-Muse container). "local": the
+// runner routes to the person's own machine via a connected `omnigent host`.
+export const NovaRunnerLocationIdSchema = z.enum(["computer", "local"]);
+export type NovaRunnerLocationId = z.infer<typeof NovaRunnerLocationIdSchema>;
+
 export const EngineInfoSchema = z.object({
   /** Whether Nova is running on the Omnigent engine at all (env NOVA_ENGINE=omnigent). */
   enabled: z.boolean(),
   /** The bot's chosen harness; null when `enabled` is false. Defaults to "pi" when enabled. */
   active: NovaHarnessIdSchema.nullable(),
   harnesses: z.array(EngineHarnessSchema),
+  /** Where the bot's runner executes; null when `enabled` is false. Defaults to "computer". */
+  runnerLocation: NovaRunnerLocationIdSchema.nullable(),
 });
 export type EngineInfo = z.infer<typeof EngineInfoSchema>;

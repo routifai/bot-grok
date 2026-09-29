@@ -34,7 +34,7 @@ stores into ``create_app``):
 
        sandbox:
          # lakebox|modal|daytona|blaxel|boxlite|cwsandbox|islo|e2b|openshell|
-         # kubernetes|microsandbox|gensee
+         # kubernetes|microsandbox|gensee|computer
          provider: modal
          server_url: https://omnigent.example.com
          # For SEVERAL providers, replace `provider:` with a `providers:`
@@ -142,8 +142,11 @@ stores into ``create_app``):
    or ``sandbox.openshell.cluster``), so the server process needs
    OpenShell gateway access. The microsandbox launcher needs no
    credentials at all: VMs run embedded on the server host itself
-   (Apple Silicon macOS / KVM Linux). Every provider except
-   ``lakebox`` has managed-launch support; ``lakebox`` parses but
+   (Apple Silicon macOS / KVM Linux). The computer launcher (Nova's
+   per-Muse sandbox computer, docs/omnigent-spike.md) reads
+   ``OMNIGENT_NOVA_SUPERVISOR_URL`` and ``OMNIGENT_NOVA_SUPERVISOR_TOKEN``
+   — see :mod:`omnigent.onboarding.sandboxes.computer`. Every provider
+   except ``lakebox`` has managed-launch support; ``lakebox`` parses but
    rejects at launch.
 
 2. **Direct construction** (embedding deployments): build
@@ -219,6 +222,7 @@ SUPPORTED_SANDBOX_PROVIDERS: frozenset[str] = frozenset(
         "kubernetes",
         "microsandbox",
         "agent_sandbox",
+        "computer",
     }
 )
 PROVIDERS_WITH_MANAGED_LAUNCH: frozenset[str] = frozenset(
@@ -235,6 +239,7 @@ PROVIDERS_WITH_MANAGED_LAUNCH: frozenset[str] = frozenset(
         "kubernetes",
         "microsandbox",
         "agent_sandbox",
+        "computer",
     }
 )
 
@@ -280,6 +285,13 @@ BOXLITE_MANAGED_TOKEN_TTL_S = 7 * 24 * 3600
 # The seven-day policy keeps live VMs reconnecting while stale tokens expire.
 # A relaunch mints a fresh token.
 MICROSANDBOX_MANAGED_TOKEN_TTL_S = 7 * 24 * 3600
+
+# Launch-token lifetime for the "computer" provider (Nova's per-Muse sandbox computer,
+# docs/omnigent-spike.md). The computer itself has no lifetime cap — it is a persistent,
+# Nova-managed resource that outlives any one launch — so, like Boxlite/Daytona/Islo/OpenShell,
+# the bound here is policy: seven days keeps a long-lived host re-authenticating across tunnel
+# reconnects while still expiring tokens nobody renewed. A relaunch mints a fresh token.
+COMPUTER_MANAGED_TOKEN_TTL_S = 7 * 24 * 3600
 
 # Launch-token lifetime for the YAML islo path. Islo sandboxes are
 # deleted by managed-session teardown; use the same 7-day policy bound
@@ -1006,6 +1018,28 @@ def _modal_launcher_factory(
     return _build
 
 
+def _computer_launcher_factory() -> Callable[[], SandboxHostLauncher]:
+    """
+    Build the launcher factory for the YAML ``provider: computer`` path.
+
+    Needs no ``sandbox.computer:`` block: like Modal's ``MODAL_TOKEN_ID``, its supervisor URL and
+    shared secret are read from the server PROCESS environment (12-factor) —
+    :data:`~omnigent.onboarding.sandboxes.computer.SUPERVISOR_URL_ENV_VAR` /
+    :data:`~omnigent.onboarding.sandboxes.computer.SUPERVISOR_TOKEN_ENV_VAR`.
+
+    :returns: A factory producing :class:`~omnigent.onboarding.sandboxes.computer.
+        ComputerSandboxLauncher` instances.
+    """
+
+    def _build() -> SandboxHostLauncher:
+        """Construct the computer launcher (lazy import inside, matching every other provider)."""
+        from omnigent.onboarding.sandboxes.computer import ComputerSandboxLauncher
+
+        return ComputerSandboxLauncher()
+
+    return _build
+
+
 def _community_sandbox_providers() -> frozenset[str]:
     """Provider names contributed by packages, excluding every built-in.
 
@@ -1675,6 +1709,9 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> ManagedSand
             host_ports=_resolve_microsandbox_host_ports(raw, server_url),
         )
         token_ttl_s = MICROSANDBOX_MANAGED_TOKEN_TTL_S
+    elif provider == "computer":
+        launcher_factory = _computer_launcher_factory()
+        token_ttl_s = COMPUTER_MANAGED_TOKEN_TTL_S
     elif provider in community:
         # A provider contributed through the `omnigent.sandbox_providers`
         # entry point group. The registry has validated it (name not shadowing
@@ -3444,6 +3481,7 @@ async def launch_managed_host(
     repos: Sequence[RepoWorkspace] = (),
     provider: str | None = None,
     agent_name: str | None = None,
+    labels: Mapping[str, str] | None = None,
     on_stage: Callable[[str], None] | None = None,
 ) -> ManagedHostLaunch:
     """
@@ -3480,6 +3518,12 @@ async def launch_managed_host(
         stamped as the runner Pod's ``omnigent.ai/agent`` classifier by
         providers that declare ``classifies_runner_by_agent`` (Kubernetes),
         or ``None`` to leave it unstamped.
+    :param labels: The launching session's labels, forwarded to
+        :meth:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher.prepare_for_launch` —
+        e.g. Nova's ``nova.bot`` / ``nova.space`` (see
+        :mod:`omnigent.onboarding.sandboxes.computer`), which a provider whose sandbox is a
+        pre-existing per-identity resource (rather than one it creates fresh) needs to select
+        it. ``None``/empty for providers that don't need it.
     :param on_stage: Progress observer invoked as the launch pipeline
         advances, with the stage just entered: ``"cloning"`` (when
         *repo* is set) then ``"starting"``. May be called from a
@@ -3501,7 +3545,9 @@ async def launch_managed_host(
     # across a user's managed sandboxes.
     host_name = f"managed-{host_id[:8]}"
     try:
-        await asyncio.to_thread(launcher.prepare_for_launch, agent_name=agent_name)
+        await asyncio.to_thread(
+            launcher.prepare_for_launch, agent_name=agent_name, labels=labels
+        )
         await asyncio.to_thread(launcher.prepare)
         sandbox_id = await asyncio.to_thread(launcher.provision, host_name)
     except click.ClickException as exc:
@@ -3531,6 +3577,7 @@ async def relaunch_managed_host(
     host_store: HostStore,
     repos: Sequence[RepoWorkspace] = (),
     agent_name: str | None = None,
+    labels: Mapping[str, str] | None = None,
     on_stage: Callable[[str], None] | None = None,
 ) -> ManagedHostLaunch:
     """
@@ -3561,6 +3608,12 @@ async def relaunch_managed_host(
     :param agent_name: Server-resolved built-in agent name the session runs,
         re-stamped as the new runner Pod's ``omnigent.ai/agent`` classifier
         (Kubernetes only), or ``None`` to leave it unstamped.
+    :param labels: The bound session's current labels, forwarded to
+        ``prepare_for_launch`` alongside ``host.sandbox_id`` as
+        ``previous_sandbox_id`` — a provider whose sandbox id encodes identity
+        (see :mod:`omnigent.onboarding.sandboxes.computer`) can recover from
+        either; *labels*, when available, reflects the current session row
+        rather than whatever an earlier launch encoded.
     :param on_stage: Progress observer forwarded to
         :func:`_register_and_start_host`; see :func:`launch_managed_host`.
         ``None`` disables progress reporting.
@@ -3593,7 +3646,12 @@ async def relaunch_managed_host(
             provider=host.sandbox_provider,
         )
     try:
-        await asyncio.to_thread(launcher.prepare_for_launch, agent_name=agent_name)
+        await asyncio.to_thread(
+            launcher.prepare_for_launch,
+            agent_name=agent_name,
+            labels=labels,
+            previous_sandbox_id=host.sandbox_id,
+        )
         await asyncio.to_thread(launcher.prepare)
         sandbox_id = await asyncio.to_thread(launcher.provision, host.name)
     except click.ClickException as exc:

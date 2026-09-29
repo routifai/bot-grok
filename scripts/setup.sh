@@ -145,7 +145,9 @@ fi
 # --- 6. Build the computer image -------------------------------------------------------------
 
 log "Building the computer image (aiden/computer:local) — first build takes a few minutes..."
-docker build -t aiden/computer:local "$ROOT/infra/sandboxes/computer"
+# Root context (not infra/sandboxes/computer) so the image can vendor engine/omnigent — see
+# infra/sandboxes/computer/Dockerfile's omnigent-builder stage.
+docker build -t aiden/computer:local -f "$ROOT/infra/sandboxes/computer/Dockerfile" "$ROOT"
 
 # --- 7. Build and start the stack ------------------------------------------------------------
 

@@ -8,18 +8,33 @@
 // use here. It still claims the run with the same fence/lease columns and finishes through
 // `ThreadEvents.finalizeRun` so the thread, task, and run rows land in the same state a normal
 // turn would.
+
+import type { NovaRunnerLocationId } from "@aiden/contracts";
 import { containsSecret, redactSecrets } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import {
+  createOmnigentHostDirectory,
   createOmnigentSession,
   findOmnigentAgentIdByName,
+  getOmnigentSession,
+  listOmnigentHostDirectory,
+  listOmnigentHosts,
   type OmnigentClientConfig,
   postOmnigentMessage,
   streamOmnigentSession,
   switchOmnigentAgent,
 } from "./client.js";
 import { agentNameForMuseHarness } from "./harnesses.js";
+import { resolveMuseRunnerLocation } from "./runner-location.js";
+
+/** Sandbox provider name Omnigent's "computer" launcher registers under (see
+ * docs/omnigent-spike.md) — selected explicitly on every managed create so a deployment that
+ * also offers other sandbox providers still routes a "computer" runner location here. */
+const COMPUTER_SANDBOX_PROVIDER = "computer";
+
+/** Directory name under a local host's home a Muse's workspace lives in: `~/nova/<botId>`. */
+const LOCAL_WORKSPACE_DIR_NAME = "nova";
 
 /** Upper bound on how long one turn may run on Omnigent before the gateway gives up. */
 const TURN_TIMEOUT_MS = 5 * 60_000;
@@ -82,12 +97,19 @@ export async function runTurnOnOmnigent(
       deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId }, select: { prompt: true } }),
       deps.prisma.bot.findUniqueOrThrow({
         where: { id: run.botId },
-        select: { museHarness: true },
+        select: { museHarness: true, museRunnerLocation: true },
       }),
     ]);
     const desiredAgentName = agentNameForMuseHarness(bot.museHarness, deps.agentName);
+    const desiredRunnerLocation = resolveMuseRunnerLocation(bot.museRunnerLocation);
 
-    const sessionId = await ensureOmnigentSession(deps, user.email, run, desiredAgentName);
+    const sessionId = await ensureOmnigentSession(
+      deps,
+      user.email,
+      run,
+      desiredAgentName,
+      desiredRunnerLocation,
+    );
     const text = await sendTurnAndAwaitReply(deps, user.email, sessionId, task.prompt);
     const redacted = redactSecrets(text, deps.secrets);
     if (containsSecret(redacted, deps.secrets)) {
@@ -144,9 +166,18 @@ function sessionLabels(run: { userId: string; spaceId: string; botId: string }) 
 
 /**
  * One Omnigent session per Muse (bot), stored so every turn continues the same conversation.
- * When a session already exists but its recorded `agentName` no longer matches the bot's
- * resolved harness (`desiredAgentName`), switches it in place first — the session is idle
- * between turns, which is switch-agent's only precondition
+ *
+ * Recreates the session (a fresh Omnigent session, since there is neither a switch-host nor a
+ * switch-location RPC) when either:
+ * - the bot's resolved runner location no longer matches the one the session was bound on
+ *   (the person changed Bot.museRunnerLocation since), or
+ * - the existing session never got a runner bound at all (`sessionNeedsRepair`) — the fix for
+ *   sessions created before this gateway set `host_type`/`host_id` at all, which otherwise fail
+ *   every turn with Omnigent's "no runner bound for session" error forever.
+ *
+ * Otherwise, when the recorded `agentName` no longer matches the bot's resolved harness
+ * (`desiredAgentName`), switches it in place — the session is idle between turns, which is
+ * switch-agent's only precondition
  * (engine/omnigent/omnigent/server/routes/sessions/routes_core.py ~3580-3700).
  */
 async function ensureOmnigentSession(
@@ -154,11 +185,22 @@ async function ensureOmnigentSession(
   email: string,
   run: { userId: string; spaceId: string; botId: string },
   desiredAgentName: string,
+  desiredRunnerLocation: NovaRunnerLocationId,
 ): Promise<string> {
   const existing = await deps.prisma.omnigentSession.findUnique({
     where: { botId: run.botId },
   });
   if (existing) {
+    const locationChanged = existing.runnerLocation !== desiredRunnerLocation;
+    if (locationChanged || (await sessionNeedsRepair(deps, email, existing.omnigentSessionId))) {
+      return await createBoundOmnigentSession(
+        deps,
+        email,
+        run,
+        desiredAgentName,
+        desiredRunnerLocation,
+      );
+    }
     if (existing.agentName !== desiredAgentName) {
       await switchOmnigentSessionAgent(
         deps,
@@ -171,21 +213,139 @@ async function ensureOmnigentSession(
     return existing.omnigentSessionId;
   }
 
+  return await createBoundOmnigentSession(
+    deps,
+    email,
+    run,
+    desiredAgentName,
+    desiredRunnerLocation,
+  );
+}
+
+/**
+ * True when a reused session's Omnigent side never got a runner bound (`host_id` null) — the
+ * bug this gateway's `host_type`/`host_id` binding fixes, for any session created before it did.
+ * Fails OPEN (returns `false`, i.e. "no repair needed") on a snapshot-fetch error so a transient
+ * Omnigent hiccup cannot force a recreate on every single turn; a genuine problem still surfaces
+ * from `postOmnigentMessage` right after.
+ */
+async function sessionNeedsRepair(
+  deps: OmnigentGatewayDeps,
+  email: string,
+  omnigentSessionId: string,
+): Promise<boolean> {
+  try {
+    const snapshot = await getOmnigentSession(deps.client, email, omnigentSessionId);
+    return snapshot.host_id == null;
+  } catch (error) {
+    getLogger().error("omnigent gateway: session snapshot check failed, continuing", error);
+    return false;
+  }
+}
+
+/**
+ * Creates a fresh Omnigent session bound to a runner per `runnerLocation` (see
+ * `resolveRunnerBinding`) and records it as this bot's current session, overwriting whatever was
+ * there (a stale/unbound session, or one bound to a different location).
+ */
+async function createBoundOmnigentSession(
+  deps: OmnigentGatewayDeps,
+  email: string,
+  run: { userId: string; spaceId: string; botId: string },
+  desiredAgentName: string,
+  runnerLocation: NovaRunnerLocationId,
+): Promise<string> {
   const agentId = await findOmnigentAgentIdByName(deps.client, email, desiredAgentName);
   if (!agentId) {
     throw new Error(`no Omnigent agent bundle named "${desiredAgentName}" is registered`);
   }
+  const binding = await resolveRunnerBinding(deps, email, run, runnerLocation);
   const session = await createOmnigentSession(deps.client, email, {
     agentId,
     labels: sessionLabels(run),
     title: "Nova Conversation",
+    ...binding,
   });
   const saved = await deps.prisma.omnigentSession.upsert({
     where: { botId: run.botId },
-    create: { botId: run.botId, omnigentSessionId: session.id, agentName: desiredAgentName },
-    update: { omnigentSessionId: session.id, agentName: desiredAgentName },
+    create: {
+      botId: run.botId,
+      omnigentSessionId: session.id,
+      agentName: desiredAgentName,
+      runnerLocation,
+    },
+    update: { omnigentSessionId: session.id, agentName: desiredAgentName, runnerLocation },
   });
   return saved.omnigentSessionId;
+}
+
+type RunnerBinding =
+  | { hostType: "managed"; sandboxProvider: string }
+  | { hostType: "external"; hostId: string; workspace: string };
+
+/**
+ * How a new session binds to a runner for `runnerLocation` (docs/omnigent-spike.md "Nova
+ * computer" launcher):
+ * - "computer": `host_type: "managed"` with the "computer" sandbox provider, so Omnigent's
+ *   server provisions and binds the host itself, inside this Muse's own sandbox computer.
+ * - "local": the caller's already-connected `omnigent host` — resolved via `GET /v1/hosts` and
+ *   bound directly by `host_id` + an absolute `workspace` path on it. Throws a clear, turn-
+ *   failing error when none is online, per docs/omnigent-spike.md's "fail clearly" requirement.
+ */
+async function resolveRunnerBinding(
+  deps: OmnigentGatewayDeps,
+  email: string,
+  run: { userId: string; spaceId: string; botId: string },
+  runnerLocation: NovaRunnerLocationId,
+): Promise<RunnerBinding> {
+  if (runnerLocation === "computer") {
+    return { hostType: "managed", sandboxProvider: COMPUTER_SANDBOX_PROVIDER };
+  }
+  const hosts = await listOmnigentHosts(deps.client, email);
+  // sandbox_provider !== null marks a server-managed host (not a person's own machine) —
+  // never a valid "local" target even if it happens to be online right now.
+  const online = hosts.find((host) => host.status === "online" && host.sandbox_provider === null);
+  if (!online) {
+    throw new Error(
+      "No connected local host found for this Muse's runner — run `omnigent host` on your " +
+        'machine, or switch this Muse\'s runner location back to "computer".',
+    );
+  }
+  const workspace = await resolveLocalWorkspace(deps, email, online.host_id, run.botId);
+  return { hostType: "external", hostId: online.host_id, workspace };
+}
+
+/**
+ * The absolute workspace directory a "local" session starts in on `hostId`: `~/nova/<botId>`,
+ * created on first use. Falls back to listing the parent directory when creation reports
+ * "already exists" (e.g. a session recreated after `sessionNeedsRepair`, or a directory left
+ * over from an earlier local run) — the host's create-directory call reports that case as a
+ * plain error, not the resolved absolute path, so it has to be recovered from a listing instead.
+ */
+async function resolveLocalWorkspace(
+  deps: OmnigentGatewayDeps,
+  email: string,
+  hostId: string,
+  botId: string,
+): Promise<string> {
+  const relativePath = `~/${LOCAL_WORKSPACE_DIR_NAME}/${botId}`;
+  try {
+    const created = await createOmnigentHostDirectory(deps.client, email, hostId, relativePath);
+    return created.path;
+  } catch (error) {
+    const entries = await listOmnigentHostDirectory(
+      deps.client,
+      email,
+      hostId,
+      `~/${LOCAL_WORKSPACE_DIR_NAME}`,
+    ).catch(() => []);
+    const existing = entries.find((entry) => entry.name === botId && entry.type === "directory");
+    if (existing) return existing.path;
+    throw new Error(
+      `could not create or find a workspace directory for this Muse on host ${hostId}`,
+      { cause: error },
+    );
+  }
 }
 
 /**

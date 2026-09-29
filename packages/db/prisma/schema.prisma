@@ -389,6 +389,12 @@ model Bot {
   /// Conversation turns run on. Null means the deployment default (OMNIGENT_AGENT_NAME's
   /// harness, "pi" unless overridden) — see packages/adapters/src/omnigent/harnesses.ts.
   museHarness            String?
+  /// Where this Muse's Omnigent runner executes (packages/contracts/src/engine.ts,
+  /// NovaRunnerLocationId): "computer" (Omnigent launches it inside this Muse's own sandbox
+  /// computer) or "local" (routes to the person's connected `omnigent host`). Null means the
+  /// deployment default ("computer") — see
+  /// packages/adapters/src/omnigent/runner-location.ts and docs/omnigent-spike.md.
+  museRunnerLocation     String?
   routines               Routine[]
   scratchpadItems        ScratchpadItem[]
   goals                  Goal[]
@@ -978,6 +984,10 @@ model OmnigentSession {
   /// kept in sync by packages/adapters/src/omnigent/gateway.ts when a turn's resolved
   /// harness (Bot.museHarness) differs and switch-agent succeeds.
   agentName         String   @default("nova-pi")
+  /// Runner location (NovaRunnerLocationId) this session was bound on; recreated (a fresh
+  /// Omnigent session, since there is no switch-location RPC) when Bot.museRunnerLocation no
+  /// longer matches — see ensureOmnigentSession in packages/adapters/src/omnigent/gateway.ts.
+  runnerLocation    String   @default("computer")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

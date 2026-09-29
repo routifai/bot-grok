@@ -76,7 +76,7 @@ import {
   VoiceInfoSchema,
   VoiceStatusSchema,
 } from "./domain.js";
-import { EngineInfoSchema, NovaHarnessIdSchema } from "./engine.js";
+import { EngineInfoSchema, NovaHarnessIdSchema, NovaRunnerLocationIdSchema } from "./engine.js";
 import { ProductEventSchema } from "./events.js";
 import { Id, IsoDate } from "./ids.js";
 import {
@@ -865,6 +865,10 @@ export const appContract = {
     info: oc.input(z.object({ botId: Id })).output(EngineInfoSchema),
     setHarness: oc
       .input(z.object({ botId: Id, harness: NovaHarnessIdSchema }))
+      .output(EngineInfoSchema),
+    /** Where the Muse's runner executes — docs/omnigent-spike.md "Nova computer" launcher. */
+    setRunnerLocation: oc
+      .input(z.object({ botId: Id, runnerLocation: NovaRunnerLocationIdSchema }))
       .output(EngineInfoSchema),
   },
   episodes: {

@@ -140,7 +140,14 @@ async def test_request_context_precedes_launch_relaunch_and_resume(db_uri: str) 
     calls: list[tuple[str, str | None]] = []
 
     class ContextLauncher(FakeSandboxLauncher):
-        def prepare_for_launch(self, *, agent_name: str | None = None) -> None:
+        def prepare_for_launch(
+            self,
+            *,
+            agent_name: str | None = None,
+            labels: dict[str, str] | None = None,
+            previous_sandbox_id: str | None = None,
+        ) -> None:
+            del labels, previous_sandbox_id
             calls.append(("context", agent_name))
 
         def prepare(self) -> None:
@@ -190,7 +197,14 @@ async def test_request_context_precedes_launch_relaunch_and_resume(db_uri: str) 
 
 async def test_rejected_launch_context_does_not_allocate(db_uri: str) -> None:
     class IncompatibleLauncher(FakeSandboxLauncher):
-        def prepare_for_launch(self, *, agent_name: str | None = None) -> None:
+        def prepare_for_launch(
+            self,
+            *,
+            agent_name: str | None = None,
+            labels: dict[str, str] | None = None,
+            previous_sandbox_id: str | None = None,
+        ) -> None:
+            del agent_name, labels, previous_sandbox_id
             raise click.ClickException("pool does not match the requested agent")
 
     launcher = IncompatibleLauncher()

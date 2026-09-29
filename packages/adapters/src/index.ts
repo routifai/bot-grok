@@ -98,6 +98,7 @@ export * from "./omnigent/context-provider.js";
 export * from "./omnigent/env.js";
 export * from "./omnigent/gateway.js";
 export * from "./omnigent/harnesses.js";
+export * from "./omnigent/runner-location.js";
 export * from "./openai-compatible-url.js";
 export * from "./openai-voice.js";
 export * from "./page-browser-session.js";

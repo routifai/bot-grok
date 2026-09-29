@@ -70,6 +70,134 @@ before posting the turn (see "Gateway" above).
 `OMNIGENT_AGENT_NAME` env var, resolved to a harness id for backwards compatibility with a
 deployment that hasn't adopted per-Muse choice yet.
 
+### The Nova computer runner launcher
+
+Omnigent runners (where a harness like Pi, Claude, Codex, or a future Hermes executes and runs
+its shell, file, and browser tools) must run inside each Muse's own sandbox computer, never on the
+Omnigent server process and never on the machine that happens to be running it. Topology:
+
+```
+Nova (apps/api / apps/worker)                Omnigent server
+  gateway.ts ── POST /v1/sessions ──────────►   host_type: "managed", sandbox_provider: "computer"
+  (nova.bot / nova.user / nova.space labels)    │
+                                                 ▼
+                                        ComputerSandboxLauncher
+                                     (engine/omnigent/omnigent/onboarding/
+                                        sandboxes/computer.py)
+                                                 │  POST /computers, /computers/{id}/exec
+                                                 ▼
+                                     Nova's sandbox supervisor (infra/sandboxes/supervisor)
+                                                 │  ensures the container is running, execs into it
+                                                 ▼
+                                     The Muse's own computer container
+                                        (infra/sandboxes/computer image)
+                                          └── `omnigent host` runs here, dials back to the
+                                              Omnigent server over the runner WS tunnel
+```
+
+versus the **local** location, which never touches the computer at all — Omnigent routes to
+whichever machine the person already has a connected `omnigent host` on (`host_type: "external"`,
+a caller-supplied `host_id` + an absolute workspace path on that host):
+
+```
+Nova (apps/api / apps/worker)                Omnigent server
+  gateway.ts ── GET /v1/hosts ──────────────►   (find the caller's own online, non-sandbox host)
+  gateway.ts ── POST /v1/sessions ──────────►   host_type: "external", host_id, workspace
+                (host_id, ~/nova/<botId>)                │
+                                                          ▼
+                                              The person's own machine, already running
+                                                 `omnigent host` (unrelated to Nova's
+                                                 sandbox supervisor entirely)
+```
+
+**Choosing where**, per Muse: `Bot.museRunnerLocation` (`NovaRunnerLocationId`, "computer" |
+"local", `packages/contracts/src/engine.ts`) — `null` defaults to `"computer"`. Read/write it the
+same way as the harness choice: `engine.info` returns the resolved `runnerLocation`;
+`engine.setRunnerLocation({ botId, runnerLocation })` persists a new one. No UI surfaces this yet
+(the RPC and contract field exist; nothing calls `setRunnerLocation` outside tests). A changed
+runner location takes effect on the Muse's *next* turn: `ensureOmnigentSession` in
+`packages/adapters/src/omnigent/gateway.ts` compares the bot's current resolved location against
+the one its existing Omnigent session was created with (`omnigent_sessions.runnerLocation`) and,
+on a mismatch, creates a brand-new Omnigent session bound the new way — there is no in-place
+"switch location" the way `switch-agent` rebinds harnesses, so the Omnigent-side conversation
+history for that Muse starts over (Nova's own thread history is untouched; only the Omnigent
+session backing it is replaced).
+
+**Binding at session creation, not after.** Posting a message to an Omnigent session with no host
+ever bound fails immediately with `"no runner bound for session"` — a session created with only
+`agent_id` + `labels` (the original week-1 gateway body) never gets one, since Omnigent's
+`host_type` defaults to `"external"` with no `host_id` (a caller-managed runner that nothing ever
+provides here). `ensureOmnigentSession`'s create path fixes this by always setting `host_type`
+explicitly — `"managed"` + `sandbox_provider: "computer"` for the default location, or
+`"external"` + a resolved `host_id`/`workspace` for `"local"` (failing the turn with a clear error
+naming `omnigent host` when the person has no host currently connected). Sessions created before
+this fix (or a managed launch that otherwise never bound a host) are repaired on their *next*
+turn: the reused-session path fetches a cheap snapshot (`GET /v1/sessions/{id}`) and, when
+`host_id` is still null, recreates the session the same way a fresh one would be created.
+
+**The launcher** (`ComputerSandboxLauncher`, `engine/omnigent/omnigent/onboarding/sandboxes/
+computer.py`) implements Omnigent's `SandboxHostLauncher` interface exactly like every other
+managed-sandbox provider (Modal, Boxlite, …) — register it with `sandbox.provider: computer` (or
+in a `sandbox.providers:` list) in the Omnigent server config; it takes no `sandbox.computer:`
+block, only the environment variables below. Unlike every other provider, its sandbox is not a
+fresh box it creates: it is Nova's own pre-existing, per-Muse computer, keyed by the launching
+session's `nova.bot`/`nova.space` labels (`prepare_for_launch`, threaded from the session row by
+`omnigent.server.managed_hosts.launch_managed_host` on a first launch, or recovered from the
+launcher's own previous `provision()` return value — which encodes that identity — on a relaunch
+of an existing host). `provision()` calls the supervisor's `POST /computers`, which is itself an
+ensure-or-create: idempotent, and already resumes a merely-*stopped* container in place, so the
+launcher needs no liveness bookkeeping of its own. The runner authenticates to the Omnigent server
+exactly the way every managed host already does — the short-lived, per-launch, owner-scoped host
+launch token `start_host`'s inherited default injects — never a long-lived admin secret; Nova's
+API-process-to-supervisor secret (below) is a completely separate credential the launcher uses
+only to reach the supervisor, and never leaks into the sandbox. The launcher deliberately does
+**not** implement `terminate`/`keep_alive`: the computer belongs to Nova and outlives any one
+Omnigent session (skills, canvas, and browser use share it too), so Omnigent's best-effort sandbox
+cleanup must never destroy it — every caller of those already treats "provider can't do that" as
+skippable.
+
+**The image**: `infra/sandboxes/computer/Dockerfile` now vendors `engine/omnigent` (an
+`omnigent-builder` stage installs it with `uv` into `/opt/venv`, symlinked to `/usr/local/bin` so
+it's on the sandbox supervisor's fixed exec `PATH`) plus Node and the `pi` CLI — the only external
+harness CLI `omnigent/inner/pi_executor.py` needs; the other Nova harnesses (claude/openai/codex)
+run through the omnigent Python package's own SDK dependencies, already installed. This changed
+the image's Docker build **context** from `infra/sandboxes/computer` to the repo root (see
+`infra/compose/docker-compose*.yml`, `scripts/setup.sh`, and the CI validate matrix) so the
+Dockerfile can `COPY engine/omnigent/`.
+
+Environment variables (Omnigent server process):
+
+| Variable | Purpose |
+| --- | --- |
+| `OMNIGENT_NOVA_SUPERVISOR_URL` | Base URL of Nova's sandbox supervisor, e.g. `http://sandbox-supervisor:7091`. |
+| `OMNIGENT_NOVA_SUPERVISOR_TOKEN` | The shared bearer Nova's supervisor expects on every request — the same secret Nova's own API process reads via `resolveSupervisorToken`/`SANDBOX_SUPERVISOR_TOKEN` (`packages/core/src/secrets-guard.ts`). Never a per-user credential. |
+| `OMNIGENT_NOVA_HOME_ROOT` | Root directory a Muse's persistent home lives under (`<root>/homes/<bot_id>`) — must resolve to the SAME host path Nova's own API process uses (`dataDir` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only; set an absolute, shared path in any real deployment. |
+
+**Known gaps, not yet proven end-to-end:**
+
+- **The Muse's home directory must already exist.** Nova's API process normally creates it
+  (`mkdir(homePath, { recursive: true })` in `packages/adapters/src/computer-lifecycle.ts`) before
+  ever calling the supervisor; a root-mode supervisor deliberately never creates one itself. If a
+  Muse's very first activity is an Omnigent turn (before Nova's own computer/browser features have
+  ever touched it), `POST /computers` may fail until something on Nova's side has created the
+  home directory at least once.
+- **Relaunch/resume identity threading covers a fresh sandbox generation, not a resumed one.**
+  `prepare_for_launch` receives the session's labels (or, on relaunch, the launcher's own
+  previous sandbox id) from `omnigent.server.managed_hosts.launch_managed_host` /
+  `relaunch_managed_host`. `resume_managed_host` (waking a *stopped-but-resumable* sandbox) is
+  never reached for this provider — it's gated on `SandboxCapabilities.resume_stopped`, which this
+  launcher deliberately leaves `False` (the supervisor's own `POST /computers` already resumes a
+  stopped container transparently inside `provision()`).
+- **The "local" workspace directory convention (`~/nova/<bot_id>`) is new and unproven against a
+  real connected host** — verified only against the schema/validation rules read from source
+  (`SessionCreateRequest`'s workspace-boundary checks in `engine/omnigent/omnigent/server/
+  schemas.py`) and offline tests, not a live `omnigent host`.
+- **No live run of a full turn against a real Nova supervisor + computer container** — the
+  launcher is tested offline against a fake supervisor (`httpx.MockTransport`,
+  `engine/omnigent/tests/onboarding/sandboxes/test_computer.py`), and the Docker image was built
+  successfully locally, but nothing here has exercised the real `docker build` → supervisor →
+  container → `omnigent host` → tunnel → runner chain end to end.
+
 ### Eligibility (what actually runs on Omnigent)
 
 Only a plain user message (`run.trigger === "user"`) on a Muse's own private Conversation thread
@@ -158,7 +286,7 @@ additive and unused by the existing engine.
   progress line; week 1 skips it entirely (`response.output_item.*` events for non-message items
   are ignored) since the turn is otherwise text-only.
 - **Agent id lookup happens once per bot, not cached across bots.** `ensureOmnigentSession` calls
-  `GET /api/agents` by name the first time a bot talks to Omnigent (and again on every harness
+  `GET /v1/agents` by name the first time a bot talks to Omnigent (and again on every harness
   switch), then remembers the session id from then on. If the built-in agent bundle is ever
   re-registered under a new id (e.g. after changing its `name`), existing bots will keep talking
   to the *session* they already created (unaffected) but a *new* bot's first turn — or a

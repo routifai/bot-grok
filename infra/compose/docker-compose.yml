@@ -63,7 +63,10 @@ services:
   computer:
     image: aiden/computer:local
     build:
-      context: ../sandboxes/computer
+      # Root context (not sandboxes/computer) so the image can vendor engine/omnigent — see
+      # infra/sandboxes/computer/Dockerfile's omnigent-builder stage.
+      context: ../..
+      dockerfile: infra/sandboxes/computer/Dockerfile
     command: ["true"]
     restart: "no"
 

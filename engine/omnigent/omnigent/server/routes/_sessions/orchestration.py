@@ -3671,6 +3671,11 @@ async def _run_managed_launch(
             sandbox_config,
             saved_conversation.inference_snapshot,
         )
+    # Forwarded to the launcher's prepare_for_launch — a provider whose sandbox is a
+    # pre-existing per-identity resource (Nova's per-Muse computer; see
+    # omnigent.onboarding.sandboxes.computer) selects it from the session's OWN labels
+    # (e.g. "nova.bot" / "nova.space") rather than a launch-chosen name.
+    labels = saved_conversation.labels if saved_conversation is not None else {}
 
     agent_name: str | None = None
     if agent_store is not None and agent_id is not None:
@@ -3691,6 +3696,7 @@ async def _run_managed_launch(
             relaunch_host=relaunch_host,
             provider=provider,
             agent_name=agent_name,
+            labels=labels,
         )
         if managed is None:
             return

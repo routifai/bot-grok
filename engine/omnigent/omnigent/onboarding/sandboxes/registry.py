@@ -201,6 +201,11 @@ def _builtin_contribution() -> SandboxProviderContribution:
                 ),
                 managed_token_ttl_s=7 * 24 * 3600,
             ),
+            "computer": SandboxProviderMetadata(
+                name="computer",
+                launcher_class="omnigent.onboarding.sandboxes.computer:ComputerSandboxLauncher",
+                managed_token_ttl_s=7 * 24 * 3600,
+            ),
         },
     )
 

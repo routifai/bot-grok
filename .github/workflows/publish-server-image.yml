@@ -12,6 +12,7 @@ on:
       - ".dockerignore"
       - ".github/workflows/publish-server-image.yml"
       - "apps/**"
+      - "engine/omnigent/**"
       - "infra/compose/**"
       - "infra/sandboxes/computer/**"
       - "packages/**"
@@ -61,7 +62,9 @@ jobs:
             context: .
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
-            context: infra/sandboxes/computer
+            # Root context (not infra/sandboxes/computer) so the image can vendor
+            # engine/omnigent — see the Dockerfile's omnigent-builder stage.
+            context: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -108,7 +111,9 @@ jobs:
             context: .
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
-            context: infra/sandboxes/computer
+            # Root context (not infra/sandboxes/computer) so the image can vendor
+            # engine/omnigent — see the Dockerfile's omnigent-builder stage.
+            context: .
           - arch: amd64
             runner: ubuntu-latest
           - arch: arm64
