@@ -13,13 +13,15 @@
   },
   "scripts": {
     "check": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root ../.. packages/contracts/src"
+    "test": "vitest run --root ../.. packages/contracts/src",
+    "emit-canvas-schema": "tsx scripts/emit-canvas-schema.ts"
   },
   "dependencies": {
     "@orpc/contract": "1.15.0",
     "zod": "4.6.2"
   },
   "devDependencies": {
+    "tsx": "4.23.13",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }

@@ -12,6 +12,7 @@ import {
   sessionRetryDelayMs,
   showSessionUnavailable,
 } from "./lib/session-gate";
+import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
 import { IntegrationSetupPage } from "./pages/IntegrationSetup";
 import { LocalSettingsPage } from "./pages/LocalSettings";
 import { McpOAuthCallbackPage } from "./pages/McpOAuthCallback";
@@ -35,6 +36,11 @@ const ArtifactsPage = lazy(() =>
 
 export function App() {
   if (window.location.pathname === LOCAL_SETTINGS_PAGE) return <LocalSettingsPage />;
+  // Dev-only fixture route: no session needed, so screenshots and eyeballing don't
+  // require a signed-in account or a live agent run.
+  if (import.meta.env.DEV && window.location.pathname === "/dev/canvas") {
+    return <CanvasPreviewPage />;
+  }
   return <SessionApp />;
 }
 

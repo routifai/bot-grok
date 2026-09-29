@@ -57,6 +57,11 @@ export const MAX_CHART_DATA_ROWS = 5_000;
 
 const ChartSpec = z.record(z.string(), z.any());
 
+/** Nova Canvas tree (packages/contracts/src/canvas.ts has the strict `CanvasNodeSchema`
+    catalog); z.any here keeps the inferred type JSON-assignable for persistence, the same
+    reason ChartSpec does above — the tree is validated and repaired before publish. */
+const CanvasTree = z.record(z.string(), z.any());
+
 function embeddedChartRowCount(spec: Record<string, unknown>): number {
   const specData = Array.isArray(spec.data) ? spec.data.length : 0;
   const markData = Array.isArray(spec.marks)
@@ -225,6 +230,13 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     status: z.enum(["draft", "saved"]),
   }),
   ChartBlock,
+  z.object({
+    /** Nova Canvas (show_canvas). `tree` is a CanvasNode (packages/contracts/src/canvas.ts)
+        already validated and repaired before publish, so renderers can trust its shape. */
+    kind: z.literal("canvas"),
+    title: z.string().optional(),
+    tree: CanvasTree,
+  }),
   z.object({
     /** Approval card for an agent-created MCP server. The user completes the
         OAuth popup (or confirms no authorization is needed) in the UI. */

@@ -219,6 +219,7 @@ import { ClearConversationDialog, DeleteItemDialog } from "./shell/dialogs";
 import {
   AppConnectCard,
   ArtifactImage,
+  CanvasBlockView,
   ChartBlockView,
   ChoiceCard,
   McpApprovalCard,
@@ -5397,6 +5398,17 @@ const MessageView = memo(function MessageView({
           return (
             <div key={i} className="flex justify-start">
               <ChartBlockView name={block.name} spec={block.spec} data={block.data} />
+            </div>
+          );
+        }
+        if (block.kind === "canvas") {
+          return (
+            <div key={i} className="flex justify-start">
+              <CanvasBlockView
+                block={block}
+                disabled={!canAnswer}
+                onAnswer={(value) => onAnswer(message, value)}
+              />
             </div>
           );
         }

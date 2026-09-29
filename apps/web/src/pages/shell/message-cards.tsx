@@ -1,6 +1,6 @@
-import type { MessageBlock } from "@aiden/contracts";
+import type { CanvasNode, MessageBlock } from "@aiden/contracts";
 import { abortableDelay } from "@aiden/core";
-import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@aiden/ui-web";
+import { Button, CanvasView, Dialog, DialogClose, DialogContent, DialogTitle } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -482,6 +482,30 @@ export function ChartBlockView({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** Nova Canvas (docs: show_canvas). `tree` already passed the catalog schema before
+ * publish, so this only needs to dispatch it — no re-validation on the client. */
+export function CanvasBlockView({
+  block,
+  onAnswer,
+  disabled,
+}: {
+  block: Extract<MessageBlock, { kind: "canvas" }>;
+  /** Wired the same as an `ask`/`choice` tap: posts back through the thread's run-input
+   * answer call. Omit when the block is read-only (e.g. a shared or archived view). */
+  onAnswer?: (value: string) => Promise<void>;
+  disabled?: boolean;
+}) {
+  // block.tree is typed loosely (Record<string, any>) at the contract level, the same
+  // reason ChartBlock's `spec` is, so it stays JSON-assignable for persistence; the shape
+  // is a CanvasNode by construction (validated and repaired before publish).
+  const tree = block.tree as unknown as CanvasNode;
+  return (
+    <div className="w-full max-w-[640px]">
+      <CanvasView tree={tree} title={block.title} onAnswer={onAnswer} disabled={disabled} />
+    </div>
   );
 }
 
