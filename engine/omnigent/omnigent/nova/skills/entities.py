@@ -19,6 +19,20 @@ class OfferStatus(StrEnum):
     DISMISSED = "dismissed"
 
 
+class OfferKind(StrEnum):
+    """What accepting an offer does.
+
+    :cvar NEW: Creates a new skill.
+    :cvar UPDATE: Replaces an existing skill's body (keeping its name) —
+        ``SkillService.offer`` chooses this on its own when the proposal
+        ranks as clearly similar to one the person already saved
+        (``gate.find_similar_skill``); it is never requested by the caller.
+    """
+
+    NEW = "new"
+    UPDATE = "update"
+
+
 @dataclass(frozen=True)
 class Skill:
     """One repeatable task Nova learned, saved for a person.
@@ -58,6 +72,11 @@ class SkillOffer:
     :param created_at: Unix epoch seconds when offered.
     :param decided_at: Unix epoch seconds the person decided, or ``None``
         while open.
+    :param offer_kind: Whether accepting this offer creates a new skill or
+        updates an existing one.
+    :param target_skill: The existing skill's name this offer would update,
+        when ``offer_kind`` is :attr:`OfferKind.UPDATE`; ``None`` for a new
+        skill.
     """
 
     id: str
@@ -69,3 +88,5 @@ class SkillOffer:
     status: OfferStatus
     created_at: int
     decided_at: int | None
+    offer_kind: OfferKind = OfferKind.NEW
+    target_skill: str | None = None

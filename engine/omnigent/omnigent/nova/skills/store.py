@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from omnigent.nova._shared import NovaActor
-from omnigent.nova.skills.entities import OfferStatus, Skill, SkillOffer
+from omnigent.nova.skills.entities import OfferKind, OfferStatus, Skill, SkillOffer
 
 
 class SkillStore(ABC):
@@ -66,6 +66,24 @@ class SkillStore(ABC):
         :returns: ``True`` if removed, ``False`` if not found / not owned.
         """
 
+    @abstractmethod
+    def update_skill(
+        self, actor: NovaActor, name: str, *, description: str, content: str
+    ) -> Skill | None:
+        """Replace an existing skill's description/content in place, keeping
+        its name, id and creation time.
+
+        Backs accepting an update offer (:meth:`SkillService.accept_offer` —
+        rule: "improve before creating" never renames the skill it updates).
+
+        :param actor: The requesting owner; a skill owned by someone else is
+            treated as not found.
+        :param name: The skill's exact, unchanged name.
+        :param description: The new one-line description.
+        :param content: The new full ``SKILL.md`` text.
+        :returns: The updated :class:`Skill`, or ``None`` if not found / not owned.
+        """
+
     # ── offers ───────────────────────────────────────────────────────────
 
     @abstractmethod
@@ -97,15 +115,27 @@ class SkillStore(ABC):
 
     @abstractmethod
     def create_offer(
-        self, offer_id: str, actor: NovaActor, *, name: str, description: str, content: str
+        self,
+        offer_id: str,
+        actor: NovaActor,
+        *,
+        name: str,
+        description: str,
+        content: str,
+        offer_kind: OfferKind = OfferKind.NEW,
+        target_skill: str | None = None,
     ) -> SkillOffer:
         """Insert a new open offer. Callers check :meth:`find_blocking_offer` first.
 
         :param offer_id: Pre-generated unique offer id.
         :param actor: Who is being offered the skill.
-        :param name: The proposed skill's name.
+        :param name: The proposed skill's name (the target's existing name,
+            when ``offer_kind`` is :attr:`OfferKind.UPDATE`).
         :param description: One-line description of when to use it.
         :param content: The full ``SKILL.md`` text.
+        :param offer_kind: Whether accepting this creates a skill or updates one.
+        :param target_skill: The existing skill's name this would update,
+            when ``offer_kind`` is :attr:`OfferKind.UPDATE`.
         :returns: The created :class:`SkillOffer`, ``status=OPEN``.
         """
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from omnigent.nova._shared import NovaActor, new_id
-from omnigent.nova.skills.entities import OfferStatus
+from omnigent.nova.skills.entities import OfferKind, OfferStatus
 from omnigent.nova.skills.sqlalchemy_store import SqlAlchemySkillStore
 
 OWNER = NovaActor(user_id="alice@example.com", workspace_id=0)
@@ -59,6 +59,30 @@ def test_delete_skill_idempotent(store: SqlAlchemySkillStore) -> None:
     assert store.delete_skill(OWNER, "nope") is False
 
 
+def test_update_skill_replaces_description_and_content_keeps_name_and_id(
+    store: SqlAlchemySkillStore,
+) -> None:
+    original = store.create_skill(
+        new_id(), OWNER, name="Weekly report", description="d", content="c"
+    )
+    updated = store.update_skill(OWNER, "Weekly report", description="d2", content="c2")
+    assert updated is not None
+    assert updated.id == original.id
+    assert updated.name == "Weekly report"
+    assert updated.description == "d2"
+    assert updated.content == "c2"
+    assert updated.updated_at >= original.updated_at
+
+
+def test_update_skill_missing_returns_none(store: SqlAlchemySkillStore) -> None:
+    assert store.update_skill(OWNER, "nope", description="d", content="c") is None
+
+
+def test_update_skill_scoped_to_owner(store: SqlAlchemySkillStore) -> None:
+    store.create_skill(new_id(), OWNER, name="Mine", description="d", content="c")
+    assert store.update_skill(OTHER, "Mine", description="d2", content="c2") is None
+
+
 # ── offers ───────────────────────────────────────────────────────────────────
 
 
@@ -66,6 +90,22 @@ def test_create_offer_round_trips(store: SqlAlchemySkillStore) -> None:
     offer = store.create_offer(new_id(), OWNER, name="Weekly report", description="d", content="c")
     assert offer.status is OfferStatus.OPEN
     assert offer.decided_at is None
+    assert offer.offer_kind is OfferKind.NEW
+    assert offer.target_skill is None
+
+
+def test_create_offer_as_update_round_trips(store: SqlAlchemySkillStore) -> None:
+    offer = store.create_offer(
+        new_id(),
+        OWNER,
+        name="Weekly report",
+        description="d",
+        content="c",
+        offer_kind=OfferKind.UPDATE,
+        target_skill="Weekly report",
+    )
+    assert offer.offer_kind is OfferKind.UPDATE
+    assert offer.target_skill == "Weekly report"
 
 
 def test_list_open_offers_newest_first(

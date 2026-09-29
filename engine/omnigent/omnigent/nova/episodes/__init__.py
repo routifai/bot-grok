@@ -30,6 +30,7 @@ __all__ = [
     "rank_episodes",
     "record_turn",
     "render_episodes",
+    "runtime_store",
 ]
 
 
@@ -48,3 +49,16 @@ def create_store(storage_location: str) -> EpisodeStore:
 # store patch this directly, e.g.
 # ``monkeypatch.setattr(episodes, "_runtime_store", lambda: store)``.
 _runtime_store = lazy_store(create_store)
+
+
+def runtime_store() -> EpisodeStore:
+    """The process-wide episode store used where no ``NovaDeps`` is available.
+
+    Public so another primitive can read episodes without reaching into
+    ``_runtime_store`` (nova/README.md rule 1) — used by
+    ``skills.gate.has_reuse_evidence`` to check whether a person has done
+    similar work before.
+
+    :returns: The shared :class:`EpisodeStore`.
+    """
+    return _runtime_store()

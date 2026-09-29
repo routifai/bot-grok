@@ -15,10 +15,12 @@ from typing import Any
 from omnigent.errors import OmnigentError
 from omnigent.nova import skills as _skills
 from omnigent.nova._shared import private_actor
+from omnigent.nova.skills import gate
 from omnigent.tools.base import Tool, ToolContext
 
 _MAX_NAME_LEN = _skills.NAME_MAX_CHARS
 _MAX_DESCRIPTION_LEN = _skills.DESCRIPTION_MAX_CHARS
+_REASON_VALUES = ("repeated", "asked", "corrected")
 
 
 class NovaOfferSkillTool(Tool):
@@ -40,9 +42,13 @@ class NovaOfferSkillTool(Tool):
         return (
             "Offer to save what you just did as a reusable skill; this is the only way to "
             "offer one (never ask about saving a skill in your reply text). Call it once, "
-            "after finishing a multi-step task the person is likely to ask for again, when "
-            "no saved skill already covers it and they haven't already been offered or "
-            "declined this one. Shows a Save / Not now card; nothing is saved unless they "
+            "after finishing a multi-step task successfully, when the body is a real "
+            "procedure the person is likely to run again — never for a one-off question or "
+            "right after tool errors. The body needs a 'Steps'/'Procedure' heading with at "
+            "least 3 concrete steps and a 'When to use' line, or the offer is refused. You "
+            "also need evidence they'd reuse it: similar past work, or them explicitly asking "
+            "you to remember/learn this (set 'reason'). Shows a Save / Not now card, or an "
+            "update card if this looks like an existing skill; nothing is saved unless they "
             "choose Save. End your reply briefly — don't restate the offer."
         )
 
@@ -69,7 +75,19 @@ class NovaOfferSkillTool(Tool):
                         "body": {
                             "type": "string",
                             "description": (
-                                "The generic steps, as SKILL.md markdown. No account names."
+                                "The generic steps, as SKILL.md markdown: a 'Steps' or "
+                                "'Procedure' heading with at least 3 numbered/bulleted steps, "
+                                "plus a 'When to use' line. No account names."
+                            ),
+                        },
+                        "reason": {
+                            "type": "string",
+                            "enum": list(_REASON_VALUES),
+                            "description": (
+                                "Why you're offering this now: 'repeated' (you've done this "
+                                "for them before), 'asked' (they asked you to remember/learn "
+                                "it), or 'corrected' (they corrected you with how to do it next "
+                                "time). Omit if none apply."
                             ),
                         },
                     },
@@ -82,7 +100,8 @@ class NovaOfferSkillTool(Tool):
         """
         Open a skill offer for the resolved owner.
 
-        :param arguments: JSON with ``"name"``, ``"description"``, ``"body"``.
+        :param arguments: JSON with ``"name"``, ``"description"``, ``"body"``,
+            and optional ``"reason"``.
         :param ctx: Execution context; ``conversation_id`` identifies the
             session whose owner is offered the skill.
         :returns: JSON ``{"status": "offer_shown", ...}``, or ``{"error": ...}``.
@@ -105,22 +124,57 @@ class NovaOfferSkillTool(Tool):
             return json.dumps({"error": "missing required 'description' argument"})
         if not isinstance(body, str):
             return json.dumps({"error": "'body' must be a string"})
+        reason = args.get("reason")
+        if reason is not None and reason not in _REASON_VALUES:
+            reason = None
 
         actor, refusal = private_actor(ctx.conversation_id)
         if refusal is not None:
             return json.dumps({"error": refusal})
         assert actor is not None
 
+        turn_failed, latest_user_message = _read_turn_signals(ctx.conversation_id)
+
         try:
-            _skills._runtime_service().offer(actor, name=name, description=description, body=body)
+            offer = _skills._runtime_service().offer(
+                actor,
+                name=name,
+                description=description,
+                body=body,
+                reason=reason,
+                turn_failed=turn_failed,
+                latest_user_message=latest_user_message,
+            )
         except OmnigentError as exc:
             return json.dumps({"error": str(exc)})
         return json.dumps(
             {
                 "status": "offer_shown",
+                "offer_kind": offer.offer_kind.value,
+                "target_skill": offer.target_skill,
                 "message": "Offer card shown to the person. Keep your reply brief.",
             }
         )
+
+
+def _read_turn_signals(conversation_id: str | None) -> tuple[bool, str]:
+    """This turn's failure signal and triggering user message, for the offer gate.
+
+    Best-effort: a session with no conversation store reachable (should not
+    happen once ``private_actor`` above already succeeded) is treated as not
+    failing, never as a reason to crash the tool call.
+
+    :param conversation_id: The session to read, already known non-``None``.
+    :returns: ``(turn_failed, latest_user_message)`` — see :func:`gate.turn_is_failing`.
+    """
+    from omnigent.runtime import get_conversation_store
+
+    assert conversation_id is not None
+    items = get_conversation_store().list_items(
+        conversation_id, limit=gate.TURN_LOOKBACK_ITEMS, order="desc"
+    )
+    signals = gate.read_turn_signals(items.data)
+    return gate.turn_is_failing(signals.tool_results), signals.latest_user_message
 
 
 class NovaSaveSkillTool(Tool):

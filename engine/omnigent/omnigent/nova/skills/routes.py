@@ -51,6 +51,8 @@ def _offer_response(offer: SkillOffer) -> dict[str, Any]:
         "status": offer.status.value,
         "created_at": offer.created_at,
         "decided_at": offer.decided_at,
+        "offer_kind": offer.offer_kind.value,
+        "target_skill": offer.target_skill,
     }
 
 

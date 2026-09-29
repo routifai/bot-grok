@@ -58,7 +58,12 @@ def upgrade() -> None:
         sa.Column("status", sa.SmallInteger(), nullable=False),
         sa.Column("created_at", sa.Integer(), nullable=False),
         sa.Column("decided_at", sa.Integer(), nullable=True),
+        # 1=new, 2=update (omnigent/nova/skills/tables.py OFFER_KIND_CODE): whether
+        # accepting the offer creates a skill or replaces an existing one's body.
+        sa.Column("offer_kind", sa.SmallInteger(), nullable=False, server_default="1"),
+        sa.Column("target_skill", sa.String(80), nullable=True),
         sa.CheckConstraint("status IN (1, 2, 3)", name="ck_nova_skill_offers_status"),
+        sa.CheckConstraint("offer_kind IN (1, 2)", name="ck_nova_skill_offers_kind"),
         sa.PrimaryKeyConstraint("workspace_id", "id"),
     )
     op.create_index(

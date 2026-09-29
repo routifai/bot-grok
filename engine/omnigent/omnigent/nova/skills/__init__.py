@@ -8,7 +8,7 @@ what is re-exported below.
 from __future__ import annotations
 
 from omnigent.nova._shared import NovaActor, lazy_store
-from omnigent.nova.skills.entities import OfferStatus, Skill, SkillOffer
+from omnigent.nova.skills.entities import OfferKind, OfferStatus, Skill, SkillOffer
 from omnigent.nova.skills.service import (
     CONTENT_MAX_CHARS,
     DESCRIPTION_MAX_CHARS,
@@ -24,6 +24,7 @@ __all__ = [
     "CONTENT_MAX_CHARS",
     "DESCRIPTION_MAX_CHARS",
     "NAME_MAX_CHARS",
+    "OfferKind",
     "OfferStatus",
     "Skill",
     "SkillOffer",
@@ -34,6 +35,7 @@ __all__ = [
     "open_offers",
     "parse_skill_md",
 ]
+
 
 def create_store(storage_location: str) -> SkillStore:
     """Build the skills store for *storage_location*.

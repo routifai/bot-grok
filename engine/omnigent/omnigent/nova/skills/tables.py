@@ -26,6 +26,10 @@ from omnigent.db.db_models import OmnigentBase, Uuid16, current_workspace_id
 OFFER_STATUS_CODE: dict[str, int] = {"open": 1, "saved": 2, "dismissed": 3}
 OFFER_STATUS_NAME: dict[int, str] = {code: name for name, code in OFFER_STATUS_CODE.items()}
 
+# Same append-only convention for OfferKind.
+OFFER_KIND_CODE: dict[str, int] = {"new": 1, "update": 2}
+OFFER_KIND_NAME: dict[int, str] = {code: name for name, code in OFFER_KIND_CODE.items()}
+
 # Bounds mirror the TypeScript prototype's limits (agent-skill.ts): a name is
 # a short label, a description one line, comfortably under the 16 KiB column cap.
 _NAME_MAX = 80
@@ -89,6 +93,9 @@ class SqlSkillOffer(OmnigentBase):
     :param status: :data:`OFFER_STATUS_CODE` — 1=open, 2=saved, 3=dismissed.
     :param created_at: Unix epoch seconds when offered.
     :param decided_at: Unix epoch seconds decided, or ``NULL`` while open.
+    :param offer_kind: :data:`OFFER_KIND_CODE` — 1=new, 2=update.
+    :param target_skill: The existing skill's name this offer would update
+        (``offer_kind=2``), or ``NULL`` for a new skill.
     """
 
     __tablename__ = "nova_skill_offers"
@@ -108,9 +115,14 @@ class SqlSkillOffer(OmnigentBase):
     status: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     decided_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    offer_kind: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="1", default=1
+    )
+    target_skill: Mapped[str | None] = mapped_column(String(_NAME_MAX), nullable=True)
 
     __table_args__ = (
         CheckConstraint("status IN (1, 2, 3)", name="ck_nova_skill_offers_status"),
+        CheckConstraint("offer_kind IN (1, 2)", name="ck_nova_skill_offers_kind"),
         # "Waiting on you": open offers for a person, newest first — mirrors
         # nova_asks' ix_nova_asks_open (created_at/id trail for a backward
         # index scan rather than a descending index).

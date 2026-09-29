@@ -12,9 +12,11 @@ from omnigent.db.utils import (
     run_write_transaction,
 )
 from omnigent.nova._shared import NovaActor
-from omnigent.nova.skills.entities import OfferStatus, Skill, SkillOffer
+from omnigent.nova.skills.entities import OfferKind, OfferStatus, Skill, SkillOffer
 from omnigent.nova.skills.store import SkillStore
 from omnigent.nova.skills.tables import (
+    OFFER_KIND_CODE,
+    OFFER_KIND_NAME,
     OFFER_STATUS_CODE,
     OFFER_STATUS_NAME,
     SqlSkill,
@@ -52,6 +54,8 @@ def _to_offer(row: SqlSkillOffer) -> SkillOffer:
         status=OfferStatus(OFFER_STATUS_NAME[row.status]),
         created_at=row.created_at,
         decided_at=row.decided_at,
+        offer_kind=OfferKind(OFFER_KIND_NAME[row.offer_kind]),
+        target_skill=row.target_skill,
     )
 
 
@@ -148,6 +152,29 @@ class SqlAlchemySkillStore(SkillStore):
 
         return run_write_transaction(self._session_immediate, "delete_skill", write)
 
+    def update_skill(
+        self, actor: NovaActor, name: str, *, description: str, content: str
+    ) -> Skill | None:
+        """Replace a skill's description/content in place, scoped to the owner."""
+
+        def write(session: Session) -> Skill | None:
+            stmt = (
+                select(SqlSkill)
+                .where(SqlSkill.workspace_id == actor.workspace_id)
+                .where(SqlSkill.user_id == actor.user_id)
+                .where(SqlSkill.name == name)
+            )
+            row = session.execute(stmt).scalar_one_or_none()
+            if row is None:
+                return None
+            row.description = description
+            row.content = content
+            row.updated_at = now_epoch()
+            session.flush()
+            return _to_skill(row)
+
+        return run_write_transaction(self._session_immediate, "update_skill", write)
+
     # ── offers ───────────────────────────────────────────────────────────
 
     def list_open_offers(self, actor: NovaActor) -> list[SkillOffer]:
@@ -186,7 +213,15 @@ class SqlAlchemySkillStore(SkillStore):
             return _to_offer(row) if row is not None else None
 
     def create_offer(
-        self, offer_id: str, actor: NovaActor, *, name: str, description: str, content: str
+        self,
+        offer_id: str,
+        actor: NovaActor,
+        *,
+        name: str,
+        description: str,
+        content: str,
+        offer_kind: OfferKind = OfferKind.NEW,
+        target_skill: str | None = None,
     ) -> SkillOffer:
         """Insert a new open offer."""
         now = now_epoch()
@@ -202,6 +237,8 @@ class SqlAlchemySkillStore(SkillStore):
                 status=OFFER_STATUS_CODE[OfferStatus.OPEN.value],
                 created_at=now,
                 decided_at=None,
+                offer_kind=OFFER_KIND_CODE[offer_kind.value],
+                target_skill=target_skill,
             )
             session.add(row)
             session.flush()

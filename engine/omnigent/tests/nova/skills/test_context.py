@@ -12,7 +12,7 @@ import pytest
 from omnigent.nova import skills
 from omnigent.nova._shared import ContextRequest, NovaActor, Scope
 from omnigent.nova.skills.context import context_section
-from omnigent.nova.skills.entities import OfferStatus, Skill, SkillOffer
+from omnigent.nova.skills.entities import OfferKind, OfferStatus, Skill, SkillOffer
 
 ACTOR = NovaActor(user_id="alice@example.com", workspace_id=0)
 
@@ -30,7 +30,9 @@ def _skill(name: str, description: str = "d") -> Skill:
     )
 
 
-def _offer(name: str) -> SkillOffer:
+def _offer(
+    name: str, *, offer_kind: OfferKind = OfferKind.NEW, target_skill: str | None = None
+) -> SkillOffer:
     return SkillOffer(
         id="offer-1",
         user_id=ACTOR.user_id,
@@ -41,6 +43,8 @@ def _offer(name: str) -> SkillOffer:
         status=OfferStatus.OPEN,
         created_at=0,
         decided_at=None,
+        offer_kind=offer_kind,
+        target_skill=target_skill,
     )
 
 
@@ -107,6 +111,18 @@ async def test_lists_open_offers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert section is not None
     assert "Weekly report" in section.body
     assert "awaiting an answer" in section.body
+
+
+@pytest.mark.asyncio
+async def test_lists_open_update_offers_distinctly(monkeypatch: pytest.MonkeyPatch) -> None:
+    _wire(
+        monkeypatch,
+        [],
+        [_offer("Weekly report", offer_kind=OfferKind.UPDATE, target_skill="Weekly report")],
+    )
+    section = await context_section(_request())
+    assert section is not None
+    assert "Weekly report (update)" in section.body
 
 
 @pytest.mark.asyncio

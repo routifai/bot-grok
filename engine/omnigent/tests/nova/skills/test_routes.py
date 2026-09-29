@@ -18,6 +18,19 @@ from omnigent.errors import OmnigentError
 from omnigent.nova._shared import NovaDeps
 from omnigent.nova.skills.routes import create_router
 
+# Offers created via the service directly (there's no route to open one) must
+# still clear the gate in ``gate.py`` — see ``test_service.py`` for that gate
+# exercised on its own.
+_VALID_BODY = (
+    "## Steps\n"
+    "1. Do the first thing.\n"
+    "2. Do the second thing.\n"
+    "3. Do the third thing.\n\n"
+    "When to use: whenever this task comes up again.\n"
+)
+_ASKED_REASON = "asked"
+_ASKED_MESSAGE = "Please remember how to do this next time."
+
 
 @pytest.fixture()
 def client(db_uri: str) -> Iterator[TestClient]:
@@ -75,10 +88,19 @@ def test_offer_accept_dismiss_roundtrip_via_service(client: TestClient, db_uri: 
 
     service = SkillService(SqlAlchemySkillStore(db_uri))
     actor = NovaActor(user_id="local", workspace_id=0)
-    offer = service.offer(actor, name="Weekly-report", description="d", body="b")
+    offer = service.offer(
+        actor,
+        name="Weekly-report",
+        description="d",
+        body=_VALID_BODY,
+        reason=_ASKED_REASON,
+        latest_user_message=_ASKED_MESSAGE,
+    )
 
     listed = client.get("/skills/offers")
     assert [o["name"] for o in listed.json()["data"]] == ["Weekly-report"]
+    assert listed.json()["data"][0]["offer_kind"] == "new"
+    assert listed.json()["data"][0]["target_skill"] is None
 
     saved = client.post(f"/skills/offers/{offer.id}/save")
     assert saved.status_code == 200
@@ -100,10 +122,52 @@ def test_dismiss_offer_leaves_nothing_saved(client: TestClient, db_uri: str) -> 
 
     service = SkillService(SqlAlchemySkillStore(db_uri))
     actor = NovaActor(user_id="local", workspace_id=0)
-    offer = service.offer(actor, name="Weekly-report", description="d", body="b")
+    offer = service.offer(
+        actor,
+        name="Weekly-report",
+        description="d",
+        body=_VALID_BODY,
+        reason=_ASKED_REASON,
+        latest_user_message=_ASKED_MESSAGE,
+    )
 
     response = client.post(f"/skills/offers/{offer.id}/dismiss")
     assert response.status_code == 200
     assert response.json()["status"] == "dismissed"
     assert client.get("/skills/offers").json()["data"] == []
     assert client.get("/skills/Weekly-report").status_code == 404
+
+
+def test_update_offer_save_replaces_the_target_skills_body(
+    client: TestClient, db_uri: str
+) -> None:
+    from omnigent.nova._shared import NovaActor
+    from omnigent.nova.skills.service import SkillService
+    from omnigent.nova.skills.sqlalchemy_store import SqlAlchemySkillStore
+
+    service = SkillService(SqlAlchemySkillStore(db_uri))
+    actor = NovaActor(user_id="local", workspace_id=0)
+    service.save(
+        actor,
+        name="Weekly report",
+        description="Summarize the week's engineering progress.",
+        body="Old steps.",
+    )
+    offer = service.offer(
+        actor,
+        name="Weekly status report",
+        description="Summarize the week's engineering progress for the team.",
+        body=_VALID_BODY,
+        reason=_ASKED_REASON,
+        latest_user_message=_ASKED_MESSAGE,
+    )
+
+    listed = client.get("/skills/offers").json()["data"]
+    assert listed[0]["offer_kind"] == "update"
+    assert listed[0]["target_skill"] == "Weekly report"
+
+    saved = client.post(f"/skills/offers/{offer.id}/save")
+    assert saved.status_code == 200
+    assert saved.json()["name"] == "Weekly report"
+    assert "Do the first thing" in saved.json()["content"]
+    assert len(client.get("/skills").json()["data"]) == 1

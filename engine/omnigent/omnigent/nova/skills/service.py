@@ -19,8 +19,11 @@ from dataclasses import dataclass
 import yaml
 
 from omnigent.errors import ErrorCode, OmnigentError
+from omnigent.nova import episodes as _episodes
 from omnigent.nova._shared import NovaActor, cap_utf8, new_id
-from omnigent.nova.skills.entities import OfferStatus, Skill, SkillOffer
+from omnigent.nova.episodes import EpisodeStore
+from omnigent.nova.skills import gate
+from omnigent.nova.skills.entities import OfferKind, OfferStatus, Skill, SkillOffer
 from omnigent.nova.skills.store import SkillStore
 
 NAME_MAX_CHARS = 80
@@ -147,9 +150,12 @@ def render_skills_context(
     if ordered_skills:
         lines.append("Saved skills (nova_load_skill with the name to use one):")
         lines.extend(f"- {skill.name}: {skill.description}" for skill in ordered_skills)
-    names = sorted(offer.name for offer in offers)
-    if names:
-        lines.append(f"Already offered, awaiting an answer: {', '.join(names)}")
+    offer_labels = sorted(
+        offer.name if offer.offer_kind is OfferKind.NEW else f"{offer.name} (update)"
+        for offer in offers
+    )
+    if offer_labels:
+        lines.append(f"Already offered, awaiting an answer: {', '.join(offer_labels)}")
     return cap_utf8("\n".join(lines), max_bytes)
 
 
@@ -256,44 +262,130 @@ class SkillService:
         return self._store.list_open_offers(actor)
 
     def offer(
-        self, actor: NovaActor, *, name: str, description: str, body: str = ""
+        self,
+        actor: NovaActor,
+        *,
+        name: str,
+        description: str,
+        body: str = "",
+        reason: str | None = None,
+        turn_failed: bool = False,
+        latest_user_message: str = "",
+        episode_store: EpisodeStore | None = None,
     ) -> SkillOffer:
         """Offer to save a skill (``nova_offer_skill``): posts a Save / Not now card.
 
-        Refuses a duplicate of a name already saved, already offered and
-        open, or already declined — so a declined offer is never repeated.
+        Four gates run before anything is written — each refuses with one
+        short, specific reason (``gate.py`` has the thresholds):
+
+        1. **Never after a failed turn** — refuses if ``turn_failed``.
+        2. **A procedure, not a topic** — ``body`` must have a "Steps"/
+           "Procedure" heading with concrete steps and a "When to use" line
+           (:func:`gate.has_procedure_shape`).
+        3. **Evidence of reuse** — allowed only if the person's episode
+           history shows similar past work (:func:`gate.has_reuse_evidence`,
+           against ``episode_store``), or ``reason`` is ``"asked"``/
+           ``"corrected"`` *and* ``latest_user_message`` actually contains an
+           instruction or correction cue (:func:`gate.has_instruction_or_correction_cue`).
+        4. **Improve before creating** — if an already-saved skill ranks as
+           clearly similar (:func:`gate.find_similar_skill`), this creates an
+           :attr:`~omnigent.nova.skills.entities.OfferKind.UPDATE` offer
+           against it instead of a new one; the caller cannot request update
+           mode directly.
+
+        Also refuses a duplicate of a name already offered and open or
+        already declined, and (for a new-kind offer) a name already saved.
 
         :param actor: Who is being offered the skill.
         :param name: The proposed skill's name.
         :param description: One-line description of when to use it.
         :param body: The markdown steps.
+        :param reason: Why this is being offered: ``"repeated"``, ``"asked"``,
+            or ``"corrected"``; anything else is ignored.
+        :param turn_failed: Whether recent work in this turn has been
+            failing (gate 1); the caller reads this from the conversation,
+            not this service.
+        :param latest_user_message: The message that started this turn, used
+            only to verify ``reason`` (gate 3).
+        :param episode_store: Where to check reuse evidence (gate 3);
+            defaults to :func:`omnigent.nova.episodes.runtime_store`,
+            resolved lazily so a caller with cue-based evidence never needs
+            one.
         :returns: The created, open :class:`SkillOffer`.
-        :raises OmnigentError: ``INVALID_INPUT`` for a malformed/oversized
-            document; ``ALREADY_EXISTS`` if this name is already saved,
-            already pending, or was already declined.
+        :raises OmnigentError: ``INVALID_INPUT`` if any gate refuses, or the
+            document is malformed/oversized; ``ALREADY_EXISTS`` if this name
+            (or, for an update, the matched skill) is already saved (new-kind
+            only), already pending, or was already declined.
         """
+        if turn_failed:
+            raise OmnigentError(
+                "Refusing to offer a skill: rule=failed_turn — recent work in this turn has "
+                "been failing. Offer only once the task actually finishes successfully.",
+                code=ErrorCode.INVALID_INPUT,
+            )
+
         clean_name = (name or "").strip()
         clean_description = (description or "").strip()
         validate_fields(clean_name, clean_description)
-        content = build_skill_md(clean_name, clean_description, body)
+
+        if not gate.has_procedure_shape(body):
+            raise OmnigentError(
+                "Refusing to offer a skill: rule=not_a_procedure — the body needs a "
+                f'"Steps"/"Procedure" heading with at least {gate.MIN_PROCEDURE_STEPS} '
+                'numbered or bulleted steps, plus a "When to use" line. A restated question '
+                "topic doesn't qualify.",
+                code=ErrorCode.INVALID_INPUT,
+            )
+
+        cue_evidence = reason in ("asked", "corrected") and gate.has_instruction_or_correction_cue(
+            latest_user_message
+        )
+        if not cue_evidence:
+            store_for_evidence = episode_store or _episodes.runtime_store()
+            if not gate.has_reuse_evidence(
+                actor, clean_name, clean_description, episode_store=store_for_evidence
+            ):
+                raise OmnigentError(
+                    "Refusing to offer a skill: rule=no_reuse_evidence — found no similar past "
+                    "episodes for this person, and the person did not explicitly ask to "
+                    "remember or learn this. Offer only after doing similar work before, or "
+                    'when they say something like "remember how to do this" or correct you '
+                    "with an instruction for next time.",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+
+        similar = gate.find_similar_skill(
+            clean_name, clean_description, self._store.list_skills(actor)
+        )
+        offer_kind = OfferKind.UPDATE if similar is not None else OfferKind.NEW
+        offer_name = similar.name if similar is not None else clean_name
+        target_skill = similar.name if similar is not None else None
+        content = build_skill_md(offer_name, clean_description, body)
         _check_content_size(content)
 
-        if self._store.get_skill(actor, clean_name) is not None:
+        if offer_kind is OfferKind.NEW and self._store.get_skill(actor, offer_name) is not None:
             raise OmnigentError(
-                f'A skill named "{clean_name}" is already saved.', code=ErrorCode.ALREADY_EXISTS
+                f'A skill named "{offer_name}" is already saved.', code=ErrorCode.ALREADY_EXISTS
             )
-        blocking = self._store.find_blocking_offer(actor, clean_name)
+        blocking = self._store.find_blocking_offer(actor, offer_name)
         if blocking is not None:
-            reason = (
+            blocking_reason = (
                 "already waiting on your answer"
                 if blocking.status is OfferStatus.OPEN
                 else "already declined"
             )
             raise OmnigentError(
-                f'An offer named "{clean_name}" is {reason}.', code=ErrorCode.ALREADY_EXISTS
+                f'An offer named "{offer_name}" is {blocking_reason}.',
+                code=ErrorCode.ALREADY_EXISTS,
             )
         return self._store.create_offer(
-            new_id(), actor, name=clean_name, description=clean_description, content=content
+            new_id(),
+            actor,
+            name=offer_name,
+            description=clean_description,
+            content=content,
+            offer_kind=offer_kind,
+            target_skill=target_skill,
         )
 
     def accept_offer(self, actor: NovaActor, offer_id: str) -> Skill:
@@ -309,6 +401,18 @@ class SkillService:
         decided = self._store.decide_offer(actor, offer_id, status=OfferStatus.SAVED)
         if decided is None:
             raise OmnigentError("This offer was already answered", code=ErrorCode.CONFLICT)
+
+        if offer.offer_kind is OfferKind.UPDATE:
+            updated = self._store.update_skill(
+                actor,
+                offer.target_skill or offer.name,
+                description=offer.description,
+                content=offer.content,
+            )
+            if updated is not None:
+                return updated
+            # The target skill was deleted between offer and accept: fall through
+            # and treat it like a fresh save, same tolerance as the race below.
 
         existing = self._store.get_skill(actor, offer.name)
         if existing is not None:
