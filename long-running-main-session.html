@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Endless Session</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F2F3F5;--surface:#FFFFFF;--ink:#12141A;--muted:#596070;--line:#D8DDE4;--soft:#E9ECF0;
+  --accent:#2F5FBF;--accent-soft:#E3EAF8;--ok:#1F7A55;--bad:#B23A2A;--bad-soft:#F8E3DF;--warn:#A0660C;
+  --z-prefix:#2F5FBF;--z-sum:#6A4FB8;--z-recent:#8A91A0;--z-tail:#C27A1A;--rec:#C9CED6;
+  --serif:"Instrument Serif",Georgia,serif;--sans:"Instrument Sans",system-ui,-apple-system,sans-serif;--mono:"Geist Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#0D0F13;--surface:#15181E;--ink:#E7EAEE;--muted:#98A0AB;--line:#282E37;--soft:#1C2027;
+  --accent:#7FA2EA;--accent-soft:#1A2640;--ok:#5CC49A;--bad:#E58A73;--bad-soft:#3A1F1A;--warn:#E3A546;
+  --z-prefix:#7FA2EA;--z-sum:#A895E6;--z-recent:#6B7280;--z-tail:#E0A04A;--rec:#3A414C;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#0D0F13;--surface:#15181E;--ink:#E7EAEE;--muted:#98A0AB;--line:#282E37;--soft:#1C2027;
+  --accent:#7FA2EA;--accent-soft:#1A2640;--ok:#5CC49A;--bad:#E58A73;--bad-soft:#3A1F1A;--warn:#E3A546;
+  --z-prefix:#7FA2EA;--z-sum:#A895E6;--z-recent:#6B7280;--z-tail:#E0A04A;--rec:#3A414C;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;padding-inline:20px;padding-block:0 96px}
+.wrap{max-width:1040px;margin:0 auto}
+h1,h2,h3{font-weight:400;margin:0;text-wrap:balance}
+h1{font-family:var(--serif);font-size:clamp(46px,7.4vw,82px);line-height:1}
+h1 em{color:var(--accent)}
+h2{font-family:var(--serif);font-size:clamp(30px,4vw,40px);line-height:1.1}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:70ch}
+.lede{font-size:19px;color:var(--muted);margin-top:16px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header{padding-block:56px 30px;display:grid;gap:10px}
+section{padding-block:44px;border-top:1px solid var(--line);display:grid;gap:18px}
+code{font-family:var(--mono);font-size:.86em;background:var(--soft);padding:1px 5px;border-radius:5px}
+.muted{color:var(--muted)}
+.scroll{overflow-x:auto}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:820px){.two{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:12px;align-content:start}
+.panel.bad{border-color:var(--bad)}
+.panel.good{border-color:var(--accent);border-width:2px}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--muted)}
+.tag.bad{background:var(--bad-soft);color:var(--bad)}.tag.good{background:var(--accent-soft);color:var(--accent)}
+.ctl{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:15px}
+.ctl input{flex:1;min-width:200px;accent-color:var(--accent)}
+.ctl output{font-family:var(--mono);font-variant-numeric:tabular-nums;min-width:110px}
+.bigrow{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:820px){.bigrow{grid-template-columns:1fr}}
+.stat{font-family:var(--serif);font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.stat small{font-family:var(--mono);font-size:13px;color:var(--muted);margin-left:6px}
+.records{display:flex;flex-wrap:wrap;gap:2px;max-height:180px;overflow:hidden;align-content:flex-start}
+.records i{width:7px;height:10px;border-radius:2px;background:var(--rec)}
+.records i.sum{background:var(--z-sum)}
+.records i.recent{background:var(--z-recent)}
+.stack{display:flex;height:40px;border-radius:9px;overflow:hidden;border:1px solid var(--line)}
+.stack span{display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--mono);font-size:11px;white-space:nowrap;overflow:hidden;transition:flex-grow .4s ease}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.gauge{height:12px;border-radius:99px;background:var(--soft);overflow:hidden}
+.gauge div{height:100%;border-radius:99px;transition:width .4s ease}
+.steps{display:grid}
+.st{display:grid;grid-template-columns:40px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.st:last-child{border-bottom:0}
+.st .n{font-family:var(--mono);font-size:12px;color:var(--accent);padding-top:3px}
+.st p{font-size:15px;color:var(--muted)}.st p b{color:var(--ink)}
+table{border-collapse:collapse;width:100%;min-width:700px;font-size:14px}
+th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+figure{margin:0;display:grid;gap:10px}
+figcaption{font-size:14px;color:var(--muted);max-width:78ch}
+.dia{color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+svg text{font-family:var(--sans);font-size:12px;fill:currentColor}
+svg .m{font-family:var(--mono);font-size:11px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Main session · months long</span>
+  <h1>The session keeps <em>everything</em>. The prompt stays <em>small</em>.</h1>
+  <p class="lede">A main session that lives for months will have thousands of messages. That's fine, because a session has two different things that people mix up: the <b>record</b> (Omnigent's database, which keeps every message) and the <b>prompt</b> (what the model sees on one wake-up). For the main session we don't let the harness manage context at all. The assembler builds a small prompt from the record every time.</p>
+</header>
+
+<section>
+  <span class="eyebrow">Slide through six months</span>
+  <h2>Record grows, prompt doesn't</h2>
+  <div class="ctl"><label for="n">Messages in the session</label><input id="n" type="range" min="10" max="6000" step="10" value="1200"><output id="no" for="n">1,200</output></div>
+  <div class="bigrow">
+    <div class="panel">
+      <span class="tag">the record · Omnigent database</span>
+      <div class="stat" id="rec-n">1,200<small>messages kept</small></div>
+      <div class="records" id="records" aria-label="Every message kept in the record; colored ones are the part the assembler uses"></div>
+      <div class="legend"><span><i style="background:var(--rec)"></i>kept, not in the prompt</span><span><i style="background:var(--z-sum)"></i>folded into the summary</span><span><i style="background:var(--z-recent)"></i>recent, in the prompt</span></div>
+      <p class="muted" style="font-size:14px">Used for the UI, search, forking, audit, and to rebuild summaries. Never sent to the model as a whole.</p>
+    </div>
+    <div class="panel good">
+      <span class="tag good">the assembled prompt · one wake-up</span>
+      <div class="stat" id="pr-n">~14K<small>tokens</small></div>
+      <div class="stack" id="stack"></div>
+      <div class="legend"><span><i style="background:var(--z-prefix)"></i>prefix: rules, memory</span><span><i style="background:var(--z-sum)"></i>summary of older messages</span><span><i style="background:var(--z-recent)"></i>recent messages</span><span><i style="background:var(--z-tail)"></i>tail: open tasks, time, trigger</span></div>
+      <p class="muted" style="font-size:14px" id="pr-note"></p>
+    </div>
+  </div>
+  <div class="two">
+    <div class="panel bad">
+      <span class="tag bad">if the harness kept the history</span>
+      <h3>What a harness-held session would carry</h3>
+      <div class="gauge"><div id="g-bad" style="background:var(--bad)"></div></div>
+      <p class="muted" style="font-size:14px" id="bad-note"></p>
+    </div>
+    <div class="panel">
+      <span class="tag good">with the assembler</span>
+      <h3>What the main session actually carries</h3>
+      <div class="gauge"><div id="g-good" style="background:var(--accent)"></div></div>
+      <p class="muted" style="font-size:14px">Flat. The summary absorbs old messages in batches, and recent messages are capped.</p>
+    </div>
+  </div>
+  <p class="muted" style="font-size:13px">Illustrative numbers: ~350 tokens per message, a 200K-token model window, summary folds 50 messages at a time once 100 are unfolded (rakazo main's settings: <code>history-compaction.ts</code>, window 50, batch 50, summary ≤ 20,000 characters).</p>
+</section>
+
+<section>
+  <span class="eyebrow">Who manages what</span>
+  <h2>The harness never sees the record</h2>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 980 300" role="img" aria-label="Every message goes into the Omnigent record. On each wake-up the assembler reads the record, the summary and the task list, builds the assembled prompt, and hands it to a fresh harness. The harness answers; the answer is appended to the record; the harness is discarded. A background job folds older messages into the summary." style="width:100%;min-width:820px;height:auto">
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="20" y="110" width="230" height="90" rx="12"/>
+        <rect x="330" y="110" width="220" height="90" rx="12" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="630" y="110" width="200" height="90" rx="12"/>
+        <rect x="20" y="230" width="230" height="56" rx="10" stroke-dasharray="4 3"/>
+        <line x1="250" y1="155" x2="328" y2="155" marker-end="url(#a)"/>
+        <line x1="550" y1="155" x2="628" y2="155" marker-end="url(#a)"/>
+        <path d="M730 110 V40 H135 V108" marker-end="url(#a)"/>
+        <line x1="135" y1="230" x2="135" y2="202" marker-end="url(#a)"/>
+        <line x1="850" y1="155" x2="960" y2="155" stroke-dasharray="3 4"/>
+      </g>
+      <text x="135" y="140" text-anchor="middle" font-weight="600">Record</text>
+      <text x="135" y="160" text-anchor="middle" class="m" opacity=".7">every message, forever</text>
+      <text x="135" y="178" text-anchor="middle" class="m" opacity=".7">+ summary + task list</text>
+      <text x="440" y="140" text-anchor="middle" font-weight="600">Assembler</text>
+      <text x="440" y="160" text-anchor="middle" class="m" opacity=".7">picks what matters</text>
+      <text x="440" y="178" text-anchor="middle" class="m" opacity=".7">prefix · summary · recent · tail</text>
+      <text x="290" y="146" text-anchor="middle" class="m">reads</text>
+      <text x="590" y="146" text-anchor="middle" class="m">prompt</text>
+      <text x="730" y="140" text-anchor="middle" font-weight="600">Fresh harness</text>
+      <text x="730" y="160" text-anchor="middle" class="m" opacity=".7">pi · openai-agents · …</text>
+      <text x="730" y="178" text-anchor="middle" class="m" opacity=".7">answers, then discarded</text>
+      <text x="430" y="32" text-anchor="middle" class="m">the answer is appended to the record</text>
+      <text x="905" y="146" text-anchor="middle" class="m" opacity=".6">nothing kept</text>
+      <text x="135" y="256" text-anchor="middle">Summarizer (background)</text>
+      <text x="135" y="274" text-anchor="middle" class="m" opacity=".7">folds old messages into the summary</text>
+    </svg>
+    </div>
+    <figcaption>The harness is a pure function of the prompt it's given. It never holds a session of its own, so the main session's length never reaches it.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow">One wake-up, step by step</span>
+  <h2>Message 4,812 arrives</h2>
+  <div class="steps">
+    <div class="st"><span class="n">1</span><p><b>Your prompt is appended to the record</b> as message 4,812 (Omnigent: <code>POST /v1/sessions/{id}/events</code>, stored as a conversation item).</p></div>
+    <div class="st"><span class="n">2</span><p><b>The assembler builds the prompt:</b> prefix (rules, core memory), the summary of messages 1–4,750, messages 4,751–4,812 as structured items, and a tail (open tasks, relevant past work, time, the trigger). About 10–20K tokens no matter how long the session is.</p></div>
+    <div class="st"><span class="n">3</span><p><b>Omnigent starts a fresh harness</b> with that prompt (the fresh-prompt flag). Nothing from earlier wake-ups is inside it, and no <code>CLAUDE.md</code> or <code>AGENTS.md</code> either.</p></div>
+    <div class="st"><span class="n">4</span><p><b>The harness runs its loop</b> (tool calls, maybe a helper or a task) and answers. Every item it produces is appended to the record, as today.</p></div>
+    <div class="st"><span class="n">5</span><p><b>The harness is discarded.</b> Nothing is kept in it for next time.</p></div>
+    <div class="st"><span class="n">6</span><p><b>If 100+ messages are now outside the summary,</b> a background job folds the oldest 50 into it and moves the cursor. It only moves if no other job moved it first, so two jobs can never fold the same messages twice.</p></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">What Omnigent needs for this</span>
+  <h2>Three changes, all in one place per turn</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Today</th><th>Change</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>Each run converts the session's stored items into the model input (<code>history_to_input_items</code>)</td><td><b>History hook</b>: for the main session, ask the assembler for the item list instead (summary + recent)</td><td><code>runtime/workflow.py:2707</code></td></tr>
+      <tr><td>Harnesses stay warm and keep their own history (Pi process, Claude SDK client, Codex thread)</td><td><b>Fresh-prompt flag</b> on the session: start a fresh harness each wake-up and discard it after</td><td>the executors: <code>pi_executor._ensure_rpc</code>, <code>claude_sdk_executor._get_or_create_client</code></td></tr>
+      <tr><td>Omnigent compaction rewrites old items near the context limit</td><td><b>Summary cursor</b> owned by the assembler; Omnigent compaction switched off for this session</td><td><code>runtime/compaction.py</code> (skip), new cursor table</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted" style="font-size:14px">The per-turn instructions hook (<code>&lt;deployment_context&gt;</code>) already exists and carries the prefix and tail. The record, the UI, forking and search don't change: the session still has every message.</p>
+</section>
+
+<section>
+  <span class="eyebrow">And task sessions?</span>
+  <h2>Short sessions can keep their own history</h2>
+  <p>This is only a problem for the <b>main</b> session, because only it lives for months. A task session lives for minutes and ends with a report, so letting its harness keep its own history and compact it its own way is fine, and that's what native harnesses are good at. If a task somehow runs long, the harness's own compaction handles it, and the main session only ever sees the report.</p>
+</section>
+</div>
+
+<script>
+(function(){
+  var r=document.getElementById('n'),o=document.getElementById('no');
+  var recN=document.getElementById('rec-n'),prN=document.getElementById('pr-n'),recs=document.getElementById('records'),stack=document.getElementById('stack');
+  var prNote=document.getElementById('pr-note'),badNote=document.getElementById('bad-note'),gBad=document.getElementById('g-bad'),gGood=document.getElementById('g-good');
+  var TOK=350,WIN=200000,PREFIX=5000,TAIL=2500,SUMMAX=6000;
+  function fmt(x){return x.toLocaleString('en-US')}
+  function k(x){return x>=1000?'~'+Math.round(x/1000)+'K':String(x)}
+  function model(n){
+    // unfolded window: fold 50 at a time once >=100 unfolded; recent = n - folded
+    var folded=0; if(n>=100){folded=Math.floor((n-50)/50)*50; if(n-folded>=100)folded+=50;}
+    var recent=n-folded; var sum=folded>0?Math.min(SUMMAX,1500+Math.round(folded*1.2)):0;
+    return {folded:folded,recent:recent,sum:sum,recentTok:recent*TOK};
+  }
+  function render(){
+    var n=+r.value; o.value=fmt(n); recN.innerHTML=fmt(n)+'<small>messages kept</small>';
+    var m=model(n);
+    var total=PREFIX+m.sum+m.recentTok+TAIL;
+    prN.innerHTML=k(total)+'<small>tokens</small>';
+    stack.innerHTML='';
+    [['--z-prefix',PREFIX,'prefix'],['--z-sum',m.sum,'summary'],['--z-recent',m.recentTok,m.recent+' recent'],['--z-tail',TAIL,'tail']].forEach(function(p){
+      if(p[1]<=0)return;var s=document.createElement('span');s.style.flexGrow=p[1];s.style.flexBasis='0';s.style.background='var('+p[0]+')';s.textContent=p[2];stack.appendChild(s);
+    });
+    prNote.textContent=m.folded? 'Messages 1–'+fmt(m.folded)+' are in the summary; the last '+m.recent+' go in as they are.' : 'Early on, every message still fits as is.';
+    // records visual: up to 600 squares, scaled
+    var show=Math.min(600,n),scale=n/show;recs.innerHTML='';
+    for(var i=0;i<show;i++){var idx=i*scale;var e=document.createElement('i');if(idx>=m.folded)e.className='recent';else if(m.folded&&idx>=m.folded-Math.min(m.folded,300*scale)&&false)e.className='sum';recs.appendChild(e)}
+    var raw=n*TOK;
+    var pct=Math.min(100,raw/WIN*100);gBad.style.width=pct+'%';
+    badNote.textContent= raw<WIN? fmt(raw)+' tokens of history, '+Math.round(pct)+'% of a 200K window, and growing with every message.' : fmt(raw)+' tokens: past a 200K window. The harness must compact on its own, and quality drops well before this point.';
+    gGood.style.width=Math.min(100,total/WIN*100)+'%';
+  }
+  r.addEventListener('input',render);render();
+})();
+</script>
+</body>
+</html>
