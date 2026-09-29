@@ -412,9 +412,11 @@ async function sendTurnAndAwaitReply(
       return extractAssistantText(response?.output ?? []) || lastReply;
     }
     if (event.type === "response.failed" || event.type === "response.error") {
+      // Omnigent nests the failure under response.error, like response.completed's output.
+      const response = event.response as { error?: { message?: string } } | undefined;
       const message =
-        (event.error as { message?: string } | undefined)?.message ??
-        (event as { message?: string }).message ??
+        response?.error?.message ||
+        (event.error as { message?: string } | undefined)?.message ||
         "Omnigent turn failed";
       throw new Error(message);
     }

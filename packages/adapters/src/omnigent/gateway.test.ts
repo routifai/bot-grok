@@ -214,6 +214,26 @@ describe("runTurnOnOmnigent", () => {
     );
   });
 
+  it("fails the run with the reason Omnigent nests under response.error", async () => {
+    findOmnigentAgentIdByName.mockResolvedValue("ag_1");
+    createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    streamOmnigentSession.mockReturnValue(
+      eventsFrom([
+        {
+          type: "response.failed",
+          response: { error: { code: "RuntimeError", message: "provider authentication failed" } },
+        },
+      ]),
+    );
+
+    const events = fakeEvents();
+    await runTurnOnOmnigent({ prisma: fakePrisma(), events, ...DEPS_BASE }, "run-1", "worker-1");
+
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "failed", error: "provider authentication failed" }),
+    );
+  });
+
   it("reuses an existing Omnigent session without resolving an agent id again", async () => {
     const prisma = fakePrisma({
       omnigentSession: {
