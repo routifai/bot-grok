@@ -396,12 +396,20 @@ async function sendTurnAndAwaitReply(
   const first = iterator.next();
   await postOmnigentMessage(deps.client, email, sessionId, turnInput);
 
+  // Omnigent streams each finished item as response.output_item.done and may leave
+  // response.completed's own output empty, so the reply is the last assistant message seen.
+  let lastReply = "";
   let step = await first;
   while (!step.done) {
     const event = step.value;
+    if (event.type === "response.output_item.done") {
+      const item = event.item as Record<string, unknown> | undefined;
+      const text = item ? extractAssistantText([item]) : "";
+      if (text) lastReply = text;
+    }
     if (event.type === "response.completed") {
       const response = event.response as { output?: Array<Record<string, unknown>> } | undefined;
-      return extractAssistantText(response?.output ?? []);
+      return extractAssistantText(response?.output ?? []) || lastReply;
     }
     if (event.type === "response.failed" || event.type === "response.error") {
       const message =

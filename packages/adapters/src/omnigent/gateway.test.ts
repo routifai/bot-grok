@@ -187,6 +187,33 @@ describe("runTurnOnOmnigent", () => {
     );
   });
 
+  it("takes the reply from the last assistant output item when response.completed has no output", async () => {
+    findOmnigentAgentIdByName.mockResolvedValue("ag_1");
+    createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    const assistant = (text: string) => ({
+      type: "response.output_item.done",
+      item: { type: "message", role: "assistant", content: [{ type: "output_text", text }] },
+    });
+    streamOmnigentSession.mockReturnValue(
+      eventsFrom([
+        assistant("Let me check."),
+        { type: "response.output_item.done", item: { type: "function_call", name: "web_search" } },
+        assistant("Here is the answer."),
+        { type: "response.completed", response: { output: [] } },
+      ]),
+    );
+
+    const events = fakeEvents();
+    await runTurnOnOmnigent({ prisma: fakePrisma(), events, ...DEPS_BASE }, "run-1", "worker-1");
+
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "completed",
+        blocks: [{ kind: "text", text: "Here is the answer." }],
+      }),
+    );
+  });
+
   it("reuses an existing Omnigent session without resolving an agent id again", async () => {
     const prisma = fakePrisma({
       omnigentSession: {
