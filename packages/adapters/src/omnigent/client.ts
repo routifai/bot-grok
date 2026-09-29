@@ -58,13 +58,13 @@ export async function createOmnigentSession(
   return (await response.json()) as OmnigentSessionResponse;
 }
 
-/** `GET /api/agents` — resolves a built-in agent's durable id by its bundle name. */
+/** `GET /v1/agents` — resolves a built-in agent's durable id by its bundle name. */
 export async function findOmnigentAgentIdByName(
   config: OmnigentClientConfig,
   email: string,
   name: string,
 ): Promise<string | undefined> {
-  const url = new URL("/api/agents", config.baseUrl);
+  const url = new URL("/v1/agents", config.baseUrl);
   url.searchParams.set("limit", "100");
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "list agents");
