@@ -290,6 +290,13 @@ def publish(conversation_id: str, event: dict[str, Any]) -> int:
     # type is a single dict lookup and a return. A suppressed event is
     # always a text delta, never an elicitation, so this still runs.
     pending_elicitations.record_publish(conversation_id, event)
+    # Nova: mirror an elicitation into a durable Ask for private sessions
+    # (omnigent.nova.asks.bridge). Checked here so every other event pays
+    # only this comparison; the bridge never raises.
+    if event.get("type") == "response.elicitation_request":
+        from omnigent.nova.asks import bridge as _nova_asks_bridge
+
+        _nova_asks_bridge.on_session_event(conversation_id, event)
     if live_event is None:
         return 0
     with _lock:
