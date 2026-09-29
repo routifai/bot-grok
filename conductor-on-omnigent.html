@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conductor on Omnigent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F2F3F5;--surface:#FFFFFF;--ink:#12141A;--muted:#596070;--line:#D8DDE4;--soft:#E9ECF0;
+  --accent:#2F5FBF;--accent-soft:#E3EAF8;--ok:#1F7A55;--ok-soft:#DDF1E7;--warn:#A0660C;--warn-soft:#FBEFD9;--bad:#B23A2A;
+  --z-prefix:#2F5FBF;--z-mid:#7A8190;--z-tail:#C27A1A;
+  --serif:"Instrument Serif",Georgia,serif;--sans:"Instrument Sans",system-ui,-apple-system,sans-serif;--mono:"Geist Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#0D0F13;--surface:#15181E;--ink:#E7EAEE;--muted:#98A0AB;--line:#282E37;--soft:#1C2027;
+  --accent:#7FA2EA;--accent-soft:#1A2640;--ok:#5CC49A;--ok-soft:#14302A;--warn:#E3A546;--warn-soft:#30250F;--bad:#E58A73;
+  --z-prefix:#7FA2EA;--z-mid:#6B7280;--z-tail:#E0A04A;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#0D0F13;--surface:#15181E;--ink:#E7EAEE;--muted:#98A0AB;--line:#282E37;--soft:#1C2027;
+  --accent:#7FA2EA;--accent-soft:#1A2640;--ok:#5CC49A;--ok-soft:#14302A;--warn:#E3A546;--warn-soft:#30250F;--bad:#E58A73;
+  --z-prefix:#7FA2EA;--z-mid:#6B7280;--z-tail:#E0A04A;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;padding-inline:20px;padding-block:0 96px}
+.wrap{max-width:1040px;margin:0 auto}
+h1,h2,h3{font-weight:400;margin:0;text-wrap:balance}
+h1{font-family:var(--serif);font-size:clamp(46px,7.4vw,82px);line-height:1}
+h1 em{color:var(--accent)}
+h2{font-family:var(--serif);font-size:clamp(30px,4vw,40px);line-height:1.1}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:70ch}
+.lede{font-size:19px;color:var(--muted);margin-top:16px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header{padding-block:56px 30px;display:grid;gap:10px}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+nav.toc a{font-family:var(--mono);font-size:12px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:99px;padding:5px 11px;background:var(--surface)}
+nav.toc a:hover,nav.toc a:focus-visible{border-color:var(--accent);outline:none}
+section{padding-block:44px;border-top:1px solid var(--line);display:grid;gap:18px}
+code{font-family:var(--mono);font-size:.86em;background:var(--soft);padding:1px 5px;border-radius:5px}
+.muted{color:var(--muted)}
+.scroll{overflow-x:auto}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:840px){.cols,.cols2{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:8px;align-content:start}
+.card p,.card li{font-size:15px;color:var(--muted)}
+.card ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.card b{color:var(--ink)}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}.tag.warn{background:var(--warn-soft);color:var(--warn)}
+figure{margin:0;display:grid;gap:10px}
+figcaption{font-size:14px;color:var(--muted);max-width:78ch}
+svg text{font-family:var(--sans);font-size:12px;fill:currentColor}
+svg .m{font-family:var(--mono);font-size:11px}
+.dia{color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14px}
+th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+td code{white-space:nowrap}
+.prompt{display:grid;gap:6px}
+.zone{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:stretch}
+.zone .lab{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;flex-direction:column;justify-content:center;text-align:right}
+.zone .lab b{color:var(--ink);font-size:12px}
+.zone .blocks{display:flex;flex-wrap:wrap;gap:6px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
+.zone.p .blocks{border-left:4px solid var(--z-prefix)}.zone.mid .blocks{border-left:4px solid var(--z-mid)}.zone.t .blocks{border-left:4px solid var(--z-tail)}
+.b{font-family:var(--mono);font-size:12px;padding:4px 9px;border-radius:7px;background:var(--soft)}
+.cacheline{font-family:var(--mono);font-size:11px;color:var(--accent);display:flex;align-items:center;gap:8px;padding-left:132px}
+.cacheline::before,.cacheline::after{content:"";flex:1;border-top:1px dashed var(--accent)}
+@media (max-width:600px){.zone{grid-template-columns:1fr}.zone .lab{text-align:left}.cacheline{padding-left:0}}
+pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.55;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;color:var(--ink)}
+pre .c{color:var(--muted)}pre .k{color:var(--accent)}
+.plan{display:grid}
+.pl{display:grid;grid-template-columns:44px 1fr auto;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);align-items:start}
+.pl:last-child{border-bottom:0}
+.pl .n{font-family:var(--mono);font-size:12px;color:var(--accent);padding-top:3px}
+.pl p{font-size:15px;color:var(--muted)}.pl p b{color:var(--ink)}
+@media (max-width:600px){.pl{grid-template-columns:32px 1fr}.pl .tag{grid-column:2}}
+.why{font-size:13px;color:var(--muted)}
+.why a{color:var(--accent)}
+.src{display:grid;gap:4px;font-size:13px;color:var(--muted)}.src a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">System design · side study · independent of Nova</span>
+  <h1>Conductor: <em>one main session</em>, many short task sessions, on Omnigent.</h1>
+  <p class="lede">A long-lived main session talks to you and either answers or hands work to task sessions; you only ever see its synthesis. Omnigent stays the core (harnesses, runners, sandboxes, policies, streaming). A context assembler decides what the main session knows each wake-up. This is the design, built from what Omnigent's code already offers, how rakazo's main branch assembles context, and what Anthropic, Manus, Cognition, Letta and others learned running these systems.</p>
+  <div class="card" style="margin-top:14px;max-width:760px"><span class="tag">two words only</span>
+    <p><b>Session</b>: an Omnigent session. The <b>main session</b> talks to you and lives for months; <b>task sessions</b> do the work and live for minutes.</p>
+    <p><b>Prompt</b>: what a model receives. <b>Your prompt</b> is what you type; the <b>assembled prompt</b> is what the context assembler builds for the main session each time it wakes up (after your prompt, a finished task, or a timer).</p>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#thesis">Thesis</a><a href="#arch">Architecture</a><a href="#prompt">Main session prompt</a><a href="#tasks">Tasks</a><a href="#tasklist">Task list</a><a href="#flow">A delegated wake-up</a><a href="#knows">Who knows what</a><a href="#harnesses">Harnesses</a><a href="#seams">Omnigent seams</a><a href="#guards">Guard rails</a><a href="#build">Build plan</a><a href="#risks">Risks</a>
+  </nav>
+</header>
+
+<section id="thesis">
+  <span class="eyebrow">Thesis</span>
+  <h2>Split context ownership by lifetime</h2>
+  <div class="cols">
+    <div class="card"><span class="tag">main session</span><h3>Long-lived, assembled</h3><p>Lives for months. Its context can't be left to a harness that holds a growing session. <b>The assembler owns it</b>: rebuilt every wake-up from durable state, ordered for the prompt cache, small on purpose.</p><p class="why">Why: quality degrades with length long before the limit (<a href="https://www.zenml.io/llmops-database/context-rot-evaluating-llm-performance-degradation-with-increasing-input-tokens">Chroma, context rot</a>); rakazo already rebuilds a fresh Pi <code>Agent</code> per run.</p></div>
+    <div class="card"><span class="tag">task</span><h3>Short-lived, native</h3><p>Lives for minutes. Bounded work is where a native harness shines, so <b>the harness owns its context</b> (its own compaction, tools and files). The task gets a precise brief and returns one structured report.</p><p class="why">Why: in Anthropic's system, workers spend tens of thousands of tokens but return 1–2K (<a href="https://www.anthropic.com/engineering/multi-agent-research-system">Anthropic</a>); Claude Code subagents return only their final message.</p></div>
+    <div class="card"><span class="tag">durable state</span><h3>Outside every prompt</h3><p>The truth lives in tables: a <b>task list</b>, session history with a compaction cursor, memory. Prompts are views of it. Crashes, restarts and engine switches can't lose anything.</p><p class="why">Why: file system and memory tiers as real context (<a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">Manus</a>, <a href="https://www.letta.com/blog/memory-blocks/">Letta</a>); durable execution separates reliability from reasoning.</p></div>
+  </div>
+</section>
+
+<section id="arch">
+  <span class="eyebrow">Architecture</span>
+  <h2>Four parts, one database</h2>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 1000 440" role="img" aria-label="You send your prompt to the main session. The context assembler reads the store and builds the assembled prompt for the main session. The main session spawns task sessions; each finishes with a report saved to the store and a wake-up for the main session. A maintenance agent keeps the store compact." style="width:100%;min-width:840px;height:auto">
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="20" y="150" width="130" height="64" rx="12"/>
+        <rect x="220" y="110" width="280" height="144" rx="14" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="660" y="90" width="320" height="200" rx="14"/>
+        <rect x="684" y="136" width="272" height="40" rx="8"/><rect x="684" y="184" width="272" height="40" rx="8"/><rect x="684" y="232" width="272" height="40" rx="8"/>
+        <rect x="20" y="320" width="240" height="96" rx="12"/>
+        <rect x="330" y="320" width="270" height="96" rx="12"/>
+        <rect x="690" y="356" width="290" height="60" rx="12"/>
+        <line x1="150" y1="182" x2="218" y2="182" marker-end="url(#a)" marker-start="url(#a)"/>
+        <line x1="500" y1="172" x2="658" y2="172" marker-end="url(#a)"/>
+        <path d="M820 90 V52 H360 V108" marker-end="url(#a)" stroke-dasharray="5 4"/>
+        <path d="M700 290 V336 H602" marker-end="url(#a)"/>
+        <line x1="690" y1="386" x2="602" y2="386" marker-end="url(#a)"/>
+        <line x1="330" y1="368" x2="262" y2="368" marker-end="url(#a)"/>
+        <path d="M140 320 V285 H260 V256" marker-end="url(#a)"/>
+        <line x1="440" y1="254" x2="440" y2="318" marker-end="url(#a)"/>
+      </g>
+      <text x="85" y="178" text-anchor="middle" font-weight="600">You</text><text x="85" y="198" text-anchor="middle" class="m" opacity=".65">your prompt</text>
+      <text x="360" y="142" text-anchor="middle" font-weight="600">Main session</text>
+      <text x="360" y="162" text-anchor="middle" class="m" opacity=".7">one Omnigent session · lives for months</text>
+      <text x="360" y="196" text-anchor="middle" class="m">answers, or spawns task sessions</text>
+      <text x="360" y="216" text-anchor="middle" class="m" opacity=".7">fresh harness + new assembled prompt</text>
+      <text x="360" y="234" text-anchor="middle" class="m" opacity=".7">every time it wakes up</text>
+      <text x="820" y="120" text-anchor="middle" font-weight="600">Task sessions</text>
+      <text x="820" y="161" text-anchor="middle" class="m">pi · web research</text>
+      <text x="820" y="209" text-anchor="middle" class="m">codex · code change</text>
+      <text x="820" y="257" text-anchor="middle" class="m">claude-sdk · long document</text>
+      <text x="580" y="162" text-anchor="middle" class="m">spawn_task</text>
+      <text x="590" y="44" text-anchor="middle" class="m">wake-up when a task session finishes</text>
+      <text x="140" y="352" text-anchor="middle" font-weight="600">Context assembler</text>
+      <text x="140" y="372" text-anchor="middle" class="m" opacity=".7">builds the assembled prompt</text>
+      <text x="140" y="392" text-anchor="middle" class="m" opacity=".7">prefix · middle · tail</text>
+      <text x="200" y="279" text-anchor="middle" class="m">assembled prompt</text>
+      <text x="465" y="346" text-anchor="middle" font-weight="600">Store</text>
+      <text x="465" y="366" text-anchor="middle" class="m">task list · session history</text>
+      <text x="465" y="384" text-anchor="middle" class="m">summary · memory · files</text>
+      <text x="296" y="360" text-anchor="middle" class="m">reads</text>
+      <text x="480" y="290" class="m">saves replies</text>
+      <text x="652" y="328" text-anchor="middle" class="m">finish_task report</text>
+      <text x="835" y="380" text-anchor="middle" font-weight="600">Maintenance agent</text>
+      <text x="835" y="400" text-anchor="middle" class="m" opacity=".7">summarizes old history · updates memory</text>
+    </svg>
+    </div>
+    <figcaption>The main session is a normal Omnigent session, so it keeps the events endpoint, the child tree (<code>parent_conversation_id</code> and <code>root_conversation_id</code>), policies, approvals, usage and UI. Only two things differ: its wake-ups are rebuilt by the assembler, and it delegates through a task-list-backed task tool instead of raw <code>sys_session_create</code>.</figcaption>
+  </figure>
+</section>
+
+<section id="prompt">
+  <span class="eyebrow">The main session's assembled prompt</span>
+  <h2>Three zones, ordered for the cache</h2>
+  <p>Every main-session wake-up is assembled fresh into three zones. The order is what makes rebuilding every wake-up affordable. rakazo already orders "stable blocks first, volatile ones last, so the prefix stays cacheable" (<code>run-prompt.ts:20</code>), and Manus calls cache hit rate "the single most important metric" (cached input is 10× cheaper).</p>
+  <div class="prompt" role="img" aria-label="Prefix zone: persona, rules, tool contract, skills catalog, core memory. Cache line. Middle zone, append-only: rolling summary, session history since cursor, task events as items. Tail zone, per-wake-up: task list recap, recalled memory, trigger event, time.">
+    <div class="zone p"><div class="lab"><b>Prefix</b>stable · versioned</div><div class="blocks"><span class="b">persona + rules</span><span class="b">tool contract</span><span class="b">delegation policy</span><span class="b">skills catalog</span><span class="b">core memory v12</span></div></div>
+    <div class="cacheline">prompt-cache boundary moves only when memory version changes</div>
+    <div class="zone mid"><div class="lab"><b>Middle</b>append-only</div><div class="blocks"><span class="b">rolling summary ≤ cursor</span><span class="b">your prompts + replies since cursor</span><span class="b">task spawned: T12 "…"</span><span class="b">task report: T12 ✓ 1.2K tok</span><span class="b">…</span></div></div>
+    <div class="zone t"><div class="lab"><b>Tail</b>rebuilt every wake-up</div><div class="blocks"><span class="b">task list recap (open tasks)</span><span class="b">recalled memory ×5</span><span class="b">trigger: user msg | task done | timer</span><span class="b">time</span></div></div>
+  </div>
+  <div class="cols2">
+    <div class="card"><h3>Why task reports go in the middle, not the tail</h3><p>A finished task's report is an <b>event</b>: it happened once and never changes. Appending it keeps the middle append-only, so the whole history stays in cache (Manus: "append-only context, deterministic serialization"). Only live state (which tasks are still open) belongs in the tail.</p></div>
+    <div class="card"><h3>Why recite the task list at the end</h3><p>Manus rewrites a <code>todo.md</code> every step to "push the global plan into recent attention" against lost-in-the-middle drift over ~50 tool calls. The tail's short task list digest does the same for a main session juggling many tasks: always last, always current.</p></div>
+    <div class="card"><h3>Compaction cursor, borrowed from rakazo</h3><p>When the middle passes a threshold (rakazo: 100 uncompacted messages, compact the oldest 50, summary ≤ 20K chars), the maintenance agent folds the oldest items into the rolling summary and advances the cursor atomically: it only moves if no other worker moved it first. The prefix cache survives; only the middle's start shifts, once in a while.</p></div>
+    <div class="card"><h3>Keep failures visible</h3><p>Failed task reports and tool errors stay in the middle instead of being cleaned up. Manus: "keep errors in"; they're the evidence the model needs not to repeat a mistake. The task list stores the attempt count so retries are visible too.</p></div>
+  </div>
+</section>
+
+<section id="tasks">
+  <span class="eyebrow">Tasks</span>
+  <h2>A brief in, a report out, nothing else crosses</h2>
+  <div class="cols2">
+    <div class="card"><span class="tag">spawn_task</span><h3>The brief</h3><p>Anthropic found vague briefs caused duplicated, misaligned work; each worker needs "an objective, an output format, guidance on tools and sources, and clear task boundaries". So the main session's tool requires them:</p>
+<pre>spawn_task({
+  goal:        "Compare 3 no-FX-fee cards for a Canada→EU traveller",
+  deliverable: "table: fee, FX, lounge; ≤ 300 words; sources",
+  engine:      "pi" | "codex" | "claude-sdk" | …,
+  inputs:      [artifact refs, task list task ids],
+  depends_on:  ["T11"],        <span class="c"># wait for, and receive, its report</span>
+  budget:      { usd: 0.50, minutes: 10 },
+  scope:       "read-only" | "workspace" | …
+})</pre>
+    <p>The assembler adds a <b>context pack</b>: the reports of the tasks it depends on plus decisions already made in the main session. That answers Cognition's warning: workers without shared decisions make conflicting assumptions.</p></div>
+    <div class="card"><span class="tag ok">finish_task</span><h3>The report</h3><p>Every task agent gets one mandatory tool:</p>
+<pre>finish_task({
+  status:    "done" | "partial" | "blocked" | "failed",
+  summary:   "≤ 1,500 tokens: findings, decisions made",
+  artifacts: [{ ref, kind, title }],   <span class="c"># files stay in the store</span>
+  open_question?: "…",                  <span class="c"># becomes an ask to the user</span>
+  confidence: 0.0–1.0
+})</pre>
+    <p>Artifacts are <b>references</b>, never inlined. The main session can call <code>open_result(task, ref, range)</code> when it truly needs a file (Manus: "compression must be restorable"; Anthropic: just-in-time retrieval). If a task ends without calling it, a cheap model summarizes the child transcript into the same shape.</p></div>
+  </div>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 900 150" role="img" aria-label="Task states: queued, running, then done, partial, blocked or failed; blocked can return to running after an answer; failed can retry to queued until the attempt limit; cancelled from queued or running." style="width:100%;min-width:720px;height:auto">
+      <defs><marker id="s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.2">
+        <rect x="10" y="55" width="100" height="40" rx="20"/><rect x="170" y="55" width="100" height="40" rx="20" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="360" y="10" width="100" height="36" rx="18" stroke="var(--ok)"/><rect x="360" y="57" width="100" height="36" rx="18"/><rect x="360" y="104" width="100" height="36" rx="18" stroke="var(--warn)"/>
+        <rect x="540" y="104" width="100" height="36" rx="18" stroke="var(--bad)"/><rect x="720" y="55" width="110" height="40" rx="20" stroke-dasharray="4 3"/>
+        <line x1="110" y1="75" x2="168" y2="75" marker-end="url(#s)"/>
+        <path d="M270 70 C310 70 320 28 358 28" marker-end="url(#s)"/><line x1="270" y1="75" x2="358" y2="75" marker-end="url(#s)"/><path d="M270 80 C310 80 320 122 358 122" marker-end="url(#s)"/>
+        <path d="M270 88 C400 150 520 150 538 125" marker-end="url(#s)"/>
+        <path d="M410 104 C400 90 280 100 250 96" marker-end="url(#s)" stroke-dasharray="3 3"/>
+        <path d="M590 104 C590 20 90 20 60 53" marker-end="url(#s)" stroke-dasharray="3 3"/>
+        <line x1="270" y1="62" x2="718" y2="62" marker-end="url(#s)" stroke-dasharray="2 4" opacity=".5"/>
+      </g>
+      <text x="60" y="80" text-anchor="middle">queued</text><text x="220" y="80" text-anchor="middle">running</text>
+      <text x="410" y="33" text-anchor="middle">done</text><text x="410" y="80" text-anchor="middle">partial</text><text x="410" y="127" text-anchor="middle">blocked</text>
+      <text x="590" y="127" text-anchor="middle">failed</text><text x="775" y="80" text-anchor="middle">cancelled</text>
+      <text x="330" y="112" text-anchor="middle" class="m" opacity=".7">answer</text>
+      <text x="330" y="16" text-anchor="middle" class="m" opacity=".7">retry ≤ attempts</text>
+    </svg>
+    </div>
+    <figcaption>Every state change is a task list write, and every terminal state is a wake event to the main session. "Blocked" is how a task asks a question: it surfaces as an ask, and the answer resumes the same child session, which still holds its native context.</figcaption>
+  </figure>
+</section>
+
+<section id="tasklist">
+  <span class="eyebrow">The missing primitive</span>
+  <h2>The task list</h2>
+  <p>Omnigent has everything else, but not this. Its <code>session_todos</code> is a per-session display snapshot (max 100 items, <code>native/session_todos.py</code>), and the <code>polly</code> example keeps its task registry in a JSON file the agent edits itself (<code>examples/polly/config.yaml:207</code>). A main session that lives for months needs a real table:</p>
+<pre><span class="k">tasks</span>
+  task_id        pk          session_id     → main session
+  parent_task    nullable    child_session → Omnigent child conversation
+  goal, deliverable, scope, engine, budget_usd, budget_min
+  depends_on     task_id[]   context_pack  jsonb (refs, not copies)
+  status         queued|running|done|partial|blocked|failed|cancelled
+  attempts       int         lease_owner, lease_expires_at   <span class="c"># rakazo-style leases</span>
+  report_summary text        artifacts     jsonb[] (refs)
+  open_question  text        confidence    real
+  usage          jsonb       <span class="c"># copied from the child's session_usage</span>
+  created_at, started_at, finished_at
+
+<span class="k">session_state</span>
+  session_id pk · summary text · compacted_up_to_seq · generation   <span class="c"># compaction cursor, compare-and-set</span>
+  memory_version · task list_digest_cache</pre>
+  <p class="muted" style="font-size:14px">The server writes the task list, never the model directly: <code>spawn_task</code>, <code>finish_task</code> and session-status changes are the only writers. The UI reads it for a live "work in progress" panel.</p>
+</section>
+
+<section id="flow">
+  <span class="eyebrow">End to end</span>
+  <h2>One delegated request</h2>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 980 420" role="img" aria-label="Sequence: your prompt wakes the main session; assembler builds prompt; main session calls spawn_task twice; server writes task list and creates two child sessions; main session replies it's on it; children run natively; each calls finish_task; server writes reports and posts wake events; main-session wake-up is rebuilt with reports and replies with synthesis." style="width:100%;min-width:840px;height:auto">
+      <defs><marker id="q" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g font-weight="600"><text x="70" y="22" text-anchor="middle">You</text><text x="260" y="22" text-anchor="middle">Server + task list</text><text x="470" y="22" text-anchor="middle">Assembler</text><text x="670" y="22" text-anchor="middle">Main-session wake-up</text><text x="880" y="22" text-anchor="middle">Task sessions</text></g>
+      <g stroke="currentColor" opacity=".3"><line x1="70" y1="32" x2="70" y2="410"/><line x1="260" y1="32" x2="260" y2="410"/><line x1="470" y1="32" x2="470" y2="410"/><line x1="670" y1="32" x2="670" y2="410"/><line x1="880" y1="32" x2="880" y2="410"/></g>
+      <g fill="none" stroke="currentColor" stroke-width="1.2">
+        <line x1="72" y1="55" x2="256" y2="55" marker-end="url(#q)"/>
+        <line x1="262" y1="80" x2="466" y2="80" marker-end="url(#q)"/>
+        <line x1="472" y1="105" x2="666" y2="105" marker-end="url(#q)"/>
+        <line x1="668" y1="135" x2="264" y2="135" marker-end="url(#q)"/>
+        <line x1="262" y1="160" x2="876" y2="160" marker-end="url(#q)"/>
+        <line x1="668" y1="190" x2="74" y2="190" marker-end="url(#q)" stroke-dasharray="4 3"/>
+        <line x1="878" y1="250" x2="264" y2="250" marker-end="url(#q)"/>
+        <line x1="262" y1="280" x2="466" y2="280" marker-end="url(#q)"/>
+        <line x1="472" y1="310" x2="666" y2="310" marker-end="url(#q)"/>
+        <line x1="668" y1="345" x2="74" y2="345" marker-end="url(#q)"/>
+      </g>
+      <text x="165" y="48" text-anchor="middle" class="m">your prompt: "compare cards + draft email"</text>
+      <text x="365" y="73" text-anchor="middle" class="m">wake: trigger=user</text>
+      <text x="570" y="98" text-anchor="middle" class="m">prefix | middle | tail</text>
+      <text x="465" y="128" text-anchor="middle" class="m">spawn_task T12 (pi), T13 (claude, depends_on T12)</text>
+      <text x="570" y="153" text-anchor="middle" class="m">task list rows + sys_session_create(parent=orch)</text>
+      <text x="370" y="183" text-anchor="middle" class="m">"On it: researching first, then drafting."</text>
+      <rect x="840" y="192" width="80" height="44" rx="6" fill="var(--soft)" stroke="currentColor" stroke-opacity=".3"/>
+      <text x="880" y="212" text-anchor="middle" class="m">native loop</text><text x="880" y="228" text-anchor="middle" class="m">own context</text>
+      <text x="570" y="243" text-anchor="middle" class="m">finish_task(done, summary, refs) → report</text>
+      <text x="365" y="273" text-anchor="middle" class="m">wake: trigger=task_done T12, T13</text>
+      <text x="570" y="303" text-anchor="middle" class="m">middle += report events</text>
+      <text x="370" y="338" text-anchor="middle" class="m">synthesis: table + draft, links to artifacts</text>
+      <text x="490" y="395" text-anchor="middle" class="m" opacity=".7">T13 is queued until T12 is done; its context pack carries T12's report.</text>
+    </svg>
+    </div>
+    <figcaption>The main session never waits inside a wake-up. It spawns, acknowledges, and goes back to sleep; the next wake-up is triggered by the task list. That's what lets it stay "long-running" with no long-running process. Omnigent already wakes parents this way: a finished child makes the runner post a message event to the parent (<code>runner/app.py:2447-2487</code>).</figcaption>
+  </figure>
+</section>
+
+<section id="knows">
+  <span class="eyebrow">Who knows what</span>
+  <h2>Blindfold the main session, not the task sessions</h2>
+  <div class="scroll"><table>
+    <thead><tr><th></th><th>Main session</th><th>Task session</th></tr></thead>
+    <tbody>
+      <tr><td>What the harness knows</td><td><b>Only the assembled prompt</b>, plus its own built-in base prompt and tool definitions</td><td>The brief and context pack at the start, then <b>its own context</b> as it works</td></tr>
+      <tr><td>Harness lifetime</td><td>Fresh every wake-up, thrown away after</td><td>Warm for the whole task (minutes)</td></tr>
+      <tr><td>History</td><td>Chosen by the assembler from the Store (summary + recent session history)</td><td>Kept and compacted by the harness itself</td></tr>
+      <tr><td>Vendor memory files (CLAUDE.md, AGENTS.md, ~/.pi)</td><td>Off</td><td>Off (the brief is the only instruction about you)</td></tr>
+      <tr><td>What leaves it</td><td>Replies to you, <code>spawn_task</code> calls, saved to the Store</td><td>One <code>finish_task</code> report of about 1,500 tokens, files by reference</td></tr>
+      <tr><td>Why</td><td>Lives for months, so it must never depend on a growing harness session (context rot, lost state on restart, frozen instructions)</td><td>Bounded, dense work (dozens of tool calls) is where a native harness's own context handling is strongest</td></tr>
+    </tbody>
+  </table></div>
+  <p>In one sentence: <b>the assembler fully controls the main session's prompt on every wake-up, and controls only what goes into and out of task sessions.</b> This is the same split rakazo main uses. Every run builds a fresh Pi <code>Agent</code> from host-assembled history (<code>pi-runtime.ts:303</code>), while its nested helpers start from an empty history plus a task string and return only their final text, capped at 12,000 characters (<code>pi-runtime.ts:1132–1254</code>).</p>
+</section>
+
+<section id="harnesses">
+  <span class="eyebrow">How Omnigent talks to harnesses today</span>
+  <h2>The harness holds the history while it's warm</h2>
+  <p>Omnigent is a meta-harness: one server and one database, many agent loops underneath. Reading the executors shows how context actually flows today, and why the main session needs the fresh-prompt mode:</p>
+  <div class="cols2">
+    <div class="card"><h3>Warm: the harness owns the history</h3><p>Almost every harness keeps a live session and receives only your newest prompt each time: the Pi RPC process (<code>pi --mode rpc --no-session</code>, <code>inner/pi_executor.py</code>), the resident <code>ClaudeSDKClient</code> (<code>_get_or_create_client</code>), the Codex thread, the OpenAI Agents SDK <code>Session</code>. Each compacts in its own way.</p></div>
+    <div class="card"><h3>Cold: Omnigent's database is replayed</h3><p>Omnigent's database stores every session's items (messages, tool calls, reasoning, compaction markers), labels, usage and state. It is replayed into a harness only on a cold start: a new runner, a restart, an engine switch, a reset thread. For Pi and the Claude SDK that replay is <b>flattened to text</b> ("Conversation so far:"), losing the structure of tool calls and images.</p></div>
+    <div class="card"><h3>Instructions: the real difference</h3><p><code>InstructionDelivery</code> in <code>harness_capabilities.py</code> says whether a harness can take new instructions every time: <b>composed-per-turn</b> (pi, codex, openai-agents, copilot, antigravity), <b>composed-session-snapshot</b> (claude-sdk: frozen until the client is rebuilt), <b>first-user-prefix</b> (hermes, cursor, acp, goose, qwen), <b>agent-startup-additive</b> or <b>not-delivered</b> (native CLIs).</p></div>
+    <div class="card"><h3>Two surprises in the code</h3><p><b>Pi restarts when the system prompt changes</b> (<code>_ensure_rpc</code>), so a timestamp in the prompt restarts Pi on every run and replays the history as text. <b>The Claude SDK loads CLAUDE.md</b> unless <code>setting_sources=[]</code>, and never sees updated instructions after its first run.</p></div>
+  </div>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 960 190" role="img" aria-label="Today: Omnigent database feeds the harness only on cold start; the harness keeps its own history while warm. Main session in this design: the assembler reads the Store and gives a fresh harness the whole prompt on every wake-up." style="width:100%;min-width:780px;height:auto">
+      <defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.2">
+        <rect x="10" y="30" width="140" height="50" rx="10"/><rect x="250" y="30" width="190" height="50" rx="10"/>
+        <line x1="150" y1="55" x2="248" y2="55" marker-end="url(#h)" stroke-dasharray="5 4"/>
+        <path d="M440 44 C480 20 480 90 440 66" marker-end="url(#h)"/>
+        <rect x="520" y="30" width="140" height="50" rx="10" stroke="var(--accent)"/><rect x="740" y="30" width="200" height="50" rx="10" stroke="var(--accent)" stroke-width="2"/>
+        <line x1="660" y1="55" x2="738" y2="55" marker-end="url(#h)" stroke="var(--accent)"/>
+        <rect x="520" y="120" width="140" height="50" rx="10"/>
+        <line x1="590" y1="120" x2="590" y2="82" marker-end="url(#h)"/>
+      </g>
+      <text x="80" y="60" text-anchor="middle">Omnigent DB</text>
+      <text x="345" y="52" text-anchor="middle">Harness</text><text x="345" y="70" text-anchor="middle" class="m" opacity=".7">keeps its own history</text>
+      <text x="200" y="46" text-anchor="middle" class="m" opacity=".7">cold start only</text>
+      <text x="500" y="100" text-anchor="middle" class="m" opacity=".7">warm</text>
+      <text x="225" y="120" text-anchor="middle" font-weight="600">Omnigent today</text>
+      <text x="590" y="60" text-anchor="middle">Assembler</text>
+      <text x="840" y="52" text-anchor="middle">Fresh harness</text><text x="840" y="70" text-anchor="middle" class="m" opacity=".7">knows only this prompt</text>
+      <text x="700" y="46" text-anchor="middle" class="m" style="fill:var(--accent)">every wake-up</text>
+      <text x="590" y="150" text-anchor="middle">Store</text>
+      <text x="800" y="150" text-anchor="middle" font-weight="600">Main session, this design</text>
+    </svg>
+    </div>
+  </figure>
+  <div class="cols">
+    <div class="card"><span class="tag warn">cut</span><h3>Vendor memory</h3><p><code>setting_sources: []</code> for the Claude SDK, <code>context_files: false</code> for Pi, no global <code>AGENTS.md</code> symlink for Codex. These are memories the assembler can't see or scope, loaded from whichever machine runs the runner.</p></div>
+    <div class="card"><span class="tag warn">cut (main session)</span><h3>Harness-held history</h3><p>The main session gets a fresh harness every wake-up, with history chosen by the assembler and replayed as <b>structured items</b> (SDK input items, a Pi session file, a Claude resume file), not flattened text.</p></div>
+    <div class="card"><span class="tag ok">keep</span><h3>The loop and its tools</h3><p>Each vendor's base prompt, agent loop, retries, streaming and tools stay. That's what makes each harness good, and why the design blindfolds memory, not the loop.</p></div>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Harness</th><th>New instructions every run?</th><th>Rebuild cost per wake-up</th><th>Role in this design</th></tr></thead>
+    <tbody>
+      <tr><td><code>openai-agents</code></td><td>Yes</td><td>Almost free (in-process SDK)</td><td>First choice for the main session</td></tr>
+      <tr><td>Pi via its SDK (<code>pi-agent-core</code>, as rakazo uses it)</td><td>Yes (fresh <code>Agent</code>)</td><td>Almost free; needs a new <code>pi-sdk</code> harness in Omnigent</td><td>Main session, second choice</td></tr>
+      <tr><td><code>pi</code> (CLI RPC)</td><td>Yes, by restarting</td><td>A process start</td><td>Tasks; main session only if the prompt prefix is kept stable</td></tr>
+      <tr><td><code>codex</code></td><td>Yes</td><td>A thread reset plus replay</td><td>Tasks (code)</td></tr>
+      <tr><td><code>claude-sdk</code></td><td>No: frozen until the client is rebuilt</td><td>A Claude Code process start (seconds)</td><td>Tasks (long documents, code)</td></tr>
+      <tr><td>Native CLIs</td><td>At startup, or never</td><td>Not practical</td><td>"Bring your own agent", outside the main session</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="seams">
+  <span class="eyebrow">Built on Omnigent</span>
+  <h2>What exists, what's new</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Need</th><th>Omnigent today</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td>Instructions per wake-up</td><td><code>runtime/context_provider.py</code> + <code>runner/app.py:1336</code> (server-composed <code>&lt;deployment_context&gt;</code>)</td><td><span class="tag ok">reuse</span> the assembler serves prefix and tail through it</td></tr>
+      <tr><td>History per wake-up</td><td><code>history_to_input_items</code> is a pure function called at <code>runtime/workflow.py:2707</code></td><td><span class="tag warn">new seam</span> a pluggable history provider; the assembler returns the middle zone as input items</td></tr>
+      <tr><td>Fresh harness per wake-up</td><td>Harnesses keep warm state (Pi process, SDK client, Codex thread)</td><td><span class="tag warn">new flag</span> <code>fresh_prompt</code> on the main session; best on <code>openai-agents</code> or a Pi SDK harness</td></tr>
+      <tr><td>Spawn tasks</td><td><code>sys_session_create</code> / <code>sys_session_send</code> (<code>tools/builtins/spawn.py</code>), harness per child, <code>max_sessions</code></td><td><span class="tag">wrap</span> <code>spawn_task</code> writes the task list, then calls the same path with <code>pass_history=false</code></td></tr>
+      <tr><td>Wake on completion</td><td>Runner posts a system message to <code>/v1/sessions/{parent}/events</code>; codex-native children are special-cased (<code>runner/app.py:8373</code>)</td><td><span class="tag warn">move</span> emit from the server on terminal child status, so every harness wakes the same way</td></tr>
+      <tr><td>Results</td><td><code>sys_read_inbox</code>, <code>sys_session_get_history</code></td><td><span class="tag warn">new</span> <code>finish_task</code> contract plus a fallback summarizer; the main session reads reports, not inboxes</td></tr>
+      <tr><td>Guard rails</td><td>Policies: <code>spawn_bounds</code> (default 5 per wake-up), <code>blast_radius</code>, <code>headless_subagent_purpose_guard</code>, <code>worktree_guard</code> (<code>policies/builtins/orchestration.py</code>)</td><td><span class="tag ok">reuse</span> plus task-list-level caps (parallel, depth, budget)</td></tr>
+      <tr><td>Timers and routines</td><td>Scheduled tasks (<code>server/routes/scheduled_tasks.py</code>)</td><td><span class="tag ok">reuse</span> they post the same wake event</td></tr>
+      <tr><td>Questions and approvals</td><td>Elicitations routed to ancestors (<code>routes_events.py</code>)</td><td><span class="tag ok">reuse</span> a blocked task's question surfaces through the main session</td></tr>
+      <tr><td>Task list</td><td>Only <code>session_todos</code> (display) and polly's JSON file</td><td><span class="tag warn">new</span> tables + routes + UI panel</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="guards">
+  <span class="eyebrow">Guard rails</span>
+  <h2>Where these systems go wrong, and the stop for each</h2>
+  <div class="cols">
+    <div class="card"><h3>Over-delegation</h3><p>Anthropic saw 50+ subagents spawned for simple queries; multi-agent costs about 15× chat tokens. <b>Rule:</b> answer directly when it's QA or one quick lookup; <code>spawn_bounds</code> of 5 per wake-up; at most 4 running per main session (rakazo's <code>MAX_PARALLEL_SUBAGENTS</code>).</p></div>
+    <div class="card"><h3>Conflicting workers</h3><p>Cognition: parallel workers make incompatible implicit decisions. <b>Rule:</b> run in parallel only when there's no <code>depends_on</code>; dependent work is sequential and its context pack carries the earlier decisions.</p></div>
+    <div class="card"><h3>Runaway chains</h3><p><b>Depth 1:</b> the main session spawns tasks; tasks can use their harness's own in-loop helpers but can't spawn task list tasks (rakazo: subagents "cannot nest further"; bot hops ≤ 6).</p></div>
+    <div class="card"><h3>Runaway cost</h3><p>Each task has a USD and time budget, enforced from the child's <code>session_usage</code>; hitting it ends the task as <code>partial</code> with whatever was found.</p></div>
+    <div class="card"><h3>Retry loops</h3><p>rakazo's failure brake (hint after 3 tool failures, stop at 8) inside tasks; the task list allows at most 2 automatic retries per task, then marks it failed with the error visible.</p></div>
+    <div class="card"><h3>Injected content</h3><p>Reports and artifacts are data. The assembler wraps them as untrusted, as rakazo does for bot messages and compaction summaries; only the main session's own rules are instructions.</p></div>
+  </div>
+</section>
+
+<section id="build">
+  <span class="eyebrow">Build plan</span>
+  <h2>In order, each shippable</h2>
+  <div class="plan">
+    <div class="pl"><span class="n">1</span><p><b>Task list + <code>spawn_task</code> / <code>finish_task</code></b> on top of <code>sys_session_create</code>. Server-side wake on terminal child status. Works with today's main session context, so it's useful immediately.</p><span class="tag">foundation</span></div>
+    <div class="pl"><span class="n">2</span><p><b>History provider seam</b> at <code>workflow.py:2707</code> plus the <code>fresh_prompt</code> flag. The assembler returns prefix, middle and tail for the main session only.</p><span class="tag">core</span></div>
+    <div class="pl"><span class="n">3</span><p><b>Compaction cursor + maintenance agent</b>: rakazo's compare-and-set cursor, run as an Omnigent scheduled task, also updating memory (Letta's sleep-time idea).</p><span class="tag">scale</span></div>
+    <div class="pl"><span class="n">4</span><p><b>Main session harness</b>: <code>openai-agents</code> first (cheap rebuild, structured items); then a <code>pi-sdk</code> harness built on <code>pi-agent-core</code>, the way rakazo runs Pi.</p><span class="tag">quality</span></div>
+    <div class="pl"><span class="n">5</span><p><b>Evaluation</b>: a fixed set of main sessions (question answering, one-task, fan-out, dependent chain, failing task, a main session with 200 wake-ups), checking cache hit rate, tokens per wake-up, answer quality and cost against a single-agent baseline.</p><span class="tag">proof</span></div>
+  </div>
+</section>
+
+<section id="risks">
+  <span class="eyebrow">Risks, stated plainly</span>
+  <h2>What could make this worse than one agent</h2>
+  <div class="cols2">
+    <div class="card"><h3>Report quality is the ceiling</h3><p>The main session only knows what reports say. A lossy summary silently drops a crucial caveat. Mitigation: required <code>confidence</code> and <code>open_question</code> fields, artifacts by reference, and <code>open_result</code> for checking.</p></div>
+    <div class="card"><h3>Latency of child sessions</h3><p>A new task session can mean a runner launch; warm pools only save pod boot (<code>designs/AGENT_SANDBOX_WARM_POOLS.md</code>). Mitigation: keep one warm runner per active main session and send tasks to it.</p></div>
+    <div class="card"><h3>Rebuild cost on stateful harnesses</h3><p>Fresh-prompt wake-ups are cheap on SDK harnesses, expensive on a Claude Code process. Mitigation: choose the main session harness for rebuild cost; put the expensive engines in tasks.</p></div>
+    <div class="card"><h3>Not every request should fan out</h3><p>Cognition and "Building effective agents" both say most work should stay single-main sessioned. The main session's default is to answer directly; the eval in step 5 checks that it doesn't delegate by reflex.</p></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Sources</span>
+  <div class="src">
+    <span>Anthropic, multi-agent research system · <a href="https://www.anthropic.com/engineering/multi-agent-research-system">anthropic.com/engineering/multi-agent-research-system</a></span>
+    <span>Anthropic, effective context engineering · <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">anthropic.com/engineering/effective-context-engineering-for-ai-agents</a></span>
+    <span>Claude Agent SDK subagents · <a href="https://code.claude.com/docs/en/agent-sdk/subagents">code.claude.com/docs/en/agent-sdk/subagents</a></span>
+    <span>Cognition, Don't Build Multi-Agents · <a href="https://cognition.com/blog/dont-build-multi-agents">cognition.com/blog/dont-build-multi-agents</a></span>
+    <span>Manus, context engineering lessons · <a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus</a></span>
+    <span>OpenAI Agents SDK handoffs and sessions · <a href="https://openai.github.io/openai-agents-python/handoffs/">openai.github.io/openai-agents-python/handoffs</a></span>
+    <span>Letta memory blocks and sleep-time compute · <a href="https://www.letta.com/blog/sleep-time-compute/">letta.com/blog/sleep-time-compute</a></span>
+    <span>Chroma, context rot (summary) · <a href="https://www.zenml.io/llmops-database/context-rot-evaluating-llm-performance-degradation-with-increasing-input-tokens">zenml.io · context rot</a></span>
+    <span>Code: <code>engine/omnigent</code> (spawn.py, runner/app.py, runtime/prompt.py, workflow.py, policies/builtins/orchestration.py, native/session_todos.py, examples/polly) and rakazo main (<code>run-prompt.ts</code>, <code>run-executor.ts</code>, <code>history-compaction.ts</code>, <code>pi-runtime.ts</code>, <code>core/bot-messages.ts</code>), read 2026-09-29.</span>
+  </div>
+</section>
+</div>
+</body>
+</html>
