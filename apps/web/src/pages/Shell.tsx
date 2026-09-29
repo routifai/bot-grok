@@ -100,6 +100,7 @@ import {
   lazy,
   type MutableRefObject,
   memo,
+  type ReactNode,
   type RefObject,
   Suspense,
   useCallback,
@@ -194,6 +195,7 @@ import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { deriveMuseState } from "./muse/chrome/museState";
 import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveState";
+import { HarnessPicker } from "./muse/engine/HarnessPicker";
 import { FeedScreen } from "./muse/FeedScreen";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { IdeasScreen } from "./muse/IdeasScreen";
@@ -2593,6 +2595,11 @@ export function ShellPage() {
                   seedText={composerSeed}
                   onSeedConsumed={() => setComposerSeed(null)}
                   onStop={stopRun}
+                  composerAccessory={
+                    museMode && !inGroup && active ? (
+                      <HarnessPicker botId={active.id} disabled={sending} />
+                    ) : null
+                  }
                   onVoice={
                     !inGroup && active
                       ? () => {
@@ -4035,6 +4042,7 @@ const Composer = memo(function Composer({
   onSend,
   onStop,
   onVoice,
+  composerAccessory,
   replyTarget,
   replyQuote,
   replyTargetName,
@@ -4064,6 +4072,8 @@ const Composer = memo(function Composer({
   onSend: (text: string, mentions?: ComposerMention[]) => Promise<void>;
   onStop: () => Promise<void>;
   onVoice?: () => void;
+  /** Shown before the voice button, e.g. the engine picker. */
+  composerAccessory?: ReactNode;
   replyTarget?: ThreadMessage | null;
   replyQuote?: string | null;
   replyTargetName?: string;
@@ -4717,6 +4727,7 @@ const Composer = memo(function Composer({
             )}
           />
         </div>
+        {composerAccessory}
         {onVoice ? (
           <Button
             variant={museMode ? "ghost" : "outline"}
