@@ -181,8 +181,8 @@ svg .m{font-family:var(--mono);font-size:11px}
   <div class="scroll"><table>
     <thead><tr><th>Today</th><th>Change</th><th>Where</th></tr></thead>
     <tbody>
-      <tr><td>Each run converts the session's stored items into the model input (<code>history_to_input_items</code>)</td><td><b>History hook</b>: for the main session, ask the assembler for the item list instead (summary + recent)</td><td><code>runtime/workflow.py:2707</code></td></tr>
-      <tr><td>Harnesses stay warm and keep their own history (Pi process, Claude SDK client, Codex thread)</td><td><b>Fresh-prompt flag</b> on the session: start a fresh harness each wake-up and discard it after</td><td>the executors: <code>pi_executor._ensure_rpc</code>, <code>claude_sdk_executor._get_or_create_client</code></td></tr>
+      <tr><td>The runner loads the harness input once with <code>_load_history_as_input</code> (from the latest <code>compaction</code> item) and caches it in <code>_session_histories</code></td><td><b>Summary as a compaction item</b>: the summarizer writes our summary as an Omnigent compaction item, and the runner drops its cache so the next load starts there</td><td><code>runner/app.py</code></td></tr>
+      <tr><td>Harnesses stay warm and keep their own history (Pi process, Claude SDK client, Codex thread)</td><td><b>Fresh-prompt flag</b> on the session: call <code>executor.close_session</code> after every wake-up, so the next one starts fresh</td><td>the executors: <code>pi_executor._ensure_rpc</code>, <code>claude_sdk_executor._get_or_create_client</code></td></tr>
       <tr><td>Omnigent compaction rewrites old items near the context limit</td><td><b>Summary cursor</b> owned by the assembler; Omnigent compaction switched off for this session</td><td><code>runtime/compaction.py</code> (skip), new cursor table</td></tr>
     </tbody>
   </table></div>
