@@ -9,6 +9,9 @@ context injected into the instructions, entirely behind the `NOVA_ENGINE=omnigen
 flag unset, nothing here changes — the existing engine (`packages/adapters/src/executor/`) is
 untouched and still the default.
 
+For how Nova composes per-turn context, records episodic memory and runs its tools on the
+Omnigent server, open [`nova-context-engine.html`](./nova-context-engine.html) in a browser.
+
 ## What's here
 
 - **Context-provider endpoint** — `POST /internal/omnigent/context` in `apps/api` (plain Hono
