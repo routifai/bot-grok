@@ -93,6 +93,31 @@ export async function postOmnigentMessage(
   await throwOnError(response, "post message event");
 }
 
+/**
+ * `POST /v1/sessions/{id}/switch-agent` — rebinds an existing session in place to a different
+ * built-in agent bundle (engine/omnigent/omnigent/server/routes/sessions/routes_core.py
+ * ~3580-3700, request body `SessionSwitchAgentRequest` in
+ * engine/omnigent/omnigent/server/schemas.py:2683-2697). Only works while the session is idle
+ * and only for a built-in (not session-scoped) target agent id.
+ */
+export async function switchOmnigentAgent(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  agentId: string,
+): Promise<OmnigentSessionResponse> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/switch-agent`, config.baseUrl),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify({ agent_id: agentId }),
+    },
+  );
+  await throwOnError(response, "switch agent");
+  return (await response.json()) as OmnigentSessionResponse;
+}
+
 /** `GET /v1/sessions/{id}/items` — the committed conversation transcript, paginated. */
 export async function listOmnigentSessionItems(
   config: OmnigentClientConfig,

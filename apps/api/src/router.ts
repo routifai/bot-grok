@@ -173,6 +173,7 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import { getEngineInfo, setEngineHarness } from "./engine-info.js";
 import {
   acceptProposal,
   dismissProposal,
@@ -4946,6 +4947,14 @@ export function createRouter(deps: RouterDeps) {
         );
         return settings;
       }),
+    },
+    engine: {
+      info: museOnly.engine.info.handler(({ context, input }) =>
+        getEngineInfo(deps, context.actor, input.botId),
+      ),
+      setHarness: museOnly.engine.setHarness.handler(({ context, input }) =>
+        setEngineHarness(deps, context.actor, input),
+      ),
     },
     episodes: {
       list: museOnly.episodes.list.handler(({ context, input }) =>

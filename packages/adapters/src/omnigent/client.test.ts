@@ -4,6 +4,7 @@ import {
   findOmnigentAgentIdByName,
   postOmnigentMessage,
   streamOmnigentSession,
+  switchOmnigentAgent,
 } from "./client.js";
 
 const CONFIG = { baseUrl: "http://omnigent.test", proxySecret: "proxy-secret" };
@@ -72,6 +73,29 @@ describe("omnigent client", () => {
       "ag_2",
     );
     await expect(findOmnigentAgentIdByName(CONFIG, "e@x.test", "missing")).resolves.toBeUndefined();
+  });
+
+  it("switchOmnigentAgent posts the target agent id to the switch-agent endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "conv_1", status: "idle" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await switchOmnigentAgent(CONFIG, "person@example.test", "conv_1", "ag_2");
+
+    expect(result.status).toBe("idle");
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/v1/sessions/conv_1/switch-agent");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ agent_id: "ag_2" });
+  });
+
+  it("switchOmnigentAgent throws with a descriptive error on a non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ error: "busy" }, 409)),
+    );
+    await expect(switchOmnigentAgent(CONFIG, "e@x.test", "conv_1", "ag_2")).rejects.toThrow(
+      /switch agent failed \(409\)/,
+    );
   });
 
   it("postOmnigentMessage throws with a descriptive error on a non-2xx response", async () => {

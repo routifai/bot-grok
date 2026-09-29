@@ -17,7 +17,9 @@ import {
   type OmnigentClientConfig,
   postOmnigentMessage,
   streamOmnigentSession,
+  switchOmnigentAgent,
 } from "./client.js";
+import { agentNameForMuseHarness } from "./harnesses.js";
 
 /** Upper bound on how long one turn may run on Omnigent before the gateway gives up. */
 const TURN_TIMEOUT_MS = 5 * 60_000;
@@ -29,7 +31,9 @@ export interface OmnigentGatewayDeps {
   client: OmnigentClientConfig;
   /** Secret values redacted from the assistant's reply before it is persisted. */
   secrets: string[];
-  /** Built-in Omnigent agent bundle name Nova Conversation turns run on. */
+  /** Built-in Omnigent agent bundle name Nova Conversation turns run on when a Muse hasn't
+   * chosen its own harness (Bot.museHarness null) — resolved once at boot from
+   * `OMNIGENT_AGENT_NAME` (./env.ts). */
   agentName: string;
 }
 
@@ -73,12 +77,17 @@ export async function runTurnOnOmnigent(
   });
 
   try {
-    const [user, task] = await Promise.all([
+    const [user, task, bot] = await Promise.all([
       deps.prisma.user.findUniqueOrThrow({ where: { id: run.userId }, select: { email: true } }),
       deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId }, select: { prompt: true } }),
+      deps.prisma.bot.findUniqueOrThrow({
+        where: { id: run.botId },
+        select: { museHarness: true },
+      }),
     ]);
+    const desiredAgentName = agentNameForMuseHarness(bot.museHarness, deps.agentName);
 
-    const sessionId = await ensureOmnigentSession(deps, user.email, run);
+    const sessionId = await ensureOmnigentSession(deps, user.email, run, desiredAgentName);
     const text = await sendTurnAndAwaitReply(deps, user.email, sessionId, task.prompt);
     const redacted = redactSecrets(text, deps.secrets);
     if (containsSecret(redacted, deps.secrets)) {
@@ -133,20 +142,38 @@ function sessionLabels(run: { userId: string; spaceId: string; botId: string }) 
   };
 }
 
-/** One Omnigent session per Muse (bot), stored so every turn continues the same conversation. */
+/**
+ * One Omnigent session per Muse (bot), stored so every turn continues the same conversation.
+ * When a session already exists but its recorded `agentName` no longer matches the bot's
+ * resolved harness (`desiredAgentName`), switches it in place first — the session is idle
+ * between turns, which is switch-agent's only precondition
+ * (engine/omnigent/omnigent/server/routes/sessions/routes_core.py ~3580-3700).
+ */
 async function ensureOmnigentSession(
   deps: OmnigentGatewayDeps,
   email: string,
   run: { userId: string; spaceId: string; botId: string },
+  desiredAgentName: string,
 ): Promise<string> {
   const existing = await deps.prisma.omnigentSession.findUnique({
     where: { botId: run.botId },
   });
-  if (existing) return existing.omnigentSessionId;
+  if (existing) {
+    if (existing.agentName !== desiredAgentName) {
+      await switchOmnigentSessionAgent(
+        deps,
+        email,
+        run.botId,
+        existing.omnigentSessionId,
+        desiredAgentName,
+      );
+    }
+    return existing.omnigentSessionId;
+  }
 
-  const agentId = await findOmnigentAgentIdByName(deps.client, email, deps.agentName);
+  const agentId = await findOmnigentAgentIdByName(deps.client, email, desiredAgentName);
   if (!agentId) {
-    throw new Error(`no Omnigent agent bundle named "${deps.agentName}" is registered`);
+    throw new Error(`no Omnigent agent bundle named "${desiredAgentName}" is registered`);
   }
   const session = await createOmnigentSession(deps.client, email, {
     agentId,
@@ -155,10 +182,39 @@ async function ensureOmnigentSession(
   });
   const saved = await deps.prisma.omnigentSession.upsert({
     where: { botId: run.botId },
-    create: { botId: run.botId, omnigentSessionId: session.id },
-    update: { omnigentSessionId: session.id },
+    create: { botId: run.botId, omnigentSessionId: session.id, agentName: desiredAgentName },
+    update: { omnigentSessionId: session.id, agentName: desiredAgentName },
   });
   return saved.omnigentSessionId;
+}
+
+/**
+ * Rebinds an existing Omnigent session to `desiredAgentName` before this turn's message posts.
+ * Never fails the turn: on any error (agent id lookup, switch-agent itself, e.g. the session
+ * turned out to be busy or the target bundle failed to load) this logs and returns, leaving the
+ * DB record untouched so the next turn simply retries the switch against the still-current
+ * agent.
+ */
+async function switchOmnigentSessionAgent(
+  deps: OmnigentGatewayDeps,
+  email: string,
+  botId: string,
+  omnigentSessionId: string,
+  desiredAgentName: string,
+): Promise<void> {
+  try {
+    const agentId = await findOmnigentAgentIdByName(deps.client, email, desiredAgentName);
+    if (!agentId) {
+      throw new Error(`no Omnigent agent bundle named "${desiredAgentName}" is registered`);
+    }
+    await switchOmnigentAgent(deps.client, email, omnigentSessionId, agentId);
+    await deps.prisma.omnigentSession.update({
+      where: { botId },
+      data: { agentName: desiredAgentName },
+    });
+  } catch (error) {
+    getLogger().error("omnigent gateway: switch-agent failed, continuing on current agent", error);
+  }
 }
 
 /**

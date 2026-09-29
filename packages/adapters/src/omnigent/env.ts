@@ -3,8 +3,7 @@
 // whichever process runs "run.continue" jobs.
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import type { OmnigentGatewayDeps } from "./gateway.js";
-
-const DEFAULT_AGENT_NAME = "nova-pi";
+import { DEFAULT_AGENT_NAME } from "./harnesses.js";
 
 /**
  * `undefined` unless `NOVA_ENGINE=omnigent` is set, in which case it throws on a missing
