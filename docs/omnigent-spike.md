@@ -11,6 +11,8 @@ untouched and still the default.
 
 For how Nova composes per-turn context, records episodic memory and runs its tools on the
 Omnigent server, open [`nova-context-engine.html`](./nova-context-engine.html) in a browser.
+For the before/after of what this adds to a plain Omnigent session, see
+[`omnigent-memory-layer.html`](./omnigent-memory-layer.html).
 
 ## What's here
 

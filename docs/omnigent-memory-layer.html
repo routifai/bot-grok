@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Omnigent, Remembered</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F3F4F6;--surface:#FFFFFF;--ink:#13151A;--muted:#5A616E;--line:#DADEE5;--soft:#EBEDF1;
+  --accent:#0F7A6F;--accent-soft:#DFF1ED;--before:#8A909C;--before-soft:#E7E9ED;--warn:#A0660C;--warn-soft:#FBEFD9;
+  --c-inst:#5A616E;--c-hist:#B9BEC7;--c-comp:#D9A441;--c-static:#6B7280;--c-mem:#0F7A6F;--c-goal:#3E6FB0;--c-ep:#8A5AB5;--c-skill:#B07A1E;--c-ask:#B4412E;
+  --serif:"Instrument Serif",Georgia,serif;--sans:"Instrument Sans",system-ui,-apple-system,sans-serif;--mono:"Geist Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#0E1014;--surface:#161920;--ink:#E8EBEF;--muted:#98A0AB;--line:#29303A;--soft:#1D2129;
+  --accent:#4CC3B1;--accent-soft:#14302B;--before:#7A818D;--before-soft:#232830;--warn:#E3A546;--warn-soft:#30250F;
+  --c-inst:#8C94A1;--c-hist:#4A515C;--c-comp:#C99433;--c-static:#6E7582;--c-mem:#4CC3B1;--c-goal:#7FA6E0;--c-ep:#B893DA;--c-skill:#DDAA4E;--c-ask:#E58A73;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#0E1014;--surface:#161920;--ink:#E8EBEF;--muted:#98A0AB;--line:#29303A;--soft:#1D2129;
+  --accent:#4CC3B1;--accent-soft:#14302B;--before:#7A818D;--before-soft:#232830;--warn:#E3A546;--warn-soft:#30250F;
+  --c-inst:#8C94A1;--c-hist:#4A515C;--c-comp:#C99433;--c-static:#6E7582;--c-mem:#4CC3B1;--c-goal:#7FA6E0;--c-ep:#B893DA;--c-skill:#DDAA4E;--c-ask:#E58A73;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;padding-inline:20px;padding-block:0 96px}
+.wrap{max-width:1020px;margin:0 auto}
+h1,h2,h3{font-weight:400;margin:0;text-wrap:balance}
+h1{font-family:var(--serif);font-size:clamp(46px,7.4vw,80px);line-height:1}
+h1 .was{color:var(--before);text-decoration:line-through;text-decoration-thickness:2px}
+h1 em{color:var(--accent)}
+h2{font-family:var(--serif);font-size:clamp(30px,4vw,40px);line-height:1.1}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:68ch}
+.lede{font-size:19px;color:var(--muted);margin-top:16px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.eyebrow.before{color:var(--before)}
+header{padding-block:56px 30px;display:grid;gap:10px}
+section{padding-block:44px;border-top:1px solid var(--line);display:grid;gap:18px}
+code{font-family:var(--mono);font-size:.86em;background:var(--soft);padding:1px 5px;border-radius:5px}
+.muted{color:var(--muted)}
+.scroll{overflow-x:auto}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:800px){.vs{grid-template-columns:1fr}}
+.side{border-radius:16px;padding:20px;display:grid;gap:14px;align-content:start}
+.side.before{background:var(--before-soft);border:1px dashed var(--line)}
+.side.after{background:var(--surface);border:1px solid var(--accent)}
+.side h3{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pill{font-family:var(--mono);font-size:11px;border-radius:99px;padding:2px 9px;background:var(--surface);color:var(--muted);border:1px solid var(--line)}
+.side.after .pill{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+
+/* context window anatomy */
+.window{display:grid;gap:10px}
+.turns{display:grid;gap:6px}
+.turnrow{display:grid;grid-template-columns:54px 1fr;gap:10px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.bar{display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--soft)}
+.bar span{height:100%;transition:flex-grow .5s ease}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.ctl{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:14px}
+.ctl input{flex:1;min-width:180px;accent-color:var(--accent)}
+.ctl output{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+table{border-collapse:collapse;width:100%;min-width:680px;font-size:15px}
+th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+td.b{color:var(--muted)}
+td.a b{color:var(--accent);font-weight:600}
+td:first-child{font-weight:600;white-space:nowrap}
+
+/* three sessions */
+.sessions{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:800px){.sessions{grid-template-columns:1fr}}
+.sess{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:10px;align-content:start}
+.sess .when{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.bubble{font-size:14px;padding:8px 11px;border-radius:12px;max-width:95%}
+.bubble.you{background:var(--soft);justify-self:end}
+.bubble.nova{border:1px solid var(--line)}
+.knows{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
+.chip.lost{background:var(--before-soft);color:var(--before);text-decoration:line-through}
+.eng{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--muted)}
+
+.pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+@media (max-width:900px){.pillars{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.pillars{grid-template-columns:1fr}}
+.pillar{background:var(--surface);padding:18px;display:grid;gap:8px;align-content:start}
+.pillar .k{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+.pillar p{font-size:14px;color:var(--muted)}
+.pillar code{font-size:.8em}
+figure{margin:0;display:grid;gap:10px}
+figcaption{font-size:14px;color:var(--muted);max-width:75ch}
+svg text{font-family:var(--sans);font-size:12px;fill:currentColor}
+svg .m{font-family:var(--mono);font-size:11px}
+.dia{color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+.honest{display:grid;gap:10px}
+.honest div{display:grid;grid-template-columns:22px 1fr;gap:10px;font-size:15px;color:var(--muted)}
+.honest b{color:var(--ink);font-weight:600}
+.honest span{font-family:var(--mono);color:var(--warn)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Omnigent + Nova · the memory layer</span>
+  <h1><span class="was">Every session starts from zero.</span><br><em>Every session starts with you.</em></h1>
+  <p class="lede">Omnigent is an excellent engine: any harness, any runner, solid history management. What it doesn't have is a person. Each session knows its own transcript and nothing else. Nova adds a memory layer that the server composes into every turn, the same for every engine, private by default and bounded in size.</p>
+</header>
+
+<section>
+  <span class="eyebrow">The difference in one picture</span>
+  <h2>What fills the context window</h2>
+  <p>Drag through a long conversation. On the left, Omnigent on its own: instructions, then a transcript that grows until compaction kicks in. On the right, the same engine with Nova: the same transcript, plus a compact, recomposed block that knows the person. It's rebuilt every turn, so it never accumulates.</p>
+  <div class="ctl"><label for="turn">Turn</label><input id="turn" type="range" min="1" max="60" value="12"><output id="turn-o" for="turn">12</output></div>
+  <div class="vs">
+    <div class="side before window">
+      <h3>Omnigent alone <span class="pill">per session</span></h3>
+      <div class="turns" id="before-bars"></div>
+      <div class="legend"><span><i style="background:var(--c-inst)"></i>agent instructions</span><span><i style="background:var(--c-hist)"></i>transcript</span><span><i style="background:var(--c-comp)"></i>compaction summary</span></div>
+      <p class="muted" style="font-size:14px" id="before-note"></p>
+    </div>
+    <div class="side after window">
+      <h3>Omnigent + Nova <span class="pill">per person</span></h3>
+      <div class="turns" id="after-bars"></div>
+      <div class="legend"><span><i style="background:var(--c-inst)"></i>instructions</span><span><i style="background:var(--c-static)"></i>Nova voice + time</span><span><i style="background:var(--c-mem)"></i>memory</span><span><i style="background:var(--c-goal)"></i>goals</span><span><i style="background:var(--c-ep)"></i>episodes</span><span><i style="background:var(--c-skill)"></i>skills</span><span><i style="background:var(--c-ask)"></i>asks</span><span><i style="background:var(--c-hist)"></i>transcript</span></div>
+      <p class="muted" style="font-size:14px" id="after-note"></p>
+    </div>
+  </div>
+  <p class="muted" style="font-size:13px">Illustrative proportions. The Nova block is capped at 48 KiB and typically a few KiB. On composed-per-turn harnesses (Pi, Codex, OpenAI Agents) it's replaced every turn rather than appended, which is why its height stays flat.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Three conversations, a week apart</span>
+  <h2>What the agent knows when you come back</h2>
+  <div class="sessions">
+    <div class="sess">
+      <span class="when">Monday · <span class="eng">Pi</span></span>
+      <div class="bubble you">Compare the Scotiabank Passport and Amex Cobalt for me. I travel twice a year.</div>
+      <div class="bubble nova">Passport, for the lounge access and no FX fee. Want me to watch for bonus changes?</div>
+      <div class="knows"><span class="chip">episode: card comparison</span><span class="chip">fact: travels 2×/yr</span></div>
+    </div>
+    <div class="sess">
+      <span class="when">Thursday · <span class="eng">Claude</span> (switched)</span>
+      <div class="bubble you">Which card did we land on?</div>
+      <div class="bubble nova">Scotiabank Passport, from Monday's comparison: no FX fee and 6 lounge visits.</div>
+      <div class="knows"><span class="chip">recalled via past_episodes</span><span class="chip">same memory, new engine</span></div>
+    </div>
+    <div class="sess">
+      <span class="when">Next Monday · <span class="eng">Codex</span></span>
+      <div class="bubble you">Book-keeping time. Same format as last week.</div>
+      <div class="bubble nova">Using your saved "weekly expenses" skill. Short, as you like it.</div>
+      <div class="knows"><span class="chip">skill loaded</span><span class="chip">pref: short answers</span></div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:14px">Illustrative example. Without the Nova layer, each of these three is a fresh session: the Thursday question gets "I don't have access to earlier conversations", even on the same engine. Omnigent's Hermes integration deletes Hermes's own home directory when a session closes, so even Hermes's built-in memory resets.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Side by side</span>
+  <h2>What changed, dimension by dimension</h2>
+  <div class="scroll"><table>
+    <thead><tr><th></th><th>Omnigent alone</th><th>With Nova</th></tr></thead>
+    <tbody>
+      <tr><td>Knows the person</td><td class="b">Only what's in this session's transcript or the agent spec</td><td class="a"><b>Notes and profile</b> (About you, Nova's own notes, timezone) in every private turn</td></tr>
+      <tr><td>Remembers past work</td><td class="b"><code>search_conversations</code> if the model thinks to call it</td><td class="a"><b>Episodes</b>: every finished task recorded automatically; the top 3 injected by relevance; <code>nova_recall_episodes</code> for depth</td></tr>
+      <tr><td>Across engines</td><td class="b">Harness-local memory (Claude's files, Hermes's home) that doesn't carry over</td><td class="a"><b>Composed on the server</b>, so Pi, Claude, Codex, OpenAI Agents and Hermes read the same person</td></tr>
+      <tr><td>Long conversations</td><td class="b">Transcript grows until compaction clears, summarizes, truncates</td><td class="a"><b>Same compaction</b>, but durable facts live outside the transcript, so compaction can't lose them</td></tr>
+      <tr><td>Prompt growth</td><td class="b">Anything injected as messages piles up in history</td><td class="a"><b>Recomposed per turn</b> into instructions: one block, never N copies</td></tr>
+      <tr><td>Budget</td><td class="b">Whatever the history weighs</td><td class="a"><b>48 KiB ceiling</b> with per-section caps and priority drop order</td></tr>
+      <tr><td>Privacy</td><td class="b">Session permissions only</td><td class="a"><b>Scope label, fail-closed</b>: only <code>nova.scope=private</code> sees memory; owner-only endpoints; collaborators get 404</td></tr>
+      <tr><td>Acting on memory</td><td class="b">Generic tools</td><td class="a"><b>Ten Nova tools</b> that run on the server: remember, recall, goals, ask, follow, post, skills</td></tr>
+      <tr><td>Learning</td><td class="b">None built in</td><td class="a"><b>Skills</b> offered only when earned (successful, a real procedure, done before); update, don't duplicate</td></tr>
+      <tr><td>Waiting on the person</td><td class="b">Elicitations live in memory and die on restart</td><td class="a"><b>Durable asks</b>, answered after a restart by posting into the session</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">How it works</span>
+  <h2>Four ideas do all the work</h2>
+  <div class="pillars">
+    <div class="pillar"><span class="k">1 · The hook</span><h3>Context comes from the server</h3><p>Omnigent can append a <code>&lt;deployment_context&gt;</code> block to instructions. We moved who builds it: the runner asks <code>POST /sessions/{id}/deployment-context</code>, and with <code>OMNIGENT_CONTEXT_PROVIDER=nova</code> the server composes it in process. The runner never holds a secret or a database.</p></div>
+    <div class="pillar"><span class="k">2 · Sections</span><h3>Primitives compete for space</h3><p>Memory (20, 32 KiB), goals (30, 8 KiB), episodes (40, 3 KiB), skills (45, 2 KiB), asks (60, 1 KiB). Gathered concurrently, sorted by priority, capped, and dropped whole from the bottom when over 48 KiB.</p></div>
+    <div class="pillar"><span class="k">3 · Events</span><h3>Episodes write themselves</h3><p>On <code>response.completed</code> a detached task walks the turn back to your message; if a work tool ran, it upserts one episode keyed by turn. Ranking: title hits ×2, summary ×1, × <code>1/(1+age/60)</code>.</p></div>
+    <div class="pillar"><span class="k">4 · Scope</span><h3>Private is explicit</h3><p><code>scope_from_labels</code> returns private only for an explicit label. One resolver (<code>private_actor</code>) with an owner grant decides whose data a tool may touch, and every callback requires <code>LEVEL_OWNER</code>.</p></div>
+  </div>
+  <figure>
+    <div class="dia scroll">
+    <svg viewBox="0 0 940 200" role="img" aria-label="Memory loop: a turn produces an episode and possibly a remembered fact; both are stored in Nova tables on the server; the next turn's composer reads them back into the context block; the model sees the person again, on any engine." style="width:100%;min-width:760px;height:auto">
+      <defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.2">
+        <rect x="10" y="70" width="150" height="60" rx="10"/>
+        <rect x="230" y="20" width="170" height="54" rx="10"/>
+        <rect x="230" y="126" width="170" height="54" rx="10"/>
+        <rect x="470" y="70" width="170" height="60" rx="10" stroke="var(--accent)" stroke-width="2"/>
+        <rect x="710" y="70" width="220" height="60" rx="10"/>
+        <path d="M160 90 C195 90 195 47 228 47" marker-end="url(#m)"/>
+        <path d="M160 110 C195 110 195 153 228 153" marker-end="url(#m)"/>
+        <path d="M400 47 C435 47 435 90 468 90" marker-end="url(#m)"/>
+        <path d="M400 153 C435 153 435 110 468 110" marker-end="url(#m)"/>
+        <line x1="640" y1="100" x2="708" y2="100" marker-end="url(#m)"/>
+        <path d="M820 130 C820 190 85 190 85 132" marker-end="url(#m)" stroke-dasharray="4 3"/>
+      </g>
+      <text x="85" y="96" text-anchor="middle">This turn</text><text x="85" y="114" text-anchor="middle" class="m" opacity=".6">any engine</text>
+      <text x="315" y="44" text-anchor="middle">nova_remember</text><text x="315" y="62" text-anchor="middle" class="m" opacity=".6">facts → nova_memory_*</text>
+      <text x="315" y="150" text-anchor="middle">episode observer</text><text x="315" y="168" text-anchor="middle" class="m" opacity=".6">events → nova_episodes</text>
+      <text x="555" y="96" text-anchor="middle">composer</text><text x="555" y="114" text-anchor="middle" class="m" opacity=".6">rank · cap · scope</text>
+      <text x="820" y="96" text-anchor="middle">&lt;deployment_context&gt;</text><text x="820" y="114" text-anchor="middle" class="m" opacity=".6">next turn's instructions</text>
+      <text x="470" y="194" text-anchor="middle" class="m" opacity=".6">the next turn, days later, maybe on a different engine</text>
+    </svg>
+    </div>
+    <figcaption>The loop that turns a stateless engine into one that knows you. Writes happen during and after the turn, reads happen at the start of the next one, and both go through the server, so the engine and the runner stay interchangeable.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow">Proven, and not yet</span>
+  <h2>Where it stands</h2>
+  <div class="honest">
+    <div><span>✓</span><p><b>Live on a local build (Pi):</b> "Remember that I prefer short answers" wrote a memory note through the server-side tool; the next turn answered "You prefer short answers, saved for future chats."</p></div>
+    <div><span>✓</span><p><b>Tested:</b> 449 Nova tests plus endpoint tests for owner-only context and server-side tools.</p></div>
+    <div><span>…</span><p><b>Cross-engine recall on Claude</b> is wired and waiting on a valid Anthropic key in the build.</p></div>
+    <div><span>…</span><p><b>Next:</b> Portrait, evidence-scored traits (explicitness × recency half-life × repetition per conversation) with only confident traits injected, and Canvas cards for visual answers.</p></div>
+  </div>
+</section>
+</div>
+
+<script>
+(function(){
+  var r=document.getElementById('turn'),o=document.getElementById('turn-o');
+  var bb=document.getElementById('before-bars'),ab=document.getElementById('after-bars');
+  var bn=document.getElementById('before-note'),an=document.getElementById('after-note');
+  var CAP=100; // relative window
+  function row(label,parts){
+    var d=document.createElement('div');d.className='turnrow';
+    var l=document.createElement('span');l.textContent=label;d.appendChild(l);
+    var bar=document.createElement('div');bar.className='bar';
+    parts.forEach(function(p){if(p[1]<=0)return;var s=document.createElement('span');s.style.flexGrow=p[1];s.style.flexBasis='0';s.style.background='var('+p[0]+')';s.title=p[2];bar.appendChild(s)});
+    var used=parts.reduce(function(a,p){return a+Math.max(0,p[1])},0);
+    if(used<CAP){var e=document.createElement('span');e.style.flexGrow=CAP-used;e.style.flexBasis='0';e.style.background='transparent';bar.appendChild(e)}
+    d.appendChild(bar);return d;
+  }
+  function hist(t){return Math.min(t*3.2,200)}
+  function before(t){
+    var inst=6,h=hist(t),comp=0,room=CAP-inst;
+    if(h>room){comp=10;h=room-comp}
+    return [['--c-inst',inst,'instructions'],['--c-comp',comp,'compaction summary'],['--c-hist',h,'transcript']];
+  }
+  function after(t){
+    var inst=6,st=4,mem=7,goal=3,ep=2,sk=1,ask=1,block=st+mem+goal+ep+sk+ask,h=hist(t),comp=0,room=CAP-inst-block;
+    if(h>room){comp=8;h=room-comp}
+    return [['--c-inst',inst,'instructions'],['--c-static',st,'Nova voice + time'],['--c-mem',mem,'memory'],['--c-goal',goal,'goals'],['--c-ep',ep,'episodes'],['--c-skill',sk,'skills'],['--c-ask',ask,'asks'],['--c-comp',comp,'compaction summary'],['--c-hist',h,'transcript']];
+  }
+  function render(){
+    var t=+r.value;o.value=t;bb.innerHTML='';ab.innerHTML='';
+    [Math.max(1,Math.round(t/3)),Math.max(1,Math.round(t*2/3)),t].forEach(function(n){bb.appendChild(row('turn '+n,before(n)));ab.appendChild(row('turn '+n,after(n)))});
+    var compacted=hist(t)>CAP-6;
+    bn.textContent=compacted?'Compaction has summarized the early turns. Anything the person said there now exists only as a summary, and nothing survives past this session.':'Everything the agent knows about the person is in this transcript, and it disappears when the session ends.';
+    an.textContent=compacted?'Compaction still runs on the transcript, but preferences, goals and past work stay intact in the recomposed block above it, and will be there next session too.':'The Nova block stays the same size on every turn: rebuilt from the database, not appended to history.';
+  }
+  r.addEventListener('input',render);render();
+})();
+</script>
+</body>
+</html>
