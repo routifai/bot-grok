@@ -18,6 +18,7 @@ import {
   createOmnigentSession,
   findOmnigentAgentIdByName,
   getOmnigentSession,
+  isSessionNotFoundError,
   listOmnigentHostDirectory,
   listOmnigentHosts,
   type OmnigentClientConfig,
@@ -310,6 +311,8 @@ async function checkSessionRepair(
       snapshot.labels?.[SUPERSIDE_CHAT_MODE_LABEL] !== SUPERSIDE_CHAT_MODE_VALUE;
     return { needsRepair, hostId: snapshot.host_id ?? null };
   } catch (error) {
+    // A session the engine no longer has can never take a turn: recreate it.
+    if (isSessionNotFoundError(error)) return { needsRepair: true, hostId: null };
     getLogger().error("omnigent gateway: session snapshot check failed, continuing", error);
     return { needsRepair: false, hostId: null };
   }

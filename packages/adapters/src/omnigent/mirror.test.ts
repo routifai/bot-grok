@@ -198,6 +198,23 @@ describe("reconcileOmnigentMirror", () => {
     expect(finalizeRun).not.toHaveBeenCalled();
   });
 
+  it("skips a Super Chat the engine no longer has, leaving the cursor alone", async () => {
+    listOmnigentSessionItems.mockRejectedValue(
+      new OmnigentApiError("omnigent list session items failed (404): ", "not_found"),
+    );
+    const prisma = fakePrisma();
+    const finalizeRun = vi.fn();
+    await reconcileOmnigentMirror({
+      prisma,
+      events: fakeEvents(finalizeRun),
+      client: CLIENT,
+      secrets: [],
+      workerId: "w",
+    });
+    expect(finalizeRun).not.toHaveBeenCalled();
+    expect(prisma.omnigentSession.update).not.toHaveBeenCalled();
+  });
+
   it("resets a stale cursor to null and retries from the start next tick", async () => {
     listOmnigentSessionItems.mockRejectedValue(
       new OmnigentApiError("omnigent list session items failed (400): ", "stale_cursor"),

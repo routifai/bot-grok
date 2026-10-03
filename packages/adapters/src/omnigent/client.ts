@@ -68,6 +68,11 @@ export function isStaleCursorError(error: unknown): boolean {
   return error instanceof OmnigentApiError && error.code === "stale_cursor";
 }
 
+/** The engine no longer has the session (deleted, or a different engine database). */
+export function isSessionNotFoundError(error: unknown): boolean {
+  return error instanceof OmnigentApiError && error.code === "not_found";
+}
+
 /**
  * Throws `OmnigentApiError` on a non-2xx response. The body is redacted with `secrets` before
  * it reaches the thrown message (item 5, docs/super-chat/WIRING.md review); when `secrets` is

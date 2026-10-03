@@ -24,7 +24,8 @@ const {
   switchOmnigentAgent: vi.fn(),
 }));
 
-vi.mock("./client.js", () => ({
+vi.mock("./client.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./client.js")>()),
   createOmnigentHostDirectory,
   createOmnigentSession,
   findOmnigentAgentIdByName,
@@ -622,6 +623,44 @@ describe("runTurnOnOmnigent", () => {
           }),
         }),
       );
+      expect(postOmnigentMessage).toHaveBeenCalledWith(
+        DEPS_BASE.client,
+        "person@example.test",
+        "conv_new",
+        "hello",
+      );
+    });
+
+    it("recreates the session when the engine no longer has it", async () => {
+      const upsertMock = vi.fn(async () => ({
+        omnigentSessionId: "conv_new",
+        agentName: "nova-claude",
+        runnerLocation: "computer",
+      }));
+      const prisma = fakePrisma({
+        omnigentSession: {
+          findUnique: vi.fn(async () => ({
+            botId: "bot-1",
+            omnigentSessionId: "conv_gone",
+            agentName: "nova-claude",
+            runnerLocation: "computer",
+          })),
+          upsert: upsertMock,
+          update: vi.fn(),
+        },
+      });
+      const { OmnigentApiError } = await import("./client.js");
+      getOmnigentSession.mockRejectedValue(
+        new OmnigentApiError("omnigent get session failed (404)", "not_found"),
+      );
+
+      const result = await runTurnOnOmnigent(
+        { prisma, events: fakeEvents(), ...DEPS_BASE },
+        "run-1",
+        "worker-1",
+      );
+
+      expect(result).toBe(true);
       expect(postOmnigentMessage).toHaveBeenCalledWith(
         DEPS_BASE.client,
         "person@example.test",

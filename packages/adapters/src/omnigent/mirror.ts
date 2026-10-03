@@ -15,6 +15,7 @@ import { containsSecret, redactSecrets } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import {
+  isSessionNotFoundError,
   isStaleCursorError,
   listOmnigentSessionItems,
   type OmnigentClientConfig,
@@ -118,6 +119,8 @@ async function mirrorOneSuperChat(
       });
       return;
     }
+    // The engine no longer has this session; the next turn recreates it.
+    if (isSessionNotFoundError(error)) return;
     throw error;
   }
 
