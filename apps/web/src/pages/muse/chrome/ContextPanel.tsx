@@ -39,7 +39,11 @@ import {
 import { StatusPill, Surface } from "../ui";
 import { ActivityPanel } from "./ActivityPanel";
 import type { ActivityWire } from "./ActivityRunDialog";
-import { deriveConnectionStatus } from "./connectionStatus";
+import {
+  type ConnectionLatch,
+  INITIAL_CONNECTION_LATCH,
+  nextConnectionLatch,
+} from "./connectionStatus";
 import { MemoryTab, type MemoryWire } from "./MemoryTab";
 import { type ActivitiesState, useActivities } from "./useActivities";
 import type { ChatListState } from "./useChatList";
@@ -474,8 +478,11 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
 }
 
 /** The panel's one Agent Identity header (docs/muse/DESIGN.md "The Muse"): the Muse's own
- * face, its name, and a Connection Status line — the single place its identity shows on
- * the Muse screen (the sidebar no longer repeats it, MuseSidebar.tsx). */
+ * face, its name, and a Connection Status line (the sidebar no longer repeats it,
+ * MuseSidebar.tsx). This panel is hidden below `xl`, when the person collapses it, or
+ * while a side panel (computer/settings) is open, so it isn't always the one place —
+ * `ConversationHeader.tsx`'s compact identity covers exactly those cases, so the Muse's
+ * identity still shows once, whichever of the two is visible. */
 function IdentityHeader({
   botId,
   museName,
@@ -581,7 +588,14 @@ export function ContextPanel({
     loadingEarlier: liveActivities.loadingEarlier,
   };
   const memoryWireToUse = memoryWire ?? liveMemoryWire;
-  const connection = deriveConnectionStatus(activitiesData.state, chatListState);
+  const [connectionLatch, setConnectionLatch] = useState<ConnectionLatch>(INITIAL_CONNECTION_LATCH);
+  // `activitiesData.state`/`chatListState` change identity on every poll round (success or
+  // failure alike, useActivities.ts / useChatList.ts) — exactly the "once per observed
+  // round" cadence the latch wants (connectionStatus.ts's `nextConnectionLatch`).
+  useEffect(() => {
+    setConnectionLatch((prev) => nextConnectionLatch(prev, activitiesData.state, chatListState));
+  }, [activitiesData.state, chatListState]);
+  const connection = connectionLatch.status;
 
   useEffect(() => {
     const current = ++generation.current;

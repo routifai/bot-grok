@@ -1,5 +1,5 @@
 import type { Activity } from "@aiden/contracts";
-import { expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   ACTIVITY_POLL_ACTIVE_MS,
   ACTIVITY_POLL_IDLE_MS,
@@ -9,7 +9,21 @@ import {
   activityStatusMark,
   groupActivitiesByDate,
   isHelperActivity,
+  mergeNewestPage,
 } from "./activityGrouping";
+
+// The day-grouping helpers read the local calendar day off `Date` getters, which follow
+// `process.env.TZ`. Pin it to UTC by default so every other test here is deterministic
+// regardless of the machine running it; the one test that cares about a different zone
+// sets its own and relies on this file's `afterEach` to restore it.
+let originalTZ: string | undefined;
+beforeEach(() => {
+  originalTZ = process.env.TZ;
+  process.env.TZ = "UTC";
+});
+afterEach(() => {
+  process.env.TZ = originalTZ;
+});
 
 function activity(overrides: Partial<Activity> = {}): Activity {
   return {
@@ -81,10 +95,10 @@ it("labels today and yesterday, and a weekday+date for anything older", () => {
 it("groups a newest-first list by day, keeping order, without re-sorting", () => {
   const now = new Date("2026-10-03T15:00:00.000Z");
   const activities = [
-    activity({ id: "a1", date: "2026-10-03" }),
-    activity({ id: "a2", date: "2026-10-03" }),
-    activity({ id: "a3", date: "2026-10-02" }),
-    activity({ id: "a4", date: "2026-09-20" }),
+    activity({ id: "a1", startedAt: "2026-10-03T14:00:00.000Z" }),
+    activity({ id: "a2", startedAt: "2026-10-03T09:00:00.000Z" }),
+    activity({ id: "a3", startedAt: "2026-10-02T20:00:00.000Z" }),
+    activity({ id: "a4", startedAt: "2026-09-20T12:00:00.000Z" }),
   ];
   const groups = groupActivitiesByDate(activities, now);
   expect(groups).toHaveLength(3);
@@ -96,6 +110,49 @@ it("groups a newest-first list by day, keeping order, without re-sorting", () =>
   expect(groups[2]?.activities.map((a) => a.id)).toEqual(["a4"]);
 });
 
+it("groups by the viewer's local calendar day, ignoring the engine's own `date` field", () => {
+  // The engine's `date` says "2026-10-04"; the instant is still "2026-10-03" evening in
+  // New York (UTC-4 in October) — the viewer's own calendar day, which is what the panel
+  // must group by, not the server's.
+  process.env.TZ = "America/New_York";
+  const now = new Date("2026-10-03T12:00:00.000Z"); // 8am in New York, Oct 3
+  const activities = [
+    activity({ id: "a1", date: "2026-10-04", startedAt: "2026-10-03T23:30:00.000Z" }),
+  ];
+  const groups = groupActivitiesByDate(activities, now);
+  expect(groups).toHaveLength(1);
+  expect(groups[0]?.date).toBe("2026-10-03");
+  expect(groups[0]?.label).toEqual({ kind: "today" });
+});
+
 it("returns nothing for an empty list", () => {
   expect(groupActivitiesByDate([], new Date())).toEqual([]);
+});
+
+it("merges a freshly-polled newest page into the already-loaded list without losing earlier pages", () => {
+  const loadedViaOlder = activity({ id: "old-1", title: "Set up the weekly KPI routine" });
+  const existing = [
+    activity({ id: "a1", status: "in_progress", outcome: "Comparing line 40 of 84" }),
+    activity({ id: "a2", status: "done" }),
+    loadedViaOlder,
+  ];
+  // The newest poll: "a1" finished since the last poll, "a2" is unchanged, and "a3" is
+  // genuinely new (wasn't in the list before).
+  const newest = [
+    activity({ id: "a3", title: "Brand new turn" }),
+    activity({ id: "a1", status: "done", outcome: "Everything ties out." }),
+    activity({ id: "a2", status: "done" }),
+  ];
+  const merged = mergeNewestPage(existing, newest);
+  expect(merged.map((a) => a.id)).toEqual(["a3", "a1", "a2", "old-1"]);
+  // "a1" is updated in place (same position as before), not moved to the front.
+  expect(merged[1]).toEqual(newest[1]);
+  // The page loaded via "Load earlier" survives untouched.
+  expect(merged.at(-1)).toEqual(loadedViaOlder);
+});
+
+it("leaves the list untouched when the newest page has nothing new or changed", () => {
+  const existing = [activity({ id: "a1" }), activity({ id: "a2" })];
+  const merged = mergeNewestPage(existing, [activity({ id: "a1" })]);
+  expect(merged.map((a) => a.id)).toEqual(["a1", "a2"]);
 });

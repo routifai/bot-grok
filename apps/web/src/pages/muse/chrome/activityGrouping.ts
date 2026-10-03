@@ -84,8 +84,11 @@ export interface ActivityGroup {
 }
 
 /** Groups Activities — already newest-first from `activities.list` — by calendar day,
- * keeping that order. A day's Activities are always contiguous in a newest-first list,
- * so this never needs to re-sort, only to notice when `date` changes. */
+ * keeping that order. The engine's own `date` field is in its own (UTC) terms, so this
+ * ignores it and derives the day from `startedAt` in the viewer's local timezone instead
+ * — the point of "grouped by day" is the day it looked like to the person, not to the
+ * server. A day's Activities are always contiguous in a newest-first list, so this never
+ * needs to re-sort, only to notice when the local day changes. */
 export function groupActivitiesByDate(
   activities: readonly Activity[],
   now: Date,
@@ -93,16 +96,35 @@ export function groupActivitiesByDate(
 ): ActivityGroup[] {
   const groups: ActivityGroup[] = [];
   for (const activity of activities) {
+    const localDate = dateKey(new Date(activity.startedAt));
     const last = groups.at(-1);
-    if (last && last.date === activity.date) {
+    if (last && last.date === localDate) {
       last.activities.push(activity);
       continue;
     }
     groups.push({
-      date: activity.date,
-      label: activityDateLabel(activity.date, now, locale),
+      date: localDate,
+      label: activityDateLabel(localDate, now, locale),
       activities: [activity],
     });
   }
   return groups;
+}
+
+/**
+ * Merges a freshly-polled newest page into the Activity list already loaded (which may
+ * include older pages fetched via "Load earlier"): updates rows the newest page also
+ * has (by id, in place — so an Activity that finished since the last poll doesn't jump
+ * position), and prepends any genuinely new ones in front. Never drops a row the newest
+ * page doesn't mention — that's how "Load earlier" survives the next poll.
+ */
+export function mergeNewestPage(
+  current: readonly Activity[],
+  newest: readonly Activity[],
+): Activity[] {
+  const freshById = new Map(newest.map((activity) => [activity.id, activity]));
+  const updatedExisting = current.map((activity) => freshById.get(activity.id) ?? activity);
+  const currentIds = new Set(current.map((activity) => activity.id));
+  const newOnes = newest.filter((activity) => !currentIds.has(activity.id));
+  return [...newOnes, ...updatedExisting];
 }

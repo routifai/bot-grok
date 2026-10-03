@@ -2,7 +2,11 @@ import type { Activity } from "@aiden/contracts";
 import { ORPCError } from "@orpc/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
-import { ACTIVITY_POLL_IDLE_MS, activitiesPollIntervalMs } from "./activityGrouping";
+import {
+  ACTIVITY_POLL_IDLE_MS,
+  activitiesPollIntervalMs,
+  mergeNewestPage,
+} from "./activityGrouping";
 
 /** The Activity panel's wire: a Muse's Activity Feed, or why it can't be shown. */
 export type ActivitiesState =
@@ -13,8 +17,12 @@ export type ActivitiesState =
 
 const PAGE_SIZE = 30;
 
+// `NOT_IMPLEMENTED`: the backend doesn't serve `activities.*` in this environment.
+// `NOT_FOUND`: this Muse has no Conversation yet (a brand new Muse) — both are the
+// calm "nothing yet" state, never "Could not load…" (docs/super-chat/README.md: the
+// Activity panel's own empty state already says this plainly).
 const isUnavailable = (error: unknown) =>
-  error instanceof ORPCError && error.code === "NOT_IMPLEMENTED";
+  error instanceof ORPCError && (error.code === "NOT_IMPLEMENTED" || error.code === "NOT_FOUND");
 
 function epochSeconds(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
@@ -44,7 +52,20 @@ export function useActivities(botId: string): {
       .list({ botId, limit: PAGE_SIZE })
       .then((page) => {
         if (current !== generation.current) return;
-        setState({ status: "ready", activities: page.activities, hasMore: page.hasMore });
+        // The poll only ever re-fetches the newest page. Merge it into whatever's
+        // already loaded (which may include older pages from "Load earlier") instead of
+        // replacing the list outright, and leave `hasMore` as it was — it describes
+        // pagination past the *oldest* loaded Activity, which this fetch says nothing
+        // about. Only the very first load (nothing "ready" yet) takes the page as-is.
+        setState((prev) =>
+          prev.status === "ready"
+            ? {
+                status: "ready",
+                activities: mergeNewestPage(prev.activities, page.activities),
+                hasMore: prev.hasMore,
+              }
+            : { status: "ready", activities: page.activities, hasMore: page.hasMore },
+        );
       })
       .catch((error: unknown) => {
         if (current !== generation.current) return;

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Ask, Goal } from "@aiden/contracts";
+import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -385,6 +386,30 @@ it("shows the Activity tab by default, grouped by day", async () => {
   }
 });
 
+it("shows the calm Activity empty state — not an error — when the Muse has no Conversation yet", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.goals.list.mockResolvedValue([]);
+  // NOT_FOUND here means "this Muse has no Conversation yet" (a brand new Muse) — the
+  // normal state, not a failure.
+  api.activities.list.mockRejectedValue(
+    new ORPCError("NOT_FOUND", { message: "This Muse has no Conversation yet" }),
+  );
+  const page = await renderPanel();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.querySelector("[data-testid='activity-empty']")).toBeTruthy();
+      });
+    });
+    expect(page.container.textContent).toContain("Nothing yet");
+    expect(page.container.textContent).not.toContain("Could not load");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
 it("shows the Memory tab's sections, read-only, when switched to", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
@@ -431,6 +456,33 @@ it("shows a one-line empty state when nothing is remembered yet", async () => {
       });
     });
     expect(page.container.textContent).toContain("Nothing remembered yet.");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("shows the calm Memory empty state — not an error — when the Muse has no Conversation yet", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.goals.list.mockResolvedValue([]);
+  api.memory.profile.mockRejectedValue(
+    new ORPCError("NOT_FOUND", { message: "This Muse has no Conversation yet" }),
+  );
+  const page = await renderPanel();
+  try {
+    await act(async () => {
+      page.container
+        .querySelector<HTMLButtonElement>("[data-testid='context-panel-tab-memory']")
+        ?.click();
+    });
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.querySelector("[data-testid='memory-empty']")).toBeTruthy();
+      });
+    });
+    expect(page.container.textContent).toContain("Nothing remembered yet.");
+    expect(page.container.textContent).not.toContain("Could not load");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

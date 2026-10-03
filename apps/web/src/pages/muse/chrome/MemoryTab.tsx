@@ -1,7 +1,14 @@
 import { useLingui } from "@lingui/react/macro";
+import { ORPCError } from "@orpc/client";
 import { useEffect, useRef, useState } from "react";
 import { type MemoryProfileSection, parseMemoryProfile } from "./memoryProfile";
 import { PanelRowSkeletonList } from "./PanelSkeleton";
+
+// `NOT_IMPLEMENTED`: `memory.profile` isn't served in this environment. `NOT_FOUND`: this
+// Muse has no Conversation yet (a brand new Muse) — both read as "nothing remembered
+// yet", never "Could not load…" (same reasoning as useActivities.ts's `isUnavailable`).
+const isEmptyBackend = (error: unknown) =>
+  error instanceof ORPCError && (error.code === "NOT_IMPLEMENTED" || error.code === "NOT_FOUND");
 
 /** The Memory tab's wire: `rpc.memory.profile`, kept explicit (not the `rpc` client)
  * so the dev fixture page can supply a fake — same convention as `ActivityWire`
@@ -35,8 +42,9 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
         if (current !== generation.current) return;
         setState({ status: "ready", sections: parseMemoryProfile(result.profile) });
       })
-      .catch(() => {
-        if (current === generation.current) setState({ status: "error" });
+      .catch((error: unknown) => {
+        if (current !== generation.current) return;
+        setState(isEmptyBackend(error) ? { status: "ready", sections: [] } : { status: "error" });
       });
     return () => {
       generation.current += 1;

@@ -2452,9 +2452,14 @@ export function ShellPage() {
               {museMode && active ? (
                 <ConversationHeader
                   botId={active.id}
+                  museName={active.name}
                   color={active.color}
                   runs={currentRuns}
                   messages={activeSnapshot?.messages}
+                  // Same condition as the context panel's own `collapsed` below: whenever
+                  // its identity header isn't visible (collapsed, a side panel open, or
+                  // below `xl`), this header's compact identity covers it instead.
+                  identityCollapsed={contextPanelCollapsed || panel !== null}
                   onOpenWaiting={() => setWaitingOpen(true)}
                   actions={
                     <>

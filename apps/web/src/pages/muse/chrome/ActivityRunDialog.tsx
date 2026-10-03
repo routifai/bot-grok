@@ -226,21 +226,41 @@ export function ActivityRunDialog({
   const [helperOpen, setHelperOpen] = useState(false);
   const generation = useRef(0);
 
+  // Only a genuinely different Activity (or closing) resets the view — a status change
+  // on the same one (below) must not kick the person out of the Helper messages they
+  // might be reading back to Steps.
   useEffect(() => {
     setDetail(null);
     setHelperOpen(false);
+  }, [activity?.id]);
+
+  // Fetches full detail (Steps) once, then — while this Activity is still in
+  // progress — every ~5s, so the run page doesn't go stale while it's open; stops the
+  // moment it finishes (or the dialog closes).
+  useEffect(() => {
     if (!activity) return;
+    const activityId = activity.id;
     const current = ++generation.current;
-    void wire
-      .get({ botId, activityId: activity.id })
-      .then((full) => {
-        if (current === generation.current) setDetail(full);
-      })
-      .catch(() => undefined);
-    return () => {
-      generation.current += 1;
+    let cancelled = false;
+    const fetchDetail = () => {
+      void wire
+        .get({ botId, activityId })
+        .then((full) => {
+          if (!cancelled && current === generation.current) setDetail(full);
+        })
+        .catch(() => undefined);
     };
-  }, [botId, activity, wire]);
+    fetchDetail();
+    let timer: number | undefined;
+    if (activity.status === "in_progress") {
+      timer = window.setInterval(fetchDetail, 5_000);
+    }
+    return () => {
+      cancelled = true;
+      generation.current += 1;
+      if (timer !== undefined) window.clearInterval(timer);
+    };
+  }, [botId, activity?.id, activity?.status, wire]);
 
   if (!activity) return null;
   const steps = detail?.steps ?? [];

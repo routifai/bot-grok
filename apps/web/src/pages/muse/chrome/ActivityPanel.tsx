@@ -105,12 +105,26 @@ function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => v
   );
 }
 
+/** The same calm line, whichever of "truly nothing yet" or "this Muse has no
+ * Conversation yet" (NOT_FOUND) it's for — both read the same to the person. */
+function EmptyActivities() {
+  const { t } = useLingui();
+  return (
+    <p
+      className="py-8 text-center text-[13.5px] text-muted-foreground"
+      data-testid="activity-empty"
+    >
+      {t`Nothing yet — once I do something, it shows up here.`}
+    </p>
+  );
+}
+
 /**
  * The Activity panel's ledger (docs/super-chat/README.md "The Activity panel"): a quiet
  * log beside the Conversation, one calm line per piece of work, grouped by day, newest
- * first. Opening a line opens the run page (ActivityRunDialog). Renders nothing while
- * the backend doesn't serve `activities.*` yet (NOT_IMPLEMENTED) — no heading, no
- * disabled state — same rule `ChatTree` follows for `chats.*`.
+ * first. Opening a line opens the run page (ActivityRunDialog), which is kept resynced
+ * to this same list by id, so it never shows a stale snapshot while the poll updates
+ * the row behind it.
  */
 export function ActivityPanel({
   botId,
@@ -126,25 +140,25 @@ export function ActivityPanel({
   loadingEarlier: boolean;
 }) {
   const { t, i18n } = useLingui();
-  const [openActivity, setOpenActivity] = useState<Activity | null>(null);
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
 
-  if (state.status === "unavailable") return null;
+  // Both read as "nothing to show yet" — a brand new Muse with no Conversation
+  // (NOT_FOUND) looks the same here as a feature not wired up in this environment
+  // (NOT_IMPLEMENTED); neither is an error.
+  if (state.status === "unavailable") return <EmptyActivities />;
   if (state.status === "loading") return <PanelRowSkeletonList count={4} />;
   if (state.status === "error") {
     return <p className="text-[13px] text-destructive">{t`Could not load Activity`}</p>;
   }
 
   const groups = groupActivitiesByDate(state.activities, new Date(), i18n.locale);
+  // Resynced by id every render, not the clicked snapshot — so the run page reflects
+  // whatever the latest poll merged into `state.activities` (useActivities.ts).
+  const openActivity =
+    (openActivityId && state.activities.find((activity) => activity.id === openActivityId)) || null;
 
   if (groups.length === 0) {
-    return (
-      <p
-        className="py-8 text-center text-[13.5px] text-muted-foreground"
-        data-testid="activity-empty"
-      >
-        {t`Nothing yet — once I do something, it shows up here.`}
-      </p>
-    );
+    return <EmptyActivities />;
   }
 
   return (
@@ -163,7 +177,7 @@ export function ActivityPanel({
               <ActivityRow
                 key={activity.id}
                 activity={activity}
-                onOpen={() => setOpenActivity(activity)}
+                onOpen={() => setOpenActivityId(activity.id)}
               />
             ))}
           </div>
@@ -186,7 +200,7 @@ export function ActivityPanel({
         wire={wire}
         activity={openActivity}
         onOpenChange={(open) => {
-          if (!open) setOpenActivity(null);
+          if (!open) setOpenActivityId(null);
         }}
       />
     </div>
