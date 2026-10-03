@@ -9,7 +9,7 @@ The one persistent agent a person has. It owns the conversation, the memory, and
 _Avoid_: bot, assistant, Chief, teammate
 
 **Helper**:
-A short-lived agent the Muse starts for one piece of work. It starts with no history, cannot talk to the person, and ends when its work is done.
+A short-lived agent the Muse starts for one piece of work. It starts with no history (only its brief and what the Muse remembers about the person), cannot talk to the person, and ends when its work is done; its result goes back to the chat that started it. Its status shows as an Activity. In the engine it is a Sub-agent.
 _Avoid_: subagent, sub-bot, peer bot, worker
 
 **Goal**:
@@ -31,6 +31,18 @@ _Avoid_: notification, approval card, request, inbox item
 **Conversation**:
 The one ongoing chat between the person and their Muse. Background Goal work never happens here; it only reports back here.
 _Avoid_: thread, chat, main thread
+
+**Side chat**:
+A separate, full-size chat the person (or the Muse, when asked) opens from the Conversation for one focused topic. It starts either knowing the Conversation (a summary plus recent turns) or blank (only what the Muse remembers about the person), sends nothing back, and can't open another side chat. See `docs/super-chat/README.md`.
+_Avoid_: thread, sub-chat, fork, branch
+
+**Archived**:
+A side chat with no messages for a month: hidden from the main list under an Archived fold, still readable by the person and the Muse, and back in the list when the person writes in it. Never deleted.
+_Avoid_: closed, deleted, discarded
+
+**Activity**:
+One piece of multi-step work the Muse did — a Conversation or side chat turn that used tools, or a Helper's whole task — with a title, an outcome, a status (in progress, done, failed, cancelled) and plain-language steps. Listed in the Activity panel. Not the same as a Goal log, which is the history of one Goal.
+_Avoid_: run, job, event
 
 **Goal log**:
 The working history of one Goal: every step the Muse took on it, with its own memory of what happened. The person can read it but doesn't chat in it.
