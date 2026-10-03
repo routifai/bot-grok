@@ -140,6 +140,34 @@ from omnigent.util.session_lifecycle import (
 
 _logger = logging.getLogger(__name__)
 
+# Per-caller lock serializing the sub-agent concurrency-cap check-and-launch
+# (see ``_subagent_concurrency_lock``). Never pruned, same as the runner's
+# other per-session caches/locks (e.g. ``in_flight_send_lock`` in
+# ``omnigent/runner/app.py``) — bounded by the number of distinct callers
+# that have ever dispatched a sub-agent in this runner process's lifetime.
+_subagent_concurrency_locks: dict[str, asyncio.Lock] = {}
+
+
+def _subagent_concurrency_lock(conversation_id: str) -> asyncio.Lock:
+    """Return (creating on first use) *conversation_id*'s concurrency-cap lock.
+
+    Two concurrent sub-agent dispatches from the SAME caller must not both
+    read the same live-sibling count, both pass
+    :func:`~omnigent.superchat.subagents.refuse_subagent_concurrency`, and
+    both create a child — overshooting the cap. Scoped per caller
+    (``conversation_id``), not global, so unrelated callers never block on
+    each other's dispatch.
+
+    :param conversation_id: The caller about to dispatch a new sub-agent.
+    :returns: That caller's lock, guarding the fetch-check-create span.
+    """
+    lock = _subagent_concurrency_locks.get(conversation_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _subagent_concurrency_locks[conversation_id] = lock
+    return lock
+
+
 _EventPublisher = Callable[[str, _JsonObject], None]
 
 
@@ -2529,34 +2557,38 @@ def _subagent_launching_message(agent: str, title: object, task_id: str) -> str:
 async def _session_kind_and_parent(
     session_id: str,
     server_client: httpx.AsyncClient,
-) -> tuple[str | None, str | None]:
+) -> tuple[str, str | None] | None:
     """
-    Best-effort ``(kind, parent_session_id)`` lookup for one session.
+    ``(kind, parent_session_id)`` lookup for one session, or ``None`` on
+    any lookup failure.
 
-    Used by the superside-chat nesting-cap check — a failed lookup reads
-    as "unknown", never as a refusal, so a transient server hiccup can't
-    itself block a launch.
+    Used by the superside-chat nesting-cap check, which must fail CLOSED
+    on ``None`` (refuse, retryable) — a caller whose ``kind`` can't be
+    verified must never be treated as "not a sub-agent" just because the
+    lookup came back empty; that would let a transient server hiccup
+    silently bypass the nesting cap.
 
     :param session_id: The session to inspect.
     :param server_client: HTTP client pointed at the Omnigent server.
-    :returns: ``(kind, parent_session_id)``, each ``None`` on any lookup
-        failure or missing field.
+    :returns: ``(kind, parent_session_id)`` (``parent_session_id`` may be
+        ``None`` — the session genuinely has none), or ``None`` on a
+        network error, non-200, an unparseable body, or a response missing
+        a string ``kind`` field.
     """
     try:
         resp = await server_client.get(f"/v1/sessions/{session_id}", timeout=10.0)
     except httpx.HTTPError:
-        return None, None
+        return None
     if resp.status_code != 200:
-        return None, None
+        return None
     data = _string_object_dict(resp.json())
     if data is None:
-        return None, None
+        return None
     kind = data.get("kind")
+    if not isinstance(kind, str):
+        return None
     parent = data.get("parent_session_id")
-    return (
-        kind if isinstance(kind, str) else None,
-        parent if isinstance(parent, str) else None,
-    )
+    return kind, parent if isinstance(parent, str) else None
 
 
 async def _subagent_nesting_refusal(
@@ -2570,16 +2602,25 @@ async def _subagent_nesting_refusal(
     Resolves the caller's own ``kind`` and, when the caller is itself a
     sub-agent, its parent's ``kind`` too — at most two REST round-trips —
     and delegates the cap decision to
-    :func:`omnigent.superchat.subagents.refuse_subagent_nesting`.
+    :func:`omnigent.superchat.subagents.refuse_subagent_nesting`. Fails
+    CLOSED: either lookup coming back unverifiable refuses the launch with
+    a retryable error, the same posture :func:`_list_child_sessions`'s
+    concurrency-cap check already takes.
 
     :param conversation_id: The caller about to dispatch a new sub-agent.
     :param server_client: HTTP client pointed at the Omnigent server.
     :returns: An error message, or ``None`` when the launch may proceed.
     """
-    caller_kind, caller_parent_id = await _session_kind_and_parent(conversation_id, server_client)
+    caller_lookup = await _session_kind_and_parent(conversation_id, server_client)
+    if caller_lookup is None:
+        return "cannot verify sub-agent nesting cap: failed to look up the calling session"
+    caller_kind, caller_parent_id = caller_lookup
     parent_kind: str | None = None
     if caller_kind == "sub_agent" and caller_parent_id:
-        parent_kind, _ = await _session_kind_and_parent(caller_parent_id, server_client)
+        parent_lookup = await _session_kind_and_parent(caller_parent_id, server_client)
+        if parent_lookup is None:
+            return "cannot verify sub-agent nesting cap: failed to look up the parent session"
+        parent_kind, _ = parent_lookup
     return refuse_subagent_nesting(caller_kind=caller_kind, parent_kind=parent_kind)
 
 
@@ -2597,8 +2638,23 @@ async def _fetch_memory_profile_block(
         resp = await server_client.get(
             f"/v1/sessions/{conversation_id}/memory/profile", timeout=10.0
         )
-        profile = resp.json().get("profile") if resp.status_code == 200 else None
-    except (httpx.HTTPError, ValueError):
+        if resp.status_code != 200:
+            _logger.warning(
+                "Memory Profile fetch failed for %s; proceeding without it: status=%s",
+                conversation_id,
+                resp.status_code,
+                extra={"session_id": conversation_id},
+            )
+            profile = None
+        else:
+            profile = resp.json().get("profile")
+    except (httpx.HTTPError, ValueError) as exc:
+        _logger.warning(
+            "Memory Profile fetch failed for %s; proceeding without it: %s",
+            conversation_id,
+            type(exc).__name__,
+            extra={"session_id": conversation_id},
+        )
         return None
     return profile if isinstance(profile, str) and profile else None
 
@@ -2886,243 +2942,253 @@ async def _execute_subagent_tool(
                 superside_chat=is_superside_chat(labels),
             )
     else:
-        _sibling_rows: list[_JsonObject] | None = None
-        if is_superside_chat(labels):
-            nesting_refusal = await _subagent_nesting_refusal(
-                conversation_id=conversation_id,
-                server_client=server_client,
-            )
-            if nesting_refusal is not None:
-                return f"Error: sys_session_send {nesting_refusal}"
-            _fetched_siblings = await _list_child_sessions(
-                server_client=server_client,
-                conversation_id=conversation_id,
-            )
-            if isinstance(_fetched_siblings, str):
-                return f"Error: cannot verify sub-agent concurrency cap: {_fetched_siblings}"
-            _sibling_rows = _fetched_siblings
-            _type_spec = _find_subagent_spec(str(sub_agent_name), agent_spec)
-            _type_cap = getattr(_type_spec, "max_sessions", None)
-            concurrency_refusal = refuse_subagent_concurrency(
-                live_count_of_type=count_live_children(
-                    _sibling_rows, agent_type=str(sub_agent_name)
-                ),
-                live_count_total=count_live_children(_sibling_rows),
-                type_cap=_type_cap if isinstance(_type_cap, int) else None,
-                default_cap=resolve_default_concurrency_cap(),
-            )
-            if concurrency_refusal is not None:
-                return f"Error: sys_session_send {concurrency_refusal}"
-        _auto_ordinal = False
-        if not session_name:
-            # No title hint — auto-generate a structured session name
-            # (e.g. "researcher-1"). Recover ordinals from existing
-            # children on first spawn after runner restart to avoid
-            # duplicates. Reuse the sibling listing above when the
-            # concurrency check already fetched it.
-            if _sibling_rows is not None:
-                _all_children: list[_JsonObject] | str = _sibling_rows
-            else:
-                _all_children = await _list_child_sessions(
+        # Serialize check-and-launch per caller: two concurrent dispatches
+        # from the same conversation_id must not both read the same sibling
+        # count, both pass the cap check, and both create a child --
+        # overshooting the concurrency cap. Scoped to this one caller so
+        # unrelated callers never block on each other.
+        async with _subagent_concurrency_lock(conversation_id):
+            _sibling_rows: list[_JsonObject] | None = None
+            if is_superside_chat(labels):
+                nesting_refusal = await _subagent_nesting_refusal(
+                    conversation_id=conversation_id,
+                    server_client=server_client,
+                )
+                if nesting_refusal is not None:
+                    return f"Error: sys_session_send {nesting_refusal}"
+                _fetched_siblings = await _list_child_sessions(
                     server_client=server_client,
                     conversation_id=conversation_id,
-                    tool=str(sub_agent_name),
                 )
-            if isinstance(_all_children, str):
-                return (
-                    f"Error: cannot allocate sub-agent name for "
-                    f"{sub_agent_name!r}: failed to list existing "
-                    f"children — {_all_children}"
+                if isinstance(_fetched_siblings, str):
+                    return f"Error: cannot verify sub-agent concurrency cap: {_fetched_siblings}"
+                _sibling_rows = _fetched_siblings
+                _type_spec = _find_subagent_spec(str(sub_agent_name), agent_spec)
+                _type_cap = getattr(_type_spec, "max_sessions", None)
+                concurrency_refusal = refuse_subagent_concurrency(
+                    live_count_of_type=count_live_children(
+                        _sibling_rows, agent_type=str(sub_agent_name)
+                    ),
+                    live_count_total=count_live_children(_sibling_rows),
+                    type_cap=_type_cap if isinstance(_type_cap, int) else None,
+                    default_cap=resolve_default_concurrency_cap(),
                 )
-            _runner_app.recover_subagent_ordinals(
-                conversation_id,
-                str(sub_agent_name),
-                _all_children,
-            )
-            ordinal = _runner_app.next_subagent_ordinal(
-                conversation_id,
-                str(sub_agent_name),
-            )
-            session_name = f"{sub_agent_name}-{ordinal}"
-            _auto_ordinal = True
-        child_harness = _subagent_harness(str(sub_agent_name), agent_spec)
-        # Apply an allowlisted per-dispatch harness override. The sub-agent
-        # spec must explicitly opt in via executor.config.allowed_harnesses,
-        # and the requested harness must canonicalize into OMNIGENT_HARNESSES.
-        # NOTE: the server create route (``_validated_harness_override`` in
-        # server/routes/sessions.py) independently re-validates a session-create
-        # override against the GLOBAL ``OMNIGENT_HARNESSES`` (plus the omnigent
-        # executor-type rule), but it does NOT re-check the per-spec
-        # ``allowed_harnesses`` allowlist. So this orchestrator-dispatch check is
-        # the sole enforcement of that per-spec allowlist; a direct
-        # ``POST /v1/sessions`` harness_override is bounded only by the global
-        # allowlist.
-        harness_override_canonical: str | None = None
-        if harness_override is not None:
-            from omnigent.spec._omnigent_compat import OMNIGENT_HARNESSES
+                if concurrency_refusal is not None:
+                    return f"Error: sys_session_send {concurrency_refusal}"
+            _auto_ordinal = False
+            if not session_name:
+                # No title hint — auto-generate a structured session name
+                # (e.g. "researcher-1"). Recover ordinals from existing
+                # children on first spawn after runner restart to avoid
+                # duplicates. Reuse the sibling listing above when the
+                # concurrency check already fetched it.
+                if _sibling_rows is not None:
+                    _all_children: list[_JsonObject] | str = _sibling_rows
+                else:
+                    _all_children = await _list_child_sessions(
+                        server_client=server_client,
+                        conversation_id=conversation_id,
+                        tool=str(sub_agent_name),
+                    )
+                if isinstance(_all_children, str):
+                    return (
+                        f"Error: cannot allocate sub-agent name for "
+                        f"{sub_agent_name!r}: failed to list existing "
+                        f"children — {_all_children}"
+                    )
+                _runner_app.recover_subagent_ordinals(
+                    conversation_id,
+                    str(sub_agent_name),
+                    _all_children,
+                )
+                ordinal = _runner_app.next_subagent_ordinal(
+                    conversation_id,
+                    str(sub_agent_name),
+                )
+                session_name = f"{sub_agent_name}-{ordinal}"
+                _auto_ordinal = True
+            child_harness = _subagent_harness(str(sub_agent_name), agent_spec)
+            # Apply an allowlisted per-dispatch harness override. The sub-agent
+            # spec must explicitly opt in via executor.config.allowed_harnesses,
+            # and the requested harness must canonicalize into OMNIGENT_HARNESSES.
+            # NOTE: the server create route (``_validated_harness_override`` in
+            # server/routes/sessions.py) independently re-validates a session-create
+            # override against the GLOBAL ``OMNIGENT_HARNESSES`` (plus the omnigent
+            # executor-type rule), but it does NOT re-check the per-spec
+            # ``allowed_harnesses`` allowlist. So this orchestrator-dispatch check is
+            # the sole enforcement of that per-spec allowlist; a direct
+            # ``POST /v1/sessions`` harness_override is bounded only by the global
+            # allowlist.
+            harness_override_canonical: str | None = None
+            if harness_override is not None:
+                from omnigent.spec._omnigent_compat import OMNIGENT_HARNESSES
 
-            canonical = canonicalize_harness(harness_override) or harness_override
-            allowed = _subagent_allowed_harnesses(str(sub_agent_name), agent_spec)
-            if not allowed:
-                return (
-                    f"Error: sys_session_send 'harness' override is not "
-                    f"permitted for sub-agent {sub_agent_name!r}: its spec "
-                    "declares no executor.config.allowed_harnesses allowlist."
-                )
-            if canonical not in allowed:
-                return (
-                    f"Error: sys_session_send 'harness' {harness_override!r} is "
-                    f"not allowlisted for sub-agent {sub_agent_name!r}: allowed "
-                    f"harnesses are {sorted(allowed)}."
-                )
-            if canonical not in OMNIGENT_HARNESSES:
-                return (
-                    f"Error: sys_session_send 'harness' {harness_override!r} is "
-                    f"not a known harness; must be one of {sorted(OMNIGENT_HARNESSES)}."
-                )
-            harness_override_canonical = canonical
-            child_harness = canonical
-        # Fail loud at dispatch when the child's harness needs a CLI binary
-        # that isn't on PATH. Otherwise a missing CLI surfaces only as a lazy
-        # first-turn failure (e.g. the pi harness raises ImportError, which the
-        # parent sees as a generic "turn failed" inbox item that hides the
-        # cause), and the orchestrator may re-dispatch into the same wall. The
-        # which-probe here reads the same PATH the harness boot uses, so the
-        # verdict can't disagree with the real launch.
-        from omnigent.onboarding.harness_install import missing_harness_cli
+                canonical = canonicalize_harness(harness_override) or harness_override
+                allowed = _subagent_allowed_harnesses(str(sub_agent_name), agent_spec)
+                if not allowed:
+                    return (
+                        f"Error: sys_session_send 'harness' override is not "
+                        f"permitted for sub-agent {sub_agent_name!r}: its spec "
+                        "declares no executor.config.allowed_harnesses allowlist."
+                    )
+                if canonical not in allowed:
+                    return (
+                        f"Error: sys_session_send 'harness' {harness_override!r} is "
+                        f"not allowlisted for sub-agent {sub_agent_name!r}: allowed "
+                        f"harnesses are {sorted(allowed)}."
+                    )
+                if canonical not in OMNIGENT_HARNESSES:
+                    return (
+                        f"Error: sys_session_send 'harness' {harness_override!r} is "
+                        f"not a known harness; must be one of {sorted(OMNIGENT_HARNESSES)}."
+                    )
+                harness_override_canonical = canonical
+                child_harness = canonical
+            # Fail loud at dispatch when the child's harness needs a CLI binary
+            # that isn't on PATH. Otherwise a missing CLI surfaces only as a lazy
+            # first-turn failure (e.g. the pi harness raises ImportError, which the
+            # parent sees as a generic "turn failed" inbox item that hides the
+            # cause), and the orchestrator may re-dispatch into the same wall. The
+            # which-probe here reads the same PATH the harness boot uses, so the
+            # verdict can't disagree with the real launch.
+            from omnigent.onboarding.harness_install import missing_harness_cli
 
-        if child_harness is not None:
-            missing_cli = missing_harness_cli(child_harness)
-            if missing_cli is not None:
-                # Non-npm CLIs (e.g. cursor-agent) carry an ``install_hint``
-                # instead of a ``package``; using the hint avoids an
-                # ``npm install -g None`` instruction.
-                install = (
-                    f"npm install -g {missing_cli.package}"
-                    if missing_cli.package
-                    else (missing_cli.install_hint or "see the harness's install docs")
+            if child_harness is not None:
+                missing_cli = missing_harness_cli(child_harness)
+                if missing_cli is not None:
+                    # Non-npm CLIs (e.g. cursor-agent) carry an ``install_hint``
+                    # instead of a ``package``; using the hint avoids an
+                    # ``npm install -g None`` instruction.
+                    install = (
+                        f"npm install -g {missing_cli.package}"
+                        if missing_cli.package
+                        else (missing_cli.install_hint or "see the harness's install docs")
+                    )
+                    return (
+                        f"Error: sub-agent {sub_agent_name!r} can't start on this "
+                        f"machine: harness {child_harness!r} needs the "
+                        f"{missing_cli.binary!r} CLI on PATH and on a supported "
+                        f"version, but it is missing or outdated. "
+                        f"Install/upgrade it with: {install} "
+                        f"(or don't dispatch to {sub_agent_name!r} here)."
+                    )
+            # Create child session on the server (no initial items —
+            # those go via a separate POST so the server forwards them
+            # to the runner and triggers a turn).
+            create_body: _JsonObject = {
+                "agent_id": parent_agent_id,
+                "parent_session_id": conversation_id,
+                "title": f"{sub_agent_name}:{session_name}",
+                "sub_agent_name": sub_agent_name,
+                "labels": {
+                    _runner_app.SUBAGENT_DISPATCH_ID_LABEL_KEY: work_id,
+                    # Forward the mode label so a superside-chat sub-agent
+                    # inherits omnigent.context.mode=superside-chat, like
+                    # _execute_session_create already does.
+                    **inheritable_context_labels(labels),
+                },
+            }
+            if harness_override_canonical is not None:
+                create_body["harness_override"] = harness_override_canonical
+            if model is not None:
+                # Reject up front when the child harness would silently
+                # ignore the persisted override — no silent drops.
+                if not harness_supports_model_override(child_harness):
+                    return (
+                        f"Error: sys_session_send 'model' is not supported for "
+                        f"sub-agent {sub_agent_name!r}: harness "
+                        f"{child_harness or 'unknown'!r} has no model-override "
+                        "plumbing. Omit 'model' to use the harness default."
+                    )
+                mismatch = (
+                    _dispatch_model_mismatch(child_harness, model) if child_harness else None
                 )
-                return (
-                    f"Error: sub-agent {sub_agent_name!r} can't start on this "
-                    f"machine: harness {child_harness!r} needs the "
-                    f"{missing_cli.binary!r} CLI on PATH and on a supported "
-                    f"version, but it is missing or outdated. "
-                    f"Install/upgrade it with: {install} "
-                    f"(or don't dispatch to {sub_agent_name!r} here)."
-                )
-        # Create child session on the server (no initial items —
-        # those go via a separate POST so the server forwards them
-        # to the runner and triggers a turn).
-        create_body: _JsonObject = {
-            "agent_id": parent_agent_id,
-            "parent_session_id": conversation_id,
-            "title": f"{sub_agent_name}:{session_name}",
-            "sub_agent_name": sub_agent_name,
-            "labels": {
-                _runner_app.SUBAGENT_DISPATCH_ID_LABEL_KEY: work_id,
-                # Forward the mode label so a superside-chat sub-agent
-                # inherits omnigent.context.mode=superside-chat, like
-                # _execute_session_create already does.
-                **inheritable_context_labels(labels),
-            },
-        }
-        if harness_override_canonical is not None:
-            create_body["harness_override"] = harness_override_canonical
-        if model is not None:
-            # Reject up front when the child harness would silently
-            # ignore the persisted override — no silent drops.
-            if not harness_supports_model_override(child_harness):
-                return (
-                    f"Error: sys_session_send 'model' is not supported for "
-                    f"sub-agent {sub_agent_name!r}: harness "
-                    f"{child_harness or 'unknown'!r} has no model-override "
-                    "plumbing. Omit 'model' to use the harness default."
-                )
-            mismatch = _dispatch_model_mismatch(child_harness, model) if child_harness else None
-            if mismatch is not None:
-                return (
-                    f"Error: sys_session_send 'model' rejected for sub-agent "
-                    f"{sub_agent_name!r}: {mismatch}"
-                )
-            # Family guard first (on the requested id, so the error
-            # quotes what the caller sent), then mechanical
-            # canonical<->gateway-local normalization. The normalized
-            # id is what the server persists as model_override.
-            create_body["model_override"] = _normalize_subagent_model(
-                model,
-                sub_agent_name=str(sub_agent_name),
-                agent_spec=agent_spec,
-                harness=child_harness,
-            )
-        else:
-            # No explicit per-dispatch model: inherit the parent session's
-            # selection so the user's chosen model governs the whole session
-            # tree. Best-effort — skipped when the sub-agent spec pins its
-            # own model, the harness has no override plumbing, or the parent
-            # model's family cannot run on the child harness.
-            inherited = await _inherited_parent_model(
-                server_client=server_client,
-                conversation_id=conversation_id,
-                sub_agent_name=str(sub_agent_name),
-                agent_spec=agent_spec,
-                child_harness=child_harness,
-            )
-            if inherited is not None:
+                if mismatch is not None:
+                    return (
+                        f"Error: sys_session_send 'model' rejected for sub-agent "
+                        f"{sub_agent_name!r}: {mismatch}"
+                    )
+                # Family guard first (on the requested id, so the error
+                # quotes what the caller sent), then mechanical
+                # canonical<->gateway-local normalization. The normalized
+                # id is what the server persists as model_override.
                 create_body["model_override"] = _normalize_subagent_model(
-                    inherited,
+                    model,
                     sub_agent_name=str(sub_agent_name),
                     agent_spec=agent_spec,
                     harness=child_harness,
                 )
-        # A dispatch that names no effort inherits the sub-agent spec's
-        # ``executor.reasoning_effort``, so a worker's default is declared
-        # once in its config instead of depending on the orchestrator
-        # remembering to pass it on every dispatch.
-        effective_effort = reasoning_effort
-        effort_source = "sys_session_send"
-        if effective_effort is None:
-            sub_spec = _find_subagent_spec(sub_agent_name, agent_spec)
-            # ``getattr``: sub-specs also arrive as structural stubs that
-            # carry only the fields a caller needed.
-            spec_effort = getattr(getattr(sub_spec, "executor", None), "reasoning_effort", None)
-            if isinstance(spec_effort, str) and spec_effort:
-                effective_effort = spec_effort
-                effort_source = f"sub-agent {sub_agent_name!r} spec"
-        if effective_effort is not None:
-            try:
-                create_body["reasoning_effort"] = _validate_subagent_reasoning_effort(
-                    effective_effort,
-                    child_harness,
+            else:
+                # No explicit per-dispatch model: inherit the parent session's
+                # selection so the user's chosen model governs the whole session
+                # tree. Best-effort — skipped when the sub-agent spec pins its
+                # own model, the harness has no override plumbing, or the parent
+                # model's family cannot run on the child harness.
+                inherited = await _inherited_parent_model(
+                    server_client=server_client,
+                    conversation_id=conversation_id,
+                    sub_agent_name=str(sub_agent_name),
+                    agent_spec=agent_spec,
+                    child_harness=child_harness,
                 )
-            except ValueError as exc:
-                return f"Error: invalid 'reasoning_effort' from {effort_source}: {exc}"
-
-        # Best-effort retry for auto-ordinal name collisions: a 409 means
-        # another runner (or a restart race) already created a child with
-        # this ordinal. Bump and retry. Not watertight — the server's
-        # (parent, title) check is SELECT-then-INSERT with no DB unique
-        # constraint, so truly concurrent creates can still race past it.
-        _max_ordinal_retries = 5 if _auto_ordinal else 0
-        _create_timeout_exc: httpx.ReadTimeout | None = None
-        resp: httpx.Response | None = None
-        try:
-            for _ordinal_attempt in range(_max_ordinal_retries + 1):
-                resp = await server_client.post("/v1/sessions", json=create_body, timeout=30.0)
-                if (
-                    resp.status_code == 409
-                    and _auto_ordinal
-                    and _ordinal_attempt < _max_ordinal_retries
-                ):
-                    ordinal = _runner_app.next_subagent_ordinal(
-                        conversation_id,
-                        str(sub_agent_name),
+                if inherited is not None:
+                    create_body["model_override"] = _normalize_subagent_model(
+                        inherited,
+                        sub_agent_name=str(sub_agent_name),
+                        agent_spec=agent_spec,
+                        harness=child_harness,
                     )
-                    session_name = f"{sub_agent_name}-{ordinal}"
-                    create_body["title"] = f"{sub_agent_name}:{session_name}"
-                    continue
-                break
-        except httpx.ReadTimeout as _exc:
-            _create_timeout_exc = _exc
+            # A dispatch that names no effort inherits the sub-agent spec's
+            # ``executor.reasoning_effort``, so a worker's default is declared
+            # once in its config instead of depending on the orchestrator
+            # remembering to pass it on every dispatch.
+            effective_effort = reasoning_effort
+            effort_source = "sys_session_send"
+            if effective_effort is None:
+                sub_spec = _find_subagent_spec(sub_agent_name, agent_spec)
+                # ``getattr``: sub-specs also arrive as structural stubs that
+                # carry only the fields a caller needed.
+                spec_effort = getattr(
+                    getattr(sub_spec, "executor", None), "reasoning_effort", None
+                )
+                if isinstance(spec_effort, str) and spec_effort:
+                    effective_effort = spec_effort
+                    effort_source = f"sub-agent {sub_agent_name!r} spec"
+            if effective_effort is not None:
+                try:
+                    create_body["reasoning_effort"] = _validate_subagent_reasoning_effort(
+                        effective_effort,
+                        child_harness,
+                    )
+                except ValueError as exc:
+                    return f"Error: invalid 'reasoning_effort' from {effort_source}: {exc}"
+
+            # Best-effort retry for auto-ordinal name collisions: a 409 means
+            # another runner (or a restart race) already created a child with
+            # this ordinal. Bump and retry. Not watertight — the server's
+            # (parent, title) check is SELECT-then-INSERT with no DB unique
+            # constraint, so truly concurrent creates can still race past it.
+            _max_ordinal_retries = 5 if _auto_ordinal else 0
+            _create_timeout_exc: httpx.ReadTimeout | None = None
+            resp: httpx.Response | None = None
+            try:
+                for _ordinal_attempt in range(_max_ordinal_retries + 1):
+                    resp = await server_client.post("/v1/sessions", json=create_body, timeout=30.0)
+                    if (
+                        resp.status_code == 409
+                        and _auto_ordinal
+                        and _ordinal_attempt < _max_ordinal_retries
+                    ):
+                        ordinal = _runner_app.next_subagent_ordinal(
+                            conversation_id,
+                            str(sub_agent_name),
+                        )
+                        session_name = f"{sub_agent_name}-{ordinal}"
+                        create_body["title"] = f"{sub_agent_name}:{session_name}"
+                        continue
+                    break
+            except httpx.ReadTimeout as _exc:
+                _create_timeout_exc = _exc
         if _create_timeout_exc is not None:
             # The read deadline elapsed after the server may have committed the
             # child session — child_session_id is unknown to us, but the
@@ -3736,106 +3802,128 @@ async def _execute_session_create(
     # the OTHER way to spawn a child, and would otherwise bypass them (no
     # declared Sub-agent Type backs this path, so only the tree-wide
     # default concurrency cap applies, not a per-Type cap).
-    if is_superside_chat(labels):
-        raw_model = args.get("model")
-        raw_effort = args.get("reasoning_effort")
-        override_refusal = refuse_subagent_dispatch_override(
-            model=raw_model if isinstance(raw_model, str) else None,
-            reasoning_effort=raw_effort if isinstance(raw_effort, str) else None,
-        )
-        if override_refusal is not None:
-            return json.dumps({"error": f"sys_session_create {override_refusal}"})
-        nesting_refusal = await _subagent_nesting_refusal(
-            conversation_id=conversation_id,
-            server_client=server_client,
-        )
-        if nesting_refusal is not None:
-            return json.dumps({"error": f"sys_session_create {nesting_refusal}"})
-        sibling_rows = await _list_child_sessions(
-            server_client=server_client,
-            conversation_id=conversation_id,
-        )
-        if isinstance(sibling_rows, str):
-            return json.dumps(
-                {
-                    "error": (
-                        f"sys_session_create cannot verify sub-agent "
-                        f"concurrency cap: {sibling_rows}"
-                    )
-                }
-            )
-        concurrency_refusal = refuse_subagent_concurrency(
-            live_count_of_type=0,
-            live_count_total=count_live_children(sibling_rows),
-            type_cap=None,
-            default_cap=resolve_default_concurrency_cap(),
-        )
-        if concurrency_refusal is not None:
-            return json.dumps({"error": f"sys_session_create {concurrency_refusal}"})
-
-    message = args.get("message")
-    if is_superside_chat(labels) and isinstance(message, str) and message:
-        # A new child starts from its Brief plus the Memory Profile
-        # (rollover/CONTEXT.md: "Sub-agent"), same as the named launch path.
-        message = prepend_memory_profile(
-            message, await _fetch_memory_profile_block(server_client, conversation_id)
+    # Fail loud on a malformed override, same as sys_session_send
+    # (_subagent_model_from_args / _subagent_reasoning_effort_from_args):
+    # silently coercing a non-string value to None here would let it skip
+    # refuse_subagent_dispatch_override's check below (which only ever sees
+    # a string or None) while the ORIGINAL raw value still reaches
+    # _build_session_create_body further down — bypassing the "overrides
+    # are refused" rule for a superside-chat session entirely.
+    raw_model = args.get("model")
+    if raw_model is not None and not isinstance(raw_model, str):
+        return json.dumps({"error": "sys_session_create invalid 'model': must be a string"})
+    raw_effort = args.get("reasoning_effort")
+    if raw_effort is not None and not isinstance(raw_effort, str):
+        return json.dumps(
+            {"error": "sys_session_create invalid 'reasoning_effort': must be a string"}
         )
 
-    if has_config_path:
-        # The multipart create carries only the config bundle, so an effort
-        # passed here would never reach the child. Refuse instead of dropping it.
-        if args.get("reasoning_effort") is not None:
-            return json.dumps(
-                {
-                    "error": (
-                        "sys_session_create 'reasoning_effort' is supported only "
-                        "with 'agent_id'; the 'config_path' create cannot carry "
-                        "it. Set the effort in the config you upload instead."
-                    )
-                }
+    # Serialize check-and-launch per caller (see
+    # _subagent_concurrency_lock): two concurrent sys_session_create
+    # calls from the same conversation_id must not both read the same
+    # sibling count, both pass the cap check, and both create a child.
+    async with _subagent_concurrency_lock(conversation_id):
+        if is_superside_chat(labels):
+            override_refusal = refuse_subagent_dispatch_override(
+                model=raw_model,
+                reasoning_effort=raw_effort,
             )
-        config_path_args = {**args, "message": message}
-        return await _session_create_from_config_path(
-            str(config_path),
-            config_path_args,
-            server_client=server_client,
-            conversation_id=conversation_id,
-            publish_event=publish_event,
-            agent_spec=agent_spec,
-            runner_workspace=runner_workspace,
+            if override_refusal is not None:
+                return json.dumps({"error": f"sys_session_create {override_refusal}"})
+            nesting_refusal = await _subagent_nesting_refusal(
+                conversation_id=conversation_id,
+                server_client=server_client,
+            )
+            if nesting_refusal is not None:
+                return json.dumps({"error": f"sys_session_create {nesting_refusal}"})
+            sibling_rows = await _list_child_sessions(
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+            if isinstance(sibling_rows, str):
+                return json.dumps(
+                    {
+                        "error": (
+                            f"sys_session_create cannot verify sub-agent "
+                            f"concurrency cap: {sibling_rows}"
+                        )
+                    }
+                )
+            concurrency_refusal = refuse_subagent_concurrency(
+                live_count_of_type=0,
+                live_count_total=count_live_children(sibling_rows),
+                type_cap=None,
+                default_cap=resolve_default_concurrency_cap(),
+            )
+            if concurrency_refusal is not None:
+                return json.dumps({"error": f"sys_session_create {concurrency_refusal}"})
+
+        message = args.get("message")
+        if is_superside_chat(labels) and isinstance(message, str) and message:
+            # A new child starts from its Brief plus the Memory Profile
+            # (rollover/CONTEXT.md: "Sub-agent"), same as the named launch path.
+            message = prepend_memory_profile(
+                message, await _fetch_memory_profile_block(server_client, conversation_id)
+            )
+
+        if has_config_path:
+            # The multipart create carries only the config bundle, so an effort
+            # passed here would never reach the child. Refuse instead of dropping it.
+            if args.get("reasoning_effort") is not None:
+                return json.dumps(
+                    {
+                        "error": (
+                            "sys_session_create 'reasoning_effort' is supported only "
+                            "with 'agent_id'; the 'config_path' create cannot carry "
+                            "it. Set the effort in the config you upload instead."
+                        )
+                    }
+                )
+            config_path_args = {**args, "message": message}
+            return await _session_create_from_config_path(
+                str(config_path),
+                config_path_args,
+                server_client=server_client,
+                conversation_id=conversation_id,
+                publish_event=publish_event,
+                agent_spec=agent_spec,
+                runner_workspace=runner_workspace,
+                labels=child_labels,
+            )
+        body = _build_session_create_body(
+            str(agent_id),
+            conversation_id,
+            args.get("title"),
+            message,
+            model=raw_model,
+            reasoning_effort=raw_effort,
             labels=child_labels,
         )
-    body = _build_session_create_body(
-        str(agent_id),
-        conversation_id,
-        args.get("title"),
-        message,
-        model=args.get("model"),
-        reasoning_effort=args.get("reasoning_effort"),
-        labels=child_labels,
-    )
-    try:
-        resp = await server_client.post("/v1/sessions", json=body, timeout=30.0)
-    except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": f"sys_session_create failed: {exc}"})
-    if resp.status_code == 404:
-        return json.dumps({"error": "agent_not_found", "agent_id": agent_id})
-    if resp.status_code in (401, 403):
-        return json.dumps({"error": "access_denied", "agent_id": agent_id})
-    if resp.status_code >= 400:
-        return json.dumps(
-            {"error": f"sys_session_create returned {resp.status_code}", "detail": resp.text[:200]}
+        try:
+            resp = await server_client.post("/v1/sessions", json=body, timeout=30.0)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"error": f"sys_session_create failed: {exc}"})
+        if resp.status_code == 404:
+            return json.dumps({"error": "agent_not_found", "agent_id": agent_id})
+        if resp.status_code in (401, 403):
+            return json.dumps({"error": "access_denied", "agent_id": agent_id})
+        if resp.status_code >= 400:
+            return json.dumps(
+                {
+                    "error": f"sys_session_create returned {resp.status_code}",
+                    "detail": resp.text[:200],
+                }
+            )
+        data = resp.json()
+        if not isinstance(data.get("id"), str) or not data["id"]:
+            return json.dumps({"error": "server did not return a child session id"})
+        return _finalize_created_session(
+            data,
+            conversation_id=conversation_id,
+            agent_id=str(agent_id),
+            title=args.get("title"),
+            publish_event=publish_event,
         )
-    data = resp.json()
-    if not isinstance(data.get("id"), str) or not data["id"]:
-        return json.dumps({"error": "server did not return a child session id"})
-    return _finalize_created_session(
-        data,
-        conversation_id=conversation_id,
-        agent_id=str(agent_id),
-        title=args.get("title"),
-        publish_event=publish_event,
-    )
 
 
 def _bundle_local_agent_source(source: Path) -> bytes:

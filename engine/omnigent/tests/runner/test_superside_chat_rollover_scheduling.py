@@ -75,6 +75,31 @@ def _history_items() -> list[dict[str, Any]]:
     ]
 
 
+def _idle_history_items(idle_seconds: int) -> list[dict[str, Any]]:
+    """One user/assistant turn, timestamped *idle_seconds* in the past."""
+    stale = int(time.time()) - idle_seconds
+    return [
+        {
+            "id": "u1",
+            "type": "message",
+            "status": "completed",
+            "response_id": "r1",
+            "created_at": stale,
+            "role": "user",
+            "content": [{"type": "input_text", "text": "question"}],
+        },
+        {
+            "id": "a1",
+            "type": "message",
+            "status": "completed",
+            "response_id": "r1",
+            "created_at": stale,
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "answer"}],
+        },
+    ]
+
+
 class _ThresholdServerClient(NullServerClient):
     """Answers ``/labels`` and ``/items``; records posted compaction events."""
 
@@ -337,3 +362,217 @@ async def test_next_turn_waits_for_an_in_flight_rollover(monkeypatch: pytest.Mon
 
     assert len(harness_client.posted_bodies) == 2
     assert pm.released == [conv_id]
+
+
+class _FlakyThenSuccessLabelsServerClient(_ThresholdServerClient):
+    """Every ``/labels`` lookup fails (502) while ``self.failing`` is set;
+    all succeed once a test clears it.
+
+    Reproduces a transient label-fetch outage spanning a superside-chat
+    session's entire first turn (every lookup that turn makes fails, not
+    just one), to prove the runner's rollover-labels cache does not
+    permanently remember that outage as "not superside-chat" (the bug: the
+    old ``_session_labels_for_runner_spawn`` returned ``{}`` on every
+    failure, indistinguishable from a confirmed-empty label set, and that
+    ``{}`` got cached forever).
+    """
+
+    def __init__(self, *, labels: dict[str, str], items: list[dict[str, Any]]):
+        super().__init__(labels=labels, items=items)
+        self.failing = True
+        self.labels_calls = 0
+
+    async def get(self, url: str, **kwargs: Any) -> NullServerClient._Response:
+        if url.endswith("/labels"):
+            self.labels_calls += 1
+            if self.failing:
+
+                class _FailResponse(NullServerClient._Response):
+                    status_code = 502
+
+                return _FailResponse()
+        return await super().get(url, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_transient_labels_failure_does_not_poison_the_rollover_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session that looked up as "unknown" on one turn must be re-checked
+    (not permanently treated as non-superside-chat) on the next."""
+    # Left unset: turn 1's rollover check exits early (failed label lookup)
+    # without ever reaching the gated summarizer call, so it never blocks on
+    # this; turn 2's real rollover call does, and is released explicitly
+    # below once it's confirmed in flight — same pattern as the other tests
+    # in this file.
+    gate = asyncio.Event()
+    llm_client = _GatedLLMClient(gate)
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+
+    server_client = _FlakyThenSuccessLabelsServerClient(
+        labels=_SUPERSIDE_LABELS, items=_history_items()
+    )
+    harness_client = _SequencedHarnessClient(
+        [_triggering_frames(500_000), _triggering_frames(500_000)]
+    )
+    app, pm = _build_app(harness_client, server_client)
+    conv_id = "conv_flaky_labels"
+
+    async with _runner_client(app) as client:
+        # First turn: every /labels lookup for this session fails, so the
+        # turn must proceed as a non-superside-chat turn — no rollover.
+        resp1 = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
+        assert resp1.status_code == 202
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        await _wait_until(
+            lambda: conv_id not in app.state.superside_chat_rollover_tasks, timeout=2.0
+        )
+        assert server_client.posted_compactions == []
+        assert llm_client.call_count == 0
+
+        # The outage recovers before the next turn.
+        server_client.failing = False
+
+        # Second turn: the lookup now succeeds. If the first turn's failures
+        # had been cached as "confirmed non-superside-chat", this would also
+        # skip the rollover — it must not.
+        resp2 = await asyncio.wait_for(_post_turn(client, conv_id, "again"), timeout=5.0)
+        assert resp2.status_code == 202
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+
+        rollover_task_2 = app.state.superside_chat_rollover_tasks.get(conv_id)
+        assert rollover_task_2 is not None
+        assert not rollover_task_2.done()
+
+        gate.set()
+        await asyncio.wait_for(rollover_task_2, timeout=5.0)
+
+    assert len(server_client.posted_compactions) == 1
+    assert pm.released == [conv_id]
+
+
+# ── ?stream=true is refused for superside-chat sessions ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_stream_true_is_refused_for_superside_chat_session() -> None:
+    """The direct-dispatch ``?stream=true`` path never threads context_mode,
+    the Memory Profile block, or the idle-refresh/pending-refresh hooks, so
+    it must refuse a superside-chat turn rather than silently run it without
+    them."""
+    server_client = _ThresholdServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
+    harness_client = _SequencedHarnessClient([_plain_frames()])
+    app, _pm = _build_app(harness_client, server_client)
+    conv_id = "conv_stream_refused"
+
+    async with _runner_client(app) as client:
+        resp = await client.post(
+            f"/v1/sessions/{conv_id}/events?stream=true",
+            json={
+                "type": "message",
+                "role": "user",
+                "model": "test-agent",
+                "content": [{"type": "input_text", "text": "hello"}],
+                "harness": "claude-sdk",
+            },
+        )
+
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"] == "stream_not_supported_for_superside_chat"
+
+
+@pytest.mark.asyncio
+async def test_stream_true_is_allowed_for_a_plain_session() -> None:
+    """A non-superside-chat session's ``?stream=true`` turn is unaffected."""
+    server_client = _ThresholdServerClient(labels={}, items=_history_items())
+    harness_client = _SequencedHarnessClient([_plain_frames()])
+    app, _pm = _build_app(harness_client, server_client)
+    conv_id = "conv_stream_plain"
+
+    async with _runner_client(app) as client:
+        resp = await asyncio.wait_for(
+            client.post(
+                f"/v1/sessions/{conv_id}/events?stream=true",
+                json={
+                    "type": "message",
+                    "role": "user",
+                    "model": "test-agent",
+                    "content": [{"type": "input_text", "text": "hello"}],
+                    "harness": "claude-sdk",
+                },
+            ),
+            timeout=5.0,
+        )
+
+    assert resp.status_code == 200, resp.text
+
+
+# ── summarizer model fallback: never the tokenizer-only stand-in ─────────
+
+
+@pytest.mark.asyncio
+async def test_threshold_rollover_skips_when_turn_reports_no_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A turn whose ``response.completed`` carries no ``usage.model`` must
+    skip the rollover, not fall back to ROLLOVER_TOKEN_COUNT_MODEL (gpt-4o,
+    a tokenizer stand-in never meant for a real summarizer call)."""
+    llm_client = _GatedLLMClient(asyncio.Event())
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+
+    server_client = _ThresholdServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
+    frames = [
+        _sse({"type": "response.created", "response": {"id": "resp_no_model"}}),
+        _sse(
+            {
+                "type": "response.completed",
+                "response": {
+                    "id": "resp_no_model",
+                    # No "model" key at all — the harness didn't report one.
+                    "usage": {"context_tokens": 500_000},
+                },
+            }
+        ),
+    ]
+    harness_client = _SequencedHarnessClient([frames])
+    app, _pm = _build_app(harness_client, server_client)
+    conv_id = "conv_no_model"
+
+    async with _runner_client(app) as client:
+        resp = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
+        assert resp.status_code == 202
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        await _wait_until(
+            lambda: conv_id not in app.state.superside_chat_rollover_tasks, timeout=2.0
+        )
+
+    assert server_client.posted_compactions == []
+    assert llm_client.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_idle_rollover_skips_when_session_model_unresolvable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session whose model can't be resolved (``GET /v1/sessions/{id}``
+    carries no usable model field) must skip the idle rollover rather than
+    summarizing on ROLLOVER_TOKEN_COUNT_MODEL."""
+    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
+    llm_client = _GatedLLMClient(asyncio.Event())
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+
+    # Stale by far more than the 10s idle-refresh threshold above.
+    server_client = _ThresholdServerClient(
+        labels=_SUPERSIDE_LABELS, items=_idle_history_items(10_000)
+    )
+    harness_client = _SequencedHarnessClient([_plain_frames()])
+    app, _pm = _build_app(harness_client, server_client)
+    conv_id = "conv_idle_no_model"
+
+    async with _runner_client(app) as client:
+        resp = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
+        assert resp.status_code == 202
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+
+    assert server_client.posted_compactions == []
+    assert llm_client.call_count == 0

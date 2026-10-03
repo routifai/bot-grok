@@ -8,6 +8,10 @@ tests.
 
 from __future__ import annotations
 
+import logging
+
+import pytest
+
 from omnigent.superchat.subagents import (
     DEFAULT_CONCURRENCY_CAP,
     DEFAULT_CONCURRENCY_ENV,
@@ -242,9 +246,18 @@ def test_wake_target_redirects_archived_side_chat() -> None:
     assert "archived Side Chat" in note
 
 
-def test_wake_target_unchanged_when_fork_source_unknown() -> None:
-    target, note = resolve_wake_target(
-        parent_id="conv_side", archived=True, is_side_chat=True, fork_source_id=None
-    )
+def test_wake_target_unchanged_when_fork_source_unknown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Delivery still goes to the archived chat (no Super Chat to redirect
+    to), but this must not happen silently — the chat is hidden from the
+    user's list, so a missing fork_source label is logged."""
+    with caplog.at_level(logging.WARNING, logger="omnigent.superchat.subagents"):
+        target, note = resolve_wake_target(
+            parent_id="conv_side", archived=True, is_side_chat=True, fork_source_id=None
+        )
     assert target == "conv_side"
     assert note is None
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "conv_side" in warnings[0].getMessage()

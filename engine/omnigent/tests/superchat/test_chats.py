@@ -14,6 +14,7 @@ import pytest
 from omnigent.superchat.chats import (
     ARCHIVE_AFTER_SECONDS_ENV,
     DEFAULT_ARCHIVE_AFTER_SECONDS,
+    SWEEP_INTERVAL_SECONDS_ENV,
     SideChatArchiveSweeper,
     build_side_chat_blank_create_body,
     build_side_chat_fork_body,
@@ -21,6 +22,7 @@ from omnigent.superchat.chats import (
     maybe_unarchive_on_user_message,
     refuse_side_chat_open,
     resolve_archive_after_seconds,
+    resolve_archive_sweep_interval_seconds,
     sweep_side_chats,
 )
 
@@ -117,6 +119,47 @@ def test_archive_after_seconds_falls_back_on_non_positive(monkeypatch: pytest.Mo
     assert resolve_archive_after_seconds() == DEFAULT_ARCHIVE_AFTER_SECONDS
     monkeypatch.setenv(ARCHIVE_AFTER_SECONDS_ENV, "-5")
     assert resolve_archive_after_seconds() == DEFAULT_ARCHIVE_AFTER_SECONDS
+
+
+# ── resolve_archive_sweep_interval_seconds ──────────────────────────────
+
+
+def test_default_sweep_interval_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(SWEEP_INTERVAL_SECONDS_ENV, raising=False)
+    assert resolve_archive_sweep_interval_seconds() == 300.0
+
+
+def test_sweep_interval_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "60")
+    assert resolve_archive_sweep_interval_seconds() == 60.0
+
+
+def test_sweep_interval_falls_back_on_garbage_or_non_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "not-a-number")
+    assert resolve_archive_sweep_interval_seconds() == 300.0
+    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "0")
+    assert resolve_archive_sweep_interval_seconds() == 300.0
+
+
+def test_sweeper_honors_an_explicit_sweep_interval_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit constructor value always wins over the env default."""
+    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "999")
+    store = _FakeConversationStore([])
+    sweeper = SideChatArchiveSweeper(store, sweep_interval_s=5.0)
+    assert sweeper._sweep_interval_s == 5.0
+
+
+def test_sweeper_reads_the_env_when_no_interval_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "42")
+    store = _FakeConversationStore([])
+    sweeper = SideChatArchiveSweeper(store)
+    assert sweeper._sweep_interval_s == 42.0
 
 
 # ── is_stale_side_chat ──────────────────────────────────────────────────

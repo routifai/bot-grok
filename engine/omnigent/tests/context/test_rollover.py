@@ -753,6 +753,59 @@ def test_prefix_latest_user_item_no_user_message_is_a_no_op() -> None:
     assert prefix_latest_user_item(items, "TAIL") == items
 
 
+def test_list_related_chats_does_not_match_two_unowned_sessions(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two sessions with no owner grant on record must not read as
+    related to each other — ``None == None`` is not "same owner" outside
+    single-user mode, where every session's owner reads back ``None``."""
+    from omnigent.context.rollover import list_related_chats
+    from omnigent.stores.conversation_store import (
+        FORK_SOURCE_LABEL_KEY,
+        SIDE_CHAT_LABEL_KEY,
+    )
+    from omnigent.stores.conversation_store.sqlalchemy_store import (
+        SqlAlchemyConversationStore,
+    )
+
+    monkeypatch.delenv("OMNIGENT_LOCAL_SINGLE_USER", raising=False)
+    conv_store = SqlAlchemyConversationStore(db_uri)
+
+    unowned_parent = conv_store.create_conversation()
+    unowned_child = conv_store.create_conversation(
+        labels={FORK_SOURCE_LABEL_KEY: unowned_parent.id, SIDE_CHAT_LABEL_KEY: "1"}
+    )
+
+    assert list_related_chats(conv_store, unowned_child.id) == []
+
+
+def test_list_related_chats_single_user_mode_still_matches_unowned_sessions(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a single-user server (no permission store ever writes grants),
+    every session's owner reads back ``None`` — the one case two ``None``s
+    are the same (one) user, so related chats keep working."""
+    from omnigent.context.rollover import list_related_chats
+    from omnigent.stores.conversation_store import (
+        FORK_SOURCE_LABEL_KEY,
+        SIDE_CHAT_LABEL_KEY,
+    )
+    from omnigent.stores.conversation_store.sqlalchemy_store import (
+        SqlAlchemyConversationStore,
+    )
+
+    monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
+    conv_store = SqlAlchemyConversationStore(db_uri)
+
+    parent = conv_store.create_conversation()
+    child = conv_store.create_conversation(
+        labels={FORK_SOURCE_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
+    )
+
+    related_ids = [chat["id"] for chat in list_related_chats(conv_store, child.id)]
+    assert related_ids == [parent.id]
+
+
 @pytest.mark.asyncio
 async def test_side_chat_seed_stops_at_parents_last_reply() -> None:
     """A Side Chat opened mid-turn must not inherit the request opening it."""
@@ -766,3 +819,34 @@ async def test_side_chat_seed_stops_at_parents_last_reply() -> None:
     assert data.last_item_id == "a2"
     assert data.compacted_messages is not None
     assert all(m.get("id") != "u3" for m in data.compacted_messages)
+
+
+@pytest.mark.asyncio
+async def test_side_chat_seed_with_no_reply_yet_still_excludes_the_trailing_request() -> None:
+    """Even with NO assistant reply anywhere in the record yet, the seed
+    must not inherit the unanswered request opening this fork — it stops
+    before the last user message too, not just the last reply."""
+    items = [_msg("u1", "user", "first message"), _msg("u2", "user", "open a side chat")]
+    client = _ReturnsTextClient("SUMMARY")
+
+    data = await build_side_chat_seed(
+        items, keep_tokens=100_000, model="gpt-4o", llm_client=client
+    )
+
+    assert data.last_item_id == "u1"
+    assert data.compacted_messages is not None
+    assert all(m.get("id") != "u2" for m in data.compacted_messages)
+
+
+@pytest.mark.asyncio
+async def test_side_chat_seed_with_only_one_unanswered_message_keeps_it() -> None:
+    """Truncating before the lone trailing user message would leave nothing
+    to seed from — keep it rather than seed from an empty record."""
+    items = [_msg("u1", "user", "open a side chat right away")]
+    client = _ReturnsTextClient("SUMMARY")
+
+    data = await build_side_chat_seed(
+        items, keep_tokens=100_000, model="gpt-4o", llm_client=client
+    )
+
+    assert data.last_item_id == "u1"

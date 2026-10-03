@@ -25,7 +25,12 @@ from collections.abc import Callable
 from contextlib import suppress
 
 from omnigent.memory.service import MemoryService
-from omnigent.memory.upkeep import HOURLY_SWEEP_INTERVAL_S, UpkeepLLMCaller, run_upkeep_once
+from omnigent.memory.upkeep import (
+    UpkeepLLMCaller,
+    resolve_upkeep_max_concurrency,
+    resolve_upkeep_sweep_interval_seconds,
+    run_upkeep_once,
+)
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
 
@@ -42,15 +47,18 @@ class MemoryUpkeepCoordinator:
         memory_service: MemoryService,
         upkeep_store: MemoryUpkeepStore,
         llm_caller_factory: Callable[[], UpkeepLLMCaller | None],
-        max_concurrency: int = 4,
+        max_concurrency: int | None = None,
     ) -> None:
-        if max_concurrency < 1:
+        resolved_max_concurrency = (
+            max_concurrency if max_concurrency is not None else resolve_upkeep_max_concurrency()
+        )
+        if resolved_max_concurrency < 1:
             raise ValueError("max_concurrency must be at least 1")
         self._conversation_store = conversation_store
         self._memory_service = memory_service
         self._upkeep_store = upkeep_store
         self._llm_caller_factory = llm_caller_factory
-        self._slots = asyncio.Semaphore(max_concurrency)
+        self._slots = asyncio.Semaphore(resolved_max_concurrency)
         self._pending: set[asyncio.Task[None]] = set()
         self._scheduled_user_ids: set[str] = set()
 
@@ -112,12 +120,16 @@ class MemoryUpkeepScheduler:
         *,
         conversation_store: ConversationStore,
         coordinator: MemoryUpkeepCoordinator,
-        sweep_interval_s: int = HOURLY_SWEEP_INTERVAL_S,
+        sweep_interval_s: int | None = None,
         scan_limit: int = 200,
     ) -> None:
         self._conversation_store = conversation_store
         self._coordinator = coordinator
-        self._sweep_interval_s = sweep_interval_s
+        self._sweep_interval_s = (
+            sweep_interval_s
+            if sweep_interval_s is not None
+            else resolve_upkeep_sweep_interval_seconds()
+        )
         self._scan_limit = scan_limit
         self._task: asyncio.Task[None] | None = None
 

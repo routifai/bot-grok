@@ -99,6 +99,10 @@ What the mode turns on, for the session and everything created from it:
 | Sub-agent concurrency | env `OMNIGENT_SUBAGENT_MAX_CONCURRENT` + each Type's `max_sessions` in its `config.yaml` | 10 per caller; per-Type as configured |
 | Memory embeddings | env `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` + the provider key on the server | `openai/text-embedding-3-small` |
 | Upkeep model | the server config's `llm:` block (`omnigent server --config`) | none: Upkeep runs are recorded as skipped (`no_llm_configured`) |
+| Upkeep sweep interval | env `OMNIGENT_UPKEEP_SWEEP_INTERVAL_SECONDS` | 3600 (1 h) |
+| Upkeep max concurrency | env `OMNIGENT_UPKEEP_MAX_CONCURRENCY` | 4 (runs across all users, per server process) |
+| Activity Feed items scan limit | env `OMNIGENT_ACTIVITY_ITEMS_SCAN_LIMIT` | 1000 (newest items per chat; older history is what gets truncated) |
+| Side Chat archive sweep interval | env `OMNIGENT_SIDE_CHAT_ARCHIVE_SWEEP_INTERVAL_SECONDS` | 300 (5 min) |
 
 ## Known limits
 
@@ -106,7 +110,7 @@ What the mode turns on, for the session and everything created from it:
 |---|---|
 | Activity Feed panel placement | The UI component exists but is not mounted in the app yet |
 | Side Chat archive sweep | Runs per workspace (no cross-workspace query exists) |
-| `?stream=true` turn path | Skips the turn-start hooks (idle refresh, deferred engine refresh); the default path is covered |
+| `?stream=true` turn path | Refused with `400 stream_not_supported_for_superside_chat` for a superside-chat session — it would skip the turn-start hooks (idle refresh, the Memory Profile block, context mode threading). Send the turn without `?stream=true`; the default path is covered |
 | Concurrency caps | Count the caller's direct children, not the whole tree |
 | A runner crash mid-task | Stops in-flight Sub-agents; finished Results are recovered |
 | Archived Side Chat | Only the wake is redirected to the Super Chat; the inbox entry stays with the Side Chat |

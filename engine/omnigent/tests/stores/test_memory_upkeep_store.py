@@ -49,6 +49,37 @@ def test_start_run_is_the_single_run_lease(store: SqlAlchemyMemoryUpkeepStore) -
     assert other is not None
 
 
+def test_start_run_reclaims_a_stale_running_row(
+    store: SqlAlchemyMemoryUpkeepStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``running`` row left by a process that crashed or was killed
+    mid-run must not block this user's upkeep forever — it is reclaimed
+    (marked ``failed``/``stale``) once older than the max run duration."""
+    import omnigent.stores.memory_upkeep_store.sqlalchemy_store as store_mod
+
+    base = 1_000_000
+    monkeypatch.setattr(store_mod, "now_epoch", lambda: base)
+    stuck = store.start_run(_rid("r1"), "alice", 0, 100)
+    assert stuck is not None
+
+    # Still within the max-run-duration: refused, same as today.
+    monkeypatch.setattr(store_mod, "now_epoch", lambda: base + 60)
+    too_soon = store.start_run(_rid("r2"), "alice", 0, 100)
+    assert too_soon is None
+
+    # Past the max-run-duration: the stale row is reclaimed and a new run starts.
+    monkeypatch.setattr(
+        store_mod, "now_epoch", lambda: base + store_mod._MAX_RUNNING_DURATION_S + 1
+    )
+    reclaimed = store.start_run(_rid("r3"), "alice", 100, 200)
+    assert reclaimed is not None
+    assert reclaimed.run_id == _rid("r3")
+
+    stale_run = next(r for r in store.list_runs("alice", limit=10) if r.run_id == _rid("r1"))
+    assert stale_run.state == "failed"
+    assert stale_run.disposition == "stale"
+
+
 def test_start_run_lease_releases_after_finish(store: SqlAlchemyMemoryUpkeepStore) -> None:
     run = store.start_run(_rid("r1"), "alice", 0, 100)
     assert run is not None

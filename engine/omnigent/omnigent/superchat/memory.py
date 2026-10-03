@@ -12,10 +12,13 @@ be out-of-process and has no direct runtime access.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from omnigent.memory.service import MemoryService
+
+_logger = logging.getLogger(__name__)
 
 
 def memory_profile_for(user_id: str, *, service: MemoryService | None = None) -> str | None:
@@ -27,9 +30,11 @@ def memory_profile_for(user_id: str, *, service: MemoryService | None = None) ->
         Sub-agent). A caller that already holds its own instance (e.g. a
         route closure built with one explicitly, as in tests) should pass
         it, so this never reads a stale or differently-configured global.
-    :returns: ``None`` when long-term memory isn't configured, or the
-        profile is empty — callers must then add no block at all, never an
-        empty one.
+    :returns: ``None`` when long-term memory isn't configured, the profile
+        is empty, or rendering it failed (logged here, never raised — a
+        turn must proceed with no Memory Profile rather than fail outright
+        over one) — callers must then add no block at all, never an empty
+        one.
     """
     from omnigent.memory.service import render_profile_block
 
@@ -39,7 +44,14 @@ def memory_profile_for(user_id: str, *, service: MemoryService | None = None) ->
         service = get_memory_service()
     if service is None:
         return None
-    profile = service.profile(user_id)
-    if not profile:
+    try:
+        profile = service.profile(user_id)
+        if not profile:
+            return None
+        return render_profile_block(profile)
+    except Exception as exc:  # noqa: BLE001 — a profile failure must never fail the turn
+        _logger.warning(
+            "Memory Profile render failed; proceeding without it: %s",
+            type(exc).__name__,
+        )
         return None
-    return render_profile_block(profile)

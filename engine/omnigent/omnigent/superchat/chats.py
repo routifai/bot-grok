@@ -259,7 +259,25 @@ def maybe_unarchive_on_user_message(
     return True
 
 
+SWEEP_INTERVAL_SECONDS_ENV = "OMNIGENT_SIDE_CHAT_ARCHIVE_SWEEP_INTERVAL_SECONDS"
 _DEFAULT_SWEEP_INTERVAL_SECONDS = 300.0
+
+
+def resolve_archive_sweep_interval_seconds() -> float:
+    """Resolve how often :class:`SideChatArchiveSweeper` checks for idle Side Chats.
+
+    Reads :data:`SWEEP_INTERVAL_SECONDS_ENV`, default
+    :data:`_DEFAULT_SWEEP_INTERVAL_SECONDS` (300s). A missing, non-numeric,
+    or non-positive value falls back to the default.
+    """
+    raw = os.environ.get(SWEEP_INTERVAL_SECONDS_ENV)
+    if raw is None:
+        return _DEFAULT_SWEEP_INTERVAL_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return _DEFAULT_SWEEP_INTERVAL_SECONDS
+    return value if value > 0 else _DEFAULT_SWEEP_INTERVAL_SECONDS
 
 
 class SideChatArchiveSweeper:
@@ -275,11 +293,15 @@ class SideChatArchiveSweeper:
         self,
         conv_store: ConversationStore,
         *,
-        sweep_interval_s: float = _DEFAULT_SWEEP_INTERVAL_SECONDS,
+        sweep_interval_s: float | None = None,
         clock: Callable[[], int] = lambda: int(time.time()),
     ) -> None:
         self._conv_store = conv_store
-        self._sweep_interval_s = sweep_interval_s
+        self._sweep_interval_s = (
+            sweep_interval_s
+            if sweep_interval_s is not None
+            else resolve_archive_sweep_interval_seconds()
+        )
         self._clock = clock
         self._task: asyncio.Task[None] | None = None
 

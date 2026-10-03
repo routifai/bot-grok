@@ -10,10 +10,13 @@ before calling in, except where a function takes that fact as an argument.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterable, Mapping
 
 from omnigent.util.session_lifecycle import is_session_closed
+
+_logger = logging.getLogger(__name__)
 
 # ── Default concurrency cap (across all Sub-agent Types, per tree) ────────
 
@@ -276,5 +279,15 @@ def resolve_wake_target(
             f"[System: this result's Originating Chat ({parent_id}) is an "
             "archived Side Chat; delivering it here, to its Super Chat, "
             "instead.]"
+        )
+    if archived and is_side_chat:
+        # Missing the fork-source label (see FORK_SOURCE_LABEL_KEY's "not a
+        # complete fork index" caveat): there is no Super Chat to redirect
+        # to, so the wake still delivers to the archived chat itself — just
+        # not silently, since that chat is hidden from the user's chat list.
+        _logger.warning(
+            "sub-agent wake delivered to an archived Side Chat with no fork_source label: %s",
+            parent_id,
+            extra={"session_id": parent_id},
         )
     return parent_id, None

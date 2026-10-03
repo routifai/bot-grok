@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from omnigent.entities import FunctionCallData, MessageData, NewConversationItem
 from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
@@ -154,6 +156,63 @@ def test_list_activities_covers_turn_and_sub_agent(
     assert ("sub_agent", family["sub_agent"].id) in kinds_by_chat
     # List view never carries per-step detail — only the detail route does.
     assert all(step.detail is None for activity in activities for step in activity.steps)
+
+
+def test_list_activities_covers_the_newest_turn_beyond_the_scan_limit(
+    conversation_store: SqlAlchemyConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A conversation with more items than the scan limit must still surface
+    its NEWEST turn — an ascending, limit-bounded scan would instead return
+    only the oldest items and silently drop the current turn."""
+    import omnigent.superchat.activity as activity_mod
+
+    monkeypatch.setattr(activity_mod, "_ITEMS_SCAN_LIMIT", 15)  # 5 turns' worth
+
+    super_chat = conversation_store.create_conversation(
+        kind="default", title="Long super chat", labels=_superside_chat_labels()
+    )
+    # Many old turns — well beyond the patched scan limit (20 turns * 3
+    # items = 60 items, vs. a 15-item limit).
+    for i in range(20):
+        _add_turn_with_tool_call(conversation_store, super_chat.id, response_id=f"resp_old_{i}")
+    # The newest turn, distinguishable by its tool-call query.
+    conversation_store.append(
+        super_chat.id,
+        [
+            NewConversationItem(
+                type="message",
+                response_id="resp_newest",
+                data=MessageData(
+                    role="user", content=[{"type": "input_text", "text": "what's newest?"}]
+                ),
+            ),
+            NewConversationItem(
+                type="function_call",
+                response_id="resp_newest",
+                data=FunctionCallData(
+                    agent="brain",
+                    name="memory_search",
+                    arguments=json.dumps({"query": "the newest marker"}),
+                    call_id="call_newest",
+                ),
+            ),
+            NewConversationItem(
+                type="message",
+                response_id="resp_newest",
+                data=MessageData(
+                    role="assistant",
+                    agent="brain",
+                    content=[{"type": "output_text", "text": "ok"}],
+                ),
+            ),
+        ],
+    )
+
+    activities = list_activities(conversation_store, super_chat.id, limit=100)
+    newest = [a for a in activities if a.id == f"turn:{super_chat.id}:resp_newest"]
+    assert len(newest) == 1
+    assert newest[0].steps[0].title == "Searched memory for 'the newest marker'"
 
 
 def test_list_activities_from_side_chat_id_resolves_to_same_feed(

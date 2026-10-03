@@ -121,11 +121,14 @@ class _FakeServerClient:
 
     items: list[dict[str, Any]]
     post_status: int = 200
+    get_status: int = 200
     posted: list[dict[str, Any]] = field(default_factory=list)
     get_calls: int = 0
 
     async def get(self, _url: str, *, params: dict[str, str], timeout: float) -> _FakeResponse:
         self.get_calls += 1
+        if self.get_status != 200:
+            return _FakeResponse(self.get_status, {})
         if params.get("after"):
             return _FakeResponse(200, {"data": [], "has_more": False})
         return _FakeResponse(200, {"data": self.items, "has_more": False})
@@ -210,6 +213,9 @@ async def test_roll_over_session_builds_and_posts_compaction_item() -> None:
     assert posted["data"]["type"] == "compaction"
     assert "SUMMARY" in posted["data"]["summary"]
     assert posted["data"]["last_item_id"] == "a1"
+    # No prior compaction item exists: the single-flight guard still names
+    # that expectation explicitly (``None``), not by omitting the field.
+    assert posted["data"]["expected_previous_compaction_id"] is None
     assert rolled_over == [True]
 
 
@@ -235,6 +241,9 @@ async def test_roll_over_session_resumes_from_previous_compaction() -> None:
     assert ok is True
     posted_data = client.posted[0]["data"]
     assert posted_data["last_item_id"] == "a2"
+    # Named the checkpoint it actually summarized from, for the server's
+    # single-flight guard.
+    assert posted_data["expected_previous_compaction_id"] == "c1"
     # Only the post-checkpoint turn is replayed in the kept tail.
     ids = [m.get("id") for m in posted_data["compacted_messages"] if m.get("id")]
     assert "u1" not in ids
@@ -262,9 +271,40 @@ async def test_roll_over_session_noop_when_nothing_since_last_compaction() -> No
 
 
 @pytest.mark.asyncio
-async def test_roll_over_session_post_failure_is_non_fatal_and_skips_callback() -> None:
+async def test_roll_over_session_post_failure_is_non_fatal_and_skips_callback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A non-2xx POST never calls back: the new compaction item was NOT
+    durably persisted, so the warm client must not be dropped on top of it
+    (that would cold-start the next turn with no rollover item to read)."""
     items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
     client = _FakeServerClient(items=items, post_status=500)
+    rolled_over = []
+
+    async def on_rolled_over() -> None:
+        rolled_over.append(True)
+
+    with caplog.at_level("WARNING"):
+        ok = await roll_over_session(
+            "conv_1",
+            labels=_SUPERSIDE,
+            model="gpt-4o",
+            server_client=client,  # type: ignore[arg-type]
+            llm_client=_ReturnsTextClient("SUMMARY"),
+            on_rolled_over=on_rolled_over,
+        )
+
+    assert ok is False
+    assert rolled_over == []
+    assert any("500" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_roll_over_session_conflict_is_a_quiet_lost_race() -> None:
+    """A 409 means another process already rolled this session over — not
+    a failure: no warning, just ``False`` and no callback."""
+    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    client = _FakeServerClient(items=items, post_status=409)
     rolled_over = []
 
     async def on_rolled_over() -> None:
@@ -279,12 +319,28 @@ async def test_roll_over_session_post_failure_is_non_fatal_and_skips_callback() 
         on_rolled_over=on_rolled_over,
     )
 
-    # The POST call itself doesn't raise (a 500 JSON body), so this helper
-    # reports success at the transport level; failure injection belongs to
-    # the server_client. What matters here is the callback only fires from
-    # this module's own success path — covered by the OK case above.
-    assert ok is True
-    assert rolled_over == [True]
+    assert ok is False
+    assert rolled_over == []
+
+
+@pytest.mark.asyncio
+async def test_roll_over_session_get_items_failure_is_non_fatal() -> None:
+    """A non-200 page while scanning for the rollover must raise (caught and
+    logged by the caller), not silently stop with a partial item range that
+    would summarize over a hole in the history."""
+    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    client = _FakeServerClient(items=items, get_status=503)
+
+    ok = await roll_over_session(
+        "conv_1",
+        labels=_SUPERSIDE,
+        model="gpt-4o",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=_ReturnsTextClient("SUMMARY"),
+    )
+
+    assert ok is False
+    assert client.posted == []
 
 
 @pytest.mark.asyncio

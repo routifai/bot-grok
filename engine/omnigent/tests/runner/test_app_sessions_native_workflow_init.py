@@ -50,12 +50,14 @@ async def test_session_labels_for_runner_spawn_timeout_is_quiet(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
-    Timed-out optional label resolution returns the spawn fallback quietly.
+    Timed-out optional label resolution returns ``None``, not ``{}``, quietly.
 
     Native harness spawn can recover by using the session id when labels
     cannot be fetched. A slow Omnigent session lookup therefore must not emit a
     warning with traceback; that was noisy and misleading for a best-effort
-    lookup.
+    lookup. ``None`` (not a confirmed-empty ``{}``) lets a cache built from
+    this result (``_rollover_labels_for_session``) tell "unknown, retry" apart
+    from "really has no labels" and avoid caching a transient failure forever.
 
     :param caplog: Pytest log capture fixture.
     :returns: None.
@@ -68,7 +70,7 @@ async def test_session_labels_for_runner_spawn_timeout_is_quiet(
                 session_id="1dbe53c9796da07f3960b9226435a5c8",
             )
 
-    assert labels == {}
+    assert labels is None
     assert [(request.method, request.url.path) for request in transport.requests] == [
         ("GET", "/v1/sessions/1dbe53c9796da07f3960b9226435a5c8/labels")
     ]
@@ -92,7 +94,7 @@ async def test_session_labels_for_runner_spawn_empty_200_body_recovers(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
-    A 200 response with an empty (non-JSON) body returns the fallback.
+    A 200 response with an empty (non-JSON) body returns ``None``, not ``{}``.
 
     The Databricks Apps proxy can return HTTP 200 with an empty body
     when the server event loop is starved. Parsing that with
@@ -101,7 +103,8 @@ async def test_session_labels_for_runner_spawn_empty_200_body_recovers(
     every message turn before any LLM call (observed in production:
     "turn setup failed: Expecting value: line 1 column 1 (char 0)").
     Labels are a best-effort spawn hint, so a bad body must degrade to
-    ``{}`` like the timeout / non-200 paths — not raise.
+    ``None`` like the timeout / non-200 paths — not raise, and not a
+    confirmed-empty ``{}`` that would poison a cache built from this result.
 
     :param caplog: Pytest log capture fixture.
     :returns: None.
@@ -121,7 +124,7 @@ async def test_session_labels_for_runner_spawn_empty_200_body_recovers(
 
     # Recovered to the fallback instead of raising JSONDecodeError —
     # if the guard is removed, this call raises and the test errors out.
-    assert labels == {}
+    assert labels is None
     # The non-JSON 200 is logged once at WARNING with no traceback;
     # absence of this record would mean the bad body was swallowed
     # silently (or, worse, that the guard never ran).

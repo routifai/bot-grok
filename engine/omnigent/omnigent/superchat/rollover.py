@@ -117,20 +117,27 @@ def should_roll_over_for_idle(
 _in_flight: set[str] = set()
 
 
+class _ItemsPageFetchError(Exception):
+    """A page of ``GET .../items`` came back non-200 while scanning for rollover."""
+
+
 async def _fetch_items_since_last_compaction(
     server_client: httpx.AsyncClient,
     conversation_id: str,
-) -> tuple[list[dict[str, Any]], str | None]:
+) -> tuple[list[dict[str, Any]], str | None, str | None]:
     """Page this session's full record and split it at the latest compaction item.
 
     Mirrors the pagination ``_load_history_as_input`` (``runner/app.py``)
     uses to cold-start a session, kept local here so this module has no
     dependency on the runner's closures.
 
-    :returns: ``(items_since, previous_summary)`` — the chronological items
-        after the latest ``compaction`` item (the whole record when there is
-        none), and that item's summary text (``None`` for the session's
-        first rollover).
+    :returns: ``(items_since, previous_summary, previous_compaction_id)`` —
+        the chronological items after the latest ``compaction`` item (the
+        whole record when there is none), that item's summary text, and its
+        item id (all ``None`` for the session's first rollover).
+    :raises _ItemsPageFetchError: a page came back non-200 — the scan is
+        incomplete, so the caller must not treat the partial result as the
+        full record since the last compaction.
     """
     items: list[dict[str, Any]] = []
     after: str | None = None
@@ -142,7 +149,9 @@ async def _fetch_items_since_last_compaction(
             f"/v1/sessions/{conversation_id}/items", params=params, timeout=10.0
         )
         if resp.status_code != 200:
-            break
+            raise _ItemsPageFetchError(
+                f"GET items for {conversation_id!r} returned {resp.status_code}"
+            )
         page = resp.json()
         page_items = page.get("data", [])
         if not page_items:
@@ -156,17 +165,24 @@ async def _fetch_items_since_last_compaction(
         None,
     )
     if last_compaction_index is None:
-        return items, None
+        return items, None, None
     checkpoint = items[last_compaction_index]
-    return items[last_compaction_index + 1 :], checkpoint.get("summary")
+    return items[last_compaction_index + 1 :], checkpoint.get("summary"), checkpoint.get("id")
 
 
-def _compaction_event_body(compaction: CompactionData) -> dict[str, Any]:
+def _compaction_event_body(
+    compaction: CompactionData, *, expected_previous_compaction_id: str | None
+) -> dict[str, Any]:
     """Shape a :class:`CompactionData` into the ``POST .../events`` ``data`` body.
 
     Matches the shape ``runner/app.py``'s ``_handle_harness_compaction``
     posts for a native CLI's own compaction, so both producers write the
-    same ``compaction`` item shape.
+    same ``compaction`` item shape. ``expected_previous_compaction_id`` is
+    the cross-process single-flight guard: the server rejects (409) this
+    write if the session's latest compaction item id has since moved —
+    always set (``None`` is a valid expectation: "no prior compaction"),
+    so two processes racing the session's very first rollover are guarded
+    too, not just later ones.
     """
     body: dict[str, Any] = {
         "type": "compaction",
@@ -174,6 +190,7 @@ def _compaction_event_body(compaction: CompactionData) -> dict[str, Any]:
         "last_item_id": compaction.last_item_id,
         "model": compaction.model,
         "token_count": compaction.token_count,
+        "expected_previous_compaction_id": expected_previous_compaction_id,
     }
     if compaction.compacted_messages:
         body["compacted_messages"] = compaction.compacted_messages
@@ -215,10 +232,12 @@ async def roll_over_session(
     _in_flight.add(conversation_id)
     try:
         try:
-            items_since, previous_summary = await _fetch_items_since_last_compaction(
-                server_client, conversation_id
-            )
-        except (httpx.HTTPError, ValueError):
+            (
+                items_since,
+                previous_summary,
+                previous_compaction_id,
+            ) = await _fetch_items_since_last_compaction(server_client, conversation_id)
+        except (httpx.HTTPError, ValueError, _ItemsPageFetchError):
             logger.warning(
                 "superside-chat rollover: failed to load history for %s",
                 conversation_id,
@@ -245,9 +264,15 @@ async def roll_over_session(
             )
             return False
         try:
-            await server_client.post(
+            resp = await server_client.post(
                 f"/v1/sessions/{conversation_id}/events",
-                json={"type": "compaction", "data": _compaction_event_body(compaction)},
+                json={
+                    "type": "compaction",
+                    "data": _compaction_event_body(
+                        compaction,
+                        expected_previous_compaction_id=previous_compaction_id,
+                    ),
+                },
                 timeout=10.0,
             )
         except (httpx.HTTPError, RuntimeError):
@@ -255,6 +280,19 @@ async def roll_over_session(
                 "superside-chat rollover: failed to persist the rollover item for %s",
                 conversation_id,
                 exc_info=True,
+            )
+            return False
+        if resp.status_code == 409:
+            # Someone else (another runner process for this same session)
+            # already rolled over past the checkpoint this summary was
+            # built from — not a failure, just a lost race.
+            return False
+        if resp.status_code < 200 or resp.status_code >= 300:
+            logger.warning(
+                "superside-chat rollover: persisting the rollover item for %s "
+                "returned %s, not dropping the warm client",
+                conversation_id,
+                resp.status_code,
             )
             return False
         if on_rolled_over is not None:

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from omnigent.entities import (
     Conversation,
     ConversationItem,
@@ -19,11 +21,13 @@ from omnigent.entities import (
     MessageData,
 )
 from omnigent.superchat.activity import (
+    ITEMS_SCAN_LIMIT_ENV,
     STATUS_CANCELLED,
     STATUS_DONE,
     STATUS_FAILED,
     STATUS_IN_PROGRESS,
     _activities_for_conversation,
+    _resolve_items_scan_limit,
     _sub_agent_status,
     _turn_status,
     is_superside_chat,
@@ -146,7 +150,31 @@ class _FakeItemsStore:
             def __init__(self, data: list[ConversationItem]) -> None:
                 self.data = data
 
-        return _Page(self._items)
+        # Real stores sort by the requested order; this fake's items are
+        # constructed chronologically (ascending), so "desc" must reverse
+        # them — matching list_activities' newest-first-then-reversed scan.
+        data = self._items if order == "asc" else list(reversed(self._items))
+        return _Page(data[:limit])
+
+
+# ── _resolve_items_scan_limit ────────────────────────────────────────────
+
+
+def test_items_scan_limit_default_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ITEMS_SCAN_LIMIT_ENV, raising=False)
+    assert _resolve_items_scan_limit() == 1000
+
+
+def test_items_scan_limit_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ITEMS_SCAN_LIMIT_ENV, "50")
+    assert _resolve_items_scan_limit() == 50
+
+
+def test_items_scan_limit_ignores_invalid_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ITEMS_SCAN_LIMIT_ENV, "not-a-number")
+    assert _resolve_items_scan_limit() == 1000
+    monkeypatch.setenv(ITEMS_SCAN_LIMIT_ENV, "-5")
+    assert _resolve_items_scan_limit() == 1000
 
 
 # ── is_superside_chat ────────────────────────────────────────────────────

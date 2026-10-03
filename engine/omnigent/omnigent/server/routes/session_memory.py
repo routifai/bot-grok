@@ -1,14 +1,16 @@
 """Routes for long-term memory (``rollover/MEMORY-PLAN.md`` Phase 1).
 
-All endpoints live under ``/v1/sessions/{session_id}/memory`` and require at
-least ``LEVEL_READ`` on the session, same posture as
-``routes_items.search_session_items``. The user memory is scoped to is
-**always** the session's owner (``conversation_store.get_session_owner``),
-never a value from the request body or query string — the same rule the
-``memory_*`` built-in tools apply when called in-process
+All endpoints live under ``/v1/sessions/{session_id}/memory``: reads require
+``LEVEL_READ`` on the session, writes (``remember``/``forget``) require
+``LEVEL_EDIT``. The user memory is scoped to is **always** the session's
+owner (``conversation_store.get_session_owner``), never a value from the
+request body or query string — the same rule the ``memory_*`` built-in tools
+apply when called in-process
 (``omnigent.tools.builtins.memory.resolve_memory_user``), so native-relay
 dispatch (which reaches this API over REST) and in-process dispatch agree on
-whose memory is being read or written.
+whose memory is being read or written. The caller must also BE that owner:
+a session shared with another collaborator never exposes the owner's Memory
+through it, even to a collaborator with EDIT on the session itself.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from fastapi import APIRouter, Query, Request
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.memory.service import MemoryService
-from omnigent.server.auth import LEVEL_READ, RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import get_user_id, require_access
 from omnigent.server.routes._errors import session_not_found
 from omnigent.server.schemas import MemoryForgetRequest, MemoryRememberRequest
@@ -49,22 +51,35 @@ def create_session_memory_router(
     """
     router = APIRouter()
 
-    async def _resolve_user(request: Request, session_id: str) -> str:
+    async def _resolve_user(
+        request: Request, session_id: str, *, required_level: int = LEVEL_READ
+    ) -> str:
         """Require session access, then resolve the owner memory is scoped to.
 
-        A session with no owner grant (no permission store configured — a
-        single-user server) falls back to the reserved single-user identity,
-        same as ``omnigent.tools.builtins.memory.resolve_memory_user``.
+        A session merely *shared* with another user (even at EDIT) never
+        exposes its owner's Memory to them: the caller must also BE that
+        owner, so another user with a READ or EDIT grant on this session can
+        never read or write someone else's claims through it. A session with
+        no owner grant (no permission store configured — a single-user
+        server) falls back to the reserved single-user identity, same as
+        ``omnigent.tools.builtins.memory.resolve_memory_user``, and skips the
+        owner-identity check (there is only one user).
         """
         user_id = get_user_id(request, auth_provider)
         if permission_store is not None:
             await require_access(
-                user_id, session_id, LEVEL_READ, permission_store, conversation_store
+                user_id, session_id, required_level, permission_store, conversation_store
             )
         conversation = conversation_store.get_conversation(session_id)
         if conversation is None:
             raise session_not_found()
-        return conversation_store.get_session_owner(session_id) or RESERVED_USER_LOCAL
+        owner = conversation_store.get_session_owner(session_id) or RESERVED_USER_LOCAL
+        if permission_store is not None and user_id != owner:
+            raise OmnigentError(
+                f"{user_id!r} is not the owner of session {session_id!r}'s memory",
+                code=ErrorCode.FORBIDDEN,
+            )
+        return owner
 
     @router.post("/sessions/{session_id}/memory/remember")
     async def remember(
@@ -73,7 +88,7 @@ def create_session_memory_router(
         body: MemoryRememberRequest,
     ) -> dict[str, Any]:
         """Write a durable claim, immediately indexed; reinforce/supersede a near-duplicate."""
-        owner = await _resolve_user(request, session_id)
+        owner = await _resolve_user(request, session_id, required_level=LEVEL_EDIT)
         from omnigent.entities import MemoryEvidenceLink
 
         evidence = [MemoryEvidenceLink(session_id=session_id, item_id="")]
@@ -149,7 +164,7 @@ def create_session_memory_router(
         body: MemoryForgetRequest,
     ) -> dict[str, Any]:
         """Two-step forget: ``confirm=false`` plans, ``confirm=true`` executes."""
-        owner = await _resolve_user(request, session_id)
+        owner = await _resolve_user(request, session_id, required_level=LEVEL_EDIT)
         if body.claim_id is None and not body.query:
             raise OmnigentError("forget requires claim_id or query", code=ErrorCode.INVALID_INPUT)
         return memory_service.forget(

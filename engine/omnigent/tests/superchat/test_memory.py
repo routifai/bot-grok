@@ -6,7 +6,10 @@ wrapped in the per-turn delimiter block.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+import pytest
 
 from omnigent.superchat.memory import memory_profile_for
 
@@ -17,6 +20,13 @@ class _FakeMemoryService:
 
     def profile(self, user_id: str) -> str | None:
         return self._profiles.get(user_id)
+
+
+class _ExplodingMemoryService:
+    """Simulates a profile render failure (e.g. a DB or index error)."""
+
+    def profile(self, user_id: str) -> str | None:
+        raise RuntimeError("boom")
 
 
 def test_returns_none_when_no_service_is_configured(monkeypatch: Any) -> None:
@@ -60,3 +70,19 @@ def test_is_isolated_per_user(monkeypatch: Any) -> None:
     block = memory_profile_for("alice")
     assert block is not None
     assert "Alice's preference" in block
+
+
+def test_render_failure_is_logged_and_the_turn_proceeds_without_it(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A profile render failure must never raise out to the caller (the
+    turn proceeds with no Memory Profile) and must be logged once, at
+    warning level, with no profile content in the message."""
+    with caplog.at_level(logging.WARNING, logger="omnigent.superchat.memory"):
+        block = memory_profile_for("alice", service=_ExplodingMemoryService())
+
+    assert block is None
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "RuntimeError" in warnings[0].getMessage()
+    assert "boom" not in warnings[0].getMessage()

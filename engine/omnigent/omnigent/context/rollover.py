@@ -27,6 +27,7 @@ from omnigent.entities import (
     MessageData,
 )
 from omnigent.runtime.compaction import count_tokens, summarize_history
+from omnigent.server.auth import local_single_user_enabled
 from omnigent.server.routes._sessions.common import (
     _LAST_CONTEXT_TOKENS_LABEL_KEY,
     _LAST_CONTEXT_WINDOW_LABEL_KEY,
@@ -490,6 +491,21 @@ async def build_side_chat_seed(
     )
     if last_reply_index is not None:
         items = items[: last_reply_index + 1]
+    else:
+        # No assistant reply at all yet: still must not inherit the request
+        # that's opening this fork — stop before the last USER message too
+        # (unless that message is all there is, in which case there is
+        # nothing left to seed from; keep it rather than seed from nothing).
+        last_user_index = next(
+            (
+                i
+                for i in range(len(items) - 1, -1, -1)
+                if items[i].get("type") == "message" and items[i].get("role") == "user"
+            ),
+            None,
+        )
+        if last_user_index is not None and last_user_index > 0:
+            items = items[:last_user_index]
 
     last_compaction_index = next(
         (i for i in range(len(items) - 1, -1, -1) if items[i].get("type") == "compaction"),
@@ -637,7 +653,16 @@ def list_related_chats(
     owner_id = conv_store.get_session_owner(conversation_id)
 
     def same_owner(other_id: str) -> bool:
-        return conv_store.get_session_owner(other_id) == owner_id
+        other_owner_id = conv_store.get_session_owner(other_id)
+        # A session with no owner grant reads back as ``None`` regardless of
+        # who it actually belongs to. On a single-user server (no permission
+        # store ever writing grants) every session reads back ``None``, and
+        # they are all the one user's — that's the only case two ``None``s
+        # may be treated as the same owner. Otherwise two unrelated sessions
+        # that both happen to lack an owner grant must never match.
+        if owner_id is None and other_owner_id is None:
+            return local_single_user_enabled()
+        return other_owner_id == owner_id
 
     related: list[Conversation] = []
     children = conv_store.list_conversations(

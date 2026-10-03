@@ -3027,6 +3027,87 @@ def _require_full_native_lock_coverage(
 _SIGN_IN_WATCH_INTERVAL_S = 3.0
 
 
+#: Bare (unprefixed) id patterns recognized as OpenAI's own naming, for
+#: :func:`resolve_model_provider_family`. Deliberately narrower than "has no
+#: '/' prefix" — a third-party provider's own bare id (Groq, Gemini, xAI,
+#: ...) must not fall through to this and get treated as OpenAI.
+_OPENAI_BARE_ID_PREFIXES: tuple[str, ...] = (
+    "gpt",
+    "chatgpt",
+    "o1",
+    "o3",
+    "o4",
+    "text-embedding",
+    "davinci",
+    "curie",
+    "babbage",
+    "ada",
+    "dall-e",
+    "whisper",
+    "tts",
+    "omni-moderation",
+)
+
+
+def resolve_model_provider_family(model: str) -> str | None:
+    """Known-provider family for a rollover-summarizer *model* id, or ``None``.
+
+    Recognizes Anthropic ids by the ``"claude"`` token appearing anywhere
+    (case-insensitive) — covering the plain ``"claude-*"`` form, the
+    ``"anthropic/*"`` provider-prefixed form, Bedrock-style ids
+    (``"us.anthropic.claude-..."``, ``"anthropic.claude-..."``), and
+    Databricks-hosted Claude (``"databricks-claude-..."``) — plus any
+    explicit ``"anthropic/"`` prefix. Recognizes OpenAI ids by an explicit
+    ``"openai/"`` prefix or OpenAI's own bare-id naming
+    (:data:`_OPENAI_BARE_ID_PREFIXES`: gpt/o-series/dall-e/whisper/...).
+
+    A model id matching neither — including a bare id from some OTHER
+    provider (Groq, Gemini, xAI, a self-hosted model) — is NOT guessed as
+    OpenAI: this connection-resolution subsystem only ever has an Anthropic
+    or an OpenAI slot to offer, so callers must treat ``None`` as "don't
+    know which of the two (if either) this is" and refuse to pick one
+    rather than silently handing a third provider's call OpenAI credentials.
+
+    :param model: LLM model string in any vocabulary, e.g.
+        ``"claude-haiku-4-5"``, ``"us.anthropic.claude-3-5-sonnet..."``,
+        ``"databricks-claude-opus-4-8"``, ``"gpt-4o"``, ``"o3-mini"``.
+    :returns: ``"anthropic"``, ``"openai"``, or ``None`` when unrecognized.
+    """
+    lower = model.lower()
+    if "claude" in lower or lower.startswith("anthropic/"):
+        return "anthropic"
+    if lower.startswith("openai/") or lower.startswith(_OPENAI_BARE_ID_PREFIXES):
+        return "openai"
+    return None
+
+
+def normalize_anthropic_base_url(base_url: str) -> str:
+    """Append the missing API version to a bare ``api.anthropic.com`` base URL.
+
+    Provider config (``~/.omnigent/config.yaml``) stores the Claude SDK form
+    of the Anthropic base URL, which has no ``/v1`` — the LLM client's
+    Anthropic adapter needs the versioned form. Matched by parsed host
+    (case-insensitive), not a literal string, so this also normalizes a
+    trailing slash or any casing of the host; a base URL that already names
+    a path (a version, or a proxy's own route) is left alone, and any other
+    host (a self-hosted gateway, a proxy under a different domain) is
+    returned unchanged.
+
+    :param base_url: The configured Anthropic base URL, e.g.
+        ``"https://api.anthropic.com"``, ``"HTTPS://API.ANTHROPIC.COM/"``.
+    :returns: *base_url* with ``/v1`` appended when it names the bare
+        Anthropic host with no path; otherwise *base_url* unchanged.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(base_url)
+    if parts.hostname != "api.anthropic.com":
+        return base_url
+    if parts.path not in ("", "/"):
+        return base_url
+    return urlunsplit((parts.scheme, parts.netloc, "/v1", parts.query, parts.fragment))
+
+
 def create_runner_app(
     *,
     process_manager: HarnessProcessManager | None = None,
@@ -6151,9 +6232,12 @@ def create_runner_app(
             read_bridge_state,
         )
 
-        labels = await _session_labels_for_runner_spawn(
-            server_client=server_client,
-            session_id=conv_id,
+        labels = (
+            await _session_labels_for_runner_spawn(
+                server_client=server_client,
+                session_id=conv_id,
+            )
+            or {}
         )
         bridge_id = labels.get(CODEX_NATIVE_BRIDGE_ID_LABEL_KEY) or conv_id
         state = read_bridge_state(bridge_dir_for_bridge_id(bridge_id))
@@ -6191,9 +6275,12 @@ def create_runner_app(
             bridge_dir_for_bridge_id,
         )
 
-        labels = await _session_labels_for_runner_spawn(
-            server_client=server_client,
-            session_id=conv_id,
+        labels = (
+            await _session_labels_for_runner_spawn(
+                server_client=server_client,
+                session_id=conv_id,
+            )
+            or {}
         )
         return bridge_dir_for_bridge_id(labels.get(CODEX_NATIVE_BRIDGE_ID_LABEL_KEY) or conv_id)
 
@@ -8996,15 +9083,15 @@ def create_runner_app(
     async def _maybe_superside_chat_idle_rollover(conv_id: str) -> None:
         """Roll over a superside-chat session on its first message back from idle.
 
-        Called only from the "no cached history yet" branch in
-        ``_run_turn_bg_setup_and_stream`` — the runner's own signal for
-        "first message after idle" (see ``omnigent.superchat.rollover.
-        should_roll_over_for_idle``). A no-op for a non-superside-chat
-        session (checked before the idle lookup, so those pay no extra
-        round trip).
+        Called every turn, at the top of ``_run_turn_bg_setup_and_stream``
+        (before any history is loaded) — it decides for itself whether this
+        is actually "the first message after idle" via
+        :func:`~omnigent.superchat.rollover.should_roll_over_for_idle`'s own
+        idle-seconds check, not from its call site. A no-op for a
+        non-superside-chat session (checked before the idle lookup, so
+        those pay no extra round trip).
         """
         from omnigent.context.labels import is_superside_chat
-        from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
         from omnigent.superchat.rollover import roll_over_session, should_roll_over_for_idle
 
         labels = await _session_labels_for_runner_spawn(
@@ -9017,7 +9104,18 @@ def create_runner_app(
             return
         _logger.info("superside-chat refresh on return: %s idle %.0fs", conv_id, idle_seconds)
         # The turn body's ``model`` is the agent name; summarize on the session's LLM.
-        resolved_model = await _superside_chat_session_model(conv_id) or ROLLOVER_TOKEN_COUNT_MODEL
+        # ROLLOVER_TOKEN_COUNT_MODEL (gpt-4o) is a tokenizer stand-in for sizing
+        # text, never a model to actually call — falling back to it here would
+        # silently route a real summarizer call to it. Skip this rollover
+        # instead; the next turn/idle check tries again.
+        resolved_model = await _superside_chat_session_model(conv_id)
+        if resolved_model is None:
+            _logger.warning(
+                "superside-chat idle rollover: could not resolve a model for %s; skipping",
+                conv_id,
+                extra={"session_id": conv_id},
+            )
+            return
         # defer_if_active=False: this runs synchronously at the start of
         # THIS turn, which already holds its own _active_turns slot (claimed
         # by the caller before this turn's task was even created) — the
@@ -9053,7 +9151,6 @@ def create_runner_app(
         surface as an "exception never retrieved" warning.
         """
         from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
-        from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
         from omnigent.superchat.rollover import roll_over_session, should_roll_over_for_threshold
 
         try:
@@ -9066,9 +9163,20 @@ def create_runner_app(
             )
             if not isinstance(context_tokens, int):
                 return
-            resolved_model = (
-                resp_usage.get("model") if isinstance(resp_usage, dict) else None
-            ) or ROLLOVER_TOKEN_COUNT_MODEL
+            _reported_model = resp_usage.get("model") if isinstance(resp_usage, dict) else None
+            # ROLLOVER_TOKEN_COUNT_MODEL (gpt-4o) is a tokenizer stand-in for
+            # sizing text, never a model to actually call — falling back to
+            # it here would silently route a real summarizer call to it.
+            # Skip this rollover instead; the next turn over threshold tries
+            # again with (hopefully) a reported model.
+            if not isinstance(_reported_model, str) or not _reported_model:
+                _logger.warning(
+                    "superside-chat threshold rollover: turn reported no model for %s; skipping",
+                    conv_id,
+                    extra={"session_id": conv_id},
+                )
+                return
+            resolved_model = _reported_model
             labels = await _session_labels_for_runner_spawn(
                 server_client=server_client, session_id=conv_id
             )
@@ -9105,8 +9213,23 @@ def create_runner_app(
                 f"/v1/sessions/{conv_id}/memory/profile",
                 timeout=10.0,
             )
-            block = resp.json().get("profile") if resp.status_code == 200 else None
-        except (httpx.HTTPError, ValueError):
+            if resp.status_code != 200:
+                _logger.warning(
+                    "Memory Profile fetch failed for %s; proceeding without it: status=%s",
+                    conv_id,
+                    resp.status_code,
+                    extra={"session_id": conv_id},
+                )
+                block = None
+            else:
+                block = resp.json().get("profile")
+        except (httpx.HTTPError, ValueError) as exc:
+            _logger.warning(
+                "Memory Profile fetch failed for %s; proceeding without it: %s",
+                conv_id,
+                type(exc).__name__,
+                extra={"session_id": conv_id},
+            )
             return body
         return _apply_memory_profile_to_body(body, block)
 
@@ -9807,13 +9930,18 @@ def create_runner_app(
                 server_client=server_client,
                 session_id=conv,
             )
-            codex_bid = codex_labels.get(CODEX_NATIVE_BRIDGE_ID_LABEL_KEY)
+            codex_bid = (codex_labels or {}).get(CODEX_NATIVE_BRIDGE_ID_LABEL_KEY)
             codex_bdir = codex_bridge_dir_for_id(codex_bid or conv)
             write_mcp_bridge_config(codex_bdir)
             await _ensure_comment_relay_started(
                 conv,
                 explicit_bridge_dir=codex_bdir,
                 await_notify=False,
+                # Pass the lookup through as-is (possibly ``None`` on
+                # failure) — ``_ensure_comment_relay_started`` warms the
+                # rollover-labels cache from this, and a ``None`` must stay
+                # distinguishable from a confirmed-empty label set so a
+                # transient failure here doesn't poison that cache.
                 session_labels=codex_labels,
             )
         elif harness_name == "antigravity-native":
@@ -9829,13 +9957,18 @@ def create_runner_app(
                 server_client=server_client,
                 session_id=conv,
             )
-            antigravity_bid = antigravity_labels.get(ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY)
+            antigravity_bid = (antigravity_labels or {}).get(
+                ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY
+            )
             antigravity_bdir = antigravity_bridge_dir_for_id(antigravity_bid or conv)
             write_mcp_bridge_config(antigravity_bdir)
             await _ensure_comment_relay_started(
                 conv,
                 explicit_bridge_dir=antigravity_bdir,
                 await_notify=False,
+                # See the codex-native branch above: keep ``None`` distinct
+                # from a confirmed-empty label set for the rollover-labels
+                # cache warm-up inside ``_ensure_comment_relay_started``.
                 session_labels=antigravity_labels,
             )
         elif harness_name == "hermes":
@@ -10886,6 +11019,33 @@ def create_runner_app(
                 )
             message_body = dict(body)
             message_body["conversation_id"] = conversation_id
+
+            if stream:
+                # The ?stream=true direct-dispatch path bypasses
+                # _run_turn_bg_setup_and_stream entirely, so it never threads
+                # context_mode, the Memory Profile block, the idle-refresh
+                # check, or the deferred-refresh consumer onto the turn — a
+                # superside-chat turn sent this way would run with the
+                # engine's own competing compaction/memory still on (ADR
+                # 0001: Omnigent, not the engine, owns that). Refuse rather
+                # than silently degrade (rollover/SUPERSIDE-CHAT.md Known
+                # limits).
+                from omnigent.context.labels import is_superside_chat
+
+                _stream_guard_labels = await _rollover_labels_for_session(conversation_id)
+                if is_superside_chat(_stream_guard_labels):
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "stream_not_supported_for_superside_chat",
+                            "detail": (
+                                "?stream=true is not supported for superside-chat "
+                                "sessions — it skips Rollover's turn-start hooks "
+                                "(idle refresh, the Memory Profile block, context "
+                                "mode). Send the turn without ?stream=true."
+                            ),
+                        },
+                    )
 
             if _is_native_harness(conversation_id):
                 resource_registry.note_session_turn_started(conversation_id)
@@ -14084,6 +14244,15 @@ def create_runner_app(
         :returns: A ``{"base_url", "api_key"}`` connection dict, or ``None``
             when no local provider serves this model's family.
         """
+        family = resolve_model_provider_family(model)
+        if family is None:
+            _logger.warning(
+                "/v1/summarize: model %r is not a recognized Anthropic or OpenAI id; "
+                "refusing to guess a local provider for it",
+                model,
+                extra={"session_id": runner_primary_session_id()},
+            )
+            return None
         try:
             from omnigent.onboarding.detected import effective_config_with_detected
             from omnigent.onboarding.provider_config import (
@@ -14093,7 +14262,6 @@ def create_runner_app(
             )
 
             config = effective_config_with_detected(load_config())
-            family = "anthropic" if model.startswith(("anthropic/", "claude")) else "openai"
             entry = get_default_provider(config, family) or first_available_provider(
                 config, family
             )
@@ -14106,14 +14274,11 @@ def create_runner_app(
             if fam.api_key:
                 conn["api_key"] = fam.api_key
             if fam.base_url:
-                conn["base_url"] = fam.base_url
-                # Provider config stores the Claude SDK form (no version); the
-                # LLM client's Anthropic adapter expects the versioned base.
-                if (
-                    family == "anthropic"
-                    and fam.base_url.rstrip("/") == "https://api.anthropic.com"
-                ):
-                    conn["base_url"] = "https://api.anthropic.com/v1"
+                conn["base_url"] = (
+                    normalize_anthropic_base_url(fam.base_url)
+                    if family == "anthropic"
+                    else fam.base_url
+                )
             return conn or None
         except Exception:  # noqa: BLE001 — a missing local provider falls back to no auth
             _logger.warning(
@@ -14142,17 +14307,41 @@ def create_runner_app(
                 return None
             if entry.kind == "databricks" and entry.profile:
                 return _resolve_databricks_connection(entry.profile, provider_name)
-            _is_anthropic = model.startswith(("anthropic/", "claude"))
-            _preferred = "anthropic" if _is_anthropic else "openai"
-            _fallback = "openai" if _is_anthropic else "anthropic"
-            family = entry.family(_preferred) or entry.family(_fallback)
-            if family is None:
+            _preferred_name = resolve_model_provider_family(model) if model else None
+            if model and _preferred_name is None:
+                _logger.warning(
+                    "/v1/summarize: model %r is not a recognized Anthropic or OpenAI "
+                    "id; refusing to guess a family for provider %r",
+                    model,
+                    provider_name,
+                    extra={"session_id": runner_primary_session_id()},
+                )
+                return None
+            # No model hint at all (empty string): try both slots on this named
+            # entry, same as always — there is no family to prefer or refuse.
+            _try_order = (
+                (_preferred_name, "openai" if _preferred_name == "anthropic" else "anthropic")
+                if _preferred_name is not None
+                else ("anthropic", "openai")
+            )
+            _resolved_name: str | None = None
+            family_conn = None
+            for _name in _try_order:
+                family_conn = entry.family(_name)
+                if family_conn is not None:
+                    _resolved_name = _name
+                    break
+            if family_conn is None:
                 return None
             conn: dict[str, str] = {}
-            if family.api_key:
-                conn["api_key"] = family.api_key
-            if family.base_url:
-                conn["base_url"] = family.base_url
+            if family_conn.api_key:
+                conn["api_key"] = family_conn.api_key
+            if family_conn.base_url:
+                conn["base_url"] = (
+                    normalize_anthropic_base_url(family_conn.base_url)
+                    if _resolved_name == "anthropic"
+                    else family_conn.base_url
+                )
             return conn or None
         except Exception:  # noqa: BLE001
             _logger.warning(

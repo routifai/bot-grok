@@ -34,13 +34,18 @@ class MemoryUpkeepStore(ABC):
     ) -> MemoryUpkeepRun | None:
         """Atomically start a run, acting as *user_id*'s single-run lease.
 
+        A ``running`` row stale beyond the store's own max-run-duration is
+        reclaimed (marked ``failed``) before this check, so a crashed or
+        killed run never blocks *user_id*'s upkeep forever.
+
         :param run_id: Pre-generated unique run identifier.
         :param user_id: The user this run processes.
         :param window_since: Unix epoch seconds the window starts at.
         :param window_until: Unix epoch seconds the window ends at.
         :returns: The new ``running`` :class:`MemoryUpkeepRun`, or ``None``
-            if *user_id* already has a run in the ``running`` state (the
-            caller must skip — never starts a second concurrent run).
+            if *user_id* already has a non-stale run in the ``running``
+            state (the caller must skip — never starts a second concurrent
+            run).
         """
         ...
 
@@ -52,12 +57,23 @@ class MemoryUpkeepStore(ABC):
         state: str,
         counts: dict[str, Any],
         disposition: str | None = None,
+        window_until: int | None = None,
     ) -> MemoryUpkeepRun | None:
         """Transition a ``running`` run to a terminal state.
 
         :param state: ``"succeeded"``, ``"failed"``, or ``"skipped"``.
         :param counts: Final counts dict for the run.
         :param disposition: Short machine-readable outcome.
+        :param window_until: When given, replaces the row's ``window_until``
+            (set at :meth:`start_run` time to the scan's wall-clock start) —
+            the watermark the next run's ``since`` is derived from. The
+            caller should pass the max ``created_at`` actually scanned this
+            run, not wall-clock time: an item whose write is not yet visible
+            when the scan starts but predates wall-clock "now" would
+            otherwise be skipped forever once the watermark passes it.
+            ``None`` leaves ``window_until`` as :meth:`start_run` set it
+            (only matters for a ``"succeeded"`` row — only those are read
+            back as a watermark).
         :returns: The updated :class:`MemoryUpkeepRun`, or ``None`` if
             *run_id* doesn't exist.
         """

@@ -15,6 +15,7 @@ re-implementing either.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -33,10 +34,32 @@ STATUS_CANCELLED = "cancelled"
 KIND_TURN = "turn"
 KIND_SUB_AGENT = "sub_agent"
 
-# A feed covering more items than this per chat is silently truncated —
-# generous enough for ordinary use while keeping one page-fetch's cost bounded.
+#: Env var overriding the per-chat Activity Feed items-scan limit below.
+ITEMS_SCAN_LIMIT_ENV = "OMNIGENT_ACTIVITY_ITEMS_SCAN_LIMIT"
+
+# A feed covering more items than this per chat only sees the newest
+# _ITEMS_SCAN_LIMIT (oldest history is what gets truncated, never the
+# current turn) — generous enough for ordinary use while keeping one
+# page-fetch's cost bounded.
 _ITEMS_SCAN_LIMIT = 1000
 _SIDE_CHATS_SCAN_LIMIT = 200
+
+
+def _resolve_items_scan_limit() -> int:
+    """Resolve the per-chat Activity Feed items-scan limit.
+
+    Reads :data:`ITEMS_SCAN_LIMIT_ENV`, default :data:`_ITEMS_SCAN_LIMIT`. A
+    missing, non-integer, or non-positive value falls back to the default.
+    """
+    raw = os.environ.get(ITEMS_SCAN_LIMIT_ENV)
+    if raw is None:
+        return _ITEMS_SCAN_LIMIT
+    try:
+        value = int(raw)
+    except ValueError:
+        return _ITEMS_SCAN_LIMIT
+    return value if value > 0 else _ITEMS_SCAN_LIMIT
+
 
 _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 100
@@ -450,7 +473,19 @@ def _activities_for_conversation(
     *,
     include_step_detail: bool,
 ) -> list[Activity]:
-    items = conv_store.list_items(conversation.id, limit=_ITEMS_SCAN_LIMIT, order="asc").data
+    # Newest-first, bounded, then reversed to chronological order: for a
+    # conversation with more than _ITEMS_SCAN_LIMIT items, an ascending scan
+    # would return only the OLDEST items and silently miss the current turn
+    # — the newest turns and the live/in-progress status must always be
+    # covered, so the truncation (if any) falls on the oldest history
+    # instead.
+    items = list(
+        reversed(
+            conv_store.list_items(
+                conversation.id, limit=_resolve_items_scan_limit(), order="desc"
+            ).data
+        )
+    )
     if conversation.kind == "sub_agent":
         return [_sub_agent_activity(conversation, items, include_step_detail=include_step_detail)]
     groups = _group_items_by_response(items)

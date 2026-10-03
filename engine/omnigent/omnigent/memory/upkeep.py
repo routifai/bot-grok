@@ -1,7 +1,7 @@
 """Phase 3 of ``rollover/MEMORY-PLAN.md``: the memory upkeep job.
 
 The self-improvement loop: window -> gate -> extract -> verify -> apply ->
-project -> record (section 4, section 6). Pure pipeline logic lives here;
+record (section 4). Pure pipeline logic lives here;
 ``omnigent/server/memory_upkeep.py`` wires it to the server's background
 scheduling and the compaction trigger.
 """
@@ -11,10 +11,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import uuid
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from omnigent.db.utils import now_epoch
@@ -56,6 +57,52 @@ REINFORCE_INCREMENT_INFERRED = 0.2
 
 #: Hourly sweep interval (omnigent/server/memory_upkeep.py).
 HOURLY_SWEEP_INTERVAL_S = 3600
+
+#: Env var overriding the upkeep hourly-sweep interval. Lower it for testing.
+UPKEEP_SWEEP_INTERVAL_SECONDS_ENV = "OMNIGENT_UPKEEP_SWEEP_INTERVAL_SECONDS"
+
+#: Env var overriding how many upkeep runs may run concurrently across users.
+UPKEEP_MAX_CONCURRENCY_ENV = "OMNIGENT_UPKEEP_MAX_CONCURRENCY"
+DEFAULT_UPKEEP_MAX_CONCURRENCY = 4
+
+#: Budget for one extraction/classification LLM call. A hung provider call
+#: must not wedge the upkeep run (and, by extension, the single-run lease)
+#: forever — see :func:`extract_candidates` / :func:`classify_relation`.
+UPKEEP_LLM_CALL_TIMEOUT_S = 120.0
+
+
+def resolve_upkeep_sweep_interval_seconds() -> int:
+    """Resolve the upkeep hourly-sweep interval (``MemoryUpkeepScheduler``).
+
+    Reads :data:`UPKEEP_SWEEP_INTERVAL_SECONDS_ENV`, default
+    :data:`HOURLY_SWEEP_INTERVAL_S`. A missing, non-integer, or
+    non-positive value falls back to the default.
+    """
+    raw = os.environ.get(UPKEEP_SWEEP_INTERVAL_SECONDS_ENV)
+    if raw is None:
+        return HOURLY_SWEEP_INTERVAL_S
+    try:
+        value = int(raw)
+    except ValueError:
+        return HOURLY_SWEEP_INTERVAL_S
+    return value if value > 0 else HOURLY_SWEEP_INTERVAL_S
+
+
+def resolve_upkeep_max_concurrency() -> int:
+    """Resolve how many upkeep runs may run concurrently (``MemoryUpkeepCoordinator``).
+
+    Reads :data:`UPKEEP_MAX_CONCURRENCY_ENV`, default
+    :data:`DEFAULT_UPKEEP_MAX_CONCURRENCY` (4). A missing, non-integer, or
+    non-positive value falls back to the default.
+    """
+    raw = os.environ.get(UPKEEP_MAX_CONCURRENCY_ENV)
+    if raw is None:
+        return DEFAULT_UPKEEP_MAX_CONCURRENCY
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_UPKEEP_MAX_CONCURRENCY
+    return value if value > 0 else DEFAULT_UPKEEP_MAX_CONCURRENCY
 
 
 # ── extraction / classification prompts (module constants, per plan) ────
@@ -341,13 +388,70 @@ def gate(
 # ── 3. extract ────────────────────────────────────────────────────────────
 
 
+_CODE_FENCE_PATTERN = re.compile(r"```(?:json)?\s*\n?(.*?)```", re.DOTALL)
+
+
+def _balanced_json_object(text: str) -> str | None:
+    """The first balanced top-level ``{...}`` object in *text*, honoring
+    string literals (a ``}`` or ``{`` inside a quoted string never counts).
+
+    :returns: The matched substring, or ``None`` if no balanced object
+        starts in *text* (an unterminated ``{``, or no ``{`` at all).
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
+
+
 def _strip_code_fence(text: str) -> str:
-    """The JSON object in a model reply, even when wrapped in a fence or prose."""
+    """The JSON object in a model reply, even when wrapped in a fence or prose.
+
+    Three attempts, each a fallback for the last: the whole (stripped) reply
+    as-is, since a well-behaved model needs nothing stripped; the content of
+    a ` ```json ` fence, narrowed to its first balanced object (a model
+    sometimes wraps the JSON in commentary even inside the fence); finally a
+    balanced-brace scan over the whole reply for the first top-level object.
+    A naive "first ``{`` to last ``}``" scan (the prior implementation) is
+    wrong whenever prose before or after the JSON itself contains braces.
+    """
     stripped = text.strip()
-    start, end = stripped.find("{"), stripped.rfind("}")
-    if start == -1 or end < start:
+    try:
+        json.loads(stripped)
+    except (TypeError, ValueError):
+        pass
+    else:
         return stripped
-    return stripped[start : end + 1]
+    fence_match = _CODE_FENCE_PATTERN.search(stripped)
+    if fence_match is not None:
+        fenced_object = _balanced_json_object(fence_match.group(1))
+        if fenced_object is not None:
+            return fenced_object
+    balanced = _balanced_json_object(stripped)
+    if balanced is not None:
+        return balanced
+    return stripped
 
 
 def _format_window_for_extraction(window_items: list[WindowItem]) -> str:
@@ -364,10 +468,17 @@ async def extract_candidates(
     llm_caller: UpkeepLLMCaller, window_items: list[WindowItem]
 ) -> list[dict[str, Any]]:
     """Call the extraction model; return raw candidate dicts (unverified)."""
-    raw_text = await llm_caller(
-        instructions=MEMORY_UPKEEP_EXTRACTION_PROMPT,
-        input_text=_format_window_for_extraction(window_items),
-    )
+    try:
+        raw_text = await asyncio.wait_for(
+            llm_caller(
+                instructions=MEMORY_UPKEEP_EXTRACTION_PROMPT,
+                input_text=_format_window_for_extraction(window_items),
+            ),
+            timeout=UPKEEP_LLM_CALL_TIMEOUT_S,
+        )
+    except TimeoutError:
+        _logger.warning("memory upkeep extraction timed out after %ss", UPKEEP_LLM_CALL_TIMEOUT_S)
+        return []
     try:
         parsed = json.loads(_strip_code_fence(raw_text))
     except (TypeError, ValueError):
@@ -403,9 +514,16 @@ def _parse_valid_until(value: Any) -> int | None:
     if not isinstance(value, str) or not value.strip():
         return None
     try:
-        return int(datetime.fromisoformat(value).timestamp())
+        parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
+    # A naive ISO datetime (no offset) must be interpreted as UTC, not the
+    # server process's local timezone — datetime.timestamp() assumes local
+    # time for a naive value, which would shift every claim's expiry by the
+    # server's UTC offset and make it depend on where the process runs.
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return int(parsed.timestamp())
 
 
 def verify_candidate(
@@ -471,20 +589,37 @@ def _starting_confidence(explicitness: str) -> float:
 async def classify_relation(
     llm_caller: UpkeepLLMCaller, candidate: VerifiedCandidate, matches: list[dict[str, Any]]
 ) -> tuple[str, str | None]:
-    """One classification call: how does *candidate* relate to *matches*?"""
+    """One classification call: how does *candidate* relate to *matches*?
+
+    A reply this function cannot parse (a timeout, non-JSON output, or a
+    missing/invalid ``relation`` field) returns ``"skip"`` — the caller
+    (:func:`apply_candidate`) must reject the candidate outright rather than
+    defaulting to ``"new"``: guessing "new" on an unparseable reply risks
+    inserting a duplicate of a claim the model may well have been about to
+    reinforce or supersede.
+    """
     listing = "\n".join(f'- claim_id="{m["claim_id"]}": {m["text"]}' for m in matches)
     input_text = f'Candidate: "{candidate.claim_text}"\n\nExisting claims:\n{listing}'
-    raw_text = await llm_caller(instructions=MEMORY_UPKEEP_CLASSIFY_PROMPT, input_text=input_text)
+    try:
+        raw_text = await asyncio.wait_for(
+            llm_caller(instructions=MEMORY_UPKEEP_CLASSIFY_PROMPT, input_text=input_text),
+            timeout=UPKEEP_LLM_CALL_TIMEOUT_S,
+        )
+    except TimeoutError:
+        _logger.warning(
+            "memory upkeep classification timed out after %ss", UPKEEP_LLM_CALL_TIMEOUT_S
+        )
+        return "skip", None
     try:
         parsed = json.loads(_strip_code_fence(raw_text))
     except (TypeError, ValueError):
-        return "new", None
+        return "skip", None
     if not isinstance(parsed, dict):
-        return "new", None
+        return "skip", None
     relation = parsed.get("relation")
     claim_id = parsed.get("claim_id")
     if relation not in ("same", "new", "contradicts"):
-        return "new", None
+        return "skip", None
     return relation, claim_id if isinstance(claim_id, str) else None
 
 
@@ -496,12 +631,21 @@ async def apply_candidate(
     llm_caller: UpkeepLLMCaller,
 ) -> str:
     """Apply one verified candidate. Returns ``"inserted"``, ``"reinforced"``,
-    ``"superseded"``, or a rejection reason string."""
+    ``"superseded"``, or a rejection reason string.
+
+    Every ``memory.*`` call is synchronous (``UpkeepMemory`` is backed by a
+    DB + a txtai index), so each one runs in a worker thread
+    (:func:`asyncio.to_thread`) rather than blocking the event loop — the
+    same treatment :func:`gather_window` already gets.
+    """
     evidence = [MemoryEvidenceLink(session_id=candidate.session_id, item_id=candidate.item_id)]
     confidence = _starting_confidence(candidate.explicitness)
-    matches = memory.search(user_id, candidate.claim_text, limit=APPLY_SEARCH_LIMIT)
+    matches = await asyncio.to_thread(
+        memory.search, user_id, candidate.claim_text, limit=APPLY_SEARCH_LIMIT
+    )
     if not matches:
-        memory.record_claim(
+        await asyncio.to_thread(
+            memory.record_claim,
             user_id,
             candidate.kind,
             candidate.claim_text,
@@ -518,6 +662,13 @@ async def apply_candidate(
     relation, named_claim_id = await classify_relation(llm_caller, candidate, matches)
     matched_ids = {m["claim_id"] for m in matches}
 
+    if relation == "skip":
+        # The classifier's reply didn't parse (timeout, non-JSON, or a
+        # missing/invalid relation) — reject rather than guess "new" and
+        # risk inserting a duplicate of a claim it may have meant to
+        # reinforce or supersede.
+        return "unparseable"
+
     if relation == "same":
         target_id = str(
             named_claim_id if named_claim_id in matched_ids else matches[0]["claim_id"]
@@ -527,14 +678,17 @@ async def apply_candidate(
             if candidate.explicitness == "stated"
             else REINFORCE_INCREMENT_INFERRED
         )
-        reinforced = memory.reinforce_claim(target_id, user_id, confidence_increment=increment)
+        reinforced = await asyncio.to_thread(
+            memory.reinforce_claim, target_id, user_id, confidence_increment=increment
+        )
         return "reinforced" if reinforced is not None else "reinforce_target_missing"
 
     if relation == "contradicts":
         # Never act on a contradiction the classifier didn't name explicitly.
         if named_claim_id is None or named_claim_id not in matched_ids:
             return "contradiction_not_named"
-        result = memory.supersede_claim(
+        result = await asyncio.to_thread(
+            memory.supersede_claim,
             named_claim_id,
             user_id,
             kind=candidate.kind,
@@ -548,7 +702,8 @@ async def apply_candidate(
         )
         return "contradiction_target_missing" if "error" in result else "superseded"
 
-    memory.record_claim(
+    await asyncio.to_thread(
+        memory.record_claim,
         user_id,
         candidate.kind,
         candidate.claim_text,
@@ -563,31 +718,8 @@ async def apply_candidate(
     return "inserted"
 
 
-# ── 6. project (hook point for Phase 2's profile cache) ──────────────────
-
-_profile_cache_invalidator: Any = None
-
-
-def register_profile_cache_invalidator(fn: Any) -> None:
-    """Join point for Phase 2's work-profile cache.
-
-    Called once at server startup with a ``Callable[[str], None]`` that
-    drops a user's cached profile projection (:meth:`MemoryService.profile`
-    re-renders it on the next call). Until set, invalidation after a write
-    is a no-op — correct (the cache just expires on its own trigger), only
-    the ``apply`` step's immediate drop is skipped.
-    """
-    global _profile_cache_invalidator
-    _profile_cache_invalidator = fn
-
-
-def _invalidate_profile_cache(user_id: str) -> None:
-    if _profile_cache_invalidator is not None:
-        _profile_cache_invalidator(user_id)
-
-
-# ── orchestration: window -> gate -> extract -> verify -> apply -> project
-# -> record ────────────────────────────────────────────────────────────
+# ── orchestration: window -> gate -> extract -> verify -> apply -> record
+# ────────────────────────────────────────────────────────────────────────
 
 
 def _new_counts() -> dict[str, Any]:
@@ -650,7 +782,6 @@ async def run_upkeep_once(
         counts["candidates"] = len(raw_candidates)
         items_by_id = {i.item_id: i for i in window_items if i.role == "user"}
 
-        changed = False
         for raw in raw_candidates:
             candidate, reason = verify_candidate(raw, items_by_id)
             if candidate is None:
@@ -659,13 +790,23 @@ async def run_upkeep_once(
             outcome = await apply_candidate(memory, user_id, candidate, run_id, llm_caller)
             if outcome in ("inserted", "reinforced", "superseded"):
                 counts[outcome] += 1
-                changed = True
             else:
                 _reject(counts, outcome)
 
-        if changed:
-            _invalidate_profile_cache(user_id)
-        return upkeep_store.finish_run(run_id, state="succeeded", counts=counts, disposition="ok")
+        # The watermark for the NEXT run: the newest item actually scanned
+        # this run, never wall-clock "now" — an item whose write isn't yet
+        # visible when the scan starts but whose created_at predates "now"
+        # would otherwise fall before the next run's `since` and be skipped
+        # forever. ``since`` itself when nothing was scanned (defensive;
+        # gate() already requires a non-empty window to reach here).
+        window_until = max((item.created_at for item in window_items), default=since)
+        return upkeep_store.finish_run(
+            run_id,
+            state="succeeded",
+            counts=counts,
+            disposition="ok",
+            window_until=window_until,
+        )
     except Exception:
         upkeep_store.finish_run(run_id, state="failed", counts=counts, disposition="error")
         raise

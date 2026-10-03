@@ -9304,9 +9304,12 @@ async def _delete_native_bridge_dirs(
 
     labels: dict[str, str] = {}
     if server_client is not None:
-        labels = await _session_labels_for_runner_spawn(
-            server_client=server_client,
-            session_id=session_id,
+        labels = (
+            await _session_labels_for_runner_spawn(
+                server_client=server_client,
+                session_id=session_id,
+            )
+            or {}
         )
 
     targets = {
@@ -9369,6 +9372,7 @@ async def _claude_native_bridge_id_for_session(
             server_client=server_client,
             session_id=session_id,
         )
+        or {}
     )
     bridge_id = labels.get(BRIDGE_ID_LABEL_KEY)
     if isinstance(bridge_id, str) and bridge_id:
@@ -9468,6 +9472,7 @@ async def _resolve_native_spawn_env(
                 server_client=server_client,
                 session_id=session_id,
             )
+            or {}
         )
         return _typed_spawn_env(
             builder(session_id, bridge_id=labels.get(provider.bridge_id_label_key))
@@ -10101,9 +10106,12 @@ async def _antigravity_native_terminal_arrives_via_transfer(
 
     if server_client is None:
         return False
-    labels = await _session_labels_for_runner_spawn(
-        server_client=server_client,
-        session_id=session_id,
+    labels = (
+        await _session_labels_for_runner_spawn(
+            server_client=server_client,
+            session_id=session_id,
+        )
+        or {}
     )
     bridge_id = labels.get(ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY) or session_id
     state = read_bridge_state(bridge_dir_for_bridge_id(bridge_id))
@@ -10162,9 +10170,12 @@ async def _codex_native_terminal_arrives_via_transfer(
     if session_labels is not None:
         labels = session_labels
     elif server_client is not None:
-        labels = await _session_labels_for_runner_spawn(
-            server_client=server_client,
-            session_id=session_id,
+        labels = (
+            await _session_labels_for_runner_spawn(
+                server_client=server_client,
+                session_id=session_id,
+            )
+            or {}
         )
     else:
         return False
@@ -10183,7 +10194,7 @@ async def _session_labels_for_runner_spawn(
     *,
     server_client: httpx.AsyncClient,
     session_id: str,
-) -> dict[str, str]:
+) -> dict[str, str] | None:
     """
     Fetch session labels for harness spawn-env construction.
 
@@ -10191,7 +10202,12 @@ async def _session_labels_for_runner_spawn(
         labels endpoint.
     :param session_id: Omnigent session/conversation id, e.g.
         ``"conv_abc123"``.
-    :returns: String label mapping. Empty on lookup failure.
+    :returns: String label mapping, or ``None`` on lookup failure.
+        ``None`` is distinct from a confirmed-empty ``{}`` (a session that
+        really carries no labels) — callers that cache this result must
+        never cache ``None``, or a transient failure permanently poisons
+        the cache as "no labels" (e.g. reading a side chat / superside-chat
+        session as a plain one for the runner's lifetime).
     """
     path = f"/v1/sessions/{urllib.parse.quote(session_id, safe='')}/labels"
     try:
@@ -10206,7 +10222,7 @@ async def _session_labels_for_runner_spawn(
             type(exc).__name__,
             extra={"session_id": session_id},
         )
-        return {}
+        return None
     except httpx.HTTPError as exc:
         _logger.warning(
             "Failed to resolve session labels; session=%s error=%s",
@@ -10214,7 +10230,7 @@ async def _session_labels_for_runner_spawn(
             type(exc).__name__,
             extra={"session_id": session_id},
         )
-        return {}
+        return None
     if resp.status_code != 200:
         _logger.warning(
             "Failed to resolve session labels; session=%s status=%s",
@@ -10222,7 +10238,7 @@ async def _session_labels_for_runner_spawn(
             resp.status_code,
             extra={"session_id": session_id},
         )
-        return {}
+        return None
     try:
         labels = resp.json().get("labels")
     except ValueError:
@@ -10237,7 +10253,7 @@ async def _session_labels_for_runner_spawn(
             resp.status_code,
             extra={"session_id": session_id},
         )
-        return {}
+        return None
     if not isinstance(labels, dict):
         return {}
     return {str(key): str(value) for key, value in labels.items()}

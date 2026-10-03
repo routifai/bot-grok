@@ -20,6 +20,11 @@ from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
 
 _RUNNING = "running"
 
+#: A "running" row older than this is reclaimed as stale rather than
+#: blocking every future run for that user forever — the lease a crashed or
+#: killed upkeep process never released.
+_MAX_RUNNING_DURATION_S = 900
+
 
 def _decode_counts(raw: str | None) -> dict[str, Any]:
     if not raw:
@@ -82,6 +87,11 @@ class SqlAlchemyMemoryUpkeepStore(MemoryUpkeepStore):
         round trip elsewhere), so the ``running`` row is itself *user_id*'s
         lease — two concurrent callers can never both get a non-``None``
         result for the same user.
+
+        A ``running`` row older than :data:`_MAX_RUNNING_DURATION_S` is
+        reclaimed first (marked ``failed`` / ``disposition="stale"``): a
+        process that crashed or was killed mid-run would otherwise hold the
+        lease forever, permanently blocking this user's upkeep.
         """
         started_at = now_epoch()
 
@@ -94,7 +104,11 @@ class SqlAlchemyMemoryUpkeepStore(MemoryUpkeepStore):
                 .limit(1)
             ).scalar_one_or_none()
             if existing is not None:
-                return None
+                if started_at - existing.started_at < _MAX_RUNNING_DURATION_S:
+                    return None
+                existing.state = "failed"
+                existing.disposition = "stale"
+                existing.finished_at = started_at
             row = SqlMemoryUpkeepRun(
                 id=run_id,
                 user_id=user_id,
@@ -119,6 +133,7 @@ class SqlAlchemyMemoryUpkeepStore(MemoryUpkeepStore):
         state: str,
         counts: dict[str, Any],
         disposition: str | None = None,
+        window_until: int | None = None,
     ) -> MemoryUpkeepRun | None:
         """Transition a run to a terminal state. See :meth:`MemoryUpkeepStore.finish_run`."""
         finished_at = now_epoch()
@@ -131,6 +146,8 @@ class SqlAlchemyMemoryUpkeepStore(MemoryUpkeepStore):
             row.disposition = disposition
             row.counts = json.dumps(counts)
             row.finished_at = finished_at
+            if window_until is not None:
+                row.window_until = window_until
             session.flush()
             return _to_entity(row)
 

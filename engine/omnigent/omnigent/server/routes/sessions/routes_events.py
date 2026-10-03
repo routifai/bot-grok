@@ -1557,10 +1557,42 @@ def register_events_routes(
         if body.type == "compaction":
             import uuid as _uuid
 
+            # Cross-process single-flight guard (two runner processes for the
+            # same session both deciding to roll over): the caller names the
+            # compaction item it summarized from. If the session's latest
+            # compaction item has since moved, someone else already rolled
+            # this session over on top of the one this summary is stale
+            # against — reject rather than overwrite it with a summary that
+            # silently drops whatever that other rollover captured. Absent
+            # (older callers, or a harness's own native compaction) skips
+            # the check entirely.
+            # ``in`` (not ``.get() is not None``): the guard's own valid
+            # value for "no prior compaction" IS ``None``, distinct from an
+            # older caller that never sends this key at all.
+            if "expected_previous_compaction_id" in body.data:
+                expected_previous_compaction_id = body.data["expected_previous_compaction_id"]
+                latest_page = await asyncio.to_thread(
+                    conversation_store.list_items,
+                    session_id,
+                    limit=1,
+                    order="desc",
+                    type="compaction",
+                )
+                latest_id = latest_page.data[0].id if latest_page.data else None
+                if latest_id != expected_previous_compaction_id:
+                    raise OmnigentError(
+                        f"session {session_id!r} already rolled over past "
+                        f"{expected_previous_compaction_id!r}",
+                        code=ErrorCode.CONFLICT,
+                    )
+
             item = NewConversationItem(
                 type="compaction",
                 response_id=f"compact_{_uuid.uuid4().hex}",
-                data=parse_item_data("compaction", body.data),
+                data=parse_item_data(
+                    "compaction",
+                    {k: v for k, v in body.data.items() if k != "expected_previous_compaction_id"},
+                ),
             )
             await asyncio.to_thread(
                 conversation_store.append,

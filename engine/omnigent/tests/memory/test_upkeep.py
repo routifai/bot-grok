@@ -9,6 +9,7 @@ fake store could hide.
 
 from __future__ import annotations
 
+import json
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -213,6 +214,27 @@ class StubLLM:
         if self.classify_responses:
             return self.classify_responses.pop(0)
         return '{"relation": "new", "claim_id": null}'
+
+
+# ── env-tunable settings ───────────────────────────────────────────────────
+
+
+def test_sweep_interval_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(upkeep.UPKEEP_SWEEP_INTERVAL_SECONDS_ENV, raising=False)
+    assert upkeep.resolve_upkeep_sweep_interval_seconds() == upkeep.HOURLY_SWEEP_INTERVAL_S
+    monkeypatch.setenv(upkeep.UPKEEP_SWEEP_INTERVAL_SECONDS_ENV, "60")
+    assert upkeep.resolve_upkeep_sweep_interval_seconds() == 60
+    monkeypatch.setenv(upkeep.UPKEEP_SWEEP_INTERVAL_SECONDS_ENV, "not-a-number")
+    assert upkeep.resolve_upkeep_sweep_interval_seconds() == upkeep.HOURLY_SWEEP_INTERVAL_S
+
+
+def test_max_concurrency_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(upkeep.UPKEEP_MAX_CONCURRENCY_ENV, raising=False)
+    assert upkeep.resolve_upkeep_max_concurrency() == upkeep.DEFAULT_UPKEEP_MAX_CONCURRENCY
+    monkeypatch.setenv(upkeep.UPKEEP_MAX_CONCURRENCY_ENV, "2")
+    assert upkeep.resolve_upkeep_max_concurrency() == 2
+    monkeypatch.setenv(upkeep.UPKEEP_MAX_CONCURRENCY_ENV, "0")
+    assert upkeep.resolve_upkeep_max_concurrency() == upkeep.DEFAULT_UPKEEP_MAX_CONCURRENCY
 
 
 # ── window / watermark ───────────────────────────────────────────────────
@@ -485,6 +507,112 @@ async def test_apply_never_acts_on_an_unnamed_contradiction() -> None:
     assert len(memory.claims) == 1
 
 
+async def test_apply_rejects_rather_than_inserts_on_unparseable_classification() -> None:
+    """A classify reply that doesn't parse must reject the candidate, not
+    silently insert it as a duplicate of a claim it may have meant to
+    reinforce or supersede."""
+    memory = FakeMemory(
+        seed_claims=[
+            {
+                "claim_id": "existing",
+                "user_id": "alice",
+                "kind": "preference",
+                "text": "Prefers figures in CAD",
+                "status": "active",
+                "confidence": 0.9,
+            }
+        ]
+    )
+    llm = StubLLM(
+        extraction_response="{}",
+        classify_responses=["not json at all"],
+    )
+    outcome = await upkeep.apply_candidate(memory, "alice", _verified(), "run1", llm)
+    assert outcome == "unparseable"
+    assert len(memory.claims) == 1  # unchanged — nothing inserted, reinforced, or superseded
+    assert memory.claims["existing"]["confidence"] == pytest.approx(0.9)
+
+
+# ── classify_relation ─────────────────────────────────────────────────────
+
+
+async def test_classify_relation_malformed_reply_is_skip_not_new() -> None:
+    llm = StubLLM(extraction_response="{}", classify_responses=["complete garbage"])
+    relation, claim_id = await upkeep.classify_relation(
+        llm, _verified(), [{"claim_id": "existing", "text": "Prefers figures in CAD"}]
+    )
+    assert relation == "skip"
+    assert claim_id is None
+
+
+async def test_classify_relation_missing_relation_field_is_skip() -> None:
+    llm = StubLLM(extraction_response="{}", classify_responses=['{"claim_id": "existing"}'])
+    relation, claim_id = await upkeep.classify_relation(
+        llm, _verified(), [{"claim_id": "existing", "text": "Prefers figures in CAD"}]
+    )
+    assert relation == "skip"
+    assert claim_id is None
+
+
+# ── _strip_code_fence ──────────────────────────────────────────────────────
+
+
+def test_strip_code_fence_plain_json_passes_through() -> None:
+    raw = '{"relation": "new", "claim_id": null}'
+    assert upkeep._strip_code_fence(raw) == raw
+
+
+def test_strip_code_fence_extracts_nested_object_from_fenced_block() -> None:
+    """A naive first-``{``-to-last-``}`` scan breaks once the JSON itself
+    (inside the fence) is nested — it must stop at the object's own matching
+    brace, not the outermost `}` anywhere in the reply."""
+    raw = (
+        "Sure, here's the result: {not json, just a side note}\n"
+        "```json\n"
+        '{"candidates": [{"kind": "fact", "claim_text": "x"}]}\n'
+        "```\n"
+        "Let me know if you need {anything else}."
+    )
+    stripped = upkeep._strip_code_fence(raw)
+    parsed = json.loads(stripped)
+    assert parsed == {"candidates": [{"kind": "fact", "claim_text": "x"}]}
+
+
+def test_strip_code_fence_balanced_scan_without_a_fence() -> None:
+    """Trailing prose containing its own ``{`` must not extend the match
+    past the real object's matching ``}`` (the old "first { to last }" scan
+    would include "trailing {junk}" too and fail to parse)."""
+    raw = 'Here you go: {"relation": "same", "claim_id": "x"} — let me know if you need {junk}.'
+    stripped = upkeep._strip_code_fence(raw)
+    parsed = json.loads(stripped)
+    assert parsed == {"relation": "same", "claim_id": "x"}
+
+
+# ── _parse_valid_until ──────────────────────────────────────────────────────
+
+
+def test_parse_valid_until_naive_iso_is_interpreted_as_utc() -> None:
+    from datetime import UTC, datetime
+
+    parsed = upkeep._parse_valid_until("2030-01-01")
+    expected = int(datetime(2030, 1, 1, tzinfo=UTC).timestamp())
+    assert parsed == expected
+
+
+def test_parse_valid_until_respects_an_explicit_offset() -> None:
+    from datetime import UTC, datetime
+
+    parsed = upkeep._parse_valid_until("2030-01-01T00:00:00+02:00")
+    expected = int(datetime(2030, 1, 1, 0, 0, 0, tzinfo=UTC).timestamp()) - 2 * 3600
+    assert parsed == expected
+
+
+def test_parse_valid_until_none_for_blank_or_invalid() -> None:
+    assert upkeep._parse_valid_until(None) is None
+    assert upkeep._parse_valid_until("") is None
+    assert upkeep._parse_valid_until("not a date") is None
+
+
 # ── run_upkeep_once ──────────────────────────────────────────────────────
 
 
@@ -569,9 +697,13 @@ async def test_run_upkeep_once_records_counts_and_advances_watermark(
     assert run.counts["rejected"] == 0
     assert len(memory.claims) == 1
 
+    # The watermark is the newest item's created_at (30 — the third message,
+    # (i+1)*10 for i=2 in _conv_store_with_messages), never wall-clock "now"
+    # (1000): an item whose write isn't yet visible when a scan starts but
+    # predates "now" must not fall before the next run's `since`.
     watermark = upkeep_store.get_last_succeeded_run("alice")
     assert watermark is not None
-    assert watermark.window_until == 1000
+    assert watermark.window_until == 30
 
 
 async def test_run_upkeep_once_rejects_candidates_citing_non_user_sources(

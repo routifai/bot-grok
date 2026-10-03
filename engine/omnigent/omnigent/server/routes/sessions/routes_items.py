@@ -25,6 +25,7 @@ from omnigent.server.auth import (
     LEVEL_READ,
     AuthProvider,
 )
+from omnigent.server.permissions import check_session_access
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
 )
@@ -50,6 +51,42 @@ from omnigent.server.schemas import (
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.activity import activity_to_dict, get_activity, list_activities
+
+
+async def _caller_readable_ids(
+    user_id: str | None,
+    candidate_ids: list[str],
+    permission_store: PermissionStore | None,
+    conversation_store: ConversationStore,
+) -> set[str]:
+    """Which of *candidate_ids* the caller may READ.
+
+    A Super Chat family / related-chats listing is resolved by *owner*
+    (``list_chat_family``, ``list_related_chats``), not by the caller's own
+    grants, so it can hand back Side Chats and Sub-agents the caller has no
+    access to at all (shared only one Side Chat of the family). This re-runs
+    the same per-session check the routes already require on the URL
+    session, against every family member, before any of it reaches the
+    caller. The owner always passes (their own grant satisfies READ); a
+    collaborator shared only a slice of the family sees only that slice.
+
+    :returns: *candidate_ids* unfiltered when *permission_store* is
+        ``None`` (permission enforcement disabled, same posture every other
+        route takes).
+    """
+    if permission_store is None:
+        return set(candidate_ids)
+
+    def _check_all() -> set[str]:
+        return {
+            candidate_id
+            for candidate_id in candidate_ids
+            if check_session_access(
+                user_id, candidate_id, LEVEL_READ, permission_store, conversation_store
+            )
+        }
+
+    return await asyncio.to_thread(_check_all)
 
 
 def register_items_routes(
@@ -167,10 +204,11 @@ def register_items_routes(
     # ── GET /sessions/{session_id}/related_chats ──────────────────
     # Side chats related to session_id for ``session_history``'s
     # ``list_chats`` action: forked FROM it (carrying the side-chat label),
-    # plus its own parent when session_id is itself a side chat. Owner-
-    # checked by ``list_related_chats`` itself (never trusts the caller's
-    # identity beyond the READ check below), the same scoping the runner's
-    # native-relay dispatch reaches over this route for.
+    # plus its own parent when session_id is itself a side chat.
+    # ``list_related_chats`` resolves by owner, not by the caller's grants,
+    # so a session merely shared with the caller could otherwise surface a
+    # sibling they have no access to; ``_caller_readable_ids`` re-checks
+    # each one against the caller's own permissions before it is returned.
 
     @router.get(
         "/sessions/{session_id}/related_chats",
@@ -202,6 +240,10 @@ def register_items_routes(
         from omnigent.context.rollover import list_related_chats
 
         chats = await asyncio.to_thread(list_related_chats, conversation_store, session_id)
+        allowed_ids = await _caller_readable_ids(
+            user_id, [chat["id"] for chat in chats], permission_store, conversation_store
+        )
+        chats = [chat for chat in chats if chat["id"] in allowed_ids]
         return PaginatedList(data=chats)
 
     # ── GET /sessions/{session_id}/context_summary ────────────────
@@ -382,6 +424,13 @@ def register_items_routes(
             before=before,
             limit=limit,
         )
+        allowed_ids = await _caller_readable_ids(
+            user_id,
+            list({activity.chat_id for activity in activities}),
+            permission_store,
+            conversation_store,
+        )
+        activities = [activity for activity in activities if activity.chat_id in allowed_ids]
         return PaginatedList(data=[activity_to_dict(activity) for activity in activities])
 
     # ── GET /sessions/{session_id}/activities/{activity_id} ──────
@@ -424,5 +473,10 @@ def register_items_routes(
             activity_id,
         )
         if activity is None:
+            raise _session_not_found()
+        allowed_ids = await _caller_readable_ids(
+            user_id, [activity.chat_id], permission_store, conversation_store
+        )
+        if activity.chat_id not in allowed_ids:
             raise _session_not_found()
         return activity_to_dict(activity)

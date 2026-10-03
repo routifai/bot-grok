@@ -3908,6 +3908,10 @@ async def test_sys_session_send_superside_chat_nesting_cap_allows_coordinator() 
                     "agent_id": "ag_parent",
                 },
             )
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_chat_ok":
+            # The coordinator's own parent: the top-level chat itself, so
+            # the nesting cap must allow the coordinator's launch.
+            return httpx.Response(200, json={"kind": "default"})
         if (
             request.method == "GET"
             and request.url.path == "/v1/sessions/conv_coordinator_ok/child_sessions"
@@ -8181,6 +8185,54 @@ async def test_sys_session_create_spawns_child_under_caller() -> None:
     assert handle["conversation_id"] == "conv_child"
     assert handle["agent_id"] == "ag_x"
     assert handle["agent_name"] == "researcher"
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_rejects_non_string_model() -> None:
+    """A non-string 'model' must fail loud with a clear error, same as
+    sys_session_send — silently coercing it to None would let it skip the
+    superside-chat override refusal while the raw value still reached the
+    create body."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"server should never be called: {request.method} {request.url}")
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x", "model": 123}),
+            server_client=server_client,
+            conversation_id="conv_caller",
+        )
+
+    info = json.loads(output)
+    assert "invalid 'model'" in info["error"]
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_rejects_non_string_reasoning_effort() -> None:
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"server should never be called: {request.method} {request.url}")
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x", "reasoning_effort": {"bad": True}}),
+            server_client=server_client,
+            conversation_id="conv_caller",
+        )
+
+    info = json.loads(output)
+    assert "invalid 'reasoning_effort'" in info["error"]
 
 
 @pytest.mark.asyncio

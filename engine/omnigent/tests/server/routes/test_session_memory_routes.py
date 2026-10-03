@@ -333,6 +333,75 @@ async def test_profile_is_isolated_per_owner(client: httpx.AsyncClient, db_uri: 
     assert bob_resp.json() == {"profile": None}
 
 
+# ── non-owner collaborator never reaches another user's Memory ─────────────
+
+
+async def test_non_owner_with_read_cannot_remember_or_read_memory(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    """A collaborator sharing Alice's session (READ) must never see or
+    write Alice's Memory through it — only Alice's own calls can."""
+    from omnigent.server.auth import LEVEL_READ
+
+    session_id = await _make_session(db_uri, owner="alice@example.com")
+    perm_store = SqlAlchemyPermissionStore(db_uri)
+    perm_store.ensure_user("bob@example.com")
+    perm_store.grant("bob@example.com", session_id, LEVEL_READ)
+
+    remember_resp = await client.post(
+        f"/v1/sessions/{session_id}/memory/remember",
+        json={"text": "Bob plants a fake memory on Alice"},
+        headers=_headers("bob@example.com"),
+    )
+    assert remember_resp.status_code == 403
+
+    profile_resp = await client.get(
+        f"/v1/sessions/{session_id}/memory/profile", headers=_headers("bob@example.com")
+    )
+    assert profile_resp.status_code == 403
+
+    search_resp = await client.get(
+        f"/v1/sessions/{session_id}/memory/search",
+        params={"query": "anything"},
+        headers=_headers("bob@example.com"),
+    )
+    assert search_resp.status_code == 403
+
+    forget_resp = await client.post(
+        f"/v1/sessions/{session_id}/memory/forget",
+        json={"query": "anything"},
+        headers=_headers("bob@example.com"),
+    )
+    assert forget_resp.status_code == 403
+
+
+async def test_non_owner_with_edit_cannot_remember_or_forget(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    """EDIT on the shared session is not enough either: writing Memory
+    requires being the session's owner, not just an editor of the chat."""
+    from omnigent.server.auth import LEVEL_EDIT
+
+    session_id = await _make_session(db_uri, owner="alice@example.com")
+    perm_store = SqlAlchemyPermissionStore(db_uri)
+    perm_store.ensure_user("bob@example.com")
+    perm_store.grant("bob@example.com", session_id, LEVEL_EDIT)
+
+    remember_resp = await client.post(
+        f"/v1/sessions/{session_id}/memory/remember",
+        json={"text": "Bob plants a fake memory on Alice"},
+        headers=_headers("bob@example.com"),
+    )
+    assert remember_resp.status_code == 403
+
+    forget_resp = await client.post(
+        f"/v1/sessions/{session_id}/memory/forget",
+        json={"query": "anything"},
+        headers=_headers("bob@example.com"),
+    )
+    assert forget_resp.status_code == 403
+
+
 # ── not mounted without a memory_service ─────────────────────────────────────
 
 
