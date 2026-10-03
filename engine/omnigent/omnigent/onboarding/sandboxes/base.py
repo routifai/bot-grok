@@ -38,7 +38,7 @@ from omnigent.host.identity import HOST_ID_ENV_VAR, HOST_NAME_ENV_VAR, HOST_TOKE
 from omnigent.onboarding.sandboxes import types as _sandbox_types
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
     from pathlib import Path
 
     from omnigent.onboarding.sandboxes.types import RepoWorkspace
@@ -916,11 +916,28 @@ class SandboxHostLauncher(SandboxLifecycle):
     transport.
     """
 
-    def prepare_for_launch(self, *, agent_name: str | None = None) -> None:
+    def prepare_for_launch(
+        self,
+        *,
+        agent_name: str | None = None,
+        labels: Mapping[str, str] | None = None,
+        previous_sandbox_id: str | None = None,
+    ) -> None:
         """Set request context before provider preparation, allocation, or resume.
 
         Providers with pre-created resources can use the resolved agent name
         to select and validate compatible infrastructure before allocation.
+
+        :param agent_name: Server-resolved built-in agent name the session runs, as passed by
+            every call site today.
+        :param labels: The launching session's labels (e.g. Nova's ``nova.bot`` / ``nova.space``
+            — see :mod:`omnigent.onboarding.sandboxes.computer`), on a first launch. ``None`` on
+            a relaunch/resume of an existing host, which has no session labels handy.
+        :param previous_sandbox_id: The host's previous :meth:`SandboxLifecycle.provision` /
+            :meth:`SandboxHostLauncher.start_host` return value, on a relaunch or resume of an
+            existing host, or ``None`` for a first launch. Lets a provider whose sandbox id
+            encodes identity (rather than being an opaque handle) recover that identity when no
+            *labels* are available.
         """
 
     def reaper_identity(self, workspace_id: int) -> AbstractContextManager[None]:

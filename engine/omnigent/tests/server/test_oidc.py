@@ -18,6 +18,7 @@ from omnigent.server.auth import (
     UnifiedAuthProvider,
     create_auth_provider,
     resolve_auth_header,
+    resolve_auth_header_secret,
     resolve_auth_header_strip_prefix,
 )
 from omnigent.server.oidc import (
@@ -359,6 +360,122 @@ def test_resolve_auth_header_defaults_to_x_forwarded_email(
     assert resolve_auth_header() == "X-Forwarded-Email"
     monkeypatch.setenv("OMNIGENT_AUTH_HEADER", "   ")
     assert resolve_auth_header() == "X-Forwarded-Email"
+
+
+# ── UnifiedAuthProvider (header source: proxy secret) ──────────────
+
+
+def test_header_source_secret_unset_keeps_prior_behavior() -> None:
+    """No ``header_secret`` configured: the header alone still authenticates.
+
+    Backwards compatibility: a deployment that never opts into
+    ``OMNIGENT_AUTH_HEADER_SECRET`` must see identical behavior to before
+    this option existed.
+    """
+    provider = UnifiedAuthProvider(source="header")
+    request = _mock_request(headers={"X-Forwarded-Email": "alice@example.com"})
+    assert provider.get_user_id(request) == "alice@example.com"
+
+
+def test_header_source_secret_set_and_correct_authenticates() -> None:
+    """A matching ``X-Omnigent-Proxy-Secret`` header authenticates as usual."""
+    provider = UnifiedAuthProvider(
+        source="header",
+        header_secret="s3cret",
+        local_single_user=False,
+    )
+    request = _mock_request(
+        headers={
+            "X-Forwarded-Email": "alice@example.com",
+            "X-Omnigent-Proxy-Secret": "s3cret",
+        }
+    )
+    assert provider.get_user_id(request) == "alice@example.com"
+
+
+def test_header_source_secret_set_and_wrong_is_unauthenticated() -> None:
+    """A wrong proxy secret is treated as unauthenticated, not merely denied.
+
+    The identity header is ignored outright (as if absent) rather than
+    causing a distinguishable failure — a client that can reach the server
+    directly must not be able to prove or disprove the secret by testing
+    responses.
+    """
+    provider = UnifiedAuthProvider(
+        source="header",
+        header_secret="s3cret",
+        local_single_user=False,
+    )
+    request = _mock_request(
+        headers={
+            "X-Forwarded-Email": "alice@example.com",
+            "X-Omnigent-Proxy-Secret": "wrong",
+        }
+    )
+    assert provider.get_user_id(request) is None
+
+
+def test_header_source_secret_set_and_missing_is_unauthenticated() -> None:
+    """No ``X-Omnigent-Proxy-Secret`` at all is treated as unauthenticated."""
+    provider = UnifiedAuthProvider(
+        source="header",
+        header_secret="s3cret",
+        local_single_user=False,
+    )
+    request = _mock_request(headers={"X-Forwarded-Email": "alice@example.com"})
+    assert provider.get_user_id(request) is None
+
+
+def test_header_source_secret_set_missing_falls_back_to_local_single_user() -> None:
+    """A missing/wrong secret is treated exactly like an absent header.
+
+    On a single-user local runtime, that means it still falls back to the
+    reserved ``"local"`` identity rather than 401ing outright.
+    """
+    provider = UnifiedAuthProvider(
+        source="header",
+        header_secret="s3cret",
+        local_single_user=True,
+    )
+    request = _mock_request(
+        headers={
+            "X-Forwarded-Email": "alice@example.com",
+            "X-Omnigent-Proxy-Secret": "wrong",
+        }
+    )
+    assert provider.get_user_id(request) == RESERVED_USER_LOCAL
+
+
+def test_header_source_resolves_secret_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``header_secret=None`` resolves from ``OMNIGENT_AUTH_HEADER_SECRET``."""
+    monkeypatch.setenv("OMNIGENT_AUTH_HEADER_SECRET", "envsecret")
+    provider = UnifiedAuthProvider(source="header", local_single_user=False)
+    request = _mock_request(
+        headers={
+            "X-Forwarded-Email": "alice@example.com",
+            "X-Omnigent-Proxy-Secret": "wrong",
+        }
+    )
+    assert provider.get_user_id(request) is None
+    request = _mock_request(
+        headers={
+            "X-Forwarded-Email": "alice@example.com",
+            "X-Omnigent-Proxy-Secret": "envsecret",
+        }
+    )
+    assert provider.get_user_id(request) == "alice@example.com"
+
+
+def test_resolve_auth_header_secret_unset_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unset/empty ``OMNIGENT_AUTH_HEADER_SECRET`` resolves to ``None`` (no-op)."""
+    monkeypatch.delenv("OMNIGENT_AUTH_HEADER_SECRET", raising=False)
+    assert resolve_auth_header_secret() is None
+    monkeypatch.setenv("OMNIGENT_AUTH_HEADER_SECRET", "   ")
+    assert resolve_auth_header_secret() is None
 
 
 # ── UnifiedAuthProvider (header source: Google IAP prefix strip) ──

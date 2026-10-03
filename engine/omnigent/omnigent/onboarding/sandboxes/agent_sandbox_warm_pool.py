@@ -14,7 +14,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -167,7 +167,14 @@ class AgentSandboxWarmPoolLauncher(AgentSandboxLauncher):
         self._warm_pool = warm_pool
         self._agent_name: str | None = None
 
-    def prepare_for_launch(self, *, agent_name: str | None = None) -> None:
+    def prepare_for_launch(
+        self,
+        *,
+        agent_name: str | None = None,
+        labels: Mapping[str, str] | None = None,
+        previous_sandbox_id: str | None = None,
+    ) -> None:
+        del labels, previous_sandbox_id  # This provider selects pods by agent name only.
         self._agent_name = agent_name
 
     def template_spec(
