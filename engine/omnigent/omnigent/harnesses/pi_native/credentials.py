@@ -24,7 +24,7 @@ import logging
 import os
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
@@ -1939,11 +1939,38 @@ class PiNativeLaunch(NamedTuple):
     :param args: ``--provider``/``--model``/``--thinking`` args to append.
     :param effort_warning: User-facing notice when the requested effort could
         not be honoured; ``None`` otherwise.
+    :param rollover_threshold_tokens: The window-derived rollover threshold
+        computed here (see ``resolve_rollover_threshold``), when the session
+        is a rollover session with a known model context window; ``None``
+        otherwise. Callers patch this into the already-written pi-native
+        extension config (``bridge.set_rollover_threshold_tokens``) so the
+        JS extension compacts at the same point Pi's own settings do.
     """
 
     env: dict[str, str]
     args: list[str]
     effort_warning: str | None = None
+    rollover_threshold_tokens: int | None = None
+
+
+def _model_context_window(
+    rendered: _PiModelsConfig, provider_id: str, model_id: str
+) -> int | None:
+    """Look up the ``contextWindow`` Pi's rendered models.json carries for a model.
+
+    :param rendered: The rendered Pi models.json (``provider.to_models_config()``).
+    :param provider_id: The provider id the model is served from.
+    :param model_id: The bare model id within that provider.
+    :returns: The known context window, or ``None`` when unrecorded.
+    """
+    provider_payload = rendered["providers"].get(provider_id)
+    if provider_payload is None:
+        return None
+    for model in provider_payload.get("models", []):
+        if isinstance(model, dict) and model.get("id") == model_id:
+            window = model.get("contextWindow")
+            return window if isinstance(window, int) else None
+    return None
 
 
 def pi_native_provider_launch(
@@ -1952,6 +1979,7 @@ def pi_native_provider_launch(
     reasoning_effort: str | None = None,
     *,
     selection: str | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> PiNativeLaunch:
     """Write the managed config and return the launch env + CLI args for Pi.
 
@@ -1964,6 +1992,12 @@ def pi_native_provider_launch(
     :param selection: Optional picker value naming a generated provider and
         model. When that provider no longer serves the model, the provider that
         does is used instead.
+    :param labels: The session's labels. For a rollover session (see
+        ``omnigent.context.labels.is_rollover``) with a known model context
+        window, writes ``compaction`` settings so Pi's own auto-compaction
+        trigger matches Omnigent's rollover threshold instead of Pi's
+        defaults. ``None``/non-rollover leaves Pi's compaction settings
+        untouched.
     :returns: The launch env, CLI args and any effort warning.
     :raises ValueError: If no generated provider serves the selected model.
     """
@@ -2013,6 +2047,26 @@ def pi_native_provider_launch(
     enabled_refs = _enabled_model_refs(rendered)
     if provider.curated_models and enabled_refs:
         overlay["enabledModels"] = enabled_refs
+    from omnigent.context.labels import is_rollover
+
+    rollover_threshold_tokens: int | None = None
+    if is_rollover(labels):
+        from omnigent.context.rollover import resolve_keep_tokens, resolve_rollover_threshold
+
+        # The extension compacts at our threshold after each settled turn; Pi
+        # must keep our tail size. With a known window, Pi's own trigger
+        # (contextTokens > window - reserveTokens) is aligned as well.
+        compaction: dict[str, object] = {
+            "enabled": True,
+            "keepRecentTokens": resolve_keep_tokens(labels),
+        }
+        context_window = _model_context_window(rendered, model_provider_id, selected_model)
+        if context_window is not None:
+            rollover_threshold_tokens = resolve_rollover_threshold(
+                labels, model_window=context_window
+            )
+            compaction["reserveTokens"] = max(context_window - rollover_threshold_tokens, 1)
+        overlay["compaction"] = compaction
     prepare_managed_pi_agent_dir(agent_dir, overlay=overlay)
     env = {PI_CODING_AGENT_DIR_ENV_VAR: str(agent_dir)}
     if provider.inference_bound:
@@ -2053,4 +2107,9 @@ def pi_native_provider_launch(
             _LOGGER.warning("pi-native: %s", effort_warning)
     elif thinking is not None:
         args.extend(["--thinking", thinking])
-    return PiNativeLaunch(env=env, args=args, effort_warning=effort_warning)
+    return PiNativeLaunch(
+        env=env,
+        args=args,
+        effort_warning=effort_warning,
+        rollover_threshold_tokens=rollover_threshold_tokens,
+    )

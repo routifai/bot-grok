@@ -64,6 +64,7 @@ from omnigent.harness_plugins import (
     NativeHarnessProvider,
     native_provider_for_key,
 )
+from omnigent.memory.service import MemoryService
 from omnigent.resources import examples as _examples_resources
 from omnigent.runtime import (
     get_terminal_registry,
@@ -107,6 +108,7 @@ from omnigent.server.routes.projects import create_projects_router
 from omnigent.server.routes.runner_tunnel import create_runner_tunnel_router
 from omnigent.server.routes.scheduled_tasks import create_scheduled_tasks_router
 from omnigent.server.routes.session_mcp_servers import create_session_mcp_servers_router
+from omnigent.server.routes.session_memory import create_session_memory_router
 from omnigent.server.routes.session_policies import create_session_policies_router
 from omnigent.server.routes.sessions import (
     SessionLiveness,
@@ -134,10 +136,12 @@ from omnigent.stores.conversation_store import (
     runner_seen_is_fresh,
 )
 from omnigent.stores.host_store import HostStore
+from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.policy_store import PolicyStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
+from omnigent.superchat.chats import SideChatArchiveSweeper
 
 _logger = logging.getLogger(__name__)
 
@@ -1304,6 +1308,8 @@ def create_app(
     policy_store: PolicyStore | None = None,
     permission_store: PermissionStore | None = None,
     scheduled_task_store: ScheduledTaskStore | None = None,
+    memory_service: MemoryService | None = None,
+    memory_upkeep_store: MemoryUpkeepStore | None = None,
     project_store: ProjectStore | None = None,
     auth_provider: AuthProvider | None = None,
     host_store: HostStore | None = None,
@@ -1358,6 +1364,20 @@ def create_app(
         starts an :class:`ScheduledTaskScheduler` that arms a timer per
         active task and fires the injected ``on_fire`` callback on
         schedule. ``None`` disables the scheduler entirely.
+    :param memory_service: Service backing long-term memory (the
+        ``memory_*`` built-in tools and their native-relay dispatch).
+        ``None`` disables the ``/v1/sessions/{id}/memory`` endpoints; the
+        tools themselves still register in rollover sessions but return a
+        clear "not configured" error when invoked.
+    :param memory_upkeep_store: Store backing Phase 3 memory upkeep runs
+        (``rollover/MEMORY-PLAN.md``). When set together with
+        *memory_service*, a :class:`~omnigent.server.memory_upkeep.MemoryUpkeepCoordinator`
+        is exposed on ``app.state.memory_upkeep_coordinator`` and an hourly
+        sweep runs for the server's lifetime; a ``superside-chat`` session's
+        compaction event schedules a run through it
+        (``rollover/SUPERSIDE-CHAT-PLAN.md`` S6). ``None`` leaves the
+        trigger disabled (``app.state.memory_upkeep_coordinator`` is
+        ``None``), not broken.
     :param project_store: Store for first-class projects (owner-private
         containers that group sessions). ``None`` disables the
         ``/v1/projects`` CRUD endpoints.
@@ -1771,9 +1791,34 @@ def create_app(
                 app_inst.state.managed_sandbox_reaper = managed_sandbox_reaper
                 await managed_sandbox_reaper.start()
 
+        # Side Chat auto-archive (rollover/SUPERSIDE-CHAT-PLAN.md S4): a
+        # cheap periodic sweep, never touching the Super Chat or Sub-agents.
+        side_chat_archive_sweeper = SideChatArchiveSweeper(conversation_store)
+        app_inst.state.side_chat_archive_sweeper = side_chat_archive_sweeper
+        await side_chat_archive_sweeper.start()
+
+        # Memory upkeep hourly sweep (rollover/SUPERSIDE-CHAT-PLAN.md S6):
+        # the compaction trigger (routes_events.py) catches most signal
+        # promptly; this catches a superside-chat user whose session never
+        # compacted. The coordinator itself was already built above (not
+        # here) so app.state carries it even without a lifespan.
+        memory_upkeep_scheduler: Any = None
+        if memory_upkeep_coordinator is not None:
+            from omnigent.server.memory_upkeep import MemoryUpkeepScheduler
+
+            memory_upkeep_scheduler = MemoryUpkeepScheduler(
+                conversation_store=conversation_store,
+                coordinator=memory_upkeep_coordinator,
+            )
+            app_inst.state.memory_upkeep_scheduler = memory_upkeep_scheduler
+            await memory_upkeep_scheduler.start()
+
         try:
             yield
         finally:
+            if memory_upkeep_scheduler is not None:
+                await memory_upkeep_scheduler.shutdown()
+            await side_chat_archive_sweeper.shutdown()
             if managed_sandbox_reaper is not None:
                 await managed_sandbox_reaper.shutdown()
             # Run completion is event-driven (the _publish_status hook) plus a
@@ -3096,6 +3141,9 @@ def create_app(
             # files a session into a project (owner-private membership).
             project_store=project_store,
             background_title_coordinator=background_title_coordinator,
+            register_runner_ingest=lambda handler: setattr(
+                app.state, "runner_event_ingest", handler
+            ),
         ),
         prefix="/v1",
         tags=["sessions"],
@@ -3239,6 +3287,35 @@ def create_app(
         prefix="/v1",
         tags=["policy_registry"],
     )
+    if memory_service is not None:
+        app.include_router(
+            create_session_memory_router(
+                memory_service,
+                conversation_store,
+                auth_provider=auth_provider,
+                permission_store=permission_store,
+            ),
+            prefix="/v1",
+            tags=["memory"],
+        )
+    # Memory upkeep trigger (rollover/SUPERSIDE-CHAT-PLAN.md S6): built
+    # eagerly (not inside the lifespan) so a test — or any caller — that
+    # never triggers ASGI startup still sees the real coordinator (or
+    # ``None``) on ``app.state`` right after construction. The hourly
+    # sweep, which needs an async ``.start()``, is armed in the lifespan
+    # below.
+    memory_upkeep_coordinator: Any = None
+    if memory_service is not None and memory_upkeep_store is not None:
+        from omnigent.memory.upkeep import build_upkeep_llm_caller
+        from omnigent.server.memory_upkeep import MemoryUpkeepCoordinator
+
+        memory_upkeep_coordinator = MemoryUpkeepCoordinator(
+            conversation_store=conversation_store,
+            memory_service=memory_service,
+            upkeep_store=memory_upkeep_store,
+            llm_caller_factory=build_upkeep_llm_caller,
+        )
+    app.state.memory_upkeep_coordinator = memory_upkeep_coordinator
     if scheduled_task_store is not None:
         app.include_router(
             create_scheduled_tasks_router(
@@ -3263,19 +3340,6 @@ def create_app(
         prefix="/v1",
         tags=["sharing"],
     )
-    # Nova: personal-AI primitives (omnigent/nova), mounted under /v1/nova.
-    if permission_store is not None:
-        from omnigent.nova import include_routers as _include_nova_routers
-        from omnigent.nova._shared import NovaDeps
-
-        _include_nova_routers(
-            app,
-            NovaDeps(
-                storage_location=permission_store.storage_location,
-                auth_provider=auth_provider,
-                conversation_store=conversation_store,
-            ),
-        )
     # First-class projects (owner-private session containers). Mounted only
     # when a project store is wired; the endpoints self-scope to the caller.
     if project_store is not None:
@@ -3711,6 +3775,7 @@ def create_app(
     if host_store is not None:
         from omnigent.server.routes.host_tunnel import create_host_tunnel_router
         from omnigent.server.routes.hosts import create_hosts_router
+        from omnigent.server.routes.mcp_servers import create_mcp_servers_router
         from omnigent.server.routes.skills import create_skills_router
 
         async def _on_hosts_changed(_host_id: str, owner: str | None) -> None:
@@ -3756,6 +3821,11 @@ def create_app(
             ),
             prefix="/v1",
             tags=["skills"],
+        )
+        app.include_router(
+            create_mcp_servers_router(host_registry, host_store, auth_provider=auth_provider),
+            prefix="/v1",
+            tags=["hosts"],
         )
         # Host-facing credential vending: a sandbox fetches its owner's
         # per-provider credential over the launch-token-authenticated channel

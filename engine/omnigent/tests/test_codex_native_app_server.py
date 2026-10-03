@@ -53,6 +53,28 @@ from omnigent.inner.codex_executor import (
 )
 
 
+@pytest.mark.parametrize(
+    ("code", "message", "expected"),
+    [
+        (-32600, "no active turn to steer", True),
+        (-32600, "no active turn to interrupt", True),
+        (-32600, " NO ACTIVE TURN TO INTERRUPT ", True),
+        (-32600, "expected active turn id `turn_a` but found `turn_b`", True),
+        (-32600, "expected active turn id turn_a but found turn_b", True),
+        (-32600, "thread not found", False),
+        (-32600, "invalid turn id", False),
+        (-32600, "expected active turn id", False),
+        (-32600, "cannot steer a review turn", False),
+        (-32603, "no active turn to interrupt", False),
+        (-32603, "expected active turn id turn_a but found turn_b", False),
+        (-32600, None, False),
+    ],
+)
+def test_is_stale_active_turn_error(code: int, message: str | None, expected: bool) -> None:
+    error = CodexAppServerResponseError({"code": code, "message": message})
+    assert app_server.is_stale_active_turn_error(error) is expected
+
+
 @pytest.mark.parametrize("method", ["turn/start", "turn/steer"])
 async def test_rejected_request_traceback_identifies_rpc(method: str) -> None:
     """RPC errors keep their structured payload and add only request identity."""
@@ -3773,6 +3795,75 @@ async def test_codex_native_launch_config_reads_the_auto_harness_flag(
         config = await _codex_native_launch_config(session_id="conv_abc", server_client=client)
 
     assert config.auto_harness is expected
+
+
+@pytest.mark.parametrize(
+    ("labels", "expected"),
+    [
+        ({"omnigent.context.mode": "rollover"}, 100_000),
+        ({"omnigent.context.mode": "blindfold"}, None),
+        ({}, None),
+    ],
+    ids=["rollover", "other-mode", "unset"],
+)
+async def test_codex_native_launch_config_reads_rollover_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    labels: dict[str, str],
+    expected: int | None,
+) -> None:
+    """Only ``omnigent.context.mode=rollover`` sets Codex's compact ceiling."""
+    import httpx
+
+    from omnigent.runner.native.orchestration import _codex_native_launch_config
+
+    monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:9999")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"workspace": str(tmp_path), "labels": labels})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://runner"
+    ) as client:
+        config = await _codex_native_launch_config(session_id="conv_abc", server_client=client)
+
+    assert config.compact_at_tokens == expected
+
+
+async def test_codex_native_launch_config_sizes_threshold_from_model_launch_arg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit ``--model`` launch arg sizes the default threshold to 60%
+    of that model's own context window (272,000 * 0.6 = 163,200 for
+    gpt-5-mini). The suite disables the live catalog lookup for hermeticity
+    (``OMNIGENT_DISABLE_CATALOG_LOOKUP``), so the window itself comes from
+    ``AP_CONTEXT_WINDOW_OVERRIDE`` — the same seam ``find_model_context_window``
+    documents for e2e compaction tests — while this test's own assertion is
+    about the launch-arg-to-threshold wiring, not the catalog lookup itself."""
+    import httpx
+
+    from omnigent.runner.native.orchestration import _codex_native_launch_config
+
+    monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:9999")
+    monkeypatch.setenv("AP_CONTEXT_WINDOW_OVERRIDE", "272000")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "workspace": str(tmp_path),
+                "labels": {"omnigent.context.mode": "rollover"},
+                "terminal_launch_args": ["--model", "gpt-5-mini"],
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://runner"
+    ) as client:
+        config = await _codex_native_launch_config(session_id="conv_abc", server_client=client)
+
+    assert config.compact_at_tokens == 163_200
 
 
 @pytest.mark.parametrize(

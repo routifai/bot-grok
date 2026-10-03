@@ -55,7 +55,7 @@ from omnigent.entities.session_resources import (
     session_resource_view_to_dict,
     terminal_resource_id,
 )
-from omnigent.errors import ErrorCode, OmnigentError
+from omnigent.errors import ErrorCategory, ErrorCode, ErrorImpact, ErrorPhase, OmnigentError
 from omnigent.harness_plugins import native_provider_for_key
 from omnigent.models.model_override import validate_model_override
 from omnigent.native.native_coding_agents import (
@@ -83,6 +83,7 @@ from omnigent.runner.resource_registry import (
 from omnigent.runner.session_init_protocol import (
     RunnerSessionInitEnvelope,
 )
+from omnigent.runner.transports.ws_tunnel.event_delivery import RunnerEventDispatcher
 from omnigent.spec.types import AgentSpec
 
 _logger = logging.getLogger("omnigent.runner.app")
@@ -598,6 +599,9 @@ class _CodexNativeLaunchConfig:
         pinned into the private ``config.toml`` at launch so the thread (and
         the TUI footer) start at it instead of the shared config's default.
         ``None`` leaves Codex's configured effort in place.
+    :param compact_at_tokens: A rollover session's threshold
+        (``omnigent.context.mode=rollover``): Codex's own auto-compaction is
+        set to fire there. ``None`` leaves it untouched.
     """
 
     workspace: Path
@@ -613,6 +617,64 @@ class _CodexNativeLaunchConfig:
     routing_enabled: bool = False
     turn_routing: bool = False
     reasoning_effort: str | None = None
+    compact_at_tokens: int | None = None
+
+
+def _rollover_compact_at(
+    labels: Mapping[str, str] | None, *, model: str | None = None
+) -> int | None:
+    """A rollover session's compaction threshold, or ``None`` outside rollover.
+
+    :param model: The session's launch model, used to look up its context
+        window when no window has been reported yet. A lookup failure (e.g.
+        an unrecognized id) is treated as "unknown", not a launch error.
+    """
+    from omnigent.context.labels import is_rollover
+    from omnigent.context.rollover import resolve_rollover_threshold
+
+    if not is_rollover(labels):
+        return None
+    window: int | None = None
+    if model:
+        from omnigent.llms.context_window import find_model_context_window
+
+        try:
+            window = find_model_context_window(model)
+        except Exception:  # noqa: BLE001 — an unresolvable model just means no window
+            window = None
+    return resolve_rollover_threshold(labels, model_window=window)
+
+
+def _codex_launch_model_hint(
+    model_override: str | None, terminal_launch_args: list[str] | None
+) -> str | None:
+    """Best-effort model id for a Codex launch, read from launch args.
+
+    Only for sizing the rollover threshold before the real provider/catalog
+    resolution runs (see :func:`_auto_create_codex_terminal`): an explicit
+    ``--model``/``-m`` or ``-c model=...``/``--config model=...`` override in
+    the user's pass-through args wins, else the persisted per-session
+    ``model_override``, else ``None``.
+    """
+    args = terminal_launch_args or []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in ("--model", "-m") and index + 1 < len(args):
+            return args[index + 1]
+        if arg.startswith("--model="):
+            return arg.split("=", 1)[1]
+        if arg in ("-c", "--config") and index + 1 < len(args):
+            index += 1
+            key, _, value = args[index].partition("=")
+            if key.strip() == "model":
+                return value.strip().strip("\"'")
+        elif arg.startswith(("-c=", "--config=")):
+            key, _, value = arg.split("=", 1)[1].partition("=")
+            if key.strip() == "model":
+                return value.strip().strip("\"'")
+        index += 1
+    return model_override
 
 
 @dataclasses.dataclass(frozen=True)
@@ -647,6 +709,10 @@ class _PiNativeLaunchConfig:
     :param reasoning_effort: Persisted per-session effort, e.g. ``"high"``.
         Consumed by the pi-native launch as ``--thinking``; ``None`` leaves
         Pi's model default in place.
+    :param labels: The session's labels. Consumed by the pi-native launch to
+        gate rollover mode (``omnigent.context.labels.is_rollover``): the
+        resident extension's ``session_before_compact`` handler and Pi's own
+        ``compaction`` settings overlay.
     """
 
     workspace: Path
@@ -658,6 +724,7 @@ class _PiNativeLaunchConfig:
     fork_carry_history: bool = False
     model_override: str | None = None
     reasoning_effort: str | None = None
+    labels: dict[str, str] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -940,11 +1007,10 @@ def _kiro_session_workspace(session_workspace: str | None) -> Path:
     return Path(raw.strip()).expanduser().resolve()
 
 
-# A runner->server ``GET /v1/sessions/<id>`` launch-config read that times out
-# under load is a transient upstream condition, not an Omnigent defect. Left
-# un-retried it fails Codex terminal launch, ensure, and the next turn from one
-# blip; a bounded retry rides it out (the read is idempotent) before surfacing
-# a hard error, so genuinely-broken cases still fail loud.
+# A runner->server ``GET /v1/sessions/<id>`` launch-config read can time out
+# under load. Left un-retried it fails Codex terminal launch, ensure, and the
+# next turn from one blip; a bounded retry rides it out (the read is idempotent)
+# before surfacing a server-attributed hard error, so persistent cases fail loud.
 _LAUNCH_CONFIG_FETCH_TIMEOUT_S = 10.0
 _LAUNCH_CONFIG_FETCH_ATTEMPTS = 3
 _LAUNCH_CONFIG_FETCH_BACKOFF_BASE_S = 0.5
@@ -997,17 +1063,20 @@ async def _fetch_native_launch_snapshot(
     A transient runner->server condition (a read/connect timeout, or a
     ``429``/``502``/``503``/``504``) is retried with bounded exponential
     backoff so one blip under load does not tear through native terminal
-    launch, ensure, and the next turn. A non-transient status, a persistent
-    transient failure, or a malformed body still raises ``RuntimeError`` so
-    genuinely-broken launches fail loud.
+    launch, ensure, and the next turn. A persistent transient failure, a 5xx,
+    or a malformed body raises a server-attributed ``OmnigentError`` so
+    startup-reliability signals count it as a platform fault.
 
     :param server_client: Runner's Omnigent server HTTP client.
     :param session_id: Session/conversation id, e.g. ``"conv_abc123"``.
     :param runtime_label: Human-readable harness name for error text, e.g.
         ``"Codex"``.
     :returns: The snapshot mapping.
-    :raises RuntimeError: If the client is missing, the fetch cannot be
-        completed, or the response is not a JSON object.
+    :raises OmnigentError: Server-attributed (blocking, harness setup) when
+        retries are exhausted, the server returns a 5xx, or the body is not a
+        JSON object.
+    :raises RuntimeError: If the client is missing, or on a client-side 4xx
+        or non-transient transport error.
     """
     if server_client is None:
         raise RuntimeError(
@@ -1022,10 +1091,18 @@ async def _fetch_native_launch_snapshot(
                 path, params=_SESSION_METADATA_PARAMS, timeout=_LAUNCH_CONFIG_FETCH_TIMEOUT_S
             )
         except httpx.HTTPError as exc:
-            if last_attempt or not _launch_config_fetch_is_transient(exc):
-                raise RuntimeError(
-                    f"Could not fetch {runtime_label} launch config for {session_id!r}."
-                ) from exc
+            transient = _launch_config_fetch_is_transient(exc)
+            if last_attempt or not transient:
+                message = f"Could not fetch {runtime_label} launch config for {session_id!r}."
+                # Exhausted timeouts/disconnects mean our server never answered.
+                if transient:
+                    raise OmnigentError(
+                        message,
+                        category=ErrorCategory.SERVER,
+                        impact=ErrorImpact.BLOCKING,
+                        phase=ErrorPhase.HARNESS_SETUP,
+                    ) from exc
+                raise RuntimeError(message) from exc
             _logger.warning(
                 "Transient %s launch-config fetch error (attempt %d/%d) for "
                 "session=%s; retrying: %s",
@@ -1040,10 +1117,18 @@ async def _fetch_native_launch_snapshot(
             if resp.status_code == 200:
                 break
             if last_attempt or resp.status_code not in _LAUNCH_CONFIG_RETRYABLE_STATUS:
-                raise RuntimeError(
+                message = (
                     f"Could not fetch {runtime_label} launch config for {session_id!r}: "
                     f"GET /v1/sessions returned {resp.status_code}."
                 )
+                if resp.status_code >= 500 or resp.status_code in _LAUNCH_CONFIG_RETRYABLE_STATUS:
+                    raise OmnigentError(
+                        message,
+                        category=ErrorCategory.SERVER,
+                        impact=ErrorImpact.BLOCKING,
+                        phase=ErrorPhase.HARNESS_SETUP,
+                    )
+                raise RuntimeError(message)
             _logger.warning(
                 "Transient %s launch-config fetch status %d (attempt %d/%d) for "
                 "session=%s; retrying",
@@ -1063,13 +1148,19 @@ async def _fetch_native_launch_snapshot(
     try:
         snapshot = resp.json()
     except ValueError as exc:
-        raise RuntimeError(
-            f"Could not fetch {runtime_label} launch config for {session_id!r}: invalid JSON."
+        raise OmnigentError(
+            f"Could not fetch {runtime_label} launch config for {session_id!r}: invalid JSON.",
+            category=ErrorCategory.SERVER,
+            impact=ErrorImpact.BLOCKING,
+            phase=ErrorPhase.HARNESS_SETUP,
         ) from exc
     if not isinstance(snapshot, dict):
-        raise RuntimeError(
+        raise OmnigentError(
             f"Could not fetch {runtime_label} launch config for {session_id!r}: "
-            "snapshot was not a JSON object."
+            "snapshot was not a JSON object.",
+            category=ErrorCategory.SERVER,
+            impact=ErrorImpact.BLOCKING,
+            phase=ErrorPhase.HARNESS_SETUP,
         )
     return snapshot
 
@@ -1201,6 +1292,7 @@ async def _pi_native_launch_config(
         reasoning_effort=reasoning_effort
         if isinstance(reasoning_effort, str) and reasoning_effort
         else None,
+        labels=labels if isinstance(labels, dict) else None,
     )
 
 
@@ -1303,6 +1395,12 @@ async def _codex_native_launch_config(
             fork_source_external_id = _fse
         fork_carry_history = labels.get(FORK_CARRY_HISTORY_LABEL_KEY) == "1"
         bypass_sandbox = labels.get(CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY) == "1"
+    # Best-effort model for sizing the rollover ceiling; the full provider
+    # resolution runs later, in _auto_create_codex_terminal.
+    model_hint = _codex_launch_model_hint(model_override, terminal_launch_args)
+    compact_at_tokens = _rollover_compact_at(
+        labels if isinstance(labels, dict) else None, model=model_hint
+    )
     # One derivation of the session's Smart Routing class, shared with the SDK
     # codex path, so "pinned" and "auto-harness" mean the same on both.
     routing_class = routing_class_from_snapshot(
@@ -1324,6 +1422,7 @@ async def _codex_native_launch_config(
         routing_enabled=routing_class.routing_enabled,
         turn_routing=routing_class.turn_routing,
         reasoning_effort=reasoning_effort,
+        compact_at_tokens=compact_at_tokens,
     )
 
 
@@ -2419,6 +2518,7 @@ async def _auto_create_pi_terminal(
         pi_native_env_unset,
         pi_session_dir,
         prepare_bridge_dir,
+        set_rollover_threshold_tokens,
         write_extension_files,
     )
     from omnigent.harnesses.pi_native.bridge import extension_path as pi_extension_path
@@ -2469,7 +2569,7 @@ async def _auto_create_pi_terminal(
         from omnigent.runner.tool_dispatch import build_native_relay_tool_schemas
 
         spec_for_tools = _unwrap_resolved_spec(agent_spec)
-        pi_tools = build_native_relay_tool_schemas(spec_for_tools)
+        pi_tools = build_native_relay_tool_schemas(spec_for_tools, labels=launch_config.labels)
     except Exception:  # noqa: BLE001 — tool registration is additive
         _logger.warning(
             "Failed to build pi-native tool schemas for session %s; "
@@ -2484,6 +2584,7 @@ async def _auto_create_pi_terminal(
         conversation_url=conversation_url(launch_config.server_url, session_id),
         auth_headers=auth_headers,
         tools=pi_tools,
+        labels=launch_config.labels,
     )
     pi_command = resolve_pi_executable()
     # Rebuild the local Pi session JSONL from committed Omnigent items so a
@@ -2506,6 +2607,11 @@ async def _auto_create_pi_terminal(
         external_session_id=resume_session_id,
         approve=await asyncio.to_thread(pi_supports_approve, pi_command),
     )
+    from omnigent.context.labels import is_rollover
+    from omnigent.runtime.prompt import ROLLOVER_NATIVE_INSTRUCTIONS
+
+    if is_rollover(launch_config.labels):
+        pi_args.extend(["--append-system-prompt", ROLLOVER_NATIVE_INSTRUCTIONS])
     pi_env = {
         PI_NATIVE_CONFIG_ENV_VAR: str(config),
         "OMNIGENT_PI_NATIVE_BRIDGE_DIR": str(bridge_dir),
@@ -2553,9 +2659,14 @@ async def _auto_create_pi_terminal(
                 provider,
                 launch_config.reasoning_effort,
                 selection=spec_model,
+                labels=launch_config.labels,
             )
             pi_env.update(launch.env)
             pi_args.extend(launch.args)
+            # The extension config was written before the model's window was
+            # known; patch in the threshold Pi's own settings use.
+            if launch.rollover_threshold_tokens is not None:
+                set_rollover_threshold_tokens(bridge_dir, launch.rollover_threshold_tokens)
             # An unroutable model leaves Pi unable to select it, which looks
             # like a silent hang; prefer that notice over the credential one
             # since it names the model the user actually picked.
@@ -5147,9 +5258,15 @@ async def _auto_create_codex_terminal(
         codex_mcp_config_overrides,
         write_mcp_bridge_config,
     )
+    from omnigent.harnesses.codex_native.launch_args import codex_rollover_config_overrides
 
     write_mcp_bridge_config(bridge_dir)
     mcp_overrides = codex_mcp_config_overrides(bridge_dir)
+    rollover_overrides = (
+        codex_rollover_config_overrides(launch_config.compact_at_tokens)
+        if launch_config.compact_at_tokens is not None
+        else []
+    )
 
     # Omnigent coordinates for the codex-native policy hook. The hook runs as a
     # separate subprocess that POSTs tool calls to /policies/evaluate, so
@@ -5175,6 +5292,8 @@ async def _auto_create_codex_terminal(
     # never by editing config.toml here.
     # Passed only for auto-harness sessions so a pinned or plain codex launch
     # keeps main's kwargs exactly.
+    from omnigent.runtime.prompt import ROLLOVER_NATIVE_INSTRUCTIONS
+
     _codex_routing_note: str | None = None
     if launch_config.auto_harness:
         from omnigent.inner.hook_scripts.subagent_router import smart_routing_spawn_note
@@ -5186,6 +5305,7 @@ async def _auto_create_codex_terminal(
             for x in [
                 _native_startup_raw_instructions_from_spec(agent_spec),
                 _codex_routing_note,
+                ROLLOVER_NATIVE_INSTRUCTIONS if launch_config.compact_at_tokens else None,
             ]
             if x
         )
@@ -5201,7 +5321,11 @@ async def _auto_create_codex_terminal(
         cwd=Path(workspace),
         model=_codex_launch.model,
         profile=_codex_launch.profile,
-        extra_config_overrides=[*_codex_launch.config_overrides, *mcp_overrides],
+        extra_config_overrides=[
+            *_codex_launch.config_overrides,
+            *mcp_overrides,
+            *rollover_overrides,
+        ],
         bridge_dir=bridge_dir,
         ap_server_url=launch_config.policy_server_url,
         ap_auth_headers=policy_headers,
@@ -5399,17 +5523,6 @@ async def _auto_create_codex_terminal(
             await app_server.close()
         _AUTO_CODEX_APP_SERVERS.pop(session_id, None)
         raise
-
-    if launch_config.external_session_id is not None:
-        _logger.info(
-            "Codex native input ready",
-            extra=debug_event(
-                "native_input_ready",
-                session_id=session_id,
-                harness="codex-native",
-                stage="native_input",
-            ),
-        )
 
     # Known-thread resumes publish bridge state before the terminal starts;
     # only fresh discovery needs to extend the executor's state wait.
@@ -5881,6 +5994,24 @@ async def _codex_discover_thread_and_forward(
                 except Exception as diagnostics_error:  # noqa: BLE001
                     # Diagnostics must not replace the startup error or prevent cleanup.
                     diagnostics = {"diagnostics_error_type": type(diagnostics_error).__name__}
+                # A timeout after the TUI already died is a symptom: attribute the
+                # exit itself rather than the generic TimeoutError.
+                exit_attribution: dict[str, object] = {}
+                if isinstance(exc, _CodexTerminalExited) or diagnostics.get(
+                    "terminal_exited_undetected"
+                ):
+                    from omnigent.runner.launch_failure import classify_terminal_failure
+
+                    exit_status = diagnostics.get("terminal_exit_status")
+                    last_output = diagnostics.get("terminal_last_output")
+                    diagnosis = classify_terminal_failure(
+                        command="codex",
+                        exit_status=exit_status if isinstance(exit_status, int) else None,
+                        output=last_output if isinstance(last_output, str) else None,
+                    )
+                    exit_attribution["error_category"] = (
+                        diagnosis.category if diagnosis else ErrorCategory.RUNNER
+                    ).value
                 failure_event = debug_event("codex_thread_start_failed", session_id=session_id)
                 failure_event["attributes"] = {
                     "harness": "codex-native",
@@ -5904,6 +6035,9 @@ async def _codex_discover_thread_and_forward(
                     "elapsed_ms": round((time.monotonic() - discovery_started_at) * 1000),
                     "login_required": login_required,
                     **diagnostics,
+                    **exit_attribution,
+                    "error_impact": ErrorImpact.BLOCKING.value,
+                    "error_phase": ErrorPhase.HARNESS_STARTUP.value,
                 }
                 _logger.exception(
                     "Codex TUI never started a thread for %s; chat will not forward%s%s",
@@ -5967,16 +6101,6 @@ async def _codex_discover_thread_and_forward(
                 # The session workspace: without it the executor falls back
                 # to the runner process's own cwd when starting turns.
                 cwd=workspace,
-            ),
-        )
-
-        _logger.info(
-            "Codex native input ready",
-            extra=debug_event(
-                "native_input_ready",
-                session_id=session_id,
-                harness="codex-native",
-                stage="native_input",
             ),
         )
 
@@ -7473,6 +7597,8 @@ def _native_terminal_start_failure_cause(exc: BaseException) -> str:
             detail = f"{detail} {errno_name}"
         return f"{class_name} {detail}"
     if isinstance(exc, OmnigentError):
+        if exc.__cause__ is not None:
+            return f"{class_name} code {exc.code} (cause {type(exc.__cause__).__name__})"
         return f"{class_name} code {exc.code}"
     if exc.__cause__ is not None:
         return f"{class_name} (cause {type(exc.__cause__).__name__})"
@@ -7506,6 +7632,12 @@ def _native_terminal_start_error_payload(
         exception_type=type(exc).__name__,
         exception_cause_type=type(exc.__cause__).__name__ if exc.__cause__ is not None else None,
         cause_code=exc.code if isinstance(exc, OmnigentError) else None,
+        # The warning below carries no exc_info for a missing agent, so the
+        # sink cannot derive its category.
+        error_category=exc.category.value
+        if isinstance(exc, OmnigentError) and missing_agent
+        else None,
+        error_impact=ErrorImpact.BLOCKING.value,
     )
     if missing_agent:
         # Expected session-lifecycle condition: the session's agent was deleted
@@ -7731,6 +7863,35 @@ _ROUTED_SPAWN_ALLOWED_TOOLS: tuple[str, ...] = (
     "mcp__omnigent__sys_read_inbox",
 )
 
+#: Recall and long-term memory must run without a permission prompt, or the
+#: model stalls on it (same "don't ask" denial session_history hit).
+_ROLLOVER_ALLOWED_TOOLS: tuple[str, ...] = (
+    "mcp__omnigent__session_history",
+    "mcp__omnigent__memory_remember",
+    "mcp__omnigent__memory_search",
+    "mcp__omnigent__memory_get",
+    "mcp__omnigent__memory_explain",
+    "mcp__omnigent__memory_forget",
+)
+
+_CLAUDE_LAUNCH_PERMISSION_MODES = frozenset(
+    {"default", "auto", "acceptEdits", "plan", "dontAsk", "bypassPermissions"}
+)
+
+
+def _claude_launch_permission_mode(args: list[str] | None) -> str | None:
+    """Return the effective known launch mode without logging arbitrary args."""
+    from omnigent.harnesses.claude_native.bridge import (
+        _arg_value,
+        _args_request_bypass_permissions,
+    )
+
+    launch_args = tuple(args or ())
+    if _args_request_bypass_permissions(launch_args):
+        return "bypassPermissions"
+    candidate = _arg_value(launch_args, "--permission-mode")
+    return candidate if candidate in _CLAUDE_LAUNCH_PERMISSION_MODES else None
+
 
 def _routed_spawn_launch_args(
     auto_harness: bool, *, router_started: bool = True
@@ -7879,16 +8040,23 @@ async def _load_legacy_claude_launch_metadata(
         ),
         fork_carry_history=labels.get(FORK_CARRY_HISTORY_LABEL_KEY) == "1",
     )
+    permission_mode = _claude_launch_permission_mode(metadata.terminal_launch_args)
     _logger.info(
         "Claude terminal launch config fetched: session=%s status=%s effort_set=%s "
-        "model_override_set=%s launch_args_count=%d external_session_id_set=%s",
+        "model_override_set=%s launch_args_count=%d permission_mode=%s "
+        "external_session_id_set=%s",
         session_id,
         response.status_code,
         metadata.reasoning_effort is not None,
         metadata.model_override is not None,
         len(metadata.terminal_launch_args or []),
+        permission_mode,
         metadata.external_session_id is not None,
-        extra={"session_id": session_id},
+        extra=debug_event(
+            "claude_launch_config_loaded",
+            session_id=session_id,
+            **({"permission_mode": permission_mode} if permission_mode is not None else {}),
+        ),
     )
     return metadata
 
@@ -7903,16 +8071,22 @@ async def _load_claude_launch_metadata(
     if session_init is None:
         return await _load_legacy_claude_launch_metadata(server_client, session_id)
     metadata = _claude_launch_metadata_from_envelope(session_init)
+    permission_mode = _claude_launch_permission_mode(metadata.terminal_launch_args)
     _logger.info(
         "Claude terminal launch config loaded from init envelope: session=%s "
-        "effort_set=%s model_override_set=%s launch_args_count=%d "
+        "effort_set=%s model_override_set=%s launch_args_count=%d permission_mode=%s "
         "external_session_id_set=%s",
         session_id,
         metadata.reasoning_effort is not None,
         metadata.model_override is not None,
         len(metadata.terminal_launch_args or []),
+        permission_mode,
         metadata.external_session_id is not None,
-        extra={"session_id": session_id},
+        extra=debug_event(
+            "claude_launch_config_loaded",
+            session_id=session_id,
+            **({"permission_mode": permission_mode} if permission_mode is not None else {}),
+        ),
     )
     return metadata
 
@@ -7964,6 +8138,7 @@ async def _auto_create_claude_terminal(
     publish_event: Callable[[str, _JsonObject], None],
     *,
     server_client: httpx.AsyncClient,
+    event_dispatcher: RunnerEventDispatcher | None = None,
     bundle_dir: Path | None = None,
     agent_name: str | None = None,
     agent_spec: AgentSpec | ResolvedSpec | None = None,
@@ -8037,6 +8212,21 @@ async def _auto_create_claude_terminal(
         if session_init is not None and session_init.snapshot.workspace
         else _runner_workspace_dir()
     )
+    # A rollover session sets Claude Code's own auto-compaction ceiling, sized
+    # below once the launch model is known.
+    from omnigent.context.labels import is_rollover
+
+    session_labels = session_init.snapshot.labels if session_init is not None else None
+    # Without a startup snapshot (e.g. a relaunch), read the labels live so a
+    # rollover session never launches without its setup.
+    rollover_labels: Mapping[str, str] | None = session_labels
+    if session_init is None:
+        rollover_labels = await _session_labels_for_runner_spawn(
+            server_client=server_client, session_id=session_id
+        )
+    rollover = is_rollover(rollover_labels)
+    from omnigent.runtime.prompt import ROLLOVER_NATIVE_INSTRUCTIONS
+
     started_at = time.monotonic()
     _logger.info(
         "Claude terminal auto-create starting: session=%s workspace=%s bundle_dir=%s "
@@ -8064,7 +8254,7 @@ async def _auto_create_claude_terminal(
     existing_bridge_id = await _claude_native_bridge_id_with_optional_labels(
         server_client=server_client,
         session_id=session_id,
-        session_labels=session_init.snapshot.labels if session_init is not None else None,
+        session_labels=session_labels,
     )
     bridge_id = cleared_bridge_id if existing_bridge_id == cleared_bridge_id else session_id
     if session_init is not None:
@@ -8108,6 +8298,10 @@ async def _auto_create_claude_terminal(
         workspace=Path(workspace),
         sandbox=(agent_os_env.sandbox if agent_os_env is not None else None),
     )
+    if rollover:
+        from omnigent.harnesses.claude_native.bridge import require_mcp_before_input
+
+        require_mcp_before_input(bridge_dir)
     # Cancel any surviving forwarder BEFORE wiping its cursor/seen state, else it
     # re-posts with fresh dedup state alongside the forwarder spawned below.
     await _cancel_auto_forwarder_task(session_id)
@@ -8567,6 +8761,8 @@ async def _auto_create_claude_terminal(
                         str(catalog_default.get("model") or catalog_default.get("id") or "")
                         or None
                     )
+    # Size the rollover ceiling from the settled launch model's window.
+    compact_at_tokens = _rollover_compact_at(rollover_labels, model=launch_model)
     # Give an exact launch model (a Smart Routing pick is resolved before the
     # terminal exists) a spelling of its own in the picker, so a later
     # ``/model`` can return to it instead of stepping onto whatever the family
@@ -8674,11 +8870,15 @@ async def _auto_create_claude_terminal(
         subagent_router_dir=subagent_router_dir,
         append_system_prompt="\n\n".join(
             x
-            for x in [_native_startup_raw_instructions_from_spec(agent_spec), routed_spawn_note]
+            for x in [
+                _native_startup_raw_instructions_from_spec(agent_spec),
+                routed_spawn_note,
+                ROLLOVER_NATIVE_INSTRUCTIONS if rollover else None,
+            ]
             if x
         )
         or None,
-        allowed_tools=routed_spawn_tools,
+        allowed_tools=routed_spawn_tools + (_ROLLOVER_ALLOWED_TOOLS if rollover else ()),
         # The route-turn hook is registered only when this session can
         # actually route; otherwise every submit would pay its round trip.
         turn_routing=_claude_turn_router is not None,
@@ -8729,7 +8929,7 @@ async def _auto_create_claude_terminal(
         # Tool Search env plus ucode gateway env (ANTHROPIC_BASE_URL
         # etc.) when derived. Empty provider config still forces
         # ENABLE_TOOL_SEARCH=true so MCP schemas are loaded on demand.
-        env=build_native_claude_terminal_env(claude_config),
+        env=build_native_claude_terminal_env(claude_config, compact_at_tokens=compact_at_tokens),
         # Names to strip (see ``_claude_terminal_env_unset``). Dropping
         # ``DATABRICKS_CONFIG_PROFILE`` matters because Claude's MCP servers
         # inherit this env and several build ``WorkspaceClient`` without pinning
@@ -8880,6 +9080,7 @@ async def _auto_create_claude_terminal(
                 start_at_end=resume_external_session_id is not None,
                 start_at_offset=resume_prefix_bytes,
                 auth=_runner_auth,
+                event_dispatcher=event_dispatcher,
             )
         finally:
             await _shutdown_session_router_async(session_id, _subagent_router)
@@ -9291,6 +9492,7 @@ class NativeLaunchContext:
     resource_registry: SessionResourceRegistry
     publish_event: Callable[[str, _JsonObject], None]
     server_client: httpx.AsyncClient | None = None
+    event_dispatcher: RunnerEventDispatcher | None = None
     ensure_comment_relay: _EnsureCommentRelay | None = None
     agent_spec: AgentSpec | ResolvedSpec | None = None
     bundle_dir: Path | None = None
@@ -9464,6 +9666,7 @@ async def _launch_claude(ctx: NativeLaunchContext) -> SessionResourceView:
         ctx.resource_registry,
         ctx.publish_event,
         server_client=ctx.server_client,
+        event_dispatcher=ctx.event_dispatcher,
         bundle_dir=ctx.bundle_dir,
         agent_name=ctx.agent_name,
         agent_spec=ctx.agent_spec,
@@ -9585,6 +9788,8 @@ async def _launch_native_terminal(
                     session_id=ctx.session_id,
                     harness=harness_name,
                     stage="terminal_start",
+                    error_impact=ErrorImpact.BLOCKING.value,
+                    error_phase=ErrorPhase.HARNESS_STARTUP.value,
                 ),
             )
             if reraise:
@@ -9743,6 +9948,7 @@ async def _ensure_native_terminal(
                         session_id=ctx.session_id,
                         terminal_name=terminal_name,
                         stage="terminal_start",
+                        error_impact=ErrorImpact.BLOCKING.value,
                     ),
                 )
             return _native_terminal_start_error_response(

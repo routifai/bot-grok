@@ -3087,6 +3087,134 @@ async def test_ensure_local_claude_resume_transcript_returns_none_when_no_record
 
 
 @pytest.mark.asyncio
+async def test_ensure_local_claude_resume_transcript_rollover_rebuild(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rollover compaction item rebuilds resume history to summary+kept+later only.
+
+    Mirrors the rollover pane-recycle relaunch: a synthetic ``compaction``
+    item (rolling summary + the kept recent messages) sits between an old
+    turn and a later one. The rebuilt transcript must carry the kept and
+    later content and none of the pre-compaction text.
+    """
+    projects = tmp_path / "projects"
+    monkeypatch.setattr(claude_native, "_CLAUDE_PROJECTS_DIR", projects)
+    workspace = Path("/work/rollover-repo")
+    items = [
+        {
+            "id": "old_1",
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "OLDEST MESSAGE EVER"}],
+        },
+        {
+            "id": "old_2",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "OLDEST REPLY EVER"}],
+        },
+        {
+            "id": "cmp_1",
+            "type": "compaction",
+            "summary": "rollover summary of the earlier turns",
+            "token_count": 100,
+            "compacted_messages": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "KEPT RECENT MESSAGE"}],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "KEPT RECENT REPLY"}],
+                },
+            ],
+        },
+        {
+            "id": "new_1",
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "LATER MESSAGE AFTER ROLLOVER"}],
+        },
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(200, json={"data": items, "has_more": False})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://example.com") as client:
+        written = await claude_native._ensure_local_claude_resume_transcript(
+            client,
+            session_id="conv_rollover",
+            external_session_id="02857840-6362-408f-b41f-309e396ed7c6",
+            workspace=workspace,
+        )
+
+    assert written is not None
+    text = written.read_text(encoding="utf-8")
+    assert "OLDEST MESSAGE EVER" not in text
+    assert "OLDEST REPLY EVER" not in text
+    assert "KEPT RECENT MESSAGE" in text
+    assert "KEPT RECENT REPLY" in text
+    assert "LATER MESSAGE AFTER ROLLOVER" in text
+    records = [json.loads(line) for line in text.splitlines()]
+    boundaries = [
+        r for r in records if r.get("type") == "system" and r.get("subtype") == "compact_boundary"
+    ]
+    assert len(boundaries) == 1
+
+
+def test_build_native_claude_terminal_env_rollover_sets_the_compact_ceiling() -> None:
+    """A rollover session moves Claude Code's own auto-compact to its threshold."""
+    env = claude_native.build_native_claude_terminal_env(None, compact_at_tokens=90_000)
+    assert env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "200000"
+    assert env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] == "45"
+    assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert "DISABLE_AUTO_COMPACT" not in env
+
+
+def test_claude_auto_compact_env_keeps_the_window_in_claude_bounds() -> None:
+    """Claude Code accepts a 100k-1M window; the percentage absorbs the rest."""
+    low = claude_native.claude_auto_compact_env(20_000)
+    assert low == {
+        "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+        "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "10",
+    }
+    high = claude_native.claude_auto_compact_env(800_000)
+    assert high["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "800000"
+    assert high["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] == "100"
+
+
+def test_build_native_claude_terminal_env_default_omits_auto_compact_flag() -> None:
+    """Label unset (the default) is byte-for-byte upstream: no auto-compact override."""
+    env = claude_native.build_native_claude_terminal_env(None)
+    assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in env
+    assert env == claude_native.build_native_claude_terminal_env(None, compact_at_tokens=None)
+
+
+def test_rollover_compact_at_sizes_from_the_launch_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shared launch-model->threshold seam claude-native and codex-native
+    both call once their launch model is known: 60% of the model's window
+    (272,000 * 0.6 = 163,200). The suite disables the live catalog lookup for
+    hermeticity, so the window comes from ``AP_CONTEXT_WINDOW_OVERRIDE`` — the
+    seam ``find_model_context_window`` documents for e2e compaction tests."""
+    from omnigent.runner.native.orchestration import _rollover_compact_at
+
+    monkeypatch.setenv("AP_CONTEXT_WINDOW_OVERRIDE", "272000")
+    labels = {"omnigent.context.mode": "rollover"}
+    assert _rollover_compact_at(labels, model="claude-opus-5") == 163_200
+    # Outside rollover mode, no model lookup is even attempted.
+    assert _rollover_compact_at({}, model="claude-opus-5") is None
+    # An unresolvable model is "unknown", not a launch error: falls back to
+    # the fixed default rather than raising.
+    monkeypatch.delenv("AP_CONTEXT_WINDOW_OVERRIDE")
+    assert _rollover_compact_at(labels, model="not-a-real-model") == 100_000
+
+
+@pytest.mark.asyncio
 async def test_fetch_resume_items_retries_smaller_pages_on_5xx() -> None:
     """
     A 5xx on a large item page retries at smaller page sizes.

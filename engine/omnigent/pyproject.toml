@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "omnigent"
 # Keep in sync with omnigent/version.py's VERSION constant.
-version = "0.16.0.dev0"
+version = "0.17.0.dev0"
 description = "Omnigent: declarative agent authoring and runtime framework"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -26,8 +26,8 @@ dependencies = [
     # one version, so a published `omnigent==X` must resolve the SDK wheels
     # built alongside it (release-omnigent.yml verifies these pins match the
     # release tag). Local/editable installs still resolve via tool.uv.sources.
-    "omnigent-client==0.16.0.dev0",
-    "omnigent-ui-sdk==0.16.0.dev0",
+    "omnigent-client==0.17.0.dev0",
+    "omnigent-ui-sdk==0.17.0.dev0",
     # Merged from omnigent + omnigent.
     "pyyaml>=6.0,<7",
     # OpenClaw stores its wrapped acpx registry as JSON5.
@@ -264,6 +264,13 @@ cursor = ["cursor-sdk>=0.1.7"]
 # _reflect). The tools import the client lazily, so only users who enable a
 # Hindsight memory tool need this extra.
 hindsight = ["hindsight-client>=0.4.0"]
+# Omnigent's own long-term memory (the memory_* built-in tools backing
+# rollover/MEMORY-PLAN.md). txtai (hybrid BM25 + dense search) and litellm
+# (its embeddings backend) are imported lazily, so only servers that wire a
+# MemoryService need this extra — several GB (txtai pulls faiss-cpu and
+# transformers/torch, unused at runtime since the index uses the pure-numpy
+# ANN backend, but still a txtai import-time dependency).
+memory = ["txtai>=8,<9", "litellm>=1,<2"]
 # The Nimble builtins (`nimble_research`, `nimble_extract`). nimble_research
 # imports the nimble-python client lazily; nimble_extract talks raw httpx and
 # needs no client at runtime. Installing this extra is the opt-in signal that
@@ -282,7 +289,7 @@ nimble = ["nimble-python>=1.2.0,<2"]
 # (`omnigent-client`, `omnigent-ui-sdk`) and the sub-package's own
 # `[project].version` in `integrations/slack/pyproject.toml`.
 slack = [
-    "omnigent-slack==0.16.0.dev0",
+    "omnigent-slack==0.17.0.dev0",
 ]
 # PostgreSQL storage backend. The server builds a psycopg engine whenever
 # the database URI is Postgres (``OMNIGENT_DATABASE_URI=postgresql+psycopg://…``

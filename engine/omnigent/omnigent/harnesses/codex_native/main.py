@@ -1903,6 +1903,52 @@ def _clone_codex_rollout(
     return target
 
 
+async def _resume_rollout_session_labels(
+    client: httpx.AsyncClient, session_id: str
+) -> dict[str, str]:
+    """Best-effort session labels for the resume rollout's tail check."""
+    try:
+        resp = await client.get(f"/v1/sessions/{url_component(session_id)}/labels")
+    except httpx.HTTPError:
+        return {}
+    if resp.status_code != 200:
+        return {}
+    try:
+        labels = resp.json().get("labels")
+    except ValueError:
+        return {}
+    return (
+        {str(key): str(value) for key, value in labels.items()} if isinstance(labels, dict) else {}
+    )
+
+
+async def _apply_post_compaction_tail_to_resume_items(
+    client: httpx.AsyncClient, session_id: str, items: list[_JsonObject]
+) -> list[_JsonObject]:
+    """
+    Prepend the once-per-compaction tail to the resume rollout's pending turn.
+
+    A cross-machine cold resume rebuilds Codex's rollout straight from
+    server items (see :func:`_ensure_local_codex_resume_rollout`) — Codex
+    then reads its own last unanswered user turn out of that file, never
+    through the live ``turn/start`` path the runner's own ``proxy_stream``
+    hook covers. This is that same tail (``omnigent.context.rollover``),
+    applied here instead, so a resumed rollover session doesn't lose it.
+    No compaction item at all skips the labels fetch entirely — the common
+    case for every non-rollover resume.
+    """
+    if not any(item.get("type") == "compaction" for item in items):
+        return items
+    from omnigent.context.rollover import consume_post_compaction_tail, prefix_latest_user_item
+    from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+
+    labels = await _resume_rollout_session_labels(client, session_id)
+    tail = consume_post_compaction_tail(
+        items, labels, session_id=session_id, model=ROLLOVER_TOKEN_COUNT_MODEL
+    )
+    return items if tail is None else prefix_latest_user_item(items, tail)
+
+
 async def _ensure_local_codex_resume_rollout(
     client: httpx.AsyncClient,
     *,
@@ -1984,6 +2030,7 @@ async def _ensure_local_codex_resume_rollout(
     # rebuilt thread can open local cached copies, as on a live turn.
     items = await resolve_session_item_file_references(client, session_id=session_id, items=items)
     items = _codex_items_with_attachment_references(items, bridge_dir=codex_home.parent)
+    items = await _apply_post_compaction_tail_to_resume_items(client, session_id, items)
     target = _codex_resume_rollout_path(codex_home, external_session_id)
     cli_version = None
     if codex_path is not None:
@@ -2165,6 +2212,27 @@ async def _fetch_all_session_items_for_codex_resume(
         after = last_id
 
 
+def _checkpoint_marker_as_developer(history: list[_JsonObject]) -> list[_JsonObject]:
+    """Re-role a rollover checkpoint's marker message from user to developer.
+
+    The marker is system text; as a user message the model can mistake it for
+    something the user said. Other messages pass through unchanged.
+    """
+    from omnigent.context.rollover import CHECKPOINT_MARKER
+
+    def is_marker(message: _JsonObject) -> bool:
+        content = message.get("content")
+        first = content[0] if isinstance(content, list) and content else None
+        return (
+            message.get("type") == "message"
+            and message.get("role") == "user"
+            and isinstance(first, dict)
+            and str(first.get("text", "")).startswith(CHECKPOINT_MARKER)
+        )
+
+    return [{**m, "role": "developer"} if is_marker(m) else m for m in history]
+
+
 def _codex_rollout_records_from_session_items(
     items: list[_JsonObject],
     *,
@@ -2260,6 +2328,7 @@ def _codex_rollout_records_from_session_items(
                     else message
                     for message in compacted_msgs
                 ]
+                replacement_history = _checkpoint_marker_as_developer(replacement_history)
                 replacement_call_ids = {
                     message.get("call_id")
                     for message in replacement_history

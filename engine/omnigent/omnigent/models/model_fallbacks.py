@@ -235,3 +235,31 @@ BACKGROUND_TITLE_CLAUDE_ECONOMY_MODEL = _BACKGROUND_TITLE_FALLBACKS["claude"].mo
 
 #: The codex-family arm background session titles pin.
 BACKGROUND_TITLE_CODEX_ECONOMY_MODEL = _BACKGROUND_TITLE_FALLBACKS["codex"].model_ids[0]
+
+
+_ROLLOVER_SUMMARY_FALLBACK = StaticModelFallback(
+    model_ids=("gpt-4o",),
+    owner="Rollover checkpoint summaries (omnigent.context.rollover)",
+    provenance="the summarizer model used when a rollover session's spec names none",
+    discovery_gap=(
+        "a rollover summary can run before any spec or live catalog has resolved "
+        "the session's model"
+    ),
+)
+
+#: Summarizer model for a rollover checkpoint when the session names no model.
+ROLLOVER_SUMMARY_FALLBACK_MODEL = _ROLLOVER_SUMMARY_FALLBACK.model_ids[0]
+
+
+_ROLLOVER_TOKEN_COUNT_FALLBACK = StaticModelFallback(
+    model_ids=("gpt-4o",),
+    owner="Rollover recent-turns budget (omnigent.context.rollover)",
+    provenance="the tokenizer used to size the verbatim recent turns sent after a compaction",
+    discovery_gap=(
+        "the budget is counted before the session's model is known on the resume and "
+        "delivery paths; only token counting uses it, no model is called"
+    ),
+)
+
+#: Tokenizer model for sizing the post-compaction recent turns.
+ROLLOVER_TOKEN_COUNT_MODEL = _ROLLOVER_TOKEN_COUNT_FALLBACK.model_ids[0]

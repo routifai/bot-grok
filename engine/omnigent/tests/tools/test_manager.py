@@ -1662,3 +1662,123 @@ def test_get_tool_names_returns_registered_names() -> None:
 
     assert "load_skill" in names
     assert "sys_timer_set" in names
+
+
+# ── session_history: label-gated, not spec-gated ──────────────
+
+
+def test_session_history_absent_without_labels() -> None:
+    """No ``labels=`` kwarg at all — the default — is byte-for-byte upstream."""
+    mgr = ToolManager(_make_spec())
+    assert "session_history" not in mgr.get_tool_names()
+
+
+def test_session_history_absent_for_non_rollover_labels() -> None:
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "blindfold"})
+    assert "session_history" not in mgr.get_tool_names()
+
+
+def test_session_history_present_for_rollover_session() -> None:
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "rollover"})
+    assert "session_history" in mgr.get_tool_names()
+
+
+def test_session_history_registration_is_not_a_spec_opt_in() -> None:
+    """Every agent spec gets it in a rollover session — no per-agent declaration."""
+    mgr = ToolManager(_make_spec(local_tools=[]), labels={"omnigent.context.mode": "rollover"})
+    assert "session_history" in mgr.get_tool_names()
+
+
+# ── memory_*: same label-gated, not spec-gated posture as session_history ──
+
+_MEMORY_TOOL_NAMES = (
+    "memory_remember",
+    "memory_search",
+    "memory_get",
+    "memory_explain",
+    "memory_forget",
+)
+
+
+def test_memory_tools_absent_without_labels() -> None:
+    """No ``labels=`` kwarg at all — the default — is byte-for-byte upstream."""
+    mgr = ToolManager(_make_spec())
+    names = mgr.get_tool_names()
+    for name in _MEMORY_TOOL_NAMES:
+        assert name not in names
+
+
+def test_memory_tools_absent_for_non_rollover_labels() -> None:
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "blindfold"})
+    names = mgr.get_tool_names()
+    for name in _MEMORY_TOOL_NAMES:
+        assert name not in names
+
+
+def test_memory_tools_present_for_rollover_session() -> None:
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "rollover"})
+    names = mgr.get_tool_names()
+    for name in _MEMORY_TOOL_NAMES:
+        assert name in names
+
+
+def test_memory_tools_registration_is_not_a_spec_opt_in() -> None:
+    """Every agent spec gets them in a rollover session — no per-agent declaration."""
+    mgr = ToolManager(_make_spec(local_tools=[]), labels={"omnigent.context.mode": "rollover"})
+    names = mgr.get_tool_names()
+    for name in _MEMORY_TOOL_NAMES:
+        assert name in names
+
+
+# ── superside-chat gets the same two families as rollover ──────────────
+
+
+def test_session_history_present_for_superside_chat_session() -> None:
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "superside-chat"})
+    assert "session_history" in mgr.get_tool_names()
+
+
+def test_memory_tools_present_for_superside_chat_session() -> None:
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "superside-chat"})
+    names = mgr.get_tool_names()
+    for name in _MEMORY_TOOL_NAMES:
+        assert name in names
+
+
+# ── side_chat_open: label-gated (superside-chat), not spec-gated ──────────
+
+
+def test_side_chat_open_absent_without_labels() -> None:
+    """No ``labels=`` kwarg at all — the default — is byte-for-byte upstream."""
+    mgr = ToolManager(_make_spec())
+    assert "side_chat_open" not in mgr.get_tool_names()
+
+
+def test_side_chat_open_absent_for_rollover_labels() -> None:
+    """Rollover (native-CLI) mode is a different mode — not superside-chat."""
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "rollover"})
+    assert "side_chat_open" not in mgr.get_tool_names()
+
+
+def test_side_chat_open_present_for_superside_chat_session() -> None:
+    mgr = ToolManager(_make_spec(), labels={"omnigent.context.mode": "superside-chat"})
+    assert "side_chat_open" in mgr.get_tool_names()
+
+
+def test_side_chat_open_present_for_a_side_chat_too() -> None:
+    """Registration offers the tool to every superside-chat session (Super Chat,
+    Side Chat, Sub-agent alike) — the Super-Chat-only restriction is a
+    call-time refusal in the runner dispatch, not a registration gate."""
+    mgr = ToolManager(
+        _make_spec(),
+        labels={"omnigent.context.mode": "superside-chat", "omnigent.side_chat": "1"},
+    )
+    assert "side_chat_open" in mgr.get_tool_names()
+
+
+def test_side_chat_open_registration_is_not_a_spec_opt_in() -> None:
+    """Every agent spec gets it in a superside-chat session — no per-agent declaration."""
+    mgr = ToolManager(
+        _make_spec(local_tools=[]), labels={"omnigent.context.mode": "superside-chat"}
+    )
+    assert "side_chat_open" in mgr.get_tool_names()

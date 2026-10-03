@@ -32,15 +32,15 @@ const harnesses = [];
 // Build a fresh extension instance with its own temp inbox directory. Each call
 // produces independent closure state (activeResponseId, pendingInterruptUntil,
 // latestContext, ...).
-function makeHarness({ captureEvents = false, existingTools = [] } = {}) {
+function makeHarness({ captureEvents = false, existingTools = [], configOverrides = {} } = {}) {
   const inboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-native-inbox-"));
   const configPath = path.join(inboxDir, "config.json");
   // A serverUrl + sessionId make postEvent attempt a real fetch; with a mock
   // global fetch that lets a test capture the posted event bodies. Without
   // them postEvent fails closed (the interrupt tests rely on that).
   const config = captureEvents
-    ? { inboxDir, serverUrl: "http://mock", sessionId: "conv_test" }
-    : { inboxDir };
+    ? { inboxDir, bridgeDir: inboxDir, serverUrl: "http://mock", sessionId: "conv_test", ...configOverrides }
+    : { inboxDir, bridgeDir: inboxDir, ...configOverrides };
   fs.writeFileSync(configPath, JSON.stringify(config));
   process.env.OMNIGENT_PI_NATIVE_CONFIG = configPath;
 
@@ -48,6 +48,9 @@ function makeHarness({ captureEvents = false, existingTools = [] } = {}) {
   const postedEvents = [];
   if (captureEvents) {
     global.fetch = async (url, opts) => {
+      if (String(url).includes("/items")) {
+        return { ok: true, status: 200, json: async () => ({ data: [{ id: "item_last" }] }) };
+      }
       try {
         if (opts && typeof opts.body === "string" && String(url).endsWith("/events")) {
           postedEvents.push(JSON.parse(opts.body));
@@ -76,7 +79,7 @@ function makeHarness({ captureEvents = false, existingTools = [] } = {}) {
   const mod = require(EXT_PATH);
   mod(pi);
 
-  const h = { pi, handlers, inboxDir, postedEvents, registeredTools };
+  const h = { pi, handlers, inboxDir, postedEvents, registeredTools, mod };
   harnesses.push(h);
   return h;
 }
@@ -487,6 +490,19 @@ async function testSessionStartupDoesNotCompleteATurn() {
   );
 }
 
+async function testSessionStartMarksInputReady() {
+  const h = makeHarness();
+  const marker = path.join(h.inboxDir, "input_ready");
+  assert("input-ready marker is absent before session_start", !fs.existsSync(marker));
+
+  await h.handlers.session_start({}, makeCtx({ idle: true }));
+
+  assert(
+    "session_start writes the input-ready marker once the inbox poller is armed",
+    fs.existsSync(marker) && !!h.pi.__omnigentInboxPoller,
+  );
+}
+
 async function testQueuedPromptDuringStartupStaysRunningUntilAgentEnd() {
   const h = makeHarness({ captureEvents: true });
   const ctx = makeCtx({ idle: true });
@@ -546,9 +562,277 @@ async function testQueuedPromptDuringStartupStaysRunningUntilAgentEnd() {
   }
 }
 
+// --- rollover session_before_compact coverage ---
+
+function makeRolloverConfig() {
+  return {
+    rollover: {
+      checkpointHeader: "HEADER-TEXT",
+      summarizerInstruction: "Write a state file for {today}.",
+      datePlaceholder: "{today}",
+      thresholdTokens: 1000,
+    },
+  };
+}
+
+async function testRolloverCompactsOnceASettledTurnPassesTheThreshold() {
+  const h = makeHarness({ captureEvents: true, configOverrides: makeRolloverConfig() });
+  let compacts = 0;
+  const ctxAt = (tokens) => ({
+    getContextUsage: () => ({ tokens, contextWindow: 200000, percent: null }),
+    compact: () => {
+      compacts += 1;
+    },
+  });
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(999));
+  assert("no compaction under the rollover threshold", compacts === 0);
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(1000));
+  assert("compaction once a settled turn reaches the threshold", compacts === 1);
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(null));
+  assert("unknown token count never compacts", compacts === 1);
+}
+
+async function testRolloverDoesNotRecompactWhileStillOverTheThreshold() {
+  const h = makeHarness({ captureEvents: true, configOverrides: makeRolloverConfig() });
+  let compacts = 0;
+  let onError = null;
+  const ctxAt = (tokens) => ({
+    getContextUsage: () => ({ tokens, contextWindow: 200000, percent: null }),
+    compact: (opts) => {
+      compacts += 1;
+      onError = opts && opts.onError;
+    },
+  });
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(1500));
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(1500));
+  assert("a tail still over the threshold does not compact every turn", compacts === 1);
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(200));
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(1500));
+  assert("compacts again once the context has dropped under the threshold", compacts === 2);
+  const origError = console.error;
+  console.error = () => {};
+  onError(new Error("boom"));
+  console.error = origError;
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctxAt(1500));
+  assert("a failed compaction is retried on the next settled turn", compacts === 3);
+}
+
+function testStripCheckpointHeaderUnnestsARolledUpSummary() {
+  const strip = makeHarness({ captureEvents: true }).mod.testHooks.stripCheckpointHeader;
+  assert(
+    "the header is removed from a prior summary",
+    strip("HEADER-TEXT\n\nBODY", "HEADER-TEXT") === "BODY",
+  );
+  assert("a summary without the header is unchanged", strip("BODY", "HEADER-TEXT") === "BODY");
+  assert("undefined passes through", strip(undefined, "HEADER-TEXT") === undefined);
+}
+
+async function startRolloverSessionWithPoller() {
+  const h = makeHarness({ captureEvents: true, configOverrides: makeRolloverConfig() });
+  const sent = [];
+  h.pi.sendUserMessage = (content) => {
+    sent.push(content);
+  };
+  const ctx = {
+    ...makeCtx({ idle: true }),
+    sessionManager: { getSessionId: () => "hold-session" },
+    getContextUsage: () => ({ tokens: 5000, contextWindow: 200000, percent: null }),
+    compact: () => {},
+  };
+  await h.handlers.session_start({}, ctx);
+  return { h, ctx, sent };
+}
+
+function writeInboxMessage(h, id, content) {
+  const file = path.join(h.inboxDir, `${id}.json`);
+  fs.writeFileSync(file, JSON.stringify({ id, type: "user_message", content }));
+  return file;
+}
+
+async function testMessageDuringRolloverCompactionWaitsThenDelivers() {
+  const { h, ctx, sent } = await startRolloverSessionWithPoller();
+  await h.handlers.agent_settled({ type: "agent_settled" }, ctx);
+  const file = writeInboxMessage(h, "held-1", "hello during compaction");
+  await sleep(700);
+  assert(
+    "a message sent mid-compaction is held (not delivered, file kept)",
+    sent.length === 0 && fs.existsSync(file),
+  );
+  await h.handlers.session_compact({ type: "session_compact" }, ctx);
+  const deadline = Date.now() + 3000;
+  while (sent.length === 0 && Date.now() < deadline) await sleep(20);
+  assert(
+    "the held message is delivered once the compaction finishes",
+    sent.length === 1 && sent[0] === "hello during compaction" && !fs.existsSync(file),
+    JSON.stringify(sent),
+  );
+}
+
+async function testFailedCompactionAlsoReleasesHeldMessage() {
+  const { h, ctx, sent } = await startRolloverSessionWithPoller();
+  await h.handlers.session_before_compact({ preparation: null }, ctx);
+  writeInboxMessage(h, "held-2", "after a failed compaction");
+  await sleep(500);
+  assert("held while Pi's own compaction runs", sent.length === 0);
+  await h.handlers.session_compact_failed({ type: "session_compact_failed" }, ctx);
+  const deadline = Date.now() + 3000;
+  while (sent.length === 0 && Date.now() < deadline) await sleep(20);
+  assert("a failed compaction releases the held message", sent.length === 1);
+}
+
+async function testMessageIsNotHeldOutsideCompaction() {
+  const { h, sent } = await startRolloverSessionWithPoller();
+  writeInboxMessage(h, "free-1", "no compaction running");
+  const deadline = Date.now() + 3000;
+  while (sent.length === 0 && Date.now() < deadline) await sleep(20);
+  assert("a message is delivered normally when no compaction is running", sent.length === 1);
+}
+
+function testSessionHistoryToolCarriesPromptGuidelines() {
+  const h = makeHarness({
+    configOverrides: {
+      tools: [
+        { name: "session_history", description: "Recall the exact record of THIS session", parameters: {} },
+        { name: "sys_other", description: "Other tool", parameters: {} },
+      ],
+    },
+  });
+  const tool = h.registeredTools.session_history;
+  assert(
+    "session_history registers a prompt snippet and guideline naming the tool",
+    tool &&
+      /session_history/.test(tool.promptGuidelines?.[0] ?? "") &&
+      tool.promptSnippet.startsWith("Recall exact earlier messages"),
+    JSON.stringify(tool && { s: tool.promptSnippet, g: tool.promptGuidelines }),
+  );
+  assert(
+    "other bridged tools keep the default snippet and no guidelines",
+    h.registeredTools.sys_other.promptGuidelines === undefined &&
+      h.registeredTools.sys_other.promptSnippet === "Other tool",
+  );
+}
+
+function testRolloverHandlerNotRegisteredOutsideRolloverMode() {
+  const h = makeHarness({ captureEvents: true });
+  assert(
+    "session_before_compact is not registered without a rollover config",
+    h.handlers.session_before_compact === undefined,
+  );
+}
+
+function testRolloverHandlerRegisteredForRolloverSessions() {
+  const h = makeHarness({ captureEvents: true, configOverrides: makeRolloverConfig() });
+  assert(
+    "session_before_compact IS registered for a rollover session",
+    typeof h.handlers.session_before_compact === "function",
+  );
+}
+
+async function testRolloverCompactionReturnsHeaderSummaryAndFirstKeptEntryId() {
+  const h = makeHarness({ captureEvents: true, configOverrides: makeRolloverConfig() });
+  let capturedInstructions = null;
+  let capturedPrevious = null;
+  h.mod.testHooks.loadPiCompactionApi = () => ({
+    generateSummary: async (
+      _messages,
+      _model,
+      _reserve,
+      _apiKey,
+      _headers,
+      _signal,
+      customInstructions,
+      previousSummary,
+    ) => {
+      capturedInstructions = customInstructions;
+      capturedPrevious = previousSummary;
+      return "SUMMARY BODY";
+    },
+  });
+  const ctx = {
+    model: { id: "m", provider: "p" },
+    modelRegistry: {
+      getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "key", headers: {} }),
+    },
+  };
+  const event = {
+    preparation: {
+      messagesToSummarize: [],
+      previousSummary: "HEADER-TEXT\n\nOLD BODY",
+      tokensBefore: 12345,
+      firstKeptEntryId: "entry_7",
+      settings: { reserveTokens: 4096 },
+    },
+  };
+
+  const result = await h.handlers.session_before_compact(event, ctx);
+
+  const today = new Date().toISOString().slice(0, 10);
+  assert(
+    "the summarizer instruction's date placeholder is substituted before the call",
+    capturedInstructions === `Write a state file for ${today}.`,
+    String(capturedInstructions),
+  );
+  assert(
+    "the prior summary reaches the summarizer without its header",
+    capturedPrevious === "OLD BODY",
+    String(capturedPrevious),
+  );
+  assert(
+    "the returned compaction carries the fixed checkpoint header + summary",
+    result && result.compaction && result.compaction.summary === "HEADER-TEXT\n\nSUMMARY BODY",
+    JSON.stringify(result),
+  );
+  assert(
+    "the returned compaction reuses Pi's OWN firstKeptEntryId/tokensBefore",
+    result.compaction.firstKeptEntryId === "entry_7" && result.compaction.tokensBefore === 12345,
+    JSON.stringify(result),
+  );
+  const compactionEvents = h.postedEvents.filter((e) => e.type === "compaction");
+  assert(
+    "a matching compaction item is reported to Omnigent",
+    compactionEvents.length === 1 &&
+      compactionEvents[0].data.summary === "HEADER-TEXT\n\nSUMMARY BODY" &&
+      compactionEvents[0].data.last_item_id === "item_last",
+    JSON.stringify(compactionEvents),
+  );
+}
+
+async function testRolloverCompactionFailsOpenOnSummarizerError() {
+  const h = makeHarness({ captureEvents: true, configOverrides: makeRolloverConfig() });
+  h.mod.testHooks.loadPiCompactionApi = () => ({
+    generateSummary: async () => {
+      throw new Error("boom");
+    },
+  });
+  const ctx = {
+    model: { id: "m", provider: "p" },
+    modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "key" }) },
+  };
+  const event = {
+    preparation: {
+      messagesToSummarize: [],
+      tokensBefore: 10,
+      firstKeptEntryId: "entry_1",
+      settings: {},
+    },
+  };
+
+  const result = await h.handlers.session_before_compact(event, ctx);
+
+  assert(
+    "a summarizer error falls back to Pi's own default compaction (undefined)",
+    result === undefined,
+  );
+  assert(
+    "no compaction item is reported to Omnigent on failure",
+    h.postedEvents.filter((e) => e.type === "compaction").length === 0,
+  );
+}
+
 (async () => {
   try {
     await testSessionStartupDoesNotCompleteATurn();
+    await testSessionStartMarksInputReady();
     await testQueuedPromptDuringStartupStaysRunningUntilAgentEnd();
     await testRunningIdleShareResponseId();
     await testTaskPlanPublishesTodos();
@@ -559,6 +843,17 @@ async function testQueuedPromptDuringStartupStaysRunningUntilAgentEnd() {
     await testAgentLoopInterruptFallbackNoIsIdleBeforeTurnStart();
     await testMidTurnInterruptFallbackNoIsIdle();
     await testAgentStartClearsStaleWindow();
+    testSessionHistoryToolCarriesPromptGuidelines();
+    testRolloverHandlerNotRegisteredOutsideRolloverMode();
+    testRolloverHandlerRegisteredForRolloverSessions();
+    await testRolloverCompactsOnceASettledTurnPassesTheThreshold();
+    await testRolloverDoesNotRecompactWhileStillOverTheThreshold();
+    testStripCheckpointHeaderUnnestsARolledUpSummary();
+    await testMessageDuringRolloverCompactionWaitsThenDelivers();
+    await testFailedCompactionAlsoReleasesHeldMessage();
+    await testMessageIsNotHeldOutsideCompaction();
+    await testRolloverCompactionReturnsHeaderSummaryAndFirstKeptEntryId();
+    await testRolloverCompactionFailsOpenOnSummarizerError();
   } finally {
     for (const h of harnesses) {
       if (h.pi.__omnigentInboxPoller) clearInterval(h.pi.__omnigentInboxPoller);

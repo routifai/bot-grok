@@ -2608,7 +2608,6 @@ def test_forwarder_ignores_thread_started_for_current_codex_thread(tmp_path: Pat
 
 def test_forwarder_rotates_session_on_new_codex_thread_and_posts_to_new_session(
     tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     Native Codex thread switches create a replacement Omnigent session.
@@ -2619,7 +2618,6 @@ def test_forwarder_rotates_session_on_new_codex_thread_and_posts_to_new_session(
     thread, and send subsequent status/history events to the new AP
     session.
     """
-    caplog.set_level("INFO", logger="omnigent.harnesses.codex_native.forwarder")
     write_bridge_state(
         tmp_path,
         CodexNativeBridgeState(
@@ -2791,13 +2789,6 @@ def test_forwarder_rotates_session_on_new_codex_thread_and_posts_to_new_session(
         for _, payload in posted_events
         if payload["type"] == "external_conversation_item"
     ] == ["after clear"]
-
-    readiness = [
-        r for r in caplog.records if getattr(r, "event_name", None) == "native_input_ready"
-    ]
-    assert len(readiness) == 1
-    assert readiness[0].session_id == "conv_new"
-    assert readiness[0].attributes["runner_id"] == "runner_123"
 
 
 def test_forwarder_rotation_failure_preserves_old_target(
@@ -7140,6 +7131,85 @@ def test_forwarder_drops_codex_image_generation_missing_status(
     assert "Codex imageGeneration missing status" in caplog.text
 
 
+def test_forwarder_posts_codex_mcp_tool_call() -> None:
+    """
+    A completed Codex ``mcpToolCall`` becomes a ``mcp__server__tool`` card.
+
+    Before this was handled, Codex's own MCP tool calls (e.g. the Omnigent
+    ``session_history`` relay tool) were silently dropped from the mirrored
+    transcript even though Codex genuinely ran them, unlike claude-native
+    which mirrors the equivalent call as ``mcp__omnigent__session_history``.
+    """
+    posted: list[dict[str, Any]] = []
+    asyncio.run(
+        _replay_completed_item(
+            {
+                "type": "mcpToolCall",
+                "id": "mcp_1",
+                "server": "omnigent",
+                "tool": "session_history",
+                "arguments": {"limit": 5},
+                "status": "completed",
+                "result": {"content": [{"type": "text", "text": "first message: hi"}]},
+            },
+            _capture_handler(posted),
+        )
+    )
+
+    assert [p["data"]["item_type"] for p in posted] == [
+        "function_call",
+        "function_call_output",
+    ]
+    call = posted[0]["data"]["item_data"]
+    assert call["name"] == "mcp__omnigent__session_history"
+    assert call["call_id"] == "mcp_1"
+    assert json.loads(call["arguments"]) == {"limit": 5}
+    assert posted[1]["data"]["item_data"]["output"] == "first message: hi"
+
+
+def test_forwarder_posts_codex_mcp_tool_call_error() -> None:
+    """A failed ``mcpToolCall`` surfaces its error message as the output."""
+    posted: list[dict[str, Any]] = []
+    asyncio.run(
+        _replay_completed_item(
+            {
+                "type": "mcpToolCall",
+                "id": "mcp_2",
+                "server": "omnigent",
+                "tool": "session_history",
+                "arguments": {},
+                "status": "failed",
+                "error": {"message": "relay unavailable"},
+            },
+            _capture_handler(posted),
+        )
+    )
+
+    assert posted[1]["data"]["item_data"]["output"] == "error: relay unavailable"
+
+
+def test_forwarder_drops_codex_mcp_tool_call_missing_server(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An ``mcpToolCall`` with no server/tool is dropped, not mirrored blank."""
+    posted: list[dict[str, Any]] = []
+    asyncio.run(
+        _replay_completed_item(
+            {
+                "type": "mcpToolCall",
+                "id": "mcp_bad",
+                "tool": "session_history",
+                "arguments": {},
+                "status": "completed",
+            },
+            _capture_handler(posted),
+        )
+    )
+
+    assert posted == []
+    assert "Codex mcpToolCall missing server/tool" in caplog.text
+
+
 def test_forwarder_posts_codex_entered_review_mode_marker() -> None:
     """
     Codex ``enteredReviewMode`` surfaces a visible review-mode marker.
@@ -11468,6 +11538,153 @@ async def test_ensure_local_codex_resume_rollout_restores_a_zip_outside_the_work
         {"type": "input_text", "text": f"[Attached: {expected}]"},
         {"type": "input_text", "text": "unpack this"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_local_codex_resume_rollout_rollover_rebuild(tmp_path: Path) -> None:
+    """A rollover compaction item rebuilds resume history to summary+kept+later only.
+
+    Mirrors the rollover pane-recycle relaunch: a synthetic ``compaction``
+    item (rolling summary + the kept recent messages) sits between an old
+    turn and a later one. The rebuilt rollout must carry the kept and later
+    content and none of the pre-compaction text.
+    """
+    thread_id = "019e96aa-0be2-7343-8d3b-6f914d60936b"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    codex_home = tmp_path / "codex-home"
+    items = [
+        {
+            "id": "old_1",
+            "response_id": "codex_turn_old",
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "OLDEST MESSAGE EVER"}],
+        },
+        {
+            "id": "old_2",
+            "response_id": "codex_turn_old",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "OLDEST REPLY EVER"}],
+        },
+        {
+            "id": "cmp_1",
+            "response_id": "compact_1",
+            "type": "compaction",
+            "summary": "rollover summary of the earlier turns",
+            "compacted_messages": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "KEPT RECENT MESSAGE"}],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "KEPT RECENT REPLY"}],
+                },
+            ],
+        },
+        {
+            "id": "new_1",
+            "response_id": "codex_turn_new",
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "LATER MESSAGE AFTER ROLLOVER"}],
+        },
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(200, json={"data": items, "has_more": False})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        rollout = await codex_native._ensure_local_codex_resume_rollout(
+            client,
+            session_id="conv_rollover",
+            external_session_id=thread_id,
+            codex_home=codex_home,
+            workspace=workspace.resolve(),
+            model_provider="omnigent_databricks",
+            codex_path=None,
+        )
+
+    text = rollout.read_text(encoding="utf-8")
+    assert "OLDEST MESSAGE EVER" not in text
+    assert "OLDEST REPLY EVER" not in text
+    assert "KEPT RECENT MESSAGE" in text
+    assert "KEPT RECENT REPLY" in text
+    assert "LATER MESSAGE AFTER ROLLOVER" in text
+    records = [json.loads(line) for line in text.splitlines() if line.strip()]
+    types = [r["type"] for r in records]
+    assert "compacted" in types
+
+
+@pytest.mark.asyncio
+async def test_ensure_local_codex_resume_rollout_applies_post_compaction_tail(
+    tmp_path: Path,
+) -> None:
+    """
+    A rollover session's cold resume gets the same verbatim post-compaction
+    tail the live ``proxy_stream`` turn delivery path adds — Codex reads
+    this rollout's own last (unanswered) user turn directly, never through
+    that path, so without this seam the tail never reaches it.
+    """
+    thread_id = "019e96aa-0be2-7343-8d3b-6f914d60936c"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    codex_home = tmp_path / "codex-home"
+    items = [
+        {
+            "id": "u1",
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "question before compaction"}],
+        },
+        {
+            "id": "a1",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "answer before compaction"}],
+        },
+        {
+            "id": "cmp_resume_1",
+            "type": "compaction",
+            "summary": "codex summary",
+            "last_item_id": "a1",
+        },
+        {
+            "id": "new_1",
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "pending message after restart"}],
+        },
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/labels"):
+            return httpx.Response(200, json={"labels": {"omnigent.context.mode": "rollover"}})
+        return httpx.Response(200, json={"data": items, "has_more": False})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        rollout = await codex_native._ensure_local_codex_resume_rollout(
+            client,
+            session_id="conv_resume_tail",
+            external_session_id=thread_id,
+            codex_home=codex_home,
+            workspace=workspace.resolve(),
+            model_provider="omnigent_databricks",
+            codex_path=None,
+        )
+
+    text = rollout.read_text(encoding="utf-8")
+    assert "Recent conversation before the context was compacted" in text
+    assert "question before compaction" in text
+    assert "answer before compaction" in text
+    assert "pending message after restart" in text
 
 
 @pytest.mark.asyncio

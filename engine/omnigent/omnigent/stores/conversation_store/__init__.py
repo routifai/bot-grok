@@ -728,6 +728,7 @@ class ConversationStore(ABC):
         pinned: bool = False,
         pinned_owner: str | None = None,
         title: str | None = None,
+        fork_source_id: str | None = None,
     ) -> PagedList[Conversation]:
         """
         List conversations with cursor-based pagination.
@@ -839,6 +840,13 @@ class ConversationStore(ABC):
             Powers the ``(agent, title)`` child-session lookup in
             ``sys_session_send`` so the server can resolve the target
             in a single indexed query instead of fetching all children.
+        :param fork_source_id: When set, only return conversations whose
+            :data:`FORK_SOURCE_LABEL_KEY` label equals this value — forks
+            made from this session. ``None`` disables the filter. Powers
+            ``session_history``'s ``list_chats`` side-chat discovery; note
+            the label is only stamped when the fork source had a workspace
+            or bound native runner (see :data:`FORK_SOURCE_LABEL_KEY`), so
+            this is not a complete "every fork of X" index.
         :returns: A :class:`PagedList` of :class:`Conversation`
             objects.
         :raises omnigent.errors.StaleCursorError: If the ``after``/``before``
@@ -1908,6 +1916,7 @@ class ConversationStore(ABC):
         host_id: str,
         workspace: str,
         exclude_conversation_id: str,
+        include_subdirectories: bool = False,
     ) -> bool:
         """
         Is another non-archived conversation sitting in this ``(host_id, workspace)``?
@@ -1925,6 +1934,7 @@ class ConversationStore(ABC):
         :param workspace: Absolute worktree path, e.g. ``"/w/feature-login"``.
         :param exclude_conversation_id: The conversation being deleted or
             archived — its own row must not count as "another session".
+        :param include_subdirectories: Also protect sessions inside this worktree root.
         :returns: ``True`` when at least one other live conversation
             references the pair, else ``False``.
         """

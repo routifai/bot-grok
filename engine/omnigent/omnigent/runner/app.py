@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from omnigent._platform import normalize_interactive_shells
 from omnigent.acp_cli_harnesses import ACP_CLI_HARNESSES
+from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.debug_logging import (
     debug_event,
     phase_scope,
@@ -60,7 +61,7 @@ from omnigent.entities.session_resources import (
     session_resource_view_to_dict,
     terminal_resource_id,
 )
-from omnigent.errors import ErrorCode, ErrorPhase, OmnigentError
+from omnigent.errors import ErrorCategory, ErrorCode, ErrorImpact, ErrorPhase, OmnigentError
 from omnigent.harness_aliases import (
     canonicalize_harness,
     is_native_harness,
@@ -177,7 +178,6 @@ from omnigent.runner.subagent_routing import (
     routing_class_from_snapshot,
     session_routing_class,
 )
-from omnigent.runtime.context_provider import extract_turn_input_text
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager, NoLiveHarnessError
 from omnigent.runtime.prompt import (
     build_instructions,
@@ -190,6 +190,10 @@ from omnigent.server.schemas import (
 )
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
+from omnigent.superchat.subagents import (
+    format_subagent_wake_notice_with_result,
+    resolve_wake_target,
+)
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
 from omnigent.terminals.ws_common import WS_CLOSE_TERMINAL_NOT_FOUND
 from omnigent.tools.builtins.load_skill import (
@@ -247,9 +251,18 @@ _CODEX_POPUP_RENDER_S = 0.7
 
 # Budget for confirming an approval switch actually landed. Codex echoes
 # "Permissions updated to <label>" once the popup applies; we poll the pane for
-# it so a no-op (e.g. a preset this codex build's /permissions doesn't offer)
-# fails loud instead of the label claiming a mode the TUI never entered.
+# it so a keystroke that didn't apply (e.g. a slow-rendering popup) fails loud
+# instead of the label claiming a mode the TUI never entered.
 _CODEX_PERMISSION_CONFIRM_BUDGET_S = 4.0
+
+# Budget for the /permissions popup to render its option rows before we read
+# them to find the target preset's menu digit. The popup can be slow to draw
+# mid-session (a busy TUI, MCP still starting), so give it room; if it still
+# can't be read we fall back to the preset's conventional menu position rather
+# than failing the switch. Which rows the popup lists is codex-config-dependent
+# (Read Only appears only with a read-only permission profile), so the digit is
+# read from the live popup when possible rather than hardcoded.
+_CODEX_PERMISSION_MENU_BUDGET_S = 5.0
 
 
 def _warn_unresolved_sub_agent(session_id: str | None, sub_agent_name: str) -> None:
@@ -448,6 +461,12 @@ def _unwrap_spec_entry(entry: _SpecEntry | None) -> AgentSpec | None:
 
 _NO_BODY_STATUS_CODES = {204, 304}
 _SUBAGENT_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+# Native agents whose forwarder stamps ``turn_completed`` on the idle edges of
+# genuinely finished turns (claude: the ``Stop`` hook, which never fires on an
+# interrupt). For these, a bare quiescence ``idle`` is NOT a completion. Add a
+# key here only together with its forwarder's ``turn_completed`` plumbing,
+# or that harness's sub-agent completions stop reaching parent inboxes.
+_TURN_OUTCOME_CONFIRMING_NATIVE_AGENTS = frozenset({"claude"})
 # Bound how long a sub-agent dispatch can wait for a start acknowledgment.
 # A timeout reports uncertain launch status, not proof that the process is dead.
 _SUBAGENT_LAUNCH_TIMEOUT_S_ENV = "OMNIGENT_SUBAGENT_LAUNCH_TIMEOUT_S"
@@ -490,6 +509,10 @@ _SUBAGENT_DELIVERY_ALREADY_DELIVERED = "already_delivered"
 _SUBAGENT_DELIVERY_UNTRACKED = "untracked"
 _SUBAGENT_DELIVERY_MISSING_WORK_ENTRY = "missing_work_entry"
 _SUBAGENT_DELIVERY_MISSING_PARENT_INBOX = "missing_parent_inbox"
+# A delayed terminal op (an interrupt's grace-timer cancel) whose originating
+# dispatch has since been replaced by a newer send on the reused child session.
+# Dropped without touching the newer dispatch so an old timer never cancels it.
+_SUBAGENT_DELIVERY_SUPERSEDED_DISPATCH = "superseded_dispatch"
 # Runner-owned labels on a child session that make sub-agent result delivery
 # durable across a runner restart. The dispatch id is stamped when a turn is
 # sent to the child; the delivered id is the receipt the parent's
@@ -975,6 +998,9 @@ async def _complete_acp_subagent_child(
             session_id=child_id,
             status="idle" if ok else "failed",
             output=summary or None,
+            # The harness reported this sub-agent's outcome itself, so a
+            # success edge is a confirmed turn completion, not a guess.
+            turn_completed=True if ok else None,
         )
     except Exception as exc:  # noqa: BLE001 — a status edge failure must not break the turn
         _logger.warning(
@@ -1313,94 +1339,102 @@ class InstructionComposition:
 # _stream_message_to_harness.
 _GATED_COMPOSED_INSTRUCTION_HARNESSES = frozenset({"opencode-native", "hermes"})
 
+# These two compact themselves and keep less than Pi's own rollover tail
+# (rollover/README.md); the post-compaction verbatim-tail block is only ever
+# prepended for them.
+_POST_COMPACTION_TAIL_HARNESSES = frozenset({"claude-native", "codex-native"})
 
-# Total request budget for the runner's per-turn deployment-context call to
-# the server. Short: a slow or wedged server (or the provider it calls on
-# our behalf) must not noticeably delay a turn.
-_DEPLOYMENT_CONTEXT_TIMEOUT_S = 2.5
-
-# Sessions already warned about a failed deployment-context call to the
-# server, so a wedged/unreachable server logs once per session rather than
-# once per turn. Module-level (like the sessions this runner process
-# serves, this set's lifetime is the process's) rather than closure-local,
-# so the standalone helper function below doesn't need a reference threaded
-# through every call site.
-_deployment_context_call_warned: set[str] = set()
+# Bound on a turn's wait for a same-session superside-chat rollover already
+# in flight (see _consume_superside_chat_pending_refresh) before dispatching
+# on what could be pre-rollover state. The rollover itself is not cancelled
+# on timeout — only this wait gives up.
+_SUPERSIDE_CHAT_ROLLOVER_WAIT_TIMEOUT_S = 60.0
 
 
-def _forget_deployment_context_warning(session_id: str) -> None:
-    """Drop the warn-once bookkeeping for a finished/evicted session."""
-    _deployment_context_call_warned.discard(session_id)
+def _prefix_blocks_with_tail(blocks: object, prefix: str) -> object:
+    """Prepend *prefix* to the first text content block in *blocks*.
 
-
-async def _append_deployment_context(
-    instructions: str | None,
-    *,
-    server_client: httpx.AsyncClient,
-    session_id: str,
-    agent_name: str | None,
-    harness_name: str | None,
-    turn_input: str,
-    provider_configured: bool | None,
-) -> str | None:
-    """Append the deployment-context hook's result to a turn's composed
-    instructions.
-
-    The runner never calls the ``OMNIGENT_CONTEXT_PROVIDER_URL`` hook (or
-    reads its secret) directly — a runner can be a user's own laptop
-    (``omnigent host``), which must never hold the provider secret and may
-    not even be able to reach the provider network. Instead this POSTs to
-    the server's ``/sessions/{id}/deployment-context`` callback, which
-    resolves the session's owner/labels itself and calls the hook.
-
-    Fails open on any error, timeout, or non-200/malformed response:
-    *instructions* is returned unchanged and the failure is logged once per
-    ``session_id`` — this must never fail or delay a turn.
-
-    :param instructions: The turn's already-composed instructions (author +
-        framework text), or ``None``.
-    :param server_client: Omnigent server client.
-    :param session_id: Session/conversation id.
-    :param agent_name: The dispatched agent's name/id for this turn.
-    :param harness_name: Canonical harness name for this turn.
-    :param turn_input: The latest user message text for this turn.
-    :param provider_configured: The server's last-advertised
-        ``deployment_context_provider_configured`` flag (from the session-init
-        snapshot), or ``None`` when not yet known. ``False`` skips the call
-        entirely — no network round-trip on a turn for a deployment with no
-        provider. Anything else (``True`` or unknown) attempts the call, so
-        an unknown state never wrongly skips a configured provider.
-    :returns: *instructions* with the deployment-context block appended, or
-        unchanged when unconfigured/unavailable/empty/failed.
+    :param blocks: A plain string, or a list of content blocks
+        (``{"type": "input_text", "text": ...}`` and the like).
+    :param prefix: Text to prepend, already carrying its own trailing
+        separator.
+    :returns: *blocks* with *prefix* prepended, never mutating the input.
     """
-    if provider_configured is False:
-        return instructions
-    try:
-        response = await server_client.post(
-            f"/v1/sessions/{urllib.parse.quote(session_id, safe='')}/deployment-context",
-            json={
-                "agent_name": agent_name or "",
-                "harness": harness_name or "",
-                "turn_input": turn_input,
-            },
-            timeout=_DEPLOYMENT_CONTEXT_TIMEOUT_S,
-        )
-        response.raise_for_status()
-        data = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        if session_id not in _deployment_context_call_warned:
-            _deployment_context_call_warned.add(session_id)
-            _logger.warning(
-                "deployment-context server call failed for session=%s: %s",
-                session_id,
-                exc,
-                extra={"session_id": session_id},
-            )
-        return instructions
-    block = data.get("block") if isinstance(data, dict) else None
-    if not isinstance(block, str) or not block:
-        return instructions
-    return (instructions or "") + block
+    if isinstance(blocks, str):
+        return prefix + blocks
+    if isinstance(blocks, list):
+        out = list(blocks)
+        for i, block in enumerate(out):
+            if (
+                isinstance(block, dict)
+                and block.get("type") in ("input_text", "text")
+                and isinstance(block.get("text"), str)
+            ):
+                out[i] = {**block, "text": prefix + block["text"]}
+                return out
+        return [{"type": "input_text", "text": prefix.rstrip("\n")}, *out]
+    return blocks
+
+
+def _prefix_content_with_tail(content: object, tail: str) -> object:
+    """Prepend *tail* to a turn's outgoing *content*, matching its shape.
+
+    Two shapes reach the harness, depending on the dispatch path: a flat
+    list of content blocks for a single new message (the direct-stream
+    path), or Responses-style conversation history — a list of
+    ``{"type": "message", "role": ..., "content": [...]}`` items (the
+    background-turn path, built from ``_session_histories``). The tail
+    belongs on the LATEST user turn either way, so a history list gets its
+    last user message's blocks prefixed instead of the list itself.
+
+    :param content: A turn's outgoing content — a plain string, a list of
+        content blocks, a list of history message items, or something else
+        (left untouched).
+    :param tail: Text to prepend, e.g. a post-compaction tail block.
+    :returns: *content* with *tail* prepended, never mutating the input.
+    """
+    prefix = f"{tail}\n\n"
+    is_history = (
+        isinstance(content, list)
+        and content
+        and all(isinstance(item, dict) and item.get("type") == "message" for item in content)
+    )
+    if not is_history:
+        return _prefix_blocks_with_tail(content, prefix)
+    messages = cast(list[dict[str, Any]], content)
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "user":
+            updated = list(messages)
+            updated[i] = {
+                **messages[i],
+                "content": _prefix_blocks_with_tail(messages[i].get("content"), prefix),
+            }
+            return updated
+    return content
+
+
+def _apply_memory_profile_to_body(body: _JsonObject, block: str | None) -> _JsonObject:
+    """Prepend *block* (a rendered Memory Profile, already delimiter-wrapped)
+    to *body*'s outgoing content, or return *body* unchanged if *block* is
+    falsy (memory not configured, or the profile is empty — never deliver an
+    empty block). Mutates only the in-flight request for this turn — the
+    persisted user item, ``_session_histories`` and
+    ``_session_message_buffers`` copies of *body* are untouched, and the
+    block never reaches a rollover summary (``rollover/SUPERSIDE-CHAT-PLAN.md``
+    S6). Shares :func:`_prefix_content_with_tail`'s shape handling (flat
+    content blocks vs. a history-list turn).
+
+    :param body: This turn's outgoing harness body (``{"content": ...}``).
+    :param block: The rendered, delimiter-wrapped Memory Profile block, or
+        ``None``/empty.
+    :returns: *body* with *block* prepended to its content, or *body* itself
+        (never mutated) when *block* is falsy.
+    """
+    if not block:
+        return body
+    new_body = dict(body)
+    new_body["content"] = _prefix_content_with_tail(body.get("content"), block)
+    return new_body
 
 
 def _wrap_as_message_event(body: _JsonObject) -> _JsonObject:
@@ -1487,12 +1521,7 @@ def _response_failed_payload(
     source: str = "execution",
 ) -> _JsonObject:
     """Build a failure envelope with required error fields and a legacy mirror."""
-    # Normalized fields go LAST: _normalize_turn_error guarantees non-empty
-    # code/message, but merging it first let a raw error's own blank/missing
-    # "message" (present as a key with "" or None, not merely absent) win the
-    # spread and reach the client as a message-less response.failed/response.error
-    # event. Any other field *error* carries (e.g. "type") still passes through.
-    failure_error = {**error, **_normalize_turn_error(error)}
+    failure_error = {**_normalize_turn_error(error), **error}
     return {
         "type": "response.failed",
         "source": source,
@@ -1712,6 +1741,16 @@ class _SubagentWorkEntry:
         terminal status, or ``None`` while running.
     :param delivered: Whether the terminal payload has been pushed to
         the parent's inbox.
+    :param cancellation_confirmed: Whether a native terminal edge confirmed
+        an abort, rather than an interrupt merely being requested.
+    :param superside_chat: Whether the dispatching parent is a
+        superside-chat session (``omnigent.context.mode=superside-chat``),
+        set at registration time from the dispatch's own labels. Gates the
+        Result-in-wake behavior (slice S3): see ``wake_inlined``.
+    :param wake_inlined: Whether this entry's Result was already delivered
+        verbatim in its wake notice — set when the wake is scheduled for a
+        ``superside_chat`` entry. ``sys_read_inbox`` reads this to avoid
+        repeating the Result text once the item is drained.
     """
 
     parent_session_id: str
@@ -1726,6 +1765,9 @@ class _SubagentWorkEntry:
     created_at: float = dataclasses.field(default_factory=time.time)
     completed_at: float | None = None
     delivered: bool = False
+    cancellation_confirmed: bool = False
+    superside_chat: bool = False
+    wake_inlined: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1834,6 +1876,7 @@ def register_subagent_work(
     wrapper_label: str | None = None,
     created_by: str | None = None,
     work_id: str | None = None,
+    superside_chat: bool = False,
 ) -> _SubagentWorkEntry:
     """
     Register one running sub-agent dispatch.
@@ -1853,6 +1896,8 @@ def register_subagent_work(
         known from the parent turn context.
     :param work_id: Dispatch id already stamped on the child session,
         e.g. ``"subagent_a1b2c3d4e5f6"``; ``None`` mints a new one.
+    :param superside_chat: Whether the dispatching parent is a
+        superside-chat session — see :class:`_SubagentWorkEntry`.
     :returns: The registered work entry.
     """
     prior = _subagent_work_by_child.get(child_session_id)
@@ -1871,6 +1916,7 @@ def register_subagent_work(
         title=title,
         wrapper_label=wrapper_label,
         created_by=created_by,
+        superside_chat=superside_chat,
     )
     _drained_delivered_subagent_children.discard(child_session_id)
     _subagent_work_by_child[child_session_id] = entry
@@ -2195,9 +2241,16 @@ def mark_subagent_work_terminal(
     *,
     status: str,
     output: str | None,
+    only_if_work_id: str | None = None,
 ) -> _SubagentDeliveryAck:
     """
     Mark a sub-agent dispatch terminal and notify the parent inbox.
+
+    A delivered terminal status is final: it is not overturned by a later
+    report for the same child (the ``failed``-over-``completed`` edge-race
+    exception aside). Distinguishing a confirmed completion from a bare
+    quiescence idle is the caller's job (the events route only reports
+    ``completed`` for a confirmed turn-end or a legacy harness).
 
     :param child_session_id: Child session id, e.g. ``"conv_child456"``.
     :param status: Terminal status: ``"completed"``, ``"failed"``, or
@@ -2207,6 +2260,10 @@ def mark_subagent_work_terminal(
         If an earlier terminal report could not be delivered, a later
         report for the same child replaces the undelivered status and
         output before retrying parent inbox delivery.
+    :param only_if_work_id: When set, apply this report only if the current
+        entry is still that dispatch. A delayed op (an interrupt's grace-timer
+        cancel) bound to the dispatch it was raised for is dropped when a newer
+        send has replaced the entry, so an old timer never cancels new work.
     :returns: Delivery acknowledgement for this terminal report.
     :raises ValueError: If ``status`` is not terminal.
     """
@@ -2229,6 +2286,16 @@ def mark_subagent_work_terminal(
             delivered=False,
             delivered_now=False,
             reason=_SUBAGENT_DELIVERY_UNTRACKED,
+        )
+    if only_if_work_id is not None and entry.work_id != only_if_work_id:
+        # A delayed op raised for an earlier dispatch: a newer send replaced the
+        # entry on this reused child session. Drop it untouched so an old
+        # interrupt's grace timer can never cancel the new dispatch.
+        return _SubagentDeliveryAck(
+            entry=entry,
+            delivered=False,
+            delivered_now=False,
+            reason=_SUBAGENT_DELIVERY_SUPERSEDED_DISPATCH,
         )
     if entry.status in _SUBAGENT_TERMINAL_STATUSES:
         # ``failed`` outranks ``completed``: a quiescence-derived ``completed``
@@ -2298,7 +2365,11 @@ def _deliver_subagent_completion(entry: _SubagentWorkEntry) -> _SubagentDelivery
         )
     output = entry.output
     if output is None:
-        output = "[System: sub-agent completed with no output]"
+        # Only a completion needs the explicit no-output marker; a cancelled
+        # dispatch legitimately has nothing to report.
+        output = (
+            "[System: sub-agent completed with no output]" if entry.status == "completed" else ""
+        )
     inbox.put_nowait(
         {
             "type": "sub_agent",
@@ -2564,6 +2635,11 @@ def _subagent_delivery_not_confirmed_response(
     """
     if ack.delivered:
         return None
+    if ack.reason == _SUBAGENT_DELIVERY_SUPERSEDED_DISPATCH:
+        # A delayed op intentionally dropped because a newer send replaced the
+        # dispatch: acknowledge so the forwarder does not retry, and never touch
+        # the newer dispatch. Not a delivery failure.
+        return None
     if ack.entry is None and not is_runner_known_subagent:
         return None
     reason = _SUBAGENT_DELIVERY_MISSING_WORK_ENTRY if ack.entry is None else ack.reason
@@ -2694,7 +2770,7 @@ def _session_status_to_task_status(status: object) -> str | None:
 
     :param status: A ``session.status`` value, e.g. ``"running"``.
     :returns: ``"launching"`` / ``"in_progress"`` / ``"completed"`` /
-        ``"failed"``, or ``None`` for an unrecognized status (caller
+        ``"failed"`` / ``"cancelled"``, or ``None`` for an unrecognized status (caller
         omits the field).
     """
     if status == "launching":
@@ -2703,8 +2779,8 @@ def _session_status_to_task_status(status: object) -> str | None:
         return "in_progress"
     if status == "idle":
         return "completed"
-    if status == "failed":
-        return "failed"
+    if status in ("failed", "cancelled"):
+        return str(status)
     return None
 
 
@@ -3069,6 +3145,12 @@ def create_runner_app(
     # effort only from the forwarded turn body, which is built field by field.
     _session_reasoning_effort: dict[str, str] = {}
     _session_skills_cache: dict[str, tuple[float, list[SkillSpec]]] = {}
+    # session_id → the session's rollover-mode label, once resolved. Durable
+    # for the runner process's lifetime (unlike _session_init_envelopes' 60s
+    # TTL): rollover mode is set once at session creation and never changes,
+    # so tool-call-time gating (mcp_execute) never re-fetches it. Empty dict
+    # means "resolved, not rollover" — distinct from "not yet resolved".
+    _session_rollover_labels_cache: dict[str, dict[str, str]] = {}
     _session_workspace_cache: dict[str, str | None] = {}  # session_id → workspace path
     _session_cursor_model_names: dict[str, dict[str, str]] = {}
     _session_claude_launch_configs: dict[str, ClaudeNativeUcodeConfig | None] = {}
@@ -3233,6 +3315,15 @@ def create_runner_app(
     _stranded_wake_retry_task: list[asyncio.Task[None]] = []
 
     _session_histories = _session_histories_ref
+    # superside-chat rollover: sessions whose warm-client drop was deferred
+    # because a turn was active when the rollover finished (see
+    # _drop_superside_chat_warm_client), and the in-flight rollover task per
+    # session the next turn waits on (see
+    # _consume_superside_chat_pending_refresh).
+    _superside_chat_pending_refresh: set[str] = set()
+    _superside_chat_rollover_tasks: dict[str, asyncio.Task[None]] = {}
+    app.state.superside_chat_pending_refresh = _superside_chat_pending_refresh
+    app.state.superside_chat_rollover_tasks = _superside_chat_rollover_tasks
     _last_server_item_id: dict[str, str] = {}
     _session_event_queues = _session_event_queues_ref
     app.state.session_event_queues = _session_event_queues
@@ -3357,13 +3448,9 @@ def create_runner_app(
     ) -> _JsonObject | None:
         if status in ("running", "waiting"):
             mark_subagent_work_started(session_id)
-        # ``failed`` is sticky against a trailing ``idle``, mirroring the
-        # server invariant (see ``omnigent/server/routes/_sessions/helpers.py``):
-        # a failed native turn's pane goes quiet, so the PTY-activity watcher
-        # emits a trailing ``idle`` ~1s later — republishing the child as
-        # ``completed`` would show a green child for a turn that died. A later
-        # ``running``/``waiting`` edge (new activity) clears it normally.
-        if status == "idle" and meta.last_task_status == "failed":
+        # A trailing pane-idle edge must not turn a failed or aborted task
+        # into success. A new running/waiting edge clears the terminal outcome.
+        if status == "idle" and meta.last_task_status in ("failed", "cancelled"):
             return None
         busy = status in ("running", "waiting")
         task_status = _session_status_to_task_status(status)
@@ -3511,20 +3598,19 @@ def create_runner_app(
             )
         return "\n".join(parts)
 
-    def _build_required_terminal_error(event: TerminalExitEvent) -> dict[str, str]:
+    def _build_required_terminal_error(
+        event: TerminalExitEvent, diagnosis: FailureDiagnosis | None
+    ) -> dict[str, str]:
         """Build the structured ``session.status`` error for a required-terminal exit.
 
         Always carries ``code`` + a fully-composed ``message`` (back-compat: the
         REPL and older clients render it verbatim). When the failure is
         recognized, also carries ``title`` / ``cause`` / ``remediation`` so the
         web UI can render a friendly card instead of the raw enum + blob.
+
+        :param event: The required terminal's exit event.
+        :param diagnosis: The exit's :func:`classify_terminal_failure` result.
         """
-        # Classify once; the message formatter reuses the same diagnosis.
-        diagnosis = classify_terminal_failure(
-            command=event.command,
-            exit_status=event.exit_status,
-            output=event.last_output,
-        )
         message = _format_required_terminal_exit_output(event, diagnosis)
         error: dict[str, str] = {"code": "required_terminal_exited", "message": message}
         if diagnosis is not None:
@@ -3632,7 +3718,13 @@ def create_runner_app(
         # Record the exit before releasing the harness: the release severs any
         # in-flight turn stream, whose failure handler then reports this exit
         # instead of the transport error the severed socket raises.
-        error = _build_required_terminal_error(event)
+        # Classify once; the error card and the failure log share the diagnosis.
+        diagnosis = classify_terminal_failure(
+            command=event.command,
+            exit_status=event.exit_status,
+            output=event.last_output,
+        )
+        error = _build_required_terminal_error(event, diagnosis)
         _required_terminal_exit_errors[event.session_id] = error
         # A dead required terminal cannot still be working a turn.
         _native_pane_status.pop(event.session_id, None)
@@ -3677,7 +3769,16 @@ def create_runner_app(
             event.terminal_name,
             event.session_id,
             error.get("message"),
-            extra={"session_id": event.session_id},
+            extra=debug_event(
+                "required_terminal_exited",
+                session_id=event.session_id,
+                terminal_name=event.terminal_name,
+                terminal_exit_status=event.exit_status,
+                error_code=error["code"],
+                # An unrecognized exit is the harness CLI dying under the runner.
+                error_category=(diagnosis.category if diagnosis else ErrorCategory.RUNNER).value,
+                error_impact=ErrorImpact.BLOCKING.value,
+            ),
         )
         _publish_event(
             event.session_id,
@@ -3687,6 +3788,11 @@ def create_runner_app(
                 "error": error,
             },
         )
+        # The turn is over (its terminal exited), so drop any interrupt still
+        # pending for it — otherwise its stale grace timer, or a reused child's
+        # next idle consuming that pending record, could mis-settle a later
+        # dispatch on this session.
+        _native_interrupt_runner.clear_pending_interrupt(event.session_id)
         _mark_subagent_terminal_and_wake(
             event.session_id,
             status="failed",
@@ -4472,6 +4578,7 @@ def create_runner_app(
                 resource_registry=resource_registry,
                 publish_event=_publish_event,
                 server_client=server_client,
+                event_dispatcher=getattr(app.state, "runner_event_dispatcher", None),
                 ensure_comment_relay=_ensure_comment_relay_started,
             )
             _launch_pre: Callable[[bool], Awaitable[PreLaunchResult]] | None = None
@@ -5122,6 +5229,7 @@ def create_runner_app(
         _desynced_sessions.discard(session_id)
         _required_terminal_exit_errors.pop(session_id, None)
         _native_pane_status.pop(session_id, None)
+        _native_interrupt_runner.clear_pending_interrupt(session_id)
         _ingest_next_seq.pop(session_id, None)
         _ingest_now_serving.pop(session_id, None)
         _ingest_cond.pop(session_id, None)
@@ -5148,10 +5256,10 @@ def create_runner_app(
         if queue is not None:
             queue.put_nowait(None)
 
-        await resource_registry.cleanup_session(session_id)
-
         if process_manager is not None:
             await process_manager.release(session_id)
+
+        await resource_registry.cleanup_session(session_id)
 
         await _delete_native_bridge_dirs(
             server_client=server_client,
@@ -5191,7 +5299,6 @@ def create_runner_app(
         _session_agent_ids.pop(session_id, None)
         _session_tool_schemas.pop(session_id, None)
         _instruction_delivery_warned.pop(session_id, None)
-        _forget_deployment_context_warning(session_id)
         _session_sub_agent_resolved.pop(session_id, None)
         if _binding := _session_comment_relays.pop(session_id, None):
             _binding.relay.close()
@@ -5960,6 +6067,11 @@ def create_runner_app(
         h = spec.executor.config.get("harness") or spec.executor.type
         return canonicalize_harness(h) or h
 
+    def _native_turn_outcome_is_forwarder_confirmed(conv_id: str) -> bool:
+        """Whether this session's forwarder distinguishes finished from aborted turns."""
+        agent = native_coding_agent_for_harness(_session_harness_name(conv_id))
+        return agent is not None and agent.key in _TURN_OUTCOME_CONFIRMING_NATIVE_AGENTS
+
     def _publish_turn_status(
         conv_id: str,
         status: str,
@@ -6255,7 +6367,9 @@ def create_runner_app(
         # Codex switches approval stance through its own /permissions popup, not
         # thread/settings/update (that RPC drives model/effort but no-ops for
         # approval). So drive the popup by keystroke into the codex tmux pane —
-        # the same channel /compact uses — selecting the preset by its menu digit.
+        # the same channel /compact uses — reading the popup to find the preset's
+        # menu digit (row positions vary by codex build/platform, so we discover
+        # it rather than hardcode it) and confirming Codex echoed the switch.
         from omnigent.codex_approval_modes import codex_permission_preset
 
         preset = codex_permission_preset(mode)
@@ -6278,17 +6392,17 @@ def create_runner_app(
                 },
             )
         try:
-            await asyncio.to_thread(
+            offered = await asyncio.to_thread(
                 _inject_codex_permission_mode,
                 str(instance.socket_path),
                 instance.tmux_target,
-                menu_key=preset.menu_key,
+                label=preset.label,
                 needs_confirm=preset.needs_confirm,
             )
             # Confirm the switch landed before reporting success — the injection
-            # is otherwise fire-and-forget, so an unsupported preset (a menu row
-            # this codex build lacks) would silently no-op.
-            confirmed = await asyncio.to_thread(
+            # is otherwise fire-and-forget, so a slow-rendering popup would leave
+            # the label claiming a mode the TUI never entered.
+            confirmed = offered and await asyncio.to_thread(
                 _codex_permission_mode_confirmed,
                 str(instance.socket_path),
                 instance.tmux_target,
@@ -6304,14 +6418,36 @@ def create_runner_app(
                     ),
                 },
             )
+        if not offered:
+            # The popup was read but had no row for this preset. Codex lists Read
+            # Only only when the session runs with a read-only permission profile,
+            # so point the user at the reachable path instead of a phantom switch.
+            if preset.value == "read-only":
+                detail = (
+                    "Codex's /permissions popup doesn't offer Read Only on this "
+                    "platform — Codex lists it only on Windows or when a permission "
+                    "profile is active. To run read-only, start a new session in "
+                    "read-only mode."
+                )
+            else:
+                detail = (
+                    f"Codex's /permissions popup on this session doesn't offer {preset.label!r}."
+                )
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "codex_native_approval_mode_unsupported",
+                    "detail": detail,
+                },
+            )
         if not confirmed:
             return JSONResponse(
                 status_code=503,
                 content={
                     "error": "codex_native_approval_mode_failed",
                     "detail": (
-                        f"Codex did not confirm the switch to {preset.label!r}; this codex "
-                        "build's /permissions may not offer it."
+                        f"Codex didn't confirm the switch to {preset.label!r} within "
+                        f"{_CODEX_PERMISSION_CONFIRM_BUDGET_S:g}s; please try again."
                     ),
                 },
             )
@@ -7351,16 +7487,29 @@ def create_runner_app(
         socket_path: str,
         target: str,
         *,
-        menu_key: str,
+        label: str,
         needs_confirm: bool,
-    ) -> None:
-        # Drive Codex's /permissions popup: open it, then select the preset by
-        # its menu digit (position-independent, unlike arrow navigation). Full
-        # Access opens a "Yes, continue anyway" sub-dialog whose first option
-        # (digit 1) confirms. A settle pause between keystrokes is required — each
-        # screen draws asynchronously, and typing the command then pressing Enter
-        # back-to-back races the slash-menu so the command never submits.
-        from omnigent.harnesses.claude_native.bridge import _run_tmux
+    ) -> bool:
+        # Drive Codex's /permissions popup: open it, read its rows to find the
+        # digit that selects *label*, then press it. Which rows the popup lists
+        # depends on the session's codex config (Read Only shows only with a
+        # read-only permission profile) and their order can vary, so the digit is
+        # read from the live popup. If the popup can't be read in time (a busy
+        # TUI, a slow draw), fall back to the preset's conventional menu position
+        # rather than failing the switch. Full Access opens a "Yes, continue
+        # anyway" sub-dialog whose first option (digit 1) confirms. A settle pause
+        # between keystrokes is required — each screen draws asynchronously, and
+        # typing the command then pressing Enter back-to-back races the slash-menu
+        # so the command never submits.
+        #
+        # Returns True once a digit is pressed for *label* (from the live popup,
+        # or its conventional position on fallback); False when the popup was read
+        # but lists no row for *label*.
+        from omnigent.codex_approval_modes import (
+            CODEX_NATIVE_PERMISSION_PRESETS,
+            codex_permissions_menu,
+        )
+        from omnigent.harnesses.claude_native.bridge import _capture_pane, _run_tmux
 
         # Reset to a clean composer so the command submits: close any stray
         # menu/popup, then clear the line. C-u also wipes any text the TUI user
@@ -7370,26 +7519,67 @@ def create_runner_app(
         _run_tmux(socket_path, "send-keys", "-l", "-t", target, "/permissions")
         time.sleep(_CODEX_POPUP_RENDER_S)
         _run_tmux(socket_path, "send-keys", "-t", target, "Enter")
-        time.sleep(_CODEX_POPUP_RENDER_S)
-        _run_tmux(socket_path, "send-keys", "-l", "-t", target, menu_key)
+
+        # Wait for the popup to draw. Anchor on seeing at least two known preset
+        # rows (every popup variant lists Ask for approval and Full Access)
+        # rather than any numbered line, so a numbered list still visible in the
+        # transcript above can't be mistaken for the rendered popup.
+        known_labels = {preset.label for preset in CODEX_NATIVE_PERMISSION_PRESETS}
+
+        def _read_menu() -> dict[str, str]:
+            return codex_permissions_menu(_capture_pane(socket_path, target))
+
+        deadline = time.monotonic() + _CODEX_PERMISSION_MENU_BUDGET_S
+        options: dict[str, str] = {}
+        while True:
+            time.sleep(_CODEX_POPUP_RENDER_S)
+            options = _read_menu()
+            if len(options.keys() & known_labels) >= 2:
+                break
+            if time.monotonic() >= deadline:
+                options = {}
+                break
+
+        if options:
+            # The live popup was read: trust it. A missing row means this
+            # session's codex genuinely doesn't offer the preset (e.g. Read Only
+            # without a read-only permission profile). Re-read once to tolerate a
+            # partially-drawn popup before concluding the row is absent.
+            digit = options.get(label)
+            if digit is None:
+                time.sleep(_CODEX_POPUP_RENDER_S)
+                digit = _read_menu().get(label)
+            if digit is None:
+                # Close the popup so the TUI isn't stranded in it.
+                _run_tmux(socket_path, "send-keys", "-t", target, "Escape")
+                return False
+        else:
+            # The popup couldn't be read within the budget (a busy or slow TUI).
+            # Fall back to the preset's conventional menu position and let the
+            # confirmation echo gate correctness, rather than failing the switch.
+            digit = next(
+                (
+                    str(position)
+                    for position, preset in enumerate(CODEX_NATIVE_PERMISSION_PRESETS, start=1)
+                    if preset.label == label
+                ),
+                None,
+            )
+            if digit is None:
+                return False
+        _run_tmux(socket_path, "send-keys", "-l", "-t", target, digit)
         if needs_confirm:
             time.sleep(_CODEX_POPUP_RENDER_S)
             _run_tmux(socket_path, "send-keys", "-l", "-t", target, "1")
+        return True
 
     def _codex_permission_mode_confirmed(socket_path: str, target: str, label: str) -> bool:
-        # Codex echoes "Permissions updated to <label>" when a /permissions switch
-        # applies. Poll the pane and require the most-recent such line to match the
-        # target, so a keystroke that hit a non-existent menu row (a preset this
-        # codex build doesn't offer) is reported as not-applied rather than the
-        # label claiming a mode the TUI never entered.
+        from omnigent.codex_approval_modes import codex_permission_switch_confirmed
         from omnigent.harnesses.claude_native.bridge import _capture_pane
 
-        marker = "Permissions updated to "
         deadline = time.monotonic() + _CODEX_PERMISSION_CONFIRM_BUDGET_S
         while True:
-            pane = _capture_pane(socket_path, target)
-            updates = [line for line in pane.splitlines() if marker in line]
-            if updates and updates[-1].split(marker, 1)[1].strip() == label:
+            if codex_permission_switch_confirmed(_capture_pane(socket_path, target), label):
                 return True
             if time.monotonic() >= deadline:
                 return False
@@ -7879,7 +8069,7 @@ def create_runner_app(
                 _mark_subagent_terminal_and_wake(
                     conv_id,
                     status="cancelled",
-                    output="[System: sub-agent interrupted]",
+                    output=None,
                 )
         elif error is not None:
             _mark_subagent_terminal_and_wake(
@@ -7944,7 +8134,7 @@ def create_runner_app(
                 _mark_subagent_terminal_and_wake(
                     conv_id,
                     status="cancelled",
-                    output="[System: sub-agent interrupted]",
+                    output=None,
                 )
         return True
 
@@ -8339,6 +8529,29 @@ def create_runner_app(
 
     app.state.check_and_start_next_turn = _check_and_start_next_turn
 
+    async def _resolve_subagent_wake_target(parent_id: str) -> tuple[str, str | None]:
+        """Redirect an archived Side Chat's wake to its Super Chat (slice S3)."""
+        from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
+
+        try:
+            resp = await server_client.get(f"/v1/sessions/{parent_id}", timeout=10.0)
+        except httpx.HTTPError:
+            return parent_id, None
+        if resp.status_code != 200:
+            return parent_id, None
+        data = resp.json()
+        if not isinstance(data, dict):
+            return parent_id, None
+        raw_labels = data.get("labels")
+        labels = raw_labels if isinstance(raw_labels, dict) else {}
+        fork_source = labels.get(FORK_SOURCE_LABEL_KEY)
+        return resolve_wake_target(
+            parent_id=parent_id,
+            archived=bool(data.get("archived")),
+            is_side_chat=SIDE_CHAT_LABEL_KEY in labels,
+            fork_source_id=fork_source if isinstance(fork_source, str) else None,
+        )
+
     async def _post_subagent_wake_notice(
         parent_id: str,
         notice: str,
@@ -8346,9 +8559,15 @@ def create_runner_app(
         created_by: str | None,
         *,
         is_rewake: bool = False,
+        check_archived_redirect: bool = False,
     ) -> None:
+        target_id = parent_id
+        if check_archived_redirect:
+            target_id, note = await _resolve_subagent_wake_target(parent_id)
+            if note is not None:
+                notice = f"{note}\n{notice}"
         delivered = await _deliver_subagent_wake_post(
-            server_client, parent_id, notice, created_by=created_by
+            server_client, target_id, notice, created_by=created_by
         )
         if delivered:
             _stranded_wake_parents.discard(parent_id)
@@ -8389,12 +8608,25 @@ def create_runner_app(
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        notice = _format_subagent_wake_notice(
-            agent=entry.agent,
-            title=entry.title,
-            status=entry.status,
-            pending=inbox.qsize(),
-        )
+        if entry.superside_chat:
+            # Inline the Result itself rather than only "N results waiting"
+            # (rollover/SUPERSIDE-CHAT-PLAN.md slice S3); sys_read_inbox
+            # later sees entry.wake_inlined and won't repeat it.
+            notice = format_subagent_wake_notice_with_result(
+                agent=entry.agent,
+                title=entry.title,
+                status=entry.status,
+                child_session_id=entry.child_session_id,
+                result_text=entry.output,
+            )
+            entry.wake_inlined = True
+        else:
+            notice = _format_subagent_wake_notice(
+                agent=entry.agent,
+                title=entry.title,
+                status=entry.status,
+                pending=inbox.qsize(),
+            )
         if is_rewake and notice == _last_rewake_notice.get(entry.parent_session_id):
             return
         _subagent_wake_pending.add(entry.parent_session_id)
@@ -8405,6 +8637,7 @@ def create_runner_app(
                 entry.child_session_id,
                 entry.created_by,
                 is_rewake=is_rewake,
+                check_archived_redirect=entry.superside_chat,
             )
         )
         _wake_task.add_done_callback(_background_tasks.discard)
@@ -8507,9 +8740,18 @@ def create_runner_app(
         _background_tasks.add(_retry_task)
 
     def _mark_subagent_terminal_and_wake(
-        child_session_id: str, *, status: str, output: str | None
+        child_session_id: str,
+        *,
+        status: str,
+        output: str | None,
+        only_if_work_id: str | None = None,
     ) -> _SubagentDeliveryAck:
-        ack = mark_subagent_work_terminal(child_session_id, status=status, output=output)
+        ack = mark_subagent_work_terminal(
+            child_session_id,
+            status=status,
+            output=output,
+            only_if_work_id=only_if_work_id,
+        )
         if ack.entry is not None and ack.delivered_now:
             _schedule_subagent_wake(ack.entry)
         return ack
@@ -8517,6 +8759,10 @@ def create_runner_app(
     # Seam for the entrypoint's launch reaper (and tests): terminal delivery
     # that also schedules the parent wake POST, not just the inbox insert.
     app.state.mark_subagent_terminal_and_wake = _mark_subagent_terminal_and_wake
+
+    def _subagent_work_id_for_session(conv_id: str) -> str | None:
+        entry = get_subagent_work(conv_id)
+        return entry.work_id if entry is not None else None
 
     _native_interrupt_runner = NativeInterruptRunner(
         server_client=server_client,
@@ -8527,7 +8773,337 @@ def create_runner_app(
         codex_bridge_state_for_session=_codex_native_bridge_state_for_session,
         client_safe_error_detail=_client_safe_error_detail,
         logger=_logger,
+        subagent_work_id_for_session=_subagent_work_id_for_session,
     )
+
+    def _remember_rollover_labels(session_id: str, labels: Mapping[str, str] | None) -> None:
+        """Cache just the rollover-mode label from a full label set, once known.
+
+        Warms :data:`_session_rollover_labels_cache` for free wherever full
+        session labels are already being fetched for another reason (relay
+        start, codex/antigravity spawn-env), so ``_rollover_labels_for_session``
+        rarely needs its own round trip.
+        """
+        if labels is None:
+            return
+        from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
+
+        # Both are fixed at creation; the side-chat label gates side_chat_open.
+        _session_rollover_labels_cache[session_id] = {
+            key: labels[key] for key in (CONTEXT_MODE_LABEL, SIDE_CHAT_LABEL_KEY) if key in labels
+        }
+
+    async def _rollover_labels_for_session(session_id: str) -> dict[str, str]:
+        """Durable per-session lookup of just the rollover-mode label.
+
+        Unlike ``_fresh_session_init_envelope`` (60s TTL), this is cached for
+        the runner process's lifetime once resolved — rollover mode is set
+        once at session creation and never changes, so tool-call-time gating
+        (``mcp_execute``) pays at most one lookup per session.
+        """
+        cached = _session_rollover_labels_cache.get(session_id)
+        if cached is not None:
+            return cached
+        labels = await _session_labels_for_runner_spawn(
+            server_client=server_client, session_id=session_id
+        )
+        _remember_rollover_labels(session_id, labels)
+        return _session_rollover_labels_cache.get(session_id, {})
+
+    async def _apply_post_compaction_tail(
+        body: _JsonObject, conv_id: str, harness_name: str | None
+    ) -> _JsonObject:
+        """Prepend the once-per-compaction verbatim tail to this turn's content.
+
+        Claude Code keeps only its own summary after compacting, and Codex
+        keeps its summary plus user text only (``rollover/README.md``) — unlike
+        Pi, neither carries a verbatim recent-turns tail forward on its own.
+        This reproduces that tail from Omnigent's record and hands it to the
+        CLI on the first message delivered after the compaction it covers.
+        Returns *body* unchanged for every other harness, a non-rollover
+        session, or once the latest compaction has already been delivered.
+        Mutates only the in-flight request for this turn — the persisted user
+        item, ``_session_histories`` and ``_session_message_buffers`` copies
+        of *body* are untouched.
+        """
+        if harness_name not in _POST_COMPACTION_TAIL_HARNESSES:
+            return body
+        from omnigent.context.labels import is_rollover
+
+        rollover_labels = await _rollover_labels_for_session(conv_id)
+        if not is_rollover(rollover_labels):
+            return body
+        try:
+            resp = await server_client.get(
+                f"/v1/sessions/{conv_id}/items",
+                params={"limit": "100", "order": "desc"},
+                timeout=10.0,
+            )
+            page_items = resp.json().get("data", []) if resp.status_code == 200 else []
+        except (httpx.HTTPError, ValueError):
+            return body
+        if not page_items:
+            return body
+        labels = await _session_labels_for_runner_spawn(
+            server_client=server_client, session_id=conv_id
+        )
+        from omnigent.context.rollover import consume_post_compaction_tail
+        from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+
+        model = (
+            cast(str | None, body.get("model_override"))
+            or cast(str | None, body.get("model"))
+            or ROLLOVER_TOKEN_COUNT_MODEL
+        )
+        # page_items is newest-first; consume_post_compaction_tail wants
+        # chronological order with the latest compaction item last.
+        tail = consume_post_compaction_tail(
+            list(reversed(page_items)), labels, session_id=conv_id, model=model
+        )
+        if tail is None:
+            return body
+        new_body = dict(body)
+        new_body["content"] = _prefix_content_with_tail(body.get("content"), tail)
+        return new_body
+
+    async def _drop_superside_chat_warm_client(
+        conv_id: str, *, defer_if_active: bool = True
+    ) -> None:
+        """Drop the warm claude-sdk client so the next turn cold-starts.
+
+        Invalidates this runner's cached history so the next dispatch
+        reloads it from the server (picking up the compaction item just
+        posted — see ``_load_history_as_input``), then releases the harness
+        subprocess: its shutdown runs ``ClaudeSDKExecutor.close_session``
+        (``ExecutorAdapter.on_shutdown``), which is the only way this
+        process reaches that method on another process's executor.
+
+        A background threshold rollover can finish while a DIFFERENT turn
+        is live on the warm client it would drop — releasing then would
+        kill that turn's in-flight connection. With *defer_if_active* (the
+        default), a live ``_active_turns`` entry defers the drop instead:
+        it's recorded in ``_superside_chat_pending_refresh`` and applied at
+        the start of the session's next turn
+        (``_consume_superside_chat_pending_refresh``). The idle-refresh
+        caller passes ``defer_if_active=False``: it runs synchronously at
+        the start of ITS OWN turn, before that turn has dispatched
+        anything, so ``_active_turns`` already holds its own slot and
+        deferring would be wrong — the whole point is to release now, so
+        this turn's own dispatch cold-starts.
+        """
+        if defer_if_active and conv_id in _active_turns:
+            _superside_chat_pending_refresh.add(conv_id)
+            return
+        _session_histories.pop(conv_id, None)
+        if process_manager is not None:
+            await process_manager.release(conv_id)
+
+    async def _consume_superside_chat_pending_refresh(conv_id: str) -> None:
+        """Apply a deferred superside-chat warm-client drop at the start of a turn.
+
+        Called unconditionally at the top of ``_run_turn_bg_setup_and_stream``
+        for every turn (cheap no-op for a session with nothing pending).
+        First waits (bounded) for an in-flight rollover task for *conv_id* —
+        scheduled by ``_maybe_superside_chat_threshold_rollover`` as a
+        background task so the turn that triggered it isn't blocked on the
+        summarizer — so this turn never dispatches on pre-rollover state.
+        Then, if that rollover (or an earlier one) deferred its drop because
+        THIS session had an active turn at the time, applies it now: this
+        turn is the next one, so no turn is active yet.
+        """
+        task = _superside_chat_rollover_tasks.get(conv_id)
+        if task is not None and not task.done():
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(task), timeout=_SUPERSIDE_CHAT_ROLLOVER_WAIT_TIMEOUT_S
+                )
+            except TimeoutError:
+                _logger.warning(
+                    "superside-chat rollover still in flight after %.0fs for %s; "
+                    "proceeding without waiting further",
+                    _SUPERSIDE_CHAT_ROLLOVER_WAIT_TIMEOUT_S,
+                    conv_id,
+                    extra={"session_id": conv_id},
+                )
+            except Exception:  # noqa: BLE001 — the rollover task logs its own failures
+                pass
+        if conv_id in _superside_chat_pending_refresh:
+            _superside_chat_pending_refresh.discard(conv_id)
+            await _drop_superside_chat_warm_client(conv_id, defer_if_active=False)
+
+    def _schedule_superside_chat_threshold_rollover(
+        conv_id: str, resp_response: _JsonObject
+    ) -> None:
+        """Schedule the threshold-rollover check as a background task.
+
+        Keeps the turn's SSE stream from blocking on the summarizer LLM call
+        (see ``_maybe_superside_chat_threshold_rollover``). Tracked in both
+        ``_background_tasks`` (process-lifetime GC safety, as elsewhere in
+        this module) and ``_superside_chat_rollover_tasks`` (so the
+        session's next turn can wait for it — see
+        ``_consume_superside_chat_pending_refresh``).
+        """
+        task = asyncio.create_task(
+            _maybe_superside_chat_threshold_rollover(conv_id, resp_response),
+            name=f"superside-chat-rollover-{conv_id}",
+        )
+        _superside_chat_rollover_tasks[conv_id] = task
+
+        def _on_done(done: asyncio.Task[None], _conv_id: str = conv_id) -> None:
+            _background_tasks.discard(done)
+            if _superside_chat_rollover_tasks.get(_conv_id) is done:
+                _superside_chat_rollover_tasks.pop(_conv_id, None)
+
+        task.add_done_callback(_on_done)
+        _background_tasks.add(task)
+
+    async def _superside_chat_idle_seconds(conv_id: str) -> float | None:
+        """Seconds since *conv_id*'s last recorded item, or ``None`` on a lookup miss."""
+        try:
+            resp = await server_client.get(
+                f"/v1/sessions/{conv_id}/items",
+                params={"limit": "2", "order": "desc"},
+                timeout=10.0,
+            )
+            page_items = resp.json().get("data", []) if resp.status_code == 200 else []
+        except (httpx.HTTPError, ValueError):
+            return None
+        # The newest item is usually the message that started this turn;
+        # idle time is measured from the item before it.
+        newest = page_items[0] if page_items else {}
+        if newest.get("type") == "message" and newest.get("role") == "user":
+            page_items = page_items[1:]
+        if not page_items:
+            return None
+        created_at = page_items[0].get("created_at")
+        return time.time() - created_at if isinstance(created_at, int) else None
+
+    async def _superside_chat_session_model(conv_id: str) -> str | None:
+        """The model *conv_id*'s turns run on (the summarizer uses it), or ``None``."""
+        try:
+            resp = await server_client.get(f"/v1/sessions/{conv_id}", timeout=10.0)
+            body = resp.json() if resp.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            return None
+        model = body.get("model_override") or body.get("llm_model")
+        return _summarize_model_id(model) if isinstance(model, str) and model else None
+
+    async def _maybe_superside_chat_idle_rollover(conv_id: str) -> None:
+        """Roll over a superside-chat session on its first message back from idle.
+
+        Called only from the "no cached history yet" branch in
+        ``_run_turn_bg_setup_and_stream`` — the runner's own signal for
+        "first message after idle" (see ``omnigent.superchat.rollover.
+        should_roll_over_for_idle``). A no-op for a non-superside-chat
+        session (checked before the idle lookup, so those pay no extra
+        round trip).
+        """
+        from omnigent.context.labels import is_superside_chat
+        from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+        from omnigent.superchat.rollover import roll_over_session, should_roll_over_for_idle
+
+        labels = await _session_labels_for_runner_spawn(
+            server_client=server_client, session_id=conv_id
+        )
+        if not is_superside_chat(labels):
+            return
+        idle_seconds = await _superside_chat_idle_seconds(conv_id)
+        if not should_roll_over_for_idle(labels, idle_seconds=idle_seconds):
+            return
+        _logger.info("superside-chat refresh on return: %s idle %.0fs", conv_id, idle_seconds)
+        # The turn body's ``model`` is the agent name; summarize on the session's LLM.
+        resolved_model = await _superside_chat_session_model(conv_id) or ROLLOVER_TOKEN_COUNT_MODEL
+        # defer_if_active=False: this runs synchronously at the start of
+        # THIS turn, which already holds its own _active_turns slot (claimed
+        # by the caller before this turn's task was even created) — the
+        # default deferral check would otherwise always (wrongly) defer.
+        await roll_over_session(
+            conv_id,
+            labels=labels,
+            model=resolved_model,
+            server_client=server_client,
+            llm_client=_get_runner_llm_client(),
+            connection=_resolve_summarize_connection(conv_id, resolved_model),
+            on_rolled_over=lambda: _drop_superside_chat_warm_client(
+                conv_id, defer_if_active=False
+            ),
+        )
+
+    async def _maybe_superside_chat_threshold_rollover(
+        conv_id: str,
+        resp_response: _JsonObject,
+    ) -> None:
+        """Roll over a superside-chat session whose turn crossed the rollover threshold.
+
+        Reads ``usage.context_tokens``/``usage.model`` off an in-process
+        turn's ``response.completed`` event — the same fields
+        ``_context_labels_from_turn_usage`` (server-side) reads for the
+        context-ring labels. A no-op for a non-superside-chat session
+        (checked via the cheap cached rollover-mode label before the full
+        label fetch below).
+
+        Runs as a background task (see
+        ``_schedule_superside_chat_threshold_rollover``), so every exception
+        is caught and logged here — an unhandled one would otherwise only
+        surface as an "exception never retrieved" warning.
+        """
+        from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
+        from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+        from omnigent.superchat.rollover import roll_over_session, should_roll_over_for_threshold
+
+        try:
+            cached_labels = await _rollover_labels_for_session(conv_id)
+            if cached_labels.get(CONTEXT_MODE_LABEL) != SUPERSIDE_CHAT_MODE_VALUE:
+                return
+            resp_usage = resp_response.get("usage")
+            context_tokens = (
+                resp_usage.get("context_tokens") if isinstance(resp_usage, dict) else None
+            )
+            if not isinstance(context_tokens, int):
+                return
+            resolved_model = (
+                resp_usage.get("model") if isinstance(resp_usage, dict) else None
+            ) or ROLLOVER_TOKEN_COUNT_MODEL
+            labels = await _session_labels_for_runner_spawn(
+                server_client=server_client, session_id=conv_id
+            )
+            if not should_roll_over_for_threshold(labels, context_tokens=context_tokens):
+                return
+            await roll_over_session(
+                conv_id,
+                labels=labels,
+                model=resolved_model,
+                server_client=server_client,
+                llm_client=_get_runner_llm_client(),
+                connection=_resolve_summarize_connection(conv_id, resolved_model),
+                on_rolled_over=lambda: _drop_superside_chat_warm_client(conv_id),
+            )
+        except Exception:  # noqa: BLE001 — background task; never fail the turn that scheduled it
+            _logger.warning(
+                "superside-chat threshold rollover failed for %s",
+                conv_id,
+                exc_info=True,
+                extra={"session_id": conv_id},
+            )
+
+    async def _apply_memory_profile_block(body: _JsonObject, conv_id: str) -> _JsonObject:
+        """Prepend the user's Memory Profile delimiter block to this turn's content.
+
+        Called only for ``superside-chat`` turns (``rollover/SUPERSIDE-CHAT-PLAN.md``
+        S6) — the caller has already checked the session's mode. Fetched fresh
+        every turn via the server's own API: the SDK's system prompt is frozen
+        per warm client, so a per-message block is the seam that still reaches
+        it (``omnigent/inner/claude_sdk_executor.py``).
+        """
+        try:
+            resp = await server_client.get(
+                f"/v1/sessions/{conv_id}/memory/profile",
+                timeout=10.0,
+            )
+            block = resp.json().get("profile") if resp.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            return body
+        return _apply_memory_profile_to_body(body, block)
 
     def _discard_comment_relay(session_id: str, relay: ClaudeNativeToolRelay) -> None:
         """Unbind and close *relay*, unless another path already replaced it.
@@ -8563,6 +9139,12 @@ def create_runner_app(
             post_tools_changed,
             start_tool_relay,
         )
+
+        # Warm the durable rollover-labels cache for free whenever the caller
+        # already has full session labels in hand (session create, codex/
+        # antigravity spawn-env) — mcp_execute's grant check then rarely
+        # needs its own lookup.
+        _remember_rollover_labels(session_id, session_labels)
 
         try:
             spec_entry = await _resolve_session_spec_entry(session_id)
@@ -8624,8 +9206,13 @@ def create_runner_app(
 
         from omnigent.runner.tool_dispatch import build_native_relay_tool_schemas
 
+        relay_labels = (
+            session_labels
+            if session_labels is not None
+            else await _rollover_labels_for_session(session_id)
+        )
         relay_schemas: list[_JsonObject] = build_native_relay_tool_schemas(
-            _unwrap_spec_entry(spec_entry)
+            _unwrap_spec_entry(spec_entry), labels=relay_labels
         )
 
         _captured_session_id = session_id
@@ -8833,6 +9420,10 @@ def create_runner_app(
         msg_body: _JsonObject,
         conv: str,
     ) -> None:
+        # Cheap no-op for a session with no pending superside-chat rollover;
+        # otherwise waits out an in-flight one and applies a deferred
+        # warm-client drop before anything below touches the harness.
+        await _consume_superside_chat_pending_refresh(conv)
         _dispatched_agent_id = cast(str | None, msg_body.get("agent_id"))
         _prior_agent_id = _session_agent_ids.get(conv)
         if (
@@ -8928,6 +9519,9 @@ def create_runner_app(
             )
             harness_name = canonicalize_harness(raw_harness) or raw_harness
 
+        # Refresh on return: checked every turn (a live chat keeps its history
+        # cached); a rollover drops the cache so the load below starts from it.
+        await _maybe_superside_chat_idle_rollover(conv)
         if conv not in _session_histories:
             _session_histories[conv] = (
                 [] if is_native_harness(harness_name) else await _load_history_as_input(conv)
@@ -8945,15 +9539,21 @@ def create_runner_app(
             )
             # Gated harnesses use nullable to avoid the fallback literal.
             _authored_bg = raw_author_instructions(cached_spec) is not None
+            # Cache hit in steady state (see _rollover_labels_for_session):
+            # every native session already warmed this at relay start, and
+            # SDK/subprocess harnesses that never touch that path pay one
+            # lookup on their first turn.
+            _bg_labels = await _rollover_labels_for_session(conv)
             if harness_name in _GATED_COMPOSED_INSTRUCTION_HARNESSES:
                 instructions = build_instructions_nullable(
-                    cached_spec, _raw_per_request_instructions, []
+                    cached_spec, _raw_per_request_instructions, [], labels=_bg_labels
                 )
             else:
                 instructions = build_instructions(
                     cached_spec,
                     _raw_per_request_instructions,
                     [],
+                    labels=_bg_labels,
                 )
             # Warn once per (conversation, harness, delivery) if the agent has
             # authored instructions but the harness can't deliver them.
@@ -8980,20 +9580,6 @@ def create_runner_app(
                             _bg_delivery.value,
                             extra={"session_id": conv},
                         )
-            _dc_envelope = _fresh_session_init_envelope(conv)
-            instructions = await _append_deployment_context(
-                instructions,
-                server_client=server_client,
-                session_id=conv,
-                agent_name=_dispatched_agent_id,
-                harness_name=harness_name,
-                turn_input=extract_turn_input_text(msg_body.get("content")),
-                provider_configured=(
-                    _dc_envelope.snapshot.deployment_context_provider_configured
-                    if _dc_envelope is not None
-                    else None
-                ),
-            )
 
         ctx = TurnDispatch(
             agent_id=_dispatched_agent_id,
@@ -9011,6 +9597,13 @@ def create_runner_app(
             "role": "user",
             "model": msg_body.get("model", ""),
         }
+        # Threaded onto CreateResponseRequest.context_mode (MessageEvent
+        # passthrough) so the claude-sdk executor adapter can tell a
+        # superside-chat turn apart from a plain one and turn off the SDK's
+        # own competing features for it only (see claude_sdk_executor.py).
+        _turn_context_mode = (await _rollover_labels_for_session(conv)).get(CONTEXT_MODE_LABEL)
+        if _turn_context_mode:
+            harness_body["context_mode"] = _turn_context_mode
         # The routed model rides in-band on the forwarded message. This body is
         # built field by field (not copied), so it must be threaded explicitly:
         # the harness forwards it onto CreateResponseRequest.model_override and
@@ -9062,6 +9655,8 @@ def create_runner_app(
                 "content",
                 [],
             )
+        if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
+            harness_body = await _apply_memory_profile_block(harness_body, conv)
         _content = cast(list[object], harness_body.get("content", []))
         _content_summary = []
         for _ci in _content:
@@ -9092,10 +9687,17 @@ def create_runner_app(
                         ToolManager,
                     )
 
+                    # Thread the session's context-mode label through so a
+                    # superside-chat (or rollover) session's ToolManager
+                    # registers session_history/memory_* here too — this SDK
+                    # path otherwise never offers them, even though the
+                    # system prompt mentions them (see
+                    # ``_rollover_labels_for_session``).
                     _tmgr = ToolManager(
                         cached_spec,
                         workdir=_resolved_workdir_for_spec(cached_spec_entry, runner_workspace),
                         os_env_schema_only=True,
+                        labels=await _rollover_labels_for_session(conv),
                     )
                     all_tools.extend(_tmgr.get_tool_schemas())
                 except (
@@ -9204,7 +9806,10 @@ def create_runner_app(
             codex_bdir = codex_bridge_dir_for_id(codex_bid or conv)
             write_mcp_bridge_config(codex_bdir)
             await _ensure_comment_relay_started(
-                conv, explicit_bridge_dir=codex_bdir, await_notify=False
+                conv,
+                explicit_bridge_dir=codex_bdir,
+                await_notify=False,
+                session_labels=codex_labels,
             )
         elif harness_name == "antigravity-native":
             from omnigent.harnesses.antigravity_native.bridge import (
@@ -9223,7 +9828,10 @@ def create_runner_app(
             antigravity_bdir = antigravity_bridge_dir_for_id(antigravity_bid or conv)
             write_mcp_bridge_config(antigravity_bdir)
             await _ensure_comment_relay_started(
-                conv, explicit_bridge_dir=antigravity_bdir, await_notify=False
+                conv,
+                explicit_bridge_dir=antigravity_bdir,
+                await_notify=False,
+                session_labels=antigravity_labels,
             )
         elif harness_name == "hermes":
             from omnigent.harnesses.hermes_native.bridge import (
@@ -9593,10 +10201,11 @@ def create_runner_app(
                     if _instr_spec_ds is not None:
                         _per_req_instr = cast(str | None, body.get("instructions"))
                         _authored_ds = raw_author_instructions(_instr_spec_ds) is not None
+                        _ds_labels = await _rollover_labels_for_session(conv_id)
                         _ic_ds = InstructionComposition(
                             authored_present=_authored_ds,
                             composed=build_instructions_nullable(
-                                _instr_spec_ds, _per_req_instr, []
+                                _instr_spec_ds, _per_req_instr, [], labels=_ds_labels
                             ),
                         )
                         # Gated harnesses get nullable — skip the fallback literal.
@@ -9608,26 +10217,9 @@ def create_runner_app(
                             _instr_body = {
                                 **body,
                                 "instructions": build_instructions(
-                                    _instr_spec_ds, _per_req_instr, []
+                                    _instr_spec_ds, _per_req_instr, [], labels=_ds_labels
                                 ),
                             }
-                        _base_instr_ds = cast(str | None, _instr_body.get("instructions"))
-                        _dc_envelope_ds = _fresh_session_init_envelope(conv_id)
-                        _instr_with_context = await _append_deployment_context(
-                            _base_instr_ds,
-                            server_client=server_client,
-                            session_id=conv_id,
-                            agent_name=_turn_agent_id,
-                            harness_name=harness_name,
-                            turn_input=extract_turn_input_text(body.get("input")),
-                            provider_configured=(
-                                _dc_envelope_ds.snapshot.deployment_context_provider_configured
-                                if _dc_envelope_ds is not None
-                                else None
-                            ),
-                        )
-                        if _instr_with_context != _base_instr_ds:
-                            _instr_body = {**_instr_body, "instructions": _instr_with_context}
                         if _authored_ds and harness_name:
                             _ds_caps = harness_capabilities().get(harness_name)
                             _ds_delivery = (
@@ -9660,6 +10252,7 @@ def create_runner_app(
             _ds_sa = _session_sub_agent_names.get(conv_id)
             if _ds_sa and _session_sub_agent_resolved.get(conv_id) is False:
                 _warn_unresolved_sub_agent(conv_id, _ds_sa)
+            _instr_body = await _apply_post_compaction_tail(_instr_body, conv_id, harness_name)
             event_body = _wrap_as_message_event(_instr_body)
             _inject_mcp_schemas(event_body, _mcp_schemas)
             _response_id: str | None = None
@@ -9796,6 +10389,9 @@ def create_runner_app(
                                             }
                                         )
                                         _text_acc.clear()
+                                    _schedule_superside_chat_threshold_rollover(
+                                        conv_id, event.get("response") or {}
+                                    )
                                 elif _evt_type == "response.failed":
                                     _err = event.get("error") or (event.get("response") or {}).get(
                                         "error"
@@ -9940,6 +10536,9 @@ def create_runner_app(
                                                     publish_event=_publish_event,
                                                     filesystem_registry=filesystem_registry,
                                                     effective_harness=_session_harness_name(
+                                                        conv_id
+                                                    ),
+                                                    labels=await _rollover_labels_for_session(
                                                         conv_id
                                                     ),
                                                 )
@@ -10191,25 +10790,34 @@ def create_runner_app(
         )
         _side_thread_id = body.get("codex_side_thread_id") if isinstance(body, dict) else None
         if _side_thread_id:
-            # Codex /side follow-up: the server redirected a side-chat child's
-            # message here (this endpoint's conversation_id is the PARENT), tagged
-            # with the child Codex thread id. Drive it on that thread via the
-            # parent's bridge, isolated from the parent's turn buffer/active-turn
-            # state on purpose so the main conversation is untouched.
+            # Side-chat controls use the parent's bridge but target the child's
+            # thread, leaving the parent's turn and message buffer untouched.
             from omnigent.harnesses.codex_native import side_chat
             from omnigent.harnesses.codex_native.app_server import client_for_transport
 
-            _side_text = _side_chat_text_from_content(
-                body.get("content") if isinstance(body, dict) else None
-            )
-            if not _side_text:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": "invalid_request",
-                        "detail": "side chat message had no text",
-                    },
+            _side_turn_id = body.get("codex_side_turn_id")
+            _side_text = ""
+            if body_type == "interrupt":
+                if not isinstance(_side_turn_id, str) or not _side_turn_id:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_request",
+                            "detail": "Missing side-chat turn id.",
+                        },
+                    )
+            else:
+                _side_text = _side_chat_text_from_content(
+                    body.get("content") if isinstance(body, dict) else None
                 )
+                if not _side_text:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_request",
+                            "detail": "side chat message had no text",
+                        },
+                    )
             _side_state = await _codex_native_bridge_state_for_session(
                 conversation_id, action="side chat turn"
             )
@@ -10226,7 +10834,14 @@ def create_runner_app(
             )
             try:
                 await _side_client.connect()
-                await side_chat.submit_side_turn(_side_client, str(_side_thread_id), _side_text)
+                if body_type == "interrupt":
+                    await side_chat.interrupt_side_turn(
+                        _side_client, str(_side_thread_id), _side_turn_id
+                    )
+                else:
+                    await side_chat.submit_side_turn(
+                        _side_client, str(_side_thread_id), _side_text
+                    )
             finally:
                 await _side_client.close()
             return Response(status_code=202)
@@ -10454,31 +11069,120 @@ def create_runner_app(
             output = forwarded_output if isinstance(forwarded_output, str) else None
             delivery_ack: _SubagentDeliveryAck | None = None
             recovered_entry: _SubagentWorkEntry | None = None
+            terminal_status = None
+            if status in ("idle", "failed"):
+                recovered_entry = get_subagent_work(conversation_id)
+                turn_outcome = data.get("turn_outcome") if isinstance(data, dict) else None
+                if turn_outcome in ("completed", "cancelled", "failed"):
+                    recovered_entry = await _ensure_subagent_work_entry(conversation_id)
+                    terminal_status = turn_outcome
+                    if turn_outcome == "cancelled" and recovered_entry is not None:
+                        recovered_entry.cancellation_confirmed = True
+                elif (
+                    status == "idle"
+                    and recovered_entry is not None
+                    and recovered_entry.status == "cancelled"
+                    and recovered_entry.cancellation_confirmed
+                ):
+                    # A bare idle retry cannot overwrite a confirmed abort
+                    # while its parent inbox is still unavailable.
+                    terminal_status = "cancelled"
+                    output = recovered_entry.output
             if status in ("running", "waiting", "idle", "failed"):
                 # Forwarders report these edges straight to the server, so record
                 # them here too; the idle watchdog reads them for native turns.
                 _native_pane_status[conversation_id] = status
                 resource_registry.note_external_session_status(conversation_id, status)
+                child_status = (
+                    "idle" if terminal_status == "completed" else terminal_status or status
+                )
                 _fan_out_child_delta_to_parent(
                     conversation_id,
-                    {"type": "session.status", "status": status},
+                    {"type": "session.status", "status": child_status},
                     latest_assistant_text=output,
                     allow_history_preview_fallback=False,
                 )
-            if status in ("idle", "failed"):
-                recovered_entry = await _ensure_subagent_work_entry(conversation_id)
-            if status == "idle":
+            turn_completed = data.get("turn_completed") if isinstance(data, dict) else None
+            interrupt_pending = False
+            interrupt_work_id: str | None = None
+            if status == "idle" and terminal_status is None and turn_completed is not True:
+                # An unconfirmed idle following an interrupt settles the
+                # dispatch: the turn stopped early, so report ``cancelled``
+                # with whatever output the edge carried instead of guessing
+                # ``completed`` — or discarding a genuine result. Resolve the
+                # pending interrupt only when it belongs to the dispatch now
+                # registered: a stale record (its dispatch exited, or a new send
+                # reused this child) must not capture this idle — for a legacy
+                # harness that idle is the NEW dispatch's completion.
+                _current_entry = get_subagent_work(conversation_id)
+                interrupt_pending, interrupt_work_id = (
+                    _native_interrupt_runner.resolve_pending_interrupt(
+                        conversation_id,
+                        _current_entry.work_id if _current_entry is not None else None,
+                    )
+                )
+            ambiguous_idle = (
+                status == "idle"
+                and terminal_status is None
+                and turn_completed is not True
+                and not interrupt_pending
+                and _native_turn_outcome_is_forwarder_confirmed(conversation_id)
+            )
+            if terminal_status is not None:
+                _native_interrupt_runner.clear_pending_interrupt(conversation_id)
+                if terminal_status == "cancelled":
+                    output = output or "[System: sub-agent interrupted]"
+                elif terminal_status == "failed":
+                    output = output or "Error: native sub-agent turn failed"
                 delivery_ack = _mark_subagent_terminal_and_wake(
                     conversation_id,
-                    status="completed",
+                    status=terminal_status,
                     output=output if output is not None else "",
                 )
-            elif status == "failed":
+            elif ambiguous_idle:
+                # This harness's forwarder marks genuine turn completions
+                # (``turn_completed``), so a bare quiescence idle proves
+                # nothing about the turn's outcome: record the pane status
+                # above but settle no outcome. Mapping it to ``completed``
+                # reported aborted turns as successes.
+                entry = get_subagent_work(conversation_id)
+                if entry is None or entry.status not in _SUBAGENT_TERMINAL_STATUSES:
+                    return Response(status_code=204)
+                # An already-settled outcome may still await parent delivery
+                # (the forwarder's 503-retry contract); re-attempt it.
                 delivery_ack = _mark_subagent_terminal_and_wake(
                     conversation_id,
-                    status="failed",
-                    output=output or "Error: native sub-agent turn failed",
+                    status=entry.status,
+                    output=entry.output,
                 )
+            else:
+                if status in ("idle", "failed"):
+                    recovered_entry = await _ensure_subagent_work_entry(conversation_id)
+                if status == "idle" and interrupt_pending:
+                    # Interrupt with no confirming edge, resolved to the CURRENT
+                    # dispatch (``resolve_pending_interrupt`` only reports pending
+                    # when the recorded ``work_id`` matches). Bound to that
+                    # dispatch so it cannot cancel a newer send.
+                    delivery_ack = _mark_subagent_terminal_and_wake(
+                        conversation_id,
+                        status="cancelled",
+                        output=output,
+                        only_if_work_id=interrupt_work_id,
+                    )
+                elif status == "idle":
+                    _native_interrupt_runner.clear_pending_interrupt(conversation_id)
+                    delivery_ack = _mark_subagent_terminal_and_wake(
+                        conversation_id,
+                        status="completed",
+                        output=output if output is not None else "",
+                    )
+                elif status == "failed":
+                    _native_interrupt_runner.clear_pending_interrupt(conversation_id)
+                    delivery_ack = _mark_subagent_terminal_and_wake(
+                        conversation_id,
+                        status="failed",
+                        output=output or "Error: native sub-agent turn failed",
+                    )
             if delivery_ack is not None:
                 if (
                     delivery_ack.entry is not None
@@ -11059,6 +11763,7 @@ def create_runner_app(
                 resource_registry=resource_registry,
                 publish_event=_publish_ensure_event,
                 server_client=server_client,
+                event_dispatcher=getattr(app.state, "runner_event_dispatcher", None),
                 ensure_comment_relay=_ensure_comment_relay_started,
             )
             _ensure_build: (
@@ -12954,6 +13659,8 @@ def create_runner_app(
         _kimi_terminal_ensure_locks.pop(session_id, None)
         _hermes_terminal_ensure_locks.pop(session_id, None)
         _repl_terminal_ensure_locks.pop(session_id, None)
+        if process_manager is not None:
+            await process_manager.release(session_id)
         await resource_registry.cleanup_session(session_id)
         await _delete_native_bridge_dirs(
             server_client=server_client,
@@ -12983,6 +13690,8 @@ def create_runner_app(
         _hermes_terminal_ensure_locks.pop(session_id, None)
         _repl_terminal_ensure_locks.pop(session_id, None)
         await _teardown_session_terminals(session_id)
+        if process_manager is not None:
+            await process_manager.release(session_id)
         await resource_registry.cleanup_session(session_id)
         _clear_session_agent_caches(session_id, _session_agent_ids.get(session_id))
         return JSONResponse(
@@ -13245,6 +13954,11 @@ def create_runner_app(
                 _agent_id_local = _session_agent_ids.get(session_id)
                 try:
                     dispatch_workspace = await _session_runtime_cwd(session_id)
+                    # Almost always a cache hit: the relay that makes this
+                    # call possible at all already warmed it at start (see
+                    # _ensure_comment_relay_started). The fallback fetch only
+                    # covers a tool call that somehow beats that warm-up.
+                    dispatch_labels = await _rollover_labels_for_session(session_id)
                     output = await execute_tool(
                         tool_name=tool_name,
                         arguments=_json.dumps(arguments),
@@ -13259,6 +13973,7 @@ def create_runner_app(
                         runner_workspace=dispatch_workspace,
                         local_tool_workdir=spec_workdir,
                         mcp_manager=None,
+                        labels=dispatch_labels,
                         session_inbox=_session_inboxes.get(session_id),
                         session_async_tasks=_session_async_tasks.get(session_id),
                         harness_client=None,
@@ -13290,6 +14005,10 @@ def create_runner_app(
             content={"error": {"code": -32601, "message": f"Method not found: {method!r}"}},
         )
 
+    def _summarize_model_id(model: str) -> str:
+        """Provider-prefix a bare Claude id; the LLM client routes bare ids to OpenAI."""
+        return f"anthropic/{model}" if model.startswith("claude") else model
+
     def _resolve_summarize_connection(
         session_id: str,
         model: str,
@@ -13298,10 +14017,10 @@ def create_runner_app(
 
         spec_entry = _session_spec_cache.get(session_id)
         if spec_entry is None:
-            return None
+            return _resolve_local_provider_connection(model)
         spec = spec_entry.spec if hasattr(spec_entry, "spec") else spec_entry
         if spec is None:
-            return None
+            return _resolve_local_provider_connection(model)
 
         auth = getattr(spec.executor, "auth", None)
 
@@ -13338,7 +14057,67 @@ def create_runner_app(
             )
             return _resolve_databricks_connection(_db_profile, session_id)
 
-        return None
+        # No spec-level auth, legacy profile, or global auth resolved: fall
+        # back to the runner's own local provider config (the ``providers:``
+        # block in ~/.omnigent/config.yaml — the credentials the native CLIs
+        # themselves launch with). Without this, a plain local/self-hosted
+        # deployment has no way to authenticate this call at all: the LLM
+        # adapter sends no Authorization header when connection_params is
+        # None (it never reads provider env vars itself), so callers like
+        # rollover's summarizer always 401 on such a deployment.
+        return _resolve_local_provider_connection(model)
+
+    def _resolve_local_provider_connection(model: str) -> dict[str, str] | None:
+        """Resolve a connection from ~/.omnigent/config.yaml's providers: block.
+
+        Picks the family's ``default: true`` provider, falling back to the
+        first provider configured for that family — the same precedence
+        :func:`_resolve_provider_connection` uses once a provider name is
+        known, but starting from the model alone.
+
+        :param model: LLM model string, e.g. ``"gpt-4o"`` or ``"claude-haiku-4-5"``.
+        :returns: A ``{"base_url", "api_key"}`` connection dict, or ``None``
+            when no local provider serves this model's family.
+        """
+        try:
+            from omnigent.onboarding.detected import effective_config_with_detected
+            from omnigent.onboarding.provider_config import (
+                first_available_provider,
+                get_default_provider,
+                load_config,
+            )
+
+            config = effective_config_with_detected(load_config())
+            family = "anthropic" if model.startswith(("anthropic/", "claude")) else "openai"
+            entry = get_default_provider(config, family) or first_available_provider(
+                config, family
+            )
+            if entry is None:
+                return None
+            fam = entry.family(family)
+            if fam is None:
+                return None
+            conn: dict[str, str] = {}
+            if fam.api_key:
+                conn["api_key"] = fam.api_key
+            if fam.base_url:
+                conn["base_url"] = fam.base_url
+                # Provider config stores the Claude SDK form (no version); the
+                # LLM client's Anthropic adapter expects the versioned base.
+                if (
+                    family == "anthropic"
+                    and fam.base_url.rstrip("/") == "https://api.anthropic.com"
+                ):
+                    conn["base_url"] = "https://api.anthropic.com/v1"
+            return conn or None
+        except Exception:  # noqa: BLE001 — a missing local provider falls back to no auth
+            _logger.warning(
+                "/v1/summarize: failed to resolve a local provider for model %r",
+                model,
+                exc_info=True,
+                extra={"session_id": runner_primary_session_id()},
+            )
+            return None
 
     def _resolve_provider_connection(
         provider_name: str,
@@ -13408,6 +14187,8 @@ def create_runner_app(
         body = await request.json()
         messages = body.get("messages")
         model = body.get("model")
+        if isinstance(model, str) and model:
+            model = _summarize_model_id(model)
         if not isinstance(messages, list) or not model:
             return JSONResponse(
                 status_code=400,
@@ -13426,11 +14207,14 @@ def create_runner_app(
                     session_id,
                     model,
                 )
+        extra_instructions = body.get("extra_instructions") or None
         llm_client = _get_runner_llm_client()
         resp = await llm_client.responses.create(
             model=model,
             input=build_summarization_input(messages),
-            instructions=build_summarization_prompt(messages),
+            instructions=build_summarization_prompt(
+                messages, extra_instructions=extra_instructions
+            ),
             tools=[],
             connection_params=connection,
         )
@@ -14020,6 +14804,11 @@ def _build_spawn_env_from_spec(
             env = _build_claude_sdk_spawn_env(effective_spec, cwd=cwd, workdir=workdir)
         elif harness == "codex":
             env = _build_codex_spawn_env(effective_spec, cwd=cwd, workdir=workdir)
+            env["HARNESS_CODEX_SKILLS_DIR"] = (
+                str(resource_registry.codex_skills_dir(session_id))
+                if resource_registry is not None and session_id is not None
+                else ""
+            )
         elif harness == "pi":
             env = _build_pi_spawn_env(effective_spec, cwd=cwd, workdir=workdir)
         elif harness == "openai-agents":

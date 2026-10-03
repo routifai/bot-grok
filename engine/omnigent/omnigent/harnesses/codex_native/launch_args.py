@@ -14,6 +14,12 @@ from urllib.parse import urlsplit, urlunsplit
 import tomlkit
 from tomlkit.exceptions import TOMLKitError
 
+
+def codex_rollover_config_overrides(compact_at_tokens: int) -> list[str]:
+    """``-c`` overrides that make Codex auto-compact at a rollover threshold."""
+    return [f"model_auto_compact_token_limit={compact_at_tokens}"]
+
+
 _CODEX_CONFIG_PATHS = (
     "agents.*.config_file",
     "experimental_compact_prompt_file",

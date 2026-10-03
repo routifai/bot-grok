@@ -13,9 +13,13 @@ import uuid
 from collections.abc import Mapping
 from importlib.resources import files
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from omnigent.native import native_bridge_common
 from omnigent.util.json_types import JsonObject as _JsonObject
+
+if TYPE_CHECKING:
+    from omnigent.inner.terminal import TerminalInstance
 
 # Per-process tiebreaker for inbox ordering. The extension delivers inbox
 # files in lexicographic filename order, so a high-resolution timestamp alone
@@ -57,6 +61,8 @@ _CONFIG_FILE = "config.json"
 _EXTENSION_FILE = "omnigent_pi_native_extension.js"
 _EXTENSION_PACKAGE = "omnigent.resources.pi_native"
 _INBOX_DIR = "inbox"
+# Written by the extension once ``session_start`` has armed the inbox poller.
+_INPUT_READY_FILE = "input_ready"
 _SESSIONS_DIR = "sessions"
 
 
@@ -163,6 +169,20 @@ def extension_path(bridge_dir: Path) -> Path:
 def config_path(bridge_dir: Path) -> Path:
     """Return the generated Pi extension config path for *bridge_dir*."""
     return bridge_dir / _CONFIG_FILE
+
+
+def native_input_ready(session_id: str, instance: TerminalInstance) -> bool:
+    """Provider ``input_ready_probe``: the extension is polling its inbox.
+
+    :param session_id: Omnigent conversation id (unused; the marker lives in
+        the terminal's own bridge directory).
+    :param instance: The live Pi terminal; its extension config env var
+        locates the bridge directory.
+    :returns: Whether this launch's extension wrote the input-ready marker.
+    """
+    del session_id
+    config = instance.env.get(PI_NATIVE_CONFIG_ENV_VAR)
+    return bool(config) and (Path(config).parent / _INPUT_READY_FILE).is_file()
 
 
 def enqueue_user_message(bridge_dir: Path, content: str) -> str:
@@ -315,6 +335,42 @@ def _enqueue_payload(bridge_dir: Path, item_id: str, payload: _JsonObject) -> No
             os.unlink(tmp_name)
 
 
+def rollover_extension_config(labels: Mapping[str, str] | None) -> _JsonObject | None:
+    """
+    Build the resident Pi extension's rollover config block.
+
+    ``None`` outside rollover mode, so the extension never registers its
+    ``session_before_compact`` handler and non-rollover sessions stay
+    byte-for-byte upstream. Carries Omnigent's checkpoint header and
+    state-file summarizer instruction verbatim (see
+    ``omnigent/context/rollover.py``) so the JS side never hand-duplicates
+    that wording; the summarizer instruction still carries
+    :data:`~omnigent.context.rollover.SUMMARIZER_DATE_PLACEHOLDER` since Pi's
+    own compaction can run long after this config is written.
+
+    :param labels: The session's labels, or ``None``.
+    :returns: The config block, or ``None`` outside rollover mode.
+    """
+    from omnigent.context.labels import is_rollover
+    from omnigent.context.rollover import (
+        CHECKPOINT_HEADER,
+        SUMMARIZER_DATE_PLACEHOLDER,
+        resolve_rollover_threshold,
+        state_file_summarizer_instruction,
+    )
+
+    if not is_rollover(labels):
+        return None
+    return {
+        "checkpointHeader": CHECKPOINT_HEADER,
+        "summarizerInstruction": state_file_summarizer_instruction(
+            today=SUMMARIZER_DATE_PLACEHOLDER
+        ),
+        "datePlaceholder": SUMMARIZER_DATE_PLACEHOLDER,
+        "thresholdTokens": resolve_rollover_threshold(labels),
+    }
+
+
 def write_extension_files(
     bridge_dir: Path,
     *,
@@ -323,6 +379,7 @@ def write_extension_files(
     conversation_url: str,
     auth_headers: dict[str, str] | None = None,
     tools: list[_JsonObject] | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> tuple[Path, Path]:
     """
     Write the Pi extension and config used by a native Pi terminal.
@@ -340,6 +397,8 @@ def write_extension_files(
         runner uses), so the Pi agent can invoke Omnigent ``sys_*`` tools with
         centralized server-side policy enforcement. ``None``/empty registers no
         tools (Pi falls back to its own built-in tool surface only).
+    :param labels: The session's labels. Only rollover-mode labels change
+        anything here — see :func:`rollover_extension_config`.
     :returns: ``(extension_path, config_path)``.
     """
     bridge_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -351,7 +410,10 @@ def write_extension_files(
         "inboxDir": str(bridge_dir / _INBOX_DIR),
         "authHeaders": auth_headers or {},
         "tools": tools or [],
+        "rollover": rollover_extension_config(labels),
     }
+    # A marker left by a previous Pi process would report this launch ready early.
+    (bridge_dir / _INPUT_READY_FILE).unlink(missing_ok=True)
     _atomic_json(config_path(bridge_dir), payload)
     _atomic_text(extension_path(bridge_dir), _extension_source())
     return extension_path(bridge_dir), config_path(bridge_dir)
@@ -419,6 +481,36 @@ def inject_relay_into_config(bridge_dir: Path, relay_url: str, relay_token: str)
         return False
     payload["relayUrl"] = relay_url
     payload["relayToken"] = relay_token
+    _atomic_json(path, payload)
+    return True
+
+
+def set_rollover_threshold_tokens(bridge_dir: Path, threshold_tokens: int) -> bool:
+    """Rewrite ``rollover.thresholdTokens`` in an already-written ``config.json``.
+
+    ``write_extension_files`` runs before the provider/model (and its context
+    window) are resolved, so its own ``thresholdTokens`` is window-blind. Once
+    the launch resolves a model window, the caller re-derives the threshold
+    from it and patches it in here — one source of truth
+    (``resolve_rollover_threshold``) instead of Pi's settings and the
+    extension disagreeing on when to compact.
+
+    :param bridge_dir: Native Pi bridge directory.
+    :param threshold_tokens: The window-derived threshold to write.
+    :returns: ``True`` when the config was rewritten; ``False`` when the
+        config is missing/unreadable or has no ``rollover`` block (non-rollover
+        session — nothing to patch).
+    """
+    path = config_path(bridge_dir)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(payload, dict) or not isinstance(payload.get("rollover"), dict):
+        return False
+    if payload["rollover"].get("thresholdTokens") == threshold_tokens:
+        return False
+    payload["rollover"]["thresholdTokens"] = threshold_tokens
     _atomic_json(path, payload)
     return True
 

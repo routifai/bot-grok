@@ -716,11 +716,6 @@ async def _best_effort_stop(
 # custom-lint: disable-next=workspace-scoped-cache -- set of Task objects
 _detached_stop_tasks: set[asyncio.Task[None]] = set()
 
-# Strong references to Nova's fire-and-forget episode recording, for the same
-# reason (see omnigent/nova/episodes/observer.py).
-# custom-lint: disable-next=workspace-scoped-cache -- set of Task objects
-_nova_episode_tasks: set[asyncio.Task[None]] = set()
-
 # Deferred archive stops still inside the undo grace, keyed by session id.
 # Scheduling a stop cancels the session's prior pending one, and an unarchive
 # cancels it outright — so a stale timer from an earlier archive can't fire
@@ -1236,16 +1231,16 @@ def _build_session_response(
     # usage. Shared by the cost indicator and the per-model breakdown so
     # both read the same numbers.
     display_usage = subtree_usage if subtree_usage is not None else (conv.session_usage or {})
-    # Native-terminal-wrapper sessions (claude-native-ui / codex-native-ui) are
-    # always terminal-first: the web UI's Chat/Terminal pill is gated on the
-    # ``omnigent.ui = "terminal"`` label. That flag is fully determined by the
-    # agent identity, so derive it here from ``agent_name`` rather than relying
-    # solely on the stored label — the pill then stays correct even if the
-    # stored value is missing or stale. Idempotent: a no-op when already present.
+    harness = _resolve_harness(conv, agent_store=agent_store, agent_cache=agent_cache)
     # Collapse per-user pin keys to the canonical bare key for this viewer, so
     # the snapshot never carries another user's pin key (see _labels_for_viewer).
     labels = labels_with_closed_status(_labels_for_viewer(conv.labels, viewer_id), conv.title)
-    if agent_name in (_CLAUDE_NATIVE_MODEL, _CODEX_NATIVE_MODEL):
+    # Restore terminal access for older custom native sessions. Child mirrors
+    # can inherit the parent's harness without owning a terminal of their own.
+    if agent_name in (_CLAUDE_NATIVE_MODEL, _CODEX_NATIVE_MODEL) or (
+        conv.parent_conversation_id is None
+        and native_coding_agent_for_harness(harness) is not None
+    ):
         labels = {**labels, _CLAUDE_NATIVE_UI_LABEL_KEY: _CLAUDE_NATIVE_UI_LABEL_VALUE}
     # A codex /side child whose ephemeral fork's runner is gone (parent resumed
     # onto a new runner) can never be sent to again. Surface it as closed so the
@@ -1277,11 +1272,7 @@ def _build_session_response(
         parent_session_id=conv.parent_conversation_id,
         root_conversation_id=conv.root_conversation_id,
         llm_model=llm_model,
-        harness=_resolve_harness(
-            conv,
-            agent_store=agent_store,
-            agent_cache=agent_cache,
-        ),
+        harness=harness,
         model_override=conv.model_override,
         cost_control_mode_override=conv.cost_control_mode_override,
         subagent_routing_override=conv.subagent_routing_override,
@@ -3134,11 +3125,11 @@ async def _enrich_terminal_status_with_subagent_output(
     to the store, not runner memory, so the text is read here and forwarded
     with the terminal edge.
 
-    A ``failed`` edge is filled only when the forwarder attached no detail of
-    its own. A harness-reported ``failure_detail`` wins over the store; the
-    fallback must belong to the failed response, or (for older forwarders
-    without response ids) follow the latest user message. A failure before
-    any assistant output must not borrow an earlier turn's reply.
+    Failed or explicitly cancelled turns are filled only when the forwarder
+    attached no output of its own. A harness-reported ``failure_detail`` wins
+    over the store for failures; fallback text must belong to the current
+    response or follow the latest user message when no response id is present.
+    A turn stopped before any output must not borrow an earlier turn's reply.
 
     :param data: The ``external_session_status`` ``data`` to enrich, e.g.
         ``{"status": "idle"}``.
@@ -3151,21 +3142,22 @@ async def _enrich_terminal_status_with_subagent_output(
     """
     if status not in ("idle", "failed"):
         return data
+    current_turn_only = status == "failed" or data.get("turn_outcome") == "cancelled"
     existing = data.get("output")
-    if status == "failed" and isinstance(existing, str) and existing.strip():
+    if current_turn_only and isinstance(existing, str) and existing.strip():
         return data
     # The store's latest assistant text can be prose that preceded the error.
     failure_detail = data.get("failure_detail") if status == "failed" else None
     if isinstance(failure_detail, str) and failure_detail.strip():
         return {**data, "output": failure_detail.strip()}
-    raw_response_id = data.get("response_id") if status == "failed" else None
+    raw_response_id = data.get("response_id") if current_turn_only else None
     response_id = raw_response_id if isinstance(raw_response_id, str) and raw_response_id else None
     output = await asyncio.to_thread(
         _latest_assistant_text_from_store,
         conversation_store,
         session_id,
         response_id=response_id,
-        stop_at_user_message=status == "failed",
+        stop_at_user_message=current_turn_only,
     )
     if output is None:
         return data
@@ -3671,11 +3663,6 @@ async def _run_managed_launch(
             sandbox_config,
             saved_conversation.inference_snapshot,
         )
-    # Forwarded to the launcher's prepare_for_launch — a provider whose sandbox is a
-    # pre-existing per-identity resource (Nova's per-Muse computer; see
-    # omnigent.onboarding.sandboxes.computer) selects it from the session's OWN labels
-    # (e.g. "nova.bot" / "nova.space") rather than a launch-chosen name.
-    labels = saved_conversation.labels if saved_conversation is not None else {}
 
     agent_name: str | None = None
     if agent_store is not None and agent_id is not None:
@@ -3696,7 +3683,6 @@ async def _run_managed_launch(
             relaunch_host=relaunch_host,
             provider=provider,
             agent_name=agent_name,
-            labels=labels,
         )
         if managed is None:
             return
@@ -7267,7 +7253,17 @@ async def _relay_runner_stream(
                     deadline - now,
                     extra={"session_id": session_id},
                 )
-                await asyncio.sleep(_RELAY_RETRY_INTERVAL_S)
+                # An absent runner: park until it re-registers rather than
+                # re-opening the stream every interval, so an outage costs one
+                # attempt, resolved the instant the tunnel is back. A runner
+                # that is still registered failed the stream for another
+                # reason (an HTTP error), so keep the interval backoff: the
+                # waiter would return at once and spin. A client without a
+                # tunnel transport (in-process tests) also keeps the interval.
+                transport = getattr(runner_client, "_transport", None)
+                wait = getattr(transport, "wait_for_runner", None)
+                if wait is None or await wait(deadline - now):
+                    await asyncio.sleep(_RELAY_RETRY_INTERVAL_S)
                 continue
             if lost.intentional:
                 decision = "intentional_stop"
@@ -7548,6 +7544,34 @@ async def _relay_runner_stream_once(
                             # would deliver a premature, lock-out completion.
                             raw_blocked_on = event.get("blocked_on")
                             raw_response_id = event.get("response_id")
+                            # The runner finishing a turn the server had written
+                            # off as a runner drop proves the drop was transient:
+                            # honor the completion and clear the disconnect cause.
+                            # A genuine task failure keeps its sticky ``failed``
+                            # (the guard only clears a ``runner_disconnected`` label).
+                            if (
+                                status == "idle"
+                                and _session_status_cache.get(session_id) == "failed"
+                            ):
+                                try:
+                                    await _publish_runner_recovered_status(
+                                        session_id,
+                                        conversation_store,
+                                        require_disconnect_code=True,
+                                    )
+                                except Exception:  # noqa: BLE001 — a read error must not kill the relay
+                                    # Fail soft: the session keeps its existing
+                                    # failed status (the sticky rule below drops
+                                    # this idle) and the relay keeps streaming.
+                                    _logger.warning(
+                                        "Relay: disconnect-recovery check failed for session=%s; "
+                                        "keeping failed status",
+                                        session_id,
+                                        exc_info=True,
+                                        extra={"session_id": session_id},
+                                    )
+                                else:
+                                    continue
                             _publish_status(
                                 session_id,
                                 status,
@@ -7990,24 +8014,6 @@ async def _relay_runner_stream_once(
                                         session_id,
                                         _usage_conv,
                                     )
-
-                            # Nova: best-effort episode recording for a
-                            # private session's finished turn.
-                            # Fire-and-forget and internally guarded (see
-                            # omnigent/nova/episodes/observer.py) so a
-                            # failure here can never affect this relay.
-                            if current_response_id is not None:
-                                from omnigent.nova.episodes.observer import (
-                                    on_turn_completed as _nova_on_turn_completed,
-                                )
-
-                                _nova_task = asyncio.create_task(
-                                    _nova_on_turn_completed(
-                                        conversation_store, session_id, current_response_id
-                                    )
-                                )
-                                _nova_episode_tasks.add(_nova_task)
-                                _nova_task.add_done_callback(_nova_episode_tasks.discard)
 
                     # Reset the turn-scoped response_id on any
                     # terminal event so it doesn't leak to the
@@ -9926,7 +9932,7 @@ async def _create_session_from_existing_agent(
                 git=body.git,
                 request=request,
             )
-            canonical_workspace = created_worktree.worktree_path
+            canonical_workspace = created_worktree.workspace or created_worktree.worktree_path
             git_branch = created_worktree.branch
             created_worktree_path = created_worktree.worktree_path
 
@@ -10025,6 +10031,13 @@ async def _create_session_from_existing_agent(
 
     native_agent = native_coding_agent_for_agent_name(agent.name)
     initial_labels = dict(body.labels) if body.labels else {}
+    if created_worktree_path is not None:
+        from omnigent.server.routes._host_worktree import (
+            WORKTREE_ROOT_LABEL_KEY,
+            worktree_root_fingerprint,
+        )
+
+        initial_labels[WORKTREE_ROOT_LABEL_KEY] = worktree_root_fingerprint(created_worktree_path)
     if native_agent is not None:
         initial_labels.update(native_agent.presentation_labels)
     elif (
@@ -10034,6 +10047,14 @@ async def _create_session_from_existing_agent(
         and (_subagent_labels := _native_subagent_wrapper_labels_from_spec(sub_spec))
     ):
         initial_labels.update(_subagent_labels)
+    elif (
+        body.sub_agent_name is None
+        and native_coding_agent_for_harness(
+            await asyncio.to_thread(_create_resolved_harness, agent, harness_override, agent_cache)
+        )
+        is not None
+    ):
+        initial_labels[_CLAUDE_NATIVE_UI_LABEL_KEY] = _CLAUDE_NATIVE_UI_LABEL_VALUE
     elif body.sub_agent_name is None and body.host_id is not None:
         repl_labels = _repl_terminal_ui_labels(
             agent=agent,

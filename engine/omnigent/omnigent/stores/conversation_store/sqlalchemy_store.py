@@ -6,6 +6,7 @@ import json
 import logging
 from collections.abc import Mapping
 from contextlib import suppress
+from pathlib import PureWindowsPath
 from typing import Any, Protocol, cast
 
 from sqlalchemy import (
@@ -115,6 +116,15 @@ from omnigent.stores.conversation_store.overrides import (
 )
 
 _logger = logging.getLogger(__name__)
+
+
+def _fts5_literal_query(query: str) -> str:
+    """Quote each term so FTS5 matches it literally, e.g. ``"CW-42" "loan"``.
+
+    Unquoted, FTS5 reads ``-`` / ``:`` / ``*`` as operators and fails on ids.
+    """
+    return " ".join('"' + term.replace('"', '""') + '"' for term in query.split())
+
 
 _SESSION_TODOS_STATE_KEY = "_omnigent_native_plan_snapshot_v1"
 
@@ -1971,6 +1981,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             # tsvector indexing is a future optimization (tracked in GAPS.md).
             use_fts = _supports_fts5(self._conv_engine.dialect.name)
             if use_fts:
+                query = _fts5_literal_query(query)
                 if conversation_id is not None:
                     stmt = text(
                         "SELECT item_id FROM conversation_items_fts "
@@ -2671,6 +2682,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         pinned: bool = False,
         pinned_owner: str | None = None,
         title: str | None = None,
+        fork_source_id: str | None = None,
     ) -> PagedList[Conversation]:
         """
         List conversations with cursor-based pagination.
@@ -2738,6 +2750,8 @@ class SqlAlchemyConversationStore(ConversationStore):
             can access but does NOT own — i.e. sessions shared with them
             by another user. Requires ``accessible_by`` to be set.
             ``False`` (default) disables the filter.
+        :param fork_source_id: When set, only return conversations whose
+            ``FORK_SOURCE_LABEL_KEY`` label equals this value.
         :returns: A :class:`PagedList` of :class:`Conversation`
             objects.
         """
@@ -3045,6 +3059,18 @@ class SqlAlchemyConversationStore(ConversationStore):
                         select(SqlConversationLabel.conversation_id).where(
                             SqlConversationLabel.workspace_id == current_workspace_id(),
                             SqlConversationLabel.key == pinned_label_key(pinned_owner),
+                        )
+                    )
+                )
+            if fork_source_id is not None:
+                # Colocated on the AP DB (fork labels, like pins, live there),
+                # so an inline IN-subquery is enough — no cross-DB prefetch.
+                stmt = stmt.where(
+                    SqlConversation.id.in_(
+                        select(SqlConversationLabel.conversation_id).where(
+                            SqlConversationLabel.workspace_id == current_workspace_id(),
+                            SqlConversationLabel.key == FORK_SOURCE_LABEL_KEY,
+                            SqlConversationLabel.value == fork_source_id,
                         )
                     )
                 )
@@ -5002,6 +5028,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         host_id: str,
         workspace: str,
         exclude_conversation_id: str,
+        include_subdirectories: bool = False,
     ) -> bool:
         """
         Is another non-archived conversation sitting in this ``(host_id, workspace)``?
@@ -5011,29 +5038,56 @@ class SqlAlchemyConversationStore(ConversationStore):
         table (Omnigent DB) while ``archived`` lives on ``conversations`` (AP
         DB, which may be a separate engine), so they cannot be joined. They
         are ordered so the overwhelmingly common answer — nothing else is in
-        the directory — costs a single indexed query and returns before the AP
+        the directory — costs a single metadata query and returns before the AP
         DB is touched at all.
         """
+        workspace_column: ColumnElement[str | None] = SqlConversationMetadata.workspace.expression
+        workspace_match: ColumnElement[bool] = workspace_column == workspace
+        windows_workspace = include_subdirectories and PureWindowsPath(workspace).is_absolute()
+        if include_subdirectories:
+            if windows_workspace:
+                workspace = workspace.replace("\\", "/").lower()
+            prefix = workspace.rstrip("/") + "/"
+            if windows_workspace:
+                # SQL lower() is not consistently Unicode-aware across databases.
+                workspace_match = workspace_column.is_not(None)
+            else:
+                workspace_match = or_(
+                    workspace_column == workspace,
+                    # SQLite LIKE ignores ASCII case even for case-sensitive POSIX paths.
+                    func.substr(workspace_column, 1, len(prefix)) == prefix,
+                )
         with self._session("check_workspace_used_by_other_session") as meta_sess:
-            candidate_ids = list(
-                meta_sess.scalars(
-                    select(SqlConversationMetadata.id)
+            candidates = list(
+                meta_sess.execute(
+                    select(SqlConversationMetadata.id, workspace_column)
                     .where(
                         SqlConversationMetadata.workspace_id == current_workspace_id(),
                         SqlConversationMetadata.host_id == host_id,
-                        SqlConversationMetadata.workspace == workspace,
+                        workspace_match,
                         SqlConversationMetadata.id != exclude_conversation_id,
                     )
                     .limit(_WORKSPACE_SHARER_SCAN_LIMIT)
                 )
             )
-        if not candidate_ids:
+        if not candidates:
             return False
-        if len(candidate_ids) >= _WORKSPACE_SHARER_SCAN_LIMIT:
-            # More sharers than we bound the scan to. "In use" is the safe
+        if len(candidates) >= _WORKSPACE_SHARER_SCAN_LIMIT:
+            # The candidate bound was reached. "In use" is the safe
             # answer: a wrong "free" deletes a directory out from under a
             # running session, while a wrong "in use" only leaves it behind.
             return True
+        if windows_workspace:
+            candidate_ids = []
+            prefix = workspace.rstrip("/") + "/"
+            for candidate_id, candidate_workspace in candidates:
+                normalized = (candidate_workspace or "").replace("\\", "/").lower()
+                if normalized == workspace or normalized.startswith(prefix):
+                    candidate_ids.append(candidate_id)
+        else:
+            candidate_ids = [candidate_id for candidate_id, _ in candidates]
+        if not candidate_ids:
+            return False
         with self._conv_session("check_workspace_sharers_are_archived") as conv_sess:
             return (
                 conv_sess.scalar(

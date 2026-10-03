@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import logging
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from omnigent.context.labels import is_superside_chat, uses_omnigent_context
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.inner.os_env import OSEnvironment
 from omnigent.runtime import get_caps
@@ -21,7 +23,14 @@ from omnigent.tools.base import Tool, ToolContext, is_valid_tool_name
 from omnigent.tools.builtins import (
     ListCommentsTool,
     LoadSkillTool,
+    MemoryExplainTool,
+    MemoryForgetTool,
+    MemoryGetTool,
+    MemoryRememberTool,
+    MemorySearchTool,
     ReadSkillFileTool,
+    SessionHistoryTool,
+    SideChatOpenTool,
     SysAdviseModelsTool,
     SysAgentDownloadTool,
     SysAgentGetTool,
@@ -114,6 +123,7 @@ class ToolManager:
         os_env: OSEnvironment | None = None,
         *,
         os_env_schema_only: bool = False,
+        labels: Mapping[str, str] | None = None,
     ) -> None:
         """
         Initialize the tool manager and register built-in,
@@ -143,11 +153,18 @@ class ToolManager:
         :param os_env_schema_only: Register static OS tool schemas without
             creating an environment. For metadata callers only; OS tool
             execution remains runner-owned. Preserves the ``os_env`` gate.
+        :param labels: The session's labels, when known. Drives label-gated
+            auto-registration (currently: ``session_history`` and
+            ``memory_*`` for a rollover or superside-chat session —
+            ``omnigent.context.labels.uses_omnigent_context``). ``None``
+            (the default) registers nothing label-gated, matching upstream
+            behavior for every caller that doesn't pass labels.
         """
         self._spec = spec
         self._workdir = workdir
         self._sandbox_enabled = sandbox_enabled
         self._pre_resolved_os_env = os_env
+        self._labels = labels
         self._started = False
         self._tools: dict[str, Tool] = {}
         self._srt_available = is_srt_available()
@@ -188,6 +205,17 @@ class ToolManager:
         # Comment tools are always auto-registered so agents can
         # list and update review comments without the spec opting in.
         self._register_comment_tools()
+        # session_history is auto-registered only for a rollover session
+        # (label-driven, not a per-agent spec opt-in).
+        self._register_session_history_tool()
+        # memory_* tools: same label gate as session_history — available in
+        # every rollover session regardless of which agent spec is bound.
+        self._register_memory_tools()
+        # side_chat_open is auto-registered only for a superside-chat
+        # session (Super Chat, Side Chat, or Sub-agent alike carry the
+        # mode label); call-time checks in the runner dispatch further
+        # refuse it outside the Super Chat itself.
+        self._register_side_chat_tools()
         # Policy tool is always auto-registered so agents can add
         # inline CEL policies at runtime without spec changes.
         self._register_policy_tools()
@@ -556,6 +584,57 @@ class ToolManager:
         """
         self._tools[ListCommentsTool.name()] = ListCommentsTool()
         self._tools[UpdateCommentTool.name()] = UpdateCommentTool()
+
+    def _register_session_history_tool(self) -> None:
+        """
+        Auto-register ``session_history`` for a rollover/superside-chat session.
+
+        Gated on ``uses_omnigent_context(self._labels)`` rather than a spec
+        opt-in, so every session in either Omnigent-owned context mode gets
+        recall regardless of which agent spec is bound to it. A session
+        whose labels are unknown to this :class:`ToolManager` call
+        (``labels=None``) or that is in neither mode registers nothing
+        here — byte-for-byte upstream.
+        """
+        if uses_omnigent_context(self._labels):
+            self._tools[SessionHistoryTool.name()] = SessionHistoryTool()
+
+    def _register_memory_tools(self) -> None:
+        """
+        Auto-register the ``memory_*`` family for a rollover/superside-chat session.
+
+        Same gate as :meth:`_register_session_history_tool`: every session in
+        either Omnigent-owned context mode gets long-term memory regardless
+        of which agent spec is bound to it. The tools themselves fail with a
+        clear error at invocation if no
+        :class:`~omnigent.memory.service.MemoryService` is configured (see
+        ``omnigent.tools.builtins.memory``), so registering them
+        unconditionally is safe even when the ``memory`` extra isn't
+        installed.
+        """
+        if not uses_omnigent_context(self._labels):
+            return
+        for tool in (
+            MemoryRememberTool(),
+            MemorySearchTool(),
+            MemoryGetTool(),
+            MemoryExplainTool(),
+            MemoryForgetTool(),
+        ):
+            self._tools[tool.name()] = tool
+
+    def _register_side_chat_tools(self) -> None:
+        """
+        Auto-register ``side_chat_open`` for a superside-chat session only.
+
+        Gated on ``is_superside_chat(self._labels)`` so the Super Chat, its
+        Side Chats, and its Sub-agents are all offered the tool (they all
+        carry the mode label); the runner's dispatch handler
+        (``omnigent/runner/tool_dispatch.py``) then refuses the call unless
+        the caller is the Super Chat itself.
+        """
+        if is_superside_chat(self._labels):
+            self._tools[SideChatOpenTool.name()] = SideChatOpenTool()
 
     def _register_browser_tools(self) -> None:
         """

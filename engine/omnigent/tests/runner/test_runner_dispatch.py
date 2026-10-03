@@ -3713,6 +3713,408 @@ async def test_sys_session_send_model_lands_in_child_create_body(
     assert create_bodies[0]["sub_agent_name"] == "worker"
 
 
+_SUPERSIDE_CHAT_LABELS = {"omnigent.context.mode": "superside-chat"}
+
+
+@pytest.mark.asyncio
+async def test_sys_session_send_superside_chat_forwards_mode_label_to_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A superside-chat caller's mode label reaches the child's create body.
+
+    Before slice S3 this named-mode path (unlike ``sys_session_create``)
+    never forwarded ``labels`` at all, so a Sub-agent-Type child silently
+    dropped out of superside-chat mode.
+    """
+    from omnigent.runner import app as runner_app
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_bodies: list[dict[str, Any]] = []
+    monkeypatch.setattr(runner_app, "get_session_agent_id", lambda _sid: "ag_parent")
+    monkeypatch.setattr(runner_app, "register_child_session", lambda *a, **k: None)
+    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_parent_labels":
+            return httpx.Response(200, json={"kind": "default"})
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_parent_labels/child_sessions"
+        ):
+            return httpx.Response(200, json={"data": []})
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_bodies.append(json.loads(request.content))
+            return httpx.Response(201, json={"id": "conv_child_labels"})
+        if (
+            request.method == "POST"
+            and request.url.path == "/v1/sessions/conv_child_labels/events"
+        ):
+            return httpx.Response(202, json={"queued": True})
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        try:
+            output = await execute_tool(
+                tool_name="sys_session_send",
+                arguments=json.dumps(
+                    {"agent": "worker", "title": "auth", "args": {"input": "do it"}}
+                ),
+                server_client=server_client,
+                conversation_id="conv_parent_labels",
+                agent_spec=_spec_with_subagent_harness("claude-sdk"),
+                session_inbox=session_inbox,
+                labels=_SUPERSIDE_CHAT_LABELS,
+            )
+        finally:
+            runner_app.unregister_subagent_work("conv_child_labels")
+            runner_app._session_inboxes_ref.pop("conv_parent_labels", None)
+
+    payload = json.loads(output)
+    assert payload["status"] == "launching"
+    assert len(create_bodies) == 1
+    assert create_bodies[0]["labels"]["omnigent.context.mode"] == "superside-chat"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "override_args",
+    [
+        {"input": "do it", "model": "databricks-claude-sonnet-4-6"},
+        {"input": "do it", "reasoning_effort": "high"},
+    ],
+    ids=["model", "reasoning_effort"],
+)
+async def test_sys_session_send_superside_chat_refuses_dispatch_override(
+    override_args: dict[str, Any],
+) -> None:
+    """A superside-chat caller cannot override the Sub-agent Type's model/effort.
+
+    rollover/CONTEXT.md ("Sub-agent Type"): a chat launches by Type, never
+    by naming a model — the Type's own config.yaml decides.
+    """
+    from omnigent.runner import app as runner_app
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_posts: list[str] = []
+    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_posts.append(str(request.url))
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        try:
+            output = await execute_tool(
+                tool_name="sys_session_send",
+                arguments=json.dumps({"agent": "worker", "title": "auth", "args": override_args}),
+                server_client=server_client,
+                conversation_id="conv_parent_override",
+                agent_spec=_spec_with_subagent_harness("claude-sdk"),
+                session_inbox=session_inbox,
+                labels=_SUPERSIDE_CHAT_LABELS,
+            )
+        finally:
+            runner_app.unregister_subagent_work("conv_child_override")
+            runner_app._session_inboxes_ref.pop("conv_parent_override", None)
+
+    assert output.startswith("Error:")
+    assert "not allowed in superside-chat" in output
+    assert not create_posts, "override must be refused before any child is created"
+
+
+@pytest.mark.asyncio
+async def test_sys_session_send_superside_chat_nesting_cap_refuses_coordinators_child() -> None:
+    """A sub-agent whose own parent is already a sub-agent cannot launch further.
+
+    rollover/CONTEXT.md Relationships: at most two levels below a chat.
+    """
+    from omnigent.runner import app as runner_app
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_posts: list[str] = []
+    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_coordinator_child":
+            return httpx.Response(
+                200,
+                json={
+                    "kind": "sub_agent",
+                    "parent_session_id": "conv_coordinator",
+                    "agent_id": "ag_parent",
+                },
+            )
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_coordinator":
+            return httpx.Response(
+                200, json={"kind": "sub_agent", "parent_session_id": "conv_chat"}
+            )
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_coordinator_child/child_sessions"
+        ):
+            return httpx.Response(200, json={"data": []})
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_posts.append(str(request.url))
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        try:
+            output = await execute_tool(
+                tool_name="sys_session_send",
+                arguments=json.dumps(
+                    {"agent": "worker", "title": "auth", "args": {"input": "do it"}}
+                ),
+                server_client=server_client,
+                conversation_id="conv_coordinator_child",
+                agent_spec=_spec_with_subagent_harness("claude-sdk"),
+                session_inbox=session_inbox,
+                labels=_SUPERSIDE_CHAT_LABELS,
+            )
+        finally:
+            runner_app.unregister_subagent_work("conv_child_nesting")
+            runner_app._session_inboxes_ref.pop("conv_coordinator_child", None)
+
+    assert output.startswith("Error:")
+    assert "nesting cap" in output
+    assert not create_posts
+
+
+@pytest.mark.asyncio
+async def test_sys_session_send_superside_chat_nesting_cap_allows_coordinator() -> None:
+    """A chat's direct sub-agent (a coordinator) may still launch its own."""
+    from omnigent.runner import app as runner_app
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_bodies: list[dict[str, Any]] = []
+    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_coordinator_ok":
+            return httpx.Response(
+                200,
+                json={
+                    "kind": "sub_agent",
+                    "parent_session_id": "conv_chat_ok",
+                    "agent_id": "ag_parent",
+                },
+            )
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_coordinator_ok/child_sessions"
+        ):
+            return httpx.Response(200, json={"data": []})
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_bodies.append(json.loads(request.content))
+            return httpx.Response(201, json={"id": "conv_child_nesting_ok"})
+        if (
+            request.method == "POST"
+            and request.url.path == "/v1/sessions/conv_child_nesting_ok/events"
+        ):
+            return httpx.Response(202, json={"queued": True})
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        try:
+            output = await execute_tool(
+                tool_name="sys_session_send",
+                arguments=json.dumps(
+                    {"agent": "worker", "title": "auth", "args": {"input": "do it"}}
+                ),
+                server_client=server_client,
+                conversation_id="conv_coordinator_ok",
+                agent_spec=_spec_with_subagent_harness("claude-sdk"),
+                session_inbox=session_inbox,
+                labels=_SUPERSIDE_CHAT_LABELS,
+            )
+        finally:
+            runner_app.unregister_subagent_work("conv_child_nesting_ok")
+            runner_app._session_inboxes_ref.pop("conv_coordinator_ok", None)
+
+    assert len(create_bodies) == 1, output
+
+
+@pytest.mark.asyncio
+async def test_sys_session_send_superside_chat_type_concurrency_cap_refuses() -> None:
+    """A Sub-agent Type's own ``max_sessions`` (config.yaml) caps concurrent launches."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_posts: list[str] = []
+    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    spec = SimpleNamespace(
+        sub_agents=[
+            SimpleNamespace(
+                name="worker",
+                executor=SimpleNamespace(type="omnigent", config={"harness": "claude-sdk"}),
+                max_sessions=1,
+            )
+        ]
+    )
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_type_cap":
+            return httpx.Response(200, json={"kind": "default", "agent_id": "ag_parent"})
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_type_cap/child_sessions"
+        ):
+            if "session_name" in request.url.params:
+                # The exact-(agent,title) lookup — no existing child.
+                return httpx.Response(200, json={"data": []})
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": "conv_running_1", "tool": "worker", "busy": True},
+                    ]
+                },
+            )
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_posts.append(str(request.url))
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_send",
+            arguments=json.dumps(
+                {"agent": "worker", "title": "auth-2", "args": {"input": "do it"}}
+            ),
+            server_client=server_client,
+            conversation_id="conv_type_cap",
+            agent_spec=spec,
+            session_inbox=session_inbox,
+            labels=_SUPERSIDE_CHAT_LABELS,
+        )
+
+    assert output.startswith("Error:")
+    assert "concurrency cap" in output
+    assert not create_posts
+
+
+@pytest.mark.asyncio
+async def test_sys_session_send_superside_chat_default_concurrency_cap_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tree-wide default cap (``OMNIGENT_SUBAGENT_MAX_CONCURRENT``) applies
+    across every Sub-agent Type, even under an uncapped Type."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    monkeypatch.setenv("OMNIGENT_SUBAGENT_MAX_CONCURRENT", "1")
+    create_posts: list[str] = []
+    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_default_cap":
+            return httpx.Response(200, json={"kind": "default", "agent_id": "ag_parent"})
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_default_cap/child_sessions"
+        ):
+            if "session_name" in request.url.params:
+                return httpx.Response(200, json={"data": []})
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "conv_other_running", "tool": "drafter", "busy": True}]},
+            )
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_posts.append(str(request.url))
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_send",
+            arguments=json.dumps({"agent": "worker", "title": "auth", "args": {"input": "do it"}}),
+            server_client=server_client,
+            conversation_id="conv_default_cap",
+            agent_spec=_spec_with_subagent_harness("claude-sdk"),
+            session_inbox=session_inbox,
+            labels=_SUPERSIDE_CHAT_LABELS,
+        )
+
+    assert output.startswith("Error:")
+    assert "concurrency cap" in output
+    assert not create_posts
+
+
+@pytest.mark.asyncio
+async def test_sys_session_send_non_superside_chat_skips_new_caps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Outside superside-chat, no nesting/concurrency/override gating applies.
+
+    Same shape as the nesting-cap-refusal case (a sub-agent's sub-agent),
+    but with no ``omnigent.context.mode`` label the dispatch must behave
+    exactly as it did before slice S3.
+    """
+    from omnigent.runner import app as runner_app
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    monkeypatch.setattr(runner_app, "get_session_agent_id", lambda _sid: "ag_parent")
+    monkeypatch.setattr(runner_app, "register_child_session", lambda *a, **k: None)
+    create_bodies: list[dict[str, Any]] = []
+    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_plain_nested/child_sessions"
+        ):
+            return httpx.Response(200, json={"data": []})
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_bodies.append(json.loads(request.content))
+            return httpx.Response(201, json={"id": "conv_child_plain_nested"})
+        if (
+            request.method == "POST"
+            and request.url.path == "/v1/sessions/conv_child_plain_nested/events"
+        ):
+            return httpx.Response(202, json={"queued": True})
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        try:
+            output = await execute_tool(
+                tool_name="sys_session_send",
+                arguments=json.dumps(
+                    {
+                        "agent": "worker",
+                        "title": "auth",
+                        "args": {"input": "do it", "model": "databricks-claude-sonnet-4-6"},
+                    }
+                ),
+                server_client=server_client,
+                conversation_id="conv_plain_nested",
+                agent_spec=_spec_with_subagent_harness("claude-sdk"),
+                session_inbox=session_inbox,
+            )
+        finally:
+            runner_app.unregister_subagent_work("conv_child_plain_nested")
+            runner_app._session_inboxes_ref.pop("conv_plain_nested", None)
+
+    assert len(create_bodies) == 1, output
+    assert create_bodies[0]["model_override"] == "databricks-claude-sonnet-4-6"
+
+
 @pytest.mark.asyncio
 async def test_sys_session_send_blocks_fresh_dispatch_when_harness_cli_missing(
     monkeypatch: pytest.MonkeyPatch,
@@ -5559,7 +5961,7 @@ async def test_sys_cancel_task_stops_subagent_and_dedupes_late_completion(
                 runner_app.mark_subagent_work_terminal(
                     "conv_child_cancel",
                     status="cancelled",
-                    output="[System: sub-agent stopped]",
+                    output=None,
                 )
             return httpx.Response(202, json={"queued": True})
         return httpx.Response(404, json={"error": str(request.url)})
@@ -5921,6 +6323,49 @@ async def test_sys_cancel_task_rejects_foreign_evicted_entry() -> None:
         )
 
     assert posts == []
+    assert output == f"Error: no in-flight task with task_id {child_id}"
+
+
+@pytest.mark.asyncio
+async def test_sys_cancel_task_rejects_foreign_tracked_entry() -> None:
+    """A tracked sub-agent can only be cancelled by its own Originating Chat.
+
+    rollover/SUPERSIDE-CHAT-PLAN.md slice S3 item 7: verify
+    ``sys_cancel_task`` refuses a cancel from a session that is not the
+    work entry's registered ``parent_session_id`` — the primary (non-evicted)
+    ownership guard, distinct from the eviction-recovery path covered by
+    ``test_sys_cancel_task_rejects_foreign_evicted_entry``.
+    """
+    from omnigent.runner import app as runner_app
+    from omnigent.runner.tool_dispatch import _cancel_subagent_task
+
+    child_id = "conv_child_tracked_foreign"
+    runner_app.register_subagent_work(
+        parent_session_id="conv_real_parent",
+        child_session_id=child_id,
+        agent="researcher",
+        title="auth",
+    )
+    posts: list[dict[str, Any]] = []
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        posts.append(json.loads(request.content) if request.content else {})
+        return httpx.Response(204)
+
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(_server_handler),
+            base_url="http://server",
+        ) as server_client:
+            output = await _cancel_subagent_task(
+                {"task_id": child_id},
+                conversation_id="conv_impostor_parent",
+                server_client=server_client,
+            )
+    finally:
+        runner_app.unregister_subagent_work(child_id)
+
+    assert posts == [], "an unauthorized caller must never reach the child's event stream"
     assert output == f"Error: no in-flight task with task_id {child_id}"
 
 
@@ -7739,6 +8184,274 @@ async def test_sys_session_create_spawns_child_under_caller() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sys_session_create_forwards_superside_chat_mode_to_child() -> None:
+    """
+    A superside-chat caller's ``sys_session_create`` stamps
+    ``omnigent.context.mode=superside-chat`` on the child's create body —
+    Side Chats inherit the mode by the fork store copying labels wholesale,
+    but a sub-agent create sends a fresh body, so the mode must be
+    forwarded explicitly (see ``inheritable_context_labels``).
+    """
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    captured: dict[str, Any] = {}
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_caller":
+            return httpx.Response(200, json={"kind": "default"})
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_caller/child_sessions"
+        ):
+            return httpx.Response(200, json={"data": []})
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            captured.update(json.loads(request.content))
+            return httpx.Response(
+                201, json={"id": "conv_child", "agent_id": "ag_x", "agent_name": "researcher"}
+            )
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x"}),
+            server_client=server_client,
+            conversation_id="conv_caller",
+            labels={
+                "omnigent.context.mode": "superside-chat",
+                "omnigent.ui": "terminal",  # not inheritable — must not ride along
+            },
+        )
+
+    assert captured["labels"] == {"omnigent.context.mode": "superside-chat"}
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_omits_labels_without_context_mode() -> None:
+    """A caller with no context-mode label (the default) sends no ``labels``
+    key at all — byte-for-byte the pre-existing body shape."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    captured: dict[str, Any] = {}
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            captured.update(json.loads(request.content))
+            return httpx.Response(
+                201, json={"id": "conv_child", "agent_id": "ag_x", "agent_name": "researcher"}
+            )
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x"}),
+            server_client=server_client,
+            conversation_id="conv_caller",
+        )
+
+    assert "labels" not in captured
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "override_args",
+    [
+        {"agent_id": "ag_x", "model": "databricks-claude-sonnet-4-6"},
+        {"agent_id": "ag_x", "reasoning_effort": "high"},
+    ],
+    ids=["model", "reasoning_effort"],
+)
+async def test_sys_session_create_superside_chat_refuses_dispatch_override(
+    override_args: dict[str, Any],
+) -> None:
+    """``sys_session_create`` is the OTHER spawn path (besides
+    ``sys_session_send``) that must refuse a model/reasoning_effort
+    override in superside-chat sessions — same rule, same helper."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_posts: list[str] = []
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_posts.append(str(request.url))
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps(override_args),
+            server_client=server_client,
+            conversation_id="conv_create_override",
+            labels=_SUPERSIDE_CHAT_LABELS,
+        )
+
+    error = json.loads(output)["error"]
+    assert "not allowed in superside-chat" in error
+    assert not create_posts
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_superside_chat_nesting_cap_refuses() -> None:
+    """A coordinator's child cannot ``sys_session_create`` any further either."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_posts: list[str] = []
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_create_nested":
+            return httpx.Response(
+                200, json={"kind": "sub_agent", "parent_session_id": "conv_create_coordinator"}
+            )
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_create_coordinator":
+            return httpx.Response(
+                200, json={"kind": "sub_agent", "parent_session_id": "conv_create_chat"}
+            )
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_posts.append(str(request.url))
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x"}),
+            server_client=server_client,
+            conversation_id="conv_create_nested",
+            labels=_SUPERSIDE_CHAT_LABELS,
+        )
+
+    error = json.loads(output)["error"]
+    assert "nesting cap" in error
+    assert not create_posts
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_superside_chat_default_concurrency_cap_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``sys_session_create`` counts toward the same tree-wide default cap."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    monkeypatch.setenv("OMNIGENT_SUBAGENT_MAX_CONCURRENT", "1")
+    create_posts: list[str] = []
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_create_cap":
+            return httpx.Response(200, json={"kind": "default"})
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_create_cap/child_sessions"
+        ):
+            return httpx.Response(
+                200, json={"data": [{"id": "conv_other_running", "tool": "worker", "busy": True}]}
+            )
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_posts.append(str(request.url))
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x"}),
+            server_client=server_client,
+            conversation_id="conv_create_cap",
+            labels=_SUPERSIDE_CHAT_LABELS,
+        )
+
+    error = json.loads(output)["error"]
+    assert "concurrency cap" in error
+    assert not create_posts
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_superside_chat_prepends_memory_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new child's queued ``message`` runs through the Memory Profile hook."""
+    from omnigent.runner import tool_dispatch
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    async def _fake_profile(_client: Any, _conversation_id: Any) -> str:
+        return "prefers concise answers"
+
+    monkeypatch.setattr(tool_dispatch, "_fetch_memory_profile_block", _fake_profile)
+    create_bodies: list[dict[str, Any]] = []
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_create_profile":
+            return httpx.Response(200, json={"kind": "default"})
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_create_profile/child_sessions"
+        ):
+            return httpx.Response(200, json={"data": []})
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_bodies.append(json.loads(request.content))
+            return httpx.Response(201, json={"id": "conv_child_profile", "agent_id": "ag_x"})
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x", "message": "do it"}),
+            server_client=server_client,
+            conversation_id="conv_create_profile",
+            labels=_SUPERSIDE_CHAT_LABELS,
+        )
+
+    assert len(create_bodies) == 1
+    sent_text = create_bodies[0]["initial_items"][0]["data"]["content"][0]["text"]
+    assert sent_text == "prefers concise answers\n\ndo it"
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_non_superside_chat_skips_new_caps() -> None:
+    """Outside superside-chat, a model override and nested caller are both fine
+    — sys_session_create's S3 gating must not touch any other session."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    create_bodies: list[dict[str, Any]] = []
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_bodies.append(json.loads(request.content))
+            return httpx.Response(201, json={"id": "conv_child_plain", "agent_id": "ag_x"})
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"agent_id": "ag_x", "model": "databricks-claude-sonnet-4-6"}),
+            server_client=server_client,
+            conversation_id="conv_create_plain",
+        )
+
+    assert len(create_bodies) == 1, output
+    assert create_bodies[0]["model_override"] == "databricks-claude-sonnet-4-6"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "arguments",
     [
@@ -7890,6 +8603,47 @@ async def test_sys_session_create_bundle_mode_uploads_child_under_caller(
     # not the caller's args — the orchestrator needs the NEW agent's id.
     assert handle["agent_id"] == "ag_new"
     assert handle["agent_name"] == "helper"
+
+
+@pytest.mark.asyncio
+async def test_sys_session_create_bundle_mode_forwards_superside_chat_mode(
+    tmp_path: Path,
+) -> None:
+    """The bundle-mode (``config_path``) create forwards the mode label
+    through the multipart ``metadata`` part too, same as agent_id mode."""
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    (tmp_path / "helper.yaml").write_text("name: helper\nprompt: do helpful things\n")
+    create_requests: list[httpx.Request] = []
+
+    async def _server_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_caller":
+            return httpx.Response(200, json={"kind": "default"})
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/sessions/conv_caller/child_sessions"
+        ):
+            return httpx.Response(200, json={"data": []})
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            create_requests.append(request)
+            return httpx.Response(201, json={"session_id": "conv_child", "agent_id": "ag_new"})
+        return httpx.Response(404, json={"error": str(request.url)})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        await execute_tool(
+            tool_name="sys_session_create",
+            arguments=json.dumps({"config_path": "helper.yaml"}),
+            server_client=server_client,
+            conversation_id="conv_caller",
+            runner_workspace=tmp_path,
+            labels={"omnigent.context.mode": "superside-chat"},
+        )
+
+    parts = _parse_multipart_create(create_requests[0])
+    assert parts["metadata"]["labels"] == {"omnigent.context.mode": "superside-chat"}
 
 
 @pytest.mark.asyncio
@@ -11819,32 +12573,6 @@ def test_response_failed_event_llm_source_is_preserved() -> None:
     )
     payload = _json.loads(raw.decode().split("data: ", 1)[1])
     assert payload["source"] == "llm"
-
-
-@pytest.mark.parametrize("blank_message", ["", None])
-def test_response_failed_payload_never_carries_a_blank_message(blank_message: str | None) -> None:
-    """A caller's own blank/missing ``message`` must not survive the merge.
-
-    ``_normalize_turn_error`` computes a safe fallback message, but merging
-    it BEFORE the raw error let the raw error's own ``"message": ""`` (or
-    ``None``) key win the dict-spread and reach the client as a message-less
-    ``response.failed`` event — exactly the "generic turn failed with no
-    message" symptom. Regression for that merge order.
-    """
-    from omnigent.runner.app import _response_failed_payload
-
-    payload = _response_failed_payload({"code": "runner_error", "message": blank_message})
-    assert payload["error"]["message"]
-    assert payload["response"]["error"]["message"]
-
-
-def test_response_failed_payload_keeps_a_real_message() -> None:
-    """A caller's real message is untouched by the normalize-then-merge."""
-    from omnigent.runner.app import _response_failed_payload
-
-    payload = _response_failed_payload({"code": "connection_error", "message": "socket reset"})
-    assert payload["error"]["message"] == "socket reset"
-    assert payload["error"]["code"] == "connection_error"
 
 
 # ---------------------------------------------------------------------------

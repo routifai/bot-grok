@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Memory: Standard vs Muse</title>
+<style>
+:root{
+  --paper:#f4f6f9; --panel:#ffffff; --ink:#162033; --muted:#5d6879; --line:#cfd7e3;
+  --st:#2c7a6b; --sem:#3659a6; --epi:#986812; --pro:#8b3d5c; --how:#4b5566;
+  --same:#9aa6b8; --plus:#c2410c; --plus-soft:#fde8dc;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0f141d; --panel:#161d29; --ink:#e4e9f1; --muted:#9aa5b6; --line:#2c3748;
+    --st:#5fc7b2; --sem:#8fa9ec; --epi:#e2b05a; --pro:#e392b2; --how:#aab3c2;
+    --same:#56627a; --plus:#fb923c; --plus-soft:#3b2414;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:32px 20px 48px}
+main{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{margin:0;font-size:clamp(26px,4vw,36px);line-height:1.15}
+p{margin:0;max-width:72ch;color:var(--muted)}
+.wrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;overflow-x:auto}
+svg{display:block;width:100%;min-width:900px;height:auto;color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:18px;font-size:14px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.k{display:inline-block;width:26px;height:0;border-top:2px solid var(--same)}
+.k.plus{border-top:2px solid var(--plus)}
+.badge{display:inline-block;background:var(--plus-soft);color:var(--plus);border-radius:99px;padding:1px 8px;font-size:12px;font-weight:600}
+footer{font-size:13px;color:var(--muted)}
+.text{display:flex;flex-direction:column;gap:14px;max-width:760px}
+.text h2{margin:18px 0 0;font-size:22px;line-height:1.2}
+.text p,.text li,.text dd{color:var(--ink);max-width:70ch}
+.text ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
+.text dl{margin:0;display:flex;flex-direction:column;gap:6px}
+.text dt{font-weight:700;margin-top:8px}
+.text dd{margin:0}
+.diffs dt{color:var(--plus)}
+.c-sem{color:var(--sem)} .c-epi{color:var(--epi)} .c-pro{color:var(--pro)}
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:.88em;background:var(--paper);border:1px solid var(--line);padding:0 4px;border-radius:4px}
+.bottom{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--plus);border-radius:8px;padding:14px 16px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Agent memory: industry standard vs Muse</h1>
+  <p>Left: the standard model used by LangGraph, Letta (MemGPT), Mem0 and Zep. Right: how Meta's Muse implements each part. Grey links mean Muse does the standard thing; orange marks where Muse goes further or chooses differently.</p>
+
+  <div class="wrap">
+  <svg viewBox="0 0 1000 760" role="img" aria-label="Diagram mapping each standard memory layer and design choice to Muse. Muse matches every layer; it differs in keyword-only chat recall, markdown files as source of truth, a verification gate, a regenerated profile, specialised background jobs and measured self-improvement.">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--same)"/></marker>
+      <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--plus)"/></marker>
+    </defs>
+    <g font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" fill="currentColor">
+
+      <!-- column headers -->
+      <text x="170" y="30" text-anchor="middle" font-size="15" font-weight="700">INDUSTRY STANDARD</text>
+      <text x="170" y="48" text-anchor="middle" font-size="12" fill="var(--muted)">LangGraph · Letta · Mem0 · Zep</text>
+      <text x="800" y="30" text-anchor="middle" font-size="15" font-weight="700">MUSE</text>
+      <text x="800" y="48" text-anchor="middle" font-size="12" fill="var(--muted)">observed in a real account</text>
+
+      <!-- group labels -->
+      <text x="20" y="80" font-size="11" letter-spacing="1.2" fill="var(--muted)">SHORT-TERM · THIS CONVERSATION</text>
+      <text x="20" y="250" font-size="11" letter-spacing="1.2" fill="var(--muted)">LONG-TERM · ACROSS CONVERSATIONS</text>
+      <text x="20" y="560" font-size="11" letter-spacing="1.2" fill="var(--muted)">HOW MEMORY IS WRITTEN AND UPDATED</text>
+
+      <!-- ===== rows: left boxes x=20 w=300 ; right boxes x=640 w=340 ===== -->
+
+      <!-- 1 working memory -->
+      <rect x="20" y="92" width="300" height="58" rx="8" fill="none" stroke="var(--st)" stroke-width="2"/>
+      <text x="36" y="116" font-size="14" font-weight="700" fill="var(--st)">Working memory</text>
+      <text x="36" y="136" font-size="12.5">Context window; trim or summarize when full</text>
+      <rect x="640" y="92" width="340" height="58" rx="8" fill="none" stroke="var(--st)" stroke-width="2"/>
+      <text x="656" y="116" font-size="14" font-weight="700" fill="var(--st)">Context window 350k</text>
+      <text x="656" y="136" font-size="12.5">Compacts at ~150k: summary + recent whole turns</text>
+      <line x1="320" y1="121" x2="638" y2="121" stroke="var(--same)" stroke-width="2" marker-end="url(#a)"/>
+      <text x="479" y="114" text-anchor="middle" font-size="12" fill="var(--muted)">same</text>
+
+      <!-- 2 recall -->
+      <rect x="20" y="162" width="300" height="58" rx="8" fill="none" stroke="var(--st)" stroke-width="2"/>
+      <text x="36" y="186" font-size="14" font-weight="700" fill="var(--st)">Recall</text>
+      <text x="36" y="206" font-size="12.5">Old messages searchable outside the window</text>
+      <rect x="640" y="162" width="340" height="58" rx="8" fill="none" stroke="var(--st)" stroke-width="2"/>
+      <text x="656" y="186" font-size="14" font-weight="700" fill="var(--st)">chat.read_messages + keyword search</text>
+      <text x="656" y="206" font-size="12.5">Paging and full-text only</text>
+      <line x1="320" y1="191" x2="638" y2="191" stroke="var(--plus)" stroke-width="2" marker-end="url(#b)"/>
+      <text x="479" y="184" text-anchor="middle" font-size="12" fill="var(--plus)" font-weight="600">chat never embedded</text>
+
+      <!-- 3 core facts -->
+      <rect x="20" y="262" width="300" height="58" rx="8" fill="none" stroke="var(--sem)" stroke-width="2"/>
+      <text x="36" y="286" font-size="14" font-weight="700" fill="var(--sem)">Semantic: core</text>
+      <text x="36" y="306" font-size="12.5">Small profile shown every turn</text>
+      <rect x="640" y="262" width="340" height="58" rx="8" fill="none" stroke="var(--sem)" stroke-width="2"/>
+      <text x="656" y="286" font-size="14" font-weight="700" fill="var(--sem)">MEMORY.md + USER.md, injected</text>
+      <text x="656" y="306" font-size="12.5">USER.md regenerated from claims when stale</text>
+      <line x1="320" y1="291" x2="638" y2="291" stroke="var(--plus)" stroke-width="2" marker-end="url(#b)"/>
+      <text x="479" y="284" text-anchor="middle" font-size="12" fill="var(--plus)" font-weight="600">profile rebuilt, not edited</text>
+
+      <!-- 4 searched facts -->
+      <rect x="20" y="332" width="300" height="58" rx="8" fill="none" stroke="var(--sem)" stroke-width="2"/>
+      <text x="36" y="356" font-size="14" font-weight="700" fill="var(--sem)">Semantic: searched</text>
+      <text x="36" y="376" font-size="12.5">Vector or graph store, queried by a tool</text>
+      <rect x="640" y="332" width="340" height="58" rx="8" fill="none" stroke="var(--sem)" stroke-width="2"/>
+      <text x="656" y="356" font-size="14" font-weight="700" fill="var(--sem)">memory.claims + vector(384) + tsvector</text>
+      <text x="656" y="376" font-size="12.5">Read with memory_search</text>
+      <line x1="320" y1="361" x2="638" y2="361" stroke="var(--same)" stroke-width="2" marker-end="url(#a)"/>
+      <text x="479" y="354" text-anchor="middle" font-size="12" fill="var(--muted)">same</text>
+
+      <!-- 5 episodic -->
+      <rect x="20" y="402" width="300" height="58" rx="8" fill="none" stroke="var(--epi)" stroke-width="2"/>
+      <text x="36" y="426" font-size="14" font-weight="700" fill="var(--epi)">Episodic</text>
+      <text x="36" y="446" font-size="12.5">Past interactions, retrieved when similar</text>
+      <rect x="640" y="402" width="340" height="58" rx="8" fill="none" stroke="var(--epi)" stroke-width="2"/>
+      <text x="656" y="426" font-size="14" font-weight="700" fill="var(--epi)">Daily logs, experience.md, people pages</text>
+      <text x="656" y="446" font-size="12.5">Markdown files, indexed line by line</text>
+      <line x1="320" y1="431" x2="638" y2="431" stroke="var(--same)" stroke-width="2" marker-end="url(#a)"/>
+      <text x="479" y="424" text-anchor="middle" font-size="12" fill="var(--muted)">same</text>
+
+      <!-- 6 procedural -->
+      <rect x="20" y="472" width="300" height="58" rx="8" fill="none" stroke="var(--pro)" stroke-width="2"/>
+      <text x="36" y="496" font-size="14" font-weight="700" fill="var(--pro)">Procedural</text>
+      <text x="36" y="516" font-size="12.5">Instructions or skills refined by experience</text>
+      <rect x="640" y="472" width="340" height="58" rx="8" fill="none" stroke="var(--pro)" stroke-width="2"/>
+      <text x="656" y="496" font-size="14" font-weight="700" fill="var(--pro)">AGENTS.md, skills, nightly "Dreaming"</text>
+      <text x="656" y="516" font-size="12.5">Changes scored; ones that don't help are retired</text>
+      <line x1="320" y1="501" x2="638" y2="501" stroke="var(--plus)" stroke-width="2" marker-end="url(#b)"/>
+      <text x="479" y="494" text-anchor="middle" font-size="12" fill="var(--plus)" font-weight="600">measured self-improvement</text>
+
+      <!-- 7 write timing -->
+      <rect x="20" y="572" width="300" height="58" rx="8" fill="none" stroke="var(--how)" stroke-width="2"/>
+      <text x="36" y="596" font-size="14" font-weight="700" fill="var(--how)">When written</text>
+      <text x="36" y="616" font-size="12.5">Hot path (tool in the turn) or background</text>
+      <rect x="640" y="572" width="340" height="58" rx="8" fill="none" stroke="var(--how)" stroke-width="2"/>
+      <text x="656" y="596" font-size="14" font-weight="700" fill="var(--how)">Both: MEMORY.md now + upkeep ~hourly</text>
+      <text x="656" y="616" font-size="12.5">Separate jobs: memory, people, dreaming, skills</text>
+      <line x1="320" y1="601" x2="638" y2="601" stroke="var(--plus)" stroke-width="2" marker-end="url(#b)"/>
+      <text x="479" y="594" text-anchor="middle" font-size="12" fill="var(--plus)" font-weight="600">only verified claims kept</text>
+
+      <!-- 8 update policy -->
+      <rect x="20" y="642" width="300" height="58" rx="8" fill="none" stroke="var(--how)" stroke-width="2"/>
+      <text x="36" y="666" font-size="14" font-weight="700" fill="var(--how)">How updated</text>
+      <text x="36" y="686" font-size="12.5">Overwrite (Mem0) or keep history (Zep)</text>
+      <rect x="640" y="642" width="340" height="58" rx="8" fill="none" stroke="var(--how)" stroke-width="2"/>
+      <text x="656" y="666" font-size="14" font-weight="700" fill="var(--how)">Supersede + reinforce + valid_until</text>
+      <text x="656" y="686" font-size="12.5">History kept; files are the source of truth</text>
+      <line x1="320" y1="671" x2="638" y2="671" stroke="var(--plus)" stroke-width="2" marker-end="url(#b)"/>
+      <text x="479" y="664" text-anchor="middle" font-size="12" fill="var(--plus)" font-weight="600">markdown first, DB is index</text>
+
+      <text x="500" y="740" text-anchor="middle" font-size="12.5" fill="var(--muted)">Muse covers every standard layer; the orange links are where it differs.</text>
+    </g>
+  </svg>
+  </div>
+
+  <div class="legend">
+    <span><i class="k"></i> Muse does the standard thing</span>
+    <span><i class="k plus"></i> Muse goes further or chooses differently</span>
+  </div>
+
+  <section class="text">
+    <h2>The standard model in plain words</h2>
+    <p>Every agent memory system separates two things. <b>Short-term memory</b> is what the model sees in the current conversation: its context window. It fills up, so old turns get trimmed or summarized, and a recall tool lets the agent look up exact old messages again. <b>Long-term memory</b> survives across conversations and comes in three kinds:</p>
+    <ul>
+      <li><b class="c-sem">Semantic:</b> facts and preferences about the user ("wants figures in CAD"). Usually split into a small <em>core</em> that is shown every turn and a larger store that is <em>searched</em> when needed.</li>
+      <li><b class="c-epi">Episodic:</b> things that happened ("on Sep 26 we built the bank deck"), retrieved when a similar situation comes up.</li>
+      <li><b class="c-pro">Procedural:</b> how the agent should behave. Instructions or skills it rewrites as it learns; this is what "self-improvement" means.</li>
+    </ul>
+
+    <h2>Three choices every system makes</h2>
+    <dl>
+      <dt>When is memory written?</dt>
+      <dd>In the <b>hot path</b>, by the agent calling a tool during the conversation, or in the <b>background</b>, by a separate process that reads the conversation afterwards (Letta calls it a sleep-time agent). The hot path is immediate; the background is more careful and doesn't slow the reply. Muse does both: the agent edits <code>MEMORY.md</code> in the turn, and an upkeep run distills new conversation about once an hour when there is something new.</dd>
+      <dt>How is memory read?</dt>
+      <dd>Either <b>always in context</b> (a small block injected every turn) or <b>on demand</b> (a search tool). Muse does both: its curated files are injected, and its claims are searched with <code>memory_search</code>.</dd>
+      <dt>What happens when a fact changes?</dt>
+      <dd>Some systems <b>overwrite</b>: Mem0's model decides ADD, UPDATE, DELETE or NOOP for each new fact. Others <b>keep history</b>: Zep gives every fact a valid-from and valid-to date. Muse keeps history: a new claim supersedes the old one, a repeated one is reinforced, and <code>valid_until</code> retires facts that expire.</dd>
+    </dl>
+
+    <h2>Where Muse differs, link by link</h2>
+    <dl class="diffs">
+      <dt>Recall: chat never embedded</dt>
+      <dd>Letta and Zep put the conversation itself into a vector index or graph. Muse doesn't: old messages are read by paging (<code>chat.read_messages</code>) and keyword search. Only distilled memory gets vectors, so the vector index stays small and clean.</dd>
+      <dt>Core: profile rebuilt, not edited</dt>
+      <dd><code>USER.md</code> is regenerated from the claims, and only when it is out of date (a real run reported "projection_already_current"). The claims are the truth; the profile is a view of them, so it can't drift.</dd>
+      <dt>Procedural: measured self-improvement</dt>
+      <dd>A nightly job reviews what worked and writes a synthesis of how to act for this user, and a daily job turns recurring work into skills. Each change is scored over a time window (<code>calibration_records</code>) and "changes that measurably don't help are retired". Most systems rewrite instructions without checking.</dd>
+      <dt>Writing: only verified claims kept</dt>
+      <dd>Mem0-style systems store whatever the model extracts. Muse's upkeep run keeps a candidate only if it passes verification. One real run read 106 rows and inserted no claims at all. Muse never revealed the exact verification rule.</dd>
+      <dt>Updates: markdown first, database as index</dt>
+      <dd>Muse's memory is plain markdown files that the user can read and edit (<code>MEMORY.md</code>, a dated log per day, people pages). The database with its embeddings is only an index over those files. Most systems are database first, with no human-readable source.</dd>
+    </dl>
+
+    <h2>Bottom line</h2>
+    <p class="bottom">Muse is the textbook design built completely: short-term context with compaction and recall, long-term facts, events and behaviour, written both in the turn and in the background, read as an always-shown core plus search. It stands out by being careful about what it writes (a verification gate, history kept, the profile derived from claims) and by checking that its own self-improvement actually helps.</p>
+  </section>
+
+  <footer>Muse facts: the user's Muse session on 2026-09-30 (database queries, docs, system prompt). Industry: LangChain memory docs, LangMem, Letta agent memory, Mem0, Zep (arXiv 2501.13956).</footer>
+</main>
+</body>
+</html>

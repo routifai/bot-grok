@@ -44,6 +44,13 @@ from omnigent.tools.builtins.load_skill import (
     format_skill_meta_text,
     list_skill_resources,
 )
+from omnigent.tools.builtins.memory import (
+    MemoryExplainTool,
+    MemoryForgetTool,
+    MemoryGetTool,
+    MemoryRememberTool,
+    MemorySearchTool,
+)
 from omnigent.tools.builtins.nimble_extract import NimbleExtractTool
 from omnigent.tools.builtins.nimble_research import NimbleResearchTool
 from omnigent.tools.builtins.read_skill_file import (
@@ -55,7 +62,9 @@ from omnigent.tools.builtins.scheduled_tasks import (
     SysScheduledTaskListTool,
     SysScheduledTaskUpdateTool,
 )
+from omnigent.tools.builtins.session_history import SessionHistoryTool
 from omnigent.tools.builtins.session_rename import SysSessionRenameTool
+from omnigent.tools.builtins.side_chat import SideChatOpenTool
 from omnigent.tools.builtins.spawn import (
     SysSessionCloseTool,
     SysSessionCreateTool,
@@ -75,12 +84,18 @@ from omnigent.tools.builtins.web_search import WebSearchTool
 __all__ = [
     "BUILTIN_NAMES",
     "INSTANTIABLE_BUILTINS",
-    "SERVER_BUILTIN_NAMES",
     "ListCommentsTool",
     "LoadSkillTool",
+    "MemoryExplainTool",
+    "MemoryForgetTool",
+    "MemoryGetTool",
+    "MemoryRememberTool",
+    "MemorySearchTool",
     "NimbleExtractTool",
     "NimbleResearchTool",
     "ReadSkillFileTool",
+    "SessionHistoryTool",
+    "SideChatOpenTool",
     "SysAdviseModelsTool",
     "SysAgentDownloadTool",
     "SysAgentGetTool",
@@ -268,6 +283,26 @@ _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     "web_fetch": None,
     "list_comments": None,
     "update_comment": None,
+    # ``session_history`` is auto-registered by
+    # ``ToolManager._register_session_history_tool`` for rollover sessions
+    # only (label-driven, see omnigent/context/labels.py). Reserved here so
+    # user specs cannot shadow it.
+    "session_history": None,
+    # The ``memory_*`` family is auto-registered by
+    # ``ToolManager._register_memory_tools`` for rollover sessions only,
+    # same label gate as ``session_history``. Reserved here so user specs
+    # cannot shadow them.
+    "memory_remember": None,
+    "memory_search": None,
+    "memory_get": None,
+    "memory_explain": None,
+    "memory_forget": None,
+    # ``side_chat_open`` is auto-registered by
+    # ``ToolManager._register_side_chat_tools`` for superside-chat sessions
+    # only (label-driven, see omnigent/superchat/chats.py). Runner-dispatched
+    # (``omnigent/runner/tool_dispatch.py``) — reserved here so user specs
+    # cannot shadow it.
+    "side_chat_open": None,
     # ``sys_list_models`` is auto-registered by
     # ``ToolManager._register_sub_agent_tools`` with the dispatch grant
     # and intercepted by name in the runner's tool dispatch — reserved
@@ -305,22 +340,6 @@ if _hindsight_available():
             "hindsight_reflect": _create_hindsight_reflect,
         }
     )
-
-# Nova's primitives contribute built-in tools (omnigent/nova/*/tools.py).
-from omnigent.nova import tools as _nova_tools  # noqa: E402
-
-_nova_tool_factories = _nova_tools()
-_BUILTIN_REGISTRY.update(_nova_tool_factories)
-
-# Nova's tools read/write the Omnigent database (conversation store,
-# permission grants, Nova's own tables) through process-global state that
-# only the server initializes. A runner process — a person's laptop or a
-# sandbox container — has no such access, so these names must never be
-# executed in-process on the runner; the runner instead proxies them to a
-# server endpoint (see ``execute_tool`` in omnigent/runner/tool_dispatch.py).
-# Derived from the same factories registered above so there is one source
-# of truth for "which builtins are Nova's".
-SERVER_BUILTIN_NAMES: frozenset[str] = frozenset(_nova_tool_factories.keys())
 
 # Canonical set of every reserved builtin name. Derived from
 # the registry so there is a single source of truth — no drift

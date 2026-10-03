@@ -424,6 +424,46 @@ class UpdateSessionPolicyRequest(BaseModel):
     enabled: bool | None = None
 
 
+# ── Long-term memory ────────────────────────────────────────────────
+
+
+class MemoryRememberRequest(BaseModel):
+    """
+    Request body for ``POST /v1/sessions/{session_id}/memory/remember``.
+
+    :param text: One self-contained sentence describing the claim.
+    :param kind: One of the memory claim kinds (see
+        ``omnigent.memory.service.VALID_KINDS``). Defaults to ``"fact"``
+        when omitted or unrecognized.
+    :param quote: The user's exact words this claim is drawn from.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    kind: str | None = None
+    quote: str | None = None
+    replaces_claim_id: str | None = None
+
+
+class MemoryForgetRequest(BaseModel):
+    """
+    Request body for ``POST /v1/sessions/{session_id}/memory/forget``.
+
+    :param claim_id: Claim to forget, when known.
+    :param query: Search query identifying the claim, when ``claim_id``
+        isn't known.
+    :param confirm: ``False`` (default) returns a plan without mutating
+        anything; ``True`` executes it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim_id: str | None = None
+    query: str | None = None
+    confirm: bool = False
+
+
 # ── Default Policies ──────────────────────────────────────────────
 
 
@@ -1001,6 +1041,8 @@ class CreateResponseRequest(BaseModel):
         this single request. Drives the REPL's ``/model`` command.
     :param context_management: Compaction strategy objects,
         e.g. ``[{"type": "compaction", ...}]``.
+    :param context_mode: The session's ``omnigent.context.mode`` label
+        value, e.g. ``"superside-chat"``. ``None`` for a plain session.
     :param temperature: Ignored — agent controls this. Silently
         dropped.
     :param top_p: Ignored — agent controls this. Silently
@@ -1056,6 +1098,11 @@ class CreateResponseRequest(BaseModel):
     model_override: str | None = None
     # Compaction strategy objects, e.g. [{"type": "compaction", ...}]
     context_management: list[dict[str, Any]] | None = None
+    # The session's ``omnigent.context.mode`` label value (e.g.
+    # ``"superside-chat"``, ``"rollover"``), forwarded by the runner so an
+    # inner executor can tell which Omnigent-owned context mode (if any) a
+    # turn runs under. ``None`` for a plain session.
+    context_mode: str | None = None
     # Ignored fields — agent controls these; silently dropped.
     # Typed loosely because we only need to accept and discard them.
     temperature: float | None = None
@@ -1818,72 +1865,6 @@ class SessionLabelsResponse(BaseModel):
 
     id: str
     labels: dict[str, str] = Field(default_factory=dict)
-
-
-class DeploymentContextRequest(BaseModel):
-    """
-    Request body for ``POST /v1/sessions/{id}/deployment-context``.
-
-    Sent by the runner once per turn so the server — which holds the
-    ``OMNIGENT_CONTEXT_PROVIDER_SECRET`` — can call the deployment's
-    context provider on the runner's behalf. The runner never sees the
-    provider URL or secret; a local (``omnigent host``) runner must not
-    hold either.
-
-    :param agent_name: The dispatched agent's name/id for this turn,
-        e.g. ``"research-agent"``. ``None`` when not resolved.
-    :param harness: Canonical harness name for this turn, e.g. ``"pi"``.
-        ``None`` when not resolved.
-    :param turn_input: The latest user message text for this turn.
-        Truncated server-side before being forwarded to the provider.
-    """
-
-    agent_name: str | None = None
-    harness: str | None = None
-    turn_input: str = ""
-
-
-class DeploymentContextResponse(BaseModel):
-    """
-    Response body for ``POST /v1/sessions/{id}/deployment-context``.
-
-    :param block: The already-wrapped ``<deployment_context>...</deployment_context>``
-        block to append to the turn's composed instructions, or ``""``
-        when the provider is unconfigured, empty, or unavailable.
-    """
-
-    block: str = ""
-
-
-class BuiltinToolExecuteRequest(BaseModel):
-    """
-    Request body for ``POST /v1/sessions/{id}/builtin-tools/execute``.
-
-    Sent by the runner when the LLM calls a server-only builtin (Nova's
-    ``nova_*`` family — see ``SERVER_BUILTIN_NAMES`` in
-    ``omnigent/tools/builtins/__init__.py``): one that needs the Omnigent
-    database, which a runner process has no access to.
-
-    :param tool_name: The builtin's registered name, e.g. ``"nova_remember"``.
-        Must be a member of ``SERVER_BUILTIN_NAMES`` — the server rejects
-        anything else.
-    :param arguments: The LLM's JSON-encoded arguments string, forwarded
-        verbatim to the tool's ``invoke``.
-    """
-
-    tool_name: str
-    arguments: str = "{}"
-
-
-class BuiltinToolExecuteResponse(BaseModel):
-    """
-    Response body for ``POST /v1/sessions/{id}/builtin-tools/execute``.
-
-    :param output: The tool's ``invoke`` return value — a JSON string the
-        runner forwards to the harness verbatim as the tool's result.
-    """
-
-    output: str
 
 
 # Stages of a managed-sandbox launch, in pipeline order: the sandbox

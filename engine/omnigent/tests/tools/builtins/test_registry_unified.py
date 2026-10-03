@@ -127,17 +127,6 @@ def test_builtin_names_size_matches_registry() -> None:
                 "hindsight_retain",
                 "hindsight_recall",
                 "hindsight_reflect",
-                # Nova (omnigent/nova): run on the server; see SERVER_BUILTIN_NAMES.
-                "nova_remember",
-                "nova_recall_episodes",
-                "nova_goals",
-                "nova_ask_user",
-                "nova_follow_topic",
-                "nova_unfollow_topic",
-                "nova_post_to_feed",
-                "nova_offer_skill",
-                "nova_save_skill",
-                "nova_load_skill",
                 # Framework-owned (need runtime context, not
                 # user-instantiable). Policy ASKs surface as
                 # MCP-shape elicitations on the SSE stream and
@@ -166,6 +155,21 @@ def test_builtin_names_size_matches_registry() -> None:
                 "browser_click",
                 "browser_type",
                 "browser_screenshot",
+                # session_history: auto-registered by ToolManager only for
+                # a rollover session (label-driven, not a spec opt-in —
+                # see ToolManager._register_session_history_tool).
+                "session_history",
+                # memory_*: same rollover-only, label-driven gate as
+                # session_history (see ToolManager._register_memory_tools).
+                "memory_remember",
+                "memory_search",
+                "memory_get",
+                "memory_explain",
+                "memory_forget",
+                # side_chat_open: auto-registered by ToolManager only for a
+                # superside-chat session (label-driven, not a spec opt-in —
+                # see ToolManager._register_side_chat_tools). Runner-dispatched.
+                "side_chat_open",
             }
         )
         == BUILTIN_NAMES

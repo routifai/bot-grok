@@ -30,6 +30,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from omnigent.codex_approval_modes import (
     CODEX_NATIVE_PERMISSION_VALUES,
 )
+from omnigent.context.labels import uses_omnigent_context
 from omnigent.db.utils import generate_agent_id, generate_file_id
 from omnigent.debug_logging import add_audit_attrs, debug_event, set_current_runner_id
 from omnigent.entities import (
@@ -41,6 +42,7 @@ from omnigent.entities import (
 )
 from omnigent.entities.permission import SessionPermission
 from omnigent.errors import ErrorCategory, ErrorCode, ErrorImpact, ErrorPhase, OmnigentError
+from omnigent.models.model_fallbacks import ROLLOVER_SUMMARY_FALLBACK_MODEL
 from omnigent.models.model_override import validate_model_override
 from omnigent.runner.identity import (
     RUNNER_TUNNEL_TOKEN_HEADER,
@@ -52,10 +54,6 @@ from omnigent.runtime import (
     user_session_stream,
 )
 from omnigent.runtime.agent_cache import AgentCache
-from omnigent.runtime.context_provider import (
-    context_provider_configured,
-    fetch_deployment_context,
-)
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
 from omnigent.server._elicitation_registry import (
     _harness_elicitation_owners,
@@ -83,9 +81,6 @@ from omnigent.server.host_registry import HostRegistry, RunnerExitReports
 from omnigent.server.permissions import check_session_access
 from omnigent.server.routes._auth_helpers import (
     get_permission_level as _get_permission_level,
-)
-from omnigent.server.routes._auth_helpers import (
-    get_session_owner_id as _get_session_owner_id,
 )
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
@@ -160,6 +155,7 @@ from omnigent.server.routes._sessions.helpers import (
     _require_cost_control_label_authority,
     _require_permission_mode_forward,
     _reset_runner_resources_after_switch,
+    _resolve_llm_model,
     _same_provider_family,
     _session_status_cache,
     _session_status_from_cache,
@@ -194,11 +190,7 @@ from omnigent.server.routes._sessions.orchestration import (
 from omnigent.server.schemas import (
     AutomaticSessionRenameRequest,
     AutomaticSessionRenameResponse,
-    BuiltinToolExecuteRequest,
-    BuiltinToolExecuteResponse,
     CreatedSessionResponse,
-    DeploymentContextRequest,
-    DeploymentContextResponse,
     PaginatedList,
     ProjectSessionCreateRequest,
     ReadStatePutRequest,
@@ -1313,149 +1305,6 @@ def register_core_routes(
             # user's pin key to a native harness bridge).
             labels=labels_with_closed_status(_labels_for_viewer(conv.labels, user_id), conv.title),
         )
-
-    @router.post(
-        "/sessions/{session_id}/deployment-context",
-        response_model=DeploymentContextResponse,
-        # Internal runner callback — hidden from the public API reference,
-        # like the sibling POST /sessions/{id}/events ingestion route.
-        include_in_schema=False,
-    )
-    async def get_deployment_context(
-        request: Request,
-        response: Response,
-        session_id: str,
-        body: DeploymentContextRequest,
-    ) -> DeploymentContextResponse:
-        """
-        Call the deployment's context-provider hook on the runner's behalf.
-
-        The ``OMNIGENT_CONTEXT_PROVIDER_URL`` / ``_SECRET`` hook must be
-        called from the server, never from a runner — a runner can be a
-        user's own laptop (``omnigent host``) and must never hold the
-        provider secret, and a local runner may not even be able to reach
-        the provider network. The runner instead POSTs here once per turn
-        with the turn-local fields it knows (``agent_name``, ``harness``,
-        ``turn_input``); the server resolves ``user_id`` (the session
-        owner) and ``labels`` itself from its own stores rather than
-        trusting values a runner could supply for an arbitrary session.
-
-        Only the session owner may call it. The block can carry the
-        owner's private context (memory, goals), so a collaborator the
-        session is shared with must not be able to read it. Both runner
-        kinds authenticate as the owner: a managed-sandbox runner with a
-        bearer :meth:`AuthProvider.mint_runner_token` minted for the owner
-        (see ``omnigent/server/auth.py``), and a local ``omnigent host``
-        runner with the owner's own credential.
-
-        :param request: The incoming FastAPI request (for auth).
-        :param response: The FastAPI response (for cache headers).
-        :param session_id: Session/conversation identifier.
-        :param body: Turn-local fields the runner cannot resolve itself.
-        :returns: ``{"block": "..."}`` — already wrapped in
-            ``<deployment_context>``, or ``""`` when unconfigured,
-            empty, or unavailable.
-        :raises OmnigentError: 404 if no session exists / not accessible.
-        """
-        response.headers["Cache-Control"] = "no-store"
-        user_id = _get_user_id(request, auth_provider)
-        access = await _require_access_and_level(
-            user_id, session_id, LEVEL_OWNER, permission_store, conversation_store
-        )
-        conv = access.conversation
-        if conv is None:
-            conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
-        if conv is None:
-            raise _session_not_found()
-        if not context_provider_configured():
-            return DeploymentContextResponse(block="")
-        # The caller is the owner (checked above); resolved from the store
-        # anyway so the provider never sees an identity the caller chose.
-        owner_id = _get_session_owner_id(session_id, permission_store) or user_id
-        labels = labels_with_closed_status(_labels_for_viewer(conv.labels, owner_id), conv.title)
-        block = await fetch_deployment_context(
-            session_id=session_id,
-            agent_name=body.agent_name,
-            harness=body.harness,
-            user_id=owner_id,
-            labels=labels,
-            turn_input=body.turn_input,
-        )
-        return DeploymentContextResponse(block=block)
-
-    @router.post(
-        "/sessions/{session_id}/builtin-tools/execute",
-        response_model=BuiltinToolExecuteResponse,
-        # Internal runner callback — hidden like deployment-context above.
-        include_in_schema=False,
-    )
-    async def execute_builtin_tool_on_server(
-        request: Request,
-        response: Response,
-        session_id: str,
-        body: BuiltinToolExecuteRequest,
-    ) -> BuiltinToolExecuteResponse:
-        """
-        Run a server-only builtin tool on the runner's behalf.
-
-        Nova's ``nova_*`` tools (memory, goals, episodes, asks, feed, skills)
-        need the Omnigent database — the conversation store, permission
-        grants, and Nova's own tables — which a runner process (a person's
-        laptop or a sandbox container) has no access to. The runner POSTs
-        here instead of dispatching the call in-process; only names in
-        ``SERVER_BUILTIN_NAMES`` may run this way. The server resolves the
-        session's conversation id and identity itself rather than trusting
-        anything a runner could forward.
-
-        Only the session owner may call it, exactly like
-        ``deployment-context`` above: both runner kinds (a managed-sandbox
-        runner with a bearer token minted for the owner, and a local
-        ``omnigent host`` runner with the owner's own credential)
-        authenticate as the owner already.
-
-        :param request: The incoming FastAPI request (for auth).
-        :param response: The FastAPI response (for cache headers).
-        :param session_id: Session/conversation identifier.
-        :param body: The tool name and its JSON-encoded arguments.
-        :returns: ``{"output": "..."}`` — the tool's raw ``invoke`` result.
-        :raises OmnigentError: 404 if no session exists / not accessible;
-            400 if ``tool_name`` is not a server-executable builtin.
-        """
-        from omnigent.tools.base import ToolContext
-        from omnigent.tools.builtins import SERVER_BUILTIN_NAMES, get_builtin_tool
-
-        response.headers["Cache-Control"] = "no-store"
-        user_id = _get_user_id(request, auth_provider)
-        access = await _require_access_and_level(
-            user_id, session_id, LEVEL_OWNER, permission_store, conversation_store
-        )
-        conv = access.conversation
-        if conv is None:
-            conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
-        if conv is None:
-            raise _session_not_found()
-
-        if body.tool_name not in SERVER_BUILTIN_NAMES:
-            raise OmnigentError(
-                f"{body.tool_name!r} is not a server-executable builtin tool",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        tool = get_builtin_tool(body.tool_name)
-        if tool is None:  # pragma: no cover — SERVER_BUILTIN_NAMES always registers
-            raise OmnigentError(
-                f"builtin tool {body.tool_name!r} is not registered",
-                code=ErrorCode.INVALID_INPUT,
-            )
-
-        # The server sets conversation_id and agent_id from its own resolved
-        # session row — never from anything the runner could have supplied.
-        ctx = ToolContext(
-            task_id=session_id,
-            agent_id=conv.agent_id or "server-builtin-tool",
-            conversation_id=session_id,
-        )
-        output = await asyncio.to_thread(tool.invoke, body.arguments, ctx)
-        return BuiltinToolExecuteResponse(output=output)
 
     # ── GET /sessions ───────────────────────────────────────────
 
@@ -2974,6 +2823,10 @@ def register_core_routes(
                     "type": "codex_approval_mode_change",
                     "approval_mode": requested_codex_approval_mode,
                 },
+                # The runner drives Codex's /permissions popup — reading the rows,
+                # pressing the preset's digit, then confirming the echo — which
+                # outlasts the default forward budget.
+                timeout_s=_TUI_INJECT_FORWARD_TIMEOUT_S,
             )
             # Raises unless the runner drove the /permissions popup, so the label
             # can never claim a preset the Codex TUI wasn't switched to. Codex owns
@@ -3102,6 +2955,66 @@ def register_core_routes(
             runner_exit_reports=runner_exit_reports,
             viewer_id=user_id,
             request=request,
+        )
+
+    async def _seed_rollover_side_chat(new_conv_id: str, source_id: str) -> None:
+        """
+        Append the fork's seed checkpoint: parent summary + recent tail.
+
+        A rollover side chat must not inherit the parent's full transcript.
+        Reuses the parent's latest compaction summary when one exists
+        (folding in only what happened since); builds one now, over the
+        whole record, when the parent never rolled over yet.
+        """
+        from omnigent.context.rollover import (
+            build_side_chat_seed,
+            resolve_keep_tokens,
+        )
+        from omnigent.entities import NewConversationItem
+
+        items: list[dict[str, Any]] = []
+        after: str | None = None
+        while True:
+            page = await asyncio.to_thread(
+                conversation_store.list_items,
+                source_id,
+                limit=500,
+                after=after,
+                order="asc",
+            )
+            items.extend(m.to_api_dict() for m in page.data)
+            if not page.has_more:
+                break
+            after = page.last_id
+        if not items:
+            return
+
+        source_conv = await asyncio.to_thread(conversation_store.get_conversation, source_id)
+        model = (
+            _resolve_llm_model(source_conv, agent_store=agent_store)
+            or ROLLOVER_SUMMARY_FALLBACK_MODEL
+        )
+        runner_client = await _get_runner_client(
+            source_id, runner_router, conversation=source_conv
+        )
+        seed_labels = source_conv.labels if source_conv else None
+        seed = await build_side_chat_seed(
+            items,
+            keep_tokens=resolve_keep_tokens(seed_labels),
+            model=model,
+            runner_client=runner_client,
+            conversation_id=source_id,
+        )
+        await asyncio.to_thread(
+            conversation_store.append,
+            new_conv_id,
+            [
+                NewConversationItem(
+                    type="compaction",
+                    response_id=f"rollover_seed_{new_conv_id}",
+                    data=seed,
+                )
+            ],
         )
 
     # ── POST /sessions/{source_id}/fork ─────────────────────────
@@ -3398,6 +3311,10 @@ def register_core_routes(
         if switching_agent:
             dropped_label_keys_set.add(_CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY)
         dropped_label_keys: frozenset[str] = frozenset(dropped_label_keys_set)
+        # A side chat forked from a rollover super chat stays a rollover
+        # session (labels carry over untouched) — seeded from the parent's
+        # checkpoint below, not its full transcript.
+        source_is_rollover = uses_omnigent_context(source.labels)
 
         # DANGEROUS codex full-bypass. The source's bypass label is always
         # dropped above (instance-scoped), so a bypass-armed source never
@@ -3451,10 +3368,14 @@ def register_core_routes(
         # OWN fresh sandbox, whose filesystem has no copy of the source's local
         # native rollout, so the clone is likewise doomed — skip the directive
         # so the runner rebuilds from the copied Omnigent items instead.
+        # A rollover side chat is the same case for a different reason:
+        # cloning the source's rollout verbatim would hand the CLI the
+        # parent's full transcript, defeating the seed appended below.
         resume_source_native_session = (
             (not switching_agent or copy_model_settings)
             and not target_is_cursor
             and body.host_type != "managed"
+            and not (body.side_chat and source_is_rollover)
         )
 
         # On an agent switch, recompute the Web UI presentation labels for
@@ -3609,6 +3530,21 @@ def register_core_routes(
                 str(exc),
                 code=ErrorCode.INVALID_INPUT,
             ) from exc
+
+        if body.side_chat and source_is_rollover:
+            # Appended AFTER the deep copy so it is the fork's LATEST item —
+            # resume rebuilders restart there. Best-effort: a failure here
+            # just leaves the full copy in place, never breaks the fork.
+            try:
+                await _seed_rollover_side_chat(new_conv.id, source_id)
+            except Exception:
+                _logger.warning(
+                    "rollover side-chat seed failed for fork %s of %s; "
+                    "leaving the full copied history in place",
+                    new_conv.id,
+                    source_id,
+                    exc_info=True,
+                )
 
         # Create the fork-owned rows the rewritten items now reference —
         # before the fork is announced or returned, so no reader sees the ids

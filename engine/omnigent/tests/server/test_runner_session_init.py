@@ -221,38 +221,6 @@ def test_reconnect_init_envelope_carries_fork_history_directives(db_uri: str) ->
     assert metadata.fork_source_external_id == "src-claude-sid"
 
 
-def test_init_payload_advertises_deployment_context_provider_state(
-    db_uri: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The envelope's provider flag reflects the *server's* env, not the runner's.
-
-    ``build_runner_session_init_payload`` runs in the server process (it's
-    called from ``omnigent/server/routes/sessions/routes_core.py`` and
-    ``omnigent/server/runner_session_init.py``), so
-    ``context_provider_configured()`` here reads the server's own
-    ``OMNIGENT_CONTEXT_PROVIDER_URL`` — this is the cheap channel that lets
-    the runner skip its per-turn deployment-context call entirely when the
-    deployment has no provider, without an extra round-trip to find that
-    out.
-    """
-    agent_store = SqlAlchemyAgentStore(db_uri)
-    conversation_store = SqlAlchemyConversationStore(db_uri)
-    agent = agent_store.create(generate_agent_id(), "provider-flag-agent", "bundle/loc")
-    conv = conversation_store.create_conversation(agent_id=agent.id)
-
-    monkeypatch.delenv("OMNIGENT_CONTEXT_PROVIDER_URL", raising=False)
-    payload = build_runner_session_init_payload(conv, server_version="0.6.0.dev0")
-    envelope = parse_runner_session_init_envelope(payload)
-    assert envelope is not None
-    assert envelope.snapshot.deployment_context_provider_configured is False
-
-    monkeypatch.setenv("OMNIGENT_CONTEXT_PROVIDER_URL", "https://provider.test/context")
-    payload = build_runner_session_init_payload(conv, server_version="0.6.0.dev0")
-    envelope = parse_runner_session_init_envelope(payload)
-    assert envelope is not None
-    assert envelope.snapshot.deployment_context_provider_configured is True
-
-
 @pytest.mark.asyncio
 async def test_recovery_has_own_readiness_and_stable_identity_across_failed_posts() -> None:
     registry, client = _Registry(), _Client()
@@ -421,3 +389,27 @@ async def test_init_logs_rejection_retry_and_cached_success_once() -> None:
     assert events[0]["attributes"]["resume_interrupted_turn"] == "False"
     assert events[0]["attributes"]["suppress_recovery_turn"] == "False"
     assert "recovery_id" not in events[0]["attributes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionError("tunnel closed before request completed"),
+        httpx.ConnectError("runner 'runner_init' is offline"),
+    ],
+)
+async def test_init_attributes_dropped_tunnel_to_runner(error: Exception) -> None:
+    """Both shapes the tunnel transport raises for a vanished runner."""
+    from tests.debug_log_helpers import capture_debug_rows
+
+    class _DroppedTunnelClient(_Client):
+        async def post(self, _path: str, **kwargs: Any) -> httpx.Response:
+            raise error
+
+    initializer = RunnerSessionInitializer(_Registry(), server_version="test")  # type: ignore[arg-type]
+    with capture_debug_rows("server") as rows, pytest.raises(type(error)):
+        await initializer.initialize(_conversation(), _DroppedTunnelClient(), timeout=1)  # type: ignore[arg-type]
+    [failed] = [row for row in rows if row["event_name"] == "runner_session_init_failed"]
+    assert failed["attributes"]["error_category"] == "runner"
+    assert failed["attributes"]["error_impact"] == "transient"

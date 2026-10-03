@@ -13,9 +13,15 @@ from omnigent.harnesses.codex_native.launch_args import (
     absolute_codex_path,
     canonical_codex_launch_args,
     codex_config_profile,
+    codex_rollover_config_overrides,
     materialize_codex_config_profile,
     redact_codex_launch_args,
 )
+
+
+def test_codex_rollover_config_overrides_set_the_compact_ceiling() -> None:
+    """Rollover moves Codex's own auto-compact to the session's threshold."""
+    assert codex_rollover_config_overrides(90_000) == ["model_auto_compact_token_limit=90000"]
 
 
 def test_codex_paths_expand_home_without_resolving_symlinks(

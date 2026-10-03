@@ -11,10 +11,6 @@ Tool categories:
 - _REST_TOOLS: call server REST APIs (sys_call_async, sys_cancel_async)
 - _FILE_TOOLS: call server file APIs (sys_upload/download/list_files)
 - _TERMINAL_TOOLS: runner-local TerminalRegistry
-- SERVER_BUILTIN_NAMES (omnigent.tools.builtins): Nova's ``nova_*`` tools,
-  which need the Omnigent database — proxied to
-  ``POST /v1/sessions/{id}/builtin-tools/execute`` over ``server_client``,
-  the same posture as ``_SCHEDULED_TASK_TOOLS`` / ``_POLICY_TOOLS``
 - MCP tools: spec-defined; dispatched via RunnerMcpManager passed
   in by proxy_stream (designs/RUNNER_MCP.md). Not in the static
   allow-list because names vary per spec.
@@ -34,11 +30,30 @@ import re
 import tempfile
 import uuid
 import weakref
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from omnigent.context.labels import (
+    inheritable_context_labels,
+    is_rollover,
+    is_superside_chat,
+    uses_omnigent_context,
+)
+from omnigent.superchat.chats import (
+    build_side_chat_blank_create_body,
+    build_side_chat_fork_body,
+    refuse_side_chat_open,
+)
+from omnigent.superchat.subagents import (
+    count_live_children,
+    prepend_memory_profile,
+    refuse_subagent_concurrency,
+    refuse_subagent_dispatch_override,
+    refuse_subagent_nesting,
+    resolve_default_concurrency_cap,
+)
 from omnigent.util.json_types import JsonObject as _JsonObject
 
 if TYPE_CHECKING:
@@ -70,7 +85,7 @@ from omnigent.runtime import pending_elicitations
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result, native_image_payload
 from omnigent.tools import ToolManager
 from omnigent.tools.base import Tool, ToolContext
-from omnigent.tools.builtins import SERVER_BUILTIN_NAMES
+from omnigent.tools.builtins import session_history as _session_history
 from omnigent.tools.builtins._arguments import parse_json_object_arguments
 from omnigent.tools.builtins.async_inbox import (
     SysCallAsyncTool,
@@ -88,7 +103,9 @@ from omnigent.tools.builtins.os_env import (
     SysOsShellTool,
     SysOsWriteTool,
 )
+from omnigent.tools.builtins.session_history import SessionHistoryTool, status_from_labels
 from omnigent.tools.builtins.session_rename import SysSessionRenameTool
+from omnigent.tools.builtins.side_chat import SideChatOpenTool
 from omnigent.tools.builtins.spawn import (
     # Shared contract values with the in-process sys_session_* tools. Imported
     # (not duplicated) so the runner's REST-backed peek clamps to the same
@@ -312,6 +329,23 @@ _SESSION_QUERY_TOOLS = frozenset(
 
 _SESSION_SELF_WRITE_TOOLS = frozenset({SysSessionRenameTool.name()})
 
+# Rollover recall — read/search/status over the CALLING session's own
+# record only. Runner has no in-process ConversationStore (same REST
+# posture as _SESSION_QUERY_TOOLS), so it dispatches over server_client.
+_SESSION_HISTORY_TOOLS = frozenset({SessionHistoryTool.name()})
+
+# Long-term memory (rollover/MEMORY-PLAN.md Phase 1). Same REST posture as
+# _SESSION_HISTORY_TOOLS: the runner has no in-process MemoryService, so it
+# dispatches to the Omnigent server's /v1/sessions/{id}/memory/* endpoints.
+_MEMORY_TOOLS = frozenset(
+    {"memory_remember", "memory_search", "memory_get", "memory_explain", "memory_forget"}
+)
+
+# superside-chat (rollover/SUPERSIDE-CHAT-PLAN.md S4): ``side_chat_open``
+# forks or creates a new session and binds it to the Super Chat's own
+# host/runner — needs server_client, not an in-process ConversationStore.
+_SIDE_CHAT_TOOLS = frozenset({SideChatOpenTool.name()})
+
 # The title bound the rename tool advertises to the LLM — read once from the
 # tool schema so the dispatcher can never drift from the published contract.
 _SESSION_RENAME_TITLE_MAX_CHARS: int = SysSessionRenameTool().get_schema()["function"][
@@ -488,10 +522,14 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     # what discovers host-scope skills (``.agents/skills`` and friends), and a
     # native session's only tool surface is this relay.
     | _SKILL_TOOLS
-    # Nova's ``nova_*`` builtins ride the relay too — without this, a native
-    # session (claude-native/codex-native/pi-native) never sees them at all,
-    # since the relay is its only tool surface (see module docstring).
-    | SERVER_BUILTIN_NAMES
+    # session_history: ToolManager registers it only for a rollover session
+    # (label-driven — see ToolManager._register_session_history_tool), so it
+    # rides the relay only when that gate passes, same as the spec-gated
+    # tools above.
+    | _SESSION_HISTORY_TOOLS
+    # memory_*: same rollover-only gate as session_history
+    # (ToolManager._register_memory_tools).
+    | _MEMORY_TOOLS
 )
 
 
@@ -521,7 +559,11 @@ def strip_browser_tool_schemas(schemas: list[_JsonObject]) -> list[_JsonObject]:
     return kept
 
 
-def build_native_relay_tool_schemas(spec: AgentSpec | None) -> list[_JsonObject]:
+def build_native_relay_tool_schemas(
+    spec: AgentSpec | None,
+    *,
+    labels: Mapping[str, str] | None = None,
+) -> list[_JsonObject]:
     """Build the flat Omnigent tool surface for native harness bridges.
 
     Returns the same tool set the claude-native / codex-native relay advertises
@@ -538,6 +580,11 @@ def build_native_relay_tool_schemas(spec: AgentSpec | None) -> list[_JsonObject]
     :param spec: The session's resolved agent spec. ``None`` falls back to the
         always-on read/discovery surface (never the opt-in spawn writes, whose
         gate can't be evaluated without the spec), mirroring the relay.
+    :param labels: The session's labels, when known. Decides label-gated
+        registrations (currently: ``session_history`` for a rollover
+        session — ``omnigent.context.labels.is_rollover``). ``None`` (the
+        default) registers nothing label-gated, matching upstream behavior
+        for every caller that doesn't pass labels.
     :returns: Flat tool schemas for native bridges.
     """
     from omnigent.tools.builtins.agents import (
@@ -575,14 +622,15 @@ def build_native_relay_tool_schemas(spec: AgentSpec | None) -> list[_JsonObject]
     if spec is not None:
         from omnigent.tools.manager import ToolManager
 
-        for schema in ToolManager(spec, os_env_schema_only=True).get_tool_schemas():
+        manager = ToolManager(spec, os_env_schema_only=True, labels=labels)
+        for schema in manager.get_tool_schemas():
             function = _string_object_dict(schema.get("function"))
             if function is not None and function.get("name") in _NATIVE_RELAY_BUILTIN_TOOLS:
                 _append(function)
     else:
         from omnigent.tools.builtins.policy import SysAddPolicyTool, SysPolicyRegistryTool
 
-        for _cls in (
+        fallback_classes: tuple[type[Tool], ...] = (
             ListCommentsTool,
             UpdateCommentTool,
             SysSessionListTool,
@@ -594,7 +642,29 @@ def build_native_relay_tool_schemas(spec: AgentSpec | None) -> list[_JsonObject]
             SysAgentDownloadTool,
             SysAddPolicyTool,
             SysPolicyRegistryTool,
-        ):
+        )
+        # No spec means no ToolManager, so the label gate is applied directly
+        # here — session_history's and the memory_* tools' schemas are
+        # spec-independent (static).
+        if is_rollover(labels):
+            from omnigent.tools.builtins.memory import (
+                MemoryExplainTool,
+                MemoryForgetTool,
+                MemoryGetTool,
+                MemoryRememberTool,
+                MemorySearchTool,
+            )
+
+            fallback_classes = (
+                *fallback_classes,
+                SessionHistoryTool,
+                MemoryRememberTool,
+                MemorySearchTool,
+                MemoryGetTool,
+                MemoryExplainTool,
+                MemoryForgetTool,
+            )
+        for _cls in fallback_classes:
             fallback_schema = _string_object_dict(_cls().get_schema())
             if fallback_schema is None:
                 continue
@@ -866,6 +936,8 @@ _ALL_LOCAL_TOOLS = (
     | _SESSION_CREATE_TOOLS
     | _SESSION_QUERY_TOOLS
     | _SESSION_SELF_WRITE_TOOLS
+    | _SESSION_HISTORY_TOOLS
+    | _MEMORY_TOOLS
     | _WEB_FETCH_TOOLS
     | _WEB_SEARCH_TOOLS
     | _NIMBLE_RESEARCH_TOOLS
@@ -878,7 +950,7 @@ _ALL_LOCAL_TOOLS = (
     | _AGENT_TOOLS
     | _POLICY_TOOLS
     | _SCHEDULED_TASK_TOOLS
-    | SERVER_BUILTIN_NAMES
+    | _SIDE_CHAT_TOOLS
 )
 _PLACEHOLDER_CWDS = (None, "", ".", "./")
 
@@ -929,7 +1001,7 @@ def should_dispatch_locally(tool_name: str) -> bool:
 # ``id(spec)`` because AgentSpec is an unhashable dataclass. The weakref
 # guards against id reuse after the spec is garbage-collected.
 _granted_tool_names_cache: dict[
-    tuple[int, str | None], tuple[weakref.ref[AgentSpec], frozenset[str]]
+    tuple[int, str | None, bool, bool], tuple[weakref.ref[AgentSpec], frozenset[str]]
 ] = {}
 _GRANTED_TOOL_NAMES_CACHE_MAX = 256
 
@@ -954,7 +1026,12 @@ def _effective_harness_name(agent_spec: AgentSpec, effective_harness: str | None
     return canonicalize_harness(raw) or raw
 
 
-def _granted_tool_names(agent_spec: AgentSpec, harness: str | None = None) -> frozenset[str]:
+def _granted_tool_names(
+    agent_spec: AgentSpec,
+    harness: str | None = None,
+    *,
+    labels: Mapping[str, str] | None = None,
+) -> frozenset[str]:
     """Return the non-MCP tool surface advertised for *agent_spec* on *harness*.
 
     Mirrors advertisement: the names ``ToolManager`` registers, spec-local
@@ -967,14 +1044,19 @@ def _granted_tool_names(agent_spec: AgentSpec, harness: str | None = None) -> fr
     :param harness: Canonical harness the session runs, from
         :func:`_effective_harness_name`. Only the native/non-native split
         matters here.
+    :param labels: The session's labels, when known — decides label-gated
+        registrations (currently: ``session_history`` and ``memory_*`` for a
+        rollover or superside-chat session, ``side_chat_open`` for a
+        superside-chat session). The cache key includes both gates so a spec
+        object reused across sessions in different modes never shares a grant.
     :raises Exception: Propagates ``ToolManager`` construction failures so
         callers can fail closed instead of guessing at the surface.
     """
-    cache_key = (id(agent_spec), harness)
+    cache_key = (id(agent_spec), harness, uses_omnigent_context(labels), is_superside_chat(labels))
     cached = _granted_tool_names_cache.get(cache_key)
     if cached is not None and cached[0]() is agent_spec:
         return cached[1]
-    manager = ToolManager(agent_spec, os_env_schema_only=True)
+    manager = ToolManager(agent_spec, os_env_schema_only=True, labels=labels)
     try:
         names = set(manager.get_tool_names())
     finally:
@@ -993,6 +1075,8 @@ def _ungranted_tool_reason(
     tool_name: str,
     agent_spec: AgentSpec | None,
     effective_harness: str | None = None,
+    *,
+    labels: Mapping[str, str] | None = None,
 ) -> str | None:
     """Return why *tool_name* is refused for *agent_spec*, or ``None`` if allowed.
 
@@ -1006,6 +1090,8 @@ def _ungranted_tool_reason(
     :param effective_harness: The session's harness override, so a session
         running a harness its spec never declared is judged on the surface it
         was actually advertised. ``None`` falls back to the spec.
+    :param labels: The session's labels, when known — see
+        :func:`_granted_tool_names`.
     """
     from omnigent.spec.types import AgentSpec as _AgentSpec
 
@@ -1013,7 +1099,7 @@ def _ungranted_tool_reason(
         return None
     try:
         granted = _granted_tool_names(
-            agent_spec, _effective_harness_name(agent_spec, effective_harness)
+            agent_spec, _effective_harness_name(agent_spec, effective_harness), labels=labels
         )
     except Exception as exc:
         _logger.exception("granted tool surface unavailable for %s", tool_name)
@@ -1573,6 +1659,7 @@ async def _send_to_in_flight_child(
     child_display_title: str,
     wrapper_label: str | None,
     created_by: str | None = None,
+    superside_chat: bool = False,
 ) -> str:
     """Steer a message into a sub-agent whose turn is already in flight.
 
@@ -1675,6 +1762,7 @@ async def _send_to_in_flight_child(
                 wrapper_label=wrapper_label,
                 created_by=created_by,
                 work_id=work_id,
+                superside_chat=superside_chat,
             )
             fresh.status = "running"
             # Best-effort dispatch-id stamp for restart recovery only; the
@@ -2442,6 +2530,83 @@ def _subagent_launching_message(agent: str, title: object, task_id: str) -> str:
     )
 
 
+async def _session_kind_and_parent(
+    session_id: str,
+    server_client: httpx.AsyncClient,
+) -> tuple[str | None, str | None]:
+    """
+    Best-effort ``(kind, parent_session_id)`` lookup for one session.
+
+    Used by the superside-chat nesting-cap check — a failed lookup reads
+    as "unknown", never as a refusal, so a transient server hiccup can't
+    itself block a launch.
+
+    :param session_id: The session to inspect.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :returns: ``(kind, parent_session_id)``, each ``None`` on any lookup
+        failure or missing field.
+    """
+    try:
+        resp = await server_client.get(f"/v1/sessions/{session_id}", timeout=10.0)
+    except httpx.HTTPError:
+        return None, None
+    if resp.status_code != 200:
+        return None, None
+    data = _string_object_dict(resp.json())
+    if data is None:
+        return None, None
+    kind = data.get("kind")
+    parent = data.get("parent_session_id")
+    return (
+        kind if isinstance(kind, str) else None,
+        parent if isinstance(parent, str) else None,
+    )
+
+
+async def _subagent_nesting_refusal(
+    *,
+    conversation_id: str,
+    server_client: httpx.AsyncClient,
+) -> str | None:
+    """
+    Return why a superside-chat sub-agent launch must be refused for nesting.
+
+    Resolves the caller's own ``kind`` and, when the caller is itself a
+    sub-agent, its parent's ``kind`` too — at most two REST round-trips —
+    and delegates the cap decision to
+    :func:`omnigent.superchat.subagents.refuse_subagent_nesting`.
+
+    :param conversation_id: The caller about to dispatch a new sub-agent.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :returns: An error message, or ``None`` when the launch may proceed.
+    """
+    caller_kind, caller_parent_id = await _session_kind_and_parent(conversation_id, server_client)
+    parent_kind: str | None = None
+    if caller_kind == "sub_agent" and caller_parent_id:
+        parent_kind, _ = await _session_kind_and_parent(caller_parent_id, server_client)
+    return refuse_subagent_nesting(caller_kind=caller_kind, parent_kind=parent_kind)
+
+
+async def _fetch_memory_profile_block(
+    server_client: httpx.AsyncClient | None, conversation_id: str | None
+) -> str | None:
+    """The originating chat owner's Memory Profile block, or ``None``.
+
+    Read from the server (``GET /v1/sessions/{id}/memory/profile``): the
+    memory store lives server-side. Any failure means "no profile".
+    """
+    if server_client is None or not conversation_id:
+        return None
+    try:
+        resp = await server_client.get(
+            f"/v1/sessions/{conversation_id}/memory/profile", timeout=10.0
+        )
+        profile = resp.json().get("profile") if resp.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        return None
+    return profile if isinstance(profile, str) and profile else None
+
+
 async def _execute_subagent_tool(
     args: _JsonObject,
     *,
@@ -2450,6 +2615,7 @@ async def _execute_subagent_tool(
     agent_spec: AgentSpec | None = None,
     publish_event: Callable[[str, _JsonObject], None] | None = None,
     session_inbox: asyncio.Queue[_JsonObject] | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> str:
     """
     Dispatch a sub-agent tool call (``sys_session_send``).
@@ -2475,6 +2641,12 @@ async def _execute_subagent_tool(
         discovery events to the parent stream.
     :param session_inbox: Parent session's inbox queue for async
         completion delivery.
+    :param labels: The caller's own session labels, when known. Gates the
+        superside-chat-only rules (launch-by-Type-only, nesting cap,
+        concurrency cap, Memory Profile, Result-in-wake) and, when the
+        caller is a superside-chat session, is forwarded (filtered to the
+        inheritable set) so the child inherits the mode — see
+        ``rollover/SUPERSIDE-CHAT-PLAN.md`` slice S3.
     :returns: JSON child-session handle, or an error string.
     """
     # Lazy import to avoid circular dependency at module load.
@@ -2516,6 +2688,13 @@ async def _execute_subagent_tool(
         cost_budget = _subagent_cost_budget_from_args(args)
     except (ValueError, TypeError) as exc:
         return f"Error: sys_session_send invalid 'cost_budget': {exc}"
+
+    if is_superside_chat(labels):
+        override_refusal = refuse_subagent_dispatch_override(
+            model=model, reasoning_effort=reasoning_effort
+        )
+        if override_refusal is not None:
+            return f"Error: sys_session_send {override_refusal}"
 
     # By-session-id mode: post to an existing direct child instead of
     # spawning/continuing a named (agent, title) sub-agent.
@@ -2708,19 +2887,51 @@ async def _execute_subagent_tool(
                 child_display_title=f"{sub_agent_name}:{session_name}",
                 wrapper_label=child_wrapper_label,
                 created_by=dispatch_created_by,
+                superside_chat=is_superside_chat(labels),
             )
     else:
+        _sibling_rows: list[_JsonObject] | None = None
+        if is_superside_chat(labels):
+            nesting_refusal = await _subagent_nesting_refusal(
+                conversation_id=conversation_id,
+                server_client=server_client,
+            )
+            if nesting_refusal is not None:
+                return f"Error: sys_session_send {nesting_refusal}"
+            _fetched_siblings = await _list_child_sessions(
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+            if isinstance(_fetched_siblings, str):
+                return f"Error: cannot verify sub-agent concurrency cap: {_fetched_siblings}"
+            _sibling_rows = _fetched_siblings
+            _type_spec = _find_subagent_spec(str(sub_agent_name), agent_spec)
+            _type_cap = getattr(_type_spec, "max_sessions", None)
+            concurrency_refusal = refuse_subagent_concurrency(
+                live_count_of_type=count_live_children(
+                    _sibling_rows, agent_type=str(sub_agent_name)
+                ),
+                live_count_total=count_live_children(_sibling_rows),
+                type_cap=_type_cap if isinstance(_type_cap, int) else None,
+                default_cap=resolve_default_concurrency_cap(),
+            )
+            if concurrency_refusal is not None:
+                return f"Error: sys_session_send {concurrency_refusal}"
         _auto_ordinal = False
         if not session_name:
             # No title hint — auto-generate a structured session name
             # (e.g. "researcher-1"). Recover ordinals from existing
             # children on first spawn after runner restart to avoid
-            # duplicates.
-            _all_children = await _list_child_sessions(
-                server_client=server_client,
-                conversation_id=conversation_id,
-                tool=str(sub_agent_name),
-            )
+            # duplicates. Reuse the sibling listing above when the
+            # concurrency check already fetched it.
+            if _sibling_rows is not None:
+                _all_children: list[_JsonObject] | str = _sibling_rows
+            else:
+                _all_children = await _list_child_sessions(
+                    server_client=server_client,
+                    conversation_id=conversation_id,
+                    tool=str(sub_agent_name),
+                )
             if isinstance(_all_children, str):
                 return (
                     f"Error: cannot allocate sub-agent name for "
@@ -2811,7 +3022,13 @@ async def _execute_subagent_tool(
             "parent_session_id": conversation_id,
             "title": f"{sub_agent_name}:{session_name}",
             "sub_agent_name": sub_agent_name,
-            "labels": {_runner_app.SUBAGENT_DISPATCH_ID_LABEL_KEY: work_id},
+            "labels": {
+                _runner_app.SUBAGENT_DISPATCH_ID_LABEL_KEY: work_id,
+                # Forward the mode label so a superside-chat sub-agent
+                # inherits omnigent.context.mode=superside-chat, like
+                # _execute_session_create already does.
+                **inheritable_context_labels(labels),
+            },
         }
         if harness_override_canonical is not None:
             create_body["harness_override"] = harness_override_canonical
@@ -3050,6 +3267,7 @@ async def _execute_subagent_tool(
         wrapper_label=child_wrapper_label,
         created_by=dispatch_created_by,
         work_id=work_id,
+        superside_chat=is_superside_chat(labels),
     )
     _publish_child_launching_update(
         parent_session_id=conversation_id,
@@ -3059,6 +3277,13 @@ async def _execute_subagent_tool(
         session_name=session_name,
         publish_event=publish_event,
     )
+
+    if created_child and is_superside_chat(labels):
+        # A new sub-agent starts from its Brief plus the Memory Profile
+        # (rollover/CONTEXT.md: "Sub-agent"); never on a continuation.
+        message = prepend_memory_profile(
+            message, await _fetch_memory_profile_block(server_client, conversation_id)
+        )
 
     # Copy any forwarded parent files into the child and build the
     # first-turn content (input_text plus a file block per copied id).
@@ -3310,6 +3535,7 @@ def _build_session_create_body(
     message: object,
     model: object = None,
     reasoning_effort: object = None,
+    labels: Mapping[str, str] | None = None,
 ) -> _JsonObject:
     """
     Build the JSON ``POST /v1/sessions`` body for ``sys_session_create``.
@@ -3337,6 +3563,10 @@ def _build_session_create_body(
         written as ``model_override`` on the session.
     :param reasoning_effort: Optional reasoning level, e.g. ``"high"``;
         written as ``reasoning_effort`` on the session.
+    :param labels: Labels to seed the child with, already filtered to the
+        inheritable set (see
+        ``omnigent.context.labels.inheritable_context_labels``). ``None``
+        or ``{}`` omits ``labels`` from the body entirely.
     :returns: The JSON request body.
     """
     body: _JsonObject = {
@@ -3356,6 +3586,8 @@ def _build_session_create_body(
                 "data": {"role": "user", "content": [{"type": "input_text", "text": message}]},
             }
         ]
+    if labels:
+        body["labels"] = dict(labels)
     return body
 
 
@@ -3430,6 +3662,7 @@ async def _execute_session_create(
     publish_event: Callable[[str, _JsonObject], None] | None,
     agent_spec: AgentSpec | None = None,
     runner_workspace: Path | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> str:
     """
     Create a child session (``sys_session_create``).
@@ -3453,6 +3686,12 @@ async def _execute_session_create(
 
     Maps a 404 to ``agent_not_found`` and 401/403 to ``access_denied``.
 
+    In a superside-chat session this path is gated the same way the named
+    ``sys_session_send`` launch is: a ``model``/``reasoning_effort``
+    override, the nesting cap, and the tree-wide default concurrency cap
+    (no per-Type cap — this path names no declared Sub-agent Type) all
+    apply, and a new child's ``message`` gets the Memory Profile prepended.
+
     :param args: Parsed arguments; exactly one of ``agent_id`` /
         ``config_path`` required, ``title`` / ``message`` optional.
     :param server_client: HTTP client pointed at the Omnigent server; ``None``
@@ -3465,12 +3704,20 @@ async def _execute_session_create(
         os_env cwd that ``config_path`` is read from.
     :param runner_workspace: The runner's workspace dir, authoritative
         for the os_env cwd when present.
+    :param labels: The caller's own session labels, when known. Only the
+        inheritable subset (the context-mode label and its rollover tuning
+        labels — see
+        ``omnigent.context.labels.inheritable_context_labels``) is
+        forwarded to the child, so a superside-chat sub-agent inherits
+        ``omnigent.context.mode=superside-chat`` without picking up
+        arbitrary parent labels.
     :returns: JSON handle on success; a JSON error object otherwise.
     """
     if server_client is None:
         return json.dumps({"error": "sys_session_create requires server access"})
     if conversation_id is None:
         return json.dumps({"error": "sys_session_create requires a session id"})
+    child_labels = inheritable_context_labels(labels)
     agent_id = args.get("agent_id")
     config_path = args.get("config_path")
     has_agent_id = isinstance(agent_id, str) and bool(agent_id)
@@ -3487,6 +3734,57 @@ async def _execute_session_create(
                 )
             }
         )
+
+    # The same superside-chat-only rules sys_session_send enforces for its
+    # named (agent, title) launch apply here too — sys_session_create is
+    # the OTHER way to spawn a child, and would otherwise bypass them (no
+    # declared Sub-agent Type backs this path, so only the tree-wide
+    # default concurrency cap applies, not a per-Type cap).
+    if is_superside_chat(labels):
+        raw_model = args.get("model")
+        raw_effort = args.get("reasoning_effort")
+        override_refusal = refuse_subagent_dispatch_override(
+            model=raw_model if isinstance(raw_model, str) else None,
+            reasoning_effort=raw_effort if isinstance(raw_effort, str) else None,
+        )
+        if override_refusal is not None:
+            return json.dumps({"error": f"sys_session_create {override_refusal}"})
+        nesting_refusal = await _subagent_nesting_refusal(
+            conversation_id=conversation_id,
+            server_client=server_client,
+        )
+        if nesting_refusal is not None:
+            return json.dumps({"error": f"sys_session_create {nesting_refusal}"})
+        sibling_rows = await _list_child_sessions(
+            server_client=server_client,
+            conversation_id=conversation_id,
+        )
+        if isinstance(sibling_rows, str):
+            return json.dumps(
+                {
+                    "error": (
+                        f"sys_session_create cannot verify sub-agent "
+                        f"concurrency cap: {sibling_rows}"
+                    )
+                }
+            )
+        concurrency_refusal = refuse_subagent_concurrency(
+            live_count_of_type=0,
+            live_count_total=count_live_children(sibling_rows),
+            type_cap=None,
+            default_cap=resolve_default_concurrency_cap(),
+        )
+        if concurrency_refusal is not None:
+            return json.dumps({"error": f"sys_session_create {concurrency_refusal}"})
+
+    message = args.get("message")
+    if is_superside_chat(labels) and isinstance(message, str) and message:
+        # A new child starts from its Brief plus the Memory Profile
+        # (rollover/CONTEXT.md: "Sub-agent"), same as the named launch path.
+        message = prepend_memory_profile(
+            message, await _fetch_memory_profile_block(server_client, conversation_id)
+        )
+
     if has_config_path:
         # The multipart create carries only the config bundle, so an effort
         # passed here would never reach the child. Refuse instead of dropping it.
@@ -3500,22 +3798,25 @@ async def _execute_session_create(
                     )
                 }
             )
+        config_path_args = {**args, "message": message}
         return await _session_create_from_config_path(
             str(config_path),
-            args,
+            config_path_args,
             server_client=server_client,
             conversation_id=conversation_id,
             publish_event=publish_event,
             agent_spec=agent_spec,
             runner_workspace=runner_workspace,
+            labels=child_labels,
         )
     body = _build_session_create_body(
         str(agent_id),
         conversation_id,
         args.get("title"),
-        args.get("message"),
+        message,
         model=args.get("model"),
         reasoning_effort=args.get("reasoning_effort"),
+        labels=child_labels,
     )
     try:
         resp = await server_client.post("/v1/sessions", json=body, timeout=30.0)
@@ -3642,6 +3943,7 @@ async def _upload_config_bundle(
     conversation_id: str,
     agent_spec: AgentSpec | None,
     runner_workspace: Path | None,
+    labels: Mapping[str, str] | None = None,
 ) -> _JsonObject | str:
     """
     Resolve, bundle, and upload a local agent config as a child session.
@@ -3660,6 +3962,8 @@ async def _upload_config_bundle(
     :param conversation_id: The caller's session id — the forced parent.
     :param agent_spec: The calling agent's spec, for os_env resolution.
     :param runner_workspace: The runner workspace, authoritative cwd.
+    :param labels: Labels to seed the child with, already filtered to the
+        inheritable set (see ``_execute_session_create``).
     :returns: The parsed ``CreatedSessionResponse`` dict on success; a
         JSON error string otherwise.
     """
@@ -3682,6 +3986,8 @@ async def _upload_config_bundle(
     title = args.get("title")
     if isinstance(title, str) and title:
         metadata["title"] = title
+    if labels:
+        metadata["labels"] = dict(labels)
     try:
         resp = await server_client.post(
             "/v1/sessions",
@@ -3710,6 +4016,7 @@ async def _session_create_from_config_path(
     publish_event: Callable[[str, _JsonObject], None] | None,
     agent_spec: AgentSpec | None,
     runner_workspace: Path | None,
+    labels: Mapping[str, str] | None = None,
 ) -> str:
     """
     Bundle-mode ``sys_session_create``: upload a new agent and launch it.
@@ -3730,6 +4037,8 @@ async def _session_create_from_config_path(
     :param publish_event: SSE publish callback for ``session.created``.
     :param agent_spec: The calling agent's spec, for os_env resolution.
     :param runner_workspace: The runner workspace, authoritative cwd.
+    :param labels: Labels to seed the child with, already filtered to the
+        inheritable set (see ``_execute_session_create``).
     :returns: JSON handle on success; a JSON error object otherwise.
     """
     data = await _upload_config_bundle(
@@ -3739,6 +4048,7 @@ async def _session_create_from_config_path(
         conversation_id=conversation_id,
         agent_spec=agent_spec,
         runner_workspace=runner_workspace,
+        labels=labels,
     )
     if isinstance(data, str):
         return data
@@ -3776,6 +4086,118 @@ async def _session_create_from_config_path(
         title=args.get("title"),
         publish_event=publish_event,
     )
+
+
+async def _execute_side_chat_open(
+    args: _JsonObject,
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None,
+    labels: Mapping[str, str] | None,
+) -> str:
+    """
+    Open a Side Chat branched from the Super Chat (``side_chat_open``).
+
+    Looks up the caller's own session once (for its ``kind`` /
+    ``parent_session_id`` — needed for the Sub-agent refusal that ``labels``
+    alone can't express — plus ``host_id`` / ``workspace`` / ``agent_id`` to
+    bind the new chat the same way) via ``GET /v1/sessions/{conversation_id}``,
+    then either forks it (``with_context``, ``side_chat: true`` —
+    ``POST /v1/sessions/{conversation_id}/fork``) or creates a fresh
+    top-level session stamped with the discovery labels (``blank`` —
+    ``POST /v1/sessions``). Binds the result to the Super Chat's host via
+    ``POST /v1/hosts/{host_id}/runners`` (best-effort — an unbound Side Chat
+    behaves like an unbound fork made through the web UI) and, when
+    ``first_message`` is given, queues it the same way a named sub-agent
+    send does (``POST /v1/sessions/{id}/events``).
+
+    :param args: Parsed arguments: ``title`` + ``start`` required,
+        ``first_message`` optional.
+    :param server_client: HTTP client pointed at the Omnigent server;
+        ``None`` returns an error string.
+    :param conversation_id: The caller's own session id (the would-be Super
+        Chat); ``None`` returns an error string.
+    :param labels: The caller's own labels, from the dispatch context.
+    :returns: JSON handle ``{conversation_id, title, start}`` on success; a
+        JSON error object otherwise.
+    """
+    if server_client is None:
+        return json.dumps({"error": "side_chat_open requires server access"})
+    if not conversation_id:
+        return json.dumps({"error": "side_chat_open requires a session id"})
+
+    title = args.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return json.dumps({"error": "side_chat_open requires a non-empty 'title' string"})
+    start = args.get("start")
+    if start not in ("with_context", "blank"):
+        return json.dumps({"error": "side_chat_open 'start' must be 'with_context' or 'blank'"})
+    first_message = args.get("first_message")
+    if first_message is not None and not (isinstance(first_message, str) and first_message):
+        return json.dumps({"error": "side_chat_open 'first_message' must be a non-empty string"})
+
+    try:
+        caller_resp = await server_client.get(f"/v1/sessions/{conversation_id}")
+    except httpx.HTTPError as exc:
+        return json.dumps({"error": f"side_chat_open failed to look up caller session: {exc}"})
+    if caller_resp.status_code >= 400:
+        return json.dumps(
+            {"error": f"side_chat_open caller lookup returned {caller_resp.status_code}"}
+        )
+    caller = caller_resp.json()
+    refusal = refuse_side_chat_open(
+        labels=labels,
+        kind=caller.get("kind"),
+        parent_session_id=caller.get("parent_session_id"),
+    )
+    if refusal is not None:
+        return json.dumps({"error": refusal})
+
+    if start == "with_context":
+        body = build_side_chat_fork_body(title)
+        try:
+            resp = await server_client.post(f"/v1/sessions/{conversation_id}/fork", json=body)
+        except httpx.HTTPError as exc:
+            return json.dumps({"error": f"side_chat_open fork failed: {exc}"})
+    else:
+        agent_id = caller.get("agent_id")
+        if not isinstance(agent_id, str) or not agent_id:
+            return json.dumps({"error": "side_chat_open: caller session has no agent binding"})
+        body = build_side_chat_blank_create_body(
+            agent_id=agent_id, title=title, source_conversation_id=conversation_id
+        )
+        try:
+            resp = await server_client.post("/v1/sessions", json=body)
+        except httpx.HTTPError as exc:
+            return json.dumps({"error": f"side_chat_open create failed: {exc}"})
+    if resp.status_code not in (200, 201):
+        return json.dumps(
+            {"error": f"side_chat_open {start} returned {resp.status_code}", "detail": resp.text}
+        )
+    new_conv = resp.json()
+    new_id = new_conv.get("id")
+    if not isinstance(new_id, str) or not new_id:
+        return json.dumps({"error": "side_chat_open: server did not return a new session id"})
+
+    host_id = caller.get("host_id")
+    workspace = caller.get("workspace")
+    if isinstance(host_id, str) and host_id and isinstance(workspace, str) and workspace:
+        try:
+            await server_client.post(
+                f"/v1/hosts/{host_id}/runners",
+                json={"session_id": new_id, "workspace": workspace},
+            )
+        except httpx.HTTPError:
+            # Best-effort: an unbound Side Chat behaves like an unbound
+            # fork made through the web UI — the caller can bind it later.
+            _logger.warning("side_chat_open: failed to bind host for %s", new_id, exc_info=True)
+
+    if isinstance(first_message, str) and first_message:
+        message_error = await _post_child_first_message(new_id, first_message, server_client)
+        if message_error is not None:
+            return message_error
+
+    return json.dumps({"conversation_id": new_id, "title": title, "start": start})
 
 
 async def _execute_web_fetch_tool(
@@ -4662,59 +5084,6 @@ async def _execute_scheduled_task_tool(
             {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
         )
     return json.dumps(resp.json())
-
-
-async def _execute_server_builtin_tool(
-    tool_name: str,
-    arguments: str,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None,
-) -> str:
-    """
-    Runner-local handler for builtins whose ``invoke`` needs the Omnigent database.
-
-    Nova's ``nova_*`` family (memory, goals, episodes, asks, feed, skills)
-    reads/writes the conversation store, permission grants, and Nova's own
-    tables — state a runner process (a person's laptop or a sandbox
-    container) has no access to. The runner proxies the Omnigent server's
-    ``/v1/sessions/{id}/builtin-tools/execute`` endpoint instead, same
-    posture as :func:`_execute_scheduled_task_tool` / :func:`_execute_policy_tool`.
-    The server resolves the conversation id and caller identity itself from
-    the session, rather than trusting anything the runner could forward.
-
-    :param tool_name: One of :data:`SERVER_BUILTIN_NAMES`.
-    :param arguments: JSON-encoded arguments string from the LLM.
-    :param server_client: HTTP client pointed at the Omnigent server;
-        ``None`` returns an error string.
-    :param conversation_id: The session this call belongs to; required to
-        route the request to the right session's endpoint.
-    :returns: Tool output string (the underlying ``Tool.invoke`` result).
-    """
-    if server_client is None:
-        return json.dumps({"error": f"{tool_name} requires server access"})
-    if not conversation_id:
-        return json.dumps({"error": f"{tool_name} requires an active session"})
-    try:
-        resp = await server_client.post(
-            f"/v1/sessions/{conversation_id}/builtin-tools/execute",
-            json={"tool_name": tool_name, "arguments": arguments},
-            timeout=30.0,
-        )
-    except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": f"{tool_name} failed: {exc}"})
-    if resp.status_code >= 400:
-        return json.dumps(
-            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
-        )
-    try:
-        body = resp.json()
-    except ValueError:
-        return json.dumps({"error": f"{tool_name}: malformed server response"})
-    output = body.get("output") if isinstance(body, dict) else None
-    if not isinstance(output, str):
-        return json.dumps({"error": f"{tool_name}: malformed server response"})
-    return output
 
 
 @dataclass
@@ -6270,6 +6639,318 @@ async def _fetch_close_target(
     return body
 
 
+async def _execute_session_history_tool(
+    args: _JsonObject,
+    *,
+    conversation_id: str | None,
+    server_client: httpx.AsyncClient | None,
+) -> str:
+    """
+    Runner-local handler for ``session_history`` (native-relay dispatch).
+
+    The runner has no in-process ``ConversationStore`` (same constraint as
+    ``_execute_session_query_tool``), so every action dispatches to the
+    Omnigent server's REST endpoints over ``server_client``:
+    ``read``/``search`` → ``GET .../items`` / ``GET .../items/search``,
+    optionally retargeted to a ``chat_id`` validated against ``GET
+    .../related_chats`` (see :func:`_resolve_chat_target_via_rest`);
+    ``list_chats`` → that same ``GET .../related_chats``; ``status`` →
+    ``GET .../labels`` (fed through the same
+    :func:`~omnigent.tools.builtins.session_history.status_from_labels`
+    the in-process tool uses). ``conversation_id`` is the runner's own
+    dispatch context, never read from *args* — the same scoping guarantee
+    the in-process tool provides.
+
+    :param args: Parsed tool arguments (``action`` plus per-action fields).
+    :param conversation_id: The calling session id.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :returns: JSON output matching the in-process tool's shape.
+    """
+    if server_client is None:
+        return json.dumps({"error": "session_history requires server access"})
+    if conversation_id is None:
+        return json.dumps({"error": "session_history requires a session id"})
+
+    action = args.get("action")
+    if action == "list_chats":
+        return await _session_history_list_chats_via_rest(conversation_id, server_client)
+    if action == "read":
+        return await _session_history_read_via_rest(args, conversation_id, server_client)
+    if action == "search":
+        return await _session_history_search_via_rest(args, conversation_id, server_client)
+    if action == "status":
+        return await _session_history_status_via_rest(conversation_id, server_client)
+    return json.dumps(
+        {"error": "action must be one of ['list_chats', 'read', 'search', 'status']"}
+    )
+
+
+async def _session_history_list_chats_via_rest(
+    conversation_id: str,
+    server_client: httpx.AsyncClient,
+) -> str:
+    """List related side chats via ``GET .../related_chats``."""
+    try:
+        resp = await server_client.get(
+            f"/v1/sessions/{conversation_id}/related_chats", timeout=30.0
+        )
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"session_history list_chats failed: {exc}"})
+    return json.dumps({"chats": resp.json().get("data", [])})
+
+
+async def _resolve_chat_target_via_rest(
+    args: _JsonObject,
+    conversation_id: str,
+    server_client: httpx.AsyncClient,
+) -> tuple[str | None, str | None]:
+    """
+    Resolve the session ``read``/``search`` actually targets (REST path).
+
+    Mirrors the in-process tool's ``_resolve_chat_target``: *conversation_id*
+    (the runner's own dispatch context) is the only trusted scope. An
+    explicit ``chat_id`` is only honored when it is *conversation_id* itself
+    or appears in its own ``related_chats`` — fetched fresh here, never
+    taken from *args*.
+
+    :returns: ``(target_conversation_id, None)`` on success, or
+        ``(None, json_error_string)``.
+    """
+    chat_id = args.get("chat_id")
+    if chat_id is None:
+        return conversation_id, None
+    if not isinstance(chat_id, str) or not chat_id:
+        return None, json.dumps({"error": "chat_id must be a non-empty string"})
+    if chat_id == conversation_id:
+        return chat_id, None
+    try:
+        resp = await server_client.get(
+            f"/v1/sessions/{conversation_id}/related_chats", timeout=30.0
+        )
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        return None, json.dumps({"error": f"session_history chat_id lookup failed: {exc}"})
+    related_ids = {chat.get("id") for chat in resp.json().get("data", [])}
+    if chat_id not in related_ids:
+        return None, json.dumps(
+            {"error": "chat_id is not a related chat of this session", "chat_id": chat_id}
+        )
+    return chat_id, None
+
+
+async def _session_history_read_via_rest(
+    args: _JsonObject,
+    conversation_id: str,
+    server_client: httpx.AsyncClient,
+) -> str:
+    """Read full turns via ``GET .../items``, mirroring ``session_history.group_into_turns``."""
+    target_id, chat_error = await _resolve_chat_target_via_rest(
+        args, conversation_id, server_client
+    )
+    if chat_error is not None:
+        return chat_error
+    assert target_id is not None
+    cursor = args.get("cursor")
+    if cursor is not None and not isinstance(cursor, str):
+        return json.dumps({"error": "cursor must be a string"})
+    limit = _session_history.clamp_limit(
+        args.get("limit"),
+        default=_session_history._READ_DEFAULT_LIMIT,
+        maximum=_session_history._READ_MAX_LIMIT,
+    )
+    if isinstance(limit, str):
+        return limit
+
+    async def fetch_page(cursor_item_id: str | None) -> tuple[list[_JsonObject], bool]:
+        params: dict[str, str | int] = {
+            "limit": _session_history._READ_BATCH_SIZE,
+            "order": "desc",
+        }
+        if cursor_item_id is not None:
+            # ``after`` (not ``before``) is correct here: in desc order,
+            # "after" means "further in sort direction" — i.e. older,
+            # continuing the newest-first walk (see list_session_items /
+            # ConversationStore.list_items).
+            params["after"] = cursor_item_id
+        resp = await server_client.get(
+            f"/v1/sessions/{target_id}/items", params=params, timeout=30.0
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        items = [_session_history.project_api_item(raw) for raw in body.get("data", [])]
+        return items, bool(body.get("has_more"))
+
+    collector = _session_history.TurnCollector(limit)
+    next_fetch_cursor: str | None = cursor
+    try:
+        while collector.wants_more:
+            items, has_more = await fetch_page(next_fetch_cursor)
+            if not items:
+                break
+            done = collector.feed(items, has_more)
+            if done is not None:
+                return _session_history.read_response(*done)
+            last_id = items[-1].get("id")
+            next_fetch_cursor = last_id if isinstance(last_id, str) else None
+    except Exception as exc:  # noqa: BLE001 — a failed page read is reported to the model
+        return json.dumps({"error": f"session_history read failed: {exc}"})
+    return _session_history.read_response(*collector.finish(next_fetch_cursor))
+
+
+async def _session_history_search_via_rest(
+    args: _JsonObject,
+    conversation_id: str,
+    server_client: httpx.AsyncClient,
+) -> str:
+    """Full-text search via ``GET .../items/search``, scoped to *conversation_id*
+    (or its validated ``chat_id``)."""
+    target_id, chat_error = await _resolve_chat_target_via_rest(
+        args, conversation_id, server_client
+    )
+    if chat_error is not None:
+        return chat_error
+    assert target_id is not None
+    query = args.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return json.dumps({"error": "search requires a non-empty 'query' string"})
+    limit = _session_history.clamp_limit(
+        args.get("limit"),
+        default=_session_history._SEARCH_DEFAULT_LIMIT,
+        maximum=_session_history._SEARCH_MAX_LIMIT,
+    )
+    if isinstance(limit, str):
+        return limit
+    try:
+        resp = await server_client.get(
+            f"/v1/sessions/{target_id}/items/search",
+            params={"query": query.strip(), "limit": limit},
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"session_history search failed: {exc}"})
+    data: list[_JsonObject] = resp.json().get("data", [])
+    results = [_session_history.project_api_item(it) for it in data]
+    return json.dumps(
+        {"results": [r for r in results if r["type"] != _session_history._HIDDEN_TYPE]}
+    )
+
+
+async def _session_history_status_via_rest(
+    conversation_id: str,
+    server_client: httpx.AsyncClient,
+) -> str:
+    """Report token headroom via ``GET .../labels`` + ``status_from_labels``."""
+    try:
+        resp = await server_client.get(f"/v1/sessions/{conversation_id}/labels", timeout=30.0)
+        resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"session_history status failed: {exc}"})
+    labels = resp.json().get("labels")
+    if not isinstance(labels, dict):
+        labels = {}
+    return json.dumps(status_from_labels({str(k): str(v) for k, v in labels.items()}))
+
+
+def _memory_error_body(resp: httpx.Response) -> str:
+    """Extract a readable message from a non-2xx memory-route response."""
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        return resp.text or f"HTTP {resp.status_code}"
+    if isinstance(body, dict):
+        message = body.get("error") or body.get("detail") or body.get("message")
+        if isinstance(message, str) and message:
+            return message
+    return f"HTTP {resp.status_code}"
+
+
+async def _execute_memory_tool(
+    tool_name: str,
+    args: _JsonObject,
+    *,
+    conversation_id: str | None,
+    server_client: httpx.AsyncClient | None,
+) -> str:
+    """
+    Runner-local handler for the ``memory_*`` family (native-relay dispatch).
+
+    The runner has no in-process :class:`~omnigent.memory.service.MemoryService`
+    (same constraint as ``_execute_session_history_tool``), so every action
+    dispatches to the Omnigent server's ``/v1/sessions/{id}/memory/*``
+    endpoints over ``server_client``. ``conversation_id`` is the runner's own
+    dispatch context, never read from *args*; the server resolves the acting
+    user from that session's owner, never from the request body.
+
+    :param tool_name: One of ``memory_remember``/``memory_search``/
+        ``memory_get``/``memory_explain``/``memory_forget``.
+    :param args: Parsed tool arguments.
+    :param conversation_id: The calling session id.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :returns: JSON output matching the in-process tools' shape.
+    """
+    if server_client is None:
+        return json.dumps({"error": f"{tool_name} requires server access"})
+    if conversation_id is None:
+        return json.dumps({"error": f"{tool_name} requires a session id"})
+    base = f"/v1/sessions/{conversation_id}/memory"
+
+    try:
+        if tool_name == "memory_remember":
+            text = args.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return json.dumps({"error": "text must be a non-empty string"})
+            resp = await server_client.post(
+                f"{base}/remember",
+                json={
+                    "text": text.strip(),
+                    "kind": args.get("kind"),
+                    "quote": args.get("quote"),
+                    "replaces_claim_id": args.get("replaces_claim_id"),
+                },
+                timeout=30.0,
+            )
+        elif tool_name == "memory_search":
+            query = args.get("query")
+            if not isinstance(query, str) or not query.strip():
+                return json.dumps({"error": "query must be a non-empty string"})
+            params: dict[str, Any] = {"query": query.strip()}
+            if args.get("kind") is not None:
+                params["kind"] = args["kind"]
+            if args.get("limit") is not None:
+                params["limit"] = args["limit"]
+            resp = await server_client.get(f"{base}/search", params=params, timeout=30.0)
+        elif tool_name == "memory_get":
+            claim_id = args.get("claim_id")
+            if not isinstance(claim_id, str) or not claim_id:
+                return json.dumps({"error": "claim_id must be a non-empty string"})
+            resp = await server_client.get(f"{base}/claims/{claim_id}", timeout=30.0)
+        elif tool_name == "memory_explain":
+            claim_id = args.get("claim_id")
+            if not isinstance(claim_id, str) or not claim_id:
+                return json.dumps({"error": "claim_id must be a non-empty string"})
+            resp = await server_client.get(f"{base}/claims/{claim_id}/explain", timeout=30.0)
+        else:  # memory_forget
+            if args.get("claim_id") is None and not args.get("query"):
+                return json.dumps({"error": "forget requires claim_id or query"})
+            resp = await server_client.post(
+                f"{base}/forget",
+                json={
+                    "claim_id": args.get("claim_id"),
+                    "query": args.get("query"),
+                    "confirm": bool(args.get("confirm", False)),
+                },
+                timeout=30.0,
+            )
+    except Exception as exc:  # noqa: BLE001 — a failed call is reported to the model
+        return json.dumps({"error": f"{tool_name} failed: {exc}"})
+
+    if resp.status_code >= 400:
+        return json.dumps({"error": f"{tool_name}: {_memory_error_body(resp)}"})
+    return json.dumps(resp.json())
+
+
 async def _close_tree_scope_error(
     target_snap: _JsonObject,
     caller_conversation_id: str,
@@ -6475,6 +7156,7 @@ async def execute_tool(
     publish_event: Callable[[str, _JsonObject], None] | None = None,
     filesystem_registry: FilesystemRegistry | None = None,
     effective_harness: str | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> str:
     """
     Execute a tool and return the output string.
@@ -6502,6 +7184,9 @@ async def execute_tool(
         caller knows it (the server's per-session override outranks the
         spec's declaration). Decides whether the native relay's
         unconditional ``sys_os_*`` counts toward the granted surface.
+    :param labels: The session's labels, when known. Decides label-gated
+        registrations in the granted-surface check (currently:
+        ``session_history`` for a rollover session).
     :returns: Tool output string.
     """
     if not arguments.strip():
@@ -6513,7 +7198,7 @@ async def execute_tool(
     # MCP dispatch resolves the target against the spec inside the MCP
     # manager; every other branch is gated on the spec's granted surface.
     if mcp_manager is None:
-        refusal = _ungranted_tool_reason(tool_name, agent_spec, effective_harness)
+        refusal = _ungranted_tool_reason(tool_name, agent_spec, effective_harness, labels=labels)
         if refusal is not None:
             return json.dumps({"error": refusal})
     from omnigent.sandbox.copy_on_write import has_copy_on_write
@@ -6613,6 +7298,7 @@ async def execute_tool(
                 agent_spec=agent_spec,
                 publish_event=publish_event,
                 session_inbox=session_inbox,
+                labels=labels,
             )
         elif tool_name in _LIST_MODELS_TOOLS:
             output = await _execute_list_models_tool(agent_spec=agent_spec)
@@ -6624,6 +7310,7 @@ async def execute_tool(
                 publish_event=publish_event,
                 agent_spec=agent_spec,
                 runner_workspace=runner_workspace,
+                labels=labels,
             )
         elif tool_name in _SESSION_SELF_WRITE_TOOLS:
             output = await _rename_current_session_via_rest(
@@ -6638,6 +7325,26 @@ async def execute_tool(
                 conversation_id=conversation_id,
                 server_client=server_client,
                 agent_spec=agent_spec,
+            )
+        elif tool_name in _SESSION_HISTORY_TOOLS:
+            output = await _execute_session_history_tool(
+                args,
+                conversation_id=conversation_id,
+                server_client=server_client,
+            )
+        elif tool_name in _MEMORY_TOOLS:
+            output = await _execute_memory_tool(
+                tool_name,
+                args,
+                conversation_id=conversation_id,
+                server_client=server_client,
+            )
+        elif tool_name in _SIDE_CHAT_TOOLS:
+            output = await _execute_side_chat_open(
+                args,
+                server_client=server_client,
+                conversation_id=conversation_id,
+                labels=labels,
             )
         elif tool_name in _WEB_FETCH_TOOLS:
             output = await _execute_web_fetch_tool(
@@ -6741,13 +7448,6 @@ async def execute_tool(
             output = await _execute_browser_tool(
                 tool_name,
                 args,
-                server_client=server_client,
-                conversation_id=conversation_id,
-            )
-        elif tool_name in SERVER_BUILTIN_NAMES:
-            output = await _execute_server_builtin_tool(
-                tool_name,
-                arguments,
                 server_client=server_client,
                 conversation_id=conversation_id,
             )
@@ -6871,6 +7571,7 @@ async def dispatch_tool_locally(
     publish_event: Callable[[str, _JsonObject], None] | None = None,
     filesystem_registry: FilesystemRegistry | None = None,
     effective_harness: str | None = None,
+    labels: Mapping[str, str] | None = None,
 ) -> str:
     """Execute a tool once and POST its result to the harness.
 
@@ -6921,6 +7622,7 @@ async def dispatch_tool_locally(
         filesystem_registry=filesystem_registry,
         publish_event=publish_event,
         effective_harness=effective_harness,
+        labels=labels,
     )
 
     # A file-mutating tool just ran — nudge the web to refetch the
@@ -7158,7 +7860,14 @@ async def _execute_os_env_tool(
             )
             owns_environment = False
         else:
-            os_env = create_os_environment(effective_spec)
+            additional_read_roots = (
+                [resource_registry.codex_skills_dir(conversation_id)]
+                if resource_registry is not None and conversation_id is not None
+                else []
+            )
+            os_env = create_os_environment(
+                effective_spec, additional_read_roots=additional_read_roots
+            )
         if os_env is None:
             return "Error: unable to create OSEnvironment"
 
@@ -7880,17 +8589,30 @@ def _truncate_inbox_output(output: object, *, source_session_id: str | None = No
     )
 
 
-def _format_async_task_item(payload: _JsonObject) -> str:
+def _format_async_task_item(payload: _JsonObject, *, wake_inlined: bool = False) -> str:
     """
     Render a completed/failed/cancelled async-task inbox payload.
 
     :param payload: Async-task payload with ``handle_id``,
         ``tool_name``, ``status``, ``output`` keys.
+    :param wake_inlined: ``True`` when this sub-agent's Result was already
+        delivered verbatim in its wake notice (superside-chat sessions;
+        see ``omnigent.superchat.subagents.format_subagent_wake_notice_with_result``)
+        — the item is still drained from the inbox, but its text is not
+        repeated here.
     :returns: Human-readable inbox line.
     """
     handle_id = payload.get("handle_id", "unknown")
     tool = payload.get("tool_name", "unknown")
     status = payload.get("status", "unknown")
+    if wake_inlined and payload.get("type") == "sub_agent":
+        agent = payload.get("agent") or payload.get("tool_name", "sub_agent")
+        title = payload.get("title", "")
+        target = f"{agent}:{title}" if title else str(agent)
+        return (
+            f"[System: sub-agent task {handle_id} ({status}) for {target} — "
+            "already delivered above in the wake notice.]"
+        )
     # A sub-agent's full result persists in its own session transcript,
     # so a truncated delivery can point the parent at the retrieval path.
     retrieval_id = _subagent_child_id(payload) if payload.get("type") == "sub_agent" else None
@@ -7913,7 +8635,15 @@ def _format_async_task_item(payload: _JsonObject) -> str:
         if status == "failed":
             return f"[System: sub-agent task {handle_id} failed — {target} error: {output}]"
         if status == "cancelled":
-            return f"[System: sub-agent task {handle_id} cancelled — {target}]"
+            if not has_output:
+                return f"[System: sub-agent task {handle_id} cancelled — {target}]"
+            # A cancelled turn may still have produced real output (the agent
+            # kept working after the interrupt); surface it instead of
+            # silently dropping the result.
+            return (
+                f"[System: sub-agent task {handle_id} cancelled — {target}; "
+                f"output before cancellation: {output}]"
+            )
         return f"[System: sub-agent task {handle_id} {status} — {target}: {output}]"
     if status == "completed":
         if not has_output:
@@ -8198,7 +8928,14 @@ async def _drain_inbox(
             server_client=server_client,
             conversation_id=conversation_id,
         )
-        items.append(_format_async_task_item(evaluation.payload))
+        wake_inlined = False
+        child_id = _subagent_child_id(evaluation.payload)
+        if child_id is not None:
+            from omnigent.runner import app as _runner_app
+
+            entry = _runner_app.get_subagent_work(child_id)
+            wake_inlined = bool(entry is not None and entry.wake_inlined)
+        items.append(_format_async_task_item(evaluation.payload, wake_inlined=wake_inlined))
         if evaluation.retry_original:
             retry_payloads.append(payload)
         else:
