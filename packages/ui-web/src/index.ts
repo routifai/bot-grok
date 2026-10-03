@@ -5,6 +5,10 @@ export {
   GROK_BOT_COLORS,
   GROK_MASCOT_SHAPES,
   GrokShapePreview,
+  MUSE_FACE_CHEEK,
+  MUSE_FACE_INK,
+  MUSE_FACE_SHINE,
+  MuseAvatar,
   museAvatarState,
   parseBotAvatar,
   resolvePersonaColorDef,
@@ -41,3 +45,4 @@ export * from "./components/ui/tooltip.js";
 export { GroupAvatar, type GroupAvatarMember, type GroupAvatarProps } from "./group-avatar.js";
 export { cn } from "./lib/utils.js";
 export { ModelThinkingOptions } from "./model-thinking-options.js";
+export { type LiveMuseFaceProps, LiveMuseFaceProvider } from "./muse-face.js";

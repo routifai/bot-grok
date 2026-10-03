@@ -1,6 +1,7 @@
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { useEffect, useRef } from "react";
 import type * as ThreeNamespace from "three";
+import { parseColor, supportsWebGL } from "../../../components/ai/webgl";
 
 // A calm, living background for the Muse signed-out and first-run screens (docs/muse/DESIGN.md):
 // a slow flowing gradient field, full-bleed and behind the content, drawn with a simplex-noise
@@ -109,33 +110,6 @@ void main() {
   gl_FragColor = vec4(color, 1.0);
 }
 `;
-
-function supportsWebGL(): boolean {
-  if (typeof window === "undefined" || typeof window.WebGLRenderingContext === "undefined") {
-    return false;
-  }
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
-function parseColor(raw: string, fallback: [number, number, number]): [number, number, number] {
-  const value = raw.trim();
-  const hex = /^#([0-9a-f]{6})$/i.exec(value);
-  const hexDigits = hex?.[1];
-  if (hexDigits) {
-    const int = Number.parseInt(hexDigits, 16);
-    return [((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255];
-  }
-  const rgb = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(value);
-  if (rgb) {
-    return [Number(rgb[1]) / 255, Number(rgb[2]) / 255, Number(rgb[3]) / 255];
-  }
-  return fallback;
-}
 
 type ThemeColors = {
   background: [number, number, number];

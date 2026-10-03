@@ -1,7 +1,9 @@
+import { LiveMuseFaceProvider } from "@aiden/ui-web";
 import { StrictMode, useEffect, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
+import { BloopAvatar } from "./components/ai/bloop/BloopAvatar";
 import { DesktopUpdatesProvider } from "./components/DesktopUpdates";
 import { I18nBootstrap } from "./components/I18nBootstrap";
 import { applyUiDirection } from "./lib/apply-ui-direction";
@@ -43,7 +45,9 @@ createRoot(document.getElementById("root")!).render(
           land while the URL already moved. */}
       <BrowserRouter useTransitions={false}>
         <DesktopUpdatesProvider>
-          <App />
+          <LiveMuseFaceProvider value={BloopAvatar}>
+            <App />
+          </LiveMuseFaceProvider>
         </DesktopUpdatesProvider>
       </BrowserRouter>
     </I18nBootstrap>

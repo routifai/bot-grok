@@ -22,6 +22,7 @@ import { memo, useId, useMemo, useSyncExternalStore } from "react";
 import type { AvatarStyle } from "./avatar-style.js";
 import { useAvatarStyle } from "./avatar-style.js";
 import { cn } from "./lib/utils.js";
+import { useLiveMuseFace } from "./muse-face.js";
 import "./styles.css";
 
 export type { GrokColorDef };
@@ -132,6 +133,7 @@ export const BotAvatar = memo(function BotAvatar({
   const id = useId().replace(/[^a-zA-Z0-9-_]/g, "");
   const isWorking = ACTIVE_RUN_STATUSES.some((s) => s === status);
   const preferredVariant = useAvatarStyle();
+  const LiveMuseFace = useLiveMuseFace();
 
   const parsed = useMemo(() => parseBotAvatar(color, identity), [color, identity]);
   const effectiveId = identity || parsed.color || "agent";
@@ -193,11 +195,22 @@ export const BotAvatar = memo(function BotAvatar({
   }
 
   if (face === "muse") {
-    return (
-      <MuseAvatar
-        color={color ? parsed.color : DEFAULT_MUSE_COLOR}
+    const museColor = color ? parsed.color : DEFAULT_MUSE_COLOR;
+    const state = museState ?? museAvatarState(status, waitingCount);
+    return LiveMuseFace ? (
+      <LiveMuseFace
+        color={museColor}
         size={size}
-        state={museState ?? museAvatarState(status, waitingCount)}
+        state={state}
+        waitingCount={waitingCount ?? 0}
+        identity={identity}
+        className={className}
+      />
+    ) : (
+      <MuseAvatar
+        color={museColor}
+        size={size}
+        state={state}
         waitingCount={waitingCount ?? 0}
         className={className}
       />
@@ -378,10 +391,10 @@ function OrganicAvatar({
  * overlays used for depth — is built from these constants or from the color prop, never
  * a new hardcoded hex.
  */
-const MUSE_FACE_INK = "#132320";
-const MUSE_FACE_CHEEK = "#FF8E86";
+export const MUSE_FACE_INK = "#132320";
+export const MUSE_FACE_CHEEK = "#FF8E86";
 const MUSE_FACE_SPARK = "#F4B63F";
-const MUSE_FACE_SHINE = "#FFFFFF";
+export const MUSE_FACE_SHINE = "#FFFFFF";
 const MUSE_BODY_PATH =
   "M60 24C90 24 104 44 104 68C104 94 86 108 60 108C34 108 16 94 16 68C16 44 30 24 60 24Z";
 const MUSE_SPARK_PATH = "M60 3L63 13L73 16L63 19L60 29L57 19L47 16L57 13Z";
@@ -396,18 +409,21 @@ const MUSE_MOUTH_PATHS: Record<Exclude<MuseState, "waiting">, string> = {
   working: "M56 82Q60 85 64 82",
 };
 
-function MuseAvatar({
+/** The static SVG Muse face with its Ask badge. `faceHidden` keeps the badge but fades the face. */
+export function MuseAvatar({
   color,
   size,
   state,
   waitingCount,
   className,
+  faceHidden = false,
 }: {
   color: string;
   size: number;
   state: MuseState;
   waitingCount: number;
   className?: string;
+  faceHidden?: boolean;
 }) {
   const showBadge = waitingCount > 0;
   const showBadgeText = size >= MUSE_BADGE_TEXT_MIN_SIZE;
@@ -432,7 +448,10 @@ function MuseAvatar({
         height={size}
         aria-hidden="true"
         data-muse-state={state}
-        className="aiden-muse-avatar overflow-visible"
+        className={cn(
+          "aiden-muse-avatar overflow-visible transition-opacity duration-300 motion-reduce:transition-none",
+          faceHidden && "opacity-0",
+        )}
       >
         <defs>
           {/* Depth: lighter top-left, slightly deeper bottom-right, built only from the

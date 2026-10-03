@@ -13,6 +13,7 @@ import {
   resolvePersonaColorDef,
   resolvePersonaShape,
 } from "./bot-avatar.js";
+import { type LiveMuseFaceProps, LiveMuseFaceProvider } from "./muse-face.js";
 
 describe("BotAvatar", () => {
   it("renders distinct SVG gradient IDs for concurrent working avatars", () => {
@@ -302,5 +303,53 @@ describe("Muse face", () => {
   it("keeps the identity color on the body under the new depth overlay", () => {
     const html = renderToString(<BotAvatar color="#9333EA" face="muse" status="idle" />);
     expect(html).toContain('class="aiden-muse-body" fill="#9333EA"');
+  });
+});
+
+describe("BotAvatar live Muse face", () => {
+  const Live = ({ state, size, waitingCount, identity }: LiveMuseFaceProps) => (
+    <span
+      data-testid="live-face"
+      data-state={state}
+      data-size={size}
+      data-asks={waitingCount}
+      data-id={identity}
+    />
+  );
+
+  it("draws the static Muse face when no live renderer is provided", () => {
+    const html = renderToString(<BotAvatar color="#0090FF" face="muse" size={40} />);
+    expect(html).toContain("aiden-muse-avatar");
+    expect(html).not.toContain("live-face");
+  });
+
+  it("hands the derived state, size, asks and identity to a provided live renderer", () => {
+    const html = renderToString(
+      <LiveMuseFaceProvider value={Live}>
+        <BotAvatar
+          color="#0090FF"
+          face="muse"
+          size={40}
+          identity="aiden"
+          status="running"
+          waitingCount={2}
+        />
+      </LiveMuseFaceProvider>,
+    );
+    expect(html).toContain('data-testid="live-face"');
+    // An open Ask outranks an active run, exactly as in the static face.
+    expect(html).toContain('data-state="waiting"');
+    expect(html).toContain('data-asks="2"');
+    expect(html).toContain('data-id="aiden"');
+    expect(html).not.toContain("aiden-muse-avatar");
+  });
+
+  it("leaves non-Muse avatars alone even when a live renderer is provided", () => {
+    const html = renderToString(
+      <LiveMuseFaceProvider value={Live}>
+        <BotAvatar color="#8B5CF6" size={36} />
+      </LiveMuseFaceProvider>,
+    );
+    expect(html).not.toContain("live-face");
   });
 });
