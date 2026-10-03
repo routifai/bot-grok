@@ -185,6 +185,7 @@ def register_side_chats_routes(
                     "side_chat_open: failed to bind host for %s", new_id, exc_info=True
                 )
 
+        first_message_error: str | None = None
         if body.first_message:
             msg_resp = await _internal_call(
                 request,
@@ -198,15 +199,19 @@ def register_side_chats_routes(
                     },
                 },
             )
+            # The Side Chat already exists; report the failed message instead of
+            # erroring, so the caller doesn't retry into a duplicate chat.
             if msg_resp.status_code >= 400:
-                raise OmnigentError(
-                    f"side_chat_open: message delivery failed for {new_id}: "
-                    f"{msg_resp.status_code} {msg_resp.text}",
-                    code=ErrorCode.INTERNAL_ERROR,
+                _logger.warning(
+                    "side_chat_open: first message not delivered to %s (%s)",
+                    new_id,
+                    msg_resp.status_code,
                 )
+                first_message_error = f"first message not delivered ({msg_resp.status_code})"
 
         return SideChatOpenResponse(
             conversation_id=new_id,
             title=new_conv.get("title"),
             start=body.start,
+            first_message_error=first_message_error,
         )

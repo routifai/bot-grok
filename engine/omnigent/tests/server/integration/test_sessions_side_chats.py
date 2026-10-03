@@ -11,8 +11,6 @@ routes_side_chats._internal_call``).
 
 from __future__ import annotations
 
-import re
-
 import httpx
 import pytest
 
@@ -140,11 +138,9 @@ async def test_first_message_failure_still_leaves_the_side_chat_created(
         f"/v1/sessions/{super_chat_id}/side_chats",
         json={"start": "blank", "title": "t", "first_message": "what's in this file?"},
     )
-    assert resp.status_code == 500, resp.text
-    message = resp.json()["error"]["message"]
-    match = re.search(r"message delivery failed for (\w+):", message)
-    assert match is not None, message
-    new_id = match.group(1)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["first_message_error"], resp.text
+    new_id = resp.json()["conversation_id"]
 
     get_resp = await client.get(f"/v1/sessions/{new_id}/labels")
     assert get_resp.status_code == 200, get_resp.text

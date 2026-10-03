@@ -2753,11 +2753,14 @@ class SideChatOpenResponse(BaseModel):
     :param title: Its actual title — the caller's own, or the one the
         server derived.
     :param start: Echoes the request's ``start``.
+    :param first_message_error: Set when the Side Chat was created but its
+        ``first_message`` could not be delivered; the caller may resend it.
     """
 
     conversation_id: str
     title: str | None = None
     start: Literal["with_context", "blank"]
+    first_message_error: str | None = None
 
 
 class ReadStatePutRequest(BaseModel):

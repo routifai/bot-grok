@@ -4151,13 +4151,14 @@ async def _execute_side_chat_open(
         return json.dumps({"error": f"side_chat_open {start} failed: {detail}"})
 
     new_conv = resp.json()
-    return json.dumps(
-        {
-            "conversation_id": new_conv["conversation_id"],
-            "title": new_conv.get("title") or title,
-            "start": start,
-        }
-    )
+    result = {
+        "conversation_id": new_conv["conversation_id"],
+        "title": new_conv.get("title") or title,
+        "start": start,
+    }
+    if new_conv.get("first_message_error"):
+        result["first_message_error"] = new_conv["first_message_error"]
+    return json.dumps(result)
 
 
 async def _execute_web_fetch_tool(
