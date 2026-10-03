@@ -12,7 +12,8 @@ The engine's full contract is
 its glossary is
 [`engine/omnigent/rollover/CONTEXT.md`](../../engine/omnigent/rollover/CONTEXT.md).
 This page explains it in Nova's terms. How each screen is wired:
-[WIRING.md](WIRING.md).
+[WIRING.md](WIRING.md). What of the engine we carry but may drop:
+[ENGINE-TRIM.md](ENGINE-TRIM.md).
 
 ## Words: Nova ↔ engine
 
