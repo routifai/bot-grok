@@ -208,12 +208,4 @@ describe("loadEnv", () => {
       false,
     );
   });
-
-  it("leaves the Omnigent context-provider secret unset by default (the route 404s)", () => {
-    expect(loadEnv(base).omnigentContextProviderSecret).toBeUndefined();
-    expect(
-      loadEnv({ ...base, OMNIGENT_CONTEXT_PROVIDER_SECRET: " a-dev-secret " })
-        .omnigentContextProviderSecret,
-    ).toBe("a-dev-secret");
-  });
 });

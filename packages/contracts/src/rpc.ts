@@ -1,5 +1,6 @@
 import { eventIterator, oc } from "@orpc/contract";
 import * as z from "zod";
+import { ActivityPageSchema, ActivitySchema } from "./activity.js";
 import { AiConsentQuerySchema, AiConsentStatusSchema } from "./ai-consent.js";
 import {
   ARTIFACT_DESCRIPTION_MAX_LENGTH,
@@ -887,6 +888,22 @@ export const appContract = {
     setRunnerLocation: oc
       .input(z.object({ botId: Id, runnerLocation: NovaRunnerLocationIdSchema }))
       .output(EngineInfoSchema),
+  },
+  // The Activity panel (CONTEXT.md "Activity", "Activity Feed"; docs/super-chat/README.md):
+  // everything the Muse did, newest first, by day. Scoped to the bot's Super Chat family (the
+  // Conversation, its Side Chats, and their Helpers).
+  activities: {
+    list: oc
+      .input(
+        z.object({
+          botId: Id,
+          /** Epoch seconds; only Activities started strictly before this. */
+          before: z.number().int().nonnegative().optional(),
+          limit: z.number().int().positive().max(100).optional(),
+        }),
+      )
+      .output(ActivityPageSchema),
+    get: oc.input(z.object({ botId: Id, activityId: z.string().min(1) })).output(ActivitySchema),
   },
   episodes: {
     list: oc

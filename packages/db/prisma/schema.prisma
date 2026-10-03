@@ -980,14 +980,20 @@ model OmnigentSession {
   botId             String   @unique
   bot               Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   omnigentSessionId String
-  /// Built-in Omnigent agent bundle name (e.g. "nova-pi") this session currently runs on;
+  /// Built-in Omnigent agent bundle name (e.g. "nova-claude") this session currently runs on;
   /// kept in sync by packages/adapters/src/omnigent/gateway.ts when a turn's resolved
   /// harness (Bot.museHarness) differs and switch-agent succeeds.
-  agentName         String   @default("nova-pi")
+  agentName         String   @default("nova-claude")
   /// Runner location (NovaRunnerLocationId) this session was bound on; recreated (a fresh
   /// Omnigent session, since there is no switch-location RPC) when Bot.museRunnerLocation no
   /// longer matches — see ensureOmnigentSession in packages/adapters/src/omnigent/gateway.ts.
   runnerLocation    String   @default("computer")
+  /// Super Chat slice A1 (docs/super-chat/WIRING.md): the id of the last Omnigent item the
+  /// mirror job (packages/adapters/src/omnigent/mirror.ts) has copied into the Nova thread, or
+  /// that the gateway has already delivered through the normal run path (set right after every
+  /// turn — packages/adapters/src/omnigent/gateway.ts) — so the mirror job only ever looks at
+  /// items after it and never double-posts a reply the run path already delivered.
+  lastMirroredItemId String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

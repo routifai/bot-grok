@@ -86,18 +86,27 @@ export async function createOmnigentSession(
  * session created with no `host_type` binds no host at all and stays that way forever — see
  * ensureOmnigentSession's repair path.
  */
+export interface OmnigentSessionSnapshot extends OmnigentSessionResponse {
+  host_id?: string | null;
+  /** Helper (sub-agent) / Side Chat ancestry: null for a Super Chat (superside-chat.md). */
+  parent_session_id?: string | null;
+  /** Session labels, including `omnigent.context.mode` (superside-chat.md). Used by
+   * ./gateway.ts to detect a Super Chat created before the mode label existed. */
+  labels?: Record<string, string>;
+}
+
 export async function getOmnigentSession(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-): Promise<OmnigentSessionResponse & { host_id?: string | null }> {
+): Promise<OmnigentSessionSnapshot> {
   const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}`, config.baseUrl);
   url.searchParams.set("include_items", "false");
   url.searchParams.set("include_liveness", "false");
   url.searchParams.set("include_usage", "false");
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "get session");
-  return (await response.json()) as OmnigentSessionResponse & { host_id?: string | null };
+  return (await response.json()) as OmnigentSessionSnapshot;
 }
 
 export interface OmnigentHostSummary {
@@ -226,19 +235,169 @@ export async function switchOmnigentAgent(
   return (await response.json()) as OmnigentSessionResponse;
 }
 
-/** `GET /v1/sessions/{id}/items` — the committed conversation transcript, paginated. */
+export interface OmnigentPaginatedList<T> {
+  data: T[];
+  first_id?: string | null;
+  last_id?: string | null;
+  has_more?: boolean;
+}
+
+export type OmnigentSessionItem = Record<string, unknown> & {
+  id: string;
+  type: string;
+  role?: string;
+  content?: unknown;
+  created_at?: number;
+};
+
+/** `GET /v1/sessions/{id}/items` — the committed conversation transcript, cursor-paginated
+ * (engine/omnigent/omnigent/server/routes/sessions/routes_items.py). Used both for a chat's
+ * message history (apps/api/src/chats.ts) and the mirror job's scan for items the Super Chat
+ * produced on its own (./mirror.ts). */
 export async function listOmnigentSessionItems(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-): Promise<Array<Record<string, unknown>>> {
+  options: { limit?: number; after?: string; before?: string; order?: "asc" | "desc" } = {},
+): Promise<OmnigentPaginatedList<OmnigentSessionItem>> {
+  const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/items`, config.baseUrl);
+  if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
+  if (options.after) url.searchParams.set("after", options.after);
+  if (options.before) url.searchParams.set("before", options.before);
+  if (options.order) url.searchParams.set("order", options.order);
+  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
+  await throwOnError(response, "list session items");
+  return (await response.json()) as OmnigentPaginatedList<OmnigentSessionItem>;
+}
+
+export interface OmnigentSideChatCreateResponse {
+  conversation_id: string;
+  title: string | null;
+  start: "with_context" | "blank";
+}
+
+/** `POST /v1/sessions/{superId}/side_chats` (docs/super-chat/WIRING.md slice E1): creates a
+ * Side Chat of the Super Chat `superId`, optionally seeded with its first message. */
+export async function createOmnigentSideChat(
+  config: OmnigentClientConfig,
+  email: string,
+  superSessionId: string,
+  input: { start: "with_context" | "blank"; title?: string; firstMessage?: string },
+): Promise<OmnigentSideChatCreateResponse> {
   const response = await fetch(
-    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/items`, config.baseUrl),
+    new URL(`/v1/sessions/${encodeURIComponent(superSessionId)}/side_chats`, config.baseUrl),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify({
+        start: input.start,
+        ...(input.title ? { title: input.title } : {}),
+        ...(input.firstMessage ? { first_message: input.firstMessage } : {}),
+      }),
+    },
+  );
+  await throwOnError(response, "create side chat");
+  return (await response.json()) as OmnigentSideChatCreateResponse;
+}
+
+export interface OmnigentRelatedChat {
+  id: string;
+  title: string | null;
+  created_at: number;
+  updated_at: number;
+  last_message_preview: string | null;
+  archived?: boolean;
+  start?: "with_context" | "blank" | null;
+  summary?: string | null;
+  live?: boolean;
+}
+
+/** `GET /v1/sessions/{superId}/related_chats` — the Super Chat's Side Chats (not cursor-
+ * paginated; superside-chat.md). */
+export async function listOmnigentRelatedChats(
+  config: OmnigentClientConfig,
+  email: string,
+  superSessionId: string,
+): Promise<OmnigentPaginatedList<OmnigentRelatedChat>> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(superSessionId)}/related_chats`, config.baseUrl),
     { headers: omnigentHeaders(config, email) },
   );
-  await throwOnError(response, "list session items");
-  const body = (await response.json()) as { data?: Array<Record<string, unknown>> };
-  return body.data ?? [];
+  await throwOnError(response, "list related chats");
+  return (await response.json()) as OmnigentPaginatedList<OmnigentRelatedChat>;
+}
+
+/** `GET /v1/sessions/{id}/context_summary` — the summary a new "Knows our conversation" Side
+ * Chat would start with. */
+export async function getOmnigentContextSummary(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+): Promise<{ summary: string | null; created_at: number | null }> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/context_summary`, config.baseUrl),
+    { headers: omnigentHeaders(config, email) },
+  );
+  await throwOnError(response, "get context summary");
+  return (await response.json()) as { summary: string | null; created_at: number | null };
+}
+
+export interface OmnigentActivityStep {
+  item_id: string;
+  title: string;
+  created_at: number;
+  tool?: string | null;
+  detail?: Record<string, unknown> | null;
+}
+
+export interface OmnigentActivity {
+  id: string;
+  kind: "turn" | "sub_agent";
+  chat_id: string;
+  title: string;
+  outcome: string | null;
+  status: "in_progress" | "done" | "failed" | "cancelled";
+  started_at: number;
+  finished_at: number | null;
+  date: string;
+  steps?: OmnigentActivityStep[];
+}
+
+/** `GET /v1/sessions/{superId}/activities?before=&limit=` — the Activity Feed, newest first
+ * (superside-chat.md). */
+export async function listOmnigentActivities(
+  config: OmnigentClientConfig,
+  email: string,
+  superSessionId: string,
+  options: { before?: number; limit?: number } = {},
+): Promise<OmnigentPaginatedList<OmnigentActivity>> {
+  const url = new URL(
+    `/v1/sessions/${encodeURIComponent(superSessionId)}/activities`,
+    config.baseUrl,
+  );
+  if (options.before !== undefined) url.searchParams.set("before", String(options.before));
+  if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
+  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
+  await throwOnError(response, "list activities");
+  return (await response.json()) as OmnigentPaginatedList<OmnigentActivity>;
+}
+
+/** `GET /v1/sessions/{superId}/activities/{activityId}` — one Activity with full step detail. */
+export async function getOmnigentActivity(
+  config: OmnigentClientConfig,
+  email: string,
+  superSessionId: string,
+  activityId: string,
+): Promise<OmnigentActivity> {
+  const response = await fetch(
+    new URL(
+      `/v1/sessions/${encodeURIComponent(superSessionId)}/activities/${encodeURIComponent(activityId)}`,
+      config.baseUrl,
+    ),
+    { headers: omnigentHeaders(config, email) },
+  );
+  await throwOnError(response, "get activity");
+  return (await response.json()) as OmnigentActivity;
 }
 
 /**

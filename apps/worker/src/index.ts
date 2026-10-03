@@ -39,6 +39,7 @@ import {
   pipedreamConfigFromEnv,
   reconcileCloudAgents,
   reconcileComputerUpdates,
+  reconcileOmnigentMirror,
   resolveDeploymentModel,
   resolvePiSessionRoot,
   resolveSandboxProvider,
@@ -247,6 +248,9 @@ async function main() {
     leadership: createPostgresReconciliationLeadership(pool),
     reconcileCloudAgents: () => reconcileCloudAgents({ prisma, jobs, cloudAgent }),
     reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
+    reconcileOmnigentMirror: omnigent
+      ? () => reconcileOmnigentMirror({ ...omnigent, workerId: process.pid.toString() })
+      : undefined,
   });
   reconciler.start();
 

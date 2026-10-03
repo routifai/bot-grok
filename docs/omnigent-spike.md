@@ -1,5 +1,12 @@
 # Omnigent spike (week 1)
 
+> **Superseded by `docs/super-chat/README.md` and `WIRING.md`.** The week-1 shape this page
+> describes — four selectable harnesses (`pi`/`claude`/`openai`/`codex`), the
+> `nova_*` builtin tools, and the `/internal/omnigent/context` context-provider hook — has been
+> replaced by `omnigent.context.mode=superside-chat` (slice A1): a single `nova-claude` Super
+> Chat bundle, with Memory, Rollover, Side Chats and the Activity Feed owned entirely by
+> Omnigent. Everything below is kept for history; read the Super Chat docs for what's current.
+
 Nova is moving its agent loop onto [Omnigent](https://github.com/omnigent-ai/omnigent) (vendored
 read-only at `engine/omnigent/`, upstream `omnigent-main`): Omnigent runs the agent loop, tools,
 policies, and harness switching; Nova stays the context layer and product UI. This spike lets one

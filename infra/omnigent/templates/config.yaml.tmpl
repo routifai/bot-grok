@@ -1,35 +1,41 @@
-# GENERATED FILE — do not edit by hand. Edit infra/omnigent/templates/config.yaml.tmpl (or the
-# BUNDLES list in infra/omnigent/render-agents.mjs), then run `node infra/omnigent/render-agents.mjs`.
+# GENERATED FILE — do not edit by hand. Edit infra/omnigent/templates/ (config.yaml.tmpl,
+# AGENTS.md, agents/<type>/config.yaml), then run `node infra/omnigent/render-agents.mjs`.
 #
-# Nova bundle for Omnigent (docs/omnigent-spike.md, NOVA_ENGINE=omnigent week 1 spike). Nova's
-# person context arrives per turn through the context-provider hook, wrapped by Omnigent in
-# <deployment_context> (see apps/api/src/omnigent-context.ts) — this bundle only carries the
-# harness/model choice and the two week-1 builtin tools.
+# Nova's Super Chat bundle (docs/super-chat/README.md, WIRING.md slice A1): the one agent
+# bundle backing `omnigent.context.mode=superside-chat` Conversations, adapted from
+# engine/omnigent/examples/super-chat/ for Nova. Runs on the Claude Agent SDK harness, with
+# Sub-agent Types researcher/analyst/drafter under agents/<type>/ — a Muse launches one by its
+# declared name, never by naming a model. The prompt (AGENTS.md) carries the Nova/Muse voice;
+# per-turn Memory, Rollover, Side Chats and the Activity Feed all come from Omnigent itself
+# (ADR 0001, engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md) — Nova no longer
+# injects anything through a context-provider hook.
 spec_version: 1
-name: {{NAME}}
+name: nova-claude
 description: >-
-  Nova, the person's personal AI, running on the {{HARNESS}} harness
-  (docs/omnigent-spike.md).
-
-instructions: AGENTS.md
+  Nova's Super Chat: the person's one long-running assistant, which researches, analyzes and
+  drafts by delegating to Sub-agents, and keeps the conversation itself bounded with
+  Omnigent's own Rollover and Memory.
 
 executor:
   type: omnigent
   config:
-    harness: {{HARNESS}}
+    harness: claude-sdk
     model: ${{{MODEL_ENV}}}
+
+interaction:
+  conversational: true
+  modalities:
+    input: [text, file]
+    output: [text]
 
 tools:
   builtins:
     - web_search
     - web_fetch
-    - nova_remember
-    - nova_recall_episodes
-    - nova_goals
-    - nova_ask_user
-    - nova_follow_topic
-    - nova_unfollow_topic
-    - nova_post_to_feed
-    - nova_offer_skill
-    - nova_save_skill
-    - nova_load_skill
+  # The three Sub-agent Types this Super Chat may launch — see agents/<dir>/. Each has its own
+  # executor and max_sessions; a turn launches one by its declared `name`, never by naming a
+  # model (CONTEXT.md "Sub-agent Type").
+  agents:
+    - researcher
+    - analyst
+    - drafter

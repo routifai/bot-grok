@@ -30,9 +30,7 @@ function depsFor(bot: BotRow | null) {
 const ENABLED_NO_KEYS = { NOVA_ENGINE: "omnigent" };
 const ENABLED_ALL_KEYS = {
   NOVA_ENGINE: "omnigent",
-  OPENROUTER_API_KEY: "sk-or",
   ANTHROPIC_API_KEY: "sk-ant",
-  OPENAI_API_KEY: "sk-openai",
 };
 
 describe("getEngineInfo", () => {
@@ -42,14 +40,14 @@ describe("getEngineInfo", () => {
     expect(info.enabled).toBe(false);
     expect(info.active).toBeNull();
     expect(info.runnerLocation).toBeNull();
-    expect(info.harnesses).toHaveLength(4);
+    expect(info.harnesses).toHaveLength(1);
   });
 
-  it("defaults active to pi when enabled and the bot has no museHarness", async () => {
+  it("defaults active to claude when enabled and the bot has no museHarness", async () => {
     const { prisma } = depsFor({ museHarness: null, museRunnerLocation: null });
     const info = await getEngineInfo({ prisma }, actor, "bot-1", ENABLED_NO_KEYS);
     expect(info.enabled).toBe(true);
-    expect(info.active).toBe("pi");
+    expect(info.active).toBe("claude");
   });
 
   it("follows OMNIGENT_AGENT_NAME's harness for backwards compatibility when unset", async () => {
@@ -61,13 +59,13 @@ describe("getEngineInfo", () => {
     expect(info.active).toBe("claude");
   });
 
-  it("reports the bot's own chosen harness when set", async () => {
+  it("falls back to claude when the bot's stored museHarness names a retired harness", async () => {
     const { prisma } = depsFor({ museHarness: "codex", museRunnerLocation: null });
     const info = await getEngineInfo({ prisma }, actor, "bot-1", ENABLED_NO_KEYS);
-    expect(info.active).toBe("codex");
+    expect(info.active).toBe("claude");
   });
 
-  it("reports availability for each harness from env", async () => {
+  it("reports availability for the Claude harness from env", async () => {
     const { prisma } = depsFor({ museHarness: null, museRunnerLocation: null });
     const info = await getEngineInfo({ prisma }, actor, "bot-1", ENABLED_ALL_KEYS);
     for (const harness of info.harnesses) {
@@ -76,7 +74,7 @@ describe("getEngineInfo", () => {
     }
   });
 
-  it("names the missing env var when a harness is unavailable", async () => {
+  it("names the missing env var when the Claude harness is unavailable", async () => {
     const { prisma } = depsFor({ museHarness: null, museRunnerLocation: null });
     const info = await getEngineInfo({ prisma }, actor, "bot-1", ENABLED_NO_KEYS);
     const claude = info.harnesses.find((h) => h.id === "claude");
@@ -141,15 +139,15 @@ describe("setEngineHarness", () => {
     const info = await setEngineHarness(
       { prisma },
       actor,
-      { botId: "bot-1", harness: "codex" },
+      { botId: "bot-1", harness: "claude" },
       ENABLED_ALL_KEYS,
     );
     expect(update).toHaveBeenCalledWith({
       where: { id: "bot-1" },
-      data: { museHarness: "codex" },
+      data: { museHarness: "claude" },
       select: { museHarness: true, museRunnerLocation: true },
     });
-    expect(info.active).toBe("codex");
+    expect(info.active).toBe("claude");
   });
 });
 

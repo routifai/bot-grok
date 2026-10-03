@@ -112,6 +112,10 @@ export function createJobReconciler(
     leadership?: ReconciliationLeadership;
     reconcileComputerUpdates?: () => Promise<void>;
     reconcileCloudAgents?: () => Promise<void>;
+    /** Super Chat slice A1 (docs/super-chat/WIRING.md "Mirror job"): copies assistant messages
+     * a Super Chat produced on its own into the Nova thread. Undefined when Nova isn't running
+     * on the Omnigent engine. */
+    reconcileOmnigentMirror?: () => Promise<void>;
   },
   options: { intervalMs?: number; batchSize?: number } = {},
 ) {
@@ -138,9 +142,11 @@ export function createJobReconciler(
       if (deps.leadership && !(await deps.leadership.tryAcquire())) return;
 
       const auxiliary = await Promise.allSettled(
-        [deps.reconcileCloudAgents, deps.reconcileComputerUpdates].map(async (reconcile) =>
-          reconcile?.(),
-        ),
+        [
+          deps.reconcileCloudAgents,
+          deps.reconcileComputerUpdates,
+          deps.reconcileOmnigentMirror,
+        ].map(async (reconcile) => reconcile?.()),
       );
       for (const result of auxiliary) {
         if (result.status === "rejected")

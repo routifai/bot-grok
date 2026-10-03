@@ -5,8 +5,12 @@ import * as z from "zod";
 // Omnigent-speak for "which coding/agent runtime and model family" — their Muse runs on, and
 // switch mid-Conversation. `engine.info` / `engine.setHarness` in packages/contracts/src/rpc.ts.
 
-/** One Omnigent built-in agent bundle (infra/omnigent/agents/nova-<id>/) a Muse can run on. */
-export const NovaHarnessIdSchema = z.enum(["pi", "claude", "openai", "codex"]);
+/** One Omnigent built-in agent bundle (infra/omnigent/agents/nova-<id>/) a Muse can run on.
+ * Claude only (docs/super-chat/WIRING.md slice A1): the Super Chat bundle (`nova-claude`,
+ * harness `claude-sdk`) is the only one Nova ships. A bot's persisted `museHarness` from
+ * before this change (e.g. "pi") simply falls outside this enum now and is treated as unset
+ * (packages/adapters/src/omnigent/harnesses.ts `resolveMuseHarnessId`). */
+export const NovaHarnessIdSchema = z.enum(["claude"]);
 export type NovaHarnessId = z.infer<typeof NovaHarnessIdSchema>;
 
 export const EngineHarnessSchema = z.object({

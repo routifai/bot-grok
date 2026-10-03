@@ -855,6 +855,11 @@ export const RunSchema = z.object({
     "messaging",
     "cloud_agent",
     "created",
+    /** Super Chat slice A1 (docs/super-chat/WIRING.md): "the Muse speaks first" — an assistant
+     * message the Super Chat produced on its own (a Helper's Result waking it), copied into
+     * Nova's thread by the mirror job (packages/adapters/src/omnigent/mirror.ts) rather than a
+     * person's message or the normal run path. */
+    "omnigent_mirror",
   ]),
   routineId: Id.nullable(),
   modelProvider: z.string().nullable(),

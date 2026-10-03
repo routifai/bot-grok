@@ -32,7 +32,9 @@ export function HarnessPicker({ botId, disabled }: { botId: string; disabled?: b
         )}
       >
         <span className="grid size-5 place-items-center">
-          <HarnessLogo id={active.id} size={active.id === "pi" ? 20 : 15} />
+          {/* Claude-only slice A1 (docs/super-chat/WIRING.md) narrowed NovaHarnessId to
+          "claude"; `as string` only avoids tsc's now-always-false literal comparison error. */}
+          <HarnessLogo id={active.id} size={(active.id as string) === "pi" ? 20 : 15} />
         </span>
         <span className="max-sm:hidden">{active.name}</span>
         <ChevronDown

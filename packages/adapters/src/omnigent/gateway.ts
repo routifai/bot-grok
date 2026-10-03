@@ -110,10 +110,27 @@ export async function runTurnOnOmnigent(
       desiredAgentName,
       desiredRunnerLocation,
     );
-    const text = await sendTurnAndAwaitReply(deps, user.email, sessionId, task.prompt);
+    const { text, lastItemId } = await sendTurnAndAwaitReply(
+      deps,
+      user.email,
+      sessionId,
+      task.prompt,
+    );
     const redacted = redactSecrets(text, deps.secrets);
     if (containsSecret(redacted, deps.secrets)) {
       throw new Error("refusing to persist a secret in the thread");
+    }
+
+    // Mirror job dedup (docs/super-chat/WIRING.md slice A1, ./mirror.ts): this turn's reply is
+    // about to be delivered through the normal run path below, so the mirror job must never
+    // look at it (or anything before it) again. Best-effort: a failure here only risks a
+    // harmless duplicate mirrored message, never a lost reply.
+    if (lastItemId) {
+      await deps.prisma.omnigentSession
+        .update({ where: { botId: run.botId }, data: { lastMirroredItemId: lastItemId } })
+        .catch((error) =>
+          getLogger().error("omnigent gateway: recording lastMirroredItemId failed", error),
+        );
     }
 
     const completed = await deps.events.finalizeRun({
@@ -154,13 +171,21 @@ export async function runTurnOnOmnigent(
   return true;
 }
 
-/** Session labels Omnigent's context-provider hook and its own routing key off of. */
+/** Turns on Omnigent's Super Chat capability (docs/super-chat/README.md, SUPERSIDE-CHAT.md):
+ * Rollover, Memory, Side Chats, Sub-agents and the Activity Feed, for this session and
+ * everything created from it. Fixed at session-creation time — a session without it is
+ * recreated the next time a turn runs on it (see `sessionNeedsRepair`). */
+const SUPERSIDE_CHAT_MODE_LABEL = "omnigent.context.mode";
+const SUPERSIDE_CHAT_MODE_VALUE = "superside-chat";
+
+/** Session labels the Super Chat is created with. */
 function sessionLabels(run: { userId: string; spaceId: string; botId: string }) {
   return {
     "nova.user": run.userId,
     "nova.space": run.spaceId,
     "nova.bot": run.botId,
     "nova.scope": "private",
+    [SUPERSIDE_CHAT_MODE_LABEL]: SUPERSIDE_CHAT_MODE_VALUE,
   };
 }
 
@@ -224,10 +249,12 @@ async function ensureOmnigentSession(
 
 /**
  * True when a reused session's Omnigent side never got a runner bound (`host_id` null) — the
- * bug this gateway's `host_type`/`host_id` binding fixes, for any session created before it did.
- * Fails OPEN (returns `false`, i.e. "no repair needed") on a snapshot-fetch error so a transient
- * Omnigent hiccup cannot force a recreate on every single turn; a genuine problem still surfaces
- * from `postOmnigentMessage` right after.
+ * bug this gateway's `host_type`/`host_id` binding fixes, for any session created before it did
+ * — or is missing the Super Chat mode label (docs/super-chat/WIRING.md: "an older session
+ * without it is replaced on the next turn", since the label is fixed at creation and there is no
+ * "add a label" RPC). Fails OPEN (returns `false`, i.e. "no repair needed") on a snapshot-fetch
+ * error so a transient Omnigent hiccup cannot force a recreate on every single turn; a genuine
+ * problem still surfaces from `postOmnigentMessage` right after.
  */
 async function sessionNeedsRepair(
   deps: OmnigentGatewayDeps,
@@ -236,7 +263,10 @@ async function sessionNeedsRepair(
 ): Promise<boolean> {
   try {
     const snapshot = await getOmnigentSession(deps.client, email, omnigentSessionId);
-    return snapshot.host_id == null;
+    return (
+      snapshot.host_id == null ||
+      snapshot.labels?.[SUPERSIDE_CHAT_MODE_LABEL] !== SUPERSIDE_CHAT_MODE_VALUE
+    );
   } catch (error) {
     getLogger().error("omnigent gateway: session snapshot check failed, continuing", error);
     return false;
@@ -388,7 +418,7 @@ async function sendTurnAndAwaitReply(
   email: string,
   sessionId: string,
   turnInput: string,
-): Promise<string> {
+): Promise<{ text: string; lastItemId: string | undefined }> {
   const signal = AbortSignal.timeout(TURN_TIMEOUT_MS);
   const iterator = streamOmnigentSession(deps.client, email, sessionId, signal)[
     Symbol.asyncIterator
@@ -398,18 +428,25 @@ async function sendTurnAndAwaitReply(
 
   // Omnigent streams each finished item as response.output_item.done and may leave
   // response.completed's own output empty, so the reply is the last assistant message seen.
+  // lastItemId tracks the newest item's id regardless of role, so the mirror job's "after"
+  // cursor (./mirror.ts) always starts strictly past everything this turn produced.
   let lastReply = "";
+  let lastItemId: string | undefined;
   let step = await first;
   while (!step.done) {
     const event = step.value;
     if (event.type === "response.output_item.done") {
       const item = event.item as Record<string, unknown> | undefined;
+      if (typeof item?.id === "string") lastItemId = item.id;
       const text = item ? extractAssistantText([item]) : "";
       if (text) lastReply = text;
     }
     if (event.type === "response.completed") {
       const response = event.response as { output?: Array<Record<string, unknown>> } | undefined;
-      return extractAssistantText(response?.output ?? []) || lastReply;
+      for (const item of response?.output ?? []) {
+        if (typeof item.id === "string") lastItemId = item.id;
+      }
+      return { text: extractAssistantText(response?.output ?? []) || lastReply, lastItemId };
     }
     if (event.type === "response.failed" || event.type === "response.error") {
       // Omnigent nests the failure under response.error, like response.completed's output.
@@ -425,8 +462,11 @@ async function sendTurnAndAwaitReply(
   throw new Error("Omnigent session stream ended before response.completed");
 }
 
-/** `response.output` items → assistant message text (OpenAI Responses-style content parts). */
-function extractAssistantText(output: Array<Record<string, unknown>>): string {
+/** `response.output` items → assistant message text (OpenAI Responses-style content parts).
+ * Also reused by ./mirror.ts for the flattened item shape `GET .../items` returns (same
+ * `{type, role, content}` fields — engine/omnigent/omnigent/entities/conversation.py's
+ * `to_api_dict`). */
+export function extractAssistantText(output: Array<Record<string, unknown>>): string {
   const parts: string[] = [];
   for (const item of output) {
     if (item.type !== "message" || item.role !== "assistant") continue;

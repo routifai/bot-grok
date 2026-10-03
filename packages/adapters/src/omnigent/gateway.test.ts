@@ -99,9 +99,14 @@ const DEPS_BASE = {
 describe("runTurnOnOmnigent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: a reused session already has a runner bound, so sessionNeedsRepair's snapshot
-    // check does not force an unwanted recreate in tests that don't care about that path.
-    getOmnigentSession.mockResolvedValue({ id: "conv_existing", host_id: "host_1" });
+    // Default: a reused session already has a runner bound and the Super Chat mode label, so
+    // sessionNeedsRepair's snapshot check does not force an unwanted recreate in tests that
+    // don't care about that path.
+    getOmnigentSession.mockResolvedValue({
+      id: "conv_existing",
+      host_id: "host_1",
+      labels: { "omnigent.context.mode": "superside-chat" },
+    });
   });
 
   it("returns false and touches nothing for a non-user trigger", async () => {
@@ -185,6 +190,37 @@ describe("runTurnOnOmnigent", () => {
         runId: "run-1",
       }),
     );
+  });
+
+  it("records the turn's last item id so the mirror job never re-delivers it", async () => {
+    findOmnigentAgentIdByName.mockResolvedValue("ag_1");
+    createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    streamOmnigentSession.mockReturnValue(
+      eventsFrom([
+        {
+          type: "response.completed",
+          response: {
+            output: [
+              {
+                id: "item_abc",
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "Hello there" }],
+              },
+            ],
+          },
+        },
+      ]),
+    );
+
+    const prisma = fakePrisma();
+    const events = fakeEvents();
+    await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+
+    expect(prisma.omnigentSession.update).toHaveBeenCalledWith({
+      where: { botId: "bot-1" },
+      data: { lastMirroredItemId: "item_abc" },
+    });
   });
 
   it("takes the reply from the last assistant output item when response.completed has no output", async () => {
@@ -569,6 +605,50 @@ describe("runTurnOnOmnigent", () => {
         "person@example.test",
         "conv_new",
         "hello",
+      );
+    });
+
+    it("repairs an existing session that is missing the Super Chat mode label", async () => {
+      const upsertMock = vi.fn(async () => ({
+        omnigentSessionId: "conv_new",
+        agentName: "nova-pi",
+        runnerLocation: "computer",
+      }));
+      const prisma = fakePrisma({
+        omnigentSession: {
+          findUnique: vi.fn(async () => ({
+            botId: "bot-1",
+            omnigentSessionId: "conv_unlabelled",
+            agentName: "nova-pi",
+            runnerLocation: "computer",
+          })),
+          upsert: upsertMock,
+          update: vi.fn(),
+        },
+      });
+      // A pre-A1 session: a runner is bound, but it predates the superside-chat mode label.
+      getOmnigentSession.mockResolvedValue({
+        id: "conv_unlabelled",
+        host_id: "host_1",
+        labels: {},
+      });
+      const events = fakeEvents();
+
+      const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+
+      expect(result).toBe(true);
+      expect(createOmnigentSession).toHaveBeenCalledWith(
+        DEPS_BASE.client,
+        "person@example.test",
+        expect.objectContaining({
+          labels: expect.objectContaining({ "omnigent.context.mode": "superside-chat" }),
+        }),
+      );
+      expect(upsertMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { botId: "bot-1" },
+          create: expect.objectContaining({ omnigentSessionId: "conv_new" }),
+        }),
       );
     });
 

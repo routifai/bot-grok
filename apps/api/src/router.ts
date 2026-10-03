@@ -154,6 +154,7 @@ import {
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { implement, ORPCError } from "@orpc/server";
+import { getActivity, listActivities } from "./activities.js";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { aiConsentStatus, allowAiConsent } from "./ai-consent.js";
@@ -168,6 +169,7 @@ import {
   listSpaceArtifacts,
 } from "./artifacts.js";
 import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
+import { createSideChat, getChatMessages, listChats, sendToChat, summaryPreview } from "./chats.js";
 import {
   executionBlocksUserTakeover,
   resolveBusyBotName,
@@ -4872,23 +4874,24 @@ export function createRouter(deps: RouterDeps) {
         prepareVoice(deps, context.actor, input),
       ),
     },
-    // The Super Chat backend is not built yet; these answer "not available" until it is.
+    // Super Chat Side Chats and Helpers (docs/super-chat/WIRING.md slice A1) — real handlers in
+    // ./chats.js; the ownership rule and Omnigent mapping live in @aiden/adapters.
     chats: {
-      list: museOnly.chats.list.handler(() => {
-        throw new ORPCError("NOT_IMPLEMENTED", { message: "Chats are not available yet." });
-      }),
-      createSide: museOnly.chats.createSide.handler(() => {
-        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
-      }),
-      summaryPreview: museOnly.chats.summaryPreview.handler(() => {
-        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
-      }),
-      messages: museOnly.chats.messages.handler(() => {
-        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
-      }),
-      send: museOnly.chats.send.handler(() => {
-        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
-      }),
+      list: museOnly.chats.list.handler(({ context, input }) =>
+        listChats(deps, context.actor, input),
+      ),
+      createSide: museOnly.chats.createSide.handler(({ context, input }) =>
+        createSideChat(deps, context.actor, input),
+      ),
+      summaryPreview: museOnly.chats.summaryPreview.handler(({ context, input }) =>
+        summaryPreview(deps, context.actor, input),
+      ),
+      messages: museOnly.chats.messages.handler(({ context, input }) =>
+        getChatMessages(deps, context.actor, input),
+      ),
+      send: museOnly.chats.send.handler(({ context, input }) =>
+        sendToChat(deps, context.actor, input),
+      ),
     },
     goals: {
       list: museOnly.goals.list.handler(({ context, input }) =>
@@ -4975,6 +4978,16 @@ export function createRouter(deps: RouterDeps) {
       ),
       setRunnerLocation: museOnly.engine.setRunnerLocation.handler(({ context, input }) =>
         setEngineRunnerLocation(deps, context.actor, input),
+      ),
+    },
+    // The Activity panel (docs/super-chat/WIRING.md slice A1) — real handlers in
+    // ./activities.js.
+    activities: {
+      list: museOnly.activities.list.handler(({ context, input }) =>
+        listActivities(deps, context.actor, input),
+      ),
+      get: museOnly.activities.get.handler(({ context, input }) =>
+        getActivity(deps, context.actor, input),
       ),
     },
     episodes: {

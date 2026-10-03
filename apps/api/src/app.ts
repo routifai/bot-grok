@@ -56,6 +56,7 @@ import {
   pushTokenPath,
   reconcileCloudAgents,
   reconcileComputerUpdates,
+  reconcileOmnigentMirror,
   removePiUserSessions,
   ScriptedAgentRuntime,
   SmtpEmailProvider,
@@ -97,7 +98,6 @@ import {
   wakeMessageRoutines,
 } from "./messaging-inbound.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
-import { mountOmnigentContextRoute } from "./omnigent-context.js";
 import { mountApiRequestBodyLimits } from "./request-body-limit.js";
 import { createRouter } from "./router.js";
 import { mountScreenTarget } from "./screen-proxy.js";
@@ -450,6 +450,9 @@ export async function createApp(
         jobs,
         reconcileCloudAgents: () => reconcileCloudAgents({ prisma, jobs, cloudAgent }),
         reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
+        reconcileOmnigentMirror: omnigent
+          ? () => reconcileOmnigentMirror({ ...omnigent, workerId: "api" })
+          : undefined,
       })
     : undefined;
   reconciler?.start();
@@ -563,12 +566,6 @@ export async function createApp(
     return actor;
   });
   mountWebhookHttpRoutes(app, { prisma, secrets, events, jobs });
-  mountOmnigentContextRoute(app, {
-    prisma,
-    memory,
-    secrets: runtimeSecrets,
-    contextProviderSecret: env.omnigentContextProviderSecret,
-  });
   // Shared with stop so a shutdown during retry delays does not restart polling.
   let messagingStopped = false;
   let clearMessagingRetryDelay: (() => void) | undefined;

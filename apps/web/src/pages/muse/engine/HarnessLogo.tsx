@@ -81,7 +81,11 @@ export function HarnessTile({
   size?: number;
   className?: string;
 }) {
-  if (id === "pi") {
+  // Claude-only slice A1 (docs/super-chat/WIRING.md) narrowed NovaHarnessId to "claude", so
+  // this branch is unreachable today; kept (cast, not deleted) since U1 owns this screen and
+  // may reintroduce other harnesses. `as string` only avoids tsc's now-always-false literal
+  // comparison error.
+  if ((id as string) === "pi") {
     return (
       <span
         className={cn("block shrink-0 overflow-hidden", className)}
