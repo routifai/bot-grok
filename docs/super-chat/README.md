@@ -71,8 +71,8 @@ Conversation (Super Chat) ──open──▶ Side chat "Q4 checklist"   (knows 
   When the person asks about it, the Muse reads it (shows as an Activity).
 - **Archived, never deleted.** After a month without messages a side chat is
   archived: it leaves the main list (an Archived fold shows it) but stays
-  readable, by the person and by the Muse. Writing in it again brings it
-  back.
+  readable, by the person and by the Muse. In Nova it opens read-only. (The
+  engine also brings an archived chat back if a message is written to it.)
 
 ## Helpers and their status
 

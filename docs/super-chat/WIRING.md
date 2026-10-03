@@ -35,6 +35,7 @@ apps/web ──oRPC──▶ apps/api (auth, ownership) ──HTTP──▶ Omni
 | Side chat / Helper messages | `chats.messages({chatId})` | `GET /v1/sessions/{chatId}/items` |
 | Side chat send | `chats.send({chatId, text})` | `POST /v1/sessions/{chatId}/events` |
 | Activity panel | `activities.list({botId, before?, limit?})` | `GET /v1/sessions/{super}/activities` |
+| Memory tab | `memory.profile({botId})` | `GET /v1/sessions/{super}/memory/profile` |
 | Activity / Helper detail | `activities.get({botId, activityId})` | `GET /v1/sessions/{super}/activities/{id}` |
 | Harness picker | `engine.info` | Claude only (`nova-claude`) |
 
@@ -81,4 +82,4 @@ running), `updatedAt`.
    it In progress, then Done; the Result appears in the Conversation without
    a new message from the person.
 4. Open the Helper from the panel: messages are visible, no composer.
-5. Archived side chat shows under the Archived fold, read-only until written to.
+5. Archived side chat shows under the Archived fold and opens read-only.
