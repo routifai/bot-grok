@@ -33,6 +33,7 @@ import {
   messagingEnvFromProcess,
   messagingPlatformsFromEnv,
   omnigentGatewayDepsFromEnv,
+  omnigentRedactionSecretsFromEnv,
   PiAgentRuntime,
   PipedreamConnector,
   PostgresRealtimeFanout,
@@ -164,12 +165,11 @@ async function main() {
     });
   // One provider instance so emulator launches and polls share the same Map.
   const cloudAgent = createCloudAgentConnection();
-  const runtimeSecrets = [
-    deploymentModelKey ?? "",
-    process.env.COMPOSIO_API_KEY ?? "",
-    process.env.CURSOR_API_KEY ?? "",
-    process.env.TYPESAFE_API_KEY ?? "",
-  ].filter(Boolean);
+  // Same composition ./omnigent/env.ts#omnigentRedactionSecretsFromEnv uses for the Omnigent
+  // read paths (chats.*/activities.*/memory.profile) — one list, shared, so every surface that
+  // can echo back something Omnigent (or the normal executor) said redacts with the identical
+  // set of deployment secrets.
+  const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
   const executor = createRunExecutor({
     prisma,

@@ -875,6 +875,12 @@ export const ThreadMessagePageSchema = z.object({
   threadId: Id,
   messages: z.array(ThreadMessageSchema),
   olderCursor: z.number().int().nonnegative().nullable(),
+  /** Omnigent-backed pages only (`chats.messages`, docs/super-chat/WIRING.md): the oldest
+   * item's own string id, to page further back with `chats.messages({chatId, before})`. A
+   * Nova-native thread page (every other `ThreadMessagePage` user — goals.log, the main
+   * Conversation) never sets this; `olderCursor`'s integer seq keeps meaning what it always
+   * has there. `null`/omitted means there is no older page. */
+  olderItemCursor: z.string().nullable().optional(),
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
 

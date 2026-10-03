@@ -3,12 +3,19 @@
 // (NOVA_ENGINE=omnigent, docs/omnigent-spike.md). Every call carries the identity/proxy
 // headers Omnigent's header auth mode expects — no SDK dependency, just fetch and a tiny
 // SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
+import { redactSecrets } from "@aiden/core";
 
 export interface OmnigentClientConfig {
   /** Base URL of the Omnigent server, e.g. "http://127.0.0.1:8000". */
   baseUrl: string;
   /** Shared secret Omnigent's header-auth proxy mode expects on every request. */
   proxySecret: string;
+  /** Secret values redacted out of an Omnigent error body before it reaches a thrown Error's
+   * message (./env.ts's `omnigentRedactionSecretsFromEnv` — the same list ./gateway.ts and
+   * ./mirror.ts redact a reply with). `undefined` (not just empty) means "no list was wired
+   * up here" — `throwOnError` then drops the body entirely rather than risking an unredacted
+   * leak. */
+  secrets?: string[];
 }
 
 export interface OmnigentSessionResponse {
@@ -31,10 +38,52 @@ function omnigentHeaders(config: OmnigentClientConfig, email: string): Record<st
   };
 }
 
-async function throwOnError(response: Response, what: string): Promise<Response> {
+/** An Omnigent error response's `error.code` (e.g. `"stale_cursor"`,
+ * engine/omnigent/omnigent/server/routes/_errors.py `STALE_CURSOR_RESPONSE`), when the body
+ * parses as the documented `{error: {code, message}}` shape. */
+export class OmnigentApiError extends Error {
+  code: string | undefined;
+  constructor(message: string, code: string | undefined) {
+    super(message);
+    this.name = "OmnigentApiError";
+    this.code = code;
+  }
+}
+
+function errorCodeFromBody(raw: string): string | undefined {
+  try {
+    const parsed = JSON.parse(raw) as { error?: { code?: unknown } };
+    return typeof parsed.error?.code === "string" ? parsed.error.code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** True for `OmnigentApiError`s whose `error.code` is `"stale_cursor"` — the cursor passed to a
+ * paginated list route (e.g. `GET .../items`) names an item that no longer exists, so
+ * enumeration cannot continue from it (engine/omnigent/omnigent/server/routes/_errors.py).
+ * Callers that keep a persisted cursor (./mirror.ts) reset it to start over on the next page
+ * rather than treating this as a generic failure. */
+export function isStaleCursorError(error: unknown): boolean {
+  return error instanceof OmnigentApiError && error.code === "stale_cursor";
+}
+
+/**
+ * Throws `OmnigentApiError` on a non-2xx response. The body is redacted with `secrets` before
+ * it reaches the thrown message (item 5, docs/super-chat/WIRING.md review); when `secrets` is
+ * `undefined` (not just empty — a caller that never wired up the list at all) the body is
+ * dropped rather than risking an unredacted leak into a log or an API error message.
+ */
+async function throwOnError(
+  response: Response,
+  what: string,
+  secrets?: string[],
+): Promise<Response> {
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`omnigent ${what} failed (${response.status}): ${body.slice(0, 500)}`);
+    const raw = await response.text().catch(() => "");
+    const code = errorCodeFromBody(raw);
+    const body = secrets ? redactSecrets(raw, secrets).slice(0, 500) : "";
+    throw new OmnigentApiError(`omnigent ${what} failed (${response.status}): ${body}`, code);
   }
   return response;
 }
@@ -76,7 +125,7 @@ export async function createOmnigentSession(
       ...(input.workspace ? { workspace: input.workspace } : {}),
     }),
   });
-  await throwOnError(response, "create session");
+  await throwOnError(response, "create session", config.secrets);
   return (await response.json()) as OmnigentSessionResponse;
 }
 
@@ -105,7 +154,7 @@ export async function getOmnigentSession(
   url.searchParams.set("include_liveness", "false");
   url.searchParams.set("include_usage", "false");
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "get session");
+  await throwOnError(response, "get session", config.secrets);
   return (await response.json()) as OmnigentSessionSnapshot;
 }
 
@@ -128,7 +177,7 @@ export async function listOmnigentHosts(
   const response = await fetch(new URL("/v1/hosts", config.baseUrl), {
     headers: omnigentHeaders(config, email),
   });
-  await throwOnError(response, "list hosts");
+  await throwOnError(response, "list hosts", config.secrets);
   const body = (await response.json()) as { hosts?: OmnigentHostSummary[] };
   return body.hosts ?? [];
 }
@@ -150,7 +199,7 @@ export async function listOmnigentHostDirectory(
     new URL(`/v1/hosts/${encodeURIComponent(hostId)}/filesystem/${path}`, config.baseUrl),
     { headers: omnigentHeaders(config, email) },
   );
-  await throwOnError(response, "list host directory");
+  await throwOnError(response, "list host directory", config.secrets);
   const body = (await response.json()) as { data?: OmnigentHostDirEntry[] };
   return body.data ?? [];
 }
@@ -171,7 +220,7 @@ export async function createOmnigentHostDirectory(
       body: JSON.stringify({ path }),
     },
   );
-  await throwOnError(response, "create host directory");
+  await throwOnError(response, "create host directory", config.secrets);
   return (await response.json()) as { path: string };
 }
 
@@ -184,7 +233,7 @@ export async function findOmnigentAgentIdByName(
   const url = new URL("/v1/agents", config.baseUrl);
   url.searchParams.set("limit", "100");
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "list agents");
+  await throwOnError(response, "list agents", config.secrets);
   const body = (await response.json()) as { data?: Array<{ id: string; name: string }> };
   return body.data?.find((agent) => agent.name === name)?.id;
 }
@@ -207,7 +256,7 @@ export async function postOmnigentMessage(
       }),
     },
   );
-  await throwOnError(response, "post message event");
+  await throwOnError(response, "post message event", config.secrets);
 }
 
 /**
@@ -231,7 +280,7 @@ export async function switchOmnigentAgent(
       body: JSON.stringify({ agent_id: agentId }),
     },
   );
-  await throwOnError(response, "switch agent");
+  await throwOnError(response, "switch agent", config.secrets);
   return (await response.json()) as OmnigentSessionResponse;
 }
 
@@ -266,7 +315,7 @@ export async function listOmnigentSessionItems(
   if (options.before) url.searchParams.set("before", options.before);
   if (options.order) url.searchParams.set("order", options.order);
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "list session items");
+  await throwOnError(response, "list session items", config.secrets);
   return (await response.json()) as OmnigentPaginatedList<OmnigentSessionItem>;
 }
 
@@ -274,10 +323,38 @@ export interface OmnigentSideChatCreateResponse {
   conversation_id: string;
   title: string | null;
   start: "with_context" | "blank";
+  /** Set by the engine (docs/super-chat/WIRING.md slice A1 review) when the Side Chat itself
+   * was created but its seed first message could not be posted — the chat still exists;
+   * `apps/api/src/chats.ts#createSideChat` retries the post once. */
+  first_message_error?: string | null;
+}
+
+/** Thrown by `createOmnigentSideChat` on a non-2xx response. `conversationId` is set when the
+ * (redacted-before-reaching-here) error body still names a `conversation_id` — i.e. the Side
+ * Chat was created despite the error — so the caller can tell "nothing happened" apart from
+ * "it exists, but something about it (its first message) failed". */
+export class OmnigentSideChatError extends Error {
+  conversationId: string | null;
+  constructor(message: string, conversationId: string | null) {
+    super(message);
+    this.name = "OmnigentSideChatError";
+    this.conversationId = conversationId;
+  }
+}
+
+function conversationIdFromBody(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw) as { conversation_id?: unknown };
+    return typeof parsed.conversation_id === "string" ? parsed.conversation_id : null;
+  } catch {
+    return null;
+  }
 }
 
 /** `POST /v1/sessions/{superId}/side_chats` (docs/super-chat/WIRING.md slice E1): creates a
- * Side Chat of the Super Chat `superId`, optionally seeded with its first message. */
+ * Side Chat of the Super Chat `superId`, optionally seeded with its first message. Diverges
+ * from the generic `throwOnError` path on a non-2xx response (see `OmnigentSideChatError`)
+ * because a Side Chat can exist even when this call reports an error. */
 export async function createOmnigentSideChat(
   config: OmnigentClientConfig,
   email: string,
@@ -296,7 +373,15 @@ export async function createOmnigentSideChat(
       }),
     },
   );
-  await throwOnError(response, "create side chat");
+  if (!response.ok) {
+    const raw = await response.text().catch(() => "");
+    const conversationId = conversationIdFromBody(raw);
+    const body = config.secrets ? redactSecrets(raw, config.secrets).slice(0, 500) : "";
+    throw new OmnigentSideChatError(
+      `omnigent create side chat failed (${response.status}): ${body}`,
+      conversationId,
+    );
+  }
   return (await response.json()) as OmnigentSideChatCreateResponse;
 }
 
@@ -323,7 +408,7 @@ export async function listOmnigentRelatedChats(
     new URL(`/v1/sessions/${encodeURIComponent(superSessionId)}/related_chats`, config.baseUrl),
     { headers: omnigentHeaders(config, email) },
   );
-  await throwOnError(response, "list related chats");
+  await throwOnError(response, "list related chats", config.secrets);
   return (await response.json()) as OmnigentPaginatedList<OmnigentRelatedChat>;
 }
 
@@ -338,7 +423,7 @@ export async function getOmnigentContextSummary(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/context_summary`, config.baseUrl),
     { headers: omnigentHeaders(config, email) },
   );
-  await throwOnError(response, "get context summary");
+  await throwOnError(response, "get context summary", config.secrets);
   return (await response.json()) as { summary: string | null; created_at: number | null };
 }
 
@@ -351,7 +436,7 @@ export async function getOmnigentMemoryProfile(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/memory/profile`, config.baseUrl),
     { headers: omnigentHeaders(config, email) },
   );
-  await throwOnError(response, "get memory profile");
+  await throwOnError(response, "get memory profile", config.secrets);
   const body = (await response.json()) as { profile?: string | null };
   return { profile: body.profile || null };
 }
@@ -392,7 +477,7 @@ export async function listOmnigentActivities(
   if (options.before !== undefined) url.searchParams.set("before", String(options.before));
   if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "list activities");
+  await throwOnError(response, "list activities", config.secrets);
   return (await response.json()) as OmnigentPaginatedList<OmnigentActivity>;
 }
 
@@ -410,7 +495,7 @@ export async function getOmnigentActivity(
     ),
     { headers: omnigentHeaders(config, email) },
   );
-  await throwOnError(response, "get activity");
+  await throwOnError(response, "get activity", config.secrets);
   return (await response.json()) as OmnigentActivity;
 }
 
@@ -429,7 +514,7 @@ export async function* streamOmnigentSession(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/stream`, config.baseUrl),
     { headers: { ...omnigentHeaders(config, email), accept: "text/event-stream" }, signal },
   );
-  await throwOnError(response, "stream session");
+  await throwOnError(response, "stream session", config.secrets);
   if (!response.body) return;
 
   const reader = response.body.getReader();

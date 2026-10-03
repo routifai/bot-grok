@@ -14,13 +14,14 @@
 import { containsSecret, redactSecrets } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
-import { listOmnigentSessionItems, type OmnigentClientConfig } from "./client.js";
+import {
+  isStaleCursorError,
+  listOmnigentSessionItems,
+  type OmnigentClientConfig,
+} from "./client.js";
+import { DEFAULT_OMNIGENT_SUPERCHAT_CONFIG, type OmnigentSuperChatConfig } from "./env.js";
 import { extractAssistantText } from "./gateway.js";
 
-/** Only bots whose Super Chat had Omnigent-side activity this recently are scanned — cheap for
- * a deployment with many idle Muses (docs/super-chat/WIRING.md slice A1: "keep it cheap"). */
-const MIRROR_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const MIRROR_ITEMS_PAGE_SIZE = 50;
 /** Distinguishes a mirrored message's synthetic Run from every other trigger
  * (packages/contracts/src/domain.ts RunSchema.trigger) — see ./mirror.ts's module doc. */
 export const MIRROR_RUN_TRIGGER = "omnigent_mirror";
@@ -34,6 +35,10 @@ export interface OmnigentMirrorDeps {
   secrets: string[];
   /** Attributed as the synthetic Run's lease owner, like every other background job. */
   workerId: string;
+  /** Settings documented in docs/super-chat/README.md's Settings table
+   * (./env.ts#omnigentSuperChatConfigFromEnv). Defaults apply when omitted, so existing
+   * callers/tests that construct deps by hand keep today's behavior unchanged. */
+  config?: OmnigentSuperChatConfig;
 }
 
 interface MirrorSessionRow {
@@ -46,12 +51,13 @@ interface MirrorSessionRow {
  * the last mirror/turn, and copies each one into the Muse's Nova thread. One session's failure
  * (a transient Omnigent/DB error) is logged and never blocks the rest. */
 export async function reconcileOmnigentMirror(deps: OmnigentMirrorDeps): Promise<void> {
+  const config = deps.config ?? DEFAULT_OMNIGENT_SUPERCHAT_CONFIG;
   const sessions: MirrorSessionRow[] = await deps.prisma.omnigentSession.findMany({
-    where: { updatedAt: { gte: new Date(Date.now() - MIRROR_LOOKBACK_MS) } },
+    where: { updatedAt: { gte: new Date(Date.now() - config.mirrorLookbackMs) } },
     select: { botId: true, omnigentSessionId: true, lastMirroredItemId: true },
   });
   for (const session of sessions) {
-    await mirrorOneSuperChat(deps, session).catch((error) =>
+    await mirrorOneSuperChat(deps, session, config).catch((error) =>
       getLogger().error("omnigent mirror: failed for one Super Chat, continuing", error, {
         botId: session.botId,
       }),
@@ -62,6 +68,7 @@ export async function reconcileOmnigentMirror(deps: OmnigentMirrorDeps): Promise
 async function mirrorOneSuperChat(
   deps: OmnigentMirrorDeps,
   session: MirrorSessionRow,
+  config: OmnigentSuperChatConfig,
 ): Promise<void> {
   const bot = await deps.prisma.bot.findUnique({
     where: { id: session.botId },
@@ -89,11 +96,30 @@ async function mirrorOneSuperChat(
   });
   if (!user) return;
 
-  const page = await listOmnigentSessionItems(deps.client, user.email, session.omnigentSessionId, {
-    after: session.lastMirroredItemId ?? undefined,
-    order: "asc",
-    limit: MIRROR_ITEMS_PAGE_SIZE,
-  });
+  let page: Awaited<ReturnType<typeof listOmnigentSessionItems>>;
+  try {
+    page = await listOmnigentSessionItems(deps.client, user.email, session.omnigentSessionId, {
+      after: session.lastMirroredItemId ?? undefined,
+      order: "asc",
+      limit: config.mirrorPageSize,
+    });
+  } catch (error) {
+    // The cursor names an item that no longer exists (deleted, or archived out of the
+    // filtered set) — enumeration cannot continue from it. Reset to null and log once; the
+    // next tick restarts this Super Chat's scan from the beginning rather than getting stuck
+    // retrying the same stale cursor forever (docs/super-chat/WIRING.md review item 1).
+    if (isStaleCursorError(error)) {
+      getLogger().error("omnigent mirror: stale cursor, resetting and retrying next tick", {
+        botId: bot.id,
+      });
+      await deps.prisma.omnigentSession.update({
+        where: { botId: session.botId },
+        data: { lastMirroredItemId: null },
+      });
+      return;
+    }
+    throw error;
+  }
 
   for (const item of page.data) {
     if (item.type === "message" && item.role === "assistant") {

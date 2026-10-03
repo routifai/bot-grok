@@ -100,6 +100,7 @@ export * from "./omnigent/env.js";
 export * from "./omnigent/gateway.js";
 export * from "./omnigent/harnesses.js";
 export * from "./omnigent/mirror.js";
+export * from "./omnigent/redact.js";
 export * from "./omnigent/runner-location.js";
 export * from "./openai-compatible-url.js";
 export * from "./openai-voice.js";

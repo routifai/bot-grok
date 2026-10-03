@@ -2,11 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createOmnigentHostDirectory,
   createOmnigentSession,
+  createOmnigentSideChat,
   findOmnigentAgentIdByName,
   getOmnigentMemoryProfile,
   getOmnigentSession,
+  isStaleCursorError,
   listOmnigentHostDirectory,
   listOmnigentHosts,
+  listOmnigentSessionItems,
+  OmnigentApiError,
+  OmnigentSideChatError,
   postOmnigentMessage,
   streamOmnigentSession,
   switchOmnigentAgent,
@@ -276,5 +281,118 @@ describe("getOmnigentMemoryProfile", () => {
     expect(result).toEqual({ profile: null });
     const [url] = fetchMock.mock.calls[0] as unknown as [URL];
     expect(String(url)).toBe("http://omnigent.test/v1/sessions/conv_1/memory/profile");
+  });
+});
+
+describe("throwOnError redaction (docs/super-chat/WIRING.md review item 5)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("redacts a secret value out of the error body before it reaches the thrown message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("request failed: Bearer sk-live-topsecret was rejected", { status: 500 }),
+      ),
+    );
+    const config = { ...CONFIG, secrets: ["sk-live-topsecret"] };
+
+    await expect(getOmnigentSession(config, "p@x.test", "conv_1")).rejects.toThrow(/\[redacted\]/);
+    await expect(getOmnigentSession(config, "p@x.test", "conv_1")).rejects.not.toThrow(
+      /sk-live-topsecret/,
+    );
+  });
+
+  it("drops the body entirely when no secrets list is configured, rather than risking a leak", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("request failed: Bearer sk-live-topsecret", { status: 500 })),
+    );
+
+    await expect(getOmnigentSession(CONFIG, "p@x.test", "conv_1")).rejects.not.toThrow(
+      /sk-live-topsecret/,
+    );
+  });
+
+  it("surfaces the documented stale_cursor error code via isStaleCursorError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ error: { code: "stale_cursor", message: "cursor is gone" } }, 400),
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await listOmnigentSessionItems(CONFIG, "p@x.test", "conv_1", { after: "item_gone" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(OmnigentApiError);
+    expect(isStaleCursorError(caught)).toBe(true);
+  });
+
+  it("isStaleCursorError is false for an unrelated error code or a plain Error", async () => {
+    expect(isStaleCursorError(new OmnigentApiError("boom", "not_found"))).toBe(false);
+    expect(isStaleCursorError(new Error("boom"))).toBe(false);
+    expect(isStaleCursorError("boom")).toBe(false);
+  });
+});
+
+describe("createOmnigentSideChat error handling (docs/super-chat/WIRING.md review item 3)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sets conversationId on OmnigentSideChatError when the body shows the chat was created anyway", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ conversation_id: "conv_new", error: "first message failed" }, 502),
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", { start: "blank" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(OmnigentSideChatError);
+    expect((caught as OmnigentSideChatError).conversationId).toBe("conv_new");
+  });
+
+  it("leaves conversationId null when the body never names one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("internal error", { status: 500 })),
+    );
+
+    let caught: unknown;
+    try {
+      await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", { start: "blank" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(OmnigentSideChatError);
+    expect((caught as OmnigentSideChatError).conversationId).toBeNull();
+  });
+
+  it("returns first_message_error through on a 2xx so the caller can retry the post", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          conversation_id: "conv_new",
+          title: "t",
+          start: "blank",
+          first_message_error: "could not post",
+        }),
+      ),
+    );
+
+    const result = await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", {
+      start: "blank",
+      firstMessage: "hi",
+    });
+    expect(result.first_message_error).toBe("could not post");
   });
 });

@@ -127,6 +127,17 @@ newest first, grouped by day; opening one shows its Steps.
 | Upkeep model | server `--config` `llm:` block | required for Upkeep | — |
 | Memory search | `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` + its key (server) | `openai/text-embedding-3-small` | — |
 
+Nova's own side of the gateway/mirror job (`packages/adapters/src/omnigent/env.ts`'s
+`omnigentSuperChatConfigFromEnv`):
+
+| What | Where | Default |
+|---|---|---|
+| Turn timeout | `OMNIGENT_TURN_TIMEOUT_MS` | 300000 (5 min) |
+| Run lease duration | `OMNIGENT_LEASE_DURATION_MS` | 300000 (5 min) |
+| Mirror job lookback | `OMNIGENT_MIRROR_LOOKBACK_MS` | 604800000 (7 days) |
+| Mirror job page size | `OMNIGENT_MIRROR_PAGE_SIZE` | 50 |
+| `chats.messages` page size | `OMNIGENT_CHATS_PAGE_SIZE` | 50 |
+
 ## What this replaced
 
 Nova's own engine package (`omnigent/nova`: notes memory, feed, episodes,

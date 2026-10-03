@@ -1,12 +1,18 @@
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { OmnigentApiError } from "./client.js";
 import { MIRROR_RUN_TRIGGER, reconcileOmnigentMirror } from "./mirror.js";
 
 const { listOmnigentSessionItems } = vi.hoisted(() => ({
   listOmnigentSessionItems: vi.fn(),
 }));
 
-vi.mock("./client.js", () => ({ listOmnigentSessionItems }));
+// Keep every other export real (isStaleCursorError, OmnigentApiError) — only the network call
+// itself is faked.
+vi.mock("./client.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./client.js")>();
+  return { ...actual, listOmnigentSessionItems };
+});
 
 const CLIENT = { baseUrl: "http://omnigent.test", proxySecret: "secret" };
 const SESSION = { botId: "bot-1", omnigentSessionId: "conv_super", lastMirroredItemId: null };
@@ -190,6 +196,55 @@ describe("reconcileOmnigentMirror", () => {
       workerId: "w",
     });
     expect(finalizeRun).not.toHaveBeenCalled();
+  });
+
+  it("resets a stale cursor to null and retries from the start next tick", async () => {
+    listOmnigentSessionItems.mockRejectedValue(
+      new OmnigentApiError("omnigent list session items failed (400): ", "stale_cursor"),
+    );
+    const prisma = fakePrisma({
+      omnigentSession: {
+        findMany: vi.fn(async () => [{ ...SESSION, lastMirroredItemId: "item_deleted" }]),
+        update: vi.fn(async () => ({})),
+      },
+    });
+    const finalizeRun = vi.fn();
+    await expect(
+      reconcileOmnigentMirror({
+        prisma,
+        events: fakeEvents(finalizeRun),
+        client: CLIENT,
+        secrets: [],
+        workerId: "w",
+      }),
+    ).resolves.toBeUndefined();
+    expect(finalizeRun).not.toHaveBeenCalled();
+    expect(prisma.omnigentSession.update).toHaveBeenCalledWith({
+      where: { botId: "bot-1" },
+      data: { lastMirroredItemId: null },
+    });
+  });
+
+  it("does not reset the cursor on a non-stale-cursor failure (left for the retry path to re-fetch)", async () => {
+    listOmnigentSessionItems.mockRejectedValue(new Error("omnigent is down"));
+    const prisma = fakePrisma({
+      omnigentSession: {
+        findMany: vi.fn(async () => [{ ...SESSION, lastMirroredItemId: "item_0" }]),
+        update: vi.fn(async () => ({})),
+      },
+    });
+    // A plain network/5xx failure must not be mistaken for a stale cursor: reconcileOmnigentMirror
+    // still resolves (one session's failure never blocks the rest) but the cursor is untouched.
+    await expect(
+      reconcileOmnigentMirror({
+        prisma,
+        events: fakeEvents(),
+        client: CLIENT,
+        secrets: [],
+        workerId: "w",
+      }),
+    ).resolves.toBeUndefined();
+    expect(prisma.omnigentSession.update).not.toHaveBeenCalled();
   });
 
   it("skips a bot with no private Conversation thread", async () => {

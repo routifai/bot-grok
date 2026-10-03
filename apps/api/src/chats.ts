@@ -13,14 +13,18 @@ import {
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
   type OmnigentClientConfig,
+  OmnigentSideChatError,
   type OwnedSuperChat,
   omnigentClientConfigFromEnv,
+  omnigentSuperChatConfigFromEnv,
   postOmnigentMessage,
+  redactThreadMessages,
   resolveChatOwnership,
   sideChatStartToWire,
 } from "@aiden/adapters";
 import type { Actor, ChatSummary, SideChatStart, ThreadMessagePage } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
+import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
 
 export interface ChatsDeps {
@@ -89,6 +93,18 @@ export async function listChats(
   return related.data.map(mapRelatedChatToSummary);
 }
 
+/**
+ * Creates the Side Chat and sends its first message. Two failure shapes to handle, both
+ * reported by `createOmnigentSideChat` (docs/super-chat/WIRING.md review item 3):
+ * - The engine's current behaviour: a non-2xx `OmnigentSideChatError`. When its body still
+ *   names a `conversation_id`, the chat exists despite the error — surface the specific
+ *   "didn't send" message rather than a generic failure (which would wrongly suggest nothing
+ *   happened and invite a duplicate retry from the person).
+ * - The engine's upcoming behaviour: a 201 whose body carries `first_message_error` instead of
+ *   erroring at all. Retry the post once via the plain events route; if that retry also fails,
+ *   log it (already redacted — see `requireClient`/`client.secrets`) and still return the
+ *   `ChatSummary`, since the chat exists and the person can just resend in it.
+ */
 export async function createSideChat(
   deps: ChatsDeps,
   actor: Actor,
@@ -98,11 +114,34 @@ export async function createSideChat(
   const client = requireClient(env);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
-  const created = await createOmnigentSideChat(client, email, superSessionId, {
-    start: sideChatStartToWire(input.start),
-    title: deriveSideChatTitle(input.text),
-    firstMessage: input.text,
-  });
+
+  let created: Awaited<ReturnType<typeof createOmnigentSideChat>>;
+  try {
+    created = await createOmnigentSideChat(client, email, superSessionId, {
+      start: sideChatStartToWire(input.start),
+      title: deriveSideChatTitle(input.text),
+      firstMessage: input.text,
+    });
+  } catch (error) {
+    if (error instanceof OmnigentSideChatError && error.conversationId) {
+      throw new ORPCError("BAD_GATEWAY", {
+        message: "Side chat opened, but the first message didn't send.",
+      });
+    }
+    throw new ORPCError("BAD_GATEWAY", { message: "Could not open a side chat." });
+  }
+
+  if (created.first_message_error) {
+    try {
+      await postOmnigentMessage(client, email, created.conversation_id, input.text);
+    } catch (retryError) {
+      getLogger().error(
+        "omnigent createSideChat: retrying the first message failed, leaving the chat for the person to resend in",
+        retryError,
+        { botId: input.botId, chatId: created.conversation_id },
+      );
+    }
+  }
   return mapSideChatCreateToSummary(created, input.text);
 }
 
@@ -119,10 +158,18 @@ export async function summaryPreview(
   return { summary: result.summary ?? "" };
 }
 
+/**
+ * Newest page by default; `input.before` (an earlier page's `olderItemCursor`) pages further
+ * back (docs/super-chat/WIRING.md review item 2). Fetched `order: "desc"` (Omnigent's cursor
+ * pagination is keyset-based off the *newest* end), then reversed so `messages` reads oldest
+ * first like every other `ThreadMessagePage`. `olderCursor` (the Nova-native integer-seq field)
+ * is always null here — Omnigent items have no such sequence; `olderItemCursor` is the real
+ * cursor for this page shape.
+ */
 export async function getChatMessages(
   deps: ChatsDeps,
   actor: Actor,
-  input: { chatId: string },
+  input: { chatId: string; before?: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ThreadMessagePage> {
   const client = requireClient(env);
@@ -131,14 +178,20 @@ export async function getChatMessages(
   const ownership = await resolveChatOwnership(client, email, superChats, input.chatId);
   if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
 
+  const config = omnigentSuperChatConfigFromEnv(env);
   const page = await listOmnigentSessionItems(client, email, input.chatId, {
-    order: "asc",
-    limit: 200,
+    order: "desc",
+    limit: config.chatsPageSize,
+    before: input.before,
   });
+  const ascending = [...page.data].reverse();
+  const secrets = client.secrets ?? [];
+  const oldestItemId = page.data.at(-1)?.id ?? null;
   return {
     threadId: input.chatId,
-    messages: mapOmnigentItemsToMessages(input.chatId, page.data),
+    messages: redactThreadMessages(mapOmnigentItemsToMessages(input.chatId, ascending), secrets),
     olderCursor: null,
+    olderItemCursor: page.has_more ? oldestItemId : null,
   };
 }
 

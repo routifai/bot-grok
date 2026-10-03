@@ -836,7 +836,11 @@ export const appContract = {
       .output(ChatSummarySchema),
     /** The summary a new Side Chat would start with, for the "Knows our conversation" switch. */
     summaryPreview: oc.input(z.object({ botId: Id })).output(z.object({ summary: z.string() })),
-    messages: oc.input(z.object({ chatId: Id })).output(ThreadMessagePageSchema),
+    /** Newest page by default; pass `before` (an `olderItemCursor` from a previous page) to
+     * page further back. */
+    messages: oc
+      .input(z.object({ chatId: Id, before: z.string().min(1).optional() }))
+      .output(ThreadMessagePageSchema),
     send: oc
       .input(z.object({ chatId: Id, text: z.string().min(1) }))
       .output(z.object({ ok: z.literal(true) })),

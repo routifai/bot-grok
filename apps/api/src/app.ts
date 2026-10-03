@@ -47,6 +47,7 @@ import {
   McpOAuthBroker,
   messagingPlatformsFromEnv,
   omnigentGatewayDepsFromEnv,
+  omnigentRedactionSecretsFromEnv,
   PiAgentRuntime,
   PiOAuthLogins,
   PipedreamConnector,
@@ -381,12 +382,11 @@ export async function createApp(
     CLOUD_AGENT_SPACE_ID: env.cloudAgentSpaceId,
   });
   const shutdown = new AbortController();
-  const runtimeSecrets = [
-    env.deploymentModelKey ?? "",
-    env.composioApiKey ?? "",
-    env.cursorApiKey ?? "",
-    process.env.TYPESAFE_API_KEY ?? "",
-  ].filter(Boolean);
+  // Same composition ./omnigent/env.ts#omnigentRedactionSecretsFromEnv uses for the Omnigent
+  // read paths (chats.*/activities.*/memory.profile) — one list, shared, so every surface that
+  // can echo back something Omnigent (or the normal executor) said redacts with the identical
+  // set of deployment secrets.
+  const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
   const executor = createRunExecutor({
     prisma,

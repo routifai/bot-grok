@@ -10,6 +10,8 @@ import {
   mapActivity,
   type OmnigentClientConfig,
   omnigentClientConfigFromEnv,
+  redactActivity,
+  redactMemoryProfile,
 } from "@aiden/adapters";
 import type { Activity, ActivityPage, Actor } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
@@ -62,8 +64,9 @@ export async function listActivities(
     before: input.before,
     limit: input.limit,
   });
+  const secrets = client.secrets ?? [];
   return {
-    activities: page.data.map(mapActivity),
+    activities: page.data.map((raw) => redactActivity(mapActivity(raw), secrets)),
     hasMore: Boolean(page.has_more),
   };
 }
@@ -77,7 +80,7 @@ export async function getActivity(
   const client = requireClient(env);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   const activity = await getOmnigentActivity(client, email, superSessionId, input.activityId);
-  return mapActivity(activity);
+  return redactActivity(mapActivity(activity), client.secrets ?? []);
 }
 
 /** `memory.profile`: the Muse's Memory Profile, read from the same Super Chat. */
@@ -89,5 +92,6 @@ export async function getMemoryProfile(
 ): Promise<{ profile: string | null }> {
   const client = requireClient(env);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
-  return getOmnigentMemoryProfile(client, email, superSessionId);
+  const result = await getOmnigentMemoryProfile(client, email, superSessionId);
+  return { profile: redactMemoryProfile(result.profile, client.secrets ?? []) };
 }
