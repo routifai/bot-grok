@@ -414,6 +414,9 @@ export const appContract = {
       .input(z.object({ defaultMemoryScope: MemoryScopeSchema }))
       .output(SpaceMemoryConfigSchema),
     disconnectProvider: oc.output(z.object({ ok: z.literal(true) })),
+    /** The Muse's Memory Profile from Omnigent (docs/super-chat/README.md): what it carries
+     * into every turn about the person. `null` when nothing is remembered yet. */
+    profile: oc.input(z.object({ botId: Id })).output(z.object({ profile: z.string().nullable() })),
   },
   routines: {
     list: oc.input(botId).output(z.array(RoutineSchema)),

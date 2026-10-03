@@ -154,7 +154,7 @@ import {
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { implement, ORPCError } from "@orpc/server";
-import { getActivity, listActivities } from "./activities.js";
+import { getActivity, getMemoryProfile, listActivities } from "./activities.js";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { aiConsentStatus, allowAiConsent } from "./ai-consent.js";
@@ -2383,6 +2383,9 @@ export function createRouter(deps: RouterDeps) {
       }),
     },
     memory: {
+      profile: museOnly.memory.profile.handler(({ context, input }) =>
+        getMemoryProfile(deps, context.actor, input),
+      ),
       list: authed.memory.list.handler(async ({ context, input }) => {
         const docs = await deps.prisma.memoryDocument.findMany({
           where: {

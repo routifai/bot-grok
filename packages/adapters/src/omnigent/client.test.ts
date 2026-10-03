@@ -3,6 +3,7 @@ import {
   createOmnigentHostDirectory,
   createOmnigentSession,
   findOmnigentAgentIdByName,
+  getOmnigentMemoryProfile,
   getOmnigentSession,
   listOmnigentHostDirectory,
   listOmnigentHosts,
@@ -260,5 +261,20 @@ describe("omnigent client", () => {
       { type: "session.status", data: { status: "running" } },
       { type: "response.completed", response: { output: [] } },
     ]);
+  });
+});
+
+describe("getOmnigentMemoryProfile", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads the Super Chat's profile and maps an empty one to null", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ profile: "" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getOmnigentMemoryProfile(CONFIG, "person@example.test", "conv_1");
+
+    expect(result).toEqual({ profile: null });
+    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(String(url)).toBe("http://omnigent.test/v1/sessions/conv_1/memory/profile");
   });
 });

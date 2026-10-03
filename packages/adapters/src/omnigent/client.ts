@@ -342,6 +342,20 @@ export async function getOmnigentContextSummary(
   return (await response.json()) as { summary: string | null; created_at: number | null };
 }
 
+export async function getOmnigentMemoryProfile(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+): Promise<{ profile: string | null }> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/memory/profile`, config.baseUrl),
+    { headers: omnigentHeaders(config, email) },
+  );
+  await throwOnError(response, "get memory profile");
+  const body = (await response.json()) as { profile?: string | null };
+  return { profile: body.profile || null };
+}
+
 export interface OmnigentActivityStep {
   item_id: string;
   title: string;

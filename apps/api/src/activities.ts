@@ -5,6 +5,7 @@
 // Chat's own session id (Omnigent derives the whole family from it).
 import {
   getOmnigentActivity,
+  getOmnigentMemoryProfile,
   listOmnigentActivities,
   mapActivity,
   type OmnigentClientConfig,
@@ -77,4 +78,16 @@ export async function getActivity(
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   const activity = await getOmnigentActivity(client, email, superSessionId, input.activityId);
   return mapActivity(activity);
+}
+
+/** `memory.profile`: the Muse's Memory Profile, read from the same Super Chat. */
+export async function getMemoryProfile(
+  deps: ActivitiesDeps,
+  actor: Actor,
+  input: { botId: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ profile: string | null }> {
+  const client = requireClient(env);
+  const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
+  return getOmnigentMemoryProfile(client, email, superSessionId);
 }
