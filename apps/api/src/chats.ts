@@ -26,6 +26,7 @@ import type { Actor, ChatSummary, SideChatStart, ThreadMessagePage } from "@aide
 import type { PrismaClient } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
+import { onSuperChat } from "./omnigent-errors.js";
 
 export interface ChatsDeps {
   prisma: PrismaClient;
@@ -89,7 +90,7 @@ export async function listChats(
   const client = requireClient(env);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
-  const related = await listOmnigentRelatedChats(client, email, superSessionId);
+  const related = await onSuperChat(listOmnigentRelatedChats(client, email, superSessionId));
   return related.data.map(mapRelatedChatToSummary);
 }
 
@@ -154,7 +155,7 @@ export async function summaryPreview(
   const client = requireClient(env);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
-  const result = await getOmnigentContextSummary(client, email, superSessionId);
+  const result = await onSuperChat(getOmnigentContextSummary(client, email, superSessionId));
   return { summary: result.summary ?? "" };
 }
 
@@ -179,11 +180,13 @@ export async function getChatMessages(
   if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
 
   const config = omnigentSuperChatConfigFromEnv(env);
-  const page = await listOmnigentSessionItems(client, email, input.chatId, {
-    order: "desc",
-    limit: config.chatsPageSize,
-    before: input.before,
-  });
+  const page = await onSuperChat(
+    listOmnigentSessionItems(client, email, input.chatId, {
+      order: "desc",
+      limit: config.chatsPageSize,
+      before: input.before,
+    }),
+  );
   const ascending = [...page.data].reverse();
   const secrets = client.secrets ?? [];
   const oldestItemId = page.data.at(-1)?.id ?? null;

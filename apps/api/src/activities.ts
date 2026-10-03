@@ -16,6 +16,7 @@ import {
 import type { Activity, ActivityPage, Actor } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
 import { ORPCError } from "@orpc/server";
+import { onSuperChat } from "./omnigent-errors.js";
 
 export interface ActivitiesDeps {
   prisma: PrismaClient;
@@ -60,10 +61,12 @@ export async function listActivities(
 ): Promise<ActivityPage> {
   const client = requireClient(env);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
-  const page = await listOmnigentActivities(client, email, superSessionId, {
-    before: input.before,
-    limit: input.limit,
-  });
+  const page = await onSuperChat(
+    listOmnigentActivities(client, email, superSessionId, {
+      before: input.before,
+      limit: input.limit,
+    }),
+  );
   const secrets = client.secrets ?? [];
   return {
     activities: page.data.map((raw) => redactActivity(mapActivity(raw), secrets)),
@@ -79,7 +82,9 @@ export async function getActivity(
 ): Promise<Activity> {
   const client = requireClient(env);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
-  const activity = await getOmnigentActivity(client, email, superSessionId, input.activityId);
+  const activity = await onSuperChat(
+    getOmnigentActivity(client, email, superSessionId, input.activityId),
+  );
   return redactActivity(mapActivity(activity), client.secrets ?? []);
 }
 
@@ -92,6 +97,6 @@ export async function getMemoryProfile(
 ): Promise<{ profile: string | null }> {
   const client = requireClient(env);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
-  const result = await getOmnigentMemoryProfile(client, email, superSessionId);
+  const result = await onSuperChat(getOmnigentMemoryProfile(client, email, superSessionId));
   return { profile: redactMemoryProfile(result.profile, client.secrets ?? []) };
 }
