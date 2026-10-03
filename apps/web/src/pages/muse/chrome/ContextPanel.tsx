@@ -1,12 +1,30 @@
 import type { Ask, Goal } from "@aiden/contracts";
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { nextCronDateAcross } from "@aiden/core";
-import { BotAvatar, cn } from "@aiden/ui-web";
+import { BotAvatar, cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import type { LucideIcon } from "lucide-react";
-import { Bell, BookmarkPlus, Clock, HelpCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  Bell,
+  BookmarkPlus,
+  Clock,
+  Fingerprint,
+  HelpCircle,
+  List,
+  ShieldCheck,
+  Sparkles,
+  Target,
+} from "lucide-react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { MuseRailView } from "../../../components/AppRail";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { rpc } from "../../../lib/rpc";
@@ -19,6 +37,12 @@ import {
   taskCounts,
 } from "../goals/format";
 import { StatusPill, Surface } from "../ui";
+import { ActivityPanel } from "./ActivityPanel";
+import type { ActivityWire } from "./ActivityRunDialog";
+import { deriveConnectionStatus } from "./connectionStatus";
+import { MemoryTab, type MemoryWire } from "./MemoryTab";
+import { type ActivitiesState, useActivities } from "./useActivities";
+import type { ChatListState } from "./useChatList";
 
 // The right-hand context panel beside the Conversation (docs/muse/DESIGN.md, "Conversation"):
 // only what matters right now, pulled from data the shell already loads elsewhere (Asks,
@@ -391,30 +415,173 @@ function WaitingRow({ ask, onOpenWaiting }: { ask: Ask; onOpenWaiting: () => voi
   );
 }
 
+type PanelTab = "activity" | "memory" | "context";
+
+const PANEL_TABS: { id: PanelTab; icon: LucideIcon; label: () => string }[] = [
+  { id: "activity", icon: List, label: () => t`Activity` },
+  { id: "memory", icon: Fingerprint, label: () => t`Memory` },
+  // Asks, in-progress Goals, and upcoming Check-ins — already working, so it keeps a tab
+  // here rather than losing its spot. A permissions tab (shield icon) and a scheduled-work
+  // tab (clock icon) belong here too, once there's something real behind them.
+  { id: "context", icon: Sparkles, label: () => t`Context` },
+];
+
+/** The segmented icon tab bar: one rounded pill track, the selected segment raised on a
+ * plain chip, a thin divider only between two segments that are both unselected. */
+function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTab) => void }) {
+  return (
+    <div
+      role="tablist"
+      aria-label={t`Panel sections`}
+      className="inline-flex items-center gap-0.5 self-center rounded-full bg-muted p-1"
+    >
+      {PANEL_TABS.map((item, index) => {
+        const previous = PANEL_TABS[index - 1];
+        const showDivider = index > 0 && previous && previous.id !== tab && item.id !== tab;
+        const label = item.label();
+        const Icon = item.icon;
+        return (
+          <Fragment key={item.id}>
+            {showDivider ? (
+              <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+            ) : null}
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                aria-label={label}
+                data-testid={`context-panel-tab-${item.id}`}
+                onClick={() => onChange(item.id)}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                  tab === item.id
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[12.5px]">
+                {label}
+              </TooltipContent>
+            </Tooltip>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The panel's one Agent Identity header (docs/muse/DESIGN.md "The Muse"): the Muse's own
+ * face, its name, and a Connection Status line — the single place its identity shows on
+ * the Muse screen (the sidebar no longer repeats it, MuseSidebar.tsx). */
+function IdentityHeader({
+  botId,
+  museName,
+  avatarColor,
+  connection,
+}: {
+  botId: string;
+  museName: string;
+  avatarColor: string;
+  connection: "connected" | "connecting";
+}) {
+  const { t: tt } = useLingui();
+  return (
+    <div className="flex flex-col items-center gap-2 pt-1 text-center">
+      <BotAvatar color={avatarColor} identity={botId} face="muse" size={56} />
+      <span
+        data-testid="context-panel-muse-name"
+        className="text-[16px] font-medium text-foreground"
+        dir="auto"
+      >
+        {museName}
+      </span>
+      <span
+        data-testid="context-panel-connection"
+        className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-1.5 rounded-full",
+            connection === "connected"
+              ? "bg-success"
+              : "animate-pulse bg-muted-foreground/50 motion-reduce:animate-none",
+          )}
+        />
+        {connection === "connected" ? tt`Connected` : tt`Connecting…`}
+      </span>
+    </div>
+  );
+}
+
 /**
- * The Conversation's right-hand context panel (docs/muse/DESIGN.md): what's waiting on the
- * person, what the Muse is actively working on, and what's coming up — nothing that isn't
- * already shown elsewhere, just surfaced beside the chat instead of a click away. Hidden
- * below 1280px (the caller controls that with CSS; `collapsed` is the person's own choice).
+ * The Conversation's right-hand context panel (docs/muse/DESIGN.md): the Muse's identity,
+ * then its Activity, Memory, and (what's waiting / in progress / coming up) in a segmented
+ * tab bar — nothing that isn't already shown elsewhere, just surfaced beside the chat
+ * instead of a click away. Hidden below 1280px (the caller controls that with CSS;
+ * `collapsed` is the person's own choice).
  */
 export function ContextPanel({
   botId,
+  museName,
   avatarColor = DEFAULT_MUSE_COLOR,
   collapsed,
+  chatListState,
+  activitiesOverride,
+  memoryWire,
   onNavigate,
   onOpenWaiting,
 }: {
   botId: string;
-  /** The Muse's own color, for the small face shown in the empty state. */
+  /** The Muse's own name, for the panel's identity header. */
+  museName: string;
+  /** The Muse's own color, for its face in the header and the empty state. */
   avatarColor?: string;
   collapsed: boolean;
+  /** The sidebar's Chat List poll (Shell.tsx's `chatList.state`), folded into the
+   * Connection Status line alongside the Activity poll — either one landing counts. */
+  chatListState?: ChatListState;
+  /** Dev-preview seam only (ActivityPreviewPage.tsx): fixture Activity data + wire instead
+   * of the real poll. Production never passes this. */
+  activitiesOverride?: {
+    state: ActivitiesState;
+    wire: ActivityWire;
+    loadEarlier: () => Promise<void>;
+    loadingEarlier: boolean;
+  };
+  /** Dev-preview seam only: a fixture Memory wire instead of `rpc.memory.profile`. */
+  memoryWire?: MemoryWire;
   onNavigate: (view: MuseRailView) => void;
   onOpenWaiting: () => void;
 }) {
   const { t: tt, i18n } = useLingui();
+  const [tab, setTab] = useState<PanelTab>("activity");
   const { asks } = useAsks(botId);
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
+  const liveActivities = useActivities(botId);
+  const liveActivityWire = useMemo<ActivityWire>(
+    () => ({
+      get: (input) => rpc.activities.get(input),
+      helperMessages: (input) => rpc.chats.messages(input),
+    }),
+    [],
+  );
+  const liveMemoryWire = useMemo<MemoryWire>(
+    () => ({ profile: (input) => rpc.memory.profile(input) }),
+    [],
+  );
+  const activitiesData = activitiesOverride ?? {
+    state: liveActivities.state,
+    wire: liveActivityWire,
+    loadEarlier: liveActivities.loadEarlier,
+    loadingEarlier: liveActivities.loadingEarlier,
+  };
+  const memoryWireToUse = memoryWire ?? liveMemoryWire;
+  const connection = deriveConnectionStatus(activitiesData.state, chatListState);
 
   useEffect(() => {
     const current = ++generation.current;
@@ -447,86 +614,107 @@ export function ContextPanel({
   const now = useMemo(() => new Date(), [goals]);
   const checkIns = useMemo(() => upcomingCheckIns(goals, now), [goals, now]);
 
-  const empty = topAsks.length === 0 && inProgress.length === 0 && checkIns.length === 0;
+  const contextEmpty = topAsks.length === 0 && inProgress.length === 0 && checkIns.length === 0;
 
   return (
     <div
       data-testid="context-panel"
       className={cn(
-        "hidden w-[340px] shrink-0 flex-col gap-7 overflow-y-auto rk-scroll border border-glass-border bg-glass p-5 shadow-float backdrop-blur-xl md:rounded-2xl",
+        "hidden w-[340px] shrink-0 flex-col gap-4 border border-glass-border bg-glass shadow-float backdrop-blur-xl md:rounded-2xl",
         !collapsed && "xl:flex",
       )}
     >
-      {empty ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
-          <BotAvatar color={avatarColor} identity={botId} face="muse" size={40} />
-          <p className="text-[14.5px] text-muted-foreground">{tt`You're all caught up.`}</p>
-        </div>
-      ) : (
-        <>
-          {topAsks.length > 0 ? (
-            <section className="flex flex-col gap-2" data-testid="context-panel-asks">
-              <PanelSectionHeader icon={Bell} title={tt`Waiting on you`} count={asks.length} />
-              <div className="flex flex-col gap-0.5">
-                {topAsks.map((ask) => (
-                  <WaitingRow key={ask.id} ask={ask} onOpenWaiting={onOpenWaiting} />
-                ))}
-              </div>
-              {asks.length > ASKS_LIMIT ? (
-                <button
-                  type="button"
-                  onClick={onOpenWaiting}
-                  data-testid="context-panel-view-all"
-                  className="self-start rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                >
-                  {tt`View all`}
-                </button>
-              ) : null}
-            </section>
-          ) : null}
+      <div className="flex shrink-0 flex-col gap-4 px-5 pt-5">
+        <IdentityHeader
+          botId={botId}
+          museName={museName}
+          avatarColor={avatarColor}
+          connection={connection}
+        />
+        <PanelTabBar tab={tab} onChange={setTab} />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto rk-scroll px-5 pb-5">
+        {tab === "activity" ? (
+          <ActivityPanel
+            botId={botId}
+            wire={activitiesData.wire}
+            state={activitiesData.state}
+            loadEarlier={activitiesData.loadEarlier}
+            loadingEarlier={activitiesData.loadingEarlier}
+          />
+        ) : tab === "memory" ? (
+          <MemoryTab botId={botId} wire={memoryWireToUse} />
+        ) : contextEmpty ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
+            <BotAvatar color={avatarColor} identity={botId} face="muse" size={40} />
+            <p className="text-[14.5px] text-muted-foreground">{tt`You're all caught up.`}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-7">
+            {topAsks.length > 0 ? (
+              <section className="flex flex-col gap-2" data-testid="context-panel-asks">
+                <PanelSectionHeader icon={Bell} title={tt`Waiting on you`} count={asks.length} />
+                <div className="flex flex-col gap-0.5">
+                  {topAsks.map((ask) => (
+                    <WaitingRow key={ask.id} ask={ask} onOpenWaiting={onOpenWaiting} />
+                  ))}
+                </div>
+                {asks.length > ASKS_LIMIT ? (
+                  <button
+                    type="button"
+                    onClick={onOpenWaiting}
+                    data-testid="context-panel-view-all"
+                    className="self-start rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    {tt`View all`}
+                  </button>
+                ) : null}
+              </section>
+            ) : null}
 
-          {inProgress.length > 0 ? (
-            <section className="flex flex-col gap-2.5" data-testid="context-panel-goals">
-              <PanelSectionHeader
-                icon={Target}
-                title={tt`In progress`}
-                count={activeGoals.length}
-              />
-              <div className="flex flex-col gap-2.5">
-                {inProgress.map((goal) => (
-                  <InProgressGoalCard
-                    key={goal.id}
-                    goal={goal}
-                    onNavigate={() => onNavigate("goals")}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          {checkIns.length > 0 ? (
-            <section className="flex flex-col gap-2" data-testid="context-panel-checkins">
-              <PanelSectionHeader icon={Clock} title={tt`Coming up`} count={checkIns.length} />
-              <ol className="relative flex flex-col">
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-2.5 start-2.5 w-px bg-border"
+            {inProgress.length > 0 ? (
+              <section className="flex flex-col gap-2.5" data-testid="context-panel-goals">
+                <PanelSectionHeader
+                  icon={Target}
+                  title={tt`In progress`}
+                  count={activeGoals.length}
                 />
-                {checkIns.map(({ goal, next }) => (
-                  <CheckInRow
-                    key={goal.id}
-                    goal={goal}
-                    next={next}
-                    locale={i18n.locale}
-                    now={now}
-                    onNavigate={() => onNavigate("goals")}
+                <div className="flex flex-col gap-2.5">
+                  {inProgress.map((goal) => (
+                    <InProgressGoalCard
+                      key={goal.id}
+                      goal={goal}
+                      onNavigate={() => onNavigate("goals")}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {checkIns.length > 0 ? (
+              <section className="flex flex-col gap-2" data-testid="context-panel-checkins">
+                <PanelSectionHeader icon={Clock} title={tt`Coming up`} count={checkIns.length} />
+                <ol className="relative flex flex-col">
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-2.5 start-2.5 w-px bg-border"
                   />
-                ))}
-              </ol>
-            </section>
-          ) : null}
-        </>
-      )}
+                  {checkIns.map(({ goal, next }) => (
+                    <CheckInRow
+                      key={goal.id}
+                      goal={goal}
+                      next={next}
+                      locale={i18n.locale}
+                      now={now}
+                      onNavigate={() => onNavigate("goals")}
+                    />
+                  ))}
+                </ol>
+              </section>
+            ) : null}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

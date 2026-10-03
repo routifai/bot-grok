@@ -79,8 +79,10 @@ function SessionHeader({
 
 /** A plain-text message bubble, matching the Conversation's own bubble tokens
  * (Shell.tsx's `message-user-bubble` / `message-bot-bubble`) since that rendering is
- * defined inline in Shell.tsx and too tied to attachments/reactions/voice to import. */
-function MessageRow({ message }: { message: ThreadMessage }) {
+ * defined inline in Shell.tsx and too tied to attachments/reactions/voice to import.
+ * Exported for the Activity panel's read-only Helper view (ActivityRunDialog.tsx), which
+ * needs the exact same rendering for a Helper's messages. */
+export function MessageRow({ message }: { message: ThreadMessage }) {
   const text = message.blocks
     .filter((block): block is { kind: "text"; text: string } => block.kind === "text")
     .map((block) => block.text)

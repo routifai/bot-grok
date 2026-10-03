@@ -6,8 +6,6 @@ import { SideChatSession, type SideChatWire } from "../muse/chrome/SideChatSessi
 import type { ChatListState } from "../muse/chrome/useChatList";
 import {
   DEV_BOT_ID,
-  DEV_MUSE_COLOR,
-  DEV_MUSE_NAME,
   DEV_PERSON_NAME,
   DEV_SUMMARY,
   INITIAL_SIDE_CHATS,
@@ -91,8 +89,6 @@ export function SideChatsPreviewPage() {
     <div className="flex h-screen gap-2 bg-background p-2">
       <MuseSidebar
         botId={DEV_BOT_ID}
-        museName={DEV_MUSE_NAME}
-        color={DEV_MUSE_COLOR}
         runs={[]}
         messages={[]}
         personName={DEV_PERSON_NAME}

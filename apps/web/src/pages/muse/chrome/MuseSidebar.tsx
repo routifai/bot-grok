@@ -1,5 +1,5 @@
 import type { ChatSummary, Goal, ThreadMessage } from "@aiden/contracts";
-import { BotAvatar, cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
+import { cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Bell,
@@ -84,8 +84,6 @@ function useGlide() {
  */
 export function MuseSidebar({
   botId,
-  museName,
-  color,
   runs,
   messages,
   personName,
@@ -99,8 +97,6 @@ export function MuseSidebar({
   onNewDraft,
 }: {
   botId: string;
-  museName: string;
-  color: string;
   runs: readonly MuseLiveRun[];
   messages: readonly ThreadMessage[] | undefined;
   personName?: string;
@@ -119,15 +115,9 @@ export function MuseSidebar({
   onNewDraft: () => void;
 }) {
   const { t } = useLingui();
-  const {
-    state: museState,
-    label: activityLabel,
-    askCount,
-  } = useMuseLiveState({
-    botId,
-    runs,
-    messages,
-  });
+  // Only the Ask count is needed here — the Muse's face, name, and busy caption now live
+  // once, in the context panel's identity header (ContextPanel.tsx's `IdentityHeader`).
+  const { askCount } = useMuseLiveState({ botId, runs, messages });
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
@@ -217,49 +207,6 @@ export function MuseSidebar({
         collapsed ? "w-[84px]" : "w-[320px]",
       )}
     >
-      <button
-        type="button"
-        onClick={onOpenWaiting}
-        aria-label={t`Waiting on you`}
-        title={collapsed ? museName : undefined}
-        className={cn(
-          "app-no-drag flex w-full items-center gap-3.5 rounded-2xl border px-[7px] py-2 text-start transition-[background-color,border-color,box-shadow] duration-200 focus-visible:outline-2 focus-visible:outline-ring",
-          collapsed
-            ? "border-transparent bg-transparent"
-            : "border-border bg-background shadow-sm hover:shadow-float",
-        )}
-      >
-        <span className="shrink-0 transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] hover:scale-110 motion-reduce:transition-none">
-          <BotAvatar
-            color={color}
-            identity={botId}
-            museState={museState}
-            face="muse"
-            waitingCount={askCount}
-            size={44}
-          />
-        </span>
-        <span className={cn(LABEL, "block")}>
-          <span className="block truncate text-[17px] font-semibold text-foreground" dir="auto">
-            {museName}
-          </span>
-          {activityLabel ? (
-            <span className="mt-0.5 flex items-center gap-1.5 text-[14px] text-muted-foreground">
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "size-1.5 shrink-0 rounded-full",
-                  museState === "waiting"
-                    ? "bg-warning"
-                    : "animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success",
-                )}
-              />
-              <span className="truncate">{activityLabel}</span>
-            </span>
-          ) : null}
-        </span>
-      </button>
-
       <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
         <span
           aria-hidden="true"

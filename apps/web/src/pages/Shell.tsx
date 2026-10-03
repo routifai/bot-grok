@@ -2361,8 +2361,6 @@ export function ShellPage() {
       {active ? (
         <MuseSidebar
           botId={active.id}
-          museName={active.name}
-          color={active.color}
           runs={currentRuns}
           messages={activeSnapshot?.messages}
           personName={bootstrapMe?.name}
@@ -2690,7 +2688,9 @@ export function ShellPage() {
             {museMode && active ? (
               <ContextPanel
                 botId={active.id}
+                museName={active.name}
                 avatarColor={active.color}
+                chatListState={chatList.state}
                 // The computer (or settings) side panel takes that column; two side panels
                 // would crush the conversation.
                 collapsed={contextPanelCollapsed || panel !== null}

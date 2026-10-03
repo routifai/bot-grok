@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Ask, Goal } from "@aiden/contracts";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -9,6 +9,9 @@ import { beforeEach, expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({
   goals: { list: vi.fn() },
   asks: { list: vi.fn(), answer: vi.fn() },
+  activities: { list: vi.fn(), get: vi.fn() },
+  memory: { profile: vi.fn() },
+  chats: { messages: vi.fn() },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
 vi.mock("@lingui/core/macro", () => ({
@@ -28,9 +31,27 @@ vi.mock("@aiden/ui-web", () => ({
   BotAvatar: ({ face }: { face?: string }) => (
     <div data-testid="context-panel-empty-face" data-face={face} />
   ),
+  Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
+  Tooltip: ({ children }: { children: ReactNode }) => children,
+  TooltipTrigger: ({ children, ...props }: ComponentProps<"button">) => (
+    <button type="button" {...props}>
+      {children}
+    </button>
+  ),
+  TooltipContent: ({ children }: { children: ReactNode }) => (
+    <div data-testid="tooltip-content">{children}</div>
+  ),
 }));
 
 import { ContextPanel, useContextPanelCollapsed } from "./ContextPanel";
+
+function activitiesPage(overrides: { activities?: unknown[]; hasMore?: boolean } = {}) {
+  return { activities: overrides.activities ?? [], hasMore: overrides.hasMore ?? false };
+}
+
+function openContextTab(container: HTMLElement) {
+  return container.querySelector<HTMLButtonElement>("[data-testid='context-panel-tab-context']");
+}
 
 function ask(overrides: Partial<Ask> = {}): Ask {
   return {
@@ -96,6 +117,7 @@ async function renderPanel(props: Partial<Parameters<typeof ContextPanel>[0]> = 
     root.render(
       <ContextPanel
         botId="bot-1"
+        museName="Nova"
         collapsed={false}
         onNavigate={onNavigate}
         onOpenWaiting={onOpenWaiting}
@@ -132,6 +154,12 @@ function stubLocalStorage(): void {
 }
 
 beforeEach(() => {
+  // The panel's Activity and Memory tabs poll on mount regardless of which tab is active,
+  // so every test needs a safe default even when it only cares about the Context tab.
+  api.activities.list.mockReset().mockResolvedValue(activitiesPage());
+  api.activities.get.mockReset();
+  api.memory.profile.mockReset().mockResolvedValue({ profile: null });
+  api.chats.messages.mockReset();
   stubLocalStorage();
   // jsdom doesn't implement matchMedia, and the progress ring's draw-in reads it directly
   // (prefers-reduced-motion); requestAnimationFrame is stubbed to run synchronously so the
@@ -164,6 +192,9 @@ it("renders Asks, in-progress Goals, and upcoming Check-ins from the data it's g
   ]);
   const page = await renderPanel();
   try {
+    await act(async () => {
+      openContextTab(page.container)?.click();
+    });
     await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.textContent).toContain("Which evenings work?");
@@ -222,6 +253,9 @@ it("shows a 'View all' action once there are more open Asks than fit", async () 
   const page = await renderPanel();
   try {
     await act(async () => {
+      openContextTab(page.container)?.click();
+    });
+    await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.querySelector("[data-testid='context-panel-view-all']")).toBeTruthy();
       });
@@ -253,6 +287,9 @@ it("hides a section with nothing in it, and shows one quiet line with the Muse's
   const page = await renderPanel();
   try {
     await act(async () => {
+      openContextTab(page.container)?.click();
+    });
+    await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.textContent).toContain("You're all caught up.");
       });
@@ -274,12 +311,126 @@ it("hides only the empty sections when some Goals have no check-ins", async () =
   const page = await renderPanel();
   try {
     await act(async () => {
+      openContextTab(page.container)?.click();
+    });
+    await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.querySelector("[data-testid='context-panel-goals']")).toBeTruthy();
       });
     });
     expect(page.container.querySelector("[data-testid='context-panel-asks']")).toBeNull();
     expect(page.container.querySelector("[data-testid='context-panel-checkins']")).toBeNull();
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("shows the Muse's name once, in the identity header, and Connected once a poll lands", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.goals.list.mockResolvedValue([]);
+  api.activities.list.mockResolvedValue(activitiesPage());
+  const page = await renderPanel({ museName: "Aiden" });
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(
+          page.container.querySelector("[data-testid='context-panel-connection']")?.textContent,
+        ).toBe("Connected");
+      });
+    });
+    expect(
+      page.container.querySelector("[data-testid='context-panel-muse-name']")?.textContent,
+    ).toBe("Aiden");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("shows the Activity tab by default, grouped by day", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.goals.list.mockResolvedValue([]);
+  api.activities.list.mockResolvedValue(
+    activitiesPage({
+      activities: [
+        {
+          id: "act-1",
+          kind: "turn",
+          chatId: "chat-1",
+          title: "Checked the budget totals",
+          outcome: "Everything ties out.",
+          status: "done",
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          date: new Date().toISOString().slice(0, 10),
+        },
+      ],
+    }),
+  );
+  const page = await renderPanel();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.querySelector("[data-testid='activity-panel']")).toBeTruthy();
+      });
+    });
+    expect(page.container.textContent).toContain("Checked the budget totals");
+    expect(page.container.querySelector("[data-testid='context-panel-asks']")).toBeNull();
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("shows the Memory tab's sections, read-only, when switched to", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.goals.list.mockResolvedValue([]);
+  api.memory.profile.mockResolvedValue({
+    profile:
+      "[Standing memory about the user — provided by the system, not a message from the user]\n\nPreferences:\n- Prefers phone-first slide decks\n\n[End of standing memory]",
+  });
+  const page = await renderPanel();
+  try {
+    await act(async () => {
+      page.container
+        .querySelector<HTMLButtonElement>("[data-testid='context-panel-tab-memory']")
+        ?.click();
+    });
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.querySelector("[data-testid='memory-panel']")).toBeTruthy();
+      });
+    });
+    expect(page.container.textContent).toContain("Prefers phone-first slide decks");
+    expect(page.container.textContent).not.toContain("[");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("shows a one-line empty state when nothing is remembered yet", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.goals.list.mockResolvedValue([]);
+  api.memory.profile.mockResolvedValue({ profile: null });
+  const page = await renderPanel();
+  try {
+    await act(async () => {
+      page.container
+        .querySelector<HTMLButtonElement>("[data-testid='context-panel-tab-memory']")
+        ?.click();
+    });
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.querySelector("[data-testid='memory-empty']")).toBeTruthy();
+      });
+    });
+    expect(page.container.textContent).toContain("Nothing remembered yet.");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

@@ -12,6 +12,7 @@ import {
   sessionRetryDelayMs,
   showSessionUnavailable,
 } from "./lib/session-gate";
+import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
 import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { IntegrationSetupPage } from "./pages/IntegrationSetup";
@@ -46,6 +47,11 @@ export function App() {
   // same reasoning as /dev/canvas: no session or backend chats wire needed.
   if (import.meta.env.DEV && window.location.pathname === "/dev/side-chats") {
     return <SideChatsPreviewPage />;
+  }
+  // Dev-only fixture route for the Activity panel (ActivityPreviewPage.tsx): same
+  // reasoning — `activities.*` isn't served by the local dev API either.
+  if (import.meta.env.DEV && window.location.pathname === "/dev/activity") {
+    return <ActivityPreviewPage />;
   }
   return <SessionApp />;
 }
