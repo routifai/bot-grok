@@ -41,11 +41,7 @@ from omnigent.context.labels import (
     is_superside_chat,
     uses_omnigent_context,
 )
-from omnigent.superchat.chats import (
-    build_side_chat_blank_create_body,
-    build_side_chat_fork_body,
-    refuse_side_chat_open,
-)
+from omnigent.superchat.chats import refuse_side_chat_open
 from omnigent.superchat.subagents import (
     count_live_children,
     prepend_memory_profile,
@@ -4098,18 +4094,14 @@ async def _execute_side_chat_open(
     """
     Open a Side Chat branched from the Super Chat (``side_chat_open``).
 
-    Looks up the caller's own session once (for its ``kind`` /
-    ``parent_session_id`` — needed for the Sub-agent refusal that ``labels``
-    alone can't express — plus ``host_id`` / ``workspace`` / ``agent_id`` to
-    bind the new chat the same way) via ``GET /v1/sessions/{conversation_id}``,
-    then either forks it (``with_context``, ``side_chat: true`` —
-    ``POST /v1/sessions/{conversation_id}/fork``) or creates a fresh
-    top-level session stamped with the discovery labels (``blank`` —
-    ``POST /v1/sessions``). Binds the result to the Super Chat's host via
-    ``POST /v1/hosts/{host_id}/runners`` (best-effort — an unbound Side Chat
-    behaves like an unbound fork made through the web UI) and, when
-    ``first_message`` is given, queues it the same way a named sub-agent
-    send does (``POST /v1/sessions/{id}/events``).
+    One implementation: this calls ``POST /v1/sessions/{conversation_id}/
+    side_chats`` — the same route the web app's "+ New side chat" uses —
+    rather than forking / creating / binding the pieces itself. ``labels``
+    (the caller's own, already in hand from the dispatch context) is used
+    for a fast local pre-check only, so an obviously-ineligible caller
+    (not superside-chat, or itself a Side Chat) fails without a round
+    trip; the server re-checks authoritatively, including the Sub-agent
+    case local ``labels`` alone can't express.
 
     :param args: Parsed arguments: ``title`` + ``start`` required,
         ``first_message`` optional.
@@ -4136,68 +4128,36 @@ async def _execute_side_chat_open(
     if first_message is not None and not (isinstance(first_message, str) and first_message):
         return json.dumps({"error": "side_chat_open 'first_message' must be a non-empty string"})
 
-    try:
-        caller_resp = await server_client.get(f"/v1/sessions/{conversation_id}")
-    except httpx.HTTPError as exc:
-        return json.dumps({"error": f"side_chat_open failed to look up caller session: {exc}"})
-    if caller_resp.status_code >= 400:
-        return json.dumps(
-            {"error": f"side_chat_open caller lookup returned {caller_resp.status_code}"}
-        )
-    caller = caller_resp.json()
-    refusal = refuse_side_chat_open(
-        labels=labels,
-        kind=caller.get("kind"),
-        parent_session_id=caller.get("parent_session_id"),
-    )
+    # Local fast path: the two refusals ``labels`` alone can decide (not
+    # superside-chat; already a Side Chat). The route re-checks everything,
+    # including the Sub-agent case, which needs the caller's stored
+    # ``kind`` / ``parent_session_id`` — not available here.
+    refusal = refuse_side_chat_open(labels=labels, kind=None, parent_session_id=None)
     if refusal is not None:
         return json.dumps({"error": refusal})
 
-    if start == "with_context":
-        body = build_side_chat_fork_body(title)
-        try:
-            resp = await server_client.post(f"/v1/sessions/{conversation_id}/fork", json=body)
-        except httpx.HTTPError as exc:
-            return json.dumps({"error": f"side_chat_open fork failed: {exc}"})
-    else:
-        agent_id = caller.get("agent_id")
-        if not isinstance(agent_id, str) or not agent_id:
-            return json.dumps({"error": "side_chat_open: caller session has no agent binding"})
-        body = build_side_chat_blank_create_body(
-            agent_id=agent_id, title=title, source_conversation_id=conversation_id
-        )
-        try:
-            resp = await server_client.post("/v1/sessions", json=body)
-        except httpx.HTTPError as exc:
-            return json.dumps({"error": f"side_chat_open create failed: {exc}"})
-    if resp.status_code not in (200, 201):
-        return json.dumps(
-            {"error": f"side_chat_open {start} returned {resp.status_code}", "detail": resp.text}
-        )
-    new_conv = resp.json()
-    new_id = new_conv.get("id")
-    if not isinstance(new_id, str) or not new_id:
-        return json.dumps({"error": "side_chat_open: server did not return a new session id"})
-
-    host_id = caller.get("host_id")
-    workspace = caller.get("workspace")
-    if isinstance(host_id, str) and host_id and isinstance(workspace, str) and workspace:
-        try:
-            await server_client.post(
-                f"/v1/hosts/{host_id}/runners",
-                json={"session_id": new_id, "workspace": workspace},
-            )
-        except httpx.HTTPError:
-            # Best-effort: an unbound Side Chat behaves like an unbound
-            # fork made through the web UI — the caller can bind it later.
-            _logger.warning("side_chat_open: failed to bind host for %s", new_id, exc_info=True)
-
+    body: dict[str, object] = {"start": start, "title": title}
     if isinstance(first_message, str) and first_message:
-        message_error = await _post_child_first_message(new_id, first_message, server_client)
-        if message_error is not None:
-            return message_error
+        body["first_message"] = first_message
+    try:
+        resp = await server_client.post(f"/v1/sessions/{conversation_id}/side_chats", json=body)
+    except httpx.HTTPError as exc:
+        return json.dumps({"error": f"side_chat_open failed: {exc}"})
+    if resp.status_code != 201:
+        try:
+            detail = resp.json().get("error", {}).get("message", resp.text)
+        except (ValueError, AttributeError):
+            detail = resp.text
+        return json.dumps({"error": f"side_chat_open {start} failed: {detail}"})
 
-    return json.dumps({"conversation_id": new_id, "title": title, "start": start})
+    new_conv = resp.json()
+    return json.dumps(
+        {
+            "conversation_id": new_conv["conversation_id"],
+            "title": new_conv.get("title") or title,
+            "start": start,
+        }
+    )
 
 
 async def _execute_web_fetch_tool(

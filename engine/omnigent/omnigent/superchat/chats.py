@@ -26,6 +26,7 @@ from omnigent.context.labels import (
 from omnigent.stores.conversation_store import (
     FORK_SOURCE_LABEL_KEY,
     SIDE_CHAT_LABEL_KEY,
+    SIDE_CHAT_START_LABEL_KEY,
     ConversationStore,
 )
 
@@ -99,7 +100,8 @@ def build_side_chat_blank_create_body(
     Super Chat plus :data:`SIDE_CHAT_LABEL_KEY` — so a blank Side Chat is
     just as discoverable from ``session_history``'s ``list_chats`` as a
     forked one, plus the superside-chat mode label so it carries the same
-    capability.
+    capability, plus :data:`SIDE_CHAT_START_LABEL_KEY` so
+    ``list_related_chats`` can report how it started.
     """
     body: dict[str, object] = {
         "agent_id": agent_id,
@@ -107,6 +109,7 @@ def build_side_chat_blank_create_body(
             CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE,
             SIDE_CHAT_LABEL_KEY: "1",
             FORK_SOURCE_LABEL_KEY: source_conversation_id,
+            SIDE_CHAT_START_LABEL_KEY: SIDE_CHAT_START_BLANK,
         },
     }
     if title:

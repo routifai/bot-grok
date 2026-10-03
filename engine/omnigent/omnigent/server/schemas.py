@@ -1867,6 +1867,23 @@ class SessionLabelsResponse(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
 
 
+class SessionContextSummaryResponse(BaseModel):
+    """
+    Response body for ``GET /v1/sessions/{id}/context_summary``.
+
+    The "Knows our conversation" hover: the session's latest rollover
+    checkpoint, if it has one.
+
+    :param summary: The latest ``compaction`` item's summary text, or
+        ``None`` when the session has never rolled over.
+    :param created_at: Unix epoch seconds that checkpoint was written, or
+        ``None`` to match a ``None`` summary.
+    """
+
+    summary: str | None = None
+    created_at: int | None = None
+
+
 # Stages of a managed-sandbox launch, in pipeline order: the sandbox
 # is provisioned, the repository workspace is cloned into it (skipped
 # when the session has no repo workspace), the in-sandbox host starts
@@ -2700,6 +2717,47 @@ class SessionForkRequest(BaseModel):
                 "fork picks its directory when it binds a host"
             )
         return self
+
+
+class SideChatOpenRequest(BaseModel):
+    """
+    Request body for ``POST /v1/sessions/{id}/side_chats``.
+
+    Opens a Side Chat branched from a superside-chat Super Chat — the same
+    operation the model-facing ``side_chat_open`` tool performs (see
+    ``omnigent/superchat/chats.py``). Refused unless the target session is
+    itself the Super Chat (never a Side Chat, never a Sub-agent).
+
+    :param start: ``"with_context"`` forks the Super Chat with a seeded
+        checkpoint summary; ``"blank"`` creates a fresh top-level session
+        carrying only the discovery labels.
+    :param title: Optional title for the new Side Chat. ``None`` lets the
+        server derive one (``"Fork of <source_title>"`` for
+        ``"with_context"``; unset for ``"blank"``).
+    :param first_message: Optional first user message, posted to the new
+        Side Chat once it exists.
+    """
+
+    start: Literal["with_context", "blank"]
+    title: str | None = Field(default=None, max_length=USER_SESSION_TITLE_MAX_CHARS)
+    first_message: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SideChatOpenResponse(BaseModel):
+    """
+    Response body for ``POST /v1/sessions/{id}/side_chats``.
+
+    :param conversation_id: The new Side Chat's session id.
+    :param title: Its actual title — the caller's own, or the one the
+        server derived.
+    :param start: Echoes the request's ``start``.
+    """
+
+    conversation_id: str
+    title: str | None = None
+    start: Literal["with_context", "blank"]
 
 
 class ReadStatePutRequest(BaseModel):

@@ -89,6 +89,7 @@ def test_blank_create_body_carries_discovery_labels() -> None:
         "omnigent.context.mode": "superside-chat",
         "omnigent.side_chat": "1",
         "omnigent.fork.source_id": "conv_super",
+        "omnigent.side_chat.start": "blank",
     }
 
 

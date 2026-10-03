@@ -11,6 +11,7 @@ from fastapi import (
     Request,
 )
 
+from omnigent.entities import CompactionData
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
 from omnigent.server._elicitation_registry import (
     _harness_elicitation_owners,
@@ -44,6 +45,7 @@ from omnigent.server.routes._sessions.orchestration import (
 from omnigent.server.schemas import (
     ChildSessionList,
     PaginatedList,
+    SessionContextSummaryResponse,
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
@@ -201,6 +203,47 @@ def register_items_routes(
 
         chats = await asyncio.to_thread(list_related_chats, conversation_store, session_id)
         return PaginatedList(data=chats)
+
+    # ── GET /sessions/{session_id}/context_summary ────────────────
+    # "Knows our conversation" hover (docs/super-chat/WIRING.md): the
+    # session's own latest rollover checkpoint, if it has rolled over.
+
+    @router.get(
+        "/sessions/{session_id}/context_summary",
+        response_model=SessionContextSummaryResponse,
+    )
+    async def get_context_summary(
+        request: Request,
+        session_id: str,
+    ) -> SessionContextSummaryResponse:
+        """
+        The session's latest rollover checkpoint summary, or ``None``.
+
+        :param session_id: Session/conversation identifier,
+            e.g. ``"conv_abc123"``.
+        :returns: ``{"summary", "created_at"}``, both ``None`` when the
+            session has never rolled over.
+        :raises OmnigentError: 404 if no session exists.
+        """
+        user_id = _get_user_id(request, auth_provider)
+        access = await _require_access_and_level(
+            user_id, session_id, LEVEL_READ, permission_store, conversation_store
+        )
+        if access.conversation is None:
+            conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+            if conv is None:
+                raise _session_not_found()
+        page = await asyncio.to_thread(
+            conversation_store.list_items,
+            session_id,
+            limit=1,
+            order="desc",
+            type="compaction",
+        )
+        if not page.data or not isinstance(page.data[0].data, CompactionData):
+            return SessionContextSummaryResponse(summary=None, created_at=None)
+        item = page.data[0]
+        return SessionContextSummaryResponse(summary=item.data.summary, created_at=item.created_at)
 
     # ── GET /sessions/{session_id}/child_sessions ────────────────
 

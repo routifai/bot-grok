@@ -34,8 +34,13 @@ from omnigent.server.routes._sessions.common import (
 from omnigent.stores.conversation_store import (
     FORK_SOURCE_LABEL_KEY,
     SIDE_CHAT_LABEL_KEY,
+    SIDE_CHAT_START_LABEL_KEY,
     ConversationStore,
 )
+from omnigent.superchat.chats import SIDE_CHAT_START_WITH_CONTEXT
+
+# A turn in flight, read from the durable ``Conversation.live_status`` (no runner probe).
+_MID_TURN_LIVE_STATUSES = ("running", "waiting")
 
 # Fallback threshold when no window is known for the session's model —
 # well under the smallest context window Omnigent routes to today.
@@ -563,7 +568,27 @@ def _related_chat_preview(items: list[ConversationItem]) -> str | None:
     return None
 
 
-def _chat_summary(conversation: Conversation, preview: str | None) -> dict[str, Any]:
+def _side_chat_seed_summary(
+    conv_store: ConversationStore, conversation: Conversation
+) -> str | None:
+    """The seed summary of a ``with_context`` Side Chat, else ``None``.
+
+    One items read, limited to the first ``compaction`` item — the seed
+    ``build_side_chat_seed`` appends right after the fork's deep copy, not
+    the chat's whole record — so this stays cheap per related chat.
+    """
+    if conversation.labels.get(SIDE_CHAT_START_LABEL_KEY) != SIDE_CHAT_START_WITH_CONTEXT:
+        return None
+    page = conv_store.list_items(conversation.id, limit=1, order="asc", type="compaction")
+    if not page.data:
+        return None
+    data = page.data[0].data
+    return data.summary if isinstance(data, CompactionData) else None
+
+
+def _chat_summary(
+    conv_store: ConversationStore, conversation: Conversation, preview: str | None
+) -> dict[str, Any]:
     return {
         "id": conversation.id,
         "title": conversation.title,
@@ -571,6 +596,12 @@ def _chat_summary(conversation: Conversation, preview: str | None) -> dict[str, 
         "updated_at": conversation.updated_at,
         "last_message_preview": preview,
         "archived": conversation.archived,
+        # How it was opened (``ChatSummary.start``, docs/super-chat/WIRING.md);
+        # ``None`` for the parent entry (the Super Chat itself never carries
+        # the label) or a Side Chat from before this label existed.
+        "start": conversation.labels.get(SIDE_CHAT_START_LABEL_KEY),
+        "summary": _side_chat_seed_summary(conv_store, conversation),
+        "live": conversation.live_status in _MID_TURN_LIVE_STATUSES,
     }
 
 
@@ -596,8 +627,9 @@ def list_related_chats(
     :param conversation_id: The calling (source) session id.
     :param limit: Maximum chats to return.
     :returns: ``[{"id", "title", "created_at", "updated_at",
-        "last_message_preview", "archived"}, ...]``, newest-updated child first, parent
-        last; ``[]`` when *conversation_id* does not exist.
+        "last_message_preview", "archived", "start", "summary", "live"},
+        ...]``, newest-updated child first, parent last; ``[]`` when
+        *conversation_id* does not exist.
     """
     caller = conv_store.get_conversation(conversation_id)
     if caller is None:
@@ -632,7 +664,11 @@ def list_related_chats(
     ids = [conversation.id for conversation in related]
     previews_by_id = conv_store.list_latest_message_items_for_conversations(ids, 10)
     return [
-        _chat_summary(conversation, _related_chat_preview(previews_by_id.get(conversation.id, [])))
+        _chat_summary(
+            conv_store,
+            conversation,
+            _related_chat_preview(previews_by_id.get(conversation.id, [])),
+        )
         for conversation in related
     ]
 

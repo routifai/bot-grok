@@ -116,6 +116,12 @@ PINNED_LABEL_KEY = "omnigent.pinned"
 # otherwise behaves like any other session (its own runner, transcript).
 SIDE_CHAT_LABEL_KEY = "omnigent.side_chat"
 
+# How a Side Chat was opened: ``"with_context"`` (seeded from the Super
+# Chat's checkpoint) or ``"blank"`` (no seed). Stamped once at creation by
+# ``POST /v1/sessions/{id}/side_chats``; read back by ``list_related_chats``
+# (``omnigent/context/rollover.py``) for ``ChatSummary.start``.
+SIDE_CHAT_START_LABEL_KEY = "omnigent.side_chat.start"
+
 # Single-user / no-auth sentinel for the per-user pin key suffix, mirroring the
 # reserved ``"local"`` identity used elsewhere (see ``RESERVED_USER_LOCAL``).
 _PINNED_LABEL_LOCAL_USER = "local"

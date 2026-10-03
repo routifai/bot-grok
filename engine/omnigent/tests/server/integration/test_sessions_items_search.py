@@ -11,7 +11,12 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
+from omnigent.entities import CompactionData, NewConversationItem
+from omnigent.stores.conversation_store import (
+    FORK_SOURCE_LABEL_KEY,
+    SIDE_CHAT_LABEL_KEY,
+    SIDE_CHAT_START_LABEL_KEY,
+)
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from tests.server.helpers import create_test_agent
 
@@ -174,4 +179,201 @@ async def test_related_chats_excludes_unrelated_session(
 
 async def test_related_chats_missing_session_returns_404(client: httpx.AsyncClient) -> None:
     resp = await client.get("/v1/sessions/conv_does_not_exist/related_chats")
+    assert resp.status_code == 404
+
+
+# ── related_chats: start / summary / live (docs/super-chat/WIRING.md E1) ──
+
+
+async def test_related_chats_reports_start_label(client: httpx.AsyncClient, db_uri: str) -> None:
+    source_id = await _create_session(client, "related-chats-start-source")
+    side_chat_id = await _create_session(client, "related-chats-start-side")
+    store = SqlAlchemyConversationStore(db_uri)
+    store.set_labels(
+        side_chat_id,
+        {
+            FORK_SOURCE_LABEL_KEY: source_id,
+            SIDE_CHAT_LABEL_KEY: "1",
+            SIDE_CHAT_START_LABEL_KEY: "with_context",
+        },
+    )
+
+    resp = await client.get(f"/v1/sessions/{source_id}/related_chats")
+    assert resp.status_code == 200, resp.text
+    chats = {c["id"]: c for c in resp.json()["data"]}
+    assert chats[side_chat_id]["start"] == "with_context"
+
+
+async def test_related_chats_start_is_null_without_the_label(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    source_id = await _create_session(client, "related-chats-no-start-source")
+    side_chat_id = await _create_session(client, "related-chats-no-start-side")
+    store = SqlAlchemyConversationStore(db_uri)
+    store.set_labels(side_chat_id, {FORK_SOURCE_LABEL_KEY: source_id, SIDE_CHAT_LABEL_KEY: "1"})
+
+    resp = await client.get(f"/v1/sessions/{source_id}/related_chats")
+    assert resp.status_code == 200, resp.text
+    chats = {c["id"]: c for c in resp.json()["data"]}
+    assert chats[side_chat_id]["start"] is None
+
+
+async def test_related_chats_summary_is_the_seed_of_a_with_context_chat(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    source_id = await _create_session(client, "related-chats-summary-source")
+    side_chat_id = await _create_session(client, "related-chats-summary-side")
+    store = SqlAlchemyConversationStore(db_uri)
+    store.set_labels(
+        side_chat_id,
+        {
+            FORK_SOURCE_LABEL_KEY: source_id,
+            SIDE_CHAT_LABEL_KEY: "1",
+            SIDE_CHAT_START_LABEL_KEY: "with_context",
+        },
+    )
+    store.append(
+        side_chat_id,
+        [
+            NewConversationItem(
+                type="compaction",
+                response_id="resp_seed",
+                data=CompactionData(
+                    summary="Discussed the Q3 roadmap.",
+                    last_item_id="msg_1",
+                    model=None,
+                    token_count=12,
+                ),
+            )
+        ],
+    )
+
+    resp = await client.get(f"/v1/sessions/{source_id}/related_chats")
+    assert resp.status_code == 200, resp.text
+    chats = {c["id"]: c for c in resp.json()["data"]}
+    assert chats[side_chat_id]["summary"] == "Discussed the Q3 roadmap."
+
+
+async def test_related_chats_summary_is_null_for_a_blank_chat(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    source_id = await _create_session(client, "related-chats-blank-summary-source")
+    side_chat_id = await _create_session(client, "related-chats-blank-summary-side")
+    store = SqlAlchemyConversationStore(db_uri)
+    store.set_labels(
+        side_chat_id,
+        {
+            FORK_SOURCE_LABEL_KEY: source_id,
+            SIDE_CHAT_LABEL_KEY: "1",
+            SIDE_CHAT_START_LABEL_KEY: "blank",
+        },
+    )
+    # Even if a compaction item somehow exists, a "blank" chat never reports it.
+    store.append(
+        side_chat_id,
+        [
+            NewConversationItem(
+                type="compaction",
+                response_id="resp_seed",
+                data=CompactionData(
+                    summary="Should never surface.",
+                    last_item_id="msg_1",
+                    model=None,
+                    token_count=12,
+                ),
+            )
+        ],
+    )
+
+    resp = await client.get(f"/v1/sessions/{source_id}/related_chats")
+    assert resp.status_code == 200, resp.text
+    chats = {c["id"]: c for c in resp.json()["data"]}
+    assert chats[side_chat_id]["summary"] is None
+
+
+async def test_related_chats_live_reflects_live_status(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    source_id = await _create_session(client, "related-chats-live-source")
+    side_chat_id = await _create_session(client, "related-chats-live-side")
+    store = SqlAlchemyConversationStore(db_uri)
+    store.set_labels(side_chat_id, {FORK_SOURCE_LABEL_KEY: source_id, SIDE_CHAT_LABEL_KEY: "1"})
+    store.set_session_live_status(side_chat_id, "running")
+
+    resp = await client.get(f"/v1/sessions/{source_id}/related_chats")
+    assert resp.status_code == 200, resp.text
+    chats = {c["id"]: c for c in resp.json()["data"]}
+    assert chats[side_chat_id]["live"] is True
+
+
+async def test_related_chats_live_is_false_when_idle(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    source_id = await _create_session(client, "related-chats-idle-source")
+    side_chat_id = await _create_session(client, "related-chats-idle-side")
+    store = SqlAlchemyConversationStore(db_uri)
+    store.set_labels(side_chat_id, {FORK_SOURCE_LABEL_KEY: source_id, SIDE_CHAT_LABEL_KEY: "1"})
+
+    resp = await client.get(f"/v1/sessions/{source_id}/related_chats")
+    assert resp.status_code == 200, resp.text
+    chats = {c["id"]: c for c in resp.json()["data"]}
+    assert chats[side_chat_id]["live"] is False
+
+
+# ── GET /sessions/{id}/context_summary — "Knows our conversation" hover ──
+
+
+async def test_context_summary_is_null_without_a_rollover(client: httpx.AsyncClient) -> None:
+    session_id = await _create_session(client, "context-summary-none")
+
+    resp = await client.get(f"/v1/sessions/{session_id}/context_summary")
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"summary": None, "created_at": None}
+
+
+async def test_context_summary_reports_the_latest_checkpoint(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    session_id = await _create_session(client, "context-summary-latest")
+    store = SqlAlchemyConversationStore(db_uri)
+    store.append(
+        session_id,
+        [
+            NewConversationItem(
+                type="compaction",
+                response_id="resp_seed_1",
+                data=CompactionData(
+                    summary="First checkpoint.",
+                    last_item_id="msg_1",
+                    model=None,
+                    token_count=10,
+                ),
+            )
+        ],
+    )
+    store.append(
+        session_id,
+        [
+            NewConversationItem(
+                type="compaction",
+                response_id="resp_seed_2",
+                data=CompactionData(
+                    summary="Second, newer checkpoint.",
+                    last_item_id="msg_2",
+                    model=None,
+                    token_count=20,
+                ),
+            )
+        ],
+    )
+
+    resp = await client.get(f"/v1/sessions/{session_id}/context_summary")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["summary"] == "Second, newer checkpoint."
+    assert isinstance(body["created_at"], int)
+
+
+async def test_context_summary_missing_session_returns_404(client: httpx.AsyncClient) -> None:
+    resp = await client.get("/v1/sessions/conv_does_not_exist/context_summary")
     assert resp.status_code == 404
