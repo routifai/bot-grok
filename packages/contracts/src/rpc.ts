@@ -822,12 +822,20 @@ export const appContract = {
     put: oc.input(AgentSecretInputSchema).output(AgentSecretSchema),
     remove: oc.input(z.object({ id: Id })).output(z.object({ ok: z.literal(true) })),
   },
-  // Muse edition. The Super Chat and its Side Chats. Archived Side Chats are not listed.
+  // Muse edition. The Super Chat's Side Chats (CONTEXT.md "Side Chat"); the UI folds
+  // Archived ones instead of hiding them.
   chats: {
     list: oc.input(z.object({ botId: Id })).output(z.array(ChatSummarySchema)),
+    /** Creates the Side Chat and sends its first message atomically. */
     createSide: oc
-      .input(z.object({ botId: Id, start: SideChatStartSchema }))
+      .input(z.object({ botId: Id, start: SideChatStartSchema, text: z.string().min(1) }))
       .output(ChatSummarySchema),
+    /** The summary a new Side Chat would start with, for the "Knows our conversation" switch. */
+    summaryPreview: oc.input(z.object({ botId: Id })).output(z.object({ summary: z.string() })),
+    messages: oc.input(z.object({ chatId: Id })).output(ThreadMessagePageSchema),
+    send: oc
+      .input(z.object({ chatId: Id, text: z.string().min(1) }))
+      .output(z.object({ ok: z.literal(true) })),
   },
   // Muse edition. Goals are created by talking to the Muse, so there is no goals.create.
   goals: {

@@ -2,13 +2,19 @@
 
 import type { ChatSummary } from "@aiden/contracts";
 import { ORPCError } from "@orpc/client";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
-  chats: { list: vi.fn(), createSide: vi.fn() },
+  chats: {
+    list: vi.fn(),
+    createSide: vi.fn(),
+    summaryPreview: vi.fn(),
+    messages: vi.fn(),
+    send: vi.fn(),
+  },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
 vi.mock("@lingui/core/macro", () => ({
@@ -23,50 +29,48 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
+vi.mock("@aiden/chat-ui/web", () => ({
+  ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+}));
 vi.mock("@aiden/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   BotAvatar: () => null,
   Tooltip: ({ children }: { children: ReactNode }) => children,
-  TooltipTrigger: ({ children }: { children: ReactNode }) => children,
-  TooltipContent: () => null,
-  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children, ...props }: { children: ReactNode }) => (
+  TooltipTrigger: ({ children, ...props }: ComponentProps<"button">) => (
     <button type="button" {...props}>
       {children}
     </button>
   ),
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuItem: ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => (
-    <button type="button" data-testid="menu-item" onClick={onClick}>
-      {children}
-    </button>
+  TooltipContent: ({ children }: { children: ReactNode }) => (
+    <div data-testid="tooltip-content">{children}</div>
   ),
+  Button: (props: ComponentProps<"button">) => <button {...props} />,
+  Switch: ({
+    checked,
+    onCheckedChange,
+    ...props
+  }: {
+    checked?: boolean;
+    onCheckedChange?: (value: boolean) => void;
+  } & ComponentProps<"span">) => <span data-checked={checked} {...props} />,
+  Textarea: (props: ComponentProps<"textarea">) => <textarea {...props} />,
 }));
 
-import { ChatListSection } from "./MuseSidebar";
+import { ChatTree } from "./MuseSidebar";
+import { SideChatSession, type SideChatWire } from "./SideChatSession";
 import { useChatList } from "./useChatList";
 
-const chat = (overrides: Partial<ChatSummary>): ChatSummary => ({
-  id: "chat-main",
-  kind: "super",
-  title: "Main chat",
-  start: null,
-  updatedAt: "2026-10-03T10:00:00.000Z",
-  ...overrides,
-});
-
-function Harness({ onOpenChat }: { onOpenChat?: (id: string) => void }) {
-  const list = useChatList("bot-1");
-  return (
-    <ChatListSection
-      state={list.state}
-      collapsed={false}
-      conversationActive
-      onOpenMain={() => undefined}
-      onOpenChat={onOpenChat}
-      onCreateSide={(start) => void list.createSide(start).then((c) => onOpenChat?.(c.id))}
-    />
-  );
+function chat(overrides: Partial<ChatSummary>): ChatSummary {
+  return {
+    id: "side-1",
+    title: "Side chat",
+    start: "withContext",
+    summary: "A summary of the conversation",
+    archived: false,
+    live: false,
+    updatedAt: "2026-10-03T10:00:00.000Z",
+    ...overrides,
+  };
 }
 
 async function mount(node: ReactNode) {
@@ -80,52 +84,202 @@ async function mount(node: ReactNode) {
   return host;
 }
 
+function setInputValue(el: HTMLTextAreaElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+  setter?.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   document.body.innerHTML = "";
   api.chats.list.mockReset();
   api.chats.createSide.mockReset();
+  api.chats.summaryPreview.mockReset();
+  api.chats.messages.mockReset();
+  api.chats.send.mockReset();
 });
 
-it("lists the Main chat and the Side Chats", async () => {
-  api.chats.list.mockResolvedValue([
-    chat({}),
-    chat({ id: "side-1", kind: "side", title: "Check Q3 spreadsheet", start: "withContext" }),
-  ]);
-  const host = await mount(<Harness onOpenChat={() => undefined} />);
-  const list = host.querySelector('[data-testid="chat-list"]');
-  expect(list?.getAttribute("data-status")).toBe("ready");
-  expect(host.textContent).toContain("Main chat");
-  expect(host.textContent).toContain("Check Q3 spreadsheet");
-  expect(api.chats.list).toHaveBeenCalledWith({ botId: "bot-1" });
-});
+it("extends the Chat List wire's createSide to carry the first message", async () => {
+  api.chats.list.mockResolvedValue([]);
+  api.chats.createSide.mockResolvedValue(chat({ id: "side-new", title: "New side chat" }));
 
-it("shows Side chats as not available yet while the backend can't serve chats", async () => {
-  api.chats.list.mockRejectedValue(new ORPCError("NOT_IMPLEMENTED"));
+  function Harness() {
+    const list = useChatList("bot-1");
+    return (
+      <button type="button" onClick={() => void list.createSide("blank", "Check the backlog")}>
+        create
+      </button>
+    );
+  }
   const host = await mount(<Harness />);
-  const list = host.querySelector('[data-testid="chat-list"]');
-  expect(list?.getAttribute("data-status")).toBe("unavailable");
-  expect(host.textContent).not.toContain("Main chat");
-  const add = host.querySelector<HTMLButtonElement>('button[aria-label="New side chat"]');
-  expect(add?.disabled).toBe(true);
-  expect(add?.title).toBe("Not available yet");
-});
-
-it("creates a blank Side Chat, refreshes the list and opens it", async () => {
-  api.chats.list.mockResolvedValue([chat({})]);
-  api.chats.createSide.mockResolvedValue(
-    chat({ id: "side-2", kind: "side", title: "New side chat", start: "blank" }),
-  );
-  const opened = vi.fn();
-  const host = await mount(<Harness onOpenChat={opened} />);
-  const blank = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="menu-item"]')].find(
-    (b) => b.textContent === "Blank",
-  );
   await act(async () => {
-    blank?.click();
+    host.querySelector("button")?.click();
   });
   await act(async () => {});
-  expect(api.chats.createSide).toHaveBeenCalledWith({ botId: "bot-1", start: "blank" });
+  expect(api.chats.createSide).toHaveBeenCalledWith({
+    botId: "bot-1",
+    start: "blank",
+    text: "Check the backlog",
+  });
   expect(api.chats.list).toHaveBeenCalledTimes(2);
-  expect(opened).toHaveBeenCalledWith("side-2");
+});
+
+it("shows nothing Side-Chat related while the chats wire answers NOT_IMPLEMENTED", async () => {
+  api.chats.list.mockRejectedValue(new ORPCError("NOT_IMPLEMENTED"));
+  function Harness() {
+    const list = useChatList("bot-1");
+    return (
+      <ChatTree
+        state={list.state}
+        collapsed={false}
+        activeChatId={null}
+        onOpenChat={() => undefined}
+        onNewDraft={() => undefined}
+      />
+    );
+  }
+  const host = await mount(<Harness />);
+  expect(host.querySelector('[data-testid="chat-tree"]')).toBeNull();
+  expect(host.textContent).toBe("");
+  expect(host.innerHTML).toBe("");
+});
+
+it("lists Side Chats newest first, with a pulsing dot while Nova is working in one, and folds Archived behind a collapsed count", async () => {
+  const onOpenChat = vi.fn();
+  const host = await mount(
+    <ChatTree
+      state={{
+        status: "ready",
+        chats: [
+          chat({ id: "older", title: "Older chat", updatedAt: "2026-10-01T00:00:00.000Z" }),
+          chat({
+            id: "newer",
+            title: "Newer chat",
+            live: true,
+            updatedAt: "2026-10-03T00:00:00.000Z",
+          }),
+          chat({ id: "gone", title: "Old pricing copy", archived: true }),
+        ],
+      }}
+      collapsed={false}
+      activeChatId={null}
+      onOpenChat={onOpenChat}
+      onNewDraft={() => undefined}
+    />,
+  );
+  const text = host.textContent ?? "";
+  expect(text.indexOf("Newer chat")).toBeLessThan(text.indexOf("Older chat"));
+  // The archived chat is folded away by default, behind a count.
+  expect(text).not.toContain("Old pricing copy");
+  expect(text).toContain("1");
+  // Nova's pulsing dot (announced via sr-only text) only marks the live chat.
+  const liveRow = [...host.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes("Nova is working"),
+  );
+  expect(liveRow?.textContent).toContain("Newer chat");
+  expect(text).toContain("New side chat");
+
+  const fold = [...host.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes("Archived"),
+  );
+  await act(async () => {
+    fold?.click();
+  });
+  expect(host.textContent).toContain("Old pricing copy");
+
+  const archivedRow = [...host.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes("Old pricing copy"),
+  );
+  archivedRow?.click();
+  expect(onOpenChat).toHaveBeenCalledWith(expect.objectContaining({ id: "gone" }));
+});
+
+it("a Side Chat draft locks its start from the switch and calls createSide with { start, text }", async () => {
+  const created = chat({ id: "side-9", title: "Check the backlog", start: "blank", summary: null });
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn().mockResolvedValue({ summary: "A summary" }),
+    createSide: vi.fn().mockResolvedValue(created),
+    messages: vi.fn().mockResolvedValue({ threadId: "t", messages: [], olderCursor: null }),
+    send: vi.fn(),
+  };
+  const onCreated = vi.fn();
+  const host = await mount(
+    <SideChatSession
+      botId="bot-1"
+      chat="draft"
+      wire={wire}
+      onCreated={onCreated}
+      onClose={() => undefined}
+    />,
+  );
+  expect(host.textContent).toContain("What do you want to look at?");
+
+  // Default is on; switching it off locks the Side Chat to start blank.
+  const knowsSwitch = host.querySelector<HTMLButtonElement>('[role="switch"]');
+  expect(knowsSwitch?.getAttribute("aria-checked")).toBe("true");
+  await act(async () => {
+    knowsSwitch?.click();
+  });
+  expect(knowsSwitch?.getAttribute("aria-checked")).toBe("false");
+
+  const textarea = host.querySelector<HTMLTextAreaElement>("textarea")!;
+  await act(async () => {
+    setInputValue(textarea, "Check the backlog");
+  });
+  const form = host.querySelector("form")!;
+  await act(async () => {
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await act(async () => {});
+
+  expect(wire.createSide).toHaveBeenCalledWith({
+    botId: "bot-1",
+    start: "blank",
+    text: "Check the backlog",
+  });
+  expect(onCreated).toHaveBeenCalledWith(created);
+});
+
+it("an archived Side Chat opens read-only: no composer, its messages still show", async () => {
+  const archived = chat({
+    id: "side-old",
+    title: "Old pricing copy",
+    archived: true,
+    start: "blank",
+    summary: null,
+  });
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn(),
+    createSide: vi.fn(),
+    messages: vi.fn().mockResolvedValue({
+      threadId: "side-old",
+      messages: [
+        {
+          id: "m1",
+          threadId: "side-old",
+          seq: 1,
+          role: "user",
+          blocks: [{ kind: "text", text: "Tighten the pricing headline." }],
+          createdAt: "2026-09-01T00:00:00.000Z",
+        },
+      ],
+      olderCursor: null,
+    }),
+    send: vi.fn(),
+  };
+  const host = await mount(
+    <SideChatSession
+      botId="bot-1"
+      chat={archived}
+      wire={wire}
+      onCreated={() => undefined}
+      onClose={() => undefined}
+    />,
+  );
+  await act(async () => {});
+  expect(host.textContent).toContain("Archived");
+  expect(host.textContent).toContain("Tighten the pricing headline.");
+  expect(host.querySelector("textarea")).toBeNull();
+  expect(host.querySelector("form")).toBeNull();
 });

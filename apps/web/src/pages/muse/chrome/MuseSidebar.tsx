@@ -1,18 +1,9 @@
-import type { Goal, ThreadMessage } from "@aiden/contracts";
-import {
-  BotAvatar,
-  cn,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@aiden/ui-web";
+import type { ChatSummary, Goal, ThreadMessage } from "@aiden/contracts";
+import { BotAvatar, cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Bell,
+  ChevronRight,
   Library,
   Lightbulb,
   MessageCircle,
@@ -24,10 +15,10 @@ import {
   Target,
 } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { MuseRailView as MuseView } from "../../../components/AppRail";
 import { rpc } from "../../../lib/rpc";
-import { useChatList } from "./useChatList";
+import type { ChatListState } from "./useChatList";
 import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
 
 const MAX_SIDEBAR_GOALS = 5;
@@ -99,10 +90,13 @@ export function MuseSidebar({
   messages,
   personName,
   active,
+  activeChatId,
+  chatListState,
   onNavigate,
   onOpenWaiting,
   onOpenSettings,
   onOpenChat,
+  onNewDraft,
 }: {
   botId: string;
   museName: string;
@@ -111,11 +105,18 @@ export function MuseSidebar({
   messages: readonly ThreadMessage[] | undefined;
   personName?: string;
   active: MuseView;
+  /** The open Side Chat, or "draft" for an unsent one; null while viewing the Conversation. */
+  activeChatId?: string | null;
+  /** The Chat List wire (`useChatList`), owned by the shell so the open session's own
+   * create can refresh the same list this sidebar renders. */
+  chatListState: ChatListState;
   onNavigate: (view: MuseView) => void;
   onOpenWaiting: () => void;
   onOpenSettings: () => void;
-  /** Open a Side Chat in the thread. Until the thread can show one, Side Chats are listed only. */
-  onOpenChat?: (chatId: string) => void;
+  /** Replaces the Conversation with this Side Chat as a full-size session. */
+  onOpenChat: (chat: ChatSummary) => void;
+  /** Opens an empty, unsent Side Chat draft. */
+  onNewDraft: () => void;
 }) {
   const { t } = useLingui();
   const {
@@ -131,7 +132,6 @@ export function MuseSidebar({
   const generation = useRef(0);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const nav = useGlide();
-  const chatList = useChatList(botId);
 
   useEffect(() => {
     const current = ++generation.current;
@@ -165,7 +165,7 @@ export function MuseSidebar({
       key: "conversation",
       icon: <MessageCircle />,
       label: t`Conversation`,
-      current: active === "conversation",
+      current: active === "conversation" && !activeChatId,
       onClick: () => onNavigate("conversation"),
     },
     {
@@ -271,33 +271,29 @@ export function MuseSidebar({
           }}
         />
         {rows.map((row) => (
-          <RailRow
-            key={row.key}
-            collapsed={collapsed}
-            icon={row.icon}
-            label={row.label}
-            meta={row.meta}
-            attention={row.attention}
-            current={row.current}
-            onClick={row.onClick}
-            onMouseEnter={nav.onRowEnter}
-          />
+          <Fragment key={row.key}>
+            <RailRow
+              collapsed={collapsed}
+              icon={row.icon}
+              label={row.label}
+              meta={row.meta}
+              attention={row.attention}
+              current={row.current}
+              onClick={row.onClick}
+              onMouseEnter={nav.onRowEnter}
+            />
+            {row.key === "conversation" ? (
+              <ChatTree
+                state={chatListState}
+                collapsed={collapsed}
+                activeChatId={activeChatId ?? null}
+                onOpenChat={onOpenChat}
+                onNewDraft={onNewDraft}
+              />
+            ) : null}
+          </Fragment>
         ))}
       </div>
-
-      <ChatListSection
-        state={chatList.state}
-        collapsed={collapsed}
-        conversationActive={active === "conversation"}
-        onOpenMain={() => onNavigate("conversation")}
-        onOpenChat={onOpenChat}
-        onCreateSide={(start) => {
-          void chatList
-            .createSide(start)
-            .then((chat) => onOpenChat?.(chat.id))
-            .catch(() => undefined);
-        }}
-      />
 
       {activeGoals.length ? (
         <div
@@ -372,110 +368,127 @@ export function MuseSidebar({
   );
 }
 
-const SECTION_ROW =
-  "flex items-center gap-3 rounded-xl ps-[26px] pe-3 py-2.5 text-start text-[15px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
+const TWIG_ROW =
+  "flex h-[34px] w-full items-center gap-2 rounded-lg px-2.5 text-start text-[14px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
 
 /**
- * The Chat List: the Super Chat ("Main chat") and its Side Chats. While the backend can't
- * serve chats, only the Side chats heading shows, with its add button disabled.
+ * The Side Chats, nested under the Conversation row they branch from (agreed behavior
+ * #1): a small tree with a connector line, newest first, a pulsing dot while Nova is
+ * working in one, a "New side chat" row, and a collapsed-by-default Archived fold.
+ * Nothing renders while the chats wire can't be reached (NOT_IMPLEMENTED): no heading,
+ * no disabled button.
  */
-export function ChatListSection({
+export function ChatTree({
   state,
   collapsed,
-  conversationActive,
-  onOpenMain,
+  activeChatId,
   onOpenChat,
-  onCreateSide,
+  onNewDraft,
 }: {
-  state: ReturnType<typeof useChatList>["state"];
+  state: ChatListState;
   collapsed: boolean;
-  conversationActive: boolean;
-  onOpenMain: () => void;
-  onOpenChat?: (chatId: string) => void;
-  onCreateSide: (start: "withContext" | "blank") => void;
+  activeChatId: string | null;
+  onOpenChat: (chat: ChatSummary) => void;
+  onNewDraft: () => void;
 }) {
-  const { t } = useLingui();
-  const ready = state.status === "ready";
-  const chats = ready ? state.chats : [];
-  const main = chats.find((chat) => chat.kind === "super");
-  const sides = chats.filter((chat) => chat.kind === "side");
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  if (state.status !== "ready") return null;
+  const sorted = [...state.chats].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  const live = sorted.filter((chat) => !chat.archived);
+  const archived = sorted.filter((chat) => chat.archived);
   return (
     <div
-      data-testid="chat-list"
-      data-status={state.status}
+      data-testid="chat-tree"
       aria-hidden={collapsed || undefined}
-      className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
+      className="app-no-drag relative ms-[26px] flex flex-col gap-0.5 border-s border-border/70 py-0.5 ps-3.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
     >
-      {main ? (
-        <button
-          type="button"
-          tabIndex={collapsed ? -1 : undefined}
-          onClick={onOpenMain}
-          aria-current={conversationActive ? "page" : undefined}
-          className={cn(
-            SECTION_ROW,
-            conversationActive
-              ? "bg-primary/10 font-medium text-foreground"
-              : "text-sidebar-foreground/85 hover:bg-sidebar-accent",
-          )}
-        >
-          <span className="min-w-0 flex-1 truncate">
-            <Trans>Main chat</Trans>
-          </span>
-        </button>
-      ) : null}
-      <div className="flex items-center ps-[19px] pe-1 pt-1 pb-1">
-        <span className="flex-1 text-[13.5px] font-semibold whitespace-nowrap text-muted-foreground">
-          <Trans>Side chats</Trans>
-        </span>
-        {ready ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              tabIndex={collapsed ? -1 : undefined}
-              aria-label={t`New side chat`}
-              className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              <Plus size={16} strokeWidth={1.75} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onCreateSide("withContext")}>
-                <Trans>With context</Trans>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onCreateSide("blank")}>
-                <Trans>Blank</Trans>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <button
-            type="button"
-            disabled
-            tabIndex={collapsed ? -1 : undefined}
-            aria-label={t`New side chat`}
-            title={state.status === "unavailable" ? t`Not available yet` : undefined}
-            className="grid size-7 place-items-center rounded-lg text-muted-foreground/50"
-          >
-            <Plus size={16} strokeWidth={1.75} />
-          </button>
-        )}
-      </div>
-      {sides.map((chat) => (
+      {live.map((chat) => (
         <button
           key={chat.id}
           type="button"
           tabIndex={collapsed ? -1 : undefined}
-          disabled={!onOpenChat}
-          onClick={() => onOpenChat?.(chat.id)}
+          onClick={() => onOpenChat(chat)}
+          aria-current={activeChatId === chat.id ? "page" : undefined}
           className={cn(
-            SECTION_ROW,
-            "text-sidebar-foreground/85 hover:bg-sidebar-accent disabled:hover:bg-transparent",
+            TWIG_ROW,
+            activeChatId === chat.id
+              ? "bg-sidebar-accent font-medium text-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent",
           )}
         >
           <span className="min-w-0 flex-1 truncate" dir="auto">
             {chat.title}
           </span>
+          {chat.live ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="size-1.5 shrink-0 rounded-full animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success"
+              />
+              <span className="sr-only">
+                <Trans>Nova is working</Trans>
+              </span>
+            </>
+          ) : null}
         </button>
       ))}
+      <button
+        type="button"
+        tabIndex={collapsed ? -1 : undefined}
+        onClick={onNewDraft}
+        aria-current={activeChatId === "draft" ? "page" : undefined}
+        className={cn(
+          TWIG_ROW,
+          "gap-2 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
+          activeChatId === "draft" && "bg-sidebar-accent text-foreground",
+        )}
+      >
+        <Plus size={14} strokeWidth={1.75} className="shrink-0" />
+        <span className="truncate">
+          <Trans>New side chat</Trans>
+        </span>
+      </button>
+      {archived.length ? (
+        <>
+          <button
+            type="button"
+            tabIndex={collapsed ? -1 : undefined}
+            onClick={() => setArchivedOpen((value) => !value)}
+            aria-expanded={archivedOpen}
+            className={cn(TWIG_ROW, "gap-1.5 text-muted-foreground hover:bg-sidebar-accent")}
+          >
+            <ChevronRight
+              size={13}
+              className={cn("shrink-0 transition-transform", archivedOpen && "rotate-90")}
+            />
+            <span className="truncate">
+              <Trans>Archived</Trans>
+            </span>
+            <span className="ms-auto shrink-0 text-[12px] tabular-nums">{archived.length}</span>
+          </button>
+          {archivedOpen
+            ? archived.map((chat) => (
+                <button
+                  key={chat.id}
+                  type="button"
+                  tabIndex={collapsed ? -1 : undefined}
+                  onClick={() => onOpenChat(chat)}
+                  aria-current={activeChatId === chat.id ? "page" : undefined}
+                  className={cn(
+                    TWIG_ROW,
+                    activeChatId === chat.id
+                      ? "bg-sidebar-accent font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-sidebar-accent",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate" dir="auto">
+                    {chat.title}
+                  </span>
+                </button>
+              ))
+            : null}
+        </>
+      ) : null}
     </div>
   );
 }

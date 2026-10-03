@@ -356,6 +356,9 @@ msgstr "Archive"
 msgid "archived"
 msgstr "archived"
 
+msgid "Archived"
+msgstr "Archived"
+
 msgid "Archived. Chat, memory, and files kept."
 msgstr "Archived. Chat, memory, and files kept."
 
@@ -447,14 +450,14 @@ msgstr "Back"
 msgid "Back to sign in"
 msgstr "Back to sign in"
 
+msgid "Back to the conversation"
+msgstr "Back to the conversation"
+
 msgid "Base URL"
 msgstr "Base URL"
 
 msgid "Bearer token"
 msgstr "Bearer token"
-
-msgid "Blank"
-msgstr "Blank"
 
 msgid "Blocked"
 msgstr "Blocked"
@@ -1739,6 +1742,15 @@ msgstr "Isolated"
 msgid "Isolated preview — no access to your account"
 msgstr "Isolated preview — no access to your account"
 
+msgid "It starts fresh, with only what Nova knows about you."
+msgstr "It starts fresh, with only what Nova knows about you."
+
+msgid "It starts with a summary of this conversation."
+msgstr "It starts with a summary of this conversation."
+
+msgid "It starts with this summary: “{preview}”"
+msgstr "It starts with this summary: “{preview}”"
+
 msgid "It won't be used anymore. This can't be undone."
 msgstr "It won't be used anymore. This can't be undone."
 
@@ -1776,6 +1788,9 @@ msgstr "key"
 
 msgid "Knowledge"
 msgstr "Knowledge"
+
+msgid "Knows our conversation"
+msgstr "Knows our conversation"
 
 msgid "Language"
 msgstr "Language"
@@ -1879,9 +1894,6 @@ msgstr "Low"
 msgid "Made for you"
 msgstr "Made for you"
 
-msgid "Main chat"
-msgstr "Main chat"
-
 msgid "Make sure nothing is still running on this computer."
 msgstr "Make sure nothing is still running on this computer."
 
@@ -1969,6 +1981,9 @@ msgstr "Message event"
 
 msgid "Message from {peer}"
 msgstr "Message from {peer}"
+
+msgid "Message this side chat"
+msgstr "Message this side chat"
 
 msgid "Message…"
 msgstr "Message…"
@@ -2172,9 +2187,6 @@ msgstr "None yet"
 msgid "Normal"
 msgstr "Normal"
 
-msgid "Not available yet"
-msgstr "Not available yet"
-
 msgid "Not connected"
 msgstr "Not connected"
 
@@ -2216,6 +2228,9 @@ msgstr "Notifications"
 
 msgid "Nova"
 msgstr "Nova"
+
+msgid "Nova is working"
+msgstr "Nova is working"
 
 msgid "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
 msgstr "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
@@ -2844,9 +2859,6 @@ msgstr "Show replies as they're written"
 msgid "Show settings"
 msgstr "Show settings"
 
-msgid "Side chats"
-msgstr "Side chats"
-
 msgid "Sign in"
 msgstr "Sign in"
 
@@ -2933,6 +2945,12 @@ msgstr "Start this Goal"
 
 msgid "Start this plan"
 msgstr "Start this plan"
+
+msgid "Started blank — knows only what Nova knows about you."
+msgstr "Started blank — knows only what Nova knows about you."
+
+msgid "Started with context — a summary of your conversation"
+msgstr "Started with context — a summary of your conversation"
 
 msgid "Starting"
 msgstr "Starting"
@@ -3285,6 +3303,9 @@ msgstr "What do you want me on first?"
 msgid "What do you want to get done?"
 msgstr "What do you want to get done?"
 
+msgid "What do you want to look at?"
+msgstr "What do you want to look at?"
+
 msgid "What I finished while you were away, and what's new on the topics you follow."
 msgstr "What I finished while you were away, and what's new on the topics you follow."
 
@@ -3326,9 +3347,6 @@ msgstr "When to use"
 
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
-
-msgid "With context"
-msgstr "With context"
 
 msgid "Working"
 msgstr "Working"

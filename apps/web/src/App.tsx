@@ -13,6 +13,7 @@ import {
   showSessionUnavailable,
 } from "./lib/session-gate";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
+import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { IntegrationSetupPage } from "./pages/IntegrationSetup";
 import { LocalSettingsPage } from "./pages/LocalSettings";
 import { McpOAuthCallbackPage } from "./pages/McpOAuthCallback";
@@ -40,6 +41,11 @@ export function App() {
   // require a signed-in account or a live agent run.
   if (import.meta.env.DEV && window.location.pathname === "/dev/canvas") {
     return <CanvasPreviewPage />;
+  }
+  // Dev-only fixture route for the Side Chats sidebar + session (SideChatsPreviewPage.tsx),
+  // same reasoning as /dev/canvas: no session or backend chats wire needed.
+  if (import.meta.env.DEV && window.location.pathname === "/dev/side-chats") {
+    return <SideChatsPreviewPage />;
   }
   return <SessionApp />;
 }

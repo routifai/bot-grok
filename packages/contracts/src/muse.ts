@@ -52,20 +52,23 @@ export const GoalProposalSchema = z.object({
 export type GoalProposal = z.infer<typeof GoalProposalSchema>;
 
 /**
- * A chat in the Muse's Chat List: the one Super Chat (shown as "Main chat") or a Side Chat
- * branched from it. A Side Chat starts with context (a summary of the Super Chat) or blank
- * (only the Memory Profile). Served by the Super Chat backend; see that backend's CONTEXT.md.
+ * A Side Chat branched from the Super Chat (CONTEXT.md "Side Chat"): a short-lived aside
+ * that starts with context (a summary of the Super Chat) or blank (only the Memory
+ * Profile). The Super Chat itself never appears in this list; NOVA shows it as the
+ * "Conversation" row Side Chats nest under. Served by the Super Chat backend.
  */
-export const ChatKindSchema = z.enum(["super", "side"]);
-export type ChatKind = z.infer<typeof ChatKindSchema>;
 export const SideChatStartSchema = z.enum(["withContext", "blank"]);
 export type SideChatStart = z.infer<typeof SideChatStartSchema>;
 export const ChatSummarySchema = z.object({
   id: Id,
-  kind: ChatKindSchema,
   title: z.string(),
-  /** How a Side Chat started; null for the Super Chat. */
-  start: SideChatStartSchema.nullable(),
+  start: SideChatStartSchema,
+  /** The summary it started with; null when it started blank. */
+  summary: z.string().nullable(),
+  /** Ended and hidden from the default list, but kept and readable (CONTEXT.md "Archived"). */
+  archived: z.boolean(),
+  /** Whether Nova is currently working in this Side Chat. */
+  live: z.boolean(),
   updatedAt: z.string(),
 });
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;

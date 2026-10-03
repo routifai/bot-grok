@@ -4880,6 +4880,15 @@ export function createRouter(deps: RouterDeps) {
       createSide: museOnly.chats.createSide.handler(() => {
         throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
       }),
+      summaryPreview: museOnly.chats.summaryPreview.handler(() => {
+        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
+      }),
+      messages: museOnly.chats.messages.handler(() => {
+        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
+      }),
+      send: museOnly.chats.send.handler(() => {
+        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
+      }),
     },
     goals: {
       list: museOnly.goals.list.handler(({ context, input }) =>

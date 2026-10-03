@@ -2,6 +2,7 @@ import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type {
   AgentSkillCatalogEntry,
   Bot,
+  ChatSummary,
   ComputerMode,
   ComputerReleaseReason,
   ComputerStatus,
@@ -114,7 +115,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AppRail } from "../components/AppRail";
+import { AppRail, type MuseRailView } from "../components/AppRail";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
@@ -194,6 +195,8 @@ import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { deriveMuseState } from "./muse/chrome/museState";
+import { SideChatSession, type SideChatWire } from "./muse/chrome/SideChatSession";
+import { useChatList } from "./muse/chrome/useChatList";
 import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveState";
 import { HarnessPicker } from "./muse/engine/HarnessPicker";
 import { FeedScreen } from "./muse/FeedScreen";
@@ -549,6 +552,26 @@ export function ShellPage() {
   // switch between, `active` already resolves to the person's one live bot.
   const museMode = true;
   const { view: museView, setView: setMuseView } = useMuseNav();
+  // The open Side Chat, shown as a full-size session replacing the Conversation
+  // (agreed behavior #2); "draft" is an unsent one. Cleared by navigating anywhere else.
+  const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(null);
+  const chatList = useChatList(active?.id ?? "");
+  const sideChatWire = useMemo<SideChatWire>(
+    () => ({
+      summaryPreview: (input) => rpc.chats.summaryPreview(input),
+      createSide: (input) => chatList.createSide(input.start, input.text),
+      messages: (input) => rpc.chats.messages(input),
+      send: (input) => rpc.chats.send(input),
+    }),
+    [chatList.createSide],
+  );
+  const navigateMuseView = useCallback(
+    (view: MuseRailView) => {
+      setActiveChat(null);
+      setMuseView(view);
+    },
+    [setMuseView],
+  );
   const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
   /** Bumped on every send so the transcript jumps to the bottom and follows the reply. */
   const [followSignal, setFollowSignal] = useState(0);
@@ -2344,9 +2367,19 @@ export function ShellPage() {
           messages={activeSnapshot?.messages}
           personName={bootstrapMe?.name}
           active={museView}
-          onNavigate={setMuseView}
+          activeChatId={activeChat === "draft" ? "draft" : (activeChat?.id ?? null)}
+          chatListState={chatList.state}
+          onNavigate={navigateMuseView}
           onOpenWaiting={() => setWaitingOpen(true)}
           onOpenSettings={() => openSettings("general")}
+          onOpenChat={(chat) => {
+            setActiveChat(chat);
+            setMuseView("conversation");
+          }}
+          onNewDraft={() => {
+            setActiveChat("draft");
+            setMuseView("conversation");
+          }}
         />
       ) : (
         <AppRail active="bots" />
@@ -2359,7 +2392,22 @@ export function ShellPage() {
             : "flex min-w-0 flex-1 flex-col bg-background"
         }
       >
-        {museMode && active && museView !== "conversation" ? (
+        {museMode && active && museView === "conversation" && activeChat ? (
+          <div
+            className={cn(
+              "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+              MUSE_GLASS_PANEL,
+            )}
+          >
+            <SideChatSession
+              botId={active.id}
+              chat={activeChat}
+              wire={sideChatWire}
+              onCreated={setActiveChat}
+              onClose={() => setActiveChat(null)}
+            />
+          </div>
+        ) : museMode && active && museView !== "conversation" ? (
           <div
             className={cn(
               "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
@@ -2646,7 +2694,7 @@ export function ShellPage() {
                 // The computer (or settings) side panel takes that column; two side panels
                 // would crush the conversation.
                 collapsed={contextPanelCollapsed || panel !== null}
-                onNavigate={setMuseView}
+                onNavigate={navigateMuseView}
                 onOpenWaiting={() => setWaitingOpen(true)}
               />
             ) : null}
