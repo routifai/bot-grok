@@ -51,6 +51,25 @@ export const GoalProposalSchema = z.object({
 });
 export type GoalProposal = z.infer<typeof GoalProposalSchema>;
 
+/**
+ * A chat in the Muse's Chat List: the one Super Chat (shown as "Main chat") or a Side Chat
+ * branched from it. A Side Chat starts with context (a summary of the Super Chat) or blank
+ * (only the Memory Profile). Served by the Super Chat backend; see that backend's CONTEXT.md.
+ */
+export const ChatKindSchema = z.enum(["super", "side"]);
+export type ChatKind = z.infer<typeof ChatKindSchema>;
+export const SideChatStartSchema = z.enum(["withContext", "blank"]);
+export type SideChatStart = z.infer<typeof SideChatStartSchema>;
+export const ChatSummarySchema = z.object({
+  id: Id,
+  kind: ChatKindSchema,
+  title: z.string(),
+  /** How a Side Chat started; null for the Super Chat. */
+  start: SideChatStartSchema.nullable(),
+  updatedAt: z.string(),
+});
+export type ChatSummary = z.infer<typeof ChatSummarySchema>;
+
 export const GoalSchema = z.object({
   id: Id,
   botId: Id,

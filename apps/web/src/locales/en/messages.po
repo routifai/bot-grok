@@ -453,6 +453,9 @@ msgstr "Base URL"
 msgid "Bearer token"
 msgstr "Bearer token"
 
+msgid "Blank"
+msgstr "Blank"
+
 msgid "Blocked"
 msgstr "Blocked"
 
@@ -1353,6 +1356,13 @@ msgstr "Empty"
 msgid "Engage when... Ignore..."
 msgstr "Engage when... Ignore..."
 
+msgid "Engine"
+msgstr "Engine"
+
+#. placeholder {0}: active.name
+msgid "Engine: {0}. Change engine"
+msgstr "Engine: {0}. Change engine"
+
 msgid "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
 msgstr "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
 
@@ -1869,6 +1879,9 @@ msgstr "Low"
 msgid "Made for you"
 msgstr "Made for you"
 
+msgid "Main chat"
+msgstr "Main chat"
+
 msgid "Make sure nothing is still running on this computer."
 msgstr "Make sure nothing is still running on this computer."
 
@@ -2063,6 +2076,9 @@ msgstr "New password"
 msgid "New section"
 msgstr "New section"
 
+msgid "New side chat"
+msgstr "New side chat"
+
 msgid "New skill"
 msgstr "New skill"
 
@@ -2155,6 +2171,9 @@ msgstr "None yet"
 
 msgid "Normal"
 msgstr "Normal"
+
+msgid "Not available yet"
+msgstr "Not available yet"
 
 msgid "Not connected"
 msgstr "Not connected"
@@ -2663,6 +2682,9 @@ msgstr "Running…"
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
 
+msgid "Same Nova, same memory. Pick what runs it."
+msgstr "Same Nova, same memory. Pick what runs it."
+
 msgid "Save"
 msgstr "Save"
 
@@ -2821,6 +2843,9 @@ msgstr "Show replies as they're written"
 
 msgid "Show settings"
 msgstr "Show settings"
+
+msgid "Side chats"
+msgstr "Side chats"
 
 msgid "Sign in"
 msgstr "Sign in"
@@ -3302,6 +3327,9 @@ msgstr "When to use"
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
 
+msgid "With context"
+msgstr "With context"
+
 msgid "Working"
 msgstr "Working"
 
@@ -3349,3 +3377,6 @@ msgstr "Your email address"
 
 msgid "Your name"
 msgstr "Your name"
+
+msgid "Your next message starts on the new engine."
+msgstr "Your next message starts on the new engine."

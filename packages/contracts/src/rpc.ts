@@ -86,12 +86,14 @@ import {
 import {
   AnswerAskInput,
   AskSchema,
+  ChatSummarySchema,
   EpisodeSchema,
   FeedSchema,
   FollowedTopicSchema,
   GoalSchema,
   IdeaSchema,
   MuseSettingsSchema,
+  SideChatStartSchema,
   UpdateGoalInput,
 } from "./muse.js";
 import { MessageReactionSchema } from "./reactions.js";
@@ -819,6 +821,13 @@ export const appContract = {
     list: oc.output(z.array(AgentSecretSchema)),
     put: oc.input(AgentSecretInputSchema).output(AgentSecretSchema),
     remove: oc.input(z.object({ id: Id })).output(z.object({ ok: z.literal(true) })),
+  },
+  // Muse edition. The Super Chat and its Side Chats. Archived Side Chats are not listed.
+  chats: {
+    list: oc.input(z.object({ botId: Id })).output(z.array(ChatSummarySchema)),
+    createSide: oc
+      .input(z.object({ botId: Id, start: SideChatStartSchema }))
+      .output(ChatSummarySchema),
   },
   // Muse edition. Goals are created by talking to the Muse, so there is no goals.create.
   goals: {

@@ -4872,6 +4872,15 @@ export function createRouter(deps: RouterDeps) {
         prepareVoice(deps, context.actor, input),
       ),
     },
+    // The Super Chat backend is not built yet; these answer "not available" until it is.
+    chats: {
+      list: museOnly.chats.list.handler(() => {
+        throw new ORPCError("NOT_IMPLEMENTED", { message: "Chats are not available yet." });
+      }),
+      createSide: museOnly.chats.createSide.handler(() => {
+        throw new ORPCError("NOT_IMPLEMENTED", { message: "Side chats are not available yet." });
+      }),
+    },
     goals: {
       list: museOnly.goals.list.handler(({ context, input }) =>
         listGoals(deps, context.actor, input),
