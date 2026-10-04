@@ -17,7 +17,7 @@ The person taking control of the Computer's screen to click and type themselves,
 _Avoid_: control lease, interactive mode, remote control
 
 **Helper**:
-A short-lived agent the Muse starts for one piece of work. It starts with no history (only its brief and what the Muse remembers about the person), cannot talk to the person, and ends when its work is done; its result goes back to the chat that started it. Its status shows as an Activity. In the engine it is a Sub-agent.
+A short-lived task executor the Muse starts for one piece of work. It does not inherit the Conversation: it starts with its brief, what the Muse remembers about the person, and a short summary of the Conversation that the Conversation hands it; it can look up exact past messages when it needs them. It cannot talk to the person, and ends when its work is done; its result goes back to the chat that started it. Its status shows as an Activity. In the engine it is a Sub-agent.
 _Avoid_: subagent, sub-bot, peer bot, worker
 
 **Goal**:
