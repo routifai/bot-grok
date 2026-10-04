@@ -718,6 +718,10 @@ def _parse_executor(
     )
     raw_model = raw.get("model")
     model: str | None = str(raw_model) if raw_model is not None else None
+    # Expanded like connection values, so a bundle can name its model by env var.
+    if model is not None and expand_env and "$" in model:
+        model = os.path.expandvars(model)
+        check_unresolved_env_vars("executor.model", model)
     raw_effort = raw.get("reasoning_effort")
     reasoning_effort: str | None = str(raw_effort) if raw_effort is not None else None
     # Parse ``executor.connection:`` — same shape as ``llm.connection:``

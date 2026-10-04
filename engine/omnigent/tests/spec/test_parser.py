@@ -4617,3 +4617,21 @@ def test_parse_executor_reasoning_effort_absent(tmp_path: Path) -> None:
     spec = parse(tmp_path)
 
     assert spec.executor.reasoning_effort is None
+
+
+def test_executor_model_expands_env_vars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bundle can name its model by env var, like connection values."""
+    monkeypatch.setenv("TEST_AGENT_MODEL", "claude-haiku-4-5")
+    config = {
+        "spec_version": 1,
+        "name": "env-model",
+        "executor": {
+            "type": "omnigent",
+            "model": "${TEST_AGENT_MODEL}",
+            "config": {"harness": "claude-sdk"},
+        },
+    }
+    (tmp_path / "config.yaml").write_text(yaml.dump(config))
+
+    assert parse(tmp_path).executor.model == "claude-haiku-4-5"
+    assert parse(tmp_path, expand_env=False).executor.model == "${TEST_AGENT_MODEL}"
