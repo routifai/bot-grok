@@ -121,6 +121,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppRail, type MuseRailView } from "../components/AppRail";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
+
 import { AskCard } from "../components/AskCard";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { Shimmer } from "../components/ai/primitives";
@@ -132,6 +133,7 @@ import {
 } from "../components/ComputersUnavailableHint";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import {
+  ArtifactPanelProvider,
   ReplyCardBotProvider,
   ReplyCardSendProvider,
   ReplyCardThreadProvider,
@@ -244,6 +246,10 @@ import {
   ChoiceCard,
   McpApprovalCard,
 } from "./shell/message-cards";
+
+const ArtifactPanel = lazy(() =>
+  import("../components/ArtifactPanel").then((m) => ({ default: m.ArtifactPanel })),
+);
 
 const MessagingSettingsOverlay = lazy(() =>
   import("./MessagingSettingsOverlay").then((module) => ({
@@ -590,6 +596,18 @@ export function ShellPage() {
     [setMuseView],
   );
   const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
+  const [artifactOpen, setArtifactOpen] = useState<{ id: string; title?: string } | null>(null);
+  const artifactPanelApi = useMemo(
+    () => ({
+      openId: artifactOpen?.id ?? null,
+      open: (id: string, title?: string) => setArtifactOpen({ id, title }),
+      close: () => setArtifactOpen(null),
+    }),
+    [artifactOpen?.id],
+  );
+  const activeChatId = active?.id;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: closes when the conversation changes
+  useEffect(() => setArtifactOpen(null), [activeChatId]);
   /** Bumped on every send so the transcript jumps to the bottom and follows the reply. */
   const [followSignal, setFollowSignal] = useState(0);
   const [waitingOpen, setWaitingOpen] = useState(false);
@@ -2752,6 +2770,16 @@ export function ShellPage() {
                 />
               ) : null}
             </div>
+            {museMode && active && artifactOpen ? (
+              <Suspense fallback={null}>
+                <ArtifactPanel
+                  key={artifactOpen.id}
+                  artifactId={artifactOpen.id}
+                  title={artifactOpen.title}
+                  onClose={artifactPanelApi.close}
+                />
+              </Suspense>
+            ) : null}
             {museMode && active ? (
               <ContextPanel
                 botId={active.id}
@@ -2760,7 +2788,7 @@ export function ShellPage() {
                 chatListState={chatList.state}
                 // The computer (or settings) side panel takes that column; two side panels
                 // would crush the conversation.
-                collapsed={contextPanelCollapsed || panel !== null}
+                collapsed={contextPanelCollapsed || panel !== null || artifactOpen !== null}
                 onNavigate={navigateMuseView}
                 onOpenWaiting={() => setWaitingOpen(true)}
               />
@@ -3527,7 +3555,9 @@ export function ShellPage() {
   );
 
   return (
-    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>{shell}</AvatarStyleProvider>
+    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>
+      <ArtifactPanelProvider value={artifactPanelApi}>{shell}</ArtifactPanelProvider>
+    </AvatarStyleProvider>
   );
 }
 
