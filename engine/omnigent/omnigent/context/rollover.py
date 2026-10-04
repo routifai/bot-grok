@@ -584,27 +584,30 @@ def _related_chat_preview(items: list[ConversationItem]) -> str | None:
     return None
 
 
-def _side_chat_seed_summary(
+def _side_chat_seed(
     conv_store: ConversationStore, conversation: Conversation
-) -> str | None:
-    """The seed summary of a ``with_context`` Side Chat, else ``None``.
+) -> tuple[str | None, str | None]:
+    """``(summary, item_id)`` of a ``with_context`` Side Chat's seed, else ``(None, None)``.
 
     One items read, limited to the first ``compaction`` item — the seed
-    ``build_side_chat_seed`` appends right after the fork's deep copy, not
-    the chat's whole record — so this stays cheap per related chat.
+    ``build_side_chat_seed`` appends right after the fork's deep copy — so this
+    stays cheap per related chat. The item id marks where the chat's own
+    messages begin (everything before it is the copied parent record).
     """
     if conversation.labels.get(SIDE_CHAT_START_LABEL_KEY) != SIDE_CHAT_START_WITH_CONTEXT:
-        return None
+        return None, None
     page = conv_store.list_items(conversation.id, limit=1, order="asc", type="compaction")
     if not page.data:
-        return None
-    data = page.data[0].data
-    return data.summary if isinstance(data, CompactionData) else None
+        return None, None
+    item = page.data[0]
+    summary = item.data.summary if isinstance(item.data, CompactionData) else None
+    return summary, item.id
 
 
 def _chat_summary(
     conv_store: ConversationStore, conversation: Conversation, preview: str | None
 ) -> dict[str, Any]:
+    seed_summary, seed_item_id = _side_chat_seed(conv_store, conversation)
     return {
         "id": conversation.id,
         "title": conversation.title,
@@ -616,7 +619,8 @@ def _chat_summary(
         # ``None`` for the parent entry (the Super Chat itself never carries
         # the label) or a Side Chat from before this label existed.
         "start": conversation.labels.get(SIDE_CHAT_START_LABEL_KEY),
-        "summary": _side_chat_seed_summary(conv_store, conversation),
+        "summary": seed_summary,
+        "seed_item_id": seed_item_id,
         "live": conversation.live_status in _MID_TURN_LIVE_STATUSES,
     }
 
@@ -643,7 +647,7 @@ def list_related_chats(
     :param conversation_id: The calling (source) session id.
     :param limit: Maximum chats to return.
     :returns: ``[{"id", "title", "created_at", "updated_at",
-        "last_message_preview", "archived", "start", "summary", "live"},
+        "last_message_preview", "archived", "start", "summary", "seed_item_id", "live"},
         ...]``, newest-updated child first, parent last; ``[]`` when
         *conversation_id* does not exist.
     """

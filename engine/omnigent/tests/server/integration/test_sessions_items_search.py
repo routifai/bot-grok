@@ -267,6 +267,8 @@ async def test_related_chats_summary_is_the_seed_of_a_with_context_chat(
     assert resp.status_code == 200, resp.text
     chats = {c["id"]: c for c in resp.json()["data"]}
     assert chats[side_chat_id]["summary"] == "Discussed the Q3 roadmap."
+    seed_items = store.list_items(side_chat_id, limit=1, order="asc", type="compaction").data
+    assert chats[side_chat_id]["seed_item_id"] == seed_items[0].id
 
 
 async def test_related_chats_summary_is_null_for_a_blank_chat(
