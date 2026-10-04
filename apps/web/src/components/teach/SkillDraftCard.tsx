@@ -27,7 +27,7 @@ export function SkillDraftCard({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // The card shows the draft's state as the engine has it: it fills in while the teacher writes.
-  const { skill, reload } = useTaughtSkill(block.skillId);
+  const { skill, gone, reload } = useTaughtSkill(block.skillId);
   const status = skill?.status ?? block.status;
   const skillName = skill?.name || block.name || block.goal.slice(0, 80);
   const writing = status === "drafting" || status === "recording";
@@ -40,6 +40,14 @@ export function SkillDraftCard({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (gone) {
+    return (
+      <p data-testid="skill-draft-legacy" className="text-[13.5px] text-muted-foreground">
+        <Trans>This draft is from an earlier version</Trans>
+      </p>
+    );
   }
 
   return (

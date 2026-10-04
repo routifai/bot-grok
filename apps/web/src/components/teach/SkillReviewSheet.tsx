@@ -13,6 +13,7 @@ import {
   Textarea,
 } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ORPCError } from "@orpc/client";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -24,13 +25,17 @@ const POLL_MS = 2500;
 export function useTaughtSkill(skillId: string, enabled = true) {
   const [skill, setSkill] = useState<TaughtSkill | null>(null);
   const [error, setError] = useState(false);
+  const [gone, setGone] = useState(false);
   const status = skill?.status;
 
   const reload = useCallback(async () => {
     try {
       setSkill(await rpc.skills.get({ skillId }));
       setError(false);
-    } catch {
+      setGone(false);
+    } catch (e) {
+      // NOT_FOUND: a draft from before teaching moved to the engine; nothing to retry.
+      setGone(e instanceof ORPCError && e.code === "NOT_FOUND");
       setError(true);
     }
   }, [skillId]);
@@ -45,7 +50,7 @@ export function useTaughtSkill(skillId: string, enabled = true) {
     return () => clearInterval(timer);
   }, [enabled, status, reload]);
 
-  return { skill, error, reload };
+  return { skill, error, gone, reload };
 }
 
 const emptyDraft: SkillDraft = { preconditions: [], inputs: [], steps: [], returns: "" };
