@@ -5,7 +5,7 @@ import type {
   ThreadMessage,
   ThreadMessagePage,
 } from "@aiden/contracts";
-import { Switch, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
+import { Button, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronRight, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
@@ -40,6 +40,8 @@ export type SideChatView = {
     followSignal: number;
     /** Rendered at the top of the scrolling column. */
     leading?: ReactNode;
+    /** Rendered at the bottom of the scrolling column, e.g. a send-failure note. */
+    trailing?: ReactNode;
   }>;
   Composer: ComponentType<{
     placeholder: string;
@@ -110,6 +112,32 @@ function optimisticMessage(chatId: string, text: string): ThreadMessage {
     blocks: [{ kind: "text", text }],
     createdAt: new Date().toISOString(),
   };
+}
+
+/** A calm inline note under the message that did not go through. */
+type SendFailure = { text: string; stage: "retrying" | "failed" };
+
+const SEND_RETRY_DELAY_MS = 2500;
+
+function SendFailureNote({ failure, onRetry }: { failure: SendFailure; onRetry: () => void }) {
+  return (
+    <div
+      role="status"
+      data-testid="side-chat-send-note"
+      className="flex items-center justify-end gap-2 px-1 text-[13px] text-muted-foreground"
+    >
+      {failure.stage === "retrying" ? (
+        <Trans>Couldn’t reach Nova’s computer. Retrying…</Trans>
+      ) : (
+        <>
+          <Trans>Didn’t send. Try again</Trans>
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+            <Trans>Retry</Trans>
+          </Button>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** Floats over the transcript like the Conversation's own header: no bar, no border. */
@@ -200,6 +228,7 @@ function DraftSideChat({
   const [knows, setKnows] = useState(true);
   const [preview, setPreview] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [failure, setFailure] = useState<SendFailure | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,12 +246,13 @@ function DraftSideChat({
   const send = (text: string) => {
     setSending(true);
     setSent(text);
+    setFailure(null);
     return wire
       .createSide({ botId: bot.id, start: knows ? "withContext" : "blank", text })
       .then((created) => onCreated(created, text))
       .catch(() => {
         setSending(false);
-        setSent(null);
+        setFailure({ text, stage: "failed" });
       });
   };
 
@@ -239,8 +269,13 @@ function DraftSideChat({
         <view.Transcript
           bot={bot}
           messages={[optimisticMessage("draft", sent)]}
-          running
+          running={failure === null}
           followSignal={1}
+          trailing={
+            failure ? (
+              <SendFailureNote failure={failure} onRetry={() => void send(failure.text)} />
+            ) : null
+          }
         />
       )}
       <div
@@ -315,10 +350,14 @@ function ExistingSideChat({
   const [waiting, setWaiting] = useState(Boolean(firstText));
   const [engineRunning, setEngineRunning] = useState(chat.live);
   const [sending, setSending] = useState(false);
+  const [failure, setFailure] = useState<SendFailure | null>(null);
   const [followSignal, setFollowSignal] = useState(0);
   const generation = useRef(0);
   /** A turn is in flight (from the list's live dot or our own send) until we see it end. */
   const busy = useRef(Boolean(firstText) || chat.live);
+  const pendingRef = useRef<{ text: string; base: number } | null>(
+    firstText ? { text: firstText, base: 0 } : null,
+  );
   const repliedRef = useRef(onReplied);
   repliedRef.current = onReplied;
 
@@ -330,6 +369,9 @@ function ExistingSideChat({
         if (current !== generation.current) return;
         const running = page.running ?? false;
         setMessages(page.messages);
+        if (pendingRef.current && userCount(page.messages) > pendingRef.current.base) {
+          pendingRef.current = null;
+        }
         setEngineRunning(running);
         setPending((now) => (now && userCount(page.messages) > now.base ? null : now));
         if (running) busy.current = true;
@@ -363,6 +405,10 @@ function ExistingSideChat({
       if (Date.now() - startedAt > REPLY_POLL_MAX_MS) {
         window.clearInterval(timer);
         setWaiting(false);
+        setFailure(
+          (now) =>
+            now ?? (pendingRef.current ? { text: pendingRef.current.text, stage: "failed" } : null),
+        );
         return;
       }
       void refresh();
@@ -372,16 +418,29 @@ function ExistingSideChat({
 
   const send = (text: string) => {
     setPending({ text, base: userCount(messages) });
+    pendingRef.current = { text, base: userCount(messages) };
     busy.current = true;
     setWaiting(true);
     setSending(true);
+    setFailure(null);
     setFollowSignal((value) => value + 1);
-    return wire
-      .send({ chatId: chat.id, text })
-      .then(refresh)
+    const post = () => wire.send({ chatId: chat.id, text });
+    // One quiet retry covers the Computer waking up; a second failure is shown, never silent.
+    return post()
       .catch(() => {
-        setPending(null);
+        setFailure({ text, stage: "retrying" });
+        return new Promise<void>((resolve) => window.setTimeout(resolve, SEND_RETRY_DELAY_MS)).then(
+          post,
+        );
+      })
+      .then(() => {
+        setFailure(null);
+        return refresh();
+      })
+      .catch(() => {
+        setFailure({ text, stage: "failed" });
         setWaiting(false);
+        busy.current = false;
       })
       .finally(() => setSending(false));
   };
@@ -424,6 +483,11 @@ function ExistingSideChat({
           running={sending || awaitingReply}
           followSignal={followSignal}
           leading={context}
+          trailing={
+            failure ? (
+              <SendFailureNote failure={failure} onRetry={() => void send(failure.text)} />
+            ) : null
+          }
         />
       </ReplyCardSendProvider>
       {chat.archived ? null : (

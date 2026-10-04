@@ -3527,6 +3527,7 @@ const TranscriptView = memo(function Transcript({
   botDisplayName,
   museRuns,
   leading,
+  trailing,
   followSignal,
   scrollRef,
   scrollRequest,
@@ -3565,6 +3566,8 @@ const TranscriptView = memo(function Transcript({
   museRuns?: readonly MuseLiveRun[];
   /** Rendered at the top of the scrolling column, before the messages. */
   leading?: ReactNode;
+  /** Rendered at the bottom of the scrolling column, after the messages. */
+  trailing?: ReactNode;
   /** Changes when the person sends: follow the tail again. */
   followSignal?: number;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -3890,23 +3893,6 @@ const TranscriptView = memo(function Transcript({
               data-message-id={message.id}
               className={peerReceipt ? "relative py-0.5" : "group/message relative hover:z-20"}
             >
-              {/* Replies run the full column width, so a hover time there sits on the text;
-                  only the person's own right-aligned messages leave room for it. */}
-              {!peerReceipt && message.role === "user" && !message.id.startsWith("progress:") ? (
-                <time
-                  dateTime={message.createdAt}
-                  data-testid="message-hover-time"
-                  className={cn(
-                    "pointer-events-none absolute top-1 z-10 text-xs tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 group-has-[[aria-expanded=true]]/message:opacity-100",
-                    message.role === "user" ? "start-0" : "end-0",
-                  )}
-                >
-                  {new Date(message.createdAt).toLocaleTimeString(i18n.locale || "en", {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </time>
-              ) : null}
               <div
                 className={
                   peerReceipt
@@ -3949,6 +3935,20 @@ const TranscriptView = memo(function Transcript({
                     <MessageHoverActions
                       message={message}
                       side={message.role === "user" ? "start" : "end"}
+                      time={
+                        message.role === "user" && !message.id.startsWith("progress:") ? (
+                          <time
+                            dateTime={message.createdAt}
+                            data-testid="message-hover-time"
+                            className="me-1 hidden text-xs tabular-nums whitespace-nowrap text-muted-foreground [@media(hover:hover)_and_(pointer:fine)]:block"
+                          >
+                            {new Date(message.createdAt).toLocaleTimeString(i18n.locale || "en", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </time>
+                        ) : undefined
+                      }
                       onReply={onReply}
                       onReact={onReact}
                       conversational={!museMode}
@@ -4046,6 +4046,7 @@ const TranscriptView = memo(function Transcript({
             <ActiveBotGlyph bots={workingBots} label={workingLabel} />
           )
         ) : null}
+        {trailing}
       </div>
       {quoteDraft && onQuote ? (
         <QuoteSelectionButton
@@ -5014,12 +5015,15 @@ function hasOpenMuseAsk(message: ThreadMessage): boolean {
 function MessageHoverActions({
   message,
   side,
+  time,
   onReply,
   onReact,
   conversational = true,
 }: {
   message: ThreadMessage;
   side: "start" | "end";
+  /** The send time, shown beside the actions so it stays next to the bubble. */
+  time?: ReactNode;
   onReply?: (message: ThreadMessage) => void;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
   /** Team-chat actions (reactions, reply threads); a one-on-one Muse keeps just More. */
@@ -5043,6 +5047,7 @@ function MessageHoverActions({
 
   return (
     <MessageHoverMetadata pinned={moreOpen || reactionsOpen} side={side}>
+      {time}
       <div data-testid="message-hover-actions" className="flex items-center gap-0.5">
         {conversational && canReactToThreadMessage(message) ? (
           <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
@@ -5770,7 +5775,14 @@ const NOT_LIVE_BOT = () => undefined;
  * (SideChatSession.tsx): same bubbles, Muse face, markdown, working row and scrolling, minus
  * what a text-only Side Chat doesn't have (replies, attachments, voice, a computer). */
 export const sideChatView: SideChatView = {
-  Transcript: function SideChatTranscript({ messages, running, leading, followSignal, bot }) {
+  Transcript: function SideChatTranscript({
+    messages,
+    running,
+    leading,
+    trailing,
+    followSignal,
+    bot,
+  }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const visible = useMemo(
       () => userVisibleMessages(messages, { includePeerReceipts: true }),
@@ -5789,6 +5801,7 @@ export const sideChatView: SideChatView = {
         museFace={museFace}
         museRuns={runs}
         leading={leading}
+        trailing={trailing}
         followSignal={followSignal}
         scrollRef={scrollRef}
         scrollRequest={null}

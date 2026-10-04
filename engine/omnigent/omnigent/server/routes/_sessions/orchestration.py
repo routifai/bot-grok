@@ -362,8 +362,10 @@ from omnigent.spec.types import (
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.artifact_store import ArtifactStore
 from omnigent.stores.conversation_store import (
+    FORK_SOURCE_LABEL_KEY,
     PINNED_LABEL_KEY,
     RUNNER_LIVENESS_TTL_S,
+    SIDE_CHAT_LABEL_KEY,
     ConversationNotFoundError,
     NameAlreadyExistsError,
     pinned_label_key,
@@ -3950,6 +3952,57 @@ async def _maybe_relaunch_managed_sandbox(
             code=ErrorCode.WRONG_REPLICA,
         )
     return True
+
+
+async def _adopt_parent_host_for_side_chat(
+    *,
+    session_id: str,
+    conv: Conversation,
+    app_state: Any,
+    conversation_store: ConversationStore,
+    runner_router: RunnerRouter | None,
+) -> Conversation:
+    """
+    Bind a Side Chat to its parent Conversation's host and wake that host.
+
+    A Side Chat opened while the parent's host was offline is left unbound
+    (the open-time bind is best-effort), and one bound earlier would
+    otherwise relaunch the shared sandbox under its own id. Resolving the
+    parent here keeps one relaunch per host: the parent's single-flight
+    launch is awaited (queueing this turn), then the normal host-bound
+    ladder launches this chat's runner on the now-online host.
+
+    :param session_id: The Side Chat session id.
+    :param conv: Its current row.
+    :param app_state: ``request.app.state``.
+    :param conversation_store: Store holding the session rows.
+    :param runner_router: The ``RunnerRouter``, or ``None`` for in-process.
+    :returns: The (possibly re-bound) Side Chat row; *conv* unchanged when
+        it is not a Side Chat, already has a reachable runner, or its parent
+        has no host.
+    :raises OmnigentError: 503 when the parent's sandbox relaunch failed.
+    """
+    parent_id = conv.labels.get(FORK_SOURCE_LABEL_KEY)
+    if conv.labels.get(SIDE_CHAT_LABEL_KEY) != "1" or not parent_id:
+        return conv
+    if await _get_runner_client(session_id, runner_router, conversation=conv) is not None:
+        return conv
+    parent = await asyncio.to_thread(conversation_store.get_conversation, parent_id)
+    if parent is None or parent.host_id is None or parent.workspace is None:
+        return conv
+    host_registry = getattr(app_state, "host_registry", None)
+    if host_registry is not None and host_registry.get(parent.host_id) is None:
+        await _maybe_relaunch_managed_sandbox(
+            session_id=parent_id,
+            conv=parent,
+            app_state=app_state,
+            conversation_store=conversation_store,
+        )
+    if conv.host_id != parent.host_id:
+        conv = await asyncio.to_thread(
+            conversation_store.set_host_id, session_id, parent.host_id, parent.workspace
+        )
+    return conv
 
 
 async def _maybe_wake_stale_resumable_managed_sandbox(
@@ -11705,6 +11758,7 @@ async def _get_session_snapshot(
 
 __all__ = [
     "_accumulate_session_usage",
+    "_adopt_parent_host_for_side_chat",
     "_archive_stop",
     "_best_effort_stop",
     "_bind_and_launch_managed_runner",

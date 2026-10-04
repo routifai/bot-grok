@@ -70,7 +70,7 @@ import { SideChatSession, type SideChatView, type SideChatWire } from "./SideCha
 /** Stands in for the Conversation's Transcript/Composer (Shell.tsx), which the session
  * receives as `view`. */
 const fakeView: SideChatView = {
-  Transcript: ({ messages, running, leading }) => (
+  Transcript: ({ messages, running, leading, trailing }) => (
     <div data-running={running}>
       {leading}
       {messages.map((message) => (
@@ -78,6 +78,7 @@ const fakeView: SideChatView = {
           {message.blocks.map((block) => (block.kind === "text" ? block.text : "")).join("")}
         </p>
       ))}
+      {trailing}
     </div>
   ),
   Composer: ({ placeholder, onSend }) => {
@@ -351,4 +352,88 @@ it("an archived Side Chat opens read-only: no composer, its messages still show"
   expect(host.textContent).toContain("Tighten the pricing headline.");
   expect(host.querySelector("textarea")).toBeNull();
   expect(host.querySelector("form")).toBeNull();
+});
+
+it("a failed Side Chat send is retried once, then shows a calm note with a Retry that resends", async () => {
+  vi.useFakeTimers();
+  try {
+    const send = vi.fn().mockRejectedValue(new Error("down"));
+    const wire: SideChatWire = {
+      summaryPreview: vi.fn(),
+      createSide: vi.fn(),
+      messages: vi.fn().mockResolvedValue({ threadId: "side-1", messages: [], olderCursor: null }),
+      send,
+    };
+    const host = await mount(
+      <SideChatSession
+        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        view={fakeView}
+        chat={chat({ id: "side-1" })}
+        wire={wire}
+        onCreated={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+    const textarea = host.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      setInputValue(textarea, "ping");
+    });
+    await act(async () => {
+      host
+        .querySelector("form")!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    // The message stays put, the working state shows, and the first failure reads as a retry.
+    expect(host.textContent).toContain("ping");
+    expect(host.textContent).toContain("Retrying");
+    expect(host.querySelector('[data-running="true"]')).not.toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain("Didn’t send. Try again");
+    expect(host.querySelector('[data-running="false"]')).not.toBeNull();
+
+    send.mockResolvedValue({ ok: true });
+    const retry = [...host.querySelectorAll("button")].find((b) => b.textContent === "Retry");
+    await act(async () => {
+      retry?.click();
+    });
+    expect(send).toHaveBeenLastCalledWith({ chatId: "side-1", text: "ping" });
+    expect(host.textContent).not.toContain("Didn’t send");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("a failed Side Chat draft keeps the message and offers Retry", async () => {
+  const createSide = vi.fn().mockRejectedValue(new Error("down"));
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn().mockResolvedValue({ summary: "" }),
+    createSide,
+    messages: vi.fn(),
+    send: vi.fn(),
+  };
+  const host = await mount(
+    <SideChatSession
+      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      view={fakeView}
+      chat="draft"
+      wire={wire}
+      onCreated={() => undefined}
+      onClose={() => undefined}
+    />,
+  );
+  await act(async () => {
+    setInputValue(host.querySelector<HTMLTextAreaElement>("textarea")!, "hello");
+  });
+  await act(async () => {
+    host
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await act(async () => {});
+  expect(host.textContent).toContain("hello");
+  expect(host.textContent).toContain("Didn’t send. Try again");
 });

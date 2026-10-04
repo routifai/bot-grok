@@ -212,6 +212,7 @@ from omnigent.server.routes._sessions.helpers import (
     require_filesystem_attachment_runtime,
 )
 from omnigent.server.routes._sessions.orchestration import (
+    _adopt_parent_host_for_side_chat,
     _best_effort_stop,
     _child_session_summaries_from_conversations,
     _dispatch_session_event_to_runner,
@@ -2147,6 +2148,14 @@ def register_events_routes(
         # message, even if we reused the original binding instead of launching
         # a replacement.
         _runner_needs_session_init = False
+        # A Side Chat shares its parent's host: wake it once, bind, then relaunch below.
+        conv = await _adopt_parent_host_for_side_chat(
+            session_id=session_id,
+            conv=conv,
+            app_state=request.app.state,
+            conversation_store=conversation_store,
+            runner_router=runner_router,
+        )
         # Item event (message, function_call_output, etc.).
         if conv.host_id is not None and await _maybe_wake_stale_resumable_managed_sandbox(
             session_id=session_id,
