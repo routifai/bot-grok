@@ -132,7 +132,7 @@ function attachNovncProxy(server: ViteDevServer | PreviewServer, secret: string,
             return;
           }
           const responseHeaders = safeScreenProxyResponseHeaders(incoming.headers);
-          if (shouldInjectNovncStorageShim(responseHeaders, target.hostname)) {
+          if (shouldRewriteNovncHtml(responseHeaders)) {
             const declaredLength = Number(incoming.headers["content-length"] ?? 0);
             if (Number.isFinite(declaredLength) && declaredLength > MAX_NOVNC_HTML_BYTES) {
               finishUnavailable();
@@ -143,7 +143,9 @@ function attachNovncProxy(server: ViteDevServer | PreviewServer, secret: string,
               .then((html) => {
                 if (downstreamFinished || res.destroyed || res.writableEnded) return;
                 downstreamFinished = true;
-                const body = injectScreenLifecycle(injectNovncStorageShim(html));
+                const body = injectScreenLifecycle(
+                  isCreateOSNovncHost(target.hostname) ? injectNovncStorageShim(html) : html,
+                );
                 delete responseHeaders["content-length"];
                 res.writeHead(incoming.statusCode ?? 502, responseHeaders);
                 res.end(body);
@@ -264,8 +266,8 @@ function isCreateOSNovncHost(hostname: string) {
   return NOVNC_STORAGE_SHIM_HOSTS.some((suffix) => hostname.endsWith(suffix));
 }
 
-function shouldInjectNovncStorageShim(headers: http.IncomingHttpHeaders, hostname: string) {
-  if (!isCreateOSNovncHost(hostname)) return false;
+/** Every noVNC document gets the disconnect hook; only CreateOS hosts also need the storage shim. */
+function shouldRewriteNovncHtml(headers: http.IncomingHttpHeaders) {
   if (headers["content-encoding"]) return false;
   const contentType = String(headers["content-type"] ?? "").toLowerCase();
   return contentType.includes("text/html") || contentType.includes("application/xhtml+xml");

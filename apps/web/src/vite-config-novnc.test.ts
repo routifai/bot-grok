@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 interface NamedPlugin {
@@ -41,5 +42,15 @@ describe("vite.config novnc proxy wiring", () => {
     // injectScreenLifecycle on every /novnc/* HTML response) rather than a stripped-down copy.
     expect(String(novncPlugin?.configureServer)).toContain("attachNovncProxy");
     expect(String(novncPlugin?.configurePreviewServer)).toContain("attachNovncProxy");
+  });
+});
+
+describe("vite.config novnc html rewrite", () => {
+  it("injects the disconnect hook for every host, not only CreateOS (local Docker computers went black for good)", () => {
+    const source = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
+    // The rewrite gate must not depend on the upstream hostname...
+    expect(source).toMatch(/function shouldRewriteNovncHtml\(headers: [^,)]*\)/);
+    // ...and only the storage shim stays CreateOS-specific.
+    expect(source).toMatch(/injectScreenLifecycle\(\s*isCreateOSNovncHost\(target\.hostname\) \? injectNovncStorageShim\(html\) : html/);
   });
 });
