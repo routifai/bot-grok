@@ -307,14 +307,25 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
             )
         return f"{self._bot_id}:{self._space_id}:{container_id}"
 
-    def run(self, sandbox_id: str, command: str, *, check: bool = True) -> RemoteCommandResult:
+    def run(
+        self,
+        sandbox_id: str,
+        command: str,
+        *,
+        check: bool = True,
+        env: Mapping[str, str] | None = None,
+    ) -> RemoteCommandResult:
         bot_id, space_id, container_id = _parse_sandbox_id(sandbox_id)
+        payload: dict[str, object] = {"argv": ["sh", "-c", command], "timeoutMs": _EXEC_TIMEOUT_MS}
+        if env:
+            # A separate field, never in `command`: values stay out of argv, ps and logs.
+            payload["env"] = dict(env)
         response = self._request(
             "POST",
             f"/computers/{quote(container_id, safe='')}/exec",
             bot_id=bot_id,
             space_id=space_id,
-            json={"argv": ["sh", "-c", command], "timeoutMs": _EXEC_TIMEOUT_MS},
+            json=payload,
             timeout=_EXEC_TIMEOUT_S + _REQUEST_TIMEOUT_S,
         )
         if response.status_code >= 400:

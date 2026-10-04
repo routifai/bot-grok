@@ -254,8 +254,13 @@ def _install_fake_sdk(
         if state.exec_error is not None:
             raise state.exec_error
         state.exec_calls.append(_ExecCall(sandbox_id=sandbox_name, command=command))
+        # is_host_supervisor_running's pidfile liveness probe (base.py) — this fake has no
+        # process tree to answer against, so it always reports "not running" regardless of
+        # `exec_returncode` (which models the ACTUAL command under test, not this bookkeeping
+        # probe every start_host call now makes first).
+        exit_code = 1 if "kill -0" in command[-1] else state.exec_returncode
         return _ExecResult(
-            exit_code=state.exec_returncode,
+            exit_code=exit_code,
             stdout=state.exec_stdout,
             stderr=state.exec_stderr,
         )
@@ -332,6 +337,12 @@ class _FakeIsloAPI:
             raise self.exec_error
         self.exec_calls.append(_ExecCall(sandbox_id=name, command=command))
         stdout = "/root\n" if 'printf %s "$HOME"' in command[-1] else "out\n"
+        # is_host_supervisor_running's pidfile liveness probe (base.py) — this fake has no
+        # process tree to answer against, so it always reports "not running" regardless of
+        # `exec_returncode` (which models the ACTUAL command under test, not this bookkeeping
+        # probe every start_host call now makes first).
+        if "kill -0" in command[-1]:
+            return (1, "", "err\n")
         return (self.exec_returncode, stdout, "err\n")
 
     def exec_stream(

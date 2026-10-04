@@ -236,6 +236,36 @@ def test_run_does_not_raise_on_nonzero_exit_when_check_is_false() -> None:
     assert result.returncode == 1
 
 
+def test_run_sends_env_as_a_separate_exec_field_not_in_argv() -> None:
+    """``env`` must ride the exec request's own ``env`` field — never interpolated into the
+    shell command — so a secret value never appears in argv/``ps`` or in the request body's
+    command string."""
+    supervisor = FakeSupervisor(exec_body={"stdout": "ok\n", "stderr": "", "code": 0})
+    launcher = make_launcher(supervisor)
+
+    launcher.run(SANDBOX_ID, "echo hello", env={"ANTHROPIC_API_KEY": "sk-secret"})
+
+    request = supervisor.requests[-1]
+    import json
+
+    body = json.loads(request.content)
+    assert body["env"] == {"ANTHROPIC_API_KEY": "sk-secret"}
+    assert "sk-secret" not in json.dumps(body["argv"])
+
+
+def test_run_omits_the_env_field_when_none_is_given() -> None:
+    supervisor = FakeSupervisor(exec_body={"stdout": "ok\n", "stderr": "", "code": 0})
+    launcher = make_launcher(supervisor)
+
+    launcher.run(SANDBOX_ID, "echo hello")
+
+    request = supervisor.requests[-1]
+    import json
+
+    body = json.loads(request.content)
+    assert "env" not in body
+
+
 def test_run_background_wraps_the_command_and_returns_immediately() -> None:
     """The inherited default run_background() backgrounds the omnigent host process inside the
     container via setsid/nohup — this launcher needs no override for that to work, as long as

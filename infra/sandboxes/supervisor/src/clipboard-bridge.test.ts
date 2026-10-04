@@ -204,14 +204,15 @@ describe("host clipboard paste bridge", () => {
     const dockerfile = readFileSync(path.join(root, "Dockerfile"), "utf8");
     const embed = readFileSync(path.join(root, "embed.html"), "utf8");
     const start = readFileSync(path.join(root, "start.sh"), "utf8");
-    const supervisor = readFileSync(path.join(import.meta.dirname, "index.ts"), "utf8");
+    // The Dockerfile builds with the repo-root context and COPYs this file directly — there is
+    // no separate file manifest in index.ts (the supervisor's auto-build fallback, which once
+    // enumerated image files here, was removed in favor of a clear "run the build" error).
     expect(dockerfile).toMatch(/clipboard-bridge\.js/);
     expect(embed).toMatch(/attachHostClipboardPaste/);
     expect(embed).toMatch(/attachMobilePaste/);
     expect(embed).toMatch(/id="mobile-paste"/);
     expect(embed).toMatch(/clipboard-bridge\.js/);
     expect(start).toMatch(/clipboard-bridge\.js/);
-    expect(supervisor).toMatch(/"clipboard-bridge\.js"/);
   });
 });
 

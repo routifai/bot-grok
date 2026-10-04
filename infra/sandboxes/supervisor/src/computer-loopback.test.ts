@@ -58,6 +58,50 @@ afterEach(async () => {
   });
 });
 
+describe("computer image build", () => {
+  it("fails provisioning with a clear, repo-root build command when the image is missing", async () => {
+    const { supervisorApp } = await import("./index.js");
+    mocks.docker.getImage.mockReturnValue({
+      inspect: vi.fn().mockRejectedValue(new Error("no such image")),
+    });
+    const homePath = path.join(process.env.DATA_DIR!, "homes", "bot");
+
+    const response = await supervisorApp.request("/computers", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
+        "content-type": "application/json",
+        "x-aiden-bot-id": "bot",
+        "x-aiden-space-id": "space",
+      },
+      body: JSON.stringify({ botId: "bot", spaceId: "space", homePath }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: expect.stringContaining(
+        `Missing ${COMPUTER_IMAGE}. Build it from the repo root with: ` +
+          `docker build -t ${COMPUTER_IMAGE} -f infra/sandboxes/computer/Dockerfile .`,
+      ),
+    });
+    // No stale, partial auto-build attempt — docker's listContainers is never even reached.
+    expect(mocks.docker.listContainers).not.toHaveBeenCalled();
+  });
+
+  it("retries on the next call instead of caching the failure forever", async () => {
+    const { ensureComputerImage } = await import("./index.js");
+    mocks.docker.getImage.mockReturnValueOnce({
+      inspect: vi.fn().mockRejectedValue(new Error("no such image")),
+    });
+
+    await expect(ensureComputerImage()).rejects.toThrow(COMPUTER_IMAGE);
+
+    // Operator builds the image; the next call must see it, not the cached rejection.
+    mocks.docker.getImage.mockReturnValue({ inspect: vi.fn().mockResolvedValue({ Id: "image" }) });
+    await expect(ensureComputerImage()).resolves.toBeUndefined();
+  });
+});
+
 describe("computer loopback provision lifecycle", () => {
   it.each([
     { error: new Error("daemon unavailable"), status: 500 },

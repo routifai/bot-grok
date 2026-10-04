@@ -171,6 +171,7 @@ import asyncio
 import itertools
 import logging
 import math
+import os
 import posixpath
 import re
 import secrets
@@ -634,6 +635,16 @@ class ManagedSandboxConfig:
         keyed by inference provider name. Never installed in the sandbox.
     :param git_clone: Admin clone policy for fresh or missing repo checkouts.
         Existing retained checkouts are not reconfigured.
+    :param runner_env: Names (not values) of environment variables to resolve
+        from THIS SERVER PROCESS's own environment at launch and forward to
+        the sandboxed host's process — e.g. ``("ANTHROPIC_API_KEY",
+        "TAVILY_API_KEY")``. The host, in turn, forwards them to every runner
+        it spawns (:data:`omnigent.host.connect.RUNNER_ENV_PASSTHROUGH_ENV_VAR`).
+        Provider-neutral in config; delivered today only by launchers whose
+        ``start_host`` accepts a ``runner_env`` argument (the exec-model
+        default — see :meth:`~omnigent.onboarding.sandboxes.base.
+        ExecModelHostLauncher.start_host`). Names only, never values: this
+        field is safe to log, and nothing here is a secret by itself.
     """
 
     server_url: str
@@ -644,6 +655,7 @@ class ManagedSandboxConfig:
     host_config: dict[str, object] | None = None
     model_discovery: dict[str, object] = dataclass_field(default_factory=dict)
     git_clone: GitCloneOptions = dataclass_field(default_factory=GitCloneOptions)
+    runner_env: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1470,6 +1482,59 @@ def _parse_git_clone_options(raw: object) -> GitCloneOptions:
     return GitCloneOptions(**raw)
 
 
+# Env var names only ever look like this — matches the shell convention every
+# example in this codebase already follows (ANTHROPIC_API_KEY, NOVA_CLAUDE_MODEL, …).
+_RUNNER_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
+def _parse_runner_env(raw: dict[str, object]) -> tuple[str, ...]:
+    """
+    Parse the top-level ``sandbox.runner_env`` list of variable NAMES.
+
+    Names only — this never touches values, so there is nothing here that could leak a
+    secret into a log line. Values are resolved from this server process's own environment
+    at launch time (see :func:`_resolve_runner_env`), never from this parsed config.
+
+    :param raw: The raw ``sandbox`` mapping.
+    :returns: The validated names, in the order given (duplicates removed, first occurrence
+        kept), or ``()`` when the key is absent.
+    :raises ValueError: When present but not a list of upper-snake-case strings.
+    """
+    value = raw.get("runner_env")
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(
+            "server config 'sandbox.runner_env' must be a list of environment variable "
+            "names, e.g. [ANTHROPIC_API_KEY, TAVILY_API_KEY]"
+        )
+    seen: dict[str, None] = {}
+    for name in value:
+        if not _RUNNER_ENV_NAME_RE.match(name):
+            raise ValueError(
+                f"server config 'sandbox.runner_env' entry {name!r} is not a valid "
+                "environment variable name (expected UPPER_SNAKE_CASE)"
+            )
+        seen[name] = None
+    return tuple(seen)
+
+
+def _resolve_runner_env(names: Sequence[str]) -> dict[str, str]:
+    """
+    Resolve ``sandbox.runner_env`` names against THIS SERVER PROCESS's own environment.
+
+    Only names that are actually set are forwarded — an operator may list a variable that's
+    optional in some deployments (e.g. ``TAVILY_API_KEY`` when web search isn't configured),
+    and silently skipping an absent one is the right behavior, not an error. Never logs
+    values: the names are already non-secret (see :attr:`ManagedSandboxConfig.runner_env`),
+    and nothing here ever formats the resolved value into a message.
+
+    :param names: Validated variable names from :func:`_parse_runner_env`.
+    :returns: ``{name: value}`` for every name present in ``os.environ``.
+    """
+    return {name: value for name in names if (value := os.environ.get(name)) is not None}
+
+
 def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> ManagedSandboxConfig:
     """
     Parse one provider's ``sandbox`` mapping (the scalar ``provider:`` shape).
@@ -1489,6 +1554,7 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> ManagedSand
         )
     warm_pool = _parse_agent_sandbox_warm_pool(raw)
     git_clone = _parse_git_clone_options(raw.get("git_clone"))
+    runner_env = _parse_runner_env(raw)
     server_url = raw.get("server_url")
     if not isinstance(server_url, str) or not server_url.strip():
         raise ValueError(
@@ -1744,6 +1810,7 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> ManagedSand
         host_config=host_config,
         model_discovery=model_discovery,
         git_clone=git_clone,
+        runner_env=runner_env,
     )
 
 
@@ -3712,6 +3779,7 @@ async def _start_sandbox_host(
     host_config: dict[str, object] | None,
     agent_name: str | None = None,
     on_stage: Callable[[str], None] | None = None,
+    runner_env: Mapping[str, str] | None = None,
 ) -> str:
     """Start a host without sending absent optional arguments to legacy launchers."""
     # Gated on the capability, not on the value: start_host is side-effecting and
@@ -3736,38 +3804,17 @@ async def _start_sandbox_host(
             on_stage=on_stage,
             agent_name=agent_name,
         )
-    if host_config is None and on_stage is None:
-        return await asyncio.to_thread(
-            launcher.start_host,
-            sandbox_id,
-            token=token,
-            host_id=host_id,
-            host_name=host_name,
-            server_url=server_url,
-            repos=repos,
-        )
-    if host_config is None:
-        return await asyncio.to_thread(
-            launcher.start_host,
-            sandbox_id,
-            token=token,
-            host_id=host_id,
-            host_name=host_name,
-            server_url=server_url,
-            repos=repos,
-            on_stage=on_stage,
-        )
-    if on_stage is None:
-        return await asyncio.to_thread(
-            launcher.start_host,
-            sandbox_id,
-            token=token,
-            host_id=host_id,
-            host_name=host_name,
-            server_url=server_url,
-            repos=repos,
-            host_config=host_config,
-        )
+    # Every other optional kwarg is sent only when it carries a real value, so a legacy
+    # launcher whose `start_host` override never added it (and therefore doesn't accept it)
+    # sees the exact same call it always has. `runner_env` is the newest of these — only the
+    # exec-model default (`ExecModelHostLauncher.start_host`) accepts it today.
+    kwargs: dict[str, object] = {}
+    if host_config is not None:
+        kwargs["host_config"] = host_config
+    if on_stage is not None:
+        kwargs["on_stage"] = on_stage
+    if runner_env:
+        kwargs["runner_env"] = runner_env
     return await asyncio.to_thread(
         launcher.start_host,
         sandbox_id,
@@ -3776,8 +3823,7 @@ async def _start_sandbox_host(
         host_name=host_name,
         server_url=server_url,
         repos=repos,
-        host_config=host_config,
-        on_stage=on_stage,
+        **kwargs,
     )
 
 
@@ -3875,6 +3921,7 @@ async def _register_and_start_host(
             host_config=config.host_config,
             agent_name=agent_name,
             on_stage=on_stage,
+            runner_env=_resolve_runner_env(config.runner_env),
         )
         await _wait_for_host_online(host_store, host_id)
     except Exception as exc:
@@ -4177,6 +4224,7 @@ async def resume_managed_host(
                 host_config=entry.host_config,
                 on_stage=on_stage,
                 agent_name=agent_name,
+                runner_env=_resolve_runner_env(entry.runner_env),
             )
             await _wait_for_host_online(host_store, host.host_id)
         except SandboxGoneError:

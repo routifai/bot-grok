@@ -896,6 +896,75 @@ def test_parse_absent_host_config_is_none() -> None:
     assert cfg.host_config is None
 
 
+def test_parse_runner_env_accepts_valid_names() -> None:
+    cfg = parse_sandbox_config(
+        {
+            "provider": "modal",
+            "server_url": "https://s.example.com",
+            "runner_env": ["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "NOVA_CLAUDE_MODEL"],
+        }
+    )
+    assert cfg is not None
+    cfg = cfg.default
+    assert cfg.runner_env == ("ANTHROPIC_API_KEY", "TAVILY_API_KEY", "NOVA_CLAUDE_MODEL")
+
+
+def test_parse_absent_runner_env_is_empty() -> None:
+    cfg = parse_sandbox_config({"provider": "modal", "server_url": "https://s.example.com"})
+    assert cfg is not None
+    assert cfg.default.runner_env == ()
+
+
+def test_parse_runner_env_deduplicates_preserving_first_occurrence() -> None:
+    cfg = parse_sandbox_config(
+        {
+            "provider": "modal",
+            "server_url": "https://s.example.com",
+            "runner_env": ["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "ANTHROPIC_API_KEY"],
+        }
+    )
+    assert cfg is not None
+    assert cfg.default.runner_env == ("ANTHROPIC_API_KEY", "TAVILY_API_KEY")
+
+
+@pytest.mark.parametrize(
+    "runner_env",
+    [
+        "ANTHROPIC_API_KEY",  # not a list
+        [123],  # not strings
+        ["lowercase_name"],
+        ["Mixed_Case"],
+        ["HAS-DASH"],
+        ["HAS SPACE"],
+        ["1_LEADS_WITH_DIGIT"],
+        [""],
+    ],
+)
+def test_parse_runner_env_rejects_malformed_entries(runner_env: object) -> None:
+    with pytest.raises(ValueError, match=r"sandbox\.runner_env"):
+        parse_sandbox_config(
+            {
+                "provider": "modal",
+                "server_url": "https://s.example.com",
+                "runner_env": runner_env,
+            }
+        )
+
+
+def test_parse_runner_env_is_shared_across_multiple_providers() -> None:
+    """A top-level ``runner_env`` (like ``server_url``) applies to every offered provider,
+    not just the one that happens to be default."""
+    cfg = parse_sandbox_config(
+        {
+            "server_url": "https://s.example.com",
+            "runner_env": ["ANTHROPIC_API_KEY"],
+            "providers": [{"provider": "modal"}, {"provider": "e2b"}],
+        }
+    )
+    assert cfg is not None
+    assert all(entry.runner_env == ("ANTHROPIC_API_KEY",) for entry in cfg.offered())
+
+
 def test_parse_host_config_null_providers_fails_loud() -> None:
     """
     An explicit ``providers: null`` fails parse. Left through, the sandbox

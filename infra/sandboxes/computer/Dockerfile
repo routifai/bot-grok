@@ -41,17 +41,20 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 RUN pip install --index-url ${PYPI_INDEX_URL} --no-cache-dir uv
 WORKDIR /build
-COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py ./
+COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py engine/omnigent/uv.lock ./
 COPY engine/omnigent/LICENSE engine/omnigent/NOTICE ./
 COPY engine/omnigent/sdks/ ./sdks/
 COPY engine/omnigent/omnigent/ ./omnigent/
-# Standalone venv copied out whole; VIRTUAL_ENV makes uv install into it instead of system Python.
+# Standalone venv copied out whole; UV_PROJECT_ENVIRONMENT points `uv sync` at it directly.
 RUN python -m venv /opt/venv
 ENV VIRTUAL_ENV=/opt/venv \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH="/opt/venv/bin:${PATH}"
-# Editable install (-e): pyproject.toml declares the sibling SDKs as editable path deps, so the
-# final stage must also copy /build/ (its .pth files point back into it).
-RUN uv pip install --no-cache-dir --index-url ${PYPI_INDEX_URL} -e .
+# Frozen (--frozen) so the sandbox always gets exactly the dependency set the committed
+# lockfile pins, never a fresh, unconstrained resolve; non-editable (--no-editable) so the
+# install is self-contained bytes in /opt/venv — the final stage copies only that, no /build
+# .pth files pointing back into a directory it would otherwise have to carry too.
+RUN uv sync --frozen --no-editable --no-dev --index-url ${PYPI_INDEX_URL}
 
 # Pure alias so the final stage can COPY node out of a version-pinned image without a build arg
 # inside a COPY --from (which cannot expand them).
@@ -114,7 +117,7 @@ COPY --chmod=644 infra/sandboxes/computer/mobile-keyboard.js /usr/share/novnc/mo
 # volume hides /etc/skel, so ~/.local/bin has to be restored from the image.
 COPY --chmod=644 infra/sandboxes/computer/aiden-local-bin.sh /etc/profile.d/aiden-local-bin.sh
 
-# ── Omnigent runner + the pi CLI ──────────────────────────────────
+# ── Omnigent runner + the Claude Code CLI ──────────────────────────
 # Lets the Nova "computer" sandbox launcher (docs/omnigent-spike.md,
 # engine/omnigent/omnigent/onboarding/sandboxes/computer.py) exec `omnigent host` in this image.
 # Installed OUTSIDE /home/aiden on purpose: that path is a per-Muse volume mount (empty on first
@@ -132,17 +135,14 @@ COPY --from=omnigent-builder /usr/local/lib/libpython3.12.so.1.0 /usr/local/lib/
 COPY --from=omnigent-builder /usr/local/lib/libpython3.12.so /usr/local/lib/libpython3.12.so
 COPY --from=omnigent-builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=omnigent-builder /opt/venv /opt/venv
-COPY --from=omnigent-builder /build /build
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
- # The pi CLI (harness install id "pi" — engine/omnigent/omnigent/onboarding/harness_install.py):
- # the only external harness CLI omnigent/inner/pi_executor.py needs — every other Nova harness
- # bundle (claude/openai/codex) runs through the omnigent Python package's own SDK dependencies,
- # already installed above. Unpinned to track the same "latest" a laptop `omnigent setup` gets;
- # keep in sync with harness_install.py's PI_KEY entry.
- && npm install -g --no-audit --no-fund @earendil-works/pi-coding-agent \
+ # Claude Code CLI: the nova-claude harness's claude-agent-sdk shells out to this binary to run
+ # the Muse's turns. Major-pinned (not "latest") since this image is rebuilt manually, not by
+ # CI on every main commit — an unpinned install could jump a breaking major between builds.
+ && npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2 \
  # /usr/local/bin is the only directory on the sandbox supervisor's fixed exec PATH
  # (infra/sandboxes/supervisor/src/index.ts) outside of $HOME, so the venv's entry points are
  # symlinked in rather than requiring a PATH change there.

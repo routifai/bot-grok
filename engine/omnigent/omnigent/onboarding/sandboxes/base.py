@@ -718,7 +718,34 @@ class SandboxLifecycle(ABC):
         )
 
 
-def supervise_host_command(command: str) -> str:
+# Directory (relative to $HOME) a supervised host loop records its own pid under, keyed by
+# host id — see :func:`supervised_host_pidfile_path`.
+_SUPERVISED_HOST_PIDFILE_DIR = ".omnigent/hosts"
+
+
+def supervised_host_pidfile_path(host_id: str) -> str:
+    """
+    Shell expression for the pidfile a supervised ``omnigent host`` loop for
+    *host_id* records its own pid at.
+
+    Rendered with a literal ``$HOME`` so the REMOTE shell expands it at run
+    time (not this process) — matches wherever the sandbox's home actually
+    is. ``host_id`` is always a server-generated hex string
+    (``uuid.uuid4().hex``), so no shell metacharacter ever reaches this path.
+
+    Shared by :func:`supervise_host_command` (which writes the pid) and
+    :meth:`SandboxExecTransport.is_host_supervisor_running` (which reads it
+    back) so a repeated :meth:`ExecModelHostLauncher.start_host` call can tell
+    whether a previous launch's loop is still alive in the same sandbox.
+
+    :param host_id: Server-chosen host identity, e.g. ``"host_a1b2c3d4..."``.
+    :returns: A ``$HOME``-relative path expression, e.g.
+        ``"$HOME/.omnigent/hosts/host_a1b2c3d4....pid"``.
+    """
+    return f"$HOME/{_SUPERVISED_HOST_PIDFILE_DIR}/{host_id}.pid"
+
+
+def supervise_host_command(command: str, *, host_id: str | None = None) -> str:
     """
     Wrap a host launch in a restart loop so a crash does not strand the sandbox.
 
@@ -747,13 +774,29 @@ def supervise_host_command(command: str) -> str:
     observable — the loop never gives up, so a wedged box would otherwise be
     silent apart from indistinguishable repeats.
 
+    When *host_id* is given, the loop records its OWN pid (stable across
+    restart attempts — it is the supervising shell, not the host process) at
+    :func:`supervised_host_pidfile_path`, written before the first attempt so
+    a sandbox whose provider persists across launches (a relaunch onto a
+    still-live sandbox, or Nova's ``computer`` provider, which never
+    terminates — see :mod:`omnigent.onboarding.sandboxes.computer`) can detect
+    an already-running loop for the same host id and skip starting a second
+    one (see :meth:`SandboxExecTransport.is_host_supervisor_running`).
+
     :param command: The host launch, e.g. ``"OMNIGENT_HOST_TOKEN=… omnigent
         host --server https://…"``. Env prefixes are re-applied per attempt.
+    :param host_id: Server-chosen host identity to record the loop's pid
+        under, or ``None`` to skip pidfile bookkeeping entirely.
     :returns: A POSIX ``sh`` script ending in ``done``, so callers can append
         redirections to it directly.
     """
     stop_codes = f"0|{HOST_FATAL_EXIT_CODE}|{HOST_SIGTERM_EXIT_CODE}"
+    record_prefix = ""
+    if host_id is not None:
+        pidfile = supervised_host_pidfile_path(host_id)
+        record_prefix = f'mkdir -p "$(dirname {pidfile})" && echo $$ > {pidfile}\n'
     return (
+        f"{record_prefix}"
         "delay=1\n"
         "attempt=0\n"
         "while :; do\n"
@@ -782,7 +825,14 @@ class SandboxExecTransport(SandboxLifecycle):
     """
 
     @abstractmethod
-    def run(self, sandbox_id: str, command: str, *, check: bool = True) -> RemoteCommandResult:
+    def run(
+        self,
+        sandbox_id: str,
+        command: str,
+        *,
+        check: bool = True,
+        env: Mapping[str, str] | None = None,
+    ) -> RemoteCommandResult:
         """
         Run a shell command inside the sandbox and capture its output.
 
@@ -791,13 +841,28 @@ class SandboxExecTransport(SandboxLifecycle):
             ``"pip install --user /tmp/pkg.whl"``. Quote paths yourself
             if they must survive the remote shell.
         :param check: When ``True``, raise on non-zero exit.
+        :param env: Extra environment variables for the command's own
+            process, delivered through the provider's exec transport
+            (never interpolated into *command* itself, so values never
+            appear in argv/``ps``/logs). Optional capability: a provider
+            whose exec transport cannot carry a separate env mapping may
+            omit this parameter from its override — callers only pass a
+            non-``None`` value when they need it (today: `sandbox.runner_env`
+            delivery to the ``computer`` provider's ``run_background``), so
+            providers without the need are unaffected.
         :returns: The completed command's exit code and output.
         :raises click.ClickException: If *check* is ``True`` and the
             command exits non-zero.
         """
 
     def run_background(
-        self, sandbox_id: str, command: str, *, log_path: str = "/tmp/omnigent-host.log"
+        self,
+        sandbox_id: str,
+        command: str,
+        *,
+        log_path: str = "/tmp/omnigent-host.log",
+        host_id: str | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> RemoteCommandResult:
         """
         Start *command* under a supervisor as a detached background process.
@@ -819,14 +884,49 @@ class SandboxExecTransport(SandboxLifecycle):
             ``"ENV=val omnigent host --server https://…"``.
         :param log_path: Where stdout/stderr of the supervisor and every host
             attempt are redirected inside the sandbox.
+        :param host_id: Forwarded to :func:`supervise_host_command` so the loop
+            records its pid for :meth:`is_host_supervisor_running`, or ``None``
+            to skip that bookkeeping.
+        :param env: Extra environment for the backgrounded process, forwarded
+            to :meth:`run` only when non-empty — callers whose provider
+            doesn't need it (the common case: no `sandbox.runner_env`
+            configured) see the exact same call as before this parameter
+            existed.
         :returns: A synthetic result with ``stdout="launched\\n"`` on success.
         :raises click.ClickException: If the launch command fails.
         """
-        return self.run(
-            sandbox_id,
-            f"setsid nohup sh -c {shlex.quote(supervise_host_command(command))} "
-            f">> {log_path} 2>&1 < /dev/null & echo launched",
+        wrapped = (
+            f"setsid nohup sh -c {shlex.quote(supervise_host_command(command, host_id=host_id))} "
+            f">> {log_path} 2>&1 < /dev/null & echo launched"
         )
+        if env:
+            return self.run(sandbox_id, wrapped, env=env)
+        return self.run(sandbox_id, wrapped)
+
+    def is_host_supervisor_running(self, sandbox_id: str, host_id: str) -> bool:
+        """
+        Whether a supervised ``omnigent host`` loop for *host_id* is still alive in the sandbox.
+
+        Reads back :func:`supervised_host_pidfile_path` and signals the recorded pid with
+        ``kill -0`` (checks liveness without affecting it). Only a fully-numeric pidfile
+        content is ever used — matches :func:`foreground_kill_command`'s validation so
+        unexpected file contents can never reach ``kill``. A missing pidfile, or a pid that no
+        longer answers, means "not running" (covers both "never launched" and "crashed/exited
+        past the supervisor loop's own lifetime").
+
+        :param sandbox_id: Target sandbox.
+        :param host_id: The host id a prior :meth:`ExecModelHostLauncher.start_host` call
+            launched (or attempted to launch).
+        :returns: ``True`` iff the recorded pid answers ``kill -0``.
+        """
+        pidfile = supervised_host_pidfile_path(host_id)
+        check = (
+            f"pid=$(cat {pidfile} 2>/dev/null); "
+            'case "$pid" in ""|*[!0-9]*) exit 1;; esac; '
+            'kill -0 "$pid" 2>/dev/null'
+        )
+        result = self.run(sandbox_id, check, check=False)
+        return result.returncode == 0
 
     def put(self, sandbox_id: str, local_path: Path, remote_path: str) -> None:
         """
@@ -1005,6 +1105,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
         repos: Sequence[RepoWorkspace] = (),
         host_config: dict[str, object] | None = None,
         on_stage: Callable[[str], None] | None = None,
+        runner_env: Mapping[str, str] | None = None,
     ) -> str:
         """
         Start ``omnigent host`` in the sandbox and return the workspace path.
@@ -1021,6 +1122,25 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
         workspace when none are requested). Clones run sequentially here; the
         entrypoint-as-host launchers (Kubernetes) clone in parallel.
 
+        Idempotent against piling up hosts: when a supervised ``omnigent
+        host`` loop for *host_id* is already running in the sandbox (see
+        :meth:`SandboxExecTransport.is_host_supervisor_running`) — a RELAUNCH
+        onto a sandbox that never actually died, or a repeat launch onto a
+        provider whose sandbox outlives any one session (Nova's ``computer``
+        provider never terminates its container — see
+        :mod:`omnigent.onboarding.sandboxes.computer`) — this skips cloning
+        and starting a second loop and returns the already-running host's
+        workspace path unchanged, computed the same way without touching
+        the live workspace.
+
+        :param runner_env: Resolved ``{name: value}`` pairs from the server's
+            own process environment (``sandbox.runner_env`` — see
+            :mod:`omnigent.server.managed_hosts`), delivered to the host
+            process via :meth:`run_background`'s ``env`` (never the command
+            string, so values never appear in argv/``ps``/logs), together
+            with :data:`~omnigent.host.connect.RUNNER_ENV_PASSTHROUGH_ENV_VAR`
+            naming them so :mod:`omnigent.host.connect` forwards them to every
+            runner the host spawns. ``None``/empty is a no-op.
         :returns: The absolute in-sandbox workspace path.
         """
         if any(repo.git_clone != _sandbox_types.GitCloneOptions() for repo in repos):
@@ -1036,30 +1156,45 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
                 "the configured image must provide a usable shell environment"
             )
         workspace = f"{home}/workspace"
-        self.run(sandbox_id, f"mkdir -p {shlex.quote(workspace)}")
+        already_running = self.is_host_supervisor_running(sandbox_id, host_id)
         if repos:
-            if on_stage is not None:
-                on_stage("cloning")
-            # Distinct URLs can derive the same repo_name (e.g. two orgs' "api");
-            # disambiguate so they don't clone into one colliding directory.
-            clone_dirs = []
-            for repo, dirname in zip(repos, _sandbox_types.clone_dir_names(repos), strict=True):
-                materialize = self.materialize_workspace
-                # Preserve the old override signature when no policy was configured.
-                if repo.git_clone != _sandbox_types.GitCloneOptions():
-                    materialize = partial(materialize, git_clone=repo.git_clone)
-                clone_dirs.append(
-                    materialize(
-                        sandbox_id,
-                        workspace=workspace,
-                        repo_url=repo.url,
-                        repo_branch=repo.branch,
-                        repo_name=dirname,
+            if already_running:
+                # Don't touch the live host's workspace — just resolve the same
+                # deterministic path a fresh clone would have landed in.
+                clone_dirs = [
+                    f"{workspace}/{dirname}"
+                    for dirname in _sandbox_types.clone_dir_names(repos)
+                ]
+            else:
+                if on_stage is not None:
+                    on_stage("cloning")
+                self.run(sandbox_id, f"mkdir -p {shlex.quote(workspace)}")
+                # Distinct URLs can derive the same repo_name (e.g. two orgs' "api");
+                # disambiguate so they don't clone into one colliding directory.
+                clone_dirs = []
+                for repo, dirname in zip(
+                    repos, _sandbox_types.clone_dir_names(repos), strict=True
+                ):
+                    materialize = self.materialize_workspace
+                    # Preserve the old override signature when no policy was configured.
+                    if repo.git_clone != _sandbox_types.GitCloneOptions():
+                        materialize = partial(materialize, git_clone=repo.git_clone)
+                    clone_dirs.append(
+                        materialize(
+                            sandbox_id,
+                            workspace=workspace,
+                            repo_url=repo.url,
+                            repo_branch=repo.branch,
+                            repo_name=dirname,
+                        )
                     )
-                )
             # One repo → drop the agent straight into it; several → the
             # workspace root that parents them all.
             workspace = clone_dirs[0] if len(clone_dirs) == 1 else workspace
+        if already_running:
+            return workspace
+        if not repos:
+            self.run(sandbox_id, f"mkdir -p {shlex.quote(workspace)}")
         if on_stage is not None:
             on_stage("starting")
         if host_config is not None or self.capabilities.resume_stopped:
@@ -1072,9 +1207,16 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
                 (HOST_NAME_ENV_VAR, host_name),
             )
         )
+        host_env: dict[str, str] = dict(runner_env or {})
+        if host_env:
+            from omnigent.host.connect import RUNNER_ENV_PASSTHROUGH_ENV_VAR
+
+            host_env[RUNNER_ENV_PASSTHROUGH_ENV_VAR] = ",".join(host_env)
         self.run_background(
             sandbox_id,
             f"{env_prefix} omnigent host --server {shlex.quote(server_url)}",
+            host_id=host_id,
+            env=host_env,
         )
         return workspace
 

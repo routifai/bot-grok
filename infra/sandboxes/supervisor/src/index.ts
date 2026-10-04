@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -86,9 +85,6 @@ loadRootEnv();
 
 const dockerSocketPath = resolveDockerSocketPath();
 const docker = dockerSocketPath ? new Docker({ socketPath: dockerSocketPath }) : new Docker();
-const computerContext =
-  process.env.AIDEN_COMPUTER_CONTEXT ??
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../computer");
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const dataDir = path.resolve(repositoryRoot, process.env.DATA_DIR ?? "./data");
 let imageReady: Promise<void> | undefined;
@@ -845,49 +841,35 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   startSupervisor();
 }
 
-async function ensureComputerImage() {
+export async function ensureComputerImage() {
+  // No auto-build: the image's Dockerfile vendors engine/omnigent from the REPO ROOT (see
+  // infra/sandboxes/computer/Dockerfile's own header comment), and dockerode's `buildImage`
+  // needs an explicit file list for a build context — enumerating the whole vendored tree here
+  // would silently drift from the Dockerfile's real inputs. Operators build it once with the
+  // same command `infra/compose` and `scripts/setup.sh` use; a missing image is a clear,
+  // actionable error instead of a stale, partial build.
   if (!imageReady) {
-    imageReady = (async () => {
-      try {
-        await docker.getImage(COMPUTER_IMAGE).inspect();
-        return;
-      } catch {
-        // build below
-      }
-      const dockerfile = path.join(computerContext, "Dockerfile");
-      if (!existsSync(dockerfile)) {
-        throw new Error(
-          `Missing ${COMPUTER_IMAGE}. Build it with: docker build -t ${COMPUTER_IMAGE} infra/sandboxes/computer`,
-        );
-      }
-      const stream = await docker.buildImage(
-        {
-          context: computerContext,
-          src: [
-            "Dockerfile",
-            "start.sh",
-            "control.py",
-            "xcapture.c",
-            "aiden-browser",
-            "aiden-page-browser",
-            "aiden-browser.desktop",
-            "embed.html",
-            "clipboard-bridge.js",
-            "mobile-keyboard.js",
-            "fluxbox.init",
-            "fluxbox.apps",
-            "fluxbox.menu",
-          ],
+    imageReady = docker
+      .getImage(COMPUTER_IMAGE)
+      .inspect()
+      .then(
+        () => undefined,
+        () => {
+          throw new Error(
+            `Missing ${COMPUTER_IMAGE}. Build it from the repo root with: ` +
+              `docker build -t ${COMPUTER_IMAGE} -f infra/sandboxes/computer/Dockerfile .`,
+          );
         },
-        { t: COMPUTER_IMAGE },
       );
-      await new Promise<void>((resolve, reject) => {
-        docker.modem.followProgress(stream, (err) => (err ? reject(err) : resolve()));
-      });
-      await docker.getImage(COMPUTER_IMAGE).inspect();
-    })();
   }
-  await imageReady;
+  try {
+    await imageReady;
+  } catch (error) {
+    // Don't cache a permanent failure: once the operator builds the image, the next request
+    // must see it rather than replaying this rejection until the process restarts.
+    imageReady = undefined;
+    throw error;
+  }
 }
 
 async function findBotContainer(botId: string, spaceId: string) {

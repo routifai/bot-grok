@@ -8,7 +8,7 @@ import json
 import re
 import tarfile
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
@@ -175,6 +175,7 @@ class FakeSandboxLauncher(SandboxLauncher):
         can_resume: bool = False,
         fail_on_resume: bool = False,
         provision_gate: threading.Event | None = None,
+        host_already_running: bool = False,
     ) -> None:
         self._on_host_start = on_host_start
         # Public + mutable: relaunch tests flip the failure mode between
@@ -185,6 +186,12 @@ class FakeSandboxLauncher(SandboxLauncher):
         self.can_resume = can_resume
         self.fail_on_resume = fail_on_resume
         self._provision_gate = provision_gate
+        # The real `kill -0` pidfile liveness check (base.py's
+        # `is_host_supervisor_running`) has no process tree to answer against
+        # here, so a test controls the answer directly instead. Defaults to
+        # "not running" — a fresh fake sandbox has never started a loop.
+        self.host_already_running = host_already_running
+        self.run_envs: list[Mapping[str, str] | None] = []
         # Image reference / secret names / env names the production code
         # constructed the launcher with (captured by the
         # ctor-monkeypatch shims).
@@ -261,13 +268,25 @@ class FakeSandboxLauncher(SandboxLauncher):
         """Unused by the managed flow — fail loud if reached."""
         raise AssertionError("managed launch must not call keep_alive")
 
-    def run(self, sandbox_id: str, command: str, *, check: bool = True) -> RemoteCommandResult:
+    def run(
+        self,
+        sandbox_id: str,
+        command: str,
+        *,
+        check: bool = True,
+        env: Mapping[str, str] | None = None,
+    ) -> RemoteCommandResult:
         """Record the command and answer the managed flow's probes."""
         self.commands.append(command)
+        self.run_envs.append(env)
         if self._fail_on_command is not None and self._fail_on_command in command:
             raise click.ClickException(f"simulated failure of: {command}")
         if 'printf %s "$HOME"' in command:
             return RemoteCommandResult(returncode=0, stdout=self._home, stderr="")
+        if "kill -0" in command:
+            return RemoteCommandResult(
+                returncode=0 if self.host_already_running else 1, stdout="", stderr=""
+            )
         if "omnigent host" in command:
             if self.fail_on_host_start:
                 raise click.ClickException("simulated in-sandbox host start failure")

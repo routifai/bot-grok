@@ -14,7 +14,7 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 import yaml
@@ -28,6 +28,9 @@ from omnigent.onboarding.sandboxes.base import (
 )
 from omnigent.onboarding.sandboxes.types import RepoWorkspace
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 _HOST_LAUNCH = "FOO=bar omnigent host --server https://srv"
 
 
@@ -36,10 +39,15 @@ class _RecordingLauncher(SandboxLauncher):
 
     provider: ClassVar[str] = "recording"
 
-    def __init__(self, home: str = "/root") -> None:
+    def __init__(self, home: str = "/root", *, host_already_running: bool = False) -> None:
         self.commands: list[str] = []
+        self.command_envs: list[Mapping[str, str] | None] = []
         self.backgrounded: list[str] = []
+        self.backgrounded_env: list[Mapping[str, str] | None] = []
         self._home = home
+        # The real `kill -0` liveness check succeeds/fails depending on sandbox state; this
+        # mock has no real process tree, so it is told the answer directly instead.
+        self._host_already_running = host_already_running
 
     def prepare(self) -> None:  # pragma: no cover - unused preflight stub
         pass
@@ -47,19 +55,41 @@ class _RecordingLauncher(SandboxLauncher):
     def provision(self, name: str) -> str:  # pragma: no cover - unused stub
         return "sb-1"
 
-    def run(self, sandbox_id: str, command: str, *, check: bool = True) -> RemoteCommandResult:
+    def run(
+        self,
+        sandbox_id: str,
+        command: str,
+        *,
+        check: bool = True,
+        env: Mapping[str, str] | None = None,
+    ) -> RemoteCommandResult:
         self.commands.append(command)
+        self.command_envs.append(env)
         # start_host probes $HOME first; everything else returns empty.
-        stdout = self._home if command == 'printf %s "$HOME"' else ""
-        return RemoteCommandResult(returncode=0, stdout=stdout, stderr="")
+        if command == 'printf %s "$HOME"':
+            return RemoteCommandResult(returncode=0, stdout=self._home, stderr="")
+        if "kill -0" in command:
+            # is_host_supervisor_running's liveness check (base.py) — no real process tree
+            # here, so answer from the flag a test configured instead of actually `kill`ing.
+            return RemoteCommandResult(
+                returncode=0 if self._host_already_running else 1, stdout="", stderr=""
+            )
+        return RemoteCommandResult(returncode=0, stdout="", stderr="")
 
     def run_background(
-        self, sandbox_id: str, command: str, *, log_path: str = "/tmp/omnigent-host.log"
+        self,
+        sandbox_id: str,
+        command: str,
+        *,
+        log_path: str = "/tmp/omnigent-host.log",
+        host_id: str | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> RemoteCommandResult:
         # Capture the raw (pre-wrap) command so a test can prove a real shell
         # honors its env prefix, independent of the setsid/nohup wrapper.
         self.backgrounded.append(command)
-        return super().run_background(sandbox_id, command, log_path=log_path)
+        self.backgrounded_env.append(env)
+        return super().run_background(sandbox_id, command, log_path=log_path, host_id=host_id, env=env)
 
 
 def test_run_background_wraps_command_in_sh_c() -> None:
@@ -84,6 +114,113 @@ def test_run_background_wraps_command_in_sh_c() -> None:
     # The env prefix stays attached to the launch inside the quoted script, so
     # the inner shell re-applies it on every supervised restart attempt.
     assert _HOST_LAUNCH in cmd
+
+
+def test_run_background_records_the_loops_pid_when_given_a_host_id() -> None:
+    """A ``host_id`` makes the wrapped script record its own pid before the restart loop,
+    so a later launch can detect this loop is still alive (see ``is_host_supervisor_running``)."""
+    launcher = _RecordingLauncher()
+
+    launcher.run_background("sb-1", _HOST_LAUNCH, host_id="host_abc")
+
+    [cmd] = launcher.commands
+    assert cmd == (
+        f"setsid nohup sh -c {shlex.quote(supervise_host_command(_HOST_LAUNCH, host_id='host_abc'))} "
+        ">> /tmp/omnigent-host.log 2>&1 < /dev/null & echo launched"
+    )
+    assert "$HOME/.omnigent/hosts/host_abc.pid" in cmd
+
+
+def test_run_background_without_a_host_id_records_no_pidfile() -> None:
+    assert "pid" not in supervise_host_command(_HOST_LAUNCH)
+
+
+def test_run_background_forwards_env_to_run_only_when_non_empty() -> None:
+    """``env`` must reach ``run`` so a provider can carry it through its own exec transport
+    (never the command string — see the ``computer`` provider), but a caller that never
+    sets it (the overwhelming majority of launches) must see the exact same ``run`` call as
+    before this parameter existed."""
+    launcher = _RecordingLauncher()
+
+    launcher.run_background("sb-1", _HOST_LAUNCH)
+    launcher.run_background("sb-1", _HOST_LAUNCH, env={"ANTHROPIC_API_KEY": "sk-secret"})
+
+    assert launcher.command_envs == [None, {"ANTHROPIC_API_KEY": "sk-secret"}]
+    # The secret value must never land in the command string itself.
+    assert "sk-secret" not in launcher.commands[1]
+
+
+def test_is_host_supervisor_running_reflects_the_liveness_check() -> None:
+    not_running = _RecordingLauncher(host_already_running=False)
+    running = _RecordingLauncher(host_already_running=True)
+
+    assert not_running.is_host_supervisor_running("sb-1", "host_abc") is False
+    assert running.is_host_supervisor_running("sb-1", "host_abc") is True
+
+
+def test_start_host_skips_relaunch_when_the_host_is_already_running() -> None:
+    """A repeated ``start_host`` for a host id whose supervised loop is still alive (a
+    relaunch onto a sandbox that never died, or a provider whose sandbox outlives any one
+    session — e.g. Nova's ``computer`` provider) must not clone again or start a second
+    loop; it returns the same workspace the live host is already using."""
+    launcher = _RecordingLauncher(host_already_running=True)
+
+    workspace = launcher.start_host(
+        "sb-1",
+        token="tok-123",
+        host_id="host_abc",
+        host_name="managed-abc",
+        server_url="https://srv",
+        repos=[
+            RepoWorkspace(
+                url="https://github.com/org/repo", branch="release-1.2", repo_name="repo"
+            )
+        ],
+    )
+
+    assert workspace == "/root/workspace/repo"
+    assert not any("git clone" in cmd for cmd in launcher.commands)
+    assert launcher.backgrounded == []
+
+
+def test_start_host_forwards_runner_env_and_sets_the_passthrough_var() -> None:
+    launcher = _RecordingLauncher()
+
+    launcher.start_host(
+        "sb-1",
+        token="tok-123",
+        host_id="host_abc",
+        host_name="managed-abc",
+        server_url="https://srv",
+        runner_env={"ANTHROPIC_API_KEY": "sk-secret", "TAVILY_API_KEY": "tv-secret"},
+    )
+
+    [env] = launcher.backgrounded_env
+    assert env is not None
+    assert env["ANTHROPIC_API_KEY"] == "sk-secret"
+    assert env["TAVILY_API_KEY"] == "tv-secret"
+    assert set(env["OMNIGENT_RUNNER_ENV_PASSTHROUGH"].split(",")) == {
+        "ANTHROPIC_API_KEY",
+        "TAVILY_API_KEY",
+    }
+    # Never in the launched command string itself.
+    [raw] = launcher.backgrounded
+    assert "sk-secret" not in raw
+    assert "tv-secret" not in raw
+
+
+def test_start_host_without_runner_env_passes_no_env() -> None:
+    launcher = _RecordingLauncher()
+
+    launcher.start_host(
+        "sb-1",
+        token="tok-123",
+        host_id="host_abc",
+        host_name="managed-abc",
+        server_url="https://srv",
+    )
+
+    assert launcher.backgrounded_env == [{}]
 
 
 @pytest.mark.parametrize(
