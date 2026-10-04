@@ -1767,6 +1767,9 @@ class SqlDailyNote(OmnigentBase):
     parent_session_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     quiet_passes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     finalized_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Epoch seconds the nightly Dreaming / People passes started for this day.
+    dreamed_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    people_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -2223,13 +2226,15 @@ class SqlMemoryClaim(OmnigentBase):
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="active")
     valid_until: Mapped[int | None] = mapped_column(Integer, nullable=True)
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # True once the person edited the text: upkeep and Helpers never overwrite it.
+    person_authored: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
             "kind IN ('preference', 'instruction', 'fact', 'decision', "
-            "'person', 'project', 'working_style')",
+            "'person', 'project', 'working_style', 'commitment')",
             name="ck_memory_claims_kind",
         ),
         CheckConstraint(

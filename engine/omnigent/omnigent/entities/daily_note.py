@@ -8,12 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-SECTION_KEYS = ("talked_about", "decisions", "promised", "open_loops")
+WRITER_KEYS = ("talked_about", "decisions", "promised", "open_loops")
+SECTION_KEYS = (*WRITER_KEYS, "reflection")
 SECTION_TITLES = {
     "talked_about": "What we talked about",
     "decisions": "Decisions",
     "promised": "Promised",
     "open_loops": "Open loops",
+    "reflection": "Reflection",
 }
 MAX_SECTION_CHARS = 6000
 
@@ -31,6 +33,8 @@ class DailyNote:
     :param parent_session_id: The Super Chat the day's passes ran for, or ``None``.
     :param quiet_passes: Quiet-moment passes started on this day.
     :param finalized_at: Epoch seconds of the nightly finalizing pass, or ``None``.
+    :param dreamed_at: Epoch seconds the Dreaming pass started, or ``None``.
+    :param people_at: Epoch seconds the People pass started, or ``None``.
     :param created_at: Epoch seconds.
     :param updated_at: Epoch seconds of the last write.
     """
@@ -43,6 +47,8 @@ class DailyNote:
     parent_session_id: str | None = None
     quiet_passes: int = 0
     finalized_at: int | None = None
+    dreamed_at: int | None = None
+    people_at: int | None = None
     created_at: int = 0
     updated_at: int = 0
 

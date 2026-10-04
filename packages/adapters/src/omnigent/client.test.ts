@@ -3,15 +3,18 @@ import {
   createOmnigentSession,
   createOmnigentSideChat,
   findOmnigentAgentIdByName,
+  forgetOmnigentMemoryClaim,
   getOmnigentComputer,
   getOmnigentMemoryProfile,
   getOmnigentSession,
   isStaleCursorError,
   listOmnigentDailyNotes,
+  listOmnigentMemoryClaims,
   listOmnigentSessionItems,
   OmnigentApiError,
   OmnigentSideChatError,
   openOmnigentComputerScreen,
+  patchOmnigentMemoryClaim,
   postOmnigentMessage,
   putOmnigentDailyNote,
   releaseOmnigentComputer,
@@ -374,5 +377,27 @@ describe("createOmnigentSideChat error handling (docs/super-chat/WIRING.md revie
     expect((calls[0]![1].headers as Record<string, string>)["X-Omnigent-Proxy-Secret"]).toBe(
       "proxy-secret",
     );
+  });
+});
+
+describe("memory claims", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("lists, edits with PATCH and forgets with confirm", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ claims: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listOmnigentMemoryClaims(CONFIG, "p@example.test", "s1")).toEqual([]);
+    await patchOmnigentMemoryClaim(CONFIG, "p@example.test", "s1", "c1", "Maya, manager");
+    await forgetOmnigentMemoryClaim(CONFIG, "p@example.test", "s1", "c1");
+
+    const [listUrl] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(String(listUrl)).toBe("http://omnigent.test/v1/sessions/s1/memory/claims");
+    const [patchUrl, patch] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(String(patchUrl)).toBe("http://omnigent.test/v1/sessions/s1/memory/claims/c1");
+    expect(patch.method).toBe("PATCH");
+    expect(patch.body).toBe(JSON.stringify({ text: "Maya, manager" }));
+    const [, forget] = fetchMock.mock.calls[2] as unknown as [URL, RequestInit];
+    expect(forget.body).toBe(JSON.stringify({ claim_id: "c1", confirm: true }));
   });
 });

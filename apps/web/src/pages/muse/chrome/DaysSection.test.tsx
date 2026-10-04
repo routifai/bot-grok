@@ -54,7 +54,7 @@ it("lists a day and saves an inline edit through the wire", async () => {
 
   await act(async () => button(container, "Edit").click());
   const boxes = container.querySelectorAll("textarea");
-  expect(boxes).toHaveLength(4);
+  expect(boxes).toHaveLength(5);
   const box = boxes[2] as HTMLTextAreaElement;
   await act(async () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;

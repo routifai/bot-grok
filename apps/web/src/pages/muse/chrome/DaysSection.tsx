@@ -20,7 +20,13 @@ export type DaysWire = {
 };
 
 /** The engine's section keys, in reading order. */
-export const DAY_SECTION_KEYS = ["talked_about", "decisions", "promised", "open_loops"] as const;
+export const DAY_SECTION_KEYS = [
+  "talked_about",
+  "decisions",
+  "promised",
+  "open_loops",
+  "reflection",
+] as const;
 
 function Day({
   botId,
@@ -39,6 +45,7 @@ function Day({
     decisions: t`Decisions`,
     promised: t`Promised`,
     open_loops: t`Open loops`,
+    reflection: t`Reflection`,
   };
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const [saving, setSaving] = useState(false);

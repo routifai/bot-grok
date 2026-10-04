@@ -147,10 +147,13 @@ import {
 import { getLogger } from "@aiden/logging";
 import { implement, ORPCError } from "@orpc/server";
 import {
+  editMemoryClaim,
+  forgetMemoryClaim,
   getActivity,
   getMemoryProfile,
   listActivities,
   listDailyNotes,
+  listMemoryClaims,
   saveDailyNote,
 } from "./activities.js";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
@@ -2375,6 +2378,15 @@ export function createRouter(deps: RouterDeps) {
     memory: {
       profile: museOnly.memory.profile.handler(({ context, input }) =>
         getMemoryProfile(deps, context.actor, input),
+      ),
+      claims: museOnly.memory.claims.handler(({ context, input }) =>
+        listMemoryClaims(deps, context.actor, input),
+      ),
+      editClaim: museOnly.memory.editClaim.handler(({ context, input }) =>
+        editMemoryClaim(deps, context.actor, input),
+      ),
+      forgetClaim: museOnly.memory.forgetClaim.handler(({ context, input }) =>
+        forgetMemoryClaim(deps, context.actor, input),
       ),
       dailyNotes: museOnly.memory.dailyNotes.handler(({ context, input }) =>
         listDailyNotes(deps, context.actor, input),

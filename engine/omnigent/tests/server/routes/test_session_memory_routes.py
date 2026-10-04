@@ -413,3 +413,38 @@ async def test_routes_absent_without_memory_service(
         f"/v1/sessions/{session_id}/memory/search", params={"query": "x"}
     )
     assert resp.status_code == 404
+
+
+# ── list / edit (Memory tab) ─────────────────────────────────────────────────
+
+
+async def test_list_edit_and_forget_claims(client: httpx.AsyncClient, db_uri: str) -> None:
+    session_id = await _make_session(db_uri)
+    base = f"/v1/sessions/{session_id}/memory"
+    added = await client.post(
+        f"{base}/remember",
+        json={"text": "Maya is a colleague", "kind": "person"},
+        headers=_headers(),
+    )
+    claim_id = added.json()["claim"]["claim_id"]
+
+    listed = await client.get(f"{base}/claims", params={"kinds": "person"}, headers=_headers())
+    assert [c["claim_id"] for c in listed.json()["claims"]] == [claim_id]
+
+    patched = await client.patch(
+        f"{base}/claims/{claim_id}", json={"text": "Maya Chen, manager"}, headers=_headers()
+    )
+    assert patched.status_code == 200
+    assert patched.json()["person_authored"] is True
+
+    other = await client.patch(
+        f"{base}/claims/{claim_id}", json={"text": "x"}, headers=_headers("bob@example.com")
+    )
+    assert other.status_code in (403, 404)
+
+    gone = await client.post(
+        f"{base}/forget", json={"claim_id": claim_id, "confirm": True}, headers=_headers()
+    )
+    assert gone.json()["status"] == "forgotten"
+    after = await client.get(f"{base}/claims", headers=_headers())
+    assert after.json()["claims"] == []

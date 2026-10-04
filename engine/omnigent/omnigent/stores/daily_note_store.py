@@ -47,6 +47,8 @@ def _to_entity(row: SqlDailyNote) -> DailyNote:
         finalized_at=row.finalized_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        dreamed_at=row.dreamed_at,
+        people_at=row.people_at,
     )
 
 
@@ -181,6 +183,39 @@ class SqlAlchemyDailyNoteStore:
 
         self._write(owner, note_date, "daily_note_finalize", mutate)
         return claimed
+
+    def claim_pass(self, owner: str, note_date: str, column: str) -> bool:
+        """Mark a nightly pass (``dreamed_at`` or ``people_at``) started once for the day."""
+        if column not in ("dreamed_at", "people_at"):
+            raise ValueError(column)
+        claimed = False
+
+        def mutate(row: SqlDailyNote) -> None:
+            nonlocal claimed
+            if getattr(row, column) is None:
+                setattr(row, column, now_epoch())
+                claimed = True
+
+        self._write(owner, note_date, f"daily_note_claim_{column}", mutate)
+        return claimed
+
+    def pending_nightly(self, *, finalized_after: int, finalized_before: int) -> list[DailyNote]:
+        """Finalized notes (in the window) still missing the Dreaming or People pass."""
+        with self._session("list_daily_notes_nightly") as session:
+            stmt = (
+                select(SqlDailyNote)
+                .where(
+                    SqlDailyNote.workspace_id == current_workspace_id(),
+                    SqlDailyNote.finalized_at.is_not(None),
+                    SqlDailyNote.finalized_at >= finalized_after,
+                    SqlDailyNote.finalized_at <= finalized_before,
+                    SqlDailyNote.parent_session_id.is_not(None),
+                    (SqlDailyNote.dreamed_at.is_(None)) | (SqlDailyNote.people_at.is_(None)),
+                )
+                .order_by(SqlDailyNote.note_date)
+                .limit(200)
+            )
+            return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
 
     def pending_finalize(self, *, limit: int = 200) -> list[DailyNote]:
         """Unfinalized notes that had at least one pass and a chat to run in, oldest first."""

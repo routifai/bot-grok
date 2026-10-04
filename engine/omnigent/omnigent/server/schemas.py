@@ -464,6 +464,18 @@ class MemoryForgetRequest(BaseModel):
     confirm: bool = False
 
 
+class MemoryEditRequest(BaseModel):
+    """
+    Request body for ``PATCH /v1/sessions/{session_id}/memory/claims/{claim_id}``.
+
+    :param text: The person's new text for the claim (marks it person-authored).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=2000)
+
+
 # ── Default Policies ──────────────────────────────────────────────
 
 

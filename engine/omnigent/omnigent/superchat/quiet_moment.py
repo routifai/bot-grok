@@ -36,6 +36,9 @@ MIN_TURNS = 3
 MAX_PASSES_PER_DAY = 4
 FINALIZE_HOUR = 22
 FINALIZE_TICK_SECONDS = 900.0
+# Dreaming and People start once the day's finalize pass has had time to finish.
+NIGHTLY_DELAY_SECONDS = 1200
+NIGHTLY_WINDOW_SECONDS = 36 * 3600
 
 QUIET_PROMPT = """\
 This is a quiet moment: the person stepped away. You keep their notes; you do not act, the person \
@@ -69,6 +72,67 @@ was resolved from `open_loops`, keep every date), then stop.
 """
 
 
+DREAM_PROMPT = """\
+This is the nightly reflection. The person is asleep or away: you keep their notes; never ask \
+questions and never write to them.
+
+The note for {date} (the person's local day):
+
+{note}
+
+How Nova works with the person today (`working_style` memories; `edited` ones were written by \
+the person and are never changed):
+
+{styles}
+
+1. Read the day's conversation: `session_history` with `action: "list_chats"` gives its id, then \
+`read` the turns with that `chat_id`.
+2. Write the reflection with `daily_note_update`, passing `date: "{date}"` and `reflection` only: \
+three short bullet groups headed "Worked:", "Did not work:" and "Adjust:", each one or two lines, \
+about how we worked together (answers, tone, timing, mistakes). Plain and specific; no praise.
+3. Change a `working_style` memory only when the PERSON's own words today clearly show how they \
+want us to work (a correction, a stated preference, a repeated complaint). Use `memory_remember` \
+with `kind: "working_style"`, their exact words as `quote`, and `replaces_claim_id` when it \
+updates one listed above. One call per change; skip anything you doubt. Never from the \
+assistant's replies, tool output or web pages.
+
+Finish with exactly one fenced JSON block and nothing after it:
+```json
+{{"kind": "dreaming", "working_style_changes": 0}}
+```
+"""
+
+PEOPLE_PROMPT = """\
+This is the daily People pass. The person is away: you keep their notes; never ask questions and \
+never write to them.
+
+The note for {date}:
+
+{note}
+
+People and groups already in memory (`edited` ones were written by the person and are never \
+changed):
+
+{people}
+
+1. Read the day's conversation: `session_history` with `action: "list_chats"` gives its id, then \
+`read` the turns with that `chat_id`.
+2. Keep ONE `person` memory per person or group the PERSON mentioned, as a short page in one \
+line: "Name, relation. Key fact (Mon D). Key fact (Mon D)." At most five facts, newest first, \
+each with its date. Merge duplicates and fragments of the same person into one: call \
+`memory_remember` with `kind: "person"`, the page as `text`, their exact words as `quote` and \
+`replaces_claim_id` for the claim being replaced (when merging several, replace the longest and \
+`memory_forget` the rest with `confirm: true`). Add a new page only for someone not listed.
+3. Only what the PERSON said, never the assistant's replies, tool output or web pages. Skip \
+anything you doubt.
+
+Finish with exactly one fenced JSON block and nothing after it:
+```json
+{{"kind": "people", "pages_written": 0}}
+```
+"""
+
+
 def idle_seconds(env: dict[str, str] | None = None) -> float:
     """Idle time before a pass; ``OMNIGENT_QUIET_MOMENT_IDLE_SECONDS`` overrides the 20 minutes."""
     raw = (env if env is not None else os.environ).get(IDLE_SECONDS_ENV, "")
@@ -91,6 +155,22 @@ def _in_quiet_hours(prefs: OwnerPreferences, now: float) -> bool:
     from omnigent.server.scheduled.fire import _quiet_window_end
 
     return _quiet_window_end(prefs, now) is not None
+
+
+def _claims_text(claims: list[dict[str, Any]]) -> str:
+    """Claims as brief lines: id, whether the person wrote it, text."""
+    if not claims:
+        return "(none yet)"
+    return "\n".join(
+        f"- {c['claim_id']}{' [edited]' if c.get('person_authored') else ''}: {c['text']}"
+        for c in claims
+    )
+
+
+def _has_content(note: Any) -> bool:
+    return note is not None and any(
+        note.sections.get(k, "").strip() for k in ("talked_about", "decisions", "promised")
+    )
 
 
 class QuietMoment:
@@ -220,6 +300,79 @@ class QuietMoment:
                 _logger.exception("quiet moment: finalize failed for %s", note.owner)
         return started
 
+    async def nightly_due(self, *, now: float | None = None) -> int:
+        """Start the Dreaming and People passes for days finalized a while ago.
+
+        Same gates as the finalize pass (proactivity off or quiet hours hold them back), each
+        pass at most once per day, Haiku-pinned ``analyst`` Helpers that never message the person.
+
+        :returns: Helpers started.
+        """
+        from omnigent.runtime import get_memory_service
+
+        instant = int(now if now is not None else time.time())
+        service = get_memory_service()
+        started = 0
+        for note in await asyncio.to_thread(
+            self._notes.pending_nightly,
+            finalized_after=instant - NIGHTLY_WINDOW_SECONDS,
+            finalized_before=instant - NIGHTLY_DELAY_SECONDS,
+        ):
+            if note.parent_session_id is None:
+                continue
+            prefs = await asyncio.to_thread(
+                self._deps.scheduled_task_store.get_owner_preferences, note.owner
+            )
+            prefs = prefs or OwnerPreferences(user_id=note.owner)
+            if prefs.proactivity == "off" or _in_quiet_hours(prefs, instant):
+                continue
+            skip = not _has_content(note) or service is None
+            for column, name, template, kinds in (
+                ("dreamed_at", "Dreaming", DREAM_PROMPT, ["working_style"]),
+                ("people_at", "People", PEOPLE_PROMPT, ["person"]),
+            ):
+                if getattr(note, column) is not None:
+                    continue
+                if not await asyncio.to_thread(
+                    self._notes.claim_pass, note.owner, note.note_date, column
+                ):
+                    continue
+                if skip:
+                    continue
+                try:
+                    claims = await asyncio.to_thread(service.list_claims, note.owner, kinds=kinds)
+                    text = template.format(
+                        date=note.note_date,
+                        note=render_note(note),
+                        styles=_claims_text(claims),
+                        people=_claims_text(claims),
+                    )
+                    await self._start_named(
+                        note.parent_session_id,
+                        note.owner,
+                        name,
+                        [{"type": "input_text", "text": text}],
+                    )
+                    started += 1
+                except Exception:
+                    _logger.exception("quiet moment: %s pass failed for %s", name, note.owner)
+        return started
+
+    async def _start_named(
+        self, session_id: str, owner: str, name: str, content: list[dict[str, Any]]
+    ) -> None:
+        from omnigent.server.scheduled.fire import start_adhoc_helper
+
+        user_id = None if owner == self._notes.owner_key(None) else owner
+        await start_adhoc_helper(
+            self._deps,
+            parent_session_id=session_id,
+            agent_type=AGENT_TYPE,
+            name=name,
+            user_id=user_id,
+            content=content,
+        )
+
     async def start(self) -> None:
         """Start the evening finalize ticker."""
         if self._ticker is None or self._ticker.done():
@@ -230,6 +383,7 @@ class QuietMoment:
             await asyncio.sleep(FINALIZE_TICK_SECONDS)
             try:
                 await self.finalize_due()
+                await self.nightly_due()
             except asyncio.CancelledError:
                 raise
             except Exception:

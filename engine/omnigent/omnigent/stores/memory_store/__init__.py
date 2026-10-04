@@ -135,3 +135,8 @@ class MemoryStore(ABC):
         repeated :meth:`get` calls).
         """
         ...
+
+    @abstractmethod
+    def person_edit(self, claim_id: str, user_id: str, claim_text: str) -> MemoryClaim | None:
+        """Replace an active claim's text in place and mark it person-authored."""
+        ...

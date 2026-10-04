@@ -581,6 +581,9 @@ export function ContextPanel({
   const liveMemoryWire = useMemo<MemoryWire>(
     () => ({
       profile: (input) => rpc.memory.profile(input),
+      claims: (input) => rpc.memory.claims(input),
+      editClaim: (input) => rpc.memory.editClaim(input),
+      forgetClaim: (input) => rpc.memory.forgetClaim(input),
       dailyNotes: (input) => rpc.memory.dailyNotes(input),
       saveDailyNote: (input) => rpc.memory.saveDailyNote(input),
     }),

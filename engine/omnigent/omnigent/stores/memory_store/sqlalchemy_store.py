@@ -59,6 +59,7 @@ def _to_entity(row: SqlMemoryClaim) -> MemoryClaim:
         status=row.status,
         valid_until=row.valid_until,
         run_id=row.run_id,
+        person_authored=bool(row.person_authored),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -274,3 +275,20 @@ class SqlAlchemyMemoryStore(MemoryStore):
             return _to_entity(row)
 
         return run_write_transaction(self._session_immediate, "set_memory_claim_status", write)
+
+    def person_edit(self, claim_id: str, user_id: str, claim_text: str) -> MemoryClaim | None:
+        """Replace an active claim's text in place and mark it person-authored."""
+        now = now_epoch()
+
+        def write(session: Session) -> MemoryClaim | None:
+            row = session.get(SqlMemoryClaim, (current_workspace_id(), claim_id))
+            if row is None or row.user_id != user_id or row.status != _ACTIVE:
+                return None
+            row.claim_text = claim_text
+            row.person_authored = True
+            row.confidence = 1.0
+            row.updated_at = now
+            session.flush()
+            return _to_entity(row)
+
+        return run_write_transaction(self._session_immediate, "person_edit_memory_claim", write)

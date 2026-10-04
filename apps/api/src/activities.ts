@@ -4,14 +4,18 @@
 // separate chatId ownership rule here, since the Activity Feed is always read from the Super
 // Chat's own session id (Omnigent derives the whole family from it).
 import {
+  forgetOmnigentMemoryClaim,
   getOmnigentActivity,
   getOmnigentMemoryProfile,
   listOmnigentActivities,
   listOmnigentDailyNotes,
+  listOmnigentMemoryClaims,
   mapActivity,
   type OmnigentClientConfig,
   type OmnigentDailyNote,
+  type OmnigentMemoryClaim,
   omnigentClientConfigFromEnv,
+  patchOmnigentMemoryClaim,
   putOmnigentDailyNote,
   redactActivity,
   redactMemoryProfile,
@@ -102,6 +106,58 @@ export async function getMemoryProfile(
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   const result = await onSuperChat(getOmnigentMemoryProfile(client, email, superSessionId));
   return { profile: redactMemoryProfile(result.profile, client.secrets ?? []) };
+}
+
+function mapClaim(claim: OmnigentMemoryClaim, secrets: string[]) {
+  return {
+    id: claim.claim_id,
+    kind: claim.kind,
+    text: redactMemoryProfile(claim.text, secrets) ?? "",
+    origin: claim.origin,
+    personAuthored: claim.person_authored,
+    date: claim.last_confirmed,
+  };
+}
+
+/** `memory.claims`: the person's active memory claims, for the editable sections. */
+export async function listMemoryClaims(
+  deps: ActivitiesDeps,
+  actor: Actor,
+  input: { botId: string },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  const client = requireClient(env);
+  const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
+  const claims = await onSuperChat(listOmnigentMemoryClaims(client, email, superSessionId));
+  return { claims: claims.map((claim) => mapClaim(claim, client.secrets ?? [])) };
+}
+
+/** `memory.editClaim`: the person's text edit of one claim. */
+export async function editMemoryClaim(
+  deps: ActivitiesDeps,
+  actor: Actor,
+  input: { botId: string; claimId: string; text: string },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  const client = requireClient(env);
+  const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
+  const claim = await onSuperChat(
+    patchOmnigentMemoryClaim(client, email, superSessionId, input.claimId, input.text),
+  );
+  return mapClaim(claim, client.secrets ?? []);
+}
+
+/** `memory.forgetClaim`: the person deletes one claim. */
+export async function forgetMemoryClaim(
+  deps: ActivitiesDeps,
+  actor: Actor,
+  input: { botId: string; claimId: string },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  const client = requireClient(env);
+  const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
+  await onSuperChat(forgetOmnigentMemoryClaim(client, email, superSessionId, input.claimId));
+  return { ok: true as const };
 }
 
 function mapDailyNote(note: OmnigentDailyNote, secrets: string[]) {

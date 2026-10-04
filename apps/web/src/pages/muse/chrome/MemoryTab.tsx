@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { ORPCError } from "@orpc/client";
 import { useEffect, useRef, useState } from "react";
 import { DaysSection, type DaysWire } from "./DaysSection";
+import { type ClaimsWire, type MemoryClaim, MemorySections } from "./MemorySections";
 import { addressMemoryItem, type MemoryProfileSection, parseMemoryProfile } from "./memoryProfile";
 import { PanelRowSkeletonList } from "./PanelSkeleton";
 
@@ -16,17 +17,20 @@ const isEmptyBackend = (error: unknown) =>
  * (ActivityRunDialog.tsx) and `SideChatWire` (SideChatSession.tsx). */
 export type MemoryWire = {
   profile: (input: { botId: string }) => Promise<{ profile: string | null }>;
-} & Partial<DaysWire>;
+} & Partial<DaysWire> &
+  Partial<ClaimsWire>;
 
 type MemoryState =
   | { status: "loading" }
-  | { status: "ready"; sections: MemoryProfileSection[] }
+  | { status: "ready"; sections: MemoryProfileSection[]; claims?: MemoryClaim[] }
   | { status: "error" };
 
 /**
  * The context panel's Memory tab: a read-only view of the Muse's Memory Profile
  * (`rpc.memory.profile`) — what it remembers about the person, in its own words, grouped
- * under the headings the engine gives it. The Days section lists recent daily notes, editable inline; Memory settings
+ * under the headings the engine gives it. When the claim wire is there, the tab shows the
+ * editable sections instead (About you, Commitments, Projects & focus, People, How Nova works
+ * with you; see MemorySections.tsx). The Days section lists recent daily notes, editable inline; Memory settings
  * (apps/web/src/pages/muse/settings/MemoryPanel.tsx) owns changing it.
  */
 export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) {
@@ -44,11 +48,18 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
   useEffect(() => {
     const current = ++generation.current;
     setState({ status: "loading" });
-    void wire
-      .profile({ botId })
+    const load = wire.claims
+      ? wire.claims({ botId }).then((result) => ({
+          sections: [] as MemoryProfileSection[],
+          claims: result.claims,
+        }))
+      : wire
+          .profile({ botId })
+          .then((result) => ({ sections: parseMemoryProfile(result.profile), claims: undefined }));
+    void load
       .then((result) => {
         if (current !== generation.current) return;
-        setState({ status: "ready", sections: parseMemoryProfile(result.profile) });
+        setState({ status: "ready", ...result });
       })
       .catch((error: unknown) => {
         if (current !== generation.current) return;
@@ -62,6 +73,33 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
   if (state.status === "loading") return <PanelRowSkeletonList count={3} />;
   if (state.status === "error") {
     return <p className="text-[13px] text-destructive">{t`Could not load Memory`}</p>;
+  }
+  const claimWire =
+    wire.claims && wire.editClaim && wire.forgetClaim
+      ? { claims: wire.claims, editClaim: wire.editClaim, forgetClaim: wire.forgetClaim }
+      : null;
+  if (state.claims && claimWire) {
+    const claims = state.claims;
+    return (
+      <div className="flex flex-col gap-4" data-testid="memory-panel">
+        {claims.length === 0 ? (
+          <p
+            className="py-8 text-center text-[13.5px] text-muted-foreground"
+            data-testid="memory-empty"
+          >
+            {t`Nothing remembered yet.`}
+          </p>
+        ) : (
+          <MemorySections
+            botId={botId}
+            wire={claimWire}
+            claims={claims}
+            onChange={(next) => setState({ status: "ready", sections: [], claims: next })}
+          />
+        )}
+        {days}
+      </div>
+    );
   }
   if (state.sections.length === 0) {
     return (

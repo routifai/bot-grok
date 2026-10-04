@@ -27,7 +27,7 @@ class MemoryClaim:
     :param id: Unique claim identifier (bare 32-char hex string).
     :param user_id: The user this claim is about.
     :param kind: One of ``preference``, ``instruction``, ``fact``,
-        ``decision``, ``person``, ``project``, ``working_style``.
+        ``decision``, ``person``, ``project``, ``working_style``, ``commitment``.
     :param claim_text: One self-contained sentence describing the claim.
     :param quote: The exact words the evidence was drawn from, or ``None``.
     :param speaker: Who said it, or ``None``.
@@ -45,6 +45,8 @@ class MemoryClaim:
         applies, or ``None``.
     :param run_id: The upkeep run that wrote this claim, or ``None`` for a
         claim written directly by ``memory_remember``.
+    :param person_authored: ``True`` once the person edited the text; upkeep and
+        Helpers never overwrite such a claim.
     :param created_at: Unix epoch seconds at row creation.
     :param updated_at: Unix epoch seconds of the last write, or ``None``.
     """
@@ -65,5 +67,6 @@ class MemoryClaim:
     status: str = "active"
     valid_until: int | None = None
     run_id: str | None = None
+    person_authored: bool = False
     created_at: int = 0
     updated_at: int | None = None

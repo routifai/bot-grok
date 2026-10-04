@@ -25,6 +25,7 @@ VALID_KINDS = frozenset(
         "person",
         "project",
         "working_style",
+        "commitment",
     }
 )
 DEFAULT_KIND = "fact"
@@ -63,6 +64,7 @@ PROFILE_KINDS: tuple[str, ...] = (
     "instruction",
     "working_style",
     "fact",
+    "commitment",
     "project",
     "decision",
 )
@@ -73,6 +75,7 @@ _PROFILE_GROUP_LABELS = {
     "fact": "About the user",
     "project": "Projects",
     "decision": "Current focus",
+    "commitment": "Commitments",
 }
 # A focus/decision claim drops out of the profile (stays searchable) once it has
 # not been reinforced for this long.
@@ -118,6 +121,16 @@ def _claim_to_dict(claim: MemoryClaim, *, score: float | None = None) -> dict[st
         "confidence": round(claim.confidence, 3),
         "status": claim.status,
         "last_confirmed": claim.reinforced_at or claim.first_seen,
+        "first_seen": claim.first_seen,
+        "person_authored": claim.person_authored,
+        # Where it came from, for display: the person's words, their edit, or a noticed pattern.
+        "origin": (
+            "edited"
+            if claim.person_authored
+            else "said"
+            if claim.explicitness == "stated"
+            else "noticed"
+        ),
         "source": [{"session_id": e.session_id, "item_id": e.item_id} for e in claim.evidence],
     }
     if score is not None:
@@ -166,6 +179,13 @@ class MemoryService:
             old = self._store.get(replaces_claim_id, user_id)
             if old is None or old.status != "active":
                 return {"error": f"no active claim {replaces_claim_id} to replace"}
+            if old.person_authored:
+                # The person wrote this: keep it and add the new text beside it.
+                result = self.remember(
+                    user_id, text, kind=kind, quote=quote, speaker=speaker, evidence=evidence
+                )
+                result["kept_person_authored"] = replaces_claim_id
+                return result
             existing_id = old.id
             new_claim = self._store.supersede(
                 existing_id,
@@ -297,6 +317,18 @@ class MemoryService:
         if old is None or old.status != "active":
             return {"error": f"no active claim {old_claim_id} to replace"}
         resolved_kind = kind if kind in VALID_KINDS else DEFAULT_KIND
+        if old.person_authored:
+            return self.record_claim(
+                user_id,
+                resolved_kind,
+                text,
+                quote=quote,
+                speaker=speaker,
+                evidence=evidence,
+                explicitness=explicitness,
+                confidence=confidence,
+                run_id=run_id,
+            )
         new_claim = self._store.supersede(
             old_claim_id,
             user_id,
@@ -387,6 +419,29 @@ class MemoryService:
             "supersedes": supersedes,
             "superseded_by": superseded_by,
         }
+
+    # ── The person's edits (Memory tab) ─────────────────────────────
+
+    def list_claims(self, user_id: str, *, kinds: list[str] | None = None) -> list[dict[str, Any]]:
+        """Every active claim of *kinds* (all kinds when omitted), newest first."""
+        wanted = [k for k in kinds if k in VALID_KINDS] if kinds else sorted(VALID_KINDS)
+        claims: list[MemoryClaim] = []
+        for kind in wanted:
+            claims.extend(self._store.list_active(user_id, kind=kind))
+        claims.sort(key=lambda c: c.reinforced_at or c.first_seen, reverse=True)
+        return [_claim_to_dict(c) for c in claims]
+
+    def edit(self, user_id: str, claim_id: str, text: str) -> dict[str, Any] | None:
+        """The person's text edit: stored in place and protected from background writers.
+
+        :returns: The updated claim, or ``None`` when it is not an active claim of *user_id*.
+        """
+        updated = self._store.person_edit(claim_id, user_id, text.strip())
+        if updated is None:
+            return None
+        self._index.upsert(updated)
+        self._invalidate_profile(user_id)
+        return _claim_to_dict(updated)
 
     # ── Forget (two-step) ───────────────────────────────────────────
 

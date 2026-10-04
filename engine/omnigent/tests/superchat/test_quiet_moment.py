@@ -102,3 +102,46 @@ def test_idle_seconds_env() -> None:
     assert quiet_moment.idle_seconds({}) == 1200.0
     assert quiet_moment.idle_seconds({quiet_moment.IDLE_SECONDS_ENV: "30"}) == 30.0
     assert quiet_moment.idle_seconds({quiet_moment.IDLE_SECONDS_ENV: "x"}) == 1200.0
+
+
+@pytest.mark.asyncio
+async def test_nightly_dreaming_and_people_run_once_after_finalize(
+    harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    qm, notes, _prefs, started = harness
+    service = SimpleNamespace(
+        list_claims=lambda owner, kinds=None: [
+            {"claim_id": "c1", "text": "Maya, manager", "person_authored": True}
+        ]
+    )
+    monkeypatch.setattr("omnigent.runtime.get_memory_service", lambda: service)
+    monkeypatch.setattr(quiet_moment, "_in_quiet_hours", lambda prefs, now: False)
+    notes.write_sections(
+        "local", "2026-10-04", {"talked_about": "- budget"}, parent_session_id=SESSION
+    )
+    notes.claim_finalize("local", "2026-10-04")
+    later = time.time() + quiet_moment.NIGHTLY_DELAY_SECONDS + 60
+
+    assert await qm.nightly_due(now=time.time()) == 0  # finalize pass still running
+    assert await qm.nightly_due(now=later) == 2
+    names = [call["name"] for call in started]
+    assert names == ["Dreaming", "People"]
+    assert all(call["agent_type"] == "analyst" for call in started)
+    assert 'date: "2026-10-04"' in started[0]["content"][0]["text"]
+    assert "c1 [edited]: Maya, manager" in started[1]["content"][0]["text"]
+    assert await qm.nightly_due(now=later) == 0
+
+
+@pytest.mark.asyncio
+async def test_nightly_held_by_proactivity_off(harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    qm, notes, prefs, started = harness
+    prefs.prefs = OwnerPreferences(user_id="local", proactivity="off")
+    monkeypatch.setattr("omnigent.runtime.get_memory_service", lambda: SimpleNamespace())
+    notes.write_sections("local", "2026-10-04", {"talked_about": "- x"}, parent_session_id=SESSION)
+    notes.claim_finalize("local", "2026-10-04")
+    assert await qm.nightly_due(now=time.time() + 4000) == 0
+    assert started == []

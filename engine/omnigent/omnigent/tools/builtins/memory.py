@@ -28,6 +28,7 @@ _KIND_ENUM = (
     "person",
     "project",
     "working_style",
+    "commitment",
 )
 
 

@@ -492,3 +492,44 @@ def test_rebuild_index_restores_search_from_the_table(db_uri: str, tmp_path: Pat
     count = fresh_service.rebuild_index()
     assert count == 1
     assert fresh_service.search("alice", "currency CAD figures")
+
+
+# ── the person's edits (Memory tab) ─────────────────────────────────────────
+
+
+def test_person_edit_marks_claim_and_protects_it_from_replacement(service: MemoryService) -> None:
+    added = service.remember("u1", "Maya is a colleague", kind="person")["claim"]
+    edited = service.edit("u1", added["claim_id"], "Maya Chen, your manager")
+    assert edited is not None
+    assert edited["text"] == "Maya Chen, your manager"
+    assert edited["person_authored"] is True and edited["origin"] == "edited"
+    assert service.edit("u2", added["claim_id"], "nope") is None
+
+    # A background writer's replacement keeps the person's text and adds its own beside it.
+    result = service.remember(
+        "u1",
+        "Maya leads the platform team",
+        kind="person",
+        replaces_claim_id=added["claim_id"],
+    )
+    assert result["action"] == "added"
+    assert result["kept_person_authored"] == added["claim_id"]
+    texts = {c["text"] for c in service.list_claims("u1", kinds=["person"])}
+    assert texts == {"Maya Chen, your manager", "Maya leads the platform team"}
+
+    upkeep = service.supersede_claim(
+        added["claim_id"], "u1", kind="person", text="Maya is a vendor", explicitness="inferred"
+    )
+    assert upkeep["action"] == "added"
+    assert service.get("u1", added["claim_id"])["status"] == "active"  # type: ignore[index]
+
+
+def test_list_claims_filters_kinds_and_commitment_is_valid(service: MemoryService) -> None:
+    service.remember("u1", "Send the budget by Friday", kind="commitment")
+    service.remember("u1", "Likes tea", kind="preference")
+    only = service.list_claims("u1", kinds=["commitment"])
+    assert [c["text"] for c in only] == ["Send the budget by Friday"]
+    assert only[0]["origin"] == "said"
+    assert len(service.list_claims("u1")) == 2
+    profile = service.profile("u1") or ""
+    assert "Commitments:" in profile

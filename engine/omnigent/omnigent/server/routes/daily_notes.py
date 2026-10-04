@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import date as date_cls
+from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -44,6 +46,7 @@ class WriteNoteBody(BaseModel):
 
     parent_session_id: str
     sections: dict[str, str] = Field(default_factory=dict)
+    date: str | None = None
 
 
 def note_to_response(note: DailyNote) -> dict[str, Any]:
@@ -54,6 +57,7 @@ def note_to_response(note: DailyNote) -> dict[str, Any]:
         "edited_by_person": note.edited_by_person,
         "edited_sections": note.edited_sections,
         "finalized": note.finalized_at is not None,
+        "dreamed": note.dreamed_at is not None,
         "created_at": note.created_at,
         "updated_at": note.updated_at,
     }
@@ -147,6 +151,16 @@ def create_daily_notes_router(
         )
         _check_sections(body.sections)
         day = await _today(owner)
+        if body.date is not None and body.date != day:
+            # The nightly Dreaming pass reflects on the day that just ended: today or yesterday.
+            if (
+                not _DATE_RE.match(body.date)
+                or body.date != (date_cls.fromisoformat(day) - timedelta(days=1)).isoformat()
+            ):
+                raise OmnigentError(
+                    "date must be today or yesterday", code=ErrorCode.INVALID_INPUT
+                )
+            day = body.date
         note = await asyncio.to_thread(
             store.write_sections,
             owner,

@@ -5436,8 +5436,10 @@ async def _execute_daily_note_tool(
         if tool_name == "daily_note_get":
             resp = await server_client.get("/v1/me/daily-notes/today", timeout=30.0)
         else:
-            sections = {k: v for k, v in args.items() if isinstance(v, str)}
-            payload = {"parent_session_id": chat_id, "sections": sections}
+            sections = {k: v for k, v in args.items() if isinstance(v, str) and k != "date"}
+            payload: dict[str, Any] = {"parent_session_id": chat_id, "sections": sections}
+            if isinstance(args.get("date"), str):
+                payload["date"] = args["date"]
             resp = await server_client.post("/v1/daily-notes/write", json=payload, timeout=30.0)
     except Exception as exc:  # noqa: BLE001
         return json.dumps({"error": f"{tool_name} failed: {exc}"})

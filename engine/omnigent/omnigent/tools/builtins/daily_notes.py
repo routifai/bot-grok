@@ -68,4 +68,9 @@ class DailyNoteUpdateTool(_DailyNoteTool):
     _PROPERTIES = {
         key: {"type": "string", "description": f"Full text of the `{key}` section."}
         for key in SECTION_KEYS
+    } | {
+        "date": {
+            "type": "string",
+            "description": "YYYY-MM-DD of today or yesterday; omit for today.",
+        }
     }

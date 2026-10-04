@@ -24,7 +24,11 @@ from omnigent.memory.service import MemoryService
 from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import get_user_id, require_access
 from omnigent.server.routes._errors import session_not_found
-from omnigent.server.schemas import MemoryForgetRequest, MemoryRememberRequest
+from omnigent.server.schemas import (
+    MemoryEditRequest,
+    MemoryForgetRequest,
+    MemoryRememberRequest,
+)
 from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
 
@@ -130,6 +134,31 @@ def create_session_memory_router(
         owner = await _resolve_user(request, session_id)
         results = memory_service.search(owner, query, kind=kind, limit=limit)
         return {"results": results}
+
+    @router.get("/sessions/{session_id}/memory/claims")
+    async def list_claims(
+        request: Request,
+        session_id: str,
+        kinds: str | None = Query(default=None, description="Comma-separated claim kinds."),
+    ) -> dict[str, Any]:
+        """The session owner's active claims (all kinds, or the given ones), newest first."""
+        owner = await _resolve_user(request, session_id)
+        wanted = [k.strip() for k in kinds.split(",") if k.strip()] if kinds else None
+        return {"claims": memory_service.list_claims(owner, kinds=wanted)}
+
+    @router.patch("/sessions/{session_id}/memory/claims/{claim_id}")
+    async def edit_claim(
+        request: Request,
+        session_id: str,
+        claim_id: str,
+        body: MemoryEditRequest,
+    ) -> dict[str, Any]:
+        """The person's text edit; the claim becomes person-authored (upkeep never overwrites)."""
+        owner = await _resolve_user(request, session_id, required_level=LEVEL_EDIT)
+        claim = memory_service.edit(owner, claim_id, body.text)
+        if claim is None:
+            raise OmnigentError("Claim not found", code=ErrorCode.NOT_FOUND)
+        return claim
 
     @router.get("/sessions/{session_id}/memory/claims/{claim_id}")
     async def get_claim(
