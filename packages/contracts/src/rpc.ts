@@ -116,7 +116,7 @@ const VaultRequestSchema = z.object({
   name: z.string(),
   site: z.string(),
   reason: z.string(),
-  status: z.enum(["pending", "saved"]),
+  status: z.enum(["pending", "saved", "expired"]),
 });
 
 const DailyNoteSchema = z.object({

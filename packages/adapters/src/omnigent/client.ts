@@ -562,7 +562,7 @@ export interface OmnigentVaultRequest {
   name: string;
   site: string;
   reason: string;
-  status: "pending" | "saved";
+  status: "pending" | "saved" | "expired";
 }
 
 /** `GET /v1/me/vault` — the person's saved logins, metadata only. */

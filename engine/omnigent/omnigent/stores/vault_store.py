@@ -37,6 +37,7 @@ from omnigent.db.utils import (
 VAULT_KEY_ENV = "OMNIGENT_VAULT_KEY"
 _PREFIX = "v1:"
 MAX_VALUE = 4096
+REQUEST_TTL_SECONDS = 15 * 60
 
 
 class VaultUnavailableError(RuntimeError):
@@ -69,7 +70,7 @@ class VaultRequest:
     name: str
     site: str
     reason: str
-    status: str
+    status: str  # pending | saved | expired
 
 
 def _key() -> bytes:
@@ -204,7 +205,12 @@ class VaultStore:
                     SqlVaultRequest.id == request_id,
                 )
             ).scalar_one_or_none()
-            return _request(row) if row is not None and row.user_id == user_id else None
+            if row is None or row.user_id != user_id:
+                return None
+            req = _request(row)
+            if req.status == "pending" and now_epoch() - row.created_at > REQUEST_TTL_SECONDS:
+                req.status = "expired"
+            return req
 
     # ── secrets ────────────────────────────────────────────────────────────
 
@@ -243,8 +249,16 @@ class VaultStore:
                         SqlVaultRequest.id == request_id,
                     )
                 ).scalar_one_or_none()
-                if req is not None and req.user_id == user_id:
-                    req.status = "saved"
+                if (
+                    req is None
+                    or req.user_id != user_id
+                    or req.status != "pending"
+                    or now_epoch() - req.created_at > REQUEST_TTL_SECONDS
+                    or req.name != name
+                    or req.site != site
+                ):
+                    raise VaultInputError("this request is expired, used or does not match")
+                req.status = "saved"
             session.flush()
             _audit(session, user_id, row, "create", None)
             return _entry(row)
@@ -319,6 +333,16 @@ class VaultStore:
             return value, row.site
 
         return run_write_transaction(self._session_immediate, "vault_reveal", write)
+
+    def refuse_fill(self, name: str, *, user_id: str | None, session_id: str | None) -> None:
+        """Record a refused fill attempt against a login (nothing if the name is unknown)."""
+
+        def write(session: Session) -> None:
+            row = self._find(session, user_id, name.strip())
+            if row is not None:
+                _audit(session, user_id, row, "refuse", session_id)
+
+        run_write_transaction(self._session_immediate, "vault_refuse", write)
 
     def audit(self, secret_id: str, *, user_id: str | None) -> list[tuple[str, int, str | None]]:
         """``(action, at, session_id)`` rows for one secret, oldest first (owner only)."""

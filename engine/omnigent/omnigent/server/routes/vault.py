@@ -172,13 +172,22 @@ def create_vault_router(
 
     @router.post("/me/vault/fill")
     async def fill(request: Request, body: FillRequest) -> dict[str, Any]:
-        """Hand the runner one value to type; the browser helper enforces the saved origin."""
+        """Hand the runner one value to type; the browser helper enforces the saved origin.
+
+        Only the runner bound to ``session_id`` may call this (its runner bearer plus binding
+        token); the owner's own credentials, Nova's API included, are refused and audited.
+        """
         owner = _owner(request)
         _check_id(body.session_id, "session_id")
-        if conversation_store is not None and (
-            conversation_store.get_conversation(body.session_id) is None
-        ):
-            raise OmnigentError("Session not found", code=ErrorCode.NOT_FOUND)
+        identity = getattr(auth_provider, "runner_identity", lambda _r: None)(request)
+        bound = None
+        if identity is not None and conversation_store is not None:
+            bound = conversation_store.get_runner_ids([body.session_id]).get(body.session_id)
+        if identity is None or identity[0] != owner or bound is None or bound != identity[1]:
+            await _run(store.refuse_fill, body.name, user_id=owner, session_id=body.session_id)
+            raise OmnigentError(
+                "Only the session's runner may fill from the vault", code=ErrorCode.FORBIDDEN
+            )
         try:
             value, saved_site = await _run(
                 store.reveal,

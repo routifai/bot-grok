@@ -702,17 +702,12 @@ class UnifiedAuthProvider(AuthProvider):
         }
         return jwt.encode(payload, key, algorithm="HS256")
 
-    def _check_runner_bearer(self, request: HTTPConnection) -> str | None:
-        """Resolve a header-mode runner bearer to its session owner.
-
-        Trust model: the server is the issuer — it minted this bearer from
-        the runner's binding token for the owner of the session bound to that
-        runner. The bearer is honored only alongside the same binding token
-        (proof of possession) and acts with exactly the owner's permissions.
+    def runner_identity(self, request: HTTPConnection) -> tuple[str, str] | None:
+        """Resolve a header-mode runner bearer to ``(owner user id, runner id)``.
 
         :param request: The incoming HTTP request or WebSocket.
-        :returns: The owner user id, or ``None`` when no valid runner
-            bearer + matching binding token is presented.
+        :returns: The pair, or ``None`` when no valid runner bearer + matching binding token
+            is presented.
         """
         import jwt
 
@@ -743,7 +738,22 @@ class UnifiedAuthProvider(AuthProvider):
             token_bound_runner_id(binding), runner_id
         ):
             return None
-        return user_id
+        return user_id, runner_id
+
+    def _check_runner_bearer(self, request: HTTPConnection) -> str | None:
+        """Resolve a header-mode runner bearer to its session owner.
+
+        Trust model: the server is the issuer — it minted this bearer from
+        the runner's binding token for the owner of the session bound to that
+        runner. The bearer is honored only alongside the same binding token
+        (proof of possession) and acts with exactly the owner's permissions.
+
+        :param request: The incoming HTTP request or WebSocket.
+        :returns: The owner user id, or ``None`` when no valid runner
+            bearer + matching binding token is presented.
+        """
+        identity = self.runner_identity(request)
+        return identity[0] if identity else None
 
     def _check_cookie(self, request: HTTPConnection) -> str | None:
         """Validate the session cookie or Bearer token and return the

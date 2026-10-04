@@ -2475,7 +2475,7 @@ class SqlVaultAudit(OmnigentBase):
     """
     SQLAlchemy model for the ``vault_audit`` table: who touched which secret, never a value.
 
-    :param action: ``create``, ``fill`` or ``delete``.
+    :param action: ``create``, ``fill``, ``delete`` or ``refuse`` (a denied fill).
     :param secret_id: The secret (kept after the secret is deleted).
     :param session_id: The session a fill ran in, or ``None``.
     """
@@ -2498,6 +2498,8 @@ class SqlVaultAudit(OmnigentBase):
     at: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __table_args__ = (
-        CheckConstraint("action IN ('create', 'fill', 'delete')", name="ck_vault_audit_action"),
+        CheckConstraint(
+            "action IN ('create', 'fill', 'delete', 'refuse')", name="ck_vault_audit_action"
+        ),
         Index("ix_vault_audit_secret", "workspace_id", "secret_id", "at"),
     )

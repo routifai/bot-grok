@@ -28,13 +28,37 @@ PASSWORD = "hunter2-Zq9!"
 SESSION = "b" * 32
 
 
+class _Auth:
+    """Every caller is owner u1; a runner bearer is modelled by the X-Runner header."""
+
+    def get_user_id(self, request: Request) -> str:
+        return "u1"
+
+    def runner_identity(self, request: Request) -> tuple[str, str] | None:
+        runner = request.headers.get("x-runner")
+        return ("u1", runner) if runner else None
+
+
+class _Convs:
+    def get_runner_ids(self, ids: list[str]) -> dict[str, str | None]:
+        return {SESSION: "r1"}
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv(VAULT_KEY_ENV, base64.b64encode(os.urandom(32)).decode())
     uri = f"sqlite:///{tmp_path / 'v.db'}"
     OmnigentBase.metadata.create_all(get_or_create_engine(uri))
     app = FastAPI()
-    app.include_router(create_vault_router(VaultStore(uri)), prefix="/v1")
+    app.include_router(
+        create_vault_router(
+            VaultStore(uri),
+            conversation_store=_Convs(),
+            auth_provider=_Auth(),  # type: ignore[arg-type]
+        ),
+        prefix="/v1",
+    )
+    app.state.store = VaultStore(uri)
 
     @app.exception_handler(OmnigentError)
     async def _err(_: Request, exc: OmnigentError) -> JSONResponse:
@@ -112,7 +136,7 @@ class _Client:
 
     async def post(self, url: str, json: Any = None, **_: Any) -> httpx.Response:
         self.posts.append(url)
-        r = self.tc.post(url, json=json)
+        r = self.tc.post(url, json=json, headers={"x-runner": "r1"})
         return httpx.Response(r.status_code, content=r.content)
 
 
@@ -193,3 +217,56 @@ def test_fill_needs_local_browser_and_helper_cannot_request(
         )
     )
     assert "not available to sub-agent" in out
+
+
+def _direct_fill(client: TestClient, **headers: str) -> Any:
+    return client.post(
+        "/v1/me/vault/fill",
+        json={"name": "acme", "field": "password", "session_id": SESSION},
+        headers=headers,
+    )
+
+
+def test_fill_refused_for_owner_without_runner_bearer_and_audited(client: TestClient) -> None:
+    client.post("/v1/me/vault", json=_body())
+    resp = _direct_fill(client)
+    assert resp.status_code == 403 and PASSWORD not in resp.text
+    entry = client.get("/v1/me/vault").json()["entries"][0]
+    actions = [a for a, _, _ in client.app.state.store.audit(entry["id"], user_id="u1")]  # type: ignore[attr-defined]
+    assert actions == ["create", "refuse"]
+
+
+def test_fill_refused_for_runner_of_another_session(client: TestClient) -> None:
+    client.post("/v1/me/vault", json=_body())
+    resp = _direct_fill(client, **{"x-runner": "r2"})
+    assert resp.status_code == 403 and PASSWORD not in resp.text
+    assert _direct_fill(client, **{"x-runner": "r1"}).json()["value"] == PASSWORD
+
+
+def test_request_is_single_use_and_expires(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def open_request() -> dict[str, Any]:
+        return client.post(
+            "/v1/me/vault/requests",
+            json={"session_id": SESSION, "name": "acme", "site": "https://acme.test"},
+        ).json()
+
+    used = open_request()
+    assert client.post("/v1/me/vault", json=_body(request_id=used["id"])).status_code == 200
+    assert client.post("/v1/me/vault", json=_body(request_id=used["id"])).status_code == 400
+    old = open_request()
+    mismatch = open_request()
+    from omnigent.stores import vault_store
+
+    real = vault_store.now_epoch
+    monkeypatch.setattr(vault_store, "now_epoch", lambda: real() + 16 * 60)
+    assert client.get(f"/v1/me/vault/requests/{old['id']}").json()["status"] == "expired"
+    assert client.post("/v1/me/vault", json=_body(request_id=old["id"])).status_code == 400
+    monkeypatch.setattr(vault_store, "now_epoch", real)
+    assert (
+        client.post(
+            "/v1/me/vault", json=_body(name="other", request_id=mismatch["id"])
+        ).status_code
+        == 400
+    )
