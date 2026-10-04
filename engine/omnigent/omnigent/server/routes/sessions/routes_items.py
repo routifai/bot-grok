@@ -405,6 +405,7 @@ def register_items_routes(
         session_id: str,
         limit: int = Query(default=20, ge=1, le=100),
         before: int | None = Query(default=None),
+        tz: str | None = Query(default=None, max_length=64),
     ) -> PaginatedList:
         """
         List the Activity Feed for ``session_id``'s Super Chat family.
@@ -434,6 +435,7 @@ def register_items_routes(
             session_id,
             before=before,
             limit=limit,
+            tz=tz,
         )
         allowed_ids = await _caller_readable_ids(
             user_id,
@@ -455,7 +457,7 @@ def register_items_routes(
             schedule_missing_titles(
                 conversation_store, background_title_coordinator, missing_titles, title_chats
             )
-        return PaginatedList(data=[activity_to_dict(activity) for activity in activities])
+        return PaginatedList(data=[activity_to_dict(activity, tz) for activity in activities])
 
     # ── GET /sessions/{session_id}/activities/{activity_id} ──────
     # One Activity in full: steps carry their capped call/result detail.
@@ -468,6 +470,7 @@ def register_items_routes(
         request: Request,
         session_id: str,
         activity_id: str,
+        tz: str | None = Query(default=None, max_length=64),
     ) -> dict[str, Any]:
         """
         Return one Activity with full step detail.
@@ -495,6 +498,7 @@ def register_items_routes(
             conversation_store,
             session_id,
             activity_id,
+            tz,
         )
         if activity is None:
             raise _session_not_found()
@@ -503,4 +507,4 @@ def register_items_routes(
         )
         if activity.chat_id not in allowed_ids:
             raise _session_not_found()
-        return activity_to_dict(activity)
+        return activity_to_dict(activity, tz)

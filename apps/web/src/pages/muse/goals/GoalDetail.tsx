@@ -31,12 +31,15 @@ export function GoalDetail({
   color,
   onBack,
   onChanged,
+  onPlanIt,
 }: {
   goal: Goal;
   /** The Muse's color, for the progress ring. */
   color: string;
   onBack: () => void;
   onChanged: (updated: Goal) => void;
+  /** Asks the Muse, in the Conversation, to propose a plan for this Goal. */
+  onPlanIt?: (goal: Goal) => void;
 }) {
   const { t, i18n } = useLingui();
   const [statusBusy, setStatusBusy] = useState(false);
@@ -107,7 +110,9 @@ export function GoalDetail({
         ? t`Paused`
         : status === "working"
           ? t`Working on it`
-          : t`On track`;
+          : status === "noPlan"
+            ? t`No plan yet`
+            : t`On track`;
 
   return (
     <MuseColumn data-testid="goal-detail" className="pb-16">
@@ -174,6 +179,17 @@ export function GoalDetail({
         </div>
       ) : null}
       {statusError ? <p className="mt-3 text-[13px] text-destructive">{statusError}</p> : null}
+
+      {status === "noPlan" && onPlanIt ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-5 rounded-full px-4"
+          onClick={() => onPlanIt(goal)}
+        >
+          <Trans>Plan it</Trans>
+        </Button>
+      ) : null}
 
       {goal.openProposal ? (
         <div className="mt-8">

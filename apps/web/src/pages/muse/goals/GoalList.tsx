@@ -43,7 +43,7 @@ function GoalCard({
   const firstPlan = goal.tasks.length === 0 && goal.openProposal;
 
   const meta = [
-    firstPlan ? t`${steps.length} steps planned` : t`${done} of ${total}`,
+    firstPlan ? t`${steps.length} steps planned` : total > 0 ? t`${done} of ${total}` : null,
     due ? (due.kind === "absolute" ? t`Due ${due.date}` : t`in ${due.weeks} weeks`) : null,
   ]
     .filter(Boolean)
@@ -79,6 +79,10 @@ function GoalCard({
         ) : status === "working" ? (
           <span className="shrink-0 text-[13px] text-muted-foreground">
             <Trans>Working</Trans>
+          </span>
+        ) : status === "noPlan" ? (
+          <span className="shrink-0 text-[13px] text-muted-foreground">
+            <Trans>No plan yet</Trans>
           </span>
         ) : null}
       </div>

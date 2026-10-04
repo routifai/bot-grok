@@ -17,6 +17,7 @@ export const ActivitySourceSchema = z.enum([
   "turn",
   "side_chat",
   "background",
+  "housekeeping",
   "scheduled",
   "goal",
 ]);

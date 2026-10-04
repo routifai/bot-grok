@@ -83,7 +83,9 @@ async def test_activities_empty_for_plain_session(client: httpx.AsyncClient) -> 
 async def test_activities_list_and_detail_for_superside_chat_session(
     client: httpx.AsyncClient,
     db_uri: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("omnigent.superchat.activity._MIN_TURN_STEPS", 1)
     session = await _create_session(client, "superside-agent")
     conv_store = SqlAlchemyConversationStore(db_uri)
     conv_store.set_labels(session["id"], {_MODE_LABEL: _MODE_VALUE})
@@ -195,10 +197,11 @@ async def auth_client(auth_app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 
 
 async def test_activities_hide_family_members_the_caller_cannot_read(
-    auth_client: httpx.AsyncClient, db_uri: str
+    auth_client: httpx.AsyncClient, db_uri: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Bob has READ on one Side Chat only; the Super Chat's and the other
     Side Chat's own activities must not leak into Bob's feed."""
+    monkeypatch.setattr("omnigent.superchat.activity._MIN_TURN_STEPS", 1)
     conv_store = SqlAlchemyConversationStore(db_uri)
     perm_store = SqlAlchemyPermissionStore(db_uri)
 

@@ -257,3 +257,30 @@ it("tapping an empty-state suggestion chip calls onSendIdea with its text", asyn
     vi.unstubAllGlobals();
   }
 });
+
+it("shows 'No plan yet' for a goal without a plan, and Plan it asks the Muse in the Conversation", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.list.mockResolvedValue([goal({ tasks: [], openProposal: null })]);
+  const onSendIdea = vi.fn();
+  const page = await renderGoals("bot-1", onSendIdea);
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("No plan yet");
+      });
+    });
+    expect(page.container.textContent).not.toContain("On track");
+    await act(async () => {
+      page.container.querySelector<HTMLButtonElement>("[data-testid='goal-row']")?.click();
+    });
+    await act(async () => {
+      findButton(page.container, "Plan it").click();
+    });
+    expect(onSendIdea).toHaveBeenCalledWith(
+      'Please propose a plan for my goal "Conversational Japanese before Kyoto".',
+    );
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});

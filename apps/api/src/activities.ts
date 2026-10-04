@@ -41,13 +41,16 @@ async function requireSuperChat(
   deps: ActivitiesDeps,
   actor: Actor,
   botId: string,
-): Promise<{ superSessionId: string; email: string }> {
+): Promise<{ superSessionId: string; email: string; timezone: string | undefined }> {
   const [bot, user] = await Promise.all([
     deps.prisma.bot.findFirst({
       where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
       select: { id: true },
     }),
-    deps.prisma.user.findUnique({ where: { id: actor.userId }, select: { email: true } }),
+    deps.prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { email: true, timezone: true },
+    }),
   ]);
   if (!bot || !user) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
   const session = await deps.prisma.omnigentSession.findUnique({
@@ -57,7 +60,11 @@ async function requireSuperChat(
   if (!session) {
     throw new ORPCError("NOT_FOUND", { message: "This Muse has no Conversation yet" });
   }
-  return { superSessionId: session.omnigentSessionId, email: user.email };
+  return {
+    superSessionId: session.omnigentSessionId,
+    email: user.email,
+    timezone: user.timezone ?? undefined,
+  };
 }
 
 export async function listActivities(
@@ -67,11 +74,12 @@ export async function listActivities(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ActivityPage> {
   const client = requireClient(env);
-  const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
+  const { superSessionId, email, timezone } = await requireSuperChat(deps, actor, input.botId);
   const page = await onSuperChat(
     listOmnigentActivities(client, email, superSessionId, {
       before: input.before,
       limit: input.limit,
+      tz: timezone,
     }),
   );
   const secrets = client.secrets ?? [];
@@ -88,9 +96,9 @@ export async function getActivity(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<Activity> {
   const client = requireClient(env);
-  const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
+  const { superSessionId, email, timezone } = await requireSuperChat(deps, actor, input.botId);
   const activity = await onSuperChat(
-    getOmnigentActivity(client, email, superSessionId, input.activityId),
+    getOmnigentActivity(client, email, superSessionId, input.activityId, { tz: timezone }),
   );
   return redactActivity(mapActivity(activity), client.secrets ?? []);
 }

@@ -5,7 +5,6 @@ from __future__ import annotations
 import builtins
 import json
 import uuid
-from typing import Any
 
 from sqlalchemy import asc, delete, select
 from sqlalchemy.orm import Session
@@ -25,9 +24,7 @@ from omnigent.db.utils import (
 )
 from omnigent.entities import Objective, ObjectiveProposal, ObjectiveTask
 from omnigent.entities.objective import OBJECTIVE_STATUSES, OBJECTIVE_TASK_STATUSES
-from omnigent.stores.objective_store import ObjectiveStore, ProposalNotOpenError
-
-_UNSET: Any = object()
+from omnigent.stores.objective_store import _UNSET, ObjectiveStore, ProposalNotOpenError
 
 
 def _task_entity(row: SqlObjectiveTask) -> ObjectiveTask:

@@ -148,7 +148,9 @@ def test_list_chat_family_empty_for_non_superside_chat_session(
 
 def test_list_activities_covers_turn_and_sub_agent(
     conversation_store: SqlAlchemyConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("omnigent.superchat.activity._MIN_TURN_STEPS", 1)
     family = _build_super_chat_family(conversation_store, suffix="a")
     activities = list_activities(conversation_store, family["super_chat"].id)
     kinds_by_chat = {(a.kind, a.chat_id) for a in activities}
@@ -167,6 +169,7 @@ def test_list_activities_covers_the_newest_turn_beyond_the_scan_limit(
     only the oldest items and silently drop the current turn."""
     import omnigent.superchat.activity as activity_mod
 
+    monkeypatch.setattr(activity_mod, "_MIN_TURN_STEPS", 1)
     monkeypatch.setattr(activity_mod, "_ITEMS_SCAN_LIMIT", 15)  # 5 turns' worth
 
     super_chat = conversation_store.create_conversation(

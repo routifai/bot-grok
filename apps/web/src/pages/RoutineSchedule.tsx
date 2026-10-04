@@ -168,9 +168,12 @@ function describeCronPresetLocalized(
 export function RoutineSchedule({
   value,
   onChange,
+  flat = false,
 }: {
   value: CronPreset;
   onChange: (next: CronPreset) => void;
+  /** Drops the schedule's own bordered box, for use inside a card that already frames it. */
+  flat?: boolean;
 }) {
   const { i18n, t } = useLingui();
   const [isEditing, setIsEditing] = useState(false);
@@ -228,7 +231,7 @@ export function RoutineSchedule({
   );
 
   return (
-    <div className="mt-2 rounded-xl border border-border p-3">
+    <div className={flat ? undefined : "mt-2 rounded-xl border border-border p-3"}>
       {!isEditing ? (
         <button
           type="button"

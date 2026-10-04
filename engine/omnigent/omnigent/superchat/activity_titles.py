@@ -29,6 +29,8 @@ ACTIVITY_TITLE_INSTRUCTIONS = (
     '"Check Tesla\'s latest price", "Study your recent work" or "Follow AI agent launches". '
     "Use plain words: no greetings, quotes, dates, ids or tool names, and no trailing "
     "punctuation. "
+    "Never use internal words in the title or summary: sub-agent, subagent, helper, "
+    "background task, session, tool. "
     "When the message also has a Result section, continue the same line with ' | ' and a "
     "summary of what that result says: at most 12 words, past tense, concrete (the finding "
     "or what changed), never an acknowledgement like 'Perfect' or 'Done' and never a "
@@ -75,6 +77,20 @@ def plain_text(text: str) -> str:
     return " ".join(_MARKDOWN_NOISE.sub(" ", _MARKDOWN_LINK.sub(r"\1", text)).split())
 
 
+_INTERNAL_PHRASES = (
+    (re.compile(r"\bbackground[\s-]+tasks?\b", re.IGNORECASE), "task"),
+    (re.compile(r"\bsessions?\b", re.IGNORECASE), "chat"),
+)
+_INTERNAL_WORDS = re.compile(r"\b(?:sub[\s-]?agents?|helpers?|tools?)\b", re.IGNORECASE)
+
+
+def scrub_internal_words(text: str) -> str:
+    """``text`` without the engine words (sub-agent, Helper, background task, session, tool)."""
+    for pattern, replacement in _INTERNAL_PHRASES:
+        text = pattern.sub(replacement, text)
+    return " ".join(_INTERNAL_WORDS.sub(" ", text).split())
+
+
 def _sentence_case(text: str) -> str:
     return text[:1].upper() + text[1:] if text else text
 
@@ -97,7 +113,7 @@ def tidy_request_title(text: str | None, *, limit: int = TITLE_MAX_CHARS) -> str
     """
     if not text:
         return None
-    collapsed = plain_text(text)
+    collapsed = scrub_internal_words(plain_text(text))
     stripped = _TRAILING_PUNCTUATION.sub("", _FILLER_PREFIX.sub("", collapsed, count=1))
     if len(stripped) < 2:
         return None
@@ -112,7 +128,7 @@ def clean_generated_title(raw: str | None) -> str | None:
     """
     if not raw:
         return None
-    title = _TRAILING_PUNCTUATION.sub("", " ".join(raw.split()).strip("'\"`“”‘’"))
+    title = _TRAILING_PUNCTUATION.sub("", scrub_internal_words(raw).strip("'\"`“”‘’"))
     if title.endswith("…"):
         return None
     if len(title) < 3 or len(title) > TITLE_MAX_CHARS or len(title.split()) > _TITLE_MAX_WORDS:
@@ -135,7 +151,7 @@ def clean_generated_label(raw: str | None) -> str | None:
     title = clean_generated_title(title_part)
     if title is None:
         return None
-    summary = _TRAILING_PUNCTUATION.sub("", " ".join(summary_part.split()).strip("'\"`“”‘’"))
+    summary = _TRAILING_PUNCTUATION.sub("", scrub_internal_words(summary_part).strip("'\"`“”‘’"))
     summary = strip_reply_filler(summary) or ""
     if (
         len(summary) < 8
@@ -176,6 +192,11 @@ def is_generic_title(title: str | None) -> bool:
     return not stripped or bool(_GENERIC_TITLE.match(stripped)) or stripped.startswith("__")
 
 
+def strip_fire_suffix(title: str) -> str:
+    """``title`` without the engine's UTC collision suffix (`` (Oct 03 07:00 UTC)``)."""
+    return _FIRE_SUFFIX.sub("", title.strip()).strip()
+
+
 def scheduled_display_title(task_name: str) -> str | None:
     """The display title of a scheduled Helper from its (possibly suffixed) task name.
 
@@ -183,7 +204,7 @@ def scheduled_display_title(task_name: str) -> str | None:
     other task (a followed topic, a report) shows its own name. Returns ``None`` when the
     name is empty or only an id.
     """
-    name = _FIRE_SUFFIX.sub("", task_name.strip()).strip()
+    name = scrub_internal_words(_FIRE_SUFFIX.sub("", task_name.strip()))
     if is_generic_title(name):
         return None
     return _STANDING_TASK_TITLES.get(name.lower()) or _clip(_sentence_case(name), TITLE_MAX_CHARS)

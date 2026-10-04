@@ -284,3 +284,19 @@ async def test_finished_turn_gets_a_model_written_summary(
     [done] = list_activities(conversation_store, chat.id)
     assert (done.title, done.summary) == ("Check Tesla's price", "Tesla closed at $242 today")
     assert activities_missing_titles([done]) == []
+
+
+def test_internal_words_never_reach_titles_or_summaries() -> None:
+    from omnigent.superchat.activity_titles import scrub_internal_words
+
+    assert scrub_internal_words("Sub-agent finished the background task in a session") == (
+        "finished the task in a chat"
+    )
+    label = clean_generated_label("Compare approvals | Helper compared three approval flows")
+    assert label == "Compare approvals | Compared three approval flows"
+    assert tidy_request_title("Ask the helper to compare approvals tools") == (
+        "Ask the to compare approvals"
+    )
+    assert "sub-agent, subagent, helper, background task, session, tool" in (
+        ACTIVITY_TITLE_INSTRUCTIONS
+    )

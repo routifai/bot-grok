@@ -574,3 +574,97 @@ def test_a_scheduled_helper_without_a_usable_name_is_named_from_its_task() -> No
     assert activity.title == "Track new AI agent launches every Monday"
     assert activity.source == "scheduled"
     assert activity.title_prompt is not None
+
+
+# ── feed filtering and housekeeping grouping ─────────────────────────────
+
+
+def _row(
+    id_: str,
+    *,
+    kind: str = "turn",
+    source: str = "turn",
+    started_at: int = 1_000,
+    finished_at: int | None = 1_005,
+    tools: tuple[str, ...] = ("a",),
+    title: str = "T",
+):
+    from omnigent.superchat.activity import STATUS_DONE, Activity, Step
+
+    return Activity(
+        id=id_,
+        kind=kind,
+        chat_id="c",
+        title=title,
+        outcome=None,
+        status=STATUS_DONE,
+        started_at=started_at,
+        finished_at=finished_at,
+        steps=[
+            Step(item_id=f"s{i}", title=t, created_at=started_at, tool=t)
+            for i, t in enumerate(tools)
+        ],
+        source=source,
+    )
+
+
+def test_feed_omits_quick_turns_and_keeps_real_work() -> None:
+    from omnigent.superchat.activity import _feed
+
+    rows = _feed(
+        [
+            _row("quick"),
+            _row("steps", tools=("a", "b", "c")),
+            _row("browser", tools=("browser_navigate",)),
+            _row("slow", finished_at=1_061),
+            _row("helper", kind="sub_agent", source="background", tools=()),
+            _row("goal", kind="sub_agent", source="goal", tools=()),
+        ],
+        None,
+    )
+    assert {r.id for r in rows} == {"steps", "browser", "slow", "helper", "goal"}
+
+
+def test_housekeeping_is_one_row_per_local_day() -> None:
+    from omnigent.superchat.activity import HOUSEKEEPING_TITLE, _feed
+
+    # 2026-10-05 02:30 UTC and 2026-10-05 03:30 UTC are still Oct 4 in New York.
+    base = 1_791_167_400
+    runs = [
+        _row(
+            f"h{i}",
+            kind="sub_agent",
+            source="housekeeping",
+            started_at=base + i * 3600,
+            tools=(),
+            title="Daily note (Oct 05 02:30 UTC)",
+        )
+        for i in range(2)
+    ] + [_row("h_next", kind="sub_agent", source="housekeeping", started_at=base + 86_400 * 2)]
+    rows = _feed(runs, "America/New_York")
+    upkeep = [r for r in rows if r.source == "housekeeping"]
+    assert len(upkeep) == 2
+    first = min(upkeep, key=lambda r: r.started_at)
+    assert (first.title, first.summary) == (HOUSEKEEPING_TITLE, "2 updates")
+    assert [s.title for s in first.steps] == ["Daily note", "Daily note"]
+    assert "UTC" not in "".join(s.title for s in first.steps)
+
+
+def test_adhoc_helper_is_housekeeping_and_its_title_has_no_utc_suffix() -> None:
+    conv = _conv(
+        "conv_child",
+        kind="sub_agent",
+        title="dreamer:Dreaming (Oct 04 22:53 UTC)",
+        labels={"omnigent.subagent.adhoc": "task_1"},
+        live_status="idle",
+        sub_agent_name="dreamer",
+    )
+    items = [
+        _msg("u1", "user", "Tidy memory", created_at=1),
+        _msg("a1", "assistant", "ok", created_at=2),
+    ]
+    [activity] = _activities_for_conversation(
+        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
+    )
+    assert activity.source == "housekeeping"
+    assert "UTC" not in activity.title

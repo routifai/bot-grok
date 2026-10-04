@@ -5266,6 +5266,49 @@ def _objective_plan(raw: object) -> list[dict[str, str]] | None:
     return plan
 
 
+_TITLE_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_TITLE_STOPWORDS = frozenset({"a", "an", "the", "of", "for", "to", "and", "our", "my"})
+
+
+def _title_tokens(title: str) -> frozenset[str]:
+    """Lowercased word set of a goal title, minus filler words."""
+    return frozenset(
+        t for t in _TITLE_TOKEN_RE.findall(title.lower()) if t not in _TITLE_STOPWORDS
+    )
+
+
+def _titles_match(a: str, b: str) -> bool:
+    """True when two goal titles are clearly the same goal."""
+    ta, tb = _title_tokens(a), _title_tokens(b)
+    if not ta or not tb:
+        return False
+    if ta <= tb or tb <= ta:
+        return True
+    return len(ta & tb) / len(ta | tb) >= 0.6
+
+
+async def _find_duplicate_objective(
+    server_client: httpx.AsyncClient, conversation_id: str, title: str
+) -> dict[str, object] | None:
+    """Return the owner's active objective in this Conversation that matches *title*."""
+    resp = await server_client.get(
+        f"/v1/objectives?parent_session_id={conversation_id}", timeout=30.0
+    )
+    if resp.status_code >= 400:
+        return None
+    body = resp.json()
+    items = body.get("objectives") if isinstance(body, dict) else None
+    for obj in items if isinstance(items, list) else []:
+        if (
+            isinstance(obj, dict)
+            and obj.get("status") == "active"
+            and isinstance(obj.get("title"), str)
+            and _titles_match(title, obj["title"])
+        ):
+            return obj
+    return None
+
+
 async def _execute_objective_tool(
     tool_name: str,
     arguments: str,
@@ -5319,6 +5362,17 @@ async def _execute_objective_tool(
             plan = _objective_plan(args.get("plan"))
             if plan is None or not isinstance(args.get("title"), str):
                 return json.dumps({"error": "objective_create requires title and a plan list"})
+            existing = await _find_duplicate_objective(
+                server_client, conversation_id, args["title"]
+            )
+            if existing is not None:
+                return json.dumps(
+                    {
+                        **existing,
+                        "note": "already exists — update it or propose a plan change",
+                        "already_exists": True,
+                    }
+                )
             payload: dict[str, object] = {
                 "parent_session_id": conversation_id,
                 "title": args["title"],

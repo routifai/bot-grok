@@ -244,7 +244,12 @@ def format_subagent_wake_notice_with_result(
         )
     else:
         body = text
-    return f"[System: sub-agent {agent}/{title} finished ({status}) — result:\n{body}]"
+    return (
+        f"[System: sub-agent {agent}/{title} finished ({status}) — result:\n{body}\n"
+        "Use this Result to complete what the person originally asked for: deliver the finished "
+        "thing (the answer, comparison or draft, as a card or file if that fits), not a status "
+        "update. Mention anything still open in one line. Do not raise unrelated topics.]"
+    )
 
 
 # ── Archived Originating Side Chat: redirect the Result to its Super Chat ─

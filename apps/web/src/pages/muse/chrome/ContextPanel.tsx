@@ -70,6 +70,7 @@ const IN_PROGRESS_TONE: Record<GoalDisplayStatus, "attention" | "live" | "neutra
   waiting: "attention",
   working: "live",
   paused: "neutral",
+  noPlan: "neutral",
   onTrack: "neutral",
 };
 
@@ -77,6 +78,7 @@ function inProgressLabel(status: GoalDisplayStatus): string {
   if (status === "waiting") return t`Waiting on you`;
   if (status === "working") return t`Working`;
   if (status === "paused") return t`Paused`;
+  if (status === "noPlan") return t`No plan yet`;
   return t`On track`;
 }
 

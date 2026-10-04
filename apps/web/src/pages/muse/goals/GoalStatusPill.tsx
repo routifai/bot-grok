@@ -7,6 +7,7 @@ const TONE: Record<GoalDisplayStatus, "neutral" | "live" | "attention" | "done">
   waiting: "attention",
   working: "live",
   paused: "neutral",
+  noPlan: "neutral",
   onTrack: "done",
 };
 
@@ -18,6 +19,7 @@ export function GoalStatusPill({ goal, className }: { goal: Goal; className?: st
     waiting: t`Waiting on you`,
     working: t`Working`,
     paused: t`Paused`,
+    noPlan: t`No plan yet`,
     onTrack: t`On track`,
   };
   return (

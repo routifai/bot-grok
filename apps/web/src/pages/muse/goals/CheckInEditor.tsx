@@ -47,6 +47,7 @@ export function CheckInEditor({
         {schedules.map((preset, index) => (
           <div key={index} className="p-3">
             <RoutineSchedule
+              flat
               value={preset}
               onChange={(next) => update(schedules.map((item, i) => (i === index ? next : item)))}
             />

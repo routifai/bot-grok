@@ -787,7 +787,7 @@ export interface OmnigentActivityStep {
 export interface OmnigentActivity {
   id: string;
   kind: "turn" | "sub_agent";
-  source: "turn" | "side_chat" | "background" | "scheduled" | "goal";
+  source: "turn" | "side_chat" | "background" | "housekeeping" | "scheduled" | "goal";
   chat_id: string;
   title: string;
   outcome: string | null;
@@ -805,7 +805,7 @@ export async function listOmnigentActivities(
   config: OmnigentClientConfig,
   email: string,
   superSessionId: string,
-  options: { before?: number; limit?: number } = {},
+  options: { before?: number; limit?: number; tz?: string } = {},
 ): Promise<OmnigentPaginatedList<OmnigentActivity>> {
   const url = new URL(
     `/v1/sessions/${encodeURIComponent(superSessionId)}/activities`,
@@ -813,6 +813,7 @@ export async function listOmnigentActivities(
   );
   if (options.before !== undefined) url.searchParams.set("before", String(options.before));
   if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
+  if (options.tz) url.searchParams.set("tz", options.tz);
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "list activities", config.secrets);
   return (await response.json()) as OmnigentPaginatedList<OmnigentActivity>;
@@ -824,14 +825,14 @@ export async function getOmnigentActivity(
   email: string,
   superSessionId: string,
   activityId: string,
+  options: { tz?: string } = {},
 ): Promise<OmnigentActivity> {
-  const response = await fetch(
-    new URL(
-      `/v1/sessions/${encodeURIComponent(superSessionId)}/activities/${encodeURIComponent(activityId)}`,
-      config.baseUrl,
-    ),
-    { headers: omnigentHeaders(config, email) },
+  const url = new URL(
+    `/v1/sessions/${encodeURIComponent(superSessionId)}/activities/${encodeURIComponent(activityId)}`,
+    config.baseUrl,
   );
+  if (options.tz) url.searchParams.set("tz", options.tz);
+  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "get activity", config.secrets);
   return (await response.json()) as OmnigentActivity;
 }

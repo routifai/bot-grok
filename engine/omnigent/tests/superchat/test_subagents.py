@@ -183,6 +183,21 @@ def test_wake_notice_inlines_short_result() -> None:
     assert "the vault key rotated on March 3" in notice
 
 
+def test_wake_notice_tells_the_muse_to_finish_the_original_request() -> None:
+    notice = format_subagent_wake_notice_with_result(
+        agent="researcher",
+        title="auth",
+        status="completed",
+        child_session_id="conv_child123",
+        result_text="r",
+    )
+    assert "complete what the person originally asked for" in notice
+    assert "not a status update" in notice
+    assert "still open in one line" in notice
+    assert "unrelated topics" in notice
+    assert notice.startswith("[System:") and notice.endswith("]")
+
+
 def test_wake_notice_handles_missing_result() -> None:
     notice = format_subagent_wake_notice_with_result(
         agent="researcher",

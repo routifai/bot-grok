@@ -106,6 +106,11 @@ export function GoalsScreen({
           color={avatarColor ?? DEFAULT_MUSE_COLOR}
           onBack={() => setSelectedGoalId(null)}
           onChanged={handleChanged}
+          onPlanIt={
+            onSendIdea
+              ? (goal) => onSendIdea(t`Please propose a plan for my goal "${goal.title}".`)
+              : undefined
+          }
         />
       ) : (
         <GoalList

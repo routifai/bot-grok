@@ -10,6 +10,7 @@ import {
   History,
   MessageCircle,
   MessagesSquare,
+  NotebookPen,
   Search,
   Target,
 } from "lucide-react";
@@ -35,6 +36,7 @@ export const ACTIVITY_SOURCE_ICON: Record<ActivitySource, LucideIcon> = {
   turn: MessageCircle,
   side_chat: MessagesSquare,
   background: Bot,
+  housekeeping: NotebookPen,
   scheduled: CalendarClock,
   goal: Target,
 };

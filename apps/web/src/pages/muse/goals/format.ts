@@ -66,7 +66,7 @@ export function checkInSummary(crons: string[]): string | null {
  * you (an open Proposal or a blocked Task), working (the Muse touched it in the last hour),
  * paused, or quietly on track.
  */
-export type GoalDisplayStatus = "waiting" | "working" | "paused" | "onTrack";
+export type GoalDisplayStatus = "waiting" | "working" | "paused" | "noPlan" | "onTrack";
 
 const WORKING_WINDOW_MS = 60 * 60 * 1000;
 
@@ -77,6 +77,7 @@ export function goalDisplayStatus(
   if (goal.status === "paused") return "paused";
   const hasBlockedTask = goal.tasks.some((task) => task.status === "blocked");
   if (goal.openProposal || hasBlockedTask) return "waiting";
+  if (goal.tasks.length === 0) return "noPlan";
   if (goal.lastWorkedAt && now - Date.parse(goal.lastWorkedAt) <= WORKING_WINDOW_MS)
     return "working";
   return "onTrack";

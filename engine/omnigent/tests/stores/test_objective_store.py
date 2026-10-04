@@ -58,6 +58,16 @@ def test_update_fields_and_status(store: SqlAlchemyObjectiveStore) -> None:
         store.update(oid, status="bogus")
 
 
+def test_status_only_update_keeps_due_and_other_proposals(store: SqlAlchemyObjectiveStore) -> None:
+    keep = _objective(store, due="2026-12-01")
+    other = _objective(store)
+    store.set_open_proposal(_id(), keep, reason="a", plan=[{"id": None, "title": "x"}])
+    out = store.update(other, status="archived")
+    assert out.status == "archived"  # type: ignore[union-attr]
+    assert store.get(keep).open_proposal is not None  # type: ignore[union-attr]
+    assert store.update(keep, status="archived").due == "2026-12-01"  # type: ignore[union-attr]
+
+
 def test_one_open_proposal_new_replaces_old(store: SqlAlchemyObjectiveStore) -> None:
     oid = _objective(store)
     first = store.set_open_proposal(_id(), oid, reason="a", plan=[{"id": None, "title": "x"}])

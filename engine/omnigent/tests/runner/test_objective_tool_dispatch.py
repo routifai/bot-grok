@@ -155,3 +155,59 @@ async def test_propose_normalizes_plan_and_validates_ids() -> None:
         conversation_id=_PARENT,
     )
     assert "objective_id" in json.loads(bad)["error"]
+
+
+class _ListClient(_Client):
+    def __init__(self, objectives: list[dict[str, Any]]) -> None:
+        super().__init__({_PARENT: {"kind": "default", "parent_session_id": None}})
+        self.objectives = objectives
+
+    async def get(self, url: str, *, timeout: object = None) -> _Resp:
+        if url.startswith("/v1/objectives?"):
+            self.calls.append(("GET", url, None))
+            return _Resp(body={"objectives": self.objectives})
+        return await super().get(url, timeout=timeout)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("existing", "new", "dup"),
+    [
+        (
+            "Ship approvals framework for bank assistant",
+            "Ship one-page approvals framework for bank assistant",
+            True,
+        ),
+        ("Approvals framework", "Ship the approvals framework now", True),
+        ("Ship approvals framework", "Prepare the March audit", False),
+    ],
+)
+async def test_create_returns_existing_similar_objective(
+    existing: str, new: str, dup: bool
+) -> None:
+    c = _ListClient([{"id": _OID, "title": existing, "status": "active", "open_proposal": None}])
+    out = json.loads(
+        await _execute_objective_tool(
+            "objective_create",
+            json.dumps({"title": new, "plan": ["a"]}),
+            server_client=c,
+            conversation_id=_PARENT,
+        )
+    )
+    posted = [x for x in c.calls if x[0] == "POST"]
+    if dup:
+        assert out["id"] == _OID and "already exists" in out["note"] and not posted
+    else:
+        assert posted
+
+
+@pytest.mark.asyncio
+async def test_create_ignores_archived_duplicate_and_never_touches_proposals() -> None:
+    c = _ListClient([{"id": _OID, "title": "Same goal", "status": "archived"}])
+    await _execute_objective_tool(
+        "objective_create",
+        json.dumps({"title": "Same goal", "plan": ["a"]}),
+        server_client=c,
+        conversation_id=_PARENT,
+    )
+    assert [x[1] for x in c.calls if x[0] != "GET"] == ["/v1/objectives"]

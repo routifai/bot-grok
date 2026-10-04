@@ -19,10 +19,15 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY, is_superside_chat
+from omnigent.context.labels import (
+    ADHOC_HELPER_LABEL_KEY,
+    SCHEDULED_HELPER_LABEL_KEY,
+    is_superside_chat,
+)
 from omnigent.entities import Conversation, ConversationItem
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.superchat.activity_titles import (
@@ -31,7 +36,9 @@ from omnigent.superchat.activity_titles import (
     is_generic_title,
     plain_text,
     scheduled_display_title,
+    scrub_internal_words,
     split_generated_label,
+    strip_fire_suffix,
     strip_reply_filler,
     tidy_request_title,
 )
@@ -56,6 +63,13 @@ SOURCE_SIDE_CHAT = "side_chat"
 SOURCE_BACKGROUND = "background"
 SOURCE_SCHEDULED = "scheduled"
 SOURCE_GOAL = "goal"
+#: Quiet upkeep (daily note, Dreaming, People): grouped into one row per local day.
+SOURCE_HOUSEKEEPING = "housekeeping"
+HOUSEKEEPING_PREFIX = "housekeeping"
+HOUSEKEEPING_TITLE = "Kept your notes up to date"
+#: A conversation turn is shown only when it did real work beyond a quick answer.
+_MIN_TURN_STEPS = 3
+_MIN_TURN_SECONDS = 60
 _GOAL_AGENT_TYPE = "goal"
 
 #: Env var overriding the per-chat Activity Feed items-scan limit below.
@@ -476,6 +490,8 @@ def _split_sub_agent_title(conversation: Conversation) -> tuple[str, str]:
 
 def _sub_agent_source(conversation: Conversation) -> str:
     """Where a Helper came from: a scheduled run (standing task, topic, Goal) or background."""
+    if ADHOC_HELPER_LABEL_KEY in conversation.labels:
+        return SOURCE_HOUSEKEEPING
     if SCHEDULED_HELPER_LABEL_KEY not in conversation.labels:
         return SOURCE_BACKGROUND
     return SOURCE_GOAL if conversation.sub_agent_name == _GOAL_AGENT_TYPE else SOURCE_SCHEDULED
@@ -494,16 +510,16 @@ def _sub_agent_title(
     delegated task is tidied for now and, with ``title_prompt`` set, named by the model.
     """
     if conversation.task_summary:
-        return conversation.task_summary, None
+        return strip_fire_suffix(scrub_internal_words(conversation.task_summary)), None
     if source != SOURCE_BACKGROUND:
         named = scheduled_display_title(display_title)
         if named:
             return named, None
     elif not is_generic_title(display_title):
-        return _truncate(display_title, _TITLE_MAX_CHARS), None
+        return _truncate(strip_fire_suffix(display_title), _TITLE_MAX_CHARS), None
     request = _user_request(task)
     return tidy_request_title(request) or (
-        "Background task" if source == SOURCE_BACKGROUND else "Scheduled task"
+        "Working on something" if source == SOURCE_BACKGROUND else "Scheduled work"
     ), (
         f"Request to name:\n{_truncate(request, _TITLE_PROMPT_REQUEST_CHARS)}" if request else None
     )
@@ -716,12 +732,79 @@ def _activities_for_conversation(
     return activities
 
 
+def _zone(tz: str | None) -> tzinfo:
+    try:
+        return ZoneInfo(tz) if tz else UTC
+    except (ZoneInfoNotFoundError, ValueError):
+        return UTC
+
+
+def local_day(epoch_seconds: int, tz: str | None = None) -> str:
+    """Calendar day (``YYYY-MM-DD``) of ``epoch_seconds`` in the person's time zone."""
+    return datetime.fromtimestamp(epoch_seconds, tz=_zone(tz)).date().isoformat()
+
+
+def _did_real_work(activity: Activity) -> bool:
+    """Whether a conversation turn is worth a row: it is not just a quick answer in chat."""
+    if len(activity.steps) >= _MIN_TURN_STEPS:
+        return True
+    if any(
+        step.tool and (step.tool.startswith("browser_") or "computer" in step.tool)
+        for step in activity.steps
+    ):
+        return True
+    end = activity.finished_at if activity.finished_at is not None else activity.started_at
+    return end - activity.started_at > _MIN_TURN_SECONDS
+
+
+def _housekeeping_row(day: str, runs: list[Activity]) -> Activity:
+    """One row for a local day's quiet upkeep runs; its Steps are the runs themselves."""
+    runs = sorted(runs, key=lambda run: run.started_at)
+    live = any(run.status == STATUS_IN_PROGRESS for run in runs)
+    count = len(runs)
+    return Activity(
+        id=f"{KIND_SUB_AGENT}:{HOUSEKEEPING_PREFIX}:{day}",
+        kind=KIND_SUB_AGENT,
+        chat_id=runs[-1].chat_id,
+        title=HOUSEKEEPING_TITLE,
+        outcome=None,
+        status=STATUS_IN_PROGRESS if live else STATUS_DONE,
+        started_at=runs[-1].started_at,
+        finished_at=None if live else max(run.finished_at or run.started_at for run in runs),
+        steps=[
+            Step(
+                item_id=run.id,
+                title=scrub_internal_words(strip_fire_suffix(run.title)) or "Updated your notes",
+                created_at=run.started_at,
+            )
+            for run in runs
+        ],
+        source=SOURCE_HOUSEKEEPING,
+        summary=f"{count} update{'s' if count != 1 else ''}",
+    )
+
+
+def _feed(activities: list[Activity], tz: str | None) -> list[Activity]:
+    """The feed's rows: work not visible in chat, upkeep grouped into one row per local day."""
+    rows: list[Activity] = []
+    upkeep: dict[str, list[Activity]] = {}
+    for activity in activities:
+        if activity.source == SOURCE_HOUSEKEEPING:
+            upkeep.setdefault(local_day(activity.started_at, tz), []).append(activity)
+        elif activity.kind != KIND_TURN or _did_real_work(activity):
+            rows.append(activity)
+    rows.extend(_housekeeping_row(day, runs) for day, runs in upkeep.items())
+    rows.sort(key=lambda activity: activity.started_at, reverse=True)
+    return rows
+
+
 def list_activities(
     conv_store: ConversationStore,
     session_id: str,
     *,
     before: int | None = None,
     limit: int = _DEFAULT_LIMIT,
+    tz: str | None = None,
 ) -> list[Activity]:
     """The user's Activity Feed: every Activity under one Super Chat's family.
 
@@ -731,6 +814,7 @@ def list_activities(
         this epoch timestamp.
     :param limit: Maximum Activities to return, newest-first (clamped to
         :data:`_MAX_LIMIT`).
+    :param tz: The person's IANA time zone; upkeep runs are grouped by their local day.
     :returns: Activities newest-first; ``[]`` when ``session_id`` doesn't
         resolve to a ``superside-chat`` Super Chat.
     """
@@ -758,7 +842,7 @@ def list_activities(
                 continue
             seen_turns.add(response_id)
         unique.append(activity)
-    activities = unique
+    activities = _feed(unique, tz)
     if before is not None:
         activities = [activity for activity in activities if activity.started_at < before]
     bounded_limit = max(1, min(limit, _MAX_LIMIT))
@@ -826,6 +910,7 @@ def get_activity(
     conv_store: ConversationStore,
     session_id: str,
     activity_id: str,
+    tz: str | None = None,
 ) -> Activity | None:
     """One Activity, in full (steps include capped call/result detail).
 
@@ -842,6 +927,11 @@ def get_activity(
     if super_chat_id is None:
         return None
     kind, _, rest = activity_id.partition(":")
+    if kind == KIND_SUB_AGENT and rest.startswith(f"{HOUSEKEEPING_PREFIX}:"):
+        for row in list_activities(conv_store, session_id, limit=_MAX_LIMIT, tz=tz):
+            if row.id == activity_id:
+                return row
+        return None
     if kind == KIND_SUB_AGENT:
         chat_id = rest
     elif kind == KIND_TURN:
@@ -860,13 +950,14 @@ def get_activity(
     return None
 
 
-def iso_date(epoch_seconds: int) -> str:
-    """UTC calendar-day string for grouping Activities by day.
+def iso_date(epoch_seconds: int, tz: str | None = None) -> str:
+    """Calendar-day string for grouping Activities by day.
 
     :param epoch_seconds: Unix epoch timestamp.
-    :returns: ``"YYYY-MM-DD"`` in UTC.
+    :param tz: The person's IANA time zone (UTC when unset or unknown).
+    :returns: ``"YYYY-MM-DD"`` in that zone.
     """
-    return datetime.fromtimestamp(epoch_seconds, tz=UTC).date().isoformat()
+    return local_day(epoch_seconds, tz)
 
 
 def step_to_dict(step: Step) -> dict[str, Any]:
@@ -883,7 +974,7 @@ def step_to_dict(step: Step) -> dict[str, Any]:
     return payload
 
 
-def activity_to_dict(activity: Activity) -> dict[str, Any]:
+def activity_to_dict(activity: Activity, tz: str | None = None) -> dict[str, Any]:
     """JSON-safe projection of one Activity, for either route."""
     return {
         "id": activity.id,
@@ -896,6 +987,6 @@ def activity_to_dict(activity: Activity) -> dict[str, Any]:
         "status": activity.status,
         "started_at": activity.started_at,
         "finished_at": activity.finished_at,
-        "date": iso_date(activity.started_at),
+        "date": iso_date(activity.started_at, tz),
         "steps": [step_to_dict(step) for step in activity.steps],
     }
