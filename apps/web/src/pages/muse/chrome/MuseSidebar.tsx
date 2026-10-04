@@ -1,5 +1,14 @@
 import type { ChatSummary, Goal, ThreadMessage } from "@aiden/contracts";
-import { cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
+import {
+  cn,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Bell,
@@ -95,6 +104,8 @@ export function MuseSidebar({
   onOpenSettings,
   onOpenChat,
   onNewDraft,
+  mobileOpen = false,
+  onMobileOpenChange,
 }: {
   botId: string;
   runs: readonly MuseLiveRun[];
@@ -113,6 +124,9 @@ export function MuseSidebar({
   onOpenChat: (chat: ChatSummary) => void;
   /** Opens an empty, unsent Side Chat draft. */
   onNewDraft: () => void;
+  /** Below `md` the sidebar is an off-canvas drawer; the shell owns whether it is open. */
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }) {
   const { t } = useLingui();
   // Only the Ask count is needed here — the Muse's face, name, and busy caption now live
@@ -120,7 +134,7 @@ export function MuseSidebar({
   const { askCount } = useMuseLiveState({ botId, runs, messages });
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
-  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const [desktopCollapsed, toggleCollapsed] = useSidebarCollapsed();
   const nav = useGlide();
 
   useEffect(() => {
@@ -140,6 +154,20 @@ export function MuseSidebar({
     };
   }, [botId]);
 
+  const closeDrawer = () => onMobileOpenChange?.(false);
+  const go = <A extends unknown[]>(fn: (...args: A) => void, ...args: A) => {
+    fn(...args);
+    closeDrawer();
+  };
+
+  // Settings and the Waiting sheet are modals of their own: opening one while the drawer is
+  // still mounted loses it to the drawer's focus handling, so they open once it has left.
+  const goOverlay = (fn: () => void) => {
+    if (!mobileOpen) return fn();
+    closeDrawer();
+    window.setTimeout(fn, 220);
+  };
+
   const activeGoals = goals.filter((goal) => goal.status === "active");
 
   const rows: Array<{
@@ -156,7 +184,7 @@ export function MuseSidebar({
       icon: <MessageCircle />,
       label: t`Conversation`,
       current: active === "conversation" && !activeChatId,
-      onClick: () => onNavigate("conversation"),
+      onClick: () => go(onNavigate, "conversation"),
     },
     {
       key: "goals",
@@ -164,28 +192,28 @@ export function MuseSidebar({
       label: t`Goals`,
       meta: activeGoals.length || undefined,
       current: active === "goals",
-      onClick: () => onNavigate("goals"),
+      onClick: () => go(onNavigate, "goals"),
     },
     {
       key: "feed",
       icon: <Newspaper />,
       label: t`Feed`,
       current: active === "feed",
-      onClick: () => onNavigate("feed"),
+      onClick: () => go(onNavigate, "feed"),
     },
     {
       key: "ideas",
       icon: <Lightbulb />,
       label: t`Ideas`,
       current: active === "ideas",
-      onClick: () => onNavigate("ideas"),
+      onClick: () => go(onNavigate, "ideas"),
     },
     {
       key: "library",
       icon: <Library />,
       label: t`Library`,
       current: active === "library",
-      onClick: () => onNavigate("library"),
+      onClick: () => go(onNavigate, "library"),
     },
     {
       key: "waiting",
@@ -193,125 +221,154 @@ export function MuseSidebar({
       label: t`Waiting on you`,
       meta: askCount || undefined,
       attention: askCount > 0,
-      onClick: onOpenWaiting,
+      onClick: () => goOverlay(onOpenWaiting),
     },
   ];
 
-  return (
-    <nav
-      data-testid="app-rail"
-      data-collapsed={collapsed || undefined}
-      aria-label={t`Sections`}
-      className={cn(
-        "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden border border-glass-border bg-glass px-3 pt-5 pb-4 shadow-float backdrop-blur-xl transition-[width] duration-200 ease-out motion-reduce:transition-none md:rounded-2xl",
-        collapsed ? "w-[84px]" : "w-[320px]",
-      )}
-    >
-      <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-sidebar-accent/80 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
-          style={{
-            height: nav.glide?.height ?? 44,
-            transform: `translateY(${nav.glide?.top ?? 0}px)`,
-            opacity: nav.glide ? 1 : 0,
-          }}
-        />
-        {rows.map((row) => (
-          <Fragment key={row.key}>
-            <RailRow
-              collapsed={collapsed}
-              icon={row.icon}
-              label={row.label}
-              meta={row.meta}
-              attention={row.attention}
-              current={row.current}
-              onClick={row.onClick}
-              onMouseEnter={nav.onRowEnter}
-            />
-            {row.key === "conversation" ? (
-              <ChatTree
-                state={chatListState}
+  const renderNav = (mobile: boolean) => {
+    const collapsed = !mobile && desktopCollapsed;
+    return (
+      <nav
+        data-testid={mobile ? "app-rail-drawer" : "app-rail"}
+        data-collapsed={collapsed || undefined}
+        aria-label={t`Sections`}
+        className={cn(
+          "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden px-3 pt-5 pb-4",
+          mobile
+            ? "h-full w-full overflow-y-auto"
+            : "hidden border border-glass-border bg-glass shadow-float backdrop-blur-xl transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex md:rounded-2xl",
+          !mobile && (collapsed ? "w-[84px]" : "w-[320px]"),
+        )}
+      >
+        <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-sidebar-accent/80 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
+            style={{
+              height: nav.glide?.height ?? 44,
+              transform: `translateY(${nav.glide?.top ?? 0}px)`,
+              opacity: nav.glide ? 1 : 0,
+            }}
+          />
+          {rows.map((row) => (
+            <Fragment key={row.key}>
+              <RailRow
                 collapsed={collapsed}
-                activeChatId={activeChatId ?? null}
-                onOpenChat={onOpenChat}
-                onNewDraft={onNewDraft}
+                icon={row.icon}
+                label={row.label}
+                meta={row.meta}
+                attention={row.attention}
+                current={row.current}
+                onClick={row.onClick}
+                onMouseEnter={nav.onRowEnter}
               />
-            ) : null}
-          </Fragment>
-        ))}
-      </div>
-
-      {activeGoals.length ? (
-        <div
-          aria-hidden={collapsed || undefined}
-          className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
-        >
-          <div className="ps-[19px] pb-2 text-[13.5px] font-semibold whitespace-nowrap text-muted-foreground">
-            <Trans>Goals</Trans>
-          </div>
-          {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
-            const done = goal.tasks.filter((task) => task.status === "done").length;
-            const waiting =
-              goal.openProposal != null || goal.tasks.some((task) => task.status === "blocked");
-            return (
-              <button
-                key={goal.id}
-                type="button"
-                tabIndex={collapsed ? -1 : undefined}
-                onClick={() => onNavigate("goals")}
-                className="flex items-center gap-3 rounded-xl ps-[26px] pe-3 py-2.5 text-start text-[15px] whitespace-nowrap text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-2 shrink-0 rounded-full",
-                    waiting ? "bg-warning" : "bg-muted-foreground/40",
-                  )}
+              {row.key === "conversation" ? (
+                <ChatTree
+                  state={chatListState}
+                  collapsed={collapsed}
+                  activeChatId={activeChatId ?? null}
+                  onOpenChat={(chat) => go(onOpenChat, chat)}
+                  onNewDraft={() => go(onNewDraft)}
                 />
-                <span className="min-w-0 flex-1 truncate" dir="auto">
-                  {goal.title}
-                </span>
-                <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
-                  {done}/{goal.tasks.length}
-                </span>
-              </button>
-            );
-          })}
+              ) : null}
+            </Fragment>
+          ))}
         </div>
-      ) : null}
 
-      <div className="app-no-drag mt-auto flex flex-col gap-0.5">
-        <RailRow
-          collapsed={collapsed}
-          icon={collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-          label={collapsed ? t`Expand sidebar` : t`Collapse sidebar`}
-          onClick={toggleCollapsed}
-        />
-        <RailRow
-          collapsed={collapsed}
-          icon={<Settings />}
-          label={t`Settings`}
-          onClick={onOpenSettings}
-        />
-        {personName ? (
+        {activeGoals.length ? (
           <div
-            title={collapsed ? personName : undefined}
-            className={cn(ROW, "mt-1 ps-[17px] text-[15.5px] text-sidebar-foreground")}
+            aria-hidden={collapsed || undefined}
+            className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
           >
-            <span
-              aria-hidden="true"
-              className="grid size-[26px] shrink-0 place-items-center rounded-full bg-foreground text-[12.5px] font-semibold text-background"
-            >
-              {personName.trim().charAt(0).toUpperCase()}
-            </span>
-            <span className={LABEL} dir="auto">
-              {personName}
-            </span>
+            <div className="ps-[19px] pb-2 text-[13.5px] font-semibold whitespace-nowrap text-muted-foreground">
+              <Trans>Goals</Trans>
+            </div>
+            {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
+              const done = goal.tasks.filter((task) => task.status === "done").length;
+              const waiting =
+                goal.openProposal != null || goal.tasks.some((task) => task.status === "blocked");
+              return (
+                <button
+                  key={goal.id}
+                  type="button"
+                  tabIndex={collapsed ? -1 : undefined}
+                  onClick={() => onNavigate("goals")}
+                  className="flex items-center gap-3 rounded-xl ps-[26px] pe-3 py-2.5 text-start text-[15px] whitespace-nowrap text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      waiting ? "bg-warning" : "bg-muted-foreground/40",
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate" dir="auto">
+                    {goal.title}
+                  </span>
+                  <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
+                    {done}/{goal.tasks.length}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         ) : null}
-      </div>
-    </nav>
+
+        <div className="app-no-drag mt-auto flex flex-col gap-0.5">
+          {mobile ? null : (
+            <RailRow
+              collapsed={collapsed}
+              icon={collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+              label={collapsed ? t`Expand sidebar` : t`Collapse sidebar`}
+              onClick={toggleCollapsed}
+            />
+          )}
+          <RailRow
+            collapsed={collapsed}
+            icon={<Settings />}
+            label={t`Settings`}
+            onClick={() => goOverlay(onOpenSettings)}
+          />
+          {personName ? (
+            <div
+              title={collapsed ? personName : undefined}
+              className={cn(ROW, "mt-1 ps-[17px] text-[15.5px] text-sidebar-foreground")}
+            >
+              <span
+                aria-hidden="true"
+                className="grid size-[26px] shrink-0 place-items-center rounded-full bg-foreground text-[12.5px] font-semibold text-background"
+              >
+                {personName.trim().charAt(0).toUpperCase()}
+              </span>
+              <span className={LABEL} dir="auto">
+                {personName}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </nav>
+    );
+  };
+
+  return (
+    <>
+      {renderNav(false)}
+      <Sheet open={mobileOpen} onOpenChange={(open) => onMobileOpenChange?.(open)}>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="w-[min(86vw,320px)] gap-0 border-glass-border bg-glass p-0 backdrop-blur-xl md:hidden"
+        >
+          <SheetTitle className="sr-only">
+            <Trans>Sections</Trans>
+          </SheetTitle>
+          <SheetDescription className="sr-only">
+            <Trans>Navigate</Trans>
+          </SheetDescription>
+          {renderNav(true)}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

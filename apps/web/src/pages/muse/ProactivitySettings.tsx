@@ -1,9 +1,10 @@
 import type { MuseSettings, Proactivity } from "@aiden/contracts";
 import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@aiden/contracts";
 import { cn, Switch } from "@aiden/ui-web";
+import { i18n } from "@lingui/core";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useId, useState } from "react";
-import { localTimezone } from "../../lib/local-timezone";
+import { formatClockTime, friendlyTimezone } from "../../lib/local-timezone";
 import { rpc } from "../../lib/rpc";
 import { MUSE_INSET_GROUP } from "./ui";
 
@@ -44,6 +45,41 @@ const ROW = "flex min-h-[52px] items-center justify-between gap-4 px-4";
 const TIME =
   "rounded-lg bg-muted px-2.5 py-1.5 text-[15px] tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+// Half-hour steps cover every sensible quiet-hours edge; an odd stored value is kept as an
+// extra option so the control never silently rewrites it.
+const HALF_HOURS = Array.from({ length: 48 }, (_, i) => {
+  const hh = String(Math.floor(i / 2)).padStart(2, "0");
+  return `${hh}:${i % 2 ? "30" : "00"}`;
+});
+
+function TimeSelect({
+  value,
+  label,
+  locale,
+  onChange,
+}: {
+  value: string;
+  label: string;
+  locale: string | undefined;
+  onChange: (value: string) => void;
+}) {
+  const options = HALF_HOURS.includes(value) ? HALF_HOURS : [...HALF_HOURS, value].sort();
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      className={TIME}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {formatClockTime(option, locale)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 /**
  * How eagerly the Muse works on Goals on its own, and the window it stays quiet in, as
  * iOS-style grouped rows. Saves each change immediately (optimistic); reverts and shows
@@ -54,7 +90,8 @@ export function ProactivitySettings({ botId }: { botId: string }) {
   const ids = useId();
   const [settings, setSettings] = useState<MuseSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const timezone = localTimezone();
+  const timezone = friendlyTimezone(undefined, i18n.locale || undefined);
+  const timeLocale = i18n.locale || undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -145,39 +182,29 @@ export function ProactivitySettings({ botId }: { botId: string }) {
           {quietHoursOn ? (
             <>
               <div className="ms-4 border-t border-border/70" />
-              <label className={ROW}>
-                <span className="text-[16px] text-foreground">
+              <div className={ROW}>
+                <span aria-hidden="true" className="text-[16px] text-foreground">
                   <Trans>From</Trans>
                 </span>
-                <input
-                  type="time"
-                  aria-label={t`Quiet hours start`}
+                <TimeSelect
+                  label={t`Quiet hours start`}
                   value={start}
-                  className={TIME}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (!value) return;
-                    void save({ quietHours: `${value}-${end}` }, settings);
-                  }}
+                  locale={timeLocale}
+                  onChange={(value) => void save({ quietHours: `${value}-${end}` }, settings)}
                 />
-              </label>
+              </div>
               <div className="ms-4 border-t border-border/70" />
-              <label className={ROW}>
-                <span className="text-[16px] text-foreground">
+              <div className={ROW}>
+                <span aria-hidden="true" className="text-[16px] text-foreground">
                   <Trans>Until</Trans>
                 </span>
-                <input
-                  type="time"
-                  aria-label={t`Quiet hours end`}
+                <TimeSelect
+                  label={t`Quiet hours end`}
                   value={end}
-                  className={TIME}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (!value) return;
-                    void save({ quietHours: `${start}-${value}` }, settings);
-                  }}
+                  locale={timeLocale}
+                  onChange={(value) => void save({ quietHours: `${start}-${value}` }, settings)}
                 />
-              </label>
+              </div>
             </>
           ) : null}
         </div>

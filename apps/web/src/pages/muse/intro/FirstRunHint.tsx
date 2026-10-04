@@ -1,4 +1,4 @@
-import { cn } from "@aiden/ui-web";
+import { Button, cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import type { ReactNode } from "react";
 import { useFirstRun } from "./useFirstRun";
@@ -18,6 +18,7 @@ import { useFirstRun } from "./useFirstRun";
 export function FirstRunHint({
   hintKey,
   text,
+  variant = "popover",
   side = "bottom",
   align = "start",
   /** False suppresses the hint even if unseen — e.g. a section with no content yet. It is
@@ -28,15 +29,45 @@ export function FirstRunHint({
 }: {
   hintKey: string;
   text: ReactNode;
+  /** "inline" sits in the page flow as a quiet caption (for hints that must not cover the
+   * thing they describe, like a live preview); "popover" floats over its neighbors. */
+  variant?: "popover" | "inline";
   side?: "top" | "bottom";
   align?: "start" | "end";
   active?: boolean;
   className?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const { t } = useLingui();
   const { seen, markSeen } = useFirstRun(hintKey);
   const show = active && !seen;
+
+  const gotIt = (
+    <Button type="button" variant="outline" size="xs" onClick={markSeen} className="shrink-0">
+      {t`Got it`}
+    </Button>
+  );
+
+  if (variant === "inline") {
+    return (
+      <>
+        {children}
+        {show ? (
+          <div
+            role="status"
+            data-testid={`first-run-hint-${hintKey}`}
+            className={cn(
+              "flex items-center justify-between gap-3 rounded-xl bg-muted/60 py-1.5 ps-3 pe-1.5 text-start",
+              className,
+            )}
+          >
+            <p className="min-w-0 text-[13px] leading-[1.4] text-muted-foreground">{text}</p>
+            {gotIt}
+          </div>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <div className={cn("relative", className)}>
@@ -52,13 +83,7 @@ export function FirstRunHint({
           )}
         >
           <p className="text-[13px] leading-[1.45] text-foreground">{text}</p>
-          <button
-            type="button"
-            onClick={markSeen}
-            className="mt-2 text-[12.5px] font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            {t`Got it`}
-          </button>
+          <div className="mt-2">{gotIt}</div>
         </div>
       ) : null}
     </div>

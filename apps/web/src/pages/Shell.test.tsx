@@ -106,6 +106,12 @@ vi.mock("@aiden/ui-web", () => {
     DropdownMenuItem: (props: ComponentProps<"div">) => <div {...props} />,
     DropdownMenuTrigger: Passthrough,
     GroupAvatar: () => <span data-testid="group-avatar" />,
+    Sheet: ({ open, children }: { open?: boolean; children?: ReactNode }) =>
+      open ? <>{children}</> : null,
+    SheetContent: Passthrough,
+    Skeleton: Passthrough,
+    SheetTitle: Passthrough,
+    SheetDescription: Passthrough,
     Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
     TooltipContent: () => null,
     TooltipTrigger: (props: ComponentProps<"button">) => <button type="button" {...props} />,
@@ -285,6 +291,28 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
     },
   };
 }
+
+it("opens the sidebar as a drawer from the mobile menu button and closes it on navigate", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const page = await renderShell(bootstrap({ me: me() }));
+  try {
+    const drawer = () => page.container.querySelector('[data-testid="app-rail-drawer"]');
+    expect(drawer()).toBeNull();
+    await act(async () => {
+      page.container
+        .querySelector<HTMLButtonElement>('[data-testid="mobile-nav-trigger"]')
+        ?.click();
+    });
+    expect(drawer()).toBeTruthy();
+    const goals = [...(drawer()?.querySelectorAll("button") ?? [])].find((el) =>
+      el.textContent?.includes("Goals"),
+    );
+    await act(async () => goals?.click());
+    expect(drawer()).toBeNull();
+  } finally {
+    await page.cleanup();
+  }
+});
 
 it("hides the bot list and shows the four Muse rail entries", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

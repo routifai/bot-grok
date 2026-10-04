@@ -67,7 +67,6 @@ vi.mock("./VoiceSettingsOverlay", () => ({
 vi.mock("./muse/settings/GeneralPanel", () => ({
   GeneralPanel: () => <div data-testid="general-panel" data-muse-mode="true" />,
 }));
-vi.mock("./muse/settings/ModelPanel", () => ({ ModelPanel: () => <div /> }));
 vi.mock("./muse/settings/MemoryPanel", () => ({ MemoryPanel: () => <div /> }));
 vi.mock("./muse/settings/VoicePanel", () => ({ VoicePanel: () => <div /> }));
 vi.mock("./muse/AidenSettingsPanel", () => ({
@@ -184,7 +183,7 @@ it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse Gener
       ),
     );
     const ids = navIds(container);
-    expect(ids).toEqual(["aiden", "general", "models", "memory", "voice"]);
+    expect(ids).toEqual(["aiden", "general", "memory", "voice"]);
     expect(ids).not.toContain("updates");
     expect(container.querySelector('[data-testid="settings-nav-aiden"]')?.textContent).toContain(
       "Nova",

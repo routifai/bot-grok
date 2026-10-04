@@ -33,8 +33,10 @@ import {
   type ComposerMention,
   clampMentionHighlightIndex,
   cronFromPreset,
+  ENGINE_ERROR_NOTE,
   inferAttachmentMimeType,
   isActive,
+  isEngineErrorText,
   isPeerReceiptBlocks,
   isRunTerminalEvent,
   isToolActivityBlock,
@@ -80,6 +82,7 @@ import {
   Clock,
   Copy,
   Maximize2,
+  Menu,
   Mic,
   Monitor,
   MoreHorizontal,
@@ -147,6 +150,7 @@ import {
   screenIframeSandbox,
   screenLinkKey,
   screenUrlStillFresh,
+  shareInflight,
 } from "../lib/computer-screen";
 import { scheduleFocusPrompt } from "../lib/focus-prompt";
 import { localTimezone } from "../lib/local-timezone";
@@ -583,6 +587,8 @@ export function ShellPage() {
   /** Bumped on every send so the transcript jumps to the bottom and follows the reply. */
   const [followSignal, setFollowSignal] = useState(0);
   const [waitingOpen, setWaitingOpen] = useState(false);
+  /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
+  const [navOpen, setNavOpen] = useState(false);
   const computerBot =
     (computerBotId ? bots.find((bot) => bot.id === computerBotId) : undefined) ?? active;
   computerOpenRef.current = computerOpen;
@@ -608,6 +614,7 @@ export function ShellPage() {
   const staleScreens = useRef(new Set<string>());
   // What each held screen link was minted for; see screenLinkKey.
   const screenLinkKeys = useRef(new Map<string, string>());
+  const screenInflight = useRef(new Map<string, Promise<string | null>>());
   /** Bumped to remount the screen frames after a dropped connection. */
   const [screenReloadKey, setScreenReloadKey] = useState(0);
   const refreshScreenRef = useRef<(id: string, options?: { force?: boolean }) => Promise<unknown>>(
@@ -907,24 +914,31 @@ export function ShellPage() {
     // still valid unless something about the screen changed (boot, control, status).
     const held = computerCacheRef.current.get(id)?.screenUrl ?? null;
     if (!options.force && !staleScreens.current.has(id) && screenUrlStillFresh(held)) return held;
-    const request = ++screenRequest.current;
-    return loadComputerScreen({
-      load: () => rpc.computer.screenUrl({ botId: id }),
-      isCurrent: () =>
-        request === screenRequest.current &&
-        (activeBotId.current === id || computerBotIdRef.current === id) &&
-        computerVisible.current,
-      commit: (screen) => {
-        if (!screen.error) staleScreens.current.delete(id);
-        screenLinkKeys.current.set(id, screenLinkKey(computerRef.current));
-        setScreenUrl(screen.url);
-        setComputerError(screen.error);
-        setComputerErrorFromScreen(Boolean(screen.error));
-        setScreenFailures((count) => (screen.error ? count + 1 : 0));
-        cacheComputerFor(id, { screenUrl: screen.url });
+    return shareInflight(
+      screenInflight.current,
+      id,
+      () => {
+        const request = ++screenRequest.current;
+        return loadComputerScreen({
+          load: () => rpc.computer.screenUrl({ botId: id }),
+          isCurrent: () =>
+            request === screenRequest.current &&
+            (activeBotId.current === id || computerBotIdRef.current === id) &&
+            computerVisible.current,
+          commit: (screen) => {
+            if (!screen.error) staleScreens.current.delete(id);
+            screenLinkKeys.current.set(id, screenLinkKey(computerRef.current));
+            setScreenUrl(screen.url);
+            setComputerError(screen.error);
+            setComputerErrorFromScreen(Boolean(screen.error));
+            setScreenFailures((count) => (screen.error ? count + 1 : 0));
+            cacheComputerFor(id, { screenUrl: screen.url });
+          },
+          fallbackError: t`Could not connect to the computer screen`,
+        });
       },
-      fallbackError: t`Could not connect to the computer screen`,
-    });
+      Boolean(options.force),
+    );
   }
   refreshScreenRef.current = refreshComputerScreen;
 
@@ -2388,6 +2402,8 @@ export function ShellPage() {
             setActiveChat("draft");
             setMuseView("conversation");
           }}
+          mobileOpen={navOpen}
+          onMobileOpenChange={setNavOpen}
         />
       ) : (
         <AppRail active="bots" />
@@ -2400,6 +2416,33 @@ export function ShellPage() {
             : "flex min-w-0 flex-1 flex-col bg-background"
         }
       >
+        {museMode && active ? (
+          <div className="flex h-12 shrink-0 items-center gap-2 px-3 md:hidden">
+            <button
+              type="button"
+              data-testid="mobile-nav-trigger"
+              title={t`Menu`}
+              aria-label={t`Menu`}
+              onClick={() => setNavOpen(true)}
+              className="grid size-9 place-items-center rounded-full text-foreground/80 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <Menu size={20} strokeWidth={1.75} />
+            </button>
+            <span className="min-w-0 truncate text-[15px] font-medium" dir="auto">
+              {activeChat
+                ? t`Side chat`
+                : museView === "goals"
+                  ? t`Goals`
+                  : museView === "feed"
+                    ? t`Feed`
+                    : museView === "ideas"
+                      ? t`Ideas`
+                      : museView === "library"
+                        ? t`Library`
+                        : t`Conversation`}
+            </span>
+          </div>
+        ) : null}
         {museMode && active && museView === "conversation" && activeChat ? (
           <div
             className={cn(
@@ -2749,16 +2792,11 @@ export function ShellPage() {
             {panel !== "routine" && panel !== "create" && panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
                 {museMode && panel === "computer" && active ? (
-                  <FirstRunHint
-                    hintKey="computer-panel"
-                    text={t`Watch ${active.name} work live. Take over anytime.`}
-                  >
-                    <MuseComputerTitle
-                      state={computer?.state}
-                      booting={booting}
-                      screenFailed={Boolean(computerError) && !screenUrl}
-                    />
-                  </FirstRunHint>
+                  <MuseComputerTitle
+                    state={computer?.state}
+                    booting={booting}
+                    screenFailed={Boolean(computerError) && !screenUrl}
+                  />
                 ) : (
                   <span className="text-[13.5px] text-muted-foreground">
                     {panel === "settings" ? (
@@ -2878,6 +2916,15 @@ export function ShellPage() {
                   </p>
                 )}
                 {museMode ? (
+                  // Under the preview, never over it.
+                  <FirstRunHint
+                    variant="inline"
+                    hintKey="computer-panel"
+                    className="mt-3"
+                    text={t`Take over anytime.`}
+                  />
+                ) : null}
+                {museMode ? (
                   <div className="mt-8 border-t border-border pt-2" aria-hidden="true" />
                 ) : null}
                 <RoutineListHeader
@@ -2889,6 +2936,11 @@ export function ShellPage() {
                     setPanel("routine");
                   }}
                 />
+                {activeRoutines.length === 0 ? (
+                  <p className="text-[13.5px] text-muted-foreground">
+                    <Trans>Nothing scheduled yet.</Trans>
+                  </p>
+                ) : null}
                 {activeRoutines.map((routine) => {
                   const routineRunning =
                     snapshot?.run?.routineId === routine.id && isActive(snapshot.run.status);
@@ -5547,6 +5599,17 @@ const MessageView = memo(function MessageView({
                 {block.text}
               </div>
             </div>
+          );
+        }
+        if (block.kind === "text" && isEngineErrorText(block.text)) {
+          return (
+            <p
+              key={i}
+              data-testid="message-error-note"
+              className="self-center py-1 text-center text-[12.5px] text-muted-foreground"
+            >
+              {ENGINE_ERROR_NOTE}
+            </p>
           );
         }
         if (block.kind === "text") {

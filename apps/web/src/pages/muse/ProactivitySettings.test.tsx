@@ -8,7 +8,10 @@ import { expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({ settings: vi.fn(), updateSettings: vi.fn() }));
 const preferences = vi.hoisted(() => ({ update: vi.fn().mockResolvedValue({}) }));
 vi.mock("../../lib/rpc", () => ({ rpc: { muse: api, preferences } }));
-vi.mock("../../lib/local-timezone", () => ({ localTimezone: () => "America/Toronto" }));
+vi.mock("../../lib/local-timezone", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/local-timezone")>()),
+  localTimezone: () => "America/Toronto",
+}));
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray) => parts.join("");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
@@ -86,9 +89,15 @@ it("renders the default proactivity level and quiet hours", async () => {
     expect(
       container.querySelector('[data-testid="level-normal"]')?.getAttribute("aria-pressed"),
     ).toBe("true");
-    const times = [...container.querySelectorAll("input[type=time]")] as HTMLInputElement[];
-    expect(times.map((input) => input.value)).toEqual(["22:00", "08:00"]);
-    expect(container.textContent).toContain("America/Toronto");
+    const times = [...container.querySelectorAll("select")] as HTMLSelectElement[];
+    expect(times.map((select) => select.value)).toEqual(["22:00", "08:00"]);
+    // 12-hour clock, no leading zero.
+    expect(times.map((select) => select.selectedOptions[0]?.textContent)).toEqual([
+      "10:00 PM",
+      "8:00 AM",
+    ]);
+    expect(container.textContent).toContain("Toronto (Eastern Time)");
+    expect(container.textContent).not.toContain("America/Toronto");
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -131,7 +140,7 @@ it("turns quiet hours off by sending quietHours: null", async () => {
       botId: "bot-1",
       quietHours: null,
     });
-    expect(container.querySelectorAll("input[type=time]").length).toBe(0);
+    expect(container.querySelectorAll("select").length).toBe(0);
   } finally {
     await act(async () => root.unmount());
     container.remove();
