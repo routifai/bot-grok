@@ -53,6 +53,43 @@ export interface OmnigentGatewayDeps {
   config?: OmnigentSuperChatConfig;
 }
 
+/** Triggers the engine runs as an ordinary turn: a typed message, a Teach "Test" run (the
+ * skill's instructions are the prompt) and a follow-up such as an Idea's "Do it". */
+const ENGINE_RUN_TRIGGERS: ReadonlySet<string> = new Set(["user", "skill", "follow_up"]);
+
+/**
+ * Fails a queued run the engine cannot handle (goal threads, routines, webhooks, ...) once and
+ * clearly, so the Pi executor path (a Computer Nova no longer keeps for engine Muses, ADR 0004)
+ * is never entered and the job is not retried 25 times.
+ */
+export async function failRunUnsupportedOnOmnigent(
+  deps: OmnigentGatewayDeps,
+  runId: string,
+  workerId: string,
+): Promise<void> {
+  const run = await deps.prisma.run.findUnique({ where: { id: runId } });
+  if (run?.status !== "queued") return;
+  const fence = run.leaseFence + 1;
+  const leased = await deps.prisma.run.updateMany({
+    where: { id: runId, status: "queued" },
+    data: { status: "running", leaseOwner: workerId, leaseFence: fence, startedAt: new Date() },
+  });
+  if (leased.count !== 1) return;
+  const attempt = await deps.prisma.attempt.create({ data: { runId, fence, status: "running" } });
+  await deps.events.finalizeRun({
+    spaceId: run.spaceId,
+    threadId: run.threadId,
+    botId: run.botId,
+    runId,
+    taskId: run.taskId,
+    attemptId: attempt.id,
+    leaseOwner: workerId,
+    leaseFence: fence,
+    outcome: "failed",
+    error: `Runs started by "${run.trigger}" are not supported by the Nova engine yet.`,
+  });
+}
+
 /**
  * Attempts to run `runId` on Omnigent. Returns `false` when the run is not eligible for the
  * Omnigent path (caller should fall back to the normal executor) and `true` once this call has
@@ -65,7 +102,7 @@ export async function runTurnOnOmnigent(
   workerId: string,
 ): Promise<boolean> {
   const run = await deps.prisma.run.findUnique({ where: { id: runId } });
-  if (run?.status !== "queued" || run.trigger !== "user") return false;
+  if (run?.status !== "queued" || !ENGINE_RUN_TRIGGERS.has(run.trigger)) return false;
 
   const thread = await deps.prisma.thread.findUnique({
     where: { id: run.threadId },

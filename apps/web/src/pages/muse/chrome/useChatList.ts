@@ -23,6 +23,8 @@ export function useChatList(botId: string) {
 
   const load = useCallback(() => {
     const current = ++generation.current;
+    // The bot id is empty until the Muse resolves; the API rejects "" with a 400.
+    if (!botId) return;
     rpc.chats
       .list({ botId })
       .then((chats) => {

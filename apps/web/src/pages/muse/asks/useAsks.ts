@@ -53,6 +53,11 @@ export function useAsks(botId: string): UseAsksResult {
 
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
+    // The bot id is empty until the Muse resolves; the API rejects "" with a 400.
+    if (!botId) {
+      setLoading(false);
+      return;
+    }
     try {
       const next = await listAsks(botId);
       if (id !== requestId.current) return;

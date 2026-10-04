@@ -23,7 +23,7 @@ import { createFeedJobHandlers } from "./muse/feed-jobs.js";
 import { createGoalJobHandlers } from "./muse/goal-jobs.js";
 import { refreshIdeas } from "./muse/ideas.js";
 import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
-import { runTurnOnOmnigent } from "./omnigent/gateway.js";
+import { failRunUnsupportedOnOmnigent, runTurnOnOmnigent } from "./omnigent/gateway.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 import { expireTaughtSkillTeaching } from "./teaching-session.js";
 
@@ -95,7 +95,10 @@ export function createBackgroundJobHandlers(deps: {
       const ranOnOmnigent = deps.omnigent
         ? await runTurnOnOmnigent(deps.omnigent, payload.runId, deps.workerId)
         : false;
-      if (!ranOnOmnigent) {
+      // Engine-backed Muses never fall back to the Pi executor (no Computer, ADR 0004).
+      if (deps.omnigent && !ranOnOmnigent) {
+        await failRunUnsupportedOnOmnigent(deps.omnigent, payload.runId, deps.workerId);
+      } else if (!ranOnOmnigent) {
         await deps.executor.continueRun(payload.runId, deps.workerId);
       }
       // Automatic messaging mirror: once the run's bot messages are durable,

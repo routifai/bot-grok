@@ -1,6 +1,6 @@
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runTurnOnOmnigent } from "./gateway.js";
+import { failRunUnsupportedOnOmnigent, runTurnOnOmnigent } from "./gateway.js";
 
 const {
   createOmnigentSession,
@@ -108,6 +108,36 @@ describe("runTurnOnOmnigent", () => {
     const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
     expect(result).toBe(false);
     expect(events.finalizeRun).not.toHaveBeenCalled();
+  });
+
+  it("runs a skill test run as an ordinary engine turn", async () => {
+    const prisma = fakePrisma({
+      run: {
+        findUnique: vi.fn(async () => ({ ...RUN, trigger: "skill" })),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
+    });
+    const result = await runTurnOnOmnigent(
+      { prisma, events: fakeEvents(), ...DEPS_BASE },
+      "run-1",
+      "worker-1",
+    );
+    expect(result).toBe(true);
+  });
+
+  it("fails a run the engine cannot handle once, without touching the engine", async () => {
+    const prisma = fakePrisma({
+      run: {
+        findUnique: vi.fn(async () => ({ ...RUN, trigger: "routine" })),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+    });
+    const events = fakeEvents();
+    await failRunUnsupportedOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "failed", error: expect.stringContaining("routine") }),
+    );
+    expect(createOmnigentSession).not.toHaveBeenCalled();
   });
 
   it("returns false for a Goal-log thread", async () => {
