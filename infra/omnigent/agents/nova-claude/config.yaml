@@ -29,6 +29,14 @@ interaction:
     input: [text, file]
     output: [text]
 
+# Shell and file tools (sys_os_*) run in the Computer's workspace. The Computer is the
+# sandbox, so no inner sandbox and no approval prompts.
+os_env:
+  type: caller_process
+  cwd: /home/aiden/workspace
+  sandbox:
+    type: none
+
 tools:
   builtins:
     # Web search goes straight to Tavily's API (no sandboxed web-research sub-agent).

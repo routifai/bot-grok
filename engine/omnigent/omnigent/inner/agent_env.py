@@ -69,6 +69,10 @@ BASE_ALLOW_EXACT: frozenset[str] = frozenset(
         # running and to hold the key. Shared here because every harness runs
         # git, not just the one whose bug surfaced it.
         "SSH_AUTH_SOCK",
+        # X display of a sandbox's own virtual screen, so GUI tools act on the screen the
+        # person watches. A runner only has it when a launcher forwarded it explicitly
+        # (the host-side runner allowlist does not pass the host's own DISPLAY).
+        "DISPLAY",
         OMNIGENT_SESSION_ENV_VAR,
         # Windows system / profile constants (SYSTEMROOT is mandatory for
         # Winsock init, USERPROFILE for Path.home(), etc.); no-ops on POSIX

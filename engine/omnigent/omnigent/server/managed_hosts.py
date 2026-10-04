@@ -4032,6 +4032,26 @@ def _launcher_for_teardown(
     return launcher
 
 
+def screen_target_for_host(
+    host: Host,
+    config: ManagedSandboxDeployment | None,
+) -> tuple[SandboxHostLauncher, str] | None:
+    """
+    Resolve the launcher and sandbox id that can show a managed host's screen.
+
+    :param host: The managed host a session is bound to.
+    :param config: The deployment's current sandbox config, or ``None``.
+    :returns: ``(launcher, sandbox_id)`` when the host's provider still matches the
+        deployment and declares :attr:`SandboxCapabilities.screen`; otherwise ``None``.
+    """
+    if host.sandbox_id is None:
+        return None
+    launcher = _launcher_for_teardown(host, config)
+    if launcher is None or not launcher.capabilities.screen:
+        return None
+    return launcher, host.sandbox_id
+
+
 def host_resume_supported(
     host: Host,
     config: ManagedSandboxDeployment | None,

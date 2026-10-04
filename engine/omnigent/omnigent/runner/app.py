@@ -196,6 +196,7 @@ from omnigent.superchat.subagents import (
 )
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
 from omnigent.terminals.ws_common import WS_CLOSE_TERMINAL_NOT_FOUND
+from omnigent.tools.browser_backend import local_browser_backend_enabled
 from omnigent.tools.builtins.load_skill import (
     find_skill_by_name,
     format_skill_meta_text,
@@ -9885,7 +9886,11 @@ def create_runner_app(
         # the prompt no-renderer failure below. An absent hint from an older
         # server preserves the previous advertised surface. Only the spec
         # surface is filtered; request-supplied tools remain caller-owned.
-        if msg_body.get("browser_renderer_available") is False:
+        # A local browser backend needs no renderer, so it keeps the tools.
+        if (
+            msg_body.get("browser_renderer_available") is False
+            and not local_browser_backend_enabled()
+        ):
             from omnigent.runner.tool_dispatch import strip_browser_tool_schemas
 
             _spec_tools = strip_browser_tool_schemas(_spec_tools)

@@ -46,6 +46,17 @@ Authentication, both directions:
   adds nothing here: ``start_host``'s inherited default already injects it, and it is exactly
   "never a long-lived admin secret, minted for the session owner."
 
+Stale container id: the supervisor may RECREATE a Muse's container (new id) when the image or
+user changed, so the id inside a stored sandbox id can go stale. Every ``/computers/{id}/...``
+call therefore falls back to re-calling the idempotent ``POST /computers`` (keyed by Muse
+identity) on 404 / "No such container" and retries once with the live id.
+
+Screen: the Muse's screen is the supervisor's per-screen-id display, with a stable screen id
+(the bot id) so the same display is always used. :meth:`provision`-time launches resolve that
+display and hand it to the runner as ``DISPLAY`` (see :meth:`start_host`), so the viewer and the
+Muse's own GUI tools see the same desktop. :meth:`screen_url` / :meth:`release_control` expose
+view and take-over access.
+
 Idempotent: :meth:`provision` calls Nova supervisor's ``POST /computers``, which itself is an
 ensure-or-create (returns the already-running container, starting it back up if merely stopped,
 rather than replacing it) — repeated launches for the same Muse reuse the same computer without
@@ -68,7 +79,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import quote
 
 import click
@@ -99,6 +110,10 @@ containers for the very same Muse. Defaults to ``"./data"`` (Nova API's own defa
 local/dev parity; a real deployment should set this to an absolute, shared path."""
 
 _DEFAULT_HOME_ROOT: str = "./data"
+
+_FALLBACK_DISPLAY: str = ":1"
+"""Display the supervisor assigns the first screen of a computer; used only when an older
+supervisor does not echo ``display`` back from ``screen-mode``."""
 
 _REQUEST_TIMEOUT_S: float = 30.0
 _PROVISION_TIMEOUT_S: float = 120.0
@@ -189,7 +204,7 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
 
     @property
     def capabilities(self) -> SandboxCapabilities:
-        return SandboxCapabilities(managed_launch=True)
+        return SandboxCapabilities(managed_launch=True, screen=True)
 
     def prepare_for_launch(
         self,
@@ -252,13 +267,23 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
         return self._injected_client
 
     def _request(
-        self, method: str, path: str, *, bot_id: str, space_id: str, **kwargs: object
+        self,
+        method: str,
+        path: str,
+        *,
+        bot_id: str,
+        space_id: str,
+        screen: bool = False,
+        **kwargs: object,
     ) -> httpx.Response:
         headers = {
             "authorization": f"Bearer {self._supervisor_token}",
             "x-aiden-bot-id": bot_id,
             "x-aiden-space-id": space_id,
         }
+        if screen:
+            # One stable screen per Muse, so the viewer and the runner share one display.
+            headers["x-aiden-screen-id"] = bot_id
         kwargs.setdefault("timeout", _REQUEST_TIMEOUT_S)
         try:
             return self._client().request(method, path, headers=headers, **kwargs)
@@ -275,6 +300,48 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
             # Best-effort error text for a ClickException message; never worth failing over.
             return ""
 
+    def _ensure_container_id(self, bot_id: str, space_id: str) -> str:
+        """Ensure-or-create the Muse's computer (``POST /computers``) and return its live id."""
+        home_path = os.path.join(self._home_root, "homes", bot_id)
+        response = self._request(
+            "POST",
+            "/computers",
+            bot_id=bot_id,
+            space_id=space_id,
+            json={"botId": bot_id, "homePath": home_path, "spaceId": space_id},
+            timeout=_PROVISION_TIMEOUT_S,
+        )
+        if response.status_code >= 400:
+            raise click.ClickException(
+                "Nova sandbox supervisor could not ensure this Muse's computer "
+                f"({response.status_code}): {self._error_detail(response)}"
+            )
+        container_id = response.json().get("id")
+        if not isinstance(container_id, str) or not container_id:
+            raise click.ClickException(
+                "Nova sandbox supervisor's computer response carried no container id"
+            )
+        return container_id
+
+    def _computer_request(
+        self, method: str, sandbox_id: str, suffix: str = "", **kwargs: Any
+    ) -> httpx.Response:
+        """
+        Call ``/computers/{container_id}{suffix}``, re-resolving a stale container id once.
+
+        When the supervisor answers 404 / "No such container" (it recreated the container),
+        re-ensures the computer by Muse identity and retries with the live id.
+        """
+        bot_id, space_id, container_id = _parse_sandbox_id(sandbox_id)
+        path = f"/computers/{quote(container_id, safe='')}{suffix}"
+        response = self._request(method, path, bot_id=bot_id, space_id=space_id, **kwargs)
+        if response.status_code == 404 or "No such container" in self._error_detail(response):
+            live_id = self._ensure_container_id(bot_id, space_id)
+            if live_id != container_id:
+                path = f"/computers/{quote(live_id, safe='')}{suffix}"
+                response = self._request(method, path, bot_id=bot_id, space_id=space_id, **kwargs)
+        return response
+
     def provision(self, name: str) -> str:
         """
         Ensure this Muse's computer is running and return its encoded sandbox id.
@@ -287,26 +354,7 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
             # prepare() already enforces this before provision() ever runs; guards mypy/pyrefly
             # narrowing below rather than signaling a real reachable state.
             raise click.ClickException("the 'computer' sandbox provider has no Muse identity")
-        home_path = os.path.join(self._home_root, "homes", self._bot_id)
-        response = self._request(
-            "POST",
-            "/computers",
-            bot_id=self._bot_id,
-            space_id=self._space_id,
-            json={"botId": self._bot_id, "homePath": home_path, "spaceId": self._space_id},
-            timeout=_PROVISION_TIMEOUT_S,
-        )
-        if response.status_code >= 400:
-            raise click.ClickException(
-                "Nova sandbox supervisor could not ensure this Muse's computer "
-                f"({response.status_code}): {self._error_detail(response)}"
-            )
-        body = response.json()
-        container_id = body.get("id")
-        if not isinstance(container_id, str) or not container_id:
-            raise click.ClickException(
-                "Nova sandbox supervisor's computer response carried no container id"
-            )
+        container_id = self._ensure_container_id(self._bot_id, self._space_id)
         return f"{self._bot_id}:{self._space_id}:{container_id}"
 
     def run(
@@ -317,16 +365,14 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
         check: bool = True,
         env: Mapping[str, str] | None = None,
     ) -> RemoteCommandResult:
-        bot_id, space_id, container_id = _parse_sandbox_id(sandbox_id)
         payload: dict[str, object] = {"argv": ["sh", "-c", command], "timeoutMs": _EXEC_TIMEOUT_MS}
         if env:
             # A separate field, never in `command`: values stay out of argv, ps and logs.
             payload["env"] = dict(env)
-        response = self._request(
+        response = self._computer_request(
             "POST",
-            f"/computers/{quote(container_id, safe='')}/exec",
-            bot_id=bot_id,
-            space_id=space_id,
+            sandbox_id,
+            "/exec",
             json=payload,
             timeout=_EXEC_TIMEOUT_S + _REQUEST_TIMEOUT_S,
         )
@@ -355,13 +401,7 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
         """Cheap liveness check via ``GET /computers/{id}`` — ``None`` on any request failure
         (unknown, not a definitive answer), matching the base class's documented contract."""
         try:
-            bot_id, space_id, container_id = _parse_sandbox_id(sandbox_id)
-            response = self._request(
-                "GET",
-                f"/computers/{quote(container_id, safe='')}",
-                bot_id=bot_id,
-                space_id=space_id,
-            )
+            response = self._computer_request("GET", sandbox_id)
         except click.ClickException:
             return None
         if response.status_code >= 400:
@@ -370,3 +410,62 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
             return bool(response.json().get("running"))
         except ValueError:
             return None
+
+    def _screen_mode(self, sandbox_id: str, payload: dict[str, object]) -> dict[str, Any]:
+        """``POST /computers/{id}/screen-mode`` on the Muse's stable screen; returns the body."""
+        response = self._computer_request(
+            "POST", sandbox_id, "/screen-mode", screen=True, json=payload
+        )
+        if response.status_code >= 400:
+            raise click.ClickException(
+                f"Nova computer screen request failed ({response.status_code}): "
+                f"{self._error_detail(response)}"
+            )
+        body = response.json()
+        return body if isinstance(body, dict) else {}
+
+    def ensure_display(self, sandbox_id: str) -> str:
+        """
+        Make sure the Muse's screen exists and return its X display, e.g. ``":1"``.
+
+        A view-only ``screen-mode`` call that leaves any current person control untouched.
+        """
+        body = self._screen_mode(sandbox_id, {"interactive": False, "revokeControl": False})
+        display = body.get("display")
+        return display if isinstance(display, str) and display else _FALLBACK_DISPLAY
+
+    def start_host(self, sandbox_id: str, **kwargs: Any) -> str:
+        """
+        Start the host with ``DISPLAY`` pointing at the Muse's screen.
+
+        The display is forwarded to every runner (and from there to GUI tools) through the
+        standard ``runner_env`` passthrough, so the Muse acts on the screen the person watches.
+        """
+        runner_env = dict(kwargs.pop("runner_env", None) or {})
+        runner_env["DISPLAY"] = self.ensure_display(sandbox_id)
+        return super().start_host(sandbox_id, runner_env=runner_env, **kwargs)
+
+    def screen_url(
+        self,
+        sandbox_id: str,
+        *,
+        interactive: bool,
+        control_token: str | None = None,
+    ) -> str:
+        """Viewer URL for the Muse's screen; *interactive* needs *control_token*."""
+        if interactive and not control_token:
+            raise click.ClickException("an interactive screen requires a control token")
+        payload: dict[str, object] = {"interactive": interactive}
+        if interactive:
+            payload["controlToken"] = control_token
+        else:
+            # A plain view must not revoke a take-over already in progress.
+            payload["revokeControl"] = False
+        url = self._screen_mode(sandbox_id, payload).get("screenUrl")
+        if not isinstance(url, str) or not url:
+            raise click.ClickException("Nova sandbox supervisor returned no screen URL")
+        return url
+
+    def release_control(self, sandbox_id: str) -> None:
+        """Revoke interactive access to the Muse's screen (hand the computer back)."""
+        self._screen_mode(sandbox_id, {"interactive": False, "revokeControl": True})

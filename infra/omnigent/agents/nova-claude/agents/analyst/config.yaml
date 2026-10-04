@@ -19,6 +19,14 @@ executor:
   config:
     harness: claude-sdk
 
+# Shell and file tools (sys_os_*) run in the Computer's workspace. The Computer is the
+# sandbox, so no inner sandbox and no approval prompts.
+os_env:
+  type: caller_process
+  cwd: /home/aiden/workspace
+  sandbox:
+    type: none
+
 # Maximum concurrent `analyst` Sub-agents the Super Chat may have running at once, on top of
 # the default concurrency cap across all Sub-agent Types (OMNIGENT_SUBAGENT_MAX_CONCURRENT,
 # docs/super-chat/README.md).

@@ -55,8 +55,16 @@ sandbox:
   provider: computer
   server_url: http://host.docker.internal:8000
   runner_env: [ANTHROPIC_API_KEY, TAVILY_API_KEY, NOVA_CLAUDE_MODEL,
-               OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS, OMNIGENT_SUBAGENT_MAX_CONCURRENT]
+               OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS, OMNIGENT_SUBAGENT_MAX_CONCURRENT,
+               OMNIGENT_BROWSER_BACKEND]
 ```
+
+`OMNIGENT_BROWSER_BACKEND=local` (set in the Omnigent server's own environment,
+and named in `runner_env` above) makes the `browser_*` tools drive the
+Chromium on the Computer's own screen (via `aiden-browser` /
+`aiden-page-browser`, `engine/omnigent/omnigent/tools/browser_backend.py`)
+instead of relaying to the desktop app. Unset, the default desktop backend
+applies, so a Computer without this variable has no working browser tools.
 
 `sandbox.runner_env` is a list of **names only** — never values — so it's
 safe to commit and safe to log. At launch, the server resolves each name

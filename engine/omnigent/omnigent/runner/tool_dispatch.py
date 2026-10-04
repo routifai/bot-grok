@@ -81,6 +81,10 @@ from omnigent.runtime import pending_elicitations
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result, native_image_payload
 from omnigent.tools import ToolManager
 from omnigent.tools.base import Tool, ToolContext
+from omnigent.tools.browser_backend import (
+    get_local_browser_backend,
+    local_browser_backend_enabled,
+)
 from omnigent.tools.builtins import session_history as _session_history
 from omnigent.tools.builtins._arguments import parse_json_object_arguments
 from omnigent.tools.builtins.async_inbox import (
@@ -4831,7 +4835,9 @@ async def _execute_browser_tool(
     """
     Runner-local handler for the ``browser_*`` embedded-browser tools.
 
-    Does the blocking round-trip that drives the Omnigent desktop app's
+    With ``OMNIGENT_BROWSER_BACKEND=local`` the action runs against the
+    runner's own Chromium (``omnigent/tools/browser_backend.py``). Otherwise
+    this does the blocking round-trip that drives the desktop app's
     embedded browser: POST ``/v1/sessions/{conversation_id}/browser/
     action_request`` with ``{action, args}`` (where ``action`` is the
     tool name minus the ``browser_`` prefix) and return the server's JSON
@@ -4856,6 +4862,9 @@ async def _execute_browser_tool(
     :param conversation_id: Current session id, e.g. ``"conv_abc123"``.
     :returns: The server action-result JSON string, or a timeout/error JSON.
     """
+    if local_browser_backend_enabled():
+        output = await get_local_browser_backend().execute(tool_name[len("browser_") :], args)
+        return _browser_screenshot_output(output) if tool_name == "browser_screenshot" else output
     if server_client is None:
         return json.dumps({"error": f"{tool_name} requires server access"})
     if conversation_id is None:
@@ -7186,6 +7195,34 @@ async def _fetch_peek_meta(
     return _PeekMeta(agent=parsed.agent, title=parsed.title, pending_elicitations=pending)
 
 
+_PERSON_HAS_COMPUTER_ERROR = (
+    "The person is using the computer right now. Wait until they hand it back."
+)
+
+
+async def _person_has_computer(
+    server_client: httpx.AsyncClient | None, conversation_id: str | None
+) -> bool:
+    """
+    Whether a person has taken over this session's computer.
+
+    Asks the server (``GET /v1/sessions/{id}/computer``) so the Muse does not act on the
+    computer while the person controls it. Fails open: no client, no session, or any
+    request/parse failure means "not in control", so a server hiccup never blocks tools.
+
+    :param server_client: httpx client pointed at the Omnigent server, or ``None``.
+    :param conversation_id: The session being served, e.g. ``"conv_123"``.
+    :returns: ``True`` only when the server reports ``in_control``.
+    """
+    if server_client is None or conversation_id is None:
+        return False
+    try:
+        resp = await server_client.get(f"/v1/sessions/{conversation_id}/computer")
+        return resp.status_code == 200 and resp.json().get("in_control") is True
+    except Exception:  # noqa: BLE001 - best-effort gate; never block tools on it
+        return False
+
+
 async def execute_tool(
     *,
     tool_name: str,
@@ -7270,6 +7307,10 @@ async def execute_tool(
                 "use sys_os_* tools and an inherited terminal for filesystem operations"
             }
         )
+    if (tool_name in _OS_ENV_TOOLS or tool_name in _BROWSER_TOOLS) and await _person_has_computer(
+        server_client, conversation_id
+    ):
+        return json.dumps({"error": _PERSON_HAS_COMPUTER_ERROR})
     try:
         if mcp_manager is not None:
             # All MCP tool calls are routed through the AP server's

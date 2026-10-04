@@ -13,10 +13,11 @@ no ``server_client``. Any call that reaches ``Tool.invoke`` here means
 the tool was misrouted to the server-side path — the base class raises
 ``NotImplementedError`` loudly in that case.
 
-Descriptions for the five browser tools that drive the Omnigent
-desktop app's embedded browser. Request-driven harnesses omit them when
-the turn starts without a stream subscriber; native harnesses have a
-session-scoped relay surface, but unclaimed calls still fail promptly.
+Descriptions are backend-neutral: the tools drive "the browser", whichever
+backend serves it (see ``omnigent/tools/browser_backend.py``). With the
+default desktop backend, request-driven harnesses omit them when the turn
+starts without a stream subscriber; native harnesses have a session-scoped
+relay surface, but unclaimed calls still fail promptly.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ BROWSER_TOOL_NAMES: frozenset[str] = frozenset(
 
 
 class BrowserNavigateTool(Tool):
-    """Open or navigate the embedded browser pane to a URL (schema only)."""
+    """Open or navigate the browser to a URL (schema only)."""
 
     @classmethod
     def name(cls) -> str:
@@ -51,11 +52,9 @@ class BrowserNavigateTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Open or navigate the Omnigent desktop app's embedded "
-            "browser pane to a URL. Auto-opens the pane if it isn't "
-            "open yet. Requires the Omnigent desktop window to be "
-            "running — fails cleanly otherwise. After a load settles, "
-            "call browser_snapshot to inspect what's on the page."
+            "Open or navigate the browser to a URL. After a load "
+            "settles, call browser_snapshot to inspect what's on the "
+            "page."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -97,13 +96,13 @@ class BrowserSnapshotTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Capture an accessibility-tree snapshot of the embedded "
-            "browser. Returns a snapshot_id plus the current URL, "
+            "Capture an accessibility-tree snapshot of the "
+            "browser page. Returns a snapshot_id plus the current URL, "
             "document.title, and a YAML-shaped tree of every "
             "interactive / text-bearing / landmark element on the "
             "page, each tagged with [ref=N]. Hand the refs (along with "
             "the snapshot_id) to browser_click / browser_type so the "
-            "renderer can detect when the snapshot has been superseded "
+            "browser can detect when the snapshot has been superseded "
             "by a newer one or invalidated by navigation. Refs are "
             "dramatically more stable than CSS selectors against "
             "generated class names and Shadow DOM."
@@ -142,11 +141,11 @@ class BrowserClickTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Click an element in the embedded browser. Prefer the "
+            "Click an element in the browser. Prefer the "
             "`ref` form (integer id from a recent browser_snapshot "
             "result) — refs are stable against generated class names "
             "and Shadow DOM. Pass `snapshot_id` alongside `ref` so the "
-            "renderer can reject stale-snapshot refs with a precise "
+            "browser can reject stale-snapshot refs with a precise "
             "error instead of a generic stale-ref message. CSS "
             "`selector` is accepted as a fallback when you already know "
             "a stable selector. Exactly one of `ref` or `selector` "
@@ -270,7 +269,7 @@ class BrowserTypeTool(Tool):
 
 
 class BrowserScreenshotTool(Tool):
-    """Capture a PNG screenshot of the browser pane (schema only)."""
+    """Capture a PNG screenshot of the browser (schema only)."""
 
     @classmethod
     def name(cls) -> str:
@@ -281,7 +280,7 @@ class BrowserScreenshotTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Capture a PNG screenshot of the embedded browser pane. "
+            "Capture a PNG screenshot of the browser. "
             "Returns image content the agent surface renders inline. "
             "INTENDED FOR VISUAL INSPECTION ONLY — prefer "
             "browser_snapshot for picking elements to act on, since "

@@ -656,6 +656,7 @@ app.post("/computers/:id/screen-mode", async (c) => {
     );
     return c.json({
       screenUrl: screenUrlWithToken(screenUrl, body.interactive ? body.controlToken! : viewToken),
+      display: layout.display,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

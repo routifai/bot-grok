@@ -6,10 +6,13 @@ handler — no real Nova supervisor, network, or Docker daemon involved.
 
 from __future__ import annotations
 
+import json
+
 import click
 import httpx
 import pytest
 
+from omnigent.onboarding.sandboxes.base import ExecModelHostLauncher
 from omnigent.onboarding.sandboxes.computer import (
     HOME_ROOT_ENV_VAR,
     SUPERVISOR_TOKEN_ENV_VAR,
@@ -282,7 +285,9 @@ def test_run_background_wraps_the_command_and_returns_immediately() -> None:
     supervisor = FakeSupervisor(exec_body={"stdout": "launched\n", "stderr": "", "code": 0})
     launcher = make_launcher(supervisor)
 
-    result = launcher.run_background(SANDBOX_ID, "OMNIGENT_HOST_TOKEN=tok omnigent host --server https://example.test")
+    result = launcher.run_background(
+        SANDBOX_ID, "OMNIGENT_HOST_TOKEN=tok omnigent host --server https://example.test"
+    )
 
     assert result.stdout == "launched\n"
     request = supervisor.requests[-1]
@@ -333,3 +338,111 @@ def test_capabilities_declare_managed_launch_only() -> None:
     assert caps.cli_bootstrap is False
     assert caps.resume_stopped is False
     assert caps.programmatic_terminate is False
+
+
+# ── stale container id, screen, DISPLAY ──────────────────────────────────────────────────
+
+NEW_CONTAINER_ID = "beefbeefbeef"
+
+
+def stale_container_launcher(
+    requests: list[httpx.Request], *, screen_body: dict[str, object] | None = None
+) -> ComputerSandboxLauncher:
+    """Fake supervisor whose container was recreated: the old id 404s, POST /computers
+    returns the new id, and calls on the new id succeed."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        path = request.url.path
+        if path == "/computers":
+            return httpx.Response(200, json={"id": NEW_CONTAINER_ID})
+        if f"/{CONTAINER_ID}" in path:
+            return httpx.Response(404, json={"error": "No such container"})
+        if path.endswith("/screen-mode"):
+            return httpx.Response(
+                200, json=screen_body or {"screenUrl": "http://v/?t=1", "display": ":3"}
+            )
+        if path.endswith("/exec"):
+            return httpx.Response(200, json={"stdout": "ok", "stderr": "", "code": 0})
+        return httpx.Response(200, json={"running": True})
+
+    return ComputerSandboxLauncher(
+        supervisor_url="http://supervisor.test",
+        supervisor_token="shared-secret",
+        client=httpx.Client(
+            transport=httpx.MockTransport(handler), base_url="http://supervisor.test"
+        ),
+    )
+
+
+def test_run_re_resolves_a_stale_container_id_and_retries() -> None:
+    requests: list[httpx.Request] = []
+    launcher = stale_container_launcher(requests)
+    assert launcher.run(SANDBOX_ID, "echo ok").stdout == "ok"
+    assert [r.url.path for r in requests] == [
+        f"/computers/{CONTAINER_ID}/exec",
+        "/computers",
+        f"/computers/{NEW_CONTAINER_ID}/exec",
+    ]
+    ensure = requests[1]
+    assert ensure.headers["x-aiden-bot-id"] == BOT_ID
+    assert ensure.headers["x-aiden-space-id"] == SPACE_ID
+
+
+def test_is_running_re_resolves_a_stale_container_id() -> None:
+    launcher = stale_container_launcher([])
+    assert launcher.is_running(SANDBOX_ID) is True
+
+
+def test_screen_url_sends_the_stable_screen_id_and_view_mode() -> None:
+    requests: list[httpx.Request] = []
+    launcher = stale_container_launcher(requests)
+    assert launcher.screen_url(SANDBOX_ID, interactive=False) == "http://v/?t=1"
+    screen = requests[-1]
+    assert screen.url.path == f"/computers/{NEW_CONTAINER_ID}/screen-mode"
+    assert screen.headers["x-aiden-screen-id"] == BOT_ID
+    assert json.loads(screen.content) == {"interactive": False, "revokeControl": False}
+
+
+def test_screen_url_interactive_passes_the_control_token() -> None:
+    requests: list[httpx.Request] = []
+    launcher = stale_container_launcher(requests)
+    launcher.screen_url(SANDBOX_ID, interactive=True, control_token="tok_1")
+    assert json.loads(requests[-1].content) == {"interactive": True, "controlToken": "tok_1"}
+
+
+def test_screen_url_interactive_requires_a_token() -> None:
+    launcher = stale_container_launcher([])
+    with pytest.raises(click.ClickException):
+        launcher.screen_url(SANDBOX_ID, interactive=True)
+
+
+def test_release_control_revokes_interactive_access() -> None:
+    requests: list[httpx.Request] = []
+    launcher = stale_container_launcher(requests)
+    launcher.release_control(SANDBOX_ID)
+    assert json.loads(requests[-1].content) == {"interactive": False, "revokeControl": True}
+
+
+def test_start_host_passes_the_screen_display_to_the_runner_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = stale_container_launcher([])
+    seen: dict[str, object] = {}
+
+    def fake_start_host(self: object, sandbox_id: str, **kwargs: object) -> str:
+        seen.update(kwargs)
+        return "/ws"
+
+    monkeypatch.setattr(ExecModelHostLauncher, "start_host", fake_start_host)
+    assert launcher.start_host(SANDBOX_ID, token="t", runner_env={"A": "1"}) == "/ws"
+    assert seen["runner_env"] == {"A": "1", "DISPLAY": ":3"}
+
+
+def test_ensure_display_falls_back_when_the_supervisor_omits_it() -> None:
+    launcher = stale_container_launcher([], screen_body={"screenUrl": "http://v/"})
+    assert launcher.ensure_display(SANDBOX_ID) == ":1"
+
+
+def test_capabilities_declare_screen() -> None:
+    assert make_launcher(FakeSupervisor()).capabilities.screen is True

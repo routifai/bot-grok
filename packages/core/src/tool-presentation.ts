@@ -245,6 +245,12 @@ export function presentActivityTitle(title: string): string {
   return agent.startsWith("__web") ? "Web research" : `${capitalize(helperName(agent))}: ${rest}`;
 }
 
+function fileTitle(verb: string, args: Record<string, unknown>): string {
+  const path = args.path;
+  const name = isNonEmptyString(path) ? path.trim().split("/").pop() : "";
+  return name ? `${verb} '${name}'` : `${verb} a file`;
+}
+
 // ── the registry ────────────────────────────────────────────────────────
 
 export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
@@ -393,6 +399,66 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
   sys_cancel_task: {
     icon: "helper",
     title: () => "Stopped a helper",
+    snippet: () => null,
+  },
+
+  // ── the Computer: shell, files and browser (sys_os_*, browser_*) ─────────
+  // Not bundle `builtins`, so the completeness test doesn't force these; registered so a
+  // Step reads in plain words. Titles never echo a command; a path is the file's own name.
+  sys_os_shell: {
+    icon: "generic",
+    title: () => "Ran a command on the Computer",
+    snippet: (output) => genericSnippet(output),
+  },
+
+  sys_os_read: {
+    icon: "generic",
+    title: (args) => fileTitle("Read", args),
+    snippet: () => null,
+  },
+
+  sys_os_write: {
+    icon: "generic",
+    title: (args) => fileTitle("Wrote", args),
+    snippet: () => null,
+  },
+
+  sys_os_edit: {
+    icon: "generic",
+    title: (args) => fileTitle("Edited", args),
+    snippet: () => null,
+  },
+
+  browser_navigate: {
+    icon: "generic",
+    title: (args) => {
+      const url = args.url;
+      return isNonEmptyString(url) ? `Opened ${domainOf(url.trim())}` : "Opened a page";
+    },
+    snippet: () => null,
+  },
+
+  browser_snapshot: {
+    icon: "generic",
+    title: () => "Looked at the page",
+    snippet: () => null,
+  },
+
+  browser_click: {
+    icon: "generic",
+    title: () => "Clicked on the page",
+    snippet: () => null,
+  },
+
+  browser_type: {
+    icon: "generic",
+    title: () => "Typed on the page",
+    snippet: () => null,
+  },
+
+  browser_screenshot: {
+    icon: "generic",
+    title: () => "Looked at the screen",
     snippet: () => null,
   },
 };

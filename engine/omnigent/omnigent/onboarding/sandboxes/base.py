@@ -705,6 +705,41 @@ class SandboxLifecycle(ABC):
         del sandbox_id
         return None
 
+    def screen_url(
+        self,
+        sandbox_id: str,
+        *,
+        interactive: bool,
+        control_token: str | None = None,
+    ) -> str:
+        """
+        Return a URL that shows this sandbox's screen.
+
+        Optional capability (:attr:`SandboxCapabilities.screen`).
+
+        :param sandbox_id: The sandbox to show, e.g. ``"sb-a1b2c3"``.
+        :param interactive: ``True`` for a URL that also accepts mouse and keyboard input
+            (the person takes over); ``False`` for a view-only URL.
+        :param control_token: Secret the interactive URL is bound to; required when
+            *interactive* is ``True``.
+        :returns: The viewer URL.
+        :raises click.ClickException: If the provider has no screen.
+        """
+        del sandbox_id, interactive, control_token
+        raise self._capability_error("show the sandbox screen")
+
+    def release_control(self, sandbox_id: str) -> None:
+        """
+        Revoke any interactive access granted through :meth:`screen_url`.
+
+        Optional capability (:attr:`SandboxCapabilities.screen`).
+
+        :param sandbox_id: The sandbox whose interactive access is revoked.
+        :raises click.ClickException: If the provider has no screen.
+        """
+        del sandbox_id
+        raise self._capability_error("revoke interactive screen access")
+
     def _capability_error(self, action: str) -> SandboxCapabilityError:
         """
         Build the error for an optional primitive this provider lacks.

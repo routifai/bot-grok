@@ -94,6 +94,9 @@ class SandboxCapabilities:
         handed a multi-repo request; providers opt in explicitly.
     :param git_clone_options: Provider honors ``RepoWorkspace.git_clone``
         when creating checkouts. Custom materializers must opt in.
+    :param screen: Provider can serve a viewable (and, on request, interactive) screen of the
+        sandbox — :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.screen_url` and
+        :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.release_control`.
     """
 
     cli_bootstrap: bool = False
@@ -110,6 +113,7 @@ class SandboxCapabilities:
     snapshot_restore: bool = False
     multi_repo: bool = False
     git_clone_options: bool = False
+    screen: bool = False
 
 
 @dataclass(frozen=True)
