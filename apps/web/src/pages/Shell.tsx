@@ -3394,7 +3394,7 @@ export function ShellPage() {
                   size="icon-sm"
                   className="text-muted-foreground"
                   aria-label={t`Close computer`}
-                  onClick={() => setComputerOpen(false)}
+                  onClick={() => (hasControl ? void releaseComputer() : setComputerOpen(false))}
                 >
                   <X size={16} strokeWidth={1.8} />
                 </Button>
