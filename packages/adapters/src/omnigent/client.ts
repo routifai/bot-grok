@@ -399,6 +399,8 @@ export interface OmnigentRelatedChat {
   archived?: boolean;
   start?: "with_context" | "blank" | null;
   summary?: string | null;
+  /** First item that belongs to a with-context side chat itself (its seed checkpoint). */
+  seed_item_id?: string | null;
   live?: boolean;
 }
 

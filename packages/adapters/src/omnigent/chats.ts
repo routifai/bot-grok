@@ -130,6 +130,8 @@ export interface ChatOwnership {
   /** The caller's Super Chat `chatId` resolves under. */
   superSessionId: string;
   botId: string;
+  /** For a with-context side chat: its seed checkpoint; earlier items are the copied parent. */
+  seedItemId?: string | null;
 }
 
 export interface OwnedSuperChat {
@@ -155,11 +157,13 @@ export async function resolveChatOwnership(
   for (const superChat of superChats) {
     if (superChat.omnigentSessionId === chatId) continue; // the Super Chat itself isn't a "chat"
     const related = await listOmnigentRelatedChats(client, email, superChat.omnigentSessionId);
-    if (related.data.some((chat) => chat.id === chatId)) {
+    const sideChat = related.data.find((chat) => chat.id === chatId);
+    if (sideChat) {
       return {
         kind: "side_chat",
         superSessionId: superChat.omnigentSessionId,
         botId: superChat.botId,
+        seedItemId: sideChat.seed_item_id ?? null,
       };
     }
     for (const chat of related.data) bySessionId.set(chat.id, superChat);

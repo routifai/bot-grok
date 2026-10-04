@@ -187,14 +187,21 @@ export async function getChatMessages(
       before: input.before,
     }),
   );
-  const ascending = [...page.data].reverse();
+  // A with-context side chat starts with a copy of the Conversation; show only what
+  // follows its seed checkpoint (the context itself is shown in the side chat's header).
+  const seedIndex = ownership.seedItemId
+    ? page.data.findIndex((item) => item.id === ownership.seedItemId)
+    : -1;
+  const own = seedIndex === -1 ? page.data : page.data.slice(0, seedIndex);
+  const ascending = [...own].reverse();
   const secrets = client.secrets ?? [];
-  const oldestItemId = page.data.at(-1)?.id ?? null;
+  const oldestItemId = own.at(-1)?.id ?? null;
+  const hasOlder = seedIndex === -1 && page.has_more;
   return {
     threadId: input.chatId,
     messages: redactThreadMessages(mapOmnigentItemsToMessages(input.chatId, ascending), secrets),
     olderCursor: null,
-    olderItemCursor: page.has_more ? oldestItemId : null,
+    olderItemCursor: hasOlder ? oldestItemId : null,
   };
 }
 

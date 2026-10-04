@@ -186,7 +186,12 @@ describe("resolveChatOwnership", () => {
       ],
     });
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_side");
-    expect(ownership).toEqual({ kind: "side_chat", superSessionId: "conv_super", botId: "bot-1" });
+    expect(ownership).toEqual({
+      kind: "side_chat",
+      superSessionId: "conv_super",
+      botId: "bot-1",
+      seedItemId: null,
+    });
   });
 
   it("resolves a Helper one hop below the Super Chat", async () => {

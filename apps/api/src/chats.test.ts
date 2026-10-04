@@ -201,6 +201,40 @@ describe("getChatMessages", () => {
     expect(page.olderItemCursor).toBe("msg_1");
   });
 
+  it("shows only a with-context side chat's own messages, after its seed", async () => {
+    resolveChatOwnership.mockResolvedValue({
+      kind: "side_chat",
+      superSessionId: "conv_super",
+      botId: "bot-1",
+      seedItemId: "seed_1",
+    });
+    listOmnigentSessionItems.mockResolvedValue({
+      data: [
+        {
+          id: "msg_own",
+          type: "message",
+          role: "user",
+          created_at: 3000,
+          content: [{ type: "input_text", text: "side question" }],
+        },
+        { id: "seed_1", type: "compaction", created_at: 2000 },
+        {
+          id: "msg_copied",
+          type: "message",
+          role: "user",
+          created_at: 1000,
+          content: [{ type: "input_text", text: "copied from the Conversation" }],
+        },
+      ],
+      has_more: true,
+    });
+
+    const page = await getChatMessages(depsFor(), actor, { chatId: "conv_side" }, ENV);
+
+    expect(page.messages.map((m) => m.id)).toEqual(["msg_own"]);
+    expect(page.olderItemCursor).toBeNull();
+  });
+
   it("forwards the before cursor and reports no older page when has_more is false", async () => {
     listOmnigentSessionItems.mockResolvedValue({ data: [], has_more: false });
     const deps = depsFor();
