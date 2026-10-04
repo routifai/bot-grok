@@ -2,6 +2,7 @@ import * as z from "zod";
 import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { McpTransportSchema } from "./mcp.js";
+import { ReplyCardBlock } from "./reply-cards.js";
 
 export const ProductEventType = z.enum([
   "thread.message.created",
@@ -230,6 +231,8 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     status: z.enum(["draft", "saved"]),
   }),
   ChartBlock,
+  /** The Muse's `render_card` result (packages/contracts/src/reply-cards.ts). */
+  ReplyCardBlock,
   z.object({
     /** Nova Canvas (show_canvas). `tree` is a CanvasNode (packages/contracts/src/canvas.ts)
         already validated and repaired before publish, so renderers can trust its shape. */

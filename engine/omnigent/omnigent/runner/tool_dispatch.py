@@ -104,6 +104,7 @@ from omnigent.tools.builtins.os_env import (
     SysOsShellTool,
     SysOsWriteTool,
 )
+from omnigent.tools.builtins.render_card import CARD_TOOL_NAME, build_card
 from omnigent.tools.builtins.session_history import SessionHistoryTool, status_from_labels
 from omnigent.tools.builtins.session_rename import SysSessionRenameTool
 from omnigent.tools.builtins.side_chat import SideChatOpenTool
@@ -492,6 +493,9 @@ _OBJECTIVE_TOOLS = frozenset(OBJECTIVE_TOOL_NAMES)
 # Suggestions (Ideas): the runner proxies the server's /v1/suggestions REST endpoints.
 _SUGGESTION_TOOLS = frozenset(SUGGESTION_TOOL_NAMES)
 
+# Reply cards: validated and returned in-process, no server round-trip.
+_CARD_TOOLS = frozenset({CARD_TOOL_NAME})
+
 # Priority 5m: Embedded-browser tools.
 # Runner dispatch POSTs a blocking action request to the server, which parks a
 # Future + publishes ``browser.action_request`` on the session stream; the
@@ -545,6 +549,7 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _SCHEDULED_TASK_TOOLS
     | _OBJECTIVE_TOOLS
     | _SUGGESTION_TOOLS
+    | _CARD_TOOLS
     | _TERMINAL_TOOLS
     # ``browser_*`` must ride the native relay: the Omnigent desktop app
     # runs native (claude/codex/pi) sessions, which ignore ``request.tools``
@@ -990,6 +995,7 @@ _ALL_LOCAL_TOOLS = (
     | _SCHEDULED_TASK_TOOLS
     | _OBJECTIVE_TOOLS
     | _SUGGESTION_TOOLS
+    | _CARD_TOOLS
     | _SIDE_CHAT_TOOLS
 )
 _PLACEHOLDER_CWDS = (None, "", ".", "./")
@@ -7781,6 +7787,8 @@ async def execute_tool(
                 server_client=server_client,
                 conversation_id=conversation_id,
             )
+        elif tool_name in _CARD_TOOLS:
+            output = json.dumps(build_card(args), ensure_ascii=False)
         elif tool_name in _SUGGESTION_TOOLS:
             output = await _execute_suggestion_tool(
                 tool_name,

@@ -11,9 +11,16 @@
 // item id right after finishing. This job only ever looks at items strictly after that cursor,
 // so a reply the run path just delivered is never re-posted here — and advances the cursor
 // itself, per item, as it mirrors, so a crash mid-scan re-processes at most one item next tick.
+import type { MessageBlock } from "@aiden/contracts";
 import { containsSecret, redactSecrets } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
+import {
+  isRenderCardCall,
+  redactReplyCard,
+  replyCardFromToolCall,
+  toolOutputsByCallId,
+} from "./cards.js";
 import {
   isSessionNotFoundError,
   isStaleCursorError,
@@ -124,8 +131,24 @@ async function mirrorOneSuperChat(
     throw error;
   }
 
+  const outputs = toolOutputsByCallId(page.data);
   for (const item of page.data) {
-    if (item.type === "message" && item.role === "assistant") {
+    if (isRenderCardCall(item)) {
+      const callId = typeof item.call_id === "string" ? item.call_id : "";
+      // Its output may land on the next page: wait for it rather than skip the card.
+      if (!outputs.has(callId)) break;
+      const card = replyCardFromToolCall(item, outputs.get(callId));
+      if (card) {
+        const block = redactReplyCard(card, deps.secrets);
+        if (containsSecret(block, deps.secrets)) {
+          getLogger().error("omnigent mirror: refusing to mirror a card containing a secret", {
+            botId: bot.id,
+          });
+        } else {
+          await mirrorAssistantMessage(deps, bot, thread.id, [block]);
+        }
+      }
+    } else if (item.type === "message" && item.role === "assistant") {
       const text = extractAssistantText([item]);
       if (text) {
         const redacted = redactSecrets(text, deps.secrets);
@@ -134,7 +157,7 @@ async function mirrorOneSuperChat(
             botId: bot.id,
           });
         } else {
-          await mirrorAssistantMessage(deps, bot, thread.id, redacted);
+          await mirrorAssistantMessage(deps, bot, thread.id, [{ kind: "text", text: redacted }]);
         }
       }
     }
@@ -156,7 +179,7 @@ async function mirrorAssistantMessage(
   deps: OmnigentMirrorDeps,
   bot: { id: string; spaceId: string; userId: string },
   threadId: string,
-  text: string,
+  blocks: MessageBlock[],
 ): Promise<void> {
   const task = await deps.prisma.task.create({
     data: {
@@ -195,7 +218,7 @@ async function mirrorAssistantMessage(
     leaseOwner: deps.workerId,
     leaseFence: 0,
     outcome: "completed",
-    blocks: [{ kind: "text", text }],
+    blocks,
     markUnread: true,
   });
   if (!completed) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapActivity, mapActivityStep } from "./activities.js";
+import { mapActivity, mapActivityStep, plainFailureOutcome } from "./activities.js";
 
 describe("mapActivityStep", () => {
   it("maps snake_case fields to camelCase and defaults a missing tool/detail", () => {
@@ -95,5 +95,55 @@ describe("mapActivity", () => {
         detail: undefined,
       },
     ]);
+  });
+});
+
+describe("plainFailureOutcome", () => {
+  it("names a known failure in plain words and never leaks internals", () => {
+    expect(
+      plainFailureOutcome(
+        "inner executor error: There's an issue with the selected model (a-model). It may not exist or you may not have access to it.",
+      ),
+    ).toBe("The model isn't available.");
+    expect(plainFailureOutcome("API Error: 529 overloaded_error")).toBe("The model was busy.");
+    expect(
+      plainFailureOutcome(
+        "Claude SDK connect failed: exit code 1\nCLI stderr: /Users/x/.venv/bin/python",
+      ),
+    ).toBe("Couldn't get started.");
+    expect(plainFailureOutcome('Traceback (most recent call last):\n  File "/srv/a.py"')).toBe(
+      "Could not complete the task",
+    );
+  });
+
+  it("keeps a short plain reason and the generic line, and says nothing for none", () => {
+    expect(plainFailureOutcome("The spreadsheet had no Q4 tab")).toBe(
+      "The spreadsheet had no Q4 tab",
+    );
+    expect(plainFailureOutcome("Could not complete the task")).toBe("Could not complete the task");
+    expect(plainFailureOutcome(null)).toBeNull();
+  });
+
+  it("only rewrites failed Activities", () => {
+    const base = {
+      id: "turn:c:r",
+      kind: "turn" as const,
+      source: "turn" as const,
+      chat_id: "c",
+      title: "t",
+      summary: null,
+      started_at: 1,
+      finished_at: 2,
+      date: "2026-10-04",
+    };
+    expect(mapActivity({ ...base, status: "done", outcome: "API Error: 529" }).outcome).toBe(
+      "API Error: 529",
+    );
+    expect(
+      mapActivity({ ...base, status: "failed", outcome: "API Error: 529 overloaded_error" }),
+    ).toMatchObject({
+      outcome: "The model was busy.",
+      summary: "The model was busy.",
+    });
   });
 });

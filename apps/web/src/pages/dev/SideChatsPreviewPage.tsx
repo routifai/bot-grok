@@ -28,7 +28,13 @@ function delay<T>(value: T, ms = 450): Promise<T> {
 export function SideChatsPreviewPage() {
   const [chats, setChats] = useState<ChatSummary[]>(INITIAL_SIDE_CHATS);
   const [museView, setMuseView] = useState<MuseRailView>("conversation");
-  const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(null);
+  // `?chat=<id>` opens a fixture chat straight away (e.g. `?chat=side-cards`).
+  const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(
+    () =>
+      INITIAL_SIDE_CHATS.find(
+        (chat) => chat.id === new URLSearchParams(window.location.search).get("chat"),
+      ) ?? null,
+  );
   const messagesByChat = useRef(new Map(Object.entries(SIDE_CHAT_FIXTURE_MESSAGES)));
   const nextId = useRef(1);
 

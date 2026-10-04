@@ -10,6 +10,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronRight, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { ReplyCardSendProvider } from "../../../components/cards/context";
 
 /** The Side Chat session's wire: what it needs from `chats.*`, kept as an explicit shape
  * (not the `rpc` client) so the dev fixture page can supply fakes instead. */
@@ -55,6 +56,7 @@ export function SideChatSession({
   view,
   wire,
   onCreated,
+  onReplied,
   onClose,
 }: {
   bot: SideChatBot;
@@ -64,6 +66,8 @@ export function SideChatSession({
   wire: SideChatWire;
   /** The draft just sent its first message and became a real chat. */
   onCreated: (chat: ChatSummary) => void;
+  /** A reply finished: the chat is no longer live, so the Chat List should refresh. */
+  onReplied?: () => void;
   onClose: () => void;
 }) {
   // The draft's first message, handed to the chat it becomes so it never blinks out.
@@ -90,6 +94,7 @@ export function SideChatSession({
       view={view}
       wire={wire}
       firstText={first?.chatId === chat.id ? first.text : undefined}
+      onReplied={onReplied}
       onClose={onClose}
     />
   );
@@ -289,6 +294,7 @@ function ExistingSideChat({
   view,
   wire,
   firstText,
+  onReplied,
   onClose,
 }: {
   bot: SideChatBot;
@@ -296,6 +302,7 @@ function ExistingSideChat({
   view: SideChatView;
   wire: SideChatWire;
   firstText?: string;
+  onReplied?: () => void;
   onClose: () => void;
 }) {
   const { t } = useLingui();
@@ -310,6 +317,10 @@ function ExistingSideChat({
   const [sending, setSending] = useState(false);
   const [followSignal, setFollowSignal] = useState(0);
   const generation = useRef(0);
+  /** A turn is in flight (from the list's live dot or our own send) until we see it end. */
+  const busy = useRef(Boolean(firstText) || chat.live);
+  const repliedRef = useRef(onReplied);
+  repliedRef.current = onReplied;
 
   const refresh = () => {
     const current = generation.current;
@@ -321,7 +332,15 @@ function ExistingSideChat({
         setMessages(page.messages);
         setEngineRunning(running);
         setPending((now) => (now && userCount(page.messages) > now.base ? null : now));
-        if (!running && page.messages.at(-1)?.role !== "user") setWaiting(false);
+        if (running) busy.current = true;
+        if (!running && page.messages.at(-1)?.role !== "user") {
+          setWaiting(false);
+          // The sidebar's live dot comes from the list: tell it this chat went quiet.
+          if (busy.current) {
+            busy.current = false;
+            repliedRef.current?.();
+          }
+        }
       })
       .catch(() => {
         if (current === generation.current) setMessages((now) => now ?? []);
@@ -353,6 +372,7 @@ function ExistingSideChat({
 
   const send = (text: string) => {
     setPending({ text, base: userCount(messages) });
+    busy.current = true;
     setWaiting(true);
     setSending(true);
     setFollowSignal((value) => value + 1);
@@ -397,13 +417,15 @@ function ExistingSideChat({
         }
         onClose={onClose}
       />
-      <view.Transcript
-        bot={bot}
-        messages={shown}
-        running={sending || awaitingReply}
-        followSignal={followSignal}
-        leading={context}
-      />
+      <ReplyCardSendProvider send={(text) => void send(text)}>
+        <view.Transcript
+          bot={bot}
+          messages={shown}
+          running={sending || awaitingReply}
+          followSignal={followSignal}
+          leading={context}
+        />
+      </ReplyCardSendProvider>
       {chat.archived ? null : (
         <view.Composer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
       )}

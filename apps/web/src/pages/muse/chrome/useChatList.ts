@@ -55,5 +55,5 @@ export function useChatList(botId: string) {
     [botId, load],
   );
 
-  return { state, createSide };
+  return { state, createSide, refresh: load };
 }

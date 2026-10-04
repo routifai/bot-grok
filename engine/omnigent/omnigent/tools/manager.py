@@ -230,6 +230,7 @@ class ToolManager:
         self._register_scheduled_task_tools()
         self._register_objective_tools()
         self._register_suggestion_tools()
+        self._register_card_tools()
         # Embedded-browser tools are always auto-registered so any agent
         # can drive the desktop app's browser without the spec opting in
         # (framework-owned).
@@ -321,6 +322,14 @@ class ToolManager:
 
         for tool in (SuggestionCreateTool(), SuggestionListTool()):
             self._tools[tool.name()] = tool
+
+    def _register_card_tools(self) -> None:
+        """Auto-register ``render_card`` for the Super Chat itself (never a Helper)."""
+        if not is_superside_chat(self._labels) or SUBAGENT_LABEL_KEY in self._labels:
+            return
+        from omnigent.tools.builtins.render_card import RenderCardTool
+
+        self._tools[RenderCardTool.name()] = RenderCardTool()
 
     def _register_async_inbox_tools(self) -> None:
         """

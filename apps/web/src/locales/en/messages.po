@@ -1450,6 +1450,9 @@ msgstr "Extra high"
 msgid "failed"
 msgstr "failed"
 
+msgid "Failed"
+msgstr "Failed"
+
 msgid "Failed to send message"
 msgstr "Failed to send message"
 
@@ -2312,6 +2315,7 @@ msgid "Open"
 msgstr "Open"
 
 #. placeholder {0}: artifact.name
+#. placeholder {0}: data.name
 #. placeholder {0}: props.name
 msgid "Open {0}"
 msgstr "Open {0}"
@@ -2735,6 +2739,9 @@ msgstr "Run time must be in the future."
 msgid "running"
 msgstr "running"
 
+msgid "Running"
+msgstr "Running"
+
 msgid "Running · Stop"
 msgstr "Running · Stop"
 
@@ -2943,6 +2950,9 @@ msgstr "Slack message"
 
 msgid "Slack not enabled"
 msgstr "Slack not enabled"
+
+msgid "Sources"
+msgstr "Sources"
 
 msgid "Space default"
 msgstr "Space default"
@@ -3173,6 +3183,9 @@ msgstr "Times use {timezone}."
 
 msgid "Title"
 msgstr "Title"
+
+msgid "To do"
+msgstr "To do"
 
 msgid "To:"
 msgstr "To:"

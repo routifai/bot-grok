@@ -100,6 +100,7 @@ import {
 } from "lucide-react";
 import {
   type ClipboardEvent,
+  type ComponentProps,
   type DragEvent,
   lazy,
   type MutableRefObject,
@@ -130,6 +131,8 @@ import {
   computersAreUnavailable,
 } from "../components/ComputersUnavailableHint";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
+import { ReplyCardSendProvider, ReplyCardThreadProvider } from "../components/cards/context";
+import { ReplyCardBlockView } from "../components/cards/ReplyCard";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
@@ -1921,6 +1924,7 @@ export function ShellPage() {
       userId,
     ],
   );
+  const sendCardReply = useCallback((text: string) => void sendMessage(text), [sendMessage]);
   const followUpMessage = useCallback(async (text: string) => {
     const id = activeBotId.current;
     if (!id) return;
@@ -2456,6 +2460,7 @@ export function ShellPage() {
               view={sideChatView}
               wire={sideChatWire}
               onCreated={setActiveChat}
+              onReplied={chatList.refresh}
               onClose={() => setActiveChat(null)}
             />
           </div>
@@ -2652,6 +2657,7 @@ export function ShellPage() {
                   onLoadOlder={loadOlder}
                   onOpenBot={openBot}
                   onAnswer={answerMessage}
+                  onSendCard={sendCardReply}
                   onReply={(message) => {
                     setReplyTarget(message);
                     setReplyQuote(null);
@@ -3518,7 +3524,28 @@ export function ShellPage() {
   );
 }
 
-const Transcript = memo(function Transcript({
+/** The transcript, with its reply cards resolved across the whole thread (in-place updates,
+ * answered asks). */
+function Transcript({
+  onSendCard,
+  ...props
+}: ComponentProps<typeof TranscriptView> & {
+  /** A reply card's button sends this text as the person's next message. */
+  onSendCard?: (text: string) => void;
+}) {
+  const view = (
+    <ReplyCardThreadProvider messages={props.messages}>
+      <TranscriptView {...props} />
+    </ReplyCardThreadProvider>
+  );
+  return onSendCard ? (
+    <ReplyCardSendProvider send={onSendCard}>{view}</ReplyCardSendProvider>
+  ) : (
+    view
+  );
+}
+
+const TranscriptView = memo(function Transcript({
   museMode,
   museFace,
   botDisplayName,
@@ -5687,6 +5714,9 @@ const MessageView = memo(function MessageView({
               />
             </FirstRunHint>
           );
+        }
+        if (block.kind === "reply_card") {
+          return <ReplyCardBlockView key={i} block={block} messageId={message.id} index={i} />;
         }
         if (block.kind === "cloud_agent") return <CloudAgentCard key={i} block={block} />;
         if (block.kind === "skill_draft") {

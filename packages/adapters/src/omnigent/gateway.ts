@@ -13,6 +13,7 @@ import { containsSecret, redactSecrets } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { STEERING_CONTINUATION_PROMPT } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
+import { redactReplyCard, turnBlocks } from "./cards.js";
 import {
   createOmnigentSession,
   findOmnigentAgentIdByName,
@@ -181,7 +182,7 @@ export async function runTurnOnOmnigent(
       task.prompt,
       steering.map((item) => item.text),
     );
-    const { text, lastItemId } = await sendTurnAndAwaitReply(
+    const { text, lastItemId, items } = await sendTurnAndAwaitReply(
       deps,
       user.email,
       sessionId,
@@ -215,7 +216,9 @@ export async function runTurnOnOmnigent(
       leaseOwner: workerId,
       leaseFence: fence,
       outcome: "completed",
-      blocks: redacted ? [{ kind: "text", text: redacted }] : [],
+      blocks: turnBlocks(items, redacted).map((block) =>
+        block.kind === "reply_card" ? redactReplyCard(block, deps.secrets) : block,
+      ),
       markUnread: true,
     });
     if (!completed) {
@@ -463,7 +466,12 @@ async function sendTurnAndAwaitReply(
   sessionId: string,
   turnInput: string,
   config: OmnigentSuperChatConfig,
-): Promise<{ text: string; lastItemId: string | undefined }> {
+): Promise<{
+  text: string;
+  lastItemId: string | undefined;
+  /** The turn's finished items in order (messages and tool calls), for reply cards. */
+  items: Array<Record<string, unknown>>;
+}> {
   const signal = AbortSignal.timeout(config.turnTimeoutMs);
   const iterator = streamOmnigentSession(deps.client, email, sessionId, signal)[
     Symbol.asyncIterator
@@ -477,12 +485,14 @@ async function sendTurnAndAwaitReply(
   // cursor (./mirror.ts) always starts strictly past everything this turn produced.
   let lastReply = "";
   let lastItemId: string | undefined;
+  const items: Array<Record<string, unknown>> = [];
   let step = await first;
   while (!step.done) {
     const event = step.value;
     if (event.type === "response.output_item.done") {
       const item = event.item as Record<string, unknown> | undefined;
       if (typeof item?.id === "string") lastItemId = item.id;
+      if (item) items.push(item);
       const text = item ? extractAssistantText([item]) : "";
       if (text) lastReply = text;
     }
@@ -491,7 +501,12 @@ async function sendTurnAndAwaitReply(
       for (const item of response?.output ?? []) {
         if (typeof item.id === "string") lastItemId = item.id;
       }
-      return { text: extractAssistantText(response?.output ?? []) || lastReply, lastItemId };
+      const output = response?.output ?? [];
+      return {
+        text: extractAssistantText(output) || lastReply,
+        lastItemId,
+        items: output.length ? output : items,
+      };
     }
     if (event.type === "response.failed" || event.type === "response.error") {
       // Omnigent nests the failure under response.error, like response.completed's output.

@@ -6,6 +6,7 @@
 // fetch the same way ./gateway.test.ts does — no network, no database.
 import type { ChatSummary, SideChatStart, ThreadMessage } from "@aiden/contracts";
 import { ENGINE_ERROR_NOTE, isEngineErrorText } from "@aiden/core";
+import { isRenderCardCall, replyCardFromToolCall, toolOutputsByCallId } from "./cards.js";
 import {
   getOmnigentSession,
   listOmnigentRelatedChats,
@@ -96,8 +97,9 @@ function extractItemText(item: OmnigentSessionItem): string {
 }
 
 /** `message` items (user/assistant) from `GET .../items` -> `ThreadMessage[]`, in the same
- * (ascending) order given. Tool-call items (`function_call`/`function_call_output`, etc.) and
- * anything else that isn't a plain text turn are skipped — `chats.messages` renders a chat
+ * (ascending) order given. A `render_card` call becomes a bot message holding its reply card
+ * (pending until its output arrives). Other tool-call items (`function_call`/
+ * `function_call_output`, etc.) and anything else that isn't a plain text turn are skipped — `chats.messages` renders a chat
  * transcript, not an Activity's Steps (that's `activities.get`). `seq` is synthesized from
  * position: Omnigent items aren't Nova's own thread rows, so there is no durable sequence
  * number to carry over. */
@@ -121,7 +123,23 @@ export function mapOmnigentItemsToMessages(
   items: OmnigentSessionItem[],
 ): ThreadMessage[] {
   const messages: ThreadMessage[] = [];
+  const outputs = toolOutputsByCallId(items);
   for (const item of items) {
+    if (isRenderCardCall(item)) {
+      const callId = typeof item.call_id === "string" ? item.call_id : "";
+      const card = replyCardFromToolCall(item, outputs.get(callId));
+      if (card) {
+        messages.push({
+          id: item.id,
+          threadId: chatId,
+          seq: messages.length,
+          role: "bot",
+          blocks: [card],
+          createdAt: epochSecondsToIso(item.created_at),
+        });
+      }
+      continue;
+    }
     if (item.type !== "message") continue;
     const role = item.role === "assistant" ? "bot" : item.role === "user" ? "user" : null;
     if (!role) continue;
