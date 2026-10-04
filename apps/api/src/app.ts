@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import type {
-  AgentRuntime,
   JobPublisher,
   ManagedConnectorProvider,
   MessagingSurface,
@@ -20,19 +19,14 @@ import {
   ChatSdkMessagingSurface,
   ComposioConnector,
   createBackgroundJobHandlers,
-  createCloudAgentConnection,
   createConnectorStack,
   createJobReconciler,
-  createMessagingContextLoader,
   createMessagingTeamChatSender,
-  createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
-  createWebProvider,
   destroyBot,
   EmailEmulator,
   EncryptedSecretStore,
-  ExpoPushProvider,
   GraphileJobPublisher,
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
@@ -53,13 +47,9 @@ import {
   PipedreamConnector,
   PostgresRealtimeFanout,
   pipedreamConfigFromEnv,
-  piSessionsRoot,
   pushTokenPath,
-  reconcileCloudAgents,
   reconcileComputerUpdates,
   reconcileOmnigentMirror,
-  removePiUserSessions,
-  ScriptedAgentRuntime,
   SmtpEmailProvider,
   SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
@@ -123,8 +113,6 @@ export interface AppHandles {
   connectors: ConnectorRegistry;
   messaging?: MessagingSurface;
   email?: TransactionalEmailProvider;
-  executor: ReturnType<typeof createRunExecutor>;
-  runtime: AgentRuntime;
   stop: () => Promise<void>;
 }
 
@@ -325,13 +313,6 @@ export async function createApp(
   const connector = stack.destination;
   await connector.start();
   integrationSettings.warmDirectories();
-  const runtime =
-    env.agentRuntime === "scripted"
-      ? new ScriptedAgentRuntime()
-      : new PiAgentRuntime({
-          sessionRoot: env.piSessionRecording ? piSessionsRoot(env.dataDir) : undefined,
-        });
-  const notifications = new ExpoPushProvider(env.dataDir);
   const auth = createAuth(prisma, {
     secret: env.authSecret,
     baseURL: env.authUrl,
@@ -371,74 +352,23 @@ export async function createApp(
           ),
         ),
       );
-      await removePiUserSessions(env.dataDir, userId);
       await rm(pushTokenPath(env.dataDir, userId), { force: true }).catch(() => undefined);
     },
   });
-  // One provider instance so emulator launches and polls share the same Map.
-  const cloudAgent = createCloudAgentConnection({
-    CLOUD_AGENT_PROVIDER: env.cloudAgentProvider,
-    CURSOR_API_KEY: env.cursorApiKey,
-    CLOUD_AGENT_SPACE_ID: env.cloudAgentSpaceId,
-  });
-  const shutdown = new AbortController();
   // Same composition ./omnigent/env.ts#omnigentRedactionSecretsFromEnv uses for the Omnigent
   // read paths (chats.*/activities.*/memory.profile) — one list, shared, so every surface that
-  // can echo back something Omnigent (or the normal executor) said redacts with the identical
+  // can echo back something Omnigent said redacts with the identical
   // set of deployment secrets.
   const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
-  const executor = createRunExecutor({
-    prisma,
-    runtime,
-    sandbox,
-    memory,
-    memoryProviders,
-    home,
-    artifacts,
-    connector: stack.connector,
-    connectors: stack.connector,
-    listConnectedPluginSlugs: async (userId) => {
-      const provider = await integrationSettings.resolve("composio");
-      if (!provider) return [];
-      return provider.listConnectedExternalIds({
-        userId,
-        spaceId: "",
-        operationId: "connections.sync",
-        traceId: "connections.sync",
-        signal: AbortSignal.timeout(15_000),
-      });
-    },
-    secrets: runtimeSecrets,
-    secretStore: secrets,
-    secretHttp: remoteConnectors,
-    mcpAllowPrivateEndpoint: env.mcpAllowPrivateEndpoint,
-    deploymentModelKey: env.deploymentModelKey,
-    dataDir: env.dataDir,
-    notifications,
-    jobs,
-    events,
-    messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
-    web: createWebProvider(),
-    cloudAgent,
-    shutdownSignal: shutdown.signal,
-  });
-
   const jobHandlers = createBackgroundJobHandlers({
-    executor,
     prisma,
     sandbox,
     home,
     jobs,
     events,
     workerId: "api",
-    runtime,
-    secretStore: secrets,
-    memoryProviders,
-    memory,
-    deploymentModelKey: env.deploymentModelKey,
     messaging,
-    cloudAgent,
     omnigent,
   });
   if (inMemoryJobs) {
@@ -448,7 +378,6 @@ export async function createApp(
     ? createJobReconciler({
         prisma,
         jobs,
-        reconcileCloudAgents: () => reconcileCloudAgents({ prisma, jobs, cloudAgent }),
         reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
         reconcileOmnigentMirror: omnigent
           ? () => reconcileOmnigentMirror({ ...omnigent, workerId: "api" })
@@ -458,7 +387,6 @@ export async function createApp(
   reconciler?.start();
 
   const router = createRouter({
-    cloudAgent,
     prisma,
     events,
     auth,
@@ -466,8 +394,6 @@ export async function createApp(
     sandbox,
     memory,
     memoryProviders,
-    runtime,
-    resolveModel: executor.resolveModel,
     home,
     secrets,
     oauthLogins,
@@ -696,6 +622,8 @@ export async function createApp(
       pendingTeamChatInbound.flush((event) => handleTeamChatInbound(bridge, event));
     };
     if (env.teamChatBotId) {
+      // The one remaining Pi model call: Team Chat's engagement judge (no engine equivalent yet).
+      const runtime = new PiAgentRuntime();
       const judge =
         env.teamChatJudgeProvider && env.teamChatJudgeModel
           ? new ModelTeamChatEngagementJudge({
@@ -859,12 +787,7 @@ export async function createApp(
     connectors: stack.connector,
     messaging,
     email,
-    executor,
-    runtime,
     stop: async () => {
-      // Abort in-flight continueRun boot waits before draining jobs so stop() cannot sit
-      // on waitForComputerReady for the full boot-wait window during shared Postgres journeys.
-      shutdown.abort();
       oauthLogins.abortAll();
       messagingStopped = true;
       clearMessagingRetryDelay?.();

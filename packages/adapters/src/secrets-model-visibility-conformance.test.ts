@@ -2,7 +2,6 @@ import type { AdapterContext } from "@aiden/adapter-kit";
 import type { BotSecretDestination } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildApprovalAskBlock } from "./approval-ask.js";
 import { redactToolArgsForReview } from "./auto-review.js";
 import { requestWithBotSecret } from "./bot-secrets.js";
 import { sanitizeComposioError } from "./composio-connector.js";
@@ -439,16 +438,13 @@ describe("secrets model-visibility conformance", () => {
   });
 
   describe("model-visible review and approval payloads", () => {
-    it("redacts secrets from approval ask blocks and auto-review tool args", () => {
+    it("redacts secrets from auto-review tool args", () => {
       const secrets = [OAUTH_ACCESS, OAUTH_CLIENT_SECRET, BOT_SECRET];
       const args = {
         to: "person@example.test",
         body: `use ${OAUTH_ACCESS} and ${BOT_SECRET}`,
         client_secret: OAUTH_CLIENT_SECRET,
       };
-      const ask = buildApprovalAskBlock("effect-1", "gmail_send_email", args, secrets);
-      assertNoLeak(ask, secrets);
-
       const reviewArgs = redactToolArgsForReview(args, secrets);
       assertNoLeak(reviewArgs, secrets);
     });

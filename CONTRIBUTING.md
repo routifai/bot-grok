@@ -11,15 +11,11 @@ required secrets, and startup commands.
 
 | Command | When to run |
 | --- | --- |
-| `pnpm test` | Default. Units, properties, and in-process contracts. Scripted runtime, fake sandbox, in-memory wakeup — no live connector or model-provider calls. |
-| `pnpm test:integration` | Postgres via Testcontainers: product journeys, authorization, executor lifecycle, Graphile / LISTEN/NOTIFY. Needs Docker. |
+| `pnpm test` | Default. Units, properties, and in-process contracts. Fake sandbox, in-memory wakeup — no live connector or model-provider calls. |
+| `pnpm test:integration` | Postgres via Testcontainers: authorization, Graphile / LISTEN/NOTIFY. Needs Docker. |
 | `pnpm test:e2e` | Playwright against the emulated API. Needs Docker. |
 | `pnpm test:topology` | Local product-path smoke: Docker computer + Graphile worker recovery. Needs Docker. Not PR CI. |
 | `pnpm test:canary` | Live provider canaries. Needs keys. Not PR CI. |
-| `pnpm test:pi` | Real Pi against a local HTTP model fixture: streaming, tool round trips, failures and cancellation. No keys. |
-| `pnpm test:computer-replay` | Real Pi and Docker Chromium against a local model fixture. Needs the computer image; no keys or Electron windows. |
-| `pnpm test:evals --list` | List agent-quality cases. Add `--live` and a model connection to measure repeated real-model task success. |
-| `pnpm test:computer` | Real vision model + E2B desktop. Needs keys; see [computer verification](docs/computer-runtime.md#verification). Not PR CI. |
 | `pnpm check` | TypeScript (`tsc`) across the monorepo. |
 | `pnpm lint` | Biome lint and format check. |
 
@@ -40,9 +36,6 @@ catalog in `apps/mobile/lib/i18n.ts`. Web PO entries do not translate mobile aut
 Update the locale unit tests and a UI E2E scenario for each supported surface. The marketing
 homepage in `apps/www` and the native Electron setup window have separate localization paths;
 scope and test those changes explicitly instead of assuming the web catalog covers them.
-
-See [agent verification](docs/agent-verification.md) for the distinction between
-deterministic execution tests, computer replay, and real-model quality evals.
 
 ## Optional live-provider checks
 
@@ -66,7 +59,7 @@ For the separate real-model desktop acceptance test, see
 - **Never** paste API keys, tokens, or passwords in issues or PRs.
 - Use placeholders in examples (`your-openrouter-key`, etc.).
 
-The product path is **Pi + Docker + Graphile**. Emulator settings (`AGENT_RUNTIME=scripted`, `SANDBOX_PROVIDER=fake`, `WAKEUP_DRIVER=memory`) are for tests only.
+Turns run on the Omnigent engine (`OMNIGENT_URL`). Emulator settings (`AGENT_RUNTIME=scripted`, `SANDBOX_PROVIDER=fake`, `WAKEUP_DRIVER=memory`) are for tests only.
 
 **Integrations** can use [Composio](https://composio.dev/) or Pipedream Connect as optional managed
 app catalogs. Users can also install HTTPS MCP servers (including Treg) and bounded OpenAPI tool

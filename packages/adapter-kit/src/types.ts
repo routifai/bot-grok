@@ -390,7 +390,6 @@ export interface AgentRunRequest {
   /** Resolve an explicitly requested helper model within the active user and space scope. */
   resolveModel?: (provider: string, modelId: string) => Promise<AgentRunModel>;
   resumeFromCheckpoint?: string;
-  script?: ScriptedTurn[];
   /**
    * FYI bot-message wakes and scheduled routines may finish with no text.
    * When set, skip synthetic empty-turn fallbacks (including after tools).
@@ -408,16 +407,6 @@ export interface AgentRunRequest {
   onToolCompleted?: (completion: AgentToolCompletion) => Promise<void> | void;
   /** Atomically claim durable user steering at the runtime's next safe turn boundary. */
   claimSteering?: (seenIds: string[]) => Promise<AgentSteeringMessage[]>;
-}
-
-export interface ScriptedTurn {
-  assistant?: string;
-  toolCalls?: Array<{ name: string; args: Record<string, unknown> }>;
-  ask?: { text: string; detail?: string; actions?: Array<{ id: string; label: string }> };
-  takeover?: { reason: string };
-  files?: Array<{ path: string; content: string }>;
-  memory?: Array<{ scope: "bot" | "user"; path: string; content: string }>;
-  complete?: boolean;
 }
 
 export type AgentRuntimeEvent =
@@ -508,18 +497,11 @@ export interface BackgroundJobPayloads {
   "computer.update": { updateId: string };
   "computer.control-expire": { computerId: string; leaseId: string };
   "skill.teaching-expire": { skillId: string };
-  "history.compact": { threadId: string };
   "messaging.deliver": { runId?: string };
-  /** Reconcile durable remote-agent intent; scope is loaded from the database. */
-  "cloud_agent.poll": { agentId: string };
-  /** Muse edition (docs/muse/PLAN.md B11): refresh one Muse's Ideas. */
-  "ideas.refresh": { botId: string };
   /** Muse edition only (docs/muse/PLAN.md B8): work a Goal in its Goal log. */
   "goal.advance": { goalId: string };
   /** Muse edition only (docs/muse/PLAN.md B8): a scheduled Goal check-in in the Conversation. */
   "goal.checkin": { goalId: string };
-  /** Muse edition only (docs/muse/PLAN.md B10): the daily Followed-topic research digest. */
-  "feed.topics": { botId: string };
 }
 
 export type BackgroundJobName = keyof BackgroundJobPayloads;
@@ -673,45 +655,6 @@ export interface MessagingOutboundStatus {
 
 export type MessagingInboundEvent = MessagingInboundMessage | MessagingOutboundStatus;
 
-export interface WebSearchCapabilities {
-  search: boolean;
-  /** True when results come from the active model’s native search, not a third-party API. */
-  native?: boolean;
-  /** True when search works without a hosted search vendor or API key. */
-  keyless?: boolean;
-}
-
-export interface WebFetchCapabilities {
-  fetch: boolean;
-  /** True when readable extraction runs without executing page JavaScript. */
-  readability: boolean;
-}
-
-export interface WebSearchRequest {
-  query: string;
-  maxResults?: number;
-  signal?: AbortSignal;
-}
-
-export interface WebSearchHit {
-  title: string;
-  url: string;
-  snippet: string;
-}
-
-export interface WebFetchRequest {
-  url: string;
-  maxChars?: number;
-  signal?: AbortSignal;
-}
-
-export interface WebFetchResult {
-  url: string;
-  title: string;
-  text: string;
-  truncated: boolean;
-}
-
 /** Page-level browser on the bot computer (DOM refs), not a hosted browser vendor. */
 export interface BrowserCapabilities {
   page: boolean;
@@ -795,54 +738,6 @@ export type PageBrowserCommand =
   | { command: "act"; actions: BrowserActStep[] };
 
 export type PageBrowserResult = Partial<BrowserSnapshotResult & BrowserActResult> & { ok: boolean };
-
-/** Vendor-neutral status for a remote cloud coding agent. */
-export type CloudAgentStatus = "running" | "finished" | "failed" | "cancelled";
-
-export interface CloudAgentCapabilities {
-  launch: boolean;
-  reply: boolean;
-  cancel: boolean;
-  /** True when the adapter never leaves the process (tests / Playwright). */
-  offline?: boolean;
-}
-
-export type CloudAgentImage = { data: string; mimeType: string } | { url: string };
-
-export interface CloudAgentLaunchRequest {
-  /** Repeated launches with this key must resolve to the same remote agent. */
-  idempotencyKey: string;
-  prompt: string;
-  repository?: string;
-  images?: CloudAgentImage[];
-  openPr?: boolean;
-  signal?: AbortSignal;
-}
-
-export interface CloudAgentHandle {
-  id: string;
-  url: string;
-  title: string;
-  status: CloudAgentStatus;
-  /** Latest remote run id when the vendor exposes one (needed for cancel). */
-  latestRunId?: string;
-}
-
-export interface CloudAgentSnapshot {
-  id: string;
-  url: string;
-  title: string;
-  status: CloudAgentStatus;
-  branch?: string;
-  prUrl?: string;
-  latestRunId?: string;
-}
-
-export interface CloudAgentReplyRequest {
-  prompt: string;
-  images?: CloudAgentImage[];
-  signal?: AbortSignal;
-}
 
 /**
  * Optional auto-allow check for a consequential tool call. Core still runs when

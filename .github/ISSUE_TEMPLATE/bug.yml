@@ -79,13 +79,6 @@ body:
       description: If relevant (default is `docker`).
       placeholder: docker
 
-  - type: input
-    id: runtime
-    attributes:
-      label: AGENT_RUNTIME
-      description: If relevant (default is `pi`).
-      placeholder: pi
-
   - type: textarea
     id: logs
     attributes:

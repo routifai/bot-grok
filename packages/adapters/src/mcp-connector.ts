@@ -10,7 +10,6 @@ import type { McpServer, PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { catalogToolPrefix } from "./approval-effect.js";
 import { redactConnectorPayload, sanitizeConnectorError } from "./connector-safety.js";
-import { appendToolCompletionAudit } from "./executor.js";
 import {
   CATALOG_EXECUTE,
   catalogEntries,
@@ -26,6 +25,7 @@ import { actorMayUsePrivateRemoteMcp } from "./mcp-private-endpoint.js";
 import { McpSession } from "./mcp-transport.js";
 import type { RemoteTransportDependencies } from "./remote-mcp.js";
 import type { EncryptedSecretStore } from "./secrets.js";
+import { appendToolCompletionAudit } from "./tool-completion.js";
 
 type SessionEntry = { session: McpSession; revision: number; material: OAuthMaterial };
 type PendingSession = { revision: number; promise: Promise<McpSession> };

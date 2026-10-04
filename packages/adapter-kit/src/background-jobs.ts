@@ -19,13 +19,9 @@ const payloadSchemas = {
     leaseId: z.string().min(1),
   }),
   "skill.teaching-expire": z.object({ skillId: z.string().min(1) }),
-  "history.compact": z.object({ threadId: z.string().min(1) }),
   "messaging.deliver": z.object({ runId: z.string().min(1).optional() }),
-  "cloud_agent.poll": z.object({ agentId: z.string().min(1) }),
-  "ideas.refresh": z.object({ botId: z.string().min(1) }),
   "goal.advance": z.object({ goalId: z.string().min(1) }),
   "goal.checkin": z.object({ goalId: z.string().min(1) }),
-  "feed.topics": z.object({ botId: z.string().min(1) }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
 export function parseBackgroundJob(name: string, payload: unknown): BackgroundJob {
@@ -115,63 +111,11 @@ export function skillTeachingExpireJob(skillId: string, availableAt: Date): Back
   };
 }
 
-export function historyCompactJobKey(threadId: string): string {
-  return `history.compact:${threadId}`;
-}
-
-/**
- * Each attempt runs a summarizer completion that can take up to the summarizer
- * timeout, so the job queue's default attempt count turns one permanently
- * failing thread into hours of paid retries. A few tries ride out transient
- * provider errors without storming.
- */
-export const HISTORY_COMPACT_MAX_ATTEMPTS = 4;
-
 export function messagingDeliverJob(runId?: string, availableAt?: Date): BackgroundJob {
   return {
     name: "messaging.deliver",
     payload: runId ? { runId } : {},
     replaceKey: `messaging.deliver:${runId ?? "drain"}`,
-    ...(availableAt ? { availableAt } : {}),
-  };
-}
-
-export function historyCompactJob(threadId: string): BackgroundJob {
-  return {
-    name: "history.compact",
-    payload: { threadId },
-    replaceKey: historyCompactJobKey(threadId),
-    maxAttempts: HISTORY_COMPACT_MAX_ATTEMPTS,
-  };
-}
-
-export function cloudAgentPollJobKey(agentId: string): string {
-  return `cloud_agent.poll:${agentId}`;
-}
-
-export function cloudAgentPollJob(
-  payload: BackgroundJobPayloads["cloud_agent.poll"],
-  availableAt?: Date,
-): BackgroundJob {
-  return {
-    name: "cloud_agent.poll",
-    payload,
-    replaceKey: cloudAgentPollJobKey(payload.agentId),
-    ...(availableAt ? { availableAt } : {}),
-  };
-}
-
-export function ideasRefreshJobKey(botId: string): string {
-  return `ideas.refresh:${botId}`;
-}
-
-/** One Muse can only ever have one pending refresh: a later enqueue (daily or Goal
- * status change) replaces an earlier one rather than piling up. */
-export function ideasRefreshJob(botId: string, availableAt?: Date): BackgroundJob {
-  return {
-    name: "ideas.refresh",
-    payload: { botId },
-    replaceKey: ideasRefreshJobKey(botId),
     ...(availableAt ? { availableAt } : {}),
   };
 }
@@ -209,25 +153,5 @@ export function goalCheckinJob(goalId: string, botId: string, availableAt: Date)
     replaceKey: goalCheckinJobKey(goalId),
     queueName: museQueueName(botId),
     availableAt,
-  };
-}
-
-/**
- * Muse edition only (docs/muse/PLAN.md B10): the daily Followed-topic research digest.
- * Shares `museQueueName` with the Goal jobs so a Muse never researches topics at the
- * same time it is working a Goal (CONTEXT.md: "at most one Goal is worked on at a
- * time" — the Feed digest follows the same one-at-a-time rule).
- */
-export function feedTopicsJobKey(botId: string): string {
-  return `feed.topics:${botId}`;
-}
-
-export function feedTopicsJob(botId: string, availableAt?: Date): BackgroundJob {
-  return {
-    name: "feed.topics",
-    payload: { botId },
-    replaceKey: feedTopicsJobKey(botId),
-    queueName: museQueueName(botId),
-    ...(availableAt ? { availableAt } : {}),
   };
 }

@@ -44,19 +44,14 @@ describe("createJobReconciler", () => {
   it("continues the main scans when an auxiliary reconciler fails", async () => {
     const prisma = fakePrisma();
     const { jobs } = publisher();
-    const reconcileCloudAgents = vi.fn(async () => {
-      throw new Error("cloud unavailable");
-    });
     const reconcileComputerUpdates = vi.fn(() => {
       throw new Error("queue unavailable");
     });
     await createJobReconciler({
       prisma,
       jobs,
-      reconcileCloudAgents,
       reconcileComputerUpdates,
     }).reconcileOnce();
-    expect(reconcileCloudAgents).toHaveBeenCalledOnce();
     expect(reconcileComputerUpdates).toHaveBeenCalledOnce();
     expect(prisma.run.findMany).toHaveBeenCalled();
     expect(prisma.routine.findMany).toHaveBeenCalled();

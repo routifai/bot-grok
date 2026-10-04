@@ -1,30 +1,51 @@
 import type {
   AgentHomeStore,
-  AgentRuntime,
   JobPublisher,
-  MemoryStore,
   MessagingSurface,
   SandboxProvider,
 } from "@aiden/adapter-kit";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { createLogger, createTestSink, installLogger } from "@aiden/logging";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBackgroundJobHandlers } from "./background-job-handlers.js";
-import { createRunExecutor } from "./executor.js";
-import { compactHistory } from "./history-compaction.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
-import { refreshIdeas } from "./muse/ideas.js";
 import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
-import type { EncryptedSecretStore } from "./secrets.js";
+import { failRunUnsupportedOnOmnigent, runTurnOnOmnigent } from "./omnigent/gateway.js";
+import { wakeRoutine } from "./routine-wakeup.js";
 
-vi.mock("./history-compaction.js", () => ({ compactHistory: vi.fn(async () => undefined) }));
-vi.mock("./muse/ideas.js", () => ({ refreshIdeas: vi.fn(async () => []) }));
 vi.mock("./messaging-delivery.js", () => ({
   deliverMessagingOutbound: vi.fn(async () => undefined),
   mirrorMessagingOutbound: vi.fn(async () => undefined),
 }));
+vi.mock("./omnigent/gateway.js", () => ({
+  runTurnOnOmnigent: vi.fn(async () => true),
+  failRunUnsupportedOnOmnigent: vi.fn(async () => undefined),
+}));
+vi.mock("./routine-wakeup.js", () => ({ wakeRoutine: vi.fn(async () => undefined) }));
+
+function handlersFor(overrides: {
+  jobs?: JobPublisher;
+  messaging?: MessagingSurface;
+  omnigent?: OmnigentGatewayDeps;
+}) {
+  return createBackgroundJobHandlers({
+    // Any Computer or database lookup would throw on these empty clients.
+    prisma: {} as unknown as PrismaClient,
+    sandbox: {} as unknown as SandboxProvider,
+    home: {} as unknown as AgentHomeStore,
+    jobs: overrides.jobs ?? ({ enqueue: vi.fn() } as unknown as JobPublisher),
+    events: {} as unknown as ThreadEvents,
+    workerId: "worker-1",
+    messaging: overrides.messaging,
+    omnigent: overrides.omnigent,
+  });
+}
 
 describe("createBackgroundJobHandlers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("delivers directly when shutdown rejects a completed run's mirror job", async () => {
     const enqueueError = new Error("Background job publisher is closing");
     const jobs = {
@@ -34,21 +55,10 @@ describe("createBackgroundJobHandlers", () => {
     } as unknown as JobPublisher;
     const sink = createTestSink();
     installLogger(createLogger({ service: "aiden-worker", sinks: [sink] }));
-    const handlers = createBackgroundJobHandlers({
-      executor: {
-        continueRun: vi.fn(async () => undefined),
-      } as unknown as ReturnType<typeof createRunExecutor>,
-      prisma: {} as unknown as PrismaClient,
-      sandbox: {} as unknown as SandboxProvider,
-      home: {} as unknown as AgentHomeStore,
+    const handlers = handlersFor({
       jobs,
-      events: {} as unknown as ThreadEvents,
-      workerId: "worker-1",
-      runtime: {} as unknown as AgentRuntime,
-      secretStore: {} as unknown as EncryptedSecretStore,
-      memoryProviders: { resolve: vi.fn(async () => null) },
-      memory: {} as unknown as MemoryStore,
       messaging: {} as unknown as MessagingSurface,
+      omnigent: {} as unknown as OmnigentGatewayDeps,
     });
 
     await handlers["run.continue"]({ runId: "run-1" });
@@ -68,163 +78,47 @@ describe("createBackgroundJobHandlers", () => {
     installLogger(createLogger({ service: "aiden-worker", level: "off", sinks: [] }));
   });
 
-  it("compacts the requested thread with the runtime, job publisher, and model key it was given", async () => {
-    const prisma = {} as unknown as PrismaClient;
-    const runtime = {} as unknown as AgentRuntime;
-    const jobs = {} as unknown as JobPublisher;
-    const secretStore = {} as unknown as EncryptedSecretStore;
-    const memoryProviders = { resolve: vi.fn(async () => null) };
-    const memory = {} as unknown as MemoryStore;
-    const resolveModel = vi.fn();
-    const handlers = createBackgroundJobHandlers({
-      executor: { resolveModel } as unknown as ReturnType<typeof createRunExecutor>,
-      prisma,
-      sandbox: {} as unknown as SandboxProvider,
-      home: {} as unknown as AgentHomeStore,
-      jobs,
-      events: {} as unknown as ThreadEvents,
-      workerId: "worker-1",
-      runtime,
-      secretStore,
-      memoryProviders,
-      memory,
-      deploymentModelKey: "openrouter-key",
+  it("runs every turn on the engine and never falls back to a Pi executor", async () => {
+    const omnigent = {} as unknown as OmnigentGatewayDeps;
+    const handlers = handlersFor({ omnigent });
+
+    await handlers["run.continue"]({ runId: "run-1" });
+
+    expect(runTurnOnOmnigent).toHaveBeenCalledWith(omnigent, "run-1", "worker-1");
+    expect(failRunUnsupportedOnOmnigent).not.toHaveBeenCalled();
+  });
+
+  it("fails a run the engine cannot take instead of retrying it", async () => {
+    vi.mocked(runTurnOnOmnigent).mockResolvedValueOnce(false);
+    const omnigent = {} as unknown as OmnigentGatewayDeps;
+    const handlers = handlersFor({ omnigent });
+
+    await handlers["run.continue"]({ runId: "run-2" });
+
+    expect(failRunUnsupportedOnOmnigent).toHaveBeenCalledWith(omnigent, "run-2", "worker-1");
+  });
+
+  it("wakes a routine through the shared routine wakeup", async () => {
+    const handlers = handlersFor({});
+
+    await handlers["routine.wakeup"]({
+      routineId: "routine-1",
+      scheduledFor: "2030-01-01T00:00:00.000Z",
     });
 
-    await handlers["history.compact"]({ threadId: "thread-1" });
-
-    expect(compactHistory).toHaveBeenCalledWith(
-      {
-        prisma,
-        runtime,
-        jobs,
-        memoryProviders,
-        deploymentModelKey: "openrouter-key",
-        resolveModel,
-      },
-      "thread-1",
+    expect(wakeRoutine).toHaveBeenCalledWith(
+      expect.objectContaining({ prisma: expect.anything(), jobs: expect.anything() }),
+      "routine-1",
+      "2030-01-01T00:00:00.000Z",
     );
   });
 
-  it("refreshes a Muse's ideas with the runtime, memory, and model key it was given, then reschedules the next daily run", async () => {
-    const prisma = {} as unknown as PrismaClient;
-    const runtime = {} as unknown as AgentRuntime;
-    const memory = {} as unknown as MemoryStore;
-    const jobs = { enqueue: vi.fn(async () => undefined) } as unknown as JobPublisher;
-    const secretStore = {} as unknown as EncryptedSecretStore;
-    const memoryProviders = { resolve: vi.fn(async () => null) };
-    const resolveModel = vi.fn();
-    const handlers = createBackgroundJobHandlers({
-      executor: { resolveModel } as unknown as ReturnType<typeof createRunExecutor>,
-      prisma,
-      sandbox: {} as unknown as SandboxProvider,
-      home: {} as unknown as AgentHomeStore,
-      jobs,
-      events: {} as unknown as ThreadEvents,
-      workerId: "worker-1",
-      runtime,
-      secretStore,
-      memoryProviders,
-      memory,
-      deploymentModelKey: "openrouter-key",
-    });
-
-    const before = Date.now();
-    await handlers["ideas.refresh"]({ botId: "bot-1" });
-
-    expect(refreshIdeas).toHaveBeenCalledWith(
-      {
-        prisma,
-        runtime,
-        memory,
-        deploymentModelKey: "openrouter-key",
-        resolveModel,
-      },
-      "bot-1",
-    );
-    expect(jobs.enqueue).toHaveBeenCalledTimes(1);
-    const [job] = (jobs.enqueue as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      { name: string; payload: { botId: string }; replaceKey?: string; availableAt?: Date },
-    ];
-    expect(job).toMatchObject({ name: "ideas.refresh", payload: { botId: "bot-1" } });
-    expect(job.replaceKey).toBe("ideas.refresh:bot-1");
-    expect(job.availableAt).toBeDefined();
-    const scheduledInMs = job.availableAt!.getTime() - before;
-    expect(scheduledInMs).toBeGreaterThan(23 * 60 * 60 * 1000);
-    expect(scheduledInMs).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 5_000);
-  });
-
-  it("resolves the deployment model when no user credential is configured", async () => {
-    const prisma = {
-      spaceModelPreference: { findFirst: vi.fn(async () => null) },
-      userModelCredential: { findFirst: vi.fn(async () => null) },
-      deploymentSettings: { findUnique: vi.fn(async () => null) },
-    } as unknown as PrismaClient;
-    const executor = createRunExecutor({
-      prisma,
-      deploymentModelKey: "deployment-key",
-    } as Parameters<typeof createRunExecutor>[0]);
-
-    await expect(
-      executor.resolveModel({ userId: "user-1", spaceId: "workspace-1" }),
-    ).resolves.toEqual({
-      provider: "openrouter",
-      id: "openai/gpt-5.6-luna",
-      apiKey: "deployment-key",
-      baseUrl: undefined,
-      thinkingLevel: null,
-      oauth: undefined,
-    });
-  });
-
-  it("preserves a configured local model when resolving background compaction", async () => {
-    const prisma = {
-      spaceModelPreference: { findFirst: vi.fn(async () => null) },
-      userModelCredential: { findFirst: vi.fn(async () => null) },
-      deploymentSettings: {
-        findUnique: vi.fn(async () => ({
-          defaultModelProvider: "local",
-          defaultModelId: "qwen3:4b",
-        })),
-      },
-    } as unknown as PrismaClient;
-    const executor = createRunExecutor({
-      prisma,
-    } as Parameters<typeof createRunExecutor>[0]);
-
-    await expect(
-      executor.resolveModel({ userId: "user-1", spaceId: "workspace-1" }),
-    ).resolves.toEqual({
-      provider: "local",
-      id: "qwen3:4b",
-      apiKey: undefined,
-      baseUrl: undefined,
-      thinkingLevel: null,
-      oauth: undefined,
-    });
-  });
   it("leaves the engine's always-on Computer alone: no idle sleep or control expiry", async () => {
     const jobs = { enqueue: vi.fn() } as unknown as JobPublisher;
-    const handlers = createBackgroundJobHandlers({
-      executor: {} as unknown as ReturnType<typeof createRunExecutor>,
-      // Any Computer lookup would throw on this empty client.
-      prisma: {} as unknown as PrismaClient,
-      sandbox: {} as unknown as SandboxProvider,
-      home: {} as unknown as AgentHomeStore,
-      jobs,
-      events: {} as unknown as ThreadEvents,
-      workerId: "worker-1",
-      runtime: {} as unknown as AgentRuntime,
-      secretStore: {} as unknown as EncryptedSecretStore,
-      memoryProviders: { resolve: vi.fn(async () => null) },
-      memory: {} as unknown as MemoryStore,
-      omnigent: {} as unknown as OmnigentGatewayDeps,
-    });
+    const handlers = handlersFor({ jobs, omnigent: {} as unknown as OmnigentGatewayDeps });
 
     await handlers["computer.sleep"]({ computerId: "computer-1" });
     await handlers["computer.control-expire"]({ computerId: "computer-1", leaseId: "lease-1" });
-    // Followed topics are engine scheduled tasks: the Pi-era digest does nothing.
-    await handlers["feed.topics"]({ botId: "bot-1" });
 
     expect(jobs.enqueue).not.toHaveBeenCalled();
   });

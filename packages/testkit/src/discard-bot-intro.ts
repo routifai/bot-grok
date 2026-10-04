@@ -9,7 +9,8 @@ export type BotIntroHarness = {
   app: App;
   prisma: PrismaClient;
   jobs: { cancel(key: string): Promise<void> };
-  runtime: { abort(runId: string): Promise<void> };
+  /** Only present when a harness still drives a model runtime in-process. */
+  runtime?: { abort(runId: string): Promise<void> };
 };
 
 const QUIET_MS = 50;
@@ -41,7 +42,7 @@ export async function discardBotIntroRun(
     });
     for (const run of runs) {
       await harness.jobs.cancel(runJobKey(run.id)).catch(() => undefined);
-      await harness.runtime.abort(run.id);
+      await harness.runtime?.abort(run.id);
     }
     const runningAttempts = await harness.prisma.attempt.count({
       where: { run: { botId }, status: "running" },

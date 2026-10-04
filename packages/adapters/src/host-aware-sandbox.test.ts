@@ -4,7 +4,6 @@ import path from "node:path";
 import type { ComputerRef, SandboxProvider } from "@aiden/adapter-kit";
 import type { PrismaClient } from "@aiden/db";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { ComputerBrowserProvider } from "./computer-browser.js";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
 import { DockerSandboxProvider } from "./docker-sandbox.js";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
@@ -26,40 +25,6 @@ describe("host-aware sandbox", () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
-
-  it("exposes and routes page commands through the production Docker wrapper", async () => {
-    const result = {
-      ok: true,
-      url: "https://example.test",
-      title: "Page",
-      tree: "Page",
-      elements: [],
-    };
-    const pageBrowser = vi
-      .spyOn(DockerSandboxProvider.prototype, "pageBrowser")
-      .mockResolvedValue(result);
-    const sandbox = createRunSandbox("docker", {
-      prisma: { deploymentSettings: { findUnique: vi.fn() } } as unknown as PrismaClient,
-    });
-    const browser = new ComputerBrowserProvider({ sandbox });
-    const computer: ComputerRef = {
-      id: "computer",
-      providerRef: "computer",
-      botId: "home",
-      kind: "docker",
-    };
-    expect(browser.describe().capabilities.page).toBe(true);
-    expect(await browser.snapshot(computer, {}, ctx)).toMatchObject({
-      title: "Page",
-      tree: "Page",
-    });
-    expect(pageBrowser).toHaveBeenCalledWith(computer, { command: "snapshot" }, ctx);
-
-    pageBrowser.mockClear();
-    const hostResult = await browser.snapshot({ ...computer, kind: "desktop" }, {}, ctx);
-    expect(hostResult.fallback).toBe("computer_act");
-    expect(pageBrowser).not.toHaveBeenCalled();
-  });
 
   it("does not expose page commands when neither provider supports them", () => {
     const sandbox = new HostAwareSandbox(

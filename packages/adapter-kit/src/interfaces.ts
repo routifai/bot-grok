@@ -17,11 +17,6 @@ import type {
   BrowserNavigateResult,
   BrowserSnapshotRequest,
   BrowserSnapshotResult,
-  CloudAgentCapabilities,
-  CloudAgentHandle,
-  CloudAgentLaunchRequest,
-  CloudAgentReplyRequest,
-  CloudAgentSnapshot,
   CommandRequest,
   ComputerActionRequest,
   ComputerActionResult,
@@ -71,12 +66,6 @@ import type {
   VoiceSynthesizeRequest,
   VoiceTranscribeRequest,
   VoiceVerifyResult,
-  WebFetchCapabilities,
-  WebFetchRequest,
-  WebFetchResult,
-  WebSearchCapabilities,
-  WebSearchHit,
-  WebSearchRequest,
 } from "./types.js";
 
 export interface SandboxProvider {
@@ -369,30 +358,6 @@ export interface MessagingSurface {
 }
 
 /**
- * Provider-neutral web search. Builtin `web_search` routes here so backends
- * (keyless HTTP, model-native search, future paid APIs) can be swapped without
- * changing tool names or the executor.
- */
-export interface WebSearchProvider {
-  describe(): AdapterDescriptor<WebSearchCapabilities>;
-  search(request: WebSearchRequest, context: AdapterContext): Promise<WebSearchHit[]>;
-}
-
-/**
- * Provider-neutral page fetch. Builtin `web_fetch` routes here. Read-only:
- * no JS execution, no headless browser.
- */
-export interface WebFetchProvider {
-  describe(): AdapterDescriptor<WebFetchCapabilities>;
-  fetch(request: WebFetchRequest, context: AdapterContext): Promise<WebFetchResult>;
-}
-
-/** Convenience when one adapter owns both search and fetch. */
-export interface WebProvider extends WebSearchProvider, WebFetchProvider {
-  describe(): AdapterDescriptor<WebSearchCapabilities & WebFetchCapabilities>;
-}
-
-/**
  * Provider-neutral page browser on the bot computer. Builtin browser_* tools
  * route here so backends (in-process page session, CDP against the computer's
  * Chrome, future adapters) can swap without changing tool names. Not a second
@@ -416,23 +381,6 @@ export interface BrowserProvider {
     request: BrowserActRequest,
     context: AdapterContext,
   ): Promise<BrowserActResult>;
-}
-
-/**
- * Provider-neutral remote cloud coding agents (clone a repo on a vendor VM,
- * open a PR). Not the bot computer — shell/sandbox stays separate. Core runs
- * with none configured; tools are injected only when a provider is present.
- */
-export interface CloudAgentProvider {
-  describe(): AdapterDescriptor<CloudAgentCapabilities>;
-  launch(request: CloudAgentLaunchRequest, context: AdapterContext): Promise<CloudAgentHandle>;
-  get(id: string, context: AdapterContext, runId?: string): Promise<CloudAgentSnapshot>;
-  reply(
-    id: string,
-    request: CloudAgentReplyRequest,
-    context: AdapterContext,
-  ): Promise<CloudAgentHandle>;
-  cancel(id: string, context: AdapterContext, runId?: string): Promise<CloudAgentSnapshot>;
 }
 
 /**

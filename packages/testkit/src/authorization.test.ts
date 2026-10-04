@@ -1166,14 +1166,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       reasoning: false,
     });
     await rpc(app, cookie, "models/connect", { ...connection, reasoning: true });
-    const actor = await rpc<Actor>(app, cookie, "me");
-    expect(
-      await handles.executor.resolveModel({
-        userId: actor.userId,
-        spaceId: actor.spaceId,
-        botId: bot.id,
-      }),
-    ).toMatchObject({ apiKey: "fake-saved-key", reasoning: true });
     const update = {
       botId: bot.id,
       modelProvider: connection.provider,

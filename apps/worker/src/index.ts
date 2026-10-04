@@ -7,18 +7,13 @@ loadRootEnv();
 import {
   ChatSdkMessagingSurface,
   createBackgroundJobHandlers,
-  createCloudAgentConnection,
   createConnectorStack,
   createJobReconciler,
-  createMessagingContextLoader,
   createPostgresReconciliationLeadership,
-  createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
-  createWebProvider,
   databaseCapacityBackoffMs,
   EncryptedSecretStore,
-  ExpoPushProvider,
   GraphileJobPublisher,
   GraphileJobWorkerHost,
   InMemoryJobQueue,
@@ -27,25 +22,19 @@ import {
   isMessagingSurfaceEnabled,
   isPipedreamEnabled,
   LocalAgentHomeStore,
-  LocalArtifactStore,
   McpConnector,
   McpOAuthBroker,
   messagingEnvFromProcess,
   messagingPlatformsFromEnv,
   omnigentGatewayDepsFromEnv,
   omnigentRedactionSecretsFromEnv,
-  PiAgentRuntime,
   PipedreamConnector,
   PostgresRealtimeFanout,
   pipedreamConfigFromEnv,
-  reconcileCloudAgents,
   reconcileComputerUpdates,
   reconcileOmnigentMirror,
   resolveDeploymentModel,
-  resolvePiSessionRoot,
   resolveSandboxProvider,
-  ScriptedAgentRuntime,
-  SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
 } from "@aiden/adapters";
 import { resolveEncryptionKey, resolveSupervisorToken } from "@aiden/core";
@@ -57,7 +46,6 @@ import {
 } from "@aiden/db";
 import { SERVICE_NAMES } from "@aiden/logging";
 import { createRootLogger } from "@aiden/logging/axiom";
-import { MarkdownMemoryStore } from "@aiden/memory";
 
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
@@ -82,10 +70,6 @@ async function main() {
     runSecretWriter: createRunSecretWriter(secrets),
   });
   const dataDir = process.env.DATA_DIR ?? "./data";
-  const runtime =
-    process.env.AGENT_RUNTIME === "scripted"
-      ? new ScriptedAgentRuntime()
-      : new PiAgentRuntime({ sessionRoot: resolvePiSessionRoot(dataDir) });
   // Same resolver the API uses, so both processes agree on provider, model and key.
   const { key: deploymentModelKey } = resolveDeploymentModel();
   const sandboxProvider = resolveSandboxProvider(process.env);
@@ -152,10 +136,7 @@ async function main() {
   const connector = stack.destination;
   await connector.start();
   integrationSettings.warmDirectories();
-  const memoryProviders = new SpaceMemoryProviderResolver(prisma, secrets);
-  const memory = new MarkdownMemoryStore(prisma);
   const home = new LocalAgentHomeStore(dataDir);
-  const artifacts = new LocalArtifactStore(dataDir);
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;
   const jobs: JobPublisher = inMemoryJobs ?? new GraphileJobPublisher(pool);
   const jobHost: JobWorkerHost =
@@ -163,63 +144,20 @@ async function main() {
     new GraphileJobWorkerHost(pool, {
       concurrency: parsePositiveInteger(process.env.GRAPHILE_WORKER_CONCURRENCY, 4),
     });
-  // One provider instance so emulator launches and polls share the same Map.
-  const cloudAgent = createCloudAgentConnection();
   // Same composition ./omnigent/env.ts#omnigentRedactionSecretsFromEnv uses for the Omnigent
   // read paths (chats.*/activities.*/memory.profile) — one list, shared, so every surface that
-  // can echo back something Omnigent (or the normal executor) said redacts with the identical
+  // can echo back something Omnigent said redacts with the identical
   // set of deployment secrets.
   const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
-  const executor = createRunExecutor({
-    prisma,
-    runtime,
-    sandbox,
-    memory,
-    memoryProviders,
-    home,
-    artifacts,
-    connector: stack.connector,
-    connectors: stack.connector,
-    listConnectedPluginSlugs: async (userId) => {
-      const provider = await integrationSettings.resolve("composio");
-      if (!provider) return [];
-      return provider.listConnectedExternalIds({
-        userId,
-        spaceId: "",
-        operationId: "connections.sync",
-        traceId: "connections.sync",
-        signal: AbortSignal.timeout(15_000),
-      });
-    },
-    secrets: runtimeSecrets,
-    secretStore: secrets,
-    mcpAllowPrivateEndpoint: process.env.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
-    deploymentModelKey,
-    dataDir,
-    notifications: new ExpoPushProvider(dataDir),
-    jobs,
-    events,
-    messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
-    web: createWebProvider(),
-    cloudAgent,
-  });
-
   const jobHandlers = createBackgroundJobHandlers({
-    executor,
     prisma,
     sandbox,
     home,
     jobs,
     events,
     workerId: process.pid.toString(),
-    runtime,
-    secretStore: secrets,
-    memoryProviders,
-    memory,
-    deploymentModelKey,
     messaging,
-    cloudAgent,
     omnigent,
   });
   // graphile-worker run() connects through the shared pool. createPool already
@@ -246,7 +184,6 @@ async function main() {
     jobs,
     events,
     leadership: createPostgresReconciliationLeadership(pool),
-    reconcileCloudAgents: () => reconcileCloudAgents({ prisma, jobs, cloudAgent }),
     reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
     reconcileOmnigentMirror: omnigent
       ? () => reconcileOmnigentMirror({ ...omnigent, workerId: process.pid.toString() })

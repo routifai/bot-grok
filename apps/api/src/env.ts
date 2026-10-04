@@ -1,8 +1,4 @@
-import {
-  resolveCloudAgentProvider,
-  resolveDeploymentModel,
-  resolveSandboxProvider,
-} from "@aiden/adapters";
+import { resolveDeploymentModel, resolveSandboxProvider } from "@aiden/adapters";
 import {
   resolveAuthSecret,
   resolveEncryptionKey,
@@ -10,7 +6,7 @@ import {
   resolveSupervisorToken,
 } from "@aiden/core";
 
-export { resolveCloudAgentProvider, resolveSandboxProvider } from "@aiden/adapters";
+export { resolveSandboxProvider } from "@aiden/adapters";
 
 export interface AppEnv {
   nodeEnv: string;
@@ -27,15 +23,10 @@ export interface AppEnv {
   signupAllowlist: string | undefined;
   encryptionKey: string;
   dataDir: string;
-  /** Opt-in Pi JSONL session recording under DATA_DIR/pi-sessions. Default off. */
-  piSessionRecording: boolean;
   sandboxSupervisorUrl: string;
   sandboxSupervisorToken: string | undefined;
   screenProxySecret: string;
   sandboxProvider: string;
-  cloudAgentProvider: string;
-  cloudAgentSpaceId: string | undefined;
-  cursorApiKey: string | undefined;
   agentRuntime: string;
   deploymentModelKey: string | undefined;
   e2bApiKey: string | undefined;
@@ -92,7 +83,6 @@ export interface AppEnv {
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const authSecret = resolveAuthSecret(source);
   const sandboxProvider = resolveSandboxProvider(source);
-  const cloudAgentProvider = resolveCloudAgentProvider(source);
   const deploymentModel = resolveDeploymentModel(source);
   return {
     nodeEnv: source.NODE_ENV ?? "",
@@ -109,15 +99,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     signupAllowlist: source.SIGNUP_ALLOWLIST,
     encryptionKey: resolveEncryptionKey(source),
     dataDir: source.DATA_DIR ?? "./data",
-    piSessionRecording: source.PI_SESSION_RECORDING === "true",
     sandboxSupervisorUrl: source.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
     sandboxSupervisorToken:
       sandboxProvider === "docker" ? resolveSupervisorToken(source) : undefined,
     screenProxySecret: resolveScreenProxySecret(source),
     sandboxProvider,
-    cloudAgentProvider,
-    cloudAgentSpaceId: optional(source.CLOUD_AGENT_SPACE_ID),
-    cursorApiKey: optional(source.CURSOR_API_KEY),
     agentRuntime: source.AGENT_RUNTIME ?? "pi",
     // Provider, model and key resolve together: see resolveDeploymentModel.
     deploymentModelKey: deploymentModel.key,

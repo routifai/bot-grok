@@ -1,4 +1,4 @@
-import { runContinueJob } from "@aiden/adapter-kit";
+import { type JobPublisher, runContinueJob } from "@aiden/adapter-kit";
 import type { BotMessageIntent, MessageBlock } from "@aiden/contracts";
 import {
   BOT_MESSAGE_MAX_LENGTH,
@@ -13,10 +13,16 @@ import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   type PrismaClient,
+  type ThreadEvents,
   withTransactionRetry,
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
-import type { ExecutorDeps } from "./executor.js";
+
+export interface BotMessageDeps {
+  prisma: PrismaClient;
+  events: ThreadEvents;
+  jobs: JobPublisher;
+}
 
 /**
  * The hop the current run sits at, read back from the message that woke this
@@ -60,7 +66,7 @@ export async function loadBotMessageContext(
 }
 
 export async function messageBot(
-  deps: Pick<ExecutorDeps, "prisma" | "events" | "jobs">,
+  deps: BotMessageDeps,
   run: {
     id: string;
     spaceId: string;
@@ -316,7 +322,7 @@ export async function messageBot(
 
 /** Return a delegated run's terminal outcome unless it already sent one explicitly. */
 export async function returnBotMessageOutcome(
-  deps: Pick<ExecutorDeps, "prisma" | "events" | "jobs">,
+  deps: BotMessageDeps,
   run: {
     id: string;
     spaceId: string;

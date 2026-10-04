@@ -22,5 +22,3 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:topology
-      - name: Replay computer tools against real Chromium without inference
-        run: pnpm test:computer-replay --image=aiden/computer:topology

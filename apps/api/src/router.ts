@@ -2,8 +2,6 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type {
   AdapterContext,
   AgentHomeStore,
-  AgentRunRequest,
-  AgentRuntime,
   ArtifactStore,
   ConnectorCatalogItem,
   JobPublisher,
@@ -19,7 +17,6 @@ import {
   runJobKey,
 } from "@aiden/adapter-kit";
 import type {
-  CloudAgentConnection,
   ComposioProvider,
   ComputerExecutionLease,
   ConnectorRegistry,
@@ -72,7 +69,6 @@ import {
   readStoredModelAuth,
   releaseComputerExecutionLease,
   replaceComputer,
-  rescheduleMuseFeedForBot,
   rescheduleMuseGoalsForBot,
   resolveAutoReviewChecker,
   resolveBotWorkspacePath,
@@ -221,7 +217,7 @@ import {
   type MuseFeedDeps,
   removeTopic,
 } from "./muse-feed.js";
-import { listIdeas, type MuseIdeasDeps, refreshIdeasNow } from "./muse-ideas.js";
+import { listIdeas, type MuseIdeasDeps } from "./muse-ideas.js";
 import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
 import {
   chooseFocus,
@@ -496,7 +492,6 @@ function mcpAssignmentDto(row: {
 }
 
 export interface RouterDeps {
-  cloudAgent?: CloudAgentConnection | null;
   prisma: PrismaClient;
   events: ThreadEvents;
   auth: Auth;
@@ -504,13 +499,6 @@ export interface RouterDeps {
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
-  /** Muse edition (B11 `ideas.refresh`): the one model call over Goals/memory/Conversation. */
-  runtime: AgentRuntime;
-  resolveModel?: (scope: {
-    userId: string;
-    spaceId: string;
-    botId?: string;
-  }) => Promise<AgentRunRequest["model"]>;
   home: AgentHomeStore;
   secrets: EncryptedSecretStore;
   oauthLogins: PiOAuthLogins;
@@ -618,15 +606,8 @@ export function createRouter(deps: RouterDeps) {
   // Muse is the only edition now; these routes (Goals, Asks, Feed, Ideas, followed
   // topics, Muse settings) no longer need a mode gate, but the alias documents intent.
   const museOnly = authed;
-  const museIdeasDeps: MuseIdeasDeps = {
-    prisma: deps.prisma,
-    runtime: deps.runtime,
-    memory: deps.memory,
-    jobs: deps.jobs,
-    deploymentModelKey: deps.env.deploymentModelKey,
-    ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
-  };
-  const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma, jobs: deps.jobs };
+  const museIdeasDeps: MuseIdeasDeps = { prisma: deps.prisma };
+  const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma };
   const engineIdeasDeps: EngineIdeasDeps = {
     prisma: deps.prisma,
     // "Do it" sends the Idea's message the same way a typed follow-up does.
@@ -5007,7 +4988,7 @@ export function createRouter(deps: RouterDeps) {
         // The engine's Study run refreshes Ideas on its own schedule; reading is the refresh.
         return engine
           ? engineListIdeas(engineIdeasDeps, engine, context.actor, input.botId)
-          : refreshIdeasNow(museIdeasDeps, context.actor, input.botId);
+          : listIdeas(museIdeasDeps, context.actor, input.botId);
       }),
       accept: museOnly.ideas.accept.handler(async ({ context, input }) => {
         const engine = engineComputerClient();
@@ -5053,12 +5034,9 @@ export function createRouter(deps: RouterDeps) {
       updateSettings: museOnly.muse.updateSettings.handler(async ({ context, input }) => {
         const settings = await updateMuseSettings(deps, context.actor, input);
         // docs/muse/PLAN.md B8/B10: a changed proactivity/quiet-hours setting reschedules
-        // this Muse's Goals and Feed digest right away instead of waiting for their next fire.
+        // this Muse's Goals right away instead of waiting for their next fire.
         await rescheduleMuseGoalsForBot(deps, input.botId).catch((error) =>
           getLogger().error("reschedule Muse Goals after settings change", error),
-        );
-        await rescheduleMuseFeedForBot(deps, input.botId).catch((error) =>
-          getLogger().error("reschedule Muse Feed digest after settings change", error),
         );
         return settings;
       }),

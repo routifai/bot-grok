@@ -1,9 +1,5 @@
 import type { BackgroundJobHandlers } from "@aiden/adapter-kit";
-import {
-  HISTORY_COMPACT_MAX_ATTEMPTS,
-  historyCompactJob,
-  messagingDeliverJob,
-} from "@aiden/adapter-kit";
+import { messagingDeliverJob } from "@aiden/adapter-kit";
 import { createLogger, createTestSink, installLogger, wrapJobPayload } from "@aiden/logging";
 import type { Runner } from "graphile-worker";
 import { makeWorkerUtils } from "graphile-worker";
@@ -31,13 +27,9 @@ function handlers(): BackgroundJobHandlers {
     "computer.sleep": vi.fn(async () => undefined),
     "computer.control-expire": vi.fn(async () => undefined),
     "skill.teaching-expire": vi.fn(async () => undefined),
-    "history.compact": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
-    "cloud_agent.poll": vi.fn(async () => undefined),
-    "ideas.refresh": vi.fn(async () => undefined),
     "goal.advance": vi.fn(async () => undefined),
     "goal.checkin": vi.fn(async () => undefined),
-    "feed.topics": vi.fn(async () => undefined),
   };
 }
 
@@ -94,11 +86,11 @@ describe("GraphileJobPublisher.enqueue", () => {
   it("forwards the job's maxAttempts cap to graphile", async () => {
     const addJob = vi.fn(async () => undefined);
     const publisher = publisherWith(addJob);
-    await publisher.enqueue(historyCompactJob("thread-1"));
+    await publisher.enqueue({ ...messagingDeliverJob("run-1"), maxAttempts: 4 });
     expect(addJob).toHaveBeenCalledWith(
-      "history.compact",
+      "messaging.deliver",
       expect.anything(),
-      expect.objectContaining({ maxAttempts: HISTORY_COMPACT_MAX_ATTEMPTS }),
+      expect.objectContaining({ maxAttempts: 4 }),
     );
     await publisher.close();
   });
@@ -177,67 +169,6 @@ describe("GraphileJobWorkerHost runner lifecycle", () => {
     expect(run).toHaveBeenCalledTimes(1);
 
     await host.stop();
-  });
-
-  it("logs when history compaction fails permanently", async () => {
-    const first = mockRunner();
-    run.mockResolvedValueOnce(first.runner);
-    const sink = createTestSink();
-    installLogger(createLogger({ service: "aiden-worker", sinks: [sink] }));
-    const host = new GraphileJobWorkerHost({} as Pool, {
-      sleep: async () => undefined,
-    });
-
-    try {
-      await host.start(handlers());
-      const on = first.runner.events.on as ReturnType<typeof vi.fn>;
-      const failed = on.mock.calls.find((call) => call[0] === "job:failed")?.[1] as
-        | ((event: {
-            job: {
-              task_identifier: string;
-              payload: unknown;
-              attempts: number;
-              max_attempts: number;
-            };
-            error: unknown;
-          }) => void)
-        | undefined;
-      expect(failed).toBeTypeOf("function");
-      failed?.({
-        job: {
-          task_identifier: "history.compact",
-          payload: wrapJobPayload({ threadId: "thread-9" }),
-          attempts: HISTORY_COMPACT_MAX_ATTEMPTS,
-          max_attempts: HISTORY_COMPACT_MAX_ATTEMPTS,
-        },
-        error: new Error("The operation was aborted due to timeout"),
-      });
-      failed?.({
-        job: {
-          task_identifier: "run.continue",
-          payload: wrapJobPayload({ runId: "run-1" }),
-          attempts: 25,
-          max_attempts: 25,
-        },
-        error: new Error("handler failed"),
-      });
-    } finally {
-      await host.stop();
-      installLogger(createLogger({ service: "aiden-worker", level: "off", sinks: [] }));
-    }
-
-    expect(sink.events).toEqual([
-      expect.objectContaining({
-        level: "error",
-        message: "history.compact failed permanently",
-        "thread.id": "thread-9",
-        "history.compact.reason": "attempts_exhausted",
-        "history.compact.retryable": false,
-        "job.attempts": HISTORY_COMPACT_MAX_ATTEMPTS,
-        "job.max_attempts": HISTORY_COMPACT_MAX_ATTEMPTS,
-        error: expect.objectContaining({ message: "The operation was aborted due to timeout" }),
-      }),
-    ]);
   });
 
   it("wakes a pending restart delay when stop is called", async () => {

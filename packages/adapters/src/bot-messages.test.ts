@@ -1,12 +1,12 @@
 import type { PrismaClient } from "@aiden/db";
 import { describe, expect, it, vi } from "vitest";
 import {
+  type BotMessageDeps,
   currentBotMessageHop,
   loadBotMessageContext,
   messageBot,
   returnBotMessageOutcome,
 } from "./bot-messages.js";
-import type { ExecutorDeps } from "./executor.js";
 
 const run = {
   id: "run-1",
@@ -85,10 +85,7 @@ function deps(
     }),
   } as unknown as PrismaClient;
   return {
-    deps: { prisma, events: { notify }, jobs: { enqueue } } as unknown as Pick<
-      ExecutorDeps,
-      "prisma" | "events" | "jobs"
-    >,
+    deps: { prisma, events: { notify }, jobs: { enqueue } } as unknown as BotMessageDeps,
     tx,
     enqueue,
     notify,

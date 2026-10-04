@@ -1,6 +1,6 @@
 import type { BackgroundJob, JobPublisher } from "@aiden/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
-import { deferFutureRoutine } from "./executor.js";
+import { deferFutureRoutine } from "./routine-scheduling.js";
 
 describe("routine scheduling", () => {
   it("never fires a future occurrence early", async () => {

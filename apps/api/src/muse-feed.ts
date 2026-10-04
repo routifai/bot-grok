@@ -1,5 +1,3 @@
-import type { JobPublisher } from "@aiden/adapter-kit";
-import { scheduleFeedDigestOnFirstTopic } from "@aiden/adapters";
 import type { Actor, FollowedTopic, Post } from "@aiden/contracts";
 import {
   createPostRepos,
@@ -16,9 +14,6 @@ import {
 
 export interface MuseFeedDeps {
   prisma: PrismaClient;
-  /** Starts the daily digest schedule the first time a topic is followed (optional so
-   * tests that only exercise the follow logic keep working without a job queue). */
-  jobs?: JobPublisher;
 }
 
 export async function listFeedPosts(
@@ -51,14 +46,6 @@ export async function followTopic(
     { spaceId: actor.spaceId, userId: actor.userId, botId: input.botId },
     topic,
   );
-  if (deps.jobs) {
-    const count = (await topics.listTopics(input.botId)).length;
-    await scheduleFeedDigestOnFirstTopic(
-      { prisma: deps.prisma, jobs: deps.jobs },
-      input.botId,
-      count,
-    );
-  }
   return followed;
 }
 

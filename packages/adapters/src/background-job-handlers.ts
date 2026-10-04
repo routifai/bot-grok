@@ -1,56 +1,35 @@
 import type {
   AgentHomeStore,
-  AgentRuntime,
   BackgroundJobHandlers,
   JobPublisher,
-  MemoryStore,
   MessagingSurface,
   SandboxProvider,
 } from "@aiden/adapter-kit";
-import { ideasRefreshJob, messagingDeliverJob } from "@aiden/adapter-kit";
+import { messagingDeliverJob } from "@aiden/adapter-kit";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
-import type { CloudAgentConnection } from "./cloud-agent-factory.js";
-import { pollCloudAgent } from "./cloud-agent-poll.js";
 import { expireComputerControl } from "./computer-control.js";
 import { scheduleComputerSleep, sleepComputerIfIdle } from "./computer-idle.js";
 import { performComputerUpdate } from "./computer-update.js";
-import type { createRunExecutor } from "./executor.js";
-import { compactHistory } from "./history-compaction.js";
-import type { MemoryProviderResolver } from "./memory-provider-factory.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
-import { createFeedJobHandlers } from "./muse/feed-jobs.js";
 import { createGoalJobHandlers } from "./muse/goal-jobs.js";
-import { refreshIdeas } from "./muse/ideas.js";
 import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
 import { failRunUnsupportedOnOmnigent, runTurnOnOmnigent } from "./omnigent/gateway.js";
-import type { EncryptedSecretStore } from "./secrets.js";
+import { wakeRoutine } from "./routine-wakeup.js";
 import { expireTaughtSkillTeaching } from "./teaching-session.js";
 
-/** Ideas refresh daily (docs/muse/PLAN.md B11); a Goal status change also enqueues one
- * immediately (see goal-proposals.ts), which this reschedule leaves untouched since the
- * job key is shared and Graphile keeps only the most recently enqueued run time. */
-const IDEAS_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
 export function createBackgroundJobHandlers(deps: {
-  executor: ReturnType<typeof createRunExecutor>;
   prisma: PrismaClient;
   sandbox: SandboxProvider;
   home: AgentHomeStore;
   jobs: JobPublisher;
   events: ThreadEvents;
   workerId: string;
-  runtime: AgentRuntime;
-  secretStore: EncryptedSecretStore;
-  memoryProviders: MemoryProviderResolver;
-  memory: MemoryStore;
-  deploymentModelKey?: string;
   messaging?: MessagingSurface;
-  cloudAgent?: CloudAgentConnection | null;
   /**
-   * Omnigent chat engine (docs/omnigent-spike.md): when set (OMNIGENT_URL + OMNIGENT_PROXY_SECRET), an eligible run.continue
-   * (a plain user message on a Muse's own private Conversation) runs on Omnigent instead of
-   * the built-in executor. Unset keeps today's engine byte-for-byte unchanged.
+   * Omnigent chat engine (docs/omnigent-spike.md): every run.continue runs on it. Unset (no
+   * OMNIGENT_URL / OMNIGENT_PROXY_SECRET) there is no engine: runs fail instead of falling
+   * back to the retired Pi executor.
    */
   omnigent?: OmnigentGatewayDeps;
 }): BackgroundJobHandlers {
@@ -69,37 +48,30 @@ export function createBackgroundJobHandlers(deps: {
     );
   };
 
+  // Goal jobs still read the Pi-era Goal tables. Their runs go to the engine like any other
+  // run; one the engine cannot take fails visibly (Goals move to the engine: docs/adr/0005).
+  const continueOnEngine = async (runId: string, workerId: string) => {
+    if (!deps.omnigent) return;
+    const ran = await runTurnOnOmnigent(deps.omnigent, runId, workerId);
+    if (!ran) await failRunUnsupportedOnOmnigent(deps.omnigent, runId, workerId);
+  };
   const goalJobHandlers = createGoalJobHandlers({
     prisma: deps.prisma,
     jobs: deps.jobs,
     events: deps.events,
-    continueRun: (runId, workerId) => deps.executor.continueRun(runId, workerId),
-    workerId: deps.workerId,
-  });
-  const feedJobHandlers = createFeedJobHandlers({
-    prisma: deps.prisma,
-    jobs: deps.jobs,
-    continueRun: (runId, workerId) => deps.executor.continueRun(runId, workerId),
+    continueRun: continueOnEngine,
     workerId: deps.workerId,
   });
 
   return {
     "goal.advance": goalJobHandlers["goal.advance"],
     "goal.checkin": goalJobHandlers["goal.checkin"],
-    // Followed topics run as engine scheduled tasks (docs/adr/0005): nothing to digest here.
-    "feed.topics": async (payload) => {
-      if (deps.omnigent) return;
-      await feedJobHandlers["feed.topics"](payload);
-    },
     "run.continue": async (payload) => {
-      const ranOnOmnigent = deps.omnigent
-        ? await runTurnOnOmnigent(deps.omnigent, payload.runId, deps.workerId)
-        : false;
-      // Engine-backed Muses never fall back to the Pi executor (no Computer, ADR 0004).
-      if (deps.omnigent && !ranOnOmnigent) {
-        await failRunUnsupportedOnOmnigent(deps.omnigent, payload.runId, deps.workerId);
-      } else if (!ranOnOmnigent) {
-        await deps.executor.continueRun(payload.runId, deps.workerId);
+      if (deps.omnigent) {
+        await continueOnEngine(payload.runId, deps.workerId);
+      } else {
+        // No engine configured: nothing can run this turn.
+        getLogger().error("run.continue skipped: no engine configured", { runId: payload.runId });
       }
       // Automatic messaging mirror: once the run's bot messages are durable,
       // copy them into the outbox. Never let mirror failures fail the run.
@@ -118,7 +90,7 @@ export function createBackgroundJobHandlers(deps: {
       await deliverMessaging(payload.runId);
     },
     "routine.wakeup": async (payload) => {
-      await deps.executor.wakeRoutine(payload.routineId, payload.scheduledFor);
+      await wakeRoutine(deps, payload.routineId, payload.scheduledFor);
     },
     "computer.update": async ({ updateId }) => {
       await performComputerUpdate(deps, updateId);
@@ -136,45 +108,6 @@ export function createBackgroundJobHandlers(deps: {
     },
     "skill.teaching-expire": async (payload) => {
       await expireTaughtSkillTeaching(deps, payload.skillId);
-    },
-    "cloud_agent.poll": async (payload) => {
-      await pollCloudAgent(
-        {
-          prisma: deps.prisma,
-          jobs: deps.jobs,
-          events: deps.events,
-          cloudAgent: deps.cloudAgent,
-        },
-        payload,
-      );
-    },
-    "history.compact": async (payload) => {
-      await compactHistory(
-        {
-          prisma: deps.prisma,
-          runtime: deps.runtime,
-          jobs: deps.jobs,
-          memoryProviders: deps.memoryProviders,
-          deploymentModelKey: deps.deploymentModelKey,
-          ...(deps.executor.resolveModel ? { resolveModel: deps.executor.resolveModel } : {}),
-        },
-        payload.threadId,
-      );
-    },
-    "ideas.refresh": async (payload) => {
-      await refreshIdeas(
-        {
-          prisma: deps.prisma,
-          runtime: deps.runtime,
-          memory: deps.memory,
-          deploymentModelKey: deps.deploymentModelKey,
-          ...(deps.executor.resolveModel ? { resolveModel: deps.executor.resolveModel } : {}),
-        },
-        payload.botId,
-      );
-      await deps.jobs
-        .enqueue(ideasRefreshJob(payload.botId, new Date(Date.now() + IDEAS_REFRESH_INTERVAL_MS)))
-        .catch((error) => getLogger().error("ideas.refresh reschedule error", error));
     },
   };
 }

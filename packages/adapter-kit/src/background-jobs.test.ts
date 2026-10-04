@@ -1,17 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   dispatchBackgroundJob,
-  feedTopicsJob,
-  feedTopicsJobKey,
   goalAdvanceJob,
   goalAdvanceJobKey,
   goalCheckinJob,
   goalCheckinJobKey,
-  HISTORY_COMPACT_MAX_ATTEMPTS,
-  historyCompactJob,
-  historyCompactJobKey,
-  ideasRefreshJob,
-  ideasRefreshJobKey,
   messagingDeliverJob,
   museQueueName,
   parseBackgroundJob,
@@ -26,13 +19,9 @@ function handlers(): BackgroundJobHandlers {
     "computer.sleep": vi.fn(async () => undefined),
     "computer.control-expire": vi.fn(async () => undefined),
     "skill.teaching-expire": vi.fn(async () => undefined),
-    "history.compact": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
-    "cloud_agent.poll": vi.fn(async () => undefined),
-    "ideas.refresh": vi.fn(async () => undefined),
     "goal.advance": vi.fn(async () => undefined),
     "goal.checkin": vi.fn(async () => undefined),
-    "feed.topics": vi.fn(async () => undefined),
   };
 }
 
@@ -95,52 +84,6 @@ describe("background job contracts", () => {
   });
 });
 
-describe("historyCompactJob", () => {
-  it("builds a job with a replace key scoped to the thread", () => {
-    expect(historyCompactJob("thread-1")).toEqual({
-      name: "history.compact",
-      payload: { threadId: "thread-1" },
-      replaceKey: historyCompactJobKey("thread-1"),
-      maxAttempts: HISTORY_COMPACT_MAX_ATTEMPTS,
-    });
-  });
-
-  it("caps attempts below the queue default so a stuck thread cannot storm", () => {
-    expect(HISTORY_COMPACT_MAX_ATTEMPTS).toBeLessThan(25);
-  });
-
-  it("keys different threads differently", () => {
-    expect(historyCompactJobKey("thread-1")).not.toBe(historyCompactJobKey("thread-2"));
-  });
-});
-
-describe("ideasRefreshJob", () => {
-  it("validates and dispatches with a replace key scoped to the bot", async () => {
-    const target = handlers();
-    await dispatchBackgroundJob(target, "ideas.refresh", { botId: "bot-1" });
-    expect(target["ideas.refresh"]).toHaveBeenCalledWith({ botId: "bot-1" });
-    expect(ideasRefreshJob("bot-1")).toEqual({
-      name: "ideas.refresh",
-      payload: { botId: "bot-1" },
-      replaceKey: ideasRefreshJobKey("bot-1"),
-    });
-  });
-
-  it("carries an availableAt when given one, for scheduling the next daily run", () => {
-    const availableAt = new Date("2026-09-28T07:00:00.000Z");
-    expect(ideasRefreshJob("bot-1", availableAt)).toEqual({
-      name: "ideas.refresh",
-      payload: { botId: "bot-1" },
-      replaceKey: "ideas.refresh:bot-1",
-      availableAt,
-    });
-  });
-
-  it("keys different bots differently", () => {
-    expect(ideasRefreshJobKey("bot-1")).not.toBe(ideasRefreshJobKey("bot-2"));
-  });
-});
-
 describe("Muse Goal jobs (docs/muse/PLAN.md B8)", () => {
   it("shares one queueName per Muse so goal.advance and goal.checkin serialize", () => {
     expect(museQueueName("bot-1")).toBe("muse:bot-1");
@@ -185,36 +128,5 @@ describe("Muse Goal jobs (docs/muse/PLAN.md B8)", () => {
     await dispatchBackgroundJob(target, "goal.checkin", { goalId: "goal-1" });
     expect(target["goal.checkin"]).toHaveBeenCalledWith({ goalId: "goal-1" });
     expect(() => parseBackgroundJob("goal.advance", { goalId: "" })).toThrow();
-  });
-});
-
-describe("Muse Feed jobs (docs/muse/PLAN.md B10)", () => {
-  it("shares the Muse's Goal-work queueName so feed.topics never runs alongside goal.advance/checkin", () => {
-    expect(feedTopicsJob("bot-1").queueName).toBe(museQueueName("bot-1"));
-  });
-
-  it("builds a feed.topics job with a replace key scoped to the Muse", () => {
-    expect(feedTopicsJob("bot-1")).toEqual({
-      name: "feed.topics",
-      payload: { botId: "bot-1" },
-      replaceKey: feedTopicsJobKey("bot-1"),
-      queueName: "muse:bot-1",
-    });
-    const at = new Date("2026-09-28T07:30:00.000Z");
-    expect(feedTopicsJob("bot-1", at)).toEqual({
-      name: "feed.topics",
-      payload: { botId: "bot-1" },
-      replaceKey: feedTopicsJobKey("bot-1"),
-      queueName: "muse:bot-1",
-      availableAt: at,
-    });
-    expect(feedTopicsJobKey("bot-1")).not.toBe(feedTopicsJobKey("bot-2"));
-  });
-
-  it("validates and dispatches feed.topics", async () => {
-    const target = handlers();
-    await dispatchBackgroundJob(target, "feed.topics", { botId: "bot-1" });
-    expect(target["feed.topics"]).toHaveBeenCalledWith({ botId: "bot-1" });
-    expect(() => parseBackgroundJob("feed.topics", { botId: "" })).toThrow();
   });
 });

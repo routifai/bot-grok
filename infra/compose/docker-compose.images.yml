@@ -125,15 +125,11 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-aiden}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-aiden}
       DATA_DIR: /data
       SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
-      CLOUD_AGENT_PROVIDER: ${CLOUD_AGENT_PROVIDER:-none}
-      CLOUD_AGENT_SPACE_ID: ${CLOUD_AGENT_SPACE_ID:-}
-      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       # Omnigent chat engine connection; both set = chat runs on it (empty = built-in executor).
       OMNIGENT_URL: ${OMNIGENT_URL:-}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:-}
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
-      AGENT_RUNTIME: pi
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
@@ -184,16 +180,12 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-aiden}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-aiden}
       DATA_DIR: /data
       SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
-      CLOUD_AGENT_PROVIDER: ${CLOUD_AGENT_PROVIDER:-none}
-      CLOUD_AGENT_SPACE_ID: ${CLOUD_AGENT_SPACE_ID:-}
-      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       # Omnigent chat engine connection; both set = chat runs on it (empty = built-in executor).
       OMNIGENT_URL: ${OMNIGENT_URL:-}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:-}
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       SCREEN_PROXY_SECRET: ""
       WAKEUP_DRIVER: graphile
-      AGENT_RUNTIME: pi
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}

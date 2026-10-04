@@ -5,7 +5,7 @@
 // tool's `propose` action (withdrawing a stale proposal) and B6's `goals.acceptProposal` /
 // `dismissProposal` RPCs (and B9's `asks.answer`) all go through the same logic instead of
 // each re-implementing the plan-replacement rules.
-import { ideasRefreshJob, type JobPublisher } from "@aiden/adapter-kit";
+import type { JobPublisher } from "@aiden/adapter-kit";
 import {
   type Goal,
   GoalProposalTaskSchema,
@@ -153,11 +153,6 @@ async function decideGoalProposal(
       () => undefined,
     );
   }
-  // A decided Proposal is the clearest "the Goal changed" signal this module sees today
-  // (goal-tools.ts has no direct Goal.status transition yet), so Ideas refresh here.
-  await deps.jobs
-    ?.enqueue(ideasRefreshJob(committed.goal.botId))
-    .catch((error: unknown) => getLogger().error("ideas.refresh enqueue error", error));
   return committed.goal;
 }
 
