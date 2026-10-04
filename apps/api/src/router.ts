@@ -189,6 +189,12 @@ import {
   engineListTopics,
   engineRemoveTopic,
 } from "./engine-feed.js";
+import {
+  type EngineIdeasDeps,
+  engineAcceptIdea,
+  engineDismissIdea,
+  engineListIdeas,
+} from "./engine-ideas.js";
 import { syncEngineTimezone } from "./engine-timezone.js";
 import {
   acceptProposal,
@@ -621,6 +627,29 @@ export function createRouter(deps: RouterDeps) {
     ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
   };
   const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma, jobs: deps.jobs };
+  const engineIdeasDeps: EngineIdeasDeps = {
+    prisma: deps.prisma,
+    // "Do it" sends the Idea's message the same way a typed follow-up does.
+    sendMessage: async (actor, botId, text) => {
+      const target = await resolveThreadTarget(deps.prisma, actor, { botId });
+      if (target.kind !== "bot") throw new IsolationError();
+      await assertTeachingSendAllowed(deps.prisma, actor.spaceId, target.botId);
+      const sent = await deps.events.sendUserMessage({
+        spaceId: actor.spaceId,
+        threadId: target.threadId,
+        botId: target.botId,
+        userId: actor.userId,
+        blocks: [{ kind: "text", text }],
+        prompt: text,
+        trigger: "follow_up",
+      });
+      if (sent.taskId && sent.runId) {
+        await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
+          getLogger().error("idea send enqueue", error);
+        });
+      }
+    },
+  };
   const museEpisodesDeps: MuseEpisodesDeps = { prisma: deps.prisma };
 
   return os.router({
@@ -4967,12 +4996,35 @@ export function createRouter(deps: RouterDeps) {
       }),
     },
     ideas: {
-      list: museOnly.ideas.list.handler(({ context, input }) =>
-        listIdeas(museIdeasDeps, context.actor, input.botId),
-      ),
-      refresh: museOnly.ideas.refresh.handler(({ context, input }) =>
-        refreshIdeasNow(museIdeasDeps, context.actor, input.botId),
-      ),
+      list: museOnly.ideas.list.handler(({ context, input }) => {
+        const engine = engineComputerClient();
+        return engine
+          ? engineListIdeas(engineIdeasDeps, engine, context.actor, input.botId)
+          : listIdeas(museIdeasDeps, context.actor, input.botId);
+      }),
+      refresh: museOnly.ideas.refresh.handler(({ context, input }) => {
+        const engine = engineComputerClient();
+        // The engine's Study run refreshes Ideas on its own schedule; reading is the refresh.
+        return engine
+          ? engineListIdeas(engineIdeasDeps, engine, context.actor, input.botId)
+          : refreshIdeasNow(museIdeasDeps, context.actor, input.botId);
+      }),
+      accept: museOnly.ideas.accept.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine) return engineAcceptIdea(engineIdeasDeps, engine, context.actor, input);
+        const idea = (await listIdeas(museIdeasDeps, context.actor, input.botId)).find(
+          (candidate) => candidate.id === input.ideaId,
+        );
+        if (!idea) throw new ORPCError("NOT_FOUND", { message: "Idea not found" });
+        await engineIdeasDeps.sendMessage(context.actor, input.botId, idea.text);
+        return { ok: true as const };
+      }),
+      dismiss: museOnly.ideas.dismiss.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine) return engineDismissIdea(engineIdeasDeps, engine, context.actor, input);
+        await createRepos(deps.prisma).getBot(context.actor, input.botId);
+        return { ok: true as const };
+      }),
     },
     topics: {
       list: museOnly.topics.list.handler(({ context, input }) => {

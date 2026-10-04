@@ -174,6 +174,8 @@ class FireDeps:
     # ``app.state``, read per fire for the default-public-sessions policy.
     # ``None`` (tests, embedders) leaves every fired session private.
     app_state: Any | None = None
+    # Set to skip fires of tasks whose objective is no longer active.
+    objective_store: Any | None = None
 
 
 @dataclass
@@ -752,6 +754,12 @@ async def _run_parent_bound_fire(
             error_code=code,
             attempt=attempt,
         )
+
+    if deps.objective_store is not None:
+        objective = await asyncio.to_thread(deps.objective_store.get_by_scheduled_task_id, task.id)
+        if objective is not None and objective.status != "active":
+            await skip("objective_inactive", f"objective is {objective.status}")
+            return
 
     if prefs.proactivity == "off":
         await skip("proactivity_off", "proactivity is off for the task owner")

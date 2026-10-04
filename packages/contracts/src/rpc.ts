@@ -869,6 +869,11 @@ export const appContract = {
   ideas: {
     list: oc.input(z.object({ botId: Id })).output(z.array(IdeaSchema)),
     refresh: oc.input(z.object({ botId: Id })).output(z.array(IdeaSchema)),
+    /** "Do it": the Idea's message is sent into the Conversation as the person's own. */
+    accept: oc.input(z.object({ botId: Id, ideaId: Id })).output(z.object({ ok: z.literal(true) })),
+    dismiss: oc
+      .input(z.object({ botId: Id, ideaId: Id }))
+      .output(z.object({ ok: z.literal(true) })),
   },
   topics: {
     list: oc.input(z.object({ botId: Id })).output(z.array(FollowedTopicSchema)),

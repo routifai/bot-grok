@@ -28,6 +28,11 @@ from omnigent.tools.builtins import (
     MemoryGetTool,
     MemoryRememberTool,
     MemorySearchTool,
+    ObjectiveCreateTool,
+    ObjectiveGetTool,
+    ObjectiveListTool,
+    ObjectiveProposeTool,
+    ObjectiveUpdateTaskTool,
     ReadSkillFileTool,
     SessionHistoryTool,
     SideChatOpenTool,
@@ -222,6 +227,8 @@ class ToolManager:
         # Scheduled-task tools are always auto-registered so agents can
         # manage recurring runs at runtime without the spec opting in.
         self._register_scheduled_task_tools()
+        self._register_objective_tools()
+        self._register_suggestion_tools()
         # Embedded-browser tools are always auto-registered so any agent
         # can drive the desktop app's browser without the spec opting in
         # (framework-owned).
@@ -259,6 +266,40 @@ class ToolManager:
             SysScheduledTaskUpdateTool(),
             SysScheduledTaskDeleteTool(),
         ):
+            self._tools[tool.name()] = tool
+
+    def _register_objective_tools(self) -> None:
+        """
+        Auto-register the ``objective_*`` family for superside-chat sessions.
+
+        A top-level session gets all five; a Helper (marked by
+        ``SUBAGENT_LABEL_KEY``) gets only read, task progress and propose, and the
+        runner confines it to its own parent's objectives.
+        """
+        if not is_superside_chat(self._labels):
+            return
+        tools: list[Tool] = [
+            ObjectiveGetTool(),
+            ObjectiveUpdateTaskTool(),
+            ObjectiveProposeTool(),
+        ]
+        if SUBAGENT_LABEL_KEY not in self._labels:
+            tools += [ObjectiveCreateTool(), ObjectiveListTool()]
+        for tool in tools:
+            self._tools[tool.name()] = tool
+
+    def _register_suggestion_tools(self) -> None:
+        """
+        Auto-register ``suggestion_create`` / ``suggestion_list`` for superside-chat sessions.
+
+        Offered to the top-level session and to Helpers alike: a Helper records
+        Ideas under its parent chat (the runner resolves the parent).
+        """
+        if not is_superside_chat(self._labels):
+            return
+        from omnigent.tools.builtins.suggestions import SuggestionCreateTool, SuggestionListTool
+
+        for tool in (SuggestionCreateTool(), SuggestionListTool()):
             self._tools[tool.name()] = tool
 
     def _register_async_inbox_tools(self) -> None:

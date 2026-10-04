@@ -96,6 +96,7 @@ from omnigent.tools.builtins.async_inbox import (
 from omnigent.tools.builtins.browser import BROWSER_TOOL_NAMES
 from omnigent.tools.builtins.download_file import DownloadFileTool
 from omnigent.tools.builtins.list_comments import ListCommentsTool
+from omnigent.tools.builtins.objectives import OBJECTIVE_HELPER_TOOL_NAMES, OBJECTIVE_TOOL_NAMES
 from omnigent.tools.builtins.os_env import (
     OS_ENV_TOOL_TYPES,
     SysOsEditTool,
@@ -120,6 +121,7 @@ from omnigent.tools.builtins.spawn import (
     _clamp_history_offset_chars,
     _clamp_tail_items,
 )
+from omnigent.tools.builtins.suggestions import SUGGESTION_TOOL_NAMES
 from omnigent.tools.builtins.sys_terminal import (
     SysTerminalCloseTool,
     SysTerminalLaunchTool,
@@ -484,6 +486,12 @@ _SCHEDULED_TASK_TOOLS = frozenset(
     }
 )
 
+# Objectives: the runner proxies the server's /v1/objectives REST endpoints.
+_OBJECTIVE_TOOLS = frozenset(OBJECTIVE_TOOL_NAMES)
+
+# Suggestions (Ideas): the runner proxies the server's /v1/suggestions REST endpoints.
+_SUGGESTION_TOOLS = frozenset(SUGGESTION_TOOL_NAMES)
+
 # Priority 5m: Embedded-browser tools.
 # Runner dispatch POSTs a blocking action request to the server, which parks a
 # Future + publishes ``browser.action_request`` on the session stream; the
@@ -535,6 +543,8 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _AGENT_TOOLS
     | _POLICY_TOOLS
     | _SCHEDULED_TASK_TOOLS
+    | _OBJECTIVE_TOOLS
+    | _SUGGESTION_TOOLS
     | _TERMINAL_TOOLS
     # ``browser_*`` must ride the native relay: the Omnigent desktop app
     # runs native (claude/codex/pi) sessions, which ignore ``request.tools``
@@ -978,6 +988,8 @@ _ALL_LOCAL_TOOLS = (
     | _AGENT_TOOLS
     | _POLICY_TOOLS
     | _SCHEDULED_TASK_TOOLS
+    | _OBJECTIVE_TOOLS
+    | _SUGGESTION_TOOLS
     | _SIDE_CHAT_TOOLS
 )
 _PLACEHOLDER_CWDS = (None, "", ".", "./")
@@ -5167,6 +5179,178 @@ async def _execute_scheduled_task_tool(
     return json.dumps(resp.json())
 
 
+_OBJECTIVE_ID_RE = _SCHEDULED_TASK_ID_RE
+
+
+def _objective_plan(raw: object) -> list[dict[str, str]] | None:
+    """Normalize a tool plan (title strings or ``{id?, title}``) for the REST body."""
+    if not isinstance(raw, list):
+        return None
+    plan: list[dict[str, str]] = []
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            plan.append({"title": item.strip()})
+        elif isinstance(item, dict) and isinstance(item.get("title"), str):
+            entry = {"title": item["title"]}
+            if isinstance(item.get("id"), str) and item["id"]:
+                entry["id"] = item["id"]
+            plan.append(entry)
+        else:
+            return None
+    return plan
+
+
+async def _execute_objective_tool(
+    tool_name: str,
+    arguments: str,
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None = None,
+) -> str:
+    """
+    Runner-local handler for the ``objective_*`` family.
+
+    Proxies the server's ``/v1/objectives`` endpoints. A Helper (sub-agent
+    session) may only read, record task progress and propose, and only on an
+    objective that belongs to its own parent session; ownership is enforced
+    server-side.
+
+    :param tool_name: One of :data:`OBJECTIVE_TOOL_NAMES`.
+    :param arguments: JSON-encoded arguments string from the LLM.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :param conversation_id: The calling session.
+    :returns: Tool output JSON string.
+    """
+    if server_client is None or not conversation_id:
+        return json.dumps({"error": f"{tool_name} requires server access"})
+    try:
+        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
+    except json.JSONDecodeError:
+        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
+
+    lookup = await _session_kind_and_parent(conversation_id, server_client)
+    if lookup is None:
+        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
+    is_helper = lookup[0] == "sub_agent"
+    if is_helper and tool_name not in OBJECTIVE_HELPER_TOOL_NAMES:
+        return json.dumps({"error": f"{tool_name} is not available to sub-agent sessions"})
+
+    objective_id = args.get("objective_id")
+    if tool_name not in ("objective_create", "objective_list"):
+        if not isinstance(objective_id, str) or not _OBJECTIVE_ID_RE.fullmatch(objective_id):
+            return json.dumps({"error": f"{tool_name} requires a 32-character hex objective_id"})
+        objective_id = objective_id.lower()
+    base = f"/v1/objectives/{objective_id}"
+
+    try:
+        if is_helper and tool_name != "objective_list":
+            owner_check = await server_client.get(base, timeout=30.0)
+            if owner_check.status_code >= 400:
+                return json.dumps({"error": f"server returned {owner_check.status_code}"})
+            if owner_check.json().get("parent_session_id") != lookup[1]:
+                return json.dumps({"error": f"{tool_name}: not this helper's objective"})
+        if tool_name == "objective_create":
+            plan = _objective_plan(args.get("plan"))
+            if plan is None or not isinstance(args.get("title"), str):
+                return json.dumps({"error": "objective_create requires title and a plan list"})
+            payload: dict[str, object] = {
+                "parent_session_id": conversation_id,
+                "title": args["title"],
+                "plan": plan,
+            }
+            for src, dst in (("description", "description"), ("due", "due"), ("cadence", "rrule")):
+                if isinstance(args.get(src), str):
+                    payload[dst] = args[src]
+            resp = await server_client.post("/v1/objectives", json=payload, timeout=30.0)
+        elif tool_name == "objective_list":
+            resp = await server_client.get(
+                f"/v1/objectives?parent_session_id={conversation_id}", timeout=30.0
+            )
+        elif tool_name == "objective_get":
+            resp = await server_client.get(base, timeout=30.0)
+        elif tool_name == "objective_update_task":
+            task_id = args.get("task_id")
+            if not isinstance(task_id, str) or not _OBJECTIVE_ID_RE.fullmatch(task_id):
+                return json.dumps({"error": "objective_update_task requires a hex task_id"})
+            body = {k: args[k] for k in ("status", "note") if k in args}
+            resp = await server_client.patch(
+                f"{base}/tasks/{task_id.lower()}", json=body, timeout=30.0
+            )
+        else:  # objective_propose
+            plan = _objective_plan(args.get("plan"))
+            if plan is None or not isinstance(args.get("reason"), str):
+                return json.dumps({"error": "objective_propose requires reason and a plan list"})
+            resp = await server_client.post(
+                f"{base}/proposals", json={"reason": args["reason"], "plan": plan}, timeout=30.0
+            )
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"{tool_name} failed: {exc}"})
+
+    if resp.status_code >= 400:
+        return json.dumps(
+            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
+        )
+    return json.dumps(resp.json())
+
+
+async def _execute_suggestion_tool(
+    tool_name: str,
+    arguments: str,
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None = None,
+) -> str:
+    """
+    Runner-local handler for ``suggestion_create`` / ``suggestion_list``.
+
+    Proxies the server's ``/v1/suggestions`` endpoints. The Idea belongs to the
+    top-level chat: a Helper (sub-agent session) records it under its own
+    parent, with itself as the source run.
+
+    :param tool_name: One of :data:`SUGGESTION_TOOL_NAMES`.
+    :param arguments: JSON-encoded arguments string from the LLM.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :param conversation_id: The calling session.
+    :returns: Tool output JSON string.
+    """
+    if server_client is None or not conversation_id:
+        return json.dumps({"error": f"{tool_name} requires server access"})
+    try:
+        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
+    except json.JSONDecodeError:
+        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
+
+    lookup = await _session_kind_and_parent(conversation_id, server_client)
+    if lookup is None:
+        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
+    is_helper = lookup[0] == "sub_agent"
+    chat_id = lookup[1] if is_helper else conversation_id
+    if not chat_id:
+        return json.dumps({"error": f"{tool_name}: no chat to attach to"})
+
+    try:
+        if tool_name == "suggestion_list":
+            resp = await server_client.get(
+                f"/v1/suggestions?parent_session_id={chat_id}&status=open", timeout=30.0
+            )
+        else:
+            fields = {k: args.get(k) for k in ("title", "why", "message")}
+            if not all(isinstance(v, str) and v.strip() for v in fields.values()):
+                return json.dumps({"error": "suggestion_create requires title, why and message"})
+            payload: dict[str, object] = {"parent_session_id": chat_id, **fields}
+            if is_helper:
+                payload["source_session_id"] = conversation_id
+            resp = await server_client.post("/v1/suggestions", json=payload, timeout=30.0)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"{tool_name} failed: {exc}"})
+
+    if resp.status_code >= 400:
+        return json.dumps(
+            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
+        )
+    return json.dumps(resp.json())
+
+
 @dataclass
 class _ParsedTitle:
     """
@@ -7562,6 +7746,20 @@ async def execute_tool(
             )
         elif tool_name in _SCHEDULED_TASK_TOOLS:
             output = await _execute_scheduled_task_tool(
+                tool_name,
+                arguments,
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+        elif tool_name in _SUGGESTION_TOOLS:
+            output = await _execute_suggestion_tool(
+                tool_name,
+                arguments,
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+        elif tool_name in _OBJECTIVE_TOOLS:
+            output = await _execute_objective_tool(
                 tool_name,
                 arguments,
                 server_client=server_client,

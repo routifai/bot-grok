@@ -19,7 +19,7 @@ const MODEL_ENV = "NOVA_CLAUDE_MODEL";
 /** One directory per Sub-agent Type (CONTEXT.md), each a static config.yaml — no templated
  * values inside them today, but rendered (not just copied) so a future per-type placeholder
  * does not require restructuring this script. */
-const SUB_AGENT_TYPES = ["researcher", "analyst", "drafter"];
+const SUB_AGENT_TYPES = ["researcher", "analyst", "drafter", "goal"];
 const GENERATED_HEADER =
   "# GENERATED FILE — do not edit by hand. Edit the matching file under\n" +
   "# infra/omnigent/templates/, then run `node infra/omnigent/render-agents.mjs`.\n\n";

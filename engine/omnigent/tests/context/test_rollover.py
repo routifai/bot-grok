@@ -806,6 +806,34 @@ def test_list_related_chats_single_user_mode_still_matches_unowned_sessions(
     assert related_ids == [parent.id]
 
 
+def test_list_related_chats_scheduled_helper_sees_parent_but_plain_subagent_does_not(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scheduled Helper (Study, Check-in) may read its parent chat; an ordinary
+    Sub-agent stays confined to its Brief."""
+    from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
+    from omnigent.context.rollover import list_related_chats
+    from omnigent.stores.conversation_store.sqlalchemy_store import (
+        SqlAlchemyConversationStore,
+    )
+
+    monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
+    conv_store = SqlAlchemyConversationStore(db_uri)
+    parent = conv_store.create_conversation()
+    scheduled = conv_store.create_conversation(
+        kind="sub_agent",
+        parent_conversation_id=parent.id,
+        title="analyst:Study",
+        labels={SCHEDULED_HELPER_LABEL_KEY: "t1"},
+    )
+    plain = conv_store.create_conversation(
+        kind="sub_agent", parent_conversation_id=parent.id, title="analyst:other"
+    )
+
+    assert [c["id"] for c in list_related_chats(conv_store, scheduled.id)] == [parent.id]
+    assert list_related_chats(conv_store, plain.id) == []
+
+
 @pytest.mark.asyncio
 async def test_side_chat_seed_stops_at_parents_last_reply() -> None:
     """A Side Chat opened mid-turn must not inherit the request opening it."""

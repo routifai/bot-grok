@@ -1684,6 +1684,173 @@ class SqlOwnerPreferences(OmnigentBase):
     )
 
 
+class SqlSuggestion(OmnigentBase):
+    """
+    SQLAlchemy model for the ``suggestions`` table.
+
+    A concrete thing an agent could do for the person next (an Idea), recorded
+    by a background run and acted on from a UI.
+
+    :param id: UUID primary key (bare 32-char hex string).
+    :param user_id: Owner identity; ``None`` in single-user mode.
+    :param parent_session_id: The session the suggestion belongs to (relates to
+        ``conversations.id``; no DB foreign key, Rule R032).
+    :param title: Short headline.
+    :param why: One-line reason it is worth doing.
+    :param message: The exact message to send to the parent session if accepted.
+    :param status: ``open``/``done``/``dismissed``.
+    :param source_session_id: The run (Helper session) that recorded it, if any.
+    """
+
+    __tablename__ = "suggestions"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_session_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    why: Mapped[str] = mapped_column(CompressedText, nullable=False)
+    message: Mapped[str] = mapped_column(CompressedText, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="open")
+    source_session_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open', 'done', 'dismissed')",
+            name="ck_suggestions_status",
+        ),
+        Index("ix_suggestions_parent", "workspace_id", "parent_session_id", "created_at", "id"),
+        Index("ix_suggestions_owner", "workspace_id", "user_id", "status", "created_at"),
+    )
+
+
+class SqlObjective(OmnigentBase):
+    """
+    SQLAlchemy model for the ``objectives`` table.
+
+    An outcome a person hands to an agent to pursue over time, owned by one
+    parent session (the Conversation). Its plan lives in ``objective_tasks``.
+
+    :param id: UUID primary key (bare 32-char hex string).
+    :param user_id: Owner identity; ``None`` in single-user mode.
+    :param parent_session_id: The session the objective belongs to (relates to
+        ``conversations.id``; no DB foreign key, Rule R032).
+    :param status: ``active``/``paused``/``done``/``archived``.
+    :param due: Optional ISO-8601 date or datetime string.
+    :param scheduled_task_id: The scheduled task that advances it (relates to
+        ``scheduled_tasks.id``; no DB foreign key), or ``None`` without cadence.
+    """
+
+    __tablename__ = "objectives"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_session_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    description: Mapped[str] = mapped_column(CompressedText, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="active")
+    due: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    scheduled_task_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'paused', 'done', 'archived')",
+            name="ck_objectives_status",
+        ),
+        Index("ix_objectives_parent", "workspace_id", "parent_session_id", "created_at", "id"),
+        Index("ix_objectives_scheduled_task", "workspace_id", "scheduled_task_id"),
+    )
+
+
+class SqlObjectiveTask(OmnigentBase):
+    """
+    SQLAlchemy model for the ``objective_tasks`` table: one plan item.
+
+    :param objective_id: Owning objective (no DB foreign key, Rule R032).
+    :param position: Zero-based order within the plan.
+    :param status: ``pending``/``in_progress``/``done``/``blocked``/``skipped``.
+    :param note: Short free-text progress note, or ``None``.
+    """
+
+    __tablename__ = "objective_tasks"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    objective_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    note: Mapped[str | None] = mapped_column(CompressedText, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'in_progress', 'done', 'blocked', 'skipped')",
+            name="ck_objective_tasks_status",
+        ),
+        Index("ix_objective_tasks_objective", "workspace_id", "objective_id", "position"),
+    )
+
+
+class SqlObjectiveProposal(OmnigentBase):
+    """
+    SQLAlchemy model for the ``objective_proposals`` table.
+
+    A suggested full plan for an objective that the owner accepts or dismisses.
+    At most one is ``open`` per objective (enforced by the store).
+
+    :param plan: JSON list of ``{"id": <existing task id or null>, "title": ...}``.
+    :param status: ``open``/``accepted``/``dismissed``.
+    """
+
+    __tablename__ = "objective_proposals"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    objective_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    reason: Mapped[str] = mapped_column(CompressedText, nullable=False)
+    plan: Mapped[str] = mapped_column(CompressedText, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="open")
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolved_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open', 'accepted', 'dismissed')",
+            name="ck_objective_proposals_status",
+        ),
+        Index("ix_objective_proposals_objective", "workspace_id", "objective_id", "status"),
+    )
+
+
 class SqlScheduledTaskRun(OmnigentBase):
     """
     SQLAlchemy model for the ``scheduled_task_runs`` table.

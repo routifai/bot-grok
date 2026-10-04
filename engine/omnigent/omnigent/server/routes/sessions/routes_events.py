@@ -23,7 +23,7 @@ from fastapi.routing import APIRoute
 from starlette.datastructures import Headers
 from starlette.types import Message, Receive, Scope, Send
 
-from omnigent.context.labels import is_superside_chat
+from omnigent.context.labels import SUBAGENT_LABEL_KEY, is_superside_chat
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import add_audit_attrs, debug_event, mark_request_audit_suppressed
 from omnigent.entities import (
@@ -381,6 +381,36 @@ def _evict_retry_recovery_task(
         _retry_recovery_tasks.pop(session_id, None)
     if not completed_task.cancelled():
         completed_task.exception()
+
+
+_PROACTIVE_TASKS: set[asyncio.Task[bool]] = set()
+
+
+def _is_proactive_super_chat(conv: Conversation) -> bool:
+    """A top-level Super Chat (not a Side Chat or Sub-agent) when provisioning is enabled."""
+    from omnigent.superchat.proactive import provisioning_enabled
+
+    labels = conv.labels or {}
+    return (
+        provisioning_enabled()
+        and is_superside_chat(labels)
+        and SUBAGENT_LABEL_KEY not in labels
+        and SIDE_CHAT_LABEL_KEY not in labels
+        and conv.parent_conversation_id is None
+    )
+
+
+def _schedule_proactive_provisioning(request: Request, session_id: str) -> None:
+    """Fire-and-forget: ensure the chat's standing proactive tasks exist."""
+    from omnigent.superchat.proactive import ProactiveProvisioner
+
+    state = request.app.state
+    provisioner = getattr(state, "proactive_provisioner", None)
+    if provisioner is None:
+        provisioner = state.proactive_provisioner = ProactiveProvisioner(request.app)
+    task = asyncio.create_task(provisioner.ensure(session_id, dict(request.headers)))
+    _PROACTIVE_TASKS.add(task)
+    task.add_done_callback(_PROACTIVE_TASKS.discard)
 
 
 async def _raise_if_runner_on_another_replica(
@@ -845,6 +875,15 @@ def register_events_routes(
             await asyncio.to_thread(
                 conversation_store.update_conversation, session_id, archived=False
             )
+        # Standing proactive runs (Study, Check-in) are provisioned lazily on
+        # the Super Chat's next user message, so existing chats get them too.
+        if (
+            body.type == "message"
+            and body.data.get("role", "user") == "user"
+            and isinstance(request, Request)
+            and _is_proactive_super_chat(conv)
+        ):
+            _schedule_proactive_provisioning(request, session_id)
         # Validate event type at the route boundary. Anything not in
         # ``_ALLOWED_EVENT_TYPES`` is a client mistake — failing here
         # is far better than silently persisting an item the agent

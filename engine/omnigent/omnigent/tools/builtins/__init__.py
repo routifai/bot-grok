@@ -53,6 +53,13 @@ from omnigent.tools.builtins.memory import (
 )
 from omnigent.tools.builtins.nimble_extract import NimbleExtractTool
 from omnigent.tools.builtins.nimble_research import NimbleResearchTool
+from omnigent.tools.builtins.objectives import (
+    ObjectiveCreateTool,
+    ObjectiveGetTool,
+    ObjectiveListTool,
+    ObjectiveProposeTool,
+    ObjectiveUpdateTaskTool,
+)
 from omnigent.tools.builtins.read_skill_file import (
     ReadSkillFileTool,
 )
@@ -93,6 +100,11 @@ __all__ = [
     "MemorySearchTool",
     "NimbleExtractTool",
     "NimbleResearchTool",
+    "ObjectiveCreateTool",
+    "ObjectiveGetTool",
+    "ObjectiveListTool",
+    "ObjectiveProposeTool",
+    "ObjectiveUpdateTaskTool",
     "ReadSkillFileTool",
     "SessionHistoryTool",
     "SideChatOpenTool",

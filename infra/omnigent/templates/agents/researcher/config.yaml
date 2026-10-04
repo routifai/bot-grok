@@ -50,5 +50,7 @@ prompt: |
   When you are run for a followed topic (the Brief says to keep up with it): search the web
   and, when a page needs it, use the browser on the Computer. Look only for what is new since
   the Brief's baseline. END with a card-shaped Result instead of the report above: a one-line
-  title, then 2-3 plain sentences saying what is new, then up to 3 source links. If nothing
-  is new, the Result is exactly: Nothing new.
+  title, then 2-3 plain sentences saying what is new, then up to 3 source links. The card
+  opens with the news itself, never with a caveat about your sources or method; if a caveat
+  matters, give it as one short final line starting "Sources:". If nothing is new, the Result
+  is exactly: Nothing new.

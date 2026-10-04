@@ -17,6 +17,7 @@ from omnigent.context.labels import (
     DEFAULT_KEEP_TOKENS,
     ROLLOVER_AT_TOKENS_LABEL,
     ROLLOVER_KEEP_TOKENS_LABEL,
+    SCHEDULED_HELPER_LABEL_KEY,
     is_rollover,
 )
 from omnigent.entities import (
@@ -718,6 +719,13 @@ def list_related_chats(
             parent = conv_store.get_conversation(parent_id)
             if parent is not None and same_owner(parent.id):
                 related.append(parent)
+
+    # A scheduled Helper (Study, Check-in) works for its parent chat and may
+    # read it; an ordinary Sub-agent stays confined to its Brief.
+    if SCHEDULED_HELPER_LABEL_KEY in caller.labels and caller.parent_conversation_id:
+        parent = conv_store.get_conversation(caller.parent_conversation_id)
+        if parent is not None and same_owner(parent.id):
+            related.append(parent)
 
     related = related[:limit]
     ids = [conversation.id for conversation in related]

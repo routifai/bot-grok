@@ -103,6 +103,7 @@ from omnigent.server.routes.extension_assets import create_extension_assets_rout
 from omnigent.server.routes.extensions import create_extensions_router
 from omnigent.server.routes.harnesses import create_harnesses_router
 from omnigent.server.routes.imports import create_imports_router
+from omnigent.server.routes.objectives import create_objectives_router
 from omnigent.server.routes.policy_registry import create_policy_registry_router
 from omnigent.server.routes.projects import create_projects_router
 from omnigent.server.routes.runner_tunnel import create_runner_tunnel_router
@@ -118,6 +119,7 @@ from omnigent.server.routes.sessions import (
     set_server_runner_router,
 )
 from omnigent.server.routes.sharing import create_sharing_router
+from omnigent.server.routes.suggestions import create_suggestions_router
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.server.routes.usage import create_usage_router
 from omnigent.server.runner_session_init import RunnerSessionInitializer
@@ -137,10 +139,12 @@ from omnigent.stores.conversation_store import (
 )
 from omnigent.stores.host_store import HostStore
 from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
+from omnigent.stores.objective_store import ObjectiveStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.policy_store import PolicyStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
+from omnigent.stores.suggestion_store import SqlAlchemySuggestionStore
 from omnigent.superchat.chats import SideChatArchiveSweeper
 
 _logger = logging.getLogger(__name__)
@@ -1308,6 +1312,7 @@ def create_app(
     policy_store: PolicyStore | None = None,
     permission_store: PermissionStore | None = None,
     scheduled_task_store: ScheduledTaskStore | None = None,
+    objective_store: ObjectiveStore | None = None,
     memory_service: MemoryService | None = None,
     memory_upkeep_store: MemoryUpkeepStore | None = None,
     project_store: ProjectStore | None = None,
@@ -1364,6 +1369,8 @@ def create_app(
         starts an :class:`ScheduledTaskScheduler` that arms a timer per
         active task and fires the injected ``on_fire`` callback on
         schedule. ``None`` disables the scheduler entirely.
+    :param objective_store: Store backing ``/v1/objectives`` and the
+        skip-when-inactive check on objective fires. ``None`` disables both.
     :param memory_service: Service backing long-term memory (the
         ``memory_*`` built-in tools and their native-relay dispatch).
         ``None`` disables the ``/v1/sessions/{id}/memory`` endpoints; the
@@ -1733,6 +1740,7 @@ def create_app(
 
             fire_deps = FireDeps(
                 scheduled_task_store=scheduled_task_store,
+                objective_store=objective_store,
                 agent_store=agent_store,
                 conversation_store=conversation_store,
                 permission_store=permission_store,
@@ -3334,6 +3342,32 @@ def create_app(
             ),
             prefix="/v1",
             tags=["scheduled_tasks"],
+        )
+        # Suggestions (Ideas) share the scheduled-task database: background
+        # runs record them, a UI accepts or dismisses them.
+        app.include_router(
+            create_suggestions_router(
+                SqlAlchemySuggestionStore(scheduled_task_store.storage_location),
+                conversation_store=conversation_store,
+                permission_store=permission_store,
+                auth_provider=auth_provider,
+            ),
+            prefix="/v1",
+            tags=["suggestions"],
+        )
+    if objective_store is not None:
+        app.include_router(
+            create_objectives_router(
+                objective_store,
+                scheduled_task_store=scheduled_task_store,
+                agent_store=agent_store,
+                conversation_store=conversation_store,
+                permission_store=permission_store,
+                agent_cache=agent_cache,
+                auth_provider=auth_provider,
+            ),
+            prefix="/v1",
+            tags=["objectives"],
         )
     # Admin control for the server-wide sharing settings. Always mounted (the
     # handlers self-gate on admin); PUT is a no-op-reject unless this server
