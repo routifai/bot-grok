@@ -858,10 +858,15 @@ class ToolsConfig:
         e.g. ``60``. Individual tools can override this.
     :param retry: Default retry policy for all tool calls.
         Individual tools can override this.
+    :param allow: Optional allow-list of tool names (``fnmatch`` globs such
+        as ``"browser_*"``). When set, only matching tools are advertised
+        to the model, whichever way they were registered. ``None`` keeps
+        every registered tool.
     """
 
     agents: list[str] = field(default_factory=list)
     builtins: list[BuiltinToolConfig] = field(default_factory=list)
+    allow: list[str] | None = None
     timeout: int = 60
     retry: RetryPolicy = field(
         default_factory=lambda: RetryPolicy(

@@ -6,6 +6,7 @@ MCP lifecycle lives on the runner — see designs/RUNNER_MCP.md.
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 import shutil
 from collections.abc import Mapping
@@ -233,6 +234,23 @@ class ToolManager:
         # can drive the desktop app's browser without the spec opting in
         # (framework-owned).
         self._register_browser_tools()
+        self._apply_allow_list()
+
+    def _apply_allow_list(self) -> None:
+        """
+        Drop every registered tool not matched by ``tools.allow``.
+
+        A no-op when the spec declares no allow-list. Entries are
+        ``fnmatch`` globs over tool names, e.g. ``"browser_*"``.
+        """
+        allow = self._spec.tools.allow
+        if allow is None:
+            return
+        self._tools = {
+            name: tool
+            for name, tool in self._tools.items()
+            if any(fnmatch.fnmatchcase(name, pattern) for pattern in allow)
+        }
 
     def _register_policy_tools(self) -> None:
         """
@@ -254,11 +272,13 @@ class ToolManager:
 
         Available to every top-level session so an agent can create, list,
         update, and delete recurring scheduled tasks at runtime without the
-        spec opting in; withheld from sub-agent (Helper) sessions, marked by
-        ``SUBAGENT_LABEL_KEY``. The runner dispatches all four via the Omnigent
-        server's ``/v1/scheduled-tasks`` REST endpoints.
+        spec opting in; sub-agent (Helper) sessions, marked by
+        ``SUBAGENT_LABEL_KEY``, get only ``sys_scheduled_task_list``. The runner
+        dispatches them via the Omnigent server's ``/v1/scheduled-tasks`` REST endpoints.
         """
         if self._labels and SUBAGENT_LABEL_KEY in self._labels:
+            # Helpers may only read the list (the daily Study dedupes against it).
+            self._tools[SysScheduledTaskListTool.name()] = SysScheduledTaskListTool()
             return
         for tool in (
             SysScheduledTaskCreateTool(),
@@ -434,7 +454,7 @@ class ToolManager:
         if name == "web_search":
             return self._create_web_search(config)
         if name == "web_fetch":
-            return self._create_web_fetch()
+            return self._create_web_fetch(config)
         if name == "upload_file":
             from omnigent.tools.builtins.upload_file import UploadFileTool
 
@@ -462,13 +482,24 @@ class ToolManager:
         )
         return WebSearchTool(config=config, llm_provider=llm_provider)
 
-    def _create_web_fetch(self) -> Tool:
+    def _create_web_fetch(self, config: dict[str, str] | None = None) -> Tool:
         """
-        Build a WebFetchTool with the parent's spec.
+        Build the ``web_fetch`` tool.
 
-        :returns: A WebFetchTool that inherits the parent's LLM config.
+        With ``fetch_provider`` in the config it is the headless extract
+        tool; otherwise a WebFetchTool that inherits the parent's LLM config.
+
+        :param config: Spec-level tool config dict.
+        :returns: The configured web_fetch tool.
         """
         from omnigent.tools.builtins.web_fetch import WebFetchTool
+        from omnigent.tools.builtins.web_fetch_tavily import (
+            WebFetchExtractTool,
+            uses_fetch_provider,
+        )
+
+        if uses_fetch_provider(config):
+            return WebFetchExtractTool(config)
 
         return WebFetchTool(parent_spec=self._spec)
 

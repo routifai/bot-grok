@@ -53,6 +53,13 @@ class _Backend:
     keyless: bool
 
 
+_DESCRIPTION = (
+    "Search the web for current results: facts, prices, news, lookups. Returns "
+    "result titles, links and snippets. To read a whole page, pair it with "
+    "web_fetch when that tool is available."
+)
+
+
 class WebSearchTool(Tool):
     """
     Unified web search tool with backend determined by the harness.
@@ -98,15 +105,7 @@ class WebSearchTool(Tool):
         """
         :returns: Human-readable description of the tool.
         """
-        return (
-            "Quick web search — returns a comprehensive "
-            "list of result links and snippets from a "
-            "search engine. Good for broad discovery and "
-            "finding URLs, but results may be slightly "
-            "delayed vs. live web. For reading full page "
-            "content or fetching the latest info from a "
-            "specific URL, use web_fetch instead."
-        )
+        return _DESCRIPTION
 
     def get_schema(self) -> dict[str, Any]:
         """
@@ -124,15 +123,7 @@ class WebSearchTool(Tool):
             "type": "function",
             "function": {
                 "name": "web_search",
-                "description": (
-                    "Quick web search — returns a comprehensive "
-                    "list of result links and snippets from a "
-                    "search engine. Good for broad discovery and "
-                    "finding URLs, but results may be slightly "
-                    "delayed vs. live web. For reading full page "
-                    "content or fetching the latest info from a "
-                    "specific URL, use web_fetch instead."
-                ),
+                "description": _DESCRIPTION,
                 "parameters": {
                     "type": "object",
                     "properties": {

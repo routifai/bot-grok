@@ -124,6 +124,13 @@ local tools and nested `agents/` are read from its own directory, not the
 parent's. Listing an agent in `tools.agents` is sufficient to call it — no
 additional builtin declaration is needed.
 
+### `tools.allow`
+
+Optional allow-list of tool names (`fnmatch` globs, e.g. `browser_*`). When
+set, only matching tools are advertised to the model, including the
+framework-registered ones (`sys_*`, `memory_*`, `browser_*`, ...). Omit it to
+keep every registered tool.
+
 ### `tools.builtins`
 
 Enables built-in tools provided by omnigent. Each entry is either a plain

@@ -44,6 +44,31 @@ tools:
       search_provider: tavily
       api_key: ${TAVILY_API_KEY}
       max_results: 5
+    # Read one page's text headlessly (Tavily extract); pairs with web_search.
+    - name: web_fetch
+      fetch_provider: tavily
+      api_key: ${TAVILY_API_KEY}
+  # Only what the Muse's job needs. Helpers are launched with sys_session_send and followed up
+  # with the inbox; everything else the framework registers (policy, comments, agent
+  # management, model listing, skills, renaming) is withheld.
+  allow:
+    - web_search
+    - web_fetch
+    - "browser_*"
+    - "sys_os_*"
+    - "memory_*"
+    - session_history
+    - side_chat_open
+    - sys_session_send
+    - sys_session_close
+    - sys_session_list
+    - sys_session_get_history
+    - sys_session_get_info
+    - sys_read_inbox
+    - sys_cancel_task
+    - "sys_scheduled_task_*"
+    - "objective_*"
+    - "suggestion_*"
   # The Sub-agent Types this Super Chat may launch — see agents/<dir>/. Each has its own
   # executor and max_sessions; a turn launches one by its declared `name`, never by naming a
   # model (CONTEXT.md "Sub-agent Type").

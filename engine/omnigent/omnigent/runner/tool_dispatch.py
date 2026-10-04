@@ -4303,10 +4303,23 @@ async def _execute_web_fetch_tool(
         completion delivery.
     :returns: The researcher's findings, or an error string.
     """
+    from omnigent.tools.base import ToolContext
     from omnigent.tools.builtins.web_fetch import (
         RESEARCHER_NAME,
         build_web_fetch_prompt,
     )
+    from omnigent.tools.builtins.web_fetch_tavily import WebFetchExtractTool, uses_fetch_provider
+
+    fetch_config = _builtin_config_from_spec(agent_spec, "web_fetch")
+    if uses_fetch_provider(fetch_config):
+        ctx = ToolContext(
+            task_id=task_id or "web_fetch",
+            agent_id="web_fetch",
+            conversation_id=conversation_id,
+        )
+        return await asyncio.to_thread(
+            WebFetchExtractTool(fetch_config).invoke, json.dumps(args), ctx
+        )
 
     query = args.get("query")
     if not query:
@@ -4332,6 +4345,21 @@ async def _execute_web_fetch_tool(
         publish_event=publish_event,
         session_inbox=session_inbox,
     )
+
+
+def _builtin_config_from_spec(agent_spec: AgentSpec | None, name: str) -> dict[str, str]:
+    """
+    Return the config dict of the ``tools.builtins`` entry called ``name``.
+
+    :param agent_spec: Parent agent's spec, or ``None``.
+    :param name: Builtin name, e.g. ``"web_fetch"``.
+    :returns: The entry's config, or ``{}`` when absent.
+    """
+    tools = getattr(agent_spec, "tools", None)
+    for entry in getattr(tools, "builtins", None) or []:
+        if getattr(entry, "name", None) == name:
+            return getattr(entry, "config", None) or {}
+    return {}
 
 
 def _web_search_config_from_spec(agent_spec: AgentSpec | None) -> dict[str, str]:
@@ -5133,11 +5161,13 @@ async def _execute_scheduled_task_tool(
     except json.JSONDecodeError:
         return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
 
-    # Helpers (sub-agent sessions) never manage schedules; fail closed when the
-    # caller's kind cannot be verified.
+    # Helpers (sub-agent sessions) never manage schedules, only list them; fail
+    # closed when the caller's kind cannot be verified.
     if conversation_id:
         lookup = await _session_kind_and_parent(conversation_id, server_client)
-        if lookup is None or lookup[0] == "sub_agent":
+        # A Helper may only read the list (the daily Study dedupes against it).
+        read_only_ok = tool_name == "sys_scheduled_task_list"
+        if lookup is None or (lookup[0] == "sub_agent" and not read_only_ok):
             return json.dumps(
                 {"error": f"{tool_name} is not available to sub-agent sessions"}
                 if lookup is not None

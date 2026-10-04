@@ -20,6 +20,21 @@ executor:
 # docs/super-chat/README.md).
 max_sessions: 2
 
+# Shell and file tools (sys_os_*) run in the Computer's workspace; the drafter only reads and
+# writes files with them.
+os_env:
+  type: caller_process
+  cwd: /home/aiden/workspace
+  sandbox:
+    type: none
+
+tools:
+  allow:
+    - memory_search
+    - memory_get
+    - sys_os_read
+    - sys_os_write
+
 prompt: |
   You are the drafter Sub-agent for Nova's Super Chat. You are dispatched with a Brief: the
   deliverable wanted (an email, a memo, a summary, talking points), its audience and tone, and

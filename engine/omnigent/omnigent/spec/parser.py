@@ -506,9 +506,16 @@ def _parse_tools_config(
             f"tools.agents must be a list, got {type(raw_agents).__name__}",
             code=ErrorCode.INVALID_INPUT,
         )
+    raw_allow = raw.get("allow")
+    if raw_allow is not None and not isinstance(raw_allow, list):
+        raise OmnigentError(
+            f"tools.allow must be a list, got {type(raw_allow).__name__}",
+            code=ErrorCode.INVALID_INPUT,
+        )
     return ToolsConfig(
         agents=[str(agent) for agent in raw_agents],
         builtins=builtins,
+        allow=None if raw_allow is None else [str(name) for name in raw_allow],
         timeout=timeout,
         retry=retry,
         sandbox=sandbox,

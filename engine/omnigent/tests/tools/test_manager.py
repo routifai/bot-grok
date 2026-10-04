@@ -1798,4 +1798,20 @@ def test_scheduled_task_tools_present_for_top_level_session() -> None:
 def test_scheduled_task_tools_absent_for_sub_agent_session() -> None:
     labels = {"omnigent.context.mode": "superside-chat", "omnigent.subagent": "1"}
     names = ToolManager(_make_spec(), labels=labels).get_tool_names()
-    assert not [n for n in names if n.startswith("sys_scheduled_task_")]
+    # A Helper may only read the list (the daily Study dedupes against it).
+    assert [n for n in names if n.startswith("sys_scheduled_task_")] == ["sys_scheduled_task_list"]
+
+
+def test_tools_allow_list_keeps_only_matching_tools() -> None:
+    spec = _make_spec()
+    spec.tools.allow = ["browser_*", "sys_session_list"]
+    names = ToolManager(spec).get_tool_names()
+    assert "sys_session_list" in names
+    assert any(n.startswith("browser_") for n in names)
+    assert "sys_add_policy" not in names
+    assert "list_comments" not in names
+    assert all(n.startswith("browser_") or n == "sys_session_list" for n in names)
+
+
+def test_tools_allow_unset_keeps_every_tool() -> None:
+    assert "sys_add_policy" in ToolManager(_make_spec()).get_tool_names()

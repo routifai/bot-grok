@@ -278,6 +278,16 @@ async def test_sub_agent_caller_is_refused() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sub_agent_caller_may_list() -> None:
+    client = _KindClient("sub_agent")
+    out = await _execute_scheduled_task_tool(
+        "sys_scheduled_task_list", "{}", server_client=client, conversation_id="conv_child"
+    )
+    assert "error" not in json.loads(out)
+    assert [c for c in client.calls if c[0] == "GET" and "scheduled-tasks" in c[1]]
+
+
+@pytest.mark.asyncio
 async def test_self_parent_resolves_to_calling_session() -> None:
     client = _KindClient("default")
     await _execute_scheduled_task_tool(

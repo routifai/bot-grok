@@ -243,13 +243,44 @@ def test_profile_is_none_with_no_claims(service: MemoryService) -> None:
 def test_profile_excludes_kinds_outside_the_profile_set(service: MemoryService) -> None:
     service.remember("alice", "Prefers figures in CAD", kind="preference")
     service.remember("alice", "Works on the payments team", kind="fact")
-    service.remember("alice", "A one-off decision", kind="decision")  # not a profile kind
+    service.remember("alice", "Knows Priya from finance", kind="person")  # not a profile kind
 
     profile = service.profile("alice")
     assert profile is not None
     assert "Prefers figures in CAD" in profile
     assert "Works on the payments team" in profile
-    assert "A one-off decision" not in profile
+    assert "Knows Priya from finance" not in profile
+
+
+def test_profile_includes_projects_and_current_focus(service: MemoryService) -> None:
+    service.remember("alice", "Leads the loan-origination migration", kind="project")
+    service.remember("alice", "Focusing on the Q4 budget review", kind="decision")
+
+    profile = service.profile("alice")
+    assert profile is not None
+    assert "Projects:\n- Leads the loan-origination migration" in profile
+    assert "Current focus:\n- Focusing on the Q4 budget review" in profile
+
+
+def test_profile_drops_stale_focus_but_keeps_it_searchable(
+    service: MemoryService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    service.remember("alice", "Focusing on the Q4 budget review", kind="decision")
+    service.remember("alice", "Leads the loan-origination migration", kind="project")
+    assert "Q4 budget review" in (service.profile("alice") or "")
+
+    real = time.time
+    monkeypatch.setattr(time, "time", lambda: real() + 31 * 24 * 3600)
+    service._invalidate_profile("alice")
+
+    profile = service.profile("alice")
+    assert profile is not None
+    assert "Q4 budget review" not in profile
+    assert "loan-origination" in profile  # projects do not expire
+    hits = service.search("alice", "Q4 budget review")
+    assert any("Q4 budget review" in str(h) for h in hits)
 
 
 def test_profile_excludes_claims_below_the_confidence_threshold(service: MemoryService) -> None:

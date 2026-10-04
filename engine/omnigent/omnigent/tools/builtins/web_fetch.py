@@ -266,7 +266,11 @@ def find_web_fetch_owner(spec: AgentSpec) -> AgentSpec | None:
     """
     tools = getattr(spec, "tools", None)
     builtins = getattr(tools, "builtins", None) or []
-    if any(getattr(entry, "name", None) == "web_fetch" for entry in builtins):
+    if any(
+        getattr(entry, "name", None) == "web_fetch"
+        and not (getattr(entry, "config", None) or {}).get("fetch_provider")
+        for entry in builtins
+    ):
         return spec
     for sa in getattr(spec, "sub_agents", None) or []:
         owner = find_web_fetch_owner(sa)

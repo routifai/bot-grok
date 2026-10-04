@@ -56,14 +56,28 @@ _RECENCY_BOOST_HALFLIFE_SECONDS = 90 * 24 * 3600
 # profile()'s projection (MEMORY-PLAN.md Phase 2, Muse's USER.md): active
 # claims of these kinds, grouped in this order. Phase 1 has no separate
 # "identity" kind, so a role/identity claim is stored as kind="fact" and
-# included here as "About the user".
-PROFILE_KINDS: tuple[str, ...] = ("preference", "instruction", "working_style", "fact")
+# included here as "About the user". Projects and decisions carry the
+# person's role and current focus.
+PROFILE_KINDS: tuple[str, ...] = (
+    "preference",
+    "instruction",
+    "working_style",
+    "fact",
+    "project",
+    "decision",
+)
 _PROFILE_GROUP_LABELS = {
     "preference": "Preferences",
     "instruction": "Standing instructions",
     "working_style": "Working style",
     "fact": "About the user",
+    "project": "Projects",
+    "decision": "Current focus",
 }
+# A focus/decision claim drops out of the profile (stays searchable) once it has
+# not been reinforced for this long.
+_PROFILE_FOCUS_MAX_AGE_SECONDS = 30 * 24 * 3600
+_PROFILE_EXPIRING_KINDS = frozenset({"decision"})
 _PROFILE_MIN_CONFIDENCE = 0.75
 # ~1.5k tokens, estimated chars/4 (no tokenizer call for a per-turn fetch).
 _PROFILE_MAX_CHARS = 1_500 * 4
@@ -120,7 +134,7 @@ class MemoryService:
         # profile()'s render cache, per user; invalidated on any claim write
         # for that user (see _invalidate_profile). Unbounded by design: one
         # entry per user who has ever been profiled, a short string each.
-        self._profile_cache: dict[str, str | None] = {}
+        self._profile_cache: dict[str, tuple[int, str | None]] = {}
 
     def _invalidate_profile(self, user_id: str) -> None:
         """Drop a cached profile so the next call re-renders it from the store."""
@@ -427,10 +441,13 @@ class MemoryService:
             see :func:`render_profile_block`), or ``None`` when there is
             nothing to show.
         """
-        if user_id in self._profile_cache:
-            return self._profile_cache[user_id]
+        # Re-render once a day so aged-out focus claims leave without a write.
+        today = int(time.time() // 86_400)
+        cached = self._profile_cache.get(user_id)
+        if cached is not None and cached[0] == today:
+            return cached[1]
         rendered = self._render_profile(user_id)
-        self._profile_cache[user_id] = rendered
+        self._profile_cache[user_id] = (today, rendered)
         return rendered
 
     def _render_profile(self, user_id: str) -> str | None:
@@ -440,6 +457,9 @@ class MemoryService:
             claims = self._store.list_active(
                 user_id, kind=kind, min_confidence=_PROFILE_MIN_CONFIDENCE
             )
+            if kind in _PROFILE_EXPIRING_KINDS:
+                cutoff = time.time() - _PROFILE_FOCUS_MAX_AGE_SECONDS
+                claims = [c for c in claims if (c.reinforced_at or c.first_seen or 0) >= cutoff]
             if not claims:
                 continue
             claims.sort(key=lambda c: c.reinforced_at or c.first_seen, reverse=True)

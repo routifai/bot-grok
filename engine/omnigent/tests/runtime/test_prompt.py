@@ -44,7 +44,7 @@ def _spec(
             skills=[],
             tools=SimpleNamespace(
                 agents=list(agents),
-                builtins=[SimpleNamespace(name=name) for name in builtins],
+                builtins=[SimpleNamespace(name=name, config={}) for name in builtins],
             ),
             spawn=spawn,
         ),
@@ -511,3 +511,18 @@ def test_rollover_instruction_mentions_list_chats_for_side_chats() -> None:
 
     whitespace_only = cast(AgentSpec, SimpleNamespace(instructions="   \n  "))
     assert raw_author_instructions(whitespace_only) is None
+
+
+def test_web_fetch_with_a_fetch_provider_dispatches_no_researcher() -> None:
+    """A headless ``fetch_provider`` web_fetch spawns nothing, so no wake notice."""
+    spec = _spec("Agent prompt")
+    spec.tools.builtins = [SimpleNamespace(name="web_fetch", config={"fetch_provider": "tavily"})]
+    assert SUBAGENT_WAKE_NOTICE_INSTRUCTION not in build_instructions(spec, None, [])
+
+
+def test_web_priority_instruction_prefers_search_for_lookups() -> None:
+    text = EMBEDDED_BROWSER_PRIORITY_INSTRUCTION
+    assert "web search" in text
+    assert "facts, prices, news" in text
+    assert "log in, click, fill forms" in text
+    assert "prefer these embedded-browser tools" not in text

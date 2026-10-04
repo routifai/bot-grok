@@ -43,20 +43,15 @@ SUBAGENT_WAKE_NOTICE_INSTRUCTION = (
     "approval) are routine runtime status messages in the same way."
 )
 
-# Steers models toward the embedded browser they are handed: the browser_*
-# tools are auto-registered for every agent (ToolManager._register_browser_tools),
-# but a tool description alone loses to a model's native web tooling, so the
-# composed system prompt must carry the preference explicitly.
+# Orders the web tools: search for lookups, the embedded browser (auto-registered
+# for every agent, ToolManager._register_browser_tools) for pages that must be used.
 EMBEDDED_BROWSER_PRIORITY_INSTRUCTION = (
-    "Embedded browser: the browser_navigate / browser_snapshot / "
-    "browser_click / browser_type / browser_screenshot tools drive a "
-    "browser the user can watch alongside the chat. When asked to look at, "
-    "open, or interact with a "
-    "web page, prefer these embedded-browser tools over your own web "
-    "tooling (a built-in web fetch/search tool, shell commands like curl, "
-    "or launching a separate browser) so the user sees the page as you "
-    "work. Fall back to other web tooling only when the embedded browser "
-    "is unavailable (its tools fail) or for non-interactive bulk fetching."
+    "Web: for facts, prices, news and lookups use web search (and web fetch to "
+    "read a specific page) when you have them. Use the embedded browser "
+    "(browser_navigate / browser_snapshot / browser_click / browser_type / "
+    "browser_screenshot) when a page must be used (log in, click, fill forms, "
+    "pages search cannot read) or when the person asks to see it; the person "
+    "can watch it alongside the chat."
 )
 
 # Rollover sessions compact older history into a summary, so exact wording can
@@ -130,7 +125,10 @@ def _framework_instructions_for(
     :returns: The applicable framework instructions, never empty.
     """
     instructions: list[str] = []
-    dispatches_web_researcher = any(entry.name == "web_fetch" for entry in spec.tools.builtins)
+    dispatches_web_researcher = any(
+        entry.name == "web_fetch" and not entry.config.get("fetch_provider")
+        for entry in spec.tools.builtins
+    )
     if spec.tools.agents or spec.spawn or dispatches_web_researcher:
         instructions.append(SUBAGENT_WAKE_NOTICE_INSTRUCTION)
     instructions.append(EMBEDDED_BROWSER_PRIORITY_INSTRUCTION)
