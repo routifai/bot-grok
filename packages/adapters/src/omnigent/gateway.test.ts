@@ -7,6 +7,7 @@ const {
   findOmnigentAgentIdByName,
   getOmnigentSession,
   postOmnigentMessage,
+  putOmnigentTimezone,
   streamOmnigentSession,
   switchOmnigentAgent,
 } = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ const {
   findOmnigentAgentIdByName: vi.fn(),
   getOmnigentSession: vi.fn(),
   postOmnigentMessage: vi.fn(),
+  putOmnigentTimezone: vi.fn(),
   streamOmnigentSession: vi.fn(),
   switchOmnigentAgent: vi.fn(),
 }));
@@ -24,6 +26,7 @@ vi.mock("./client.js", async (importOriginal) => ({
   findOmnigentAgentIdByName,
   getOmnigentSession,
   postOmnigentMessage,
+  putOmnigentTimezone,
   streamOmnigentSession,
   switchOmnigentAgent,
 }));
@@ -114,6 +117,44 @@ describe("runTurnOnOmnigent", () => {
     const events = fakeEvents();
     const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
     expect(result).toBe(false);
+  });
+
+  it("syncs the person's timezone to the engine before the turn, and survives a failure", async () => {
+    findOmnigentAgentIdByName.mockResolvedValue("ag_1");
+    createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    putOmnigentTimezone.mockRejectedValue(new Error("engine down"));
+    streamOmnigentSession.mockReturnValue(
+      eventsFrom([
+        {
+          type: "response.completed",
+          response: {
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "Hi" }],
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const prisma = fakePrisma({
+      user: {
+        findUniqueOrThrow: vi.fn(async () => ({
+          email: "person@example.test",
+          timezone: "America/Toronto",
+        })),
+      },
+    });
+    const events = fakeEvents();
+    await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+    expect(putOmnigentTimezone).toHaveBeenCalledWith(
+      DEPS_BASE.client,
+      "person@example.test",
+      "America/Toronto",
+    );
+    expect(postOmnigentMessage).toHaveBeenCalled();
   });
 
   it("claims, creates a session, posts the turn, and finalizes on response.completed", async () => {

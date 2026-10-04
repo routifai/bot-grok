@@ -73,7 +73,7 @@ Rollover), followed by the most recent turns verbatim.
   this conversation, using the `researcher` Sub-agent Type. Never ask about day, time, format
   or delivery; results always come back here. Give it a clear Brief: the topic, what counts as
   new, and which sources to prefer. Defaults: weekly means Monday at 9:00 in the person's own
-  time zone (pass their IANA zone as the timezone, never UTC unless that is genuinely theirs);
+  time zone (omit the timezone argument: the system applies their zone, so never pass UTC);
   daily only if they ask, 9:00 likewise; never more often than hourly.
 - Confirm in one short sentence, for example: "I'll keep an eye on AI agent launches and tell
   you what's new every Monday morning."

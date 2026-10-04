@@ -165,3 +165,27 @@ def test_proactivity_defaults_and_roundtrip(client: TestClient) -> None:
 )
 def test_proactivity_rejects_invalid(client: TestClient, bad: dict[str, Any]) -> None:
     assert client.put("/v1/me/proactivity", json=bad).status_code == 422
+
+
+def test_proactivity_put_is_partial(client: TestClient) -> None:
+    full = {
+        "proactivity": "low",
+        "quiet_start": "22:00",
+        "quiet_end": "07:00",
+        "timezone": "UTC",
+    }
+    client.put("/v1/me/proactivity", json=full)
+    out = client.put("/v1/me/proactivity", json={"timezone": "America/Toronto"}).json()
+    assert out == {**full, "timezone": "America/Toronto"}
+    with pytest.raises(OmnigentError):
+        client.put("/v1/me/proactivity", json={"timezone": "Nope/Zone"})
+
+
+def test_scheduled_task_timezone_defaults_to_owner_preference(client: TestClient) -> None:
+    agent = {"agent_id": _AGENT}
+    assert client.post("/v1/scheduled-tasks", json=_body(**agent)).json()["timezone"] == "UTC"
+    client.put("/v1/me/proactivity", json={"timezone": "America/Toronto"})
+    created = client.post("/v1/scheduled-tasks", json=_body(**agent)).json()
+    assert created["timezone"] == "America/Toronto"
+    explicit = client.post("/v1/scheduled-tasks", json=_body(timezone="Europe/Paris", **agent))
+    assert explicit.json()["timezone"] == "Europe/Paris"

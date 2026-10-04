@@ -19,6 +19,7 @@ import {
   isSessionNotFoundError,
   type OmnigentClientConfig,
   postOmnigentMessage,
+  putOmnigentTimezone,
   streamOmnigentSession,
   switchOmnigentAgent,
 } from "./client.js";
@@ -94,9 +95,24 @@ export async function runTurnOnOmnigent(
 
   try {
     const [user, task] = await Promise.all([
-      deps.prisma.user.findUniqueOrThrow({ where: { id: run.userId }, select: { email: true } }),
+      deps.prisma.user.findUniqueOrThrow({
+        where: { id: run.userId },
+        select: { email: true, timezone: true },
+      }),
       deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId }, select: { prompt: true } }),
     ]);
+
+    // The engine reads the person's zone from its own per-owner preference for the per-turn
+    // local-time line and for scheduled tasks created without a timezone; Nova owns the value.
+    // Best-effort and idempotent (a partial PUT), so it runs every turn and a change in
+    // Settings reaches the engine before the next message.
+    if (user.timezone) {
+      try {
+        await putOmnigentTimezone(deps.client, user.email, user.timezone);
+      } catch (error) {
+        getLogger().error("omnigent gateway: timezone sync failed, continuing", error);
+      }
+    }
 
     const sessionId = await ensureOmnigentSession(deps, user.email, run, deps.agentName);
     // Keeps an active Super Chat inside the mirror job's lookback window (./mirror.ts,

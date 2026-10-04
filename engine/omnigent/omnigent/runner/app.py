@@ -9284,6 +9284,23 @@ def create_runner_app(
             return body
         return _apply_memory_profile_to_body(body, block)
 
+    async def _apply_local_time_block(body: _JsonObject) -> _JsonObject:
+        """Prefix this turn with the person's local date/time (owner preference zone)."""
+        from omnigent.superchat.local_time import local_time_block
+
+        timezone: str | None = None
+        try:
+            resp = await server_client.get("/v1/me/proactivity", timeout=10.0)
+            if resp.status_code == 200:
+                timezone = resp.json().get("timezone")
+        except (httpx.HTTPError, ValueError, AttributeError):
+            pass
+        new_body = dict(body)
+        new_body["content"] = _prefix_content_with_tail(
+            body.get("content"), local_time_block(timezone)
+        )
+        return new_body
+
     def _discard_comment_relay(session_id: str, relay: ClaudeNativeToolRelay) -> None:
         """Unbind and close *relay*, unless another path already replaced it.
 
@@ -9836,6 +9853,7 @@ def create_runner_app(
             )
         if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
             harness_body = await _apply_memory_profile_block(harness_body, conv)
+            harness_body = await _apply_local_time_block(harness_body)
         _content = cast(list[object], harness_body.get("content", []))
         _content_summary = []
         for _ci in _content:

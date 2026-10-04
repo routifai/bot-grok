@@ -67,7 +67,8 @@ class CreateScheduledTaskRequest(BaseModel):
     # wakes the parent. ``agent_type`` is the sub-agent Type to run.
     parent_session_id: str | None = Field(default=None, min_length=1)
     agent_type: str | None = Field(default=None, min_length=1)
-    timezone: str = "UTC"
+    # ``None`` = the owner's preference timezone (``/v1/me/proactivity``), else UTC.
+    timezone: str | None = None
     model_override: str | None = None
     reasoning_effort: str | None = None
     # Native-harness permission mode (Claude Code), e.g. "acceptEdits". The fire
@@ -157,25 +158,37 @@ _QUIET_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class ProactivityRequest(BaseModel):
-    """Body for ``PUT /v1/me/proactivity``."""
+    """Body for ``PUT /v1/me/proactivity``. Omitted fields keep their stored value."""
 
     model_config = ConfigDict(extra="forbid")
 
-    proactivity: str = "normal"
+    proactivity: str | None = None
     quiet_start: str | None = None
     quiet_end: str | None = None
-    timezone: str = "UTC"
+    timezone: str | None = None
 
     @model_validator(mode="after")
     def _validate_prefs(self) -> ProactivityRequest:
-        if self.proactivity not in _PROACTIVITY_LEVELS:
-            raise ValueError("proactivity must be 'off', 'low' or 'normal'")
-        for value in (self.quiet_start, self.quiet_end):
-            if value is not None and not _QUIET_TIME_RE.match(value):
-                raise ValueError("quiet_start/quiet_end must be local 'HH:MM'")
-        if (self.quiet_start is None) != (self.quiet_end is None):
+        if self.proactivity is not None:
+            _validate_prefs_fields(self.proactivity, self.quiet_start, self.quiet_end)
+        elif ("quiet_start" in self.model_fields_set) != ("quiet_end" in self.model_fields_set):
             raise ValueError("quiet_start and quiet_end must be set together")
+        else:
+            _validate_prefs_fields("normal", self.quiet_start, self.quiet_end)
         return self
+
+
+def _validate_prefs_fields(
+    proactivity: str, quiet_start: str | None, quiet_end: str | None
+) -> None:
+    """Validate the merged proactivity level and quiet hours."""
+    if proactivity not in _PROACTIVITY_LEVELS:
+        raise ValueError("proactivity must be 'off', 'low' or 'normal'")
+    for value in (quiet_start, quiet_end):
+        if value is not None and not _QUIET_TIME_RE.match(value):
+            raise ValueError("quiet_start/quiet_end must be local 'HH:MM'")
+    if (quiet_start is None) != (quiet_end is None):
+        raise ValueError("quiet_start and quiet_end must be set together")
 
 
 def _prefs_to_response(prefs: OwnerPreferences) -> dict[str, Any]:
@@ -453,7 +466,11 @@ def create_scheduled_tasks_router(
         """Create a scheduled task and arm it on the live scheduler."""
         owner = _owner(request)
         _validate_rrule_or_400(body.rrule)
-        _validate_timezone_or_400(body.timezone)
+        timezone = body.timezone
+        if timezone is None:
+            prefs = await asyncio.to_thread(store.get_owner_preferences, owner)
+            timezone = prefs.timezone if prefs is not None else "UTC"
+        _validate_timezone_or_400(timezone)
         permission_mode = validate_session_permission_mode(body.permission_mode)
         agent_id = body.agent_id
         if body.parent_session_id is not None and body.agent_type is not None:
@@ -481,7 +498,7 @@ def create_scheduled_tasks_router(
             agent_id=agent_id,
             parent_session_id=body.parent_session_id,
             agent_type=body.agent_type,
-            timezone=body.timezone,
+            timezone=timezone,
             model_override=model_override,
             reasoning_effort=reasoning_effort,
             permission_mode=permission_mode,
@@ -793,15 +810,19 @@ def create_scheduled_tasks_router(
     async def put_proactivity(request: Request, body: ProactivityRequest) -> dict[str, Any]:
         """Replace the caller's proactivity level and quiet hours."""
         owner = _prefs_key(request)
-        _validate_timezone_or_400(body.timezone)
+        if body.timezone is not None:
+            _validate_timezone_or_400(body.timezone)
+        current = await asyncio.to_thread(store.get_owner_preferences, owner)
+        current = current or OwnerPreferences(user_id=owner)
+        sent = body.model_fields_set
         saved = await asyncio.to_thread(
             store.set_owner_preferences,
             OwnerPreferences(
                 user_id=owner,
-                proactivity=body.proactivity,
-                quiet_start=body.quiet_start,
-                quiet_end=body.quiet_end,
-                timezone=body.timezone,
+                proactivity=body.proactivity or current.proactivity,
+                quiet_start=body.quiet_start if "quiet_start" in sent else current.quiet_start,
+                quiet_end=body.quiet_end if "quiet_end" in sent else current.quiet_end,
+                timezone=body.timezone or current.timezone,
             ),
         )
         return _prefs_to_response(saved)

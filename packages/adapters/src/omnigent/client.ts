@@ -441,6 +441,21 @@ export async function getOmnigentMemoryProfile(
   return { profile: body.profile || null };
 }
 
+/** `PUT /v1/me/proactivity` — the engine accepts a partial body and keeps omitted fields, so
+ * sending only `timezone` leaves the person's proactivity and quiet hours alone. */
+export async function putOmnigentTimezone(
+  config: OmnigentClientConfig,
+  email: string,
+  timezone: string,
+): Promise<void> {
+  const response = await fetch(new URL("/v1/me/proactivity", config.baseUrl), {
+    method: "PUT",
+    headers: omnigentHeaders(config, email),
+    body: JSON.stringify({ timezone }),
+  });
+  await throwOnError(response, "set timezone", config.secrets);
+}
+
 export interface OmnigentActivityStep {
   item_id: string;
   title: string;
