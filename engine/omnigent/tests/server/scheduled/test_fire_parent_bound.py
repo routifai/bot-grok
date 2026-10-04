@@ -311,3 +311,36 @@ async def test_build_retry_arms_once_and_stops_after_second_attempt() -> None:
     fire_mod._REFIRES.pop((0, "task_1")).cancel()
     assert retry(0, "task_1", 2) is False
     await asyncio.sleep(0)
+
+
+async def test_adhoc_helper_runs_now_without_waking_the_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    perm = FakePermissionStore()
+    conv_store = _ParentConversationStore(_Parent())
+    sent: dict[str, Any] = {}
+
+    def fake_dispatch(deps: Any, *, event: Any = None) -> Any:
+        async def dispatch(conv: Any, task: Any) -> None:
+            sent["event"], sent["conv"] = event, conv
+
+        return dispatch
+
+    monkeypatch.setattr(fire_mod, "_make_parent_runner_dispatch", fake_dispatch)
+    deps = _deps(_Store({}), conversation_store=conv_store, permission_store=perm)
+    content = [{"type": "input_text", "text": "brief"}, {"type": "input_image", "image_url": "u"}]
+    conv_id = await fire_mod.start_adhoc_helper(
+        deps,
+        parent_session_id="conv_parent",
+        agent_type="teacher",
+        name="Learn: search",
+        user_id=None,
+        content=content,
+    )
+    created = conv_store.created[0]
+    assert created["sub_agent_name"] == "teacher" and created["kind"] == "sub_agent"
+    assert created["parent_conversation_id"] == "conv_parent"
+    assert fire_mod.SCHEDULED_HELPER_LABEL_KEY not in created["labels"]
+    assert sent["event"].data["content"] == content
+    assert conv_id == sent["conv"].id
+    assert perm.grants and perm.grants[0][2] == LEVEL_OWNER

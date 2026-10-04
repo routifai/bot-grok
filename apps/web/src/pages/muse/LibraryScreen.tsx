@@ -180,7 +180,7 @@ export function LibraryScreen({
           ))}
         </fieldset>
         {view === "skills" ? (
-          <SkillsPanel avatarColor={avatarColor} />
+          <SkillsPanel botId={botId} avatarColor={avatarColor} />
         ) : (
           <>
             {total > 0 ? (

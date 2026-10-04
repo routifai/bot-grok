@@ -326,7 +326,13 @@ async function releaseTeachingComputerControl(
   await scheduleComputerSleep(deps.jobs, computer.id);
 }
 
-function skillDraftBlocks(skill: TaughtSkillRow): MessageBlock[] {
+/** What the draft card in the thread needs; the engine's skills have no Nova row. */
+export type SkillDraftCardSkill = Pick<
+  TaughtSkillRow,
+  "id" | "name" | "goal" | "status" | "playbook"
+>;
+
+function skillDraftBlocks(skill: SkillDraftCardSkill): MessageBlock[] {
   return [
     {
       kind: "skill_draft",
@@ -383,10 +389,10 @@ async function hasSkillDraftCreatedEvent(
   });
 }
 
-async function emitSkillDraftMessages(
-  deps: TeachingSessionDeps,
+export async function emitSkillDraftMessages(
+  deps: Pick<TeachingSessionDeps, "prisma" | "events">,
   actor: Actor,
-  skill: TaughtSkillRow,
+  skill: SkillDraftCardSkill,
   bot: { id: string; thread: { id: string } | null },
 ): Promise<void> {
   if (skill.status !== "draft" || !bot.thread) return;

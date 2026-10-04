@@ -1,4 +1,4 @@
-"""Session computer routes: see the sandbox screen, take it over, hand it back."""
+"""Session computer routes: see the sandbox screen, take it over, hand it back, record it."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.onboarding.sandboxes.base import SandboxHostLauncher
-from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ, AuthProvider
+from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
 )
@@ -20,6 +20,7 @@ from omnigent.server.routes._auth_helpers import (
 from omnigent.stores import ConversationStore
 from omnigent.stores.host_store import HostStore
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.superchat.teach import distill_in_background, new_id, recording_launcher
 
 # Who is in control of a computer screen is a control token on the managed host row, so it
 # survives a server restart and is shared by replicas. Sessions on the same host (one
@@ -150,3 +151,91 @@ def register_computer_routes(
             lambda: launcher.screen_url(sandbox_id, interactive=False, control_token=None)
         )
         return {"screen_url": url, "in_control": False}
+
+    def _recording_ctx(request: Request, session_id: str) -> Any:
+        store = getattr(request.app.state, "taught_skill_store", None)
+        if store is None:
+            raise OmnigentError("recording is not enabled", code=ErrorCode.NOT_FOUND)
+        return store
+
+    @router.post(
+        "/sessions/{session_id}/computer/recording",
+        include_in_schema=False,
+        response_model=None,
+    )
+    async def computer_recording(
+        request: Request, session_id: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Start or stop recording what the person does on the computer (teaching a task).
+
+        :param session_id: Session identifier, e.g. ``"conv_abc123"``.
+        :param body: ``{"action": "start", "goal": str}`` or ``{"action": "stop"}``.
+        :returns: ``start``: ``{"recording_id", "skill_id", "status": "recording"}``. ``stop``:
+            ``{"recording_id", "skill_id", "status": "drafting", "actions": [...],
+            "keyframes": [...]}``: the ordered trace, secrets already redacted in the browser,
+            while the teacher Helper writes the draft skill (read it from ``/v1/taught-skills``).
+        :raises OmnigentError: 404 without a recording-capable computer, 409 when a recording is
+            already running (start) or none is (stop).
+        """
+        user_id = _get_user_id(request, auth_provider)
+        await _require_access_and_level(
+            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
+        )
+        owner = None if user_id in (None, RESERVED_USER_LOCAL) else user_id
+        action = body.get("action")
+        if action not in ("start", "stop"):
+            raise OmnigentError(
+                "recording requires action 'start' or 'stop'", code=ErrorCode.INVALID_INPUT
+            )
+        store = _recording_ctx(request, session_id)
+        launcher, sandbox_id, _host_id, _host_store = await asyncio.to_thread(
+            _require_target, request, session_id
+        )
+        recorder = recording_launcher(launcher)
+        if recorder is None:
+            raise OmnigentError("this computer cannot record", code=ErrorCode.NOT_FOUND)
+        active = await asyncio.to_thread(store.active_recording, session_id, user_id=owner)
+        if action == "start":
+            goal = body.get("goal")
+            if not isinstance(goal, str) or not goal.strip() or len(goal) > 4000:
+                raise OmnigentError(
+                    "recording requires a 'goal' of 1 to 4000 characters",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+            if active is not None:
+                raise OmnigentError("a recording is already running", code=ErrorCode.CONFLICT)
+            recording_id, skill_id = new_id(), new_id()
+            await asyncio.to_thread(recorder.start_recording, sandbox_id, recording_id)
+            await asyncio.to_thread(
+                store.start_recording,
+                recording_id,
+                skill_id,
+                user_id=owner,
+                session_id=session_id,
+                goal=goal.strip(),
+            )
+            return {"recording_id": recording_id, "skill_id": skill_id, "status": "recording"}
+        if active is None:
+            raise OmnigentError("no recording is running", code=ErrorCode.CONFLICT)
+        try:
+            trace = await asyncio.to_thread(recorder.stop_recording, sandbox_id, active.id)
+        except Exception:
+            await asyncio.to_thread(store.fail_recording, active.id)
+            raise
+        finished = await asyncio.to_thread(
+            store.finish_recording, active.id, actions=trace.actions, keyframes=trace.keyframes
+        )
+        if finished is None:
+            raise OmnigentError("no recording is running", code=ErrorCode.CONFLICT)
+        recording, skill = finished
+        fire_deps = getattr(request.app.state, "fire_deps", None)
+        if fire_deps is not None:
+            distill_in_background(store, fire_deps, skill, recording)
+        return {
+            "recording_id": recording.id,
+            "skill_id": skill.id,
+            "status": skill.status,
+            "actions": recording.actions,
+            "keyframes": sorted(trace.keyframes, key=lambda n: int(n[1:])),
+        }

@@ -37,6 +37,9 @@ from omnigent.tools.builtins import (
     ReadSkillFileTool,
     SessionHistoryTool,
     SideChatOpenTool,
+    SkillDraftSaveTool,
+    SkillListTool,
+    SkillRunTool,
     SysAdviseModelsTool,
     SysAgentDownloadTool,
     SysAgentGetTool,
@@ -230,6 +233,7 @@ class ToolManager:
         self._register_scheduled_task_tools()
         self._register_objective_tools()
         self._register_suggestion_tools()
+        self._register_taught_skill_tools()
         self._register_card_tools()
         # Embedded-browser tools are always auto-registered so any agent
         # can drive the desktop app's browser without the spec opting in
@@ -306,6 +310,23 @@ class ToolManager:
         ]
         if SUBAGENT_LABEL_KEY not in self._labels:
             tools += [ObjectiveCreateTool(), ObjectiveListTool()]
+        for tool in tools:
+            self._tools[tool.name()] = tool
+
+    def _register_taught_skill_tools(self) -> None:
+        """
+        Auto-register the taught-skill tools for superside-chat sessions.
+
+        A top-level session lists and runs saved skills; a Helper (marked by
+        ``SUBAGENT_LABEL_KEY``) only gets ``skill_draft_save``, and the runner confines it to
+        its own parent's skills.
+        """
+        if not is_superside_chat(self._labels):
+            return
+        if SUBAGENT_LABEL_KEY in self._labels:
+            tools: list[Tool] = [SkillDraftSaveTool()]
+        else:
+            tools = [SkillListTool(), SkillRunTool()]
         for tool in tools:
             self._tools[tool.name()] = tool
 

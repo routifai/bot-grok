@@ -81,6 +81,11 @@ from omnigent.tools.builtins.spawn import (
     SysSessionSendTool,
     SysSessionShareTool,
 )
+from omnigent.tools.builtins.taught_skills import (
+    SkillDraftSaveTool,
+    SkillListTool,
+    SkillRunTool,
+)
 from omnigent.tools.builtins.timer import (
     SysTimerCancelTool,
     SysTimerSetTool,
@@ -108,6 +113,9 @@ __all__ = [
     "ReadSkillFileTool",
     "SessionHistoryTool",
     "SideChatOpenTool",
+    "SkillDraftSaveTool",
+    "SkillListTool",
+    "SkillRunTool",
     "SysAdviseModelsTool",
     "SysAgentDownloadTool",
     "SysAgentGetTool",

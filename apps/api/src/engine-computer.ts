@@ -55,6 +55,18 @@ async function resolve(
   return { client, email: user.email, sessionId: session?.omnigentSessionId ?? null, bot };
 }
 
+/** The engine session and owner email behind a Muse's Computer, for engine routes that act on
+ * it (teaching records it). `sessionId` is `null` until the Muse has had a turn. */
+export async function engineSessionOf(
+  deps: Pick<EngineComputerDeps, "prisma">,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  botId: string,
+): Promise<{ email: string; sessionId: string | null }> {
+  const { email, sessionId } = await resolve(deps, client, actor, botId);
+  return { email, sessionId };
+}
+
 async function state(target: EngineComputer) {
   if (!target.sessionId) return { available: false, in_control: false };
   return getOmnigentComputer(target.client, target.email, target.sessionId);

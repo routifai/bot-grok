@@ -431,7 +431,13 @@ export const CreateScratchpadItemInput = z.object({
   notes: z.string().max(4_000).default(""),
 });
 
-export const TaughtSkillStatusSchema = z.enum(["recording", "drafting", "draft", "saved", "failed"]);
+export const TaughtSkillStatusSchema = z.enum([
+  "recording",
+  "drafting",
+  "draft",
+  "saved",
+  "failed",
+]);
 export type TaughtSkillStatus = z.infer<typeof TaughtSkillStatusSchema>;
 
 export const SkillPlaybookSchema = z.object({

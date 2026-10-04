@@ -1,0 +1,542 @@
+#!/usr/bin/env python3
+"""Record what a person does in this computer's Chromium as semantic actions (stdlib only).
+
+Used by the engine's recording capability while someone teaches a task. A small daemon attaches
+to the Chromium already showing on DISPLAY over CDP, injects aiden-recorder.js into every page and
+frame, and writes the reported actions plus a downscaled keyframe screenshot per action under
+/tmp/aiden/recordings/<id>/. The engine pulls the trace and the keyframes, then discards the
+directory: nothing is kept in the computer.
+
+    aiden-recorder start <id>     start the daemon, print {"ok": true}
+    aiden-recorder pull <id>      print {"ok", "done", "actions", "keyframes"}
+    aiden-recorder frame <id> <k> print one keyframe as base64
+    aiden-recorder stop <id>      stop the daemon (keeps the files)
+    aiden-recorder discard <id>   delete the recording's files
+
+Secret fields are redacted by the injected script (their value is never read). No keyframe is
+taken while a password field is visible or focused, or when the URL looks like a login page.
+"""
+
+from __future__ import annotations
+
+import base64
+import collections
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+ROOT = os.environ.get("AIDEN_RECORDINGS_DIR", "/tmp/aiden/recordings")
+BINDING = "__aidenRecord"
+TTL_S = 60 * 60
+MAX_KEYFRAMES = 60
+KEYFRAME_WIDTH = 800
+KEYFRAME_QUALITY = 55
+SETTLE_S = 0.5
+NAVIGATE_SETTLE_S = 1.2
+STALE_S = 2 * 60 * 60
+ID_RE = re.compile(r"^[a-f0-9]{8,64}$")
+FRAME_RE = re.compile(r"^k\d{1,4}$")
+LOGIN_URL = re.compile(
+    r"(log[-_]?in|sign[-_]?in|signon|sso|oauth|/auth\b|password|passwd|2fa|mfa|verify|security)",
+    re.IGNORECASE,
+)
+SECRET_QUERY_KEY = re.compile(r"token|key|secret|code|session|auth|pass|sig|jwt|otp", re.IGNORECASE)
+IGNORED_SCHEMES = ("about:", "chrome:", "chrome-error:", "devtools:", "data:", "blob:")
+
+
+def load_page_browser() -> Any:
+    """The sibling aiden-page-browser module: reuse its stdlib CDP client and port rules."""
+    here = os.path.dirname(os.path.realpath(__file__))
+    path = os.environ.get("AIDEN_PAGE_BROWSER") or os.path.join(here, "aiden-page-browser")
+    loader = importlib.machinery.SourceFileLoader("aiden_page_browser", path)
+    spec = importlib.util.spec_from_loader("aiden_page_browser", loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def inject_source() -> str:
+    here = os.path.dirname(os.path.realpath(__file__))
+    candidates = [
+        os.environ.get("AIDEN_RECORDER_JS", ""),
+        os.path.join(here, "aiden-recorder.js"),
+        "/usr/local/share/aiden/aiden-recorder.js",
+    ]
+    for path in candidates:
+        if path and os.path.exists(path):
+            with open(path, encoding="utf-8") as handle:
+                return handle.read()
+    raise RuntimeError("aiden-recorder.js not found")
+
+
+def rec_dir(rec_id: str) -> str:
+    if not ID_RE.match(rec_id):
+        raise ValueError("invalid recording id")
+    return os.path.join(ROOT, rec_id)
+
+
+def safe_url(url: str) -> str:
+    """The page URL without credentials, token-like query values or a token fragment."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return ""
+    if not parts.scheme or not parts.netloc:
+        return url[:300]
+    host = parts.hostname or ""
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    query = urlencode(
+        [(k, "[redacted]" if SECRET_QUERY_KEY.search(k) else v) for k, v in parse_qsl(parts.query)]
+    )
+    fragment = "" if "=" in parts.fragment else parts.fragment
+    return urlunsplit((parts.scheme, netloc, parts.path, query, fragment))[:300]
+
+
+def login_like(url: str) -> bool:
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return bool(LOGIN_URL.search(f"{parts.hostname or ''}{parts.path}"))
+
+
+def ignorable(url: str) -> bool:
+    return not url or url.startswith(IGNORED_SCHEMES)
+
+
+class RecorderClient:
+    """CdpClient plus an event queue; built from the page browser module's class at runtime."""
+
+    @staticmethod
+    def build(pb: Any, ws_url: str) -> Any:
+        class Client(pb.CdpClient):  # type: ignore[misc]
+            def __init__(self, url: str) -> None:
+                super().__init__(url)
+                self.events: collections.deque[dict[str, Any]] = collections.deque(maxlen=20000)
+
+            def _handle_event(self, message: dict[str, Any]) -> None:
+                super()._handle_event(message)
+                self.events.append(message)
+
+            def pump(self, timeout: float) -> None:
+                """Read at most one frame, queueing it when it is an event."""
+                assert self._sock is not None
+                self._sock.settimeout(max(0.05, timeout))
+                try:
+                    frame = self._read_frame()
+                except socket.timeout:
+                    return
+                message = json.loads(frame.decode("utf-8"))
+                if isinstance(message, dict) and message.get("method"):
+                    self._handle_event(message)
+
+        return Client(ws_url)
+
+
+class Recorder:
+    def __init__(self, rec_id: str, pb: Any, source: str) -> None:
+        self.dir = rec_dir(rec_id)
+        self.pb = pb
+        self.source = source
+        self.seq = 0
+        self.frames = 0
+        self.stopping = False
+        self.sessions: dict[str, dict[str, Any]] = {}
+        self.targets: set[str] = set()
+        self.pending: dict[str, tuple[float, str]] = {}
+        self.client: Any = None
+        self.last_nav: dict[str, str] = {}
+        self.connecting = False
+        self.initial_budget = 3
+
+    # ── output ─────────────────────────────────────────────────────────────
+
+    def write_action(self, action: dict[str, Any]) -> None:
+        with open(os.path.join(self.dir, "actions.jsonl"), "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(action) + "\n")
+
+    def record(self, sid: str, action: dict[str, Any]) -> None:
+        session = self.sessions.get(sid, {})
+        self.seq += 1
+        action["seq"] = self.seq
+        action.setdefault("t", int(time.time() * 1000))
+        action["url"] = safe_url(session.get("url", ""))
+        for key in ("frameUrl", "href"):
+            if action.get(key):
+                action[key] = safe_url(str(action[key]))
+        no_frame = bool(action.pop("noFrame", False)) or action["kind"] == "secret"
+        if not no_frame and not login_like(session.get("url", "")):
+            name = self.schedule_keyframe(sid, action["kind"] == "navigate")
+            if name:
+                action["keyframe"] = name
+        self.write_action(action)
+
+    # ── keyframes ──────────────────────────────────────────────────────────
+
+    def schedule_keyframe(self, sid: str, navigated: bool) -> str | None:
+        if sid in self.pending:
+            return self.pending[sid][1]
+        if self.frames >= MAX_KEYFRAMES:
+            return None
+        self.frames += 1
+        name = f"k{self.frames}"
+        settle = NAVIGATE_SETTLE_S if navigated else SETTLE_S
+        self.pending[sid] = (time.time() + settle, name)
+        return name
+
+    def take_keyframe(self, sid: str, name: str) -> None:
+        client = self.client
+        try:
+            guarded = client.call(
+                "Runtime.evaluate",
+                {
+                    "expression": "(window.__aidenRecState ? window.__aidenRecState().noFrame : false)",
+                    "returnByValue": True,
+                },
+                session_id=sid,
+                timeout_s=5,
+            )
+            if (guarded.get("result") or {}).get("value"):
+                return
+            metrics = client.call("Page.getLayoutMetrics", session_id=sid, timeout_s=5)
+            view = metrics.get("cssVisualViewport") or {}
+            width = float(view.get("clientWidth") or 0)
+            height = float(view.get("clientHeight") or 0)
+            if width <= 0 or height <= 0:
+                return
+            shot = client.call(
+                "Page.captureScreenshot",
+                {
+                    "format": "jpeg",
+                    "quality": KEYFRAME_QUALITY,
+                    "clip": {
+                        "x": float(view.get("pageX") or 0),
+                        "y": float(view.get("pageY") or 0),
+                        "width": width,
+                        "height": height,
+                        "scale": min(1.0, KEYFRAME_WIDTH / width),
+                    },
+                },
+                session_id=sid,
+                timeout_s=10,
+            )
+            data = base64.b64decode(shot.get("data") or "")
+            if data:
+                with open(os.path.join(self.dir, f"{name}.jpg"), "wb") as handle:
+                    handle.write(data)
+        except (RuntimeError, TimeoutError, OSError):
+            return
+
+    def run_due_keyframes(self, force: bool = False) -> None:
+        now = time.time()
+        for sid, (due, name) in list(self.pending.items()):
+            if force or due <= now:
+                del self.pending[sid]
+                self.take_keyframe(sid, name)
+
+    # ── targets ────────────────────────────────────────────────────────────
+
+    def attach(self, params: dict[str, Any]) -> None:
+        sid = params.get("sessionId")
+        info = params.get("targetInfo") or {}
+        target_id = info.get("targetId")
+        if not sid or not target_id or target_id in self.targets:
+            return
+        kind = info.get("type")
+        if kind not in ("page", "iframe"):
+            self.client.call("Target.detachFromTarget", {"sessionId": sid}, timeout_s=5)
+            return
+        self.targets.add(target_id)
+        self.sessions[sid] = {"targetId": target_id, "url": info.get("url", ""), "frame": None}
+        client = self.client
+        client.call("Runtime.enable", session_id=sid, timeout_s=5)
+        client.call("Runtime.addBinding", {"name": BINDING}, session_id=sid, timeout_s=5)
+        client.call("Page.enable", session_id=sid, timeout_s=5)
+        try:
+            client.call(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": self.source, "runImmediately": True},
+                session_id=sid,
+                timeout_s=5,
+            )
+        except RuntimeError:
+            client.call(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": self.source},
+                session_id=sid,
+                timeout_s=5,
+            )
+        try:
+            client.call("Runtime.evaluate", {"expression": self.source}, session_id=sid, timeout_s=5)
+        except RuntimeError:
+            pass
+        try:
+            tree = client.call("Page.getFrameTree", session_id=sid, timeout_s=5)
+            frame = tree["frameTree"]["frame"]
+            self.sessions[sid]["frame"] = frame.get("id")
+            self.sessions[sid]["url"] = frame.get("url", self.sessions[sid]["url"])
+        except (RuntimeError, KeyError):
+            pass
+        client.call(
+            "Target.setAutoAttach",
+            {"autoAttach": True, "waitForDebuggerOnStart": False, "flatten": True},
+            session_id=sid,
+            timeout_s=5,
+        )
+        # Where the person started: the first few existing tabs; any tab opened later.
+        if not self.connecting or self.initial_budget > 0:
+            if self.connecting:
+                self.initial_budget -= 1
+            self.navigated(sid, self.sessions[sid]["url"], spa=False)
+
+    def handle(self, message: dict[str, Any]) -> None:
+        method = message.get("method")
+        params = message.get("params") or {}
+        sid = message.get("sessionId") or ""
+        if method == "Target.attachedToTarget":
+            self.attach(params)
+        elif method == "Target.detachedFromTarget":
+            gone = self.sessions.pop(params.get("sessionId", ""), None)
+            if gone:
+                self.targets.discard(gone["targetId"])
+        elif method == "Runtime.bindingCalled" and params.get("name") == BINDING:
+            try:
+                action = json.loads(params.get("payload") or "{}")
+            except ValueError:
+                return
+            if isinstance(action, dict) and action.get("kind"):
+                self.record(sid, action)
+        elif method == "Page.frameNavigated":
+            frame = params.get("frame") or {}
+            if frame.get("parentId") or sid not in self.sessions:
+                return
+            url = frame.get("url", "")
+            self.sessions[sid]["frame"] = frame.get("id")
+            self.sessions[sid]["url"] = url
+            self.navigated(sid, url, spa=False)
+        elif method == "Page.navigatedWithinDocument":
+            session = self.sessions.get(sid)
+            if session and params.get("frameId") == session.get("frame"):
+                session["url"] = params.get("url", "")
+                self.navigated(sid, session["url"], spa=True)
+
+    def navigated(self, sid: str, url: str, spa: bool) -> None:
+        if ignorable(url) or self.last_nav.get(sid) == url:
+            return
+        self.last_nav[sid] = url
+        self.record(sid, {"kind": "navigate", "spa": spa})
+
+    # ── lifecycle ──────────────────────────────────────────────────────────
+
+    def connect(self) -> None:
+        port = self.pb.cdp_port()
+        self.pb.ensure_browser(port)
+        client = RecorderClient.build(self.pb, self.pb.discover_ws_url(port))
+        client.connect()
+        self.client = client
+        self.connecting = True
+        client.call(
+            "Target.setAutoAttach",
+            {"autoAttach": True, "waitForDebuggerOnStart": False, "flatten": True},
+            timeout_s=10,
+        )
+        deadline = time.time() + 0.6
+        while time.time() < deadline:
+            client.pump(0.1)
+            self.drain()
+        for target in client.call("Target.getTargets", timeout_s=10).get("targetInfos") or []:
+            if target.get("type") == "page" and target.get("targetId") not in self.targets:
+                attached = client.call(
+                    "Target.attachToTarget",
+                    {"targetId": target["targetId"], "flatten": True},
+                    timeout_s=10,
+                )
+                self.attach({"sessionId": attached["sessionId"], "targetInfo": target})
+        self.drain()
+        self.connecting = False
+
+    def drain(self) -> None:
+        while self.client.events:
+            self.handle(self.client.events.popleft())
+
+    def should_stop(self) -> bool:
+        return self.stopping or os.path.exists(os.path.join(self.dir, "stop"))
+
+    def loop(self, deadline: float) -> None:
+        while not self.should_stop() and time.time() < deadline:
+            wait = 0.25
+            if self.pending:
+                wait = max(0.05, min(wait, min(due for due, _ in self.pending.values()) - time.time()))
+            self.client.pump(wait)
+            self.drain()
+            self.run_due_keyframes()
+        self.drain()
+        self.run_due_keyframes(force=True)
+
+
+def daemon(rec_id: str) -> int:
+    pb = load_page_browser()
+    recorder = Recorder(rec_id, pb, inject_source())
+    signal.signal(signal.SIGTERM, lambda *_: setattr(recorder, "stopping", True))
+    deadline = time.time() + TTL_S
+    failures = 0
+    ready = os.path.join(recorder.dir, "ready")
+    try:
+        while not recorder.should_stop() and time.time() < deadline and failures < 20:
+            try:
+                recorder.sessions.clear()
+                recorder.targets.clear()
+                recorder.pending.clear()
+                recorder.connect()
+                failures = 0
+                if not os.path.exists(ready):
+                    open(ready, "w").close()
+                recorder.loop(deadline)
+            except (RuntimeError, TimeoutError, OSError, KeyError) as exc:
+                failures += 1
+                with open(os.path.join(recorder.dir, "error"), "w", encoding="utf-8") as handle:
+                    handle.write(str(exc)[:500])
+                time.sleep(1.0)
+            finally:
+                if recorder.client is not None:
+                    recorder.client.close()
+                    recorder.client = None
+    finally:
+        open(os.path.join(recorder.dir, "done"), "w").close()
+    return 0
+
+
+# ── commands ───────────────────────────────────────────────────────────────
+
+
+def sweep_stale() -> None:
+    if not os.path.isdir(ROOT):
+        return
+    for name in os.listdir(ROOT):
+        path = os.path.join(ROOT, name)
+        try:
+            if time.time() - os.path.getmtime(path) > STALE_S:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def cmd_start(rec_id: str) -> dict[str, Any]:
+    path = rec_dir(rec_id)
+    sweep_stale()
+    os.makedirs(ROOT, mode=0o700, exist_ok=True)
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    log = open(os.path.join(path, "daemon.log"), "ab")
+    proc = subprocess.Popen(
+        [sys.executable, os.path.realpath(__file__), "daemon", rec_id],
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=log,
+        start_new_session=True,
+    )
+    with open(os.path.join(path, "pid"), "w", encoding="utf-8") as handle:
+        handle.write(str(proc.pid))
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        if os.path.exists(os.path.join(path, "ready")):
+            return {"ok": True}
+        if os.path.exists(os.path.join(path, "done")):
+            break
+        time.sleep(0.2)
+    detail = ""
+    try:
+        with open(os.path.join(path, "error"), encoding="utf-8") as handle:
+            detail = handle.read()
+    except OSError:
+        pass
+    return {"ok": False, "error": detail or "recorder did not start"}
+
+
+def cmd_pull(rec_id: str) -> dict[str, Any]:
+    path = rec_dir(rec_id)
+    actions: list[dict[str, Any]] = []
+    try:
+        with open(os.path.join(path, "actions.jsonl"), encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    actions.append(json.loads(line))
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    frames = sorted(
+        (name[:-4] for name in os.listdir(path) if name.endswith(".jpg")),
+        key=lambda n: int(n[1:]),
+    )
+    return {
+        "ok": True,
+        "done": os.path.exists(os.path.join(path, "done")),
+        "actions": actions,
+        "keyframes": frames,
+    }
+
+
+def cmd_frame(rec_id: str, name: str) -> str:
+    if not FRAME_RE.match(name):
+        raise ValueError("invalid keyframe name")
+    with open(os.path.join(rec_dir(rec_id), f"{name}.jpg"), "rb") as handle:
+        return base64.b64encode(handle.read()).decode("ascii")
+
+
+def cmd_stop(rec_id: str) -> dict[str, Any]:
+    path = rec_dir(rec_id)
+    if not os.path.isdir(path):
+        return {"ok": False, "error": "no such recording"}
+    open(os.path.join(path, "stop"), "w").close()
+    deadline = time.time() + 10
+    while time.time() < deadline and not os.path.exists(os.path.join(path, "done")):
+        time.sleep(0.1)
+    if not os.path.exists(os.path.join(path, "done")):
+        try:
+            with open(os.path.join(path, "pid"), encoding="utf-8") as handle:
+                os.kill(int(handle.read().strip()), signal.SIGTERM)
+        except (OSError, ValueError):
+            pass
+    return {"ok": True}
+
+
+def cmd_discard(rec_id: str) -> dict[str, Any]:
+    shutil.rmtree(rec_dir(rec_id), ignore_errors=True)
+    return {"ok": True}
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 3:
+        print(json.dumps({"ok": False, "error": "usage: aiden-recorder <command> <id>"}))
+        return 2
+    command, rec_id = argv[1], argv[2]
+    try:
+        if command == "daemon":
+            return daemon(rec_id)
+        if command == "frame":
+            print(cmd_frame(rec_id, argv[3] if len(argv) > 3 else ""))
+            return 0
+        handlers = {"start": cmd_start, "pull": cmd_pull, "stop": cmd_stop, "discard": cmd_discard}
+        if command not in handlers:
+            print(json.dumps({"ok": False, "error": f"unknown command: {command}"}))
+            return 2
+        print(json.dumps(handlers[command](rec_id)))
+        return 0
+    except (ValueError, OSError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

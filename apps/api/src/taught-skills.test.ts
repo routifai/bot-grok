@@ -2,97 +2,216 @@ import { describe, expect, it, vi } from "vitest";
 
 const takeover = vi.fn(async () => ({ leaseId: "engine", expiresAt: "" }));
 const release = vi.fn(async () => ({ ok: true as const }));
-const provision = vi.fn();
 vi.mock("./engine-computer.js", () => ({
   engineComputerClient: () => ({ baseUrl: "http://omnigent.test" }),
   engineComputerTakeover: takeover,
   engineComputerRelease: release,
-}));
-vi.mock("@aiden/adapters", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@aiden/adapters")>()),
-  provisionComputer: provision,
+  engineSessionOf: vi.fn(async () => ({ email: "me@example.test", sessionId: "sess-1" })),
 }));
 
-const { createTaughtSkillsService } = await import("./taught-skills.js");
+const engine = {
+  startOmnigentRecording: vi.fn(async () => ({ recording_id: "rec-1", skill_id: "skill-1" })),
+  stopOmnigentRecording: vi.fn(async () => ({ recording_id: "rec-1", skill_id: "skill-1" })),
+  getOmnigentTaughtSkill: vi.fn(),
+  listOmnigentTaughtSkills: vi.fn(async () => []),
+  getOmnigentSkillKeyframe: vi.fn(async (_c: unknown, _e: string, _id: string, name: string) =>
+    name === "k1" ? "data:image/jpeg;base64,AAA" : null,
+  ),
+  putOmnigentTaughtSkillDoc: vi.fn(),
+  saveOmnigentTaughtSkill: vi.fn(),
+  renderOmnigentTaughtSkill: vi.fn(async () => ({
+    skill_id: "skill-1",
+    name: "Search",
+    text: "1. Search for desk lamp",
+    missing_inputs: [],
+  })),
+  deleteOmnigentTaughtSkill: vi.fn(async () => undefined),
+  emitSkillDraftMessages: vi.fn(async () => undefined),
+};
+vi.mock("@aiden/adapters", () => engine);
+
+const { assertTeachingSendAllowed, createTaughtSkillsService } = await import("./taught-skills.js");
 
 const actor = { userId: "user-1", spaceId: "space-1" } as never;
+const doc = {
+  name: "Search",
+  goal: "Find a product",
+  preconditions: ["On the shop"],
+  inputs: [{ name: "product", label: "Product", default: "laptop stand" }],
+  steps: [
+    { intent: "Search for {{product}}", check: "Results", approval: false, keyframe: "k1" },
+    { intent: "Buy it", check: "Receipt", approval: true, keyframe: "k9" },
+  ],
+  returns: "The price",
+};
+const engineSkill = (over: Record<string, unknown> = {}) => ({
+  id: "skill-1",
+  parent_session_id: "sess-1",
+  recording_id: "rec-1",
+  name: "Search",
+  goal: "Find a product",
+  status: "draft",
+  version: 1,
+  doc,
+  created_at: 1_700_000_000,
+  updated_at: null,
+  stopped_at: 1_700_000_100,
+  ...over,
+});
 
-function setup(row?: Record<string, unknown>) {
-  const created = { ...row };
+function setup({ linked = true }: { linked?: boolean } = {}) {
   const prisma = {
+    user: { findUnique: vi.fn(async () => ({ email: "me@example.test" })) },
+    omnigentSession: { findFirst: vi.fn(async () => (linked ? { botId: "bot-1" } : null)) },
     bot: {
-      // A Pi-era Computer row with a dead container: the engine path must never look at it.
-      findFirst: vi.fn(async () => ({
-        id: "bot-1",
-        thread: null,
-        computer: { id: "c1", kind: "docker", state: "stopped", providerRef: "dead" },
-      })),
-      findUnique: vi.fn(async () => ({ id: "bot-1", thread: null, computer: null })),
+      findFirst: vi.fn(async () => ({ id: "bot-1", thread: { id: "t-1" } })),
+      findUnique: vi.fn(async () => ({ id: "bot-1", spaceId: "space-1", thread: { id: "t-1" } })),
     },
-    taughtSkill: {
-      findFirst: vi.fn(async () => (row ? created : null)),
-      findUnique: vi.fn(async () => created),
-      findUniqueOrThrow: vi.fn(async () => created),
-      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
-        id: "skill-1",
-        name: "",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        stoppedAt: null,
-        ...data,
-      })),
+    message: { findMany: vi.fn(async () => []), update: vi.fn() },
+    run: {
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(),
+      create: vi.fn(async () => ({ id: "run-1" })),
     },
-    run: { findMany: vi.fn(async () => []), updateMany: vi.fn() },
-    computer: { updateMany: vi.fn() },
-    computerExecutionLease: { updateMany: vi.fn() },
+    task: { create: vi.fn(async () => ({ id: "task-1" })) },
     event: { deleteMany: vi.fn() },
-    $executeRaw: vi.fn(),
-    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
   };
+  const events = { append: vi.fn(), notify: vi.fn() };
   const jobs = { enqueue: vi.fn(), cancel: vi.fn() };
   const service = createTaughtSkillsService({
     prisma: prisma as never,
-    events: { append: vi.fn(), notify: vi.fn() } as never,
+    events: events as never,
     jobs: jobs as never,
-    sandbox: {} as never,
-    home: {} as never,
-    dataDir: "/tmp",
   });
-  return { service, prisma, jobs };
+  return { prisma, events, jobs, service };
 }
 
-describe("teaching on the engine's Computer", () => {
-  it("start takes engine control and never provisions or leases Nova's Computer row", async () => {
-    const { service, prisma } = setup();
-    const skill = await service.start(actor, "bot-1", "file expenses");
-    expect(takeover).toHaveBeenCalledWith(expect.anything(), expect.anything(), actor, "bot-1");
-    expect(provision).not.toHaveBeenCalled();
-    expect(prisma.computer.updateMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ controlHolder: "user" }) }),
+describe("teaching on the engine", () => {
+  it("takes over, then records; the skill is the engine's", async () => {
+    const { service, events } = setup();
+    engine.getOmnigentTaughtSkill.mockResolvedValueOnce(
+      engineSkill({ status: "recording", doc: null }),
     );
+    const skill = await service.start(actor, "bot-1", "search a product");
+    expect(takeover).toHaveBeenCalled();
+    expect(engine.startOmnigentRecording).toHaveBeenCalledWith(
+      expect.anything(),
+      "me@example.test",
+      "sess-1",
+      "search a product",
+    );
+    expect(skill).toMatchObject({ id: "skill-1", botId: "bot-1", status: "recording" });
     expect(skill.recording.controlLeaseId).toBe("engine");
+    expect(events.append).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "skill.teaching.started" }),
+    );
   });
 
-  it("stop releases engine control", async () => {
+  it("hands control back when the recording cannot start", async () => {
+    const { service } = setup();
     release.mockClear();
-    const recording = { events: [], snapshots: [], controlLeaseId: "engine" };
-    const { service } = setup({
-      id: "skill-1",
-      spaceId: "space-1",
-      userId: "user-1",
-      botId: "bot-1",
-      status: "saved",
-      goal: "g",
-      name: "n",
-      playbook: {},
-      recording,
-      startedAt: null,
-      expiresAt: null,
-      stoppedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    engine.startOmnigentRecording.mockRejectedValueOnce(new Error("no browser"));
+    await expect(service.start(actor, "bot-1", "x")).rejects.toThrow("no browser");
+    expect(release).toHaveBeenCalled();
+  });
+
+  it("stop ends the recording, releases control and drops a draft card in the thread", async () => {
+    const { service, events } = setup();
+    release.mockClear();
+    engine.getOmnigentTaughtSkill
+      .mockResolvedValueOnce(engineSkill({ status: "recording", doc: null }))
+      .mockResolvedValueOnce(engineSkill({ status: "drafting", doc: null }));
+    const skill = await service.stop(actor, "skill-1");
+    expect(engine.stopOmnigentRecording).toHaveBeenCalled();
+    expect(release).toHaveBeenCalled();
+    expect(skill.status).toBe("drafting");
+    expect(engine.emitSkillDraftMessages).toHaveBeenCalled();
+    expect(events.append).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "skill.teaching.stopped" }),
+    );
+  });
+
+  it("get maps the draft and inlines the keyframes its steps use", async () => {
+    const { service } = setup();
+    engine.getOmnigentTaughtSkill.mockResolvedValueOnce(engineSkill());
+    const skill = await service.get(actor, "skill-1");
+    expect(skill.draft?.steps).toHaveLength(2);
+    expect(skill.draft?.inputs[0]).toMatchObject({ name: "product", default: "laptop stand" });
+    expect(skill.keyframes).toEqual({ k1: "data:image/jpeg;base64,AAA" });
+    expect(skill.playbook.steps).toEqual(["Search for {{product}}", "Buy it"]);
+    expect(skill.playbook.approvalBoundaries).toContain("Buy it");
+  });
+
+  it("refuses a skill of someone else's Muse", async () => {
+    const { service } = setup({ linked: false });
+    engine.getOmnigentTaughtSkill.mockResolvedValueOnce(engineSkill());
+    await expect(service.get(actor, "skill-1")).rejects.toThrow();
+  });
+
+  it("edits write a new engine version; save keeps it", async () => {
+    const { service } = setup();
+    engine.getOmnigentTaughtSkill.mockResolvedValue(engineSkill());
+    engine.putOmnigentTaughtSkillDoc.mockImplementation(
+      async (_c: unknown, _e: string, _id: string, next: unknown) =>
+        engineSkill({ doc: next, name: (next as { name: string }).name }),
+    );
+    const edited = await service.updateDraft(actor, "skill-1", {
+      name: "Find a price",
+      draft: { ...doc, steps: [doc.steps[0] as (typeof doc.steps)[number]] },
     });
-    await service.stop(actor, "skill-1");
-    expect(release).toHaveBeenCalledTimes(1);
+    expect(engine.putOmnigentTaughtSkillDoc.mock.calls[0]?.[3]).toMatchObject({
+      name: "Find a price",
+      goal: "Find a product",
+    });
+    expect(edited.draft?.steps).toHaveLength(1);
+
+    engine.saveOmnigentTaughtSkill.mockResolvedValueOnce(engineSkill({ status: "saved" }));
+    const saved = await service.save(actor, "skill-1", "Search");
+    expect(engine.putOmnigentTaughtSkillDoc).toHaveBeenCalledTimes(1);
+    expect(saved.status).toBe("saved");
+  });
+
+  it("test run is an ordinary turn carrying the rendered skill and inputs", async () => {
+    const { service, prisma, jobs } = setup();
+    engine.getOmnigentTaughtSkill.mockResolvedValue(engineSkill());
+    const result = await service.testRun(actor, "skill-1", { inputs: { product: "desk lamp" } });
+    expect(engine.renderOmnigentTaughtSkill).toHaveBeenCalledWith(
+      expect.anything(),
+      "me@example.test",
+      "skill-1",
+      { product: "desk lamp" },
+    );
+    const data = (prisma.task.create.mock.calls[0] as unknown as [{ data: { prompt: string } }])[0]
+      .data;
+    expect(data.prompt).toContain("1. Search for desk lamp");
+    expect(data.prompt).toContain("do not send, spend, delete or publish");
+    expect(result).toEqual({ runId: "run-1" });
+    expect(jobs.enqueue).toHaveBeenCalled();
+  });
+
+  it("remove deletes on the engine", async () => {
+    const { service } = setup();
+    engine.getOmnigentTaughtSkill.mockResolvedValue(engineSkill());
+    expect(await service.remove(actor, "skill-1")).toEqual({ ok: true });
+    expect(engine.deleteOmnigentTaughtSkill).toHaveBeenCalledWith(
+      expect.anything(),
+      "me@example.test",
+      "skill-1",
+    );
+  });
+});
+
+describe("assertTeachingSendAllowed", () => {
+  it("holds sends while the person is teaching and fails open when the engine is down", async () => {
+    engine.listOmnigentTaughtSkills.mockResolvedValueOnce([
+      engineSkill({ status: "recording" }),
+    ] as never);
+    await expect(assertTeachingSendAllowed({} as never, actor, "bot-1")).rejects.toThrow(
+      "Stop teaching first",
+    );
+    engine.listOmnigentTaughtSkills.mockRejectedValueOnce(new Error("down"));
+    await expect(assertTeachingSendAllowed({} as never, actor, "bot-1")).resolves.toBeUndefined();
+    engine.listOmnigentTaughtSkills.mockResolvedValueOnce([engineSkill()] as never);
+    await expect(assertTeachingSendAllowed({} as never, actor, "bot-1")).resolves.toBeUndefined();
   });
 });

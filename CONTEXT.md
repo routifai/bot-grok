@@ -72,8 +72,12 @@ _Avoid_: feed instruction, subscription, interest
 A suggestion of something the person could ask the Muse next, drawn from their Goals, memory, and recent Conversation. Tapping one sends it as a message.
 _Avoid_: prompt suggestion, recommendation, next step
 
+**Skill**:
+A task the person taught the Muse by doing it once on the Computer. The Muse turns the recording into a draft (steps, what changes each time, what to ask first); the person reviews and saves it, and the Muse can then run it again with different inputs.
+_Avoid_: macro, recording, playbook
+
 **Library**:
-Everything the Muse has made for the person (pages, documents, files), from the Conversation and every Goal log, in one place.
+Everything the Muse has made for the person (pages, documents, files), from the Conversation and every Goal log, in one place, with the Skills it has been taught.
 _Avoid_: files, artifacts, attachments, gallery
 
 **Check-in**:

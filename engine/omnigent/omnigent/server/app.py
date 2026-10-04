@@ -120,6 +120,7 @@ from omnigent.server.routes.sessions import (
 )
 from omnigent.server.routes.sharing import create_sharing_router
 from omnigent.server.routes.suggestions import create_suggestions_router
+from omnigent.server.routes.taught_skills import create_taught_skills_router
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.server.routes.usage import create_usage_router
 from omnigent.server.runner_session_init import RunnerSessionInitializer
@@ -145,6 +146,7 @@ from omnigent.stores.policy_store import PolicyStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
 from omnigent.stores.suggestion_store import SqlAlchemySuggestionStore
+from omnigent.stores.taught_skill_store import SqlAlchemyTaughtSkillStore
 from omnigent.superchat.chats import SideChatArchiveSweeper
 
 _logger = logging.getLogger(__name__)
@@ -1759,6 +1761,7 @@ def create_app(
                 managed_launches=app_inst.state.managed_launches,
                 app_state=app_inst.state,
             )
+            app_inst.state.fire_deps = fire_deps
             on_fire = build_on_fire(fire_deps)
             # The manual "run now" trigger reuses the same fire path (dispatch /
             # preflight / in-flight guard) as the scheduler; it only differs in
@@ -3354,6 +3357,15 @@ def create_app(
             ),
             prefix="/v1",
             tags=["suggestions"],
+        )
+        # Taught skills share the scheduled-task database too: recordings, their keyframes and
+        # the skills drafted from them.
+        taught_skill_store = SqlAlchemyTaughtSkillStore(scheduled_task_store.storage_location)
+        app.state.taught_skill_store = taught_skill_store
+        app.include_router(
+            create_taught_skills_router(taught_skill_store, auth_provider=auth_provider),
+            prefix="/v1",
+            tags=["taught_skills"],
         )
     if objective_store is not None:
         app.include_router(

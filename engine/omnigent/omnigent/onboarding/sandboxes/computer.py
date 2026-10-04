@@ -86,6 +86,7 @@ import click
 import httpx
 
 from omnigent.onboarding.sandboxes.base import ExecModelHostLauncher, RemoteCommandResult
+from omnigent.onboarding.sandboxes.recording import RecordingMixin
 from omnigent.onboarding.sandboxes.types import SandboxCapabilities, SandboxError
 
 if TYPE_CHECKING:
@@ -149,7 +150,7 @@ def _parse_sandbox_id(sandbox_id: str) -> tuple[str, str, str]:
     return bot_id, space_id, container_id
 
 
-class ComputerSandboxLauncher(ExecModelHostLauncher):
+class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
     """
     Sandbox launcher that runs Omnigent hosts inside a Muse's Nova computer.
 
@@ -204,7 +205,7 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
 
     @property
     def capabilities(self) -> SandboxCapabilities:
-        return SandboxCapabilities(managed_launch=True, screen=True)
+        return SandboxCapabilities(managed_launch=True, screen=True, recording=True)
 
     def prepare_for_launch(
         self,

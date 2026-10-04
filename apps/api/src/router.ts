@@ -579,9 +579,6 @@ export function createRouter(deps: RouterDeps) {
     prisma: deps.prisma,
     events: deps.events,
     jobs: deps.jobs,
-    sandbox: deps.sandbox,
-    home: deps.home,
-    dataDir: deps.dataDir,
   });
   const agentSkills = createAgentSkillsService(deps.prisma);
 
@@ -600,7 +597,7 @@ export function createRouter(deps: RouterDeps) {
     sendMessage: async (actor, botId, text) => {
       const target = await resolveThreadTarget(deps.prisma, actor, { botId });
       if (target.kind !== "bot") throw new IsolationError();
-      await assertTeachingSendAllowed(deps.prisma, actor.spaceId, target.botId);
+      await assertTeachingSendAllowed(deps.prisma, actor, target.botId);
       const sent = await deps.events.sendUserMessage({
         spaceId: actor.spaceId,
         threadId: target.threadId,
@@ -1594,7 +1591,7 @@ export function createRouter(deps: RouterDeps) {
         }
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         if (target.kind === "bot") {
-          await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
+          await assertTeachingSendAllowed(deps.prisma, context.actor, target.botId);
         }
         return sendThreadMessage(deps, context.actor, target, input);
       }),
@@ -1631,7 +1628,7 @@ export function createRouter(deps: RouterDeps) {
       followUp: authed.threads.followUp.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         if (target.kind === "bot") {
-          await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
+          await assertTeachingSendAllowed(deps.prisma, context.actor, target.botId);
           const sent = await deps.events.sendUserMessage({
             spaceId: context.actor.spaceId,
             threadId: target.threadId,
@@ -2712,14 +2709,17 @@ export function createRouter(deps: RouterDeps) {
       updateDraft: authed.skills.updateDraft.handler(async ({ context, input }) =>
         taughtSkills.updateDraft(context.actor, input.skillId, {
           name: input.name,
-          playbook: input.playbook,
+          draft: input.draft,
         }),
       ),
       save: authed.skills.save.handler(async ({ context, input }) =>
         taughtSkills.save(context.actor, input.skillId, input.name),
       ),
       testRun: authed.skills.testRun.handler(async ({ context, input }) =>
-        taughtSkills.testRun(context.actor, input.skillId, input.prompt),
+        taughtSkills.testRun(context.actor, input.skillId, {
+          prompt: input.prompt,
+          inputs: input.inputs,
+        }),
       ),
       remove: authed.skills.remove.handler(async ({ context, input }) =>
         taughtSkills.remove(context.actor, input.skillId),

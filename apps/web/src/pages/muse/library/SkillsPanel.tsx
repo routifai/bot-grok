@@ -1,4 +1,4 @@
-import type { AgentSkill, AgentSkillCatalogEntry } from "@aiden/contracts";
+import type { AgentSkill, AgentSkillCatalogEntry, TaughtSkill } from "@aiden/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +17,7 @@ import {
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
+import { SkillReviewSheet } from "../../../components/teach/SkillReviewSheet";
 import { illustrationUrl } from "../../../lib/illustrations";
 import { rpc } from "../../../lib/rpc";
 import { EmptyState, MUSE_INSET_GROUP } from "../ui";
@@ -26,13 +27,20 @@ import { EmptyState, MUSE_INSET_GROUP } from "../ui";
  * task), from an offer the person accepted, or from steps they pasted; this lists them and
  * lets the person read, edit or delete each one.
  */
-export function SkillsPanel({ avatarColor }: { avatarColor?: string }) {
+export function SkillsPanel({ botId, avatarColor }: { botId: string; avatarColor?: string }) {
   const { t } = useLingui();
   const [skills, setSkills] = useState<AgentSkillCatalogEntry[] | null>(null);
+  const [taught, setTaught] = useState<TaughtSkill[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [openTaughtId, setOpenTaughtId] = useState<string | null>(null);
 
   async function load() {
+    // Taught skills live on the engine; the Library still lists the rest if it is unreachable.
+    void rpc.skills
+      .list({ botId })
+      .then((all) => setTaught(all.filter((skill) => skill.status === "saved")))
+      .catch(() => setTaught([]));
     try {
       setSkills(await rpc.agentSkills.list());
       setError(null);
@@ -44,7 +52,7 @@ export function SkillsPanel({ avatarColor }: { avatarColor?: string }) {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [botId]);
 
   if (skills === null) {
     return <div className="h-40 animate-pulse rounded-[22px] bg-muted/60" aria-hidden="true" />;
@@ -53,7 +61,7 @@ export function SkillsPanel({ avatarColor }: { avatarColor?: string }) {
   // Only what the Muse learned is listed; built-in and plugin skills stay available to it
   // but aren't the person's to manage here.
   const learned = skills.filter((skill) => skill.source === "user");
-  if (learned.length === 0) {
+  if (learned.length === 0 && taught.length === 0) {
     return (
       <EmptyState
         face
@@ -68,7 +76,30 @@ export function SkillsPanel({ avatarColor }: { avatarColor?: string }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <SkillGroup title={t`Learned`} skills={learned} onOpen={setOpenId} />
+      {taught.length ? (
+        <SkillGroup
+          title={t`Taught`}
+          skills={taught.map((skill) => ({
+            id: skill.id,
+            name: skill.name || skill.goal,
+            description: skill.goal,
+          }))}
+          onOpen={setOpenTaughtId}
+        />
+      ) : null}
+      {learned.length ? (
+        <SkillGroup title={t`Learned`} skills={learned} onOpen={setOpenId} />
+      ) : null}
+      {openTaughtId ? (
+        <SkillReviewSheet
+          skillId={openTaughtId}
+          open
+          onOpenChange={(open) => {
+            if (!open) setOpenTaughtId(null);
+          }}
+          onChanged={() => load()}
+        />
+      ) : null}
       {openId ? (
         <SkillSheet
           skillId={openId}
@@ -86,7 +117,7 @@ function SkillGroup({
   onOpen,
 }: {
   title: string;
-  skills: AgentSkillCatalogEntry[];
+  skills: { id: string; name: string; description: string }[];
   onOpen: (id: string) => void;
 }) {
   return (

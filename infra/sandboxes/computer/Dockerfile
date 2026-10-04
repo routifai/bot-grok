@@ -106,6 +106,8 @@ COPY --chmod=755 infra/sandboxes/computer/control.py /usr/local/bin/aiden-comput
 COPY --from=capture-builder /build/libaiden-xcapture.so /usr/local/lib/libaiden-xcapture.so
 COPY --chmod=755 infra/sandboxes/computer/aiden-browser /usr/local/bin/aiden-browser
 COPY --chmod=755 infra/sandboxes/computer/aiden-page-browser /usr/local/bin/aiden-page-browser
+COPY --chmod=755 infra/sandboxes/computer/aiden-recorder /usr/local/bin/aiden-recorder
+COPY --chmod=644 infra/sandboxes/computer/aiden-recorder.js /usr/local/share/aiden/aiden-recorder.js
 COPY --chmod=644 infra/sandboxes/computer/aiden-browser.desktop /usr/share/applications/aiden-browser.desktop
 COPY --chmod=644 infra/sandboxes/computer/fluxbox.init /etc/aiden/fluxbox/init
 COPY --chmod=644 infra/sandboxes/computer/fluxbox.apps /etc/aiden/fluxbox/apps
@@ -151,7 +153,7 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 # Strip CR so shebangs work even if the build context came from a CRLF checkout.
 RUN ldconfig \
-  && sed -i 's/\r$//' /usr/local/bin/aiden-computer /usr/local/bin/aiden-computer-control /usr/local/bin/aiden-browser /usr/local/bin/aiden-page-browser \
+  && sed -i 's/\r$//' /usr/local/bin/aiden-computer /usr/local/bin/aiden-computer-control /usr/local/bin/aiden-browser /usr/local/bin/aiden-page-browser /usr/local/bin/aiden-recorder \
     /etc/aiden/fluxbox/init /etc/aiden/fluxbox/apps /etc/aiden/fluxbox/menu \
     /etc/profile.d/aiden-local-bin.sh
 EXPOSE 7070 6080 6081 6082 6083 6084 6085 6086 6087 6088 6089 6090 6091 6092 6093 6094 6095

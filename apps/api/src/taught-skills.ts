@@ -1,623 +1,422 @@
-import { randomUUID } from "node:crypto";
-import type { AgentHomeStore, JobPublisher, SandboxProvider } from "@aiden/adapter-kit";
+// "Teach a task" (docs/adr/0004-engine-owns-the-computer.md): the engine records what the person
+// does on the Computer, drafts the skill from the recording and stores it versioned on its server.
+// Nova only relays: it starts and stops the recording (with Take over), maps the engine's skill
+// onto the Review sheet's contract, and keeps the draft card in the thread. No Nova skill rows.
+import type { JobPublisher } from "@aiden/adapter-kit";
+import { runContinueJob } from "@aiden/adapter-kit";
 import {
-  type AdapterContext,
-  runContinueJob,
-  skillTeachingExpireJob,
-  skillTeachingExpireJobKey,
-} from "@aiden/adapter-kit";
-import {
-  acquireComputerExecutionLease,
-  appendRecordingEvent,
-  ComputerBusyError,
-  type ComputerExecutionLease,
-  captureTeachingSnapshot,
-  completeTeachingSession,
-  emptyRecording,
-  expireTaughtSkillTeaching,
-  extendActiveComputerControl,
-  getActiveTeachingSession,
-  mapTaughtSkill,
-  observeStopSnapshot,
-  parsePlaybook,
-  parseRecording,
-  provisionComputer,
-  recordTeachingInputEvent,
-  releaseComputerExecutionLease,
-  releaseTeachingComputerControlForBot,
-  scheduleComputerControlExpiry,
-  screenLeaseIdForRun,
-  skillCreateFromTool,
-  skillUpdateFromTool,
-  type TeachComputerInput,
-  teachingControlLeaseExpiresAt,
+  deleteOmnigentTaughtSkill,
+  emitSkillDraftMessages,
+  getOmnigentSkillKeyframe,
+  getOmnigentTaughtSkill,
+  listOmnigentTaughtSkills,
+  type OmnigentClientConfig,
+  type OmnigentSkillDoc,
+  type OmnigentTaughtSkill,
+  putOmnigentTaughtSkillDoc,
+  renderOmnigentTaughtSkill,
+  saveOmnigentTaughtSkill,
+  startOmnigentRecording,
+  stopOmnigentRecording,
 } from "@aiden/adapters";
-import type { Actor, MessageBlock, TaughtSkill } from "@aiden/contracts";
-import {
-  ACTIVE_RUN_STATUSES,
-  buildPlaybookFromRecording,
-  formatSkillRunPrompt,
-  type SkillPlaybook,
-  type TeachRecordingEvent,
-  taughtSkillToSkillMd,
-  teachRecordingTtlMs,
-} from "@aiden/core";
+import type { Actor, MessageBlock, SkillDraft, TaughtSkill } from "@aiden/contracts";
+import { ACTIVE_RUN_STATUSES, buildPlaybookFromRecording, type SkillPlaybook } from "@aiden/core";
 import { ENGINE_COMPUTER_ID } from "@aiden/core/node/screen-capability";
-import {
-  type createRepos,
-  expireComputerExecutionLeases,
-  IsolationError,
-  type PrismaClient,
-  type ThreadEvents,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+import { IsolationError, type PrismaClient, type ThreadEvents } from "@aiden/db";
 import { ORPCError } from "@orpc/server";
 import {
   engineComputerClient,
   engineComputerRelease,
   engineComputerTakeover,
+  engineSessionOf,
 } from "./engine-computer.js";
-
-type TaughtSkillRow = {
-  id: string;
-  spaceId: string;
-  botId: string;
-  userId: string;
-  name: string;
-  goal: string;
-  status: string;
-  playbook: unknown;
-  recording: unknown;
-  startedAt: Date | null;
-  expiresAt: Date | null;
-  stoppedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
 
 export interface TaughtSkillsDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
   jobs: JobPublisher;
-  sandbox: SandboxProvider;
-  home: AgentHomeStore;
-  dataDir: string;
 }
 
-function computerContext(actor: Actor, botId: string, operationId: string): AdapterContext {
+const DEFAULT_FAILURE =
+  "If a step fails or the expected screen is not visible, stop and ask the user before retrying.";
+const DEFAULT_APPROVAL =
+  "Do not send messages, spend money, publish content, or delete data without explicit user approval.";
+
+function engineClient(): OmnigentClientConfig {
+  const client = engineComputerClient();
+  if (!client) throw new ORPCError("BAD_REQUEST", { message: "Teaching needs the engine" });
+  return client;
+}
+
+/** The old playbook shape, derived from the draft for the thread card and "Add to routine". */
+function playbookOf(goal: string, doc: OmnigentSkillDoc | null): SkillPlaybook {
+  if (!doc) return buildPlaybookFromRecording(goal, []);
+  const approvals = doc.steps.filter((step) => step.approval).map((step) => step.intent);
   return {
-    operationId,
-    traceId: operationId,
-    spaceId: actor.spaceId,
-    userId: actor.userId,
-    botId,
-    signal: new AbortController().signal,
+    whenToUse: [doc.goal || goal, ...doc.preconditions].join(" "),
+    inputs: doc.inputs.map((input) => `${input.label}: ${input.default}`),
+    steps: doc.steps.map((step) => step.intent),
+    howToCheck: doc.steps
+      .map((step) => step.check)
+      .filter(Boolean)
+      .join(" "),
+    whatToReturn: doc.returns,
+    approvalBoundaries: approvals.length
+      ? `Ask before: ${approvals.join("; ")}. ${DEFAULT_APPROVAL}`
+      : DEFAULT_APPROVAL,
+    failureHandling: DEFAULT_FAILURE,
   };
 }
 
-function ownedSkillWhere(actor: Actor, skillId: string) {
-  return { id: skillId, spaceId: actor.spaceId, userId: actor.userId };
+function draftOf(doc: OmnigentSkillDoc | null): SkillDraft | null {
+  if (!doc) return null;
+  return {
+    preconditions: doc.preconditions,
+    inputs: doc.inputs,
+    steps: doc.steps,
+    returns: doc.returns,
+  };
 }
 
-async function getOwnedSkill(
-  deps: TaughtSkillsDeps,
-  actor: Actor,
-  skillId: string,
-): Promise<TaughtSkillRow> {
-  const skill = await deps.prisma.taughtSkill.findFirst({ where: ownedSkillWhere(actor, skillId) });
-  if (!skill) throw new IsolationError();
-  return skill;
+function iso(epochSeconds: number | null): string | null {
+  return epochSeconds == null ? null : new Date(epochSeconds * 1000).toISOString();
 }
 
+function mapSkill(
+  botId: string,
+  skill: OmnigentTaughtSkill,
+  keyframes?: Record<string, string>,
+): TaughtSkill {
+  return {
+    id: skill.id,
+    botId,
+    name: skill.name,
+    goal: skill.goal,
+    status: skill.status,
+    playbook: playbookOf(skill.goal, skill.doc),
+    draft: draftOf(skill.doc),
+    ...(keyframes ? { keyframes } : {}),
+    recording: {
+      events: [],
+      snapshots: [],
+      controlLeaseId: skill.status === "recording" ? ENGINE_COMPUTER_ID : undefined,
+    },
+    startedAt: iso(skill.created_at),
+    expiresAt: null,
+    stoppedAt: iso(skill.stopped_at),
+    createdAt: iso(skill.created_at) ?? new Date(0).toISOString(),
+    updatedAt: iso(skill.updated_at ?? skill.created_at) ?? new Date(0).toISOString(),
+  };
+}
+
+/** The Muse's active teaching session, if any; sends are held while the person is teaching. */
 export async function assertTeachingSendAllowed(
   prisma: PrismaClient,
-  spaceId: string,
+  actor: Actor,
   botId: string,
 ): Promise<void> {
-  const active = await getActiveTeachingSession(prisma, spaceId, botId);
-  if (active) {
-    throw new ORPCError("CONFLICT", { message: "Stop teaching first" });
-  }
-}
-
-async function cancelActiveRuns(
-  deps: TaughtSkillsDeps,
-  _actor: Actor,
-  botId: string,
-): Promise<void> {
-  const activeRuns = await deps.prisma.run.findMany({
-    where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
-    select: { id: true },
-  });
-  await deps.prisma.run.updateMany({
-    where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
-    data: { status: "cancelled", completedAt: new Date() },
-  });
-  await expireComputerExecutionLeases(deps.prisma, { botId });
-  await deps.prisma.computer.updateMany({
-    where: { executionBotId: botId },
-    data: { executionRunId: null, executionBotId: null, executionLeaseExpiresAt: null },
-  });
-  await deps.prisma.event.deleteMany({
-    where: { type: "thread.progress", runId: { in: activeRuns.map((run) => run.id) } },
-  });
-}
-
-async function ensureGraphicalComputer(
-  deps: TaughtSkillsDeps,
-  actor: Actor,
-  bot: Awaited<ReturnType<ReturnType<typeof createRepos>["getBot"]>>,
-) {
-  if (bot.computer?.kind === "desktop") {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "Teaching needs a graphical sandbox computer, not a desktop host",
-    });
-  }
-  if (!bot.computer) throw new IsolationError();
-  if (bot.computer.state !== "running" || !bot.computer.providerRef) {
-    const ctx = computerContext(actor, bot.id, "skills.start");
-    const manualRunId = `teach:${randomUUID()}`;
-    let lease: ComputerExecutionLease | null;
-    try {
-      lease = await acquireComputerExecutionLease(deps.prisma, {
-        computerId: bot.computer.id,
-        runId: manualRunId,
-        botId: bot.id,
-      });
-    } catch (error) {
-      if (error instanceof ComputerBusyError) {
-        throw new ORPCError("CONFLICT", { message: "Computer is busy" });
-      }
-      throw error;
-    }
-    try {
-      await provisionComputer(deps, bot.computer.id, {
-        ...ctx,
-        screenLeaseId: screenLeaseIdForRun(lease, manualRunId),
-      });
-    } catch (error) {
-      if (error instanceof ComputerBusyError) {
-        throw new ORPCError("CONFLICT", { message: "Computer is busy" });
-      }
-      throw error;
-    } finally {
-      await releaseComputerExecutionLease(deps.prisma, lease);
-    }
-    bot = await deps.prisma.bot.findUniqueOrThrow({
-      where: { id: bot.id },
-      include: { thread: true, computer: true },
-    });
-  }
-  if (!bot.computer?.providerRef || bot.computer.state !== "running") {
-    throw new ORPCError("BAD_REQUEST", { message: "Computer must be running to teach" });
-  }
-  if (bot.computer.kind === "desktop") {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "Teaching needs a graphical sandbox computer, not a desktop host",
-    });
-  }
-  return bot;
-}
-
-async function grantTakeover(
-  deps: TaughtSkillsDeps,
-  actor: Actor,
-  bot: Awaited<ReturnType<ReturnType<typeof createRepos>["getBot"]>>,
-  until: Date,
-): Promise<{ bot: typeof bot; leaseId: string }> {
-  if (!bot.computer) throw new IsolationError();
-  if (await extendActiveComputerControl(deps.prisma, deps.jobs, bot.computer, bot.id, until)) {
-    const leaseId = bot.computer.controlLeaseId;
-    if (!leaseId) throw new IsolationError();
-    return { bot, leaseId };
-  }
-  const leaseId = randomUUID();
-  const expiresAt = teachingControlLeaseExpiresAt(until);
-  const granted = await deps.prisma.computer.updateMany({
-    where: {
-      id: bot.computer.id,
-      state: "running",
-      OR: [{ controlHolder: { not: "user" } }, { controlBotId: bot.id }],
-    },
-    data: {
-      controlHolder: "user",
-      controlLeaseId: leaseId,
-      controlLeaseExpiresAt: expiresAt,
-      controlBotId: bot.id,
-      state: "running",
-    },
-  });
-  if (granted.count !== 1) {
-    throw new ORPCError("CONFLICT", { message: "Could not take control of the computer" });
-  }
-  await scheduleComputerControlExpiry(deps.jobs, bot.computer.id, leaseId, expiresAt);
-  if (bot.thread) {
-    await deps.events.append({
-      spaceId: actor.spaceId,
-      threadId: bot.thread.id,
-      botId: bot.id,
-      type: "computer.takeover.granted",
-      payload: { holder: "user", reason: "teaching" },
-    });
-  }
-  return { bot, leaseId };
-}
-
-async function updateSkillDraftMessage(
-  deps: TaughtSkillsDeps,
-  actor: Actor,
-  skill: TaughtSkillRow,
-  input: {
-    name?: string;
-    playbook?: SkillPlaybook;
-    status?: "draft" | "saved";
-  },
-): Promise<void> {
-  const bot = await deps.prisma.bot.findUnique({
-    where: { id: skill.botId },
-    include: { thread: true },
-  });
-  if (!bot?.thread) return;
-
-  const messages = await deps.prisma.message.findMany({
-    where: { threadId: bot.thread.id, role: "bot" },
-    orderBy: { seq: "desc" },
-    take: 100,
-  });
-
-  for (const message of messages) {
-    const parsed = message.blocks as MessageBlock[];
-    if (!Array.isArray(parsed)) continue;
-    const index = parsed.findIndex(
-      (block) => block.kind === "skill_draft" && block.skillId === skill.id,
-    );
-    if (index === -1) continue;
-    const existing = parsed[index];
-    if (existing?.kind !== "skill_draft") continue;
-    const playbook = input.playbook ?? parsePlaybook(skill.playbook);
-    const nextBlocks: MessageBlock[] = [...parsed];
-    nextBlocks[index] = {
-      kind: "skill_draft",
-      skillId: skill.id,
-      name: input.name ?? existing.name,
-      goal: skill.goal,
-      playbook,
-      status: input.status ?? existing.status,
-    };
-    await deps.prisma.message.update({
-      where: { id: message.id },
-      data: { blocks: nextBlocks as never },
-    });
-    await deps.events.append({
-      spaceId: actor.spaceId,
-      threadId: bot.thread.id,
-      botId: bot.id,
-      type: "thread.message.updated",
-      payload: { messageId: message.id, role: "bot", blocks: nextBlocks },
-    });
-    return;
-  }
-}
-
-/** Teaching on the engine's Computer holds engine control (ADR 0004), not a Nova lease row. */
-function isEngineTeaching(recording: unknown): boolean {
-  return parseRecording(recording).controlLeaseId === ENGINE_COMPUTER_ID;
-}
-
-async function releaseEngineTeachingControl(deps: TaughtSkillsDeps, actor: Actor, botId: string) {
   const client = engineComputerClient();
   if (!client) return;
-  await engineComputerRelease(deps, client, actor, botId).catch((error) => {
-    getLogger().error("teaching engine control release", error);
-  });
-}
-
-export async function expireTeachingSessionIfNeeded(deps: TaughtSkillsDeps, skillId: string) {
-  const before = await deps.prisma.taughtSkill.findUnique({
-    where: { id: skillId },
-    select: { status: true },
-  });
-  const row = await expireTaughtSkillTeaching(deps, skillId);
-  // Hand engine control back only when this call ended the recording (the worker's expiry knows
-  // Nova leases only); a later person-initiated Take over must not be released by a poll.
-  if (
-    before?.status === "recording" &&
-    row &&
-    row.status !== "recording" &&
-    isEngineTeaching(row.recording)
-  ) {
-    await releaseEngineTeachingControl(
-      deps,
-      { spaceId: row.spaceId, userId: row.userId } as Actor,
-      row.botId,
-    );
-  }
-  return row;
-}
-
-export async function stopTeachingSession(
-  deps: TaughtSkillsDeps,
-  actor: Actor,
-  skillId: string,
-): Promise<TaughtSkill> {
-  await getOwnedSkill(deps, actor, skillId);
-  await expireTeachingSessionIfNeeded(deps, skillId);
-  const current = await deps.prisma.taughtSkill.findUniqueOrThrow({ where: { id: skillId } });
-  if (current.status === "draft" || current.status === "saved") {
-    if (isEngineTeaching(current.recording)) {
-      await releaseEngineTeachingControl(deps, actor, current.botId);
-      return mapTaughtSkill(current);
+  const recording = await (async () => {
+    try {
+      const { email, sessionId } = await engineSessionOf({ prisma }, client, actor, botId);
+      if (!sessionId) return false;
+      const skills = await listOmnigentTaughtSkills(client, email, sessionId);
+      return skills.some((skill) => skill.status === "recording");
+    } catch {
+      // The send itself needs the engine and fails clearly there; never block on this check.
+      return false;
     }
-    await releaseTeachingComputerControlForBot(
-      deps,
-      actor,
-      current.botId,
-      parseRecording(current.recording).controlLeaseId,
-    );
-    return mapTaughtSkill(current);
-  }
-  if (current.status !== "recording" && current.status !== "drafting") {
-    throw new ORPCError("BAD_REQUEST", { message: "Teaching session is not active" });
-  }
-  const bot = await deps.prisma.bot.findUnique({
-    where: { id: current.botId },
-    include: { thread: true, computer: true },
-  });
-  if (!bot) throw new IsolationError();
-  const onEngine = isEngineTeaching(current.recording);
-  const stopSnapshot =
-    current.status === "recording" && bot.computer?.providerRef && !onEngine
-      ? await observeStopSnapshot(deps, actor, bot)
-      : undefined;
-  const finalized = await completeTeachingSession(deps, actor, skillId, "stopped", stopSnapshot);
-  if (onEngine) await releaseEngineTeachingControl(deps, actor, current.botId);
-  await deps.jobs.cancel(skillTeachingExpireJobKey(current.id));
-  return mapTaughtSkill(finalized);
-}
-
-/**
- * A saved taught skill also becomes an agent skill (SKILL.md), so the Muse follows it in
- * ordinary conversation like any other skill; saving again refreshes that agent skill.
- * Best effort: the taught skill itself is already saved.
- */
-async function publishTaughtSkillAsAgentSkill(
-  deps: { prisma: PrismaClient },
-  actor: Actor,
-  name: string,
-  playbook: SkillPlaybook,
-  goal: string,
-): Promise<void> {
-  const skill = taughtSkillToSkillMd(name, playbook, goal);
-  const owner = { spaceId: actor.spaceId, userId: actor.userId };
-  try {
-    const created = await skillCreateFromTool(deps.prisma, owner, { content: skill.content });
-    if ("error" in created && /already exists/.test(String(created.error))) {
-      await skillUpdateFromTool(deps.prisma, owner, { name: skill.name, content: skill.content });
-    }
-  } catch (error) {
-    getLogger().error("taught skill agent skill publish", error);
-  }
+  })();
+  if (recording) throw new ORPCError("CONFLICT", { message: "Stop teaching first" });
 }
 
 export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
+  /** The engine skill with the Muse it belongs to, checked against the actor. */
+  async function owned(actor: Actor, skillId: string) {
+    const client = engineClient();
+    const user = await deps.prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { email: true },
+    });
+    if (!user) throw new IsolationError();
+    const skill = await getOmnigentTaughtSkill(client, user.email, skillId);
+    const link = await deps.prisma.omnigentSession.findFirst({
+      where: {
+        omnigentSessionId: skill.parent_session_id,
+        bot: { spaceId: actor.spaceId, userId: actor.userId },
+      },
+      select: { botId: true },
+    });
+    if (!link) throw new IsolationError();
+    return { client, email: user.email, skill, botId: link.botId };
+  }
+
+  async function keyframesOf(
+    client: OmnigentClientConfig,
+    email: string,
+    skill: OmnigentTaughtSkill,
+  ): Promise<Record<string, string>> {
+    const names = [
+      ...new Set((skill.doc?.steps ?? []).flatMap((s) => (s.keyframe ? [s.keyframe] : []))),
+    ];
+    const frames = await Promise.all(
+      names.map(async (name) => [
+        name,
+        await getOmnigentSkillKeyframe(client, email, skill.id, name),
+      ]),
+    );
+    return Object.fromEntries(
+      frames.filter((entry): entry is [string, string] => entry[1] !== null),
+    );
+  }
+
+  async function updateSkillDraftMessage(botId: string, skill: OmnigentTaughtSkill) {
+    const bot = await deps.prisma.bot.findUnique({
+      where: { id: botId },
+      include: { thread: true },
+    });
+    if (!bot?.thread) return;
+    const messages = await deps.prisma.message.findMany({
+      where: { threadId: bot.thread.id, role: "bot" },
+      orderBy: { seq: "desc" },
+      take: 100,
+    });
+    for (const message of messages) {
+      const blocks = message.blocks as MessageBlock[];
+      if (!Array.isArray(blocks)) continue;
+      const index = blocks.findIndex((b) => b.kind === "skill_draft" && b.skillId === skill.id);
+      const existing = blocks[index];
+      if (existing?.kind !== "skill_draft") continue;
+      const next: MessageBlock[] = [...blocks];
+      next[index] = {
+        ...existing,
+        name: skill.name || existing.name,
+        playbook: playbookOf(skill.goal, skill.doc),
+        status: skill.status === "saved" ? "saved" : "draft",
+      };
+      await deps.prisma.message.update({
+        where: { id: message.id },
+        data: { blocks: next as never },
+      });
+      await deps.events.append({
+        spaceId: bot.spaceId,
+        threadId: bot.thread.id,
+        botId,
+        type: "thread.message.updated",
+        payload: { messageId: message.id, role: "bot", blocks: next },
+      });
+      return;
+    }
+  }
+
+  async function releaseControl(actor: Actor, client: OmnigentClientConfig, botId: string) {
+    await engineComputerRelease(deps, client, actor, botId).catch(() => undefined);
+  }
+
   return {
     async list(actor: Actor, botId: string): Promise<TaughtSkill[]> {
-      const rows = await deps.prisma.taughtSkill.findMany({
-        where: { spaceId: actor.spaceId, botId, userId: actor.userId },
-        orderBy: { updatedAt: "desc" },
-      });
-      return rows.map(mapTaughtSkill);
+      const client = engineClient();
+      const { email, sessionId } = await engineSessionOf(deps, client, actor, botId);
+      if (!sessionId) return [];
+      const skills = await listOmnigentTaughtSkills(client, email, sessionId);
+      return skills.map((skill) => mapSkill(botId, skill));
     },
 
     async get(actor: Actor, skillId: string): Promise<TaughtSkill> {
-      const row = await getOwnedSkill(deps, actor, skillId);
-      await expireTeachingSessionIfNeeded(deps, row.id);
-      const current = await deps.prisma.taughtSkill.findUniqueOrThrow({ where: { id: skillId } });
-      return mapTaughtSkill(current);
+      const { client, email, skill, botId } = await owned(actor, skillId);
+      return mapSkill(botId, skill, await keyframesOf(client, email, skill));
     },
 
     async start(actor: Actor, botId: string, goal: string): Promise<TaughtSkill> {
-      let bot = await deps.prisma.bot.findFirst({
+      const client = engineClient();
+      const bot = await deps.prisma.bot.findFirst({
         where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
-        include: { thread: true, computer: true },
+        include: { thread: true },
       });
       if (!bot) throw new IsolationError();
-      const alreadyRecording = await deps.prisma.taughtSkill.findFirst({
-        where: { botId, status: "recording" },
+      const { email, sessionId } = await engineSessionOf(deps, client, actor, botId);
+      if (!sessionId) {
+        throw new ORPCError("BAD_REQUEST", { message: "Computer must be running to teach" });
+      }
+      const activeRuns = await deps.prisma.run.findMany({
+        where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
         select: { id: true },
       });
-      if (alreadyRecording) {
-        throw new ORPCError("CONFLICT", { message: "A teaching session is already active" });
-      }
-      await cancelActiveRuns(deps, actor, botId);
-      const engine = engineComputerClient();
-      if (!engine) bot = await ensureGraphicalComputer(deps, actor, bot);
-      const startedAt = new Date();
-      const expiresAt = new Date(startedAt.getTime() + teachRecordingTtlMs());
-      // On the engine the Computer, its container and who controls it are the engine's: take
-      // over there so the stream is interactive, never through Nova's (stale) Computer row.
-      const { leaseId } = engine
-        ? await engineComputerTakeover(deps, engine, actor, botId)
-        : await grantTakeover(deps, actor, bot, expiresAt);
-      let row: TaughtSkillRow;
+      await deps.prisma.run.updateMany({
+        where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
+        data: { status: "cancelled", completedAt: new Date() },
+      });
+      await deps.prisma.event.deleteMany({
+        where: { type: "thread.progress", runId: { in: activeRuns.map((run) => run.id) } },
+      });
+      // The person holds the Computer while teaching (ADR 0004), then the engine records it.
+      await engineComputerTakeover(deps, client, actor, botId);
+      let started: { skill_id: string };
       try {
-        row = await deps.prisma.$transaction(async (tx) => {
-          await tx.$executeRaw`SELECT id FROM bots WHERE id = ${botId} FOR UPDATE`;
-          const existing = await tx.taughtSkill.findFirst({
-            where: { botId, status: "recording" },
-          });
-          if (existing) {
-            throw new ORPCError("CONFLICT", { message: "A teaching session is already active" });
-          }
-          return tx.taughtSkill.create({
-            data: {
-              spaceId: actor.spaceId,
-              botId,
-              userId: actor.userId,
-              goal,
-              status: "recording",
-              startedAt,
-              expiresAt,
-              recording: { ...emptyRecording(), controlLeaseId: leaseId } as never,
-              playbook: buildPlaybookFromRecording(goal, []) as never,
-            },
-          });
-        });
+        started = await startOmnigentRecording(client, email, sessionId, goal);
       } catch (error) {
-        if (error instanceof ORPCError) throw error;
-        if (
-          error instanceof Error &&
-          "code" in error &&
-          (error as { code?: string }).code === "P2002"
-        ) {
-          throw new ORPCError("CONFLICT", { message: "A teaching session is already active" });
-        }
+        await releaseControl(actor, client, botId);
         throw error;
       }
-      await deps.jobs.enqueue(skillTeachingExpireJob(row.id, expiresAt));
-      const withSnapshot = engine ? row : await captureTeachingSnapshot(deps, actor, bot, row);
       if (bot.thread) {
         await deps.events.append({
           spaceId: actor.spaceId,
           threadId: bot.thread.id,
-          botId: bot.id,
+          botId,
           type: "skill.teaching.started",
-          payload: { skillId: row.id, goal },
+          payload: { skillId: started.skill_id, goal },
         });
       }
-      return mapTaughtSkill(withSnapshot);
+      return mapSkill(botId, await getOmnigentTaughtSkill(client, email, started.skill_id));
     },
 
-    async appendEvent(
-      actor: Actor,
-      skillId: string,
-      event: TeachRecordingEvent,
-    ): Promise<TaughtSkill> {
-      await getOwnedSkill(deps, actor, skillId);
-      await expireTeachingSessionIfNeeded(deps, skillId);
-      const current = await deps.prisma.taughtSkill.findUniqueOrThrow({ where: { id: skillId } });
-      if (current.status !== "recording") {
-        throw new ORPCError("BAD_REQUEST", { message: "Teaching session is not recording" });
-      }
-      const updated = await appendRecordingEvent(deps, skillId, event, { requireRecording: true });
-      if (updated.status !== "recording") {
-        throw new ORPCError("BAD_REQUEST", { message: "Teaching session is not recording" });
-      }
-      return mapTaughtSkill(updated);
+    // Capture happens in the Computer's browser; the web overlay's pointer events and snapshots
+    // are not needed, so these keep the contract and change nothing.
+    async appendEvent(actor: Actor, skillId: string, _event?: unknown): Promise<TaughtSkill> {
+      return this.get(actor, skillId);
     },
 
     async snapshot(actor: Actor, skillId: string): Promise<TaughtSkill> {
-      await getOwnedSkill(deps, actor, skillId);
-      await expireTeachingSessionIfNeeded(deps, skillId);
-      const current = await deps.prisma.taughtSkill.findUniqueOrThrow({ where: { id: skillId } });
-      if (current.status !== "recording") {
-        throw new ORPCError("BAD_REQUEST", { message: "Teaching session is not recording" });
-      }
-      const bot = await deps.prisma.bot.findUnique({
-        where: { id: current.botId },
-        include: { computer: true },
-      });
-      if (!bot) throw new IsolationError();
-      // Nova has no sandbox handle on the engine's Computer to observe.
-      if (isEngineTeaching(current.recording)) return mapTaughtSkill(current);
-      const updated = await captureTeachingSnapshot(deps, actor, bot, current);
-      return mapTaughtSkill(updated);
+      return this.get(actor, skillId);
     },
 
-    stop: (actor: Actor, skillId: string) => stopTeachingSession(deps, actor, skillId),
+    async recordInput(
+      _actor?: Actor,
+      _botId?: string,
+      _input?: unknown,
+    ): Promise<"recorded" | "idle" | "stale"> {
+      return "idle";
+    },
+
+    async stop(actor: Actor, skillId: string): Promise<TaughtSkill> {
+      const { client, email, skill, botId } = await owned(actor, skillId);
+      if (skill.status !== "recording") {
+        await releaseControl(actor, client, botId);
+        return mapSkill(botId, skill);
+      }
+      const { sessionId } = await engineSessionOf(deps, client, actor, botId);
+      if (!sessionId) throw new IsolationError();
+      try {
+        await stopOmnigentRecording(client, email, sessionId);
+      } finally {
+        await releaseControl(actor, client, botId);
+      }
+      const stopped = await getOmnigentTaughtSkill(client, email, skillId);
+      const bot = await deps.prisma.bot.findUnique({
+        where: { id: botId },
+        include: { thread: true },
+      });
+      if (bot?.thread) {
+        // The card appears now; the Review sheet fills in as the teacher finishes the draft.
+        await emitSkillDraftMessages(
+          deps,
+          actor,
+          {
+            id: stopped.id,
+            name: stopped.goal.slice(0, 80),
+            goal: stopped.goal,
+            status: "draft",
+            playbook: playbookOf(stopped.goal, null),
+          },
+          { id: botId, thread: bot.thread },
+        );
+        await deps.events.append({
+          spaceId: actor.spaceId,
+          threadId: bot.thread.id,
+          botId,
+          type: "skill.teaching.stopped",
+          payload: { skillId },
+        });
+      }
+      return mapSkill(botId, stopped);
+    },
 
     async updateDraft(
       actor: Actor,
       skillId: string,
-      input: { name?: string; playbook: SkillPlaybook },
+      input: { name?: string; draft?: SkillDraft },
     ): Promise<TaughtSkill> {
-      const skill = await getOwnedSkill(deps, actor, skillId);
-      if (skill.status !== "draft" && skill.status !== "saved") {
+      const { client, email, skill, botId } = await owned(actor, skillId);
+      if (!skill.doc) {
         throw new ORPCError("BAD_REQUEST", { message: "Skill is not editable yet" });
       }
-      const row = await deps.prisma.taughtSkill.update({
-        where: { id: skill.id },
-        data: {
-          name: input.name ?? skill.name,
-          playbook: input.playbook as never,
-          status: skill.status === "saved" ? "saved" : "draft",
-        },
-      });
-      await updateSkillDraftMessage(deps, actor, row, {
-        name: row.name,
-        playbook: parsePlaybook(row.playbook),
-        status: row.status === "saved" ? "saved" : "draft",
-      });
-      return mapTaughtSkill(row);
+      const doc: OmnigentSkillDoc = {
+        ...skill.doc,
+        ...(input.draft ?? {}),
+        name: input.name?.trim() || skill.doc.name,
+      };
+      const saved = await putOmnigentTaughtSkillDoc(client, email, skillId, doc);
+      await updateSkillDraftMessage(botId, saved);
+      return mapSkill(botId, saved, await keyframesOf(client, email, saved));
     },
 
     async save(actor: Actor, skillId: string, name?: string): Promise<TaughtSkill> {
-      const skill = await getOwnedSkill(deps, actor, skillId);
-      if (skill.status !== "draft" && skill.status !== "saved") {
+      const { client, email, skill, botId } = await owned(actor, skillId);
+      if (!skill.doc || (skill.status !== "draft" && skill.status !== "saved")) {
         throw new ORPCError("BAD_REQUEST", { message: "Finish recording before saving" });
       }
-      const row = await deps.prisma.taughtSkill.update({
-        where: { id: skill.id },
-        data: {
-          status: "saved",
-          name: name ?? (skill.name || skill.goal.slice(0, 80)),
-        },
-      });
+      if (name?.trim() && name.trim() !== skill.doc.name) {
+        await putOmnigentTaughtSkillDoc(client, email, skillId, {
+          ...skill.doc,
+          name: name.trim(),
+        });
+      }
+      const saved = await saveOmnigentTaughtSkill(client, email, skillId);
+      await updateSkillDraftMessage(botId, saved);
       const bot = await deps.prisma.bot.findUnique({
-        where: { id: row.botId },
+        where: { id: botId },
         include: { thread: true },
       });
-      await updateSkillDraftMessage(deps, actor, row, {
-        name: row.name,
-        playbook: parsePlaybook(row.playbook),
-        status: "saved",
-      });
-      await publishTaughtSkillAsAgentSkill(
-        deps,
-        actor,
-        row.name,
-        parsePlaybook(row.playbook),
-        row.goal,
-      );
       if (bot?.thread) {
         await deps.events.append({
           spaceId: actor.spaceId,
           threadId: bot.thread.id,
-          botId: bot.id,
+          botId,
           type: "skill.saved",
-          payload: { skillId: row.id, name: row.name },
+          payload: { skillId, name: saved.name },
         });
       }
-      return mapTaughtSkill(row);
+      return mapSkill(botId, saved, await keyframesOf(client, email, saved));
     },
 
-    async testRun(actor: Actor, skillId: string, prompt?: string): Promise<{ runId: string }> {
-      const skill = await getOwnedSkill(deps, actor, skillId);
+    /** Runs the skill as an ordinary turn: the rendered skill text goes to the Muse as a message. */
+    async testRun(
+      actor: Actor,
+      skillId: string,
+      options: { prompt?: string; inputs?: Record<string, string> } = {},
+    ): Promise<{ runId: string }> {
+      const { client, email, skill, botId } = await owned(actor, skillId);
       if (skill.status !== "saved" && skill.status !== "draft") {
         throw new ORPCError("BAD_REQUEST", { message: "Skill must be saved or drafted first" });
       }
       const bot = await deps.prisma.bot.findUnique({
-        where: { id: skill.botId },
+        where: { id: botId },
         include: { thread: true },
       });
       if (!bot?.thread) throw new IsolationError();
-      const playbook = parsePlaybook(skill.playbook);
-      const taskPrompt =
-        prompt ?? formatSkillRunPrompt(skill.name || skill.goal.slice(0, 80), playbook, true);
+      let prompt = options.prompt;
+      if (!prompt) {
+        const rendered = await renderOmnigentTaughtSkill(client, email, skillId, options.inputs);
+        prompt = [
+          `Test run of my skill "${rendered.name}". This is safe: do not send, spend, delete or publish anything, and start from a clean screen so you do not mistake what is already shown for a result.`,
+          rendered.text,
+        ].join("\n\n");
+      }
       const task = await deps.prisma.task.create({
         data: {
           spaceId: actor.spaceId,
-          botId: bot.id,
+          botId,
           threadId: bot.thread.id,
           userId: actor.userId,
-          prompt: taskPrompt,
+          prompt,
           status: "queued",
         },
       });
       const run = await deps.prisma.run.create({
         data: {
           spaceId: actor.spaceId,
-          botId: bot.id,
+          botId,
           threadId: bot.thread.id,
           taskId: task.id,
           userId: actor.userId,
@@ -630,33 +429,14 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
     },
 
     async remove(actor: Actor, skillId: string): Promise<{ ok: true }> {
-      const skill = await getOwnedSkill(deps, actor, skillId);
+      const { client, email, skill, botId } = await owned(actor, skillId);
       if (skill.status === "recording") {
-        await deps.jobs.cancel(skillTeachingExpireJobKey(skill.id));
-        if (isEngineTeaching(skill.recording)) {
-          await releaseEngineTeachingControl(deps, actor, skill.botId);
-        } else {
-          await releaseTeachingComputerControlForBot(
-            deps,
-            actor,
-            skill.botId,
-            parseRecording(skill.recording).controlLeaseId,
-          );
-        }
+        const { sessionId } = await engineSessionOf(deps, client, actor, botId);
+        if (sessionId) await stopOmnigentRecording(client, email, sessionId).catch(() => undefined);
+        await releaseControl(actor, client, botId);
       }
-      await deps.prisma.taughtSkill.delete({ where: { id: skill.id } });
+      await deleteOmnigentTaughtSkill(client, email, skillId);
       return { ok: true as const };
-    },
-
-    expireTeachingSessionIfNeeded: (skillId: string) =>
-      expireTeachingSessionIfNeeded(deps, skillId),
-
-    async recordInput(
-      actor: Actor,
-      botId: string,
-      mapped: TeachComputerInput,
-    ): Promise<"recorded" | "idle" | "stale"> {
-      return recordTeachingInputEvent(deps, actor, botId, mapped);
     },
   };
 }

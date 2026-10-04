@@ -130,6 +130,10 @@ from omnigent.tools.builtins.sys_terminal import (
     SysTerminalReadTool,
     SysTerminalSendTool,
 )
+from omnigent.tools.builtins.taught_skills import (
+    SKILL_HELPER_TOOL_NAMES as TAUGHT_SKILL_HELPER_TOOL_NAMES,
+)
+from omnigent.tools.builtins.taught_skills import SKILL_TOOL_NAMES as TAUGHT_SKILL_TOOL_NAMES
 from omnigent.tools.builtins.timer import (
     # Shared with the in-process sys_timer_set tool so the runner's firing
     # loop validates the same argument shape and delay ceiling the LLM-facing
@@ -493,6 +497,9 @@ _OBJECTIVE_TOOLS = frozenset(OBJECTIVE_TOOL_NAMES)
 # Suggestions (Ideas): the runner proxies the server's /v1/suggestions REST endpoints.
 _SUGGESTION_TOOLS = frozenset(SUGGESTION_TOOL_NAMES)
 
+# Taught skills: the runner proxies the server's /v1/taught-skills REST endpoints.
+_TAUGHT_SKILL_TOOLS = frozenset(TAUGHT_SKILL_TOOL_NAMES)
+
 # Reply cards: validated and returned in-process, no server round-trip.
 _CARD_TOOLS = frozenset({CARD_TOOL_NAME})
 
@@ -549,6 +556,7 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _SCHEDULED_TASK_TOOLS
     | _OBJECTIVE_TOOLS
     | _SUGGESTION_TOOLS
+    | _TAUGHT_SKILL_TOOLS
     | _CARD_TOOLS
     | _TERMINAL_TOOLS
     # ``browser_*`` must ride the native relay: the Omnigent desktop app
@@ -995,6 +1003,7 @@ _ALL_LOCAL_TOOLS = (
     | _SCHEDULED_TASK_TOOLS
     | _OBJECTIVE_TOOLS
     | _SUGGESTION_TOOLS
+    | _TAUGHT_SKILL_TOOLS
     | _CARD_TOOLS
     | _SIDE_CHAT_TOOLS
 )
@@ -5387,6 +5396,91 @@ async def _execute_suggestion_tool(
     return json.dumps(resp.json())
 
 
+async def _execute_taught_skill_tool(
+    tool_name: str,
+    arguments: str,
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None = None,
+) -> str:
+    """
+    Runner-local handler for the taught-skill tools.
+
+    Proxies the server's ``/v1/taught-skills`` endpoints. The top-level session lists and runs
+    its saved skills; a Helper may only save a draft, and only for a skill that belongs to its
+    own parent session.
+
+    :param tool_name: One of :data:`TAUGHT_SKILL_TOOL_NAMES`.
+    :param arguments: JSON-encoded arguments string from the LLM.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :param conversation_id: The calling session.
+    :returns: Tool output JSON string.
+    """
+    if server_client is None or not conversation_id:
+        return json.dumps({"error": f"{tool_name} requires server access"})
+    try:
+        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
+    except json.JSONDecodeError:
+        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
+    lookup = await _session_kind_and_parent(conversation_id, server_client)
+    if lookup is None:
+        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
+    is_helper = lookup[0] == "sub_agent"
+    if is_helper and tool_name not in TAUGHT_SKILL_HELPER_TOOL_NAMES:
+        return json.dumps({"error": f"{tool_name} is not available to sub-agent sessions"})
+    if not is_helper and tool_name in TAUGHT_SKILL_HELPER_TOOL_NAMES:
+        return json.dumps({"error": f"{tool_name} is only for the Helper that drafts a skill"})
+    try:
+        if tool_name == "skill_draft_save":
+            skill_id = args.get("skill_id")
+            if not isinstance(skill_id, str) or not _OBJECTIVE_ID_RE.fullmatch(skill_id):
+                return json.dumps({"error": "skill_draft_save requires the 32-character skill_id"})
+            base = f"/v1/taught-skills/{skill_id.lower()}"
+            owner_check = await server_client.get(base, timeout=30.0)
+            if owner_check.status_code >= 400:
+                return json.dumps({"error": f"server returned {owner_check.status_code}"})
+            if owner_check.json().get("parent_session_id") != lookup[1]:
+                return json.dumps({"error": "skill_draft_save: not this helper's skill"})
+            doc = {k: v for k, v in args.items() if k != "skill_id"}
+            resp = await server_client.put(f"{base}/doc", json={"doc": doc}, timeout=30.0)
+        elif tool_name == "skill_list":
+            resp = await server_client.get(
+                f"/v1/taught-skills?parent_session_id={conversation_id}&status=saved",
+                timeout=30.0,
+            )
+        else:  # skill_run
+            ref = args.get("skill")
+            inputs = args.get("inputs") if isinstance(args.get("inputs"), dict) else {}
+            if not isinstance(ref, str) or not ref.strip():
+                return json.dumps({"error": "skill_run requires a skill id or name"})
+            skill_id = ref.strip().lower()
+            if not _OBJECTIVE_ID_RE.fullmatch(skill_id):
+                listing = await server_client.get(
+                    f"/v1/taught-skills?parent_session_id={conversation_id}&status=saved",
+                    timeout=30.0,
+                )
+                found = [
+                    s
+                    for s in listing.json().get("skills", [])
+                    if str(s.get("name", "")).lower() == ref.strip().lower()
+                ]
+                if listing.status_code >= 400 or not found:
+                    return json.dumps({"error": f"no saved skill named {ref.strip()!r}"})
+                skill_id = found[0]["id"]
+            resp = await server_client.post(
+                f"/v1/taught-skills/{skill_id}/render",
+                json={"inputs": inputs, "parent_session_id": conversation_id},
+                timeout=30.0,
+            )
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"{tool_name} failed: {exc}"})
+    if resp.status_code >= 400:
+        return json.dumps(
+            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
+        )
+    return json.dumps(resp.json())
+
+
 @dataclass
 class _ParsedTitle:
     """
@@ -7791,6 +7885,13 @@ async def execute_tool(
             output = json.dumps(build_card(args), ensure_ascii=False)
         elif tool_name in _SUGGESTION_TOOLS:
             output = await _execute_suggestion_tool(
+                tool_name,
+                arguments,
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+        elif tool_name in _TAUGHT_SKILL_TOOLS:
+            output = await _execute_taught_skill_tool(
                 tool_name,
                 arguments,
                 server_client=server_client,

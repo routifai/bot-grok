@@ -1025,9 +1025,12 @@ export async function getOmnigentSkillKeyframe(
   id: string,
   name: string,
 ): Promise<string | null> {
-  const response = await fetch(taughtSkillUrl(config, id, `/keyframes/${encodeURIComponent(name)}`), {
-    headers: omnigentHeaders(config, email),
-  });
+  const response = await fetch(
+    taughtSkillUrl(config, id, `/keyframes/${encodeURIComponent(name)}`),
+    {
+      headers: omnigentHeaders(config, email),
+    },
+  );
   if (response.status === 404) return null;
   await throwOnError(response, "get keyframe", config.secrets);
   const bytes = Buffer.from(await response.arrayBuffer());

@@ -908,7 +908,7 @@ async def _launch_helper(
 
 
 async def _create_helper_session(
-    deps: FireDeps, task: ScheduledTask, scheduled_at: int
+    deps: FireDeps, task: ScheduledTask, scheduled_at: int, *, wake_parent: bool = True
 ) -> Conversation:
     """Create the task's Helper as a sub-agent child of its parent session.
 
@@ -927,8 +927,9 @@ async def _create_helper_session(
     labels = {
         **inheritable_context_labels(parent.labels),
         SUBAGENT_DISPATCH_ID_LABEL_KEY: f"subagent_{_new_id()[:12]}",
-        SCHEDULED_HELPER_LABEL_KEY: task.id,
     }
+    if wake_parent:
+        labels[SCHEDULED_HELPER_LABEL_KEY] = task.id
     # ``"<agent_type>:<task name>"``: Activity splits on the first colon, so it
     # reads "<Type>: <task name>" instead of an opaque id. The (parent, title)
     # pair is unique, so a repeat fire of the same task falls back to a
@@ -959,8 +960,10 @@ async def _create_helper_session(
     return conv
 
 
-def _make_parent_runner_dispatch(deps: FireDeps) -> LaunchDispatch:
-    """Build the Helper dispatch seam: send the prompt to the parent's own runner."""
+def _make_parent_runner_dispatch(
+    deps: FireDeps, *, event: SessionEventInput | None = None
+) -> LaunchDispatch:
+    """Build the Helper dispatch seam: send the prompt (or *event*) to the parent's own runner."""
 
     async def _dispatch(conv: Conversation, task: ScheduledTask) -> None:
         from omnigent.server.routes.sessions import (
@@ -997,7 +1000,7 @@ def _make_parent_runner_dispatch(deps: FireDeps) -> LaunchDispatch:
         await _dispatch_session_event_to_runner(
             conv.id,
             conv_for_dispatch,
-            _prompt_event(task.prompt),
+            event or _prompt_event(task.prompt),
             deps.conversation_store,
             runner_client,
             agent_name=None,
@@ -1008,6 +1011,67 @@ def _make_parent_runner_dispatch(deps: FireDeps) -> LaunchDispatch:
         )
 
     return _dispatch
+
+
+async def start_adhoc_helper(
+    deps: FireDeps,
+    *,
+    parent_session_id: str,
+    agent_type: str,
+    name: str,
+    user_id: str | None,
+    content: list[dict[str, Any]],
+) -> str:
+    """Start a Helper of a session for one piece of work now, outside any schedule.
+
+    Unlike a scheduled fire it is not gated by the owner's proactivity or quiet hours (the person
+    asked for the work), and its Result does not wake the parent: the work records its output
+    itself (e.g. through a tool). *content* is the Helper's first message, as Responses content
+    blocks (``input_text``, ``input_image``).
+
+    :param deps: The server dependencies the fire path uses.
+    :param parent_session_id: The session the Helper is a child of.
+    :param agent_type: The declared Sub-agent Type to run, e.g. ``"teacher"``.
+    :param name: Short title for the Helper's Activity entry.
+    :param user_id: Owner for the Helper's grant; ``None`` in single-user mode.
+    :param content: First message content blocks.
+    :returns: The Helper's session id.
+    :raises OmnigentError: When the Type is not declared by the parent's agent.
+    :raises RuntimeError: When the parent is gone or its runner is not connected.
+    """
+    parent = await asyncio.to_thread(deps.conversation_store.get_conversation, parent_session_id)
+    if parent is None or parent.agent_id is None:
+        raise RuntimeError("parent session no longer exists")
+    from omnigent.server.routes._sessions.helpers import _require_declared_subagent
+
+    agent = await asyncio.to_thread(deps.agent_store.get, parent.agent_id)
+    if agent is not None:
+        await asyncio.to_thread(
+            _require_declared_subagent,
+            agent=agent,
+            sub_agent_name=agent_type,
+            agent_cache=deps.agent_cache,
+        )
+    task = ScheduledTask(
+        id=_new_id(),
+        name=name,
+        prompt="",
+        rrule="",
+        user_id=user_id,
+        agent_id=parent.agent_id,
+        timezone="UTC",
+        created_at=int(time.time()),
+        parent_session_id=parent_session_id,
+        agent_type=agent_type,
+    )
+    conv = await _create_helper_session(deps, task, int(time.time()), wake_parent=False)
+    try:
+        await _grant_owner(deps, task, conv.id)
+    except Exception:
+        _logger.exception("helper: owner grant failed for %s", conv.id)
+    event = SessionEventInput(type="message", data={"role": "user", "content": content})
+    await _make_parent_runner_dispatch(deps, event=event)(conv, task)
+    return conv.id
 
 
 async def _owner_is_deleted(deps: FireDeps, task: ScheduledTask) -> bool:
