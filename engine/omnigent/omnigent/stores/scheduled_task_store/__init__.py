@@ -11,7 +11,7 @@ import builtins
 from abc import ABC, abstractmethod
 from typing import Any
 
-from omnigent.entities import ScheduledTask, ScheduledTaskRun
+from omnigent.entities import OwnerPreferences, ScheduledTask, ScheduledTaskRun
 
 # Sentinel meaning "caller did not supply this argument; leave the column unchanged."
 # Distinct from None, which means "set the column to NULL."
@@ -56,6 +56,8 @@ class ScheduledTaskStore(ABC):
         host_id: str | None = None,
         execution_target: str = "connected_host",
         state: str = "active",
+        parent_session_id: str | None = None,
+        agent_type: str | None = None,
     ) -> ScheduledTask:
         """
         Insert a new scheduled task.
@@ -80,6 +82,9 @@ class ScheduledTaskStore(ABC):
             ``"managed_sandbox"`` (a fresh server-provisioned sandbox per fire).
         :param state: Lifecycle state — ``active``/``paused``/``deleted``.
             Defaults to ``"active"``.
+        :param parent_session_id: Bind each fire to this parent session as a
+            sub-agent (Helper) child. ``None`` keeps the default fire.
+        :param agent_type: Sub-agent Type the Helper runs as.
         :returns: The newly created :class:`ScheduledTask`.
         :raises ValueError: If ``state`` is not a recognized value.
         """
@@ -96,11 +101,17 @@ class ScheduledTaskStore(ABC):
         ...
 
     @abstractmethod
-    def list(self, *, owner_user_id: str | None = None) -> list[ScheduledTask]:
+    def list(
+        self,
+        *,
+        owner_user_id: str | None = None,
+        parent_session_id: str | None = None,
+    ) -> list[ScheduledTask]:
         """
         List all scheduled tasks ordered by ``created_at ASC, id ASC``.
 
         :param owner_user_id: When given, return only tasks owned by this user.
+        :param parent_session_id: When given, return only tasks bound to this parent.
         :returns: List of :class:`ScheduledTask` instances.
         """
         ...
@@ -148,6 +159,8 @@ class ScheduledTaskStore(ABC):
         state: str | None = None,
         last_run_at: int | None = None,
         last_run_conversation_id: str | None = _UNSET,
+        parent_session_id: str | None = _UNSET,
+        agent_type: str | None = _UNSET,
     ) -> ScheduledTask | None:
         """
         Update mutable fields of a task.
@@ -201,6 +214,7 @@ class ScheduledTaskStore(ABC):
         finished_at: int | None = None,
         error: str | None = None,
         error_code: str | None = None,
+        attempt: int = 1,
     ) -> ScheduledTaskRun:
         """
         Insert a new scheduled-task-run row.
@@ -350,3 +364,13 @@ class ScheduledTaskStore(ABC):
             at least one run.
         """
         ...
+
+    # ── Owner preferences ────────────────────────────────────────
+
+    def get_owner_preferences(self, user_id: str) -> OwnerPreferences | None:
+        """Return the owner's gating preferences, or ``None`` when never set."""
+        raise NotImplementedError
+
+    def set_owner_preferences(self, prefs: OwnerPreferences) -> OwnerPreferences:
+        """Insert or replace the owner's gating preferences."""
+        raise NotImplementedError

@@ -10,7 +10,7 @@ There are three surfaces, all writing the same rows.
 
 **Web UI.** Open the `/tasks` page (sidebar: *Automations*, or the command palette: *Go to Automations*). The create dialog takes the schedule, the agent, the prompt, and optionally a model and reasoning effort. When the server supports managed sandboxes, the host picker also offers a new sandbox for each run. Each row shows the schedule and, when armed, a live relative next-run time. The API exposes the last run's status as `last_run_status`; the row does not display it.
 
-**REST API.** `POST /v1/scheduled-tasks`. Required: `name`, `prompt`, `rrule`, `agent_id`. Optional: `timezone` (defaults to `UTC`), `model_override`, `reasoning_effort`, `permission_mode`, `max_cost_usd`, `workspace`, `host_id`, `execution_target` (defaults to `connected_host`). Unknown fields are rejected. For `connected_host`, the two optional targeting fields are not independent: sending a `workspace` without a `host_id` is a 400 (`host_id required when workspace is set`), because only a host can resolve a path. Sending neither is fine -- the fire resolves both. Existing managed sandbox hosts cannot be pinned or automatically selected for connected-host runs.
+**REST API.** `POST /v1/scheduled-tasks`. Required: `name`, `prompt`, `rrule`, and `agent_id` (optional when `parent_session_id` is set; see [Helper-bound tasks](#helper-bound-tasks)). Optional: `timezone` (defaults to `UTC`), `model_override`, `reasoning_effort`, `permission_mode`, `max_cost_usd`, `workspace`, `host_id`, `execution_target` (defaults to `connected_host`). Unknown fields are rejected. For `connected_host`, the two optional targeting fields are not independent: sending a `workspace` without a `host_id` is a 400 (`host_id required when workspace is set`), because only a host can resolve a path. Sending neither is fine -- the fire resolves both. Existing managed sandbox hosts cannot be pinned or automatically selected for connected-host runs.
 
 To provision a fresh sandbox per firing, set `execution_target: "managed_sandbox"` and omit `host_id` and `workspace`. This requires managed sandboxes to be configured on the server; otherwise creation is rejected. Each sandbox uses the server's normal runner-idle and provider keepalive settings.
 
@@ -72,7 +72,7 @@ Firing is fire-and-forget: the guard steps run synchronously so a dead fire cost
 
 `GET /v1/scheduled-tasks/{id}/runs` returns history in descending `scheduled_at` order as `{"runs": [...], "next_cursor": ...}`. The `limit` query parameter defaults to 100 and accepts 1–1,000. Pass the returned `next_cursor` as `after` to fetch the next page; a null cursor marks the end. For example, request `/runs?limit=1`, then `/runs?limit=1&after=<next_cursor>`.
 
-Each run carries `status`, `scheduled_at`, `fired_at`, `finished_at`, `conversation_id`, and `error_code`. The free-text `error` blob is deliberately not returned; `error_code` is the queryable classification.
+Each run carries `status`, `scheduled_at`, `fired_at`, `finished_at`, `conversation_id` (the session the fire created), `error_code`, and `attempt` (1, or 2 for the retry of a failed Helper-bound fire). The free-text `error` blob is deliberately not returned; `error_code` is the queryable classification.
 
 | `status` | Meaning |
 | --- | --- |
@@ -91,26 +91,46 @@ Switching to `execution_target: "managed_sandbox"` clears both stored pins. Omit
 
 `POST /v1/scheduled-tasks/{id}/run` fires a task immediately and returns 202. It does not disturb the recurring schedule, which makes it the way to test a new automation without waiting for its next occurrence.
 
+## Helper-bound tasks
+
+A task can be bound to a parent session so its fires report back to it instead of producing free-standing sessions.
+
+**Fields.** `parent_session_id` and `agent_type` (create and PATCH; both or neither). The parent must exist and be owned by the caller, and `agent_type` must be a sub-agent Type declared by the parent's agent. `agent_id` may be omitted on create: the parent's agent is used. `PATCH` with both set to `null` unbinds the task. The `sys_scheduled_task_create` / `_update` tools take the same two fields, and `parent_session_id: "self"` means the calling session (the runner substitutes its id). The `sys_scheduled_task_*` tools are not offered to sub-agent sessions and are refused if called from one.
+
+**What a fire does.** It creates the session as a sub-agent child of the parent, like `sys_session_create`: `kind="sub_agent"`, the parent's agent and runner, `sub_agent_name` = `agent_type`, the parent's context-mode labels, a dispatch id label, and the label `omnigent.subagent.scheduled_task_id`. The prompt is dispatched to the parent's runner (no host resolution; a parent with no connected runner is a failed run). On the child's first turn the runner registers its Result for the parent wake, so when the Helper finishes its Result wakes the parent through the normal sub-agent path (a Result the parent never drained is also recovered after a runner restart). The run's `conversation_id` is the Helper session. No owner grant is written; the child follows its parent's grants.
+
+**Gating.** Per owner, in `GET/PUT /v1/me/proactivity` (`{"proactivity": "off|low|normal", "quiet_start": "HH:MM", "quiet_end": "HH:MM", "timezone": "<IANA>"}`; defaults `normal`, no quiet hours, `UTC`). Applies only to Helper-bound tasks. A gated fire records a `skipped` run with an `error_code`:
+
+- `proactivity: off` -> `proactivity_off`; nothing runs.
+- Inside quiet hours (local window, may cross midnight) -> `quiet_hours_deferred`; one re-fire is armed for the end of the window.
+- Another Helper-bound run of the same owner still `running` (or launching) -> `owner_busy_deferred`; re-fire in 5 minutes, up to 3 times, then `owner_busy` (skipped).
+- `proactivity: low` behaves like `normal` except that a failed fire is not retried.
+
+**Retry.** A failed launch (no connected parent runner, dispatch error, session create error) records a `failed` run and arms one retry 10 minutes later, recorded as a new run with `attempt` 2; a failure of the retry is not retried. A run force-failed by the stale-run backstop (6 hours `running`) is retried the same way. Failures that cannot succeed on retry (`parent_not_found`, `invalid_agent_type`) are not retried.
+
+Deferred and retry re-fires are in-process timers: a server restart drops them (the recurring schedule is unaffected), and at most one is pending per task.
+
 ## API reference
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/v1/scheduled-tasks` | Create a task. |
-| `GET` | `/v1/scheduled-tasks` | List tasks. |
+| `GET` | `/v1/scheduled-tasks` | List tasks; `?parent_session_id=<id>` narrows to tasks bound to that session. |
 | `GET` | `/v1/scheduled-tasks/{id}` | Read one task. |
 | `PATCH` | `/v1/scheduled-tasks/{id}` | Update fields, or pause/resume. |
 | `DELETE` | `/v1/scheduled-tasks/{id}` | Delete a task. |
 | `POST` | `/v1/scheduled-tasks/{id}/run` | Run now (202). |
 | `GET` | `/v1/scheduled-tasks/{id}/runs` | Run history. |
+| `GET` / `PUT` | `/v1/me/proactivity` | The caller's proactivity level and quiet hours. |
 
-A task response carries `id`, `name`, `prompt`, `rrule`, `owner_user_id`, `agent_id`, `timezone`, `created_at`, `model_override`, `reasoning_effort`, `permission_mode`, `max_cost_usd`, `workspace`, `host_id`, `execution_target`, `state`, `last_run_at`, `last_run_status`, `last_run_conversation_id`, `next_run_at`, and `updated_at`.
+A task response carries `id`, `name`, `prompt`, `rrule`, `owner_user_id`, `agent_id`, `timezone`, `created_at`, `model_override`, `reasoning_effort`, `permission_mode`, `max_cost_usd`, `workspace`, `host_id`, `execution_target`, `state`, `parent_session_id`, `agent_type`, `last_run_at`, `last_run_status`, `last_run_conversation_id`, `next_run_at`, and `updated_at`.
 
 ## Current limits
 
 The scheduler is the timing engine only, and its behavior is deliberately simple:
 
 - **Missed fires are not replayed.** On startup the scheduler arms the next future occurrence of every active task; occurrences that passed while the server was down are gone. There is no backfill or replay.
-- **No automatic retry.** A failed run is recorded and visible in history; the retry policy is that the next occurrence fires normally.
+- **No automatic retry, except for Helper-bound tasks.** A failed run is recorded and visible in history; the retry policy is that the next occurrence fires normally. A Helper-bound task gets one extra retry (see below).
 - **Overlapping fires are skipped.** If the previous firing of the same task is still being dispatched when the next tick arrives, the tick is dropped. No run row is recorded for it, so a dropped tick leaves no trace in history beyond the server log.
 - **Late ticks are skipped.** A tick arriving more than 30 seconds after its scheduled time (a blocked event loop, for instance) is skipped rather than fired late.
 - **One scheduler per server process.** Timers are in-process with no distributed leasing, so a multi-replica deployment would fire each task once per replica. Shared session-create orchestration is the intended path for that.

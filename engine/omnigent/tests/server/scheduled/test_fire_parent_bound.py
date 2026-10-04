@@ -1,0 +1,248 @@
+"""Tests for parent-bound (Helper) scheduled fires: binding, gating, retry."""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from omnigent.entities import OwnerPreferences, ScheduledTaskRun
+from omnigent.server.auth import LEVEL_OWNER
+from omnigent.server.scheduled import fire as fire_mod
+from omnigent.server.scheduled.fire import _quiet_window_end, build_on_fire, build_retry
+from tests.server.scheduled.test_fire import (
+    FakeConversationStore,
+    FakePermissionStore,
+    FakeScheduledTaskStore,
+    _deps,
+    _drain,
+    _task,
+)
+
+
+@dataclass
+class _Parent:
+    id: str = "conv_parent"
+    agent_id: str = "ag_1"
+    runner_id: str | None = "runner_1"
+    labels: dict[str, str] = field(
+        default_factory=lambda: {"omnigent.context.mode": "superside-chat", "other": "x"}
+    )
+
+
+class _ParentConversationStore(FakeConversationStore):
+    def __init__(self, parent: _Parent | None) -> None:
+        super().__init__()
+        self.parent = parent
+
+    def get_conversation(self, conversation_id: str) -> Any:
+        return self.parent if conversation_id == "conv_parent" else None
+
+
+class _Store(FakeScheduledTaskStore):
+    def __init__(self, rows: dict[str, Any], prefs: OwnerPreferences | None = None) -> None:
+        super().__init__(rows=rows)
+        self.prefs = prefs
+        self.running: list[ScheduledTaskRun] = []
+
+    def get_owner_preferences(self, user_id: str) -> OwnerPreferences | None:
+        return self.prefs
+
+    def list(self, **_: Any) -> list[Any]:
+        return list(self._rows.values())
+
+    def list_running_runs_for_tasks(self, ids: list[str]) -> list[ScheduledTaskRun]:
+        return [r for r in self.running if r.scheduled_task_id in ids]
+
+
+def _bound_task(**overrides: Any) -> Any:
+    return _task(
+        parent_session_id="conv_parent",
+        agent_type="researcher",
+        host_id=None,
+        workspace=None,
+        **overrides,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _clean_state() -> Any:
+    yield
+    for handle in fire_mod._REFIRES.values():
+        handle.cancel()
+    fire_mod._REFIRES.clear()
+    fire_mod._OWNER_LAUNCHING.clear()
+
+
+async def _fire(store: _Store, conv_store: Any, launch: Any, **deps: Any) -> None:
+    on_fire = build_on_fire(
+        _deps(store, conversation_store=conv_store, **deps), launch_dispatch=launch
+    )
+    await on_fire(0, "task_1")
+    await _drain()
+
+
+async def _ok_launch(conv: Any, task: Any) -> None:
+    return None
+
+
+async def _boom(conv: Any, task: Any) -> None:
+    raise RuntimeError("runner down")
+
+
+async def test_fire_creates_helper_child_of_parent() -> None:
+    perm = FakePermissionStore()
+    conv_store = _ParentConversationStore(_Parent())
+    store = _Store({"task_1": _bound_task(model_override="m1")})
+    launched: list[Any] = []
+
+    async def launch(conv: Any, task: Any) -> None:
+        launched.append(conv)
+
+    await _fire(store, conv_store, launch, permission_store=perm)
+
+    created = conv_store.created[0]
+    assert created["kind"] == "sub_agent"
+    assert created["parent_conversation_id"] == "conv_parent"
+    assert created["sub_agent_name"] == "researcher"
+    assert created["agent_id"] == "ag_1"
+    assert created["runner_id"] == "runner_1"
+    assert created["model_override"] == "m1"
+    labels = created["labels"]
+    assert labels["omnigent.context.mode"] == "superside-chat"
+    assert "other" not in labels
+    assert labels["omnigent.subagent.scheduled_task_id"] == "task_1"
+    assert labels["omnigent.subagent.dispatch_id"].startswith("subagent_")
+    assert len(launched) == 1
+    assert store.runs[0]["status"] == "running"
+    assert store.runs[0]["conversation_id"] == "conv_1"
+    assert store.runs[0]["attempt"] == 1
+    # A child follows its parent's grants: no owner grant is written for it.
+    assert not any(g[2] == LEVEL_OWNER for g in perm.grants)
+
+
+async def test_missing_parent_fails_without_retry() -> None:
+    store = _Store({"task_1": _bound_task()})
+    await _fire(store, _ParentConversationStore(None), _ok_launch)
+    assert store.runs[0]["status"] == "failed"
+    assert store.runs[0]["error_code"] == "parent_not_found"
+    assert not fire_mod._REFIRES
+
+
+async def test_proactivity_off_skips() -> None:
+    store = _Store({"task_1": _bound_task()}, OwnerPreferences("local", proactivity="off"))
+    conv_store = _ParentConversationStore(_Parent())
+    await _fire(store, conv_store, _ok_launch)
+    assert store.runs[0]["status"] == "skipped"
+    assert store.runs[0]["error_code"] == "proactivity_off"
+    assert conv_store.created == []
+
+
+async def test_gating_does_not_apply_to_plain_tasks() -> None:
+    store = _Store({"task_1": _task()}, OwnerPreferences("local", proactivity="off"))
+    await _fire(store, _ParentConversationStore(_Parent()), _ok_launch)
+    assert store.runs[0]["status"] == "running"
+
+
+async def test_quiet_hours_defers_to_window_end() -> None:
+    hour = datetime.fromtimestamp(time.time(), ZoneInfo("UTC")).hour
+    prefs = OwnerPreferences(
+        "local",
+        quiet_start=f"{(hour - 1) % 24:02d}:00",
+        quiet_end=f"{(hour + 1) % 24:02d}:00",
+        timezone="UTC",
+    )
+    store = _Store({"task_1": _bound_task()}, prefs)
+    conv_store = _ParentConversationStore(_Parent())
+    await _fire(store, conv_store, _ok_launch)
+    assert store.runs[0]["status"] == "skipped"
+    assert store.runs[0]["error_code"] == "quiet_hours_deferred"
+    assert (0, "task_1") in fire_mod._REFIRES
+    assert conv_store.created == []
+
+
+def test_quiet_window_end_crossing_midnight() -> None:
+    prefs = OwnerPreferences(
+        "u", quiet_start="22:00", quiet_end="07:00", timezone="America/Toronto"
+    )
+    tz = ZoneInfo("America/Toronto")
+    late = datetime(2026, 10, 3, 23, 30, tzinfo=tz).timestamp()
+    early = datetime(2026, 10, 4, 6, 0, tzinfo=tz).timestamp()
+    midday = datetime(2026, 10, 4, 12, 0, tzinfo=tz).timestamp()
+    expected = datetime(2026, 10, 4, 7, 0, tzinfo=tz).timestamp()
+    assert _quiet_window_end(prefs, late) == expected
+    assert _quiet_window_end(prefs, early) == expected
+    assert _quiet_window_end(prefs, midday) is None
+    assert _quiet_window_end(OwnerPreferences("u"), late) is None
+
+
+async def test_owner_busy_defers_then_skips() -> None:
+    store = _Store({"task_1": _bound_task(), "task_2": _bound_task(id="task_2")})
+    now = int(time.time())
+    store.running = [ScheduledTaskRun("r1", "task_2", "running", now, fired_at=now)]
+    conv_store = _ParentConversationStore(_Parent())
+    await _fire(store, conv_store, _ok_launch)
+    assert store.runs[0]["error_code"] == "owner_busy_deferred"
+    assert (0, "task_1") in fire_mod._REFIRES
+    assert conv_store.created == []
+
+    # Once the deferral budget is spent the fire is skipped outright.
+    fire_mod._REFIRES.pop((0, "task_1")).cancel()
+    deps = _deps(store, conversation_store=conv_store)
+    await fire_mod._run_parent_bound_fire(
+        deps,
+        _bound_task(),
+        fire_mod._build_fire_dispatch(deps, _ok_launch),
+        now,
+        attempt=1,
+        deferrals=fire_mod._MAX_OWNER_BUSY_DEFERRALS,
+    )
+    assert store.runs[-1]["error_code"] == "owner_busy"
+    assert not fire_mod._REFIRES
+
+
+async def test_failed_launch_schedules_one_retry() -> None:
+    store = _Store({"task_1": _bound_task()})
+    conv_store = _ParentConversationStore(_Parent())
+    await _fire(store, conv_store, _boom)
+    run = store.runs[0]
+    assert run["status"] == "failed" and run["error_code"] == "launch_failed"
+    assert "retry scheduled" in run["error"]
+    assert (0, "task_1") in fire_mod._REFIRES
+
+    # The retry (attempt 2) that fails again is not retried.
+    fire_mod._REFIRES.pop((0, "task_1")).cancel()
+    deps = _deps(store, conversation_store=conv_store)
+    await fire_mod._run_parent_bound_fire(
+        deps,
+        _bound_task(),
+        fire_mod._build_fire_dispatch(deps, _boom),
+        int(time.time()),
+        attempt=2,
+        deferrals=0,
+    )
+    assert store.runs[-1]["attempt"] == 2
+    assert "retry" not in store.runs[-1]["error"]
+    assert not fire_mod._REFIRES
+
+
+async def test_low_proactivity_does_not_retry() -> None:
+    store = _Store({"task_1": _bound_task()}, OwnerPreferences("local", proactivity="low"))
+    await _fire(store, _ParentConversationStore(_Parent()), _boom)
+    assert store.runs[0]["status"] == "failed"
+    assert not fire_mod._REFIRES
+
+
+async def test_build_retry_arms_once_and_stops_after_second_attempt() -> None:
+    store = _Store({"task_1": _bound_task()})
+    retry = build_retry(_deps(store), launch_dispatch=_ok_launch)
+    assert retry(0, "task_1", 1) is True
+    assert retry(0, "task_1", 1) is False  # already pending
+    fire_mod._REFIRES.pop((0, "task_1")).cancel()
+    assert retry(0, "task_1", 2) is False
+    await asyncio.sleep(0)

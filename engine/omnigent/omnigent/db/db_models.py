@@ -1622,6 +1622,11 @@ class SqlScheduledTask(OmnigentBase):
     # Relates to conversations.id. No DB foreign key (Rule R032); the
     # application nulls this out when the referenced conversation is deleted.
     last_run_conversation_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    # Parent binding: when set, each fire creates a sub-agent child of this
+    # session (relates to conversations.id; no DB foreign key) so the result
+    # wakes it. ``agent_type`` names the sub-agent Type within the parent's agent.
+    parent_session_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    agent_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[int] = mapped_column(Integer)
     updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -1637,6 +1642,44 @@ class SqlScheduledTask(OmnigentBase):
             "user_id",
             "created_at",
             "id",
+        ),
+    )
+
+
+class SqlOwnerPreferences(OmnigentBase):
+    """
+    SQLAlchemy model for the ``owner_preferences`` table.
+
+    Per-owner gating preferences for parent-bound scheduled runs.
+
+    :param user_id: Owner identity (``"local"`` in single-user mode).
+    :param proactivity: ``off`` / ``low`` / ``normal``. ``off`` skips every
+        parent-bound fire for the owner.
+    :param quiet_start: Local ``HH:MM`` the quiet window starts, or ``None``.
+    :param quiet_end: Local ``HH:MM`` the quiet window ends, or ``None``.
+    :param timezone: IANA timezone the quiet window is evaluated in.
+    :param updated_at: Unix epoch seconds of the last write.
+    """
+
+    __tablename__ = "owner_preferences"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    proactivity: Mapped[str] = mapped_column(String(16), nullable=False, server_default="normal")
+    quiet_start: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    quiet_end: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, server_default="UTC")
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "proactivity IN ('off', 'low', 'normal')", name="ck_owner_preferences_proactivity"
         ),
     )
 
@@ -1703,6 +1746,8 @@ class SqlScheduledTaskRun(OmnigentBase):
     # "rate_limited") for future retry logic. Bounded plain string, not a blob;
     # no CHECK constraint (no code taxonomy defined yet).
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 1 for a regular fire, 2 for the single retry after a failed parent-bound fire.
+    attempt: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="1")
 
     __table_args__ = (
         CheckConstraint(

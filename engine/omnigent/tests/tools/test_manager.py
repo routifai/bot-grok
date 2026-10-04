@@ -1782,3 +1782,20 @@ def test_side_chat_open_registration_is_not_a_spec_opt_in() -> None:
         _make_spec(local_tools=[]), labels={"omnigent.context.mode": "superside-chat"}
     )
     assert "side_chat_open" in mgr.get_tool_names()
+
+
+# ── sys_scheduled_task_*: top-level sessions only ─────────────────────────
+
+
+def test_scheduled_task_tools_present_for_top_level_session() -> None:
+    names = ToolManager(
+        _make_spec(), labels={"omnigent.context.mode": "superside-chat"}
+    ).get_tool_names()
+    assert "sys_scheduled_task_create" in names
+    assert "sys_scheduled_task_create" in ToolManager(_make_spec()).get_tool_names()
+
+
+def test_scheduled_task_tools_absent_for_sub_agent_session() -> None:
+    labels = {"omnigent.context.mode": "superside-chat", "omnigent.subagent": "1"}
+    names = ToolManager(_make_spec(), labels=labels).get_tool_names()
+    assert not [n for n in names if n.startswith("sys_scheduled_task_")]

@@ -1292,3 +1292,73 @@ def test_get_running_run_by_conversation_is_workspace_scoped(
     with workspace_scope(11):
         found = store.get_running_run_by_conversation(_uid("conv_ws"))
         assert found is not None and found.id == _uid("run_ws")
+
+
+# ── parent binding, run attempt, owner preferences ──────────────────────────
+
+
+def test_parent_binding_round_trips_and_filters(store: SqlAlchemyScheduledTaskStore) -> None:
+    """``parent_session_id``/``agent_type`` persist, filter ``list``, and clear on update."""
+    parent = _uid("parent_conv")
+    bound = store.create(
+        scheduled_task_id=_uid("bound"),
+        name="feed",
+        prompt="check",
+        rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+        user_id=None,
+        agent_id=_uid("ag_1"),
+        timezone="UTC",
+        parent_session_id=parent,
+        agent_type="researcher",
+    )
+    store.create(
+        scheduled_task_id=_uid("plain"),
+        name="plain",
+        prompt="x",
+        rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+        user_id=None,
+        agent_id=_uid("ag_1"),
+        timezone="UTC",
+    )
+    assert (bound.parent_session_id, bound.agent_type) == (parent, "researcher")
+    assert [t.id for t in store.list(parent_session_id=parent)] == [bound.id]
+    assert len(store.list()) == 2
+    cleared = store.update(bound.id, parent_session_id=None, agent_type=None)
+    assert cleared is not None and cleared.parent_session_id is None and cleared.agent_type is None
+
+
+def test_run_attempt_round_trips(store: SqlAlchemyScheduledTaskStore) -> None:
+    """A retry run records ``attempt`` 2; the default is 1."""
+    task_id = _uid("attempt_task")
+    store.create(
+        scheduled_task_id=task_id,
+        name="t",
+        prompt="p",
+        rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+        user_id=None,
+        agent_id=_uid("ag_1"),
+        timezone="UTC",
+    )
+    store.create_run(_uid("r1"), task_id, "failed", 100)
+    store.create_run(_uid("r2"), task_id, "running", 200, attempt=2)
+    runs, _ = store.list_runs(task_id)
+    assert {r.id: r.attempt for r in runs} == {_uid("r1"): 1, _uid("r2"): 2}
+
+
+def test_owner_preferences_upsert(store: SqlAlchemyScheduledTaskStore) -> None:
+    """Preferences are absent until set, then replaced in place."""
+    from omnigent.entities import OwnerPreferences
+
+    assert store.get_owner_preferences("alice") is None
+    store.set_owner_preferences(OwnerPreferences(user_id="alice", proactivity="low"))
+    store.set_owner_preferences(
+        OwnerPreferences(
+            user_id="alice",
+            proactivity="normal",
+            quiet_start="22:00",
+            quiet_end="07:00",
+            timezone="America/Toronto",
+        )
+    )
+    got = store.get_owner_preferences("alice")
+    assert got == OwnerPreferences("alice", "normal", "22:00", "07:00", "America/Toronto")

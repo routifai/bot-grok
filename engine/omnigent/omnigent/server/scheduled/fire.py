@@ -51,12 +51,20 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
+from datetime import time as dtime
 from enum import Enum
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from omnigent.context.labels import (
+    SCHEDULED_HELPER_LABEL_KEY,
+    SUBAGENT_DISPATCH_ID_LABEL_KEY,
+    inheritable_context_labels,
+)
 from omnigent.db.account_authority import account_authority_scope
 from omnigent.db.db_models import workspace_scope
-from omnigent.entities import Conversation, ScheduledTask
+from omnigent.entities import Conversation, OwnerPreferences, ScheduledTask
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, RESERVED_USER_LOCAL, RESERVED_USER_PUBLIC
 from omnigent.server.host_registry import host_owner_scope
@@ -66,6 +74,7 @@ from omnigent.server.routes._session_create_validation import (
     validate_session_model_metadata,
     validate_session_permission_mode,
 )
+from omnigent.server.scheduled.run_reconciler import force_fail_stale_runs
 from omnigent.server.schemas import SessionEventInput
 
 _logger = logging.getLogger(__name__)
@@ -74,6 +83,23 @@ _logger = logging.getLogger(__name__)
 # dispatching the prompt this fire. The session + grant are already persisted, so
 # a timeout leaves an owner-visible session the runner can still pick up later.
 _RUNNER_CONNECT_TIMEOUT_S = 30.0
+
+# Parent-bound (proactive) fires: re-fire delay while the owner already has a
+# proactive run in flight, how many such deferrals before the fire is skipped,
+# and the backoff / attempt cap for the single retry after a failed fire.
+_OWNER_BUSY_DEFER_S = 300
+_MAX_OWNER_BUSY_DEFERRALS = 3
+_RETRY_BACKOFF_S = 600
+_MAX_ATTEMPTS = 2
+
+# (workspace_id, owner) with a parent-bound fire in its launch phase; closes the
+# gap before a started run is visible as ``running`` in the store.
+# custom-lint: disable-next=workspace-scoped-cache -- keys carry the workspace id
+_OWNER_LAUNCHING: set[tuple[int, str]] = set()
+
+# One pending deferred/retry re-fire per task: (workspace_id, task_id) -> handle.
+# custom-lint: disable-next=workspace-scoped-cache -- keys carry the workspace id
+_REFIRES: dict[tuple[int, str], Any] = {}
 
 # The path stat'd on the resolved host to derive a fallback workspace for a task
 # that pinned no workspace (research / summaries / chat-only). The runner still
@@ -162,6 +188,8 @@ class _FireDispatch:
     connected: LaunchDispatch
     connected_preflight: ConnectedHostPreflight | None
     managed: LaunchDispatch
+    # Dispatch for a parent-bound Helper: the child runs on the parent's runner.
+    helper: LaunchDispatch | None = None
 
 
 def _prompt_event(prompt: str) -> SessionEventInput:
@@ -241,6 +269,37 @@ def build_run_now(
     return run_now
 
 
+def build_retry(
+    deps: FireDeps,
+    *,
+    launch_dispatch: LaunchDispatch | None = None,
+) -> Callable[[int, str, int], bool]:
+    """Build the trigger that schedules the single retry of a failed fire.
+
+    Used by the run reconciler when it force-fails a stale parent-bound run.
+
+    :returns: ``retry(workspace_id, scheduled_task_id, failed_attempt) -> bool``;
+        ``True`` when a retry was scheduled (only after a first attempt, and only
+        when the owner has not set proactivity to ``low``).
+    """
+    fire_dispatch = _build_fire_dispatch(deps, launch_dispatch)
+
+    def retry(workspace_id: int, scheduled_task_id: str, failed_attempt: int) -> bool:
+        if failed_attempt >= _MAX_ATTEMPTS:
+            return False
+        return _schedule_refire(
+            deps,
+            workspace_id,
+            scheduled_task_id,
+            fire_dispatch,
+            delay_s=_RETRY_BACKOFF_S,
+            attempt=failed_attempt + 1,
+            deferrals=0,
+        )
+
+    return retry
+
+
 def _build_fire_dispatch(deps: FireDeps, launch_dispatch: LaunchDispatch | None) -> _FireDispatch:
     """Build the per-target launch seams shared by the scheduler and run-now.
 
@@ -254,11 +313,13 @@ def _build_fire_dispatch(deps: FireDeps, launch_dispatch: LaunchDispatch | None)
             connected=launch_dispatch,
             connected_preflight=None,
             managed=launch_dispatch,
+            helper=launch_dispatch,
         )
     return _FireDispatch(
         connected=_make_connected_host_dispatch(deps),
         connected_preflight=_make_connected_host_preflight(deps),
         managed=_make_managed_sandbox_dispatch(deps),
+        helper=_make_parent_runner_dispatch(deps),
     )
 
 
@@ -269,6 +330,8 @@ async def _trigger_fire(
     fire_dispatch: _FireDispatch,
     *,
     require_active: bool,
+    attempt: int = 1,
+    deferrals: int = 0,
 ) -> _FireResult:
     """Synchronously guard a fire, then dispatch the run in the background.
 
@@ -306,7 +369,15 @@ async def _trigger_fire(
     # caller returns immediately (the scheduler re-arms the timer now; the route
     # returns 202).
     fire_task = asyncio.create_task(
-        _run_fire(deps, workspace_id, scheduled_task_id, fire_dispatch, require_active),
+        _run_fire(
+            deps,
+            workspace_id,
+            scheduled_task_id,
+            fire_dispatch,
+            require_active,
+            attempt,
+            deferrals,
+        ),
         name=f"scheduled-fire-{scheduled_task_id}",
     )
     _PENDING_FIRES.add(fire_task)
@@ -321,6 +392,8 @@ async def _run_fire(
     scheduled_task_id: str,
     fire_dispatch: _FireDispatch,
     require_active: bool = True,
+    attempt: int = 1,
+    deferrals: int = 0,
 ) -> None:
     """Background body of a firing: create session, grant, launch, record run.
 
@@ -347,7 +420,9 @@ async def _run_fire(
                 account_authority_scope(task.user_id, task.account_generation),
                 host_owner_scope(task.user_id, task.account_generation),
             ):
-                await _run_fire_for_task(deps, task, fire_dispatch, scheduled_at)
+                await _run_fire_for_task(
+                    deps, task, fire_dispatch, scheduled_at, attempt=attempt, deferrals=deferrals
+                )
         except Exception:
             _logger.exception("scheduled fire: task %s failed", task.id)
 
@@ -357,8 +432,14 @@ async def _run_fire_for_task(
     task: ScheduledTask,
     fire_dispatch: _FireDispatch,
     scheduled_at: int,
+    *,
+    attempt: int = 1,
+    deferrals: int = 0,
 ) -> None:
     """Run a freshly re-read active task, routed by ``execution_target``.
+
+    A parent-bound task (``parent_session_id`` set) takes the gated Helper path
+    in :func:`_run_parent_bound_fire` instead.
 
     ``managed_sandbox`` provisions a fresh sandbox per fire (never reusing an
     existing one); ``connected_host`` runs the resolve/validate/launch flow
@@ -382,6 +463,11 @@ async def _run_fire_for_task(
                 status="failed",
                 error=f"owner {task.user_id!r} registration is no longer active; task disabled",
                 error_code="owner_deleted",
+            )
+            return
+        if task.parent_session_id is not None:
+            await _run_parent_bound_fire(
+                deps, task, fire_dispatch, scheduled_at, attempt=attempt, deferrals=deferrals
             )
             return
         managed = task.execution_target == "managed_sandbox"
@@ -548,6 +634,340 @@ async def _run_fire_for_task(
         _logger.info("scheduled fire: task %s fired session %s", task.id, conv.id)
     except Exception:
         _logger.exception("scheduled fire: task %s failed", task.id)
+
+
+def _quiet_window_end(prefs: OwnerPreferences, now: float) -> float | None:
+    """Epoch seconds the owner's quiet window ends, or ``None`` when ``now`` is outside it.
+
+    The window is local ``quiet_start``-``quiet_end`` in ``prefs.timezone`` and may
+    cross midnight (e.g. 22:00-07:00). Equal bounds mean no window.
+    """
+    if prefs.quiet_start is None or prefs.quiet_end is None:
+        return None
+    try:
+        tz = ZoneInfo(prefs.timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+    start = dtime.fromisoformat(prefs.quiet_start)
+    end = dtime.fromisoformat(prefs.quiet_end)
+    if start == end:
+        return None
+    local = datetime.fromtimestamp(now, tz)
+    t = local.time()
+    if start < end:
+        inside, end_date = start <= t < end, local.date()
+    else:
+        inside = t >= start or t < end
+        end_date = local.date() if t < end else local.date() + timedelta(days=1)
+    if not inside:
+        return None
+    return datetime.combine(end_date, end, tzinfo=tz).timestamp()
+
+
+def _schedule_refire(
+    deps: FireDeps,
+    workspace_id: int,
+    task_id: str,
+    fire_dispatch: _FireDispatch,
+    *,
+    delay_s: float,
+    attempt: int,
+    deferrals: int,
+) -> bool:
+    """Arm a one-off re-fire of a task (in-process; lost on server restart).
+
+    At most one is pending per task: a second request while one is armed is
+    dropped and reported ``False``.
+    """
+    key = (workspace_id, task_id)
+    if key in _REFIRES:
+        return False
+    loop = asyncio.get_running_loop()
+
+    def _go() -> None:
+        _REFIRES.pop(key, None)
+        task = loop.create_task(
+            _trigger_fire(
+                deps,
+                workspace_id,
+                task_id,
+                fire_dispatch,
+                require_active=True,
+                attempt=attempt,
+                deferrals=deferrals,
+            ),
+            name=f"scheduled-refire-{task_id}",
+        )
+        _PENDING_FIRES.add(task)
+        task.add_done_callback(_PENDING_FIRES.discard)
+
+    _REFIRES[key] = loop.call_later(max(delay_s, 1.0), _go)
+    return True
+
+
+async def _owner_has_proactive_run_in_flight(deps: FireDeps, task: ScheduledTask) -> bool:
+    """Whether any parent-bound task of this owner has a run still ``running``."""
+    owned = await asyncio.to_thread(deps.scheduled_task_store.list, owner_user_id=task.user_id)
+    ids = [t.id for t in owned if t.user_id == task.user_id and t.parent_session_id is not None]
+    running = await asyncio.to_thread(deps.scheduled_task_store.list_running_runs_for_tasks, ids)
+    live = await asyncio.to_thread(force_fail_stale_runs, deps.scheduled_task_store, running)
+    return any(r.status == "running" for r in live)
+
+
+async def _run_parent_bound_fire(
+    deps: FireDeps,
+    task: ScheduledTask,
+    fire_dispatch: _FireDispatch,
+    scheduled_at: int,
+    *,
+    attempt: int,
+    deferrals: int,
+) -> None:
+    """Fire a parent-bound task: gate per owner, then start its Helper.
+
+    Gating (recorded as a ``skipped`` run with an ``error_code``):
+
+    * proactivity ``off`` -> ``proactivity_off`` (skipped).
+    * inside the owner's quiet hours -> ``quiet_hours_deferred``; one re-fire is
+      armed for the end of the window.
+    * another parent-bound run of the owner in flight -> ``owner_busy_deferred``
+      (re-fire in 5 minutes, up to 3 times), then ``owner_busy`` (skipped).
+
+    A failed launch records a ``failed`` run and arms one retry 10 minutes later
+    (``attempt`` 2), unless the owner's proactivity is ``low``.
+    """
+    owner = task.user_id or RESERVED_USER_LOCAL
+    prefs = await asyncio.to_thread(deps.scheduled_task_store.get_owner_preferences, owner)
+    prefs = prefs or OwnerPreferences(user_id=owner)
+
+    async def skip(code: str, error: str) -> None:
+        await _record_run(
+            deps,
+            task,
+            None,
+            scheduled_at,
+            status="skipped",
+            error=error,
+            error_code=code,
+            attempt=attempt,
+        )
+
+    if prefs.proactivity == "off":
+        await skip("proactivity_off", "proactivity is off for the task owner")
+        return
+
+    now = time.time()
+    quiet_end = _quiet_window_end(prefs, now)
+    if quiet_end is not None:
+        armed = _schedule_refire(
+            deps,
+            task.workspace_id,
+            task.id,
+            fire_dispatch,
+            delay_s=quiet_end - now,
+            attempt=attempt,
+            deferrals=deferrals,
+        )
+        await skip(
+            "quiet_hours_deferred" if armed else "quiet_hours",
+            "inside the owner's quiet hours"
+            + (
+                f"; re-fire at {datetime.fromtimestamp(quiet_end).astimezone().isoformat()}"
+                if armed
+                else ""
+            ),
+        )
+        return
+
+    owner_key = (task.workspace_id, owner)
+    if owner_key in _OWNER_LAUNCHING or await _owner_has_proactive_run_in_flight(deps, task):
+        if deferrals < _MAX_OWNER_BUSY_DEFERRALS and _schedule_refire(
+            deps,
+            task.workspace_id,
+            task.id,
+            fire_dispatch,
+            delay_s=_OWNER_BUSY_DEFER_S,
+            attempt=attempt,
+            deferrals=deferrals + 1,
+        ):
+            await skip(
+                "owner_busy_deferred",
+                f"another proactive run is in flight; re-fire in {_OWNER_BUSY_DEFER_S}s",
+            )
+        else:
+            await skip("owner_busy", "another proactive run is in flight")
+        return
+
+    _OWNER_LAUNCHING.add(owner_key)
+    try:
+        await _launch_helper(
+            deps,
+            task,
+            fire_dispatch,
+            scheduled_at,
+            attempt=attempt,
+            retry=prefs.proactivity != "low",
+        )
+    finally:
+        _OWNER_LAUNCHING.discard(owner_key)
+
+
+async def _launch_helper(
+    deps: FireDeps,
+    task: ScheduledTask,
+    fire_dispatch: _FireDispatch,
+    scheduled_at: int,
+    *,
+    attempt: int,
+    retry: bool,
+) -> None:
+    """Create the Helper child of the task's parent, dispatch its prompt, record the run."""
+    conv_id: str | None = None
+
+    async def fail(error: str, code: str, *, retryable: bool) -> None:
+        note = ""
+        if retryable and retry and attempt < _MAX_ATTEMPTS:
+            if _schedule_refire(
+                deps,
+                task.workspace_id,
+                task.id,
+                fire_dispatch,
+                delay_s=_RETRY_BACKOFF_S,
+                attempt=attempt + 1,
+                deferrals=0,
+            ):
+                note = f"; retry scheduled in {_RETRY_BACKOFF_S}s"
+        _logger.warning("scheduled fire: task %s helper fire failed: %s%s", task.id, error, note)
+        await _record_run(
+            deps,
+            task,
+            conv_id,
+            scheduled_at,
+            status="failed",
+            error=error + note,
+            error_code=code,
+            attempt=attempt,
+        )
+
+    assert task.parent_session_id is not None and task.agent_type is not None
+    parent = await asyncio.to_thread(
+        deps.conversation_store.get_conversation, task.parent_session_id
+    )
+    if parent is None or parent.agent_id is None:
+        await fail("parent session no longer exists", "parent_not_found", retryable=False)
+        return
+    try:
+        from omnigent.server.routes._sessions.helpers import _require_declared_subagent
+
+        agent = await asyncio.to_thread(deps.agent_store.get, parent.agent_id)
+        if agent is not None:
+            await asyncio.to_thread(
+                _require_declared_subagent,
+                agent=agent,
+                sub_agent_name=task.agent_type,
+                agent_cache=deps.agent_cache,
+            )
+    except OmnigentError as exc:
+        await fail(exc.message, "invalid_agent_type", retryable=False)
+        return
+
+    try:
+        conv = await _create_session(deps, task, scheduled_at=scheduled_at)
+    except Exception:
+        _logger.exception("scheduled fire: failed to create helper for task %s", task.id)
+        await fail("session creation failed", "session_create_failed", retryable=True)
+        return
+    conv_id = conv.id
+    await _attach_cost_budget(deps, task, conv.id)
+    dispatch = fire_dispatch.helper or fire_dispatch.connected
+    try:
+        await dispatch(conv, task)
+    except Exception as exc:
+        _logger.exception("scheduled fire: helper dispatch failed for task %s", task.id)
+        await fail(f"helper launch/dispatch failed: {exc}", "launch_failed", retryable=True)
+        return
+    await _record_run(deps, task, conv.id, scheduled_at, status="running", attempt=attempt)
+    _logger.info("scheduled fire: task %s started helper %s", task.id, conv.id)
+
+
+async def _create_helper_session(
+    deps: FireDeps, task: ScheduledTask, scheduled_at: int
+) -> Conversation:
+    """Create the task's Helper as a sub-agent child of its parent session.
+
+    Mirrors a ``sys_session_create`` child: ``kind="sub_agent"``, the parent's
+    agent and runner (co-location), ``sub_agent_name`` = the Type, the parent's
+    context-mode labels, and a dispatch id so a Result the parent has not drained
+    is recovered. The scheduled-task label lets the runner register the Result
+    for the parent wake on the child's first turn.
+    """
+    assert task.parent_session_id is not None
+    parent = await asyncio.to_thread(
+        deps.conversation_store.get_conversation, task.parent_session_id
+    )
+    if parent is None:
+        raise RuntimeError(f"parent session {task.parent_session_id!r} not found")
+    labels = {
+        **inheritable_context_labels(parent.labels),
+        SUBAGENT_DISPATCH_ID_LABEL_KEY: f"subagent_{_new_id()[:12]}",
+        SCHEDULED_HELPER_LABEL_KEY: task.id,
+    }
+    conv: Conversation = await asyncio.to_thread(
+        deps.conversation_store.create_conversation,
+        kind="sub_agent",
+        title=f"{task.agent_type}:{task.id[:8]}-{scheduled_at}",
+        parent_conversation_id=parent.id,
+        agent_id=parent.agent_id,
+        runner_id=parent.runner_id,
+        sub_agent_name=task.agent_type,
+        labels=labels,
+        model_override=task.model_override,
+        reasoning_effort=task.reasoning_effort,
+    )
+    return conv
+
+
+def _make_parent_runner_dispatch(deps: FireDeps) -> LaunchDispatch:
+    """Build the Helper dispatch seam: send the prompt to the parent's own runner."""
+
+    async def _dispatch(conv: Conversation, task: ScheduledTask) -> None:
+        from omnigent.server.routes.sessions import (
+            _dispatch_session_event_to_runner,
+            _ensure_runner_session_initialized,
+            _wait_for_runner_client,
+        )
+
+        if conv.runner_id is None:
+            raise RuntimeError("the parent session has no runner")
+        runner_client = await _wait_for_runner_client(
+            conv.id,
+            deps.runner_router,
+            deps.tunnel_registry,
+            runner_id=conv.runner_id,
+            timeout_s=_RUNNER_CONNECT_TIMEOUT_S,
+        )
+        if runner_client is None:
+            raise RuntimeError("the parent's runner is not connected")
+        owner = task.user_id or RESERVED_USER_LOCAL
+        fresh = await asyncio.to_thread(deps.conversation_store.get_conversation, conv.id)
+        conv_for_dispatch = fresh or conv
+        await _ensure_runner_session_initialized(
+            conv.id, conv_for_dispatch, runner_client, deps.conversation_store
+        )
+        await _dispatch_session_event_to_runner(
+            conv.id,
+            conv_for_dispatch,
+            _prompt_event(task.prompt),
+            deps.conversation_store,
+            runner_client,
+            agent_name=None,
+            file_store=deps.file_store,
+            artifact_store=deps.artifact_store,
+            created_by=owner,
+            runner_router=deps.runner_router,
+        )
+
+    return _dispatch
 
 
 async def _owner_is_deleted(deps: FireDeps, task: ScheduledTask) -> bool:
@@ -820,8 +1240,15 @@ async def _presentation_labels(deps: FireDeps, task: ScheduledTask) -> dict[str,
         return {}
 
 
-async def _create_session(deps: FireDeps, task: ScheduledTask) -> Conversation:
-    """Create a conversation bound to the task's agent, carrying the stored spec."""
+async def _create_session(
+    deps: FireDeps, task: ScheduledTask, *, scheduled_at: int = 0
+) -> Conversation:
+    """Create a conversation bound to the task's agent, carrying the stored spec.
+
+    A parent-bound task creates a Helper (sub-agent) child of its parent instead.
+    """
+    if task.parent_session_id is not None:
+        return await _create_helper_session(deps, task, scheduled_at)
     conv: Conversation = await asyncio.to_thread(
         deps.conversation_store.create_conversation,
         agent_id=task.agent_id,
@@ -937,6 +1364,7 @@ async def _record_run(
     status: str,
     error: str | None = None,
     error_code: str | None = None,
+    attempt: int = 1,
 ) -> None:
     """Stamp last_run_* on the task and write a scheduled_task_runs row."""
     await asyncio.to_thread(
@@ -948,6 +1376,7 @@ async def _record_run(
         status,
         error=error,
         error_code=error_code,
+        attempt=attempt,
     )
 
 
@@ -960,6 +1389,7 @@ def _record_run_sync(
     *,
     error: str | None = None,
     error_code: str | None = None,
+    attempt: int = 1,
 ) -> None:
     """Synchronous run recording body for ``asyncio.to_thread`` callers."""
     now = int(time.time())
@@ -976,6 +1406,7 @@ def _record_run_sync(
         fired_at=now,
         error=error,
         error_code=error_code,
+        attempt=attempt,
     )
 
 

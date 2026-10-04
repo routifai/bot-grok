@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -62,6 +63,7 @@ def force_fail_stale_runs(
     runs: list[ScheduledTaskRun],
     *,
     now: int | None = None,
+    on_force_failed: Callable[[ScheduledTaskRun], None] | None = None,
 ) -> list[ScheduledTaskRun]:
     """Force-fail ``running`` runs older than the max age; return the list.
 
@@ -86,6 +88,8 @@ def force_fail_stale_runs(
     :param runs: Candidate runs (typically a task's history, or an owner's
         running runs).
     :param now: Unix epoch seconds to age against; defaults to ``time.time()``.
+    :param on_force_failed: Called with each run this call force-failed (e.g. to
+        schedule the single retry of a parent-bound task).
     :returns: ``runs`` with any stale ``running`` row replaced by its terminal
         form.
     """
@@ -106,6 +110,8 @@ def force_fail_stale_runs(
                 ),
                 error_code=STALE_RUN_ERROR_CODE,
             )
+            if updated is not None and on_force_failed is not None:
+                on_force_failed(updated)
             result.append(updated if updated is not None else run)
         else:
             result.append(run)

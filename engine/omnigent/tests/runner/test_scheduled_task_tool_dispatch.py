@@ -233,7 +233,8 @@ def test_create_tool_schema_makes_workspace_and_host_optional() -> None:
     assert "base_branch" not in properties
     assert "workspace" not in schema["required"]
     assert "host_id" not in schema["required"]
-    assert set(schema["required"]) == {"name", "prompt", "rrule", "agent_id"}
+    # agent_id is optional: a parent-bound task runs the parent's agent.
+    assert set(schema["required"]) == {"name", "prompt", "rrule"}
 
 
 def test_update_tool_schema_allows_connected_host_changes() -> None:
@@ -251,3 +252,49 @@ def test_tools_in_dispatch_and_relay_sets() -> None:
     assert _SCHEDULED_TASK_TOOLS == _ALL_NAMES
     assert _ALL_NAMES <= _ALL_LOCAL_TOOLS
     assert _ALL_NAMES <= _NATIVE_RELAY_BUILTIN_TOOLS
+
+
+class _KindClient(_RecordingClient):
+    """Serves ``GET /v1/sessions/{id}`` with a scripted session kind."""
+
+    def __init__(self, kind: str) -> None:
+        super().__init__(_Resp(body={"id": "t1"}))
+        self._kind = kind
+
+    async def get(self, url: str, *, timeout: object = None) -> _Resp:
+        if url.startswith("/v1/sessions/"):
+            return _Resp(body={"kind": self._kind, "parent_session_id": None})
+        return await super().get(url, timeout=timeout)
+
+
+@pytest.mark.asyncio
+async def test_sub_agent_caller_is_refused() -> None:
+    client = _KindClient("sub_agent")
+    out = await _execute_scheduled_task_tool(
+        "sys_scheduled_task_create", "{}", server_client=client, conversation_id="conv_child"
+    )
+    assert "not available to sub-agent" in json.loads(out)["error"]
+    assert not [c for c in client.calls if c[0] == "POST"]
+
+
+@pytest.mark.asyncio
+async def test_self_parent_resolves_to_calling_session() -> None:
+    client = _KindClient("default")
+    await _execute_scheduled_task_tool(
+        "sys_scheduled_task_create",
+        json.dumps(
+            {
+                "name": "feed",
+                "prompt": "go",
+                "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+                "parent_session_id": "self",
+                "agent_type": "researcher",
+            }
+        ),
+        server_client=client,
+        conversation_id="conv_chat",
+    )
+    _, _, body = next(c for c in client.calls if c[0] == "POST")
+    assert body is not None
+    assert body["parent_session_id"] == "conv_chat"
+    assert body["agent_type"] == "researcher"

@@ -5052,6 +5052,8 @@ _SCHEDULED_TASK_CREATE_FIELDS = (
     "prompt",
     "rrule",
     "agent_id",
+    "parent_session_id",
+    "agent_type",
     "timezone",
     "model_override",
     "reasoning_effort",
@@ -5075,6 +5077,8 @@ _SCHEDULED_TASK_UPDATE_FIELDS = (
     "host_id",
     "execution_target",
     "state",
+    "parent_session_id",
+    "agent_type",
 )
 _SCHEDULED_TASK_ID_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 
@@ -5091,6 +5095,7 @@ async def _execute_scheduled_task_tool(
     arguments: str,
     *,
     server_client: httpx.AsyncClient | None,
+    conversation_id: str | None = None,
 ) -> str:
     """
     Runner-local handler for the ``sys_scheduled_task_*`` family.
@@ -5105,6 +5110,8 @@ async def _execute_scheduled_task_tool(
     :param arguments: JSON-encoded arguments string from the LLM.
     :param server_client: HTTP client pointed at the Omnigent server; ``None``
         returns an error string.
+    :param conversation_id: The calling session; ``"self"`` resolves to it and a
+        sub-agent caller is refused.
     :returns: Tool output JSON string.
     """
     if server_client is None:
@@ -5113,6 +5120,20 @@ async def _execute_scheduled_task_tool(
         args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
     except json.JSONDecodeError:
         return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
+
+    # Helpers (sub-agent sessions) never manage schedules; fail closed when the
+    # caller's kind cannot be verified.
+    if conversation_id:
+        lookup = await _session_kind_and_parent(conversation_id, server_client)
+        if lookup is None or lookup[0] == "sub_agent":
+            return json.dumps(
+                {"error": f"{tool_name} is not available to sub-agent sessions"}
+                if lookup is not None
+                else {"error": f"{tool_name}: cannot verify the calling session"}
+            )
+        # "self" binds the task to the calling session.
+        if args.get("parent_session_id") == "self":
+            args["parent_session_id"] = conversation_id
 
     try:
         if tool_name == "sys_scheduled_task_list":
@@ -7544,6 +7565,7 @@ async def execute_tool(
                 tool_name,
                 arguments,
                 server_client=server_client,
+                conversation_id=conversation_id,
             )
         elif tool_name in _BROWSER_TOOLS:
             output = await _execute_browser_tool(

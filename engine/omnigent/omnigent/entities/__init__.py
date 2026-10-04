@@ -36,7 +36,7 @@ from omnigent.entities.pagination import PagedList
 from omnigent.entities.permission import ResolvedAccess, SessionPermission
 from omnigent.entities.policy import Policy
 from omnigent.entities.project import Project
-from omnigent.entities.scheduled_task import ScheduledTask, ScheduledTaskRun
+from omnigent.entities.scheduled_task import OwnerPreferences, ScheduledTask, ScheduledTaskRun
 from omnigent.entities.session_resources import (
     DEFAULT_ENVIRONMENT_ID,
     SessionResourceView,
@@ -72,6 +72,7 @@ __all__ = [
     "MessageData",
     "NativeToolData",
     "NewConversationItem",
+    "OwnerPreferences",
     "PagedList",
     "Policy",
     "Project",

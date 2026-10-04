@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from omnigent.context.labels import is_superside_chat, uses_omnigent_context
+from omnigent.context.labels import SUBAGENT_LABEL_KEY, is_superside_chat, uses_omnigent_context
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.inner.os_env import OSEnvironment
 from omnigent.runtime import get_caps
@@ -245,11 +245,14 @@ class ToolManager:
         """
         Auto-register the scheduled-task management builtins.
 
-        Always available so an agent can create, list, update, and delete
-        recurring scheduled tasks at runtime without the spec opting in. The
-        runner dispatches all four via the Omnigent server's
-        ``/v1/scheduled-tasks`` REST endpoints.
+        Available to every top-level session so an agent can create, list,
+        update, and delete recurring scheduled tasks at runtime without the
+        spec opting in; withheld from sub-agent (Helper) sessions, marked by
+        ``SUBAGENT_LABEL_KEY``. The runner dispatches all four via the Omnigent
+        server's ``/v1/scheduled-tasks`` REST endpoints.
         """
+        if self._labels and SUBAGENT_LABEL_KEY in self._labels:
+            return
         for tool in (
             SysScheduledTaskCreateTool(),
             SysScheduledTaskListTool(),

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from omnigent.db.account_authority import require_active_account
 from omnigent.db.db_models import (
     DEFAULT_WORKSPACE_ID,
+    SqlOwnerPreferences,
     SqlScheduledTask,
     SqlScheduledTaskRun,
     current_workspace_id,
@@ -29,7 +30,7 @@ from omnigent.db.utils import (
     now_epoch,
     run_write_transaction,
 )
-from omnigent.entities import ScheduledTask, ScheduledTaskRun
+from omnigent.entities import OwnerPreferences, ScheduledTask, ScheduledTaskRun
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
 
 # Sentinel meaning "caller did not supply this argument; leave the column unchanged."
@@ -67,6 +68,8 @@ def _to_entity(row: SqlScheduledTask) -> ScheduledTask:
         last_run_at=row.last_run_at,
         last_run_conversation_id=row.last_run_conversation_id,
         updated_at=row.updated_at,
+        parent_session_id=row.parent_session_id,
+        agent_type=row.agent_type,
     )
 
 
@@ -87,6 +90,7 @@ def _run_to_entity(row: SqlScheduledTaskRun) -> ScheduledTaskRun:
         finished_at=row.finished_at,
         error=row.error,
         error_code=row.error_code,
+        attempt=row.attempt,
     )
 
 
@@ -144,6 +148,8 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
         host_id: str | None = None,
         execution_target: str = "connected_host",
         state: str = "active",
+        parent_session_id: str | None = None,
+        agent_type: str | None = None,
     ) -> ScheduledTask:
         """Insert a new scheduled task with a required recurring ``rrule``."""
         created_at = now_epoch()
@@ -170,6 +176,8 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
                 state=encode_scheduled_task_state(state),
                 last_run_at=None,
                 last_run_conversation_id=None,
+                parent_session_id=parent_session_id,
+                agent_type=agent_type,
                 created_at=created_at,
                 updated_at=None,
             )
@@ -187,10 +195,16 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
                 return None
             return _to_entity(row)
 
-    def list(self, *, owner_user_id: str | None = None) -> list[ScheduledTask]:
+    def list(
+        self,
+        *,
+        owner_user_id: str | None = None,
+        parent_session_id: str | None = None,
+    ) -> list[ScheduledTask]:
         """List all scheduled tasks ordered by ``created_at ASC, id ASC``.
 
-        When *owner_user_id* is given, only tasks owned by that user are returned.
+        When *owner_user_id* is given, only tasks owned by that user are returned;
+        *parent_session_id* narrows to tasks bound to that parent session.
         """
         with self._session("list_tasks") as session:
             stmt = (
@@ -200,6 +214,8 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
             )
             if owner_user_id is not None:
                 stmt = stmt.where(SqlScheduledTask.user_id == owner_user_id)
+            if parent_session_id is not None:
+                stmt = stmt.where(SqlScheduledTask.parent_session_id == parent_session_id)
             rows = session.execute(stmt).scalars().all()
             return [_to_entity(r) for r in rows]
 
@@ -277,6 +293,8 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
         state: str | None = None,
         last_run_at: int | None = None,
         last_run_conversation_id: str | None = _UNSET,
+        parent_session_id: str | None = _UNSET,
+        agent_type: str | None = _UNSET,
     ) -> ScheduledTask | None:
         """Update mutable fields.
 
@@ -353,6 +371,12 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
             ):
                 row.last_run_conversation_id = last_run_conversation_id
                 changed = True
+            if parent_session_id is not _UNSET and row.parent_session_id != parent_session_id:
+                row.parent_session_id = parent_session_id
+                changed = True
+            if agent_type is not _UNSET and row.agent_type != agent_type:
+                row.agent_type = agent_type
+                changed = True
             if changed:
                 row.updated_at = updated_at
             session.flush()
@@ -393,6 +417,7 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
         finished_at: int | None = None,
         error: str | None = None,
         error_code: str | None = None,
+        attempt: int = 1,
     ) -> ScheduledTaskRun:
         """Insert a new scheduled-task-run row."""
 
@@ -407,6 +432,7 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
                 finished_at=finished_at,
                 error=error,
                 error_code=error_code,
+                attempt=attempt,
             )
             session.add(row)
             session.flush()
@@ -582,3 +608,38 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
             stmt = select(ranked.c.task_id, ranked.c.status).where(ranked.c.row_num == 1)
             rows = session.execute(stmt).all()
             return {task_id: decode_scheduled_task_run_status(status) for task_id, status in rows}
+
+    # ── Owner preferences ────────────────────────────────────────
+
+    def get_owner_preferences(self, user_id: str) -> OwnerPreferences | None:
+        """Return the owner's gating preferences, or ``None`` when never set."""
+        with self._session("select_owner_preferences") as session:
+            row = session.get(SqlOwnerPreferences, (current_workspace_id(), user_id))
+            if row is None:
+                return None
+            return OwnerPreferences(
+                user_id=row.user_id,
+                proactivity=row.proactivity,
+                quiet_start=row.quiet_start,
+                quiet_end=row.quiet_end,
+                timezone=row.timezone,
+            )
+
+    def set_owner_preferences(self, prefs: OwnerPreferences) -> OwnerPreferences:
+        """Insert or replace the owner's gating preferences."""
+        updated_at = now_epoch()
+
+        def write(session: Session) -> OwnerPreferences:
+            row = session.get(SqlOwnerPreferences, (current_workspace_id(), prefs.user_id))
+            if row is None:
+                row = SqlOwnerPreferences(user_id=prefs.user_id, updated_at=updated_at)
+                session.add(row)
+            row.proactivity = prefs.proactivity
+            row.quiet_start = prefs.quiet_start
+            row.quiet_end = prefs.quiet_end
+            row.timezone = prefs.timezone
+            row.updated_at = updated_at
+            session.flush()
+            return prefs
+
+        return run_write_transaction(self._session_immediate, "upsert_owner_preferences", write)

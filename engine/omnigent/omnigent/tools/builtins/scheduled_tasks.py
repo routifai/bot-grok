@@ -73,7 +73,24 @@ class SysScheduledTaskCreateTool(Tool):
                             "type": "string",
                             "description": (
                                 "The agent to run, e.g. 'ag_abc123' — from "
-                                "sys_agent_list or sys_agent_get."
+                                "sys_agent_list or sys_agent_get. Omit when "
+                                "parent_session_id is set."
+                            ),
+                        },
+                        "parent_session_id": {
+                            "type": "string",
+                            "description": (
+                                "Optional. Bind each firing to a chat as a Helper "
+                                "child so its Result wakes that chat. Use 'self' for "
+                                "this chat (or a session id you own). Requires "
+                                "agent_type."
+                            ),
+                        },
+                        "agent_type": {
+                            "type": "string",
+                            "description": (
+                                "Sub-agent Type the Helper runs as, e.g. 'researcher'. "
+                                "Required with parent_session_id."
                             ),
                         },
                         "timezone": {
@@ -141,7 +158,7 @@ class SysScheduledTaskCreateTool(Tool):
                             ),
                         },
                     },
-                    "required": ["name", "prompt", "rrule", "agent_id"],
+                    "required": ["name", "prompt", "rrule"],
                     "additionalProperties": False,
                 },
             },
@@ -263,6 +280,17 @@ class SysScheduledTaskUpdateTool(Tool):
                         "state": {
                             "type": "string",
                             "description": "'active' or 'paused'.",
+                        },
+                        "parent_session_id": {
+                            "type": "string",
+                            "description": (
+                                "Rebind to a chat ('self' for this chat); set together "
+                                "with agent_type. Null for both unbinds the task."
+                            ),
+                        },
+                        "agent_type": {
+                            "type": "string",
+                            "description": "Sub-agent Type for the bound Helper.",
                         },
                     },
                     "required": ["scheduled_task_id"],

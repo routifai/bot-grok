@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -23,10 +24,11 @@ from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnigent.db.account_authority import account_generation, current_account_user
-from omnigent.entities import ScheduledTask, ScheduledTaskRun
+from omnigent.db.db_models import InvalidUuidError, uuid_to_bytes
+from omnigent.entities import OwnerPreferences, ScheduledTask, ScheduledTaskRun
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
-from omnigent.server.routes._auth_helpers import require_user
+from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.server.routes._host_launch import resolve_host_owner
 from omnigent.server.routes._session_create_validation import (
     validate_existing_host_workspace,
@@ -59,7 +61,12 @@ class CreateScheduledTaskRequest(BaseModel):
     name: str
     prompt: str
     rrule: str
-    agent_id: str
+    # Optional only with ``parent_session_id`` (then the parent's agent is used).
+    agent_id: str | None = None
+    # Bind each fire to this session as a sub-agent (Helper) child; its result
+    # wakes the parent. ``agent_type`` is the sub-agent Type to run.
+    parent_session_id: str | None = Field(default=None, min_length=1)
+    agent_type: str | None = Field(default=None, min_length=1)
     timezone: str = "UTC"
     model_override: str | None = None
     reasoning_effort: str | None = None
@@ -88,6 +95,13 @@ class CreateScheduledTaskRequest(BaseModel):
             self.host_id is not None or self.workspace is not None
         ):
             raise ValueError(_MANAGED_SANDBOX_WITH_HOST_MSG)
+        if self.parent_session_id is None:
+            if self.agent_id is None:
+                raise ValueError("agent_id is required unless parent_session_id is set")
+            if self.agent_type is not None:
+                raise ValueError("agent_type requires parent_session_id")
+        elif self.agent_type is None:
+            raise ValueError("agent_type is required with parent_session_id")
         return self
 
 
@@ -112,6 +126,9 @@ class UpdateScheduledTaskRequest(BaseModel):
     host_id: str | None = Field(default=None, min_length=1)
     execution_target: str | None = Field(default=None, min_length=1)
     state: str | None = None
+    # Rebind to another parent / Type; null for both unbinds the task.
+    parent_session_id: str | None = Field(default=None, min_length=1)
+    agent_type: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _validate_patch(self) -> UpdateScheduledTaskRequest:
@@ -133,6 +150,42 @@ class UpdateScheduledTaskRequest(BaseModel):
         if "agent_id" in self.model_fields_set and self.agent_id is None:
             raise ValueError("agent_id cannot be null")
         return self
+
+
+_PROACTIVITY_LEVELS = frozenset({"off", "low", "normal"})
+_QUIET_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class ProactivityRequest(BaseModel):
+    """Body for ``PUT /v1/me/proactivity``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proactivity: str = "normal"
+    quiet_start: str | None = None
+    quiet_end: str | None = None
+    timezone: str = "UTC"
+
+    @model_validator(mode="after")
+    def _validate_prefs(self) -> ProactivityRequest:
+        if self.proactivity not in _PROACTIVITY_LEVELS:
+            raise ValueError("proactivity must be 'off', 'low' or 'normal'")
+        for value in (self.quiet_start, self.quiet_end):
+            if value is not None and not _QUIET_TIME_RE.match(value):
+                raise ValueError("quiet_start/quiet_end must be local 'HH:MM'")
+        if (self.quiet_start is None) != (self.quiet_end is None):
+            raise ValueError("quiet_start and quiet_end must be set together")
+        return self
+
+
+def _prefs_to_response(prefs: OwnerPreferences) -> dict[str, Any]:
+    """Serialize :class:`OwnerPreferences` to a JSON-safe dict."""
+    return {
+        "proactivity": prefs.proactivity,
+        "quiet_start": prefs.quiet_start,
+        "quiet_end": prefs.quiet_end,
+        "timezone": prefs.timezone,
+    }
 
 
 def _to_response(
@@ -172,6 +225,8 @@ def _to_response(
         "host_id": task.host_id,
         "execution_target": task.execution_target,
         "state": task.state,
+        "parent_session_id": task.parent_session_id,
+        "agent_type": task.agent_type,
         "last_run_at": task.last_run_at,
         "last_run_status": last_run_status,
         "last_run_conversation_id": task.last_run_conversation_id,
@@ -195,6 +250,7 @@ def _run_to_response(run: ScheduledTaskRun) -> dict[str, Any]:
         "fired_at": run.fired_at,
         "finished_at": run.finished_at,
         "error_code": run.error_code,
+        "attempt": run.attempt,
     }
 
 
@@ -336,6 +392,42 @@ def create_scheduled_tasks_router(
         )
         return canonical_workspace, validated_model, validated_effort
 
+    async def _validate_parent_binding(owner: str, parent_session_id: str, agent_type: str) -> str:
+        """Check the parent is the owner's and ``agent_type`` is one of its
+        sub-agent Types; returns the parent's agent id."""
+        from omnigent.server.routes._sessions.helpers import _require_declared_subagent
+
+        user_id = None if owner == RESERVED_USER_LOCAL else owner
+        await require_access(
+            user_id, parent_session_id, LEVEL_OWNER, permission_store, conversation_store
+        )
+        parent = await asyncio.to_thread(conversation_store.get_conversation, parent_session_id)
+        if parent is None or parent.agent_id is None:
+            raise OmnigentError("parent session not found", code=ErrorCode.NOT_FOUND)
+        agent = await asyncio.to_thread(agent_store.get, parent.agent_id)
+        if agent is None:
+            raise OmnigentError("parent session agent not found", code=ErrorCode.NOT_FOUND)
+        await asyncio.to_thread(
+            _require_declared_subagent,
+            agent=agent,
+            sub_agent_name=agent_type,
+            agent_cache=agent_cache,
+        )
+        return str(parent.agent_id)
+
+    def _retry_stale(request: Request) -> Any:
+        """Reconciler hook: a force-failed run of a parent-bound task gets its retry."""
+        retry = getattr(request.app.state, "scheduled_task_retry", None)
+        if retry is None:
+            return None
+
+        def _on_failed(run: ScheduledTaskRun) -> None:
+            task = store.get(run.scheduled_task_id)
+            if task is not None and task.parent_session_id is not None:
+                retry(task.workspace_id, task.id, run.attempt)
+
+        return _on_failed
+
     def _owns_task(task: ScheduledTask, owner: str | None) -> bool:
         return task.user_id == owner and (
             current_account_user() is None
@@ -363,10 +455,16 @@ def create_scheduled_tasks_router(
         _validate_rrule_or_400(body.rrule)
         _validate_timezone_or_400(body.timezone)
         permission_mode = validate_session_permission_mode(body.permission_mode)
+        agent_id = body.agent_id
+        if body.parent_session_id is not None and body.agent_type is not None:
+            agent_id = await _validate_parent_binding(
+                owner, body.parent_session_id, body.agent_type
+            )
+        assert agent_id is not None  # guaranteed by the request validator
         workspace, model_override, reasoning_effort = await _validate_launch_inputs(
             request,
             owner=owner,
-            agent_id=body.agent_id,
+            agent_id=agent_id,
             host_id=body.host_id,
             workspace=body.workspace,
             model_override=body.model_override,
@@ -380,7 +478,9 @@ def create_scheduled_tasks_router(
             prompt=body.prompt,
             rrule=body.rrule,
             user_id=None if owner == RESERVED_USER_LOCAL else owner,
-            agent_id=body.agent_id,
+            agent_id=agent_id,
+            parent_session_id=body.parent_session_id,
+            agent_type=body.agent_type,
             timezone=body.timezone,
             model_override=model_override,
             reasoning_effort=reasoning_effort,
@@ -401,7 +501,10 @@ def create_scheduled_tasks_router(
         )
 
     @router.get("/scheduled-tasks")
-    async def list_scheduled_tasks(request: Request) -> dict[str, list[dict[str, Any]]]:
+    async def list_scheduled_tasks(
+        request: Request,
+        parent_session_id: str | None = Query(default=None),
+    ) -> dict[str, list[dict[str, Any]]]:
         """List the caller's scheduled tasks.
 
         Lazy-on-read stale backstop: before returning, force-fail any of this
@@ -415,12 +518,21 @@ def create_scheduled_tasks_router(
         """
         owner = _owner(request)
         owner_id = None if owner == RESERVED_USER_LOCAL else owner
-        tasks = [t for t in store.list(owner_user_id=owner_id) if _owns_task(t, owner_id)]
+        if parent_session_id is not None:
+            try:
+                uuid_to_bytes(parent_session_id)
+            except InvalidUuidError:
+                return {"scheduled_tasks": []}  # not a session id: nothing is bound to it
+        tasks = [
+            t
+            for t in store.list(owner_user_id=owner_id, parent_session_id=parent_session_id)
+            if _owns_task(t, owner_id)
+        ]
         task_ids = [t.id for t in tasks]
         running = store.list_running_runs_for_tasks(task_ids)
         # Force-fail stale orphans FIRST so the completion badge below reports a
         # dead run as ``failed`` rather than a stuck ``running``.
-        force_fail_stale_runs(store, running)
+        force_fail_stale_runs(store, running, on_force_failed=_retry_stale(request))
         latest_status = store.list_latest_run_status_for_tasks(task_ids)
         scheduler = _scheduler(request)
         return {
@@ -444,7 +556,7 @@ def create_scheduled_tasks_router(
         owner_id = None if owner == RESERVED_USER_LOCAL else owner
         task = _require_owned(scheduled_task_id, owner_id)
         running = store.list_running_runs_for_tasks([task.id])
-        force_fail_stale_runs(store, running)
+        force_fail_stale_runs(store, running, on_force_failed=_retry_stale(request))
         latest_status = store.list_latest_run_status_for_tasks([task.id])
         scheduler = _scheduler(request)
         return _to_response(
@@ -469,6 +581,7 @@ def create_scheduled_tasks_router(
 
         Cursor-paginated so history is never silently truncated: pass ``limit``
         (1-1000, default 100) and ``after`` (a prior page's ``next_cursor``).
+        Each run carries its ``conversation_id`` (the session the fire created).
         The response is ``{"runs": [...], "next_cursor": <id or null>}``; a
         ``null`` cursor marks the last page.
 
@@ -485,7 +598,7 @@ def create_scheduled_tasks_router(
         owner_id = None if owner == RESERVED_USER_LOCAL else owner
         _require_owned(scheduled_task_id, owner_id)
         runs, next_cursor = store.list_runs(scheduled_task_id, limit=limit, after_id=after)
-        runs = force_fail_stale_runs(store, runs)
+        runs = force_fail_stale_runs(store, runs, on_force_failed=_retry_stale(request))
         return {
             "runs": [_run_to_response(r) for r in runs],
             "next_cursor": next_cursor,
@@ -585,6 +698,16 @@ def create_scheduled_tasks_router(
                     agent=agent,
                     agent_cache=agent_cache,
                 )
+        if {"parent_session_id", "agent_type"}.intersection(fields):
+            new_parent = fields.get("parent_session_id", existing.parent_session_id)
+            new_type = fields.get("agent_type", existing.agent_type)
+            if (new_parent is None) != (new_type is None):
+                raise OmnigentError(
+                    "parent_session_id and agent_type must be set (or cleared) together",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+            if new_parent is not None and new_type is not None:
+                await _validate_parent_binding(owner, new_parent, new_type)
         target_execution = fields.get("execution_target") or existing.execution_target
         switching_to_managed = target_execution == "managed_sandbox"
         # Reject pinning a host/workspace on a managed-sandbox task rather than
@@ -655,5 +778,32 @@ def create_scheduled_tasks_router(
         if scheduler is not None:
             scheduler.remove(scheduled_task_id)
         return {"deleted": True, "id": scheduled_task_id}
+
+    def _prefs_key(request: Request) -> str:
+        return _owner(request)
+
+    @router.get("/me/proactivity")
+    async def get_proactivity(request: Request) -> dict[str, Any]:
+        """The caller's proactivity level and quiet hours (defaults when unset)."""
+        owner = _prefs_key(request)
+        prefs = await asyncio.to_thread(store.get_owner_preferences, owner)
+        return _prefs_to_response(prefs or OwnerPreferences(user_id=owner))
+
+    @router.put("/me/proactivity")
+    async def put_proactivity(request: Request, body: ProactivityRequest) -> dict[str, Any]:
+        """Replace the caller's proactivity level and quiet hours."""
+        owner = _prefs_key(request)
+        _validate_timezone_or_400(body.timezone)
+        saved = await asyncio.to_thread(
+            store.set_owner_preferences,
+            OwnerPreferences(
+                user_id=owner,
+                proactivity=body.proactivity,
+                quiet_start=body.quiet_start,
+                quiet_end=body.quiet_end,
+                timezone=body.timezone,
+            ),
+        )
+        return _prefs_to_response(saved)
 
     return router

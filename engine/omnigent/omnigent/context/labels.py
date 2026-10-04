@@ -27,6 +27,19 @@ ROLLOVER_MODE_VALUE = "rollover"
 #: ``rollover/CONTEXT.md``.
 SUPERSIDE_CHAT_MODE_VALUE = "superside-chat"
 
+#: Child-session label carrying the dispatch id of the turn a sub-agent runs;
+#: lets a parent recover a Result it never drained.
+SUBAGENT_DISPATCH_ID_LABEL_KEY = "omnigent.subagent.dispatch_id"
+
+#: Runner-side marker (never stored) added to the tool-gating labels of a
+#: sub-agent session, so top-level-only tools are not offered to it.
+SUBAGENT_LABEL_KEY = "omnigent.subagent"
+
+#: Stamped on a Helper session created by a parent-bound scheduled fire; its
+#: value is the scheduled task id. The runner registers such a child's Result
+#: for the parent wake on its first turn.
+SCHEDULED_HELPER_LABEL_KEY = "omnigent.subagent.scheduled_task_id"
+
 # Token count at which a rollover session rolls over. Unset falls back to
 # 60% of the model's context window (100k-200k), or 100,000 when unknown
 # (see rollover.resolve_rollover_threshold).

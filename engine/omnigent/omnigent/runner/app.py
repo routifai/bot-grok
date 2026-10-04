@@ -47,7 +47,13 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from omnigent._platform import normalize_interactive_shells
 from omnigent.acp_cli_harnesses import ACP_CLI_HARNESSES
-from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
+from omnigent.context.labels import (
+    CONTEXT_MODE_LABEL,
+    SCHEDULED_HELPER_LABEL_KEY,
+    SUBAGENT_DISPATCH_ID_LABEL_KEY,
+    SUBAGENT_LABEL_KEY,
+    SUPERSIDE_CHAT_MODE_VALUE,
+)
 from omnigent.debug_logging import (
     debug_event,
     phase_scope,
@@ -518,7 +524,6 @@ _SUBAGENT_DELIVERY_SUPERSEDED_DISPATCH = "superseded_dispatch"
 # durable across a runner restart. The dispatch id is stamped when a turn is
 # sent to the child; the delivered id is the receipt the parent's
 # ``sys_read_inbox`` drain writes once it has consumed that turn's result.
-SUBAGENT_DISPATCH_ID_LABEL_KEY = "omnigent.subagent.dispatch_id"
 SUBAGENT_DELIVERED_ID_LABEL_KEY = "omnigent.subagent.delivered_id"
 # Read budget for runner→server POSTs that can PARK behind a human-approval
 # ASK gate: policy evaluation (``_evaluate_policy_via_omnigent``) and sub-agent
@@ -8903,6 +8908,51 @@ def create_runner_app(
         _remember_rollover_labels(session_id, labels)
         return _session_rollover_labels_cache.get(session_id, {})
 
+    async def _tool_labels_for_session(session_id: str) -> dict[str, str]:
+        """Labels that gate which tools a session is offered.
+
+        The rollover labels plus a sub-agent marker for a session with a parent,
+        so top-level-only tools (e.g. ``sys_scheduled_task_*``) are withheld
+        from Helpers.
+        """
+        labels = dict(await _rollover_labels_for_session(session_id))
+        snapshot = await _session_snapshot(session_id)
+        if snapshot.parent_session_id:
+            labels[SUBAGENT_LABEL_KEY] = "1"
+        return labels
+
+    _unscheduled_children: set[str] = set()
+
+    async def _register_scheduled_helper_work(session_id: str) -> None:
+        """Track a scheduled Helper's turn so its Result wakes the parent.
+
+        A parent-bound scheduled fire creates the child on the server, so the
+        runner never saw a ``sys_session_create``; register the work entry from
+        the child's labels before its first turn.
+        """
+        from omnigent.context.labels import is_superside_chat
+
+        if get_subagent_work(session_id) is not None or session_id in _unscheduled_children:
+            return
+        snapshot = await _session_snapshot(session_id)
+        if not snapshot.parent_session_id:
+            _unscheduled_children.add(session_id)
+            return
+        labels = await _session_labels_for_runner_spawn(
+            server_client=server_client, session_id=session_id
+        )
+        if not labels or SCHEDULED_HELPER_LABEL_KEY not in labels:
+            _unscheduled_children.add(session_id)
+            return
+        register_subagent_work(
+            parent_session_id=snapshot.parent_session_id,
+            child_session_id=session_id,
+            agent=snapshot.sub_agent_name or "sub-agent",
+            title=snapshot.sub_agent_name or "",
+            work_id=labels.get(SUBAGENT_DISPATCH_ID_LABEL_KEY),
+            superside_chat=is_superside_chat(labels),
+        )
+
     async def _apply_post_compaction_tail(
         body: _JsonObject, conv_id: str, harness_name: str | None
     ) -> _JsonObject:
@@ -9826,7 +9876,7 @@ def create_runner_app(
                         cached_spec,
                         workdir=_resolved_workdir_for_spec(cached_spec_entry, runner_workspace),
                         os_env_schema_only=True,
-                        labels=await _rollover_labels_for_session(conv),
+                        labels=await _tool_labels_for_session(conv),
                     )
                     all_tools.extend(_tmgr.get_tool_schemas())
                 except (
@@ -11024,6 +11074,7 @@ def create_runner_app(
                 )
             message_body = dict(body)
             message_body["conversation_id"] = conversation_id
+            await _register_scheduled_helper_work(conversation_id)
 
             if stream:
                 # The ?stream=true direct-dispatch path bypasses
