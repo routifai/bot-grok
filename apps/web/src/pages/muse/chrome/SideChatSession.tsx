@@ -237,6 +237,9 @@ function DraftSideChat({
   );
 }
 
+const REPLY_POLL_INTERVAL_MS = 3000;
+const REPLY_POLL_MAX_MS = 3 * 60 * 1000;
+
 function ExistingSideChat({
   chat,
   wire,
@@ -265,6 +268,25 @@ function ExistingSideChat({
       generation.current += 1;
     };
   }, [chat.id, wire]);
+
+  // Follow a reply while it's being written: the turn runs in the background.
+  const lastRole = messages?.at(-1)?.role;
+  const awaitingReply = !chat.archived && (chat.live || lastRole === "user");
+  useEffect(() => {
+    if (!awaitingReply) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      if (Date.now() - startedAt > REPLY_POLL_MAX_MS) {
+        window.clearInterval(timer);
+        return;
+      }
+      void wire
+        .messages({ chatId: chat.id })
+        .then((page) => setMessages(page.messages))
+        .catch(() => undefined);
+    }, REPLY_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [awaitingReply, chat.id, wire]);
 
   const send = (text: string) => {
     setSending(true);
