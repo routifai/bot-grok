@@ -2634,3 +2634,44 @@ def test_fork_enforces_current_policy_before_creating_destination(
         assert not conv_store.fork_calls
         assert len(conv_store._convs) == 1
         assert file_store.files == original_files
+
+
+@pytest.mark.asyncio
+async def test_fork_side_chat_seed_summarizes_on_the_sessions_reported_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A harness bundle names no top-level llm, so the seed uses the model the session runs on."""
+    import dataclasses
+
+    from omnigent.context import rollover as rollover_module
+
+    seen: dict[str, object] = {}
+
+    async def _fake_summarize_history(messages, *args, **kwargs):
+        del messages
+        seen["model"] = kwargs.get("model", args[1] if len(args) > 1 else None)
+        return {"text": "SUMMARY", "token_count": 3}
+
+    monkeypatch.setattr(rollover_module, "summarize_history", _fake_summarize_history)
+
+    conv = dataclasses.replace(
+        _make_conversation(labels={"omnigent.context.mode": "superside-chat"}),
+        reported_model="claude-haiku-4-5-20251001",
+    )
+    items = [
+        _make_item("9980c8a9248139f14f4165e5d53088aa", "Hello", response_id="resp_1"),
+        _make_item("msg_2", "hi there", response_id="resp_1"),
+    ]
+    conv_store = _ConversationStore(
+        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
+        items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
+    )
+    client = TestClient(_build_app(conv_store))
+
+    resp = client.post(
+        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
+        json={"side_chat": True},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert seen["model"] == "claude-haiku-4-5-20251001"

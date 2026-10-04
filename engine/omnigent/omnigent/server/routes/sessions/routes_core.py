@@ -43,6 +43,7 @@ from omnigent.entities import (
 from omnigent.entities.permission import SessionPermission
 from omnigent.errors import ErrorCategory, ErrorCode, ErrorImpact, ErrorPhase, OmnigentError
 from omnigent.models.model_fallbacks import ROLLOVER_SUMMARY_FALLBACK_MODEL
+from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.models.model_override import validate_model_override
 from omnigent.runner.identity import (
     RUNNER_TUNNEL_TOKEN_HEADER,
@@ -2990,8 +2991,12 @@ def register_core_routes(
             return
 
         source_conv = await asyncio.to_thread(conversation_store.get_conversation, source_id)
+        # A harness bundle (e.g. claude-sdk) names its model under executor.config, so
+        # fall back to the model the session actually runs on before the generic default.
         model = (
             _resolve_llm_model(source_conv, agent_store=agent_store)
+            or (source_conv.model_override if source_conv else None)
+            or (concrete_reported_model(source_conv.reported_model) if source_conv else None)
             or ROLLOVER_SUMMARY_FALLBACK_MODEL
         )
         runner_client = await _get_runner_client(
