@@ -811,7 +811,7 @@ def test_list_related_chats_scheduled_helper_sees_parent_but_plain_subagent_does
 ) -> None:
     """A scheduled Helper (Study, Check-in) may read its parent chat; an ordinary
     Sub-agent stays confined to its Brief."""
-    from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
+    from omnigent.context.labels import ADHOC_HELPER_LABEL_KEY, SCHEDULED_HELPER_LABEL_KEY
     from omnigent.context.rollover import list_related_chats
     from omnigent.stores.conversation_store.sqlalchemy_store import (
         SqlAlchemyConversationStore,
@@ -820,6 +820,13 @@ def test_list_related_chats_scheduled_helper_sees_parent_but_plain_subagent_does
     monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
     conv_store = SqlAlchemyConversationStore(db_uri)
     parent = conv_store.create_conversation()
+    adhoc = conv_store.create_conversation(
+        kind="sub_agent",
+        parent_conversation_id=parent.id,
+        title="analyst:Daily note",
+        labels={ADHOC_HELPER_LABEL_KEY: "t2"},
+    )
+    assert [c["id"] for c in list_related_chats(conv_store, adhoc.id)] == [parent.id]
     scheduled = conv_store.create_conversation(
         kind="sub_agent",
         parent_conversation_id=parent.id,

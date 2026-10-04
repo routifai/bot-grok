@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from omnigent.context.labels import (
+    ADHOC_HELPER_LABEL_KEY,
     DEFAULT_KEEP_TOKENS,
     ROLLOVER_AT_TOKENS_LABEL,
     ROLLOVER_KEEP_TOKENS_LABEL,
@@ -720,9 +721,11 @@ def list_related_chats(
             if parent is not None and same_owner(parent.id):
                 related.append(parent)
 
-    # A scheduled Helper (Study, Check-in) works for its parent chat and may
+    # A scheduled or ad-hoc Helper (Study, daily note) works for its parent chat and may
     # read it; an ordinary Sub-agent stays confined to its Brief.
-    if SCHEDULED_HELPER_LABEL_KEY in caller.labels and caller.parent_conversation_id:
+    if (
+        SCHEDULED_HELPER_LABEL_KEY in caller.labels or ADHOC_HELPER_LABEL_KEY in caller.labels
+    ) and caller.parent_conversation_id:
         parent = conv_store.get_conversation(caller.parent_conversation_id)
         if parent is not None and same_owner(parent.id):
             related.append(parent)

@@ -885,9 +885,6 @@ def register_events_routes(
             and _is_proactive_super_chat(conv)
         ):
             _schedule_proactive_provisioning(request, session_id)
-            quiet_moment = getattr(request.app.state, "quiet_moment", None)
-            if quiet_moment is not None:
-                quiet_moment.note_user_message(session_id)
         # Validate event type at the route boundary. Anything not in
         # ``_ALLOWED_EVENT_TYPES`` is a client mistake — failing here
         # is far better than silently persisting an item the agent

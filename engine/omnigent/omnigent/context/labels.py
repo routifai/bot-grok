@@ -40,6 +40,10 @@ SUBAGENT_LABEL_KEY = "omnigent.subagent"
 #: for the parent wake on its first turn.
 SCHEDULED_HELPER_LABEL_KEY = "omnigent.subagent.scheduled_task_id"
 
+#: Stamped on an ad-hoc Helper (``start_adhoc_helper``: the daily-note pass). It does not wake
+#: its parent, but like a scheduled Helper it may read the parent chat (``session_history``).
+ADHOC_HELPER_LABEL_KEY = "omnigent.subagent.adhoc"
+
 #: Stamped on a standalone session a scheduled fire created (not parent-bound);
 #: its value is the scheduled task id. Its first user message is the task's
 #: system-authored prompt, so memory upkeep never treats it as the person's words.

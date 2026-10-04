@@ -58,6 +58,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from omnigent.context.labels import (
+    ADHOC_HELPER_LABEL_KEY,
     SCHEDULED_FIRE_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
     SUBAGENT_DISPATCH_ID_LABEL_KEY,
@@ -930,6 +931,8 @@ async def _create_helper_session(
     }
     if wake_parent:
         labels[SCHEDULED_HELPER_LABEL_KEY] = task.id
+    else:
+        labels[ADHOC_HELPER_LABEL_KEY] = task.id
     # ``"<agent_type>:<task name>"``: Activity splits on the first colon, so it
     # reads "<Type>: <task name>" instead of an opaque id. The (parent, title)
     # pair is unique, so a repeat fire of the same task falls back to a

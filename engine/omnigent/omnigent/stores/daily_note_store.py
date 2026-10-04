@@ -8,7 +8,13 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from omnigent.db.db_models import SqlDailyNote, current_workspace_id
+from omnigent.db.db_models import (
+    SqlConversation,
+    SqlConversationItem,
+    SqlConversationLabel,
+    SqlDailyNote,
+    current_workspace_id,
+)
 from omnigent.db.utils import (
     get_or_create_engine,
     make_named_managed_session_maker,
@@ -232,3 +238,67 @@ class SqlAlchemyDailyNoteStore:
                 .limit(limit)
             )
             return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
+
+    def recent_user_messages(self, *, since: int) -> dict[str, list[int]]:
+        """Person messages (epoch seconds, oldest first) per live Super Chat since ``since``.
+
+        Derived from the persisted conversation items so idleness survives a restart. Side
+        Chats, Sub-agents and archived chats are left out.
+        """
+        from omnigent.context.labels import (
+            CONTEXT_MODE_LABEL,
+            SUBAGENT_LABEL_KEY,
+            SUPERSIDE_CHAT_MODE_VALUE,
+        )
+        from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
+
+        workspace = current_workspace_id()
+        with self._session("select_recent_user_messages") as session:
+            ids = (
+                select(SqlConversationLabel.conversation_id)
+                .where(
+                    SqlConversationLabel.workspace_id == workspace,
+                    SqlConversationLabel.key == CONTEXT_MODE_LABEL,
+                    SqlConversationLabel.value == SUPERSIDE_CHAT_MODE_VALUE,
+                )
+                .scalar_subquery()
+            )
+            excluded = (
+                select(SqlConversationLabel.conversation_id)
+                .where(
+                    SqlConversationLabel.workspace_id == workspace,
+                    SqlConversationLabel.key.in_([SIDE_CHAT_LABEL_KEY, SUBAGENT_LABEL_KEY]),
+                )
+                .scalar_subquery()
+            )
+            stmt = (
+                select(
+                    SqlConversationItem.conversation_id,
+                    SqlConversationItem.created_at,
+                    SqlConversationItem.data,
+                )
+                .join(
+                    SqlConversation,
+                    (SqlConversation.workspace_id == SqlConversationItem.workspace_id)
+                    & (SqlConversation.id == SqlConversationItem.conversation_id),
+                )
+                .where(
+                    SqlConversationItem.workspace_id == workspace,
+                    SqlConversationItem.type == 1,
+                    SqlConversationItem.created_at >= since,
+                    SqlConversation.parent_conversation_id.is_(None),
+                    SqlConversation.archived.is_(False),
+                    SqlConversationItem.conversation_id.in_(ids),
+                    SqlConversationItem.conversation_id.not_in(excluded),
+                )
+                .order_by(SqlConversationItem.created_at)
+            )
+            found: dict[str, list[int]] = {}
+            for chat_id, created_at, data in session.execute(stmt).all():
+                try:
+                    role = json.loads(data).get("role")
+                except (ValueError, AttributeError):
+                    continue
+                if role == "user":
+                    found.setdefault(str(chat_id), []).append(created_at)
+            return found

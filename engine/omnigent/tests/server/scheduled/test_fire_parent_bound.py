@@ -341,6 +341,8 @@ async def test_adhoc_helper_runs_now_without_waking_the_parent(
     assert created["sub_agent_name"] == "teacher" and created["kind"] == "sub_agent"
     assert created["parent_conversation_id"] == "conv_parent"
     assert fire_mod.SCHEDULED_HELPER_LABEL_KEY not in created["labels"]
+    # no wake, but it may read the parent chat through session_history
+    assert fire_mod.ADHOC_HELPER_LABEL_KEY in created["labels"]
     assert sent["event"].data["content"] == content
     assert conv_id == sent["conv"].id
     assert perm.grants and perm.grants[0][2] == LEVEL_OWNER

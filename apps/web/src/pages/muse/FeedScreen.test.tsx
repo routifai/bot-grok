@@ -185,7 +185,9 @@ it("shows a topic Post as a plain preview with domain sources, and opens the ful
     const card = page.container.querySelector("button.text-start");
     expect(card?.textContent).toContain("Agent launches, Sept 28");
     expect(card?.textContent).toContain("AI agent news");
-    expect(card?.textContent).toContain("Most of this comes from vendor blogs and Example News.");
+    expect(card?.textContent).toContain("Item one");
+    // a leading source caveat is dropped from the preview, but its links still show as sources
+    expect(card?.textContent).not.toContain("Most of this comes");
     expect(card?.textContent).not.toMatch(/[#*]|https?:/);
     const link = page.container.querySelector("a[href='https://www.example.com/agents']");
     expect(link?.textContent).toBe("example.com");

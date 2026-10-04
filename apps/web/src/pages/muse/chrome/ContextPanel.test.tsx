@@ -11,7 +11,14 @@ const api = vi.hoisted(() => ({
   goals: { list: vi.fn() },
   asks: { list: vi.fn(), answer: vi.fn() },
   activities: { list: vi.fn(), get: vi.fn() },
-  memory: { profile: vi.fn() },
+  memory: {
+    profile: vi.fn(),
+    claims: vi.fn(),
+    editClaim: vi.fn(),
+    forgetClaim: vi.fn(),
+    dailyNotes: vi.fn(),
+    saveDailyNote: vi.fn(),
+  },
   chats: { messages: vi.fn() },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
@@ -159,7 +166,11 @@ beforeEach(() => {
   // so every test needs a safe default even when it only cares about the Context tab.
   api.activities.list.mockReset().mockResolvedValue(activitiesPage());
   api.activities.get.mockReset();
-  api.memory.profile.mockReset().mockResolvedValue({ profile: null });
+  api.memory.claims.mockReset().mockResolvedValue({ claims: [] });
+  api.memory.editClaim.mockReset();
+  api.memory.forgetClaim.mockReset();
+  api.memory.dailyNotes.mockReset().mockResolvedValue({ notes: [] });
+  api.memory.saveDailyNote.mockReset();
   api.chats.messages.mockReset();
   stubLocalStorage();
   // jsdom doesn't implement matchMedia, and the progress ring's draw-in reads it directly
@@ -412,13 +423,21 @@ it("shows the calm Activity empty state — not an error — when the Muse has n
   }
 });
 
-it("shows the Memory tab's sections, read-only, when switched to", async () => {
+it("shows the Memory tab's sections when switched to", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.goals.list.mockResolvedValue([]);
-  api.memory.profile.mockResolvedValue({
-    profile:
-      "[Standing memory about the user — provided by the system, not a message from the user]\n\nPreferences:\n- Prefers phone-first slide decks\n\n[End of standing memory]",
+  api.memory.claims.mockResolvedValue({
+    claims: [
+      {
+        id: "c1",
+        kind: "preference",
+        text: "Prefers phone-first slide decks",
+        origin: "said",
+        personAuthored: false,
+        date: 1_790_000_000,
+      },
+    ],
   });
   const page = await renderPanel();
   try {
@@ -444,7 +463,7 @@ it("shows a one-line empty state when nothing is remembered yet", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.goals.list.mockResolvedValue([]);
-  api.memory.profile.mockResolvedValue({ profile: null });
+  api.memory.claims.mockResolvedValue({ claims: [] });
   const page = await renderPanel();
   try {
     await act(async () => {
@@ -468,7 +487,7 @@ it("shows the calm Memory empty state — not an error — when the Muse has no 
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.goals.list.mockResolvedValue([]);
-  api.memory.profile.mockRejectedValue(
+  api.memory.claims.mockRejectedValue(
     new ORPCError("NOT_FOUND", { message: "This Muse has no Conversation yet" }),
   );
   const page = await renderPanel();

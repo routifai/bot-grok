@@ -10,8 +10,8 @@ messaged.
 Gating reuses the scheduled-run rules: nothing runs while the owner's proactivity is ``off`` or
 inside their quiet hours, and at most :data:`MAX_PASSES_PER_DAY` passes run per owner per local
 day. Each day is finalized once with one more pass in the local evening (a day that ended
-unfinalized is only closed). State is in-memory (a restart forgets pending timers); the note is
-the durable part.
+unfinalized is only closed). Idleness is re-derived on every tick from the stored messages and
+the note's own counters, so a restart never loses a due pass.
 """
 
 from __future__ import annotations
@@ -36,6 +36,9 @@ MIN_TURNS = 3
 MAX_PASSES_PER_DAY = 4
 FINALIZE_HOUR = 22
 FINALIZE_TICK_SECONDS = 900.0
+MAX_TICK_SECONDS = 30.0
+# Only messages from the current local day can be noted; look back no further than this.
+LOOKBACK_SECONDS = 36 * 3600
 # Dreaming and People start once the day's finalize pass has had time to finish.
 NIGHTLY_DELAY_SECONDS = 1200
 NIGHTLY_WINDOW_SECONDS = 36 * 3600
@@ -174,7 +177,7 @@ def _has_content(note: Any) -> bool:
 
 
 class QuietMoment:
-    """Arms one idle timer per Super Chat and runs the bounded pass when it expires."""
+    """Ticks over persisted conversation data and runs the bounded pass for chats gone quiet."""
 
     def __init__(
         self,
@@ -191,25 +194,13 @@ class QuietMoment:
         self._deps = deps
         self._notes = note_store
         self._idle_s = idle_s if idle_s is not None else idle_seconds()
-        self._turns: dict[str, int] = {}
-        self._timers: dict[str, asyncio.TimerHandle] = {}
-        self._tasks: set[asyncio.Task[Any]] = set()
         self._ticker: asyncio.Task[None] | None = None
+        self._last_slow_tick = 0.0
 
-    def note_user_message(self, session_id: str) -> None:
-        """A user message arrived in a Super Chat: count the turn and re-arm its idle timer."""
-        self._turns[session_id] = self._turns.get(session_id, 0) + 1
-        previous = self._timers.pop(session_id, None)
-        if previous is not None:
-            previous.cancel()
-        self._timers[session_id] = asyncio.get_running_loop().call_later(
-            self._idle_s, self._spawn_pass, session_id
-        )
-
-    def _spawn_pass(self, session_id: str) -> None:
-        task = asyncio.ensure_future(self._run_pass(session_id))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+    @property
+    def tick_seconds(self) -> float:
+        """How often idleness is re-derived from the stored messages."""
+        return max(5.0, min(MAX_TICK_SECONDS, self._idle_s / 4))
 
     async def _gate(self, owner: str, now: float) -> tuple[OwnerPreferences, str] | None:
         """The owner's preferences and local day, or ``None`` when background work is held."""
@@ -221,36 +212,59 @@ class QuietMoment:
             return None
         return prefs, local_date(prefs.timezone, datetime.fromtimestamp(now, local_zone("UTC")))
 
-    async def _run_pass(self, session_id: str, *, now: float | None = None) -> bool:
+    async def idle_due(self, *, now: float | None = None) -> int:
+        """Start a pass for each chat that went quiet; returns passes started.
+
+        Idleness comes from stored data only: a chat is due when the person's last message is at
+        least the idle time old and at least :data:`MIN_TURNS` of today's messages came after the
+        day's last pass (the note's ``updated_at`` once it has a pass). A restart loses nothing.
+        """
+        instant = now if now is not None else time.time()
+        recent = await asyncio.to_thread(
+            self._notes.recent_user_messages, since=int(instant - LOOKBACK_SECONDS)
+        )
+        started = 0
+        for session_id, stamps in recent.items():
+            if instant - stamps[-1] < self._idle_s:
+                continue
+            try:
+                if await self._run_pass(session_id, stamps, instant):
+                    started += 1
+            except Exception:
+                _logger.exception("quiet moment: pass failed for %s", session_id)
+        return started
+
+    async def _run_pass(self, session_id: str, stamps: list[int], now: float) -> bool:
         """Run one quiet-moment pass for the chat if its gates allow; ``True`` when started."""
-        self._timers.pop(session_id, None)
-        if self._turns.get(session_id, 0) < MIN_TURNS:
+        owner = self._notes.owner_key(
+            await asyncio.to_thread(self._deps.conversation_store.get_session_owner, session_id)
+        )
+        gate = await self._gate(owner, now)
+        if gate is None:
             return False
-        try:
-            owner = self._notes.owner_key(
-                await asyncio.to_thread(
-                    self._deps.conversation_store.get_session_owner, session_id
-                )
-            )
-            gate = await self._gate(owner, now if now is not None else time.time())
-            if gate is None:
-                return False
-            day = gate[1]
-            claimed = await asyncio.to_thread(
-                self._notes.claim_quiet_pass,
-                owner,
-                day,
-                max_per_day=MAX_PASSES_PER_DAY,
-                parent_session_id=session_id,
-            )
-            if not claimed:
-                return False
-            self._turns[session_id] = 0
-            await self._start_helper(session_id, owner, day, finalize=False)
-            return True
-        except Exception:
-            _logger.exception("quiet moment: pass failed for %s", session_id)
+        prefs, day = gate
+        zone = local_zone(prefs.timezone)
+        day_start = datetime.fromtimestamp(now, zone).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        note = await asyncio.to_thread(self._notes.get, owner, day)
+        baseline = day_start.timestamp()
+        if note is not None and note.quiet_passes > 0:
+            baseline = max(baseline, float(note.updated_at))
+        if sum(1 for stamp in stamps if stamp > baseline) < MIN_TURNS:
             return False
+        claimed = await asyncio.to_thread(
+            self._notes.claim_quiet_pass,
+            owner,
+            day,
+            max_per_day=MAX_PASSES_PER_DAY,
+            parent_session_id=session_id,
+        )
+        if not claimed:
+            return False
+        _logger.info("quiet moment: pass for %s (%s)", session_id, day)
+        await self._start_helper(session_id, owner, day, finalize=False)
+        return True
 
     async def _start_helper(
         self, session_id: str, owner: str, day: str, *, finalize: bool
@@ -374,28 +388,27 @@ class QuietMoment:
         )
 
     async def start(self) -> None:
-        """Start the evening finalize ticker."""
+        """Start the ticker."""
         if self._ticker is None or self._ticker.done():
-            self._ticker = asyncio.create_task(self._tick(), name="daily-note-finalizer")
+            self._ticker = asyncio.create_task(self._tick(), name="daily-note-ticker")
 
     async def _tick(self) -> None:
         while True:
-            await asyncio.sleep(FINALIZE_TICK_SECONDS)
+            await asyncio.sleep(self.tick_seconds)
             try:
-                await self.finalize_due()
-                await self.nightly_due()
+                await self.idle_due()
+                if time.monotonic() - self._last_slow_tick >= FINALIZE_TICK_SECONDS:
+                    self._last_slow_tick = time.monotonic()
+                    await self.finalize_due()
+                    await self.nightly_due()
             except asyncio.CancelledError:
                 raise
             except Exception:
-                _logger.exception("quiet moment: finalize tick failed")
+                _logger.exception("quiet moment: tick failed")
 
     async def shutdown(self) -> None:
-        """Cancel timers, the ticker and in-flight passes."""
-        for handle in self._timers.values():
-            handle.cancel()
-        self._timers.clear()
-        tasks = [*self._tasks, *([self._ticker] if self._ticker else [])]
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        """Cancel the ticker."""
+        if self._ticker is not None:
+            self._ticker.cancel()
+            await asyncio.gather(self._ticker, return_exceptions=True)
         self._ticker = None
