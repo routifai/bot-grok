@@ -607,10 +607,29 @@ def _side_chat_seed(
     """
     if conversation.labels.get(SIDE_CHAT_START_LABEL_KEY) != SIDE_CHAT_START_WITH_CONTEXT:
         return None, None
-    page = conv_store.list_items(conversation.id, limit=1, order="asc", type="compaction")
-    if not page.data:
+    # The deep copy carries the parent's own compactions BEFORE the seed, so the
+    # first compaction is not the seed: pick the one stamped for this chat, falling
+    # back to the first for seeds written without that response id.
+    seed_response_id = f"rollover_seed_{conversation.id}"
+    first = None
+    item = None
+    after: str | None = None
+    while item is None:
+        page = conv_store.list_items(
+            conversation.id, limit=200, after=after, order="asc", type="compaction"
+        )
+        for candidate in page.data:
+            if first is None:
+                first = candidate
+            if candidate.response_id == seed_response_id:
+                item = candidate
+                break
+        if not page.has_more or not page.data:
+            break
+        after = page.last_id
+    item = item or first
+    if item is None:
         return None, None
-    item = page.data[0]
     summary = item.data.summary if isinstance(item.data, CompactionData) else None
     return summary, item.id
 

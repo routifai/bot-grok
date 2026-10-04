@@ -88,6 +88,28 @@ from omnigent.stores.artifact_store import ArtifactStore
 from omnigent.stores.permission_store import PermissionStore
 
 
+def _is_tenant_authored(agent_store: AgentStore, agent: Any) -> bool:
+    """Whether *agent*'s bundle may be tenant-supplied (no ``${VAR}`` expansion).
+
+    Template agents (``session_id is None``) are operator-authored. A fork's
+    session-scoped clone points at the very same content-addressed bundle
+    (``<template id>/<sha256>``), so it is operator-authored too when that
+    prefix names a template whose bundle location is identical. A tenant
+    upload always lands under its own agent id, so it never matches.
+    """
+    if agent.session_id is None:
+        return False
+    source_id = agent.bundle_location.split("/", 1)[0]
+    if source_id == agent.id:
+        return True
+    source = agent_store.get(source_id)
+    return not (
+        source is not None
+        and source.session_id is None
+        and source.bundle_location == agent.bundle_location
+    )
+
+
 def register_agent_routes(
     router: APIRouter,
     *,
@@ -258,8 +280,12 @@ def register_agent_routes(
                 # against the runner process env; template agents
                 # (session_id is None) are operator-authored and may.
                 # The runner fails safe (treats a missing header as
-                # session-scoped → no expansion).
-                "X-Agent-Session-Scoped": "true" if agent.session_id is not None else "false",
+                # session-scoped → no expansion). A fork's session-scoped
+                # clone of a template shares the template's exact bundle
+                # (``_is_tenant_authored``), so it keeps the template's trust.
+                "X-Agent-Session-Scoped": "true"
+                if await asyncio.to_thread(_is_tenant_authored, agent_store, agent)
+                else "false",
             },
         )
 

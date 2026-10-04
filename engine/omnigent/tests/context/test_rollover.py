@@ -878,3 +878,28 @@ def test_summarizer_instruction_forbids_recording_tool_errors_as_facts() -> None
     text = state_file_summarizer_instruction(today="2026-01-01")
     assert "Tool errors" in text
     assert "never claim earlier messages are inaccessible" in text
+
+
+def test_side_chat_seed_is_this_chats_checkpoint_not_the_copied_parents() -> None:
+    """The fork's deep copy carries the parent's own compactions before the seed."""
+    from types import SimpleNamespace
+
+    from omnigent.context.rollover import _side_chat_seed
+    from omnigent.entities import CompactionData
+    from omnigent.stores.conversation_store import SIDE_CHAT_START_LABEL_KEY
+
+    def compaction(item_id: str, response_id: str, summary: str) -> Any:
+        data = CompactionData(summary=summary, last_item_id="m", model=None, token_count=1)
+        return SimpleNamespace(id=item_id, response_id=response_id, data=data)
+
+    items = [
+        compaction("cmp_parent", "resp_parent", "parent's own rollover"),
+        compaction("cmp_seed", "rollover_seed_side1", "the seed"),
+    ]
+
+    class Store:
+        def list_items(self, *_a: Any, **_k: Any) -> Any:
+            return SimpleNamespace(data=items, has_more=False, last_id=items[-1].id)
+
+    conv = SimpleNamespace(id="side1", labels={SIDE_CHAT_START_LABEL_KEY: "with_context"})
+    assert _side_chat_seed(Store(), conv) == ("the seed", "cmp_seed")  # type: ignore[arg-type]
