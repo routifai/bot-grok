@@ -71,8 +71,27 @@ describe("engine feed", () => {
     });
     const topics = await engineListTopics(deps(), client, actor, "bot-1");
     expect(topics).toEqual([
-      { id: "t1", topic: "AI agent news", createdAt: "2023-11-14T22:13:20.000Z" },
+      {
+        id: "t1",
+        topic: "AI agent news",
+        createdAt: "2023-11-14T22:13:20.000Z",
+        cadence: "weekly",
+      },
     ]);
+  });
+
+  it("derives the cadence from the rrule frequency", async () => {
+    stub({
+      "GET /v1/scheduled-tasks": {
+        scheduled_tasks: [
+          topic("t1", "A", { rrule: "FREQ=DAILY;BYHOUR=9" }),
+          topic("t2", "B", { rrule: "FREQ=HOURLY" }),
+          topic("t3", "C", { rrule: "FREQ=MONTHLY" }),
+        ],
+      },
+    });
+    const topics = await engineListTopics(deps(), client, actor, "bot-1");
+    expect(topics.map((entry) => entry.cadence)).toEqual(["daily", "hourly", undefined]);
   });
 
   it("has no topics or posts before the Muse has a Conversation", async () => {

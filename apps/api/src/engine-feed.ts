@@ -76,11 +76,25 @@ async function followedTasks(target: Target): Promise<OmnigentScheduledTask[]> {
   );
 }
 
-const toTopic = (task: OmnigentScheduledTask): FollowedTopic => ({
-  id: task.id,
-  topic: task.name,
-  createdAt: iso(task.created_at ?? 0),
-});
+const CADENCES: Record<string, NonNullable<FollowedTopic["cadence"]>> = {
+  HOURLY: "hourly",
+  DAILY: "daily",
+  WEEKLY: "weekly",
+};
+
+/** Cadence from the task's RRULE frequency; unknown frequencies are left out. */
+const cadenceOf = (rrule: string): FollowedTopic["cadence"] =>
+  CADENCES[/(?:^|;)FREQ=([A-Z]+)/i.exec(rrule)?.[1]?.toUpperCase() ?? ""];
+
+const toTopic = (task: OmnigentScheduledTask): FollowedTopic => {
+  const cadence = cadenceOf(task.rrule);
+  return {
+    id: task.id,
+    topic: task.name,
+    createdAt: iso(task.created_at ?? 0),
+    ...(cadence ? { cadence } : {}),
+  };
+};
 
 /** The run session's final assistant message, or `null` when there is none. */
 async function resultOf(target: Target, sessionId: string): Promise<string | null> {

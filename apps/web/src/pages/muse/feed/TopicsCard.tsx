@@ -19,7 +19,7 @@ const INSET_GROUP =
 /**
  * Followed topics as an iOS-style inset group: follow anything by typing it, follow a
  * suggestion with one tap, and stop following from the row. The Muse researches every
- * followed topic daily and posts what it finds to the Feed.
+ * followed topic on its own schedule and posts what it finds to the Feed.
  */
 export function TopicsCard({
   topics,
@@ -58,6 +58,13 @@ export function TopicsCard({
     }
   }
 
+  const cadenceLabel = (cadence: FollowedTopic["cadence"]) =>
+    cadence === "weekly"
+      ? t`Checked weekly`
+      : cadence === "hourly"
+        ? t`Checked hourly`
+        : t`Checked daily`;
+
   return (
     <div className="flex flex-col gap-3">
       <div className={INSET_GROUP}>
@@ -93,7 +100,9 @@ export function TopicsCard({
                 <span className="block truncate text-[16px] tracking-[-0.01em] text-foreground">
                   {topic.topic}
                 </span>
-                <span className="block text-[13px] text-muted-foreground">{t`Checked daily`}</span>
+                <span className="block text-[13px] text-muted-foreground">
+                  {cadenceLabel(topic.cadence)}
+                </span>
               </span>
               <button
                 type="button"

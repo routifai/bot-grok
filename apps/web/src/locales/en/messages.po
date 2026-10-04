@@ -582,6 +582,12 @@ msgstr "Check-ins"
 msgid "Checked daily"
 msgstr "Checked daily"
 
+msgid "Checked hourly"
+msgstr "Checked hourly"
+
+msgid "Checked weekly"
+msgstr "Checked weekly"
+
 msgid "Checking…"
 msgstr "Checking…"
 

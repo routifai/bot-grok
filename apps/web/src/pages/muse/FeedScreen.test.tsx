@@ -244,3 +244,21 @@ it("on an empty Feed, a suggested topic is followed in one tap", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+it("labels a followed topic with its own cadence", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
+  api.topics.list.mockResolvedValue([
+    topic({ id: "t-w", topic: "AI agent launches", cadence: "weekly" }),
+    topic({ id: "t-d", topic: "Mortgage rates" }),
+  ]);
+  const page = await renderFeed();
+  try {
+    expect(page.container.textContent).toContain("Checked weekly");
+    expect(page.container.textContent).toContain("Checked daily");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});

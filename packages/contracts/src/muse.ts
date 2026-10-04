@@ -182,6 +182,8 @@ export const FollowedTopicSchema = z.object({
   id: Id,
   topic: z.string(),
   createdAt: z.string(),
+  /** How often the topic is checked; absent means daily. */
+  cadence: z.enum(["hourly", "daily", "weekly"]).optional(),
 });
 export type FollowedTopic = z.infer<typeof FollowedTopicSchema>;
 
