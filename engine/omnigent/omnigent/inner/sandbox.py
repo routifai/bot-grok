@@ -1006,11 +1006,16 @@ def create_private_tmpdir() -> Path:
 
 
 def set_sandbox_env(env: MutableMapping[str, str], tmpdir: Path) -> None:
-    """Give sandboxed tools private scratch/runtime storage and no host desktop bus."""
+    """Give sandboxed tools private scratch/runtime storage and no host desktop bus.
+
+    ``CLAUDE_CODE_TMPDIR`` too: on macOS the Claude Code CLI ignores ``TMPDIR`` and uses
+    ``/tmp/claude-<uid>``, which the seatbelt profile denies.
+    """
     for key in DESKTOP_SESSION_ENV_VARS:
         env.pop(key, None)
     set_temp_env(env, tmpdir)
     env["XDG_RUNTIME_DIR"] = str(tmpdir)
+    env["CLAUDE_CODE_TMPDIR"] = str(tmpdir)
 
 
 def set_temp_env(env: MutableMapping[str, str], tmpdir: Path) -> None:

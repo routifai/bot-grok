@@ -19,6 +19,7 @@ from omnigent.inner.sandbox import (
     SandboxPolicy,
     create_exec_launcher,
     run_launcher,
+    set_sandbox_env,
 )
 from omnigent.runner.identity import RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR
 
@@ -48,6 +49,31 @@ def _noop_policy_arg() -> str:
         "utf-8"
     )
     return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def test_set_sandbox_env_sets_claude_code_tmpdir(tmp_path: pathlib.Path) -> None:
+    """``set_sandbox_env`` must surface ``CLAUDE_CODE_TMPDIR`` pointing at
+    the granted scratch dir, not just ``TMPDIR``/``TMP``/``TEMP``.
+
+    On macOS the bundled Claude Code CLI's tmp-dir resolver skips
+    ``$TMPDIR`` entirely and defaults to the literal ``/tmp`` unless
+    ``CLAUDE_CODE_TMPDIR`` is set, then derives its per-uid settings
+    dir as ``<base>/claude-<uid>``. A ``darwin_seatbelt`` profile only
+    grants RW on the per-helper scratch dir, not on all of ``/tmp``, so
+    a Claude CLI spawned inside the sandbox without this var fails
+    with ``EPERM`` opening ``/tmp/claude-<uid>`` the moment it tries to
+    write its settings. This covers any ``claude-sdk`` harness spawned
+    under the sandbox, including the hidden ``__web_researcher``
+    sub-agent the ``web_fetch``/``web_search`` builtins spawn.
+    """
+    env: dict[str, str] = {"SOME_OTHER_VAR": "keep-me"}
+    set_sandbox_env(env, tmp_path)
+
+    assert env["CLAUDE_CODE_TMPDIR"] == str(tmp_path)
+    assert env["TMPDIR"] == str(tmp_path)
+    assert env["XDG_RUNTIME_DIR"] == str(tmp_path)
+    # Unrelated keys are left alone.
+    assert env["SOME_OTHER_VAR"] == "keep-me"
 
 
 def test_run_launcher_emits_logger_checkpoints(caplog) -> None:
