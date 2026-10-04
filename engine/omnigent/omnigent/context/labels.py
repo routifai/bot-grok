@@ -40,6 +40,11 @@ SUBAGENT_LABEL_KEY = "omnigent.subagent"
 #: for the parent wake on its first turn.
 SCHEDULED_HELPER_LABEL_KEY = "omnigent.subagent.scheduled_task_id"
 
+#: Stamped on a standalone session a scheduled fire created (not parent-bound);
+#: its value is the scheduled task id. Its first user message is the task's
+#: system-authored prompt, so memory upkeep never treats it as the person's words.
+SCHEDULED_FIRE_LABEL_KEY = "omnigent.scheduled_task_id"
+
 # Token count at which a rollover session rolls over. Unset falls back to
 # 60% of the model's context window (100k-200k), or 100,000 when unknown
 # (see rollover.resolve_rollover_threshold).

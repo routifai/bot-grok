@@ -29,6 +29,10 @@ import {
 import { withTransactionRetry } from "./transaction-retry.js";
 
 const EVENT_BATCH_SIZE = 200;
+
+/** Task.prompt of a continuation run: a marker only, never instructions. The person's words
+ * live in the claimed SteeringMessage rows, which every executor must put in the turn. */
+export const STEERING_CONTINUATION_PROMPT = "Respond to the user's steering context.";
 const PUSH_CATCH_UP_MS = 30_000;
 const POLL_ONLY_CATCH_UP_MS = 400;
 
@@ -1218,7 +1222,7 @@ async function createSteeringContinuation(
       botId: input.botId,
       threadId: input.threadId,
       userId: batch[0]!.userId,
-      prompt: "Respond to the user's steering context.",
+      prompt: STEERING_CONTINUATION_PROMPT,
       status: "queued",
     },
   });

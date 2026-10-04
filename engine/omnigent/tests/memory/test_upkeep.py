@@ -281,6 +281,49 @@ def test_gather_window_excludes_non_message_roles() -> None:
     assert upkeep.gather_window(store, "alice", 0) == []
 
 
+def test_gather_window_skips_sessions_whose_user_messages_are_system_authored() -> None:
+    prompt = "This is the person's daily study. Never ask questions."
+    own = [_fake_item("p1", 20, "user", "I'm a product manager")]
+    convs = [
+        SimpleNamespace(id="person", updated_at=20),
+        SimpleNamespace(
+            id="helper", updated_at=19, kind="sub_agent", parent_conversation_id="person"
+        ),
+        SimpleNamespace(
+            id="labelled",
+            updated_at=18,
+            labels={"omnigent.subagent.scheduled_task_id": "t1"},
+        ),
+        SimpleNamespace(id="fired", updated_at=17, labels={"omnigent.scheduled_task_id": "t1"}),
+    ]
+    items = {
+        "person": own,
+        "helper": [_fake_item("h1", 19, "user", prompt)],
+        "labelled": [_fake_item("l1", 18, "user", prompt)],
+        "fired": [_fake_item("f1", 17, "user", prompt)],
+    }
+    store = FakeConversationStore(conversations=convs, items_by_session=items)
+    window = upkeep.gather_window(store, "alice", 0)
+    assert [w.item_id for w in window] == ["p1"]
+    assert store.list_items_calls == ["person"]
+
+
+def test_gather_window_skips_system_notices_but_keeps_assistant_context() -> None:
+    items = [
+        _fake_item("a1", 30, "assistant", "ok"),
+        _fake_item(
+            "n1", 20, "user", "[System: sub-agent analyst/Study finished (completed) — result: x]"
+        ),
+        _fake_item("u1", 10, "user", "I prefer short answers"),
+    ]
+    store = FakeConversationStore(
+        conversations=[SimpleNamespace(id="conv1", updated_at=30)],
+        items_by_session={"conv1": items},
+    )
+    window = upkeep.gather_window(store, "alice", 0)
+    assert [w.item_id for w in window] == ["u1", "a1"]
+
+
 # ── gate ─────────────────────────────────────────────────────────────────
 
 

@@ -78,6 +78,7 @@ function fakePrisma(overrides: Record<string, unknown> = {}): PrismaClient {
 function fakeEvents(): ThreadEvents {
   return {
     finalizeRun: vi.fn(async () => ({ continuationRunId: null })),
+    claimSteering: vi.fn(async () => []),
   } as unknown as ThreadEvents;
 }
 
@@ -249,6 +250,54 @@ describe("runTurnOnOmnigent", () => {
         runId: "run-1",
       }),
     );
+  });
+
+  it("sends the person's exact queued messages, never the steering placeholder", async () => {
+    findOmnigentAgentIdByName.mockResolvedValue("ag_1");
+    createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    streamOmnigentSession.mockReturnValue(
+      eventsFrom([{ type: "response.completed", response: { output: [] } }]),
+    );
+    const prisma = fakePrisma({
+      task: {
+        findUniqueOrThrow: vi.fn(async () => ({
+          prompt: "Respond to the user's steering context.",
+        })),
+      },
+    });
+    const events = fakeEvents();
+    const first = "Quick context about me: I'm a product manager building an AI assistant.";
+    const second = "Also: I care about agent safety.";
+    vi.mocked(events.claimSteering).mockResolvedValue([
+      { id: "s1", messageId: "m1", text: first, blocks: [] },
+      { id: "s2", messageId: "m2", text: second, blocks: [] },
+    ]);
+    await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+    expect(events.claimSteering).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-1", threadId: "thread-1", seenIds: [] }),
+    );
+    expect(postOmnigentMessage).toHaveBeenCalledWith(
+      DEPS_BASE.client,
+      "person@example.test",
+      "conv_1",
+      `${first}\n\n${second}`,
+    );
+  });
+
+  it("fails the turn rather than sending the placeholder when no steering text exists", async () => {
+    findOmnigentAgentIdByName.mockResolvedValue("ag_1");
+    createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    const prisma = fakePrisma({
+      task: {
+        findUniqueOrThrow: vi.fn(async () => ({
+          prompt: "Respond to the user's steering context.",
+        })),
+      },
+    });
+    const events = fakeEvents();
+    await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
+    expect(events.finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));
   });
 
   it("records the turn's last item id so the mirror job never re-delivers it", async () => {

@@ -11,6 +11,7 @@
 
 import { containsSecret, redactSecrets } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
+import { STEERING_CONTINUATION_PROMPT } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import {
   createOmnigentSession,
@@ -166,11 +167,25 @@ export async function runTurnOnOmnigent(
     } catch (error) {
       getLogger().error("omnigent gateway: bumping session updatedAt failed", error);
     }
+    // Messages the person sent while a run was active are SteeringMessage rows, not Task.prompt:
+    // a continuation's prompt is only a marker. Claim them so the engine gets every exact text.
+    const steering = await deps.events.claimSteering({
+      threadId: run.threadId,
+      botId: run.botId,
+      runId,
+      leaseOwner: workerId,
+      leaseFence: fence,
+      seenIds: [],
+    });
+    const turnInput = buildTurnInput(
+      task.prompt,
+      steering.map((item) => item.text),
+    );
     const { text, lastItemId } = await sendTurnAndAwaitReply(
       deps,
       user.email,
       sessionId,
-      task.prompt,
+      turnInput,
       config,
     );
     const redacted = redactSecrets(text, deps.secrets);
@@ -226,6 +241,21 @@ export async function runTurnOnOmnigent(
       );
   }
   return true;
+}
+
+/**
+ * The text the engine turn carries: the task prompt, then each queued/steering message verbatim
+ * in order. A steering continuation's prompt is a bare marker, so it is replaced by the person's
+ * messages; with none to send there is nothing real to say, so the turn fails instead of
+ * sending a placeholder.
+ */
+export function buildTurnInput(prompt: string, steeringTexts: string[]): string {
+  const texts = steeringTexts.filter((text) => text.trim().length > 0);
+  if (prompt === STEERING_CONTINUATION_PROMPT) {
+    if (texts.length === 0) throw new Error("steering continuation has no user message text");
+    return texts.join("\n\n");
+  }
+  return texts.length ? [prompt, ...texts].join("\n\n") : prompt;
 }
 
 /** Turns on Omnigent's Super Chat capability (docs/super-chat/README.md, SUPERSIDE-CHAT.md):

@@ -58,6 +58,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from omnigent.context.labels import (
+    SCHEDULED_FIRE_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
     SUBAGENT_DISPATCH_ID_LABEL_KEY,
     inheritable_context_labels,
@@ -1312,10 +1313,9 @@ async def _create_session(
     # Chat/Terminal switcher instead of rendering Chat-only. Stamped last (after
     # the override reload above) so the labels land on the conversation returned
     # to the launch/dispatch caller, not a stale pre-label reload of it.
-    labels = await _presentation_labels(deps, task)
-    if labels:
-        await asyncio.to_thread(deps.conversation_store.set_labels, conv.id, labels)
-        conv.labels.update(labels)
+    labels = {**await _presentation_labels(deps, task), SCHEDULED_FIRE_LABEL_KEY: task.id}
+    await asyncio.to_thread(deps.conversation_store.set_labels, conv.id, labels)
+    conv.labels.update(labels)
     return conv
 
 

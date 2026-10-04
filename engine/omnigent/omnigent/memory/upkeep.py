@@ -18,6 +18,11 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from omnigent.context.labels import (
+    SCHEDULED_FIRE_LABEL_KEY,
+    SCHEDULED_HELPER_LABEL_KEY,
+    SUBAGENT_DISPATCH_ID_LABEL_KEY,
+)
 from omnigent.db.utils import now_epoch
 from omnigent.entities import MemoryEvidenceLink, MemoryUpkeepRun
 from omnigent.memory.service import INFERRED_CONFIDENCE, STATED_CONFIDENCE, VALID_KINDS
@@ -275,6 +280,37 @@ def _message_text(item: Any) -> str:
     return " ".join(parts)
 
 
+def _is_person_session(conv: Any) -> bool:
+    """``False`` for sessions whose "user" messages are not the person's words.
+
+    A sub-agent / Helper session (including a parent-bound scheduled Helper)
+    and a standalone scheduled-fire session open with a system-authored
+    prompt sent as the first user message. Memory claims must be backed by
+    the person's own quote, so those sessions are never evidence.
+    """
+    if getattr(conv, "kind", "default") == "sub_agent":
+        return False
+    if getattr(conv, "parent_conversation_id", None) is not None and getattr(
+        conv, "sub_agent_name", None
+    ):
+        return False
+    labels = getattr(conv, "labels", None) or {}
+    return not any(
+        key in labels
+        for key in (
+            SCHEDULED_HELPER_LABEL_KEY,
+            SCHEDULED_FIRE_LABEL_KEY,
+            SUBAGENT_DISPATCH_ID_LABEL_KEY,
+        )
+    )
+
+
+def _is_system_authored(text: str) -> bool:
+    """Framework notices injected as user-role items (``[System: ...]`` wake,
+    timer, interrupt and steering notices) are not the person's words."""
+    return text.lstrip().startswith("[System")
+
+
 def _session_window_items(
     conversation_store: ConversationStore,
     session_id: str,
@@ -305,12 +341,15 @@ def _session_window_items(
             role = _role_of(item)
             if role is None:
                 continue
+            text = _message_text(item)
+            if role == "user" and _is_system_authored(text):
+                continue
             collected.append(
                 WindowItem(
                     session_id=session_id,
                     item_id=item.id,
                     role=role,
-                    text=_message_text(item),
+                    text=text,
                     created_at=item.created_at,
                 )
             )
@@ -351,6 +390,8 @@ def gather_window(
             if conv.updated_at < since:
                 reached_watermark = True
                 break
+            if not _is_person_session(conv):
+                continue
             items.extend(_session_window_items(conversation_store, conv.id, since))
         if reached_watermark or not page.has_more:
             break
