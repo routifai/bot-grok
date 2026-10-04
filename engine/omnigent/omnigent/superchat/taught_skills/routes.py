@@ -21,9 +21,9 @@ from omnigent.entities.taught_skill import TaughtSkill
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
-from omnigent.stores.taught_skill_store import SqlAlchemyTaughtSkillStore
-from omnigent.superchat.taught_skills import normalize_doc, render_skill, resolve_inputs
-from omnigent.superchat.teach import expire_stale_draft
+from omnigent.superchat.taught_skills.doc import normalize_doc, render_skill, resolve_inputs
+from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
+from omnigent.superchat.taught_skills.teach import expire_stale_draft
 
 _MAX_DOC_BYTES = 64 * 1024
 

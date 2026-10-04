@@ -10,9 +10,9 @@ from typing import Any
 import pytest
 
 from omnigent.entities.scheduled_task import OwnerPreferences
-from omnigent.stores.daily_note_store import SqlAlchemyDailyNoteStore
-from omnigent.superchat import quiet_moment
-from omnigent.superchat.quiet_moment import MAX_PASSES_PER_DAY, QuietMoment
+from omnigent.superchat.daily_notes import quiet_moment
+from omnigent.superchat.daily_notes.quiet_moment import MAX_PASSES_PER_DAY, QuietMoment
+from omnigent.superchat.daily_notes.store import SqlAlchemyDailyNoteStore
 
 SESSION = "b" * 32
 NOON = datetime(2026, 10, 4, 12, 0, tzinfo=UTC).timestamp()

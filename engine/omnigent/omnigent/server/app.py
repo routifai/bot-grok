@@ -99,14 +99,12 @@ from omnigent.server.performance_metrics import (
 from omnigent.server.routes.approvals import create_approvals_router, install_pending_persistence
 from omnigent.server.routes.builtin_agents import create_builtin_agents_router
 from omnigent.server.routes.comments import create_comments_router
-from omnigent.server.routes.daily_notes import create_daily_notes_router
 from omnigent.server.routes.default_policies import create_default_policies_router
 from omnigent.server.routes.dictation import create_dictation_router
 from omnigent.server.routes.extension_assets import create_extension_assets_router
 from omnigent.server.routes.extensions import create_extensions_router
 from omnigent.server.routes.harnesses import create_harnesses_router
 from omnigent.server.routes.imports import create_imports_router
-from omnigent.server.routes.objectives import create_objectives_router
 from omnigent.server.routes.policy_registry import create_policy_registry_router
 from omnigent.server.routes.projects import create_projects_router
 from omnigent.server.routes.runner_tunnel import create_runner_tunnel_router
@@ -122,11 +120,8 @@ from omnigent.server.routes.sessions import (
     set_server_runner_router,
 )
 from omnigent.server.routes.sharing import create_sharing_router
-from omnigent.server.routes.suggestions import create_suggestions_router
-from omnigent.server.routes.taught_skills import create_taught_skills_router
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.server.routes.usage import create_usage_router
-from omnigent.server.routes.vault import create_vault_router
 from omnigent.server.runner_session_init import RunnerSessionInitializer
 from omnigent.server.scheduled import ScheduledTaskScheduler
 from omnigent.server.ws_origin import WebSocketOriginMiddleware
@@ -143,7 +138,6 @@ from omnigent.stores.conversation_store import (
     SessionConnectivity,
     runner_seen_is_fresh,
 )
-from omnigent.stores.daily_note_store import SqlAlchemyDailyNoteStore
 from omnigent.stores.host_store import HostStore
 from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
 from omnigent.stores.objective_store import ObjectiveStore
@@ -151,10 +145,13 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.policy_store import PolicyStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
-from omnigent.stores.suggestion_store import SqlAlchemySuggestionStore
-from omnigent.stores.taught_skill_store import SqlAlchemyTaughtSkillStore
-from omnigent.stores.vault_store import VaultStore
 from omnigent.superchat.chats import SideChatArchiveSweeper
+from omnigent.superchat.feature import InstallDeps
+from omnigent.superchat.features import (
+    install_features,
+    start_feature_jobs,
+    stop_feature_jobs,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -1769,14 +1766,7 @@ def create_app(
                 app_state=app_inst.state,
             )
             app_inst.state.fire_deps = fire_deps
-            from omnigent.superchat.proactive import provisioning_enabled
-            from omnigent.superchat.quiet_moment import QuietMoment
-
-            note_store = getattr(app_inst.state, "daily_note_store", None)
-            if provisioning_enabled() and note_store is not None:
-                quiet_moment = QuietMoment(deps=fire_deps, note_store=note_store)
-                app_inst.state.quiet_moment = quiet_moment
-                await quiet_moment.start()
+            await start_feature_jobs(app_inst)
             on_fire = build_on_fire(fire_deps)
             # The manual "run now" trigger reuses the same fire path (dispatch /
             # preflight / in-flight guard) as the scheduler; it only differs in
@@ -1848,9 +1838,7 @@ def create_app(
         try:
             yield
         finally:
-            quiet_moment_pass = getattr(app_inst.state, "quiet_moment", None)
-            if quiet_moment_pass is not None:
-                await quiet_moment_pass.shutdown()
+            await stop_feature_jobs(app_inst)
             if memory_upkeep_scheduler is not None:
                 await memory_upkeep_scheduler.shutdown()
             await side_chat_archive_sweeper.shutdown()
@@ -3364,34 +3352,6 @@ def create_app(
             prefix="/v1",
             tags=["scheduled_tasks"],
         )
-        # Suggestions (Ideas) share the scheduled-task database: background
-        # runs record them, a UI accepts or dismisses them.
-        app.include_router(
-            create_suggestions_router(
-                SqlAlchemySuggestionStore(scheduled_task_store.storage_location),
-                conversation_store=conversation_store,
-                permission_store=permission_store,
-                auth_provider=auth_provider,
-            ),
-            prefix="/v1",
-            tags=["suggestions"],
-        )
-        # Daily notes (one per owner per local day) share it as well.
-        daily_note_store = SqlAlchemyDailyNoteStore(scheduled_task_store.storage_location)
-        app.state.daily_note_store = daily_note_store
-        app.include_router(
-            create_daily_notes_router(
-                daily_note_store,
-                scheduled_task_store=scheduled_task_store,
-                conversation_store=conversation_store,
-                permission_store=permission_store,
-                auth_provider=auth_provider,
-            ),
-            prefix="/v1",
-            tags=["daily_notes"],
-        )
-        # Taught skills share the scheduled-task database too: recordings, their keyframes and
-        # the skills drafted from them.
         # Approvals (standing rules, spending cap, pending prompts) share it too.
         approval_store = SqlAlchemyApprovalStore(scheduled_task_store.storage_location)
         app.state.approval_store = approval_store
@@ -3409,37 +3369,19 @@ def create_app(
             prefix="/v1",
             tags=["approvals"],
         )
-        taught_skill_store = SqlAlchemyTaughtSkillStore(scheduled_task_store.storage_location)
-        app.state.taught_skill_store = taught_skill_store
-        app.include_router(
-            create_taught_skills_router(taught_skill_store, auth_provider=auth_provider),
-            prefix="/v1",
-            tags=["taught_skills"],
-        )
-        # The secrets vault: encrypted logins, secure-entry requests and their audit trail.
-        vault_store = VaultStore(scheduled_task_store.storage_location)
-        app.state.vault_store = vault_store
-        app.include_router(
-            create_vault_router(
-                vault_store, conversation_store=conversation_store, auth_provider=auth_provider
-            ),
-            prefix="/v1",
-            tags=["vault"],
-        )
-    if objective_store is not None:
-        app.include_router(
-            create_objectives_router(
-                objective_store,
-                scheduled_task_store=scheduled_task_store,
-                agent_store=agent_store,
-                conversation_store=conversation_store,
-                permission_store=permission_store,
-                agent_cache=agent_cache,
-                auth_provider=auth_provider,
-            ),
-            prefix="/v1",
-            tags=["objectives"],
-        )
+    install_features(
+        app,
+        InstallDeps(
+            scheduled_task_store=scheduled_task_store,
+            conversation_store=conversation_store,
+            agent_store=agent_store,
+            permission_store=permission_store,
+            auth_provider=auth_provider,
+            agent_cache=agent_cache,
+            runner_router=runner_router,
+            objective_store=objective_store,
+        ),
+    )
     # Admin control for the server-wide sharing settings. Always mounted (the
     # handlers self-gate on admin); PUT is a no-op-reject unless this server
     # resolves the setting from the editable file-backed default.

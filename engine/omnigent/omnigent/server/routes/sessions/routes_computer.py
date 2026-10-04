@@ -20,7 +20,11 @@ from omnigent.server.routes._auth_helpers import (
 from omnigent.stores import ConversationStore
 from omnigent.stores.host_store import HostStore
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.teach import distill_in_background, new_id, recording_launcher
+from omnigent.superchat.taught_skills.teach import (
+    distill_in_background,
+    new_id,
+    recording_launcher,
+)
 
 # Who is in control of a computer screen is a control token on the managed host row, so it
 # survives a server restart and is shared by replicas. Sessions on the same host (one

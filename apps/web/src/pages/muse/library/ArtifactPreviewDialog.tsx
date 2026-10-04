@@ -27,6 +27,20 @@ export function ArtifactPreviewDialog({
           <DialogTitle className="min-w-0 truncate pe-8 text-[15px] font-medium">
             {state.status === "ready" ? state.artifact.name : t`Loading…`}
           </DialogTitle>
+          {state.versions.length > 1 ? (
+            <select
+              aria-label={t`Version`}
+              value={state.versionId ?? ""}
+              onChange={(event) => state.selectVersion(event.target.value)}
+              className="ms-auto rounded-full border border-border bg-card px-3 py-1.5 text-[12.5px] text-foreground outline-none focus:border-ring"
+            >
+              {state.versions.map((entry, index) => (
+                <option key={entry.id} value={entry.id}>
+                  {index === 0 ? t`Version ${entry.version} (latest)` : t`Version ${entry.version}`}
+                </option>
+              ))}
+            </select>
+          ) : null}
           {state.status === "ready" ? (
             <Button
               variant="outline"

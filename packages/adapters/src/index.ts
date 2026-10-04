@@ -59,6 +59,7 @@ export * from "./model-selection.js";
 export * from "./model-vision.js";
 export * from "./none-sandbox.js";
 export * from "./omnigent/activities.js";
+export * from "./omnigent/artifacts.js";
 export * from "./omnigent/chats.js";
 export * from "./omnigent/client.js";
 export * from "./omnigent/env.js";

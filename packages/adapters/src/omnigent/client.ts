@@ -30,7 +30,10 @@ export interface OmnigentStreamEvent {
   [key: string]: unknown;
 }
 
-function omnigentHeaders(config: OmnigentClientConfig, email: string): Record<string, string> {
+export function omnigentHeaders(
+  config: OmnigentClientConfig,
+  email: string,
+): Record<string, string> {
   return {
     "content-type": "application/json",
     "X-Forwarded-Email": email,
@@ -79,7 +82,7 @@ export function isSessionNotFoundError(error: unknown): boolean {
  * `undefined` (not just empty — a caller that never wired up the list at all) the body is
  * dropped rather than risking an unredacted leak into a log or an API error message.
  */
-async function throwOnError(
+export async function throwOnError(
   response: Response,
   what: string,
   secrets?: string[],

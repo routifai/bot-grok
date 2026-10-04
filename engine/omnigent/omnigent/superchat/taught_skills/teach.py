@@ -17,8 +17,8 @@ from typing import Any
 from omnigent.entities.taught_skill import ComputerRecording, TaughtSkill
 from omnigent.onboarding.sandboxes.recording import RecordingMixin
 from omnigent.server.scheduled.fire import FireDeps, start_adhoc_helper
-from omnigent.stores.taught_skill_store import SqlAlchemyTaughtSkillStore
-from omnigent.superchat.taught_skills import build_brief, pick_brief_keyframes
+from omnigent.superchat.taught_skills.doc import build_brief, pick_brief_keyframes
+from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
 
 _logger = logging.getLogger(__name__)
 

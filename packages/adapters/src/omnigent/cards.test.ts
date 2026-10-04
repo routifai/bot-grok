@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fileCardFromArtifactSave,
   isRenderCardCall,
   redactReplyCard,
   replyCardFromToolCall,
@@ -139,5 +140,36 @@ describe("secure entry cards", () => {
       { id: "i2", created_at: 2, ...done },
     ] as never);
     expect(messages[0]?.blocks[0]).toMatchObject({ kind: "reply_card", card: "secure_entry" });
+  });
+});
+
+describe("artifact_save -> file card", () => {
+  const saved = {
+    type: "artifact",
+    id: "a".repeat(32),
+    name: "report.html",
+    title: null,
+    kind: "html",
+    size: 2048,
+    version: 2,
+    versions: 2,
+  };
+  const saveCall = { type: "function_call", name: "mcp__omnigent__artifact_save", call_id: "s1" };
+
+  it("becomes a file card that opens the saved artifact", () => {
+    const done = { type: "function_call_output", call_id: "s1", output: JSON.stringify(saved) };
+    const [block] = turnBlocks([saveCall, done], "");
+    expect(block).toMatchObject({
+      kind: "reply_card",
+      card: "file",
+      data: { name: "report.html", artifactId: saved.id, kind: "html", size: 2048, version: 2 },
+    });
+    expect((block as { fallback: string }).fallback).toContain("version 2");
+  });
+
+  it("shows nothing for a pending or failed save", () => {
+    expect(turnBlocks([saveCall], "")).toEqual([]);
+    expect(fileCardFromArtifactSave('{"error":"file not found: x.html"}')).toBeNull();
+    expect(fileCardFromArtifactSave(undefined)).toBeNull();
   });
 });

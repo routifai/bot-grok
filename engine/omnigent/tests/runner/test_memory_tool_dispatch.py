@@ -10,19 +10,33 @@ tests mock the Omnigent server's REST endpoints it calls instead, mirroring
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import httpx
 import pytest
 
 from omnigent.runner.tool_dispatch import (
-    _execute_memory_tool,
     _granted_tool_names,
     _ungranted_tool_reason,
     build_native_relay_tool_schemas,
 )
 from omnigent.spec.types import AgentSpec
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.memory_tools.handlers import handle_memory_tool
 
 CONV = "conv_native_memory_test"
+
+
+async def _execute_memory_tool(
+    tool_name: str,
+    args: dict[str, Any],
+    *,
+    conversation_id: str | None,
+    server_client: httpx.AsyncClient | None,
+) -> str:
+    """Run the memory handler the way the runner dispatch does."""
+    return await handle_memory_tool(HandlerCtx(tool_name, server_client, conversation_id), args)
+
 
 _MEMORY_TOOL_NAMES = (
     "memory_remember",

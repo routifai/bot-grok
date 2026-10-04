@@ -1,0 +1,89 @@
+"""The ordered registry of Super Chat features and the three framework seams that read it.
+
+Add a primitive by creating ``omnigent/superchat/<name>/`` with a ``FEATURE`` and listing it
+here; ``tools/manager.py``, ``runner/tool_dispatch.py`` and ``server/app.py`` need no change.
+"""
+
+from __future__ import annotations
+
+import inspect
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
+from omnigent.superchat.feature import (
+    BackgroundJob,
+    Feature,
+    Handler,
+    InstallDeps,
+    ToolManagerCtx,
+)
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
+    from omnigent.tools.base import Tool
+
+
+def _load() -> list[Feature]:
+    """Import each feature folder (order is registration order)."""
+    from omnigent.superchat.artifacts import ARTIFACTS_FEATURE as artifacts
+    from omnigent.superchat.cards import FEATURE as cards
+    from omnigent.superchat.daily_notes import FEATURE as daily_notes
+    from omnigent.superchat.memory_tools import FEATURE as memory_tools
+    from omnigent.superchat.objectives import FEATURE as objectives
+    from omnigent.superchat.suggestions import FEATURE as suggestions
+    from omnigent.superchat.taught_skills import FEATURE as taught_skills
+    from omnigent.superchat.vault import FEATURE as vault
+
+    return [
+        vault,
+        suggestions,
+        objectives,
+        taught_skills,
+        daily_notes,
+        cards,
+        memory_tools,
+        artifacts,
+    ]
+
+
+FEATURES: list[Feature] = _load()
+
+#: ``tool_name -> handler`` over every feature, consulted by the runner dispatch.
+FEATURE_HANDLERS: dict[str, Handler] = {
+    name: handler for feature in FEATURES for name, handler in feature.handlers.items()
+}
+
+
+def feature_tools(labels: Mapping[str, str] | None, ctx: ToolManagerCtx) -> list[Tool]:
+    """Every feature's label-gated tool defs, in feature order."""
+    return [tool for feature in FEATURES for tool in feature.tools(labels, ctx)]
+
+
+def install_features(app: FastAPI, deps: InstallDeps) -> None:
+    """Wire every feature's store and router onto ``app``."""
+    for feature in FEATURES:
+        if feature.install is not None:
+            feature.install(app, deps)
+
+
+def feature_jobs(app: FastAPI) -> list[BackgroundJob]:
+    """Every feature's background jobs (call once the app's lifespan state is ready)."""
+    return [job for feature in FEATURES if feature.jobs for job in feature.jobs(app)]
+
+
+async def start_feature_jobs(app: FastAPI) -> None:
+    """Build every feature's jobs and start them (lifespan startup)."""
+    app.state.feature_jobs = feature_jobs(app)
+    for job in app.state.feature_jobs:
+        result = job.start()
+        if inspect.isawaitable(result):
+            await result
+
+
+async def stop_feature_jobs(app: FastAPI) -> None:
+    """Shut down the jobs :func:`start_feature_jobs` started (lifespan shutdown)."""
+    for job in reversed(getattr(app.state, "feature_jobs", [])):
+        result = job.shutdown()
+        if inspect.isawaitable(result):
+            await result

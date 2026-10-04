@@ -1,5 +1,6 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import { parseReplyCard, type ReplyCardBlock } from "@aiden/contracts";
+import { ArtifactFileCard } from "./ArtifactFileCard";
 import { CardSkeleton, catalog } from "./catalog";
 import { useResolvedReplyCard } from "./context";
 import { SecureEntryCard } from "./SecureEntryCard";
@@ -36,6 +37,7 @@ export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: s
     case "person":
       return <catalog.person title={title} data={parsed.data} />;
     case "file":
+      if (parsed.data.artifactId) return <ArtifactFileCard title={title} data={parsed.data} />;
       return <catalog.file title={title} data={parsed.data} />;
     case "progress":
       return <catalog.progress title={title} data={parsed.data} />;

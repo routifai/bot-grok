@@ -178,6 +178,14 @@ import {
 } from "./computer-status.js";
 import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "./engine-approvals.js";
 import {
+  type EngineArtifactsDeps,
+  engineGetArtifact,
+  engineListArtifacts,
+  engineListArtifactVersions,
+  engineListSpaceArtifacts,
+  engineRemoveArtifact,
+} from "./engine-artifacts.js";
+import {
   engineComputerClient,
   engineComputerRelease,
   engineComputerScreenUrl,
@@ -602,6 +610,7 @@ export function createRouter(deps: RouterDeps) {
   const museOnly = authed;
   const museIdeasDeps: MuseIdeasDeps = { prisma: deps.prisma };
   const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma };
+  const engineArtifactsDeps: EngineArtifactsDeps = { prisma: deps.prisma };
   const engineIdeasDeps: EngineIdeasDeps = {
     prisma: deps.prisma,
     // "Do it" sends the Idea's message the same way a typed follow-up does.
@@ -4561,6 +4570,9 @@ export function createRouter(deps: RouterDeps) {
     artifacts: {
       list: authed.artifacts.list.handler(async ({ context, input }) => {
         await repos.getBot(context.actor, input.botId);
+        const engine = engineComputerClient();
+        if (engine)
+          return engineListArtifacts(engineArtifactsDeps, engine, context.actor, input.botId);
         const rows = await deps.prisma.artifact.findMany({
           where: {
             botId: input.botId,
@@ -4584,6 +4596,9 @@ export function createRouter(deps: RouterDeps) {
       }),
       listSpace: authed.artifacts.listSpace.handler(async ({ context, input }) => {
         if (input.botId) await repos.getBot(context.actor, input.botId);
+        const engine = engineComputerClient();
+        if (engine)
+          return engineListSpaceArtifacts(engineArtifactsDeps, engine, context.actor, input);
         try {
           return await listSpaceArtifacts(deps, context.actor, input);
         } catch (error) {
@@ -4594,6 +4609,15 @@ export function createRouter(deps: RouterDeps) {
         }
       }),
       listVersions: authed.artifacts.listVersions.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine) {
+          return engineListArtifactVersions(
+            engineArtifactsDeps,
+            engine,
+            context.actor,
+            input.familyId,
+          );
+        }
         return listArtifactVersions(deps, context.actor, input);
       }),
       create: authed.artifacts.create.handler(async ({ context, input }) => {
@@ -4633,9 +4657,15 @@ export function createRouter(deps: RouterDeps) {
         }
       }),
       getById: authed.artifacts.getById.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine)
+          return engineGetArtifact(engineArtifactsDeps, engine, context.actor, input.artifactId);
         return getSpaceArtifactById(deps, context.actor, input);
       }),
       remove: authed.artifacts.remove.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine)
+          return engineRemoveArtifact(engineArtifactsDeps, engine, context.actor, input.artifactId);
         return deleteArtifactFamily(deps, context.actor, { familyId: input.artifactId });
       }),
     },

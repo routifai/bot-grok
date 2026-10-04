@@ -68,6 +68,10 @@ export const ReplyCardData = {
     url: Url.optional(),
     kind: Text.optional(),
     size: z.number().nonnegative().optional(),
+    /** Set for a file the Muse saved with `artifact_save`: the engine artifact the card opens. */
+    artifactId: Text.optional(),
+    version: z.number().int().positive().optional(),
+    versions: z.number().int().positive().optional(),
   }),
   /** The Muse's `vault_request_secret`: the person types a login into the card, which posts it
    * straight to the vault. Only the request id travels in chat; never a value. */

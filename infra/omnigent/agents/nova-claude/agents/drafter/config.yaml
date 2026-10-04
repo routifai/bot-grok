@@ -37,6 +37,7 @@ tools:
     - memory_get
     - sys_os_read
     - sys_os_write
+    - artifact_save
 
 prompt: |
   You are the drafter Sub-agent for Nova's Super Chat. You are dispatched with a Brief: the

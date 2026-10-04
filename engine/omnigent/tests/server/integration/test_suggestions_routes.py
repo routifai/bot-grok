@@ -10,8 +10,6 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from omnigent.runner import tool_dispatch
-from omnigent.runner.tool_dispatch import _execute_suggestion_tool
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -19,6 +17,9 @@ from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
 from omnigent.stores.scheduled_task_store.sqlalchemy_store import SqlAlchemyScheduledTaskStore
+from omnigent.superchat import _handler_http
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.suggestions.handlers import handle_suggestion_tool
 
 pytestmark = pytest.mark.asyncio
 
@@ -98,35 +99,29 @@ async def test_helper_tool_records_under_parent(
     async def _kind(session_id: str, _client: object) -> tuple[str, str | None]:
         return ("sub_agent", chat) if session_id == helper else ("default", None)
 
-    monkeypatch.setattr(tool_dispatch, "_session_kind_and_parent", _kind)
+    monkeypatch.setattr(_handler_http, "session_kind_and_parent", _kind)
     tool_client = _ToolClient(client)
     args = json.dumps(
         {"title": "Draft the memo", "why": "Due Friday.", "message": "Draft the memo."}
     )
     out = json.loads(
-        await _execute_suggestion_tool(
-            "suggestion_create",
-            args,
-            server_client=tool_client,
-            conversation_id=helper,  # type: ignore[arg-type]
+        await handle_suggestion_tool(
+            HandlerCtx("suggestion_create", tool_client, helper),  # type: ignore[arg-type]
+            json.loads(args),
         )
     )
     assert out["parent_session_id"] == chat and out["source_session_id"] == helper
     listed = json.loads(
-        await _execute_suggestion_tool(
-            "suggestion_list",
-            "{}",
-            server_client=tool_client,
-            conversation_id=helper,  # type: ignore[arg-type]
+        await handle_suggestion_tool(
+            HandlerCtx("suggestion_list", tool_client, helper),  # type: ignore[arg-type]
+            json.loads("{}"),
         )
     )
     assert [s["title"] for s in listed["suggestions"]] == ["Draft the memo"]
     bad = json.loads(
-        await _execute_suggestion_tool(
-            "suggestion_create",
-            "{}",
-            server_client=tool_client,
-            conversation_id=chat,  # type: ignore[arg-type]
+        await handle_suggestion_tool(
+            HandlerCtx("suggestion_create", tool_client, chat),  # type: ignore[arg-type]
+            json.loads("{}"),
         )
     )
     assert "requires" in bad["error"]

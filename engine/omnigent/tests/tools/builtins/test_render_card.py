@@ -6,8 +6,8 @@ import pytest
 
 from omnigent.runner.tool_dispatch import should_dispatch_locally
 from omnigent.spec.types import AgentSpec
+from omnigent.superchat.cards.tools import CARD_DATA_SCHEMAS, RenderCardTool
 from omnigent.tools.base import ToolContext
-from omnigent.tools.builtins.render_card import CARD_DATA_SCHEMAS, RenderCardTool
 from omnigent.tools.manager import ToolManager
 
 _CTX = ToolContext(task_id="", conversation_id="", agent_id="")

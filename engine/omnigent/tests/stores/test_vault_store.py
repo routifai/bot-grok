@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 
 from omnigent.db.utils import get_or_create_engine
-from omnigent.stores.vault_store import (
+from omnigent.superchat.vault.store import (
     VAULT_KEY_ENV,
     VaultInputError,
     VaultStore,

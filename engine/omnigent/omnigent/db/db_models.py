@@ -1732,6 +1732,64 @@ class SqlSuggestion(OmnigentBase):
     )
 
 
+class SqlArtifact(OmnigentBase):
+    """
+    SQLAlchemy model for the ``artifacts`` table.
+
+    One row per *version* of a deliverable file (HTML page, document, sheet, deck...) the Muse
+    saved from its Computer. Versions of one deliverable share ``(user_id, parent_session_id,
+    name)``; the bytes live in the artifact store under ``blob_key``.
+
+    :param id: UUID primary key of this version (bare 32-char hex string).
+    :param user_id: Owner identity; ``None`` in single-user mode.
+    :param parent_session_id: The Conversation it belongs to (relates to ``conversations.id``;
+        no DB foreign key, Rule R032).
+    :param name: File name, e.g. ``"report.html"``; with the session it groups versions.
+    :param title: Optional display title.
+    :param kind: Lower-case extension kind, e.g. ``"html"``.
+    :param mime: Served content type.
+    :param size: Byte length of the content.
+    :param version: 1-based version number within the group.
+    :param blob_key: Artifact-store key of the bytes.
+    :param published: Reserved for a later "publish" feature.
+    """
+
+    __tablename__ = "artifacts"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_session_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    mime: Mapped[str] = mapped_column(String(128), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    blob_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    published: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_artifacts_group",
+            "workspace_id",
+            "user_id",
+            "parent_session_id",
+            "name",
+            "version",
+        ),
+        Index("ix_artifacts_owner", "workspace_id", "user_id", "created_at"),
+    )
+
+
 class SqlDailyNote(OmnigentBase):
     """
     SQLAlchemy model for the ``daily_notes`` table.

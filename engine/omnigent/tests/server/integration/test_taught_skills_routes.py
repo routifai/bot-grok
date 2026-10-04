@@ -11,8 +11,6 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from omnigent.runner import tool_dispatch
-from omnigent.runner.tool_dispatch import _execute_taught_skill_tool
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -20,6 +18,9 @@ from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
 from omnigent.stores.scheduled_task_store.sqlalchemy_store import SqlAlchemyScheduledTaskStore
+from omnigent.superchat import _handler_http
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.taught_skills.handlers import handle_taught_skill_tool
 
 pytestmark = pytest.mark.asyncio
 
@@ -130,15 +131,13 @@ async def test_tools_helper_drafts_and_muse_runs(
     async def _kind(session_id: str, _client: object) -> tuple[str, str | None]:
         return ("sub_agent", env.chat) if session_id == env.helper else ("default", None)
 
-    monkeypatch.setattr(tool_dispatch, "_session_kind_and_parent", _kind)
+    monkeypatch.setattr(_handler_http, "session_kind_and_parent", _kind)
     tc = _ToolClient(env.client)
 
     async def call(tool: str, args: dict, who: str) -> dict:
-        out = await _execute_taught_skill_tool(
-            tool,
-            json.dumps(args),
-            server_client=tc,
-            conversation_id=who,  # type: ignore[arg-type]
+        out = await handle_taught_skill_tool(
+            HandlerCtx(tool, tc, who),  # type: ignore[arg-type]
+            json.loads(json.dumps(args)),
         )
         return json.loads(out)
 

@@ -8,6 +8,7 @@ import { redactSecrets } from "@aiden/core";
 
 const RENDER_CARD_TOOL = "render_card";
 const VAULT_REQUEST_TOOL = "vault_request_secret";
+const ARTIFACT_SAVE_TOOL = "artifact_save";
 
 type Item = Record<string, unknown>;
 
@@ -26,6 +27,15 @@ export function isVaultRequestCall(item: Item): boolean {
     item.type === "function_call" &&
     typeof item.name === "string" &&
     (item.name === VAULT_REQUEST_TOOL || item.name.endsWith(`__${VAULT_REQUEST_TOOL}`))
+  );
+}
+
+/** The Muse's `artifact_save` call: it saved a deliverable file into the Conversation. */
+export function isArtifactSaveCall(item: Item): boolean {
+  return (
+    item.type === "function_call" &&
+    typeof item.name === "string" &&
+    (item.name === ARTIFACT_SAVE_TOOL || item.name.endsWith(`__${ARTIFACT_SAVE_TOOL}`))
   );
 }
 
@@ -101,11 +111,37 @@ export function secureEntryFromToolCall(output: string | undefined): ReplyCardBl
   };
 }
 
+/** A finished `artifact_save` -> its `file` card (Open previews it in Nova, Download saves it).
+ * A failed save (the engine returned `{"error"}`) renders nothing; the Muse retries or says so. */
+export function fileCardFromArtifactSave(output: string | undefined): ReplyCardBlock | null {
+  const saved = output === undefined ? null : parseObject(output);
+  if (!saved || saved.type !== "artifact") return null;
+  const { id, name, title, kind, size, version, versions } = saved;
+  if (typeof id !== "string" || typeof name !== "string") return null;
+  const label = typeof title === "string" && title ? title : name;
+  const revision = typeof version === "number" && version > 1 ? ` (version ${version})` : "";
+  return {
+    kind: "reply_card",
+    card: "file",
+    id: `artifact:${id}`,
+    data: {
+      name,
+      artifactId: id,
+      ...(typeof kind === "string" ? { kind } : {}),
+      ...(typeof size === "number" ? { size } : {}),
+      ...(typeof version === "number" ? { version } : {}),
+      ...(typeof versions === "number" ? { versions } : {}),
+    },
+    fallback: `Saved **${label}**${revision}. Open it in Nova's Library.`,
+  };
+}
+
 /** The card a Muse tool call renders, or `null` for any other item (or a failed call). */
 export function cardFromToolCall(call: Item, outputs: Map<string, string>): ReplyCardBlock | null {
   const callId = typeof call.call_id === "string" ? call.call_id : "";
   if (isRenderCardCall(call)) return replyCardFromToolCall(call, outputs.get(callId));
   if (isVaultRequestCall(call)) return secureEntryFromToolCall(outputs.get(callId));
+  if (isArtifactSaveCall(call)) return fileCardFromArtifactSave(outputs.get(callId));
   return null;
 }
 

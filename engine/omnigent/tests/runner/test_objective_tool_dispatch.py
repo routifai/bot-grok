@@ -11,10 +11,21 @@ from omnigent.context.labels import CONTEXT_MODE_LABEL, SUBAGENT_LABEL_KEY
 from omnigent.runner.tool_dispatch import (
     _ALL_LOCAL_TOOLS,
     _NATIVE_RELAY_BUILTIN_TOOLS,
-    _execute_objective_tool,
 )
 from omnigent.spec.types import AgentSpec
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.objectives.handlers import handle_objective_tool
 from omnigent.tools.manager import ToolManager
+
+
+async def _execute_objective_tool(
+    tool_name: str, arguments: str, *, server_client: Any, conversation_id: str
+) -> str:
+    """Run the objective handler the way the runner dispatch does (args pre-parsed)."""
+    return await handle_objective_tool(
+        HandlerCtx(tool_name, server_client, conversation_id), json.loads(arguments)
+    )
+
 
 _OID = "0123456789abcdef0123456789abcdef"
 _TID = "fedcba9876543210fedcba9876543210"

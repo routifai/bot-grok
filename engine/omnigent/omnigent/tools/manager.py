@@ -24,22 +24,9 @@ from omnigent.tools.base import Tool, ToolContext, is_valid_tool_name
 from omnigent.tools.builtins import (
     ListCommentsTool,
     LoadSkillTool,
-    MemoryExplainTool,
-    MemoryForgetTool,
-    MemoryGetTool,
-    MemoryRememberTool,
-    MemorySearchTool,
-    ObjectiveCreateTool,
-    ObjectiveGetTool,
-    ObjectiveListTool,
-    ObjectiveProposeTool,
-    ObjectiveUpdateTaskTool,
     ReadSkillFileTool,
     SessionHistoryTool,
     SideChatOpenTool,
-    SkillDraftSaveTool,
-    SkillListTool,
-    SkillRunTool,
     SysAdviseModelsTool,
     SysAgentDownloadTool,
     SysAgentGetTool,
@@ -219,7 +206,6 @@ class ToolManager:
         self._register_session_history_tool()
         # memory_* tools: same label gate as session_history — available in
         # every rollover session regardless of which agent spec is bound.
-        self._register_memory_tools()
         # side_chat_open is auto-registered only for a superside-chat
         # session (Super Chat, Side Chat, or Sub-agent alike carry the
         # mode label); call-time checks in the runner dispatch further
@@ -231,12 +217,7 @@ class ToolManager:
         # Scheduled-task tools are always auto-registered so agents can
         # manage recurring runs at runtime without the spec opting in.
         self._register_scheduled_task_tools()
-        self._register_objective_tools()
-        self._register_suggestion_tools()
-        self._register_daily_note_tools()
-        self._register_taught_skill_tools()
-        self._register_vault_tools()
-        self._register_card_tools()
+        self._register_feature_tools()
         # Embedded-browser tools are always auto-registered so any agent
         # can drive the desktop app's browser without the spec opting in
         # (framework-owned).
@@ -295,82 +276,13 @@ class ToolManager:
         ):
             self._tools[tool.name()] = tool
 
-    def _register_objective_tools(self) -> None:
-        """
-        Auto-register the ``objective_*`` family for superside-chat sessions.
+    def _register_feature_tools(self) -> None:
+        """Register every Super Chat feature's label-gated tools (``omnigent.superchat``)."""
+        from omnigent.superchat.feature import ToolManagerCtx
+        from omnigent.superchat.features import feature_tools
 
-        A top-level session gets all five; a Helper (marked by
-        ``SUBAGENT_LABEL_KEY``) gets only read, task progress and propose, and the
-        runner confines it to its own parent's objectives.
-        """
-        if not is_superside_chat(self._labels):
-            return
-        tools: list[Tool] = [
-            ObjectiveGetTool(),
-            ObjectiveUpdateTaskTool(),
-            ObjectiveProposeTool(),
-        ]
-        if SUBAGENT_LABEL_KEY not in self._labels:
-            tools += [ObjectiveCreateTool(), ObjectiveListTool()]
-        for tool in tools:
-            self._tools[tool.name()] = tool
-
-    def _register_taught_skill_tools(self) -> None:
-        """
-        Auto-register the taught-skill tools for superside-chat sessions.
-
-        A top-level session lists and runs saved skills; a Helper (marked by
-        ``SUBAGENT_LABEL_KEY``) only gets ``skill_draft_save``, and the runner confines it to
-        its own parent's skills.
-        """
-        if not is_superside_chat(self._labels):
-            return
-        if SUBAGENT_LABEL_KEY in self._labels:
-            tools: list[Tool] = [SkillDraftSaveTool()]
-        else:
-            tools = [SkillListTool(), SkillRunTool()]
-        for tool in tools:
-            self._tools[tool.name()] = tool
-
-    def _register_vault_tools(self) -> None:
-        """
-        Auto-register the vault tools for superside-chat sessions.
-
-        A top-level session may ask for a secret and fill from the vault; a Helper (marked by
-        ``SUBAGENT_LABEL_KEY``) may only fill, since it cannot talk to the person.
-        """
-        if not is_superside_chat(self._labels):
-            return
-        from omnigent.tools.builtins.vault import VaultFillTool, VaultRequestSecretTool
-
-        tools: list[Tool] = [VaultFillTool()]
-        if SUBAGENT_LABEL_KEY not in self._labels:
-            tools.insert(0, VaultRequestSecretTool())
-        for tool in tools:
-            self._tools[tool.name()] = tool
-
-    def _register_suggestion_tools(self) -> None:
-        """
-        Auto-register ``suggestion_create`` / ``suggestion_list`` for superside-chat sessions.
-
-        Offered to the top-level session and to Helpers alike: a Helper records
-        Ideas under its parent chat (the runner resolves the parent).
-        """
-        if not is_superside_chat(self._labels):
-            return
-        from omnigent.tools.builtins.suggestions import SuggestionCreateTool, SuggestionListTool
-
-        for tool in (SuggestionCreateTool(), SuggestionListTool()):
-            self._tools[tool.name()] = tool
-
-    def _register_daily_note_tools(self) -> None:
-        """Auto-register ``daily_note_get`` / ``daily_note_update`` for a Super Chat's Helpers."""
-        if not is_superside_chat(self._labels) or SUBAGENT_LABEL_KEY not in self._labels:
-            return
-        from omnigent.tools.builtins.daily_notes import DailyNoteGetTool, DailyNoteUpdateTool
-
-        for tool in (DailyNoteGetTool(), DailyNoteUpdateTool()):
-            self._tools[tool.name()] = tool
+        for tool in feature_tools(self._labels, ToolManagerCtx(spec=self._spec)):
+            self._tools.setdefault(tool.name(), tool)
 
     def _register_card_tools(self) -> None:
         """Auto-register ``render_card`` for the Super Chat itself (never a Helper)."""
@@ -731,30 +643,6 @@ class ToolManager:
         """
         if uses_omnigent_context(self._labels):
             self._tools[SessionHistoryTool.name()] = SessionHistoryTool()
-
-    def _register_memory_tools(self) -> None:
-        """
-        Auto-register the ``memory_*`` family for a rollover/superside-chat session.
-
-        Same gate as :meth:`_register_session_history_tool`: every session in
-        either Omnigent-owned context mode gets long-term memory regardless
-        of which agent spec is bound to it. The tools themselves fail with a
-        clear error at invocation if no
-        :class:`~omnigent.memory.service.MemoryService` is configured (see
-        ``omnigent.tools.builtins.memory``), so registering them
-        unconditionally is safe even when the ``memory`` extra isn't
-        installed.
-        """
-        if not uses_omnigent_context(self._labels):
-            return
-        for tool in (
-            MemoryRememberTool(),
-            MemorySearchTool(),
-            MemoryGetTool(),
-            MemoryExplainTool(),
-            MemoryForgetTool(),
-        ):
-            self._tools[tool.name()] = tool
 
     def _register_side_chat_tools(self) -> None:
         """

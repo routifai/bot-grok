@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from omnigent.stores.taught_skill_store import SqlAlchemyTaughtSkillStore
+from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
 
 DOC = {"name": "Search", "steps": [{"intent": "Search"}]}
 

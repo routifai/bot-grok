@@ -24,8 +24,8 @@ from datetime import datetime
 from typing import Any
 
 from omnigent.entities.scheduled_task import OwnerPreferences
-from omnigent.stores.daily_note_store import SqlAlchemyDailyNoteStore
-from omnigent.superchat.daily_notes import local_date, local_zone, render_note
+from omnigent.superchat.daily_notes.notes import local_date, local_zone, render_note
+from omnigent.superchat.daily_notes.store import SqlAlchemyDailyNoteStore
 
 _logger = logging.getLogger(__name__)
 

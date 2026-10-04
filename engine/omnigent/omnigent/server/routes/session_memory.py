@@ -6,7 +6,7 @@ All endpoints live under ``/v1/sessions/{session_id}/memory``: reads require
 owner (``conversation_store.get_session_owner``), never a value from the
 request body or query string — the same rule the ``memory_*`` built-in tools
 apply when called in-process
-(``omnigent.tools.builtins.memory.resolve_memory_user``), so native-relay
+(``omnigent.superchat.memory_tools.tools.resolve_memory_user``), so native-relay
 dispatch (which reaches this API over REST) and in-process dispatch agree on
 whose memory is being read or written. The caller must also BE that owner:
 a session shared with another collaborator never exposes the owner's Memory
@@ -66,7 +66,7 @@ def create_session_memory_router(
         never read or write someone else's claims through it. A session with
         no owner grant (no permission store configured — a single-user
         server) falls back to the reserved single-user identity, same as
-        ``omnigent.tools.builtins.memory.resolve_memory_user``, and skips the
+        ``omnigent.superchat.memory_tools.tools.resolve_memory_user``, and skips the
         owner-identity check (there is only one user).
         """
         user_id = get_user_id(request, auth_provider)

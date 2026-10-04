@@ -1,4 +1,4 @@
-import type { Artifact } from "@aiden/contracts";
+import type { Artifact, ArtifactVersion } from "@aiden/contracts";
 import { t } from "@lingui/core/macro";
 import { useEffect, useState } from "react";
 import { decodeArtifactBase64 } from "../../../lib/artifact-open";
@@ -9,23 +9,49 @@ type ContentState =
   | { status: "ready"; artifact: Artifact; bytes: Uint8Array }
   | { status: "error"; message: string };
 
+type Loaded = ContentState & {
+  /** Every version of the deliverable, newest first. */
+  versions: ArtifactVersion[];
+  /** The version currently shown (its artifact id). */
+  versionId: string | null;
+  selectVersion: (versionId: string) => void;
+};
+
 /**
- * Loads one artifact's latest version and content, the same way `Artifacts.tsx`'s
- * `PreviewPane` does, minus the version switcher the Library dialog doesn't need.
+ * Loads one artifact's versions and the content of the chosen one (the latest until the person
+ * picks another from the dialog's version menu).
  */
-export function useArtifactContent(artifactId: string | null): ContentState {
+export function useArtifactContent(artifactId: string | null): Loaded {
   const [state, setState] = useState<ContentState>({ status: "loading" });
+  const [versions, setVersions] = useState<ArtifactVersion[]>([]);
+  const [picked, setPicked] = useState<string | null>(null);
 
   useEffect(() => {
     if (!artifactId) return;
     let cancelled = false;
     setState({ status: "loading" });
-
+    setPicked(null);
     void rpc.artifacts
       .listVersions({ familyId: artifactId })
-      .then((versions) => versions[0]?.id ?? artifactId)
-      .catch(() => artifactId)
-      .then((versionId) => rpc.artifacts.getById({ artifactId: versionId }))
+      .then((list) => {
+        if (!cancelled) setVersions(list);
+        return list;
+      })
+      .catch(() => [] as ArtifactVersion[])
+      .then((list) => {
+        if (!cancelled) setPicked(list[0]?.id ?? artifactId);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [artifactId]);
+
+  useEffect(() => {
+    if (!picked) return;
+    let cancelled = false;
+    setState({ status: "loading" });
+    void rpc.artifacts
+      .getById({ artifactId: picked })
       .then((artifact) => {
         if (cancelled) return;
         setState({
@@ -41,11 +67,10 @@ export function useArtifactContent(artifactId: string | null): ContentState {
           message: error instanceof Error ? error.message : t`Could not load this.`,
         });
       });
-
     return () => {
       cancelled = true;
     };
-  }, [artifactId]);
+  }, [picked]);
 
-  return state;
+  return { ...state, versions, versionId: picked, selectVersion: setPicked };
 }

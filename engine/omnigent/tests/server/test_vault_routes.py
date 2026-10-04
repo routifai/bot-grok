@@ -19,9 +19,11 @@ from fastapi.testclient import TestClient
 from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
-from omnigent.runner import tool_dispatch
-from omnigent.server.routes.vault import create_vault_router
-from omnigent.stores.vault_store import VAULT_KEY_ENV, VaultStore
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.vault.handlers import handle_vault_tool
+from omnigent.superchat.vault.routes import create_vault_router
+from omnigent.superchat.vault.store import VAULT_KEY_ENV, VaultStore
+from omnigent.tools import browser_backend
 from omnigent.tools.browser_backend import LocalBrowserBackend
 
 PASSWORD = "hunter2-Zq9!"
@@ -154,13 +156,11 @@ def _fill(client: TestClient, monkeypatch: pytest.MonkeyPatch, page_reply: dict[
         return json.dumps(page_reply).encode(), b""
 
     monkeypatch.setattr(backend, "_run", fake_run)
-    monkeypatch.setattr(tool_dispatch, "get_local_browser_backend", lambda: backend)
+    monkeypatch.setattr(browser_backend, "get_local_browser_backend", lambda: backend)
     out = asyncio.run(
-        tool_dispatch._execute_vault_tool(
-            "vault_fill",
+        handle_vault_tool(
+            HandlerCtx("vault_fill", _Client(client), SESSION),  # type: ignore[arg-type]
             {"name": "acme", "field": "password", "ref": 0},
-            server_client=_Client(client),  # type: ignore[arg-type]
-            conversation_id=SESSION,
         )
     )
     return out, argvs, stdins
@@ -195,11 +195,9 @@ def test_fill_needs_local_browser_and_helper_cannot_request(
     monkeypatch.delenv("OMNIGENT_BROWSER_BACKEND", raising=False)
     sc = _Client(client)
     out = asyncio.run(
-        tool_dispatch._execute_vault_tool(
-            "vault_fill",
+        handle_vault_tool(
+            HandlerCtx("vault_fill", sc, SESSION),  # type: ignore[arg-type]
             {"name": "acme", "field": "password", "ref": 0},
-            server_client=sc,
-            conversation_id=SESSION,  # type: ignore[arg-type]
         )
     )
     assert "Computer's browser" in out and sc.posts == []
@@ -209,11 +207,9 @@ def test_fill_needs_local_browser_and_helper_cannot_request(
 
     sc.get = helper_get  # type: ignore[method-assign]
     out = asyncio.run(
-        tool_dispatch._execute_vault_tool(
-            "vault_request_secret",
+        handle_vault_tool(
+            HandlerCtx("vault_request_secret", sc, SESSION),  # type: ignore[arg-type]
             {"name": "a", "site": "https://a.test"},
-            server_client=sc,
-            conversation_id=SESSION,  # type: ignore[arg-type]
         )
     )
     assert "not available to sub-agent" in out
@@ -257,7 +253,7 @@ def test_request_is_single_use_and_expires(
     assert client.post("/v1/me/vault", json=_body(request_id=used["id"])).status_code == 400
     old = open_request()
     mismatch = open_request()
-    from omnigent.stores import vault_store
+    from omnigent.superchat.vault import store as vault_store
 
     real = vault_store.now_epoch
     monkeypatch.setattr(vault_store, "now_epoch", lambda: real() + 16 * 60)

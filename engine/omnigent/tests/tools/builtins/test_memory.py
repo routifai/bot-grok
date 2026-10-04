@@ -23,9 +23,7 @@ from pathlib import Path
 from omnigent.memory.index import MemoryIndex
 from omnigent.memory.service import MemoryService
 from omnigent.stores.memory_store.sqlalchemy_store import SqlAlchemyMemoryStore
-from omnigent.tools.base import ToolContext
-from omnigent.tools.builtins import get_builtin_tool
-from omnigent.tools.builtins.memory import (
+from omnigent.superchat.memory_tools.tools import (
     MemoryExplainTool,
     MemoryForgetTool,
     MemoryGetTool,
@@ -33,6 +31,8 @@ from omnigent.tools.builtins.memory import (
     MemorySearchTool,
     resolve_memory_user,
 )
+from omnigent.tools.base import ToolContext
+from omnigent.tools.builtins import get_builtin_tool
 from tests.memory._fixtures import FAKE_VECTORS_OVERRIDE
 
 

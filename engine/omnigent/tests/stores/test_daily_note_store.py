@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from omnigent.entities.daily_note import merge_writer
-from omnigent.stores.daily_note_store import SqlAlchemyDailyNoteStore
+from omnigent.superchat.daily_notes.store import SqlAlchemyDailyNoteStore
 
 
 @pytest.fixture()

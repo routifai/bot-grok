@@ -969,6 +969,14 @@ export function ArtifactPreview({ artifact, bytes }: { artifact: Artifact; bytes
       </div>
     );
   }
+  if (["text/plain", "text/csv", "application/json"].includes(artifact.mimeType)) {
+    const text = new TextDecoder("utf-8").decode(bytes);
+    return (
+      <pre className="h-full overflow-auto whitespace-pre-wrap break-words bg-background p-6 font-mono text-[13px] leading-6 text-foreground">
+        {text}
+      </pre>
+    );
+  }
   if (artifact.mimeType === "application/pdf") {
     return <PdfViewer bytes={bytes} title={artifact.name} />;
   }

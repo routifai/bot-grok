@@ -39,6 +39,7 @@ tools:
     - "daily_note_*"
     - sys_scheduled_task_list
     - objective_get
+    - artifact_save
 
 prompt: |
   You are the analyst Sub-agent for Nova's Super Chat. You are dispatched with a Brief: the

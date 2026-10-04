@@ -65,6 +65,7 @@ run-omnigents.sh
 *.db-shm
 # Persisted artifacts from ad-hoc runs.
 artifacts/
+!omnigent/superchat/artifacts/
 .tmp-codex-parity-target/
 
 # omnidev (dev pod supervisor) Rust build output. Pod state lives outside the

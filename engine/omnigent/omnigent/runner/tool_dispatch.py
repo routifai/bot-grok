@@ -33,7 +33,7 @@ import weakref
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from omnigent.context.labels import (
     SUBAGENT_LABEL_KEY,
@@ -42,7 +42,10 @@ from omnigent.context.labels import (
     is_superside_chat,
     uses_omnigent_context,
 )
+from omnigent.superchat._handler_http import session_kind_and_parent as _session_kind_and_parent
 from omnigent.superchat.chats import refuse_side_chat_open
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.features import FEATURE_HANDLERS
 from omnigent.superchat.subagents import (
     count_live_children,
     prepend_memory_profile,
@@ -95,10 +98,8 @@ from omnigent.tools.builtins.async_inbox import (
     SysReadInboxTool,
 )
 from omnigent.tools.builtins.browser import BROWSER_TOOL_NAMES
-from omnigent.tools.builtins.daily_notes import DAILY_NOTE_TOOL_NAMES
 from omnigent.tools.builtins.download_file import DownloadFileTool
 from omnigent.tools.builtins.list_comments import ListCommentsTool
-from omnigent.tools.builtins.objectives import OBJECTIVE_HELPER_TOOL_NAMES, OBJECTIVE_TOOL_NAMES
 from omnigent.tools.builtins.os_env import (
     OS_ENV_TOOL_TYPES,
     SysOsEditTool,
@@ -106,7 +107,6 @@ from omnigent.tools.builtins.os_env import (
     SysOsShellTool,
     SysOsWriteTool,
 )
-from omnigent.tools.builtins.render_card import CARD_TOOL_NAME, build_card
 from omnigent.tools.builtins.session_history import SessionHistoryTool, status_from_labels
 from omnigent.tools.builtins.session_rename import SysSessionRenameTool
 from omnigent.tools.builtins.side_chat import SideChatOpenTool
@@ -124,7 +124,6 @@ from omnigent.tools.builtins.spawn import (
     _clamp_history_offset_chars,
     _clamp_tail_items,
 )
-from omnigent.tools.builtins.suggestions import SUGGESTION_TOOL_NAMES
 from omnigent.tools.builtins.sys_terminal import (
     SysTerminalCloseTool,
     SysTerminalLaunchTool,
@@ -132,10 +131,6 @@ from omnigent.tools.builtins.sys_terminal import (
     SysTerminalReadTool,
     SysTerminalSendTool,
 )
-from omnigent.tools.builtins.taught_skills import (
-    SKILL_HELPER_TOOL_NAMES as TAUGHT_SKILL_HELPER_TOOL_NAMES,
-)
-from omnigent.tools.builtins.taught_skills import SKILL_TOOL_NAMES as TAUGHT_SKILL_TOOL_NAMES
 from omnigent.tools.builtins.timer import (
     # Shared with the in-process sys_timer_set tool so the runner's firing
     # loop validates the same argument shape and delay ceiling the LLM-facing
@@ -144,7 +139,6 @@ from omnigent.tools.builtins.timer import (
 )
 from omnigent.tools.builtins.update_comment import UpdateCommentTool
 from omnigent.tools.builtins.upload_file import UploadFileTool, safe_resolve
-from omnigent.tools.builtins.vault import VAULT_HELPER_TOOL_NAMES, VAULT_TOOL_NAMES
 from omnigent.util.session_lifecycle import (
     CLOSED_LABEL_KEY,
     CLOSED_LABEL_VALUE,
@@ -372,13 +366,6 @@ _SESSION_SELF_WRITE_TOOLS = frozenset({SysSessionRenameTool.name()})
 # posture as _SESSION_QUERY_TOOLS), so it dispatches over server_client.
 _SESSION_HISTORY_TOOLS = frozenset({SessionHistoryTool.name()})
 
-# Long-term memory (rollover/MEMORY-PLAN.md Phase 1). Same REST posture as
-# _SESSION_HISTORY_TOOLS: the runner has no in-process MemoryService, so it
-# dispatches to the Omnigent server's /v1/sessions/{id}/memory/* endpoints.
-_MEMORY_TOOLS = frozenset(
-    {"memory_remember", "memory_search", "memory_get", "memory_explain", "memory_forget"}
-)
-
 # superside-chat (rollover/SUPERSIDE-CHAT-PLAN.md S4): ``side_chat_open``
 # forks or creates a new session and binds it to the Super Chat's own
 # host/runner — needs server_client, not an in-process ConversationStore.
@@ -494,23 +481,8 @@ _SCHEDULED_TASK_TOOLS = frozenset(
     }
 )
 
-# Objectives: the runner proxies the server's /v1/objectives REST endpoints.
-_OBJECTIVE_TOOLS = frozenset(OBJECTIVE_TOOL_NAMES)
-
-# Suggestions (Ideas): the runner proxies the server's /v1/suggestions REST endpoints.
-_SUGGESTION_TOOLS = frozenset(SUGGESTION_TOOL_NAMES)
-
-# Daily notes: the runner proxies the server's daily-note REST endpoints.
-_DAILY_NOTE_TOOLS = frozenset(DAILY_NOTE_TOOL_NAMES)
-
-# Taught skills: the runner proxies the server's /v1/taught-skills REST endpoints.
-_TAUGHT_SKILL_TOOLS = frozenset(TAUGHT_SKILL_TOOL_NAMES)
-
-# Secrets vault: the runner proxies /v1/me/vault; fills go straight to the Computer's browser.
-_VAULT_TOOLS = frozenset(VAULT_TOOL_NAMES)
-
-# Reply cards: validated and returned in-process, no server round-trip.
-_CARD_TOOLS = frozenset({CARD_TOOL_NAME})
+# Super Chat features (omnigent/superchat/<name>/): handlers are registered via FEATURES.
+FEATURE_TOOL_NAMES = frozenset(FEATURE_HANDLERS)
 
 # Priority 5m: Embedded-browser tools.
 # Runner dispatch POSTs a blocking action request to the server, which parks a
@@ -563,12 +535,7 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _AGENT_TOOLS
     | _POLICY_TOOLS
     | _SCHEDULED_TASK_TOOLS
-    | _OBJECTIVE_TOOLS
-    | _SUGGESTION_TOOLS
-    | _DAILY_NOTE_TOOLS
-    | _TAUGHT_SKILL_TOOLS
-    | _VAULT_TOOLS
-    | _CARD_TOOLS
+    | FEATURE_TOOL_NAMES
     | _TERMINAL_TOOLS
     # ``browser_*`` must ride the native relay: the Omnigent desktop app
     # runs native (claude/codex/pi) sessions, which ignore ``request.tools``
@@ -589,9 +556,6 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     # rides the relay only when that gate passes, same as the spec-gated
     # tools above.
     | _SESSION_HISTORY_TOOLS
-    # memory_*: same rollover-only gate as session_history
-    # (ToolManager._register_memory_tools).
-    | _MEMORY_TOOLS
 )
 
 
@@ -709,7 +673,7 @@ def build_native_relay_tool_schemas(
         # here — session_history's and the memory_* tools' schemas are
         # spec-independent (static).
         if is_rollover(labels):
-            from omnigent.tools.builtins.memory import (
+            from omnigent.superchat.memory_tools.tools import (
                 MemoryExplainTool,
                 MemoryForgetTool,
                 MemoryGetTool,
@@ -999,7 +963,6 @@ _ALL_LOCAL_TOOLS = (
     | _SESSION_QUERY_TOOLS
     | _SESSION_SELF_WRITE_TOOLS
     | _SESSION_HISTORY_TOOLS
-    | _MEMORY_TOOLS
     | _WEB_FETCH_TOOLS
     | _WEB_SEARCH_TOOLS
     | _NIMBLE_RESEARCH_TOOLS
@@ -1012,12 +975,7 @@ _ALL_LOCAL_TOOLS = (
     | _AGENT_TOOLS
     | _POLICY_TOOLS
     | _SCHEDULED_TASK_TOOLS
-    | _OBJECTIVE_TOOLS
-    | _SUGGESTION_TOOLS
-    | _DAILY_NOTE_TOOLS
-    | _TAUGHT_SKILL_TOOLS
-    | _VAULT_TOOLS
-    | _CARD_TOOLS
+    | FEATURE_TOOL_NAMES
     | _SIDE_CHAT_TOOLS
 )
 _PLACEHOLDER_CWDS = (None, "", ".", "./")
@@ -2604,43 +2562,6 @@ def _subagent_launching_message(agent: str, title: object, task_id: str) -> str:
         "into this session; that notice comes from the runtime, not from a "
         "person.]"
     )
-
-
-async def _session_kind_and_parent(
-    session_id: str,
-    server_client: httpx.AsyncClient,
-) -> tuple[str, str | None] | None:
-    """
-    ``(kind, parent_session_id)`` lookup for one session, or ``None`` on
-    any lookup failure.
-
-    Used by the superside-chat nesting-cap check, which must fail CLOSED
-    on ``None`` (refuse, retryable) — a caller whose ``kind`` can't be
-    verified must never be treated as "not a sub-agent" just because the
-    lookup came back empty; that would let a transient server hiccup
-    silently bypass the nesting cap.
-
-    :param session_id: The session to inspect.
-    :param server_client: HTTP client pointed at the Omnigent server.
-    :returns: ``(kind, parent_session_id)`` (``parent_session_id`` may be
-        ``None`` — the session genuinely has none), or ``None`` on a
-        network error, non-200, an unparseable body, or a response missing
-        a string ``kind`` field.
-    """
-    try:
-        resp = await server_client.get(f"/v1/sessions/{session_id}", timeout=10.0)
-    except httpx.HTTPError:
-        return None
-    if resp.status_code != 200:
-        return None
-    data = _string_object_dict(resp.json())
-    if data is None:
-        return None
-    kind = data.get("kind")
-    if not isinstance(kind, str):
-        return None
-    parent = data.get("parent_session_id")
-    return kind, parent if isinstance(parent, str) else None
 
 
 async def _subagent_nesting_refusal(
@@ -5245,449 +5166,6 @@ async def _execute_scheduled_task_tool(
     return json.dumps(resp.json())
 
 
-_OBJECTIVE_ID_RE = _SCHEDULED_TASK_ID_RE
-
-
-def _objective_plan(raw: object) -> list[dict[str, str]] | None:
-    """Normalize a tool plan (title strings or ``{id?, title}``) for the REST body."""
-    if not isinstance(raw, list):
-        return None
-    plan: list[dict[str, str]] = []
-    for item in raw:
-        if isinstance(item, str) and item.strip():
-            plan.append({"title": item.strip()})
-        elif isinstance(item, dict) and isinstance(item.get("title"), str):
-            entry = {"title": item["title"]}
-            if isinstance(item.get("id"), str) and item["id"]:
-                entry["id"] = item["id"]
-            plan.append(entry)
-        else:
-            return None
-    return plan
-
-
-_TITLE_TOKEN_RE = re.compile(r"[a-z0-9]+")
-_TITLE_STOPWORDS = frozenset({"a", "an", "the", "of", "for", "to", "and", "our", "my"})
-
-
-def _title_tokens(title: str) -> frozenset[str]:
-    """Lowercased word set of a goal title, minus filler words."""
-    return frozenset(
-        t for t in _TITLE_TOKEN_RE.findall(title.lower()) if t not in _TITLE_STOPWORDS
-    )
-
-
-def _titles_match(a: str, b: str) -> bool:
-    """True when two goal titles are clearly the same goal."""
-    ta, tb = _title_tokens(a), _title_tokens(b)
-    if not ta or not tb:
-        return False
-    if ta <= tb or tb <= ta:
-        return True
-    return len(ta & tb) / len(ta | tb) >= 0.6
-
-
-async def _find_duplicate_objective(
-    server_client: httpx.AsyncClient, conversation_id: str, title: str
-) -> dict[str, object] | None:
-    """Return the owner's active objective in this Conversation that matches *title*."""
-    resp = await server_client.get(
-        f"/v1/objectives?parent_session_id={conversation_id}", timeout=30.0
-    )
-    if resp.status_code >= 400:
-        return None
-    body = resp.json()
-    items = body.get("objectives") if isinstance(body, dict) else None
-    for obj in items if isinstance(items, list) else []:
-        if (
-            isinstance(obj, dict)
-            and obj.get("status") == "active"
-            and isinstance(obj.get("title"), str)
-            and _titles_match(title, obj["title"])
-        ):
-            return obj
-    return None
-
-
-async def _execute_objective_tool(
-    tool_name: str,
-    arguments: str,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None = None,
-) -> str:
-    """
-    Runner-local handler for the ``objective_*`` family.
-
-    Proxies the server's ``/v1/objectives`` endpoints. A Helper (sub-agent
-    session) may only read, record task progress and propose, and only on an
-    objective that belongs to its own parent session; ownership is enforced
-    server-side.
-
-    :param tool_name: One of :data:`OBJECTIVE_TOOL_NAMES`.
-    :param arguments: JSON-encoded arguments string from the LLM.
-    :param server_client: HTTP client pointed at the Omnigent server.
-    :param conversation_id: The calling session.
-    :returns: Tool output JSON string.
-    """
-    if server_client is None or not conversation_id:
-        return json.dumps({"error": f"{tool_name} requires server access"})
-    try:
-        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
-    except json.JSONDecodeError:
-        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
-
-    lookup = await _session_kind_and_parent(conversation_id, server_client)
-    if lookup is None:
-        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
-    is_helper = lookup[0] == "sub_agent"
-    if is_helper and tool_name not in OBJECTIVE_HELPER_TOOL_NAMES:
-        return json.dumps({"error": f"{tool_name} is not available to sub-agent sessions"})
-
-    objective_id = args.get("objective_id")
-    if tool_name not in ("objective_create", "objective_list"):
-        if not isinstance(objective_id, str) or not _OBJECTIVE_ID_RE.fullmatch(objective_id):
-            return json.dumps({"error": f"{tool_name} requires a 32-character hex objective_id"})
-        objective_id = objective_id.lower()
-    base = f"/v1/objectives/{objective_id}"
-
-    try:
-        if is_helper and tool_name != "objective_list":
-            owner_check = await server_client.get(base, timeout=30.0)
-            if owner_check.status_code >= 400:
-                return json.dumps({"error": f"server returned {owner_check.status_code}"})
-            if owner_check.json().get("parent_session_id") != lookup[1]:
-                return json.dumps({"error": f"{tool_name}: not this helper's objective"})
-        if tool_name == "objective_create":
-            plan = _objective_plan(args.get("plan"))
-            if plan is None or not isinstance(args.get("title"), str):
-                return json.dumps({"error": "objective_create requires title and a plan list"})
-            existing = await _find_duplicate_objective(
-                server_client, conversation_id, args["title"]
-            )
-            if existing is not None:
-                return json.dumps(
-                    {
-                        **existing,
-                        "note": "already exists — update it or propose a plan change",
-                        "already_exists": True,
-                    }
-                )
-            payload: dict[str, object] = {
-                "parent_session_id": conversation_id,
-                "title": args["title"],
-                "plan": plan,
-            }
-            for src, dst in (("description", "description"), ("due", "due"), ("cadence", "rrule")):
-                if isinstance(args.get(src), str):
-                    payload[dst] = args[src]
-            resp = await server_client.post("/v1/objectives", json=payload, timeout=30.0)
-        elif tool_name == "objective_list":
-            resp = await server_client.get(
-                f"/v1/objectives?parent_session_id={conversation_id}", timeout=30.0
-            )
-        elif tool_name == "objective_get":
-            resp = await server_client.get(base, timeout=30.0)
-        elif tool_name == "objective_update_task":
-            task_id = args.get("task_id")
-            if not isinstance(task_id, str) or not _OBJECTIVE_ID_RE.fullmatch(task_id):
-                return json.dumps({"error": "objective_update_task requires a hex task_id"})
-            body = {k: args[k] for k in ("status", "note") if k in args}
-            resp = await server_client.patch(
-                f"{base}/tasks/{task_id.lower()}", json=body, timeout=30.0
-            )
-        else:  # objective_propose
-            plan = _objective_plan(args.get("plan"))
-            if plan is None or not isinstance(args.get("reason"), str):
-                return json.dumps({"error": "objective_propose requires reason and a plan list"})
-            resp = await server_client.post(
-                f"{base}/proposals", json={"reason": args["reason"], "plan": plan}, timeout=30.0
-            )
-    except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": f"{tool_name} failed: {exc}"})
-
-    if resp.status_code >= 400:
-        return json.dumps(
-            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
-        )
-    return json.dumps(resp.json())
-
-
-async def _execute_suggestion_tool(
-    tool_name: str,
-    arguments: str,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None = None,
-) -> str:
-    """
-    Runner-local handler for ``suggestion_create`` / ``suggestion_list``.
-
-    Proxies the server's ``/v1/suggestions`` endpoints. The Idea belongs to the
-    top-level chat: a Helper (sub-agent session) records it under its own
-    parent, with itself as the source run.
-
-    :param tool_name: One of :data:`SUGGESTION_TOOL_NAMES`.
-    :param arguments: JSON-encoded arguments string from the LLM.
-    :param server_client: HTTP client pointed at the Omnigent server.
-    :param conversation_id: The calling session.
-    :returns: Tool output JSON string.
-    """
-    if server_client is None or not conversation_id:
-        return json.dumps({"error": f"{tool_name} requires server access"})
-    try:
-        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
-    except json.JSONDecodeError:
-        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
-
-    lookup = await _session_kind_and_parent(conversation_id, server_client)
-    if lookup is None:
-        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
-    is_helper = lookup[0] == "sub_agent"
-    chat_id = lookup[1] if is_helper else conversation_id
-    if not chat_id:
-        return json.dumps({"error": f"{tool_name}: no chat to attach to"})
-
-    try:
-        if tool_name == "suggestion_list":
-            resp = await server_client.get(
-                f"/v1/suggestions?parent_session_id={chat_id}&status=open", timeout=30.0
-            )
-        else:
-            fields = {k: args.get(k) for k in ("title", "why", "message")}
-            if not all(isinstance(v, str) and v.strip() for v in fields.values()):
-                return json.dumps({"error": "suggestion_create requires title, why and message"})
-            payload: dict[str, object] = {"parent_session_id": chat_id, **fields}
-            if is_helper:
-                payload["source_session_id"] = conversation_id
-            resp = await server_client.post("/v1/suggestions", json=payload, timeout=30.0)
-    except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": f"{tool_name} failed: {exc}"})
-
-    if resp.status_code >= 400:
-        return json.dumps(
-            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
-        )
-    return json.dumps(resp.json())
-
-
-async def _execute_daily_note_tool(
-    tool_name: str,
-    arguments: str,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None = None,
-) -> str:
-    """
-    Runner-local handler for ``daily_note_get`` / ``daily_note_update``.
-
-    Proxies the server's daily-note endpoints. A Helper writes under its parent chat.
-
-    :param tool_name: One of :data:`DAILY_NOTE_TOOL_NAMES`.
-    :param arguments: JSON-encoded arguments string from the LLM.
-    :param server_client: HTTP client pointed at the Omnigent server.
-    :param conversation_id: The calling session.
-    :returns: Tool output JSON string.
-    """
-    if server_client is None or not conversation_id:
-        return json.dumps({"error": f"{tool_name} requires server access"})
-    try:
-        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
-    except json.JSONDecodeError:
-        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
-    lookup = await _session_kind_and_parent(conversation_id, server_client)
-    if lookup is None:
-        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
-    chat_id = lookup[1] if lookup[0] == "sub_agent" else conversation_id
-    if not chat_id:
-        return json.dumps({"error": f"{tool_name}: no chat to attach to"})
-    try:
-        if tool_name == "daily_note_get":
-            resp = await server_client.get("/v1/me/daily-notes/today", timeout=30.0)
-        else:
-            sections = {k: v for k, v in args.items() if isinstance(v, str) and k != "date"}
-            payload: dict[str, Any] = {"parent_session_id": chat_id, "sections": sections}
-            if isinstance(args.get("date"), str):
-                payload["date"] = args["date"]
-            resp = await server_client.post("/v1/daily-notes/write", json=payload, timeout=30.0)
-    except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": f"{tool_name} failed: {exc}"})
-    if resp.status_code >= 400:
-        return json.dumps(
-            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
-        )
-    return json.dumps(resp.json())
-
-
-async def _execute_taught_skill_tool(
-    tool_name: str,
-    arguments: str,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None = None,
-) -> str:
-    """
-    Runner-local handler for the taught-skill tools.
-
-    Proxies the server's ``/v1/taught-skills`` endpoints. The top-level session lists and runs
-    its saved skills; a Helper may only save a draft, and only for a skill that belongs to its
-    own parent session.
-
-    :param tool_name: One of :data:`TAUGHT_SKILL_TOOL_NAMES`.
-    :param arguments: JSON-encoded arguments string from the LLM.
-    :param server_client: HTTP client pointed at the Omnigent server.
-    :param conversation_id: The calling session.
-    :returns: Tool output JSON string.
-    """
-    if server_client is None or not conversation_id:
-        return json.dumps({"error": f"{tool_name} requires server access"})
-    try:
-        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
-    except json.JSONDecodeError:
-        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
-    lookup = await _session_kind_and_parent(conversation_id, server_client)
-    if lookup is None:
-        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
-    is_helper = lookup[0] == "sub_agent"
-    if is_helper and tool_name not in TAUGHT_SKILL_HELPER_TOOL_NAMES:
-        return json.dumps({"error": f"{tool_name} is not available to sub-agent sessions"})
-    if not is_helper and tool_name in TAUGHT_SKILL_HELPER_TOOL_NAMES:
-        return json.dumps({"error": f"{tool_name} is only for the Helper that drafts a skill"})
-    try:
-        if tool_name == "skill_draft_save":
-            skill_id = args.get("skill_id")
-            if not isinstance(skill_id, str) or not _OBJECTIVE_ID_RE.fullmatch(skill_id):
-                return json.dumps({"error": "skill_draft_save requires the 32-character skill_id"})
-            base = f"/v1/taught-skills/{skill_id.lower()}"
-            owner_check = await server_client.get(base, timeout=30.0)
-            if owner_check.status_code >= 400:
-                return json.dumps({"error": f"server returned {owner_check.status_code}"})
-            if owner_check.json().get("parent_session_id") != lookup[1]:
-                return json.dumps({"error": "skill_draft_save: not this helper's skill"})
-            doc = {k: v for k, v in args.items() if k != "skill_id"}
-            resp = await server_client.put(f"{base}/doc", json={"doc": doc}, timeout=30.0)
-        elif tool_name == "skill_list":
-            resp = await server_client.get(
-                f"/v1/taught-skills?parent_session_id={conversation_id}&status=saved",
-                timeout=30.0,
-            )
-        else:  # skill_run
-            ref = args.get("skill")
-            inputs = args.get("inputs") if isinstance(args.get("inputs"), dict) else {}
-            if not isinstance(ref, str) or not ref.strip():
-                return json.dumps({"error": "skill_run requires a skill id or name"})
-            skill_id = ref.strip().lower()
-            if not _OBJECTIVE_ID_RE.fullmatch(skill_id):
-                listing = await server_client.get(
-                    f"/v1/taught-skills?parent_session_id={conversation_id}&status=saved",
-                    timeout=30.0,
-                )
-                found = [
-                    s
-                    for s in listing.json().get("skills", [])
-                    if str(s.get("name", "")).lower() == ref.strip().lower()
-                ]
-                if listing.status_code >= 400 or not found:
-                    return json.dumps({"error": f"no saved skill named {ref.strip()!r}"})
-                skill_id = found[0]["id"]
-            resp = await server_client.post(
-                f"/v1/taught-skills/{skill_id}/render",
-                json={"inputs": inputs, "parent_session_id": conversation_id},
-                timeout=30.0,
-            )
-    except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": f"{tool_name} failed: {exc}"})
-    if resp.status_code >= 400:
-        return json.dumps(
-            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
-        )
-    return json.dumps(resp.json())
-
-
-async def _execute_vault_tool(
-    tool_name: str,
-    args: _JsonObject,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None = None,
-) -> str:
-    """
-    Runner-local handler for the vault tools.
-
-    ``vault_request_secret`` opens a secure-entry request (the value is entered on a Nova form,
-    never here). ``vault_fill`` fetches the value with the runner's session auth and types it
-    into the Computer's browser; the value stays in local variables, is never logged, and the
-    result only says it was filled.
-
-    :param tool_name: One of :data:`VAULT_TOOL_NAMES`.
-    :param args: Parsed tool arguments.
-    :returns: Tool output JSON string, never containing a secret value.
-    """
-    if server_client is None or not conversation_id:
-        return json.dumps({"error": f"{tool_name} requires server access"})
-    lookup = await _session_kind_and_parent(conversation_id, server_client)
-    if lookup is None:
-        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
-    if lookup[0] == "sub_agent" and tool_name not in VAULT_HELPER_TOOL_NAMES:
-        return json.dumps({"error": f"{tool_name} is not available to sub-agent sessions"})
-    name = args.get("name")
-    if not isinstance(name, str) or not name.strip():
-        return json.dumps({"error": f"{tool_name} requires a name"})
-    try:
-        if tool_name == "vault_request_secret":
-            resp = await server_client.post(
-                "/v1/me/vault/requests",
-                json={
-                    "session_id": conversation_id,
-                    "name": name,
-                    "site": str(args.get("site") or ""),
-                    "reason": str(args.get("reason") or ""),
-                },
-                timeout=30.0,
-            )
-            if resp.status_code >= 400:
-                return json.dumps({"error": _vault_error(resp)})
-            req = resp.json()
-            return json.dumps(
-                {
-                    "secure_entry": {k: req[k] for k in ("id", "name", "site", "reason")},
-                    "message": "A secure card is shown. Wait for the person to save it, "
-                    "then use vault_fill.",
-                }
-            )
-        field = args.get("field")
-        ref = args.get("ref")
-        if field not in ("username", "password") or not isinstance(ref, int):
-            return json.dumps({"error": "vault_fill needs field (username|password) and ref"})
-        if not local_browser_backend_enabled():
-            return json.dumps({"error": "vault_fill needs the Computer's browser"})
-
-        async def fetch() -> tuple[str, str]:
-            resp = await server_client.post(
-                "/v1/me/vault/fill",
-                json={"name": name, "field": field, "session_id": conversation_id},
-                timeout=30.0,
-            )
-            if resp.status_code >= 400:
-                raise RuntimeError(_vault_error(resp))
-            body = resp.json()
-            return body["value"], body["site"]
-
-        return await get_local_browser_backend().fill_login(ref=ref, field=field, fetch=fetch)
-    except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": f"{tool_name} failed: {exc}"})
-
-
-def _vault_error(resp: httpx.Response) -> str:
-    """A short, value-free reason from a vault API error response."""
-    try:
-        detail = resp.json()
-        message = detail.get("error", {}).get("message") or detail.get("detail")
-    except ValueError:
-        message = None
-    return str(message or f"server returned {resp.status_code}")[:200]
-
-
 @dataclass
 class _ParsedTitle:
     """
@@ -7455,113 +6933,6 @@ async def _session_history_status_via_rest(
     return json.dumps(status_from_labels({str(k): str(v) for k, v in labels.items()}))
 
 
-def _memory_error_body(resp: httpx.Response) -> str:
-    """Extract a readable message from a non-2xx memory-route response."""
-    try:
-        body = resp.json()
-        # A bare FastAPI "Not Found" means the route itself is unmounted: the
-        # server runs without the memory extra (no txtai), so the router is
-        # never included. Say that instead of an opaque "HTTP 404".
-        if (
-            resp.status_code == 404
-            and isinstance(body, dict)
-            and body.get("detail") == "Not Found"
-        ):
-            return "long-term memory is not configured on this server"
-    except Exception:  # noqa: BLE001
-        return resp.text or f"HTTP {resp.status_code}"
-    if isinstance(body, dict):
-        message = body.get("error") or body.get("detail") or body.get("message")
-        if isinstance(message, str) and message:
-            return message
-    return f"HTTP {resp.status_code}"
-
-
-async def _execute_memory_tool(
-    tool_name: str,
-    args: _JsonObject,
-    *,
-    conversation_id: str | None,
-    server_client: httpx.AsyncClient | None,
-) -> str:
-    """
-    Runner-local handler for the ``memory_*`` family (native-relay dispatch).
-
-    The runner has no in-process :class:`~omnigent.memory.service.MemoryService`
-    (same constraint as ``_execute_session_history_tool``), so every action
-    dispatches to the Omnigent server's ``/v1/sessions/{id}/memory/*``
-    endpoints over ``server_client``. ``conversation_id`` is the runner's own
-    dispatch context, never read from *args*; the server resolves the acting
-    user from that session's owner, never from the request body.
-
-    :param tool_name: One of ``memory_remember``/``memory_search``/
-        ``memory_get``/``memory_explain``/``memory_forget``.
-    :param args: Parsed tool arguments.
-    :param conversation_id: The calling session id.
-    :param server_client: HTTP client pointed at the Omnigent server.
-    :returns: JSON output matching the in-process tools' shape.
-    """
-    if server_client is None:
-        return json.dumps({"error": f"{tool_name} requires server access"})
-    if conversation_id is None:
-        return json.dumps({"error": f"{tool_name} requires a session id"})
-    base = f"/v1/sessions/{conversation_id}/memory"
-
-    try:
-        if tool_name == "memory_remember":
-            text = args.get("text")
-            if not isinstance(text, str) or not text.strip():
-                return json.dumps({"error": "text must be a non-empty string"})
-            resp = await server_client.post(
-                f"{base}/remember",
-                json={
-                    "text": text.strip(),
-                    "kind": args.get("kind"),
-                    "quote": args.get("quote"),
-                    "replaces_claim_id": args.get("replaces_claim_id"),
-                },
-                timeout=30.0,
-            )
-        elif tool_name == "memory_search":
-            query = args.get("query")
-            if not isinstance(query, str) or not query.strip():
-                return json.dumps({"error": "query must be a non-empty string"})
-            params: dict[str, Any] = {"query": query.strip()}
-            if args.get("kind") is not None:
-                params["kind"] = args["kind"]
-            if args.get("limit") is not None:
-                params["limit"] = args["limit"]
-            resp = await server_client.get(f"{base}/search", params=params, timeout=30.0)
-        elif tool_name == "memory_get":
-            claim_id = args.get("claim_id")
-            if not isinstance(claim_id, str) or not claim_id:
-                return json.dumps({"error": "claim_id must be a non-empty string"})
-            resp = await server_client.get(f"{base}/claims/{claim_id}", timeout=30.0)
-        elif tool_name == "memory_explain":
-            claim_id = args.get("claim_id")
-            if not isinstance(claim_id, str) or not claim_id:
-                return json.dumps({"error": "claim_id must be a non-empty string"})
-            resp = await server_client.get(f"{base}/claims/{claim_id}/explain", timeout=30.0)
-        else:  # memory_forget
-            if args.get("claim_id") is None and not args.get("query"):
-                return json.dumps({"error": "forget requires claim_id or query"})
-            resp = await server_client.post(
-                f"{base}/forget",
-                json={
-                    "claim_id": args.get("claim_id"),
-                    "query": args.get("query"),
-                    "confirm": bool(args.get("confirm", False)),
-                },
-                timeout=30.0,
-            )
-    except Exception as exc:  # noqa: BLE001 — a failed call is reported to the model
-        return json.dumps({"error": f"{tool_name} failed: {exc}"})
-
-    if resp.status_code >= 400:
-        return json.dumps({"error": f"{tool_name}: {_memory_error_body(resp)}"})
-    return json.dumps(resp.json())
-
-
 async def _close_tree_scope_error(
     target_snap: _JsonObject,
     caller_conversation_id: str,
@@ -7975,13 +7346,6 @@ async def execute_tool(
                 conversation_id=conversation_id,
                 server_client=server_client,
             )
-        elif tool_name in _MEMORY_TOOLS:
-            output = await _execute_memory_tool(
-                tool_name,
-                args,
-                conversation_id=conversation_id,
-                server_client=server_client,
-            )
         elif tool_name in _SIDE_CHAT_TOOLS:
             output = await _execute_side_chat_open(
                 args,
@@ -8088,42 +7452,9 @@ async def execute_tool(
                 server_client=server_client,
                 conversation_id=conversation_id,
             )
-        elif tool_name in _CARD_TOOLS:
-            output = json.dumps(build_card(args), ensure_ascii=False)
-        elif tool_name in _SUGGESTION_TOOLS:
-            output = await _execute_suggestion_tool(
-                tool_name,
-                arguments,
-                server_client=server_client,
-                conversation_id=conversation_id,
-            )
-        elif tool_name in _DAILY_NOTE_TOOLS:
-            output = await _execute_daily_note_tool(
-                tool_name,
-                arguments,
-                server_client=server_client,
-                conversation_id=conversation_id,
-            )
-        elif tool_name in _TAUGHT_SKILL_TOOLS:
-            output = await _execute_taught_skill_tool(
-                tool_name,
-                arguments,
-                server_client=server_client,
-                conversation_id=conversation_id,
-            )
-        elif tool_name in _VAULT_TOOLS:
-            output = await _execute_vault_tool(
-                tool_name,
-                args,
-                server_client=server_client,
-                conversation_id=conversation_id,
-            )
-        elif tool_name in _OBJECTIVE_TOOLS:
-            output = await _execute_objective_tool(
-                tool_name,
-                arguments,
-                server_client=server_client,
-                conversation_id=conversation_id,
+        elif tool_name in FEATURE_HANDLERS:
+            output = await FEATURE_HANDLERS[tool_name](
+                HandlerCtx(tool_name, server_client, conversation_id), args
             )
         elif tool_name in _BROWSER_TOOLS:
             output = await _execute_browser_tool(

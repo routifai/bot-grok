@@ -6,7 +6,7 @@ search index (:mod:`omnigent.memory.index`) is built and rebuilt from it.
 :class:`~omnigent.memory.service.MemoryService` implements the write/read
 paths (``remember`` / ``search`` / ``get`` / ``explain`` / ``forget``) that
 back the ``memory_*`` built-in tools
-(``omnigent/tools/builtins/memory.py``).
+(``omnigent/superchat/memory_tools/tools.py``).
 
 Requires the optional ``omnigent[memory]`` extra (txtai + litellm). Every
 module here imports those lazily so the rest of Omnigent is unaffected when
