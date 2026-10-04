@@ -184,6 +184,12 @@ import {
   withEngineComputer,
 } from "./engine-computer.js";
 import {
+  engineFollowTopic,
+  engineListFeedPosts,
+  engineListTopics,
+  engineRemoveTopic,
+} from "./engine-feed.js";
+import {
   acceptProposal,
   dismissProposal,
   getGoal,
@@ -4948,9 +4954,12 @@ export function createRouter(deps: RouterDeps) {
     },
     feed: {
       list: museOnly.feed.list.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
         const [asks, page] = await Promise.all([
           listAsks(deps.prisma, context.actor, input.botId),
-          listFeedPosts(museFeedDeps, context.actor, input),
+          engine
+            ? engineListFeedPosts(museFeedDeps, engine, context.actor, input.botId)
+            : listFeedPosts(museFeedDeps, context.actor, input),
         ]);
         return { asks, posts: page.posts, nextCursor: page.nextCursor };
       }),
@@ -4964,15 +4973,24 @@ export function createRouter(deps: RouterDeps) {
       ),
     },
     topics: {
-      list: museOnly.topics.list.handler(({ context, input }) =>
-        listTopics(museFeedDeps, context.actor, input.botId),
-      ),
-      follow: museOnly.topics.follow.handler(({ context, input }) =>
-        followTopic(museFeedDeps, context.actor, input),
-      ),
-      remove: museOnly.topics.remove.handler(({ context, input }) =>
-        removeTopic(museFeedDeps, context.actor, input.topicId),
-      ),
+      list: museOnly.topics.list.handler(({ context, input }) => {
+        const engine = engineComputerClient();
+        return engine
+          ? engineListTopics(museFeedDeps, engine, context.actor, input.botId)
+          : listTopics(museFeedDeps, context.actor, input.botId);
+      }),
+      follow: museOnly.topics.follow.handler(({ context, input }) => {
+        const engine = engineComputerClient();
+        return engine
+          ? engineFollowTopic(museFeedDeps, engine, context.actor, input)
+          : followTopic(museFeedDeps, context.actor, input);
+      }),
+      remove: museOnly.topics.remove.handler(({ context, input }) => {
+        const engine = engineComputerClient();
+        return engine
+          ? engineRemoveTopic(museFeedDeps, engine, context.actor, input.topicId)
+          : removeTopic(museFeedDeps, context.actor, input.topicId);
+      }),
     },
     muse: {
       settings: museOnly.muse.settings.handler(({ context, input }) =>

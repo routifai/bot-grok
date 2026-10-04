@@ -86,7 +86,11 @@ export function createBackgroundJobHandlers(deps: {
   return {
     "goal.advance": goalJobHandlers["goal.advance"],
     "goal.checkin": goalJobHandlers["goal.checkin"],
-    "feed.topics": feedJobHandlers["feed.topics"],
+    // Followed topics run as engine scheduled tasks (docs/adr/0005): nothing to digest here.
+    "feed.topics": async (payload) => {
+      if (deps.omnigent) return;
+      await feedJobHandlers["feed.topics"](payload);
+    },
     "run.continue": async (payload) => {
       const ranOnOmnigent = deps.omnigent
         ? await runTurnOnOmnigent(deps.omnigent, payload.runId, deps.workerId)

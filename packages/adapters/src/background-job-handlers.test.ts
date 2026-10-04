@@ -223,6 +223,8 @@ describe("createBackgroundJobHandlers", () => {
 
     await handlers["computer.sleep"]({ computerId: "computer-1" });
     await handlers["computer.control-expire"]({ computerId: "computer-1", leaseId: "lease-1" });
+    // Followed topics are engine scheduled tasks: the Pi-era digest does nothing.
+    await handlers["feed.topics"]({ botId: "bot-1" });
 
     expect(jobs.enqueue).not.toHaveBeenCalled();
   });
