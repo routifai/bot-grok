@@ -2,6 +2,7 @@ import { type CronPreset, cronFromPreset, presetFromCron } from "@aiden/core";
 import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useState } from "react";
+import { friendlyTimezone } from "../../../lib/local-timezone";
 import { RoutineSchedule } from "../../RoutineSchedule";
 
 /**
@@ -53,7 +54,7 @@ export function CheckInEditor({
         ))}
       </div>
       <p className="px-4 pt-2 text-[13px] text-muted-foreground">
-        <Trans>Times use {timezone}.</Trans>
+        <Trans>Times use {friendlyTimezone(timezone)}.</Trans>
       </p>
       {dirty ? (
         <div className="mt-3 flex items-center gap-2">

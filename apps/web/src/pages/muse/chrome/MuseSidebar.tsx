@@ -305,9 +305,11 @@ export function MuseSidebar({
                   <span className="min-w-0 flex-1 truncate" dir="auto">
                     {goal.title}
                   </span>
-                  <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
-                    {done}/{goal.tasks.length}
-                  </span>
+                  {goal.tasks.length > 0 ? (
+                    <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
+                      {done}/{goal.tasks.length}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}

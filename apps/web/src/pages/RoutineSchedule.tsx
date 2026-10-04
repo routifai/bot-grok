@@ -8,7 +8,8 @@ import {
 import { Input, NativeSelect, NativeSelectOption } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Clock } from "lucide-react";
+import { Clock, Edit2 } from "lucide-react";
+import { useState } from "react";
 
 const UNITS: CronUnit[] = ["minutes", "hours", "days"];
 const NUMBERS = [1, 2, 3, 5, 10, 15, 30, 45];
@@ -172,6 +173,7 @@ export function RoutineSchedule({
   onChange: (next: CronPreset) => void;
 }) {
   const { i18n, t } = useLingui();
+  const [isEditing, setIsEditing] = useState(false);
   const { lead, detail } = describeCronPresetLocalized(value, i18n.locale);
   const times = TIMES.includes(value.time) ? TIMES : [...TIMES, value.time];
   const numbers = NUMBERS.includes(value.n) ? NUMBERS : [...NUMBERS, value.n].sort((a, b) => a - b);
@@ -227,55 +229,93 @@ export function RoutineSchedule({
 
   return (
     <div className="mt-2 rounded-xl border border-border p-3">
-      <div className="flex items-center gap-2.5 px-0.5">
-        <Clock size={17} strokeWidth={1.6} className="shrink-0 text-muted-foreground" aria-hidden />
-        <span className="text-[14.5px] text-foreground">{lead}</span>
-        {detail ? (
-          <span className="flex-1 text-[14.5px] text-muted-foreground">{detail}</span>
-        ) : null}
-      </div>
-      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <NativeSelect
-          size="sm"
-          value={value.freq}
-          aria-label={t`How often`}
-          onChange={(event) => {
-            const freq = event.target.value as CronFreq;
-            if (freq === "Advanced") {
-              patch({ freq, cron: cronFromPreset(value) });
-              return;
-            }
-            patch({ freq });
-          }}
+      {!isEditing ? (
+        <button
+          type="button"
+          onClick={() => setIsEditing(true)}
+          className="flex w-full items-center gap-2.5 px-0.5 text-start transition-colors hover:text-foreground"
         >
-          {CRON_FREQS.map((freq) => (
-            <NativeSelectOption key={freq} value={freq}>
-              {cronFreqLabel(freq)}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-        {value.freq === "Interval" ? (
-          i18n.locale === "ru" ? (
-            <>
-              {russianIntervalControlLead()} {intervalAmountSelect} {intervalUnitSelect}
-            </>
-          ) : (
-            <Trans>
-              every {intervalAmountSelect} {intervalUnitSelect}
-            </Trans>
-          )
-        ) : null}
-        {TIMED.includes(value.freq) ? <Trans>at {timeSelect}</Trans> : null}
-        {value.freq === "Advanced" ? (
-          <Input
-            value={value.cron}
-            placeholder="*/3 * * * *"
-            aria-label={t`Cron expression`}
-            onChange={(event) => patch({ cron: event.target.value })}
-            className="h-7 min-w-[120px] flex-1 font-mono text-[13px] md:text-[13px]"
+          <Clock
+            size={17}
+            strokeWidth={1.6}
+            className="shrink-0 text-muted-foreground"
+            aria-hidden
           />
-        ) : null}
-      </div>
+          <span className="flex-1 text-[14.5px] text-foreground">{lead}</span>
+          {detail ? <span className="text-[14.5px] text-muted-foreground">{detail}</span> : null}
+          <Edit2
+            size={15}
+            strokeWidth={1.6}
+            className="shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+        </button>
+      ) : null}
+      {isEditing ? (
+        <div className="flex items-center gap-2.5 px-0.5 mb-2.5">
+          <Clock
+            size={17}
+            strokeWidth={1.6}
+            className="shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+          <span className="text-[14.5px] text-foreground">{lead}</span>
+          {detail ? (
+            <span className="flex-1 text-[14.5px] text-muted-foreground">{detail}</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setIsEditing(false)}
+            className="shrink-0 rounded px-1 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Trans>Done</Trans>
+          </button>
+        </div>
+      ) : null}
+      {isEditing ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <NativeSelect
+            size="sm"
+            value={value.freq}
+            aria-label={t`How often`}
+            onChange={(event) => {
+              const freq = event.target.value as CronFreq;
+              if (freq === "Advanced") {
+                patch({ freq, cron: cronFromPreset(value) });
+                return;
+              }
+              patch({ freq });
+            }}
+          >
+            {CRON_FREQS.map((freq) => (
+              <NativeSelectOption key={freq} value={freq}>
+                {cronFreqLabel(freq)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {value.freq === "Interval" ? (
+            i18n.locale === "ru" ? (
+              <>
+                {russianIntervalControlLead()} {intervalAmountSelect} {intervalUnitSelect}
+              </>
+            ) : (
+              <Trans>
+                every {intervalAmountSelect} {intervalUnitSelect}
+              </Trans>
+            )
+          ) : null}
+          {TIMED.includes(value.freq) ? <Trans>at {timeSelect}</Trans> : null}
+          {value.freq === "Advanced" ? (
+            <Input
+              value={value.cron}
+              placeholder="*/3 * * * *"
+              aria-label={t`Cron expression`}
+              onChange={(event) => patch({ cron: event.target.value })}
+              className="h-7 min-w-[120px] flex-1 font-mono text-[13px] md:text-[13px]"
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

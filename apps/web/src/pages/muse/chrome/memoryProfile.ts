@@ -81,9 +81,27 @@ const USER_SUBJECT = /^(?:the\s+)?user\s+([A-Za-z]+)(?:([’']t)\b)?/i;
 export function addressMemoryItem(item: string): string {
   if (USER_POSSESSIVE.test(item)) return item.replace(USER_POSSESSIVE, "Your ");
   const match = USER_SUBJECT.exec(item);
-  if (!match) return item;
+  if (!match) return addressMidSentence(item);
   const [whole, verb = "", contraction] = match;
   const converted = secondPersonVerb(verb);
   const rest = item.slice(whole.length);
-  return `You ${converted}${contraction ?? ""}${rest}`;
+  let result = `You ${converted}${contraction ?? ""}${rest}`;
+  // Fix "and is" (or similar third-person verbs) after "You are" → "and are"
+  if (converted === "are") {
+    result = result.replace(/and is\b/gi, "and are");
+    result = result.replace(/and has\b/gi, "and have");
+    result = result.replace(/and does\b/gi, "and do");
+    result = result.replace(/and was\b/gi, "and were");
+  }
+  return result;
+}
+
+/** "This month the user is focused on X" → "This month you're focused on X". */
+function addressMidSentence(item: string): string {
+  return item
+    .replace(/\bthe user's\b/gi, "your")
+    .replace(/\bthe user is\b/gi, "you're")
+    .replace(/\bthe user has\b/gi, "you have")
+    .replace(/\bthe user was\b/gi, "you were")
+    .replace(/\bthe user\b/gi, "you");
 }

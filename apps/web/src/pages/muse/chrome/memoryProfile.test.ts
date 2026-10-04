@@ -52,12 +52,21 @@ describe("addressMemoryItem", () => {
     ["The user's favourite fruit is mango.", "Your favourite fruit is mango."],
     ["User's team is Platform.", "Your team is Platform."],
     ["The user is a relationship manager.", "You are a relationship manager."],
+    [
+      "This month the user is focused on agent safety and the user's approvals work.",
+      "This month you're focused on agent safety and your approvals work.",
+    ],
     ["The user has two direct reports.", "You have two direct reports."],
     ["The user prefers short answers.", "You prefer short answers."],
     ["The user doesn't like long emails.", "You don't like long emails."],
     ["The user watches the markets daily.", "You watch the markets daily."],
     ["Lives in Toronto.", "Lives in Toronto."],
     ["The username is sam.", "The username is sam."],
+    ["The user is a PM and is a product manager.", "You are a PM and are a product manager."],
+    [
+      "The user is building an AI assistant and is a product manager.",
+      "You are building an AI assistant and are a product manager.",
+    ],
   ])("%s", (input, expected) => {
     expect(addressMemoryItem(input)).toBe(expected);
   });
