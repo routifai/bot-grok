@@ -18,18 +18,12 @@ from omnigent.server.routes._auth_helpers import (
     require_access_and_level as _require_access_and_level,
 )
 from omnigent.stores import ConversationStore
+from omnigent.stores.host_store import HostStore
 from omnigent.stores.permission_store import PermissionStore
 
-# Who is in control of a sandbox's screen, keyed by ``(provider, sandbox_id)`` -> control token.
-# Known limit (P1): in server memory only, so a server restart forgets a take-over until the
-# person releases or re-takes it, and replicas do not share it. Sessions on the same
-# sandbox (one Muse's computer) share one entry.
-_control_tokens: dict[tuple[str, str], str] = {}
-
-
-def is_computer_in_control(provider: str, sandbox_id: str) -> bool:
-    """Whether a person currently holds control of this sandbox's screen."""
-    return (provider, sandbox_id) in _control_tokens
+# Who is in control of a computer screen is a control token on the managed host row, so it
+# survives a server restart and is shared by replicas. Sessions on the same host (one
+# computer) share one token.
 
 
 def register_computer_routes(
@@ -41,8 +35,10 @@ def register_computer_routes(
 ) -> None:
     """Register the computer routes on router."""
 
-    def _target(request: Request, session_id: str) -> tuple[SandboxHostLauncher, str] | None:
-        """The screen-capable ``(launcher, sandbox_id)`` the session runs on, else ``None``."""
+    def _target(
+        request: Request, session_id: str
+    ) -> tuple[SandboxHostLauncher, str, str, HostStore] | None:
+        """The screen-capable ``(launcher, sandbox_id, host_id, host_store)`` of the session."""
         from omnigent.server.managed_hosts import screen_target_for_host
 
         conv = conversation_store.get_conversation(session_id)
@@ -52,9 +48,14 @@ def register_computer_routes(
         host = host_store.get_host(conv.host_id)
         if host is None:
             return None
-        return screen_target_for_host(host, getattr(request.app.state, "sandbox_config", None))
+        screen = screen_target_for_host(host, getattr(request.app.state, "sandbox_config", None))
+        if screen is None:
+            return None
+        return screen[0], screen[1], host.host_id, host_store
 
-    def _require_target(request: Request, session_id: str) -> tuple[SandboxHostLauncher, str]:
+    def _require_target(
+        request: Request, session_id: str
+    ) -> tuple[SandboxHostLauncher, str, str, HostStore]:
         target = _target(request, session_id)
         if target is None:
             raise OmnigentError("this session has no computer screen", code=ErrorCode.NOT_FOUND)
@@ -79,11 +80,9 @@ def register_computer_routes(
         target = await asyncio.to_thread(_target, request, session_id)
         if target is None:
             return {"available": False, "in_control": False}
-        launcher, sandbox_id = target
-        return {
-            "available": True,
-            "in_control": is_computer_in_control(launcher.provider, sandbox_id),
-        }
+        _launcher, _sandbox_id, host_id, host_store = target
+        held = await asyncio.to_thread(host_store.get_computer_control_token, host_id)
+        return {"available": True, "in_control": held is not None}
 
     @router.post(
         "/sessions/{session_id}/computer/screen",
@@ -112,16 +111,18 @@ def register_computer_routes(
             raise OmnigentError(
                 "computer screen requires a boolean 'interactive'", code=ErrorCode.INVALID_INPUT
             )
-        launcher, sandbox_id = await asyncio.to_thread(_require_target, request, session_id)
-        key = (launcher.provider, sandbox_id)
+        launcher, sandbox_id, host_id, host_store = await asyncio.to_thread(
+            _require_target, request, session_id
+        )
+        held = await asyncio.to_thread(host_store.get_computer_control_token, host_id)
         # Reuse a held token: minting a new one would cut off the person's open screen.
-        token = (_control_tokens.get(key) or secrets.token_urlsafe(24)) if interactive else None
+        token = (held or secrets.token_urlsafe(24)) if interactive else None
         url = await asyncio.to_thread(
             lambda: launcher.screen_url(sandbox_id, interactive=interactive, control_token=token)
         )
-        if token is not None:
-            _control_tokens[key] = token
-        return {"screen_url": url, "in_control": key in _control_tokens}
+        if token is not None and token != held:
+            await asyncio.to_thread(host_store.set_computer_control_token, host_id, token)
+        return {"screen_url": url, "in_control": token is not None or held is not None}
 
     @router.post(
         "/sessions/{session_id}/computer/release",
@@ -140,9 +141,11 @@ def register_computer_routes(
         await _require_access_and_level(
             user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
         )
-        launcher, sandbox_id = await asyncio.to_thread(_require_target, request, session_id)
+        launcher, sandbox_id, host_id, host_store = await asyncio.to_thread(
+            _require_target, request, session_id
+        )
         await asyncio.to_thread(launcher.release_control, sandbox_id)
-        _control_tokens.pop((launcher.provider, sandbox_id), None)
+        await asyncio.to_thread(host_store.set_computer_control_token, host_id, None)
         url = await asyncio.to_thread(
             lambda: launcher.screen_url(sandbox_id, interactive=False, control_token=None)
         )

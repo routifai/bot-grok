@@ -1376,6 +1376,8 @@ class SqlHost(OmnigentBase):
     :param deleted_at: Logical deletion timestamp for a managed host whose
         provider sandbox cleanup is still pending. The row is physically
         removed after every recorded sandbox id terminates successfully.
+    :param computer_control_token: Control token held while a person has taken over
+        the host's computer screen. ``NULL`` when nobody is in control.
     :param configured_harnesses: JSON-encoded per-harness readiness map
         reported in the host's last ``host.hello`` frame, e.g.
         ``'{"claude-sdk": true, "codex": false}'``. ``NULL`` when the
@@ -1412,6 +1414,8 @@ class SqlHost(OmnigentBase):
     sandbox_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     terminating_sandbox_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     deleted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Token held while a person controls the host's computer screen; NULL when nobody does.
+    computer_control_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Opaque; never SQL-filtered — stored compressed (CompressedText).
     configured_harnesses: Mapped[str | None] = mapped_column(CompressedText, nullable=True)
 

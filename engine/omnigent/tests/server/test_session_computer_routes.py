@@ -9,13 +9,11 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-import pytest_asyncio
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from omnigent.errors import OmnigentError
 from omnigent.onboarding.sandboxes.types import SandboxCapabilities
-from omnigent.server.routes.sessions import routes_computer
 from omnigent.server.routes.sessions.routes_computer import register_computer_routes
 
 pytestmark = pytest.mark.asyncio
@@ -38,7 +36,34 @@ class StubLauncher:
         self.calls.append(("release", sandbox_id))
 
 
-def _app(launcher: StubLauncher | None, *, with_host: bool = True) -> FastAPI:
+class StubHostStore:
+    """Stands in for HostStore; ``tokens`` plays the shared database across app instances."""
+
+    def __init__(self, tokens: dict[str, str]) -> None:
+        self.tokens = tokens
+        self.host = SimpleNamespace(
+            host_id="host_1", sandbox_provider="computer", sandbox_id="bot:space:cid"
+        )
+
+    def get_host(self, _hid: str) -> SimpleNamespace:
+        return self.host
+
+    def get_computer_control_token(self, host_id: str) -> str | None:
+        return self.tokens.get(host_id)
+
+    def set_computer_control_token(self, host_id: str, token: str | None) -> None:
+        if token is None:
+            self.tokens.pop(host_id, None)
+        else:
+            self.tokens[host_id] = token
+
+
+def _app(
+    launcher: StubLauncher | None,
+    *,
+    with_host: bool = True,
+    tokens: dict[str, str] | None = None,
+) -> FastAPI:
     app = FastAPI()
 
     @app.exception_handler(OmnigentError)
@@ -50,16 +75,10 @@ def _app(launcher: StubLauncher | None, *, with_host: bool = True) -> FastAPI:
     store = SimpleNamespace(get_conversation=lambda _sid: conv)
     register_computer_routes(router, conversation_store=store)  # type: ignore[arg-type]
     app.include_router(router)
-    host = SimpleNamespace(sandbox_provider="computer", sandbox_id="bot:space:cid")
-    app.state.host_store = SimpleNamespace(get_host=lambda _hid: host)
+    app.state.host_store = StubHostStore(tokens if tokens is not None else {})
     entry = SimpleNamespace(launcher_factory=lambda: launcher)
     app.state.sandbox_config = SimpleNamespace(recorded=lambda _p: entry)
     return app
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def _clean_control_state() -> None:
-    routes_computer._control_tokens.clear()
 
 
 async def _client(app: FastAPI) -> httpx.AsyncClient:
@@ -105,3 +124,21 @@ async def test_screen_routes_404_when_session_has_no_computer() -> None:
     async with await _client(_app(StubLauncher(), with_host=False)) as c:
         r = await c.post("/v1/sessions/conv_1/computer/screen", json={"interactive": True})
     assert r.status_code == 404
+
+
+async def test_control_state_is_read_from_the_store_not_process_memory() -> None:
+    shared: dict[str, str] = {}
+    launcher = StubLauncher()
+    async with await _client(_app(launcher, tokens=shared)) as c:
+        await c.post("/v1/sessions/conv_1/computer/screen", json={"interactive": True})
+    token = launcher.calls[0][1][1]  # type: ignore[index]
+    assert shared == {"host_1": token}
+
+    # A fresh registration (restart or another replica) sees the take-over and reuses the token.
+    again = StubLauncher()
+    async with await _client(_app(again, tokens=shared)) as c:
+        assert (await c.get("/v1/sessions/conv_1/computer")).json()["in_control"] is True
+        await c.post("/v1/sessions/conv_1/computer/screen", json={"interactive": True})
+        assert again.calls[0][1][1] == token  # type: ignore[index]
+        await c.post("/v1/sessions/conv_1/computer/release")
+    assert shared == {}
