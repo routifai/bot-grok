@@ -7,12 +7,11 @@ that dials the Omnigent server and spawns runners on demand. This page is
 about where that host runs, and how it gets the credentials and settings a
 runner needs.
 
-## Two runner locations
+## Runner location
 
-| Location | Host lives in | Used for |
-|---|---|---|
-| **Computer** (default) | A per-Muse Docker container, managed by Nova's own sandbox supervisor (`infra/sandboxes/supervisor`, `infra/sandboxes/computer`) | Normal operation — every Muse gets its own persistent computer |
-| **Laptop** (dev option) | The developer's own machine, running `omnigent host` directly | Local development without Docker |
+Every runner lives in the Muse's **Computer**: a per-Muse Docker container
+managed by Nova's sandbox supervisor (`infra/sandboxes/supervisor`,
+`infra/sandboxes/computer`). There is no laptop (`omnigent host`) location.
 
 Nova's gateway (`packages/adapters/src/omnigent/gateway.ts`,
 `resolveRunnerBinding`) picks "computer" by selecting the Omnigent
@@ -53,7 +52,7 @@ say which of its own environment variables to hand down:
 ```yaml
 sandbox:
   provider: computer
-  server_url: http://host.docker.internal:8000
+  server_url: http://<host reachable from the container>:<the server's port>
   runner_env: [ANTHROPIC_API_KEY, TAVILY_API_KEY, NOVA_CLAUDE_MODEL,
                OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS, OMNIGENT_SUBAGENT_MAX_CONCURRENT,
                OMNIGENT_BROWSER_BACKEND]
@@ -91,9 +90,45 @@ The Omnigent server process itself needs:
 | `OMNIGENT_NOVA_SUPERVISOR_TOKEN` | The shared bearer the supervisor expects on every request (same secret Nova's own API process uses — `resolveSupervisorToken` / `SANDBOX_SUPERVISOR_TOKEN`) |
 | `OMNIGENT_NOVA_HOME_ROOT` | Root directory a Muse's persistent home lives under (`<root>/homes/<bot_id>`) — must resolve to the SAME host path Nova's API process uses (`resolveAgentHomePath` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only. |
 
-Plus the usual `sandbox.server_url` (the engine server's own public URL, so
-the host inside the container can dial back) and `sandbox.host_config` for
+Plus the usual `sandbox.server_url` (the engine server's own URL on the
+server's port, reachable from inside the container so the host can dial back) and `sandbox.host_config` for
 any non-secret in-sandbox provider config.
+
+Deployment requirements found live:
+
+- With a `sandbox:` block in the server config, the Omnigent server must pin
+  `OMNIGENT_AUTH_PROVIDER=header` (Nova calls it with header auth).
+- Nova's api/worker `DATA_DIR` must equal the supervisor's `DATA_DIR`: the
+  supervisor accepts only `homePath = <dataDir>/homes/<botId>` and rejects
+  anything else (`assertBotHomePath`, `infra/sandboxes/supervisor/src/index.ts`).
+- Sessions carry `nova.bot` / `nova.space` and an optional `nova.computer`
+  label. The computer provider prefers `nova.computer` (the machine Nova
+  shows the person, shared per space in team mode) and falls back to
+  `nova.bot` (`prepare_for_launch`, `computer.py`).
+
+## The Computer: screen and Take over
+
+The engine owns the Computer (ADR 0004); Nova holds no Computer state and
+only relays.
+
+- The computer provider re-resolves a recreated container by Muse identity
+  (bot + space), so a supervisor-side recreate does not strand the session.
+- The provider declares `SandboxCapabilities.screen`
+  (`sandboxes/base.py`: `screen_url`, `release_control`). Session routes
+  (`server/routes/sessions/routes_computer.py`): `GET /v1/sessions/{id}/computer`
+  (`{available, in_control}`), `POST .../computer/screen` `{interactive}`
+  (`true` = Take over: mints a control token), `POST .../computer/release`.
+- The supervisor's `screen-mode` returns the Muse's X `display`; the provider
+  forwards it to the runner as `DISPLAY`, so the viewer and the runner share
+  one screen.
+- Nova's API (`apps/api/src/engine-computer.ts`) calls those routes and
+  relays the noVNC stream through its same-origin screen proxy; browsers
+  never reach the engine.
+- While the person holds control, the Muse's computer tools (`sys_os_*`,
+  `browser_*`) refuse (`tool_dispatch.py` asks `GET .../computer`).
+- The Computer is always on. The Pi-era idle sleep and control-expire jobs
+  skip engine Muses.
+- Browser tools need `OMNIGENT_BROWSER_BACKEND=local` (above).
 
 ## Running the computer path locally
 
@@ -107,16 +142,18 @@ In order, each depending on the one before:
 
 ## Known gaps
 
-- **Header-auth managed host tokens.** The managed-host launch token is a
-  bearer the host dials back with; there is no documented path for a
-  deployment that needs a different (header-based) auth scheme between the
-  host and the server.
-- **Home path keying in team mode.** The computer provider keys a Muse's
-  persistent home by `bot_id` alone (`home_path = <root>/homes/<bot_id>`,
-  `omnigent/onboarding/sandboxes/computer.py`). If a bot is ever shared
-  across multiple users/spaces ("team mode"), they would all resolve to the
-  same home directory — this has no per-user or per-space isolation today.
-- **Egress.** The computer container has no documented outbound network
-  restriction. A turn's tools (web search, browser use) and the harness
-  itself can reach the open internet from inside the container; there is no
-  allowlist/firewall layer in `infra/sandboxes/computer` today.
+- **Runner token owner-scoped.** The runner's token belongs to its owner; no
+  shared-space token exists.
+- **Terminate not implemented.** By design: the Computer is always on, so
+  the engine never stops it.
+- **Egress unfiltered.** The computer container has no outbound network
+  restriction. Tools (web search, browser use) and the harness can reach the
+  open internet; there is no allowlist or firewall layer in
+  `infra/sandboxes/computer` today.
+- **Home path keying in team mode.** The provider keys a Muse's persistent
+  home by `bot_id` alone (`<root>/homes/<bot_id>`, `computer.py`). A bot
+  shared across users/spaces would resolve to one home; no per-user or
+  per-space isolation today.
+- **Take-over state persistence.** Control state is being moved into the
+  engine's own store. Until that lands it is an in-memory map in
+  `routes_computer.py` and is lost on an engine restart.

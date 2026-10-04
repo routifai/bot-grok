@@ -48,7 +48,7 @@ export function createBackgroundJobHandlers(deps: {
   messaging?: MessagingSurface;
   cloudAgent?: CloudAgentConnection | null;
   /**
-   * NOVA_ENGINE=omnigent spike (docs/omnigent-spike.md): when set, an eligible run.continue
+   * Omnigent chat engine (docs/omnigent-spike.md): when set (OMNIGENT_URL + OMNIGENT_PROXY_SECRET), an eligible run.continue
    * (a plain user message on a Muse's own private Conversation) runs on Omnigent instead of
    * the built-in executor. Unset keeps today's engine byte-for-byte unchanged.
    */

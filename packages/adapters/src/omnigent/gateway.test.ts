@@ -3,22 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runTurnOnOmnigent } from "./gateway.js";
 
 const {
-  createOmnigentHostDirectory,
   createOmnigentSession,
   findOmnigentAgentIdByName,
   getOmnigentSession,
-  listOmnigentHostDirectory,
-  listOmnigentHosts,
   postOmnigentMessage,
   streamOmnigentSession,
   switchOmnigentAgent,
 } = vi.hoisted(() => ({
-  createOmnigentHostDirectory: vi.fn(),
   createOmnigentSession: vi.fn(),
   findOmnigentAgentIdByName: vi.fn(),
   getOmnigentSession: vi.fn(),
-  listOmnigentHostDirectory: vi.fn(),
-  listOmnigentHosts: vi.fn(),
   postOmnigentMessage: vi.fn(),
   streamOmnigentSession: vi.fn(),
   switchOmnigentAgent: vi.fn(),
@@ -26,12 +20,9 @@ const {
 
 vi.mock("./client.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./client.js")>()),
-  createOmnigentHostDirectory,
   createOmnigentSession,
   findOmnigentAgentIdByName,
   getOmnigentSession,
-  listOmnigentHostDirectory,
-  listOmnigentHosts,
   postOmnigentMessage,
   streamOmnigentSession,
   switchOmnigentAgent,
@@ -65,11 +56,6 @@ function fakePrisma(overrides: Record<string, unknown> = {}): PrismaClient {
     attempt: { create: vi.fn(async () => ({ id: "attempt-1" })) },
     bot: {
       findUnique: vi.fn(async () => ({ computer: { homeKey: "team-space-1" } })),
-      findUniqueOrThrow: vi.fn(async () => ({
-        id: "bot-1",
-        museHarness: null,
-        museRunnerLocation: null,
-      })),
     },
     user: { findUniqueOrThrow: vi.fn(async () => ({ email: "person@example.test" })) },
     task: { findUniqueOrThrow: vi.fn(async () => ({ prompt: "hello" })) },
@@ -345,14 +331,10 @@ describe("runTurnOnOmnigent", () => {
     expect(events.finalizeRun).not.toHaveBeenCalled();
   });
 
-  describe("harness switching", () => {
-    function prismaWithSession(agentName: string, museHarness: string | null) {
+  describe("agent switching", () => {
+    function prismaWithSession(agentName: string) {
       const updateMock = vi.fn(async () => ({}));
       const prisma = fakePrisma({
-        bot: {
-          findUnique: vi.fn(async () => null),
-          findUniqueOrThrow: vi.fn(async () => ({ id: "bot-1", museHarness })),
-        },
         omnigentSession: {
           findUnique: vi.fn(async () => ({
             botId: "bot-1",
@@ -373,13 +355,17 @@ describe("runTurnOnOmnigent", () => {
       );
     });
 
-    it("switches the Omnigent agent when the bot's chosen harness differs from the session's recorded agent", async () => {
-      const { prisma, updateMock } = prismaWithSession("nova-pi", "claude");
+    it("switches the Omnigent agent when the configured agent differs from the session's recorded agent", async () => {
+      const { prisma, updateMock } = prismaWithSession("nova-pi");
       findOmnigentAgentIdByName.mockResolvedValue("ag_claude");
       switchOmnigentAgent.mockResolvedValue({ id: "conv_existing", status: "idle" });
       const events = fakeEvents();
 
-      const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+      const result = await runTurnOnOmnigent(
+        { prisma, events, ...DEPS_BASE, agentName: "nova-claude" },
+        "run-1",
+        "worker-1",
+      );
 
       expect(result).toBe(true);
       expect(findOmnigentAgentIdByName).toHaveBeenCalledWith(
@@ -402,11 +388,15 @@ describe("runTurnOnOmnigent", () => {
       );
     });
 
-    it("does not switch when the resolved harness already matches the session's recorded agent", async () => {
-      const { prisma, updateMock } = prismaWithSession("nova-pi", null);
+    it("does not switch when the configured agent already matches the session's recorded agent", async () => {
+      const { prisma, updateMock } = prismaWithSession("nova-claude");
       const events = fakeEvents();
 
-      await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+      await runTurnOnOmnigent(
+        { prisma, events, ...DEPS_BASE, agentName: "nova-claude" },
+        "run-1",
+        "worker-1",
+      );
 
       expect(switchOmnigentAgent).not.toHaveBeenCalled();
       // The session row is still touched once, to bump updatedAt (keeps an active Super Chat
@@ -420,12 +410,16 @@ describe("runTurnOnOmnigent", () => {
     });
 
     it("continues the turn on the current agent and leaves the record untouched when switch-agent fails", async () => {
-      const { prisma, updateMock } = prismaWithSession("nova-pi", "claude");
+      const { prisma, updateMock } = prismaWithSession("nova-pi");
       findOmnigentAgentIdByName.mockResolvedValue("ag_claude");
       switchOmnigentAgent.mockRejectedValue(new Error("Session is busy"));
       const events = fakeEvents();
 
-      const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
+      const result = await runTurnOnOmnigent(
+        { prisma, events, ...DEPS_BASE, agentName: "nova-claude" },
+        "run-1",
+        "worker-1",
+      );
 
       expect(result).toBe(true);
       // leaves the record untouched (but still bumped for updatedAt, see above) when
@@ -447,140 +441,13 @@ describe("runTurnOnOmnigent", () => {
     });
   });
 
-  describe("runner location", () => {
+  describe("runner binding", () => {
     beforeEach(() => {
       streamOmnigentSession.mockReturnValue(
         eventsFrom([{ type: "response.completed", response: { output: [] } }]),
       );
       findOmnigentAgentIdByName.mockResolvedValue("ag_1");
       createOmnigentSession.mockResolvedValue({ id: "conv_new", status: "running" });
-    });
-
-    it("binds a new session to the caller's connected local host, creating its workspace directory", async () => {
-      const prisma = fakePrisma({
-        bot: {
-          findUniqueOrThrow: vi.fn(async () => ({
-            id: "bot-1",
-            museHarness: null,
-            museRunnerLocation: "local",
-          })),
-        },
-      });
-      listOmnigentHosts.mockResolvedValue([
-        {
-          host_id: "host_managed",
-          name: "sandbox",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: "modal",
-        },
-        {
-          host_id: "host_laptop",
-          name: "laptop",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: null,
-        },
-      ]);
-      createOmnigentHostDirectory.mockResolvedValue({ path: "/Users/person/nova/bot-1" });
-      const events = fakeEvents();
-
-      const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
-
-      expect(result).toBe(true);
-      expect(createOmnigentHostDirectory).toHaveBeenCalledWith(
-        DEPS_BASE.client,
-        "person@example.test",
-        "host_laptop",
-        "~/nova/bot-1",
-      );
-      expect(createOmnigentSession).toHaveBeenCalledWith(
-        DEPS_BASE.client,
-        "person@example.test",
-        expect.objectContaining({
-          hostType: "external",
-          hostId: "host_laptop",
-          workspace: "/Users/person/nova/bot-1",
-        }),
-      );
-      expect(events.finalizeRun).toHaveBeenCalledWith(
-        expect.objectContaining({ outcome: "completed" }),
-      );
-    });
-
-    it("recovers the workspace path when the directory already exists on the local host", async () => {
-      const prisma = fakePrisma({
-        bot: {
-          findUniqueOrThrow: vi.fn(async () => ({
-            id: "bot-1",
-            museHarness: null,
-            museRunnerLocation: "local",
-          })),
-        },
-      });
-      listOmnigentHosts.mockResolvedValue([
-        {
-          host_id: "host_laptop",
-          name: "laptop",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: null,
-        },
-      ]);
-      createOmnigentHostDirectory.mockRejectedValue(new Error("directory already exists"));
-      listOmnigentHostDirectory.mockResolvedValue([
-        { name: "bot-1", path: "/Users/person/nova/bot-1", type: "directory" },
-        { name: "other-bot", path: "/Users/person/nova/other-bot", type: "directory" },
-      ]);
-      const events = fakeEvents();
-
-      await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
-
-      expect(createOmnigentSession).toHaveBeenCalledWith(
-        DEPS_BASE.client,
-        "person@example.test",
-        expect.objectContaining({ workspace: "/Users/person/nova/bot-1" }),
-      );
-    });
-
-    it("fails the turn clearly when the local runner location has no connected host", async () => {
-      const prisma = fakePrisma({
-        bot: {
-          findUniqueOrThrow: vi.fn(async () => ({
-            id: "bot-1",
-            museHarness: null,
-            museRunnerLocation: "local",
-          })),
-        },
-      });
-      listOmnigentHosts.mockResolvedValue([
-        {
-          host_id: "host_managed",
-          name: "sandbox",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: "modal",
-        },
-        {
-          host_id: "host_laptop",
-          name: "laptop",
-          owner: "person@example.test",
-          status: "offline",
-          sandbox_provider: null,
-        },
-      ]);
-      const events = fakeEvents();
-
-      const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
-
-      expect(result).toBe(true);
-      expect(createOmnigentSession).not.toHaveBeenCalled();
-      expect(events.finalizeRun).toHaveBeenCalledWith(
-        expect.objectContaining({
-          outcome: "failed",
-          error: expect.stringContaining("No connected local host found"),
-        }),
-      );
     });
 
     it("repairs an existing session that never got a runner bound", async () => {
@@ -722,160 +589,24 @@ describe("runTurnOnOmnigent", () => {
       );
     });
 
-    it('prefers the bot\'s previous host when repairing a local session that stays on "local"', async () => {
-      const prisma = fakePrisma({
-        bot: {
-          findUniqueOrThrow: vi.fn(async () => ({
-            id: "bot-1",
-            museHarness: null,
-            museRunnerLocation: "local",
-          })),
-        },
-        omnigentSession: {
-          findUnique: vi.fn(async () => ({
-            botId: "bot-1",
-            omnigentSessionId: "conv_unlabelled",
-            agentName: "nova-pi",
-            runnerLocation: "local",
-          })),
-          upsert: vi.fn(async () => ({
-            omnigentSessionId: "conv_new",
-            agentName: "nova-pi",
-            runnerLocation: "local",
-          })),
-          update: vi.fn(),
-        },
-      });
-      // Missing the mode label (needs repair), but already bound to host_laptop.
-      getOmnigentSession.mockResolvedValue({
-        id: "conv_unlabelled",
-        host_id: "host_laptop",
-        labels: {},
-      });
-      listOmnigentHosts.mockResolvedValue([
-        {
-          host_id: "host_other",
-          name: "other",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: null,
-        },
-        {
-          host_id: "host_laptop",
-          name: "laptop",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: null,
-        },
-      ]);
-      createOmnigentHostDirectory.mockResolvedValue({ path: "/Users/person/nova/bot-1" });
-      const events = fakeEvents();
-
-      const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
-
-      expect(result).toBe(true);
-      expect(createOmnigentSession).toHaveBeenCalledWith(
-        DEPS_BASE.client,
-        "person@example.test",
-        expect.objectContaining({ hostType: "external", hostId: "host_laptop" }),
-      );
-    });
-
-    it("falls back to the lowest host_id when the bot's previous host is no longer online", async () => {
-      const prisma = fakePrisma({
-        bot: {
-          findUniqueOrThrow: vi.fn(async () => ({
-            id: "bot-1",
-            museHarness: null,
-            museRunnerLocation: "local",
-          })),
-        },
-        omnigentSession: {
-          findUnique: vi.fn(async () => ({
-            botId: "bot-1",
-            omnigentSessionId: "conv_unlabelled",
-            agentName: "nova-pi",
-            runnerLocation: "local",
-          })),
-          upsert: vi.fn(async () => ({
-            omnigentSessionId: "conv_new",
-            agentName: "nova-pi",
-            runnerLocation: "local",
-          })),
-          update: vi.fn(),
-        },
-      });
-      getOmnigentSession.mockResolvedValue({
-        id: "conv_unlabelled",
-        host_id: "host_gone",
-        labels: {},
-      });
-      listOmnigentHosts.mockResolvedValue([
-        {
-          host_id: "host_zebra",
-          name: "zebra",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: null,
-        },
-        {
-          host_id: "host_alpha",
-          name: "alpha",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: null,
-        },
-      ]);
-      createOmnigentHostDirectory.mockResolvedValue({ path: "/Users/person/nova/bot-1" });
-      const events = fakeEvents();
-
-      const result = await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
-
-      expect(result).toBe(true);
-      // host_gone isn't online, so the pick falls back to the lowest host_id of the online
-      // set (no "last seen" timestamp is available to rank by instead).
-      expect(createOmnigentSession).toHaveBeenCalledWith(
-        DEPS_BASE.client,
-        "person@example.test",
-        expect.objectContaining({ hostType: "external", hostId: "host_alpha" }),
-      );
-    });
-
-    it("recreates the session when the bot's runner location changed since it was created", async () => {
+    it("recreates a session still bound to a retired runner location without checking its health", async () => {
       const upsertMock = vi.fn(async () => ({
         omnigentSessionId: "conv_new",
         agentName: "nova-pi",
-        runnerLocation: "local",
+        runnerLocation: "computer",
       }));
       const prisma = fakePrisma({
-        bot: {
-          findUniqueOrThrow: vi.fn(async () => ({
-            id: "bot-1",
-            museHarness: null,
-            museRunnerLocation: "local",
-          })),
-        },
         omnigentSession: {
           findUnique: vi.fn(async () => ({
             botId: "bot-1",
             omnigentSessionId: "conv_existing",
             agentName: "nova-pi",
-            runnerLocation: "computer",
+            runnerLocation: "local",
           })),
           upsert: upsertMock,
           update: vi.fn(),
         },
       });
-      listOmnigentHosts.mockResolvedValue([
-        {
-          host_id: "host_laptop",
-          name: "laptop",
-          owner: "person@example.test",
-          status: "online",
-          sandbox_provider: null,
-        },
-      ]);
-      createOmnigentHostDirectory.mockResolvedValue({ path: "/Users/person/nova/bot-1" });
 
       const result = await runTurnOnOmnigent(
         { prisma, events: fakeEvents(), ...DEPS_BASE },
@@ -884,13 +615,16 @@ describe("runTurnOnOmnigent", () => {
       );
 
       expect(result).toBe(true);
-      // A changed runner location recreates unconditionally — the stale session's health is
-      // irrelevant once its own binding no longer matches what the bot is configured for.
       expect(getOmnigentSession).not.toHaveBeenCalled();
       expect(createOmnigentSession).toHaveBeenCalledWith(
         DEPS_BASE.client,
         "person@example.test",
-        expect.objectContaining({ hostType: "external", hostId: "host_laptop" }),
+        expect.objectContaining({ hostType: "managed", sandboxProvider: "computer" }),
+      );
+      expect(upsertMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ runnerLocation: "computer" }),
+        }),
       );
     });
   });

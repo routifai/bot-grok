@@ -37,12 +37,19 @@ apps/web ──oRPC──▶ apps/api (auth, ownership) ──HTTP──▶ Omni
 | Activity panel | `activities.list({botId, before?, limit?})` | `GET /v1/sessions/{super}/activities` |
 | Memory tab | `memory.profile({botId})` | `GET /v1/sessions/{super}/memory/profile` |
 | Activity / Helper detail | `activities.get({botId, activityId})` | `GET /v1/sessions/{super}/activities/{id}` |
-| Harness picker | `engine.info` | Claude only (`nova-claude`) |
+| Computer screen | `computer.screenUrl({botId})` | `POST /v1/sessions/{super}/computer/screen` `{interactive:false}`; stream relayed by the same-origin screen proxy |
+| Take over | `computer.takeover({botId})` | `POST /v1/sessions/{super}/computer/screen` `{interactive:true}` |
+| Hand back | `computer.release({botId})` | `POST /v1/sessions/{super}/computer/release` |
+| Computer status | thread snapshot `computer` | `GET /v1/sessions/{super}/computer` |
 
 `ChatSummary` (contracts `muse.ts`) maps from `related_chats`:
 `id`, `title`, `start` (`with_context` → `withContext`), `summary` (the seed
 summary of a with-context chat, else `null`), `archived`, `live` (a turn is
 running), `updatedAt`.
+
+The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
+`OMNIGENT_PROXY_SECRET` set on api and worker. Computer ownership:
+[RUNNERS.md](RUNNERS.md).
 
 ## Slices
 
@@ -64,7 +71,7 @@ running), `updatedAt`.
 | Remove the context-provider route (`/internal/omnigent/context`) and `context-provider.ts` | The engine no longer calls it; memory comes from Omnigent |
 | Implement `chats.*` and add `activities.list` / `activities.get` (contracts + router + adapter client) with the ownership rule above | Side chats, Helper status, Activity panel |
 | Mirror job: copy assistant messages the Super Chat produced on its own (Helper Results) into the Nova thread; remember the last mirrored item id | "Muse speaks first" shows in the Conversation |
-| `engine.info` lists only Claude | One engine |
+| Remove the engine picker and `engine.*` routes | One engine |
 
 ### U1 · Web (`apps/web`)
 

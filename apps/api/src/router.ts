@@ -183,7 +183,6 @@ import {
   engineComputerTakeover,
   withEngineComputer,
 } from "./engine-computer.js";
-import { getEngineInfo, setEngineHarness, setEngineRunnerLocation } from "./engine-info.js";
 import {
   acceptProposal,
   dismissProposal,
@@ -4991,17 +4990,6 @@ export function createRouter(deps: RouterDeps) {
         );
         return settings;
       }),
-    },
-    engine: {
-      info: museOnly.engine.info.handler(({ context, input }) =>
-        getEngineInfo(deps, context.actor, input.botId),
-      ),
-      setHarness: museOnly.engine.setHarness.handler(({ context, input }) =>
-        setEngineHarness(deps, context.actor, input),
-      ),
-      setRunnerLocation: museOnly.engine.setRunnerLocation.handler(({ context, input }) =>
-        setEngineRunnerLocation(deps, context.actor, input),
-      ),
     },
     // The Activity panel (docs/super-chat/WIRING.md slice A1) — real handlers in
     // ./activities.js.

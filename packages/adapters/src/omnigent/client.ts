@@ -1,6 +1,6 @@
 // Minimal typed client for the Omnigent REST API (engine/omnigent/omnigent/server/API.md,
 // engine/omnigent/openapi.json), used by ./gateway.ts to run a Nova turn on Omnigent
-// (NOVA_ENGINE=omnigent, docs/omnigent-spike.md). Every call carries the identity/proxy
+// (docs/omnigent-spike.md). Every call carries the identity/proxy
 // headers Omnigent's header auth mode expects — no SDK dependency, just fetch and a tiny
 // SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
 import { redactSecrets } from "@aiden/core";
@@ -161,72 +161,6 @@ export async function getOmnigentSession(
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "get session", config.secrets);
   return (await response.json()) as OmnigentSessionSnapshot;
-}
-
-export interface OmnigentHostSummary {
-  host_id: string;
-  name: string;
-  owner: string;
-  status: "online" | "offline";
-  /** Non-null marks a server-managed sandbox host — never a "local" runner-location target. */
-  sandbox_provider: string | null;
-  [key: string]: unknown;
-}
-
-/** `GET /v1/hosts` — every host owned by `email`, used to find their connected `omnigent host`
- * for the "local" runner location. */
-export async function listOmnigentHosts(
-  config: OmnigentClientConfig,
-  email: string,
-): Promise<OmnigentHostSummary[]> {
-  const response = await fetch(new URL("/v1/hosts", config.baseUrl), {
-    headers: omnigentHeaders(config, email),
-  });
-  await throwOnError(response, "list hosts", config.secrets);
-  const body = (await response.json()) as { hosts?: OmnigentHostSummary[] };
-  return body.hosts ?? [];
-}
-
-export interface OmnigentHostDirEntry {
-  name: string;
-  path: string;
-  type: "directory" | "file" | "other";
-}
-
-/** `GET /v1/hosts/{id}/filesystem/{path}` — list a directory's entries (absolute paths). */
-export async function listOmnigentHostDirectory(
-  config: OmnigentClientConfig,
-  email: string,
-  hostId: string,
-  path: string,
-): Promise<OmnigentHostDirEntry[]> {
-  const response = await fetch(
-    new URL(`/v1/hosts/${encodeURIComponent(hostId)}/filesystem/${path}`, config.baseUrl),
-    { headers: omnigentHeaders(config, email) },
-  );
-  await throwOnError(response, "list host directory", config.secrets);
-  const body = (await response.json()) as { data?: OmnigentHostDirEntry[] };
-  return body.data ?? [];
-}
-
-/** `POST /v1/hosts/{id}/directories` — create (idempotent from the caller's view via
- * ./gateway.ts's fallback) the absolute workspace directory a "local" session starts in. */
-export async function createOmnigentHostDirectory(
-  config: OmnigentClientConfig,
-  email: string,
-  hostId: string,
-  path: string,
-): Promise<{ path: string }> {
-  const response = await fetch(
-    new URL(`/v1/hosts/${encodeURIComponent(hostId)}/directories`, config.baseUrl),
-    {
-      method: "POST",
-      headers: omnigentHeaders(config, email),
-      body: JSON.stringify({ path }),
-    },
-  );
-  await throwOnError(response, "create host directory", config.secrets);
-  return (await response.json()) as { path: string };
 }
 
 /** `GET /v1/agents` — resolves a built-in agent's durable id by its bundle name. */

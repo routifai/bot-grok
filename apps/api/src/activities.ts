@@ -25,7 +25,7 @@ export interface ActivitiesDeps {
 function requireClient(env: NodeJS.ProcessEnv): OmnigentClientConfig {
   const client = omnigentClientConfigFromEnv(env);
   if (!client) {
-    throw new ORPCError("BAD_REQUEST", { message: "Nova is not running on the Omnigent engine" });
+    throw new ORPCError("BAD_REQUEST", { message: "Chat is not available right now." });
   }
   return client;
 }

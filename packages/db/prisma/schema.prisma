@@ -972,7 +972,7 @@ model Episode {
   @@map("episodes")
 }
 
-/// NOVA_ENGINE=omnigent spike (docs/omnigent-spike.md): the Omnigent session id backing one
+/// Omnigent chat engine (docs/omnigent-spike.md): the Omnigent session id backing one
 /// Muse's Conversation, so every turn continues the same session instead of starting a new
 /// one. One row per bot; week 1 only ever creates a "private"-scope session.
 model OmnigentSession {

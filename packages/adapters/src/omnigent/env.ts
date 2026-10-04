@@ -1,17 +1,21 @@
-// Shared env wiring for the NOVA_ENGINE=omnigent spike (docs/omnigent-spike.md), used by both
-// apps/api and apps/worker so the flag and its supporting env vars behave identically in
-// whichever process runs "run.continue" jobs.
+// Shared env wiring for the Omnigent chat engine (docs/omnigent-spike.md), used by both
+// apps/api and apps/worker so the connection env vars behave identically in whichever process
+// runs "run.continue" jobs. The single switch is the connection itself: OMNIGENT_URL +
+// OMNIGENT_PROXY_SECRET.
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { resolveDeploymentModel } from "../deployment-model.js";
 import type { OmnigentClientConfig } from "./client.js";
 import type { OmnigentGatewayDeps } from "./gateway.js";
-import { DEFAULT_AGENT_NAME } from "./harnesses.js";
 
 /**
  * Settings documented in docs/super-chat/README.md's Settings table. Every value is resolved
  * once per call (from a passed-in or `process.env`) rather than cached, so tests can pass a
  * plain object instead of mutating env.
  */
+/** Built-in agent bundle Nova Conversation turns run on unless env `OMNIGENT_AGENT_NAME`
+ * overrides it (infra/omnigent/agents/nova-claude/). */
+export const DEFAULT_AGENT_NAME = "nova-claude";
+
 export interface OmnigentSuperChatConfig {
   /** Upper bound on how long one Super Chat turn may run before the gateway gives up and fails
    * it (env `OMNIGENT_TURN_TIMEOUT_MS`). */
@@ -79,9 +83,9 @@ export function omnigentRedactionSecretsFromEnv(env: NodeJS.ProcessEnv = process
 }
 
 /**
- * `undefined` unless `NOVA_ENGINE=omnigent` is set, in which case it throws on a missing
- * `OMNIGENT_URL` / `OMNIGENT_PROXY_SECRET` — fail loud at boot rather than silently falling
- * back to the existing engine on every turn.
+ * `undefined` when neither `OMNIGENT_URL` nor `OMNIGENT_PROXY_SECRET` is set (chat then runs on
+ * the built-in executor). Throws when exactly one is set — a half-configured connection should
+ * fail loud at boot rather than silently fall back on every turn.
  */
 export function omnigentGatewayDepsFromEnv(
   env: NodeJS.ProcessEnv,
@@ -89,12 +93,11 @@ export function omnigentGatewayDepsFromEnv(
   events: ThreadEvents,
   secrets: string[],
 ): OmnigentGatewayDeps | undefined {
-  if (env.NOVA_ENGINE !== "omnigent") return undefined;
-
   const baseUrl = env.OMNIGENT_URL?.trim();
   const proxySecret = env.OMNIGENT_PROXY_SECRET?.trim();
-  if (!baseUrl) throw new Error("OMNIGENT_URL is required when NOVA_ENGINE=omnigent");
-  if (!proxySecret) throw new Error("OMNIGENT_PROXY_SECRET is required when NOVA_ENGINE=omnigent");
+  if (!baseUrl && !proxySecret) return undefined;
+  if (!baseUrl) throw new Error("OMNIGENT_URL is required when OMNIGENT_PROXY_SECRET is set");
+  if (!proxySecret) throw new Error("OMNIGENT_PROXY_SECRET is required when OMNIGENT_URL is set");
 
   return {
     prisma,
@@ -108,16 +111,14 @@ export function omnigentGatewayDepsFromEnv(
 
 /**
  * The Omnigent client config for query-side Super Chat calls (`chats.*`/`activities.*`,
- * apps/api/src/chats.ts and ./activities.ts) — `undefined` whenever Nova isn't running on the
- * Omnigent engine or is missing `OMNIGENT_URL`/`OMNIGENT_PROXY_SECRET`, so callers can surface a
- * clean "not available" response instead of throwing at request time. Boot-time wiring
- * (`omnigentGatewayDepsFromEnv`, run path) stays strict/throwing; this is read lazily per
- * request so a deployment that hasn't opted in gets a normal `BAD_REQUEST`, not a crash.
+ * apps/api/src/chats.ts and ./activities.ts) — `undefined` whenever `OMNIGENT_URL` or
+ * `OMNIGENT_PROXY_SECRET` is missing, so callers can surface a clean "not available" response
+ * instead of throwing at request time. Boot-time wiring (`omnigentGatewayDepsFromEnv`, run
+ * path) is strict about a half-configured connection; this is read lazily per request.
  */
 export function omnigentClientConfigFromEnv(
   env: NodeJS.ProcessEnv,
 ): OmnigentClientConfig | undefined {
-  if (env.NOVA_ENGINE !== "omnigent") return undefined;
   const baseUrl = env.OMNIGENT_URL?.trim();
   const proxySecret = env.OMNIGENT_PROXY_SECRET?.trim();
   if (!baseUrl || !proxySecret) return undefined;

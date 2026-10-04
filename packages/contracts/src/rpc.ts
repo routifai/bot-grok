@@ -77,7 +77,6 @@ import {
   VoiceInfoSchema,
   VoiceStatusSchema,
 } from "./domain.js";
-import { EngineInfoSchema, NovaHarnessIdSchema, NovaRunnerLocationIdSchema } from "./engine.js";
 import { ProductEventSchema } from "./events.js";
 import { Id, IsoDate } from "./ids.js";
 import {
@@ -883,18 +882,6 @@ export const appContract = {
     updateSettings: oc
       .input(MuseSettingsSchema.partial().safeExtend({ botId: Id }))
       .output(MuseSettingsSchema),
-  },
-  // Which Omnigent harness a Muse's Conversation turns run on (docs/omnigent-spike.md);
-  // no-op reads/writes when Nova isn't running on the Omnigent engine.
-  engine: {
-    info: oc.input(z.object({ botId: Id })).output(EngineInfoSchema),
-    setHarness: oc
-      .input(z.object({ botId: Id, harness: NovaHarnessIdSchema }))
-      .output(EngineInfoSchema),
-    /** Where the Muse's runner executes — docs/omnigent-spike.md "Nova computer" launcher. */
-    setRunnerLocation: oc
-      .input(z.object({ botId: Id, runnerLocation: NovaRunnerLocationIdSchema }))
-      .output(EngineInfoSchema),
   },
   // The Activity panel (CONTEXT.md "Activity", "Activity Feed"; docs/super-chat/README.md):
   // everything the Muse did, newest first, by day. Scoped to the bot's Super Chat family (the

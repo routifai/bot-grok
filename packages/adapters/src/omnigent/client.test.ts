@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createOmnigentHostDirectory,
   createOmnigentSession,
   createOmnigentSideChat,
   findOmnigentAgentIdByName,
@@ -8,8 +7,6 @@ import {
   getOmnigentMemoryProfile,
   getOmnigentSession,
   isStaleCursorError,
-  listOmnigentHostDirectory,
-  listOmnigentHosts,
   listOmnigentSessionItems,
   OmnigentApiError,
   OmnigentSideChatError,
@@ -123,78 +120,6 @@ describe("omnigent client", () => {
     expect(url.searchParams.get("include_items")).toBe("false");
     expect(url.searchParams.get("include_liveness")).toBe("false");
     expect(url.searchParams.get("include_usage")).toBe("false");
-  });
-
-  it("listOmnigentHosts returns the caller's hosts", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse({
-          hosts: [
-            {
-              host_id: "host_1",
-              name: "laptop",
-              owner: "e@x.test",
-              status: "online",
-              sandbox_provider: null,
-            },
-          ],
-        }),
-      ),
-    );
-    const hosts = await listOmnigentHosts(CONFIG, "e@x.test");
-    expect(hosts).toEqual([
-      {
-        host_id: "host_1",
-        name: "laptop",
-        owner: "e@x.test",
-        status: "online",
-        sandbox_provider: null,
-      },
-    ]);
-  });
-
-  it("createOmnigentHostDirectory posts the tilde path and returns the created absolute path", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ object: "directory", path: "/Users/person/nova/bot-1" }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await createOmnigentHostDirectory(CONFIG, "e@x.test", "host_1", "~/nova/bot-1");
-
-    expect(result.path).toBe("/Users/person/nova/bot-1");
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/v1/hosts/host_1/directories");
-    expect(JSON.parse(init.body as string)).toEqual({ path: "~/nova/bot-1" });
-  });
-
-  it("createOmnigentHostDirectory throws with a descriptive error when the directory already exists", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "directory already exists" }, 409)),
-    );
-    await expect(
-      createOmnigentHostDirectory(CONFIG, "e@x.test", "host_1", "~/nova/bot-1"),
-    ).rejects.toThrow(/create host directory failed \(409\)/);
-  });
-
-  it("listOmnigentHostDirectory lists a directory's entries with absolute paths", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        object: "list",
-        data: [{ name: "bot-1", path: "/Users/person/nova/bot-1", type: "directory" }],
-        has_more: false,
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const entries = await listOmnigentHostDirectory(CONFIG, "e@x.test", "host_1", "~/nova");
-
-    expect(entries).toEqual([
-      { name: "bot-1", path: "/Users/person/nova/bot-1", type: "directory" },
-    ]);
-    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
-    expect(url.pathname).toBe("/v1/hosts/host_1/filesystem/~/nova");
   });
 
   it("findOmnigentAgentIdByName finds a matching agent by name", async () => {

@@ -45,7 +45,7 @@ const actor: Actor = {
 };
 
 const CLIENT = { baseUrl: "http://omnigent.test", proxySecret: "secret", secrets: ["sk-secret"] };
-const ENV = { NOVA_ENGINE: "omnigent" };
+const ENV = { OMNIGENT_URL: "http://omnigent.test", OMNIGENT_PROXY_SECRET: "secret" };
 
 function depsFor(overrides: Record<string, unknown> = {}) {
   const base = {

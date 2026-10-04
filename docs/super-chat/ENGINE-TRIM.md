@@ -27,6 +27,10 @@ don't use, so it can be removed before production.
 | Stores, DB, migrations | `omnigent/stores`, `omnigent/db` | Everything |
 | Header auth with shared secret | `omnigent/server/auth.py` | Nova API → engine identity |
 | Computer runner location | `omnigent/onboarding/sandboxes/{computer,base,registry,agent_sandbox,agent_sandbox_warm_pool}.py`, `server/managed_hosts.py` | Muse runner in its computer |
+| Computer screen and Take over | `omnigent/onboarding/sandboxes/base.py` (screen methods), `omnigent/server/routes/sessions/routes_computer.py` | Screen viewer and Take over |
+| Local browser backend | `omnigent/tools/browser_backend.py` | `browser_*` on the Computer's own screen |
+| OS tools | `omnigent/inner/os_env.py` (`sys_os_*`) | The Muse acting on its Computer |
+| Browser prompt instruction | `omnigent/runtime/prompt.py` | Steers the Muse to `browser_*` |
 | Agent spec / bundles | `omnigent/spec` | `infra/omnigent/agents/nova-claude` |
 | Built-in tools in use | `omnigent/tools` (`web_search` with the Tavily backend, `session_history`, `memory_*`, `side_chat_open`, `sys_session_*`) | The Muse and Helpers |
 | Example bundle | `examples/super-chat` | Reference for `infra/omnigent/agents/nova-claude` |
@@ -56,8 +60,8 @@ don't use, so it can be removed before production.
 
 | Part | Path | Why |
 |---|---|---|
-| Third-party sandbox providers (blaxel, boxlite, cwsandbox, daytona, e2b, gensee, islo, kubernetes, microsandbox, modal, openshell) | `omnigent/onboarding/sandboxes/*.py` (not `computer`, `base`, `registry`, `agent_sandbox*`) | Nova uses its computer or the laptop |
-| Local OS sandboxes (bwrap, seatbelt, Windows job object, seccomp) | `omnigent/inner/{bwrap,seatbelt,windows_jobobject}_sandbox.py`, `_seccomp.py` | Check: may be used by the laptop runner |
+| Third-party sandbox providers (blaxel, boxlite, cwsandbox, daytona, e2b, gensee, islo, kubernetes, microsandbox, modal, openshell) | `omnigent/onboarding/sandboxes/*.py` (not `computer`, `base`, `registry`, `agent_sandbox*`) | Nova uses its computer |
+| Local OS sandboxes (bwrap, seatbelt, Windows job object, seccomp) | `omnigent/inner/{bwrap,seatbelt,windows_jobobject}_sandbox.py`, `_seccomp.py` | Check: may be used by the computer runner |
 | Deploy recipes (blaxel, boxlite, cloudflare, cockroachdb, databricks, daytona, e2b, fly, gensee, hf-spaces, islo, kubernetes, microsandbox, modal, openshell, railway, render, tailscale) | `deploy/*`, `railway.toml`, `render.yaml` | Nova deploys with its own `infra/` |
 
 ### Clients and surfaces Nova replaces
@@ -75,6 +79,7 @@ don't use, so it can be removed before production.
 
 | Part | Path | Why |
 |---|---|---|
+| Desktop-app browser relay | `runner/tool_dispatch.py` `_execute_browser_tool` relay path, `server/routes/sessions/routes_browser.py` | Nova uses the local backend. Candidate, but kept: generic, and the default when the variable is unset |
 | `web_fetch` and its sandboxed web-research sub-agent | `omnigent/tools/builtins/web_fetch.py`, `__web_researcher` dispatch in `omnigent/runner/tool_dispatch.py` | Web search calls Tavily directly |
 | Other web search backends (OpenAI native, Perplexity, Nimble, DuckDuckGo, …) | `omnigent/tools/builtins/web_search*.py` except `web_search_tavily.py` | Tavily only |
 

@@ -11,10 +11,10 @@ import { createLogger, createTestSink, installLogger } from "@aiden/logging";
 import { describe, expect, it, vi } from "vitest";
 import { createBackgroundJobHandlers } from "./background-job-handlers.js";
 import { createRunExecutor } from "./executor.js";
-import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
 import { compactHistory } from "./history-compaction.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
 import { refreshIdeas } from "./muse/ideas.js";
+import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 
 vi.mock("./history-compaction.js", () => ({ compactHistory: vi.fn(async () => undefined) }));

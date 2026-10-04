@@ -12,8 +12,8 @@ read-only at `engine/omnigent/`, upstream `omnigent-main`): Omnigent runs the ag
 policies, and harness switching; Nova stays the context layer and product UI. This spike lets one
 Nova Conversation turn run on Omnigent, on whichever harness the person has chosen for their Muse
 (`pi`, `claude`, `openai`, or `codex` — see "Choosing a harness" below), with Nova's person
-context injected into the instructions, entirely behind the `NOVA_ENGINE=omnigent` flag. With the
-flag unset, nothing here changes — the existing engine (`packages/adapters/src/executor/`) is
+context injected into the instructions, whenever the connection (`OMNIGENT_URL` + `OMNIGENT_PROXY_SECRET`) is configured (the old
+`NOVA_ENGINE` flag is gone). With the connection unset, nothing here changes — the existing engine (`packages/adapters/src/executor/`) is
 untouched and still the default.
 
 ## What's here
@@ -55,10 +55,10 @@ untouched and still the default.
   turn's message, waits for `response.completed`, and writes the final assistant text into the
   Nova thread with the same `ThreadEvents.finalizeRun` helper the existing engine uses — so the
   web app shows it like any other bot reply.
-- **Flag** — `packages/adapters/src/background-job-handlers.ts`'s `"run.continue"` handler calls
-  `runTurnOnOmnigent` first when `NOVA_ENGINE=omnigent`, falling back to
-  `executor.continueRun` when the run isn't eligible (see "Eligibility" below) or when the flag
-  is unset. Both `apps/worker` and `apps/api` (which also runs job handlers when
+- **Switch** — `packages/adapters/src/background-job-handlers.ts`'s `"run.continue"` handler calls
+  `runTurnOnOmnigent` first when the Omnigent connection is configured, falling back to
+  `executor.continueRun` when the run isn't eligible (see "Eligibility" below) or when the
+  connection is unset. Both `apps/worker` and `apps/api` (which also runs job handlers when
   `WAKEUP_DRIVER=memory`) wire this identically through
   `packages/adapters/src/omnigent/env.ts`'s `omnigentGatewayDepsFromEnv`.
 
@@ -216,9 +216,8 @@ this integration doesn't cover those yet.
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `NOVA_ENGINE` | `apps/api`, `apps/worker` | Set to `omnigent` to route eligible runs through the gateway. Unset (default) keeps the existing engine. |
-| `OMNIGENT_URL` | `apps/api`, `apps/worker` | Base URL of the Omnigent server, e.g. `http://127.0.0.1:8000`. Required when `NOVA_ENGINE=omnigent`. |
-| `OMNIGENT_PROXY_SECRET` | `apps/api`, `apps/worker` | Shared secret sent as `X-Omnigent-Proxy-Secret` on every gateway call, alongside `X-Forwarded-Email` (the person's email) for Omnigent's header-auth mode. Required when `NOVA_ENGINE=omnigent`. |
+| `OMNIGENT_URL` | `apps/api`, `apps/worker` | Base URL of the Omnigent server, e.g. `http://127.0.0.1:8000`. Setting both this and the proxy secret routes eligible runs through the gateway. |
+| `OMNIGENT_PROXY_SECRET` | `apps/api`, `apps/worker` | Shared secret sent as `X-Omnigent-Proxy-Secret` on every gateway call, alongside `X-Forwarded-Email` (the person's email) for Omnigent's header-auth mode. Required together with `OMNIGENT_URL`. |
 | `OMNIGENT_AGENT_NAME` | `apps/api`, `apps/worker` | Which built-in agent bundle a Muse runs on when it has no `museHarness` choice of its own (deployment default). Defaults to `nova-pi`; set to `nova-claude`/`nova-openai`/`nova-codex` to change it. Superseded per-Muse by `engine.setHarness`. |
 | `OMNIGENT_CONTEXT_PROVIDER_SECRET` | `apps/api` | Bearer secret the context-provider route requires. **Unset 404s the route entirely** — set this to enable the endpoint. |
 | `OPENROUTER_API_KEY` / `AIDEN_LOCAL_MODELS_URL` | `apps/api` | Either makes the `pi` harness available in `engine.info`'s catalog (Pi routes through OpenRouter or a locally configured OpenAI-compatible server). |
@@ -245,7 +244,6 @@ uv run --project engine/omnigent omnigent server
 Then, in Nova's own env (`apps/api` and `apps/worker`):
 
 ```bash
-export NOVA_ENGINE=omnigent
 export OMNIGENT_URL=http://127.0.0.1:8000
 export OMNIGENT_PROXY_SECRET=some-long-random-dev-secret   # must match OMNIGENT_AUTH_HEADER_SECRET above
 export OMNIGENT_CONTEXT_PROVIDER_SECRET=some-long-random-dev-secret
@@ -263,7 +261,7 @@ only read at boot.
 
 ## Flipping the flag back off
 
-Unset `NOVA_ENGINE` (or set it to anything other than `"omnigent"`) in `apps/api` and
+Unset `OMNIGENT_URL` and `OMNIGENT_PROXY_SECRET` in `apps/api` and
 `apps/worker` and restart both. No other cleanup is needed: the `omnigent_sessions` table is
 additive and unused by the existing engine.
 
