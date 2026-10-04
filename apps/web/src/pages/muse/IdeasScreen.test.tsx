@@ -75,14 +75,14 @@ it("groups Ideas by area under a sentence-case heading", async () => {
   }
 });
 
-it("tapping an Idea row calls onSendIdea with its text", async () => {
+it('"Do it" on an Idea calls onSendIdea with its text', async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.ideas.list.mockResolvedValue([idea({ text: "Plan this Sunday's run", area: "health" })]);
   const onSendIdea = vi.fn();
   const page = await renderIdeas(onSendIdea);
   try {
-    const button = [...page.container.querySelectorAll("button")].find((candidate) =>
-      candidate.textContent?.startsWith("Plan this Sunday's run"),
+    const button = [...page.container.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === "Do it",
     );
     expect(button).toBeTruthy();
     await act(async () => {
@@ -95,10 +95,11 @@ it("tapping an Idea row calls onSendIdea with its text", async () => {
   }
 });
 
-it("renders the Idea's own illustration key as its row image", async () => {
+it("draws each Idea with a monochrome line icon, never an image", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.ideas.list.mockResolvedValue([
     idea({ text: "Draft the quarterly memo", area: "work", illustration: "rocket" }),
+    idea({ id: "idea-2", text: "Draft this week's client note", area: "clients" }),
   ]);
   const page = await renderIdeas();
   try {
@@ -107,29 +108,36 @@ it("renders the Idea's own illustration key as its row image", async () => {
         expect(page.container.textContent).toContain("Draft the quarterly memo");
       });
     });
-    const img = page.container.querySelector("img");
-    expect(img?.getAttribute("src")).toBe("/illustrations/rocket.png");
-    expect(img?.getAttribute("alt")).toBe("");
+    expect(page.container.querySelector("img")).toBeNull();
+    expect(page.container.querySelectorAll("li svg")).toHaveLength(2);
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();
   }
 });
 
-it("falls back to the area's default illustration when the Idea has none", async () => {
+it("Dismiss hides an Idea and remembers it", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const store = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+  });
   api.ideas.list.mockResolvedValue([
-    idea({ text: "Draft this week's client note", area: "clients" }),
+    idea({ id: "idea-1", text: "Plan this Sunday's run", area: "health" }),
+    idea({ id: "idea-2", text: "Quiz me on today's phrases", area: "learning" }),
   ]);
   const page = await renderIdeas();
   try {
+    const dismiss = [...page.container.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === "Dismiss",
+    );
     await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Draft this week's client note");
-      });
+      dismiss?.click();
     });
-    const img = page.container.querySelector("img");
-    expect(img?.getAttribute("src")).toBe("/illustrations/handshake.png");
+    expect(page.container.textContent).not.toContain("Plan this Sunday's run");
+    expect(page.container.textContent).toContain("Quiz me on today's phrases");
+    expect(store.get("nova.ideas.dismissed.bot-1")).toBe('["idea-1"]');
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

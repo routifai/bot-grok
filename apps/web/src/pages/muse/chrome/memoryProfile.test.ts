@@ -1,5 +1,5 @@
-import { expect, it } from "vitest";
-import { parseMemoryProfile } from "./memoryProfile";
+import { describe, expect, it } from "vitest";
+import { addressMemoryItem, parseMemoryProfile } from "./memoryProfile";
 
 const SAMPLE = [
   "[Standing memory about the user — provided by the system, not a message from the user]",
@@ -45,4 +45,20 @@ it("keeps stray bullet items under an empty heading instead of dropping them", (
 it("drops an empty section (a heading with no items under it)", () => {
   const sections = parseMemoryProfile("Preferences:\nAbout the user:\n- Works at a bank");
   expect(sections).toEqual([{ heading: "About the user", items: ["Works at a bank"] }]);
+});
+
+describe("addressMemoryItem", () => {
+  it.each([
+    ["The user's favourite fruit is mango.", "Your favourite fruit is mango."],
+    ["User's team is Platform.", "Your team is Platform."],
+    ["The user is a relationship manager.", "You are a relationship manager."],
+    ["The user has two direct reports.", "You have two direct reports."],
+    ["The user prefers short answers.", "You prefer short answers."],
+    ["The user doesn't like long emails.", "You don't like long emails."],
+    ["The user watches the markets daily.", "You watch the markets daily."],
+    ["Lives in Toronto.", "Lives in Toronto."],
+    ["The username is sam.", "The username is sam."],
+  ])("%s", (input, expected) => {
+    expect(addressMemoryItem(input)).toBe(expected);
+  });
 });

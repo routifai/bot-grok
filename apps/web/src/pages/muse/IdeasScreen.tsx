@@ -1,10 +1,9 @@
 import type { Idea } from "@aiden/contracts";
-import { cn, Skeleton } from "@aiden/ui-web";
+import { Button, cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { illustrationUrl } from "../../lib/illustrations";
 import { rpc } from "../../lib/rpc";
-import { areaLabel, ideaIllustration } from "./ideas/areaIcon";
+import { areaLabel, ideaIcon } from "./ideas/areaIcon";
 import { EmptyState, MUSE_TYPE, MuseColumn, MuseScreen } from "./ui";
 
 /** Ideas kept in the order their area first appeared, not re-sorted alphabetically. */
@@ -32,44 +31,53 @@ function IdeaRow({
   index,
   showArea,
   onSend,
+  onDismiss,
 }: {
   idea: Idea;
   index: number;
   showArea: boolean;
   onSend: (text: string) => void;
+  onDismiss: (id: string) => void;
 }) {
   const detail = idea.detail;
+  const Icon = ideaIcon(idea);
   return (
     <li
-      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:fill-mode-both motion-safe:duration-300"
+      className="flex items-start gap-4 py-4 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:fill-mode-both motion-safe:duration-300"
       style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
     >
-      <button
-        type="button"
-        onClick={() => onSend(idea.text)}
-        className="-mx-4 flex w-[calc(100%+2rem)] items-start gap-4 rounded-2xl px-4 py-3.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
+      <span
+        aria-hidden="true"
+        className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-foreground"
       >
-        <img
-          src={illustrationUrl(ideaIllustration(idea))}
-          alt=""
-          loading="lazy"
-          className="mt-0.5 size-9 shrink-0"
-        />
-        <span className="min-w-0 flex-1">
-          <span className="block text-[16px] font-medium leading-snug text-foreground">
-            {idea.text}
-          </span>
-          {detail ? (
-            <span className="mt-1 block text-[15px] leading-[1.5] text-muted-foreground">
-              {detail}
-            </span>
-          ) : showArea ? (
-            <span className="mt-0.5 block text-[13.5px] text-muted-foreground">
-              {areaLabel(idea.area)}
-            </span>
-          ) : null}
-        </span>
-      </button>
+        <Icon size={19} strokeWidth={1.75} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[16px] font-medium leading-snug text-foreground">{idea.text}</p>
+        {detail ? (
+          <p className="mt-1 text-[15px] leading-[1.5] text-muted-foreground">{detail}</p>
+        ) : showArea ? (
+          <p className="mt-0.5 text-[13.5px] text-muted-foreground">{areaLabel(idea.area)}</p>
+        ) : null}
+        <div className="mt-3 flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-full"
+            onClick={() => onSend(idea.text)}
+          >
+            <Trans>Do it</Trans>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="rounded-full text-muted-foreground"
+            onClick={() => onDismiss(idea.id)}
+          >
+            <Trans>Dismiss</Trans>
+          </Button>
+        </div>
+      </div>
     </li>
   );
 }
@@ -90,11 +98,23 @@ function IdeasSkeleton() {
   );
 }
 
+const dismissedKey = (botId: string) => `nova.ideas.dismissed.${botId}`;
+
+function readDismissed(botId: string): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(dismissedKey(botId));
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * F5 · Ideas. Things the Muse could start now (Meta Muse's Ideas page is the reference:
  * a plain title, a first-person subtitle, and quiet icon rows). Rows group under their
  * area only when every group gathers more than one idea; otherwise the area rides along
- * as a muted line. Tapping a row starts a Conversation with it.
+ * as a muted line. "Do it" starts a Conversation with the Idea; "Dismiss" hides it on this device.
  */
 export function IdeasScreen({
   botId,
@@ -105,11 +125,13 @@ export function IdeasScreen({
 }) {
   const { t } = useLingui();
   const [ideas, setIdeas] = useState<Idea[] | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed(botId));
   const generation = useRef(0);
 
   useEffect(() => {
     const current = ++generation.current;
     setIdeas(null);
+    setDismissed(readDismissed(botId));
     void rpc.ideas
       .list({ botId })
       .then((list) => {
@@ -123,7 +145,21 @@ export function IdeasScreen({
     };
   }, [botId]);
 
-  const groups = useMemo(() => groupByArea(ideas ?? []), [ideas]);
+  const visible = useMemo(
+    () => (ideas ?? []).filter((idea) => !dismissed.has(idea.id)),
+    [ideas, dismissed],
+  );
+  const groups = useMemo(() => groupByArea(visible), [visible]);
+
+  function dismiss(id: string) {
+    const next = new Set(dismissed).add(id);
+    setDismissed(next);
+    try {
+      window.localStorage.setItem(dismissedKey(botId), JSON.stringify([...next]));
+    } catch {
+      // Dismissal then lasts until reload.
+    }
+  }
   const grouped = worthGrouping(groups);
   let index = 0;
 
@@ -141,7 +177,7 @@ export function IdeasScreen({
 
         {ideas === null ? (
           <IdeasSkeleton />
-        ) : ideas.length === 0 ? (
+        ) : visible.length === 0 ? (
           <EmptyState face illustration="light-bulb" headline={t`Nothing to suggest yet`}>
             <Trans>I'll show ideas here as I learn what's useful to you.</Trans>
           </EmptyState>
@@ -152,7 +188,7 @@ export function IdeasScreen({
                 <h2 className="pb-1 text-[17px] font-semibold text-foreground">
                   {areaLabel(group.area)}
                 </h2>
-                <ul className="flex flex-col">
+                <ul className="flex flex-col divide-y divide-border/60">
                   {group.ideas.map((idea) => (
                     <IdeaRow
                       key={idea.id}
@@ -160,6 +196,7 @@ export function IdeasScreen({
                       index={index++}
                       showArea={false}
                       onSend={onSendIdea}
+                      onDismiss={dismiss}
                     />
                   ))}
                 </ul>
@@ -167,9 +204,16 @@ export function IdeasScreen({
             ))}
           </div>
         ) : (
-          <ul className="flex flex-col gap-1">
-            {(ideas ?? []).map((idea, i) => (
-              <IdeaRow key={idea.id} idea={idea} index={i} showArea onSend={onSendIdea} />
+          <ul className="flex flex-col divide-y divide-border/60">
+            {visible.map((idea, i) => (
+              <IdeaRow
+                key={idea.id}
+                idea={idea}
+                index={i}
+                showArea
+                onSend={onSendIdea}
+                onDismiss={dismiss}
+              />
             ))}
           </ul>
         )}

@@ -4,7 +4,7 @@ import { ArrowUp, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { IllustrationKey } from "../../../lib/illustrations";
 import { illustrationUrl } from "../../../lib/illustrations";
-import { MuseColumn } from "../ui";
+import { MUSE_TYPE, MuseColumn } from "../ui";
 import { GoalRing, GoalStep } from "./visuals";
 
 // iOS-flavoured press feedback: a quick, springy scale on press.
@@ -13,18 +13,18 @@ const PRESS =
 
 /**
  * A Goal in motion, shown rather than explained: the Goal as a widget (progress, plan,
- * next check-in) and, overlapping it, the kind of check-in banner the Muse sends —
- * which is also how an Ask looks when it needs a decision.
+ * next check-in) and, under it, the kind of check-in banner the Muse sends —
+ * which is also how an Ask looks when it needs a decision. Both stack, never overlap.
  */
 function GoalStage({ botName, color }: { botName: string; color: string }) {
   const { t } = useLingui();
   return (
-    <div className="relative rounded-[28px] bg-muted/60 px-5 pt-5 pb-20 sm:px-8 sm:pt-8">
+    <div className="flex flex-col gap-4 rounded-[28px] bg-muted/60 p-5 sm:p-8">
       {/* Sample content: labelled so it is never read as one of the person's Goals. */}
-      <span className="absolute top-2 end-3 z-10 rounded-full bg-background/80 px-2.5 py-1 text-[12px] font-medium text-muted-foreground ring-1 ring-border/60 backdrop-blur">
+      <span className="w-fit rounded-full border border-border bg-card px-3 py-1 text-[13px] font-medium text-foreground">
         <Trans>Example</Trans>
       </span>
-      <div aria-hidden="true">
+      <div aria-hidden="true" className="flex flex-col gap-4">
         <div className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-12px_rgb(0_0_0/0.18)]">
           <div className="flex items-center gap-4">
             <GoalRing value={0.4} color={color} />
@@ -45,7 +45,7 @@ function GoalStage({ botName, color }: { botName: string; color: string }) {
           </ul>
         </div>
 
-        <div className="absolute inset-x-3 -bottom-5 sm:inset-x-auto sm:end-6 sm:w-[380px]">
+        <div className="sm:ms-auto sm:w-[380px]">
           <div className="rounded-[22px] border border-glass-border bg-glass p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
             <div className="flex items-start gap-3">
               <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-card shadow-sm">
@@ -151,7 +151,7 @@ export function GoalsIntro({
   return (
     <MuseColumn className="flex min-h-full flex-col gap-10 pt-14 pb-16">
       <header>
-        <h1 className="text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground">
+        <h1 className={MUSE_TYPE.pageTitle}>
           <Trans>Goals</Trans>
         </h1>
         <p className="mt-2 max-w-[560px] text-[17px] leading-[1.45] tracking-[-0.01em] text-muted-foreground">

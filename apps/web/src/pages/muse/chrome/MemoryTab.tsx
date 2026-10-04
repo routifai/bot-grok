@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { ORPCError } from "@orpc/client";
 import { useEffect, useRef, useState } from "react";
-import { type MemoryProfileSection, parseMemoryProfile } from "./memoryProfile";
+import { addressMemoryItem, type MemoryProfileSection, parseMemoryProfile } from "./memoryProfile";
 import { PanelRowSkeletonList } from "./PanelSkeleton";
 
 // `NOT_IMPLEMENTED`: `memory.profile` isn't served in this environment. `NOT_FOUND`: this
@@ -82,7 +82,7 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
                 className="rounded-lg px-2 py-1 text-[13.5px] leading-[1.5] text-foreground"
                 dir="auto"
               >
-                {item}
+                {addressMemoryItem(item)}
               </li>
             ))}
           </ul>

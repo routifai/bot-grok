@@ -46,3 +46,44 @@ export function parseMemoryProfile(raw: string | null | undefined): MemoryProfil
 
   return sections.filter((section) => section.items.length > 0);
 }
+
+const IRREGULAR_VERB: Record<string, string> = {
+  is: "are",
+  was: "were",
+  has: "have",
+  does: "do",
+  goes: "go",
+  isn: "aren",
+  doesn: "don",
+  hasn: "haven",
+  wasn: "weren",
+};
+
+function secondPersonVerb(verb: string): string {
+  const lower = verb.toLowerCase();
+  const irregular = IRREGULAR_VERB[lower];
+  if (irregular) return irregular;
+  if (/(ch|sh|ss|x|z)es$/.test(lower)) return lower.slice(0, -2);
+  if (/[^aeiou]ies$/.test(lower)) return `${lower.slice(0, -3)}y`;
+  if (lower.endsWith("s") && !lower.endsWith("ss")) return lower.slice(0, -1);
+  return lower;
+}
+
+const USER_POSSESSIVE = /^(?:the\s+)?user[’']s\s+/i;
+const USER_SUBJECT = /^(?:the\s+)?user\s+([A-Za-z]+)(?:([’']t)\b)?/i;
+
+/**
+ * The Memory Profile is written about the person in the third person ("The user's
+ * favourite fruit is mango."). The person reads it, so show it to them in second person.
+ * A deterministic, display-only rewrite of the common leading "The user …" / "User …"
+ * forms; anything else, and the stored data, is left untouched.
+ */
+export function addressMemoryItem(item: string): string {
+  if (USER_POSSESSIVE.test(item)) return item.replace(USER_POSSESSIVE, "Your ");
+  const match = USER_SUBJECT.exec(item);
+  if (!match) return item;
+  const [whole, verb = "", contraction] = match;
+  const converted = secondPersonVerb(verb);
+  const rest = item.slice(whole.length);
+  return `You ${converted}${contraction ?? ""}${rest}`;
+}

@@ -14,10 +14,7 @@ export function LibraryGrid({
   onDelete: (item: ArtifactSummary) => void;
 }) {
   return (
-    <div
-      className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2 xl:grid-cols-3 xl:gap-6"
-      data-testid="library-grid"
-    >
+    <div className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2" data-testid="library-grid">
       {items.map((item) => (
         <LibraryCard
           key={item.id}
@@ -36,7 +33,7 @@ const SKELETON_COUNT = 6;
 export function LibrarySkeletonGrid() {
   return (
     <div
-      className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2 xl:grid-cols-3 xl:gap-6"
+      className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2"
       aria-hidden="true"
       data-testid="library-skeleton"
     >

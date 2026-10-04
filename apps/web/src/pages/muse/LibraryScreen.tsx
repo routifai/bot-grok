@@ -20,7 +20,7 @@ import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import { SkillsPanel } from "./library/SkillsPanel";
 import type { ArtifactSummary } from "./library/types";
-import { Chip, EmptyState, MuseScreen, MuseWideColumn, ScreenHeader } from "./ui";
+import { Chip, EmptyState, MUSE_TYPE, MuseColumn, MuseScreen } from "./ui";
 
 const LIST_PAGE_SIZE = 60;
 // Safety net against an unbounded fetch loop; a Library this size is not realistic.
@@ -146,11 +146,16 @@ export function LibraryScreen({
   const visibleKinds = KIND_ORDER.filter((kind) => (facetCounts.get(kind) ?? 0) > 0);
 
   return (
-    <MuseScreen header={<ScreenHeader title={t`Library`} />}>
-      <MuseWideColumn className="flex min-h-full flex-col pt-8">
+    <MuseScreen>
+      <MuseColumn className="flex min-h-full flex-col pt-14 pb-12">
+        <header className="pb-8">
+          <h1 className={MUSE_TYPE.pageTitle}>
+            <Trans>Library</Trans>
+          </h1>
+        </header>
         <fieldset
           aria-label={t`Library view`}
-          className="m-0 mb-6 grid w-full min-w-0 max-w-[340px] grid-cols-2 gap-1 rounded-[16px] border-0 bg-muted p-1"
+          className="m-0 mb-5 grid w-full min-w-0 max-w-[340px] grid-cols-2 gap-1 rounded-[16px] border-0 bg-muted p-1"
         >
           {(
             [
@@ -178,25 +183,25 @@ export function LibraryScreen({
           <SkillsPanel avatarColor={avatarColor} />
         ) : (
           <>
-            <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="relative w-full sm:max-w-[300px]">
-                <Search
-                  size={15}
-                  strokeWidth={1.75}
-                  className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t`Search your Library…`}
-                  aria-label={t`Search your Library`}
-                  className="w-full rounded-full border border-border bg-card py-2 ps-10 pe-4 text-[13.5px] text-foreground outline-none transition-colors focus:border-ring"
-                />
-              </div>
+            {total > 0 ? (
+              <div className="flex flex-col gap-3 pb-8">
+                <div className="relative w-full">
+                  <Search
+                    size={15}
+                    strokeWidth={1.75}
+                    className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t`Search your Library…`}
+                    aria-label={t`Search your Library`}
+                    className="w-full rounded-full border border-border bg-card py-2 ps-10 pe-4 text-[13.5px] text-foreground outline-none transition-colors focus:border-ring"
+                  />
+                </div>
 
-              {total > 0 ? (
-                <div className="flex flex-wrap gap-2 sm:justify-end">
+                <div className="flex flex-wrap gap-2">
                   <Chip selected={selectedKind === "all"} onClick={() => setSelectedKind("all")}>
                     {t`All`} {total}
                   </Chip>
@@ -210,8 +215,8 @@ export function LibraryScreen({
                     </Chip>
                   ))}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
             {items === null ? (
               <LibrarySkeletonGrid />
@@ -241,7 +246,7 @@ export function LibraryScreen({
             )}
           </>
         )}
-      </MuseWideColumn>
+      </MuseColumn>
 
       {openArtifactId ? (
         <ArtifactPreviewDialog

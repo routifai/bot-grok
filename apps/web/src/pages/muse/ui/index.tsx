@@ -22,7 +22,7 @@ export const MUSE_TYPE = {
   /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
   chromeTitle: "text-[17px] font-semibold tracking-[-0.01em] text-foreground",
   /** A big in-content heading for a screen that reads like its own page (Ideas). */
-  pageTitle: "text-[32px] font-semibold leading-[1.1] tracking-[-0.015em] text-foreground",
+  pageTitle: "text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground",
   /** A one-line page subtitle under `pageTitle`, in the Muse's own voice. */
   pageSubtitle: "text-[17px] leading-[1.5] text-muted-foreground",
   /** A group heading inside a screen ("Productivity", "Paused", "Plan"). */
