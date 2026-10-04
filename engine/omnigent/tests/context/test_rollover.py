@@ -850,3 +850,12 @@ async def test_side_chat_seed_with_only_one_unanswered_message_keeps_it() -> Non
     )
 
     assert data.last_item_id == "u1"
+
+
+def test_state_file_instruction_stamps_time_and_zone_by_default() -> None:
+    """A bare date is ambiguous across time zones; the default carries time and UTC."""
+    import re
+
+    instruction = state_file_summarizer_instruction()
+
+    assert re.search(r"## Context checkpoint — \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC", instruction)

@@ -101,7 +101,9 @@ def state_file_summarizer_instruction(*, today: str | None = None) -> str:
         Pass :data:`SUMMARIZER_DATE_PLACEHOLDER` for a caller that fills the
         date in itself at the actual moment of summarization.
     """
-    resolved_today = today if today is not None else datetime.now(UTC).date().isoformat()
+    # Date plus time and zone: a bare UTC date reads as "tomorrow" to a model whose own
+    # clock is local, and the summary then treats "today only" facts as expired.
+    resolved_today = today if today is not None else f"{datetime.now(UTC):%Y-%m-%d %H:%M} UTC"
     return (
         f"Write the summary as a state file, not a narrative. Start with "
         f"'## Context checkpoint — {resolved_today}'. Organize by topic: the user's "
