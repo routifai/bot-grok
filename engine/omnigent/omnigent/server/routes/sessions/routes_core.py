@@ -3002,11 +3002,27 @@ def register_core_routes(
         runner_client = await _get_runner_client(
             source_id, runner_router, conversation=source_conv
         )
+        llm_client = None
+        connection = None
+        if runner_client is None:
+            # The parent's runner isn't connected (idle or restarting): summarize with the
+            # server's own LLM config rather than failing the seed.
+            from omnigent.llms.client import Client
+            from omnigent.runtime import get_caps
+            from omnigent.runtime.policies.builder import _resolve_server_llm_connection
+
+            server_llm = get_caps().llm
+            if server_llm is not None:
+                llm_client = Client()
+                connection = _resolve_server_llm_connection(server_llm)
+                model = server_llm.model
         seed_labels = source_conv.labels if source_conv else None
         seed = await build_side_chat_seed(
             items,
             keep_tokens=resolve_keep_tokens(seed_labels),
             model=model,
+            llm_client=llm_client,
+            connection=connection,
             runner_client=runner_client,
             conversation_id=source_id,
         )

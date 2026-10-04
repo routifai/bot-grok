@@ -2675,3 +2675,48 @@ async def test_fork_side_chat_seed_summarizes_on_the_sessions_reported_model(
 
     assert resp.status_code == 201, resp.text
     assert seen["model"] == "claude-haiku-4-5-20251001"
+
+
+@pytest.mark.asyncio
+async def test_fork_side_chat_seed_uses_server_llm_when_no_runner_is_connected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the parent's runner idle, the seed is summarized with the server's own llm."""
+    import types
+
+    from omnigent.context import rollover as rollover_module
+    from omnigent.spec.types import LLMConfig
+
+    seen: dict[str, object] = {}
+
+    async def _fake_summarize_history(messages, llm_client, model, *args, **kwargs):
+        del messages, args, kwargs
+        seen["model"] = model
+        seen["has_client"] = llm_client is not None
+        return {"text": "SUMMARY", "token_count": 3}
+
+    monkeypatch.setattr(rollover_module, "summarize_history", _fake_summarize_history)
+    server_llm = LLMConfig(
+        model="anthropic/claude-haiku-4-5-20251001",
+        connection={"api_key": "k", "base_url": "https://api.anthropic.com/v1"},
+    )
+    monkeypatch.setattr("omnigent.runtime.get_caps", lambda: types.SimpleNamespace(llm=server_llm))
+
+    conv = _make_conversation(labels={"omnigent.context.mode": "superside-chat"})
+    items = [
+        _make_item("9980c8a9248139f14f4165e5d53088aa", "Hello", response_id="resp_1"),
+        _make_item("msg_2", "hi there", response_id="resp_1"),
+    ]
+    conv_store = _ConversationStore(
+        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
+        items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
+    )
+    client = TestClient(_build_app(conv_store))
+
+    resp = client.post(
+        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
+        json={"side_chat": True},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert seen == {"model": "anthropic/claude-haiku-4-5-20251001", "has_client": True}
