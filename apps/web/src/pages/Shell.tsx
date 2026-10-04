@@ -2481,7 +2481,11 @@ export function ShellPage() {
                 onSendIdea={handleSendIdea}
               />
             ) : museView === "ideas" ? (
-              <IdeasScreen botId={active.id} onSendIdea={handleSendIdea} />
+              <IdeasScreen
+                botId={active.id}
+                onSendIdea={handleSendIdea}
+                onOpenConversation={() => setMuseView("conversation")}
+              />
             ) : (
               <LibraryScreen
                 botId={active.id}

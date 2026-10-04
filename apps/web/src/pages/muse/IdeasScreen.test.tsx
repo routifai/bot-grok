@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
-  ideas: { list: vi.fn(), refresh: vi.fn() },
+  ideas: { list: vi.fn(), refresh: vi.fn(), accept: vi.fn(), dismiss: vi.fn() },
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: api }));
 vi.mock("@lingui/react/macro", () => {
@@ -158,4 +158,25 @@ it("shows an empty state when there are no Ideas yet", async () => {
     await page.cleanup();
     vi.unstubAllGlobals();
   }
+});
+
+it("accepts and dismisses a background Idea on the server, not by sending its text", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.ideas.list.mockResolvedValue([
+    idea({ id: "s-1", text: "Add banking use cases to the brief", area: "suggested" }),
+    idea({ id: "s-2", text: "Watch open banking news", area: "suggested" }),
+  ]);
+  api.ideas.accept.mockResolvedValue({ ok: true });
+  api.ideas.dismiss.mockResolvedValue({ ok: true });
+  const onSendIdea = vi.fn();
+  const view = await renderIdeas(onSendIdea);
+  const buttons = (label: string) =>
+    [...view.container.querySelectorAll("button")].filter((b) => b.textContent === label);
+  await act(async () => buttons("Do it")[0]?.click());
+  expect(api.ideas.accept).toHaveBeenCalledWith({ botId: "bot-1", ideaId: "s-1" });
+  expect(onSendIdea).not.toHaveBeenCalled();
+  await act(async () => buttons("Dismiss")[0]?.click());
+  expect(api.ideas.dismiss).toHaveBeenCalledWith({ botId: "bot-1", ideaId: "s-2" });
+  expect(view.container.textContent).not.toContain("Watch open banking news");
+  await view.cleanup();
 });

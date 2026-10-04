@@ -36,7 +36,7 @@ function IdeaRow({
   idea: Idea;
   index: number;
   showArea: boolean;
-  onSend: (text: string) => void;
+  onSend: (idea: Idea) => void;
   onDismiss: (id: string) => void;
 }) {
   const detail = idea.detail;
@@ -60,12 +60,7 @@ function IdeaRow({
           <p className="mt-0.5 text-[13.5px] text-muted-foreground">{areaLabel(idea.area)}</p>
         ) : null}
         <div className="mt-3 flex items-center gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            className="rounded-full"
-            onClick={() => onSend(idea.text)}
-          >
+          <Button size="sm" variant="outline" className="rounded-full" onClick={() => onSend(idea)}>
             <Trans>Do it</Trans>
           </Button>
           <Button
@@ -116,12 +111,18 @@ function readDismissed(botId: string): Set<string> {
  * area only when every group gathers more than one idea; otherwise the area rides along
  * as a muted line. "Do it" starts a Conversation with the Idea; "Dismiss" hides it on this device.
  */
+// Ideas the Muse found in the background ("suggested") are accepted and dismissed on the
+// server, which sends the idea's message into the Conversation itself.
+const isSuggested = (idea: Idea) => idea.area === "suggested";
+
 export function IdeasScreen({
   botId,
   onSendIdea,
+  onOpenConversation,
 }: {
   botId: string;
   onSendIdea: (text: string) => void;
+  onOpenConversation?: () => void;
 }) {
   const { t } = useLingui();
   const [ideas, setIdeas] = useState<Idea[] | null>(null);
@@ -151,7 +152,24 @@ export function IdeasScreen({
   );
   const groups = useMemo(() => groupByArea(visible), [visible]);
 
+  function act(idea: Idea) {
+    if (!isSuggested(idea)) {
+      onSendIdea(idea.text);
+      return;
+    }
+    hide(idea.id);
+    onOpenConversation?.();
+    void rpc.ideas.accept({ botId, ideaId: idea.id }).catch(() => undefined);
+  }
+
   function dismiss(id: string) {
+    const idea = ideas?.find((candidate) => candidate.id === id);
+    if (idea && isSuggested(idea))
+      void rpc.ideas.dismiss({ botId, ideaId: id }).catch(() => undefined);
+    hide(id);
+  }
+
+  function hide(id: string) {
     const next = new Set(dismissed).add(id);
     setDismissed(next);
     try {
@@ -195,7 +213,7 @@ export function IdeasScreen({
                       idea={idea}
                       index={index++}
                       showArea={false}
-                      onSend={onSendIdea}
+                      onSend={act}
                       onDismiss={dismiss}
                     />
                   ))}
@@ -211,7 +229,7 @@ export function IdeasScreen({
                 idea={idea}
                 index={i}
                 showArea
-                onSend={onSendIdea}
+                onSend={act}
                 onDismiss={dismiss}
               />
             ))}
