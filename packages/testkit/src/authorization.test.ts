@@ -124,9 +124,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["computer/readFile", { botId: "missing-bot", path: "MEMORY.md" }],
       ["computer/screenUrl", { botId: "missing-bot" }],
       ["computer/heartbeat", { botId: "missing-bot" }],
-      ["memory/list", {}],
-      ["memory/update", { documentId: "missing-memory", content: "Nope" }],
-      ["memory/exportMarkdown", {}],
       ["routines/list", { botId: "missing-bot" }],
       ["routines/create", routineInput("missing-bot")],
       ["routines/update", { routineId: "missing-routine", name: "Nope" }],
@@ -252,16 +249,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       "connections/begin",
       connectionInput("Owner Connection"),
     );
-    const ownerMemory = await handles.prisma.memoryDocument.create({
-      data: {
-        spaceId: ownerActor.spaceId,
-        userId: ownerActor.userId,
-        botId: ownerBot.id,
-        scope: "bot",
-        path: "PRIVATE.md",
-        content: "owner-only-memory",
-      },
-    });
     const ownerArtifact = await handles.prisma.artifact.create({
       data: {
         spaceId: ownerActor.spaceId,
@@ -408,17 +395,12 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["agentSkills/get", { skillId: ownerAgentSkill.id }],
       ["agentSkills/update", { skillId: ownerAgentSkill.id, description: "Stolen" }],
       ["agentSkills/remove", { skillId: ownerAgentSkill.id }],
-      ["memory/update", { documentId: ownerMemory.id, content: "stolen" }],
       ["connections/complete", { connectionId: ownerConnection.connectionId }],
     ] satisfies Array<[string, unknown]>;
     await Promise.all(
       resourceIdCalls.map(([procedure, input]) => expectDenied(app, intruder, procedure, input)),
     );
 
-    expect(await rpc<unknown[]>(app, intruder, "memory/list", { botId: ownerBot.id })).toEqual([]);
-    expect(await rpc<string>(app, intruder, "memory/exportMarkdown", { botId: ownerBot.id })).toBe(
-      "",
-    );
     expect(await rpc<Array<{ id: string }>>(app, intruder, "capabilities/list")).not.toContainEqual(
       expect.objectContaining({ id: ownerCapability.id }),
     );
@@ -457,9 +439,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
     expect(
       await handles.prisma.scratchpadItem.findUniqueOrThrow({ where: { id: ownerScratchpad.id } }),
     ).toMatchObject({ title: "Owner open work", notes: "private" });
-    expect(
-      await handles.prisma.memoryDocument.findUniqueOrThrow({ where: { id: ownerMemory.id } }),
-    ).toMatchObject({ content: "owner-only-memory" });
 
     // Destructive bot removal is checked last so an authorization regression is unmistakable.
     await expectDenied(app, intruder, "bots/remove", {

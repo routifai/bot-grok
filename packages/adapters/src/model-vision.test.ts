@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { builtinAgentTools } from "./builtin-tools.js";
 import {
   filterImageReturningComputerTools,
   IMAGE_RETURNING_COMPUTER_TOOLS,
@@ -9,6 +8,10 @@ import {
   resolveModelRefForVisionCheck,
   updateModelImageCapabilities,
 } from "./model-vision.js";
+
+const computerTools = [...IMAGE_RETURNING_COMPUTER_TOOLS, "shell", "list_files"].map((name) => ({
+  name,
+}));
 
 describe("model vision gating for computer tools", () => {
   afterEach(() => {
@@ -59,9 +62,7 @@ describe("model vision gating for computer tools", () => {
   });
 
   it("omits image-returning computer tools for text-only models", () => {
-    const names = filterImageReturningComputerTools(builtinAgentTools, false).map(
-      (tool) => tool.name,
-    );
+    const names = filterImageReturningComputerTools(computerTools, false).map((tool) => tool.name);
     for (const name of IMAGE_RETURNING_COMPUTER_TOOLS) {
       expect(names).not.toContain(name);
     }
@@ -70,10 +71,8 @@ describe("model vision gating for computer tools", () => {
   });
 
   it("keeps image-returning computer tools for vision models", () => {
-    const names = filterImageReturningComputerTools(builtinAgentTools, true).map(
-      (tool) => tool.name,
-    );
-    expect(names).toEqual(builtinAgentTools.map((tool) => tool.name));
+    const names = filterImageReturningComputerTools(computerTools, true).map((tool) => tool.name);
+    expect(names).toEqual(computerTools.map((tool) => tool.name));
     expect(names).toContain("computer_observe");
     expect(names).toContain("computer_act");
   });

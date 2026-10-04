@@ -26,7 +26,6 @@ const baseBot = {
   sectionId: null,
   archivedAt: null,
   parentBotId: null,
-  memoryScope: null as string | null,
   createdAt: new Date("2026-08-19T00:00:00.000Z"),
   updatedAt: new Date("2026-08-19T00:00:00.000Z"),
   thread: { id: "thread-1", unread: false, messages: [] },
@@ -34,31 +33,7 @@ const baseBot = {
   computer: null,
 };
 
-function reposFor(memoryScope: string | null) {
-  const prisma = {
-    bot: {
-      findMany: vi.fn(async () => [{ ...baseBot, memoryScope }]),
-    },
-    run: {
-      findMany: vi.fn(async () => []),
-    },
-  };
-  return createRepos(prisma as unknown as PrismaClient);
-}
-
 describe("createRepos.listBots", () => {
-  it("passes memoryScope through as null when unset", async () => {
-    await expect(reposFor(null).listBots(actor)).resolves.toEqual([
-      expect.objectContaining({ memoryScope: null }),
-    ]);
-  });
-
-  it("passes memoryScope through when set to shared", async () => {
-    await expect(reposFor("shared").listBots(actor)).resolves.toEqual([
-      expect.objectContaining({ memoryScope: "shared" }),
-    ]);
-  });
-
   it("classifies initial preview runs once across bots, including non-peer results", async () => {
     const prisma = {
       bot: {

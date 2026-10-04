@@ -104,7 +104,6 @@ function bot(overrides: Partial<Bot> = {}): Bot {
     archivedAt: null,
     unread: false,
     parentBotId: null,
-    memoryScope: null,
     threadId: "thread-1",
     preview: "",
     status: "idle",

@@ -65,10 +65,7 @@ export interface AppEnv {
   /** Unknown chat senders auto-provision their own accounts when true. */
   messagingOpenSignup: boolean;
   /** Bot that owns team/external chat rooms on the messaging surface. */
-  teamChatBotId: string | undefined;
   /** Optional model override for ambient engagement judging. */
-  teamChatJudgeProvider: string | undefined;
-  teamChatJudgeModel: string | undefined;
   defaultProvider: string;
   defaultModel: string;
   wakeupDriver: string;
@@ -141,9 +138,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     larkEncryptKey: optional(source.LARK_ENCRYPT_KEY),
     larkDomain: optional(source.LARK_DOMAIN),
     messagingOpenSignup: source.MESSAGING_OPEN_SIGNUP === "true",
-    teamChatBotId: optional(source.TEAM_CHAT_BOT_ID) ?? optional(source.SLACK_AIDEN_BOT_ID),
-    teamChatJudgeProvider: optional(source.TEAM_CHAT_JUDGE_PROVIDER),
-    teamChatJudgeModel: optional(source.TEAM_CHAT_JUDGE_MODEL),
     defaultProvider: deploymentModel.provider,
     defaultModel: deploymentModel.model,
     wakeupDriver: source.WAKEUP_DRIVER ?? "graphile",

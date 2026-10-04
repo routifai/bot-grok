@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { syncEngineTimezone } from "./engine-timezone.js";
+import { syncEngineProactivity, syncEngineTimezone } from "./engine-timezone.js";
 
 const env = { OMNIGENT_URL: "http://engine.test", OMNIGENT_PROXY_SECRET: "s" } as NodeJS.ProcessEnv;
 
@@ -33,5 +33,35 @@ describe("syncEngineTimezone", () => {
     await expect(
       syncEngineTimezone(prismaWith({ email: "a@example.com", timezone: "UTC" }), "u1", env),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("syncEngineProactivity", () => {
+  const body = async (settings: Parameters<typeof syncEngineProactivity>[2]) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await syncEngineProactivity(
+      prismaWith({ email: "a@example.com", timezone: null }),
+      "u1",
+      settings,
+      env,
+    );
+    return JSON.parse((fetchMock.mock.calls[0] as [URL, RequestInit])[1].body as string);
+  };
+
+  it("puts the level and quiet hours into the engine's preferences", async () => {
+    expect(await body({ proactivity: "low", quietHours: "22:00-08:00" })).toEqual({
+      proactivity: "low",
+      quiet_start: "22:00",
+      quiet_end: "08:00",
+    });
+  });
+
+  it("clears quiet hours and runs high at the engine's top level", async () => {
+    expect(await body({ proactivity: "high", quietHours: null })).toEqual({
+      proactivity: "normal",
+      quiet_start: null,
+      quiet_end: null,
+    });
   });
 });

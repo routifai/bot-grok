@@ -199,7 +199,10 @@ it("accepts an open Proposal and renders the new plan", async () => {
     });
     await act(async () => {
       await vi.waitFor(() => {
-        expect(api.acceptProposal).toHaveBeenCalledWith({ proposalId: "proposal-1" });
+        expect(api.acceptProposal).toHaveBeenCalledWith({
+          goalId: "goal-1",
+          proposalId: "proposal-1",
+        });
       });
     });
     await act(async () => {

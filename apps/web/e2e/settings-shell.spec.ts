@@ -38,11 +38,6 @@ test("settings: Nova, General, Model, Memory and Voice, one size, iOS rows", asy
   await expect(settings.getByText("Models and their keys are set on the server")).toBeVisible();
   await captureScreenshot(page, testInfo, "settings-model");
 
-  await settings.getByTestId("settings-nav-memory").click();
-  await expect(settings).toHaveAttribute("data-settings-section", "memory");
-  await expect(settings.getByText("What I remember")).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-memory");
-
   await settings.getByTestId("settings-nav-voice").click();
   await expect(settings).toHaveAttribute("data-settings-section", "voice");
   await expect(settings.getByText("Service", { exact: true })).toBeVisible();

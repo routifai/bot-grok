@@ -26,8 +26,6 @@ function handlers(overrides: Partial<BackgroundJobHandlers> = {}): BackgroundJob
     "computer.control-expire": vi.fn(async () => undefined),
     "skill.teaching-expire": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
-    "goal.advance": vi.fn(async () => undefined),
-    "goal.checkin": vi.fn(async () => undefined),
     ...overrides,
   };
 }

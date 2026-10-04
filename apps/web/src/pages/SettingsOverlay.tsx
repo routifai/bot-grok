@@ -1,8 +1,7 @@
-import type { AvatarStyle, Bot, SpaceMemoryConfig } from "@aiden/contracts";
+import type { AvatarStyle, Bot } from "@aiden/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import {
-  Brain,
   CloudDownload,
   Cpu,
   Gauge,
@@ -20,11 +19,9 @@ import {
   UpdatesSettingsPanel,
   UsageSettingsPanel,
 } from "./AccountSettingsOverlay";
-import { MemorySettingsOverlay } from "./MemorySettingsOverlay";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { AidenSettingsPanel } from "./muse/AidenSettingsPanel";
 import { GeneralPanel } from "./muse/settings/GeneralPanel";
-import { MemoryPanel } from "./muse/settings/MemoryPanel";
 import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
@@ -32,7 +29,6 @@ export type SettingsSection =
   | "aiden"
   | "general"
   | "models"
-  | "memory"
   | "voice"
   | "usage"
   | "computer"
@@ -55,8 +51,6 @@ export function SettingsOverlay({
   sandboxProvider,
   messagingEnabled = false,
   onOpenMessaging,
-  memoryConfig,
-  onMemoryConfigChange,
   onClose,
   onVoiceStatusMaybeChanged,
   museMode = false,
@@ -73,8 +67,6 @@ export function SettingsOverlay({
   sandboxProvider?: string | null;
   messagingEnabled?: boolean;
   onOpenMessaging?: () => void;
-  memoryConfig: SpaceMemoryConfig | null | undefined;
-  onMemoryConfigChange: (config: SpaceMemoryConfig | null) => void;
   onClose: () => void;
   onVoiceStatusMaybeChanged?: () => void | Promise<void>;
   /** In Muse mode: gates Avatars/Updates off and adds the Aiden section (docs/muse/DESIGN.md). */
@@ -87,10 +79,9 @@ export function SettingsOverlay({
   const panelRef = useRef<HTMLDivElement>(null);
   const usageRef = useRef<HTMLDivElement>(null);
   const [section, setSection] = useState<SettingsSection>(initialSection);
-  const [memoryBusy, setMemoryBusy] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const showComputer = isDeploymentOwner && computersAreUnavailable(sandboxProvider);
-  const panelBusy = memoryBusy || voiceBusy;
+  const panelBusy = voiceBusy;
 
   useEffect(() => {
     setSection(initialSection);
@@ -115,7 +106,6 @@ export function SettingsOverlay({
     { id: "general", label: t`General`, icon: Settings },
     // The Muse's engine and model are the server's business; only the classic app picks one.
     ...(museMode ? [] : [{ id: "models" as const, label: t`Models`, icon: Cpu }]),
-    { id: "memory", label: t`Memory`, icon: Brain },
     { id: "voice", label: t`Voice`, icon: Volume2 },
     ...(museMode ? [] : [{ id: "usage" as const, label: t`Usage`, icon: Gauge }]),
     ...(showComputer ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
@@ -129,11 +119,9 @@ export function SettingsOverlay({
   const closeLabel =
     section === "models"
       ? t`Close model settings`
-      : section === "memory"
-        ? t`Close memory settings`
-        : section === "voice"
-          ? t`Close voice settings`
-          : t`Close user settings`;
+      : section === "voice"
+        ? t`Close voice settings`
+        : t`Close user settings`;
 
   async function refreshVoiceStatus() {
     await onVoiceStatusMaybeChanged?.();
@@ -230,7 +218,7 @@ export function SettingsOverlay({
 
             <div
               className={`min-h-0 flex-1 ${
-                !museMode && (section === "models" || section === "voice" || section === "memory")
+                !museMode && (section === "models" || section === "voice")
                   ? "flex flex-col overflow-hidden"
                   : "rk-scroll overflow-y-auto overscroll-contain px-6 pb-6 pt-5 sm:px-8 sm:pb-8"
               }`}
@@ -262,18 +250,6 @@ export function SettingsOverlay({
               {section === "updates" && !museMode ? <UpdatesSettingsPanel /> : null}
               {section === "models" && !museMode ? (
                 <ModelSettingsOverlay embedded onClose={requestClose} />
-              ) : null}
-              {section === "memory" && museMode && museBot ? (
-                <MemoryPanel botId={museBot.id} />
-              ) : null}
-              {section === "memory" && !museMode ? (
-                <MemorySettingsOverlay
-                  embedded
-                  onClose={requestClose}
-                  config={memoryConfig}
-                  onConfigChange={onMemoryConfigChange}
-                  onBusyChange={setMemoryBusy}
-                />
               ) : null}
               {section === "voice" && museMode ? <VoicePanel onBusyChange={setVoiceBusy} /> : null}
               {section === "voice" && !museMode ? (

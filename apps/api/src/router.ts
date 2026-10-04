@@ -5,7 +5,6 @@ import type {
   ArtifactStore,
   ConnectorCatalogItem,
   JobPublisher,
-  MemoryStore,
   SandboxProvider,
 } from "@aiden/adapter-kit";
 import {
@@ -22,7 +21,6 @@ import type {
   ConnectorRegistry,
   EncryptedSecretStore,
   IntegrationProviderSettings,
-  MemoryProviderResolver,
   PiOAuthLogins,
   RemoteConnectorDependencies,
 } from "@aiden/adapters";
@@ -69,7 +67,6 @@ import {
   readStoredModelAuth,
   releaseComputerExecutionLease,
   replaceComputer,
-  rescheduleMuseGoalsForBot,
   resolveAutoReviewChecker,
   resolveBotWorkspacePath,
   sanitizeComposioError,
@@ -126,7 +123,6 @@ import {
   findDefaultModelCredential,
   findDefaultVoiceCredential,
   findModelCredential,
-  findSpaceMemoryConfig,
   formatMessagingLinkCode,
   InvalidSpaceNameError,
   IsolationError,
@@ -186,30 +182,24 @@ import {
   engineRemoveTopic,
 } from "./engine-feed.js";
 import {
+  engineAcceptProposal,
+  engineDismissProposal,
+  engineGetGoal,
+  engineGoalLog,
+  engineListGoals,
+  engineUpdateGoal,
+  requireGoalsEngine,
+} from "./engine-goals.js";
+import {
   type EngineIdeasDeps,
   engineAcceptIdea,
   engineDismissIdea,
   engineListIdeas,
 } from "./engine-ideas.js";
-import { syncEngineTimezone } from "./engine-timezone.js";
-import {
-  acceptProposal,
-  dismissProposal,
-  getGoal,
-  getGoalLog,
-  listGoals,
-  updateGoal,
-} from "./goals.js";
+import { syncEngineProactivity, syncEngineTimezone } from "./engine-timezone.js";
 import { searchIntegrationCatalog } from "./integration-catalog.js";
 import { buildMcpUpdateMaterial } from "./mcp-material.js";
-import {
-  disconnectMemoryProvider,
-  persistMemoryProviderConfig,
-  serializeSpaceMemoryConfig,
-  updateMemoryProviderDefaultScope,
-} from "./memory-provider-config.js";
 import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
-import { listEpisodes, type MuseEpisodesDeps, removeEpisode } from "./muse-episodes.js";
 import {
   followTopic,
   listFeedPosts,
@@ -497,8 +487,6 @@ export interface RouterDeps {
   auth: Auth;
   jobs: JobPublisher;
   sandbox: SandboxProvider;
-  memory: MemoryStore;
-  memoryProviders: MemoryProviderResolver;
   home: AgentHomeStore;
   secrets: EncryptedSecretStore;
   oauthLogins: PiOAuthLogins;
@@ -513,8 +501,6 @@ export interface RouterDeps {
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
     agentRuntime: string;
-    teamChatJudgeProvider?: string;
-    teamChatJudgeModel?: string;
     defaultProvider: string;
     defaultModel: string;
     deploymentModelKey?: string;
@@ -631,7 +617,6 @@ export function createRouter(deps: RouterDeps) {
       }
     },
   };
-  const museEpisodesDeps: MuseEpisodesDeps = { prisma: deps.prisma };
 
   return os.router({
     aiConsent: {
@@ -1247,7 +1232,6 @@ export function createRouter(deps: RouterDeps) {
             notifyOnFinish: input.notifyOnFinish,
             color: input.color,
             pinned: input.pinned,
-            memoryScope: input.memoryScope,
             sectionId: input.sectionId,
             voiceId: input.voiceId,
             autoSpeak: input.autoSpeak,
@@ -1633,49 +1617,15 @@ export function createRouter(deps: RouterDeps) {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         const contextBotId = target.kind === "bot" ? target.botId : target.memberBotIds[0];
         if (!contextBotId) throw new IsolationError();
-        const { cancelledRunIds, historyCompactionGeneration } = await deps.events.clearThread({
+        const { cancelledRunIds } = await deps.events.clearThread({
           spaceId: context.actor.spaceId,
           threadId: target.threadId,
           botId: contextBotId,
           ...(target.kind === "group" ? { groupId: target.groupId } : {}),
         });
-        const [configuredMemory] = await Promise.all([
-          target.kind === "bot"
-            ? deps.memoryProviders.resolve(context.actor.spaceId).catch((error) => {
-                getLogger().error("semantic memory resolution after thread clear failed", error);
-                return null;
-              })
-            : Promise.resolve(null),
-          Promise.all(
-            cancelledRunIds.map((runId) =>
-              deps.jobs.cancel(runJobKey(runId)).catch(() => undefined),
-            ),
-          ),
-        ]);
-        // Durable memories remain in their Space-private containers. Clear only removes
-        // conversation-derived summaries from the previous generation; including the new
-        // generation also covers a compaction job that began just after the clear committed.
-        if (configuredMemory && target.kind === "bot") {
-          // Best effort: the conversation rows are already deleted, so failing the clear here
-          // would help nothing — a failed purge only leaves stale summaries recallable.
-          try {
-            const purged = await configuredMemory.provider.purgeHistory(
-              {
-                botId: target.botId,
-                generations: [
-                  Math.max(0, historyCompactionGeneration - 1),
-                  historyCompactionGeneration,
-                ],
-              },
-              computerContext(context.actor, target.botId, `thread-clear:${target.threadId}`),
-            );
-            if (!purged.ok) {
-              getLogger().error("semantic memory purge after thread clear failed", purged.error);
-            }
-          } catch (error) {
-            getLogger().error("semantic memory purge after thread clear failed", error);
-          }
-        }
+        await Promise.all(
+          cancelledRunIds.map((runId) => deps.jobs.cancel(runJobKey(runId)).catch(() => undefined)),
+        );
         return { ok: true as const };
       }),
       followUp: authed.threads.followUp.handler(async ({ context, input }) => {
@@ -2422,82 +2372,6 @@ export function createRouter(deps: RouterDeps) {
     memory: {
       profile: museOnly.memory.profile.handler(({ context, input }) =>
         getMemoryProfile(deps, context.actor, input),
-      ),
-      list: authed.memory.list.handler(async ({ context, input }) => {
-        const docs = await deps.prisma.memoryDocument.findMany({
-          where: {
-            spaceId: context.actor.spaceId,
-            userId: context.actor.userId,
-            ...(input.botId ? { botId: input.botId } : {}),
-            ...(input.scope ? { scope: input.scope } : {}),
-          },
-        });
-        return docs.map((doc) => ({
-          id: doc.id,
-          scope: doc.scope as "bot" | "user",
-          botId: doc.botId,
-          path: doc.path,
-          content: doc.content,
-          revision: doc.revision,
-          updatedAt: doc.updatedAt.toISOString(),
-        }));
-      }),
-      update: authed.memory.update.handler(async ({ context, input }) => {
-        const doc = await deps.prisma.memoryDocument.findFirst({
-          where: {
-            id: input.documentId,
-            spaceId: context.actor.spaceId,
-            userId: context.actor.userId,
-          },
-        });
-        if (!doc) throw new IsolationError();
-        const updated = await deps.memory.commit(
-          {
-            scope: doc.scope as "bot" | "user",
-            botId: doc.botId ?? undefined,
-            path: doc.path,
-            content: input.content,
-          },
-          {
-            operationId: "mem",
-            traceId: "mem",
-            spaceId: context.actor.spaceId,
-            userId: context.actor.userId,
-            signal: new AbortController().signal,
-          },
-        );
-        return {
-          id: updated.id,
-          scope: doc.scope as "bot" | "user",
-          botId: doc.botId,
-          path: updated.path,
-          content: updated.content,
-          revision: updated.revision,
-          updatedAt: new Date().toISOString(),
-        };
-      }),
-      exportMarkdown: authed.memory.exportMarkdown.handler(async ({ context, input }) => {
-        const docs = await deps.prisma.memoryDocument.findMany({
-          where: {
-            spaceId: context.actor.spaceId,
-            userId: context.actor.userId,
-            ...(input.botId ? { botId: input.botId } : {}),
-          },
-        });
-        return docs.map((d) => `# ${d.path}\n\n${d.content}`).join("\n\n");
-      }),
-      providerConfig: authed.memory.providerConfig.handler(async ({ context }) => {
-        const config = await findSpaceMemoryConfig(deps.prisma, context.actor.spaceId);
-        return config ? serializeSpaceMemoryConfig(config) : null;
-      }),
-      connectProvider: authed.memory.connectProvider.handler(async ({ context, input }) =>
-        persistMemoryProviderConfig(deps, context.actor, input),
-      ),
-      setDefaultScope: authed.memory.setDefaultScope.handler(async ({ context, input }) =>
-        updateMemoryProviderDefaultScope(deps, context.actor, input.defaultMemoryScope),
-      ),
-      disconnectProvider: authed.memory.disconnectProvider.handler(async ({ context }) =>
-        disconnectMemoryProvider(deps, context.actor),
       ),
     },
     routines: {
@@ -4768,10 +4642,7 @@ export function createRouter(deps: RouterDeps) {
           userId: context.actor.userId,
           signal: new AbortController().signal,
         };
-        const [memory, routines, files, history] = await Promise.all([
-          deps.prisma.memoryDocument.findMany({
-            where: { botId: input.botId, spaceId: context.actor.spaceId },
-          }),
+        const [routines, files, history] = await Promise.all([
           deps.prisma.routine.findMany({
             where: { botId: input.botId, spaceId: context.actor.spaceId },
           }),
@@ -4796,7 +4667,6 @@ export function createRouter(deps: RouterDeps) {
             description: bot.description,
             instructions: bot.instructions,
           },
-          memory: memory.map((m) => ({ path: m.path, content: m.content })),
           routines: routines.map((r) => ({
             name: r.name,
             prompt: r.prompt,
@@ -4934,41 +4804,62 @@ export function createRouter(deps: RouterDeps) {
       ),
     },
     goals: {
-      list: museOnly.goals.list.handler(({ context, input }) =>
-        listGoals(deps, context.actor, input),
-      ),
+      list: museOnly.goals.list.handler(({ context, input }) => {
+        const engine = engineComputerClient();
+        return engine ? engineListGoals(deps, engine, context.actor, input) : [];
+      }),
       get: museOnly.goals.get.handler(({ context, input }) =>
-        getGoal(deps, context.actor, input.goalId),
+        engineGetGoal(
+          deps,
+          requireGoalsEngine(engineComputerClient()),
+          context.actor,
+          input.goalId,
+        ),
       ),
       update: museOnly.goals.update.handler(({ context, input }) =>
-        updateGoal(deps, context.actor, input),
+        engineUpdateGoal(deps, requireGoalsEngine(engineComputerClient()), context.actor, input),
       ),
       acceptProposal: museOnly.goals.acceptProposal.handler(({ context, input }) =>
-        acceptProposal(deps, context.actor, input.proposalId),
+        engineAcceptProposal(
+          deps,
+          requireGoalsEngine(engineComputerClient()),
+          context.actor,
+          input,
+        ),
       ),
       dismissProposal: museOnly.goals.dismissProposal.handler(({ context, input }) =>
-        dismissProposal(deps, context.actor, input.proposalId),
+        engineDismissProposal(
+          deps,
+          requireGoalsEngine(engineComputerClient()),
+          context.actor,
+          input,
+        ),
       ),
       log: museOnly.goals.log.handler(({ context, input }) =>
-        getGoalLog(deps, context.actor, input),
+        engineGoalLog(
+          deps,
+          requireGoalsEngine(engineComputerClient()),
+          context.actor,
+          input.goalId,
+        ),
       ),
     },
     asks: {
       list: museOnly.asks.list.handler(({ context, input }) =>
-        listAsks(deps.prisma, context.actor, input.botId),
+        listAsks(deps, engineComputerClient(), context.actor, input.botId),
       ),
       count: museOnly.asks.count.handler(({ context, input }) =>
-        countAsks(deps.prisma, context.actor, input.botId),
+        countAsks(deps, engineComputerClient(), context.actor, input.botId),
       ),
       answer: museOnly.asks.answer.handler(({ context, input }) =>
-        answerAsk(deps, context.actor, input),
+        answerAsk(deps, engineComputerClient(), context.actor, input),
       ),
     },
     feed: {
       list: museOnly.feed.list.handler(async ({ context, input }) => {
         const engine = engineComputerClient();
         const [asks, page] = await Promise.all([
-          listAsks(deps.prisma, context.actor, input.botId),
+          listAsks(deps, engine, context.actor, input.botId),
           engine
             ? engineListFeedPosts(museFeedDeps, engine, context.actor, input.botId)
             : listFeedPosts(museFeedDeps, context.actor, input),
@@ -5033,11 +4924,7 @@ export function createRouter(deps: RouterDeps) {
       ),
       updateSettings: museOnly.muse.updateSettings.handler(async ({ context, input }) => {
         const settings = await updateMuseSettings(deps, context.actor, input);
-        // docs/muse/PLAN.md B8/B10: a changed proactivity/quiet-hours setting reschedules
-        // this Muse's Goals right away instead of waiting for their next fire.
-        await rescheduleMuseGoalsForBot(deps, input.botId).catch((error) =>
-          getLogger().error("reschedule Muse Goals after settings change", error),
-        );
+        await syncEngineProactivity(deps.prisma, context.actor.userId, settings);
         return settings;
       }),
     },
@@ -5049,14 +4936,6 @@ export function createRouter(deps: RouterDeps) {
       ),
       get: museOnly.activities.get.handler(({ context, input }) =>
         getActivity(deps, context.actor, input),
-      ),
-    },
-    episodes: {
-      list: museOnly.episodes.list.handler(({ context, input }) =>
-        listEpisodes(museEpisodesDeps, context.actor, input),
-      ),
-      remove: museOnly.episodes.remove.handler(({ context, input }) =>
-        removeEpisode(museEpisodesDeps, context.actor, input.episodeId),
       ),
     },
   });

@@ -1,9 +1,9 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { ThreadMessage } from "@aiden/contracts";
 import { isToolActivityBlock } from "@aiden/core";
-import { Button, cn } from "@aiden/ui-web";
+import { cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { formatLogTimestamp } from "./format";
 
@@ -70,49 +70,28 @@ function GoalLogEntry({
   );
 }
 
-/** Read-only view of a Goal's own thread, restyled as a quiet timeline. No composer. */
+/** Read-only view of what the Muse did on a Goal, as a quiet timeline. No composer. */
 export function GoalLog({ goalId }: { goalId: string }) {
   const { t, i18n } = useLingui();
   const [messages, setMessages] = useState<ThreadMessage[] | null>(null);
-  const [olderCursor, setOlderCursor] = useState<number | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const generation = useRef(0);
 
   useEffect(() => {
-    const current = ++generation.current;
+    let current = true;
     setMessages(null);
     setError(null);
-    setOlderCursor(null);
     void rpc.goals
       .log({ goalId })
       .then((page) => {
-        if (current !== generation.current) return;
-        setMessages(page.messages);
-        setOlderCursor(page.olderCursor);
+        if (current) setMessages(page.messages);
       })
       .catch(() => {
-        if (current !== generation.current) return;
-        setError(t`Could not load the Goal log`);
+        if (current) setError(t`Could not load the Goal log`);
       });
     return () => {
-      generation.current += 1;
+      current = false;
     };
   }, [goalId, t]);
-
-  async function loadOlder() {
-    if (olderCursor == null || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const page = await rpc.goals.log({ goalId, before: olderCursor });
-      setMessages((current) => [...page.messages, ...(current ?? [])]);
-      setOlderCursor(page.olderCursor);
-    } catch {
-      setError(t`Could not load more`);
-    } finally {
-      setLoadingMore(false);
-    }
-  }
 
   if (error) return <p className="text-[13px] text-destructive">{error}</p>;
   if (messages === null) {
@@ -134,11 +113,6 @@ export function GoalLog({ goalId }: { goalId: string }) {
   }
   return (
     <div className="flex flex-col gap-3" data-testid="goal-log">
-      {olderCursor != null ? (
-        <Button variant="ghost" size="xs" disabled={loadingMore} onClick={() => void loadOlder()}>
-          {loadingMore ? <Trans>Loading…</Trans> : <Trans>Load older</Trans>}
-        </Button>
-      ) : null}
       <ol>
         {visible.map((message, index) => (
           <GoalLogEntry

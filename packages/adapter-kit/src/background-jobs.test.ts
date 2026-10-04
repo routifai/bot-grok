@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   dispatchBackgroundJob,
-  goalAdvanceJob,
-  goalAdvanceJobKey,
-  goalCheckinJob,
-  goalCheckinJobKey,
   messagingDeliverJob,
-  museQueueName,
   parseBackgroundJob,
 } from "./background-jobs.js";
 import type { BackgroundJobHandlers } from "./types.js";
@@ -20,8 +15,6 @@ function handlers(): BackgroundJobHandlers {
     "computer.control-expire": vi.fn(async () => undefined),
     "skill.teaching-expire": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
-    "goal.advance": vi.fn(async () => undefined),
-    "goal.checkin": vi.fn(async () => undefined),
   };
 }
 
@@ -81,52 +74,5 @@ describe("background job contracts", () => {
       computerId: "computer-1",
       leaseId: "lease-1",
     });
-  });
-});
-
-describe("Muse Goal jobs (docs/muse/PLAN.md B8)", () => {
-  it("shares one queueName per Muse so goal.advance and goal.checkin serialize", () => {
-    expect(museQueueName("bot-1")).toBe("muse:bot-1");
-    expect(goalAdvanceJob("goal-1", "bot-1").queueName).toBe(museQueueName("bot-1"));
-    expect(goalCheckinJob("goal-1", "bot-1", new Date("2026-09-28T07:30:00.000Z")).queueName).toBe(
-      museQueueName("bot-1"),
-    );
-  });
-
-  it("builds a goal.advance job with a replace key scoped to the Goal", () => {
-    expect(goalAdvanceJob("goal-1", "bot-1")).toEqual({
-      name: "goal.advance",
-      payload: { goalId: "goal-1" },
-      replaceKey: goalAdvanceJobKey("goal-1"),
-      queueName: "muse:bot-1",
-    });
-    const at = new Date("2026-09-28T07:30:00.000Z");
-    expect(goalAdvanceJob("goal-1", "bot-1", at)).toEqual({
-      name: "goal.advance",
-      payload: { goalId: "goal-1" },
-      replaceKey: goalAdvanceJobKey("goal-1"),
-      queueName: "muse:bot-1",
-      availableAt: at,
-    });
-  });
-
-  it("builds a goal.checkin job scheduled for a specific time", () => {
-    const at = new Date("2026-09-28T07:30:00.000Z");
-    expect(goalCheckinJob("goal-1", "bot-1", at)).toEqual({
-      name: "goal.checkin",
-      payload: { goalId: "goal-1" },
-      replaceKey: goalCheckinJobKey("goal-1"),
-      queueName: "muse:bot-1",
-      availableAt: at,
-    });
-  });
-
-  it("validates and dispatches goal.advance / goal.checkin", async () => {
-    const target = handlers();
-    await dispatchBackgroundJob(target, "goal.advance", { goalId: "goal-1" });
-    expect(target["goal.advance"]).toHaveBeenCalledWith({ goalId: "goal-1" });
-    await dispatchBackgroundJob(target, "goal.checkin", { goalId: "goal-1" });
-    expect(target["goal.checkin"]).toHaveBeenCalledWith({ goalId: "goal-1" });
-    expect(() => parseBackgroundJob("goal.advance", { goalId: "" })).toThrow();
   });
 });

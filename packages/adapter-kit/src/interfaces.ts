@@ -30,14 +30,6 @@ import type {
   ConnectorEvent,
   ConnectorTool,
   ControlLeaseRef,
-  MemoryCapabilities,
-  MemoryCommitRequest,
-  MemoryExportRequest,
-  MemoryReadRequest,
-  MemoryRevision,
-  MemorySearchRequest,
-  MemorySearchResult,
-  MemorySnapshot,
   MessagingInboundEvent,
   MessagingPlatformDescriptor,
   MessagingSendRequest,
@@ -51,13 +43,6 @@ import type {
   ScreenRequest,
   ScreenSession,
   SecretRecord,
-  SemanticMemoryCapabilities,
-  SemanticMemoryForgetRequest,
-  SemanticMemoryPurgeHistoryRequest,
-  SemanticMemoryRecallRequest,
-  SemanticMemoryResponse,
-  SemanticMemoryResult,
-  SemanticMemorySaveRequest,
   SnapshotRef,
   SpeechClip,
   TransactionalEmail,
@@ -179,43 +164,6 @@ export interface ManagedConnectorProvider
   listConnectedExternalIds(context: AdapterContext): Promise<string[]>;
   connectionReady(context: AdapterContext, externalId: string): Promise<boolean>;
   warmDirectory?(): Promise<void>;
-}
-
-export interface MemoryStore {
-  describe(): AdapterDescriptor<MemoryCapabilities>;
-  read(request: MemoryReadRequest, context: AdapterContext): Promise<MemorySnapshot>;
-  search(request: MemorySearchRequest, context: AdapterContext): Promise<MemorySearchResult[]>;
-  commit(request: MemoryCommitRequest, context: AdapterContext): Promise<MemoryRevision>;
-  exportMarkdown(
-    request: MemoryExportRequest,
-    context: AdapterContext,
-  ): AsyncIterable<PortableFile>;
-  importMarkdown(
-    files: AsyncIterable<PortableFile>,
-    context: AdapterContext,
-  ): Promise<MemoryRevision>;
-}
-
-/** Optional semantic memory. Durable Markdown memory remains owned by MemoryStore. */
-export interface SemanticMemoryProvider {
-  describe(): AdapterDescriptor<SemanticMemoryCapabilities>;
-  recall(
-    request: SemanticMemoryRecallRequest,
-    context: AdapterContext,
-  ): Promise<SemanticMemoryResponse<SemanticMemoryResult[]>>;
-  save(
-    request: SemanticMemorySaveRequest,
-    context: AdapterContext,
-  ): Promise<SemanticMemoryResponse>;
-  purgeHistory(
-    request: SemanticMemoryPurgeHistoryRequest,
-    context: AdapterContext,
-  ): Promise<SemanticMemoryResponse>;
-  /** Optional durable forget. Providers without a forget verb omit this. */
-  forget?(
-    request: SemanticMemoryForgetRequest,
-    context: AdapterContext,
-  ): Promise<SemanticMemoryResponse<{ id: string; expired: boolean; reason: string | null }>>;
 }
 
 export interface AgentRuntime {

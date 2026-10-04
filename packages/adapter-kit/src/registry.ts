@@ -21,7 +21,6 @@ export class AdapterRegistry {
 export const slots = {
   runtime: "runtime",
   sandbox: "sandbox",
-  memory: "memory",
   home: "home",
   artifacts: "artifacts",
   secrets: "secrets",

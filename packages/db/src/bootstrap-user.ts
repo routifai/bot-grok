@@ -107,24 +107,6 @@ export async function bootstrapUserSpace(
       data: { ownerUserId: user.id },
     });
   }
-  const hasMemory = await prisma.memoryDocument.findFirst({
-    where: { spaceId: orgId, userId: user.id, scope: "user", path: "MEMORY.md" },
-  });
-  if (!hasMemory) {
-    await prisma.memoryDocument
-      .create({
-        data: {
-          spaceId: orgId,
-          userId: user.id,
-          scope: "user",
-          path: "MEMORY.md",
-          content: "# Space memory\n\nPreferences and context kept within this space live here.\n",
-        },
-      })
-      .catch((error: unknown) => {
-        if (!isUniqueViolation(error)) throw error;
-      });
-  }
   await prisma.notificationPreference
     .create({
       data: {

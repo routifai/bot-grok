@@ -2,15 +2,13 @@ import * as z from "zod";
 
 export const AI_DISCLOSURE_VERSION = "2026-09-14";
 export const AI_PRIVACY_URL = "https://aiden.example/privacy/";
-export const AiDataUseSchema = z.enum(["model", "voice", "memory"]);
+export const AiDataUseSchema = z.enum(["model", "voice"]);
 export type AiDataUse = z.infer<typeof AiDataUseSchema>;
 export const AI_DATA_DISCLOSURES: Record<AiDataUse, string> = {
   model:
     "Messages, relevant conversation history, bot instructions, memories, attachments, screenshots, and connected-app content used by your bots are sent to generate responses and carry out tasks, including scheduled tasks.",
   voice:
     "Audio you record is sent for transcription. Text you choose to play, including bot responses, is sent to generate speech.",
-  memory:
-    "Conversation summaries, saved memories, search queries, and bot and Space identifiers are sent to store and retrieve context for your bots.",
 };
 export const AiConsentQuerySchema = z
   .object({

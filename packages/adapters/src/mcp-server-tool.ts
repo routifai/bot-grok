@@ -3,12 +3,20 @@
 
 import { McpRemoteEndpointSchema, type McpTransport, McpTransportSchema } from "@aiden/contracts";
 import { deriveMcpSlug } from "@aiden/core";
-import { toStringRecord } from "./memory-provider-factory.js";
 
 export { deriveMcpSlug } from "@aiden/core";
 
 const MAX_ENV_ENTRIES = 32;
 const MAX_ARGS = 64;
+
+function toStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
 
 export type ParsedMcpServerArgs = {
   slug: string;

@@ -58,16 +58,12 @@ vi.mock("./AccountSettingsOverlay", () => ({
 vi.mock("./ModelSettingsOverlay", () => ({
   ModelSettingsOverlay: () => <div data-testid="models-panel" />,
 }));
-vi.mock("./MemorySettingsOverlay", () => ({
-  MemorySettingsOverlay: () => <div data-testid="memory-panel" />,
-}));
 vi.mock("./VoiceSettingsOverlay", () => ({
   VoiceSettingsOverlay: () => <div data-testid="voice-panel" />,
 }));
 vi.mock("./muse/settings/GeneralPanel", () => ({
   GeneralPanel: () => <div data-testid="general-panel" data-muse-mode="true" />,
 }));
-vi.mock("./muse/settings/MemoryPanel", () => ({ MemoryPanel: () => <div /> }));
 vi.mock("./muse/settings/VoicePanel", () => ({ VoicePanel: () => <div /> }));
 vi.mock("./muse/AidenSettingsPanel", () => ({
   AidenSettingsPanel: ({
@@ -109,7 +105,6 @@ function bot(overrides: Partial<Bot> = {}): Bot {
     archivedAt: null,
     unread: false,
     parentBotId: null,
-    memoryScope: null,
     threadId: "thread-1",
     preview: "",
     status: "idle",
@@ -146,8 +141,6 @@ const baseProps = {
   name: "Person",
   avatarStyle: "robot" as const,
   onAvatarStyleChange: async () => undefined,
-  memoryConfig: null,
-  onMemoryConfigChange: () => undefined,
   onClose: () => undefined,
 };
 
@@ -157,7 +150,7 @@ it("upstream mode: shows Avatars-capable General and Updates, no Aiden section",
   try {
     await act(async () => root.render(<SettingsOverlay {...baseProps} />));
     const ids = navIds(container);
-    expect(ids).toEqual(["general", "models", "memory", "voice", "usage", "updates"]);
+    expect(ids).toEqual(["general", "models", "voice", "usage", "updates"]);
     expect(
       container.querySelector('[data-testid="general-panel"]')?.getAttribute("data-muse-mode"),
     ).toBe("false");
@@ -183,7 +176,7 @@ it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse Gener
       ),
     );
     const ids = navIds(container);
-    expect(ids).toEqual(["aiden", "general", "memory", "voice"]);
+    expect(ids).toEqual(["aiden", "general", "voice"]);
     expect(ids).not.toContain("updates");
     expect(container.querySelector('[data-testid="settings-nav-aiden"]')?.textContent).toContain(
       "Nova",

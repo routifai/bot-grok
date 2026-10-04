@@ -56,7 +56,6 @@ function createdBotRow(spawnKey: string | null) {
     sectionId: null,
     archivedAt: null,
     parentBotId: null,
-    memoryScope: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     thread: { id: "thread-new", unread: false },
@@ -86,7 +85,6 @@ function routerDeps(
     computer: { upsert: vi.fn(async () => ({ id: "computer-1" })) },
     thread: { create: vi.fn(async () => ({ id: "thread-new" })) },
     browserProfile: { create: vi.fn(async () => ({})) },
-    memoryDocument: { create: vi.fn(async () => ({})) },
   };
   const transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx));
   const prisma = {

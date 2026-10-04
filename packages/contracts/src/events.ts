@@ -124,13 +124,6 @@ export const MessageBlock = z.discriminatedUnion("kind", [
       )
       .optional(),
     /**
-     * Muse edition: set when this ask is a blocked-Task Ask (CONTEXT.md "Ask"; posted by
-     * `goal-tools.ts` `update_task`) — the `GoalTask` it blocks. An explicit marker rather
-     * than inferring the kind structurally (docs/muse/PLAN.md B9); `asks.answer` (B6)
-     * routes on it instead of `answerRunInput`.
-     */
-    goalTaskId: Id.optional(),
-    /**
      * Muse edition: set when the Muse offers to save something it just did as a reusable
      * skill (`offer_skill`). Answering "save" creates the agent skill from this SKILL.md;
      * `asks.answer` routes on it instead of `answerRunInput`.

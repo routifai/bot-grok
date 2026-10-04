@@ -217,120 +217,6 @@ export interface ConnectorCapabilities {
 
 export type ConnectorCatalogItem = ConnectionCatalogItem;
 
-export interface MemoryReadRequest {
-  scope: "bot" | "user";
-  botId?: string;
-  path?: string;
-}
-
-export interface MemorySnapshot {
-  documents: Array<{
-    id: string;
-    path: string;
-    content: string;
-    revision: number;
-    updatedAt?: string;
-  }>;
-}
-
-export interface MemorySearchRequest {
-  query: string;
-  scope: "bot" | "user" | "all";
-  botId?: string;
-}
-
-export interface MemorySearchResult {
-  path: string;
-  snippet: string;
-  score: number;
-}
-
-export interface MemoryCommitRequest {
-  scope: "bot" | "user";
-  botId?: string;
-  path: string;
-  content: string;
-  sourceRunId?: string;
-  sourceThreadId?: string;
-}
-
-export interface MemoryRevision {
-  id: string;
-  path: string;
-  revision: number;
-  content: string;
-}
-
-export interface MemoryExportRequest {
-  scope: "bot" | "user" | "all";
-  botId?: string;
-}
-
-export interface MemoryCapabilities {
-  search: boolean;
-  revisions: boolean;
-  markdownPortable: boolean;
-}
-
-export type DurableMemoryScope = "isolated" | "shared";
-
-export interface SemanticMemoryCapabilities {
-  recall: true;
-  save: true;
-  purgeHistory: true;
-  sharedScope: true;
-}
-
-export interface SemanticMemoryResult {
-  memory: string;
-  score: number;
-  updatedAt?: string;
-  /** Stable provider id when the backend supports citation / forget. */
-  id?: string;
-  /** Attribution string preserved from the memory backend. */
-  provenance?: string;
-  /** Provider entity/namespace the fact was recalled from, when scoped. */
-  entity?: string;
-}
-
-export interface SemanticMemoryForgetRequest {
-  id: string;
-  reason?: string;
-  /** Entity/namespace from a prior recall citation, when the backend scopes deletes. */
-  entity?: string;
-}
-
-export type SemanticMemoryResponse<T = void> =
-  | { ok: true; value: T }
-  | { ok: false; error: string };
-
-export interface SemanticMemoryRecallRequest {
-  query: string;
-  scope: DurableMemoryScope;
-  botId: string;
-  /** Omit until a thread has compacted history; the provider can then skip that namespace. */
-  historyGeneration?: number;
-  limit: number;
-}
-
-export interface SemanticMemorySaveRequest {
-  content: string;
-  scope: DurableMemoryScope;
-  botId: string;
-  source: { kind: "durable" } | { kind: "history"; generation: number };
-}
-
-export interface SemanticMemoryPurgeHistoryRequest {
-  botId: string;
-  generations: number[];
-}
-
-export type SemanticMemoryForgetResponse = SemanticMemoryResponse<{
-  id: string;
-  expired: boolean;
-  reason: string | null;
-}>;
-
 export interface AgentInputImage {
   name: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
@@ -498,10 +384,6 @@ export interface BackgroundJobPayloads {
   "computer.control-expire": { computerId: string; leaseId: string };
   "skill.teaching-expire": { skillId: string };
   "messaging.deliver": { runId?: string };
-  /** Muse edition only (docs/muse/PLAN.md B8): work a Goal in its Goal log. */
-  "goal.advance": { goalId: string };
-  /** Muse edition only (docs/muse/PLAN.md B8): a scheduled Goal check-in in the Conversation. */
-  "goal.checkin": { goalId: string };
 }
 
 export type BackgroundJobName = keyof BackgroundJobPayloads;
@@ -614,35 +496,6 @@ export interface MessagingInboundMessage {
   senderIsBot?: boolean;
   /** Display names for room participants when the platform reports them. */
   participantNames?: string[];
-}
-
-/** Provider-neutral inbound team/external room message for TeamChatBridge. */
-export interface TeamChatInboundMessage {
-  eventId: string;
-  workspaceId: string;
-  kind: TeamChatMessageKind;
-  conversationType?: "im" | "channel" | "group" | "mpim";
-  conversationKey: string;
-  /** Messaging threadId used with sendToThread. */
-  conversationId: string;
-  conversationName?: string;
-  participantNames?: string[];
-  replyThreadId: string | null;
-  senderId: string;
-  senderName: string;
-  senderIsBot?: boolean;
-  content: string;
-}
-
-export interface TeamChatSendRequest {
-  conversationId: string;
-  replyThreadId: string | null;
-  content: string;
-  idempotencyKey?: string;
-}
-
-export interface TeamChatSendResult {
-  handle: string;
 }
 
 /** Provider-neutral outbound delivery status after platform webhook parsing. */

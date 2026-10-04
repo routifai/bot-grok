@@ -80,13 +80,19 @@ export function GoalDetail({
 
   async function acceptProposal() {
     if (!goal.openProposal) return;
-    const updated = await rpc.goals.acceptProposal({ proposalId: goal.openProposal.id });
+    const updated = await rpc.goals.acceptProposal({
+      goalId: goal.id,
+      proposalId: goal.openProposal.id,
+    });
     onChanged(updated);
   }
 
   async function dismissProposal() {
     if (!goal.openProposal) return;
-    const updated = await rpc.goals.dismissProposal({ proposalId: goal.openProposal.id });
+    const updated = await rpc.goals.dismissProposal({
+      goalId: goal.id,
+      proposalId: goal.openProposal.id,
+    });
     onChanged(updated);
   }
 
@@ -200,15 +206,17 @@ export function GoalDetail({
         </Section>
       ) : null}
 
-      <Section title={<Trans>Check-ins</Trans>} className="mt-10">
-        <CheckInEditor
-          key={goal.id}
-          crons={goal.checkInCrons}
-          timezone={goal.timezone}
-          saving={checkInSaving}
-          onSave={saveCheckIn}
-        />
-      </Section>
+      {goal.checkInCrons.length > 0 ? (
+        <Section title={<Trans>Check-ins</Trans>} className="mt-10">
+          <CheckInEditor
+            key={goal.id}
+            crons={goal.checkInCrons}
+            timezone={goal.timezone}
+            saving={checkInSaving}
+            onSave={saveCheckIn}
+          />
+        </Section>
+      ) : null}
 
       <Section title={<Trans>What I've done</Trans>} className="mt-10">
         <GoalLog goalId={goal.id} />

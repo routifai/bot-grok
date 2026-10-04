@@ -19,7 +19,6 @@
     "@aiden/core": "workspace:*",
     "@aiden/db": "workspace:*",
     "@aiden/logging": "workspace:*",
-    "@aiden/memory": "workspace:*",
     "hono": "4.13.7",
     "tsx": "4.23.13"
   },

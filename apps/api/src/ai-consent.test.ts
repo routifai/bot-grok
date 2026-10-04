@@ -21,7 +21,6 @@ function setup() {
         findFirst: vi.fn(async () => ({ credential: { provider: "openai" }, voiceId: "alloy" })),
         findMany: vi.fn(async () => [{ credential: { provider: "openai" } }]),
       },
-      spaceMemoryConfig: { findUnique: vi.fn(async () => null) },
       deploymentSettings: { findUnique: vi.fn(async () => null) },
       aiDataConsent: { findMany: vi.fn(async () => []), upsert },
       $transaction: vi.fn(async (queries) => Promise.all(queries)),

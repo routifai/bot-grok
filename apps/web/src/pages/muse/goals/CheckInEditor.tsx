@@ -1,11 +1,14 @@
-import { type CronPreset, cronFromPreset, defaultCronPreset, presetFromCron } from "@aiden/core";
+import { type CronPreset, cronFromPreset, presetFromCron } from "@aiden/core";
 import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { RoutineSchedule } from "../../RoutineSchedule";
 
-/** The Check-in schedule editor for a Goal, reusing RoutineSchedule (same cron shape). */
+/**
+ * The Check-in schedule editor for a Goal, reusing RoutineSchedule (same cron shape). A Goal
+ * has one schedule (the engine task that advances it), so it can be changed but not added to
+ * or removed.
+ */
 export function CheckInEditor({
   crons,
   timezone,
@@ -41,37 +44,16 @@ export function CheckInEditor({
     <div>
       <div className="divide-y divide-border/70 overflow-hidden rounded-[22px] bg-card ring-1 ring-border/50">
         {schedules.map((preset, index) => (
-          <div key={index} className="relative p-3 pe-11">
+          <div key={index} className="p-3">
             <RoutineSchedule
               value={preset}
               onChange={(next) => update(schedules.map((item, i) => (i === index ? next : item)))}
             />
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={t`Remove check-in`}
-              onClick={() => update(schedules.filter((_, i) => i !== index))}
-              className="absolute top-4 end-3 rounded-full text-muted-foreground"
-            >
-              <X />
-            </Button>
           </div>
         ))}
-        <button
-          type="button"
-          onClick={() => update([...schedules, defaultCronPreset()])}
-          className="flex min-h-[52px] w-full items-center gap-2.5 px-5 text-start text-[15.5px] text-primary transition-colors hover:bg-accent/50"
-        >
-          <Plus size={17} strokeWidth={2.25} />
-          <Trans>Add a check-in</Trans>
-        </button>
       </div>
       <p className="px-4 pt-2 text-[13px] text-muted-foreground">
-        {schedules.length === 0 ? (
-          <Trans>I'll message you with progress at these times. Times use {timezone}.</Trans>
-        ) : (
-          <Trans>Times use {timezone}.</Trans>
-        )}
+        <Trans>Times use {timezone}.</Trans>
       </p>
       {dirty ? (
         <div className="mt-3 flex items-center gap-2">

@@ -15,7 +15,6 @@ const PRIVACY_URLS: Record<string, string> = {
   elevenlabs: "https://elevenlabs.io/privacy-policy",
   cartesia: "https://cartesia.ai/legal/privacy",
   "fish-audio": "https://fish.audio/privacy/",
-  supermemory: "https://supermemory.ai/privacy",
 };
 
 /** Never expose endpoint paths, query parameters, user info, or credentials in a disclosure. */
@@ -51,7 +50,6 @@ export function aiRecipient(input: {
 
 function recipientName(provider: string, use: AiDataUse) {
   if (use === "voice") return voiceCatalogEntry(provider)?.name ?? provider;
-  if (use === "memory") return provider === "supermemory" ? "Supermemory" : provider;
   if (provider === "cursor") return "Cursor";
   return listPiCatalog().find((entry) => entry.provider === provider)?.providerName ?? provider;
 }

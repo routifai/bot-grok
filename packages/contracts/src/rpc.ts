@@ -43,8 +43,6 @@ import {
   IntegrationCatalogResultSchema,
   McpServerConfigInput,
   McpServerSchema,
-  MemoryDocumentSchema,
-  MemoryScopeSchema,
   MeSchema,
   MessagingAgentConnectionSchema,
   MessagingChannelMembershipSchema,
@@ -60,9 +58,9 @@ import {
   ScratchpadItemSchema,
   ScratchpadItemStatusSchema,
   SkillPlaybookSchema,
-  SpaceMemoryConfigSchema,
   SpaceNavigationSchema,
   SpaceSchema,
+  SkillDraftSchema,
   TaughtSkillSchema,
   TeachRecordingEventSchema,
   ThreadMessagePageSchema,
@@ -87,7 +85,6 @@ import {
   AnswerAskInput,
   AskSchema,
   ChatSummarySchema,
-  EpisodeSchema,
   FeedSchema,
   FollowedTopicSchema,
   GoalSchema,
@@ -391,28 +388,6 @@ export const appContract = {
     heartbeat: oc.input(botId).output(z.object({ ok: z.literal(true) })),
   },
   memory: {
-    list: oc
-      .input(z.object({ botId: Id.optional(), scope: z.enum(["bot", "user"]).optional() }))
-      .output(z.array(MemoryDocumentSchema)),
-    update: oc
-      .input(z.object({ documentId: Id, content: z.string() }))
-      .output(MemoryDocumentSchema),
-    exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
-    providerConfig: oc.output(SpaceMemoryConfigSchema.nullable()),
-    connectProvider: oc
-      .input(
-        z.object({
-          provider: z.string().min(1),
-          settings: z.record(z.string(), z.string()),
-          credentials: z.record(z.string(), z.string()),
-          defaultMemoryScope: MemoryScopeSchema.default("isolated"),
-        }),
-      )
-      .output(SpaceMemoryConfigSchema),
-    setDefaultScope: oc
-      .input(z.object({ defaultMemoryScope: MemoryScopeSchema }))
-      .output(SpaceMemoryConfigSchema),
-    disconnectProvider: oc.output(z.object({ ok: z.literal(true) })),
     /** The Muse's Memory Profile from Omnigent (docs/super-chat/README.md): what it carries
      * into every turn about the person. `null` when nothing is remembered yet. */
     profile: oc.input(z.object({ botId: Id })).output(z.object({ profile: z.string().nullable() })),
@@ -509,7 +484,8 @@ export const appContract = {
         z.object({
           skillId: Id,
           name: z.string().optional(),
-          playbook: SkillPlaybookSchema,
+          playbook: SkillPlaybookSchema.optional(),
+          draft: SkillDraftSchema.optional(),
         }),
       )
       .output(TaughtSkillSchema),
@@ -517,7 +493,13 @@ export const appContract = {
       .input(z.object({ skillId: Id, name: z.string().optional() }))
       .output(TaughtSkillSchema),
     testRun: oc
-      .input(z.object({ skillId: Id, prompt: z.string().optional() }))
+      .input(
+        z.object({
+          skillId: Id,
+          prompt: z.string().optional(),
+          inputs: z.record(z.string(), z.string()).optional(),
+        }),
+      )
       .output(z.object({ runId: Id })),
     remove: oc.input(z.object({ skillId: Id })).output(z.object({ ok: z.literal(true) })),
   },
@@ -851,12 +833,10 @@ export const appContract = {
       .output(z.array(GoalSchema)),
     get: oc.input(z.object({ goalId: Id })).output(GoalSchema),
     update: oc.input(UpdateGoalInput).output(GoalSchema),
-    acceptProposal: oc.input(z.object({ proposalId: Id })).output(GoalSchema),
-    dismissProposal: oc.input(z.object({ proposalId: Id })).output(GoalSchema),
-    /** The Goal log: read-only messages of the Goal's own thread. */
-    log: oc
-      .input(z.object({ goalId: Id, before: z.number().int().nonnegative().optional() }))
-      .output(ThreadMessagePageSchema),
+    acceptProposal: oc.input(z.object({ goalId: Id, proposalId: Id })).output(GoalSchema),
+    dismissProposal: oc.input(z.object({ goalId: Id, proposalId: Id })).output(GoalSchema),
+    /** The Goal log: what the Muse did on the Goal, one message per finished run, oldest first. */
+    log: oc.input(z.object({ goalId: Id })).output(ThreadMessagePageSchema),
   },
   asks: {
     list: oc.input(z.object({ botId: Id })).output(z.array(AskSchema)),
@@ -903,12 +883,6 @@ export const appContract = {
       )
       .output(ActivityPageSchema),
     get: oc.input(z.object({ botId: Id, activityId: z.string().min(1) })).output(ActivitySchema),
-  },
-  episodes: {
-    list: oc
-      .input(z.object({ botId: Id, limit: z.number().int().positive().max(200).optional() }))
-      .output(z.array(EpisodeSchema)),
-    remove: oc.input(z.object({ episodeId: Id })).output(z.object({ ok: z.literal(true) })),
   },
 };
 

@@ -1,14 +1,11 @@
 import * as z from "zod";
 import { BotAvatarValueSchema } from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
-import { Id, MemoryScope, RunStatus, SandboxKind } from "./ids.js";
+import { Id, RunStatus, SandboxKind } from "./ids.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
 
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
 export type ComputerMode = z.infer<typeof ComputerModeSchema>;
-
-export const MemoryScopeSchema = z.enum(["isolated", "shared"]);
-export type MemoryScopeValue = z.infer<typeof MemoryScopeSchema>;
 
 export const AvatarStyleSchema = z.enum(["robot", "organic"]);
 export type AvatarStyle = z.infer<typeof AvatarStyleSchema>;
@@ -54,7 +51,6 @@ export const BotSchema = z.object({
   archivedAt: z.string().nullable(),
   unread: z.boolean(),
   parentBotId: Id.nullable(),
-  memoryScope: MemoryScopeSchema.nullable(),
   threadId: Id,
   preview: z.string(),
   status: z.string(),
@@ -323,7 +319,6 @@ export const UpdateBotInput = z
     notifyOnFinish: z.boolean().optional(),
     color: BotAvatarValueSchema.optional(),
     pinned: z.boolean().optional(),
-    memoryScope: MemoryScopeSchema.nullable().optional(),
     sectionId: Id.nullable().optional(),
     voiceId: z.string().max(120).nullable().optional(),
     autoSpeak: z.boolean().optional(),
@@ -436,7 +431,7 @@ export const CreateScratchpadItemInput = z.object({
   notes: z.string().max(4_000).default(""),
 });
 
-export const TaughtSkillStatusSchema = z.enum(["recording", "drafting", "draft", "saved"]);
+export const TaughtSkillStatusSchema = z.enum(["recording", "drafting", "draft", "saved", "failed"]);
 export type TaughtSkillStatus = z.infer<typeof TaughtSkillStatusSchema>;
 
 export const SkillPlaybookSchema = z.object({
@@ -449,6 +444,39 @@ export const SkillPlaybookSchema = z.object({
   failureHandling: z.string(),
 });
 export type SkillPlaybook = z.infer<typeof SkillPlaybookSchema>;
+
+/** A taught skill as the engine drafted it: intent-level steps with a check each, approval
+ * points and typed inputs (engine/omnigent/omnigent/superchat/taught_skills.py). */
+export const SkillDraftSchema = z.object({
+  preconditions: z.array(z.string()),
+  inputs: z.array(
+    z.object({
+      name: z.string(),
+      label: z.string(),
+      default: z.string(),
+      description: z.string().optional(),
+    }),
+  ),
+  steps: z.array(
+    z.object({
+      intent: z.string(),
+      check: z.string(),
+      approval: z.boolean(),
+      /** Name of the keyframe that shows this step; the image is in `TaughtSkill.keyframes`. */
+      keyframe: z.string().nullable(),
+      hint: z
+        .object({
+          role: z.string().optional(),
+          name: z.string().optional(),
+          selector: z.string().optional(),
+          url: z.string().optional(),
+        })
+        .optional(),
+    }),
+  ),
+  returns: z.string(),
+});
+export type SkillDraft = z.infer<typeof SkillDraftSchema>;
 
 export const TeachRecordingEventSchema = z.object({
   at: z.string(),
@@ -484,6 +512,10 @@ export const TaughtSkillSchema = z.object({
   goal: z.string(),
   status: TaughtSkillStatusSchema,
   playbook: SkillPlaybookSchema,
+  /** The engine's draft (steps, inputs, approvals); `null` until the teacher has written it. */
+  draft: SkillDraftSchema.nullable().optional(),
+  /** Keyframe images by name as `data:` URIs; only on a single-skill read. */
+  keyframes: z.record(z.string(), z.string()).optional(),
   recording: TeachRecordingSchema,
   startedAt: z.string().nullable(),
   expiresAt: z.string().nullable(),
@@ -557,17 +589,6 @@ export const UpdateAgentSkillInput = z
       });
     }
   });
-
-export const MemoryDocumentSchema = z.object({
-  id: Id,
-  scope: MemoryScope,
-  botId: Id.nullable(),
-  path: z.string(),
-  content: z.string(),
-  revision: z.number().int(),
-  updatedAt: z.string(),
-});
-export type MemoryDocument = z.infer<typeof MemoryDocumentSchema>;
 
 export const ConnectionSchema = z.object({
   id: Id,
@@ -1053,14 +1074,6 @@ export const ModelOAuthBeginSchema = z.discriminatedUnion("mode", [
 ]);
 export type ModelOAuthBegin = z.infer<typeof ModelOAuthBeginSchema>;
 
-export const SpaceMemoryConfigSchema = z.object({
-  provider: z.string(),
-  settings: z.record(z.string(), z.string()),
-  defaultMemoryScope: MemoryScopeSchema,
-  updatedAt: z.string(),
-});
-export type SpaceMemoryConfig = z.infer<typeof SpaceMemoryConfigSchema>;
-
 export const ModelCatalogEntrySchema = z.object({
   provider: z.string(),
   providerName: z.string().optional(),
@@ -1138,8 +1151,7 @@ export const MeSchema = z.object({
   canChooseHostComputer: z.boolean(),
   sandboxProvider: z.string(),
   avatarStyle: AvatarStyleSchema,
-  // IANA zone name; drives quiet hours and the daily Followed-topic digest
-  // (packages/core/src/muse/proactivity.ts, packages/adapters/src/muse/feed-jobs.ts).
+  // IANA zone name; drives quiet hours and the engine's scheduled runs.
   timezone: z.string(),
 });
 export type Me = z.infer<typeof MeSchema>;
@@ -1161,7 +1173,6 @@ export const ExportManifestSchema = z.object({
   version: z.literal(1),
   exportedAt: z.string(),
   bot: BotSchema.pick({ name: true, title: true, description: true, instructions: true }),
-  memory: z.array(z.object({ path: z.string(), content: z.string() })),
   routines: z.array(RoutineSchema.pick({ name: true, prompt: true, crons: true, timezone: true })),
   files: z.array(z.object({ path: z.string(), content: z.string() })),
   history: z.array(ThreadMessageSchema),

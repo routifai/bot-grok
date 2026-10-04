@@ -19,7 +19,7 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("@lingui/core/macro", () => ({ t: (parts: TemplateStringsArray) => parts.join("") }));
 vi.mock("./avatar-studio-popover", () => ({ AvatarStudioPopover: () => <div /> }));
 vi.mock("../ScratchpadSection", () => ({ ScratchpadSection: () => <div /> }));
-vi.mock("../KnowledgeSection", () => ({ KnowledgeSection: () => <div /> }));
+vi.mock("../SkillsSection", () => ({ SkillsSection: () => <div /> }));
 vi.mock("@aiden/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
@@ -67,7 +67,6 @@ function bot(): Bot {
     archivedAt: null,
     unread: false,
     parentBotId: null,
-    memoryScope: null,
     threadId: "thread-1",
     preview: "",
     status: "idle",
@@ -106,7 +105,6 @@ it("never renders a proactivity control (it now lives in Settings > Aiden)", asy
       root.render(
         <BotSettings
           bot={bot()}
-          memoryProviderConfigured={false}
           onSkillsChange={() => undefined}
           onSave={async () => undefined}
           onExport={async () => undefined}

@@ -1547,7 +1547,6 @@ describe("bot model auth on save", () => {
       sectionId: null,
       archivedAt: null,
       parentBotId: null,
-      memoryScope: null,
       createdAt: now,
       updatedAt: now,
       voiceId: null,

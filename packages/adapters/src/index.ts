@@ -11,7 +11,6 @@ export * from "./bot-messages.js";
 export * from "./box-emulator.js";
 export * from "./box-sandbox.js";
 export * from "./builtin-skills.js";
-export * from "./builtin-tools.js";
 export * from "./cartesia-voice.js";
 export * from "./chat-sdk-surface.js";
 export * from "./child-bots.js";
@@ -53,22 +52,11 @@ export * from "./mcp-emulator.js";
 export * from "./mcp-oauth.js";
 export * from "./mcp-server-tool.js";
 export * from "./mcp-transport.js";
-export * from "./memory-provider-factory.js";
 export * from "./messaging-delivery.js";
 export * from "./messaging-platforms.js";
-export * from "./messaging-team-chat-emulator.js";
 export * from "./model-connect.js";
 export * from "./model-selection.js";
 export * from "./model-vision.js";
-// B10: apps/api/src/muse-feed.ts (topics.follow) calls scheduleFeedDigestOnFirstTopic.
-// Exercised end to end (real Postgres) by packages/testkit/src/muse-journeys.test.ts,
-// which needs these `*FromTool` handlers directly (the same functions run-executor.ts's
-// tool dispatch calls) to drive Goal Task state the scripted runtime cannot script by
-// itself (no dynamic Task ids in its purely text-matched scripts).
-export * from "./muse/goal-jobs.js";
-// B6: apps/api/src/goals.ts and muse-asks.ts call these (the one Proposal apply path).
-export * from "./muse/goal-proposals.js";
-export * from "./muse/goal-tools.js";
 export * from "./none-sandbox.js";
 export * from "./omnigent/activities.js";
 export * from "./omnigent/chats.js";
@@ -80,12 +68,9 @@ export * from "./omnigent/redact.js";
 export * from "./openai-compatible-url.js";
 export * from "./openai-voice.js";
 export * from "./pi-catalog-availability.js";
-export * from "./pi-credentials.js";
 export * from "./pi-models.js";
 export * from "./pi-oauth.js";
 export * from "./pi-openai-compatible-provider.js";
-export * from "./pi-runtime.js";
-export * from "./pi-session.js";
 export * from "./pipedream-connector.js";
 export * from "./realtime.js";
 export * from "./remote-mcp.js";
@@ -97,12 +82,9 @@ export * from "./scripted-auto-review.js";
 export * from "./scripted-voice.js";
 export * from "./secrets.js";
 export * from "./sendblue-emulator.js";
-export { SerenityMemoryProvider } from "./serenity-memory-provider.js";
 export * from "./skill-tools.js";
 export * from "./smtp-email.js";
-export { SupermemoryMemoryProvider } from "./supermemory-memory-provider.js";
 export * from "./teaching-session.js";
-export * from "./team-chat-messaging.js";
 export * from "./third-party-connector-emulator.js";
 export * from "./voice-factory.js";
 export * from "./wakeup.js";

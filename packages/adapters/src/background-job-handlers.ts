@@ -12,7 +12,6 @@ import { expireComputerControl } from "./computer-control.js";
 import { scheduleComputerSleep, sleepComputerIfIdle } from "./computer-idle.js";
 import { performComputerUpdate } from "./computer-update.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
-import { createGoalJobHandlers } from "./muse/goal-jobs.js";
 import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
 import { failRunUnsupportedOnOmnigent, runTurnOnOmnigent } from "./omnigent/gateway.js";
 import { wakeRoutine } from "./routine-wakeup.js";
@@ -48,24 +47,13 @@ export function createBackgroundJobHandlers(deps: {
     );
   };
 
-  // Goal jobs still read the Pi-era Goal tables. Their runs go to the engine like any other
-  // run; one the engine cannot take fails visibly (Goals move to the engine: docs/adr/0005).
   const continueOnEngine = async (runId: string, workerId: string) => {
     if (!deps.omnigent) return;
     const ran = await runTurnOnOmnigent(deps.omnigent, runId, workerId);
     if (!ran) await failRunUnsupportedOnOmnigent(deps.omnigent, runId, workerId);
   };
-  const goalJobHandlers = createGoalJobHandlers({
-    prisma: deps.prisma,
-    jobs: deps.jobs,
-    events: deps.events,
-    continueRun: continueOnEngine,
-    workerId: deps.workerId,
-  });
 
   return {
-    "goal.advance": goalJobHandlers["goal.advance"],
-    "goal.checkin": goalJobHandlers["goal.checkin"],
     "run.continue": async (payload) => {
       if (deps.omnigent) {
         await continueOnEngine(payload.runId, deps.workerId);

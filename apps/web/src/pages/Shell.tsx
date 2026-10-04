@@ -12,7 +12,6 @@ import type {
   Me,
   ProductEvent,
   Routine,
-  SpaceMemoryConfig,
   TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
@@ -426,10 +425,6 @@ export function ShellPage() {
   const [messagingSettingsOpen, setMessagingSettingsOpen] = useState(false);
   const [messagingSurfaceEnabled, setMessagingSurfaceEnabled] = useState(false);
   const [messagingProviders, setMessagingProviders] = useState<string[]>([]);
-  const [memoryProviderConfig, setMemoryProviderConfig] = useState<
-    SpaceMemoryConfig | null | undefined
-  >(undefined);
-  const memoryProviderConfigRevision = useRef(0);
   const [callOpen, setCallOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | null>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
@@ -988,19 +983,6 @@ export function ShellPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const providerConfigRevision = memoryProviderConfigRevision.current;
-    void rpc.memory
-      .providerConfig()
-      .then((providerConfig) => {
-        if (!cancelled && memoryProviderConfigRevision.current === providerConfigRevision) {
-          setMemoryProviderConfig(providerConfig);
-        }
-      })
-      .catch(() => {
-        if (!cancelled && memoryProviderConfigRevision.current === providerConfigRevision) {
-          setMemoryProviderConfig(null);
-        }
-      });
     const appliedAtStart = botsRefreshApplied.current;
     void takeInitialBootstrap(botId)
       .then((bootstrap) => {
@@ -3007,7 +2989,6 @@ export function ShellPage() {
               <BotSettings
                 key={active.id}
                 bot={active}
-                memoryProviderConfigured={memoryProviderConfig != null}
                 onSkillsChange={setAgentSkills}
                 onSave={async ({ computerMode, ...patch }) => {
                   if (computerMode !== active.computerMode) {
@@ -3274,11 +3255,6 @@ export function ShellPage() {
             onAvatarStyleChange={async (avatarStyle) => {
               const nextMe = await rpc.preferences.update({ avatarStyle });
               setBootstrapMe(nextMe);
-            }}
-            memoryConfig={memoryProviderConfig}
-            onMemoryConfigChange={(config) => {
-              memoryProviderConfigRevision.current += 1;
-              setMemoryProviderConfig(config);
             }}
             onVoiceStatusMaybeChanged={async () => {
               try {
@@ -5026,19 +5002,12 @@ function accessibleReplyExcerpt(text: string, max = 120): string {
 }
 
 /**
- * Muse Asks that apply their own effect (skill offers, Goal Proposals, blocked Tasks) stay
- * answerable after their run ends; asks.answer checks they're still open.
+ * Skill offers apply their own effect, so they stay answerable after their run ends;
+ * asks.answer checks they're still open.
  */
 function hasOpenMuseAsk(message: ThreadMessage): boolean {
   return message.blocks.some(
-    (block) =>
-      block.kind === "ask" &&
-      block.status !== "answered" &&
-      Boolean(
-        block.skillOffer ||
-          block.goalTaskId ||
-          block.actions?.some((action) => action.id === "accept"),
-      ),
+    (block) => block.kind === "ask" && block.status !== "answered" && Boolean(block.skillOffer),
   );
 }
 
