@@ -139,3 +139,13 @@ export async function engineComputerRelease(
   if (target.sessionId) await releaseOmnigentComputer(client, target.email, target.sessionId);
   return { ok: true };
 }
+
+/** A thread snapshot's `computer`, as the engine sees it, when Nova runs on the engine. */
+export async function withEngineComputer<
+  T extends { botId?: string; computer?: ComputerStatus | null },
+>(deps: EngineComputerDeps, actor: Actor, snapshot: T): Promise<T> {
+  const client = engineComputerClient();
+  if (!client || !snapshot.botId || !snapshot.computer) return snapshot;
+  const computer = await engineComputerStatus(deps, client, actor, snapshot.botId);
+  return { ...snapshot, computer };
+}

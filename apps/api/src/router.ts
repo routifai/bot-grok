@@ -169,19 +169,20 @@ import {
   listSpaceArtifacts,
 } from "./artifacts.js";
 import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
-import {
-  engineComputerClient,
-  engineComputerRelease,
-  engineComputerScreenUrl,
-  engineComputerStatus,
-  engineComputerTakeover,
-} from "./engine-computer.js";
 import { createSideChat, getChatMessages, listChats, sendToChat, summaryPreview } from "./chats.js";
 import {
   executionBlocksUserTakeover,
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import {
+  engineComputerClient,
+  engineComputerRelease,
+  engineComputerScreenUrl,
+  engineComputerStatus,
+  engineComputerTakeover,
+  withEngineComputer,
+} from "./engine-computer.js";
 import { getEngineInfo, setEngineHarness, setEngineRunnerLocation } from "./engine-info.js";
 import {
   acceptProposal,
@@ -815,9 +816,9 @@ export function createRouter(deps: RouterDeps) {
       const active = bots.find((bot) => bot.id === input.botId) ?? bots[0];
       const [thread, routines] = active
         ? await Promise.all([
-            resolveThreadTarget(deps.prisma, actor, { botId: active.id }).then((target) =>
-              threadSnapshot(deps, target),
-            ),
+            resolveThreadTarget(deps.prisma, actor, { botId: active.id })
+              .then((target) => threadSnapshot(deps, target))
+              .then((snapshot) => withEngineComputer(deps, actor, snapshot)),
             listRoutinesDto(deps, actor, active.id),
           ])
         : [null, []];
@@ -1558,7 +1559,7 @@ export function createRouter(deps: RouterDeps) {
       }),
       get: authed.threads.get.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-        return threadSnapshot(deps, target);
+        return withEngineComputer(deps, context.actor, await threadSnapshot(deps, target));
       }),
       messages: authed.threads.messages.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);

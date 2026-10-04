@@ -49,15 +49,14 @@ SUBAGENT_WAKE_NOTICE_INSTRUCTION = (
 # composed system prompt must carry the preference explicitly.
 EMBEDDED_BROWSER_PRIORITY_INSTRUCTION = (
     "Embedded browser: the browser_navigate / browser_snapshot / "
-    "browser_click / browser_type / browser_screenshot tools drive the "
-    "Omnigent app's embedded browser pane, which the user can watch "
-    "alongside the chat. When asked to look at, open, or interact with a "
+    "browser_click / browser_type / browser_screenshot tools drive a "
+    "browser the user can watch alongside the chat. When asked to look at, "
+    "open, or interact with a "
     "web page, prefer these embedded-browser tools over your own web "
     "tooling (a built-in web fetch/search tool, shell commands like curl, "
     "or launching a separate browser) so the user sees the page as you "
     "work. Fall back to other web tooling only when the embedded browser "
-    "is unavailable (its tools fail because no Omnigent app window is "
-    "attached) or for non-interactive bulk fetching."
+    "is unavailable (its tools fail) or for non-interactive bulk fetching."
 )
 
 # Rollover sessions compact older history into a summary, so exact wording can

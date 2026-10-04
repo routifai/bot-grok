@@ -114,7 +114,8 @@ def register_computer_routes(
             )
         launcher, sandbox_id = await asyncio.to_thread(_require_target, request, session_id)
         key = (launcher.provider, sandbox_id)
-        token = secrets.token_urlsafe(24) if interactive else None
+        # Reuse a held token: minting a new one would cut off the person's open screen.
+        token = (_control_tokens.get(key) or secrets.token_urlsafe(24)) if interactive else None
         url = await asyncio.to_thread(
             lambda: launcher.screen_url(sandbox_id, interactive=interactive, control_token=token)
         )
