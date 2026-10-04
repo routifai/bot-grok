@@ -3,6 +3,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 export const SCREEN_PROXY_TTL_MS = 60 * 60_000;
 export const SCREEN_TARGET_ENDPOINT = "/api/internal/screen-target";
 export const SCREEN_RECHECK_MS = 1_000;
+/** Scope `computerId` of a screen whose Computer the engine owns (Nova holds no Computer row). */
+export const ENGINE_COMPUTER_ID = "engine";
 
 export interface ScreenCapabilityScope {
   botId: string;

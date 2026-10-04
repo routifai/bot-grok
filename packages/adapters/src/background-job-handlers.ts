@@ -116,10 +116,13 @@ export function createBackgroundJobHandlers(deps: {
     "computer.update": async ({ updateId }) => {
       await performComputerUpdate(deps, updateId);
     },
+    // The engine's Computer is always on: no idle sleep or control expiry for its Muses.
     "computer.sleep": async (payload) => {
+      if (deps.omnigent) return;
       await sleepComputerIfIdle(deps, payload.computerId);
     },
     "computer.control-expire": async (payload) => {
+      if (deps.omnigent) return;
       if (await expireComputerControl(deps, payload.computerId, payload.leaseId)) {
         scheduleComputerSleep(deps.jobs, payload.computerId);
       }

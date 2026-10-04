@@ -1,4 +1,4 @@
-import { SCREEN_TARGET_ENDPOINT } from "@aiden/core/node/screen-capability";
+import { ENGINE_COMPUTER_ID, SCREEN_TARGET_ENDPOINT } from "@aiden/core/node/screen-capability";
 import type { PrismaClient } from "@aiden/db";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
@@ -114,5 +114,32 @@ describe("screen capability lifecycle authorization", () => {
     expect(addScreenProxyCapability("local://preview", secret, "https://app.example", scope)).toBe(
       "local://preview",
     );
+  });
+  it("relays an engine-owned Computer without any Computer row", async () => {
+    const findFirst = vi.fn(async () => ({ id: "bot" }));
+    const app = new Hono();
+    mountScreenTarget(app, { bot: { findFirst } } as unknown as PrismaClient, secret);
+    const url = addScreenProxyCapability(
+      "http://127.0.0.1:49152/vnc.html?token=t&view_only=false",
+      secret,
+      "https://app.example",
+      { ...scope, computerId: ENGINE_COMPUTER_ID, controlLeaseId: null },
+    );
+    const request = () =>
+      app.request(SCREEN_TARGET_ENDPOINT, {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+        body: JSON.stringify({ path: new URL(url).pathname }),
+      });
+    const response = await request();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ hostname: "127.0.0.1", interactive: true });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ computerId: expect.anything() }),
+      }),
+    );
+    findFirst.mockResolvedValue(null as never);
+    expect((await request()).status).toBe(403);
   });
 });

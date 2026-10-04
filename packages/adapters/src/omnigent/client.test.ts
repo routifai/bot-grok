@@ -4,6 +4,7 @@ import {
   createOmnigentSession,
   createOmnigentSideChat,
   findOmnigentAgentIdByName,
+  getOmnigentComputer,
   getOmnigentMemoryProfile,
   getOmnigentSession,
   isStaleCursorError,
@@ -12,7 +13,9 @@ import {
   listOmnigentSessionItems,
   OmnigentApiError,
   OmnigentSideChatError,
+  openOmnigentComputerScreen,
   postOmnigentMessage,
+  releaseOmnigentComputer,
   streamOmnigentSession,
   switchOmnigentAgent,
 } from "./client.js";
@@ -394,5 +397,36 @@ describe("createOmnigentSideChat error handling (docs/super-chat/WIRING.md revie
       firstMessage: "hi",
     });
     expect(result.first_message_error).toBe("could not post");
+  });
+
+  it("computer calls hit the session-scoped routes with identity/proxy headers", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ available: true, in_control: false }))
+      .mockResolvedValueOnce(jsonResponse({ screen_url: "http://127.0.0.1:1/x", in_control: true }))
+      .mockResolvedValueOnce(
+        jsonResponse({ screen_url: "http://127.0.0.1:1/y", in_control: false }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await getOmnigentComputer(CONFIG, "p@example.test", "s 1")).toEqual({
+      available: true,
+      in_control: false,
+    });
+    expect(
+      (await openOmnigentComputerScreen(CONFIG, "p@example.test", "s 1", true)).in_control,
+    ).toBe(true);
+    expect((await releaseOmnigentComputer(CONFIG, "p@example.test", "s 1")).in_control).toBe(false);
+
+    const calls = fetchMock.mock.calls as unknown as [URL, RequestInit][];
+    expect(calls.map(([url, init]) => `${init?.method ?? "GET"} ${url.pathname}`)).toEqual([
+      "GET /v1/sessions/s%201/computer",
+      "POST /v1/sessions/s%201/computer/screen",
+      "POST /v1/sessions/s%201/computer/release",
+    ]);
+    expect(JSON.parse(calls[1]![1].body as string)).toEqual({ interactive: true });
+    expect((calls[0]![1].headers as Record<string, string>)["X-Omnigent-Proxy-Secret"]).toBe(
+      "proxy-secret",
+    );
   });
 });

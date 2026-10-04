@@ -11,6 +11,7 @@ import { createLogger, createTestSink, installLogger } from "@aiden/logging";
 import { describe, expect, it, vi } from "vitest";
 import { createBackgroundJobHandlers } from "./background-job-handlers.js";
 import { createRunExecutor } from "./executor.js";
+import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
 import { compactHistory } from "./history-compaction.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
 import { refreshIdeas } from "./muse/ideas.js";
@@ -201,5 +202,28 @@ describe("createBackgroundJobHandlers", () => {
       thinkingLevel: null,
       oauth: undefined,
     });
+  });
+  it("leaves the engine's always-on Computer alone: no idle sleep or control expiry", async () => {
+    const jobs = { enqueue: vi.fn() } as unknown as JobPublisher;
+    const handlers = createBackgroundJobHandlers({
+      executor: {} as unknown as ReturnType<typeof createRunExecutor>,
+      // Any Computer lookup would throw on this empty client.
+      prisma: {} as unknown as PrismaClient,
+      sandbox: {} as unknown as SandboxProvider,
+      home: {} as unknown as AgentHomeStore,
+      jobs,
+      events: {} as unknown as ThreadEvents,
+      workerId: "worker-1",
+      runtime: {} as unknown as AgentRuntime,
+      secretStore: {} as unknown as EncryptedSecretStore,
+      memoryProviders: { resolve: vi.fn(async () => null) },
+      memory: {} as unknown as MemoryStore,
+      omnigent: {} as unknown as OmnigentGatewayDeps,
+    });
+
+    await handlers["computer.sleep"]({ computerId: "computer-1" });
+    await handlers["computer.control-expire"]({ computerId: "computer-1", leaseId: "lease-1" });
+
+    expect(jobs.enqueue).not.toHaveBeenCalled();
   });
 });

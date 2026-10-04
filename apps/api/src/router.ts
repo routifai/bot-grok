@@ -169,6 +169,13 @@ import {
   listSpaceArtifacts,
 } from "./artifacts.js";
 import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
+import {
+  engineComputerClient,
+  engineComputerRelease,
+  engineComputerScreenUrl,
+  engineComputerStatus,
+  engineComputerTakeover,
+} from "./engine-computer.js";
 import { createSideChat, getChatMessages, listChats, sendToChat, summaryPreview } from "./chats.js";
 import {
   executionBlocksUserTakeover,
@@ -1791,10 +1798,16 @@ export function createRouter(deps: RouterDeps) {
       }),
     },
     computer: {
-      status: authed.computer.status.handler(async ({ context, input }) =>
-        computerStatus(deps, context.actor, input.botId),
-      ),
+      status: authed.computer.status.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        return engine
+          ? engineComputerStatus(deps, engine, context.actor, input.botId)
+          : computerStatus(deps, context.actor, input.botId);
+      }),
       boot: authed.computer.boot.handler(async ({ context, input }) => {
+        // The engine's Computer is always on: nothing to boot.
+        const engine = engineComputerClient();
+        if (engine) return engineComputerStatus(deps, engine, context.actor, input.botId);
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();
         if (bot.computer.state === "running" && bot.computer.providerRef) {
@@ -2001,6 +2014,8 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       takeover: authed.computer.takeover.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine) return engineComputerTakeover(deps, engine, context.actor, input.botId);
         let bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer?.providerRef || bot.computer.state !== "running") {
           throw new ORPCError("BAD_REQUEST", { message: "computer must be running" });
@@ -2151,6 +2166,8 @@ export function createRouter(deps: RouterDeps) {
         return { leaseId, expiresAt: expiresAt.toISOString() };
       }),
       release: authed.computer.release.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine) return engineComputerRelease(deps, engine, context.actor, input.botId);
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();
         const controlBotId = bot.computer.controlBotId;
@@ -2303,6 +2320,8 @@ export function createRouter(deps: RouterDeps) {
         return { path: input.path, content };
       }),
       screenUrl: authed.computer.screenUrl.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (engine) return engineComputerScreenUrl(deps, engine, context.actor, input.botId);
         let bot = await repos.getBot(context.actor, input.botId);
         if (await expireStaleComputerControl(deps, bot.computer)) {
           bot = await repos.getBot(context.actor, input.botId);

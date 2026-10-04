@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { hasActiveComputerControl } from "@aiden/adapters";
 import type { ScreenCapabilityScope } from "@aiden/core/node/screen-capability";
 import {
+  ENGINE_COMPUTER_ID,
   openScreenCapability,
   SCREEN_TARGET_ENDPOINT,
   sealScreenCapability,
@@ -36,6 +37,14 @@ export function mountScreenTarget(app: Hono, prisma: PrismaClient, secret: strin
     const capability = openScreenCapability(body.path, secret);
     if (!capability) return c.body(null, 403);
     const { scope, target } = capability;
+    if (scope.computerId === ENGINE_COMPUTER_ID) {
+      // The engine owns this Computer and its screen token: only check the Muse is still ours.
+      const engineBot = await prisma.bot.findFirst({
+        where: { id: scope.botId, archivedAt: null, screenGeneration: scope.botGeneration },
+        select: { id: true },
+      });
+      return engineBot ? c.json(target) : c.body(null, 403);
+    }
     const bot = await prisma.bot.findFirst({
       where: {
         id: scope.botId,
