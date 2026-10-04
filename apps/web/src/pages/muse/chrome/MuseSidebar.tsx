@@ -240,83 +240,86 @@ export function MuseSidebar({
           !mobile && (collapsed ? "w-[84px]" : "w-[320px]"),
         )}
       >
-        <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-sidebar-accent/80 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
-            style={{
-              height: nav.glide?.height ?? 44,
-              transform: `translateY(${nav.glide?.top ?? 0}px)`,
-              opacity: nav.glide ? 1 : 0,
-            }}
-          />
-          {rows.map((row) => (
-            <Fragment key={row.key}>
-              <RailRow
-                collapsed={collapsed}
-                icon={row.icon}
-                label={row.label}
-                meta={row.meta}
-                attention={row.attention}
-                current={row.current}
-                onClick={row.onClick}
-                onMouseEnter={nav.onRowEnter}
-              />
-              {row.key === "conversation" ? (
-                <ChatTree
-                  state={chatListState}
+        {/* Sections, chats and goals scroll together; the footer stays pinned below them. */}
+        <div className="app-no-drag -mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1">
+          <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-sidebar-accent/80 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
+              style={{
+                height: nav.glide?.height ?? 44,
+                transform: `translateY(${nav.glide?.top ?? 0}px)`,
+                opacity: nav.glide ? 1 : 0,
+              }}
+            />
+            {rows.map((row) => (
+              <Fragment key={row.key}>
+                <RailRow
                   collapsed={collapsed}
-                  activeChatId={activeChatId ?? null}
-                  onOpenChat={(chat) => go(onOpenChat, chat)}
-                  onNewDraft={() => go(onNewDraft)}
+                  icon={row.icon}
+                  label={row.label}
+                  meta={row.meta}
+                  attention={row.attention}
+                  current={row.current}
+                  onClick={row.onClick}
+                  onMouseEnter={nav.onRowEnter}
                 />
-              ) : null}
-            </Fragment>
-          ))}
+                {row.key === "conversation" ? (
+                  <ChatTree
+                    state={chatListState}
+                    collapsed={collapsed}
+                    activeChatId={activeChatId ?? null}
+                    onOpenChat={(chat) => go(onOpenChat, chat)}
+                    onNewDraft={() => go(onNewDraft)}
+                  />
+                ) : null}
+              </Fragment>
+            ))}
+          </div>
+
+          {activeGoals.length ? (
+            <div
+              aria-hidden={collapsed || undefined}
+              className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
+            >
+              <div className="ps-[19px] pb-2 text-[13.5px] font-semibold whitespace-nowrap text-muted-foreground">
+                <Trans>Goals</Trans>
+              </div>
+              {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
+                const done = goal.tasks.filter((task) => task.status === "done").length;
+                const waiting =
+                  goal.openProposal != null || goal.tasks.some((task) => task.status === "blocked");
+                return (
+                  <button
+                    key={goal.id}
+                    type="button"
+                    tabIndex={collapsed ? -1 : undefined}
+                    onClick={() => onNavigate("goals")}
+                    className="flex items-center gap-3 rounded-xl ps-[26px] pe-3 py-2.5 text-start text-[15px] whitespace-nowrap text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "size-2 shrink-0 rounded-full",
+                        waiting ? "bg-warning" : "bg-muted-foreground/40",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate" dir="auto">
+                      {goal.title}
+                    </span>
+                    {goal.tasks.length > 0 ? (
+                      <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
+                        {done}/{goal.tasks.length}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
-        {activeGoals.length ? (
-          <div
-            aria-hidden={collapsed || undefined}
-            className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
-          >
-            <div className="ps-[19px] pb-2 text-[13.5px] font-semibold whitespace-nowrap text-muted-foreground">
-              <Trans>Goals</Trans>
-            </div>
-            {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
-              const done = goal.tasks.filter((task) => task.status === "done").length;
-              const waiting =
-                goal.openProposal != null || goal.tasks.some((task) => task.status === "blocked");
-              return (
-                <button
-                  key={goal.id}
-                  type="button"
-                  tabIndex={collapsed ? -1 : undefined}
-                  onClick={() => onNavigate("goals")}
-                  className="flex items-center gap-3 rounded-xl ps-[26px] pe-3 py-2.5 text-start text-[15px] whitespace-nowrap text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "size-2 shrink-0 rounded-full",
-                      waiting ? "bg-warning" : "bg-muted-foreground/40",
-                    )}
-                  />
-                  <span className="min-w-0 flex-1 truncate" dir="auto">
-                    {goal.title}
-                  </span>
-                  {goal.tasks.length > 0 ? (
-                    <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
-                      {done}/{goal.tasks.length}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-
-        <div className="app-no-drag mt-auto flex flex-col gap-0.5">
+        <div className="app-no-drag flex shrink-0 flex-col gap-0.5">
           {mobile ? null : (
             <RailRow
               collapsed={collapsed}
