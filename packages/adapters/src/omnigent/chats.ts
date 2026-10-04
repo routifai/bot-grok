@@ -6,7 +6,7 @@
 // fetch the same way ./gateway.test.ts does — no network, no database.
 import type { ChatSummary, SideChatStart, ThreadMessage } from "@aiden/contracts";
 import { ENGINE_ERROR_NOTE, isEngineErrorText } from "@aiden/core";
-import { isRenderCardCall, replyCardFromToolCall, toolOutputsByCallId } from "./cards.js";
+import { cardFromToolCall, toolOutputsByCallId } from "./cards.js";
 import {
   getOmnigentSession,
   listOmnigentRelatedChats,
@@ -125,9 +125,8 @@ export function mapOmnigentItemsToMessages(
   const messages: ThreadMessage[] = [];
   const outputs = toolOutputsByCallId(items);
   for (const item of items) {
-    if (isRenderCardCall(item)) {
-      const callId = typeof item.call_id === "string" ? item.call_id : "";
-      const card = replyCardFromToolCall(item, outputs.get(callId));
+    if (item.type === "function_call") {
+      const card = cardFromToolCall(item, outputs);
       if (card) {
         messages.push({
           id: item.id,

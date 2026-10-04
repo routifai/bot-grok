@@ -69,6 +69,14 @@ export const ReplyCardData = {
     kind: Text.optional(),
     size: z.number().nonnegative().optional(),
   }),
+  /** The Muse's `vault_request_secret`: the person types a login into the card, which posts it
+   * straight to the vault. Only the request id travels in chat; never a value. */
+  secure_entry: z.object({
+    requestId: Text,
+    name: Text,
+    site: Text,
+    reason: Text.optional(),
+  }),
   progress: z.object({
     label: Text,
     value: z.number().min(0).max(100),

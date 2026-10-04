@@ -2403,3 +2403,101 @@ class SqlApprovalPending(OmnigentBase):
         Index("ix_approval_pending_user", "workspace_id", "user_id", "created_at"),
         Index("ix_approval_pending_session", "workspace_id", "session_id"),
     )
+
+
+class SqlVaultSecret(OmnigentBase):
+    """
+    SQLAlchemy model for the ``vault_secrets`` table: one saved login, encrypted at rest.
+
+    :param id: UUID primary key (bare 32-char hex string).
+    :param user_id: Owner identity; ``None`` in single-user mode.
+    :param name: Reference name the Muse uses (``{{secret:<name>}}``), unique per owner.
+    :param site: HTTPS origin the login was saved for; fills are refused anywhere else.
+    :param username: Plain account name (metadata shown in Settings), may be empty.
+    :param ciphertext: AES-GCM envelope of the password (never plaintext).
+    :param last_used_at: Epoch seconds of the last fill, or ``None``.
+    """
+
+    __tablename__ = "vault_secrets"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    site: Mapped[str] = mapped_column(String(512), nullable=False)
+    username: Mapped[str] = mapped_column(String(256), nullable=False, server_default="")
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_used_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (Index("ix_vault_secrets_owner", "workspace_id", "user_id", "name"),)
+
+
+class SqlVaultRequest(OmnigentBase):
+    """
+    SQLAlchemy model for the ``vault_requests`` table: a one-time secure-entry request.
+
+    :param id: Request id (bare 32-char hex string), the only thing the chat ever carries.
+    :param session_id: The session the Muse asked from.
+    :param status: ``pending`` until the person saves it, then ``saved``.
+    """
+
+    __tablename__ = "vault_requests"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    session_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    site: Mapped[str] = mapped_column(String(512), nullable=False)
+    reason: Mapped[str] = mapped_column(String(512), nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(String(8), nullable=False, server_default="pending")
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'saved')", name="ck_vault_requests_status"),
+    )
+
+
+class SqlVaultAudit(OmnigentBase):
+    """
+    SQLAlchemy model for the ``vault_audit`` table: who touched which secret, never a value.
+
+    :param action: ``create``, ``fill`` or ``delete``.
+    :param secret_id: The secret (kept after the secret is deleted).
+    :param session_id: The session a fill ran in, or ``None``.
+    """
+
+    __tablename__ = "vault_audit"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    secret_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    secret_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    session_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    action: Mapped[str] = mapped_column(String(8), nullable=False)
+    at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("action IN ('create', 'fill', 'delete')", name="ck_vault_audit_action"),
+        Index("ix_vault_audit_secret", "workspace_id", "secret_id", "at"),
+    )

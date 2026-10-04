@@ -10,6 +10,7 @@ import { ApprovalsSettings } from "./ApprovalsSettings";
 import { resetFirstRun } from "./intro";
 import { ProactivitySettings } from "./ProactivitySettings";
 import { MUSE_INSET_GROUP } from "./ui";
+import { VaultSettings } from "./VaultSettings";
 
 /**
  * What the person tunes about their Muse, gathered in one place (docs/muse/DESIGN.md):
@@ -92,6 +93,8 @@ export function AidenSettingsPanel({
       <ProactivitySettings botId={bot.id} />
 
       <ApprovalsSettings botId={bot.id} />
+
+      <VaultSettings botId={bot.id} />
 
       <div className={MUSE_INSET_GROUP}>
         <button

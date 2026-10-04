@@ -10760,9 +10760,7 @@ def create_runner_app(
                                                     effective_harness=_session_harness_name(
                                                         conv_id
                                                     ),
-                                                    labels=await _rollover_labels_for_session(
-                                                        conv_id
-                                                    ),
+                                                    labels=await _tool_labels_for_session(conv_id),
                                                 )
                                             )
                                         )
@@ -14208,7 +14206,7 @@ def create_runner_app(
                     # call possible at all already warmed it at start (see
                     # _ensure_comment_relay_started). The fallback fetch only
                     # covers a tool call that somehow beats that warm-up.
-                    dispatch_labels = await _rollover_labels_for_session(session_id)
+                    dispatch_labels = await _tool_labels_for_session(session_id)
                     output = await execute_tool(
                         tool_name=tool_name,
                         arguments=_json.dumps(arguments),

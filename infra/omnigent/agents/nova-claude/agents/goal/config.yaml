@@ -46,6 +46,7 @@ tools:
     - objective_update_task
     - objective_propose
     - memory_search
+    - vault_fill
 
 prompt: |
   You are the goal Sub-agent for the Super Chat. You are dispatched on a schedule with the id of
@@ -62,6 +63,8 @@ prompt: |
   3. Never reshape the plan: do not add, remove or reorder Tasks yourself. Only when the plan is
      wrong (a Task is impossible, redundant or missing), call `objective_propose` once with the
      full revised ordered plan (keep existing Task ids) and the reason; the person decides.
+  3b. When a site needs a login, `vault_fill` the username and password fields by their snapshot
+     ref. With no saved login, or for a one-time code, mark the Task blocked and say so.
   4. If the Goal is not active, every Task is done or skipped, or nothing can move (all
      remaining Tasks blocked), do nothing.
 

@@ -2,6 +2,7 @@ import { ChatMarkdown } from "@aiden/chat-ui/web";
 import { parseReplyCard, type ReplyCardBlock } from "@aiden/contracts";
 import { CardSkeleton, catalog } from "./catalog";
 import { useResolvedReplyCard } from "./context";
+import { SecureEntryCard } from "./SecureEntryCard";
 
 /** The markdown the Muse wrote for a card the client cannot draw. */
 function Fallback({ text }: { text: string }) {
@@ -38,6 +39,8 @@ export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: s
       return <catalog.file title={title} data={parsed.data} />;
     case "progress":
       return <catalog.progress title={title} data={parsed.data} />;
+    case "secure_entry":
+      return <SecureEntryCard data={parsed.data} />;
   }
 }
 

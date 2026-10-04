@@ -33,7 +33,7 @@ const CARD_WIDTH = "w-[min(30rem,calc(100vw-3rem))]";
 const WIDE_CARD_WIDTH = "w-[min(42rem,calc(100vw-3rem))]";
 
 /** Every card kind shares one frame: compact, monochrome, readable at phone width. */
-function Frame({
+export function Frame({
   title,
   action,
   flush,

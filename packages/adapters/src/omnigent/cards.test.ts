@@ -107,3 +107,37 @@ describe("side chat items", () => {
     expect(toolOutputsByCallId([output("a"), call("b")]).has("a")).toBe(true);
   });
 });
+
+describe("secure entry cards", () => {
+  const ask = { type: "function_call", call_id: "v1", name: "vault_request_secret" };
+  const result = JSON.stringify({
+    secure_entry: { id: "r1", name: "acme", site: "https://acme.test", reason: "to sign in" },
+    message: "A secure card is shown.",
+  });
+
+  it("turns a finished vault_request_secret into a secure_entry card with only the request id", () => {
+    const blocks = turnBlocks(
+      [ask, { type: "function_call_output", call_id: "v1", output: result }],
+      "",
+    );
+    expect(blocks).toEqual([
+      expect.objectContaining({
+        kind: "reply_card",
+        card: "secure_entry",
+        data: { requestId: "r1", name: "acme", site: "https://acme.test", reason: "to sign in" },
+      }),
+    ]);
+  });
+
+  it("shows nothing for a pending or failed request, and also in side-chat history", () => {
+    expect(turnBlocks([ask], "")).toEqual([]);
+    const failed = { type: "function_call_output", call_id: "v1", output: '{"error":"off"}' };
+    expect(turnBlocks([ask, failed], "")).toEqual([]);
+    const done = { type: "function_call_output", call_id: "v1", output: result };
+    const messages = mapOmnigentItemsToMessages("chat", [
+      { id: "i1", created_at: 1, ...ask },
+      { id: "i2", created_at: 2, ...done },
+    ] as never);
+    expect(messages[0]?.blocks[0]).toMatchObject({ kind: "reply_card", card: "secure_entry" });
+  });
+});

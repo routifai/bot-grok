@@ -233,3 +233,23 @@ async def test_nightly_held_by_proactivity_off(harness, monkeypatch: pytest.Monk
     notes.claim_finalize("local", "2026-10-04")
     assert await qm.nightly_due(now=time.time() + 4000) == 0
     assert started == []
+
+
+def test_daily_note_tools_are_granted_only_to_a_helper_of_a_super_chat() -> None:
+    """The runner dispatches with the sub-agent marker label (``_tool_labels_for_session``)."""
+    from omnigent.context.labels import (
+        CONTEXT_MODE_LABEL,
+        SUBAGENT_LABEL_KEY,
+        SUPERSIDE_CHAT_MODE_VALUE,
+    )
+    from omnigent.runner import tool_dispatch
+    from omnigent.spec.types import AgentSpec
+
+    spec = AgentSpec(spec_version=1)
+    chat = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
+    helper = {**chat, SUBAGENT_LABEL_KEY: "1"}
+    for name in ("daily_note_get", "daily_note_update"):
+        assert (
+            tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=helper) is None
+        )
+        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat)

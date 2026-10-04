@@ -17,6 +17,7 @@ import base64
 import json
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 BROWSER_BACKEND_ENV = "OMNIGENT_BROWSER_BACKEND"
@@ -77,6 +78,33 @@ class LocalBrowserBackend:
         result = await self._helper_call("act", {"actions": [step]})
         return json.dumps(self._format_snapshot(result))
 
+    async def fill_login(
+        self, *, ref: int, field: str, fetch: Callable[[], Awaitable[tuple[str, str]]]
+    ) -> str:
+        """
+        Type one vault value into a field of the page, straight over CDP.
+
+        ``fetch`` returns ``(value, site)`` from the server. The value rides to the helper on
+        stdin only (never argv), the helper refuses unless the page is on ``site`` over HTTPS at
+        fill time, and the result never contains the value: it says ``filled`` or why not.
+
+        :param ref: Integer field ref from the last ``browser_snapshot``.
+        :param field: ``username`` or ``password`` (for the message only).
+        :param fetch: Async callable returning ``(value, site)``.
+        :returns: JSON result string.
+        """
+        element = self._refs.get(ref)
+        if element is None:
+            return json.dumps({"error": f"unknown ref {ref}; call browser_snapshot again"})
+        value, site = await fetch()
+        step = {"kind": "fill", "ref": element, "text": value, "origin": site}
+        data = await self._helper_call("act", {"actions": [step]}, secret_stdin=True)
+        # The helper's page snapshot is dropped: only the outcome leaves this function.
+        if data.get("ok"):
+            return json.dumps({"ok": True, "result": f"filled {field}"})
+        error = str(data.get("error", "fill failed")).replace(value, "[redacted]")
+        return json.dumps({"ok": False, "error": error[:200]})
+
     def _format_snapshot(self, data: dict[str, Any]) -> dict[str, Any]:
         """Swap the helper's opaque element ids for integer ``[ref=N]`` ids."""
         if not data.get("ok"):
@@ -95,12 +123,21 @@ class LocalBrowserBackend:
             "tree": tree,
         }
 
-    async def _helper_call(self, command: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _helper_call(
+        self, command: str, payload: dict[str, Any], *, secret_stdin: bool = False
+    ) -> dict[str, Any]:
         """Run the CDP helper, launching Chromium once if its debug port is down."""
         launched = False
         data: dict[str, Any] = {}
         for _ in range(_LAUNCH_RETRIES):
-            out, err = await self._run([self._helper, command, json.dumps(payload)])
+            if secret_stdin:
+                out, err = await self._run(
+                    [self._helper, command],
+                    stdin=json.dumps(payload).encode() + b"\n",
+                    env={**os.environ, "AIDEN_BROWSER_ARGS_STDIN": "1"},
+                )
+            else:
+                out, err = await self._run([self._helper, command, json.dumps(payload)])
             try:
                 data = json.loads(out)
             except ValueError:
@@ -132,14 +169,17 @@ class LocalBrowserBackend:
         )
 
     @staticmethod
-    async def _run(argv: list[str]) -> tuple[bytes, bytes]:
+    async def _run(
+        argv: list[str], *, stdin: bytes | None = None, env: dict[str, str] | None = None
+    ) -> tuple[bytes, bytes]:
         proc = await asyncio.create_subprocess_exec(
             *argv,
-            stdin=asyncio.subprocess.DEVNULL,
+            stdin=asyncio.subprocess.DEVNULL if stdin is None else asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
-        return await asyncio.wait_for(proc.communicate(), timeout=60.0)
+        return await asyncio.wait_for(proc.communicate(stdin), timeout=60.0)
 
 
 _backend: LocalBrowserBackend | None = None

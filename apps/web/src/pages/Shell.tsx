@@ -130,7 +130,11 @@ import {
   computersAreUnavailable,
 } from "../components/ComputersUnavailableHint";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
-import { ReplyCardSendProvider, ReplyCardThreadProvider } from "../components/cards/context";
+import {
+  ReplyCardBotProvider,
+  ReplyCardSendProvider,
+  ReplyCardThreadProvider,
+} from "../components/cards/context";
 import { ReplyCardBlockView } from "../components/cards/ReplyCard";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
@@ -3515,9 +3519,17 @@ function Transcript({
   onSendCard?: (text: string) => void;
 }) {
   const view = (
-    <ReplyCardThreadProvider messages={props.messages}>
-      <TranscriptView {...props} />
-    </ReplyCardThreadProvider>
+    <ReplyCardBotProvider
+      botId={
+        props.artifactTarget && "botId" in props.artifactTarget
+          ? props.artifactTarget.botId
+          : undefined
+      }
+    >
+      <ReplyCardThreadProvider messages={props.messages}>
+        <TranscriptView {...props} />
+      </ReplyCardThreadProvider>
+    </ReplyCardBotProvider>
   );
   return onSendCard ? (
     <ReplyCardSendProvider send={onSendCard}>{view}</ReplyCardSendProvider>

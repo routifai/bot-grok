@@ -235,6 +235,7 @@ class ToolManager:
         self._register_suggestion_tools()
         self._register_daily_note_tools()
         self._register_taught_skill_tools()
+        self._register_vault_tools()
         self._register_card_tools()
         # Embedded-browser tools are always auto-registered so any agent
         # can drive the desktop app's browser without the spec opting in
@@ -328,6 +329,23 @@ class ToolManager:
             tools: list[Tool] = [SkillDraftSaveTool()]
         else:
             tools = [SkillListTool(), SkillRunTool()]
+        for tool in tools:
+            self._tools[tool.name()] = tool
+
+    def _register_vault_tools(self) -> None:
+        """
+        Auto-register the vault tools for superside-chat sessions.
+
+        A top-level session may ask for a secret and fill from the vault; a Helper (marked by
+        ``SUBAGENT_LABEL_KEY``) may only fill, since it cannot talk to the person.
+        """
+        if not is_superside_chat(self._labels):
+            return
+        from omnigent.tools.builtins.vault import VaultFillTool, VaultRequestSecretTool
+
+        tools: list[Tool] = [VaultFillTool()]
+        if SUBAGENT_LABEL_KEY not in self._labels:
+            tools.insert(0, VaultRequestSecretTool())
         for tool in tools:
             self._tools[tool.name()] = tool
 

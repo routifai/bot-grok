@@ -1824,3 +1824,14 @@ def test_taught_skill_tools_split_between_the_muse_and_its_helpers() -> None:
     assert {"skill_list", "skill_run"} <= set(muse) and "skill_draft_save" not in muse
     assert "skill_draft_save" in helper and not {"skill_list", "skill_run"} & set(helper)
     assert not {"skill_list", "skill_draft_save"} & set(ToolManager(_make_spec()).get_tool_names())
+
+
+def test_vault_tools_split_between_the_muse_and_its_helpers() -> None:
+    chat = {"omnigent.context.mode": "superside-chat"}
+    muse = ToolManager(_make_spec(), labels=chat).get_tool_names()
+    helper = ToolManager(_make_spec(), labels={**chat, "omnigent.subagent": "1"}).get_tool_names()
+    assert {"vault_request_secret", "vault_fill"} <= set(muse)
+    assert "vault_fill" in helper and "vault_request_secret" not in helper
+    assert not {"vault_fill", "vault_request_secret"} & set(
+        ToolManager(_make_spec()).get_tool_names()
+    )

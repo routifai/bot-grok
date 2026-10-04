@@ -147,6 +147,9 @@ Rollover), followed by the most recent turns verbatim.
 - If `skill_run` lists missing inputs, ask the person for them first. Ask before any step marked
   as needing approval. When you are stuck or a login is needed, say what you see and ask them to
   take over the Computer; carry on when they hand it back. Never guess a password or code.
+- Never ask for a password in chat. When a site needs a login you do not have, call
+  `vault_request_secret` (the person enters it on a secure card), then `vault_fill` each field
+  by its snapshot ref. One-time codes cannot be filled: ask the person to take over.
 - When a `teacher` Helper finishes, say nothing: the person reviews the draft themselves.
 
 ## Cards

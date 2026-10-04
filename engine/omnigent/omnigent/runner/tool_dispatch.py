@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from omnigent.context.labels import (
+    SUBAGENT_LABEL_KEY,
     inheritable_context_labels,
     is_rollover,
     is_superside_chat,
@@ -143,6 +144,7 @@ from omnigent.tools.builtins.timer import (
 )
 from omnigent.tools.builtins.update_comment import UpdateCommentTool
 from omnigent.tools.builtins.upload_file import UploadFileTool, safe_resolve
+from omnigent.tools.builtins.vault import VAULT_HELPER_TOOL_NAMES, VAULT_TOOL_NAMES
 from omnigent.util.session_lifecycle import (
     CLOSED_LABEL_KEY,
     CLOSED_LABEL_VALUE,
@@ -504,6 +506,9 @@ _DAILY_NOTE_TOOLS = frozenset(DAILY_NOTE_TOOL_NAMES)
 # Taught skills: the runner proxies the server's /v1/taught-skills REST endpoints.
 _TAUGHT_SKILL_TOOLS = frozenset(TAUGHT_SKILL_TOOL_NAMES)
 
+# Secrets vault: the runner proxies /v1/me/vault; fills go straight to the Computer's browser.
+_VAULT_TOOLS = frozenset(VAULT_TOOL_NAMES)
+
 # Reply cards: validated and returned in-process, no server round-trip.
 _CARD_TOOLS = frozenset({CARD_TOOL_NAME})
 
@@ -562,6 +567,7 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _SUGGESTION_TOOLS
     | _DAILY_NOTE_TOOLS
     | _TAUGHT_SKILL_TOOLS
+    | _VAULT_TOOLS
     | _CARD_TOOLS
     | _TERMINAL_TOOLS
     # ``browser_*`` must ride the native relay: the Omnigent desktop app
@@ -1010,6 +1016,7 @@ _ALL_LOCAL_TOOLS = (
     | _SUGGESTION_TOOLS
     | _DAILY_NOTE_TOOLS
     | _TAUGHT_SKILL_TOOLS
+    | _VAULT_TOOLS
     | _CARD_TOOLS
     | _SIDE_CHAT_TOOLS
 )
@@ -1062,7 +1069,7 @@ def should_dispatch_locally(tool_name: str) -> bool:
 # ``id(spec)`` because AgentSpec is an unhashable dataclass. The weakref
 # guards against id reuse after the spec is garbage-collected.
 _granted_tool_names_cache: dict[
-    tuple[int, str | None, bool, bool], tuple[weakref.ref[AgentSpec], frozenset[str]]
+    tuple[int, str | None, bool, bool, bool], tuple[weakref.ref[AgentSpec], frozenset[str]]
 ] = {}
 _GRANTED_TOOL_NAMES_CACHE_MAX = 256
 
@@ -1109,11 +1116,19 @@ def _granted_tool_names(
         registrations (currently: ``session_history`` and ``memory_*`` for a
         rollover or superside-chat session, ``side_chat_open`` for a
         superside-chat session). The cache key includes both gates so a spec
-        object reused across sessions in different modes never shares a grant.
+        object reused across sessions in different modes (or a Helper and its parent)
+        never shares a grant.
     :raises Exception: Propagates ``ToolManager`` construction failures so
         callers can fail closed instead of guessing at the surface.
     """
-    cache_key = (id(agent_spec), harness, uses_omnigent_context(labels), is_superside_chat(labels))
+    # A Helper shares its parent's spec but is offered a different surface (the sub-agent marker).
+    cache_key = (
+        id(agent_spec),
+        harness,
+        uses_omnigent_context(labels),
+        is_superside_chat(labels),
+        SUBAGENT_LABEL_KEY in (labels or {}),
+    )
     cached = _granted_tool_names_cache.get(cache_key)
     if cached is not None and cached[0]() is agent_spec:
         return cached[1]
@@ -5535,6 +5550,90 @@ async def _execute_taught_skill_tool(
     return json.dumps(resp.json())
 
 
+async def _execute_vault_tool(
+    tool_name: str,
+    args: _JsonObject,
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None = None,
+) -> str:
+    """
+    Runner-local handler for the vault tools.
+
+    ``vault_request_secret`` opens a secure-entry request (the value is entered on a Nova form,
+    never here). ``vault_fill`` fetches the value with the runner's session auth and types it
+    into the Computer's browser; the value stays in local variables, is never logged, and the
+    result only says it was filled.
+
+    :param tool_name: One of :data:`VAULT_TOOL_NAMES`.
+    :param args: Parsed tool arguments.
+    :returns: Tool output JSON string, never containing a secret value.
+    """
+    if server_client is None or not conversation_id:
+        return json.dumps({"error": f"{tool_name} requires server access"})
+    lookup = await _session_kind_and_parent(conversation_id, server_client)
+    if lookup is None:
+        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
+    if lookup[0] == "sub_agent" and tool_name not in VAULT_HELPER_TOOL_NAMES:
+        return json.dumps({"error": f"{tool_name} is not available to sub-agent sessions"})
+    name = args.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return json.dumps({"error": f"{tool_name} requires a name"})
+    try:
+        if tool_name == "vault_request_secret":
+            resp = await server_client.post(
+                "/v1/me/vault/requests",
+                json={
+                    "session_id": conversation_id,
+                    "name": name,
+                    "site": str(args.get("site") or ""),
+                    "reason": str(args.get("reason") or ""),
+                },
+                timeout=30.0,
+            )
+            if resp.status_code >= 400:
+                return json.dumps({"error": _vault_error(resp)})
+            req = resp.json()
+            return json.dumps(
+                {
+                    "secure_entry": {k: req[k] for k in ("id", "name", "site", "reason")},
+                    "message": "A secure card is shown. Wait for the person to save it, "
+                    "then use vault_fill.",
+                }
+            )
+        field = args.get("field")
+        ref = args.get("ref")
+        if field not in ("username", "password") or not isinstance(ref, int):
+            return json.dumps({"error": "vault_fill needs field (username|password) and ref"})
+        if not local_browser_backend_enabled():
+            return json.dumps({"error": "vault_fill needs the Computer's browser"})
+
+        async def fetch() -> tuple[str, str]:
+            resp = await server_client.post(
+                "/v1/me/vault/fill",
+                json={"name": name, "field": field, "session_id": conversation_id},
+                timeout=30.0,
+            )
+            if resp.status_code >= 400:
+                raise RuntimeError(_vault_error(resp))
+            body = resp.json()
+            return body["value"], body["site"]
+
+        return await get_local_browser_backend().fill_login(ref=ref, field=field, fetch=fetch)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"{tool_name} failed: {exc}"})
+
+
+def _vault_error(resp: httpx.Response) -> str:
+    """A short, value-free reason from a vault API error response."""
+    try:
+        detail = resp.json()
+        message = detail.get("error", {}).get("message") or detail.get("detail")
+    except ValueError:
+        message = None
+    return str(message or f"server returned {resp.status_code}")[:200]
+
+
 @dataclass
 class _ParsedTitle:
     """
@@ -7955,6 +8054,13 @@ async def execute_tool(
             output = await _execute_taught_skill_tool(
                 tool_name,
                 arguments,
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+        elif tool_name in _VAULT_TOOLS:
+            output = await _execute_vault_tool(
+                tool_name,
+                args,
                 server_client=server_client,
                 conversation_id=conversation_id,
             )

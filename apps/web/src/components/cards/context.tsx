@@ -28,6 +28,21 @@ export function ReplyCardThreadProvider({
   return <ThreadContext.Provider value={resolved}>{children}</ThreadContext.Provider>;
 }
 
+/** The Muse whose chat this is; cards that talk to the API on the person's behalf need it. */
+const BotIdContext = createContext<string | null>(null);
+
+export function ReplyCardBotProvider({
+  botId,
+  children,
+}: {
+  botId: string | undefined;
+  children: ReactNode;
+}) {
+  return <BotIdContext.Provider value={botId || null}>{children}</BotIdContext.Provider>;
+}
+
+export const useReplyCardBotId = () => useContext(BotIdContext);
+
 export const useReplyCardSend = () => useContext(SendContext);
 
 export function useResolvedReplyCard(

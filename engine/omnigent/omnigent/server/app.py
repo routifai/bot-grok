@@ -126,6 +126,7 @@ from omnigent.server.routes.suggestions import create_suggestions_router
 from omnigent.server.routes.taught_skills import create_taught_skills_router
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.server.routes.usage import create_usage_router
+from omnigent.server.routes.vault import create_vault_router
 from omnigent.server.runner_session_init import RunnerSessionInitializer
 from omnigent.server.scheduled import ScheduledTaskScheduler
 from omnigent.server.ws_origin import WebSocketOriginMiddleware
@@ -152,6 +153,7 @@ from omnigent.stores.project_store import ProjectStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
 from omnigent.stores.suggestion_store import SqlAlchemySuggestionStore
 from omnigent.stores.taught_skill_store import SqlAlchemyTaughtSkillStore
+from omnigent.stores.vault_store import VaultStore
 from omnigent.superchat.chats import SideChatArchiveSweeper
 
 _logger = logging.getLogger(__name__)
@@ -3413,6 +3415,16 @@ def create_app(
             create_taught_skills_router(taught_skill_store, auth_provider=auth_provider),
             prefix="/v1",
             tags=["taught_skills"],
+        )
+        # The secrets vault: encrypted logins, secure-entry requests and their audit trail.
+        vault_store = VaultStore(scheduled_task_store.storage_location)
+        app.state.vault_store = vault_store
+        app.include_router(
+            create_vault_router(
+                vault_store, conversation_store=conversation_store, auth_provider=auth_provider
+            ),
+            prefix="/v1",
+            tags=["vault"],
         )
     if objective_store is not None:
         app.include_router(

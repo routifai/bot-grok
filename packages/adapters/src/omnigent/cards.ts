@@ -7,6 +7,7 @@ import type { MessageBlock, ReplyCardBlock } from "@aiden/contracts";
 import { redactSecrets } from "@aiden/core";
 
 const RENDER_CARD_TOOL = "render_card";
+const VAULT_REQUEST_TOOL = "vault_request_secret";
 
 type Item = Record<string, unknown>;
 
@@ -16,6 +17,15 @@ export function isRenderCardCall(item: Item): boolean {
     item.type === "function_call" &&
     typeof item.name === "string" &&
     (item.name === RENDER_CARD_TOOL || item.name.endsWith(`__${RENDER_CARD_TOOL}`))
+  );
+}
+
+/** The Muse's `vault_request_secret` call: it asks the person for a login. */
+export function isVaultRequestCall(item: Item): boolean {
+  return (
+    item.type === "function_call" &&
+    typeof item.name === "string" &&
+    (item.name === VAULT_REQUEST_TOOL || item.name.endsWith(`__${VAULT_REQUEST_TOOL}`))
   );
 }
 
@@ -74,6 +84,31 @@ export function replyCardFromToolCall(
   return result?.type === "card" ? cardBlock(result) : null;
 }
 
+/** A finished `vault_request_secret` -> its secure-entry card. Only the request id and what is
+ * being asked for travel in chat; the engine never returns a value. */
+export function secureEntryFromToolCall(output: string | undefined): ReplyCardBlock | null {
+  const nested = output === undefined ? undefined : parseObject(output)?.secure_entry;
+  const { id, name, site, reason } = (nested && typeof nested === "object" ? nested : {}) as Record<
+    string,
+    unknown
+  >;
+  if (typeof id !== "string" || typeof name !== "string" || typeof site !== "string") return null;
+  return {
+    kind: "reply_card",
+    card: "secure_entry",
+    data: { requestId: id, name, site, ...(typeof reason === "string" ? { reason } : {}) },
+    fallback: `Nova needs a login for ${site}. Open this chat in Nova to enter it securely.`,
+  };
+}
+
+/** The card a Muse tool call renders, or `null` for any other item (or a failed call). */
+export function cardFromToolCall(call: Item, outputs: Map<string, string>): ReplyCardBlock | null {
+  const callId = typeof call.call_id === "string" ? call.call_id : "";
+  if (isRenderCardCall(call)) return replyCardFromToolCall(call, outputs.get(callId));
+  if (isVaultRequestCall(call)) return secureEntryFromToolCall(outputs.get(callId));
+  return null;
+}
+
 /** A card never carries a secret: one that does degrades to its redacted markdown fallback. */
 export function redactReplyCard(block: ReplyCardBlock, secrets: string[]): MessageBlock {
   const serialized = JSON.stringify(block);
@@ -98,9 +133,8 @@ export function turnBlocks(items: Item[], replyText: string): MessageBlock[] {
     if (index === replyIndex && replyText) {
       blocks.push({ kind: "text", text: replyText });
       replied = true;
-    } else if (isRenderCardCall(item)) {
-      const call = typeof item.call_id === "string" ? item.call_id : "";
-      const block = replyCardFromToolCall(item, outputs.get(call));
+    } else {
+      const block = cardFromToolCall(item, outputs);
       if (block && !block.pending) blocks.push(block);
     }
   });
