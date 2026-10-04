@@ -12,9 +12,10 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from omnigent.entities import OwnerPreferences, ScheduledTaskRun
-from omnigent.server.auth import LEVEL_OWNER
+from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL
 from omnigent.server.scheduled import fire as fire_mod
 from omnigent.server.scheduled.fire import _quiet_window_end, build_on_fire, build_retry
+from omnigent.stores.conversation_store import NameAlreadyExistsError
 from tests.server.scheduled.test_fire import (
     FakeConversationStore,
     FakePermissionStore,
@@ -122,8 +123,72 @@ async def test_fire_creates_helper_child_of_parent() -> None:
     assert store.runs[0]["status"] == "running"
     assert store.runs[0]["conversation_id"] == "conv_1"
     assert store.runs[0]["attempt"] == 1
-    # A child follows its parent's grants: no owner grant is written for it.
-    assert not any(g[2] == LEVEL_OWNER for g in perm.grants)
+    # Same as a sys_session_create child: the task owner owns the Helper, so
+    # owner-scoped routes (memory/profile) resolve it.
+    assert (RESERVED_USER_LOCAL, "conv_1", LEVEL_OWNER) in perm.grants
+    # Titled with the task name, not an opaque id ("Researcher: nightly").
+    assert created["title"] == "researcher:nightly"
+
+
+async def test_helper_owner_grant_goes_to_task_owner() -> None:
+    perm = FakePermissionStore()
+    conv_store = _ParentConversationStore(_Parent())
+    store = _Store({"task_1": _bound_task(user_id="alice")})
+    await _fire(store, conv_store, _ok_launch, permission_store=perm)
+    assert ("alice", "conv_1", LEVEL_OWNER) in perm.grants
+
+
+async def test_helper_title_collision_falls_back_to_timestamped_title() -> None:
+    class _Dup(_ParentConversationStore):
+        def create_conversation(self, **kwargs: Any) -> Any:
+            if kwargs["title"] == "researcher:nightly":
+                raise NameAlreadyExistsError("dup")
+            return super().create_conversation(**kwargs)
+
+    conv_store = _Dup(_Parent())
+    store = _Store({"task_1": _bound_task()})
+    await _fire(store, conv_store, _ok_launch)
+    title = conv_store.created[0]["title"]
+    assert title.startswith("researcher:nightly (")
+    assert store.runs[0]["status"] == "running"
+
+
+async def test_parent_runner_dispatch_starts_relay_before_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a relay the idle edge never reaches the server and the run stays running."""
+    from omnigent.server.routes import sessions as sessions_mod
+
+    calls: list[str] = []
+
+    async def _client(*_a: Any, **_k: Any) -> object:
+        return object()
+
+    async def _init(*_a: Any, **_k: Any) -> None:
+        calls.append("init")
+
+    async def _relay(session_id: str, runner_id: str | None, *_a: Any, **_k: Any) -> None:
+        calls.append(f"relay:{session_id}:{runner_id}")
+
+    async def _send(*_a: Any, **_k: Any) -> None:
+        calls.append("send")
+
+    monkeypatch.setattr(sessions_mod, "_wait_for_runner_client", _client)
+    monkeypatch.setattr(sessions_mod, "_ensure_runner_session_initialized", _init)
+    monkeypatch.setattr(sessions_mod, "_ensure_runner_relay_ready", _relay)
+    monkeypatch.setattr(sessions_mod, "_dispatch_session_event_to_runner", _send)
+
+    conv_store = _ParentConversationStore(_Parent())
+    dispatch = fire_mod._make_parent_runner_dispatch(
+        _deps(_Store({}), conversation_store=conv_store)
+    )
+
+    class _Conv:
+        id = "conv_h"
+        runner_id = "runner_1"
+
+    await dispatch(_Conv(), _bound_task())
+    assert calls == ["init", "relay:conv_h:runner_1", "send"]
 
 
 async def test_missing_parent_fails_without_retry() -> None:

@@ -51,7 +51,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from datetime import time as dtime
 from enum import Enum
 from typing import Any
@@ -76,6 +76,7 @@ from omnigent.server.routes._session_create_validation import (
 )
 from omnigent.server.scheduled.run_reconciler import force_fail_stale_runs
 from omnigent.server.schemas import SessionEventInput
+from omnigent.stores.conversation_store import NameAlreadyExistsError
 
 _logger = logging.getLogger(__name__)
 
@@ -879,6 +880,13 @@ async def _launch_helper(
         return
     conv_id = conv.id
     await _attach_cost_budget(deps, task, conv.id)
+    # Same grant a ``sys_session_create`` child gets (its creator owns it):
+    # the owner-scoped memory routes resolve the session owner from the
+    # child's own grants, so a grantless Helper 403s on ``memory/profile``.
+    try:
+        await _grant_owner(deps, task, conv.id)
+    except Exception:
+        _logger.exception("scheduled fire: owner grant failed for helper %s", conv.id)
     dispatch = fire_dispatch.helper or fire_dispatch.connected
     try:
         await dispatch(conv, task)
@@ -912,18 +920,32 @@ async def _create_helper_session(
         SUBAGENT_DISPATCH_ID_LABEL_KEY: f"subagent_{_new_id()[:12]}",
         SCHEDULED_HELPER_LABEL_KEY: task.id,
     }
-    conv: Conversation = await asyncio.to_thread(
-        deps.conversation_store.create_conversation,
-        kind="sub_agent",
-        title=f"{task.agent_type}:{task.id[:8]}-{scheduled_at}",
-        parent_conversation_id=parent.id,
-        agent_id=parent.agent_id,
-        runner_id=parent.runner_id,
-        sub_agent_name=task.agent_type,
-        labels=labels,
-        model_override=task.model_override,
-        reasoning_effort=task.reasoning_effort,
-    )
+    # ``"<agent_type>:<task name>"``: Activity splits on the first colon, so it
+    # reads "<Type>: <task name>" instead of an opaque id. The (parent, title)
+    # pair is unique, so a repeat fire of the same task falls back to a
+    # timestamped title.
+    base = (task.name or "").strip() or str(task.agent_type)
+    fired = datetime.fromtimestamp(scheduled_at or time.time(), tz=UTC).strftime("%b %d %H:%M UTC")
+    conv: Conversation | None = None
+    for label in (base, f"{base} ({fired})", f"{base} ({fired}) {task.id[:8]}"):
+        try:
+            conv = await asyncio.to_thread(
+                deps.conversation_store.create_conversation,
+                kind="sub_agent",
+                title=f"{task.agent_type}:{label}",
+                parent_conversation_id=parent.id,
+                agent_id=parent.agent_id,
+                runner_id=parent.runner_id,
+                sub_agent_name=task.agent_type,
+                labels=labels,
+                model_override=task.model_override,
+                reasoning_effort=task.reasoning_effort,
+            )
+            break
+        except NameAlreadyExistsError:
+            continue
+    if conv is None:
+        raise RuntimeError("helper title collision")
     return conv
 
 
@@ -933,6 +955,7 @@ def _make_parent_runner_dispatch(deps: FireDeps) -> LaunchDispatch:
     async def _dispatch(conv: Conversation, task: ScheduledTask) -> None:
         from omnigent.server.routes.sessions import (
             _dispatch_session_event_to_runner,
+            _ensure_runner_relay_ready,
             _ensure_runner_session_initialized,
             _wait_for_runner_client,
         )
@@ -953,6 +976,13 @@ def _make_parent_runner_dispatch(deps: FireDeps) -> LaunchDispatch:
         conv_for_dispatch = fresh or conv
         await _ensure_runner_session_initialized(
             conv.id, conv_for_dispatch, runner_client, deps.conversation_store
+        )
+        # Subscribe the server relay BEFORE the prompt goes out: the relay is
+        # what sees the turn's idle/failed edge and flips the run row to
+        # succeeded/failed. The parent's runner is already connected, so
+        # nothing else starts a relay for this fresh child.
+        await _ensure_runner_relay_ready(
+            conv.id, conv_for_dispatch.runner_id, runner_client, deps.conversation_store
         )
         await _dispatch_session_event_to_runner(
             conv.id,
