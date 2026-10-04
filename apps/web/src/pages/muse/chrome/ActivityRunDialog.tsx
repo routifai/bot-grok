@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { isHelperActivity } from "./activityGrouping";
 import { MessageRow } from "./SideChatSession";
+import { stepDetailText } from "./stepDetail";
 
 /** The Activity run page's wire: full detail (Steps) and, for a Helper, its messages —
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */
@@ -73,8 +74,25 @@ function StepDot({ live }: { live: boolean }) {
  * chevron in a fixed-width column before its title (native `<details>`, keyboard
  * reachable for free); a Step without one still reserves that column, so every title
  * starts at the same x whether or not its Step is expandable. */
+function StepDetailBlock({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[11.5px] text-muted-foreground">{label}</span>
+      <pre
+        className="max-h-56 overflow-auto rounded-lg bg-muted/60 px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/80"
+        style={{ overflowWrap: "anywhere" }}
+        dir="auto"
+      >
+        {text}
+      </pre>
+    </div>
+  );
+}
+
 function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; isLast: boolean }) {
-  const entries = step.detail ? Object.entries(step.detail) : [];
+  const { t } = useLingui();
+  const { input, output } = stepDetailText(step.detail);
+  const hasDetail = input !== null || output !== null;
   const title = (
     <span
       className="min-w-0 flex-1 text-[13px] text-foreground"
@@ -90,7 +108,7 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
     </time>
   );
 
-  if (entries.length === 0) {
+  if (!hasDetail) {
     return (
       <li className={cn("relative flex gap-3", !isLast && "pb-4")}>
         <StepDot live={live} />
@@ -117,14 +135,10 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
           {title}
           {time}
         </summary>
-        <dl className="mt-1.5 ml-6 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[12px]">
-          {entries.map(([key, value]) => (
-            <div key={key} className="contents">
-              <dt className="text-muted-foreground/80">{key}</dt>
-              <dd className="min-w-0 break-words text-foreground/80">{String(value)}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="mt-2 ml-6 flex flex-col gap-2">
+          {input !== null ? <StepDetailBlock label={t`Input`} text={input} /> : null}
+          {output !== null ? <StepDetailBlock label={t`Output`} text={output} /> : null}
+        </div>
       </details>
     </li>
   );
