@@ -18,9 +18,10 @@ description: >-
 
 executor:
   type: omnigent
+  # The engine reads the launch model from executor.model (not config.model).
+  model: ${{{MODEL_ENV}}}
   config:
     harness: claude-sdk
-    model: ${{{MODEL_ENV}}}
 
 interaction:
   conversational: true
