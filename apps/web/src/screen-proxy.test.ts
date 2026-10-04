@@ -30,7 +30,7 @@ describe("screen proxy", () => {
       .mockRejectedValueOnce(new Error("offline"));
     vi.stubGlobal("fetch", fetch);
     const resolve = () =>
-      resolveNovncTarget("/novnc/session/view/token/websockify", "secret", "http://api.example");
+      resolveNovncTarget("/novnc/session/view/token/websockify", "secret", "http://api.example", 0);
     expect(await resolve()).toEqual(target);
     expect(await resolve()).toBeNull();
     expect(await resolve()).toBeNull();
@@ -39,6 +39,41 @@ describe("screen proxy", () => {
       redirect: "error",
       headers: { authorization: "Bearer secret" },
     });
+  });
+  it("retries an unavailable API briefly but never retries a denial", async () => {
+    const target = {
+      protocol: "http:",
+      hostname: "127.0.0.1",
+      port: 49152,
+      path: "/websockify",
+      interactive: false,
+    };
+    const fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("restarting"))
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+      .mockResolvedValueOnce(Response.json(target));
+    vi.stubGlobal("fetch", fetch);
+    const url = "/novnc/session/view/token/websockify";
+    expect(await resolveNovncTarget(url, "secret", "http://api.example", 2, 1)).toEqual(target);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    fetch.mockReset().mockResolvedValue(new Response(null, { status: 403 }));
+    expect(await resolveNovncTarget(url, "secret", "http://api.example", 2, 1)).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("keeps an open stream through a short API outage and closes it after the grace", async () => {
+    vi.useFakeTimers();
+    const revoke = vi.fn();
+    let answer: boolean | "unavailable" = "unavailable";
+    watchScreenAuthorization(async () => answer, revoke, 3_000);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(revoke).not.toHaveBeenCalled();
+    answer = true;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(revoke).not.toHaveBeenCalled();
+    answer = "unavailable";
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(revoke).toHaveBeenCalledTimes(1);
   });
   it("fails closed for a malformed authority response", async () => {
     vi.stubGlobal(

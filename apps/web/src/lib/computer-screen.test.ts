@@ -5,6 +5,7 @@ import {
   screenIframeSandbox,
   screenLinkKey,
   screenUrlStillFresh,
+  shareInflight,
 } from "./computer-screen";
 
 describe("computer screen requests", () => {
@@ -154,5 +155,33 @@ describe("screenLinkKey", () => {
     expect(screenLinkKey({ ...live, screenAvailable: false })).not.toBe(key);
     expect(screenLinkKey({ ...live, state: "suspended" })).not.toBe(key);
     expect(screenLinkKey({ ...live, controlHolder: "user" })).not.toBe(key);
+  });
+});
+
+describe("shareInflight", () => {
+  it("shares one run per key until it settles, and lets a forced run replace it", async () => {
+    const inflight = new Map<string, Promise<string>>();
+    let release: (value: string) => void = () => undefined;
+    const start = vi.fn(() => new Promise<string>((resolve) => (release = resolve)));
+    const first = shareInflight(inflight, "bot", start);
+    expect(shareInflight(inflight, "bot", start)).toBe(first);
+    expect(start).toHaveBeenCalledTimes(1);
+    const forced = shareInflight(inflight, "bot", () => Promise.resolve("forced"), true);
+    expect(shareInflight(inflight, "bot", start)).toBe(forced);
+    release("late");
+    expect(await first).toBe("late");
+    expect(await forced).toBe("forced");
+    await Promise.resolve();
+    expect(inflight.size).toBe(0);
+    await shareInflight(inflight, "bot", () => Promise.resolve("again"));
+    expect(inflight.size).toBe(0);
+  });
+  it("frees the key after a failure", async () => {
+    const inflight = new Map<string, Promise<string>>();
+    await expect(
+      shareInflight(inflight, "bot", () => Promise.reject(new Error("x"))),
+    ).rejects.toThrow();
+    await Promise.resolve();
+    expect(inflight.size).toBe(0);
   });
 });

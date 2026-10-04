@@ -19,6 +19,7 @@ import { defineConfig, loadEnv } from "vite";
 import { resolveScreenProxySecret } from "../../packages/core/src/secrets-guard.ts";
 import { collectNovncHtml, injectScreenLifecycle, MAX_NOVNC_HTML_BYTES } from "./src/novnc-html.js";
 import {
+  checkNovncTarget,
   resolveNovncTarget,
   safeProxyHeaders,
   watchScreenAuthorization,
@@ -59,6 +60,11 @@ function attachDesktopStackProbe(
     res.setHeader("content-type", "application/json; charset=utf-8");
     res.end(JSON.stringify(body));
   });
+}
+
+async function recheckNovncTarget(url: string | undefined, secret: string, api: string) {
+  const result = await checkNovncTarget(url, secret, api);
+  return result.status === "unavailable" ? ("unavailable" as const) : result.status === "allowed";
 }
 
 function attachNovncProxy(server: ViteDevServer | PreviewServer, secret: string, api: string) {
@@ -175,7 +181,7 @@ function attachNovncProxy(server: ViteDevServer | PreviewServer, secret: string,
       else req.pipe(upstream);
     }
     stopChecking = watchScreenAuthorization(
-      async () => Boolean(await resolveNovncTarget(req.url, secret, api)),
+      () => recheckNovncTarget(req.url, secret, api),
       () => {
         upstream?.destroy();
         res.destroy();
@@ -201,7 +207,7 @@ function attachNovncProxy(server: ViteDevServer | PreviewServer, secret: string,
         ? tls.connect({ port: target.port, host: target.hostname, servername: target.hostname })
         : net.connect(target.port, target.hostname);
     const stopChecking = watchScreenAuthorization(
-      async () => Boolean(await resolveNovncTarget(req.url, secret, api)),
+      () => recheckNovncTarget(req.url, secret, api),
       () => {
         socket.destroy();
         upstream.destroy();

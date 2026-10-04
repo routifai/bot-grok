@@ -85,3 +85,25 @@ export function screenLinkKey(
   const live = status.state === "running" || status.state === "booting";
   return `${live && status.screenAvailable ? "live" : status.state}:${status.controlHolder === "user" ? "user" : "bot"}`;
 }
+
+/**
+ * Run `start` once per key while a run is in flight. Opening the computer view triggers
+ * several refreshes at once; each would mint its own screen link and queue behind the other
+ * on the supervisor's screen lock. `replace` starts a fresh run that later callers share.
+ */
+export function shareInflight<T>(
+  inflight: Map<string, Promise<T>>,
+  key: string,
+  start: () => Promise<T>,
+  replace = false,
+): Promise<T> {
+  const pending = inflight.get(key);
+  if (pending && !replace) return pending;
+  const run = start();
+  inflight.set(key, run);
+  const settle = () => {
+    if (inflight.get(key) === run) inflight.delete(key);
+  };
+  run.then(settle, settle);
+  return run;
+}

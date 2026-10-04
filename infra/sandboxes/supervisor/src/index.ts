@@ -80,6 +80,7 @@ import {
   withKeyedLock,
   workspaceTarget,
 } from "./supervisor-logic.js";
+import { forgetScreenRegistry, loadScreenRegistry, saveScreenRegistry } from "./screen-registry.js";
 
 loadRootEnv();
 
@@ -96,6 +97,7 @@ const teamScreenLimit = resolveTeamScreenLimit();
 // IPs, so computer control must use a published loopback port instead.
 const controlViaLoopback = process.env.SANDBOX_CONTROL_VIA_LOOPBACK === "true";
 const computerScreens = new Map<string, Map<string, ScreenAssignment>>();
+const viewEnsures = new Map<string, Promise<Awaited<ReturnType<typeof ensureManagedScreen>>>>();
 
 export const MAX_SUPERVISOR_REQUEST_BYTES = 1024 * 1024;
 export const MAX_SUPERVISOR_FILE_REQUEST_BYTES = 16 * 1024 * 1024 + 64 * 1024;
@@ -642,13 +644,38 @@ app.post("/computers/:id/screen-mode", async (c) => {
     const screenId = c.req.header("x-aiden-screen-id");
     const screenLeaseId = c.req.header("x-aiden-screen-lease-id");
     const { container, info } = await managedContainer(id, botId, spaceId);
-    const { layout, viewToken } = await withComputerScreenLock(id, async () => {
-      const screen = await ensureManagedScreen(id, container, info, botId, screenId, screenLeaseId);
-      if (body.interactive || body.revokeControl !== false) {
-        await setInteractiveScreen(container, body.interactive, body.controlToken, screen.layout);
+    const ensureScreen = () =>
+      withComputerScreenLock(id, async () => {
+        const screen = await ensureManagedScreen(
+          id,
+          container,
+          info,
+          botId,
+          screenId,
+          screenLeaseId,
+        );
+        if (body.interactive || body.revokeControl !== false) {
+          await setInteractiveScreen(container, body.interactive, body.controlToken, screen.layout);
+        }
+        return screen;
+      });
+    // Plain view requests are idempotent and arrive in bursts when a page opens. They share one
+    // run instead of queuing behind each other on the screen lock, each paying the full ensure.
+    const viewKey = `${id}\0${screenId ?? botId ?? ""}\0${screenLeaseId ?? ""}`;
+    const plainView = !body.interactive && body.revokeControl === false;
+    let shared = plainView ? viewEnsures.get(viewKey) : undefined;
+    if (!shared) {
+      shared = ensureScreen();
+      if (plainView) {
+        const run = shared;
+        viewEnsures.set(viewKey, run);
+        const done = () => {
+          if (viewEnsures.get(viewKey) === run) viewEnsures.delete(viewKey);
+        };
+        run.then(done, done);
       }
-      return screen;
-    });
+    }
+    const { layout, viewToken } = await shared;
     const screenUrl = await publishedScreenUrl(
       container,
       info,
@@ -734,6 +761,7 @@ app.delete("/computers/:id/screen", async (c) => {
           throw new Error(result.stderr || "computer screen failed to stop");
         }
       }
+      if (assigned) await saveScreenRegistry(dataDir, id, assigned);
       // Keep an emptied registry. A missing one means the supervisor lost track of the
       // container, and the next screen request then resets every desktop process in it.
     });
@@ -768,9 +796,11 @@ app.post("/computers/:id/stop", async (c) => {
           // Failed profiles remain on the durable home for recovery after restart.
           await container.stop();
           clearComputerScreenRegistry(computerScreens, id);
+          await forgetScreenRegistry(dataDir, id);
         }
       }
       clearComputerScreenRegistry(computerScreens, id);
+      await forgetScreenRegistry(dataDir, id);
     });
     return c.json({ ok: true });
   } catch (error) {
@@ -792,6 +822,7 @@ app.delete("/computers/:id", async (c) => {
       await withComputerScreenLock(id, async () => {
         await container.remove({ force: true }).catch(() => undefined);
         clearComputerScreenRegistry(computerScreens, id);
+        await forgetScreenRegistry(dataDir, id);
       });
       if (screenNetworkMode !== "internal") {
         await removeBotNetwork(botId);
@@ -968,21 +999,29 @@ async function ensureManagedScreen(
 ) {
   let assigned = computerScreens.get(id);
   if (!assigned) {
-    const reset = await runContainerCommand(container, [
-      "bash",
-      "-c",
-      resetManagedScreensCommand(),
-    ]);
-    if (reset.code !== 0) throw new Error(reset.stderr || "computer screens failed to reset");
-    assigned = new Map();
+    // After a supervisor restart, adopt the persisted assignments: the ensure below is
+    // idempotent and keeps the running desktops, browsers and view token. Only a container with
+    // no known assignments (first use, or lost state) is reset.
+    const restored = await loadScreenRegistry(dataDir, id);
+    if (restored.size === 0) {
+      const reset = await runContainerCommand(container, [
+        "bash",
+        "-c",
+        resetManagedScreensCommand(),
+      ]);
+      if (reset.code !== 0) throw new Error(reset.stderr || "computer screens failed to reset");
+    }
+    assigned = restored;
     computerScreens.set(id, assigned);
   }
   const screenKey = screenId || botId || id;
   const index = nextScreenIndex(assigned, screenKey, screenLeaseId, teamScreenLimit);
   const layout = screenPorts(index);
   const slot = assigned.get(screenKey)!;
+  const newlyAssigned = !slot.viewToken;
   slot.viewToken ??= randomUUID();
   const viewToken = slot.viewToken;
+  if (newlyAssigned) await saveScreenRegistry(dataDir, id, assigned);
   const ensured = await runContainerCommand(container, [
     "bash",
     "-c",
