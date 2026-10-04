@@ -478,6 +478,82 @@ def test_resolve_auth_header_secret_unset_is_none(
     assert resolve_auth_header_secret() is None
 
 
+# ── UnifiedAuthProvider (header source: managed runner bearer) ──
+
+_BINDING = "runner-binding-token"
+
+
+def _runner_request(bearer: str | None, binding: str | None = _BINDING, **extra: str) -> MagicMock:
+    from omnigent.runner.identity import RUNNER_TUNNEL_TOKEN_HEADER
+
+    headers = dict(extra)
+    if bearer is not None:
+        headers["Authorization"] = f"Bearer {bearer}"
+    if binding is not None:
+        headers[RUNNER_TUNNEL_TOKEN_HEADER] = binding
+    return _mock_request(headers=headers)
+
+
+def _header_provider(secret: str | None = "s3cret") -> UnifiedAuthProvider:
+    return UnifiedAuthProvider(source="header", local_single_user=False, header_secret=secret)
+
+
+def _runner_bearer(provider: UnifiedAuthProvider, ttl: int = 1800) -> str:
+    from omnigent.runner.identity import token_bound_runner_id
+
+    token = provider.mint_runner_token(
+        "alice@example.com", ttl, runner_id=token_bound_runner_id(_BINDING)
+    )
+    assert token is not None
+    return token
+
+
+def test_header_runner_bearer_resolves_to_owner() -> None:
+    """A server-minted runner bearer + its binding token resolves to the owner."""
+    provider = _header_provider()
+    assert provider.get_user_id(_runner_request(_runner_bearer(provider))) == "alice@example.com"
+
+
+def test_header_runner_bearer_requires_matching_binding_token() -> None:
+    """Missing or foreign binding token: the bearer alone authenticates nothing."""
+    provider = _header_provider()
+    bearer = _runner_bearer(provider)
+    assert provider.get_user_id(_runner_request(bearer, binding=None)) is None
+    assert provider.get_user_id(_runner_request(bearer, binding="other-runner")) is None
+
+
+def test_header_runner_bearer_rejects_expired_foreign_and_cookie_tokens() -> None:
+    """Expired, other-secret, and non-runner HS256 tokens are all rejected."""
+    provider = _header_provider()
+    assert provider.get_user_id(_runner_request(_runner_bearer(provider, ttl=-1))) is None
+    other = _runner_bearer(_header_provider(secret="different"))
+    assert provider.get_user_id(_runner_request(other)) is None
+    # A plain session JWT signed with the raw proxy secret is not a runner bearer.
+    session_jwt = mint_session_token("alice@example.com", b"s3cret", 1800, "header")
+    assert provider.get_user_id(_runner_request(session_jwt)) is None
+
+
+def test_header_runner_bearer_not_minted_without_secret_or_runner_id() -> None:
+    """No proxy secret (no signing key) or no runner binding: nothing is minted."""
+    assert _header_provider(secret=None).mint_runner_token("a@x.com", 60, runner_id="r") is None
+    assert _header_provider().mint_runner_token("a@x.com", 60) is None
+    assert _header_provider().mint_runner_token("local", 60, runner_id="r") is None
+
+
+def test_header_runner_bearer_does_not_change_header_clients() -> None:
+    """Valid proxy identity wins; no credential or a wrong secret stays 401."""
+    provider = _header_provider()
+    good = _mock_request(
+        headers={"X-Forwarded-Email": "bob@example.com", "X-Omnigent-Proxy-Secret": "s3cret"}
+    )
+    assert provider.get_user_id(good) == "bob@example.com"
+    assert provider.get_user_id(_mock_request()) is None
+    wrong = _mock_request(
+        headers={"X-Forwarded-Email": "bob@example.com", "X-Omnigent-Proxy-Secret": "nope"}
+    )
+    assert provider.get_user_id(wrong) is None
+
+
 # ── UnifiedAuthProvider (header source: Google IAP prefix strip) ──
 
 # Google IAP injects its identity in ``X-Goog-Authenticated-User-Email``

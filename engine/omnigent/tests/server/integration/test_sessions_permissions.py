@@ -3465,3 +3465,117 @@ async def test_leave_rejects_a_sub_agent_session(
     # The parent grant is untouched, so carol still sees the shared session.
     parent_ids = {s["id"] for s in await _list_sessions_as(auth_client, "carol")}
     assert parent["id"] in parent_ids, "a refused child leave must not touch the parent grant"
+
+
+# ── Header mode + managed runner bearer ──────────────────────
+
+_PROXY_SECRET = "nova-proxy-secret"
+_RUNNER_BINDING = "managed-runner-binding-token"
+
+
+@pytest_asyncio.fixture()
+async def secret_auth_client(
+    runtime_init: None,
+    db_uri: str,
+    mock_llm: ControllableMockClient,
+    tmp_path: Path,
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Strict header-mode client whose server requires the proxy secret."""
+    from omnigent.runtime import set_harness_process_manager
+    from omnigent.runtime.harnesses.process_manager import HarnessProcessManager
+    from omnigent.server.auth import UnifiedAuthProvider
+
+    artifact_store = LocalArtifactStore(str(tmp_path / "artifacts"))
+    app = create_app(
+        agent_store=SqlAlchemyAgentStore(db_uri),
+        file_store=SqlAlchemyFileStore(db_uri),
+        conversation_store=SqlAlchemyConversationStore(db_uri),
+        artifact_store=artifact_store,
+        agent_cache=AgentCache(artifact_store=artifact_store, cache_dir=tmp_path / "cache"),
+        comment_store=SqlAlchemyCommentStore(db_uri),
+        permission_store=SqlAlchemyPermissionStore(db_uri),
+        auth_provider=UnifiedAuthProvider(
+            source="header", local_single_user=False, header_secret=_PROXY_SECRET
+        ),
+    )
+    pm = HarnessProcessManager(tmp_parent=tmp_path / "harness_pm")
+    await pm.start()
+    set_harness_process_manager(pm)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    mock_llm.release_all()
+    set_harness_process_manager(None)
+    await pm.shutdown()
+
+
+def _proxy_headers(user: str, secret: str = _PROXY_SECRET) -> dict[str, str]:
+    return {"X-Forwarded-Email": user, "X-Omnigent-Proxy-Secret": secret}
+
+
+async def _create_session_via_proxy(client: httpx.AsyncClient, user: str) -> str:
+    resp = await client.post(
+        "/v1/sessions",
+        data={"metadata": json.dumps({})},
+        files={"bundle": ("agent.tar.gz", build_agent_bundle(name="a"), "application/gzip")},
+        headers=_proxy_headers(user),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["session_id"]
+
+
+def _runner_headers(owner: str, *, binding: str | None = _RUNNER_BINDING) -> dict[str, str]:
+    """Headers a managed runner sends: server-minted bearer + its binding token."""
+    from omnigent.runner.identity import RUNNER_TUNNEL_TOKEN_HEADER, token_bound_runner_id
+    from omnigent.server.auth import UnifiedAuthProvider
+
+    # A separate provider with the same proxy secret mints what the server would.
+    issuer = UnifiedAuthProvider(source="header", header_secret=_PROXY_SECRET)
+    bearer = issuer.mint_runner_token(
+        owner, 1800, runner_id=token_bound_runner_id(_RUNNER_BINDING)
+    )
+    assert bearer is not None
+    headers = {"Authorization": f"Bearer {bearer}"}
+    if binding is not None:
+        headers[RUNNER_TUNNEL_TOKEN_HEADER] = binding
+    return headers
+
+
+async def test_header_mode_runner_bearer_resolves_to_session_owner(
+    secret_auth_client: httpx.AsyncClient,
+) -> None:
+    """A managed runner's callbacks act as the owner, and only as the owner."""
+    client = secret_auth_client
+    alice_sid = await _create_session_via_proxy(client, "alice@example.com")
+    bob_sid = await _create_session_via_proxy(client, "bob@example.com")
+    runner = _runner_headers("alice@example.com")
+
+    # The runner's callback for its owner's session succeeds.
+    assert (await client.get(f"/v1/sessions/{alice_sid}", headers=runner)).status_code == 200
+    assert (
+        await client.get(f"/v1/sessions/{alice_sid}/labels", headers=runner)
+    ).status_code == 200
+    # Another user's session stays out of reach.
+    resp = await client.get(f"/v1/sessions/{bob_sid}", headers=runner)
+    assert resp.status_code in (403, 404), resp.text
+    # The bearer without its binding token (proof of possession) is rejected.
+    no_pop = _runner_headers("alice@example.com", binding=None)
+    assert (await client.get(f"/v1/sessions/{alice_sid}", headers=no_pop)).status_code == 401
+    # A forged identity header cannot ride alongside the runner bearer.
+    forged = {**runner, "X-Forwarded-Email": "bob@example.com"}
+    resp = await client.get(f"/v1/sessions/{bob_sid}", headers=forged)
+    assert resp.status_code in (403, 404), resp.text
+
+
+async def test_header_mode_with_secret_normal_clients_unchanged(
+    secret_auth_client: httpx.AsyncClient,
+) -> None:
+    """No credential and a wrong proxy secret stay 401; the proxy path still works."""
+    client = secret_auth_client
+    sid = await _create_session_via_proxy(client, "alice@example.com")
+
+    ok = await client.get(f"/v1/sessions/{sid}", headers=_proxy_headers("alice@example.com"))
+    assert ok.status_code == 200
+    assert (await client.get(f"/v1/sessions/{sid}")).status_code == 401
+    wrong = _proxy_headers("alice@example.com", secret="wrong")
+    assert (await client.get(f"/v1/sessions/{sid}", headers=wrong)).status_code == 401

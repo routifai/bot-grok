@@ -364,10 +364,12 @@ def create_runner_tunnel_router(
                 owner = await asyncio.to_thread(resolve_managed_runner_owner, runner_id)
             if owner is None:
                 raise OmnigentError("unauthenticated", code=ErrorCode.UNAUTHORIZED)
-            bearer = auth_provider.mint_runner_token(owner, _MANAGED_RUNNER_TOKEN_TTL_S)
+            bearer = auth_provider.mint_runner_token(
+                owner, _MANAGED_RUNNER_TOKEN_TTL_S, runner_id=runner_id
+            )
         if bearer is None:
-            # oidc/accounts mint; header/proxy mode can't (identity is
-            # asserted upstream). Signal clearly rather than 401.
+            # oidc/accounts/header mint; header mode without a proxy secret
+            # (nothing to sign with) can't. Signal clearly rather than 401.
             raise OmnigentError(
                 "runner token minting is unsupported in this auth mode",
                 code=ErrorCode.INVALID_INPUT,

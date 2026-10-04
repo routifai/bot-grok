@@ -138,6 +138,10 @@ _AUTH_HEADER_SECRET_ENV = "OMNIGENT_AUTH_HEADER_SECRET"
 # happens to know the identity header's name.
 _PROXY_SECRET_HEADER = "X-Omnigent-Proxy-Secret"
 
+# Audience of header-mode runner bearers, so no other HS256 token validates
+# as one (and a runner bearer never validates as anything else).
+_HEADER_RUNNER_TOKEN_AUDIENCE = "omnigent-runner"
+
 LEVEL_READ = 1
 LEVEL_EDIT = 2
 LEVEL_MANAGE = 3
@@ -426,7 +430,12 @@ class AuthProvider(ABC):
         """Return the authenticated user ID, or ``None``."""
         ...
 
-    def mint_runner_token(self, user_id: str, ttl_seconds: int) -> str | None:  # noqa: ARG002
+    def mint_runner_token(
+        self,
+        user_id: str,  # noqa: ARG002
+        ttl_seconds: int,  # noqa: ARG002
+        runner_id: str | None = None,  # noqa: ARG002
+    ) -> str | None:
         """
         Mint a short-lived bearer a managed-sandbox runner presents as *user_id*.
 
@@ -442,6 +451,8 @@ class AuthProvider(ABC):
         :param user_id: The session owner the runner acts as, e.g.
             ``"alice@example.com"``.
         :param ttl_seconds: Token lifetime in seconds.
+        :param runner_id: Token-bound runner id the bearer is issued to;
+            providers that bind the bearer to its runner require it.
         :returns: A bearer token string, or ``None`` when this provider
             cannot mint one.
         """
@@ -623,24 +634,31 @@ class UnifiedAuthProvider(AuthProvider):
             return self._check_cookie(request)
         return self._check_header(request)
 
-    def mint_runner_token(self, user_id: str, ttl_seconds: int) -> str | None:
+    def mint_runner_token(
+        self, user_id: str, ttl_seconds: int, runner_id: str | None = None
+    ) -> str | None:
         """
         Mint a short-lived owner JWT for a managed-sandbox runner.
 
         Accounts / OIDC modes sign a session JWT in the same HS256 format
         :meth:`_check_cookie` validates, so the runner can present it as
         ``Authorization: Bearer <jwt>`` on its HTTP callbacks and resolve
-        to *user_id*. Header/proxy mode returns ``None`` — identity there
-        is asserted by the upstream proxy and can't be minted server-side.
+        to *user_id*. Header mode signs a runner-only JWT bound to
+        *runner_id* (see :meth:`_check_runner_bearer`), and only when a
+        proxy secret is configured to derive the signing key from.
 
         :param user_id: The session owner the runner acts as, e.g.
             ``"alice@example.com"``.
         :param ttl_seconds: Token lifetime in seconds.
-        :returns: An HS256-signed JWT, or ``None`` for header mode, an
-            empty/reserved user, or a missing cookie config.
+        :param runner_id: Token-bound runner id; required in header mode.
+        :returns: An HS256-signed JWT, or ``None`` for an empty/reserved
+            user, a missing cookie config, or header mode without a proxy
+            secret or runner id.
         """
         if not user_id or user_id in _RESERVED_USERS:
             return None
+        if self._source == "header":
+            return self._mint_header_runner_token(user_id, ttl_seconds, runner_id)
         if self._source not in ("oidc", "accounts"):
             return None
         cookie_config = self._oidc_config if self._source == "oidc" else self._accounts_config
@@ -656,6 +674,76 @@ class UnifiedAuthProvider(AuthProvider):
             self._source,
             account_generation=account_generation(user_id),
         )
+
+    def _runner_signing_key(self) -> bytes | None:
+        """Header-mode runner-token key, derived from the proxy secret."""
+        if not self._header_secret:
+            return None
+        return hmac.new(
+            self._header_secret.encode(), b"omnigent-header-runner-token-v1", "sha256"
+        ).digest()
+
+    def _mint_header_runner_token(
+        self, user_id: str, ttl_seconds: int, runner_id: str | None
+    ) -> str | None:
+        """Sign a header-mode runner bearer for *user_id* bound to *runner_id*."""
+        import jwt
+
+        key = self._runner_signing_key()
+        if key is None or not runner_id:
+            return None
+        now = int(time.time())
+        payload = {
+            "sub": user_id,
+            "iat": now,
+            "exp": now + ttl_seconds,
+            "aud": _HEADER_RUNNER_TOKEN_AUDIENCE,
+            "runner_id": runner_id,
+        }
+        return jwt.encode(payload, key, algorithm="HS256")
+
+    def _check_runner_bearer(self, request: HTTPConnection) -> str | None:
+        """Resolve a header-mode runner bearer to its session owner.
+
+        Trust model: the server is the issuer — it minted this bearer from
+        the runner's binding token for the owner of the session bound to that
+        runner. The bearer is honored only alongside the same binding token
+        (proof of possession) and acts with exactly the owner's permissions.
+
+        :param request: The incoming HTTP request or WebSocket.
+        :returns: The owner user id, or ``None`` when no valid runner
+            bearer + matching binding token is presented.
+        """
+        import jwt
+
+        from omnigent.runner.identity import RUNNER_TUNNEL_TOKEN_HEADER, token_bound_runner_id
+
+        key = self._runner_signing_key()
+        auth_header = request.headers.get("Authorization", "")
+        if key is None or not auth_header.startswith("Bearer "):
+            return None
+        binding = (request.headers.get(RUNNER_TUNNEL_TOKEN_HEADER) or "").strip()
+        if not binding:
+            return None
+        try:
+            payload = jwt.decode(
+                auth_header[7:],
+                key,
+                algorithms=["HS256"],
+                audience=_HEADER_RUNNER_TOKEN_AUDIENCE,
+                options={"require": ["exp", "sub", "aud", "runner_id"]},
+            )
+        except jwt.InvalidTokenError:
+            return None
+        user_id = payload.get("sub")
+        runner_id = payload.get("runner_id")
+        if not isinstance(user_id, str) or not user_id or user_id in _RESERVED_USERS:
+            return None
+        if not isinstance(runner_id, str) or not hmac.compare_digest(
+            token_bound_runner_id(binding), runner_id
+        ):
+            return None
+        return user_id
 
     def _check_cookie(self, request: HTTPConnection) -> str | None:
         """Validate the session cookie or Bearer token and return the
@@ -809,6 +897,9 @@ class UnifiedAuthProvider(AuthProvider):
             if not email or email in _RESERVED_USERS:
                 return None
             return email
+        runner_owner = self._check_runner_bearer(request)
+        if runner_owner is not None:
+            return runner_owner
         if self._local_single_user:
             return RESERVED_USER_LOCAL
         return None

@@ -1435,7 +1435,9 @@ class _MintingAuthProvider(_CredentialHeaderAuthProvider):
     ``tests/server/test_accounts.py``.
     """
 
-    def mint_runner_token(self, user_id: str, ttl_seconds: int) -> str | None:
+    def mint_runner_token(
+        self, user_id: str, ttl_seconds: int, runner_id: str | None = None
+    ) -> str | None:
         """Return a deterministic sentinel bearer for *user_id*."""
         return f"minted-owner-token:{user_id}:{ttl_seconds}"
 
@@ -1603,6 +1605,35 @@ async def test_mint_token_endpoint_header_mode_unsupported_returns_400() -> None
     response = await _post_mint_token(app, runner_id, token=token)
 
     assert response.status_code == 400
+
+
+async def test_mint_token_endpoint_header_mode_with_proxy_secret_mints_bound_bearer() -> None:
+    """Header mode with a proxy secret mints a bearer usable only with its binding token.
+
+    :returns: None.
+    """
+    from omnigent.server.auth import UnifiedAuthProvider
+
+    token = "managed-runner-binding-token"
+    runner_id = token_bound_runner_id(token)
+    provider = UnifiedAuthProvider(source="header", local_single_user=False, header_secret="s")
+    app = _mint_route_app(
+        auth_provider=provider,
+        resolve_managed_runner_owner=(
+            lambda rid: "owner@example.com" if rid == runner_id else None
+        ),
+    )
+
+    response = await _post_mint_token(app, runner_id, token=token)
+
+    assert response.status_code == 200
+    bearer = response.json()["token"]
+    scope_headers = [
+        (b"authorization", f"Bearer {bearer}".encode()),
+        (RUNNER_TUNNEL_TOKEN_HEADER.lower().encode(), token.encode()),
+    ]
+    request = Request({"type": "http", "headers": scope_headers})
+    assert provider.get_user_id(request) == "owner@example.com"
 
 
 async def test_ping_loop_restamps_runner_liveness(

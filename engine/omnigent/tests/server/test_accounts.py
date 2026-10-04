@@ -393,10 +393,9 @@ def test_mint_runner_token_rejects_empty_and_reserved_owner() -> None:
 
 
 def test_mint_runner_token_returns_none_for_header_source() -> None:
-    """Header/proxy auth can't be minted server-side, so it returns None.
+    """Header auth without a proxy secret has no signing key, so it returns None.
 
-    Identity there is asserted by the upstream proxy; a managed runner
-    can't synthesize it. The base ``AuthProvider`` default is also None.
+    The base ``AuthProvider`` default is also None.
     """
     header_provider = UnifiedAuthProvider(source="header")
     assert header_provider.mint_runner_token("alice@example.com", 1800) is None
