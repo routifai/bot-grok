@@ -223,7 +223,14 @@ function DraftSideChat({
             onClick={() => setKnows((value) => !value)}
             className="inline-flex h-8 items-center gap-2.5 rounded-full border border-border bg-card px-1 pe-3 text-[13.5px] text-foreground"
           >
-            <Switch checked={knows} onCheckedChange={setKnows} size="sm" tabIndex={-1} />
+            {/* Display only: the pill owns the click, or one click would toggle twice. */}
+            <Switch
+              checked={knows}
+              size="sm"
+              tabIndex={-1}
+              aria-hidden="true"
+              className="pointer-events-none"
+            />
             <Trans>Knows our conversation</Trans>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-[320px] text-[12.5px] leading-[1.5]">
@@ -315,7 +322,7 @@ function ExistingSideChat({
         meta={
           chat.archived ? (
             <span className="text-[12.5px] text-muted-foreground">
-              <Trans>Archived</Trans>
+              <Trans>Archived after a quiet stretch — read-only</Trans>
             </span>
           ) : undefined
         }

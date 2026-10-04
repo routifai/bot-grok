@@ -52,7 +52,15 @@ vi.mock("@aiden/ui-web", () => ({
   }: {
     checked?: boolean;
     onCheckedChange?: (value: boolean) => void;
-  } & ComponentProps<"span">) => <span data-checked={checked} {...props} />,
+  } & ComponentProps<"span">) => (
+    // Like the real Switch: a click flips it via onCheckedChange and bubbles to its parent.
+    <span
+      data-testid="switch-knob"
+      data-checked={checked}
+      onClick={() => onCheckedChange?.(!checked)}
+      {...props}
+    />
+  ),
   Textarea: (props: ComponentProps<"textarea">) => <textarea {...props} />,
 }));
 
@@ -239,6 +247,31 @@ it("a Side Chat draft locks its start from the switch and calls createSide with 
     text: "Check the backlog",
   });
   expect(onCreated).toHaveBeenCalledWith(created);
+});
+
+it("clicking the switch knob itself toggles 'Knows our conversation' exactly once", async () => {
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn().mockResolvedValue({ summary: "A summary" }),
+    createSide: vi.fn(),
+    messages: vi.fn(),
+    send: vi.fn(),
+  };
+  const host = await mount(
+    <SideChatSession
+      botId="bot-1"
+      chat="draft"
+      wire={wire}
+      onCreated={() => undefined}
+      onClose={() => undefined}
+    />,
+  );
+  const pill = host.querySelector<HTMLButtonElement>('[role="switch"]');
+  const knob = host.querySelector<HTMLElement>('[data-testid="switch-knob"]');
+  expect(pill?.getAttribute("aria-checked")).toBe("true");
+  await act(async () => {
+    knob?.click();
+  });
+  expect(pill?.getAttribute("aria-checked")).toBe("false");
 });
 
 it("an archived Side Chat opens read-only: no composer, its messages still show", async () => {
