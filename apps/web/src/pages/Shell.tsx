@@ -195,7 +195,11 @@ import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { deriveMuseState } from "./muse/chrome/museState";
-import { SideChatSession, type SideChatWire } from "./muse/chrome/SideChatSession";
+import {
+  SideChatSession,
+  type SideChatView,
+  type SideChatWire,
+} from "./muse/chrome/SideChatSession";
 import { useChatList } from "./muse/chrome/useChatList";
 import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveState";
 import { FeedScreen } from "./muse/FeedScreen";
@@ -269,6 +273,7 @@ type PendingBrowserNotification = {
   groupNotification: boolean;
 };
 
+const NO_ATTACHMENTS: PendingAttachment[] = [];
 const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_MIME_TYPES.join(",");
 /** Identity colour for bots the roster no longer knows about. */
 const FALLBACK_BOT_COLOR = "#85858A";
@@ -2403,8 +2408,9 @@ export function ShellPage() {
             )}
           >
             <SideChatSession
-              botId={active.id}
               chat={activeChat}
+              bot={{ id: active.id, name: active.name, color: active.color }}
+              view={sideChatView}
               wire={sideChatWire}
               onCreated={setActiveChat}
               onClose={() => setActiveChat(null)}
@@ -3461,6 +3467,7 @@ const Transcript = memo(function Transcript({
   museFace,
   botDisplayName,
   museRuns,
+  leading,
   followSignal,
   scrollRef,
   scrollRequest,
@@ -3497,6 +3504,8 @@ const Transcript = memo(function Transcript({
   botDisplayName?: string;
   /** Muse mode: the active bot's live runs, for the gutter face and bottom-of-transcript row. */
   museRuns?: readonly MuseLiveRun[];
+  /** Rendered at the top of the scrolling column, before the messages. */
+  leading?: ReactNode;
   /** Changes when the person sends: follow the tail again. */
   followSignal?: number;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -3512,8 +3521,9 @@ const Transcript = memo(function Transcript({
   onLoadOlder: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
-  onReply: (message: ThreadMessage) => void;
-  onQuote: (message: ThreadMessage, quote: string) => void;
+  /** Without reply/quote handlers (a Side Chat has no reply threads) those actions are hidden. */
+  onReply?: (message: ThreadMessage) => void;
+  onQuote?: (message: ThreadMessage, quote: string) => void;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
   onJumpToMessage: (messageId: string) => void;
   onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
@@ -3795,6 +3805,7 @@ const Transcript = memo(function Transcript({
             "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden pt-16 [overflow-wrap:anywhere] md:pt-20 md:pb-10",
         )}
       >
+        {leading}
         {olderCursor != null ? (
           <button
             type="button"
@@ -3977,7 +3988,7 @@ const Transcript = memo(function Transcript({
           )
         ) : null}
       </div>
-      {quoteDraft ? (
+      {quoteDraft && onQuote ? (
         <QuoteSelectionButton
           range={quoteDraft.range}
           onQuote={() => {
@@ -4083,7 +4094,7 @@ const Composer = memo(function Composer({
   activeName,
   running,
   disabled,
-  pendingAttachments,
+  pendingAttachments = NO_ATTACHMENTS,
   attachmentNotice,
   sendError,
   runError,
@@ -4097,6 +4108,7 @@ const Composer = memo(function Composer({
   onSend,
   onStop,
   onVoice,
+  placeholder,
   replyTarget,
   replyQuote,
   replyTargetName,
@@ -4112,20 +4124,23 @@ const Composer = memo(function Composer({
   activeName?: string;
   running: boolean;
   disabled?: boolean;
-  pendingAttachments: PendingAttachment[];
-  attachmentNotice: string | null;
-  sendError: string | null;
-  runError: string | null;
-  runErrorId: string | null;
-  onRunErrorPresented: (runId: string) => void;
-  onDismissError: () => void;
+  pendingAttachments?: PendingAttachment[];
+  attachmentNotice?: string | null;
+  sendError?: string | null;
+  runError?: string | null;
+  runErrorId?: string | null;
+  onRunErrorPresented?: (runId: string) => void;
+  onDismissError?: () => void;
   sending: boolean;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  onAttachmentPick: (files: FileList | null) => void | Promise<void>;
-  onRemoveAttachment: (attachment: PendingAttachment) => void;
+  /** Without an attachment handler (a Side Chat sends text only) there is no attach control. */
+  fileInputRef?: RefObject<HTMLInputElement | null>;
+  onAttachmentPick?: (files: FileList | null) => void | Promise<void>;
+  onRemoveAttachment?: (attachment: PendingAttachment) => void;
   onSend: (text: string, mentions?: ComposerMention[]) => Promise<void>;
-  onStop: () => Promise<void>;
+  onStop?: () => Promise<void>;
   onVoice?: () => void;
+  /** Overrides the "Message {name}" placeholder. */
+  placeholder?: string;
   /** Shown before the voice button, e.g. the engine picker. */
   replyTarget?: ThreadMessage | null;
   replyQuote?: string | null;
@@ -4180,7 +4195,7 @@ const Composer = memo(function Composer({
         if (topElement && (topElement === element || element.contains(topElement))) {
           if (presentedRunErrorIdRef.current === currentRunErrorId) return;
           presentedRunErrorIdRef.current = currentRunErrorId;
-          onRunErrorPresented(currentRunErrorId);
+          onRunErrorPresented?.(currentRunErrorId);
         }
       });
     }
@@ -4382,13 +4397,13 @@ const Composer = memo(function Composer({
     event.preventDefault();
     dragDepth.current = 0;
     setDraggingFiles(false);
-    if (!disabled) void onAttachmentPick(dataTransfer.files);
+    if (!disabled) void onAttachmentPick?.(dataTransfer.files);
   }
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const clipboardData = event.clipboardData;
     // Only intercept real FileList pastes; leave text-only / empty-files native.
-    if (disabled || !clipboardData || !isFilePaste(clipboardData)) return;
+    if (disabled || !onAttachmentPick || !clipboardData || !isFilePaste(clipboardData)) return;
     event.preventDefault();
     void onAttachmentPick(clipboardData.files);
     const text = clipboardData.getData("text/plain");
@@ -4475,7 +4490,7 @@ const Composer = memo(function Composer({
             aria-label={t`Dismiss error`}
             data-testid="composer-error-dismiss"
             onClick={() => {
-              onDismissError();
+              onDismissError?.();
               window.requestAnimationFrame(() => textareaRef.current?.focus());
             }}
             className="shrink-0 text-destructive hover:text-foreground"
@@ -4541,7 +4556,7 @@ const Composer = memo(function Composer({
               <button
                 type="button"
                 aria-label={t`Remove ${attachment.file.name}`}
-                onClick={() => onRemoveAttachment(attachment)}
+                onClick={() => onRemoveAttachment?.(attachment)}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X size={13} strokeWidth={2} />
@@ -4640,27 +4655,31 @@ const Composer = memo(function Composer({
           museMode ? "rounded-[24px] shadow-float" : "rounded-full",
         )}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={ATTACHMENT_ACCEPT}
-          className="hidden"
-          onChange={(event) => void onAttachmentPick(event.target.files)}
-        />
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t`Attach file`}
-          disabled={disabled}
-          onClick={() => fileInputRef.current?.click()}
-          className={cn(
-            "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-            museMode ? "border-0 bg-transparent" : "border border-border bg-muted",
-          )}
-        >
-          <Plus size={16} strokeWidth={2} />
-        </Button>
+        {onAttachmentPick ? (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ATTACHMENT_ACCEPT}
+              className="hidden"
+              onChange={(event) => void onAttachmentPick(event.target.files)}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t`Attach file`}
+              disabled={disabled}
+              onClick={() => fileInputRef?.current?.click()}
+              className={cn(
+                "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                museMode ? "border-0 bg-transparent" : "border border-border bg-muted",
+              )}
+            >
+              <Plus size={16} strokeWidth={2} />
+            </Button>
+          </>
+        ) : null}
         <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5">
           {selectedSkill ? (
             <span
@@ -4756,11 +4775,12 @@ const Composer = memo(function Composer({
             disabled={disabled}
             placeholder={
               showComposerPlaceholder
-                ? activeName
-                  ? museMode
-                    ? t`Message ${activeName}…`
-                    : t`Message ${activeName}`
-                  : t`Message…`
+                ? (placeholder ??
+                  (activeName
+                    ? museMode
+                      ? t`Message ${activeName}…`
+                      : t`Message ${activeName}`
+                    : t`Message…`))
                 : undefined
             }
             aria-label={activeName ? t`Message ${activeName}` : t`Message`}
@@ -4814,7 +4834,7 @@ const Composer = memo(function Composer({
               size="icon"
               aria-label={t`Stop`}
               disabled={sending}
-              onClick={() => void onStop()}
+              onClick={() => void onStop?.()}
               className="size-8 rounded-full border border-border bg-muted text-foreground/80 shadow-sm transition-colors hover:bg-accent hover:text-foreground"
             >
               <Square size={11} strokeWidth={0} fill="currentColor" />
@@ -4948,7 +4968,7 @@ function MessageHoverActions({
 }: {
   message: ThreadMessage;
   side: "start" | "end";
-  onReply: (message: ThreadMessage) => void;
+  onReply?: (message: ThreadMessage) => void;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
   /** Team-chat actions (reactions, reply threads); a one-on-one Muse keeps just More. */
   conversational?: boolean;
@@ -5005,7 +5025,7 @@ function MessageHoverActions({
             </PopoverContent>
           </Popover>
         ) : null}
-        {conversational ? (
+        {conversational && onReply ? (
           <button
             type="button"
             aria-label={t`Reply`}
@@ -5026,13 +5046,15 @@ function MessageHoverActions({
             <MoreHorizontal size={15} strokeWidth={1.7} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align={side === "end" ? "start" : "end"}>
-            <DropdownMenuItem
-              className="[@media(hover:hover)_and_(pointer:fine)]:hidden"
-              onClick={() => onReply(message)}
-            >
-              <Reply size={15} />
-              <Trans>Reply</Trans>
-            </DropdownMenuItem>
+            {onReply ? (
+              <DropdownMenuItem
+                className="[@media(hover:hover)_and_(pointer:fine)]:hidden"
+                onClick={() => onReply(message)}
+              >
+                <Reply size={15} />
+                <Trans>Reply</Trans>
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onClick={copyMessage}>
               <Copy size={14} strokeWidth={1.7} />
               <Trans>Copy</Trans>
@@ -5673,6 +5695,75 @@ function computerPlaceholder(
 function computerLabel(mode: ComputerStatus["mode"] | undefined, botName: string) {
   return mode === "dedicated" ? t`${botName}’s computer` : t`Team Computer`;
 }
+
+const noop = () => undefined;
+const noopAsync = async () => undefined;
+const NOT_LIVE_BOT = () => undefined;
+
+/** The Conversation's own Transcript and Composer for a Side Chat session
+ * (SideChatSession.tsx): same bubbles, Muse face, markdown, working row and scrolling, minus
+ * what a text-only Side Chat doesn't have (replies, attachments, voice, a computer). */
+export const sideChatView: SideChatView = {
+  Transcript: function SideChatTranscript({ messages, running, leading, followSignal, bot }) {
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const visible = useMemo(
+      () => userVisibleMessages(messages, { includePeerReceipts: true }),
+      [messages],
+    );
+    const runs = useMemo<MuseLiveRun[]>(
+      () => (running ? [{ id: "side-chat", status: "running" }] : []),
+      [running],
+    );
+    const artifactTarget = useMemo<ArtifactTarget>(() => ({ botId: bot.id }), [bot.id]);
+    const museFace = useMemo(() => ({ color: bot.color, identity: bot.id }), [bot.color, bot.id]);
+    return (
+      <Transcript
+        museMode
+        botDisplayName={bot.name}
+        museFace={museFace}
+        museRuns={runs}
+        leading={leading}
+        followSignal={followSignal}
+        scrollRef={scrollRef}
+        scrollRequest={null}
+        onScrollRequestHandled={noop}
+        artifactTarget={artifactTarget}
+        messages={visible}
+        olderCursor={null}
+        loadingOlder={false}
+        answerableAskMessageId={null}
+        running={running}
+        workingBots={[]}
+        onLoadOlder={noop}
+        onOpenBot={noop}
+        onAnswer={noopAsync}
+        onReact={noopAsync}
+        onJumpToMessage={noop}
+        onOpenPeerMessages={noop}
+        peerBot={NOT_LIVE_BOT}
+        onRefresh={noopAsync}
+        onBotChanged={noopAsync}
+        onAddRoutine={noop}
+        voiceReady={false}
+        speakingMessageId={null}
+        onSpeak={noop}
+        onOpenComputer={noop}
+      />
+    );
+  },
+  Composer: function SideChatComposer({ placeholder, sending, onSend }) {
+    return (
+      <Composer
+        museMode
+        activeName=""
+        placeholder={placeholder}
+        sending={sending}
+        running={false}
+        onSend={onSend}
+      />
+    );
+  },
+};
 
 function newClientNonce(): string {
   return newClientId();

@@ -4,6 +4,7 @@ import type { MuseRailView } from "../../components/AppRail";
 import { MuseSidebar } from "../muse/chrome/MuseSidebar";
 import { SideChatSession, type SideChatWire } from "../muse/chrome/SideChatSession";
 import type { ChatListState } from "../muse/chrome/useChatList";
+import { sideChatView } from "../Shell";
 import {
   DEV_BOT_ID,
   DEV_PERSON_NAME,
@@ -107,7 +108,8 @@ export function SideChatsPreviewPage() {
       <main className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card">
         {activeChat ? (
           <SideChatSession
-            botId={DEV_BOT_ID}
+            bot={{ id: DEV_BOT_ID, name: "Nova", color: "#6366f1" }}
+            view={sideChatView}
             chat={activeChat}
             wire={wire}
             onCreated={setActiveChat}

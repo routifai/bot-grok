@@ -5,10 +5,10 @@ import type {
   ThreadMessage,
   ThreadMessagePage,
 } from "@aiden/contracts";
-import { Button, Switch, Textarea, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
+import { Switch, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ArrowUp, ChevronRight, X } from "lucide-react";
-import type { FormEvent, KeyboardEvent, ReactNode } from "react";
+import { ChevronRight, X } from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
 /** The Side Chat session's wire: what it needs from `chats.*`, kept as an explicit shape
@@ -24,29 +24,66 @@ export type SideChatWire = {
   send: (input: { chatId: string; text: string }) => Promise<{ ok: true }>;
 };
 
+/** The Muse a Side Chat belongs to: its face shows beside the replies. */
+export type SideChatBot = { id: string; name: string; color: string };
+
+/** The Conversation's own transcript and composer, supplied by Shell.tsx (they are defined
+ * there, tied to its message rendering) so a Side Chat looks and behaves the same. */
+export type SideChatView = {
+  Transcript: ComponentType<{
+    bot: SideChatBot;
+    messages: ThreadMessage[];
+    /** A reply is being written: shows the same working row as the Conversation. */
+    running: boolean;
+    /** Bumped on send: follow the tail again. */
+    followSignal: number;
+    /** Rendered at the top of the scrolling column. */
+    leading?: ReactNode;
+  }>;
+  Composer: ComponentType<{
+    placeholder: string;
+    sending: boolean;
+    onSend: (text: string) => Promise<void>;
+  }>;
+};
+
 /** A Side Chat shown as a full-size session (agreed behavior #2): either an unsent
  * draft or an existing chat, replacing the Conversation entirely while open. */
 export function SideChatSession({
-  botId,
+  bot,
   chat,
+  view,
   wire,
   onCreated,
   onClose,
 }: {
-  botId: string;
+  bot: SideChatBot;
   /** "draft": not created yet. Otherwise the chat being viewed (possibly archived). */
   chat: ChatSummary | "draft";
+  view: SideChatView;
   wire: SideChatWire;
   /** The draft just sent its first message and became a real chat. */
   onCreated: (chat: ChatSummary) => void;
   onClose: () => void;
 }) {
   if (chat === "draft") {
-    return <DraftSideChat botId={botId} wire={wire} onCreated={onCreated} onClose={onClose} />;
+    return (
+      <DraftSideChat bot={bot} view={view} wire={wire} onCreated={onCreated} onClose={onClose} />
+    );
   }
-  return <ExistingSideChat key={chat.id} chat={chat} wire={wire} onClose={onClose} />;
+  return (
+    <ExistingSideChat
+      key={chat.id}
+      bot={bot}
+      chat={chat}
+      view={view}
+      wire={wire}
+      onClose={onClose}
+    />
+  );
 }
 
+/** Floats over the transcript like the Conversation's own header: no bar, no border. */
 function SessionHeader({
   title,
   meta,
@@ -58,9 +95,9 @@ function SessionHeader({
 }) {
   const { t } = useLingui();
   return (
-    <div className="app-drag flex items-center gap-3 border-b border-glass-border px-4 py-3.5 md:px-6">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[16px] font-semibold text-foreground" dir="auto">
+    <div className="app-drag pointer-events-none absolute inset-x-0 top-0 z-10 flex h-16 items-center gap-3 px-4 md:px-6">
+      <div className="pointer-events-auto min-w-0 flex-1">
+        <div className="truncate text-[14.5px] font-medium text-foreground" dir="auto">
           {title}
         </div>
         {meta}
@@ -69,9 +106,9 @@ function SessionHeader({
         type="button"
         onClick={onClose}
         aria-label={t`Back to the conversation`}
-        className="app-no-drag grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="app-no-drag pointer-events-auto grid size-9 shrink-0 place-items-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground"
       >
-        <X size={16} strokeWidth={1.75} />
+        <X size={17} strokeWidth={1.75} />
       </button>
     </div>
   );
@@ -116,66 +153,15 @@ export function MessageRow({ message }: { message: ThreadMessage }) {
   );
 }
 
-function MessageComposer({
-  placeholder,
-  sending,
-  onSend,
-}: {
-  placeholder: string;
-  sending: boolean;
-  onSend: (text: string) => void;
-}) {
-  const { t } = useLingui();
-  const [draft, setDraft] = useState("");
-  const canSend = draft.trim().length > 0 && !sending;
-
-  const submit = () => {
-    if (!canSend) return;
-    onSend(draft.trim());
-    setDraft("");
-  };
-
-  return (
-    <form
-      className="mx-4 mb-4 flex items-end gap-2 rounded-[22px] border border-border bg-card px-3 py-2 shadow-sm md:mx-6"
-      onSubmit={(event: FormEvent) => {
-        event.preventDefault();
-        submit();
-      }}
-    >
-      <Textarea
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            submit();
-          }
-        }}
-        placeholder={placeholder}
-        rows={1}
-        className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent px-1.5 py-1.5 shadow-none focus-visible:ring-0"
-      />
-      <Button
-        type="submit"
-        size="icon"
-        aria-label={t`Send`}
-        className="rounded-full"
-        disabled={!canSend}
-      >
-        <ArrowUp size={16} strokeWidth={2} />
-      </Button>
-    </form>
-  );
-}
-
 function DraftSideChat({
-  botId,
+  bot,
+  view,
   wire,
   onCreated,
   onClose,
 }: {
-  botId: string;
+  bot: SideChatBot;
+  view: SideChatView;
   wire: SideChatWire;
   onCreated: (chat: ChatSummary) => void;
   onClose: () => void;
@@ -188,7 +174,7 @@ function DraftSideChat({
   useEffect(() => {
     let cancelled = false;
     void wire
-      .summaryPreview({ botId })
+      .summaryPreview({ botId: bot.id })
       .then(({ summary }) => {
         if (!cancelled) setPreview(summary);
       })
@@ -196,25 +182,25 @@ function DraftSideChat({
     return () => {
       cancelled = true;
     };
-  }, [botId, wire]);
+  }, [bot.id, wire]);
 
   const send = (text: string) => {
     setSending(true);
-    void wire
-      .createSide({ botId, start: knows ? "withContext" : "blank", text })
+    return wire
+      .createSide({ botId: bot.id, start: knows ? "withContext" : "blank", text })
       .then(onCreated)
       .catch(() => setSending(false));
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 w-full flex-col">
       <SessionHeader title={t`New side chat`} onClose={onClose} />
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
         <h2 className="text-[19px] font-semibold tracking-[-0.01em] text-foreground">
           <Trans>What do you want to look at?</Trans>
         </h2>
       </div>
-      <div className="mb-2.5 flex justify-center px-4">
+      <div className="mx-auto mb-1 flex w-full max-w-[820px] justify-center px-4">
         <Tooltip>
           <TooltipTrigger
             type="button"
@@ -246,7 +232,7 @@ function DraftSideChat({
           </TooltipContent>
         </Tooltip>
       </div>
-      <MessageComposer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
+      <view.Composer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
     </div>
   );
 }
@@ -255,17 +241,22 @@ const REPLY_POLL_INTERVAL_MS = 3000;
 const REPLY_POLL_MAX_MS = 3 * 60 * 1000;
 
 function ExistingSideChat({
+  bot,
   chat,
+  view,
   wire,
   onClose,
 }: {
+  bot: SideChatBot;
   chat: ChatSummary;
+  view: SideChatView;
   wire: SideChatWire;
   onClose: () => void;
 }) {
   const { t } = useLingui();
   const [messages, setMessages] = useState<ThreadMessage[] | null>(null);
   const [sending, setSending] = useState(false);
+  const [followSignal, setFollowSignal] = useState(0);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -304,7 +295,8 @@ function ExistingSideChat({
 
   const send = (text: string) => {
     setSending(true);
-    void wire
+    setFollowSignal((value) => value + 1);
+    return wire
       .send({ chatId: chat.id, text })
       .then(() =>
         wire
@@ -315,8 +307,28 @@ function ExistingSideChat({
       .finally(() => setSending(false));
   };
 
+  const context =
+    chat.start === "blank" ? (
+      <div className="rounded-2xl bg-muted/60 px-4 py-2.5 text-[13.5px] text-muted-foreground">
+        <Trans>Started blank — knows only what Nova knows about you.</Trans>
+      </div>
+    ) : (
+      <details className="group rounded-2xl bg-muted/60 px-4 py-2.5 text-[13.5px] text-muted-foreground">
+        <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+          <span>
+            <Trans>Started with context — a summary of your conversation</Trans>
+          </span>
+          <ChevronRight
+            size={13}
+            className="ms-auto shrink-0 transition-transform group-open:rotate-90"
+          />
+        </summary>
+        {chat.summary ? <p className="mt-2 text-foreground/80">{chat.summary}</p> : null}
+      </details>
+    );
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 w-full flex-col">
       <SessionHeader
         title={chat.title}
         meta={
@@ -328,33 +340,15 @@ function ExistingSideChat({
         }
         onClose={onClose}
       />
-      <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6">
-        <div className="mx-auto flex max-w-[720px] flex-col gap-5">
-          {chat.start === "blank" ? (
-            <div className="rounded-2xl bg-muted/60 px-4 py-2.5 text-[13.5px] text-muted-foreground">
-              <Trans>Started blank — knows only what Nova knows about you.</Trans>
-            </div>
-          ) : (
-            <details className="group rounded-2xl bg-muted/60 px-4 py-2.5 text-[13.5px] text-muted-foreground">
-              <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-                <span>
-                  <Trans>Started with context — a summary of your conversation</Trans>
-                </span>
-                <ChevronRight
-                  size={13}
-                  className="ms-auto shrink-0 transition-transform group-open:rotate-90"
-                />
-              </summary>
-              {chat.summary ? <p className="mt-2 text-foreground/80">{chat.summary}</p> : null}
-            </details>
-          )}
-          {messages?.map((message) => (
-            <MessageRow key={message.id} message={message} />
-          ))}
-        </div>
-      </div>
+      <view.Transcript
+        bot={bot}
+        messages={messages ?? []}
+        running={sending || awaitingReply}
+        followSignal={followSignal}
+        leading={context}
+      />
       {chat.archived ? null : (
-        <MessageComposer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
+        <view.Composer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
       )}
     </div>
   );

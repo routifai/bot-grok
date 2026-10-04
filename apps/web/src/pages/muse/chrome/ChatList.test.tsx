@@ -3,7 +3,7 @@
 import type { ChatSummary } from "@aiden/contracts";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -65,7 +65,40 @@ vi.mock("@aiden/ui-web", () => ({
 }));
 
 import { ChatTree } from "./MuseSidebar";
-import { SideChatSession, type SideChatWire } from "./SideChatSession";
+import { SideChatSession, type SideChatView, type SideChatWire } from "./SideChatSession";
+
+/** Stands in for the Conversation's Transcript/Composer (Shell.tsx), which the session
+ * receives as `view`. */
+const fakeView: SideChatView = {
+  Transcript: ({ messages, running, leading }) => (
+    <div data-running={running}>
+      {leading}
+      {messages.map((message) => (
+        <p key={message.id}>
+          {message.blocks.map((block) => (block.kind === "text" ? block.text : "")).join("")}
+        </p>
+      ))}
+    </div>
+  ),
+  Composer: ({ placeholder, onSend }) => {
+    const [value, setValue] = useState("");
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSend(value);
+        }}
+      >
+        <textarea
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </form>
+    );
+  },
+};
+
 import { useChatList } from "./useChatList";
 
 function chat(overrides: Partial<ChatSummary>): ChatSummary {
@@ -214,7 +247,8 @@ it("a Side Chat draft locks its start from the switch and calls createSide with 
   const onCreated = vi.fn();
   const host = await mount(
     <SideChatSession
-      botId="bot-1"
+      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      view={fakeView}
       chat="draft"
       wire={wire}
       onCreated={onCreated}
@@ -258,7 +292,8 @@ it("clicking the switch knob itself toggles 'Knows our conversation' exactly onc
   };
   const host = await mount(
     <SideChatSession
-      botId="bot-1"
+      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      view={fakeView}
       chat="draft"
       wire={wire}
       onCreated={() => undefined}
@@ -303,7 +338,8 @@ it("an archived Side Chat opens read-only: no composer, its messages still show"
   };
   const host = await mount(
     <SideChatSession
-      botId="bot-1"
+      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      view={fakeView}
       chat={archived}
       wire={wire}
       onCreated={() => undefined}

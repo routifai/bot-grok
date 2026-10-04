@@ -42,6 +42,11 @@ vi.mock("@aiden/ui-web", () => ({
       </button>
     ),
   Input: (props: ComponentProps<"input">) => <input {...props} />,
+  Sheet: ({ open, children }: { open: boolean; children?: ReactNode }) =>
+    open ? <div role="dialog">{children}</div> : null,
+  SheetContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
@@ -158,7 +163,7 @@ it("answering an Ask calls asks.answer and removes it", async () => {
   }
 });
 
-it("links a topic Post to its source URL", async () => {
+it("shows a topic Post as a plain preview with domain sources, and opens the full text", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.feed.list.mockResolvedValue({
@@ -166,9 +171,10 @@ it("links a topic Post to its source URL", async () => {
     posts: [
       post({
         kind: "topic",
-        title: "Agents that keep working",
+        title: "AI agent news",
         goalId: null,
-        sourceUrl: "https://example.com/agents",
+        sourceUrl: null,
+        body: "# Agent launches, Sept 28\n\nMost of this comes from **vendor blogs** and [Example News](https://www.example.com/agents).\n\n- Item one https://other.org/post\n",
       }),
     ],
     nextCursor: null,
@@ -176,9 +182,18 @@ it("links a topic Post to its source URL", async () => {
   api.topics.list.mockResolvedValue([]);
   const page = await renderFeed();
   try {
-    const link = page.container.querySelector("a[href='https://example.com/agents']");
-    expect(link).toBeTruthy();
+    const card = page.container.querySelector("button.text-start");
+    expect(card?.textContent).toContain("Agent launches, Sept 28");
+    expect(card?.textContent).toContain("AI agent news");
+    expect(card?.textContent).toContain("Most of this comes from vendor blogs and Example News.");
+    expect(card?.textContent).not.toMatch(/[#*]|https?:/);
+    const link = page.container.querySelector("a[href='https://www.example.com/agents']");
+    expect(link?.textContent).toBe("example.com");
     expect(link?.getAttribute("target")).toBe("_blank");
+    expect(page.container.querySelector("a[href='https://other.org/post']")).toBeTruthy();
+
+    await act(async () => (card as HTMLButtonElement).click());
+    expect(document.body.querySelector("[role='dialog']")?.textContent).toContain("vendor blogs");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

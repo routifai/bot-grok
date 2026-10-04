@@ -1,13 +1,13 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { Post } from "@aiden/contracts";
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
-import { BotAvatar, Button } from "@aiden/ui-web";
+import { BotAvatar, Button, Sheet, SheetContent, SheetHeader, SheetTitle } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ExternalLink, Globe } from "lucide-react";
-import { useMemo } from "react";
+import { Globe } from "lucide-react";
+import { useMemo, useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { MUSE_TYPE, Section, Surface } from "../ui";
-import { groupPostsByRecency, sourceHost } from "./format";
+import { groupPostsByRecency, postPreview } from "./format";
 
 // "Finished while you were away" (docs/muse/DESIGN.md): a Goal report, in the same plain
 // card as every other Post — no accent bar, just the Muse's own face marking whose work
@@ -40,32 +40,76 @@ function GoalReportCard({ post, avatarColor }: { post: Post; avatarColor?: strin
   );
 }
 
-// "Found for you" (docs/muse/DESIGN.md): a finding on a Followed topic, its source host
-// as a quiet meta line (not a shouting eyebrow) and a two-line summary.
+// "Found for you" (docs/muse/DESIGN.md): a finding on a Followed topic. The engine writes
+// markdown, so the card shows a plain preview (first heading as the title, the topic as the
+// quiet meta line, domain chips for its sources) and a tap opens the full text.
 function TopicCard({ post }: { post: Post }) {
-  const { t } = useLingui();
-  const host = sourceHost(post.sourceUrl);
+  const [open, setOpen] = useState(false);
+  const { heading, text, sources } = useMemo(
+    () => postPreview(post.body, post.sourceUrl),
+    [post.body, post.sourceUrl],
+  );
+  const title = heading ?? post.title;
+  const meta = [heading ? post.title : null, formatRelativeTime(post.createdAt)]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <Surface className="flex flex-col gap-3 p-5">
-      <h3 className={MUSE_TYPE.cardTitle}>{post.title}</h3>
-      <p className={`line-clamp-2 ${MUSE_TYPE.body}`}>{post.body}</p>
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <span className={`flex items-center gap-1.5 ${MUSE_TYPE.meta}`}>
-          <Globe size={14} strokeWidth={1.75} aria-hidden="true" />
-          {host ?? t`Source`}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="-m-1 flex flex-col gap-3 rounded-xl p-1 text-start focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <span className="flex flex-col gap-1">
+          <span className={`line-clamp-2 ${MUSE_TYPE.cardTitle}`} dir="auto">
+            {title}
+          </span>
+          <span className={`truncate ${MUSE_TYPE.meta}`}>{meta}</span>
         </span>
-        {post.sourceUrl ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-muted-foreground"
-            render={<a href={post.sourceUrl} target="_blank" rel="noreferrer noopener" />}
-          >
-            <Trans>Read</Trans>
-            <ExternalLink size={13} strokeWidth={1.9} aria-hidden="true" />
-          </Button>
+        {text ? (
+          <span className={`line-clamp-3 ${MUSE_TYPE.body}`} dir="auto">
+            {text}
+          </span>
         ) : null}
-      </div>
+      </button>
+      {sources.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {sources.map((source) => (
+            <a
+              key={source.url}
+              href={source.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Globe size={12} strokeWidth={1.75} aria-hidden="true" />
+              {source.host}
+            </a>
+          ))}
+        </div>
+      ) : null}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:sm:inset-y-3 data-[side=right]:sm:right-3 data-[side=right]:sm:h-auto data-[side=right]:sm:max-w-[560px] data-[side=right]:sm:rounded-3xl data-[side=right]:sm:border data-[side=right]:sm:border-border data-[side=right]:sm:shadow-float">
+          <SheetHeader className="gap-1 px-6 pe-14 pt-6 pb-2">
+            <SheetTitle
+              className="text-[20px] font-semibold tracking-[-0.01em] text-foreground"
+              dir="auto"
+            >
+              {title}
+            </SheetTitle>
+            <span className={MUSE_TYPE.meta}>{meta}</span>
+          </SheetHeader>
+          <div
+            data-fade-top=""
+            className={`rk-scroll flex-1 overflow-y-auto px-6 pt-3 pb-6 ${MUSE_TYPE.body}`}
+            dir="auto"
+          >
+            <ChatMarkdown>
+              {heading ? post.body.replace(/^\s*#{1,6}\s+.*\n*/, "") : post.body}
+            </ChatMarkdown>
+          </div>
+        </SheetContent>
+      </Sheet>
     </Surface>
   );
 }
