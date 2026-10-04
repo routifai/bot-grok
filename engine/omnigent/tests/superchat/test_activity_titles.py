@@ -19,9 +19,12 @@ from omnigent.superchat.activity import (
 )
 from omnigent.superchat.activity_titles import (
     ACTIVITY_TITLE_INSTRUCTIONS,
+    clean_generated_label,
     clean_generated_title,
     is_generic_title,
     scheduled_display_title,
+    split_generated_label,
+    strip_reply_filler,
     tidy_request_title,
 )
 
@@ -95,10 +98,56 @@ def test_activity_titles_are_stored_once_per_turn(
     conv = conversation_store.create_conversation(kind="default")
     assert conversation_store.set_activity_title(conv.id, "resp_a", "Check Tesla's price") is True
     assert conversation_store.set_activity_title(conv.id, "resp_a", "Something else") is False
-    assert conversation_store.get_activity_titles(["resp_a", "resp_b"]) == {
-        "resp_a": "Check Tesla's price"
+    assert conversation_store.get_activity_labels(["resp_a", "resp_b"]) == {
+        "resp_a": ("Check Tesla's price", None)
     }
-    assert conversation_store.get_activity_titles([]) == {}
+    assert conversation_store.get_activity_labels([]) == {}
+
+
+def test_a_result_summary_is_added_once_to_an_existing_title(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    conv = conversation_store.create_conversation(kind="default")
+    assert conversation_store.set_activity_title(conv.id, "resp_a", "Check price") is True
+    assert (
+        conversation_store.set_activity_title(conv.id, "resp_a", "Other", "Closed at $242") is True
+    )
+    assert conversation_store.set_activity_title(conv.id, "resp_a", "Other", "Later") is False
+    assert conversation_store.get_activity_labels(["resp_a"]) == {
+        "resp_a": ("Check price", "Closed at $242")
+    }
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Perfect. Here are the 2 most recent emails.", "Here are the 2 most recent emails."),
+        ("Great! Your flight is booked.", "Your flight is booked."),
+        ("Got it. Sure. The file is saved.", "The file is saved."),
+        ("Now I have the details.", None),
+        (
+            "Working on it — I've sent a request to the helper.",
+            "I've sent a request to the helper.",
+        ),
+        ("Surely this stays.", "Surely this stays."),
+        ("Perfectly fine as is.", "Perfectly fine as is."),
+    ],
+)
+def test_reply_filler_is_stripped(text: str, expected: str | None) -> None:
+    assert strip_reply_filler(text) == expected
+
+
+def test_generated_label_carries_an_optional_result_summary() -> None:
+    label = clean_generated_label("check tesla's price | tesla closed at $242, up 3% today.")
+    assert label == "Check tesla's price | Tesla closed at $242, up 3% today"
+    assert split_generated_label(label or "") == (
+        "Check tesla's price",
+        "Tesla closed at $242, up 3% today",
+    )
+    assert clean_generated_label("Check price") == "Check price"
+    assert clean_generated_label("Check price | Perfect.") == "Check price"
+    assert clean_generated_label("Check price | " + "word " * 20) == "Check price"
+    assert clean_generated_label(" | only a summary here") is None
 
 
 async def test_missing_turn_title_is_written_by_the_model_and_used_on_the_next_read(
@@ -179,3 +228,59 @@ async def test_a_failed_title_is_not_retried_straight_away(
         )
         await coordinator.wait_for_idle()
     assert calls == 1
+
+
+async def test_finished_turn_gets_a_model_written_summary(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    chat = conversation_store.create_conversation(kind="default", labels=_MODE)
+    conversation_store.append(
+        chat.id,
+        [
+            NewConversationItem(
+                type="message",
+                response_id="resp_1",
+                data=MessageData(
+                    role="user", content=[{"type": "input_text", "text": "check tesla price"}]
+                ),
+            ),
+            NewConversationItem(
+                type="function_call",
+                response_id="resp_1",
+                data=FunctionCallData(
+                    agent="brain", name="web_search", arguments="{}", call_id="call_1"
+                ),
+            ),
+            NewConversationItem(
+                type="message",
+                response_id="resp_1",
+                data=MessageData(
+                    role="assistant",
+                    agent="brain",
+                    content=[{"type": "output_text", "text": "Perfect. Tesla closed at $242."}],
+                ),
+            ),
+        ],
+    )
+    prompts: list[str] = []
+
+    async def generator(request: BackgroundTitleRequest) -> str:
+        prompts.append(request.prompt)
+        return "Check Tesla's price | Tesla closed at $242 today"
+
+    coordinator = BackgroundSessionTitleCoordinator(conversation_store, generator)
+    conversation = conversation_store.get_conversation(chat.id)
+    [activity] = list_activities(conversation_store, chat.id)
+    assert activity.summary == "Tesla closed at $242."
+    schedule_missing_titles(
+        conversation_store,
+        coordinator,
+        activities_missing_titles([activity]),
+        {chat.id: conversation},
+    )
+    await coordinator.wait_for_idle()
+
+    assert "Result:\nTesla closed at $242." in prompts[0]
+    [done] = list_activities(conversation_store, chat.id)
+    assert (done.title, done.summary) == ("Check Tesla's price", "Tesla closed at $242 today")
+    assert activities_missing_titles([done]) == []

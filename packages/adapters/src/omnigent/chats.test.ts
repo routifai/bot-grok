@@ -204,7 +204,14 @@ describe("resolveChatOwnership", () => {
   it("resolves a direct Side Chat via related_chats", async () => {
     listOmnigentRelatedChats.mockResolvedValue({
       data: [
-        { id: "conv_side", title: "t", created_at: 0, updated_at: 0, last_message_preview: null },
+        {
+          id: "conv_side",
+          title: "t",
+          created_at: 0,
+          updated_at: 0,
+          last_message_preview: null,
+          live: true,
+        },
       ],
     });
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_side");
@@ -213,6 +220,7 @@ describe("resolveChatOwnership", () => {
       superSessionId: "conv_super",
       botId: "bot-1",
       seedItemId: null,
+      live: true,
     });
   });
 

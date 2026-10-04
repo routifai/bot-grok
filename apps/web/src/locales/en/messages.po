@@ -175,6 +175,9 @@ msgstr "Active"
 msgid "Active model"
 msgstr "Active model"
 
+msgid "Activity"
+msgstr "Activity"
+
 msgid "Add"
 msgstr "Add"
 
@@ -449,6 +452,9 @@ msgstr "Back"
 
 msgid "Back to sign in"
 msgstr "Back to sign in"
+
+msgid "Back to steps"
+msgstr "Back to steps"
 
 msgid "Back to the conversation"
 msgstr "Back to the conversation"
@@ -775,6 +781,9 @@ msgstr "Connecting…"
 msgid "Connection to {0} is still pending. You can close this and check again."
 msgstr "Connection to {0} is still pending. You can close this and check again."
 
+msgid "Context"
+msgstr "Context"
+
 msgid "Context limit"
 msgstr "Context limit"
 
@@ -918,6 +927,9 @@ msgstr "Could not install connector"
 msgid "Could not load"
 msgstr "Could not load"
 
+msgid "Could not load Activity"
+msgstr "Could not load Activity"
+
 msgid "Could not load approval rules"
 msgstr "Could not load approval rules"
 
@@ -935,6 +947,9 @@ msgstr "Could not load integrations"
 
 msgid "Could not load MCP servers"
 msgstr "Could not load MCP servers"
+
+msgid "Could not load Memory"
+msgstr "Could not load Memory"
 
 msgid "Could not load memory."
 msgstr "Could not load memory."
@@ -959,9 +974,6 @@ msgstr "Could not load the Feed."
 
 msgid "Could not load the Goal log"
 msgstr "Could not load the Goal log"
-
-msgid "Could not load the model."
-msgstr "Could not load the model."
 
 msgid "Could not load this artifact."
 msgstr "Could not load this artifact."
@@ -1257,8 +1269,14 @@ msgstr "Desktop app"
 msgid "Desktop update"
 msgstr "Desktop update"
 
+msgid "Didn't finish"
+msgstr "Didn't finish"
+
 msgid "Direct MCP"
 msgstr "Direct MCP"
+
+msgid "Discard"
+msgstr "Discard"
 
 msgid "Disconnect"
 msgstr "Disconnect"
@@ -1280,6 +1298,9 @@ msgstr "Dismissed. Reconnect anytime from MCP settings."
 
 msgid "Display name"
 msgstr "Display name"
+
+msgid "Do it"
+msgstr "Do it"
 
 msgid "Do not type passwords into the demo. Use Take control for credentials."
 msgstr "Do not type passwords into the demo. Use Take control for credentials."
@@ -1322,11 +1343,11 @@ msgstr "Download Executor"
 msgid "Downloading…"
 msgstr "Downloading…"
 
+msgid "Draft"
+msgstr "Draft"
+
 msgid "Draft my client follow-up email and check with me before sending it"
 msgstr "Draft my client follow-up email and check with me before sending it"
-
-msgid "Draft skill"
-msgstr "Draft skill"
 
 msgid "Draft talking points per client"
 msgstr "Draft talking points per client"
@@ -1364,13 +1385,6 @@ msgstr "Empty"
 
 msgid "Engage when... Ignore..."
 msgstr "Engage when... Ignore..."
-
-msgid "Engine"
-msgstr "Engine"
-
-#. placeholder {0}: active.name
-msgid "Engine: {0}. Change engine"
-msgstr "Engine: {0}. Change engine"
 
 msgid "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
 msgstr "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
@@ -1636,6 +1650,9 @@ msgstr "How often"
 msgid "How to check"
 msgstr "How to check"
 
+msgid "How will we know it worked?"
+msgstr "How will we know it worked?"
+
 msgid "I already have an account"
 msgstr "I already have an account"
 
@@ -1846,6 +1863,9 @@ msgstr "Listening…"
 msgid "Live"
 msgstr "Live"
 
+msgid "Load earlier"
+msgstr "Load earlier"
+
 msgid "Load earlier messages"
 msgstr "Load earlier messages"
 
@@ -1966,6 +1986,9 @@ msgstr "Mentions"
 msgid "Mentions only"
 msgstr "Mentions only"
 
+msgid "Menu"
+msgstr "Menu"
+
 msgid "Message"
 msgstr "Message"
 
@@ -2033,9 +2056,6 @@ msgstr "Model updated."
 msgid "Models"
 msgstr "Models"
 
-msgid "Models and their keys are set on the server, in the .env file. Restart Nova after changing them."
-msgstr "Models and their keys are set on the server, in the .env file. Restart Nova after changing them."
-
 msgid "Models for the server owner’s default space."
 msgstr "Models for the server owner’s default space."
 
@@ -2075,6 +2095,9 @@ msgstr "Name this bot"
 
 msgid "Name this routine"
 msgstr "Name this routine"
+
+msgid "Navigate"
+msgstr "Navigate"
 
 msgid "Needs a restart"
 msgstr "Needs a restart"
@@ -2175,6 +2198,9 @@ msgstr "No runs yet"
 msgid "No skills yet"
 msgstr "No skills yet"
 
+msgid "No steps recorded"
+msgstr "No steps recorded"
+
 msgid "No tasks yet"
 msgstr "No tasks yet"
 
@@ -2202,9 +2228,6 @@ msgstr "Not in the plugin catalog"
 msgid "Not now"
 msgstr "Not now"
 
-msgid "Not set"
-msgstr "Not set"
-
 msgid "Not yet"
 msgstr "Not yet"
 
@@ -2220,11 +2243,20 @@ msgstr "Nothing matches your search."
 msgid "Nothing remembered yet"
 msgstr "Nothing remembered yet"
 
+msgid "Nothing remembered yet."
+msgstr "Nothing remembered yet."
+
+msgid "Nothing scheduled yet."
+msgstr "Nothing scheduled yet."
+
 msgid "Nothing to suggest yet"
 msgstr "Nothing to suggest yet"
 
 msgid "Nothing yet"
 msgstr "Nothing yet"
+
+msgid "Nothing yet — once I do something, it shows up here."
+msgstr "Nothing yet — once I do something, it shows up here."
 
 msgid "Nothing yet."
 msgstr "Nothing yet."
@@ -2269,6 +2301,9 @@ msgstr "on the 1st at {0}"
 
 msgid "On track"
 msgstr "On track"
+
+msgid "One step per line"
+msgstr "One step per line"
 
 msgid "One yes before I send this"
 msgstr "One yes before I send this"
@@ -2335,6 +2370,9 @@ msgstr "Organization API key"
 msgid "Other model…"
 msgstr "Other model…"
 
+msgid "Outcome"
+msgstr "Outcome"
+
 msgid "PagerDuty incident"
 msgstr "PagerDuty incident"
 
@@ -2343,6 +2381,9 @@ msgstr "Pages"
 
 msgid "Pages, documents and files your Muse makes will appear here."
 msgstr "Pages, documents and files your Muse makes will appear here."
+
+msgid "Panel sections"
+msgstr "Panel sections"
 
 msgid "Park"
 msgstr "Park"
@@ -2470,9 +2511,6 @@ msgstr "React"
 
 msgid "Reactions"
 msgstr "Reactions"
-
-msgid "Read"
-msgstr "Read"
 
 msgid "Read replies aloud"
 msgstr "Read replies aloud"
@@ -2664,6 +2702,9 @@ msgstr "Return to Nova"
 msgid "rev {0}"
 msgstr "rev {0}"
 
+msgid "Review"
+msgstr "Review"
+
 msgid "Revoke"
 msgstr "Revoke"
 
@@ -2702,9 +2743,6 @@ msgstr "Running…"
 
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
-
-msgid "Same Nova, same memory. Pick what runs it."
-msgstr "Same Nova, same memory. Pick what runs it."
 
 msgid "Save"
 msgstr "Save"
@@ -2865,6 +2903,9 @@ msgstr "Show replies as they're written"
 msgid "Show settings"
 msgstr "Show settings"
 
+msgid "Side chat"
+msgstr "Side chat"
+
 msgid "Sign in"
 msgstr "Sign in"
 
@@ -2902,9 +2943,6 @@ msgstr "Slack message"
 
 msgid "Slack not enabled"
 msgstr "Slack not enabled"
-
-msgid "Source"
-msgstr "Source"
 
 msgid "Space default"
 msgstr "Space default"
@@ -2952,12 +2990,6 @@ msgstr "Start this Goal"
 msgid "Start this plan"
 msgstr "Start this plan"
 
-msgid "Started blank — knows only what Nova knows about you."
-msgstr "Started blank — knows only what Nova knows about you."
-
-msgid "Started with context — a summary of your conversation"
-msgstr "Started with context — a summary of your conversation"
-
 msgid "Starting"
 msgstr "Starting"
 
@@ -2966,6 +2998,9 @@ msgstr "Starting…"
 
 msgid "Steps"
 msgstr "Steps"
+
+msgid "Still working on this."
+msgstr "Still working on this."
 
 msgid "Stop"
 msgstr "Stop"
@@ -3016,6 +3051,9 @@ msgstr "Switching…"
 
 msgid "System"
 msgstr "System"
+
+msgid "Take over anytime."
+msgstr "Take over anytime."
 
 msgid "Talking points are ready for 5 of 12 clients. Two drifted more than 8% from target. Want me to propose meeting slots?"
 msgstr "Talking points are ready for 5 of 12 clients. Two drifted more than 8% from target. Want me to propose meeting slots?"
@@ -3265,6 +3303,9 @@ msgstr "Version"
 msgid "View all"
 msgstr "View all"
 
+msgid "View details"
+msgstr "View details"
+
 msgid "Voice"
 msgstr "Voice"
 
@@ -3280,10 +3321,6 @@ msgstr "Waiting…"
 #. placeholder {0}: active.name
 msgid "Watch {0} work"
 msgstr "Watch {0} work"
-
-#. placeholder {0}: active.name
-msgid "Watch {0} work live. Take over anytime."
-msgstr "Watch {0} work live. Take over anytime."
 
 msgid "Watches"
 msgstr "Watches"
@@ -3302,6 +3339,12 @@ msgstr "What about its memories?"
 
 msgid "What can you do?"
 msgstr "What can you do?"
+
+msgid "What do you give me each time?"
+msgstr "What do you give me each time?"
+
+msgid "What do you want back?"
+msgstr "What do you want back?"
 
 msgid "What do you want me on first?"
 msgstr "What do you want me on first?"
@@ -3324,6 +3367,12 @@ msgstr "What I've done"
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
 
+msgid "What should I ask you about first?"
+msgstr "What should I ask you about first?"
+
+msgid "What should I do if it goes wrong?"
+msgstr "What should I do if it goes wrong?"
+
 msgid "What should this routine do each time it runs?"
 msgstr "What should this routine do each time it runs?"
 
@@ -3345,6 +3394,9 @@ msgstr "When I do something you'll want again, I'll offer to save it. You can al
 msgid "When I need a decision or an answer, it'll show up here."
 msgstr "When I need a decision or an answer, it'll show up here."
 
+msgid "When should this run?"
+msgstr "When should this run?"
+
 msgid "When to run"
 msgstr "When to run"
 
@@ -3353,6 +3405,9 @@ msgstr "When to use"
 
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
+
+msgid "With context"
+msgstr "With context"
 
 msgid "Working"
 msgstr "Working"
@@ -3368,6 +3423,9 @@ msgstr "Working…"
 
 msgid "Yes, go ahead"
 msgstr "Yes, go ahead"
+
+msgid "Yesterday"
+msgstr "Yesterday"
 
 msgid "You"
 msgstr "You"
@@ -3401,6 +3459,3 @@ msgstr "Your email address"
 
 msgid "Your name"
 msgstr "Your name"
-
-msgid "Your next message starts on the new engine."
-msgstr "Your next message starts on the new engine."

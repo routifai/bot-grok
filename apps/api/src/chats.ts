@@ -204,6 +204,7 @@ export async function getChatMessages(
     messages: redactThreadMessages(mapOmnigentItemsToMessages(input.chatId, ascending), secrets),
     olderCursor: null,
     olderItemCursor: hasOlder ? oldestItemId : null,
+    running: Boolean(ownership.live),
   };
 }
 

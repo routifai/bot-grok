@@ -3547,37 +3547,48 @@ class SqlAlchemyConversationStore(ConversationStore):
             return None
         return self.get_conversation(conversation_id)
 
-    def set_activity_title(self, conversation_id: str, response_id: str, title: str) -> bool:
-        """Store a turn's Activity title; the first title written for a turn wins."""
+    def set_activity_title(
+        self, conversation_id: str, response_id: str, title: str, summary: str | None = None
+    ) -> bool:
+        """Store a turn's Activity title and summary; the first of each written wins."""
 
         def write(session: Session) -> bool:
             key = (current_workspace_id(), response_id)
-            if session.get(SqlActivityTitle, key) is not None:
-                return False
-            session.add(
-                SqlActivityTitle(
-                    response_id=response_id,
-                    conversation_id=conversation_id,
-                    title=title,
-                    created_at=now_epoch(),
+            row = session.get(SqlActivityTitle, key)
+            if row is None:
+                session.add(
+                    SqlActivityTitle(
+                        response_id=response_id,
+                        conversation_id=conversation_id,
+                        title=title,
+                        summary=summary,
+                        created_at=now_epoch(),
+                    )
                 )
-            )
-            return True
+                return True
+            if summary and row.summary is None:
+                row.summary = summary
+                return True
+            return False
 
         return run_write_transaction(self._session_immediate, "set_activity_title", write)
 
-    def get_activity_titles(self, response_ids: list[str]) -> dict[str, str]:
-        """Return stored Activity titles keyed by response id (missing ids omitted)."""
+    def get_activity_labels(self, response_ids: list[str]) -> dict[str, tuple[str, str | None]]:
+        """Return stored Activity titles and summaries keyed by response id."""
         if not response_ids:
             return {}
-        with self._session("get_activity_titles") as session:
+        with self._session("get_activity_labels") as session:
             rows = session.execute(
-                select(SqlActivityTitle.response_id, SqlActivityTitle.title).where(
+                select(
+                    SqlActivityTitle.response_id,
+                    SqlActivityTitle.title,
+                    SqlActivityTitle.summary,
+                ).where(
                     SqlActivityTitle.workspace_id == current_workspace_id(),
                     SqlActivityTitle.response_id.in_(response_ids),
                 )
             ).all()
-        return dict(rows)
+        return {response_id: (title, summary) for response_id, title, summary in rows}
 
     def set_runner_id(self, conversation_id: str, runner_id: str) -> bool:
         """

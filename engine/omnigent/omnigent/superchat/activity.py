@@ -27,10 +27,12 @@ from omnigent.entities import Conversation, ConversationItem
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.superchat.activity_titles import (
     ACTIVITY_TITLE_INSTRUCTIONS,
-    clean_generated_title,
+    clean_generated_label,
     is_generic_title,
     plain_text,
     scheduled_display_title,
+    split_generated_label,
+    strip_reply_filler,
     tidy_request_title,
 )
 from omnigent.tools.builtins.spawn import _project_activity_item
@@ -90,6 +92,7 @@ _SUMMARY_MAX_CHARS = 110
 _TITLE_MAX_CHARS = 80
 _TITLE_PROMPT_REQUEST_CHARS = 700
 _TITLE_PROMPT_STEPS = 6
+_TITLE_PROMPT_RESULT_CHARS = 600
 #: A feed read starts at most this many model-written titles (newest first); the
 #: rest follow on later reads, so an old, untitled history fills in gradually.
 _TITLE_JOBS_PER_READ = 8
@@ -134,8 +137,9 @@ class Activity:
     :param outcome: One-line outcome, or ``None`` when nothing to report yet.
     :param summary: A short one-line gist of the outcome for the feed row, or
         ``None`` while in progress (the live Step stands in) or when there is none.
-    :param title_prompt: Set only while a model-written title is still missing: the
-        text to name the work from. Never serialized.
+    :param title_prompt: Set only while a model-written title or result summary is still
+        missing: the text to write them from. Never serialized.
+    :param stored_summary: The model-written result summary, once stored. Never serialized.
     :param status: One of :data:`STATUS_IN_PROGRESS`, :data:`STATUS_DONE`,
         :data:`STATUS_FAILED`, :data:`STATUS_CANCELLED`.
     :param started_at: Unix epoch timestamp of the first item.
@@ -156,6 +160,7 @@ class Activity:
     source: str = SOURCE_TURN
     summary: str | None = None
     title_prompt: str | None = None
+    stored_summary: str | None = None
 
 
 def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
@@ -215,7 +220,7 @@ def _one_line_summary(text: str | None) -> str | None:
     """The first sentence of ``text`` as plain words, at most :data:`_SUMMARY_MAX_CHARS`."""
     if not text or _STRUCTURED_TEXT.match(text):
         return None
-    plain = plain_text(text)
+    plain = strip_reply_filler(plain_text(text))
     if not plain:
         return None
     first = _SENTENCE_END.split(plain, maxsplit=1)[0]
@@ -338,8 +343,13 @@ def _turn_outcome(group: list[ConversationItem], *, status: str) -> str | None:
         return _first_error_message(group) or "Could not complete the request"
     if status == STATUS_CANCELLED:
         return "Cancelled before finishing"
-    last_assistant = _last_assistant_text(group)
-    return _truncate(last_assistant, _OUTCOME_MAX_CHARS) if last_assistant else None
+    return _reply_outcome(_last_assistant_text(group))
+
+
+def _reply_outcome(reply: str | None) -> str | None:
+    """A reply as the one-line outcome, its acknowledgement opener ("Perfect.") dropped."""
+    opened = strip_reply_filler(reply)
+    return _truncate(opened, _OUTCOME_MAX_CHARS) if opened else None
 
 
 def _user_request(request: str | None) -> str | None:
@@ -347,12 +357,18 @@ def _user_request(request: str | None) -> str | None:
     return None if not request or request.startswith("[System") else request
 
 
-def _status_summary(status: str, group: list[ConversationItem], outcome: str | None) -> str | None:
-    """The feed row's one-line gist: the answer's first sentence; nothing while working."""
+def _status_summary(
+    status: str,
+    group: list[ConversationItem],
+    outcome: str | None,
+    stored_summary: str | None = None,
+) -> str | None:
+    """The feed row's one-line gist: the model-written result summary, else the answer's
+    first sentence; nothing while working."""
     if status == STATUS_IN_PROGRESS:
         return None
     if status == STATUS_DONE:
-        return _one_line_summary(_last_assistant_text(group))
+        return stored_summary or _one_line_summary(_last_assistant_text(group))
     return outcome
 
 
@@ -372,11 +388,21 @@ def _plain_reply(reply: str | None) -> str | None:
     return None if not reply or _STRUCTURED_TEXT.match(reply) else reply
 
 
-def _turn_title_prompt(request: str, steps: list[Step]) -> str:
-    """What a title is written from: the request and the first few things done for it."""
+def _turn_title_prompt(request: str, steps: list[Step], result: str | None = None) -> str:
+    """What a title is written from: the request, the first few things done for it and,
+    once finished, the result to summarise."""
     done = "; ".join(step.title for step in steps[:_TITLE_PROMPT_STEPS])
     prompt = f"Request to name:\n{_truncate(request, _TITLE_PROMPT_REQUEST_CHARS)}"
-    return f"{prompt}\n\nWhat was done for it: {done}" if done else prompt
+    if done:
+        prompt = f"{prompt}\n\nWhat was done for it: {done}"
+    if result:
+        prompt = f"{prompt}\n\nResult:\n{_truncate(result, _TITLE_PROMPT_RESULT_CHARS)}"
+    return prompt
+
+
+def _summarisable_result(reply: str | None) -> str | None:
+    """The reply as a Result worth summarising: plain words, not a code block or JSON."""
+    return _plain_reply(strip_reply_filler(reply))
 
 
 def _turn_activity(
@@ -388,6 +414,7 @@ def _turn_activity(
     include_step_detail: bool,
     source: str,
     stored_title: str | None,
+    stored_summary: str | None = None,
 ) -> Activity | None:
     """Build the Activity for one turn's items, or ``None`` if it had no tool calls."""
     calls = [item for item in group if item.type == "function_call"]
@@ -409,6 +436,8 @@ def _turn_activity(
     reply = _last_assistant_text(group)
     user_request = _user_request(request) or _plain_reply(reply)
     outcome = _turn_outcome(group, status=status)
+    result = _summarisable_result(reply) if status == STATUS_DONE else None
+    needs_label = not stored_title or (result is not None and not stored_summary)
     return Activity(
         id=f"{KIND_TURN}:{conversation.id}:{group[0].response_id}",
         kind=KIND_TURN,
@@ -420,10 +449,13 @@ def _turn_activity(
         finished_at=None if status == STATUS_IN_PROGRESS else group[-1].created_at,
         steps=steps,
         source=source,
-        summary=_status_summary(status, group, outcome),
+        summary=_status_summary(status, group, outcome, stored_summary),
         title_prompt=(
-            _turn_title_prompt(user_request, steps) if user_request and not stored_title else None
+            _turn_title_prompt(user_request, steps, result)
+            if user_request and needs_label
+            else None
         ),
+        stored_summary=stored_summary,
     )
 
 
@@ -502,6 +534,7 @@ def _sub_agent_activity(
     items: list[ConversationItem],
     *,
     include_step_detail: bool,
+    stored_summary: str | None = None,
 ) -> Activity:
     _agent, display_title = _split_sub_agent_title(conversation)
     status = _sub_agent_status(conversation)
@@ -515,13 +548,16 @@ def _sub_agent_activity(
         for item in items
         if item.type == "function_call_output"
     }
+    result = _summarisable_result(_last_assistant_text(items)) if status == STATUS_DONE else None
+    task = _user_request(_first_user_text(items))
+    if result and task and (title_prompt is not None or not stored_summary):
+        title_prompt = _turn_title_prompt(task, [], result)
     if status == STATUS_FAILED:
         outcome = _first_error_message(items) or "Could not complete the task"
     elif status == STATUS_CANCELLED:
         outcome = "Cancelled before finishing"
     else:
-        last_assistant = _last_assistant_text(items)
-        outcome = _truncate(last_assistant, _OUTCOME_MAX_CHARS) if last_assistant else None
+        outcome = _reply_outcome(_last_assistant_text(items))
     started_at = items[0].created_at if items else conversation.created_at
     finished_at = items[-1].created_at if items and status != STATUS_IN_PROGRESS else None
     return Activity(
@@ -540,8 +576,9 @@ def _sub_agent_activity(
             live=status == STATUS_IN_PROGRESS,
         ),
         source=source,
-        summary=_status_summary(status, items, outcome),
+        summary=_status_summary(status, items, outcome, stored_summary),
         title_prompt=title_prompt,
+        stored_summary=stored_summary,
     )
 
 
@@ -644,9 +681,19 @@ def _activities_for_conversation(
         )
     )
     if conversation.kind == "sub_agent":
-        return [_sub_agent_activity(conversation, items, include_step_detail=include_step_detail)]
+        _title, summary = conv_store.get_activity_labels([conversation.id]).get(
+            conversation.id, (None, None)
+        )
+        return [
+            _sub_agent_activity(
+                conversation,
+                items,
+                include_step_detail=include_step_detail,
+                stored_summary=summary,
+            )
+        ]
     groups = _group_items_by_response(items)
-    stored_titles = conv_store.get_activity_titles([group[0].response_id for group in groups])
+    stored_labels = conv_store.get_activity_labels([group[0].response_id for group in groups])
     source = SOURCE_TURN if conversation.id == super_chat_id else SOURCE_SIDE_CHAT
     activities: list[Activity] = []
     # The user message that started a turn is usually stored outside its
@@ -661,7 +708,8 @@ def _activities_for_conversation(
             is_latest_group=(index == len(groups) - 1),
             include_step_detail=include_step_detail,
             source=source,
-            stored_title=stored_titles.get(group[0].response_id),
+            stored_title=stored_labels.get(group[0].response_id, (None, None))[0],
+            stored_summary=stored_labels.get(group[0].response_id, (None, None))[1],
         )
         if activity is not None:
             activities.append(activity)
@@ -745,24 +793,31 @@ def schedule_missing_titles(
         if conversation is None or activity.title_prompt is None:
             continue
         chat_id = activity.chat_id
-        if activity.kind == KIND_TURN:
-            key = response_id = activity.id.rsplit(":", 1)[-1]
+        # A result the model gave no summary for keeps the deterministic gist, so a
+        # finished row is never summarised twice.
+        fallback = activity.summary if activity.status == STATUS_DONE else None
+        is_turn = activity.kind == KIND_TURN
+        key = label_key = activity.id.rsplit(":", 1)[-1] if is_turn else chat_id
 
-            def save(title: str, chat_id: str = chat_id, response_id: str = response_id) -> object:
-                return conv_store.set_activity_title(chat_id, response_id, title)
-
-        else:
-            key = chat_id
-
-            def save(title: str, chat_id: str = chat_id) -> object:
-                return conv_store.set_task_summary(chat_id, title)
+        def save(
+            label: str,
+            chat_id: str = chat_id,
+            label_key: str = label_key,
+            fallback: str | None = fallback,
+            is_turn: bool = is_turn,
+            has_title: bool = bool(conversation.task_summary),
+        ) -> object:
+            title, summary = split_generated_label(label)
+            if not is_turn and not has_title:
+                conv_store.set_task_summary(chat_id, title)
+            return conv_store.set_activity_title(chat_id, label_key, title, summary or fallback)
 
         coordinator.schedule_activity_title(
             key=key,
             conversation=conversation,
             prompt=activity.title_prompt,
             instructions=ACTIVITY_TITLE_INSTRUCTIONS,
-            clean=clean_generated_title,
+            clean=clean_generated_label,
             save=save,
         )
 

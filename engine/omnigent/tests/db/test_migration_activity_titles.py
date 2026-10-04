@@ -29,9 +29,11 @@ def test_activity_titles_table_is_keyed_by_workspace_and_response(db_engine: Eng
         "response_id",
         "conversation_id",
         "title",
+        "summary",
         "created_at",
     }
-    assert all(not column["nullable"] for column in columns.values())
+    assert columns["summary"]["nullable"]
+    assert all(not column["nullable"] for name, column in columns.items() if name != "summary")
     assert inspector.get_pk_constraint("activity_titles")["constrained_columns"] == [
         "workspace_id",
         "response_id",

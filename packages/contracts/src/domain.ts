@@ -881,6 +881,8 @@ export const ThreadMessagePageSchema = z.object({
    * Conversation) never sets this; `olderCursor`'s integer seq keeps meaning what it always
    * has there. `null`/omitted means there is no older page. */
   olderItemCursor: z.string().nullable().optional(),
+  /** `chats.messages` only: the chat is working on a reply right now. */
+  running: z.boolean().optional(),
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
 

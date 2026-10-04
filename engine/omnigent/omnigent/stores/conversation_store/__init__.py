@@ -1015,23 +1015,26 @@ class ConversationStore(ABC):
         ...
 
     @abstractmethod
-    def set_activity_title(self, conversation_id: str, response_id: str, title: str) -> bool:
-        """Store the model-written Activity title of one chat turn.
+    def set_activity_title(
+        self, conversation_id: str, response_id: str, title: str, summary: str | None = None
+    ) -> bool:
+        """Store the model-written Activity title (and result summary) of one chat turn.
 
         :param conversation_id: The chat the turn happened in.
-        :param response_id: The turn's response id (the title's key).
+        :param response_id: The turn's response id (the label's key).
         :param title: Short action-first title, e.g. ``"Check Tesla's latest price"``.
-        :returns: ``True`` when stored; ``False`` when the turn already had a title
-            (the first one written wins).
+        :param summary: Short model-written summary of the turn's result, if any.
+        :returns: ``True`` when something was stored; ``False`` when the turn already had
+            a title and, if one was given, a summary (the first one written wins).
         """
         ...
 
     @abstractmethod
-    def get_activity_titles(self, response_ids: list[str]) -> dict[str, str]:
-        """Return the stored Activity titles for the given turns.
+    def get_activity_labels(self, response_ids: list[str]) -> dict[str, tuple[str, str | None]]:
+        """Return the stored Activity titles and result summaries for the given turns.
 
         :param response_ids: Turn response ids to look up.
-        :returns: ``{response_id: title}`` for the turns that have one.
+        :returns: ``{response_id: (title, summary_or_None)}`` for the turns that have one.
         """
         ...
 

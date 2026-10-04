@@ -199,6 +199,21 @@ describe("getChatMessages", () => {
     expect(page.messages[1]?.blocks).toEqual([{ kind: "text", text: "the key is [redacted]" }]);
     // has_more: true -> the oldest item in the fetched (desc) page is the next "before" cursor.
     expect(page.olderItemCursor).toBe("msg_1");
+    expect(page.running).toBe(false);
+  });
+
+  it("reports a reply still being written so the client keeps following it", async () => {
+    resolveChatOwnership.mockResolvedValue({
+      kind: "side_chat",
+      superSessionId: "conv_super",
+      botId: "bot-1",
+      live: true,
+    });
+    listOmnigentSessionItems.mockResolvedValue({ data: [], has_more: false });
+
+    const page = await getChatMessages(depsFor(), actor, { chatId: "conv_side" }, ENV);
+
+    expect(page.running).toBe(true);
   });
 
   it("shows only a with-context side chat's own messages, after its seed", async () => {

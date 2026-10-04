@@ -66,9 +66,20 @@ export function SideChatSession({
   onCreated: (chat: ChatSummary) => void;
   onClose: () => void;
 }) {
+  // The draft's first message, handed to the chat it becomes so it never blinks out.
+  const [first, setFirst] = useState<{ chatId: string; text: string } | null>(null);
   if (chat === "draft") {
     return (
-      <DraftSideChat bot={bot} view={view} wire={wire} onCreated={onCreated} onClose={onClose} />
+      <DraftSideChat
+        bot={bot}
+        view={view}
+        wire={wire}
+        onCreated={(created, text) => {
+          setFirst({ chatId: created.id, text });
+          onCreated(created);
+        }}
+        onClose={onClose}
+      />
     );
   }
   return (
@@ -78,9 +89,22 @@ export function SideChatSession({
       chat={chat}
       view={view}
       wire={wire}
+      firstText={first?.chatId === chat.id ? first.text : undefined}
       onClose={onClose}
     />
   );
+}
+
+/** What the person just sent, shown before the engine has recorded it. */
+function optimisticMessage(chatId: string, text: string): ThreadMessage {
+  return {
+    id: "optimistic",
+    threadId: chatId,
+    seq: Number.MAX_SAFE_INTEGER,
+    role: "user",
+    blocks: [{ kind: "text", text }],
+    createdAt: new Date().toISOString(),
+  };
 }
 
 /** Floats over the transcript like the Conversation's own header: no bar, no border. */
@@ -163,10 +187,11 @@ function DraftSideChat({
   bot: SideChatBot;
   view: SideChatView;
   wire: SideChatWire;
-  onCreated: (chat: ChatSummary) => void;
+  onCreated: (chat: ChatSummary, text: string) => void;
   onClose: () => void;
 }) {
   const { t } = useLingui();
+  const [sent, setSent] = useState<string | null>(null);
   const [knows, setKnows] = useState(true);
   const [preview, setPreview] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -186,21 +211,36 @@ function DraftSideChat({
 
   const send = (text: string) => {
     setSending(true);
+    setSent(text);
     return wire
       .createSide({ botId: bot.id, start: knows ? "withContext" : "blank", text })
-      .then(onCreated)
-      .catch(() => setSending(false));
+      .then((created) => onCreated(created, text))
+      .catch(() => {
+        setSending(false);
+        setSent(null);
+      });
   };
 
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col">
       <SessionHeader title={t`New side chat`} onClose={onClose} />
-      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-        <h2 className="text-[19px] font-semibold tracking-[-0.01em] text-foreground">
-          <Trans>What do you want to look at?</Trans>
-        </h2>
-      </div>
-      <div className="mx-auto mb-1 flex w-full max-w-[820px] justify-center px-4">
+      {sent === null ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          <h2 className="text-[19px] font-semibold tracking-[-0.01em] text-foreground">
+            <Trans>What do you want to look at?</Trans>
+          </h2>
+        </div>
+      ) : (
+        <view.Transcript
+          bot={bot}
+          messages={[optimisticMessage("draft", sent)]}
+          running
+          followSignal={1}
+        />
+      )}
+      <div
+        className={`mx-auto mb-1 w-full max-w-[820px] justify-center px-4 ${sent === null ? "flex" : "hidden"}`}
+      >
         <Tooltip>
           <TooltipTrigger
             type="button"
@@ -237,95 +277,112 @@ function DraftSideChat({
   );
 }
 
-const REPLY_POLL_INTERVAL_MS = 3000;
+const REPLY_POLL_INTERVAL_MS = 1000;
 const REPLY_POLL_MAX_MS = 3 * 60 * 1000;
+
+const userCount = (messages: ThreadMessage[] | null) =>
+  messages?.filter((message) => message.role === "user").length ?? 0;
 
 function ExistingSideChat({
   bot,
   chat,
   view,
   wire,
+  firstText,
   onClose,
 }: {
   bot: SideChatBot;
   chat: ChatSummary;
   view: SideChatView;
   wire: SideChatWire;
+  firstText?: string;
   onClose: () => void;
 }) {
   const { t } = useLingui();
   const [messages, setMessages] = useState<ThreadMessage[] | null>(null);
+  /** Sent but not yet in the fetched messages; shown at once, dropped when it arrives. */
+  const [pending, setPending] = useState<{ text: string; base: number } | null>(
+    firstText ? { text: firstText, base: 0 } : null,
+  );
+  /** A reply is expected: from send until the engine has answered and gone idle. */
+  const [waiting, setWaiting] = useState(Boolean(firstText));
+  const [engineRunning, setEngineRunning] = useState(chat.live);
   const [sending, setSending] = useState(false);
   const [followSignal, setFollowSignal] = useState(0);
   const generation = useRef(0);
 
-  useEffect(() => {
-    const current = ++generation.current;
-    void wire
+  const refresh = () => {
+    const current = generation.current;
+    return wire
       .messages({ chatId: chat.id })
       .then((page) => {
-        if (current === generation.current) setMessages(page.messages);
+        if (current !== generation.current) return;
+        const running = page.running ?? false;
+        setMessages(page.messages);
+        setEngineRunning(running);
+        setPending((now) => (now && userCount(page.messages) > now.base ? null : now));
+        if (!running && page.messages.at(-1)?.role !== "user") setWaiting(false);
       })
       .catch(() => {
-        if (current === generation.current) setMessages([]);
+        if (current === generation.current) setMessages((now) => now ?? []);
       });
+  };
+
+  useEffect(() => {
+    generation.current += 1;
+    void refresh();
     return () => {
       generation.current += 1;
     };
   }, [chat.id, wire]);
 
-  // Follow a reply while it's being written: the turn runs in the background.
-  const lastRole = messages?.at(-1)?.role;
-  const awaitingReply = !chat.archived && (chat.live || lastRole === "user");
+  const awaitingReply = !chat.archived && (waiting || engineRunning);
   useEffect(() => {
     if (!awaitingReply) return;
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
       if (Date.now() - startedAt > REPLY_POLL_MAX_MS) {
         window.clearInterval(timer);
+        setWaiting(false);
         return;
       }
-      void wire
-        .messages({ chatId: chat.id })
-        .then((page) => setMessages(page.messages))
-        .catch(() => undefined);
+      void refresh();
     }, REPLY_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [awaitingReply, chat.id, wire]);
 
   const send = (text: string) => {
+    setPending({ text, base: userCount(messages) });
+    setWaiting(true);
     setSending(true);
     setFollowSignal((value) => value + 1);
     return wire
       .send({ chatId: chat.id, text })
-      .then(() =>
-        wire
-          .messages({ chatId: chat.id })
-          .then((page) => setMessages(page.messages))
-          .catch(() => undefined),
-      )
+      .then(refresh)
+      .catch(() => {
+        setPending(null);
+        setWaiting(false);
+      })
       .finally(() => setSending(false));
   };
 
+  const shown =
+    pending === null
+      ? (messages ?? [])
+      : [...(messages ?? []), optimisticMessage(chat.id, pending.text)];
+
   const context =
-    chat.start === "blank" ? (
-      <div className="rounded-2xl bg-muted/60 px-4 py-2.5 text-[13.5px] text-muted-foreground">
-        <Trans>Started blank — knows only what Nova knows about you.</Trans>
-      </div>
-    ) : (
-      <details className="group rounded-2xl bg-muted/60 px-4 py-2.5 text-[13.5px] text-muted-foreground">
-        <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-          <span>
-            <Trans>Started with context — a summary of your conversation</Trans>
-          </span>
-          <ChevronRight
-            size={13}
-            className="ms-auto shrink-0 transition-transform group-open:rotate-90"
-          />
+    chat.start === "withContext" && chat.summary ? (
+      <details className="group w-fit max-w-full text-[13px] text-muted-foreground">
+        <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-full bg-muted/60 px-3 py-1 [&::-webkit-details-marker]:hidden">
+          <Trans>With context</Trans>
+          <ChevronRight size={12} className="shrink-0 transition-transform group-open:rotate-90" />
         </summary>
-        {chat.summary ? <p className="mt-2 text-foreground/80">{chat.summary}</p> : null}
+        <p className="mt-2 rounded-2xl bg-muted/60 px-4 py-2.5 text-foreground/80">
+          {chat.summary}
+        </p>
       </details>
-    );
+    ) : null;
 
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col">
@@ -333,8 +390,8 @@ function ExistingSideChat({
         title={chat.title}
         meta={
           chat.archived ? (
-            <span className="text-[12.5px] text-muted-foreground">
-              <Trans>Archived after a quiet stretch — read-only</Trans>
+            <span className="text-[12px] text-muted-foreground">
+              <Trans>Archived</Trans>
             </span>
           ) : undefined
         }
@@ -342,7 +399,7 @@ function ExistingSideChat({
       />
       <view.Transcript
         bot={bot}
-        messages={messages ?? []}
+        messages={shown}
         running={sending || awaitingReply}
         followSignal={followSignal}
         leading={context}

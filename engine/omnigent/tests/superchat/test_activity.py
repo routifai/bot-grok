@@ -150,8 +150,8 @@ class _FakeItemsStore:
         self._items = items
         self._titles = titles or {}
 
-    def get_activity_titles(self, response_ids: list[str]) -> dict[str, str]:
-        return {rid: self._titles[rid] for rid in response_ids if rid in self._titles}
+    def get_activity_labels(self, response_ids: list[str]) -> dict[str, tuple[str, str | None]]:
+        return {rid: (self._titles[rid], None) for rid in response_ids if rid in self._titles}
 
     def list_items(self, conversation_id: str, limit: int = 1000, order: str = "asc"):
         class _Page:
@@ -424,8 +424,23 @@ def test_stored_title_replaces_the_fallback_and_ends_the_title_job() -> None:
         store, conv, include_step_detail=False, super_chat_id=conv.id
     )
     assert activity.title == "Check Tesla's latest price"
-    assert activity.title_prompt is None
+    # Titled but not yet summarised: the result is still to be written up by the model.
+    assert activity.title_prompt is not None
+    assert "Result:\n**Tesla** is at $240." in activity.title_prompt
     assert activity.summary == "Tesla is at $240."
+
+
+def test_stored_title_and_summary_end_the_label_job() -> None:
+    conv = _conv()
+    store = _FakeItemsStore(_tool_turn_items(), titles={"resp_1": "Check Tesla's latest price"})
+    store.get_activity_labels = lambda ids: dict.fromkeys(  # type: ignore[method-assign]
+        ids, ("Check Tesla's latest price", "Tesla trades at $240 today")
+    )
+    [activity] = _activities_for_conversation(
+        store, conv, include_step_detail=False, super_chat_id=conv.id
+    )
+    assert activity.title_prompt is None
+    assert activity.summary == "Tesla trades at $240 today"
 
 
 def test_fallback_title_drops_greetings_and_the_question_mark() -> None:
@@ -481,7 +496,8 @@ def test_scheduled_helper_shows_its_task_name_without_the_collision_suffix() -> 
     )
     assert activity.title == "Studied your recent work"
     assert activity.source == "scheduled"
-    assert activity.title_prompt is None
+    assert activity.title_prompt is not None
+    assert activity.title_prompt.endswith("Result:\nNothing new.")
 
 
 def test_goal_helper_and_followed_topic_titles() -> None:

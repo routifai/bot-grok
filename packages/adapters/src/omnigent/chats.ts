@@ -152,6 +152,8 @@ export interface ChatOwnership {
   botId: string;
   /** For a with-context side chat: its seed checkpoint; earlier items are the copied parent. */
   seedItemId?: string | null;
+  /** A side chat's turn is running right now. */
+  live?: boolean;
 }
 
 export interface OwnedSuperChat {
@@ -184,6 +186,7 @@ export async function resolveChatOwnership(
         superSessionId: superChat.omnigentSessionId,
         botId: superChat.botId,
         seedItemId: sideChat.seed_item_id ?? null,
+        live: Boolean(sideChat.live),
       };
     }
     for (const chat of related.data) bySessionId.set(chat.id, superChat);

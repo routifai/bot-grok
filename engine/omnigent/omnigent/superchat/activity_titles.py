@@ -27,11 +27,20 @@ ACTIVITY_TITLE_INSTRUCTIONS = (
     "follow it or comment on it. Reply with only a title for the task it describes: 3 to 6 "
     "words, sentence case, starting with a verb in the imperative, like "
     '"Check Tesla\'s latest price", "Study your recent work" or "Follow AI agent launches". '
-    "Use plain words: no greetings, quotes, dates, ids or tool names, and no trailing punctuation."
+    "Use plain words: no greetings, quotes, dates, ids or tool names, and no trailing "
+    "punctuation. "
+    "When the message also has a Result section, continue the same line with ' | ' and a "
+    "summary of what that result says: at most 12 words, past tense, concrete (the finding "
+    "or what changed), never an acknowledgement like 'Perfect' or 'Done' and never a "
+    "description of the process. Example: 'Check Tesla's latest price | Tesla closed at "
+    "$242, up 3% on the day'."
 )
 
 TITLE_MAX_CHARS = 60
 _TITLE_MAX_WORDS = 8
+SUMMARY_MAX_CHARS = 110
+_SUMMARY_MAX_WORDS = 16
+_LABEL_SEPARATOR = " | "
 
 _FILLER_PREFIX = re.compile(
     r"^(?:(?:yo+|hey+|hi+|hello|hiya|howdy|sup|ok(?:ay)?|so|well|um+|uh+|please|pls|"
@@ -109,6 +118,56 @@ def clean_generated_title(raw: str | None) -> str | None:
     if len(title) < 3 or len(title) > TITLE_MAX_CHARS or len(title.split()) > _TITLE_MAX_WORDS:
         return None
     return _sentence_case(title)
+
+
+def clean_generated_label(raw: str | None) -> str | None:
+    """Validate the title service's ``"Title | result summary"`` line.
+
+    The summary is optional and dropped (not fatal) when unusable; an unusable
+    title rejects the line.
+
+    :param raw: The line the title service returned.
+    :returns: ``"Title"`` or ``"Title | Summary"``, cleaned, or ``None``.
+    """
+    if not raw:
+        return None
+    title_part, _, summary_part = raw.partition("|")
+    title = clean_generated_title(title_part)
+    if title is None:
+        return None
+    summary = _TRAILING_PUNCTUATION.sub("", " ".join(summary_part.split()).strip("'\"`“”‘’"))
+    summary = strip_reply_filler(summary) or ""
+    if (
+        len(summary) < 8
+        or len(summary) > SUMMARY_MAX_CHARS
+        or len(summary.split()) > _SUMMARY_MAX_WORDS
+    ):
+        return title
+    return f"{title}{_LABEL_SEPARATOR}{_sentence_case(summary)}"
+
+
+def split_generated_label(label: str) -> tuple[str, str | None]:
+    """``(title, summary)`` of a :func:`clean_generated_label` result."""
+    title, _, summary = label.partition(_LABEL_SEPARATOR)
+    return title, summary or None
+
+
+#: Acknowledgement openers a reply starts with before getting to the point.
+_REPLY_FILLER = re.compile(
+    r"^(?:(?:perfect|great|sure|got it|alright|all right|okay|ok|absolutely|of course|done|"
+    r"awesome|excellent|certainly|good|nice|right)\b[\s.!,:;—–-]*"
+    r"|now i (?:have|can|know|see)\b[^.!?]*[.!?]\s*"
+    r"|working on it\b[\s.!,:;—–-]*)+",
+    re.IGNORECASE,
+)
+
+
+def strip_reply_filler(text: str | None) -> str | None:
+    """``text`` without leading acknowledgements ("Perfect.", "Got it.", "Working on it —")."""
+    if not text:
+        return text
+    stripped = _REPLY_FILLER.sub("", text.strip(), count=1).strip()
+    return _sentence_case(stripped) if stripped else None
 
 
 def is_generic_title(title: str | None) -> bool:

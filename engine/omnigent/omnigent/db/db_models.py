@@ -1745,6 +1745,7 @@ class SqlActivityTitle(OmnigentBase):
     :param conversation_id: The chat the title was generated for (no DB foreign
         key, Rule R032).
     :param title: Short action-first title, e.g. ``"Check Tesla's latest price"``.
+    :param summary: Short model-written summary of the turn's result, once finished.
     :param created_at: Unix epoch seconds at row creation.
     """
 
@@ -1760,6 +1761,7 @@ class SqlActivityTitle(OmnigentBase):
     response_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     conversation_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
     title: Mapped[str] = mapped_column(String(128), nullable=False)
+    summary: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
