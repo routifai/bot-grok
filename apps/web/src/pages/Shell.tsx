@@ -78,6 +78,7 @@ import {
   ArrowDown,
   ArrowUp,
   Box,
+  Check,
   Clock,
   Copy,
   Maximize2,
@@ -5049,6 +5050,7 @@ function MessageHoverActions({
   const { t } = useLingui();
   const [moreOpen, setMoreOpen] = useState(false);
   const [reactionsOpen, setReactionsOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Streaming progress bubbles keep hover free for selection / stop clicks.
   if (message.id.startsWith("progress:")) return null;
@@ -5056,7 +5058,13 @@ function MessageHoverActions({
   function copyMessage() {
     const text = copyableMessageText(message);
     if (!text || !navigator.clipboard) return;
-    void navigator.clipboard.writeText(text).catch(() => undefined);
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => undefined);
   }
 
   const iconButtonClass =
@@ -5109,32 +5117,36 @@ function MessageHoverActions({
             <Reply size={15} strokeWidth={1.7} />
           </button>
         ) : null}
-        <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
-          <DropdownMenuTrigger
-            aria-label={t`More`}
-            className={cn(
-              iconButtonClass,
-              "h-11 w-11 [@media(hover:hover)_and_(pointer:fine)]:h-7 [@media(hover:hover)_and_(pointer:fine)]:w-7",
-            )}
-          >
-            <MoreHorizontal size={15} strokeWidth={1.7} />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align={side === "end" ? "start" : "end"}>
-            {onReply ? (
-              <DropdownMenuItem
-                className="[@media(hover:hover)_and_(pointer:fine)]:hidden"
-                onClick={() => onReply(message)}
-              >
+        <button
+          type="button"
+          aria-label={copied ? t`Copied` : t`Copy`}
+          onClick={copyMessage}
+          className={cn(
+            iconButtonClass,
+            "h-11 w-11 [@media(hover:hover)_and_(pointer:fine)]:h-7 [@media(hover:hover)_and_(pointer:fine)]:w-7",
+          )}
+        >
+          {copied ? <Check size={15} strokeWidth={1.7} /> : <Copy size={14} strokeWidth={1.7} />}
+        </button>
+        {onReply ? (
+          <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
+            <DropdownMenuTrigger
+              aria-label={t`More`}
+              className={cn(
+                iconButtonClass,
+                "h-11 w-11 [@media(hover:hover)_and_(pointer:fine)]:hidden",
+              )}
+            >
+              <MoreHorizontal size={15} strokeWidth={1.7} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align={side === "end" ? "start" : "end"}>
+              <DropdownMenuItem onClick={() => onReply(message)}>
                 <Reply size={15} />
                 <Trans>Reply</Trans>
               </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem onClick={copyMessage}>
-              <Copy size={14} strokeWidth={1.7} />
-              <Trans>Copy</Trans>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
     </MessageHoverMetadata>
   );
