@@ -16,15 +16,28 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from omnigent.context.labels import is_superside_chat
+from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY, is_superside_chat
 from omnigent.entities import Conversation, ConversationItem
 from omnigent.stores.conversation_store import ConversationStore
+from omnigent.superchat.activity_titles import (
+    ACTIVITY_TITLE_INSTRUCTIONS,
+    clean_generated_title,
+    is_generic_title,
+    plain_text,
+    scheduled_display_title,
+    tidy_request_title,
+)
 from omnigent.tools.builtins.spawn import _project_activity_item
 from omnigent.util.session_lifecycle import is_session_closed, title_without_closed_marker
+
+if TYPE_CHECKING:
+    from omnigent.server.background_session_titles import BackgroundSessionTitleCoordinator
 
 STATUS_IN_PROGRESS = "in_progress"
 STATUS_DONE = "done"
@@ -33,6 +46,15 @@ STATUS_CANCELLED = "cancelled"
 
 KIND_TURN = "turn"
 KIND_SUB_AGENT = "sub_agent"
+
+#: What an Activity is, for the icon beside it: ``kind`` says how it is stored
+#: (and keys its id); ``source`` says where the work came from.
+SOURCE_TURN = "turn"
+SOURCE_SIDE_CHAT = "side_chat"
+SOURCE_BACKGROUND = "background"
+SOURCE_SCHEDULED = "scheduled"
+SOURCE_GOAL = "goal"
+_GOAL_AGENT_TYPE = "goal"
 
 #: Env var overriding the per-chat Activity Feed items-scan limit below.
 ITEMS_SCAN_LIMIT_ENV = "OMNIGENT_ACTIVITY_ITEMS_SCAN_LIMIT"
@@ -64,7 +86,13 @@ def _resolve_items_scan_limit() -> int:
 _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 100
 _OUTCOME_MAX_CHARS = 140
+_SUMMARY_MAX_CHARS = 110
 _TITLE_MAX_CHARS = 80
+_TITLE_PROMPT_REQUEST_CHARS = 700
+_TITLE_PROMPT_STEPS = 6
+#: A feed read starts at most this many model-written titles (newest first); the
+#: rest follow on later reads, so an old, untitled history fills in gradually.
+_TITLE_JOBS_PER_READ = 8
 
 
 @dataclass(frozen=True)
@@ -98,8 +126,16 @@ class Activity:
     :param chat_id: The conversation this Activity happened in (the Super
         Chat / Side Chat for a turn; the sub-agent's own conversation for a
         sub-agent Activity).
-    :param title: One-line title.
+    :param source: Where the work came from: :data:`SOURCE_TURN`,
+        :data:`SOURCE_SIDE_CHAT`, :data:`SOURCE_BACKGROUND`,
+        :data:`SOURCE_SCHEDULED` or :data:`SOURCE_GOAL`.
+    :param title: Short task title: model-written once generated, else the
+        request tidied (see :mod:`omnigent.superchat.activity_titles`).
     :param outcome: One-line outcome, or ``None`` when nothing to report yet.
+    :param summary: A short one-line gist of the outcome for the feed row, or
+        ``None`` while in progress (the live Step stands in) or when there is none.
+    :param title_prompt: Set only while a model-written title is still missing: the
+        text to name the work from. Never serialized.
     :param status: One of :data:`STATUS_IN_PROGRESS`, :data:`STATUS_DONE`,
         :data:`STATUS_FAILED`, :data:`STATUS_CANCELLED`.
     :param started_at: Unix epoch timestamp of the first item.
@@ -117,6 +153,9 @@ class Activity:
     started_at: int
     finished_at: int | None
     steps: list[Step] = field(default_factory=list)
+    source: str = SOURCE_TURN
+    summary: str | None = None
+    title_prompt: str | None = None
 
 
 def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
@@ -164,6 +203,25 @@ def _truncate(text: str, limit: int) -> str:
     if len(collapsed) <= limit:
         return collapsed
     return collapsed[: max(0, limit - 1)].rstrip() + "…"
+
+
+#: A reply that is a code block or raw JSON (a Helper's machine-readable Result) says
+#: nothing in a one-line gist.
+_STRUCTURED_TEXT = re.compile(r"\s*(?:```|[{\[])")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+
+
+def _one_line_summary(text: str | None) -> str | None:
+    """The first sentence of ``text`` as plain words, at most :data:`_SUMMARY_MAX_CHARS`."""
+    if not text or _STRUCTURED_TEXT.match(text):
+        return None
+    plain = plain_text(text)
+    if not plain:
+        return None
+    first = _SENTENCE_END.split(plain, maxsplit=1)[0]
+    if len(first) < 10:
+        first = plain
+    return _truncate(first, _SUMMARY_MAX_CHARS)
 
 
 def _message_text(item: ConversationItem) -> str | None:
@@ -224,9 +282,12 @@ def _steps_for_calls(
     outputs_by_call_id: dict[str, ConversationItem],
     *,
     include_detail: bool,
+    live: bool = False,
 ) -> list[Step]:
+    """Steps for ``calls``; a ``live`` Activity's latest Step carries its call (the
+    arguments name what it is doing right now, e.g. the query being searched)."""
     steps: list[Step] = []
-    for call in calls:
+    for index, call in enumerate(calls):
         name = call.data.name  # type: ignore[union-attr]
         arguments = call.data.arguments  # type: ignore[union-attr]
         call_id = call.data.call_id  # type: ignore[union-attr]
@@ -237,7 +298,11 @@ def _steps_for_calls(
                 created_at=call.created_at,
                 tool=name,
                 detail=(
-                    _step_detail(call, outputs_by_call_id.get(call_id)) if include_detail else None
+                    _step_detail(call, outputs_by_call_id.get(call_id))
+                    if include_detail
+                    else {"call": _project_activity_item(call)}
+                    if live and index == len(calls) - 1
+                    else None
                 ),
             )
         )
@@ -277,14 +342,41 @@ def _turn_outcome(group: list[ConversationItem], *, status: str) -> str | None:
     return _truncate(last_assistant, _OUTCOME_MAX_CHARS) if last_assistant else None
 
 
-def _turn_title(conversation: Conversation, request: str | None) -> str:
-    # The user's request names the work; a system-started turn (a Result
-    # wake) falls back to the chat's title.
-    if request and not request.startswith("[System"):
-        return _truncate(request, _TITLE_MAX_CHARS)
+def _user_request(request: str | None) -> str | None:
+    """The person's own request, or ``None`` for a system-started turn (a Result wake)."""
+    return None if not request or request.startswith("[System") else request
+
+
+def _status_summary(status: str, group: list[ConversationItem], outcome: str | None) -> str | None:
+    """The feed row's one-line gist: the answer's first sentence; nothing while working."""
+    if status == STATUS_IN_PROGRESS:
+        return None
+    if status == STATUS_DONE:
+        return _one_line_summary(_last_assistant_text(group))
+    return outcome
+
+
+def _turn_title(conversation: Conversation, request: str | None, reply: str | None = None) -> str:
+    # Until a model-written title exists, the person's request names the work
+    # (tidied); a system-started turn (a Result wake) is named by what it said,
+    # then by the chat's title.
+    tidied = tidy_request_title(_user_request(request) or _plain_reply(reply))
+    if tidied:
+        return tidied
     if conversation.title:
         return _truncate(conversation.title, _TITLE_MAX_CHARS)
     return "Activity"
+
+
+def _plain_reply(reply: str | None) -> str | None:
+    return None if not reply or _STRUCTURED_TEXT.match(reply) else reply
+
+
+def _turn_title_prompt(request: str, steps: list[Step]) -> str:
+    """What a title is written from: the request and the first few things done for it."""
+    done = "; ".join(step.title for step in steps[:_TITLE_PROMPT_STEPS])
+    prompt = f"Request to name:\n{_truncate(request, _TITLE_PROMPT_REQUEST_CHARS)}"
+    return f"{prompt}\n\nWhat was done for it: {done}" if done else prompt
 
 
 def _turn_activity(
@@ -294,6 +386,8 @@ def _turn_activity(
     request: str | None,
     is_latest_group: bool,
     include_step_detail: bool,
+    source: str,
+    stored_title: str | None,
 ) -> Activity | None:
     """Build the Activity for one turn's items, or ``None`` if it had no tool calls."""
     calls = [item for item in group if item.type == "function_call"]
@@ -305,16 +399,31 @@ def _turn_activity(
         if item.type == "function_call_output"
     }
     status = _turn_status(conversation, group, is_latest_group=is_latest_group)
+    steps = _steps_for_calls(
+        calls,
+        outputs_by_call_id,
+        include_detail=include_step_detail,
+        live=status == STATUS_IN_PROGRESS,
+    )
+    # A system-started turn has no request of the person's: the reply names the work.
+    reply = _last_assistant_text(group)
+    user_request = _user_request(request) or _plain_reply(reply)
+    outcome = _turn_outcome(group, status=status)
     return Activity(
         id=f"{KIND_TURN}:{conversation.id}:{group[0].response_id}",
         kind=KIND_TURN,
         chat_id=conversation.id,
-        title=_turn_title(conversation, request),
-        outcome=_turn_outcome(group, status=status),
+        title=stored_title or _turn_title(conversation, request, reply),
+        outcome=outcome,
         status=status,
         started_at=group[0].created_at,
         finished_at=None if status == STATUS_IN_PROGRESS else group[-1].created_at,
-        steps=_steps_for_calls(calls, outputs_by_call_id, include_detail=include_step_detail),
+        steps=steps,
+        source=source,
+        summary=_status_summary(status, group, outcome),
+        title_prompt=(
+            _turn_title_prompt(user_request, steps) if user_request and not stored_title else None
+        ),
     )
 
 
@@ -330,7 +439,42 @@ def _split_sub_agent_title(conversation: Conversation) -> tuple[str, str]:
     if title and ":" in title:
         agent, _, rest = title.partition(":")
         return agent, rest
-    return (conversation.sub_agent_name or "sub-agent"), (title or "Sub-agent")
+    return (conversation.sub_agent_name or "sub-agent"), (title or "")
+
+
+def _sub_agent_source(conversation: Conversation) -> str:
+    """Where a Helper came from: a scheduled run (standing task, topic, Goal) or background."""
+    if SCHEDULED_HELPER_LABEL_KEY not in conversation.labels:
+        return SOURCE_BACKGROUND
+    return SOURCE_GOAL if conversation.sub_agent_name == _GOAL_AGENT_TYPE else SOURCE_SCHEDULED
+
+
+def _sub_agent_title(
+    conversation: Conversation,
+    display_title: str,
+    task: str | None,
+    source: str,
+) -> tuple[str, str | None]:
+    """``(title, title_prompt)`` for a Helper: its own words about the work, never an id.
+
+    A model-written ``task_summary`` wins; a scheduled Helper shows its task's name
+    (never the engine's collision suffix); a spawner-chosen title is kept. Otherwise the
+    delegated task is tidied for now and, with ``title_prompt`` set, named by the model.
+    """
+    if conversation.task_summary:
+        return conversation.task_summary, None
+    if source != SOURCE_BACKGROUND:
+        named = scheduled_display_title(display_title)
+        if named:
+            return named, None
+    elif not is_generic_title(display_title):
+        return _truncate(display_title, _TITLE_MAX_CHARS), None
+    request = _user_request(task)
+    return tidy_request_title(request) or (
+        "Background task" if source == SOURCE_BACKGROUND else "Scheduled task"
+    ), (
+        f"Request to name:\n{_truncate(request, _TITLE_PROMPT_REQUEST_CHARS)}" if request else None
+    )
 
 
 def _sub_agent_status(conversation: Conversation) -> str:
@@ -359,8 +503,12 @@ def _sub_agent_activity(
     *,
     include_step_detail: bool,
 ) -> Activity:
-    agent, display_title = _split_sub_agent_title(conversation)
+    _agent, display_title = _split_sub_agent_title(conversation)
     status = _sub_agent_status(conversation)
+    source = _sub_agent_source(conversation)
+    title, title_prompt = _sub_agent_title(
+        conversation, display_title, _first_user_text(items), source
+    )
     calls = [item for item in items if item.type == "function_call"]
     outputs_by_call_id = {
         item.data.call_id: item  # type: ignore[union-attr]
@@ -380,12 +528,20 @@ def _sub_agent_activity(
         id=f"{KIND_SUB_AGENT}:{conversation.id}",
         kind=KIND_SUB_AGENT,
         chat_id=conversation.id,
-        title=_truncate(f"{agent}: {display_title}" if display_title else agent, _TITLE_MAX_CHARS),
+        title=title,
         outcome=outcome,
         status=status,
         started_at=started_at,
         finished_at=finished_at,
-        steps=_steps_for_calls(calls, outputs_by_call_id, include_detail=include_step_detail),
+        steps=_steps_for_calls(
+            calls,
+            outputs_by_call_id,
+            include_detail=include_step_detail,
+            live=status == STATUS_IN_PROGRESS,
+        ),
+        source=source,
+        summary=_status_summary(status, items, outcome),
+        title_prompt=title_prompt,
     )
 
 
@@ -472,6 +628,7 @@ def _activities_for_conversation(
     conversation: Conversation,
     *,
     include_step_detail: bool,
+    super_chat_id: str,
 ) -> list[Activity]:
     # Newest-first, bounded, then reversed to chronological order: for a
     # conversation with more than _ITEMS_SCAN_LIMIT items, an ascending scan
@@ -489,6 +646,8 @@ def _activities_for_conversation(
     if conversation.kind == "sub_agent":
         return [_sub_agent_activity(conversation, items, include_step_detail=include_step_detail)]
     groups = _group_items_by_response(items)
+    stored_titles = conv_store.get_activity_titles([group[0].response_id for group in groups])
+    source = SOURCE_TURN if conversation.id == super_chat_id else SOURCE_SIDE_CHAT
     activities: list[Activity] = []
     # The user message that started a turn is usually stored outside its
     # response group, so carry the latest one forward.
@@ -501,6 +660,8 @@ def _activities_for_conversation(
             request=request,
             is_latest_group=(index == len(groups) - 1),
             include_step_detail=include_step_detail,
+            source=source,
+            stored_title=stored_titles.get(group[0].response_id),
         )
         if activity is not None:
             activities.append(activity)
@@ -532,7 +693,9 @@ def list_activities(
     activities: list[Activity] = []
     for conversation in chats:
         activities.extend(
-            _activities_for_conversation(conv_store, conversation, include_step_detail=False)
+            _activities_for_conversation(
+                conv_store, conversation, include_step_detail=False, super_chat_id=super_chat_id
+            )
         )
     activities.sort(key=lambda activity: activity.started_at, reverse=True)
     # A Side Chat that knows the conversation carries copies of its items, so the same
@@ -552,6 +715,56 @@ def list_activities(
         activities = [activity for activity in activities if activity.started_at < before]
     bounded_limit = max(1, min(limit, _MAX_LIMIT))
     return activities[:bounded_limit]
+
+
+def activities_missing_titles(activities: list[Activity]) -> list[Activity]:
+    """The Activities still showing a fallback title, newest first, bounded per read."""
+    return [activity for activity in activities if activity.title_prompt][:_TITLE_JOBS_PER_READ]
+
+
+def schedule_missing_titles(
+    conv_store: ConversationStore,
+    coordinator: BackgroundSessionTitleCoordinator,
+    activities: list[Activity],
+    conversations: Mapping[str, Conversation],
+) -> None:
+    """Start model-written titles for Activities from :func:`activities_missing_titles`.
+
+    Never waits: the feed answers now with the tidied request, and the title
+    appears on a later read once the economy model has written it (a turn's is
+    stored by response id, a Helper's as its ``task_summary``). Must run on the
+    event loop (the attempts are loop tasks); ``conversations`` is read beforehand.
+
+    :param conv_store: Store the titles are saved to.
+    :param coordinator: The app's background title coordinator.
+    :param activities: The Activities to title.
+    :param conversations: Their chats by id (an Activity with no chat here is skipped).
+    """
+    for activity in activities:
+        conversation = conversations.get(activity.chat_id)
+        if conversation is None or activity.title_prompt is None:
+            continue
+        chat_id = activity.chat_id
+        if activity.kind == KIND_TURN:
+            key = response_id = activity.id.rsplit(":", 1)[-1]
+
+            def save(title: str, chat_id: str = chat_id, response_id: str = response_id) -> object:
+                return conv_store.set_activity_title(chat_id, response_id, title)
+
+        else:
+            key = chat_id
+
+            def save(title: str, chat_id: str = chat_id) -> object:
+                return conv_store.set_task_summary(chat_id, title)
+
+        coordinator.schedule_activity_title(
+            key=key,
+            conversation=conversation,
+            prompt=activity.title_prompt,
+            instructions=ACTIVITY_TITLE_INSTRUCTIONS,
+            clean=clean_generated_title,
+            save=save,
+        )
 
 
 def get_activity(
@@ -585,7 +798,7 @@ def get_activity(
     if conversation is None:
         return None
     for activity in _activities_for_conversation(
-        conv_store, conversation, include_step_detail=True
+        conv_store, conversation, include_step_detail=True, super_chat_id=super_chat_id
     ):
         if activity.id == activity_id:
             return activity
@@ -621,8 +834,10 @@ def activity_to_dict(activity: Activity) -> dict[str, Any]:
         "id": activity.id,
         "kind": activity.kind,
         "chat_id": activity.chat_id,
+        "source": activity.source,
         "title": activity.title,
         "outcome": activity.outcome,
+        "summary": activity.summary,
         "status": activity.status,
         "started_at": activity.started_at,
         "finished_at": activity.finished_at,

@@ -467,9 +467,11 @@ export interface OmnigentActivityStep {
 export interface OmnigentActivity {
   id: string;
   kind: "turn" | "sub_agent";
+  source: "turn" | "side_chat" | "background" | "scheduled" | "goal";
   chat_id: string;
   title: string;
   outcome: string | null;
+  summary: string | null;
   status: "in_progress" | "done" | "failed" | "cancelled";
   started_at: number;
   finished_at: number | null;

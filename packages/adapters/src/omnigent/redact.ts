@@ -1,5 +1,5 @@
 // Redaction for Omnigent read paths (docs/super-chat/WIRING.md review item 4): `chats.messages`
-// text, `activities.list`/`activities.get` (title, outcome, step titles, and step `detail`
+// text, `activities.list`/`activities.get` (title, outcome, summary, step titles, and step `detail`
 // recursively for string values), and `memory.profile`. Built on the same `redactSecrets`
 // primitive ./gateway.ts and ./mirror.ts redact a turn's reply with, over the same secrets list
 // (./env.ts's `omnigentRedactionSecretsFromEnv`) — so nothing Omnigent returns can surface a
@@ -54,7 +54,7 @@ function redactActivityStep(step: ActivityStep, secrets: string[]): ActivityStep
   };
 }
 
-/** `activities.list`/`activities.get`: redacts `title`, `outcome`, and every Step's `title` and
+/** `activities.list`/`activities.get`: redacts `title`, `outcome`, `summary`, and every Step's `title` and
  * `detail`. */
 export function redactActivity(activity: Activity, secrets: string[]): Activity {
   if (secrets.length === 0) return activity;
@@ -62,6 +62,7 @@ export function redactActivity(activity: Activity, secrets: string[]): Activity 
     ...activity,
     title: redactString(activity.title, secrets),
     outcome: activity.outcome === null ? null : redactString(activity.outcome, secrets),
+    summary: activity.summary === null ? null : redactString(activity.summary, secrets),
     steps: activity.steps?.map((step) => redactActivityStep(step, secrets)),
   };
 }

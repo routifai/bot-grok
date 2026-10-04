@@ -44,9 +44,11 @@ export function ActivityPreviewPage() {
             EARLIER_ACTIVITIES.find((a) => a.id === input.activityId) ?? {
               id: input.activityId,
               kind: "turn",
+              source: "turn",
               chatId: "conv-1",
               title: "",
               outcome: null,
+              summary: null,
               status: "done",
               startedAt: new Date().toISOString(),
               finishedAt: new Date().toISOString(),

@@ -29,9 +29,11 @@ describe("redactActivity", () => {
   const activity: Activity = {
     id: "turn:conv_1:resp_1",
     kind: "turn",
+    source: "turn",
     chatId: "conv_1",
     title: "Used sk-live-topsecret to check the account",
     outcome: "Found it with sk-live-topsecret",
+    summary: "Found it with sk-live-topsecret",
     status: "done",
     startedAt: new Date(0).toISOString(),
     finishedAt: new Date(0).toISOString(),
@@ -54,6 +56,7 @@ describe("redactActivity", () => {
     const redacted = redactActivity(activity, SECRETS);
     expect(redacted.title).toBe("Used [redacted] to check the account");
     expect(redacted.outcome).toBe("Found it with [redacted]");
+    expect(redacted.summary).toBe("Found it with [redacted]");
     expect(redacted.steps?.[0]?.title).toBe("Called a tool with [redacted]");
     expect(redacted.steps?.[0]?.detail).toEqual({
       arguments: { token: "[redacted]", nested: { note: "[redacted]" } },

@@ -12,7 +12,14 @@ import type { ActivityStep } from "@aiden/contracts";
 
 /** A small, closed set of line icons a tool can present as — never the tool's own name.
  * apps/web/src/pages/muse/chrome/toolIcons.ts maps each to a lucide icon. */
-export type ToolIconKey = "search" | "memory" | "helper" | "sideChat" | "history" | "generic";
+export type ToolIconKey =
+  | "search"
+  | "web"
+  | "memory"
+  | "helper"
+  | "sideChat"
+  | "history"
+  | "generic";
 
 /** One tool's presentation: an icon, a plain-language title derived from its call
  * arguments, and a short snippet of its result — never the tool's own name, never the
@@ -125,12 +132,38 @@ interface WebResult {
   domain: string;
 }
 
-function domainOf(url: string): string {
+function parseUrl(url: string): URL | null {
   try {
-    return new URL(url).hostname.replace(/^www\./, "");
+    return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`);
   } catch {
-    return url;
+    return null;
   }
+}
+
+function domainOf(url: string): string {
+  return parseUrl(url)?.hostname.replace(/^www\./, "") ?? url;
+}
+
+/** Search engines a browser Step can be visiting: where the query lives in the URL. */
+const SEARCH_ENGINES: { host: RegExp; name: string; param: string }[] = [
+  { host: /(^|\.)google\./, name: "Google", param: "q" },
+  { host: /(^|\.)bing\.com$/, name: "Bing", param: "q" },
+  { host: /(^|\.)duckduckgo\.com$/, name: "DuckDuckGo", param: "q" },
+  { host: /(^|\.)search\.brave\.com$/, name: "Brave", param: "q" },
+  { host: /(^|\.)search\.yahoo\.com$/, name: "Yahoo", param: "p" },
+];
+
+/** A browser navigation in plain words: a search-engine results URL reads as the search
+ * ("Searched Google for “tesla stock price”"), any other URL as the site ("Opened cnn.com"). */
+function navigateTitle(args: Record<string, unknown>): string {
+  const raw = args.url;
+  if (!isNonEmptyString(raw)) return "Opened a page";
+  const url = parseUrl(raw.trim());
+  if (!url) return `Opened ${raw.trim()}`;
+  const engine = SEARCH_ENGINES.find((entry) => entry.host.test(url.hostname));
+  const query = engine ? url.searchParams.get(engine.param)?.trim() : undefined;
+  if (engine && query) return `Searched ${engine.name} for “${query}”`;
+  return `Opened ${domainOf(raw.trim())}`;
 }
 
 /** Parses Tavily's `/search` text format (engine/omnigent/omnigent/tools/builtins/
@@ -209,7 +242,7 @@ function sessionHistoryTitle(args: Record<string, unknown>): string {
   if (action === "search") {
     const query = args.query;
     return isNonEmptyString(query)
-      ? `Searched earlier messages for '${query.trim()}'`
+      ? `Searched earlier messages for “${query.trim()}”`
       : "Searched earlier messages";
   }
   if (action === "list_chats") return "Listed side chats";
@@ -262,7 +295,7 @@ export function presentActivityTitle(title: string): string {
 function fileTitle(verb: string, args: Record<string, unknown>): string {
   const path = args.path;
   const name = isNonEmptyString(path) ? path.trim().split("/").pop() : "";
-  return name ? `${verb} '${name}'` : `${verb} a file`;
+  return name ? `${verb} “${name}”` : `${verb} a file`;
 }
 
 // ── the registry ────────────────────────────────────────────────────────
@@ -273,17 +306,26 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) => {
       const query = args.query;
       return isNonEmptyString(query)
-        ? `Searched the web for '${query.trim()}'`
+        ? `Searched the web for “${query.trim()}”`
         : "Searched the web";
     },
     snippet: webSearchSnippet,
+  },
+
+  web_fetch: {
+    icon: "web",
+    title: (args) => {
+      const url = args.url;
+      return isNonEmptyString(url) ? `Read ${domainOf(url.trim())}` : "Read a web page";
+    },
+    snippet: () => null,
   },
 
   memory_search: {
     icon: "memory",
     title: (args) => {
       const query = args.query;
-      return isNonEmptyString(query) ? `Checked memory for '${query.trim()}'` : "Checked memory";
+      return isNonEmptyString(query) ? `Checked memory for “${query.trim()}”` : "Checked memory";
     },
     snippet: (output) => {
       const parsed = tryParseJson(output);
@@ -299,7 +341,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
 
   memory_remember: {
     icon: "memory",
-    title: () => "Saved to memory",
+    title: () => "Remembered something about you",
     snippet: (output) => {
       const parsed = tryParseJson(output);
       if (parsed === undefined) return genericSnippet(output);
@@ -376,7 +418,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) => {
       const name = args.name;
       return isNonEmptyString(name)
-        ? `Set up following '${name.trim()}'`
+        ? `Set up following “${name.trim()}”`
         : "Set up a followed topic";
     },
     snippet: () => null,
@@ -405,7 +447,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) => {
       const title = args.title;
       return isNonEmptyString(title)
-        ? `Opened a side chat '${title.trim()}'`
+        ? `Opened a side chat “${title.trim()}”`
         : "Opened a side chat";
     },
     snippet: () => null,
@@ -416,7 +458,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) => {
       const title = args.title;
       return isNonEmptyString(title)
-        ? `Started '${title.trim()}' in the background`
+        ? `Started “${title.trim()}” in the background`
         : "Sent a follow-up to background work";
     },
     snippet: helperHandleSnippet,
@@ -427,7 +469,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) => {
       const title = args.title;
       return isNonEmptyString(title)
-        ? `Started '${title.trim()}' in the background`
+        ? `Started “${title.trim()}” in the background`
         : "Started background work";
     },
     snippet: helperHandleSnippet,
@@ -473,34 +515,31 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
   },
 
   browser_navigate: {
-    icon: "generic",
-    title: (args) => {
-      const url = args.url;
-      return isNonEmptyString(url) ? `Opened ${domainOf(url.trim())}` : "Opened a page";
-    },
+    icon: "web",
+    title: navigateTitle,
     snippet: () => null,
   },
 
   browser_snapshot: {
-    icon: "generic",
-    title: () => "Looked at the page",
+    icon: "web",
+    title: () => "Read the page",
     snippet: () => null,
   },
 
   browser_click: {
-    icon: "generic",
+    icon: "web",
     title: () => "Clicked on the page",
     snippet: () => null,
   },
 
   browser_type: {
-    icon: "generic",
+    icon: "web",
     title: () => "Typed on the page",
     snippet: () => null,
   },
 
   browser_screenshot: {
-    icon: "generic",
+    icon: "web",
     title: () => "Looked at the screen",
     snippet: () => null,
   },

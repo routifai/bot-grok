@@ -928,6 +928,7 @@ def create_sessions_router(
         agent_store=agent_store,
         auth_provider=auth_provider,
         permission_store=permission_store,
+        background_title_coordinator=background_title_coordinator,
     )
 
     register_side_chats_routes(

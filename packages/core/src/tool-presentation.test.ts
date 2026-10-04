@@ -27,7 +27,7 @@ describe("TOOL_PRESENTATION", () => {
   it("web_search: titles from the query, snippet lists result titles with domains", () => {
     const entry = TOOL_PRESENTATION.web_search as ToolPresentation;
     expect(entry.icon).toBe("search");
-    expect(entry.title({ query: "prime rate" })).toBe("Searched the web for 'prime rate'");
+    expect(entry.title({ query: "prime rate" })).toBe("Searched the web for “prime rate”");
     expect(entry.title({})).toBe("Searched the web");
     const snippet = entry.snippet(TAVILY_OUTPUT);
     expect(snippet).toContain("Fed holds rates steady (reuters.com)");
@@ -43,7 +43,7 @@ describe("TOOL_PRESENTATION", () => {
   it("memory_search: checks memory by query, snippet lists matched claim texts", () => {
     const entry = TOOL_PRESENTATION.memory_search as ToolPresentation;
     expect(entry.icon).toBe("memory");
-    expect(entry.title({ query: "deadline" })).toBe("Checked memory for 'deadline'");
+    expect(entry.title({ query: "deadline" })).toBe("Checked memory for “deadline”");
     expect(entry.title({})).toBe("Checked memory");
     const output = JSON.stringify({
       results: [
@@ -64,7 +64,9 @@ describe("TOOL_PRESENTATION", () => {
   it("memory_remember: saves to memory, snippet shows the saved claim", () => {
     const entry = TOOL_PRESENTATION.memory_remember as ToolPresentation;
     expect(entry.icon).toBe("memory");
-    expect(entry.title({ text: "Prefers phone-first slide decks" })).toBe("Saved to memory");
+    expect(entry.title({ text: "Prefers phone-first slide decks" })).toBe(
+      "Remembered something about you",
+    );
     const output = JSON.stringify({
       action: "added",
       claim: { claim_id: "c1", text: "Prefers phone-first slide decks", kind: "preference" },
@@ -116,7 +118,7 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.icon).toBe("history");
     expect(entry.title({ action: "read" })).toBe("Read earlier messages");
     expect(entry.title({ action: "search", query: "Q4" })).toBe(
-      "Searched earlier messages for 'Q4'",
+      "Searched earlier messages for “Q4”",
     );
     expect(entry.title({ action: "list_chats" })).toBe("Listed side chats");
     expect(entry.title({ action: "status" })).toBe("Checked how much room is left");
@@ -135,7 +137,7 @@ describe("TOOL_PRESENTATION", () => {
     const entry = TOOL_PRESENTATION.side_chat_open as ToolPresentation;
     expect(entry.icon).toBe("sideChat");
     expect(entry.title({ title: "Q4 checklist", start: "with_context" })).toBe(
-      "Opened a side chat 'Q4 checklist'",
+      "Opened a side chat “Q4 checklist”",
     );
     expect(entry.title({ start: "blank" })).toBe("Opened a side chat");
     expect(
@@ -147,7 +149,7 @@ describe("TOOL_PRESENTATION", () => {
     const entry = TOOL_PRESENTATION.sys_session_send as ToolPresentation;
     expect(entry.icon).toBe("helper");
     expect(entry.title({ agent: "analyst", title: "Q3 budget check", args: "go" })).toBe(
-      "Started 'Q3 budget check' in the background",
+      "Started “Q3 budget check” in the background",
     );
     const output = JSON.stringify({
       task_id: "task_1",
@@ -165,7 +167,7 @@ describe("TOOL_PRESENTATION", () => {
     const entry = TOOL_PRESENTATION.sys_session_create as ToolPresentation;
     expect(entry.icon).toBe("helper");
     expect(entry.title({ agent_id: "ag_1", title: "auth refactor" })).toBe(
-      "Started 'auth refactor' in the background",
+      "Started “auth refactor” in the background",
     );
     expect(entry.title({ agent_id: "ag_1" })).toBe("Started background work");
   });
@@ -219,7 +221,7 @@ describe("presentStep", () => {
     };
     const presented = presentStep(step);
     expect(presented.icon).toBe("search");
-    expect(presented.title).toBe("Searched the web for 'prime rate'");
+    expect(presented.title).toBe("Searched the web for “prime rate”");
     expect(presented.snippet).toContain("reuters.com");
   });
 
@@ -358,5 +360,49 @@ describe("no engine plumbing reaches the UI", () => {
     expect(presentActivityTitle("researcher: 91af03c2b7")).toBe("Researcher");
     expect(presentActivityTitle("Nova Conversation")).toBe("Conversation");
     expect(presentActivityTitle("Use a researcher helper")).toBe("Use a researcher helper");
+  });
+});
+
+describe("browser and web steps read as what the person would say", () => {
+  const title = (tool: string, args: Record<string, unknown>) =>
+    presentStep({ tool, title: "raw", detail: detailFor(tool, args, "") }).title;
+
+  it("a search-engine results page reads as the search", () => {
+    expect(
+      title("browser_navigate", { url: "https://www.google.com/search?q=tesla+stock+price&hl=en" }),
+    ).toBe("Searched Google for “tesla stock price”");
+    expect(title("browser_navigate", { url: "https://duckduckgo.com/?q=ai%20agents" })).toBe(
+      "Searched DuckDuckGo for “ai agents”",
+    );
+    expect(title("browser_navigate", { url: "bing.com/search?q=prime rate" })).toBe(
+      "Searched Bing for “prime rate”",
+    );
+  });
+
+  it("any other page reads as the site, with or without a scheme", () => {
+    expect(title("browser_navigate", { url: "https://www.cnn.com/world/live-news" })).toBe(
+      "Opened cnn.com",
+    );
+    expect(title("browser_navigate", { url: "google.com" })).toBe("Opened google.com");
+    expect(title("browser_navigate", { url: "https://www.google.com/maps" })).toBe(
+      "Opened google.com",
+    );
+    expect(title("browser_navigate", {})).toBe("Opened a page");
+  });
+
+  it("reading a page, fetching one and remembering are plain", () => {
+    expect(title("browser_snapshot", {})).toBe("Read the page");
+    expect(title("web_fetch", { url: "https://www.reuters.com/markets/fed-rate" })).toBe(
+      "Read reuters.com",
+    );
+    expect(title("web_fetch", {})).toBe("Read a web page");
+    expect(
+      presentStep({
+        tool: "web_fetch",
+        title: "raw",
+        detail: detailFor("web_fetch", {}, "page text"),
+      }).snippet,
+    ).toBeNull();
+    expect(title("memory_remember", { text: "x" })).toBe("Remembered something about you");
   });
 });

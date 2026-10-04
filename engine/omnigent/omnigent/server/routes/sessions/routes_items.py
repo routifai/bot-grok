@@ -25,6 +25,10 @@ from omnigent.server.auth import (
     LEVEL_READ,
     AuthProvider,
 )
+from omnigent.server.background_session_titles import (
+    BackgroundSessionTitleCoordinator,
+    background_session_titles_enabled,
+)
 from omnigent.server.permissions import check_session_access
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
@@ -50,7 +54,13 @@ from omnigent.server.schemas import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.activity import activity_to_dict, get_activity, list_activities
+from omnigent.superchat.activity import (
+    activities_missing_titles,
+    activity_to_dict,
+    get_activity,
+    list_activities,
+    schedule_missing_titles,
+)
 
 
 async def _caller_readable_ids(
@@ -96,6 +106,7 @@ def register_items_routes(
     agent_store: AgentStore,
     auth_provider: AuthProvider | None = None,
     permission_store: PermissionStore | None = None,
+    background_title_coordinator: BackgroundSessionTitleCoordinator | None = None,
 ) -> None:
     """Register the items routes on router."""
 
@@ -431,6 +442,19 @@ def register_items_routes(
             conversation_store,
         )
         activities = [activity for activity in activities if activity.chat_id in allowed_ids]
+        missing_titles = activities_missing_titles(activities)
+        if (
+            missing_titles
+            and background_title_coordinator is not None
+            and background_session_titles_enabled(request.headers)
+        ):
+            title_chats = await asyncio.to_thread(
+                conversation_store.get_conversations,
+                list({activity.chat_id for activity in missing_titles}),
+            )
+            schedule_missing_titles(
+                conversation_store, background_title_coordinator, missing_titles, title_chats
+            )
         return PaginatedList(data=[activity_to_dict(activity) for activity in activities])
 
     # ── GET /sessions/{session_id}/activities/{activity_id} ──────

@@ -1,120 +1,62 @@
-import type { Activity, ActivityStatus } from "@aiden/contracts";
+import type { Activity } from "@aiden/contracts";
 import { presentActivityTitle, presentStep } from "@aiden/core";
 import { Button, cn } from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+import { useLingui } from "@lingui/react/macro";
 import { useState } from "react";
-import { formatRelativeTime } from "../../../lib/relative-time";
+import { ActivityIconTile } from "./ActivityIconTile";
 import { ActivityRunDialog, type ActivityWire } from "./ActivityRunDialog";
-import {
-  activityLineText,
-  activityStatusMark,
-  groupActivitiesByDate,
-  isHelperActivity,
-} from "./activityGrouping";
+import { activityLineText, formatClockTime, groupActivitiesByDate } from "./activityGrouping";
 import { PanelRowSkeletonList } from "./PanelSkeleton";
-import { TOOL_ICON_COMPONENT } from "./toolIcons";
+import { ACTIVITY_SOURCE_ICON } from "./toolIcons";
 import type { ActivitiesState } from "./useActivities";
 
-/** The breathing dot / check / mark / muted dash on an Activity's line
- * (docs/super-chat/README.md "The Activity panel"). Shape carries the status, not color —
- * the app stays monochrome here too, only the live dot's motion is the signal. Every mark
- * sits in the same fixed-size box so every row's title starts at the same x regardless of
- * which mark it has. The live dot's pulse is `motion-safe` so reduced motion shows it still. */
-function ActivityMark({ status }: { status: ActivityStatus }) {
-  const mark = activityStatusMark(status);
-  return (
-    <span
-      aria-hidden="true"
-      className="mt-0.5 flex size-4 shrink-0 items-center justify-center self-start"
-    >
-      {mark === "live" ? (
-        <span className="relative flex size-[9px] items-center justify-center">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-foreground/60 opacity-50 motion-reduce:animate-none" />
-          <span className="relative size-[7px] rounded-full bg-foreground motion-safe:animate-[rkPulse_2.4s_ease-in-out_infinite]" />
-        </span>
-      ) : mark === "done" ? (
-        <svg viewBox="0 0 24 24" width={13} height={13} fill="none">
-          <path
-            d="M5 12l5 5 9-10"
-            stroke="currentColor"
-            strokeWidth={2.25}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-muted-foreground"
-          />
-        </svg>
-      ) : mark === "failed" ? (
-        <svg viewBox="0 0 24 24" width={10} height={10} fill="none">
-          <path
-            d="M6 6l12 12M18 6 6 18"
-            stroke="currentColor"
-            strokeWidth={2.25}
-            strokeLinecap="round"
-            className="text-foreground"
-          />
-        </svg>
-      ) : (
-        <span className="block h-px w-2.5 rounded-full bg-muted-foreground/60" />
-      )}
-    </span>
-  );
-}
-
+/** One Activity: an icon tile for where it came from, a short task title, one calm line
+ * under it (the live Step while working, the outcome's gist when done), and the clock
+ * time. Status is the line's words and the tile's own motion/tint, not a separate mark —
+ * the app stays monochrome here, only a failed run's tile takes the destructive token. */
 function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => void }) {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const live = activity.status === "in_progress";
+  const failed = activity.status === "failed";
   const line = activityLineText(activity, {
     in_progress: t`Working`,
     done: t`Done`,
     failed: t`Didn't finish`,
     cancelled: t`Cancelled`,
   });
-  // While in progress, the latest Step's icon + plain-language title (never its raw tool
-  // name) stands in for the plain status/outcome line, when the engine has sent one yet.
+  // While in progress, the latest Step's plain-language title (never its raw tool name)
+  // stands in for the summary line, when the engine has sent one yet.
   const latestStep = live ? activity.steps?.at(-1) : undefined;
-  const presented = latestStep ? presentStep(latestStep) : null;
-  const StepIcon = presented ? TOOL_ICON_COMPONENT[presented.icon] : null;
+  const Icon = ACTIVITY_SOURCE_ICON[activity.source];
   return (
     <button
       type="button"
       onClick={onOpen}
       data-testid="activity-row"
-      className="flex w-full items-start gap-3 rounded-xl px-2.5 py-2 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+      className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
     >
-      <ActivityMark status={activity.status} />
+      <ActivityIconTile Icon={Icon} live={live} failed={failed} />
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-[14px] font-medium text-foreground" dir="auto">
-            {presentActivityTitle(activity.title)}
-          </span>
-          {isHelperActivity(activity) ? (
-            <span className="shrink-0 rounded-full bg-muted px-1.5 py-[1px] text-[10.5px] font-medium text-muted-foreground">
-              <Trans>Background</Trans>
-            </span>
-          ) : null}
+        <span className="block min-w-0 truncate text-[14px] font-medium text-foreground" dir="auto">
+          {presentActivityTitle(activity.title)}
         </span>
         <span
           className={cn(
-            "flex min-w-0 items-center gap-1 text-[13px]",
-            live && "text-foreground/80",
-            activity.status === "failed" && "text-foreground",
-            !live && activity.status !== "failed" && "text-muted-foreground",
+            "block min-w-0 truncate text-[13px]",
+            live ? "text-foreground/80" : "text-muted-foreground",
+            failed && "text-foreground",
           )}
           aria-live={live ? "polite" : undefined}
+          dir="auto"
         >
-          {StepIcon ? (
-            <StepIcon
-              size={12}
-              strokeWidth={2}
-              className="shrink-0 text-muted-foreground/70"
-              aria-hidden="true"
-            />
-          ) : null}
-          <span className="truncate">{presented ? presented.title : line}</span>
+          {latestStep ? presentStep(latestStep).title : line}
         </span>
       </span>
-      <time className="shrink-0 pt-0.5 text-[12px] whitespace-nowrap text-muted-foreground">
-        {formatRelativeTime(activity.startedAt)}
+      <time
+        className="shrink-0 text-[12px] whitespace-nowrap text-muted-foreground"
+        dateTime={activity.startedAt}
+      >
+        {formatClockTime(activity.startedAt, i18n.locale)}
       </time>
     </button>
   );

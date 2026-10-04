@@ -932,7 +932,8 @@ async def _create_helper_session(
     # ``"<agent_type>:<task name>"``: Activity splits on the first colon, so it
     # reads "<Type>: <task name>" instead of an opaque id. The (parent, title)
     # pair is unique, so a repeat fire of the same task falls back to a
-    # timestamped title.
+    # timestamped title. The Activity Feed strips that suffix for display
+    # (``superchat.activity_titles._FIRE_SUFFIX``: keep the formats in step).
     base = (task.name or "").strip() or str(task.agent_type)
     fired = datetime.fromtimestamp(scheduled_at or time.time(), tz=UTC).strftime("%b %d %H:%M UTC")
     conv: Conversation | None = None

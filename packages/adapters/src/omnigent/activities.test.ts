@@ -33,9 +33,11 @@ describe("mapActivity", () => {
       mapActivity({
         id: "turn:conv_abc:resp_xyz",
         kind: "turn",
+        source: "side_chat",
         chat_id: "conv_abc",
-        title: "Checked Q4 totals",
+        title: "Check Q4 totals",
         outcome: null,
+        summary: null,
         status: "in_progress",
         started_at: 1000,
         finished_at: null,
@@ -45,8 +47,10 @@ describe("mapActivity", () => {
       id: "turn:conv_abc:resp_xyz",
       kind: "turn",
       chatId: "conv_abc",
-      title: "Checked Q4 totals",
+      source: "side_chat",
+      title: "Check Q4 totals",
       outcome: null,
+      summary: null,
       status: "in_progress",
       startedAt: new Date(1000 * 1000).toISOString(),
       finishedAt: null,
@@ -59,9 +63,11 @@ describe("mapActivity", () => {
     const mapped = mapActivity({
       id: "sub_agent:conv_child",
       kind: "sub_agent",
+      source: "scheduled",
       chat_id: "conv_child",
-      title: "Researched Q4 totals",
+      title: "Research Q4 totals",
       outcome: "Found the figures in the Q4 report.",
+      summary: "Found the figures in the Q4 report.",
       status: "done",
       started_at: 1000,
       finished_at: 1050,
@@ -76,6 +82,8 @@ describe("mapActivity", () => {
       ],
     });
     expect(mapped.status).toBe("done");
+    expect(mapped.source).toBe("scheduled");
+    expect(mapped.summary).toBe("Found the figures in the Q4 report.");
     expect(mapped.outcome).toBe("Found the figures in the Q4 report.");
     expect(mapped.finishedAt).toBe(new Date(1050 * 1000).toISOString());
     expect(mapped.steps).toEqual([

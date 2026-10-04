@@ -2,8 +2,8 @@ import type { Activity, ActivityStatus } from "@aiden/contracts";
 import { markdownToLine } from "../../../lib/markdown-plain-text";
 
 // Pure helpers for the Activity panel (docs/super-chat/README.md "The Activity panel";
-// docs/super-chat/WIRING.md "Activity panel"): grouping by day, the status→mark mapping, the
-// line shown under a title, and the polling cadence decision. Kept free of React/i18n so
+// docs/super-chat/WIRING.md "Activity panel"): grouping by day, the line shown under a title,
+// clock times, and the polling cadence decision. Kept free of React/i18n so
 // activityGrouping.test.ts can exercise every branch directly.
 
 /** How often the panel polls `activities.list` while the tab is visible: briskly while
@@ -18,35 +18,43 @@ export function activitiesPollIntervalMs(activities: readonly Activity[]): numbe
     : ACTIVITY_POLL_IDLE_MS;
 }
 
-/** A Helper's whole task (CONTEXT.md "Helper"; engine "sub_agent"), shown with a small
- * "Background" label, as opposed to a plain Conversation/Side Chat turn ("turn"). */
+/** A Helper's whole task (CONTEXT.md "Helper"; engine "sub_agent"), whose run page can show
+ * the Helper's own messages, as opposed to a plain Conversation/Side Chat turn ("turn"). */
 export function isHelperActivity(activity: Pick<Activity, "kind">): boolean {
   return activity.kind === "sub_agent";
 }
 
-export type ActivityMark = "live" | "done" | "failed" | "muted";
-
-const MARK_BY_STATUS: Record<ActivityStatus, ActivityMark> = {
-  in_progress: "live",
-  done: "done",
-  failed: "failed",
-  cancelled: "muted",
-};
-
-/** The status mark on an Activity's line: a breathing dot (in progress), a quiet check
- * (done), a destructive mark (failed), or a muted dash (cancelled). */
-export function activityStatusMark(status: ActivityStatus): ActivityMark {
-  return MARK_BY_STATUS[status];
-}
-
-/** The line shown under an Activity's title: its one-line outcome when there is one
- * (which the engine also uses to carry the current step while in progress), otherwise a
- * plain status word for the ones that never get one — never "null" or a blank line. */
+/** The line shown under an Activity's title: its one-line summary (else its outcome) when
+ * there is one, otherwise a plain status word for the ones that never get one — never "null"
+ * or a blank line. While in progress the panel shows the live Step instead (presentStep). */
 export function activityLineText(
-  activity: Pick<Activity, "status" | "outcome">,
+  activity: Pick<Activity, "status" | "summary" | "outcome">,
   labels: Record<ActivityStatus, string>,
 ): string {
-  return (activity.outcome && markdownToLine(activity.outcome)) || labels[activity.status];
+  const text = activity.summary ?? activity.outcome;
+  return (text && markdownToLine(text)) || labels[activity.status];
+}
+
+/** A clock time such as "12:44 PM" in the viewer's own zone and locale — the day is
+ * already the group's heading, so rows carry only the time. */
+export function formatClockTime(iso: string, locale = "en"): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(date);
+}
+
+/** Day and clock time ("Oct 3, 12:44 PM"), for the run page, which has no day heading. */
+export function formatDayAndTime(iso: string, locale = "en"): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : new Intl.DateTimeFormat(locale, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(date);
 }
 
 function dateKey(date: Date): string {

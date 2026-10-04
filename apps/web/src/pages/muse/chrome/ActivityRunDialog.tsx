@@ -2,13 +2,13 @@ import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { Activity, ActivityStep, ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
 import { presentActivityTitle, presentStep } from "@aiden/core";
 import { Button, cn, Dialog, DialogContent } from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+import { useLingui } from "@lingui/react/macro";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { formatRelativeTime } from "../../../lib/relative-time";
-import { isHelperActivity } from "./activityGrouping";
+import { ActivityIconTile } from "./ActivityIconTile";
+import { formatClockTime, formatDayAndTime, isHelperActivity } from "./activityGrouping";
 import { MessageRow } from "./SideChatSession";
-import { TOOL_ICON_COMPONENT } from "./toolIcons";
+import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "./toolIcons";
 
 /** The Activity run page's wire: full detail (Steps) and, for a Helper, its messages —
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */
@@ -80,6 +80,7 @@ function StepIcon({ icon, live }: { icon: keyof typeof TOOL_ICON_COMPONENT; live
  * starts at the same x whether or not its Step is expandable. Expanding it shows only a
  * short snippet of the result — never the full call/result trace, never the tool's name. */
 function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; isLast: boolean }) {
+  const { i18n } = useLingui();
   const presented = presentStep(step);
   const title = (
     <span
@@ -92,7 +93,7 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
   );
   const time = (
     <time className="shrink-0 pt-0.5 text-[11.5px] whitespace-nowrap text-muted-foreground">
-      {formatRelativeTime(step.createdAt)}
+      {formatClockTime(step.createdAt, i18n.locale)}
     </time>
   );
 
@@ -222,7 +223,7 @@ export function ActivityRunDialog({
   activity: Activity | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const [detail, setDetail] = useState<Activity | null>(null);
   const [helperOpen, setHelperOpen] = useState(false);
   const generation = useRef(0);
@@ -283,12 +284,22 @@ export function ActivityRunDialog({
       >
         <div className="border-b border-border px-6 py-5 pe-12">
           <RunStatusPill status={activity.status} label={statusLabel} />
-          <h3 className="mt-2.5 text-[18px] font-semibold text-foreground" dir="auto">
-            {presentActivityTitle(activity.title)}
-          </h3>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
-            {formatRelativeTime(activity.startedAt)}
-          </p>
+          <div className="mt-2.5 flex items-center gap-3">
+            <ActivityIconTile
+              Icon={ACTIVITY_SOURCE_ICON[activity.source]}
+              live={activity.status === "in_progress"}
+              failed={activity.status === "failed"}
+              size="lg"
+            />
+            <div className="min-w-0">
+              <h3 className="text-[18px] leading-snug font-semibold text-foreground" dir="auto">
+                {presentActivityTitle(activity.title)}
+              </h3>
+              <p className="text-[13px] text-muted-foreground">
+                {formatDayAndTime(activity.startedAt, i18n.locale)}
+              </p>
+            </div>
+          </div>
         </div>
         <div
           className={cn(

@@ -360,9 +360,11 @@ it("shows the Activity tab by default, grouped by day", async () => {
         {
           id: "act-1",
           kind: "turn",
+          source: "turn",
           chatId: "chat-1",
           title: "Checked the budget totals",
           outcome: "Everything ties out.",
+          summary: "Everything ties out.",
           status: "done",
           startedAt: new Date().toISOString(),
           finishedAt: new Date().toISOString(),

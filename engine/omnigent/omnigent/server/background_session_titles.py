@@ -28,6 +28,9 @@ _logger = logging.getLogger(__name__)
 
 BACKGROUND_SESSION_TITLES_HEADER = "x-omnigent-background-session-titles"
 
+#: How long a failed Activity title waits before the next attempt.
+_ACTIVITY_TITLE_RETRY_SECONDS = 600.0
+
 
 def background_session_titles_enabled(headers: Mapping[str, str]) -> bool:
     """Resolve the browser-local title preference from a request header."""
@@ -145,6 +148,8 @@ class BackgroundSessionTitleCoordinator:
         self._pending: set[asyncio.Task[None]] = set()
         self._scheduled_session_ids: set[str] = set()
         self._scheduled_task_summary_ids: set[str] = set()
+        self._scheduled_activity_title_keys: set[str] = set()
+        self._failed_activity_title_keys: dict[str, float] = {}
 
     async def format_agent_title(self, request: BackgroundTitleRequest) -> str | None:
         """Apply configured title requirements without changing the stored title.
@@ -257,6 +262,81 @@ class BackgroundSessionTitleCoordinator:
             self._scheduled_task_summary_ids.discard(session_id)
 
         task.add_done_callback(_discard)
+
+    def schedule_activity_title(
+        self,
+        *,
+        key: str,
+        conversation: Conversation,
+        prompt: str,
+        instructions: str,
+        clean: Callable[[str | None], str | None],
+        save: Callable[[str], object],
+    ) -> None:
+        """Schedule one Activity-title attempt and return without awaiting it.
+
+        The title is written with ``instructions`` through the same economy-model
+        call as session titles, cleaned by ``clean`` and handed to ``save``. At
+        most one attempt per ``key`` runs at a time, and a failed key is not
+        retried for :data:`_ACTIVITY_TITLE_RETRY_SECONDS`, so a feed that is
+        polled often never turns into a model-call storm.
+        """
+        if not _background_session_title_harness_supported(conversation.harness_override):
+            return
+        if key in self._scheduled_activity_title_keys:
+            return
+        failed_at = self._failed_activity_title_keys.get(key)
+        if failed_at is not None and time.monotonic() - failed_at < _ACTIVITY_TITLE_RETRY_SECONDS:
+            return
+        self._scheduled_activity_title_keys.add(key)
+        request = BackgroundTitleRequest(
+            session_id=conversation.id,
+            prompt=prompt,
+            agent_id=conversation.agent_id,
+            harness_override=conversation.harness_override,
+            model_override=conversation.model_override,
+            sub_agent_name=conversation.sub_agent_name,
+            additional_instructions=instructions,
+        )
+        task = asyncio.create_task(
+            self._run_activity_title(key=key, request=request, clean=clean, save=save),
+            name=f"background-activity-title-{key}",
+        )
+        self._pending.add(task)
+
+        def _discard(completed: asyncio.Task[None]) -> None:
+            self._pending.discard(completed)
+            self._scheduled_activity_title_keys.discard(key)
+
+        task.add_done_callback(_discard)
+
+    async def _run_activity_title(
+        self,
+        *,
+        key: str,
+        request: BackgroundTitleRequest,
+        clean: Callable[[str | None], str | None],
+        save: Callable[[str], object],
+    ) -> None:
+        try:
+            async with self._generation_slots:
+                generated = await self._generate_title(request)
+            title = clean(generated)
+            if title is None:
+                self._failed_activity_title_keys[key] = time.monotonic()
+                _logger.info(
+                    "activity title skipped key=%s reason=invalid_title generated=%r",
+                    key,
+                    generated,
+                )
+                return
+            await asyncio.to_thread(save, title)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - background metadata must never fail a feed read
+            self._failed_activity_title_keys[key] = time.monotonic()
+            # A chat whose runner is gone cannot be titled; the retry cooldown keeps this quiet.
+            _logger.info("activity title failed key=%s", key, exc_info=True)
 
     async def wait_for_idle(self) -> None:
         """Wait for currently scheduled jobs; used by focused tests."""

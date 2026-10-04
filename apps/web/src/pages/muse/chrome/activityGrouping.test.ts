@@ -6,7 +6,8 @@ import {
   activitiesPollIntervalMs,
   activityDateLabel,
   activityLineText,
-  activityStatusMark,
+  formatClockTime,
+  formatDayAndTime,
   groupActivitiesByDate,
   isHelperActivity,
   mergeNewestPage,
@@ -29,9 +30,11 @@ function activity(overrides: Partial<Activity> = {}): Activity {
   return {
     id: "act-1",
     kind: "turn",
+    source: "turn",
     chatId: "chat-1",
     title: "Checked the budget totals",
     outcome: "Everything ties out.",
+    summary: "Everything ties out.",
     status: "done",
     startedAt: "2026-10-03T11:21:00.000Z",
     finishedAt: "2026-10-03T11:22:00.000Z",
@@ -60,33 +63,43 @@ it("marks a Helper's whole task as kind sub_agent, and a plain turn as not one",
   expect(isHelperActivity(activity({ kind: "turn" }))).toBe(false);
 });
 
-it("maps every status to its own mark", () => {
-  expect(activityStatusMark("in_progress")).toBe("live");
-  expect(activityStatusMark("done")).toBe("done");
-  expect(activityStatusMark("failed")).toBe("failed");
-  expect(activityStatusMark("cancelled")).toBe("muted");
-});
-
-it("shows the outcome when there is one, even while in progress (the engine's current step)", () => {
+it("shows the summary, else the outcome, when there is one", () => {
   expect(
-    activityLineText({ status: "in_progress", outcome: "Comparing line 61 of 84" }, LABELS),
-  ).toBe("Comparing line 61 of 84");
-  expect(activityLineText({ status: "done", outcome: "Ties out." }, LABELS)).toBe("Ties out.");
+    activityLineText(
+      { status: "done", summary: "Ties out.", outcome: "Ties out. Every line matches." },
+      LABELS,
+    ),
+  ).toBe("Ties out.");
+  expect(activityLineText({ status: "done", summary: null, outcome: "Ties out." }, LABELS)).toBe(
+    "Ties out.",
+  );
 });
 
 it("strips markdown from the outcome line", () => {
   expect(
     activityLineText(
-      { status: "done", outcome: "## AI Agent Launches\n\n**Major launches:**" },
+      { status: "done", summary: null, outcome: "## AI Agent Launches\n\n**Major launches:**" },
       LABELS,
     ),
   ).toBe("AI Agent Launches Major launches:");
 });
 
 it("falls back to a plain status word when there is no outcome yet", () => {
-  expect(activityLineText({ status: "in_progress", outcome: null }, LABELS)).toBe("Working");
-  expect(activityLineText({ status: "failed", outcome: null }, LABELS)).toBe("Didn't finish");
-  expect(activityLineText({ status: "cancelled", outcome: null }, LABELS)).toBe("Cancelled");
+  expect(activityLineText({ status: "in_progress", summary: null, outcome: null }, LABELS)).toBe(
+    "Working",
+  );
+  expect(activityLineText({ status: "failed", summary: null, outcome: null }, LABELS)).toBe(
+    "Didn't finish",
+  );
+  expect(activityLineText({ status: "cancelled", summary: null, outcome: null }, LABELS)).toBe(
+    "Cancelled",
+  );
+});
+
+it("formats a clock time in the viewer's zone, and the day for the run page", () => {
+  expect(formatClockTime("2026-10-03T11:21:00.000Z", "en")).toBe("11:21 AM");
+  expect(formatClockTime("not a date")).toBe("");
+  expect(formatDayAndTime("2026-10-03T14:05:00.000Z", "en")).toBe("Oct 3, 2:05 PM");
 });
 
 it("labels today and yesterday, and a weekday+date for anything older", () => {

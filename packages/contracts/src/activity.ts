@@ -10,6 +10,18 @@ import { Id } from "./ids.js";
 export const ActivityKindSchema = z.enum(["turn", "sub_agent"]);
 export type ActivityKind = z.infer<typeof ActivityKindSchema>;
 
+/** Where an Activity came from, for the icon beside it: a Conversation turn, a Side Chat turn,
+ * background work the Muse started, a scheduled Helper (standing task, followed topic), or a
+ * Goal's cadence. Distinct from `kind`, which says how the engine stores it. */
+export const ActivitySourceSchema = z.enum([
+  "turn",
+  "side_chat",
+  "background",
+  "scheduled",
+  "goal",
+]);
+export type ActivitySource = z.infer<typeof ActivitySourceSchema>;
+
 export const ActivityStatusSchema = z.enum(["in_progress", "done", "failed", "cancelled"]);
 export type ActivityStatus = z.infer<typeof ActivityStatusSchema>;
 
@@ -30,9 +42,14 @@ export const ActivitySchema = z.object({
   /** The chat this Activity happened in: the Conversation / a Side Chat for a turn, or the
    * Helper's own chat for a `sub_agent` Activity. */
   chatId: Id,
+  source: ActivitySourceSchema,
+  /** A short action-first title ("Check Tesla's latest price"), model-written by the engine. */
   title: z.string(),
   /** One-line outcome, or null while still in progress / nothing to report. */
   outcome: z.string().nullable(),
+  /** The row's one-line gist of the outcome; null while in progress (the live Step stands in)
+   * or when there is none. */
+  summary: z.string().nullable(),
   status: ActivityStatusSchema,
   startedAt: z.string(),
   /** Null while `status` is "in_progress". */

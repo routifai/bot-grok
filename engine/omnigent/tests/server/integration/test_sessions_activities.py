@@ -145,7 +145,7 @@ async def test_activities_list_and_detail_for_superside_chat_session(
 
     sub = by_kind["sub_agent"]
     assert sub["chat_id"] == sub_agent.id
-    assert sub["title"] == "researcher: auth-flow"
+    assert sub["title"] == "auth-flow"
     assert sub["status"] == "done"
 
     detail_resp = await client.get(f"/v1/sessions/{session['id']}/activities/{sub['id']}")

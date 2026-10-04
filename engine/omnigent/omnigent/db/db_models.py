@@ -1732,6 +1732,37 @@ class SqlSuggestion(OmnigentBase):
     )
 
 
+class SqlActivityTitle(OmnigentBase):
+    """
+    SQLAlchemy model for the ``activity_titles`` table.
+
+    The model-written title of one chat turn in the Activity Feed, keyed by the
+    turn's response id (a Side Chat that knows the conversation carries the same
+    response id, so the title is shared). Activities themselves are derived on
+    read; only this presentational title is stored.
+
+    :param response_id: The turn's response id; primary key with the workspace.
+    :param conversation_id: The chat the title was generated for (no DB foreign
+        key, Rule R032).
+    :param title: Short action-first title, e.g. ``"Check Tesla's latest price"``.
+    :param created_at: Unix epoch seconds at row creation.
+    """
+
+    __tablename__ = "activity_titles"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    response_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlObjective(OmnigentBase):
     """
     SQLAlchemy model for the ``objectives`` table.

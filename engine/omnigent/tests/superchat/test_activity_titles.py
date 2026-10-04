@@ -1,0 +1,181 @@
+"""Activity titles: wording rules, the title store, and the lazy model-title flow."""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from omnigent.entities import FunctionCallData, MessageData, NewConversationItem
+from omnigent.server.background_session_titles import (
+    BackgroundSessionTitleCoordinator,
+    BackgroundTitleRequest,
+)
+from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
+from omnigent.superchat.activity import (
+    activities_missing_titles,
+    list_activities,
+    schedule_missing_titles,
+)
+from omnigent.superchat.activity_titles import (
+    ACTIVITY_TITLE_INSTRUCTIONS,
+    clean_generated_title,
+    is_generic_title,
+    scheduled_display_title,
+    tidy_request_title,
+)
+
+_MODE = {"omnigent.context.mode": "superside-chat"}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("yo what's tesla stock price?", "What's tesla stock price"),
+        ("Hey, can you check my calendar for tomorrow?!", "Check my calendar for tomorrow"),
+        ("please summarize this article", "Summarize this article"),
+        ("research EV battery makers", "Research EV battery makers"),
+        ("## **AI agent** launches, [week 3](http://x.test)", "AI agent launches, week 3"),
+        ("yo", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_tidy_request_title(text: str | None, expected: str | None) -> None:
+    assert tidy_request_title(text) == expected
+
+
+def test_tidy_request_title_is_short_and_ends_on_a_word() -> None:
+    title = tidy_request_title("compare " + "the quarterly earnings reports " * 6)
+    assert title is not None and len(title) <= 60 and title.endswith("…")
+    assert not title.removesuffix("…").endswith(" ")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('"check Tesla\'s latest price."', "Check Tesla's latest price"),
+        ("Follow AI agent launches", "Follow AI agent launches"),
+        ("", None),
+        ("a", None),
+        ("Here is a very long title that rambles on well past any sensible word limit", None),
+        ("Check the price of the Tesla stock and the…", None),
+    ],
+)
+def test_clean_generated_title(raw: str, expected: str | None) -> None:
+    assert clean_generated_title(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Study", "Studied your recent work"),
+        ("Check-in (Oct 03 07:00 UTC)", "Checked in on your goals"),
+        ("AI agent launches (Oct 03 07:00 UTC) 1a2b3c4d", "AI agent launches"),
+        ("tesla news", "Tesla news"),
+        ("analyst-3", None),
+        ("", None),
+    ],
+)
+def test_scheduled_display_title(name: str, expected: str | None) -> None:
+    assert scheduled_display_title(name) == expected
+
+
+def test_is_generic_title() -> None:
+    assert is_generic_title("researcher-1")
+    assert is_generic_title("web_fetch_91af03c2")
+    assert is_generic_title("__web_research")
+    assert not is_generic_title("Tesla price")
+    assert not is_generic_title("decade")
+
+
+def test_activity_titles_are_stored_once_per_turn(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    conv = conversation_store.create_conversation(kind="default")
+    assert conversation_store.set_activity_title(conv.id, "resp_a", "Check Tesla's price") is True
+    assert conversation_store.set_activity_title(conv.id, "resp_a", "Something else") is False
+    assert conversation_store.get_activity_titles(["resp_a", "resp_b"]) == {
+        "resp_a": "Check Tesla's price"
+    }
+    assert conversation_store.get_activity_titles([]) == {}
+
+
+async def test_missing_turn_title_is_written_by_the_model_and_used_on_the_next_read(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    chat = conversation_store.create_conversation(kind="default", labels=_MODE)
+    conversation_store.append(
+        chat.id,
+        [
+            NewConversationItem(
+                type="message",
+                response_id="resp_1",
+                data=MessageData(
+                    role="user",
+                    content=[{"type": "input_text", "text": "yo what's tesla stock price?"}],
+                ),
+            ),
+            NewConversationItem(
+                type="function_call",
+                response_id="resp_1",
+                data=FunctionCallData(
+                    agent="brain",
+                    name="web_search",
+                    arguments=json.dumps({"query": "tesla stock price"}),
+                    call_id="call_1",
+                ),
+            ),
+        ],
+    )
+    requests: list[BackgroundTitleRequest] = []
+
+    async def generator(request: BackgroundTitleRequest) -> str:
+        requests.append(request)
+        return "check tesla's latest price."
+
+    coordinator = BackgroundSessionTitleCoordinator(conversation_store, generator)
+
+    [activity] = list_activities(conversation_store, chat.id)
+    assert activity.title == "What's tesla stock price"
+    missing = activities_missing_titles([activity])
+    schedule_missing_titles(
+        conversation_store,
+        coordinator,
+        missing,
+        {chat.id: conversation_store.get_conversation(chat.id)},
+    )
+    await coordinator.wait_for_idle()
+
+    assert len(requests) == 1
+    assert requests[0].additional_instructions == ACTIVITY_TITLE_INSTRUCTIONS
+    assert "What was done for it:" in requests[0].prompt
+    [titled] = list_activities(conversation_store, chat.id)
+    assert titled.title == "Check tesla's latest price"
+    assert activities_missing_titles([titled]) == []
+
+
+async def test_a_failed_title_is_not_retried_straight_away(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    chat = conversation_store.create_conversation(kind="default", labels=_MODE)
+    calls = 0
+
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("model unavailable")
+
+    coordinator = BackgroundSessionTitleCoordinator(conversation_store, generator)
+    conversation = conversation_store.get_conversation(chat.id)
+    for _ in range(2):
+        coordinator.schedule_activity_title(
+            key="resp_x",
+            conversation=conversation,
+            prompt="check tesla",
+            instructions=ACTIVITY_TITLE_INSTRUCTIONS,
+            clean=clean_generated_title,
+            save=lambda title: title,
+        )
+        await coordinator.wait_for_idle()
+    assert calls == 1
