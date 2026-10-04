@@ -126,6 +126,7 @@ newest first, grouped by day; opening one shows its Steps.
 | Helpers at once | `OMNIGENT_SUBAGENT_MAX_CONCURRENT` (host) + each type's `max_sessions` | 10 | — |
 | Upkeep model | server `--config` `llm:` block | required for Upkeep | — |
 | Memory search | `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` + its key (server) | `openai/text-embedding-3-small` | — |
+| Web search | `TAVILY_API_KEY` on the host, plus `OMNIGENT_RUNNER_ENV_PASSTHROUGH=TAVILY_API_KEY` so it reaches runners | required for `web_search` | — |
 
 Nova's own side of the gateway/mirror job (`packages/adapters/src/omnigent/env.ts`'s
 `omnigentSuperChatConfigFromEnv`):

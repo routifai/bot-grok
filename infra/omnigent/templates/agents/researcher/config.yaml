@@ -22,8 +22,11 @@ max_sessions: 3
 
 tools:
   builtins:
-    - web_search
-    - web_fetch
+    # Web search goes straight to Tavily's API (no sandboxed web-research sub-agent).
+    - name: web_search
+      search_provider: tavily
+      api_key: ${TAVILY_API_KEY}
+      max_results: 5
 
 prompt: |
   You are the researcher Sub-agent for Nova's Super Chat. You are dispatched with a Brief: a

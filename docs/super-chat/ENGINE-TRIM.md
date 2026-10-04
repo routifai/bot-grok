@@ -28,7 +28,7 @@ don't use, so it can be removed before production.
 | Header auth with shared secret | `omnigent/server/auth.py` | Nova API → engine identity |
 | Computer runner location | `omnigent/onboarding/sandboxes/{computer,base,registry,agent_sandbox,agent_sandbox_warm_pool}.py`, `server/managed_hosts.py` | Muse runner in its computer |
 | Agent spec / bundles | `omnigent/spec` | `infra/omnigent/agents/nova-claude` |
-| Built-in tools in use | `omnigent/tools` (`web_search`, `web_fetch`, `session_history`, `memory_*`, `side_chat_open`, `sys_session_*`) | The Muse and Helpers |
+| Built-in tools in use | `omnigent/tools` (`web_search` with the Tavily backend, `session_history`, `memory_*`, `side_chat_open`, `sys_session_*`) | The Muse and Helpers |
 | Example bundle | `examples/super-chat` | Reference for `infra/omnigent/agents/nova-claude` |
 
 ## Candidates
@@ -70,6 +70,13 @@ don't use, so it can be removed before production.
 | Editor and chat integrations | `editors/vscode`, `integrations/slack`, `omnigent/integration_daemon.py` | Not used |
 | Client SDKs | `sdks/` | Nova calls the HTTP API directly |
 | Session import | `omnigent/session_import` | Not used |
+
+### Tools Nova doesn't use
+
+| Part | Path | Why |
+|---|---|---|
+| `web_fetch` and its sandboxed web-research sub-agent | `omnigent/tools/builtins/web_fetch.py`, `__web_researcher` dispatch in `omnigent/runner/tool_dispatch.py` | Web search calls Tavily directly |
+| Other web search backends (OpenAI native, Perplexity, Nimble, DuckDuckGo, …) | `omnigent/tools/builtins/web_search*.py` except `web_search_tavily.py` | Tavily only |
 
 ### Examples, docs and tooling
 
