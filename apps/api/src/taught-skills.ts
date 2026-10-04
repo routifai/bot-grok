@@ -140,7 +140,14 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
       select: { email: true },
     });
     if (!user) throw new IsolationError();
-    const skill = await getOmnigentTaughtSkill(client, user.email, skillId);
+    const skill = await getOmnigentTaughtSkill(client, user.email, skillId).catch((error) => {
+      // A draft card from before teaching moved to the engine carries a non-engine id.
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code === "invalid_input" || code === "not_found") {
+        throw new ORPCError("NOT_FOUND", { message: "Skill not found" });
+      }
+      throw error;
+    });
     const link = await deps.prisma.omnigentSession.findFirst({
       where: {
         omnigentSessionId: skill.parent_session_id,

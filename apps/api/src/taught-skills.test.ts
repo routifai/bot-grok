@@ -148,6 +148,14 @@ describe("teaching on the engine", () => {
     await expect(service.get(actor, "skill-1")).rejects.toThrow();
   });
 
+  it("maps an engine invalid or missing skill id to NOT_FOUND, not a 500", async () => {
+    const { service } = setup();
+    for (const code of ["invalid_input", "not_found"]) {
+      engine.getOmnigentTaughtSkill.mockRejectedValueOnce(Object.assign(new Error("x"), { code }));
+      await expect(service.get(actor, "legacy-id")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    }
+  });
+
   it("edits write a new engine version; save keeps it", async () => {
     const { service } = setup();
     engine.getOmnigentTaughtSkill.mockResolvedValue(engineSkill());
