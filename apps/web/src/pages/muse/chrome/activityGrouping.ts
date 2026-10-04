@@ -19,7 +19,7 @@ export function activitiesPollIntervalMs(activities: readonly Activity[]): numbe
 }
 
 /** A Helper's whole task (CONTEXT.md "Helper"; engine "sub_agent"), shown with a small
- * "Helper" label, as opposed to a plain Conversation/Side Chat turn ("turn"). */
+ * "Background" label, as opposed to a plain Conversation/Side Chat turn ("turn"). */
 export function isHelperActivity(activity: Pick<Activity, "kind">): boolean {
   return activity.kind === "sub_agent";
 }
@@ -96,7 +96,15 @@ export function groupActivitiesByDate(
   locale = "en",
 ): ActivityGroup[] {
   const groups: ActivityGroup[] = [];
+  // A Side Chat that knows the conversation carries copies of its turns: the same turn
+  // (same response id, the tail of the id) is listed once, from the first chat to have it.
+  const seenTurns = new Set<string>();
   for (const activity of activities) {
+    if (activity.kind === "turn") {
+      const responseId = activity.id.slice(activity.id.lastIndexOf(":") + 1);
+      if (seenTurns.has(responseId)) continue;
+      seenTurns.add(responseId);
+    }
     const localDate = dateKey(new Date(activity.startedAt));
     const last = groups.at(-1);
     if (last && last.date === localDate) {

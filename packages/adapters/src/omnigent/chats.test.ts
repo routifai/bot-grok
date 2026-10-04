@@ -127,6 +127,27 @@ describe("mapSideChatCreateToSummary", () => {
 });
 
 describe("mapOmnigentItemsToMessages", () => {
+  it("renders a raw engine failure as a calm system note, never its text", () => {
+    const [message] = mapOmnigentItemsToMessages("conv_1", [
+      {
+        id: "msg_err",
+        type: "message",
+        role: "assistant",
+        created_at: 1000,
+        content: [
+          {
+            type: "output_text",
+            text: "There's an issue with the selected model (x). It may not exist or you may not have access to it.",
+          },
+        ],
+      },
+    ]);
+    expect(message?.role).toBe("system");
+    expect(message?.blocks).toEqual([
+      { kind: "text", text: "Something went wrong on my side. Try again." },
+    ]);
+  });
+
   it("maps user and assistant message items, skipping tool-call items", () => {
     const messages = mapOmnigentItemsToMessages("conv_1", [
       {
@@ -237,7 +258,7 @@ describe("systemNoticeText", () => {
       systemNoticeText(
         "[System: sub-agent researcher/overdraft fee finished (completed) — result: ...]",
       ),
-    ).toBe("Helper “overdraft fee” finished.");
+    ).toBe("“overdraft fee” finished.");
   });
 
   it("names the hidden web researcher as web research", () => {

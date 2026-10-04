@@ -89,7 +89,7 @@ function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => v
           </span>
           {isHelperActivity(activity) ? (
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-[1px] text-[10.5px] font-medium text-muted-foreground">
-              <Trans>Helper</Trans>
+              <Trans>Background</Trans>
             </span>
           ) : null}
         </span>

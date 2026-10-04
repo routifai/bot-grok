@@ -5,6 +5,7 @@
 // Omnigent call is injected through ./client.js's typed functions, so ./chats.test.ts mocks
 // fetch the same way ./gateway.test.ts does — no network, no database.
 import type { ChatSummary, SideChatStart, ThreadMessage } from "@aiden/contracts";
+import { ENGINE_ERROR_NOTE, isEngineErrorText } from "@aiden/core";
 import {
   getOmnigentSession,
   listOmnigentRelatedChats,
@@ -109,7 +110,7 @@ export function systemNoticeText(text: string): string | null {
   const match = WAKE_NOTICE.exec(text);
   if (!match) return "Nova received an update.";
   const [, agent, title, status] = match;
-  const who = agent?.startsWith("__web") ? "Web research" : `Helper “${title}”`;
+  const who = agent?.startsWith("__web") ? "Web research" : `“${title}”`;
   return status === "completed"
     ? `${who} finished.`
     : `${who} ${status === "failed" ? "failed" : "stopped"}.`;
@@ -126,7 +127,9 @@ export function mapOmnigentItemsToMessages(
     if (!role) continue;
     const raw = extractItemText(item);
     if (!raw) continue;
-    const notice = role === "user" ? systemNoticeText(raw) : null;
+    // A raw engine/model failure is never shown: it reads as a calm system note.
+    const notice =
+      role === "user" ? systemNoticeText(raw) : isEngineErrorText(raw) ? ENGINE_ERROR_NOTE : null;
     const text = notice ?? raw;
     messages.push({
       id: item.id,

@@ -535,6 +535,19 @@ def list_activities(
             _activities_for_conversation(conv_store, conversation, include_step_detail=False)
         )
     activities.sort(key=lambda activity: activity.started_at, reverse=True)
+    # A Side Chat that knows the conversation carries copies of its items, so the same
+    # turn (same response id) is found in both chats; list it once, from the chat that
+    # came first in the family (the Super Chat itself).
+    seen_turns: set[str] = set()
+    unique: list[Activity] = []
+    for activity in activities:
+        if activity.kind == KIND_TURN:
+            response_id = activity.id.rsplit(":", 1)[-1]
+            if response_id in seen_turns:
+                continue
+            seen_turns.add(response_id)
+        unique.append(activity)
+    activities = unique
     if before is not None:
         activities = [activity for activity in activities if activity.started_at < before]
     bounded_limit = max(1, min(limit, _MAX_LIMIT))

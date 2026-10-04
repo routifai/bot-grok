@@ -143,11 +143,11 @@ describe("TOOL_PRESENTATION", () => {
     ).toBeNull();
   });
 
-  it("sys_session_send: sends a helper to work on a title, snippet says who started", () => {
+  it("sys_session_send: starts background work for a title, snippet says who started", () => {
     const entry = TOOL_PRESENTATION.sys_session_send as ToolPresentation;
     expect(entry.icon).toBe("helper");
     expect(entry.title({ agent: "analyst", title: "Q3 budget check", args: "go" })).toBe(
-      "Sent a helper to work on 'Q3 budget check'",
+      "Started 'Q3 budget check' in the background",
     );
     const output = JSON.stringify({
       task_id: "task_1",
@@ -161,37 +161,37 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.snippet(output)).toBe("Analyst started.");
   });
 
-  it("sys_session_create: starts a helper for a title", () => {
+  it("sys_session_create: starts background work for a title", () => {
     const entry = TOOL_PRESENTATION.sys_session_create as ToolPresentation;
     expect(entry.icon).toBe("helper");
     expect(entry.title({ agent_id: "ag_1", title: "auth refactor" })).toBe(
-      "Started a helper for 'auth refactor'",
+      "Started 'auth refactor' in the background",
     );
-    expect(entry.title({ agent_id: "ag_1" })).toBe("Started a helper");
+    expect(entry.title({ agent_id: "ag_1" })).toBe("Started background work");
   });
 
-  it("sys_read_inbox: collects a helper's result", () => {
+  it("sys_read_inbox: collects the result", () => {
     const entry = TOOL_PRESENTATION.sys_read_inbox as ToolPresentation;
     expect(entry.icon).toBe("helper");
-    expect(entry.title({})).toBe("Collected a helper's result");
+    expect(entry.title({})).toBe("Collected the result");
     expect(entry.snippet("[System: task task_1 complete] 61 of 84 line items matched.")).toContain(
       "61 of 84 line items matched",
     );
   });
 
-  it("sys_cancel_task: stops a helper, no useful snippet to show", () => {
+  it("sys_cancel_task: stops background work, no useful snippet to show", () => {
     const entry = TOOL_PRESENTATION.sys_cancel_task as ToolPresentation;
     expect(entry.icon).toBe("helper");
-    expect(entry.title({ task_id: "task_1" })).toBe("Stopped a helper");
+    expect(entry.title({ task_id: "task_1" })).toBe("Stopped background work");
     expect(
       entry.snippet(JSON.stringify({ error: "task_not_found", task_id: "task_1" })),
     ).toBeNull();
   });
 
-  it("sys_session_get_history: checks on a helper by its title", () => {
+  it("sys_session_get_history: checks on background work by its title", () => {
     const entry = TOOL_PRESENTATION.sys_session_get_history as ToolPresentation;
     expect(entry.icon).toBe("helper");
-    expect(entry.title({ session_id: "conv_1" })).toBe("Checked on a helper");
+    expect(entry.title({ session_id: "conv_1" })).toBe("Checked on background work");
     const output = JSON.stringify({
       conversation_id: "conv_1",
       agent: "analyst",

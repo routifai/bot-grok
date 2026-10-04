@@ -226,7 +226,7 @@ function helperHandleSnippet(output: string): string | null {
   if (error) return clip(error);
   // The engine's launch notice is plumbing; say who started, in plain words.
   const agent = field(parsed, "agent");
-  return isNonEmptyString(agent) ? `${capitalize(helperName(agent))} started.` : "Helper started.";
+  return isNonEmptyString(agent) ? `${capitalize(helperName(agent))} started.` : "Started.";
 }
 
 /** A Helper's user-facing name: internal sub-agents never show their engine name. */
@@ -360,7 +360,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
 
   sys_session_get_history: {
     icon: "helper",
-    title: () => "Checked on a helper",
+    title: () => "Checked on background work",
     snippet: (output) => {
       const parsed = tryParseJson(output);
       if (parsed === undefined) return genericSnippet(output);
@@ -416,8 +416,8 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) => {
       const title = args.title;
       return isNonEmptyString(title)
-        ? `Sent a helper to work on '${title.trim()}'`
-        : "Sent a message to a helper";
+        ? `Started '${title.trim()}' in the background`
+        : "Sent a follow-up to background work";
     },
     snippet: helperHandleSnippet,
   },
@@ -427,21 +427,21 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) => {
       const title = args.title;
       return isNonEmptyString(title)
-        ? `Started a helper for '${title.trim()}'`
-        : "Started a helper";
+        ? `Started '${title.trim()}' in the background`
+        : "Started background work";
     },
     snippet: helperHandleSnippet,
   },
 
   sys_read_inbox: {
     icon: "helper",
-    title: () => "Collected a helper's result",
+    title: () => "Collected the result",
     snippet: (output) => genericSnippet(output),
   },
 
   sys_cancel_task: {
     icon: "helper",
-    title: () => "Stopped a helper",
+    title: () => "Stopped background work",
     snippet: () => null,
   },
 

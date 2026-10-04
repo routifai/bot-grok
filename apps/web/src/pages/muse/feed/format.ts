@@ -40,6 +40,27 @@ const BARE_URL = /https?:\/\/[^\s)\]>]+/g;
 /** A source link taken from a Post body: its URL and the host shown for it. */
 export type PostSource = { url: string; host: string };
 
+const CAVEAT_OPENING =
+  /^[\s*_>]*(the findings\b|most of this\b|i did not\b|i didn't\b|note\s*:|caveat\b)/i;
+
+/** Drops leading paragraphs that hedge about sources instead of reporting (older cards
+ * opened that way), keeping at least one paragraph of content. */
+function withoutLeadingCaveats(body: string): string {
+  const blocks = body.split(/\n\s*\n/);
+  const kept: string[] = [];
+  let reading = false;
+  for (const [index, block] of blocks.entries()) {
+    const isHeading = /^\s{0,3}#{1,6}\s/.test(block);
+    const hasMore = blocks
+      .slice(index + 1)
+      .some((rest) => rest.trim() && !CAVEAT_OPENING.test(rest));
+    if (!reading && !isHeading && CAVEAT_OPENING.test(block) && hasMore) continue;
+    if (!isHeading && block.trim()) reading = true;
+    kept.push(block);
+  }
+  return kept.join("\n\n");
+}
+
 /** A topic finding's markdown body, reduced to what a card shows: its first heading (if
  * any), a plain-text preview with markdown syntax removed, and up to three source links. */
 export function postPreview(
@@ -55,6 +76,6 @@ export function postPreview(
     if (host && !sources.some((source) => source.host === host)) sources.push({ url, host });
   }
 
-  const { heading, text } = markdownToPlainText(body);
+  const { heading, text } = markdownToPlainText(withoutLeadingCaveats(body));
   return { heading, text, sources: sources.slice(0, 3) };
 }

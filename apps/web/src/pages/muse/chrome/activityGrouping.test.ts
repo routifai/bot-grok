@@ -165,3 +165,19 @@ it("leaves the list untouched when the newest page has nothing new or changed", 
   const merged = mergeNewestPage(existing, [activity({ id: "a1" })]);
   expect(merged.map((a) => a.id)).toEqual(["a1", "a2"]);
 });
+
+it("lists a turn copied into a side chat once", () => {
+  const now = new Date("2026-05-10T12:00:00");
+  const groups = groupActivitiesByDate(
+    [
+      activity({ id: "turn:chat_root:resp_1", chatId: "chat_root" }),
+      activity({ id: "turn:chat_side:resp_1", chatId: "chat_side" }),
+      activity({ id: "turn:chat_side:resp_2", chatId: "chat_side" }),
+    ],
+    now,
+  );
+  expect(groups.flatMap((group) => group.activities.map((a) => a.id))).toEqual([
+    "turn:chat_root:resp_1",
+    "turn:chat_side:resp_2",
+  ]);
+});

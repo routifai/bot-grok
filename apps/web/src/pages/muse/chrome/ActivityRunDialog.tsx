@@ -188,9 +188,6 @@ function HelperReadView({
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        <p className="mb-4 rounded-xl bg-muted/60 px-3.5 py-2.5 text-[13px] text-muted-foreground">
-          <Trans>This is a Helper's work — read-only.</Trans>
-        </p>
         {messages === null ? (
           <p className="text-[13px] text-muted-foreground">{t`Loading…`}</p>
         ) : (
@@ -207,9 +204,9 @@ function HelperReadView({
 
 /**
  * The run page: a full-width header (status, title, time), then Outcome as a full-width
- * block with "Open helper" inline at its end, then Steps full-width below — the dialog
+ * block with "View details" inline at its end, then Steps full-width below — the dialog
  * only earns a second column (Steps the wider ~60%) once it's wide enough to hold one
- * (≥900px) sensibly; a Helper Activity's "Open helper" replaces Outcome+Steps with its
+ * (≥900px) sensibly; a Helper Activity's "View details" replaces Outcome+Steps with its
  * read-only messages. Steps load lazily from `activities.get`, since `activities.list`
  * omits them.
  */
@@ -330,7 +327,7 @@ export function ActivityRunDialog({
                       className="shrink-0"
                       onClick={() => setHelperOpen(true)}
                     >
-                      {t`Open helper`}
+                      {t`View details`}
                     </Button>
                   ) : null}
                 </div>
