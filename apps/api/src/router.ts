@@ -189,6 +189,7 @@ import {
   engineListTopics,
   engineRemoveTopic,
 } from "./engine-feed.js";
+import { syncEngineTimezone } from "./engine-timezone.js";
 import {
   acceptProposal,
   dismissProposal,
@@ -650,6 +651,7 @@ export function createRouter(deps: RouterDeps) {
         if (input.timezone !== undefined) data.timezone = validTimezoneOrUtc(input.timezone);
         if (Object.keys(data).length > 0) {
           await deps.prisma.user.update({ where: { id: context.actor.userId }, data });
+          if (data.timezone) await syncEngineTimezone(deps.prisma, context.actor.userId);
         }
         return meDto(deps, context.actor);
       }),

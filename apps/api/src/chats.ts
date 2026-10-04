@@ -26,6 +26,7 @@ import type { Actor, ChatSummary, SideChatStart, ThreadMessagePage } from "@aide
 import type { PrismaClient } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
+import { syncEngineTimezone } from "./engine-timezone.js";
 import { onSuperChat } from "./omnigent-errors.js";
 
 export interface ChatsDeps {
@@ -115,6 +116,7 @@ export async function createSideChat(
   const client = requireClient(env);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
+  await syncEngineTimezone(deps.prisma, actor.userId, env);
 
   let created: Awaited<ReturnType<typeof createOmnigentSideChat>>;
   try {
@@ -219,6 +221,7 @@ export async function sendToChat(
   if (ownership.kind === "helper") {
     throw new ORPCError("BAD_REQUEST", { message: "Helpers are read-only." });
   }
+  await syncEngineTimezone(deps.prisma, actor.userId, env);
   await postOmnigentMessage(client, email, input.chatId, input.text);
   return { ok: true as const };
 }
