@@ -13,7 +13,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 def local_time_block(timezone: str | None, *, now: datetime | None = None) -> str:
     """Render the person's current local time, e.g.
-    ``[Current local time for the person: 2026-10-04 09:12 (America/Toronto)]``.
+    ``[Current local time for the person: Sunday, October 4, 2026, 9:12 AM
+    (America/Toronto, UTC-04:00)]``.
 
     :param timezone: IANA zone name; unknown or empty falls back to UTC.
     :param now: Instant to render (tests); defaults to the current time.
@@ -23,7 +24,11 @@ def local_time_block(timezone: str | None, *, now: datetime | None = None) -> st
         zone = ZoneInfo(timezone) if timezone else ZoneInfo("UTC")
     except (ZoneInfoNotFoundError, ValueError):
         zone = ZoneInfo("UTC")
-    name = zone.key
+    local = instant.astimezone(zone)
+    offset = local.strftime("%z")
+    sign = "\u2212" if offset.startswith("-") else "+"
+    clock = f"{local:%A, %B} {local.day}, {local.year}, {local.hour % 12 or 12}:{local:%M %p}"
     return (
-        f"[Current local time for the person: {instant.astimezone(zone):%Y-%m-%d %H:%M} ({name})]"
+        f"[Current local time for the person: {clock} "
+        f"({zone.key}, UTC{sign}{offset[1:3]}:{offset[3:5]})]"
     )

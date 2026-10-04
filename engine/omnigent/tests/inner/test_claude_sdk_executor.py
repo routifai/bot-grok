@@ -2291,6 +2291,23 @@ class TestSupersideChatEngineOptions(unittest.TestCase):
         options = self._run_turn_with_context_mode("superside-chat")
         self.assertEqual(options.setting_sources, [])
 
+    def test_superside_chat_hides_sdk_bundled_skills(self):
+        options = self._run_turn_with_context_mode("superside-chat")
+        self.assertEqual(options.skills, [])
+
+    def test_superside_chat_allows_only_bundle_skills(self):
+        import tempfile
+        from pathlib import Path
+
+        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "skills" / "brief").mkdir(parents=True)
+            (Path(tmp) / "skills" / "brief" / "SKILL.md").write_text("---\nname: brief\n---\n")
+            (Path(tmp) / "skills" / "empty").mkdir()
+            ex = ClaudeSDKExecutor(bundle_dir=Path(tmp), agent_name="muse")
+            self.assertEqual(ex._bundle_skill_names(), ["muse:brief"])
+
     def test_superside_chat_disallows_builtin_subagent_tool(self):
         options = self._run_turn_with_context_mode("superside-chat")
         self.assertIn("Agent", options.disallowed_tools)

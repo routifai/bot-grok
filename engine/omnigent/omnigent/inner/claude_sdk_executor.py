@@ -2518,6 +2518,17 @@ class ClaudeSDKExecutor(Executor):
             return PermissionResultAllow()
         return await self._can_use_tool_for_permission(tool_name, tool_input, perm_ctx)
 
+    def _bundle_skill_names(self) -> list[str]:
+        """Plugin-qualified names of the bundle's own skills (may be empty)."""
+        if self._bundle_dir is None:
+            return []
+        root = pathlib.Path(self._bundle_dir) / "skills"
+        if not root.is_dir():
+            return []
+        return sorted(
+            f"{self._agent_name}:{d.name}" for d in root.iterdir() if (d / "SKILL.md").is_file()
+        )
+
     async def run_turn(
         self,
         messages: list[Message],
@@ -2732,6 +2743,10 @@ class ClaudeSDKExecutor(Executor):
             # instruction this session gets (system prompt + framework
             # instructions below), never the CLI's own file discovery.
             options_kwargs["setting_sources"] = []
+            # The CLI's own bundled skills (dataviz, code-review, ...) are
+            # listed regardless of setting_sources. Allow-list only this
+            # bundle's skills; ``[]`` hides everything else from the model.
+            options_kwargs["skills"] = self._bundle_skill_names()
         try:
             reasoning_effort = validate_effort(
                 cfg.extra.get("reasoning_effort"), "Claude Agent SDK", CLAUDE_EFFORTS

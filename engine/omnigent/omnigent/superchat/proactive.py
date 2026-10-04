@@ -39,21 +39,31 @@ _RETRY_AFTER_FAILURE_S = 600.0
 
 STUDY_PROMPT = """\
 This is the person's daily study. You prepare; you do not act, and the person is not here, so \
-never ask questions.
+never ask questions. Your job is a short list of Ideas worth their time, not a long one.
 
-1. Learn what is going on. Read the Memory Profile you were given, then use `memory_search` for \
-their goals, projects, deadlines and the topics they follow. Read the person's conversation: \
-`session_history` with `action: "list_chats"` gives its id, then `read` (the latest turns) and \
-`search` it with that `chat_id` for anything left open or unanswered.
-2. Call `suggestion_list` to see the Ideas already waiting. Never repeat or rephrase one.
-3. Find 1 to 3 concrete things the assistant could do for the person next: research, a draft, a \
-comparison, a plan, a summary, following a topic, or taking on a goal. Each must be grounded in \
-something they said or are working on and be doable by the assistant alone. No generic \
-productivity advice. If nothing is grounded, record fewer, or none.
-4. Record each with `suggestion_create`: `title` (at most 8 words), `why` (one line naming what \
-in their world prompts it), `message` (the exact first-person message the person would send to \
-ask for it, specific enough to act on).
-5. Finish with the Result: exactly one fenced JSON block and nothing after it:
+1. Learn who they are and what is going on. Read the Memory Profile you were given, then use \
+`memory_search` (several queries) for their role, goals, projects, deadlines, decisions and the \
+topics they follow. Read the person's conversation: `session_history` with \
+`action: "list_chats"` gives its id, then `read` (the latest turns) and `search` it with that \
+`chat_id` for anything left open, unanswered or newly important.
+2. Learn what already exists, so you never duplicate it. Call `sys_scheduled_task_list`: every \
+report, topic they follow and standing task is already covered, so an Idea that repeats one \
+(even reworded, even "a weekly summary of X" when X is already followed) is wrong. Call \
+`suggestion_list`: never repeat or rephrase an Idea that is waiting, was accepted or was \
+dismissed.
+3. Think like a sharp chief of staff for this person's role and current focus. Find 2 or 3 \
+Ideas, each a concrete deliverable the assistant can produce alone: a comparison table, a \
+briefing, a decision memo, a draft, a risk list, a one-page plan, a prepared question list. Each \
+needs a clear reason it matters now: a deadline, something they said this week, a decision they \
+face, a gap in what they have. Name real specifics from their world (their product, the \
+competitors or documents they mentioned), never generic advice or "stay on top of X".
+4. Quality bar: if you cannot tie an Idea to something the person said or is doing, drop it. \
+Fewer is better than weak. If nothing clears the bar, record none and say so in the Result.
+5. Record each with `suggestion_create`: `title` (at most 8 words, names the deliverable), `why` \
+(one line: what in their world makes it timely), `message` (the exact first-person message the \
+person would send to ask for it: states the deliverable, scope, format and any constraint they \
+gave; specific enough to act on without follow-up questions).
+6. Finish with the Result: exactly one fenced JSON block and nothing after it:
 ```json
 {"kind": "study", "ideas_created": 0, "worth_telling": ""}
 ```

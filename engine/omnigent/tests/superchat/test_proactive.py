@@ -115,3 +115,15 @@ async def test_off_creates_nothing_and_failure_backs_off() -> None:
     broken.calls.clear()
     assert not await broken.ensure("s1", {})
     assert broken.calls == []  # backing off, no hammering
+
+
+def test_study_prompt_checks_existing_work_before_proposing() -> None:
+    from omnigent.superchat.proactive import STUDY_PROMPT
+
+    for needle in (
+        "sys_scheduled_task_list",
+        "suggestion_list",
+        "memory_search",
+        "session_history",
+    ):
+        assert needle in STUDY_PROMPT
