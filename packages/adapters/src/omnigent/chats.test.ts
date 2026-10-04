@@ -6,6 +6,7 @@ import {
   mapSideChatCreateToSummary,
   resolveChatOwnership,
   sideChatStartToWire,
+  systemNoticeText,
 } from "./chats.js";
 
 const { getOmnigentSession, listOmnigentRelatedChats } = vi.hoisted(() => ({
@@ -227,5 +228,27 @@ describe("resolveChatOwnership", () => {
     getOmnigentSession.mockResolvedValue({ id: "conv_super", parent_session_id: null });
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_super");
     expect(ownership).toBeNull();
+  });
+});
+
+describe("systemNoticeText", () => {
+  it("turns a Helper wake notice into one plain line", () => {
+    expect(
+      systemNoticeText(
+        "[System: sub-agent researcher/overdraft fee finished (completed) — result: ...]",
+      ),
+    ).toBe("Helper “overdraft fee” finished.");
+  });
+
+  it("names the hidden web researcher as web research", () => {
+    expect(
+      systemNoticeText(
+        "[System: sub-agent __web_researcher/web_fetch_2a34 finished (failed) — 1 result waiting]",
+      ),
+    ).toBe("Web research failed.");
+  });
+
+  it("leaves a person's own message alone", () => {
+    expect(systemNoticeText("What is a CD?")).toBeNull();
   });
 });

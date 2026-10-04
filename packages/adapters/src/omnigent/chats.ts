@@ -100,6 +100,21 @@ function extractItemText(item: OmnigentSessionItem): string {
  * transcript, not an Activity's Steps (that's `activities.get`). `seq` is synthesized from
  * position: Omnigent items aren't Nova's own thread rows, so there is no durable sequence
  * number to carry over. */
+const WAKE_NOTICE = /^\[System: sub-agent (\S+?)\/(.+?) finished \((\w+)\)/;
+
+/** The engine's wake notice to a chat ("[System: sub-agent researcher/title finished (completed)
+ * — …]") is plumbing; show it as one plain system line instead of a message from the person. */
+export function systemNoticeText(text: string): string | null {
+  if (!text.startsWith("[System:")) return null;
+  const match = WAKE_NOTICE.exec(text);
+  if (!match) return "Nova received an update.";
+  const [, agent, title, status] = match;
+  const who = agent?.startsWith("__web") ? "Web research" : `Helper “${title}”`;
+  return status === "completed"
+    ? `${who} finished.`
+    : `${who} ${status === "failed" ? "failed" : "stopped"}.`;
+}
+
 export function mapOmnigentItemsToMessages(
   chatId: string,
   items: OmnigentSessionItem[],
@@ -109,13 +124,15 @@ export function mapOmnigentItemsToMessages(
     if (item.type !== "message") continue;
     const role = item.role === "assistant" ? "bot" : item.role === "user" ? "user" : null;
     if (!role) continue;
-    const text = extractItemText(item);
-    if (!text) continue;
+    const raw = extractItemText(item);
+    if (!raw) continue;
+    const notice = role === "user" ? systemNoticeText(raw) : null;
+    const text = notice ?? raw;
     messages.push({
       id: item.id,
       threadId: chatId,
       seq: messages.length,
-      role,
+      role: notice ? "system" : role,
       blocks: [{ kind: "text", text }],
       createdAt: epochSecondsToIso(item.created_at),
     });

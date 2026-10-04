@@ -88,6 +88,13 @@ export function MessageRow({ message }: { message: ThreadMessage }) {
     .map((block) => block.text)
     .join("\n\n");
   if (!text) return null;
+  if (message.role === "system") {
+    return (
+      <p className="self-center text-[12.5px] text-muted-foreground" dir="auto">
+        {text}
+      </p>
+    );
+  }
   if (message.role === "user") {
     return (
       <div className="flex w-fit max-w-full justify-end">
