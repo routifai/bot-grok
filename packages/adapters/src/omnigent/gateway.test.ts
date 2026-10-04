@@ -64,6 +64,7 @@ function fakePrisma(overrides: Record<string, unknown> = {}): PrismaClient {
     },
     attempt: { create: vi.fn(async () => ({ id: "attempt-1" })) },
     bot: {
+      findUnique: vi.fn(async () => ({ computer: { homeKey: "team-space-1" } })),
       findUniqueOrThrow: vi.fn(async () => ({
         id: "bot-1",
         museHarness: null,
@@ -348,7 +349,10 @@ describe("runTurnOnOmnigent", () => {
     function prismaWithSession(agentName: string, museHarness: string | null) {
       const updateMock = vi.fn(async () => ({}));
       const prisma = fakePrisma({
-        bot: { findUniqueOrThrow: vi.fn(async () => ({ id: "bot-1", museHarness })) },
+        bot: {
+          findUnique: vi.fn(async () => null),
+          findUniqueOrThrow: vi.fn(async () => ({ id: "bot-1", museHarness })),
+        },
         omnigentSession: {
           findUnique: vi.fn(async () => ({
             botId: "bot-1",
@@ -606,7 +610,12 @@ describe("runTurnOnOmnigent", () => {
       expect(createOmnigentSession).toHaveBeenCalledWith(
         DEPS_BASE.client,
         "person@example.test",
-        expect.objectContaining({ hostType: "managed", sandboxProvider: "computer" }),
+        expect.objectContaining({
+          hostType: "managed",
+          sandboxProvider: "computer",
+          // Lands the runner on the same computer Nova shows the person.
+          labels: expect.objectContaining({ "nova.computer": "team-space-1" }),
+        }),
       );
       expect(upsertMock).toHaveBeenCalledWith(
         expect.objectContaining({

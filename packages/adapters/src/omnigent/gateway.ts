@@ -198,14 +198,29 @@ const SUPERSIDE_CHAT_MODE_LABEL = "omnigent.context.mode";
 const SUPERSIDE_CHAT_MODE_VALUE = "superside-chat";
 
 /** Session labels the Super Chat is created with. */
-function sessionLabels(run: { userId: string; spaceId: string; botId: string }) {
+function sessionLabels(
+  run: { userId: string; spaceId: string; botId: string },
+  computerKey?: string | null,
+) {
   return {
     "nova.user": run.userId,
     "nova.space": run.spaceId,
     "nova.bot": run.botId,
+    // The computer Nova shows the person (shared per space in team mode): the engine
+    // launches the Muse's runner on this same machine.
+    ...(computerKey ? { "nova.computer": computerKey } : {}),
     "nova.scope": "private",
     [SUPERSIDE_CHAT_MODE_LABEL]: SUPERSIDE_CHAT_MODE_VALUE,
   };
+}
+
+/** The Muse's Nova computer key (Computer.homeKey), or null when it has none yet. */
+async function museComputerKey(deps: OmnigentGatewayDeps, botId: string): Promise<string | null> {
+  const bot = await deps.prisma.bot.findUnique({
+    where: { id: botId },
+    select: { computer: { select: { homeKey: true } } },
+  });
+  return bot?.computer?.homeKey ?? null;
 }
 
 /**
@@ -339,9 +354,11 @@ async function createBoundOmnigentSession(
     throw new Error(`no Omnigent agent bundle named "${desiredAgentName}" is registered`);
   }
   const binding = await resolveRunnerBinding(deps, email, run, runnerLocation, preferredHostId);
+  const computerKey =
+    runnerLocation === COMPUTER_SANDBOX_PROVIDER ? await museComputerKey(deps, run.botId) : null;
   const session = await createOmnigentSession(deps.client, email, {
     agentId,
-    labels: sessionLabels(run),
+    labels: sessionLabels(run, computerKey),
     title: "Nova Conversation",
     ...binding,
   });

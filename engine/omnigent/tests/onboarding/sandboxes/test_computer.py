@@ -95,6 +95,15 @@ def test_prepare_for_launch_resolves_identity_from_labels() -> None:
     launcher.prepare()  # Does not raise: identity resolved.
 
 
+def test_prepare_for_launch_targets_novas_computer_key_when_given() -> None:
+    """Team mode shares one computer per space: the runner must land on that same machine."""
+    launcher = make_launcher(FakeSupervisor())
+    launcher.prepare_for_launch(
+        labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID, "nova.computer": "team-space_1"}
+    )
+    assert (launcher._bot_id, launcher._space_id) == ("team-space_1", SPACE_ID)
+
+
 def test_prepare_for_launch_recovers_identity_from_previous_sandbox_id_on_relaunch() -> None:
     """A relaunch has no session labels handy; it passes back this launcher's own earlier
     provision() return value instead, and identity must still resolve from that alone."""

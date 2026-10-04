@@ -214,7 +214,9 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
             relaunch, or ``None`` for a first launch.
         """
         del agent_name
-        bot_id = (labels or {}).get("nova.bot")
+        # Nova's computer key (``nova.computer``) names the machine Nova itself shows the
+        # person — shared per space in team mode — so the runner lands on that same computer.
+        bot_id = (labels or {}).get("nova.computer") or (labels or {}).get("nova.bot")
         space_id = (labels or {}).get("nova.space")
         if bot_id and space_id:
             self._bot_id, self._space_id = bot_id, space_id
