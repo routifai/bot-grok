@@ -51,6 +51,10 @@ export const ALWAYS_ON_SUPERSIDE_CHAT_TOOLS = [
   "sys_read_inbox",
   "sys_cancel_task",
   "sys_session_get_history",
+  "sys_scheduled_task_create",
+  "sys_scheduled_task_list",
+  "sys_scheduled_task_update",
+  "sys_scheduled_task_delete",
 ] as const;
 
 const MAX_SNIPPET_CHARS = 240;
@@ -355,6 +359,33 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
       const title = field(parsed, "title");
       return isNonEmptyString(title) ? clip(title) : genericSnippet(output);
     },
+  },
+
+  sys_scheduled_task_create: {
+    icon: "helper",
+    title: (args) => {
+      const name = args.name;
+      return isNonEmptyString(name) ? `Set up following '${name.trim()}'` : "Set up a followed topic";
+    },
+    snippet: () => null,
+  },
+
+  sys_scheduled_task_list: {
+    icon: "helper",
+    title: () => "Checked followed topics",
+    snippet: () => null,
+  },
+
+  sys_scheduled_task_update: {
+    icon: "helper",
+    title: () => "Updated a followed topic",
+    snippet: () => null,
+  },
+
+  sys_scheduled_task_delete: {
+    icon: "helper",
+    title: () => "Stopped following a topic",
+    snippet: () => null,
   },
 
   side_chat_open: {
