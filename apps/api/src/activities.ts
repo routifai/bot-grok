@@ -7,9 +7,12 @@ import {
   getOmnigentActivity,
   getOmnigentMemoryProfile,
   listOmnigentActivities,
+  listOmnigentDailyNotes,
   mapActivity,
   type OmnigentClientConfig,
+  type OmnigentDailyNote,
   omnigentClientConfigFromEnv,
+  putOmnigentDailyNote,
   redactActivity,
   redactMemoryProfile,
 } from "@aiden/adapters";
@@ -99,4 +102,45 @@ export async function getMemoryProfile(
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   const result = await onSuperChat(getOmnigentMemoryProfile(client, email, superSessionId));
   return { profile: redactMemoryProfile(result.profile, client.secrets ?? []) };
+}
+
+function mapDailyNote(note: OmnigentDailyNote, secrets: string[]) {
+  return {
+    date: note.date,
+    sections: Object.fromEntries(
+      Object.entries(note.sections).map(([key, text]) => [
+        key,
+        redactMemoryProfile(text, secrets) ?? "",
+      ]),
+    ),
+    editedByPerson: note.edited_by_person,
+    finalized: note.finalized,
+    updatedAt: note.updated_at,
+  };
+}
+
+/** `memory.dailyNotes`: the person's recent daily notes (engine, per owner). */
+export async function listDailyNotes(
+  deps: ActivitiesDeps,
+  actor: Actor,
+  input: { botId: string; limit: number },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  const client = requireClient(env);
+  const { email } = await requireSuperChat(deps, actor, input.botId);
+  const notes = await onSuperChat(listOmnigentDailyNotes(client, email, input.limit));
+  return { notes: notes.map((note) => mapDailyNote(note, client.secrets ?? [])) };
+}
+
+/** `memory.saveDailyNote`: the person's edit of one day's note. */
+export async function saveDailyNote(
+  deps: ActivitiesDeps,
+  actor: Actor,
+  input: { botId: string; date: string; sections: Record<string, string> },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  const client = requireClient(env);
+  const { email } = await requireSuperChat(deps, actor, input.botId);
+  const note = await onSuperChat(putOmnigentDailyNote(client, email, input.date, input.sections));
+  return mapDailyNote(note, client.secrets ?? []);
 }

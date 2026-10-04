@@ -6,13 +6,11 @@ description: >-
   document.
 
 # Sub-agent Type: analyst. Claude Agent SDK, same engine as the Super Chat (ADR 0001: Omnigent
-# owns everything; no engine sub-agents). No model id is pinned here (no-hardcoded-models
-# check) — it runs on whatever Claude provider is configured as the default. Analysis work
-# often benefits from a stronger reasoning effort than a quick researcher task; set
-# `executor.reasoning_effort` (e.g. high) on a provider profile or a local override here —
-# never a literal model id in this file.
+# owns everything; no engine sub-agents).
+# Background work: pinned to Haiku (Nova's Muse keeps NOVA_CLAUDE_MODEL). Parity plan Q9.
 executor:
   type: omnigent
+  model: claude-haiku-4-5
   config:
     harness: claude-sdk
 
@@ -35,6 +33,7 @@ tools:
     - "memory_*"
     - session_history
     - "suggestion_*"
+    - "daily_note_*"
     - sys_scheduled_task_list
     - objective_get
 

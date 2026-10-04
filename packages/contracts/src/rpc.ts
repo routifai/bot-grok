@@ -98,6 +98,15 @@ import { RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
 
 const botId = z.object({ botId: Id });
+
+/** One day's note (engine daily notes). `sections` is keyed by the engine's section keys. */
+const DailyNoteSchema = z.object({
+  date: z.string(),
+  sections: z.record(z.string(), z.string()),
+  editedByPerson: z.boolean(),
+  finalized: z.boolean(),
+  updatedAt: z.number(),
+});
 const groupId = z.object({ groupId: Id });
 
 const threadTarget = z
@@ -391,6 +400,22 @@ export const appContract = {
     /** The Muse's Memory Profile from Omnigent (docs/super-chat/README.md): what it carries
      * into every turn about the person. `null` when nothing is remembered yet. */
     profile: oc.input(z.object({ botId: Id })).output(z.object({ profile: z.string().nullable() })),
+    /** The person's daily notes (engine `GET /v1/me/daily-notes`), newest first: one per local
+     * day, sections keyed `talked_about` / `decisions` / `promised` / `open_loops`. */
+    dailyNotes: oc
+      .input(z.object({ botId: Id, limit: z.number().int().min(1).max(60).default(14) }))
+      .output(z.object({ notes: z.array(DailyNoteSchema) })),
+    /** The person's edit of one day's note: given sections win and the engine's writers only
+     * append to them afterwards. */
+    saveDailyNote: oc
+      .input(
+        z.object({
+          botId: Id,
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          sections: z.record(z.string(), z.string().max(6000)),
+        }),
+      )
+      .output(DailyNoteSchema),
   },
   routines: {
     list: oc.input(botId).output(z.array(RoutineSchema)),

@@ -233,6 +233,7 @@ class ToolManager:
         self._register_scheduled_task_tools()
         self._register_objective_tools()
         self._register_suggestion_tools()
+        self._register_daily_note_tools()
         self._register_taught_skill_tools()
         self._register_card_tools()
         # Embedded-browser tools are always auto-registered so any agent
@@ -342,6 +343,15 @@ class ToolManager:
         from omnigent.tools.builtins.suggestions import SuggestionCreateTool, SuggestionListTool
 
         for tool in (SuggestionCreateTool(), SuggestionListTool()):
+            self._tools[tool.name()] = tool
+
+    def _register_daily_note_tools(self) -> None:
+        """Auto-register ``daily_note_get`` / ``daily_note_update`` for a Super Chat's Helpers."""
+        if not is_superside_chat(self._labels) or SUBAGENT_LABEL_KEY not in self._labels:
+            return
+        from omnigent.tools.builtins.daily_notes import DailyNoteGetTool, DailyNoteUpdateTool
+
+        for tool in (DailyNoteGetTool(), DailyNoteUpdateTool()):
             self._tools[tool.name()] = tool
 
     def _register_card_tools(self) -> None:

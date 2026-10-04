@@ -7,11 +7,13 @@ import {
   getOmnigentMemoryProfile,
   getOmnigentSession,
   isStaleCursorError,
+  listOmnigentDailyNotes,
   listOmnigentSessionItems,
   OmnigentApiError,
   OmnigentSideChatError,
   openOmnigentComputerScreen,
   postOmnigentMessage,
+  putOmnigentDailyNote,
   releaseOmnigentComputer,
   streamOmnigentSession,
   switchOmnigentAgent,
@@ -209,6 +211,25 @@ describe("getOmnigentMemoryProfile", () => {
     expect(result).toEqual({ profile: null });
     const [url] = fetchMock.mock.calls[0] as unknown as [URL];
     expect(String(url)).toBe("http://omnigent.test/v1/sessions/conv_1/memory/profile");
+  });
+});
+
+describe("daily notes", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("lists the owner's notes and saves one with PUT", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ daily_notes: [], date: "2026-10-04" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listOmnigentDailyNotes(CONFIG, "p@example.test", 7)).toEqual([]);
+    await putOmnigentDailyNote(CONFIG, "p@example.test", "2026-10-04", { decisions: "- x" });
+
+    const [listUrl] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(String(listUrl)).toBe("http://omnigent.test/v1/me/daily-notes?limit=7");
+    const [putUrl, init] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(String(putUrl)).toBe("http://omnigent.test/v1/me/daily-notes/2026-10-04");
+    expect(init.method).toBe("PUT");
+    expect(init.body).toBe(JSON.stringify({ sections: { decisions: "- x" } }));
   });
 });
 

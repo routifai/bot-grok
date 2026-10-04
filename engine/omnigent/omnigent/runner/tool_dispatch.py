@@ -94,6 +94,7 @@ from omnigent.tools.builtins.async_inbox import (
     SysReadInboxTool,
 )
 from omnigent.tools.builtins.browser import BROWSER_TOOL_NAMES
+from omnigent.tools.builtins.daily_notes import DAILY_NOTE_TOOL_NAMES
 from omnigent.tools.builtins.download_file import DownloadFileTool
 from omnigent.tools.builtins.list_comments import ListCommentsTool
 from omnigent.tools.builtins.objectives import OBJECTIVE_HELPER_TOOL_NAMES, OBJECTIVE_TOOL_NAMES
@@ -497,6 +498,9 @@ _OBJECTIVE_TOOLS = frozenset(OBJECTIVE_TOOL_NAMES)
 # Suggestions (Ideas): the runner proxies the server's /v1/suggestions REST endpoints.
 _SUGGESTION_TOOLS = frozenset(SUGGESTION_TOOL_NAMES)
 
+# Daily notes: the runner proxies the server's daily-note REST endpoints.
+_DAILY_NOTE_TOOLS = frozenset(DAILY_NOTE_TOOL_NAMES)
+
 # Taught skills: the runner proxies the server's /v1/taught-skills REST endpoints.
 _TAUGHT_SKILL_TOOLS = frozenset(TAUGHT_SKILL_TOOL_NAMES)
 
@@ -556,6 +560,7 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _SCHEDULED_TASK_TOOLS
     | _OBJECTIVE_TOOLS
     | _SUGGESTION_TOOLS
+    | _DAILY_NOTE_TOOLS
     | _TAUGHT_SKILL_TOOLS
     | _CARD_TOOLS
     | _TERMINAL_TOOLS
@@ -1003,6 +1008,7 @@ _ALL_LOCAL_TOOLS = (
     | _SCHEDULED_TASK_TOOLS
     | _OBJECTIVE_TOOLS
     | _SUGGESTION_TOOLS
+    | _DAILY_NOTE_TOOLS
     | _TAUGHT_SKILL_TOOLS
     | _CARD_TOOLS
     | _SIDE_CHAT_TOOLS
@@ -5396,6 +5402,52 @@ async def _execute_suggestion_tool(
     return json.dumps(resp.json())
 
 
+async def _execute_daily_note_tool(
+    tool_name: str,
+    arguments: str,
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None = None,
+) -> str:
+    """
+    Runner-local handler for ``daily_note_get`` / ``daily_note_update``.
+
+    Proxies the server's daily-note endpoints. A Helper writes under its parent chat.
+
+    :param tool_name: One of :data:`DAILY_NOTE_TOOL_NAMES`.
+    :param arguments: JSON-encoded arguments string from the LLM.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :param conversation_id: The calling session.
+    :returns: Tool output JSON string.
+    """
+    if server_client is None or not conversation_id:
+        return json.dumps({"error": f"{tool_name} requires server access"})
+    try:
+        args: _JsonObject = json.loads(arguments) if arguments.strip() else {}
+    except json.JSONDecodeError:
+        return json.dumps({"error": f"{tool_name}: malformed JSON arguments"})
+    lookup = await _session_kind_and_parent(conversation_id, server_client)
+    if lookup is None:
+        return json.dumps({"error": f"{tool_name}: cannot verify the calling session"})
+    chat_id = lookup[1] if lookup[0] == "sub_agent" else conversation_id
+    if not chat_id:
+        return json.dumps({"error": f"{tool_name}: no chat to attach to"})
+    try:
+        if tool_name == "daily_note_get":
+            resp = await server_client.get("/v1/me/daily-notes/today", timeout=30.0)
+        else:
+            sections = {k: v for k, v in args.items() if isinstance(v, str)}
+            payload = {"parent_session_id": chat_id, "sections": sections}
+            resp = await server_client.post("/v1/daily-notes/write", json=payload, timeout=30.0)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": f"{tool_name} failed: {exc}"})
+    if resp.status_code >= 400:
+        return json.dumps(
+            {"error": f"server returned {resp.status_code}", "details": resp.text[:500]}
+        )
+    return json.dumps(resp.json())
+
+
 async def _execute_taught_skill_tool(
     tool_name: str,
     arguments: str,
@@ -7885,6 +7937,13 @@ async def execute_tool(
             output = json.dumps(build_card(args), ensure_ascii=False)
         elif tool_name in _SUGGESTION_TOOLS:
             output = await _execute_suggestion_tool(
+                tool_name,
+                arguments,
+                server_client=server_client,
+                conversation_id=conversation_id,
+            )
+        elif tool_name in _DAILY_NOTE_TOOLS:
+            output = await _execute_daily_note_tool(
                 tool_name,
                 arguments,
                 server_client=server_client,

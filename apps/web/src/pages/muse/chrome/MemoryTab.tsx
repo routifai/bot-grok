@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { ORPCError } from "@orpc/client";
 import { useEffect, useRef, useState } from "react";
+import { DaysSection, type DaysWire } from "./DaysSection";
 import { addressMemoryItem, type MemoryProfileSection, parseMemoryProfile } from "./memoryProfile";
 import { PanelRowSkeletonList } from "./PanelSkeleton";
 
@@ -15,7 +16,7 @@ const isEmptyBackend = (error: unknown) =>
  * (ActivityRunDialog.tsx) and `SideChatWire` (SideChatSession.tsx). */
 export type MemoryWire = {
   profile: (input: { botId: string }) => Promise<{ profile: string | null }>;
-};
+} & Partial<DaysWire>;
 
 type MemoryState =
   | { status: "loading" }
@@ -25,10 +26,17 @@ type MemoryState =
 /**
  * The context panel's Memory tab: a read-only view of the Muse's Memory Profile
  * (`rpc.memory.profile`) — what it remembers about the person, in its own words, grouped
- * under the headings the engine gives it. Nothing is editable here; Memory settings
+ * under the headings the engine gives it. The Days section lists recent daily notes, editable inline; Memory settings
  * (apps/web/src/pages/muse/settings/MemoryPanel.tsx) owns changing it.
  */
 export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) {
+  const days =
+    wire.dailyNotes && wire.saveDailyNote ? (
+      <DaysSection
+        botId={botId}
+        wire={{ dailyNotes: wire.dailyNotes, saveDailyNote: wire.saveDailyNote }}
+      />
+    ) : null;
   const { t } = useLingui();
   const [state, setState] = useState<MemoryState>({ status: "loading" });
   const generation = useRef(0);
@@ -57,12 +65,15 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
   }
   if (state.sections.length === 0) {
     return (
-      <p
-        className="py-8 text-center text-[13.5px] text-muted-foreground"
-        data-testid="memory-empty"
-      >
-        {t`Nothing remembered yet.`}
-      </p>
+      <div className="flex flex-col gap-4">
+        <p
+          className="py-8 text-center text-[13.5px] text-muted-foreground"
+          data-testid="memory-empty"
+        >
+          {t`Nothing remembered yet.`}
+        </p>
+        {days}
+      </div>
     );
   }
 
@@ -88,6 +99,7 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
           </ul>
         </section>
       ))}
+      {days}
     </div>
   );
 }

@@ -8,11 +8,11 @@ description: >-
   run again: intent-level steps with a check each, approval points and typed inputs.
 
 # Sub-agent Type: teacher. Claude Agent SDK, same engine as the Super Chat (ADR 0001: Omnigent
-# owns everything; no engine sub-agents). No model id is pinned here (no-hardcoded-models
-# check) — it runs on whatever Claude provider is configured as the default. It reads the
-# recorded actions and a few screenshots from its Brief and has exactly one tool.
+# owns everything; no engine sub-agents).
+# Background work: pinned to Haiku (Nova's Muse keeps NOVA_CLAUDE_MODEL). Parity plan Q9.
 executor:
   type: omnigent
+  model: claude-haiku-4-5
   config:
     harness: claude-sdk
 

@@ -137,7 +137,7 @@ derived only from the call's arguments, and a `snippet(output)` — or
 |---|---|---|---|
 | Refresh after quiet period | `OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS` (host) | 43200 (12 h) | 60 |
 | Archive side chats after | `OMNIGENT_SIDE_CHAT_ARCHIVE_AFTER_SECONDS` (server) | 2592000 (30 days) | 60-3600 |
-| Daily Study and weekday Check-in per Conversation | `OMNIGENT_PROACTIVE_PROVISION=1` (server) | on | — |
+| Daily Study per Conversation, plus quiet-moment daily notes | `OMNIGENT_PROACTIVE_PROVISION=1` (server) | on | — |
 | Helpers at once | `OMNIGENT_SUBAGENT_MAX_CONCURRENT` (host) + each type's `max_sessions` | 10 | — |
 | Upkeep model | server `--config` `llm:` block | required for Upkeep | — |
 | Memory search | `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` + its key (server) | `openai/text-embedding-3-small` | — |

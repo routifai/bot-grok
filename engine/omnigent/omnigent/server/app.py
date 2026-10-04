@@ -97,6 +97,7 @@ from omnigent.server.performance_metrics import (
 )
 from omnigent.server.routes.builtin_agents import create_builtin_agents_router
 from omnigent.server.routes.comments import create_comments_router
+from omnigent.server.routes.daily_notes import create_daily_notes_router
 from omnigent.server.routes.default_policies import create_default_policies_router
 from omnigent.server.routes.dictation import create_dictation_router
 from omnigent.server.routes.extension_assets import create_extension_assets_router
@@ -138,6 +139,7 @@ from omnigent.stores.conversation_store import (
     SessionConnectivity,
     runner_seen_is_fresh,
 )
+from omnigent.stores.daily_note_store import SqlAlchemyDailyNoteStore
 from omnigent.stores.host_store import HostStore
 from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
 from omnigent.stores.objective_store import ObjectiveStore
@@ -1762,6 +1764,14 @@ def create_app(
                 app_state=app_inst.state,
             )
             app_inst.state.fire_deps = fire_deps
+            from omnigent.superchat.proactive import provisioning_enabled
+            from omnigent.superchat.quiet_moment import QuietMoment
+
+            note_store = getattr(app_inst.state, "daily_note_store", None)
+            if provisioning_enabled() and note_store is not None:
+                quiet_moment = QuietMoment(deps=fire_deps, note_store=note_store)
+                app_inst.state.quiet_moment = quiet_moment
+                await quiet_moment.start()
             on_fire = build_on_fire(fire_deps)
             # The manual "run now" trigger reuses the same fire path (dispatch /
             # preflight / in-flight guard) as the scheduler; it only differs in
@@ -1833,6 +1843,9 @@ def create_app(
         try:
             yield
         finally:
+            quiet_moment_pass = getattr(app_inst.state, "quiet_moment", None)
+            if quiet_moment_pass is not None:
+                await quiet_moment_pass.shutdown()
             if memory_upkeep_scheduler is not None:
                 await memory_upkeep_scheduler.shutdown()
             await side_chat_archive_sweeper.shutdown()
@@ -3357,6 +3370,20 @@ def create_app(
             ),
             prefix="/v1",
             tags=["suggestions"],
+        )
+        # Daily notes (one per owner per local day) share it as well.
+        daily_note_store = SqlAlchemyDailyNoteStore(scheduled_task_store.storage_location)
+        app.state.daily_note_store = daily_note_store
+        app.include_router(
+            create_daily_notes_router(
+                daily_note_store,
+                scheduled_task_store=scheduled_task_store,
+                conversation_store=conversation_store,
+                permission_store=permission_store,
+                auth_provider=auth_provider,
+            ),
+            prefix="/v1",
+            tags=["daily_notes"],
         )
         # Taught skills share the scheduled-task database too: recordings, their keyframes and
         # the skills drafted from them.

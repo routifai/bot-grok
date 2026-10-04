@@ -179,8 +179,8 @@ def is_generic_title(title: str | None) -> bool:
 def scheduled_display_title(task_name: str) -> str | None:
     """The display title of a scheduled Helper from its (possibly suffixed) task name.
 
-    The standing Study and Check-in tasks read as what they did; any other task
-    (a followed topic, a report) shows its own name. Returns ``None`` when the
+    The standing Study task (and a retired Check-in's old runs) read as what they did; any
+    other task (a followed topic, a report) shows its own name. Returns ``None`` when the
     name is empty or only an id.
     """
     name = _FIRE_SUFFIX.sub("", task_name.strip()).strip()

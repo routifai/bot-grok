@@ -876,7 +876,7 @@ def register_events_routes(
             await asyncio.to_thread(
                 conversation_store.update_conversation, session_id, archived=False
             )
-        # Standing proactive runs (Study, Check-in) are provisioned lazily on
+        # Standing proactive runs (Study) are provisioned lazily on
         # the Super Chat's next user message, so existing chats get them too.
         if (
             body.type == "message"
@@ -885,6 +885,9 @@ def register_events_routes(
             and _is_proactive_super_chat(conv)
         ):
             _schedule_proactive_provisioning(request, session_id)
+            quiet_moment = getattr(request.app.state, "quiet_moment", None)
+            if quiet_moment is not None:
+                quiet_moment.note_user_message(session_id)
         # Validate event type at the route boundary. Anything not in
         # ``_ALLOWED_EVENT_TYPES`` is a client mistake — failing here
         # is far better than silently persisting an item the agent

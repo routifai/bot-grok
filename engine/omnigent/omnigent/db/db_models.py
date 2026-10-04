@@ -1732,6 +1732,45 @@ class SqlSuggestion(OmnigentBase):
     )
 
 
+class SqlDailyNote(OmnigentBase):
+    """
+    SQLAlchemy model for the ``daily_notes`` table.
+
+    One note per owner per local day: what we talked about, decisions, promises and open
+    loops. Written by background passes, editable by the person.
+
+    :param owner: Owner identity (``"local"`` in single-user mode); with the date it is the key.
+    :param note_date: Local calendar day, ``YYYY-MM-DD`` in the owner's timezone.
+    :param sections: JSON object ``{section_key: text}``.
+    :param edited_sections: JSON array of section keys the person has edited (the writer only
+        appends to these, never rewrites them).
+    :param edited_by_person: ``True`` once the person edited any section.
+    :param parent_session_id: The Super Chat the day's passes ran for (no DB foreign key).
+    :param quiet_passes: Quiet-moment passes started for this owner on this day.
+    :param finalized_at: Epoch seconds of the nightly finalizing pass, or ``None``.
+    """
+
+    __tablename__ = "daily_notes"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    note_date: Mapped[str] = mapped_column(String(10), primary_key=True)
+    sections: Mapped[str] = mapped_column(CompressedText, nullable=False)
+    edited_sections: Mapped[str] = mapped_column(String(512), nullable=False, server_default="[]")
+    edited_by_person: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    parent_session_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    quiet_passes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    finalized_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlActivityTitle(OmnigentBase):
     """
     SQLAlchemy model for the ``activity_titles`` table.

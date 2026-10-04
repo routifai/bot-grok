@@ -1,4 +1,4 @@
-"""Tests for the standing proactive runs (Study, Check-in) and their provisioning."""
+"""Tests for the standing proactive runs (Study) and their provisioning."""
 
 from __future__ import annotations
 
@@ -20,12 +20,11 @@ from omnigent.superchat.proactive import (
 def test_desired_tasks_follow_proactivity() -> None:
     normal = {t.name: t for t in desired_tasks("normal")}
     assert normal[STUDY_NAME].rrule == "FREQ=DAILY;BYHOUR=7;BYMINUTE=0"
-    assert normal[CHECKIN_NAME].rrule.startswith("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=16")
+    assert list(normal) == [STUDY_NAME]  # no scheduled Check-in any more
     assert all(t.active for t in normal.values())
 
     low = {t.name: t for t in desired_tasks("low")}
     assert low[STUDY_NAME].active and "FREQ=WEEKLY" in low[STUDY_NAME].rrule
-    assert not low[CHECKIN_NAME].active
 
     assert not any(t.active for t in desired_tasks("off"))
 
@@ -56,15 +55,18 @@ class _FakeServer(ProactiveProvisioner):
             self.tasks.append(task)
             return httpx.Response(200, json=task, request=request)
         task = next(t for t in self.tasks if path.endswith(t["id"]))
+        if method == "DELETE":
+            self.tasks.remove(task)
+            return httpx.Response(204, request=request)
         task.update(body or {})
         return httpx.Response(200, json=task, request=request)
 
 
 @pytest.mark.asyncio
-async def test_ensure_creates_both_tasks_once() -> None:
+async def test_ensure_creates_the_study_once() -> None:
     server = _FakeServer()
     assert await server.ensure("s1", {})
-    assert [t["name"] for t in server.tasks] == [STUDY_NAME, CHECKIN_NAME]
+    assert [t["name"] for t in server.tasks] == [STUDY_NAME]
     assert all(
         t["agent_type"] == "analyst" and t["parent_session_id"] == "s1" for t in server.tasks
     )
@@ -81,7 +83,7 @@ async def test_ensure_is_idempotent_across_restarts() -> None:
     restarted = _FakeServer()
     restarted.tasks = server.tasks
     await restarted.ensure("s1", {})
-    assert len(restarted.tasks) == 2
+    assert len(restarted.tasks) == 1
     assert not [c for c in restarted.calls if c[0] in ("POST", "PATCH")]
 
 
@@ -93,10 +95,18 @@ async def test_level_change_reconciles_existing_tasks() -> None:
     await server.ensure("s1", {})
     by_name = {t["name"]: t for t in server.tasks}
     assert by_name[STUDY_NAME]["rrule"].startswith("FREQ=WEEKLY;BYDAY=MO;BYHOUR=7")
-    assert by_name[CHECKIN_NAME]["state"] == "paused"
     server.prefs["proactivity"] = "off"
     await server.ensure("s1", {})
     assert {t["state"] for t in server.tasks} == {"paused"}
+
+
+@pytest.mark.asyncio
+async def test_existing_checkin_task_is_deleted() -> None:
+    server = _FakeServer()
+    server.tasks = [{"id": "old", "name": CHECKIN_NAME, "state": "active"}]
+    await server.ensure("s1", {})
+    assert [t["name"] for t in server.tasks] == [STUDY_NAME]
+    assert ("DELETE", "/scheduled-tasks/old") in server.calls
 
 
 @pytest.mark.asyncio

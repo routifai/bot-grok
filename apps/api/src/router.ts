@@ -146,7 +146,13 @@ import {
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { implement, ORPCError } from "@orpc/server";
-import { getActivity, getMemoryProfile, listActivities } from "./activities.js";
+import {
+  getActivity,
+  getMemoryProfile,
+  listActivities,
+  listDailyNotes,
+  saveDailyNote,
+} from "./activities.js";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { aiConsentStatus, allowAiConsent } from "./ai-consent.js";
@@ -2369,6 +2375,12 @@ export function createRouter(deps: RouterDeps) {
     memory: {
       profile: museOnly.memory.profile.handler(({ context, input }) =>
         getMemoryProfile(deps, context.actor, input),
+      ),
+      dailyNotes: museOnly.memory.dailyNotes.handler(({ context, input }) =>
+        listDailyNotes(deps, context.actor, input),
+      ),
+      saveDailyNote: museOnly.memory.saveDailyNote.handler(({ context, input }) =>
+        saveDailyNote(deps, context.actor, input),
       ),
     },
     routines: {

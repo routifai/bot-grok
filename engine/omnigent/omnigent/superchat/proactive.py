@@ -1,17 +1,18 @@
-"""Standing proactive runs for a Super Chat: a daily Study and a weekday Check-in.
+"""Standing proactive run for a Super Chat: a daily Study.
 
 When enabled (``OMNIGENT_PROACTIVE_PROVISION=1``) the server makes sure every
-top-level superside-chat session has two Helper-bound scheduled tasks
+top-level superside-chat session has a Helper-bound scheduled task
 (``docs/AUTOMATIONS.md`` "Helper-bound tasks"), on the user's next message:
 
 * **Study** — daily 07:00 local, ``analyst``: reads the Memory Profile and the
   recent conversation, records 1-3 Ideas with ``suggestion_create``, and ends
   with a one-block JSON Result.
-* **Check-in** — weekdays 16:00 local, ``analyst``: says ``Nothing new.`` unless
-  something is pending.
 
-The tasks are reconciled to the owner's proactivity level (``/v1/me/proactivity``):
-``off`` pauses both, ``low`` keeps a weekly Study only, ``normal`` runs both.
+There is no scheduled Check-in any more (the Muse messages first only for real events). A
+"Check-in" task left over on an existing chat is deleted the next time the chat is provisioned.
+
+The task is reconciled to the owner's proactivity level (``/v1/me/proactivity``):
+``off`` pauses it, ``low`` makes the Study weekly, ``normal`` keeps it daily.
 Provisioning is idempotent (tasks are keyed by name under the parent) and goes
 through the ordinary ``/v1/scheduled-tasks`` routes, so validation, ownership
 and the live scheduler are the usual ones. Products opt in via the env flag.
@@ -34,7 +35,9 @@ _logger = logging.getLogger(__name__)
 PROACTIVE_PROVISION_ENV = "OMNIGENT_PROACTIVE_PROVISION"
 AGENT_TYPE = "analyst"
 STUDY_NAME = "Study"
+# Standing tasks provisioned by an earlier version; deleted from existing chats.
 CHECKIN_NAME = "Check-in"
+RETIRED_NAMES = (CHECKIN_NAME,)
 _RETRY_AFTER_FAILURE_S = 600.0
 
 STUDY_PROMPT = """\
@@ -71,23 +74,6 @@ gave; specific enough to act on without follow-up questions).
 only if something is time-sensitive or notable, otherwise an empty string.
 """
 
-CHECKIN_PROMPT = """\
-This is a quiet check-in for the person. You prepare; you do not act, and the person is not \
-here, so never ask questions.
-
-Look for anything that needs their attention now: goals still open and due or stalled, asks \
-they made that were never answered, new findings on topics they follow. Use `memory_search`, \
-`session_history` (`list_chats` for the conversation's id, then `read` it with that `chat_id`) \
-and `suggestion_list`.
-
-If nothing meaningful happened or is pending, reply with exactly: Nothing new.
-
-Otherwise finish with the Result: exactly one fenced JSON block and nothing after it:
-```json
-{"kind": "check_in", "worth_telling": "one or two plain sentences for the person"}
-```
-"""
-
 
 @dataclass(frozen=True)
 class ProactiveTaskSpec:
@@ -107,15 +93,7 @@ def desired_tasks(proactivity: str) -> list[ProactiveTaskSpec]:
         if proactivity == "low"
         else "FREQ=DAILY;BYHOUR=7;BYMINUTE=0"
     )
-    return [
-        ProactiveTaskSpec(STUDY_NAME, study_rrule, STUDY_PROMPT, on),
-        ProactiveTaskSpec(
-            CHECKIN_NAME,
-            "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=16;BYMINUTE=0",
-            CHECKIN_PROMPT,
-            proactivity == "normal",
-        ),
-    ]
+    return [ProactiveTaskSpec(STUDY_NAME, study_rrule, STUDY_PROMPT, on)]
 
 
 def provisioning_enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -170,6 +148,14 @@ class ProactiveProvisioner:
         )
         listed.raise_for_status()
         existing = {t["name"]: t for t in listed.json().get("scheduled_tasks", [])}
+        for name in RETIRED_NAMES:
+            retired = existing.get(name)
+            if retired is not None:
+                gone = await self._call(
+                    headers, "DELETE", f"/scheduled-tasks/{retired['id']}", None
+                )
+                if gone.status_code not in (200, 204, 404):
+                    gone.raise_for_status()
         for spec in desired_tasks(level):
             task = existing.get(spec.name)
             state = "active" if spec.active else "paused"

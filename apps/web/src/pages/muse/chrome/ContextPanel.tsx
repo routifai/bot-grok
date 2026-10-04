@@ -579,7 +579,11 @@ export function ContextPanel({
     [],
   );
   const liveMemoryWire = useMemo<MemoryWire>(
-    () => ({ profile: (input) => rpc.memory.profile(input) }),
+    () => ({
+      profile: (input) => rpc.memory.profile(input),
+      dailyNotes: (input) => rpc.memory.dailyNotes(input),
+      saveDailyNote: (input) => rpc.memory.saveDailyNote(input),
+    }),
     [],
   );
   const activitiesData = activitiesOverride ?? {

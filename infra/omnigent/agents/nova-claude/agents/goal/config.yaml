@@ -8,12 +8,11 @@ description: >-
   progress and reports what changed. Never reshapes the plan on its own.
 
 # Sub-agent Type: goal. Claude Agent SDK, same engine as the Super Chat (ADR 0001: Omnigent
-# owns everything; no engine sub-agents). No model id is pinned here (no-hardcoded-models
-# check) — it runs on whatever Claude provider is configured as the default. Set
-# `executor.model` / `executor.reasoning_effort` on a provider profile or a local override
-# here — never a literal model id in this file.
+# owns everything; no engine sub-agents).
+# Background work: pinned to Haiku (Nova's Muse keeps NOVA_CLAUDE_MODEL). Parity plan Q9.
 executor:
   type: omnigent
+  model: claude-haiku-4-5
   config:
     harness: claude-sdk
 
