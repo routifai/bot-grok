@@ -83,6 +83,8 @@ import {
 } from "./integration-settings.js";
 import {
   AnswerAskInput,
+  ApprovalSpendingSchema,
+  ApprovalStandingRuleSchema,
   AskSchema,
   ChatSummarySchema,
   FeedSchema,
@@ -892,6 +894,19 @@ export const appContract = {
     list: oc.input(z.object({ botId: Id })).output(z.array(AskSchema)),
     count: oc.input(z.object({ botId: Id })).output(z.object({ count: z.number().int() })),
     answer: oc.input(AnswerAskInput).output(z.object({ ok: z.literal(true) })),
+  },
+  /** What the engine may do without asking: standing rules (revocable) and the daily
+   * spending cap. Waiting approvals themselves arrive as `asks`. */
+  approvals: {
+    rules: oc
+      .input(botId)
+      .output(
+        z.object({ rules: z.array(ApprovalStandingRuleSchema), spending: ApprovalSpendingSchema }),
+      ),
+    revoke: oc.input(z.object({ botId: Id, ruleId: Id })).output(z.object({ ok: z.literal(true) })),
+    setSpending: oc
+      .input(z.object({ botId: Id, dailyCapUsd: z.number().min(0).max(1_000_000) }))
+      .output(ApprovalSpendingSchema),
   },
   feed: {
     list: oc.input(z.object({ botId: Id, cursor: z.string().optional() })).output(FeedSchema),

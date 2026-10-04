@@ -176,6 +176,7 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "./engine-approvals.js";
 import {
   engineComputerClient,
   engineComputerRelease,
@@ -4877,6 +4878,17 @@ export function createRouter(deps: RouterDeps) {
       ),
       answer: museOnly.asks.answer.handler(({ context, input }) =>
         answerAsk(deps, engineComputerClient(), context.actor, input),
+      ),
+    },
+    approvals: {
+      rules: museOnly.approvals.rules.handler(({ context, input }) =>
+        listApprovalRules(deps, engineComputerClient(), context.actor, input.botId),
+      ),
+      revoke: museOnly.approvals.revoke.handler(({ context, input }) =>
+        revokeApprovalRule(deps, engineComputerClient(), context.actor, input),
+      ),
+      setSpending: museOnly.approvals.setSpending.handler(({ context, input }) =>
+        setApprovalSpending(deps, engineComputerClient(), context.actor, input),
       ),
     },
     feed: {

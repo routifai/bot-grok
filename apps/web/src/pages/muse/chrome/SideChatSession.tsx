@@ -43,6 +43,8 @@ export type SideChatView = {
     /** Rendered at the bottom of the scrolling column, e.g. a send-failure note. */
     trailing?: ReactNode;
   }>;
+  /** Approvals waiting in this chat (the real app supplies it; fixtures leave it out). */
+  Approvals?: ComponentType<{ botId: string; chatId: string }>;
   Composer: ComponentType<{
     placeholder: string;
     sending: boolean;
@@ -484,9 +486,12 @@ function ExistingSideChat({
           followSignal={followSignal}
           leading={context}
           trailing={
-            failure ? (
-              <SendFailureNote failure={failure} onRetry={() => void send(failure.text)} />
-            ) : null
+            <>
+              {view.Approvals ? <view.Approvals botId={bot.id} chatId={chat.id} /> : null}
+              {failure ? (
+                <SendFailureNote failure={failure} onRetry={() => void send(failure.text)} />
+              ) : null}
+            </>
           }
         />
       </ReplyCardSendProvider>

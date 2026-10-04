@@ -73,6 +73,7 @@ from omnigent.native.native_coding_agents import (
     native_coding_agent_for_harness,
     native_coding_agent_for_wrapper_label,
 )
+from omnigent.policies.builtins.approvals import remember_browser_snapshot
 from omnigent.policies.types import (
     ElicitationRequest,
     EvaluationContext,
@@ -10967,6 +10968,8 @@ async def _handle_mcp_tools_call(
             )
 
     output: str = exec_data.get("result", {}).get("output", "")
+    # A browser result names the page's elements, so a later click can be recognised.
+    remember_browser_snapshot(session_id, namespaced_name, output)
     _logger.debug(
         "MCP tools/call execute: session=%r tool=%r output_len=%d",
         session_id,

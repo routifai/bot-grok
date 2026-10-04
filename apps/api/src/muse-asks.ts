@@ -16,6 +16,7 @@ import {
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
+import { engineAnswerApproval, engineApprovalAsks } from "./engine-approvals.js";
 import { engineAnswerAsk, engineGoalAsks } from "./engine-goals.js";
 
 // Asks list (docs/muse/PLAN.md, decision 5). An Ask is a view over a pending "ask" or
@@ -142,11 +143,12 @@ async function loadAsks(
   actor: Actor,
   botId: string,
 ): Promise<Ask[]> {
-  const [thread, goals] = await Promise.all([
+  const [thread, goals, approvals] = await Promise.all([
     loadThreadAsks(deps.prisma, actor, botId),
     engine ? engineGoalAsks(deps, engine, actor, botId) : [],
+    engine ? engineApprovalAsks(deps, engine, actor, botId) : [],
   ]);
-  return [...thread, ...goals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...thread, ...goals, ...approvals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export const listAsks = loadAsks;
@@ -232,7 +234,10 @@ export async function answerAsk(
     select: { id: true, threadId: true, blocks: true, thread: { select: { botId: true } } },
   });
   if (!message) {
-    const answered = engine ? await engineAnswerAsk(deps, engine, actor, input) : null;
+    const answered = engine
+      ? ((await engineAnswerApproval(deps, engine, actor, input)) ??
+        (await engineAnswerAsk(deps, engine, actor, input)))
+      : null;
     if (!answered) throw new IsolationError();
     return answered;
   }

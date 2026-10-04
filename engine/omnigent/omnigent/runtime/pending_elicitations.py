@@ -40,6 +40,7 @@ Limitations:
 from __future__ import annotations
 
 import copy
+import logging
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -106,6 +107,52 @@ def _notify_count_hook(conversation_id: str, count: int) -> None:
         hook(conversation_id, count)
 
 
+# Optional durable mirror (the approval store): called with the event when a request is
+# tracked and with ``None`` when it is dropped, so a restart does not forget a pending prompt.
+_persist_hook: Callable[[str, str, dict[str, Any] | None], None] | None = None
+
+
+def set_persist_hook(hook: Callable[[str, str, dict[str, Any] | None], None] | None) -> None:
+    """
+    Register (or clear) the durable mirror of the index.
+
+    :param hook: Called as ``hook(conversation_id, elicitation_id, event)`` when a request is
+        tracked and ``hook(conversation_id, elicitation_id, None)`` when it is dropped. Must be
+        cheap; a failure is logged and never breaks publishing.
+    """
+    global _persist_hook
+    _persist_hook = hook
+
+
+def _notify_persist_hook(
+    conversation_id: str, elicitation_id: str, event: dict[str, Any] | None
+) -> None:
+    hook = _persist_hook
+    if hook is None:
+        return
+    try:
+        hook(conversation_id, elicitation_id, event)
+    except Exception:
+        logging.getLogger(__name__).warning("elicitation persist hook failed", exc_info=True)
+
+
+def restore(conversation_id: str, event: dict[str, Any]) -> None:
+    """
+    Put a persisted request back in the index after a restart (no hooks fire).
+
+    :param conversation_id: Session the request was published on.
+    :param event: The stored ``response.elicitation_request`` event.
+    """
+    elicitation_id = event.get("elicitation_id")
+    if not isinstance(elicitation_id, str) or not elicitation_id:
+        return
+    with _lock:
+        ids = _pending.setdefault(conversation_id, {})
+        ids[elicitation_id] = event
+        count = len(ids)
+    _notify_count_hook(conversation_id, count)
+
+
 def record_publish(conversation_id: str, event: dict[str, Any]) -> None:
     """
     Update the index when an SSE event is published.
@@ -152,6 +199,7 @@ def record_publish(conversation_id: str, event: dict[str, Any]) -> None:
             ids[elicitation_id] = event
             count = len(ids)
         _notify_count_hook(conversation_id, count)
+        _notify_persist_hook(conversation_id, elicitation_id, event)
         _notify_observer(conversation_id, event)
         return
     if event_type == "response.elicitation_resolved":
@@ -214,6 +262,7 @@ def resolve(conversation_id: str, elicitation_id: str) -> None:
             _pending.pop(conversation_id, None)
     if removed:
         _notify_count_hook(conversation_id, count)
+        _notify_persist_hook(conversation_id, elicitation_id, None)
 
 
 def count_for(conversation_id: str) -> int:

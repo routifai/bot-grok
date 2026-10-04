@@ -46,7 +46,8 @@ function newestFirst(asks: Ask[]): Ask[] {
  * avatar's badge all read this same hook so answering in one place updates
  * every surface without a second round of state to keep in sync.
  */
-export function useAsks(botId: string): UseAsksResult {
+export function useAsks(botId: string, options: { pollMs?: number } = {}): UseAsksResult {
+  const pollMs = options.pollMs ?? POLL_INTERVAL_MS;
   const [asks, setAsks] = useState<Ask[]>([]);
   const [loading, setLoading] = useState(true);
   const requestId = useRef(0);
@@ -83,14 +84,14 @@ export function useAsks(botId: string): UseAsksResult {
     document.addEventListener("visibilitychange", onVisible);
     const poll = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
-    }, POLL_INTERVAL_MS);
+    }, pollMs);
     return () => {
       window.removeEventListener("focus", onVisible);
       window.removeEventListener(ASKS_CHANGED_EVENT, onChanged);
       document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(poll);
     };
-  }, [botId, refresh]);
+  }, [botId, refresh, pollMs]);
 
   const answer = useCallback(
     async (input: AnswerAskInput) => {

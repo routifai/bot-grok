@@ -2314,3 +2314,92 @@ class SqlMemoryUpkeepRun(OmnigentBase):
             "id",
         ),
     )
+
+
+def _ws_column() -> Mapped[int]:
+    return mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+
+
+class SqlApprovalRule(OmnigentBase):
+    """
+    SQLAlchemy model for the ``approval_rules`` table: a standing rule the person set with
+    "Always allow" on an approval card.
+
+    :param id: UUID primary key (bare 32-char hex string).
+    :param user_id: Owner the rule belongs to.
+    :param category: One of the six risk categories (``send``, ``post``, ``delete``,
+        ``spend``, ``upload``, ``share``).
+    :param target: Case-insensitive pattern (``*`` wildcards) for who/what the rule covers.
+    :param label: Human sentence shown in Settings, e.g. ``"Send emails to my team"``.
+    :param decision: ``allow`` (the only kind the UI creates) or ``deny``.
+    """
+
+    __tablename__ = "approval_rules"
+
+    workspace_id: Mapped[int] = _ws_column()
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
+    target: Mapped[str] = mapped_column(String(256), nullable=False)
+    label: Mapped[str] = mapped_column(String(256), nullable=False, server_default="")
+    decision: Mapped[str] = mapped_column(String(8), nullable=False, server_default="allow")
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("decision IN ('allow', 'deny')", name="ck_approval_rules_decision"),
+        Index("ix_approval_rules_user", "workspace_id", "user_id", "created_at", "id"),
+    )
+
+
+class SqlApprovalSettings(OmnigentBase):
+    """SQLAlchemy model for ``approval_settings``: the owner's daily spending cap in USD."""
+
+    __tablename__ = "approval_settings"
+
+    workspace_id: Mapped[int] = _ws_column()
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    daily_cap_usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SqlApprovalSpend(OmnigentBase):
+    """SQLAlchemy model for ``approval_spend``: USD let through under standing rules today."""
+
+    __tablename__ = "approval_spend"
+
+    workspace_id: Mapped[int] = _ws_column()
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    usd: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+
+
+class SqlApprovalPending(OmnigentBase):
+    """
+    SQLAlchemy model for ``approval_pending``: approval prompts still waiting on the person.
+
+    Persisted so a restart does not forget them; never expires to a yes.
+    """
+
+    __tablename__ = "approval_pending"
+
+    workspace_id: Mapped[int] = _ws_column()
+    elicitation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
+    target: Mapped[str] = mapped_column(String(256), nullable=False, server_default="")
+    summary: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    amount_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    event: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("ix_approval_pending_user", "workspace_id", "user_id", "created_at"),
+        Index("ix_approval_pending_session", "workspace_id", "session_id"),
+    )

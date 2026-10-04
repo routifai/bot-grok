@@ -65,6 +65,7 @@ from omnigent.harness_plugins import (
     native_provider_for_key,
 )
 from omnigent.memory.service import MemoryService
+from omnigent.policies.builtins.approvals import configure_store as configure_approval_store
 from omnigent.resources import examples as _examples_resources
 from omnigent.runtime import (
     get_terminal_registry,
@@ -95,6 +96,7 @@ from omnigent.server.performance_metrics import (
     set_request_session_id_for_access_log,
     set_request_user_agent_for_access_log,
 )
+from omnigent.server.routes.approvals import create_approvals_router, install_pending_persistence
 from omnigent.server.routes.builtin_agents import create_builtin_agents_router
 from omnigent.server.routes.comments import create_comments_router
 from omnigent.server.routes.daily_notes import create_daily_notes_router
@@ -133,6 +135,7 @@ from omnigent.stores import (
     ConversationStore,
     FileStore,
 )
+from omnigent.stores.approval_store import SqlAlchemyApprovalStore
 from omnigent.stores.comment_store import CommentStore
 from omnigent.stores.conversation_store import (
     ConversationNotFoundError,
@@ -3387,6 +3390,23 @@ def create_app(
         )
         # Taught skills share the scheduled-task database too: recordings, their keyframes and
         # the skills drafted from them.
+        # Approvals (standing rules, spending cap, pending prompts) share it too.
+        approval_store = SqlAlchemyApprovalStore(scheduled_task_store.storage_location)
+        app.state.approval_store = approval_store
+        configure_approval_store(approval_store)
+        install_pending_persistence(approval_store)
+        app.include_router(
+            create_approvals_router(
+                approval_store,
+                conversation_store=conversation_store,
+                agent_store=agent_store,
+                runner_router=runner_router,
+                permission_store=permission_store,
+                auth_provider=auth_provider,
+            ),
+            prefix="/v1",
+            tags=["approvals"],
+        )
         taught_skill_store = SqlAlchemyTaughtSkillStore(scheduled_task_store.storage_location)
         app.state.taught_skill_store = taught_skill_store
         app.include_router(

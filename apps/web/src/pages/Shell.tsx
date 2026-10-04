@@ -195,7 +195,7 @@ import { speaker } from "../lib/tts";
 import { SCREEN_DISCONNECTED_MESSAGE } from "../novnc-html";
 import { GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
-import { notifyAsksChanged } from "./muse/asks";
+import { ApprovalCards, notifyAsksChanged } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
 import { EmptyConversation } from "./muse/chrome/EmptyConversation";
@@ -2662,6 +2662,11 @@ export function ShellPage() {
                   speakingMessageId={speakingMessageId}
                   onSpeak={speakMessage}
                   onOpenComputer={onOpenComputer}
+                  trailing={
+                    museMode && active ? (
+                      <ApprovalCards botId={active.id} chatId={null} />
+                    ) : undefined
+                  }
                 />
               )}
               {recordingSkill ? (
@@ -5775,6 +5780,7 @@ const NOT_LIVE_BOT = () => undefined;
  * (SideChatSession.tsx): same bubbles, Muse face, markdown, working row and scrolling, minus
  * what a text-only Side Chat doesn't have (replies, attachments, voice, a computer). */
 export const sideChatView: SideChatView = {
+  Approvals: ApprovalCards,
   Transcript: function SideChatTranscript({
     messages,
     running,

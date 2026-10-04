@@ -23,12 +23,14 @@ from typing import Any
 
 import cachetools
 
+from omnigent.context.labels import is_superside_chat
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.entities import Conversation
 from omnigent.entities import Policy as StoredPolicy
 from omnigent.errors import ErrorCode, OmnigentError, restart_on_stale_cursor
 from omnigent.llms.context_window import fetch_model_pricing_with_provider
 from omnigent.policies.base import Policy
+from omnigent.policies.builtins import approvals as _approvals
 from omnigent.policies.function import resolve_function_policy
 from omnigent.policies.schema import (
     SESSION_COST_ASK_APPROVED_STATE_KEY,
@@ -75,6 +77,35 @@ _ASK_ON_ADD_POLICY_SPEC = FunctionPolicySpec(
         arguments=None,
     ),
 )
+
+# Asks before a Super Chat session sends, posts, deletes, spends, uploads or shares
+# (omnigent.policies.builtins.approvals). Installed only when the server bound an
+# approval store, and only for the Super Chat's tree (side chats, Helpers).
+_APPROVALS_POLICY_SPEC = FunctionPolicySpec(
+    name=_approvals.POLICY_NAME,
+    on=None,
+    function=FunctionRef(
+        path="omnigent.policies.builtins.approvals.muse_approvals",
+        arguments=None,
+    ),
+    ask_timeout=_approvals.ASK_TIMEOUT_SECONDS,
+)
+
+
+def _approvals_apply(conversation: Conversation | None, tree: list[Conversation] | None) -> bool:
+    """Whether the approvals policy covers this conversation (store bound, Muse session)."""
+    if _approvals.get_store() is None:
+        return False
+    if conversation is None:
+        return True
+    if tree is None:
+        # Cheap pre-check: a child may belong to a Super Chat; the engine build decides.
+        return (
+            is_superside_chat(conversation.labels)
+            or conversation.parent_conversation_id is not None
+        )
+    return any(is_superside_chat(row.labels) for row in [conversation, *tree])
+
 
 # Bounded cache of ``conversation_id -> session owner``. The owner
 # (``LEVEL_OWNER`` grantee) is immutable for a session's lifetime, so
@@ -265,6 +296,8 @@ def any_policies_apply(
     if child_spec is not None and child_spec.guardrails and child_spec.guardrails.policies:
         return True
     if default_policies:
+        return True
+    if _approvals_apply(conversation, None):
         return True
     if _load_default_policy_specs(policy_store):
         return True
@@ -458,6 +491,8 @@ def build_policy_engine(
     # no other guardrails are declared (the noop-engine path below
     # is no longer reachable since all_policy_specs is never empty).
     all_policy_specs.append(_ASK_ON_ADD_POLICY_SPEC)
+    if _approvals_apply(conv, tree):
+        all_policy_specs.append(_APPROVALS_POLICY_SPEC)
 
     label_defs = dict((guardrails.labels or {}) if guardrails else {})
     # One conversation read (``conv``, resolved above for policy

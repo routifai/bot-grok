@@ -6,6 +6,7 @@ import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { authClient } from "../../lib/auth";
 import { AvatarStudioPopover } from "../shell/avatar-studio-popover";
+import { ApprovalsSettings } from "./ApprovalsSettings";
 import { resetFirstRun } from "./intro";
 import { ProactivitySettings } from "./ProactivitySettings";
 import { MUSE_INSET_GROUP } from "./ui";
@@ -89,6 +90,8 @@ export function AidenSettingsPanel({
       </div>
 
       <ProactivitySettings botId={bot.id} />
+
+      <ApprovalsSettings botId={bot.id} />
 
       <div className={MUSE_INSET_GROUP}>
         <button

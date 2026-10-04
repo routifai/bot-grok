@@ -60,14 +60,20 @@ export function AskItem({
   const sourceLabel = ask.goalTitle ?? t`Conversation`;
   const metaText = t`From ${sourceLabel} · ${formatRelativeTime(ask.createdAt)}`;
   const Icon = KIND_ICON[ask.kind];
-  const title = ask.kind === "approval" ? t`One yes before I send this` : ask.text;
-  const subtitle =
-    ask.kind === "approval"
+  const engineApproval = ask.approval !== undefined;
+  const title = engineApproval
+    ? ask.text
+    : ask.kind === "approval"
+      ? t`One yes before I send this`
+      : ask.text;
+  const subtitle = engineApproval
+    ? ask.detail
+    : ask.kind === "approval"
       ? ask.text
       : ask.kind === "proposal" || ask.kind === "skill_offer"
         ? ask.detail
         : undefined;
-  const structuredDetail = ask.kind === "approval" ? ask.detail : undefined;
+  const structuredDetail = ask.kind === "approval" && !engineApproval ? ask.detail : undefined;
   const detailRows = structuredDetail ? parseDetailRows(structuredDetail) : null;
 
   async function submit(value: string) {
