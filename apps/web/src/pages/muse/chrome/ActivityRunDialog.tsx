@@ -1,4 +1,5 @@
 import type { Activity, ActivityStep, ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
+import { presentActivityTitle, presentStep } from "@aiden/core";
 import { Button, cn, Dialog, DialogContent } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronRight } from "lucide-react";
@@ -6,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { isHelperActivity } from "./activityGrouping";
 import { MessageRow } from "./SideChatSession";
-import { stepDetailText } from "./stepDetail";
+import { TOOL_ICON_COMPONENT } from "./toolIcons";
 
 /** The Activity run page's wire: full detail (Steps) and, for a Helper, its messages —
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */
@@ -48,58 +49,44 @@ function RunStatusPill({ status, label }: { status: Activity["status"]; label: s
   );
 }
 
-/** One Step's dot on the Steps timeline: breathing only for the latest step of a run
- * still in progress (the motion is the signal, not a color); otherwise a quiet muted
- * dot, matching every other finished step. */
-function StepDot({ live }: { live: boolean }) {
+/** One Step's icon on the Steps timeline: the tool's own icon (never its raw name —
+ * docs/super-chat/README.md "The Activity panel"), gently pulsing only for the latest
+ * step of a run still in progress (the motion is the signal, not a color), respecting
+ * reduced motion via `motion-safe:`. */
+function StepIcon({ icon, live }: { icon: keyof typeof TOOL_ICON_COMPONENT; live: boolean }) {
+  const Icon = TOOL_ICON_COMPONENT[icon];
   return (
     <span
       aria-hidden="true"
-      className="relative z-[1] mt-[3px] flex size-4 shrink-0 items-center justify-center"
+      className="relative z-[1] mt-[2px] flex size-4 shrink-0 items-center justify-center"
     >
-      {live ? (
-        <span className="relative flex size-[9px] items-center justify-center">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-foreground/50 opacity-50 motion-reduce:animate-none" />
-          <span className="relative size-[7px] rounded-full bg-foreground motion-safe:animate-[rkPulse_2.4s_ease-in-out_infinite]" />
-        </span>
-      ) : (
-        <span className="size-1.5 rounded-full bg-muted-foreground/50" />
-      )}
+      <Icon
+        size={14}
+        strokeWidth={1.75}
+        className={cn(
+          "text-muted-foreground",
+          live && "motion-safe:animate-[rkPulse_2.4s_ease-in-out_infinite]",
+        )}
+      />
     </span>
   );
 }
 
-/** One Step on the timeline: a dot connected to its neighbors by a thin rule, a title
- * that wraps instead of truncating, and a time on the right. A Step with `detail` gets a
+/** One Step on the timeline: an icon connected to its neighbors by a thin rule, a title
+ * that wraps instead of truncating, and a time on the right. A Step with a snippet gets a
  * chevron in a fixed-width column before its title (native `<details>`, keyboard
  * reachable for free); a Step without one still reserves that column, so every title
- * starts at the same x whether or not its Step is expandable. */
-function StepDetailBlock({ label, text }: { label: string; text: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[11.5px] text-muted-foreground">{label}</span>
-      <pre
-        className="max-h-56 overflow-auto rounded-lg bg-muted/60 px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/80"
-        style={{ overflowWrap: "anywhere" }}
-        dir="auto"
-      >
-        {text}
-      </pre>
-    </div>
-  );
-}
-
+ * starts at the same x whether or not its Step is expandable. Expanding it shows only a
+ * short snippet of the result — never the full call/result trace, never the tool's name. */
 function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; isLast: boolean }) {
-  const { t } = useLingui();
-  const { input, output } = stepDetailText(step.detail);
-  const hasDetail = input !== null || output !== null;
+  const presented = presentStep(step);
   const title = (
     <span
       className="min-w-0 flex-1 text-[13px] text-foreground"
       style={{ overflowWrap: "anywhere" }}
       dir="auto"
     >
-      {step.title}
+      {presented.title}
     </span>
   );
   const time = (
@@ -108,10 +95,10 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
     </time>
   );
 
-  if (!hasDetail) {
+  if (presented.snippet === null) {
     return (
       <li className={cn("relative flex gap-3", !isLast && "pb-4")}>
-        <StepDot live={live} />
+        <StepIcon icon={presented.icon} live={live} />
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <span aria-hidden="true" className="w-4 shrink-0" />
           {title}
@@ -122,7 +109,7 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
   }
   return (
     <li className={cn("relative flex gap-3", !isLast && "pb-4")}>
-      <StepDot live={live} />
+      <StepIcon icon={presented.icon} live={live} />
       <details className="group min-w-0 flex-1">
         <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
           <span aria-hidden="true" className="flex w-4 shrink-0 items-center justify-center pt-0.5">
@@ -135,10 +122,12 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
           {title}
           {time}
         </summary>
-        <div className="mt-2 ml-6 flex flex-col gap-2">
-          {input !== null ? <StepDetailBlock label={t`Input`} text={input} /> : null}
-          {output !== null ? <StepDetailBlock label={t`Output`} text={output} /> : null}
-        </div>
+        <p
+          className="mt-2 ml-6 line-clamp-3 text-[12.5px] leading-relaxed text-muted-foreground"
+          dir="auto"
+        >
+          {presented.snippet}
+        </p>
       </details>
     </li>
   );
@@ -292,12 +281,12 @@ export function ActivityRunDialog({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent
         className="grid max-h-[80vh] w-full max-w-[920px] grid-rows-[auto_1fr] gap-0 overflow-hidden p-0 sm:max-w-[920px]"
-        aria-label={activity.title}
+        aria-label={presentActivityTitle(activity.title)}
       >
         <div className="border-b border-border px-6 py-5 pe-12">
           <RunStatusPill status={activity.status} label={statusLabel} />
           <h3 className="mt-2.5 text-[18px] font-semibold text-foreground" dir="auto">
-            {activity.title}
+            {presentActivityTitle(activity.title)}
           </h3>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
             {formatRelativeTime(activity.startedAt)}

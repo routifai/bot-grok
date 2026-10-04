@@ -3,7 +3,9 @@ import type { Activity, ActivityStep, ThreadMessage } from "@aiden/contracts";
 // Fixture data for /dev/activity (ActivityPreviewPage.tsx): the Activity panel on in-memory
 // data, so the panel's grouping, live line, and run page can be reviewed without the
 // Omnigent backend (`activities.*` isn't served by the local dev API). Same reasoning as
-// /dev/side-chats (side-chat-fixture.ts).
+// /dev/side-chats (side-chat-fixture.ts). Steps use real engine tool names and realistic
+// payloads (engine/omnigent/omnigent/tools/builtins/) so the icon + title + snippet registry
+// (packages/core/src/tool-presentation.ts) has something true to life to present.
 
 const now = Date.now();
 const minutesAgo = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
@@ -34,6 +36,97 @@ export const DEV_MEMORY_PROFILE = [
 const HELPER_STARTED = minutesAgo(4);
 const HELPER_CHAT_ID = "helper-1";
 
+/** A tool call's detail in the engine's own shape (engine/omnigent/omnigent/tools/builtins/
+ * spawn.py `_project_activity_item`/`_step_detail`): the call's JSON-encoded arguments
+ * string, and the result's raw output string (often itself JSON-encoded). */
+function toolDetail(tool: string, args: Record<string, unknown>, content: string) {
+  return {
+    call: { role: "assistant", type: "tool_call", name: tool, args: JSON.stringify(args) },
+    result: { role: "tool", type: "tool_result", name: tool, content },
+  };
+}
+
+const HELPER_STEPS: ActivityStep[] = [
+  {
+    itemId: "step-1",
+    title: "Searched memory for 'Q3 budget totals'",
+    createdAt: minutesAgo(4),
+    tool: "memory_search",
+    detail: toolDetail(
+      "memory_search",
+      { query: "Q3 budget totals" },
+      JSON.stringify({
+        results: [{ claim_id: "c1", text: "Dana owns the Q3 budget review", kind: "fact" }],
+      }),
+    ),
+  },
+  {
+    itemId: "step-2",
+    title: "Sent a message to sub-agent 'Q3 budget check'",
+    createdAt: minutesAgo(1),
+    tool: "sys_session_send",
+    detail: toolDetail(
+      "sys_session_send",
+      {
+        agent: "analyst",
+        title: "Q3 budget check",
+        args: "Compare the Q3 ledger against the budget sheet.",
+      },
+      JSON.stringify({
+        task_id: "task_1",
+        kind: "sub_agent",
+        agent: "analyst",
+        title: "Q3 budget check",
+        conversation_id: HELPER_CHAT_ID,
+        status: "in_progress",
+        message: "Dispatched; result will arrive in the inbox.",
+      }),
+    ),
+  },
+];
+
+const DONE_TURN_STEPS: ActivityStep[] = [
+  {
+    itemId: "step-a",
+    title: "Read earlier messages",
+    createdAt: minutesAgo(40),
+    tool: "session_history",
+    detail: toolDetail(
+      "session_history",
+      { action: "read" },
+      JSON.stringify({
+        turns: [
+          { messages: [{ role: "user", type: "text", content: "What did we decide last week?" }] },
+        ],
+        next_cursor: null,
+      }),
+    ),
+  },
+  {
+    itemId: "step-b",
+    title: "Used web_search",
+    createdAt: minutesAgo(39),
+    tool: "web_search",
+    detail: toolDetail(
+      "web_search",
+      { query: "phone-first slide deck design tips" },
+      [
+        "Short decks read best as single points per slide.",
+        "",
+        "1. Designing decks for phones\n   https://blog.example.com/phone-decks\n   One idea per slide, large type.",
+        "2. Steering review best practices\n   https://www.investopedia.com/steering-review\n   Keep it to one page per topic.",
+      ].join("\n"),
+    ),
+  },
+  {
+    itemId: "step-c",
+    title: "Drafted 4 slides sized for a phone screen",
+    createdAt: minutesAgo(38),
+    tool: "write_file",
+    detail: toolDetail("write_file", { file: "steering-review.pdf" }, "Saved steering-review.pdf"),
+  },
+];
+
 export const INITIAL_ACTIVITIES: Activity[] = [
   {
     id: "act-helper-running",
@@ -45,6 +138,9 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     startedAt: HELPER_STARTED,
     finishedAt: null,
     date: dateOf(HELPER_STARTED),
+    // Present on the list summary too (not just `activities.get`) so the row's live line
+    // can show the latest Step's icon + title while this Activity is still in progress.
+    steps: HELPER_STEPS,
   },
   {
     id: "act-turn-drafted",
@@ -116,40 +212,6 @@ export const EARLIER_ACTIVITIES: Activity[] = [
     startedAt: daysAgo(12),
     finishedAt: daysAgo(12),
     date: dateOf(daysAgo(12)),
-  },
-];
-
-const HELPER_STEPS: ActivityStep[] = [
-  {
-    itemId: "step-1",
-    title: "Opened budget.xlsx and the ledger export",
-    createdAt: minutesAgo(4),
-    tool: "read_file",
-    detail: null,
-  },
-  {
-    itemId: "step-2",
-    title: "Matched 61 of 84 line items",
-    createdAt: minutesAgo(1),
-    tool: "compare",
-    detail: { matched: "61", total: "84", differs: "0" },
-  },
-];
-
-const DONE_TURN_STEPS: ActivityStep[] = [
-  {
-    itemId: "step-a",
-    title: "Read last week's thread and the risk register",
-    createdAt: minutesAgo(40),
-    tool: "session_history",
-    detail: null,
-  },
-  {
-    itemId: "step-b",
-    title: "Drafted 4 slides sized for a phone screen",
-    createdAt: minutesAgo(38),
-    tool: "write_file",
-    detail: { file: "steering-review.pdf" },
   },
 ];
 

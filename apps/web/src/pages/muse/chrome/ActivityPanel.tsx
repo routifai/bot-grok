@@ -1,4 +1,5 @@
 import type { Activity, ActivityStatus } from "@aiden/contracts";
+import { presentActivityTitle, presentStep } from "@aiden/core";
 import { Button, cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useState } from "react";
@@ -11,6 +12,7 @@ import {
   isHelperActivity,
 } from "./activityGrouping";
 import { PanelRowSkeletonList } from "./PanelSkeleton";
+import { TOOL_ICON_COMPONENT } from "./toolIcons";
 import type { ActivitiesState } from "./useActivities";
 
 /** The breathing dot / check / mark / muted dash on an Activity's line
@@ -67,6 +69,11 @@ function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => v
     failed: t`Didn't finish`,
     cancelled: t`Cancelled`,
   });
+  // While in progress, the latest Step's icon + plain-language title (never its raw tool
+  // name) stands in for the plain status/outcome line, when the engine has sent one yet.
+  const latestStep = live ? activity.steps?.at(-1) : undefined;
+  const presented = latestStep ? presentStep(latestStep) : null;
+  const StepIcon = presented ? TOOL_ICON_COMPONENT[presented.icon] : null;
   return (
     <button
       type="button"
@@ -78,7 +85,7 @@ function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => v
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate text-[14px] font-medium text-foreground" dir="auto">
-            {activity.title}
+            {presentActivityTitle(activity.title)}
           </span>
           {isHelperActivity(activity) ? (
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-[1px] text-[10.5px] font-medium text-muted-foreground">
@@ -88,14 +95,22 @@ function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => v
         </span>
         <span
           className={cn(
-            "block truncate text-[13px]",
+            "flex min-w-0 items-center gap-1 text-[13px]",
             live && "text-foreground/80",
             activity.status === "failed" && "text-foreground",
             !live && activity.status !== "failed" && "text-muted-foreground",
           )}
           aria-live={live ? "polite" : undefined}
         >
-          {line}
+          {StepIcon ? (
+            <StepIcon
+              size={12}
+              strokeWidth={2}
+              className="shrink-0 text-muted-foreground/70"
+              aria-hidden="true"
+            />
+          ) : null}
+          <span className="truncate">{presented ? presented.title : line}</span>
         </span>
       </span>
       <time className="shrink-0 pt-0.5 text-[12px] whitespace-nowrap text-muted-foreground">

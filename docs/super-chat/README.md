@@ -117,6 +117,19 @@ one-line outcome, a status, a time, and **Steps** in plain words ("Searched
 memory for 'Q4'", "Launched a helper to check totals"). The panel lists them
 newest first, grouped by day; opening one shows its Steps.
 
+A Step never shows the tool's raw name — only an icon, a plain-language
+title, and (when there's something worth showing) a short snippet of the
+result, never the full call/result trace. All three come from one registry,
+`TOOL_PRESENTATION` in `packages/core/src/tool-presentation.ts`.
+
+**How to register a tool**: when a tool is added to Nova's agent bundle
+(`infra/omnigent/agents/nova-claude/`) or the engine's always-on
+superside-chat tools (`ALWAYS_ON_SUPERSIDE_CHAT_TOOLS`, same file), add an
+entry to `TOOL_PRESENTATION` with an icon (`ToolIconKey`), a `title(args)`
+derived only from the call's arguments, and a `snippet(output)` — or
+`tool-presentation.completeness.test.ts` fails the build. Map any new
+`ToolIconKey` to a lucide icon in `apps/web/src/pages/muse/chrome/toolIcons.ts`.
+
 ## Settings
 
 | What | Where | Production | For testing |
