@@ -137,7 +137,7 @@ In order, each depending on the one before:
 1. **Postgres** — the engine server's store.
 2. **Build the computer image** — `docker build -t aiden/computer:local -f infra/sandboxes/computer/Dockerfile .` (repo root context; also `pnpm sandbox:build`). The supervisor does **not** auto-build this image — if it's missing, `POST /computers` fails with this exact command in the error.
 3. **Nova's sandbox supervisor** (`infra/sandboxes/supervisor`) — needs the Docker socket.
-4. **The Omnigent server**, configured with the `sandbox:` block above and the required env from the previous section.
+4. **The Omnigent server**, configured with the `sandbox:` block above and the required env from the previous section. Install the engine with the `memory` extra (`uv sync --extra memory ...`); without it the memory routes are not mounted and the Muse's memory tools fail with "not configured". On macOS the memory stack also needs `KMP_DUPLICATE_LIB_OK=TRUE` in the server's environment.
 5. **Nova's own `apps/api`, `apps/worker`, `apps/web`** — talk to the Omnigent server through the gateway.
 
 ## Known gaps
