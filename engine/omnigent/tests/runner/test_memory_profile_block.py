@@ -70,3 +70,22 @@ def test_preserves_other_body_fields() -> None:
     result = _apply_memory_profile_to_body(body, _BLOCK)
     assert result["model"] == "test-model"
     assert result["instructions"] == "be nice"
+
+
+def test_prepends_to_latest_user_message_in_a_history_with_tool_items() -> None:
+    """With tool items in history the tail still lands on the last user turn."""
+    history = [
+        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "a"}]},
+        {"type": "function_call", "call_id": "c1", "name": "t", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "c1", "output": "ok"},
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "r"}],
+        },
+        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "time?"}]},
+    ]
+    result = _apply_memory_profile_to_body({"content": history}, _BLOCK)["content"]
+    assert len(result) == len(history)
+    assert result[-1]["content"][0]["text"] == f"{_BLOCK}\n\ntime?"
+    assert result[0] == history[0]

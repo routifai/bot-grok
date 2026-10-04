@@ -1382,6 +1382,9 @@ def _prefix_blocks_with_tail(blocks: object, prefix: str) -> object:
     return blocks
 
 
+_FLAT_BLOCK_TYPES = frozenset({"input_text", "text", "input_image", "input_file"})
+
+
 def _prefix_content_with_tail(content: object, tail: str) -> object:
     """Prepend *tail* to a turn's outgoing *content*, matching its shape.
 
@@ -1400,10 +1403,18 @@ def _prefix_content_with_tail(content: object, tail: str) -> object:
     :returns: *content* with *tail* prepended, never mutating the input.
     """
     prefix = f"{tail}\n\n"
+    # History interleaves ``function_call`` / ``function_call_output`` /
+    # ``reasoning`` items with messages once a turn used tools, so "history"
+    # means every item is a typed Responses item and at least one is a message.
+    # A flat block list (``input_text`` ...) has no ``message`` item.
     is_history = (
         isinstance(content, list)
-        and content
-        and all(isinstance(item, dict) and item.get("type") == "message" for item in content)
+        and bool(content)
+        and all(
+            isinstance(item, dict) and item.get("type") not in _FLAT_BLOCK_TYPES
+            for item in content
+        )
+        and any(item.get("type") == "message" for item in content)
     )
     if not is_history:
         return _prefix_blocks_with_tail(content, prefix)
