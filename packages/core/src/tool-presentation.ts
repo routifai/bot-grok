@@ -241,12 +241,22 @@ function capitalize(text: string): string {
 /** Engine plumbing a snippet must never show: tool names and system notices. */
 const PLUMBING = /\[System:|\bsys_[a-z_]+|\b__[a-z_]+/;
 
-/** A sub-agent Activity title ("agent: title") in plain words. */
+/** An id-looking token: 6+ hex chars, optionally with separators ("91af03c2", "web_fetch_91af"). */
+const ID_LIKE = /^(?:[a-z_-]+[_-])?[0-9a-f]{6,}(?:[_-][0-9a-f]+)*$/i;
+
+/** The engine's own title for a Conversation turn that carried no message of its own. */
+const CONVERSATION_TITLE = /^nova conversation$/i;
+
+/** An Activity title in plain words: a Helper's "agent: topic" shows just the topic (the
+ * Helper pill says who), falling back to the Helper's name when the topic is only an id;
+ * the Conversation's own untitled turns read "Conversation". */
 export function presentActivityTitle(title: string): string {
+  if (CONVERSATION_TITLE.test(title.trim())) return "Conversation";
   const match = /^([a-z_]+): (.+)$/i.exec(title);
   if (!match) return title;
   const [, agent = "", rest = ""] = match;
-  return agent.startsWith("__web") ? "Web research" : `${capitalize(helperName(agent))}: ${rest}`;
+  if (agent.startsWith("__web")) return "Web research";
+  return ID_LIKE.test(rest.trim()) ? capitalize(helperName(agent)) : rest;
 }
 
 function fileTitle(verb: string, args: Record<string, unknown>): string {
@@ -365,7 +375,9 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     icon: "helper",
     title: (args) => {
       const name = args.name;
-      return isNonEmptyString(name) ? `Set up following '${name.trim()}'` : "Set up a followed topic";
+      return isNonEmptyString(name)
+        ? `Set up following '${name.trim()}'`
+        : "Set up a followed topic";
     },
     snippet: () => null,
   },

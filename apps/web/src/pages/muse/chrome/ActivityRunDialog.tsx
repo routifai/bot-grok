@@ -1,3 +1,4 @@
+import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { Activity, ActivityStep, ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
 import { presentActivityTitle, presentStep } from "@aiden/core";
 import { Button, cn, Dialog, DialogContent } from "@aiden/ui-web";
@@ -306,16 +307,18 @@ export function ActivityRunDialog({
             />
           ) : (
             <>
-              <div className="border-b border-border px-6 py-5 min-[900px]:border-b-0 min-[900px]:border-e">
+              <div className="min-h-0 overflow-y-auto border-b border-border px-6 py-5 min-[900px]:border-b-0 min-[900px]:border-e">
                 <h4 className="text-[12.5px] font-semibold text-muted-foreground">{t`Outcome`}</h4>
                 <div className="mt-1.5 flex items-start justify-between gap-4">
                   {outcome ? (
-                    <p
-                      className="min-w-0 flex-1 text-[15px] leading-[1.55] text-foreground"
+                    <div
+                      // The engine hands Outcome over as one flattened line, so a leading "#"
+                      // would turn the whole text into a heading; keep headings at body size.
+                      className="min-w-0 flex-1 text-[15px] leading-[1.55] text-foreground [&_:is(h1,h2,h3,h4,h5,h6)]:my-0! [&_:is(h1,h2,h3,h4,h5,h6)]:text-[1em]! [&_:is(h1,h2,h3,h4,h5,h6)]:font-normal! [&_:is(h1,h2,h3,h4,h5,h6)]:leading-[inherit]!"
                       dir="auto"
                     >
-                      {outcome}
-                    </p>
+                      <ChatMarkdown>{outcome}</ChatMarkdown>
+                    </div>
                   ) : (
                     <span className="flex-1" />
                   )}

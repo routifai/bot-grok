@@ -1,4 +1,5 @@
 import type { Activity, ActivityStatus } from "@aiden/contracts";
+import { markdownToLine } from "../../../lib/markdown-plain-text";
 
 // Pure helpers for the Activity panel (docs/super-chat/README.md "The Activity panel";
 // docs/super-chat/WIRING.md "Activity panel"): grouping by day, the status→mark mapping, the
@@ -45,7 +46,7 @@ export function activityLineText(
   activity: Pick<Activity, "status" | "outcome">,
   labels: Record<ActivityStatus, string>,
 ): string {
-  return activity.outcome ?? labels[activity.status];
+  return (activity.outcome && markdownToLine(activity.outcome)) || labels[activity.status];
 }
 
 function dateKey(date: Date): string {

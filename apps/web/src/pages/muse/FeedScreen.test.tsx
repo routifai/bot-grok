@@ -277,3 +277,25 @@ it("labels a followed topic with its own cadence", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+it("hides the example Feed once a topic is followed, and shows it only when truly empty", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.asks.list.mockResolvedValue([]);
+  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
+  api.topics.list.mockResolvedValue([topic({ id: "topic-1", topic: "Moroccan design" })]);
+  const followed = await renderFeed();
+  try {
+    expect(followed.container.textContent).toContain("Moroccan design");
+    expect(followed.container.textContent).not.toContain("what a morning with me looks like");
+  } finally {
+    await followed.cleanup();
+  }
+  api.topics.list.mockResolvedValue([]);
+  const empty = await renderFeed();
+  try {
+    expect(empty.container.textContent).toContain("what a morning with me looks like");
+  } finally {
+    await empty.cleanup();
+    vi.unstubAllGlobals();
+  }
+});

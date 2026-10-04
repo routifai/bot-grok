@@ -94,7 +94,12 @@ export function FeedScreen(props: {
     setTopics((current) => current?.filter((candidate) => candidate.id !== topic.id) ?? current);
   }
 
-  const empty = posts !== null && posts.length === 0 && asks.length === 0;
+  const empty =
+    posts !== null &&
+    posts.length === 0 &&
+    asks.length === 0 &&
+    topics !== null &&
+    topics.length === 0;
 
   const topicsSection = (
     <section>

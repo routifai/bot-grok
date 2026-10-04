@@ -74,6 +74,15 @@ it("shows the outcome when there is one, even while in progress (the engine's cu
   expect(activityLineText({ status: "done", outcome: "Ties out." }, LABELS)).toBe("Ties out.");
 });
 
+it("strips markdown from the outcome line", () => {
+  expect(
+    activityLineText(
+      { status: "done", outcome: "## AI Agent Launches\n\n**Major launches:**" },
+      LABELS,
+    ),
+  ).toBe("AI Agent Launches Major launches:");
+});
+
 it("falls back to a plain status word when there is no outcome yet", () => {
   expect(activityLineText({ status: "in_progress", outcome: null }, LABELS)).toBe("Working");
   expect(activityLineText({ status: "failed", outcome: null }, LABELS)).toBe("Didn't finish");

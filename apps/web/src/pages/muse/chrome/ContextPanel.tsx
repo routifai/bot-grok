@@ -12,6 +12,7 @@ import {
   Fingerprint,
   HelpCircle,
   List,
+  ScrollText,
   ShieldCheck,
   Sparkles,
   Target,
@@ -427,7 +428,7 @@ const PANEL_TABS: { id: PanelTab; icon: LucideIcon; label: () => string }[] = [
   // Asks, in-progress Goals, and upcoming Check-ins — already working, so it keeps a tab
   // here rather than losing its spot. A permissions tab (shield icon) and a scheduled-work
   // tab (clock icon) belong here too, once there's something real behind them.
-  { id: "context", icon: Sparkles, label: () => t`Context` },
+  { id: "context", icon: ScrollText, label: () => t`Context` },
 ];
 
 /** The segmented icon tab bar: one rounded pill track, the selected segment raised on a
