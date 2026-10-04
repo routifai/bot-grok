@@ -2714,7 +2714,9 @@ async def _execute_subagent_tool(
     if session_inbox is not None:
         _runner_app._session_inboxes_ref.setdefault(conversation_id, session_inbox)
     elif conversation_id not in _runner_app._session_inboxes_ref:
-        return "Error: sys_session_send requires parent session inbox"
+        # A session resumed on a fresh runner via a plain message forward never ran
+        # this runner's session init, so its inbox is created here on first use.
+        _runner_app._session_inboxes_ref[conversation_id] = asyncio.Queue()
 
     try:
         model = _subagent_model_from_args(args)
