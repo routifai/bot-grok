@@ -832,6 +832,36 @@ export const appContract = {
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
   },
+  files: {
+    list: oc.input(z.object({ botId: Id, path: z.string().max(1024).default("") })).output(
+      z.object({
+        entries: z.array(
+          z.object({
+            name: z.string(),
+            path: z.string(),
+            type: z.enum(["file", "directory"]),
+            size: z.number().int().nullable(),
+            modifiedAt: z.number().int(),
+          }),
+        ),
+      }),
+    ),
+    read: oc.input(z.object({ botId: Id, path: z.string().min(1).max(1024) })).output(
+      z.object({
+        path: z.string(),
+        name: z.string(),
+        mimeType: z.string(),
+        size: z.number().int(),
+        /** Over the preview cap, or not text-like and not previewable: no content sent. */
+        tooLarge: z.boolean(),
+        binary: z.boolean(),
+        contentBase64: z.string().nullable(),
+      }),
+    ),
+    saveToLibrary: oc
+      .input(z.object({ botId: Id, path: z.string().min(1).max(1024) }))
+      .output(ArtifactSchema),
+  },
   usage: {
     list: oc.output(z.array(UsageRecordSchema)),
     summary: oc.output(

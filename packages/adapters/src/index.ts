@@ -63,6 +63,7 @@ export * from "./omnigent/artifacts.js";
 export * from "./omnigent/chats.js";
 export * from "./omnigent/client.js";
 export * from "./omnigent/env.js";
+export * from "./omnigent/files.js";
 export * from "./omnigent/gateway.js";
 export * from "./omnigent/mirror.js";
 export * from "./omnigent/redact.js";

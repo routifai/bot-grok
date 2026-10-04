@@ -199,6 +199,7 @@ import {
   engineListTopics,
   engineRemoveTopic,
 } from "./engine-feed.js";
+import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "./engine-files.js";
 import {
   engineAcceptProposal,
   engineDismissProposal,
@@ -611,6 +612,7 @@ export function createRouter(deps: RouterDeps) {
   const museIdeasDeps: MuseIdeasDeps = { prisma: deps.prisma };
   const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma };
   const engineArtifactsDeps: EngineArtifactsDeps = { prisma: deps.prisma };
+  const engineFilesDeps = { prisma: deps.prisma };
   const engineIdeasDeps: EngineIdeasDeps = {
     prisma: deps.prisma,
     // "Do it" sends the Idea's message the same way a typed follow-up does.
@@ -4565,6 +4567,23 @@ export function createRouter(deps: RouterDeps) {
           update: { enabled: input.enabled },
         });
         return loadAutoReviewSettings(deps, context.actor);
+      }),
+    },
+    files: {
+      list: authed.files.list.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (!engine) return { entries: [] };
+        return engineListFiles(engineFilesDeps, engine, context.actor, input);
+      }),
+      read: authed.files.read.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
+        return engineReadFile(engineFilesDeps, engine, context.actor, input);
+      }),
+      saveToLibrary: authed.files.saveToLibrary.handler(async ({ context, input }) => {
+        const engine = engineComputerClient();
+        if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
+        return engineSaveFileToLibrary(engineFilesDeps, engine, context.actor, input);
       }),
     },
     artifacts: {

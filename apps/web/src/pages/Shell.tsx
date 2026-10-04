@@ -214,6 +214,9 @@ import {
 import { useChatList } from "./muse/chrome/useChatList";
 import { type MuseLiveRun, useMuseLiveState } from "./muse/chrome/useMuseLiveState";
 import { FeedScreen } from "./muse/FeedScreen";
+import { ComputerViewSwitch } from "./muse/files/ComputerViewSwitch";
+import { FilesTab } from "./muse/files/FilesTab";
+import { useComputerView } from "./muse/files/useComputerView";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { IdeasScreen } from "./muse/IdeasScreen";
 import { FirstRunHint, markFirstRunSeen } from "./muse/intro";
@@ -1462,6 +1465,14 @@ export function ShellPage() {
   );
   const transcriptRunning = workingRuns.length > 0;
   const composerRunning = currentRuns.some((run) => isActive(run.status));
+  const [computerView, setComputerView] = useComputerView();
+  // Bumps each time a turn finishes, so the Files view follows the Muse's work.
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0);
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !composerRunning) setFilesRefreshKey((key) => key + 1);
+    wasRunningRef.current = composerRunning;
+  }, [composerRunning]);
   const runError = threadRunError(activeSnapshot, dismissedRunErrorIds);
   const displayedRunError = !sendError ? runError : null;
   const displayedRunErrorId = displayedRunError ? (activeSnapshot?.run?.id ?? null) : null;
@@ -2810,7 +2821,10 @@ export function ShellPage() {
                     )}
                   </span>
                 )}
-                <div className="flex gap-1">
+                <div className="flex items-center gap-1">
+                  {museMode && active && panel === "computer" ? (
+                    <ComputerViewSwitch value={computerView} onChange={setComputerView} />
+                  ) : null}
                   {active &&
                   panel === "computer" &&
                   !computerOpen &&
@@ -2847,121 +2861,128 @@ export function ShellPage() {
             ) : null}
             {panel === "computer" && active ? (
               <div>
-                <div
-                  data-testid="computer-preview"
-                  className={cn(
-                    "group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-background",
-                    museMode && "rounded-xl border border-border bg-muted shadow-sm",
-                  )}
-                >
-                  {computerOpen ? (
-                    <div className="grid h-full place-items-center text-sm text-muted-foreground/80">
-                      <Trans>Open in full window</Trans>
-                    </div>
-                  ) : computer?.kind === "desktop" ? (
-                    <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80" />
-                  ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
-                    <iframe
-                      key={`preview-${screenReloadKey}`}
-                      data-computer-screen=""
-                      title={t`Bot screen preview`}
-                      src={embeddedScreenUrl}
-                      sandbox={screenIframeSandbox(embeddedScreenUrl)}
-                      className="h-full w-full border-0 bg-black"
-                      allow="clipboard-read; clipboard-write"
-                      style={{ pointerEvents: "none" }}
-                    />
-                  ) : (
-                    <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80">
-                      {computerScreenError ??
-                        (computersAreUnavailable(bootstrapMe?.sandboxProvider) ? (
-                          <ComputersUnavailableHint />
-                        ) : (
-                          computerPlaceholder(
-                            computer?.state,
-                            booting,
-                            computerLabel(computer?.mode, active.name),
-                          )
-                        ))}
-                    </div>
-                  )}
-                  {!computerScreenError ? (
-                    <button
-                      type="button"
-                      data-testid="computer-preview-open"
-                      className="absolute inset-0 flex cursor-pointer items-center justify-center bg-overlay/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                      aria-label={t`Open`}
-                      onClick={() => void openComputer()}
-                    >
-                      <span className="inline-flex items-center gap-2 rounded-full bg-overlay px-3.5 py-2 text-[14px] text-foreground shadow-md">
-                        <Maximize2 size={15} strokeWidth={1.9} aria-hidden />
-                        <Trans>Open</Trans>
-                      </span>
-                    </button>
-                  ) : null}
-                </div>
-                {museMode ? (
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <p className="truncate text-[14px] text-muted-foreground" dir="auto">
-                      {t`Watch ${active.name} work`}
-                    </p>
+                {museMode && computerView === "files" ? (
+                  <FilesTab botId={active.id} refreshKey={filesRefreshKey} />
+                ) : null}
+                <div className={museMode && computerView === "files" ? "hidden" : undefined}>
+                  <div
+                    data-testid="computer-preview"
+                    className={cn(
+                      "group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-background",
+                      museMode && "rounded-xl border border-border bg-muted shadow-sm",
+                    )}
+                  >
+                    {computerOpen ? (
+                      <div className="grid h-full place-items-center text-sm text-muted-foreground/80">
+                        <Trans>Open in full window</Trans>
+                      </div>
+                    ) : computer?.kind === "desktop" ? (
+                      <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80" />
+                    ) : computer?.state === "running" &&
+                      embeddedScreenUrl &&
+                      !computerScreenError ? (
+                      <iframe
+                        key={`preview-${screenReloadKey}`}
+                        data-computer-screen=""
+                        title={t`Bot screen preview`}
+                        src={embeddedScreenUrl}
+                        sandbox={screenIframeSandbox(embeddedScreenUrl)}
+                        className="h-full w-full border-0 bg-black"
+                        allow="clipboard-read; clipboard-write"
+                        style={{ pointerEvents: "none" }}
+                      />
+                    ) : (
+                      <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80">
+                        {computerScreenError ??
+                          (computersAreUnavailable(bootstrapMe?.sandboxProvider) ? (
+                            <ComputersUnavailableHint />
+                          ) : (
+                            computerPlaceholder(
+                              computer?.state,
+                              booting,
+                              computerLabel(computer?.mode, active.name),
+                            )
+                          ))}
+                      </div>
+                    )}
                     {!computerScreenError ? (
-                      <Button size="sm" variant="outline" onClick={() => void openComputer()}>
-                        <Maximize2 size={14} strokeWidth={1.9} aria-hidden />
-                        <Trans>Open</Trans>
-                      </Button>
+                      <button
+                        type="button"
+                        data-testid="computer-preview-open"
+                        className="absolute inset-0 flex cursor-pointer items-center justify-center bg-overlay/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                        aria-label={t`Open`}
+                        onClick={() => void openComputer()}
+                      >
+                        <span className="inline-flex items-center gap-2 rounded-full bg-overlay px-3.5 py-2 text-[14px] text-foreground shadow-md">
+                          <Maximize2 size={15} strokeWidth={1.9} aria-hidden />
+                          <Trans>Open</Trans>
+                        </span>
+                      </button>
                     ) : null}
                   </div>
-                ) : (
-                  <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
-                    {t`${active.name}'s screen`}
-                  </p>
-                )}
-                {museMode ? (
-                  // Under the preview, never over it.
-                  <FirstRunHint
-                    variant="inline"
-                    hintKey="computer-panel"
-                    className="mt-3"
-                    text={t`Take over anytime.`}
-                  />
-                ) : null}
-                {museMode ? (
-                  <div className="mt-8 border-t border-border pt-2" aria-hidden="true" />
-                ) : null}
-                <RoutineListHeader
-                  onCreate={() => {
-                    setRoutineDraft(emptyRoutineDraft());
-                    setRoutineWebhookSecret(null);
-                    setEditingRoutine(null);
-                    setRoutineError(null);
-                    setPanel("routine");
-                  }}
-                />
-                {activeRoutines.length === 0 ? (
-                  <p className="text-[13.5px] text-muted-foreground">
-                    <Trans>Nothing scheduled yet.</Trans>
-                  </p>
-                ) : null}
-                {activeRoutines.map((routine) => {
-                  const routineRunning =
-                    snapshot?.run?.routineId === routine.id && isActive(snapshot.run.status);
-                  return (
-                    <RoutineListRow
-                      key={routine.id}
-                      routine={routine}
-                      running={routineRunning}
-                      onOpen={() => {
-                        setRoutineDraft(draftFromRoutine(routine));
-                        setRoutineWebhookSecret(null);
-                        setEditingRoutine(routine);
-                        setRoutineError(null);
-                        setPanel("routine");
-                      }}
-                      onStop={() => void stopRun()}
+                  {museMode ? (
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <p className="truncate text-[14px] text-muted-foreground" dir="auto">
+                        {t`Watch ${active.name} work`}
+                      </p>
+                      {!computerScreenError ? (
+                        <Button size="sm" variant="outline" onClick={() => void openComputer()}>
+                          <Maximize2 size={14} strokeWidth={1.9} aria-hidden />
+                          <Trans>Open</Trans>
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
+                      {t`${active.name}'s screen`}
+                    </p>
+                  )}
+                  {museMode ? (
+                    // Under the preview, never over it.
+                    <FirstRunHint
+                      variant="inline"
+                      hintKey="computer-panel"
+                      className="mt-3"
+                      text={t`Take over anytime.`}
                     />
-                  );
-                })}
+                  ) : null}
+                  {museMode ? (
+                    <div className="mt-8 border-t border-border pt-2" aria-hidden="true" />
+                  ) : null}
+                  <RoutineListHeader
+                    onCreate={() => {
+                      setRoutineDraft(emptyRoutineDraft());
+                      setRoutineWebhookSecret(null);
+                      setEditingRoutine(null);
+                      setRoutineError(null);
+                      setPanel("routine");
+                    }}
+                  />
+                  {activeRoutines.length === 0 ? (
+                    <p className="text-[13.5px] text-muted-foreground">
+                      <Trans>Nothing scheduled yet.</Trans>
+                    </p>
+                  ) : null}
+                  {activeRoutines.map((routine) => {
+                    const routineRunning =
+                      snapshot?.run?.routineId === routine.id && isActive(snapshot.run.status);
+                    return (
+                      <RoutineListRow
+                        key={routine.id}
+                        routine={routine}
+                        running={routineRunning}
+                        onOpen={() => {
+                          setRoutineDraft(draftFromRoutine(routine));
+                          setRoutineWebhookSecret(null);
+                          setEditingRoutine(routine);
+                          setRoutineError(null);
+                          setPanel("routine");
+                        }}
+                        onStop={() => void stopRun()}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             ) : null}
             {panel === "group-settings" && activeGroup ? (
