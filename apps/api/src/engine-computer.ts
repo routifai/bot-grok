@@ -35,7 +35,7 @@ export function engineComputerClient(
 }
 
 async function resolve(
-  deps: EngineComputerDeps,
+  deps: Pick<EngineComputerDeps, "prisma">,
   client: OmnigentClientConfig,
   actor: Actor,
   botId: string,
@@ -113,7 +113,7 @@ export async function engineComputerScreenUrl(
 }
 
 export async function engineComputerTakeover(
-  deps: EngineComputerDeps,
+  deps: Pick<EngineComputerDeps, "prisma">,
   client: OmnigentClientConfig,
   actor: Actor,
   botId: string,
@@ -130,7 +130,7 @@ export async function engineComputerTakeover(
 }
 
 export async function engineComputerRelease(
-  deps: EngineComputerDeps,
+  deps: Pick<EngineComputerDeps, "prisma">,
   client: OmnigentClientConfig,
   actor: Actor,
   botId: string,

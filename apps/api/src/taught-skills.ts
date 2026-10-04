@@ -42,6 +42,7 @@ import {
   taughtSkillToSkillMd,
   teachRecordingTtlMs,
 } from "@aiden/core";
+import { ENGINE_COMPUTER_ID } from "@aiden/core/node/screen-capability";
 import {
   type createRepos,
   expireComputerExecutionLeases,
@@ -51,6 +52,11 @@ import {
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
+import {
+  engineComputerClient,
+  engineComputerRelease,
+  engineComputerTakeover,
+} from "./engine-computer.js";
 
 type TaughtSkillRow = {
   id: string;
@@ -293,8 +299,40 @@ async function updateSkillDraftMessage(
   }
 }
 
+/** Teaching on the engine's Computer holds engine control (ADR 0004), not a Nova lease row. */
+function isEngineTeaching(recording: unknown): boolean {
+  return parseRecording(recording).controlLeaseId === ENGINE_COMPUTER_ID;
+}
+
+async function releaseEngineTeachingControl(deps: TaughtSkillsDeps, actor: Actor, botId: string) {
+  const client = engineComputerClient();
+  if (!client) return;
+  await engineComputerRelease(deps, client, actor, botId).catch((error) => {
+    getLogger().error("teaching engine control release", error);
+  });
+}
+
 export async function expireTeachingSessionIfNeeded(deps: TaughtSkillsDeps, skillId: string) {
-  return expireTaughtSkillTeaching(deps, skillId);
+  const before = await deps.prisma.taughtSkill.findUnique({
+    where: { id: skillId },
+    select: { status: true },
+  });
+  const row = await expireTaughtSkillTeaching(deps, skillId);
+  // Hand engine control back only when this call ended the recording (the worker's expiry knows
+  // Nova leases only); a later person-initiated Take over must not be released by a poll.
+  if (
+    before?.status === "recording" &&
+    row &&
+    row.status !== "recording" &&
+    isEngineTeaching(row.recording)
+  ) {
+    await releaseEngineTeachingControl(
+      deps,
+      { spaceId: row.spaceId, userId: row.userId } as Actor,
+      row.botId,
+    );
+  }
+  return row;
 }
 
 export async function stopTeachingSession(
@@ -306,6 +344,10 @@ export async function stopTeachingSession(
   await expireTeachingSessionIfNeeded(deps, skillId);
   const current = await deps.prisma.taughtSkill.findUniqueOrThrow({ where: { id: skillId } });
   if (current.status === "draft" || current.status === "saved") {
+    if (isEngineTeaching(current.recording)) {
+      await releaseEngineTeachingControl(deps, actor, current.botId);
+      return mapTaughtSkill(current);
+    }
     await releaseTeachingComputerControlForBot(
       deps,
       actor,
@@ -322,11 +364,13 @@ export async function stopTeachingSession(
     include: { thread: true, computer: true },
   });
   if (!bot) throw new IsolationError();
+  const onEngine = isEngineTeaching(current.recording);
   const stopSnapshot =
-    current.status === "recording" && bot.computer?.providerRef
+    current.status === "recording" && bot.computer?.providerRef && !onEngine
       ? await observeStopSnapshot(deps, actor, bot)
       : undefined;
   const finalized = await completeTeachingSession(deps, actor, skillId, "stopped", stopSnapshot);
+  if (onEngine) await releaseEngineTeachingControl(deps, actor, current.botId);
   await deps.jobs.cancel(skillTeachingExpireJobKey(current.id));
   return mapTaughtSkill(finalized);
 }
@@ -386,10 +430,15 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
         throw new ORPCError("CONFLICT", { message: "A teaching session is already active" });
       }
       await cancelActiveRuns(deps, actor, botId);
-      bot = await ensureGraphicalComputer(deps, actor, bot);
+      const engine = engineComputerClient();
+      if (!engine) bot = await ensureGraphicalComputer(deps, actor, bot);
       const startedAt = new Date();
       const expiresAt = new Date(startedAt.getTime() + teachRecordingTtlMs());
-      const { leaseId } = await grantTakeover(deps, actor, bot, expiresAt);
+      // On the engine the Computer, its container and who controls it are the engine's: take
+      // over there so the stream is interactive, never through Nova's (stale) Computer row.
+      const { leaseId } = engine
+        ? await engineComputerTakeover(deps, engine, actor, botId)
+        : await grantTakeover(deps, actor, bot, expiresAt);
       let row: TaughtSkillRow;
       try {
         row = await deps.prisma.$transaction(async (tx) => {
@@ -426,7 +475,7 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
         throw error;
       }
       await deps.jobs.enqueue(skillTeachingExpireJob(row.id, expiresAt));
-      const withSnapshot = await captureTeachingSnapshot(deps, actor, bot, row);
+      const withSnapshot = engine ? row : await captureTeachingSnapshot(deps, actor, bot, row);
       if (bot.thread) {
         await deps.events.append({
           spaceId: actor.spaceId,
@@ -469,6 +518,8 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
         include: { computer: true },
       });
       if (!bot) throw new IsolationError();
+      // Nova has no sandbox handle on the engine's Computer to observe.
+      if (isEngineTeaching(current.recording)) return mapTaughtSkill(current);
       const updated = await captureTeachingSnapshot(deps, actor, bot, current);
       return mapTaughtSkill(updated);
     },
@@ -582,12 +633,16 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
       const skill = await getOwnedSkill(deps, actor, skillId);
       if (skill.status === "recording") {
         await deps.jobs.cancel(skillTeachingExpireJobKey(skill.id));
-        await releaseTeachingComputerControlForBot(
-          deps,
-          actor,
-          skill.botId,
-          parseRecording(skill.recording).controlLeaseId,
-        );
+        if (isEngineTeaching(skill.recording)) {
+          await releaseEngineTeachingControl(deps, actor, skill.botId);
+        } else {
+          await releaseTeachingComputerControlForBot(
+            deps,
+            actor,
+            skill.botId,
+            parseRecording(skill.recording).controlLeaseId,
+          );
+        }
       }
       await deps.prisma.taughtSkill.delete({ where: { id: skill.id } });
       return { ok: true as const };

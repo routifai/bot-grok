@@ -294,6 +294,9 @@ function voiceStatusRefreshTimeout(): Promise<never> {
   });
 }
 
+// Mirrors ENGINE_COMPUTER_ID (core/node): teaching on the engine records it as the control lease.
+const ENGINE_TEACH_LEASE = "engine";
+
 export function ShellPage() {
   const { t } = useLingui();
   const { botId, groupId } = useParams();
@@ -2322,6 +2325,9 @@ export function ShellPage() {
 
   const embeddedScreenUrl = embeddableScreenUrl(screenUrl);
   const hasControl = userHoldsComputerControl(computer, computerBot?.id);
+  // On the engine the person demonstrates straight into the interactive stream (the engine holds
+  // control); Nova's capture overlay would sit on top of it and swallow every click and key.
+  const teachesOnEngine = recordingSkill?.recording.controlLeaseId === ENGINE_TEACH_LEASE;
   const hideScreenLoadError = computerErrorFromScreen && Boolean(embeddedScreenUrl);
   const computerScreenError =
     computerError && !hideScreenLoadError ? (
@@ -3416,10 +3422,11 @@ export function ShellPage() {
                     className="h-full w-full border-0 bg-black"
                     allow="clipboard-read; clipboard-write; fullscreen"
                     style={{
-                      pointerEvents: recordingSkill || !hasControl ? "none" : "auto",
+                      pointerEvents:
+                        (recordingSkill && !teachesOnEngine) || !hasControl ? "none" : "auto",
                     }}
                   />
-                  {computerBot ? (
+                  {computerBot && !teachesOnEngine ? (
                     <TeachCaptureOverlay
                       botId={computerBot.id}
                       skill={recordingSkill}
