@@ -84,7 +84,7 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
       <div className="flex flex-col gap-4" data-testid="memory-panel">
         {claims.length === 0 ? (
           <p
-            className="py-8 text-center text-[13.5px] text-muted-foreground"
+            className="py-8 text-center text-[13px] text-muted-foreground"
             data-testid="memory-empty"
           >
             {t`Nothing remembered yet.`}
@@ -105,7 +105,7 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
     return (
       <div className="flex flex-col gap-4">
         <p
-          className="py-8 text-center text-[13.5px] text-muted-foreground"
+          className="py-8 text-center text-[13px] text-muted-foreground"
           data-testid="memory-empty"
         >
           {t`Nothing remembered yet.`}

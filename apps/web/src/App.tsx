@@ -14,6 +14,7 @@ import {
 } from "./lib/session-gate";
 import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
+import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
 import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { IntegrationSetupPage } from "./pages/IntegrationSetup";
 import { LocalSettingsPage } from "./pages/LocalSettings";
@@ -52,6 +53,9 @@ export function App() {
   // reasoning — `activities.*` isn't served by the local dev API either.
   if (import.meta.env.DEV && window.location.pathname === "/dev/activity") {
     return <ActivityPreviewPage />;
+  }
+  if (import.meta.env.DEV && window.location.pathname === "/dev/memory") {
+    return <MemoryPreviewPage />;
   }
   return <SessionApp />;
 }

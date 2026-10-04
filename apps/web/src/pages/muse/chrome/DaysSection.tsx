@@ -1,5 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { useCallback, useEffect, useState } from "react";
+import { MemorySection } from "./MemorySection";
 
 export type DailyNote = {
   date: string;
@@ -67,13 +68,16 @@ function Day({
 
   const filled = DAY_SECTION_KEYS.filter((key) => (note.sections[key] ?? "").trim() !== "");
   return (
-    <li className="rounded-xl border border-border/60 px-3 py-2" data-testid="day-note">
+    <li
+      className="group/day rounded-lg px-3 py-1.5 hover:bg-muted/60 focus-within:bg-muted/60"
+      data-testid="day-note"
+    >
       <div className="flex items-baseline justify-between gap-2">
-        <h4 className="text-[13px] font-semibold text-foreground">{note.date}</h4>
+        <h4 className="text-[14px] leading-5 font-medium text-foreground">{note.date}</h4>
         {draft ? null : (
           <button
             type="button"
-            className="text-[12px] text-muted-foreground hover:text-foreground"
+            className="text-[12px] text-muted-foreground opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/day:opacity-100 [@media(hover:none)]:opacity-100"
             onClick={() => setDraft({ ...note.sections })}
           >
             {t`Edit`}
@@ -84,9 +88,11 @@ function Day({
         <div className="mt-2 flex flex-col gap-2">
           {DAY_SECTION_KEYS.map((key) => (
             <label key={key} className="flex flex-col gap-1">
-              <span className="text-[12px] font-medium text-muted-foreground">{titles[key]}</span>
+              <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                {titles[key]}
+              </span>
               <textarea
-                className="min-h-16 rounded-lg border border-border bg-background px-2 py-1 text-[13px] leading-[1.5]"
+                className="min-h-16 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[14px] leading-5 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 dir="auto"
                 value={draft[key] ?? ""}
                 onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
@@ -96,7 +102,7 @@ function Day({
           {failed ? (
             <p className="text-[12px] text-destructive">{t`Could not save this day`}</p>
           ) : null}
-          <div className="flex gap-3 text-[12.5px]">
+          <div className="flex gap-3 text-[13px]">
             <button type="button" disabled={saving} onClick={() => void save()}>
               {t`Save`}
             </button>
@@ -111,13 +117,15 @@ function Day({
           </div>
         </div>
       ) : filled.length === 0 ? (
-        <p className="mt-1 text-[12.5px] text-muted-foreground">{t`Nothing noted yet.`}</p>
+        <p className="text-[12px] leading-4 text-muted-foreground">{t`Nothing noted yet.`}</p>
       ) : (
-        <div className="mt-1 flex flex-col gap-1.5">
+        <div className="mt-0.5 flex flex-col gap-1.5">
           {filled.map((key) => (
             <div key={key}>
-              <p className="text-[12px] font-medium text-muted-foreground">{titles[key]}</p>
-              <p className="whitespace-pre-line text-[13.5px] leading-[1.5]" dir="auto">
+              <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                {titles[key]}
+              </p>
+              <p className="whitespace-pre-line text-[14px] leading-5" dir="auto">
                 {note.sections[key]}
               </p>
             </div>
@@ -157,13 +165,14 @@ export function DaysSection({ botId, wire }: { botId: string; wire: DaysWire }) 
 
   if (notes.length === 0) return null;
   return (
-    <section className="flex flex-col gap-1" data-testid="memory-days">
-      <h3 className="px-1 text-[12.5px] font-semibold text-muted-foreground">{t`Days`}</h3>
-      <ul className="flex flex-col gap-1.5">
-        {notes.map((note) => (
-          <Day key={note.date} botId={botId} note={note} wire={wire} onSaved={replace} />
-        ))}
-      </ul>
-    </section>
+    <div className="-mx-3" data-testid="memory-days">
+      <MemorySection id="days" title={t`Days`} count={notes.length}>
+        <ul className="flex flex-col">
+          {notes.map((note) => (
+            <Day key={note.date} botId={botId} note={note} wire={wire} onSaved={replace} />
+          ))}
+        </ul>
+      </MemorySection>
+    </div>
   );
 }

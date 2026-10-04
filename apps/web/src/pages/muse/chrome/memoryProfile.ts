@@ -105,3 +105,177 @@ function addressMidSentence(item: string): string {
     .replace(/\bthe user was\b/gi, "you were")
     .replace(/\bthe user\b/gi, "you");
 }
+
+// ---- Short display labels (display-only: the stored text is never touched) ----
+
+const MODALS = new Set([
+  "will",
+  "would",
+  "can",
+  "could",
+  "should",
+  "must",
+  "may",
+  "might",
+  "shall",
+]);
+const SUBJECT_ANY = /^(?:you|the user|the person|user|person)\b\s*/i;
+const POSSESSIVE_ANY = /^(?:your|the user[’']s|user[’']s|the person[’']s|person[’']s)\s+/i;
+
+const capitalize = (text: string) => (text ? text.charAt(0).toUpperCase() + text.slice(1) : text);
+
+function thirdPerson(verb: string): string {
+  const lower = verb.toLowerCase();
+  if (MODALS.has(lower) || lower.endsWith("s") || lower.endsWith("ed")) return lower;
+  if (/(ch|sh|ss|x|z|o)$/.test(lower)) return `${lower}es`;
+  if (/[^aeiou]y$/.test(lower)) return `${lower.slice(0, -1)}ies`;
+  return `${lower}s`;
+}
+
+const tidy = (text: string) =>
+  text
+    .replace(/\s+/g, " ")
+    .replace(/[\s.;]+$/, "")
+    .trim();
+
+/**
+ * A short, scannable label for one memory item: drops the leading "You / The user / The
+ * person" subject, turns "Your X is Y" into "X: Y", trims the trailing period. Never invents
+ * words; anything it doesn't recognise falls back to the second-person text, only tidied.
+ */
+export function memoryLabel(item: string): string {
+  const text = tidy(item);
+  if (!text) return "";
+
+  const possessive = POSSESSIVE_ANY.exec(text);
+  if (possessive) {
+    const rest = text.slice(possessive[0].length);
+    const match = /^(.{1,40}?)\s+(?:is|are)\s+(.+)$/i.exec(rest);
+    if (match && (match[1] ?? "").split(" ").length <= 4) {
+      return `${capitalize(match[1] ?? "")}: ${match[2]}`;
+    }
+    return capitalize(rest);
+  }
+
+  const subject = SUBJECT_ANY.exec(text);
+  if (!subject || /^(?:users?|persons?)name\b/i.test(text)) return tidy(addressMemoryItem(text));
+  const isYou = /^you/i.test(subject[0]);
+  const rest = text.slice(subject[0].length);
+
+  const be = /^(?:(?:are|is|am|was|were)\s+|[’']re\s+)(?:currently\s+)?(.+)$/i.exec(rest);
+  if (be) return capitalize((be[1] ?? "").replace(/^(?:an?|the)\s+(?=\S+\s)/i, ""));
+
+  const negated = /^(?:don|doesn)[’']t\s+(.+)$/i.exec(rest);
+  if (negated) return `Doesn't ${negated[1]}`;
+
+  const verb = /^([A-Za-z]+)\s+(.+)$/.exec(rest);
+  if (verb) {
+    const converted = /^(?:have|has)$/i.test(verb[1] ?? "")
+      ? "has"
+      : isYou
+        ? thirdPerson(verb[1] ?? "")
+        : (verb[1] ?? "").toLowerCase();
+    return capitalize(`${converted} ${verb[2]}`);
+  }
+  return capitalize(rest) || text;
+}
+
+/** "Needs to resolve whether …" → "Resolve whether …" (an open question reads as the task). */
+export function questionLabel(item: string): string {
+  const label = memoryLabel(item);
+  return capitalize(label.replace(/^needs?\s+to\s+/i, ""));
+}
+
+/** A claim that is an open question rather than something settled. */
+export function isOpenQuestion(item: string): boolean {
+  const text = item.trim();
+  return (
+    text.endsWith("?") ||
+    /\b(?:needs? to (?:resolve|decide|figure out|confirm|determine)|open question|unresolved|still deciding|yet to be decided|to be decided|tbd)\b/i.test(
+      text,
+    )
+  );
+}
+
+/** A commitment reads as the action: "Will send X" → "Send X", "Promised to review X" → "Review X". */
+export function commitmentLabel(item: string): string {
+  return capitalize(
+    memoryLabel(item).replace(
+      /^(?:will|would|promised to|promises to|plans to|needs to|wants to)\s+/i,
+      "",
+    ),
+  );
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DUE_DATE =
+  /(?:\s*\b(?:by|on|before|due|until)\s+)?\b(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?\s+)?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?/i;
+
+export interface DueDate {
+  /** "Wed, Oct 8". */
+  label: string;
+  overdue: boolean;
+}
+
+/** Pulls a calendar date ("by Wed, Oct 8", "due Oct 1") out of a commitment's text. */
+export function parseDue(
+  text: string,
+  now: Date = new Date(),
+): { text: string; due: DueDate | null } {
+  const match = DUE_DATE.exec(text);
+  if (!match) return { text, due: null };
+  const month = MONTHS.findIndex((m) => m.toLowerCase() === (match[1] ?? "").toLowerCase());
+  const day = Number(match[2]);
+  const year = match[3] ? Number(match[3]) : now.getFullYear();
+  const date = new Date(year, month, day);
+  if (date.getMonth() !== month) return { text, due: null };
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const stripped = `${text.slice(0, match.index)}${text.slice(match.index + match[0].length)}`
+    .replace(/\s+([.,;])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  return {
+    text: stripped,
+    due: {
+      label: `${WEEKDAYS[date.getDay()]}, ${MONTHS[month]} ${day}`,
+      overdue: date.getTime() < today.getTime(),
+    },
+  };
+}
+
+export interface PersonMemory {
+  name: string;
+  relation: string | null;
+  facts: string | null;
+}
+
+/** "Dana Okafor is your manager; owns the Q3 review." → name, relation, one line of facts. */
+export function parsePerson(item: string): PersonMemory {
+  const text = tidy(addressMemoryItem(item));
+  const isName = (name: string) => name.length > 0 && name.split(" ").length <= 4;
+  const relational =
+    /^(.+?)\s+(?:is|are)\s+(?:your|the user[’']s)\s+([^;,—–]+?)\s*(?:[;,—–]\s*(.+))?$/i.exec(text);
+  if (relational && isName(relational[1] ?? "")) {
+    return {
+      name: relational[1] ?? "",
+      relation: relational[2] ?? null,
+      facts: relational[3]
+        ? capitalize(relational[3].replace(/^she\s+|^he\s+|^they\s+/i, ""))
+        : null,
+    };
+  }
+  const bracketed = /^(.+?)\s*\(([^)]+)\)\s*[:—–,;]?\s*(.*)$/.exec(text);
+  if (bracketed && isName(bracketed[1] ?? "")) {
+    return {
+      name: bracketed[1] ?? "",
+      relation: bracketed[2] ?? null,
+      facts: capitalize(bracketed[3] ?? "") || null,
+    };
+  }
+  const dashed = /^(.+?)\s*[:—–]\s*(.+)$/.exec(text);
+  if (dashed && isName(dashed[1] ?? "")) {
+    return { name: dashed[1] ?? "", relation: null, facts: capitalize(dashed[2] ?? "") };
+  }
+  return { name: text, relation: null, facts: null };
+}

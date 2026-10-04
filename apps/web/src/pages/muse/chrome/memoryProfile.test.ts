@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { addressMemoryItem, parseMemoryProfile } from "./memoryProfile";
+import {
+  addressMemoryItem,
+  commitmentLabel,
+  isOpenQuestion,
+  memoryLabel,
+  parseDue,
+  parseMemoryProfile,
+  parsePerson,
+  questionLabel,
+} from "./memoryProfile";
 
 const SAMPLE = [
   "[Standing memory about the user — provided by the system, not a message from the user]",
@@ -69,5 +78,91 @@ describe("addressMemoryItem", () => {
     ],
   ])("%s", (input, expected) => {
     expect(addressMemoryItem(input)).toBe(expected);
+  });
+});
+
+describe("memoryLabel", () => {
+  it.each([
+    [
+      "You prefer short bullet answers when planning.",
+      "Prefers short bullet answers when planning",
+    ],
+    ["Your favourite fruit is mango.", "Favourite fruit: mango"],
+    ["The user's team is Platform.", "Team: Platform"],
+    ["The user prefers phone-first slide decks.", "Prefers phone-first slide decks"],
+    [
+      "The user is a relationship manager at a retail bank.",
+      "Relationship manager at a retail bank",
+    ],
+    ["You're focused on agent safety.", "Focused on agent safety"],
+    ["You have two direct reports.", "Has two direct reports"],
+    ["The user doesn't like long emails.", "Doesn't like long emails"],
+    ["You watch the markets daily.", "Watches the markets daily"],
+    ["User wants weekly reports.", "Wants weekly reports"],
+    ["The person needs to resolve whether X.", "Needs to resolve whether X"],
+    ["Lives in Toronto.", "Lives in Toronto"],
+    ["The username is sam.", "The username is sam"],
+  ])("%s", (input, expected) => {
+    expect(memoryLabel(input)).toBe(expected);
+  });
+
+  it("is deterministic and never empty for non-empty input", () => {
+    expect(memoryLabel("You")).toBe("You");
+    expect(memoryLabel("  ")).toBe("");
+  });
+});
+
+describe("questions and commitments", () => {
+  it("spots open questions", () => {
+    expect(isOpenQuestion("Should the KPI summary go to leads?")).toBe(true);
+    expect(isOpenQuestion("The person needs to resolve whether A or B.")).toBe(true);
+    expect(isOpenQuestion("You decided to start with two branches.")).toBe(false);
+  });
+
+  it("labels a question as the task", () => {
+    expect(questionLabel("The person needs to resolve whether A or B.")).toBe(
+      "Resolve whether A or B",
+    );
+  });
+
+  it("labels a commitment as the action", () => {
+    expect(commitmentLabel("You will send Dana the deck.")).toBe("Send Dana the deck");
+    expect(commitmentLabel("You promised to review the pack.")).toBe("Review the pack");
+  });
+});
+
+describe("parseDue", () => {
+  const now = new Date(2026, 9, 4, 12);
+  it("extracts an upcoming date and strips it from the text", () => {
+    expect(parseDue("You will send Dana the deck by Thu, Oct 8.", now)).toEqual({
+      text: "You will send Dana the deck.",
+      due: { label: "Thu, Oct 8", overdue: false },
+    });
+  });
+  it("marks a past date overdue", () => {
+    expect(parseDue("Review the pack due Oct 1", now).due).toEqual({
+      label: "Thu, Oct 1",
+      overdue: true,
+    });
+  });
+  it("today is not overdue; no date means no chip", () => {
+    expect(parseDue("Call back on Oct 4", now).due?.overdue).toBe(false);
+    expect(parseDue("Book a follow-up", now)).toEqual({ text: "Book a follow-up", due: null });
+  });
+});
+
+describe("parsePerson", () => {
+  it("splits name, relation and facts", () => {
+    expect(parsePerson("Dana Okafor is your manager; she owns the Q3 review.")).toEqual({
+      name: "Dana Okafor",
+      relation: "manager",
+      facts: "Owns the Q3 review",
+    });
+    expect(parsePerson("Maya Chen (Platform lead): runs the pilot.")).toEqual({
+      name: "Maya Chen",
+      relation: "Platform lead",
+      facts: "Runs the pilot",
+    });
+    expect(parsePerson("Maya")).toEqual({ name: "Maya", relation: null, facts: null });
   });
 });

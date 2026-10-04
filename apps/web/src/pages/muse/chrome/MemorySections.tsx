@@ -1,6 +1,28 @@
+import {
+  Checkbox,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Input,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import { useState } from "react";
-import { addressMemoryItem } from "./memoryProfile";
+import { MoreHorizontal, Pencil, Quote, Search, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { MemoryEmptyLine, MemorySection } from "./MemorySection";
+import {
+  commitmentLabel,
+  isOpenQuestion,
+  memoryLabel,
+  type PersonMemory,
+  parseDue,
+  parsePerson,
+  questionLabel,
+} from "./memoryProfile";
 
 export type MemoryClaim = {
   id: string;
@@ -9,6 +31,8 @@ export type MemoryClaim = {
   origin: "said" | "edited" | "noticed";
   personAuthored: boolean;
   date: number;
+  /** The person's own words this came from, when the engine kept them. */
+  quote?: string;
 };
 
 /** The Memory tab's claim wire: `rpc.memory.claims` / `editClaim` / `forgetClaim`. */
@@ -27,25 +51,76 @@ export const MEMORY_SECTIONS = [
   { id: "working", kinds: ["working_style"] },
 ] as const;
 
-export type SectionId = (typeof MEMORY_SECTIONS)[number]["id"];
+export type SectionId = (typeof MEMORY_SECTIONS)[number]["id"] | "questions";
 
+/** Reading order of every group; open questions sit right after Projects & focus. */
+const GROUP_ORDER: SectionId[] = [
+  "about",
+  "commitments",
+  "projects",
+  "questions",
+  "people",
+  "working",
+];
+
+/** Open questions (a project claim that is a question, or "needs to resolve …") get their own
+ * group, shown right after Projects & focus. Empty groups are dropped. */
 export function groupClaims(
   claims: MemoryClaim[],
 ): Array<{ id: SectionId; claims: MemoryClaim[] }> {
-  return MEMORY_SECTIONS.map((section) => ({
-    id: section.id,
-    claims: claims.filter((claim) => (section.kinds as readonly string[]).includes(claim.kind)),
-  })).filter((section) => section.claims.length > 0);
+  const groups: Array<{ id: SectionId; claims: MemoryClaim[] }> = [];
+  for (const section of MEMORY_SECTIONS) {
+    const inSection = claims.filter((claim) =>
+      (section.kinds as readonly string[]).includes(claim.kind),
+    );
+    if (section.id === "projects") {
+      groups.push({ id: "projects", claims: inSection.filter((c) => !isOpenQuestion(c.text)) });
+      groups.push({ id: "questions", claims: inSection.filter((c) => isOpenQuestion(c.text)) });
+    } else {
+      groups.push({ id: section.id, claims: inSection });
+    }
+  }
+  return groups.filter((group) => group.claims.length > 0);
 }
+
+const UNDO_MS = 4000;
+
+const initials = (name: string) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join("");
+
+function shapeOf(sectionId: SectionId, text: string) {
+  if (sectionId === "commitments") {
+    const { text: rest, due } = parseDue(text);
+    return { title: commitmentLabel(rest), due, person: null as PersonMemory | null };
+  }
+  if (sectionId === "questions") {
+    return { title: questionLabel(text), due: null, person: null as PersonMemory | null };
+  }
+  if (sectionId === "people") {
+    const person = parsePerson(text);
+    return { title: person.name, due: null, person };
+  }
+  return { title: memoryLabel(text), due: null, person: null as PersonMemory | null };
+}
+
+const iconButton =
+  "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-background data-popup-open:text-foreground";
 
 function Claim({
   botId,
+  sectionId,
   claim,
   wire,
   onChanged,
   onRemoved,
 }: {
   botId: string;
+  sectionId: SectionId;
   claim: MemoryClaim;
   wire: ClaimsWire;
   onChanged: (claim: MemoryClaim) => void;
@@ -53,15 +128,56 @@ function Claim({
 }) {
   const { t } = useLingui();
   const [draft, setDraft] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Ticking a commitment or forgetting any memory waits a few seconds so it can be undone.
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const timer = useRef<number | undefined>(undefined);
+  const latest = useRef({ onRemoved, claimId: claim.id });
+  latest.current = { onRemoved, claimId: claim.id };
 
-  const run = async (action: () => Promise<void>) => {
+  const commitForget = async () => {
+    window.clearTimeout(timer.current);
+    pendingRef.current = false;
+    try {
+      await wire.forgetClaim({ botId, claimId: latest.current.claimId });
+      latest.current.onRemoved(latest.current.claimId);
+    } catch {
+      setPending(false);
+      setFailed(true);
+    }
+  };
+  const commitForgetRef = useRef(commitForget);
+  commitForgetRef.current = commitForget;
+
+  useEffect(
+    () => () => {
+      // Leaving the tab (or a search hiding the row) never drops a pending forget.
+      if (pendingRef.current) void commitForgetRef.current();
+    },
+    [],
+  );
+
+  const startForget = () => {
+    setFailed(false);
+    setPending(true);
+    pendingRef.current = true;
+    timer.current = window.setTimeout(() => void commitForgetRef.current(), UNDO_MS);
+  };
+  const undo = () => {
+    window.clearTimeout(timer.current);
+    pendingRef.current = false;
+    setPending(false);
+  };
+
+  const save = async () => {
+    if (draft === null || draft.trim() === "" || busy) return;
     setBusy(true);
     setFailed(false);
     try {
-      await action();
+      onChanged(await wire.editClaim({ botId, claimId: claim.id, text: draft.trim() }));
+      setDraft(null);
     } catch {
       setFailed(true);
     } finally {
@@ -69,105 +185,169 @@ function Claim({
     }
   };
 
-  const source =
-    claim.origin === "edited" ? t`You edited` : claim.origin === "said" ? t`You said` : t`Noticed`;
   const when = new Date(claim.date * 1000).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+  const source =
+    claim.origin === "edited"
+      ? t`Edited by you`
+      : claim.origin === "said"
+        ? t`You said, ${when}`
+        : t`Noticed, ${when}`;
+  const { title, due, person } = shapeOf(sectionId, claim.text);
+  const isCommitment = sectionId === "commitments";
+
+  if (draft !== null) {
+    return (
+      <li className="px-3 py-1.5" data-testid="memory-claim">
+        <textarea
+          // biome-ignore lint/a11y/noAutofocus: the person just chose to edit this memory
+          autoFocus
+          rows={2}
+          aria-label={t`Edit memory`}
+          className="w-full resize-none rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[14px] leading-5 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          dir="auto"
+          value={draft}
+          disabled={busy}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              void save();
+            } else if (event.key === "Escape") {
+              event.stopPropagation();
+              setDraft(null);
+            }
+          }}
+        />
+        <p className="mt-1 text-[12px] leading-4 text-muted-foreground">
+          {failed ? (
+            <span className="text-destructive">{t`Could not save`}</span>
+          ) : (
+            t`Enter to save · Esc to cancel`
+          )}
+        </p>
+      </li>
+    );
+  }
+
+  if (pending) {
+    return (
+      <li
+        className="flex items-start gap-2.5 px-3 py-1.5 text-[14px] leading-5"
+        data-testid="memory-claim-pending"
+      >
+        {isCommitment ? <Checkbox checked className="mt-0.5" aria-label={title} /> : null}
+        <span className="min-w-0 flex-1 truncate text-muted-foreground line-through">{title}</span>
+        <button
+          type="button"
+          className="shrink-0 text-[12px] leading-5 text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+          onClick={undo}
+        >
+          {t`Undo`}
+        </button>
+      </li>
+    );
+  }
 
   return (
-    <li className="group rounded-lg px-2 py-1" data-testid="memory-claim">
-      {draft !== null ? (
-        <div className="flex flex-col gap-1.5">
-          <textarea
-            className="min-h-16 rounded-lg border border-border bg-background px-2 py-1 text-[13.5px] leading-[1.5]"
-            dir="auto"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <div className="flex gap-3 text-[12.5px]">
-            <button
-              type="button"
-              disabled={busy || draft.trim() === ""}
-              onClick={() =>
-                void run(async () => {
-                  onChanged(await wire.editClaim({ botId, claimId: claim.id, text: draft.trim() }));
-                  setDraft(null);
-                })
-              }
-            >
-              {t`Save`}
-            </button>
-            <button
-              type="button"
-              className="text-muted-foreground"
-              disabled={busy}
-              onClick={() => setDraft(null)}
-            >
-              {t`Cancel`}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <p className="text-[13.5px] leading-[1.5] text-foreground" dir="auto">
-            {addressMemoryItem(claim.text)}
+    <li
+      className="group/claim relative flex items-start gap-2.5 rounded-lg px-3 py-1.5 hover:bg-muted/60 focus-within:bg-muted/60"
+      data-testid="memory-claim"
+    >
+      {isCommitment ? (
+        <Checkbox
+          className="mt-0.5"
+          checked={false}
+          aria-label={t`Mark done: ${title}`}
+          onCheckedChange={startForget}
+        />
+      ) : null}
+      {person ? (
+        <span
+          aria-hidden
+          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground"
+        >
+          {initials(person.name)}
+        </span>
+      ) : null}
+      {sectionId === "questions" ? (
+        <span
+          aria-hidden
+          className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[10px] leading-none font-medium text-muted-foreground"
+        >
+          ?
+        </span>
+      ) : null}
+      <div className="min-w-0 flex-1">
+        {person ? (
+          <>
+            <p className="truncate text-[14px] leading-5 text-foreground" dir="auto">
+              {person.name}
+              {person.relation ? (
+                <span className="text-[12px] text-muted-foreground"> · {person.relation}</span>
+              ) : null}
+            </p>
+            {person.facts ? (
+              <p className="truncate text-[12px] leading-4 text-muted-foreground" dir="auto">
+                {person.facts}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="line-clamp-2 text-[14px] leading-5 text-foreground" dir="auto">
+            {title}
           </p>
-          <div className="flex items-baseline gap-2 text-[12px] text-muted-foreground">
-            <span>
-              {source} · {when}
-            </span>
-            <span className="ml-auto flex gap-3 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-              {confirming ? (
-                <>
-                  <button
-                    type="button"
-                    className="hover:text-foreground"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        await wire.forgetClaim({ botId, claimId: claim.id });
-                        onRemoved(claim.id);
-                      })
-                    }
-                  >
-                    {t`Delete`}
-                  </button>
-                  <button type="button" onClick={() => setConfirming(false)}>
-                    {t`Cancel`}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="hover:text-foreground"
-                    onClick={() => setDraft(claim.text)}
-                  >
-                    {t`Edit`}
-                  </button>
-                  <button
-                    type="button"
-                    className="hover:text-foreground"
-                    onClick={() => setConfirming(true)}
-                  >
-                    {t`Delete`}
-                  </button>
-                </>
-              )}
-            </span>
-          </div>
-          {failed ? <p className="text-[12px] text-destructive">{t`Could not save`}</p> : null}
-        </>
-      )}
+        )}
+        {due ? (
+          <span
+            className={cn(
+              "mt-0.5 inline-flex h-5 items-center rounded-md px-1.5 text-[11px] leading-none",
+              due.overdue ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {due.label}
+          </span>
+        ) : null}
+        {failed ? (
+          <p className="text-[12px] leading-4 text-destructive">{t`Could not save`}</p>
+        ) : null}
+      </div>
+      <span className="absolute top-1 right-1.5 flex items-center gap-0.5 rounded-md bg-muted opacity-0 transition-opacity group-focus-within/claim:opacity-100 group-hover/claim:opacity-100 has-data-popup-open:opacity-100 [@media(hover:none)]:opacity-100">
+        <Tooltip>
+          <TooltipTrigger aria-label={t`Source`} className={iconButton}>
+            <Quote className="size-3.5" aria-hidden />
+          </TooltipTrigger>
+          <TooltipContent side="left" className="flex-col items-start gap-0.5">
+            <span>{source}</span>
+            {claim.quote ? <span className="opacity-70">“{claim.quote}”</span> : null}
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <DropdownMenuTrigger aria-label={t`More`} className={iconButton}>
+            <MoreHorizontal className="size-3.5" aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-auto min-w-32">
+            <DropdownMenuItem onClick={() => setDraft(claim.text)}>
+              <Pencil aria-hidden />
+              {t`Edit`}
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={startForget}>
+              <Trash2 aria-hidden />
+              {t`Forget`}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
     </li>
   );
 }
 
-/** The Memory tab's editable sections: About you, Commitments, Projects & focus, People, How
- * Nova works with you. Each item shows its source and date; an edit marks it person-authored
- * (the engine's upkeep and Helpers never overwrite it); delete forgets it. */
+/** The Memory tab's editable sections: About you, Commitments, Projects & focus, Open
+ * questions, People, How Nova works with you. Items show a short label (the stored text is
+ * untouched); source and quote sit behind a hover icon; an edit marks an item person-authored
+ * (the engine's upkeep and Helpers never overwrite it); forgetting waits for an undo. */
 export function MemorySections({
   botId,
   wire,
@@ -180,38 +360,78 @@ export function MemorySections({
   onChange: (next: MemoryClaim[]) => void;
 }) {
   const { t } = useLingui();
+  const [query, setQuery] = useState("");
+  const claimsRef = useRef(claims);
+  claimsRef.current = claims;
+
   const titles: Record<SectionId, string> = {
     about: t`About you`,
     commitments: t`Commitments`,
     projects: t`Projects & focus`,
+    questions: t`Open questions`,
     people: t`People`,
     working: t`How Nova works with you`,
   };
+
+  const needle = query.trim().toLowerCase();
+  const matches = (claim: MemoryClaim) =>
+    needle === "" || `${claim.text} ${memoryLabel(claim.text)}`.toLowerCase().includes(needle);
+  const groups = groupClaims(claims);
+  const byId = new Map(groups.map((group) => [group.id, group.claims]));
+  const visible = GROUP_ORDER.map((id) => ({
+    id,
+    claims: (byId.get(id) ?? []).filter(matches),
+    total: (byId.get(id) ?? []).length,
+  })).filter((group) =>
+    needle === "" ? group.id !== "questions" || group.total > 0 : group.claims.length > 0,
+  );
+
   return (
-    <>
-      {groupClaims(claims).map((section) => (
-        <section
-          key={section.id}
-          className="flex flex-col gap-1"
-          data-testid={`memory-section-${section.id}`}
+    <div className="-mx-3 flex flex-col gap-3">
+      <div className="relative px-3">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-5.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t`Find a memory`}
+          aria-label={t`Find a memory`}
+          className="h-8 pl-8 text-[13px] md:text-[13px]"
+        />
+      </div>
+      {visible.length === 0 ? <MemoryEmptyLine>{t`No matches`}</MemoryEmptyLine> : null}
+      {visible.map((group) => (
+        <MemorySection
+          key={group.id}
+          id={group.id}
+          title={titles[group.id]}
+          count={group.claims.length}
+          forceOpen={needle !== ""}
         >
-          <h3 className="px-1 text-[12.5px] font-semibold text-muted-foreground">
-            {titles[section.id]}
-          </h3>
-          <ul className="flex flex-col gap-0.5">
-            {section.claims.map((claim) => (
-              <Claim
-                key={claim.id}
-                botId={botId}
-                claim={claim}
-                wire={wire}
-                onChanged={(saved) => onChange(claims.map((c) => (c.id === saved.id ? saved : c)))}
-                onRemoved={(id) => onChange(claims.filter((c) => c.id !== id))}
-              />
-            ))}
-          </ul>
-        </section>
+          {group.claims.length === 0 ? (
+            <MemoryEmptyLine>{t`Nothing yet`}</MemoryEmptyLine>
+          ) : (
+            <ul className="flex flex-col">
+              {group.claims.map((claim) => (
+                <Claim
+                  key={claim.id}
+                  botId={botId}
+                  sectionId={group.id}
+                  claim={claim}
+                  wire={wire}
+                  onChanged={(saved) =>
+                    onChange(claimsRef.current.map((c) => (c.id === saved.id ? saved : c)))
+                  }
+                  onRemoved={(id) => onChange(claimsRef.current.filter((c) => c.id !== id))}
+                />
+              ))}
+            </ul>
+          )}
+        </MemorySection>
       ))}
-    </>
+    </div>
   );
 }
