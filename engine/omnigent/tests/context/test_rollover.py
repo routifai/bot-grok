@@ -859,3 +859,22 @@ def test_state_file_instruction_stamps_time_and_zone_by_default() -> None:
     instruction = state_file_summarizer_instruction()
 
     assert re.search(r"## Context checkpoint — \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC", instruction)
+
+
+@pytest.mark.asyncio
+async def test_build_rollover_item_rejects_an_empty_summary() -> None:
+    """An empty/blank summarizer reply must raise so the caller keeps the previous checkpoint."""
+    with pytest.raises(ValueError, match="no summary text"):
+        await build_rollover_item(
+            _turn(1) + _turn(2),
+            previous_summary=None,
+            keep_tokens=1,
+            model="gpt-4o",
+            llm_client=_ReturnsTextClient("   "),
+        )
+
+
+def test_summarizer_instruction_forbids_recording_tool_errors_as_facts() -> None:
+    text = state_file_summarizer_instruction(today="2026-01-01")
+    assert "Tool errors" in text
+    assert "never claim earlier messages are inaccessible" in text

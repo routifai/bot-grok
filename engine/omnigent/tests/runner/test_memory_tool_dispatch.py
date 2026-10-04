@@ -354,3 +354,22 @@ def test_relay_lists_memory_tools_as_always_loaded(name: str) -> None:
 
     schema = _mcp_tool_schema_from_spec({"name": name, "parameters": {}})
     assert schema["_meta"] == {"anthropic/alwaysLoad": True}
+
+
+@pytest.mark.asyncio
+async def test_unmounted_memory_route_reports_not_configured() -> None:
+    """A bare 404 (router unmounted, no memory extra) is explained."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": "Not Found"})
+
+    client = _client(handler)
+    try:
+        result = json.loads(
+            await _execute_memory_tool(
+                "memory_search", {"query": "x"}, conversation_id=CONV, server_client=client
+            )
+        )
+    finally:
+        await client.aclose()
+    assert result == {"error": "memory_search: long-term memory is not configured on this server"}

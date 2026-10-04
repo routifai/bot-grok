@@ -6917,6 +6917,15 @@ def _memory_error_body(resp: httpx.Response) -> str:
     """Extract a readable message from a non-2xx memory-route response."""
     try:
         body = resp.json()
+        # A bare FastAPI "Not Found" means the route itself is unmounted: the
+        # server runs without the memory extra (no txtai), so the router is
+        # never included. Say that instead of an opaque "HTTP 404".
+        if (
+            resp.status_code == 404
+            and isinstance(body, dict)
+            and body.get("detail") == "Not Found"
+        ):
+            return "long-term memory is not configured on this server"
     except Exception:  # noqa: BLE001
         return resp.text or f"HTTP {resp.status_code}"
     if isinstance(body, dict):

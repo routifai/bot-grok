@@ -116,7 +116,12 @@ def state_file_summarizer_instruction(*, today: str | None = None) -> str:
         "absolute dates, never relative ones. End with 'Current position / "
         "next step'. If the input already starts with a prior checkpoint, "
         "rewrite it into the new one — update entries in place and drop "
-        "resolved noise — rather than appending to it."
+        "resolved noise — rather than appending to it. Tool errors (HTTP "
+        "404s, 'not configured', timeouts) are transient plumbing, not facts "
+        "about the user or the conversation: never record them as the reason "
+        "earlier messages are missing, and never claim earlier messages are "
+        "inaccessible — the full record is always recoverable with "
+        "session_history."
     )
 
 
@@ -421,6 +426,10 @@ async def build_rollover_item(
         conversation_id,
         extra_instructions=state_file_summarizer_instruction(),
     )
+    if not isinstance(summary.get("text"), str) or not summary["text"].strip():
+        # Never persist an empty checkpoint: the caller keeps the previous one
+        # and retries on a later turn.
+        raise ValueError("rollover summarizer returned no summary text")
     summary_text = f"{CHECKPOINT_HEADER}\n\n{summary['text']}"
     recent = _cap_tool_outputs(
         select_recent(items_since_previous_compaction, keep_tokens=keep_tokens, model=model)
