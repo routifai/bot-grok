@@ -8,6 +8,14 @@ A personal agent: one persistent AI companion per person that works toward their
 The one persistent agent a person has. It owns the conversation, the memory, and the computer, and it is the only agent the person talks to or manages.
 _Avoid_: bot, assistant, Chief, teammate
 
+**Computer**:
+The Muse's own machine: its screen, files, and browser. Each Muse has exactly one, and every turn the Muse takes runs inside it. The person can watch its screen.
+_Avoid_: sandbox, container, runner, desktop
+
+**Take over**:
+The person taking control of the Computer's screen to click and type themselves, then handing it back. While the person is in control, the Muse does not act on the Computer.
+_Avoid_: control lease, interactive mode, remote control
+
 **Helper**:
 A short-lived agent the Muse starts for one piece of work. It starts with no history (only its brief and what the Muse remembers about the person), cannot talk to the person, and ends when its work is done; its result goes back to the chat that started it. Its status shows as an Activity. In the engine it is a Sub-agent.
 _Avoid_: subagent, sub-bot, peer bot, worker
