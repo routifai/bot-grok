@@ -46,7 +46,7 @@ describe("engine artifacts", () => {
   it("lists a Muse's deliverables in the Library's shape", async () => {
     const fetchMock = vi.fn(async (url: URL) => {
       expect(url.pathname).toBe("/v1/artifacts");
-      expect(url.searchParams.get("parent_session_id")).toBe("sess-1");
+      expect(url.searchParams.get("parent_session_id")).toBeNull();
       return json({ artifacts: [row] });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -61,6 +61,35 @@ describe("engine artifacts", () => {
       version: 2,
       versionCount: 2,
     });
+  });
+
+  it("lists deliverables saved in a Side Chat or its Helper under the Muse", async () => {
+    const side = { ...row, id: "a2", parent_session_id: "side-1", name: "side.html" };
+    const helperSaved = { ...row, id: "a3", parent_session_id: "helper-1", name: "h.html" };
+    const stranger = { ...row, id: "a4", parent_session_id: "elsewhere", name: "x.html" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) => {
+        if (url.pathname === "/v1/artifacts") {
+          return json({ artifacts: [row, side, helperSaved, stranger] });
+        }
+        if (url.pathname === "/v1/sessions/sess-1/related_chats") {
+          return json({ data: [{ id: "side-1", title: "Side" }] });
+        }
+        if (url.pathname === "/v1/sessions/helper-1") {
+          return json({ id: "helper-1", parent_session_id: "side-1" });
+        }
+        if (url.pathname === "/v1/sessions/elsewhere") {
+          return json({ id: "elsewhere", parent_session_id: null });
+        }
+        return json({ data: [] });
+      }),
+    );
+    const page = await engineListSpaceArtifacts(deps, client, actor, { botId: "bot-1" });
+    expect(page.items.map((item) => item.id).sort()).toEqual(["a1", "a2", "a3"]);
+    expect(page.items.every((item) => item.botId === "bot-1")).toBe(true);
+    const all = await engineListSpaceArtifacts(deps, client, actor, {});
+    expect(all.items.map((item) => item.id).sort()).toEqual(["a1", "a2", "a3"]);
   });
 
   it("returns versions, content as base64, and deletes", async () => {

@@ -8,12 +8,12 @@ import {
 } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import { Download, ExternalLink, Maximize2, MoreHorizontal } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
 import { ArtifactInlinePreview } from "./ArtifactInlinePreview";
-import { Frame, formatSize } from "./catalog";
-import { useArtifactPanel, useLatestSavedFile } from "./context";
+import { catalog, Frame, formatSize } from "./catalog";
+import { useArtifactPanel, useLatestSavedFile, useReplyCardBotId } from "./context";
 
 // The expanded view pulls in the PDF and markdown viewers; load them only when opened.
 const ArtifactPreviewDialog = lazy(() =>
@@ -34,6 +34,46 @@ export function ArtifactFileCard({
   title?: string;
   data: ReplyCardDataOf<"file">;
 }) {
+  const resolved = useSavedFile(data);
+  return resolved.artifactId ? (
+    <SavedFileCard title={title} data={resolved} />
+  ) : (
+    <catalog.file title={title} data={data} />
+  );
+}
+
+/** A `file` card the Muse wrote by hand (a Helper saved the file, so the Muse's own card has
+ * only a name) is matched to the Muse's newest deliverable of that name, wherever it was saved:
+ * the Conversation, a Side Chat or a Helper. */
+function useSavedFile(data: ReplyCardDataOf<"file">): ReplyCardDataOf<"file"> {
+  const botId = useReplyCardBotId();
+  const [found, setFound] = useState<ReplyCardDataOf<"file"> | null>(null);
+  const missing = !data.artifactId;
+  useEffect(() => {
+    if (!missing || !botId) return;
+    let live = true;
+    void rpc.artifacts
+      .list({ botId })
+      .then((items) => {
+        const match = items.find((item) => item.name === data.name);
+        if (!live || !match) return;
+        setFound({
+          ...data,
+          artifactId: match.id,
+          kind: data.kind ?? match.name.split(".").pop(),
+          size: match.size,
+          version: match.version,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [missing, botId, data]);
+  return missing && found ? found : data;
+}
+
+function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<"file"> }) {
   const { t } = useLingui();
   const artifactId = data.artifactId;
   const [open, setOpen] = useState(false);

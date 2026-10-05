@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   deriveSideChatTitle,
+  isEngineWakeNotice,
   mapOmnigentItemsToMessages,
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
   resolveChatOwnership,
   sideChatStartToWire,
-  systemNoticeText,
 } from "./chats.js";
 
 const { getOmnigentSession, listOmnigentRelatedChats } = vi.hoisted(() => ({
@@ -260,24 +260,26 @@ describe("resolveChatOwnership", () => {
   });
 });
 
-describe("systemNoticeText", () => {
-  it("turns a Helper wake notice into one plain line", () => {
+describe("isEngineWakeNotice", () => {
+  it("recognizes a Helper wake notice, which is never shown", () => {
     expect(
-      systemNoticeText(
-        "[System: sub-agent researcher/overdraft fee finished (completed) — result: ...]",
-      ),
-    ).toBe("“overdraft fee” finished.");
-  });
-
-  it("names the hidden web researcher as web research", () => {
-    expect(
-      systemNoticeText(
-        "[System: sub-agent __web_researcher/web_fetch_2a34 finished (failed) — 1 result waiting]",
-      ),
-    ).toBe("Web research failed.");
+      isEngineWakeNotice("[System: sub-agent worker/notes-tools-comparison finished (completed)]"),
+    ).toBe(true);
+    const messages = mapOmnigentItemsToMessages("c1", [
+      {
+        id: "i1",
+        type: "message",
+        role: "user",
+        created_at: 1,
+        content: [
+          { type: "input_text", text: "[System: sub-agent worker/x finished (completed) — y]" },
+        ],
+      },
+    ] as never);
+    expect(messages).toEqual([]);
   });
 
   it("leaves a person's own message alone", () => {
-    expect(systemNoticeText("What is a CD?")).toBeNull();
+    expect(isEngineWakeNotice("What is a CD?")).toBe(false);
   });
 });

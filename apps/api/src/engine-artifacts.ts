@@ -9,6 +9,7 @@ import {
   listOmnigentArtifacts,
   type OmnigentArtifact,
   type OmnigentClientConfig,
+  resolveChatOwnership,
 } from "@aiden/adapters";
 import type { Actor, Artifact, ArtifactVersion, ArtifactWithContent } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
@@ -47,34 +48,45 @@ function toArtifact(item: OmnigentArtifact, botId: string | null): Artifact {
   };
 }
 
-/** Maps engine Conversation ids to this person's Muse ids (for artifacts listed across Muses). */
+/**
+ * The Muse each engine session belongs to, for this person. A deliverable is keyed by the chat
+ * that saved it (`artifact_save` by a Helper lands on the chat that launched it), so besides a
+ * Muse's own Conversation its Side Chats and their Helpers (any depth) count: the same
+ * ownership rule chats.* uses, `resolveChatOwnership`. Sessions of no owned Muse are left out.
+ */
 async function botIdsBySession(
   deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
   actor: Actor,
+  email: string,
   sessionIds: string[],
 ): Promise<Map<string, string>> {
-  if (sessionIds.length === 0) return new Map();
-  const rows = await deps.prisma.omnigentSession.findMany({
-    where: {
-      omnigentSessionId: { in: sessionIds },
-      bot: { userId: actor.userId, spaceId: actor.spaceId },
-    },
+  const resolved = new Map<string, string>();
+  if (sessionIds.length === 0) return resolved;
+  const supers = await deps.prisma.omnigentSession.findMany({
+    where: { bot: { userId: actor.userId, spaceId: actor.spaceId } },
     select: { omnigentSessionId: true, botId: true },
   });
-  return new Map(rows.map((row) => [row.omnigentSessionId, row.botId]));
+  const direct = new Map(supers.map((row) => [row.omnigentSessionId, row.botId]));
+  for (const id of sessionIds) {
+    const botId =
+      direct.get(id) ??
+      (await resolveChatOwnership(client, email, supers, id).catch(() => null))?.botId;
+    if (botId) resolved.set(id, botId);
+  }
+  return resolved;
 }
 
-async function sessionOf(
+async function assertOwnMuse(
   deps: EngineArtifactsDeps,
   actor: Actor,
   botId: string,
-): Promise<string | null> {
+): Promise<void> {
   const bot = await deps.prisma.bot.findFirst({
     where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
-    select: { id: true, omnigentSession: { select: { omnigentSessionId: true } } },
+    select: { id: true },
   });
   if (!bot) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
-  return bot.omnigentSession?.omnigentSessionId ?? null;
 }
 
 async function listWithCounts(
@@ -85,20 +97,23 @@ async function listWithCounts(
   limit: number,
 ): Promise<Array<Artifact & { versionCount: number }>> {
   const email = await emailOf(deps, actor);
-  let sessionId: string | undefined;
-  if (botId) {
-    const found = await sessionOf(deps, actor, botId);
-    if (!found) return [];
-    sessionId = found;
-  }
-  const items = await listOmnigentArtifacts(client, email, sessionId, limit);
-  const bots = botId
-    ? new Map<string, string>()
-    : await botIdsBySession(deps, actor, [...new Set(items.map((i) => i.parent_session_id))]);
-  return items.map((item) => ({
-    ...toArtifact(item, botId ?? bots.get(item.parent_session_id) ?? null),
-    versionCount: item.versions,
-  }));
+  if (botId) await assertOwnMuse(deps, actor, botId);
+  // All of the person's deliverables, then attributed to Muses: a Muse's own are not only the
+  // ones its Conversation saved.
+  const items = await listOmnigentArtifacts(client, email, undefined, 500);
+  const owners = await botIdsBySession(deps, client, actor, email, [
+    ...new Set(items.map((i) => i.parent_session_id)),
+  ]);
+  return items
+    .filter((item) => {
+      const owner = owners.get(item.parent_session_id);
+      return botId ? owner === botId : owner !== undefined;
+    })
+    .slice(0, limit)
+    .map((item) => ({
+      ...toArtifact(item, owners.get(item.parent_session_id) ?? null),
+      versionCount: item.versions,
+    }));
 }
 
 export async function engineListArtifacts(
@@ -147,7 +162,7 @@ export async function engineGetArtifact(
   const email = await emailOf(deps, actor);
   const detail = await getOmnigentArtifact(client, email, artifactId).catch(notFound);
   const bytes = await fetchOmnigentArtifactContent(client, email, artifactId);
-  const bots = await botIdsBySession(deps, actor, [detail.parent_session_id]);
+  const bots = await botIdsBySession(deps, client, actor, email, [detail.parent_session_id]);
   return {
     ...toArtifact(detail, bots.get(detail.parent_session_id) ?? null),
     contentBase64: Buffer.from(bytes).toString("base64"),

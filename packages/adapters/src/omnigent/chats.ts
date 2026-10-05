@@ -103,19 +103,10 @@ function extractItemText(item: OmnigentSessionItem): string {
  * transcript, not an Activity's Steps (that's `activities.get`). `seq` is synthesized from
  * position: Omnigent items aren't Nova's own thread rows, so there is no durable sequence
  * number to carry over. */
-const WAKE_NOTICE = /^\[System: sub-agent (\S+?)\/(.+?) finished \((\w+)\)/;
-
-/** The engine's wake notice to a chat ("[System: sub-agent researcher/title finished (completed)
- * — …]") is plumbing; show it as one plain system line instead of a message from the person. */
-export function systemNoticeText(text: string): string | null {
-  if (!text.startsWith("[System:")) return null;
-  const match = WAKE_NOTICE.exec(text);
-  if (!match) return "Nova received an update.";
-  const [, agent, title, status] = match;
-  const who = agent?.startsWith("__web") ? "Web research" : `“${title}”`;
-  return status === "completed"
-    ? `${who} finished.`
-    : `${who} ${status === "failed" ? "failed" : "stopped"}.`;
+/** The engine's wake notice to a chat ("[System: sub-agent researcher/title finished …]") is
+ * plumbing with internal names in it: never shown. The Muse's reply to it follows in the chat. */
+export function isEngineWakeNotice(text: string): boolean {
+  return text.startsWith("[System:");
 }
 
 export function mapOmnigentItemsToMessages(
@@ -144,9 +135,9 @@ export function mapOmnigentItemsToMessages(
     if (!role) continue;
     const raw = extractItemText(item);
     if (!raw) continue;
+    if (role === "user" && isEngineWakeNotice(raw)) continue;
     // A raw engine/model failure is never shown: it reads as a calm system note.
-    const notice =
-      role === "user" ? systemNoticeText(raw) : isEngineErrorText(raw) ? ENGINE_ERROR_NOTE : null;
+    const notice = role === "bot" && isEngineErrorText(raw) ? ENGINE_ERROR_NOTE : null;
     const text = notice ?? raw;
     messages.push({
       id: item.id,

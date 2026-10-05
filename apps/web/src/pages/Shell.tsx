@@ -65,6 +65,7 @@ import { Composer } from "./muse/conversation/Composer";
 import { FALLBACK_BOT_COLOR } from "./muse/conversation/shared";
 import { sideChatView } from "./muse/conversation/sideChatView";
 import { Transcript } from "./muse/conversation/Transcript";
+import { useChatArtifacts } from "./muse/conversation/useChatArtifacts";
 import { useComposerSend } from "./muse/conversation/useComposerSend";
 import { useThreadState } from "./muse/conversation/useThreadState";
 import { useThreadSync } from "./muse/conversation/useThreadSync";
@@ -91,10 +92,6 @@ import { WaitingSheet } from "./muse/WaitingSheet";
 import { draftFromRoutine } from "./RoutineEditor";
 import { CreateBotForm } from "./shell/bot-panel";
 import { DeleteItemDialog } from "./shell/dialogs";
-
-const ArtifactPanel = lazy(() =>
-  import("../components/ArtifactPanel").then((m) => ({ default: m.ArtifactPanel })),
-);
 
 const PeerMessagesOverlay = lazy(() =>
   import("./PeerMessagesOverlay").then((module) => ({ default: module.PeerMessagesOverlay })),
@@ -203,18 +200,9 @@ export function ShellPage() {
     [setMuseView],
   );
   const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
-  const [artifactOpen, setArtifactOpen] = useState<{ id: string; title?: string } | null>(null);
-  const artifactPanelApi = useMemo(
-    () => ({
-      openId: artifactOpen?.id ?? null,
-      open: (id: string, title?: string) => setArtifactOpen({ id, title }),
-      close: () => setArtifactOpen(null),
-    }),
-    [artifactOpen?.id],
+  const chatArtifacts = useChatArtifacts(
+    `${active?.id ?? ""}:${activeChat === "draft" ? "draft" : (activeChat?.id ?? "")}`,
   );
-  const activeChatId = active?.id;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: closes when the conversation changes
-  useEffect(() => setArtifactOpen(null), [activeChatId]);
   const [waitingOpen, setWaitingOpen] = useState(false);
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [navOpen, setNavOpen] = useState(false);
@@ -648,21 +636,24 @@ export function ShellPage() {
           </div>
         ) : null}
         {museMode && active && museView === "conversation" && activeChat ? (
-          <div
-            className={cn(
-              "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-              MUSE_GLASS_PANEL,
-            )}
-          >
-            <SideChatSession
-              chat={activeChat}
-              bot={{ id: active.id, name: active.name, color: active.color }}
-              view={sideChatView}
-              wire={sideChatWire}
-              onCreated={setActiveChat}
-              onReplied={chatList.refresh}
-              onClose={() => setActiveChat(null)}
-            />
+          <div className="flex min-h-0 flex-1 gap-0 md:gap-2">
+            <div
+              className={cn(
+                "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+                MUSE_GLASS_PANEL,
+              )}
+            >
+              <SideChatSession
+                chat={activeChat}
+                bot={{ id: active.id, name: active.name, color: active.color }}
+                view={sideChatView}
+                wire={sideChatWire}
+                onCreated={setActiveChat}
+                onReplied={chatList.refresh}
+                onClose={() => setActiveChat(null)}
+              />
+            </div>
+            {chatArtifacts.panel}
           </div>
         ) : museMode && active && museView !== "conversation" ? (
           <div
@@ -954,16 +945,7 @@ export function ShellPage() {
                 />
               ) : null}
             </div>
-            {museMode && active && artifactOpen ? (
-              <Suspense fallback={null}>
-                <ArtifactPanel
-                  key={artifactOpen.id}
-                  artifactId={artifactOpen.id}
-                  title={artifactOpen.title}
-                  onClose={artifactPanelApi.close}
-                />
-              </Suspense>
-            ) : null}
+            {museMode && active ? chatArtifacts.panel : null}
             {museMode && active ? (
               <ContextPanel
                 botId={active.id}
@@ -972,7 +954,7 @@ export function ShellPage() {
                 chatListState={chatList.state}
                 // The computer (or settings) side panel takes that column; two side panels
                 // would crush the conversation.
-                collapsed={contextPanelCollapsed || panel !== null || artifactOpen !== null}
+                collapsed={contextPanelCollapsed || panel !== null || chatArtifacts.isOpen}
                 onNavigate={navigateMuseView}
                 onOpenWaiting={() => setWaitingOpen(true)}
               />
@@ -1159,7 +1141,7 @@ export function ShellPage() {
 
   return (
     <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>
-      <ArtifactPanelProvider value={artifactPanelApi}>{shell}</ArtifactPanelProvider>
+      <ArtifactPanelProvider value={chatArtifacts.api}>{shell}</ArtifactPanelProvider>
     </AvatarStyleProvider>
   );
 }

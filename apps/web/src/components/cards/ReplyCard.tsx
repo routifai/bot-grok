@@ -37,8 +37,11 @@ export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: s
     case "person":
       return <catalog.person title={title} data={parsed.data} />;
     case "file":
-      if (parsed.data.artifactId) return <ArtifactFileCard title={title} data={parsed.data} />;
-      return <catalog.file title={title} data={parsed.data} />;
+      return parsed.data.url ? (
+        <catalog.file title={title} data={parsed.data} />
+      ) : (
+        <ArtifactFileCard title={title} data={parsed.data} />
+      );
     case "progress":
       return <catalog.progress title={title} data={parsed.data} />;
     case "secure_entry":
