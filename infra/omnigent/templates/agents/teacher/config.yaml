@@ -4,14 +4,16 @@ description: >-
   Turns a recording of the person doing a task on the Computer into a draft skill the Muse can
   run again: intent-level steps with a check each, approval points and typed inputs.
 
-# Sub-agent Type: teacher. Claude Agent SDK, same engine as the Super Chat (ADR 0001: Omnigent
+{{SKILLS_FILTER}}
+# Sub-agent Type: teacher. {{HARNESS_NAME}}, same engine as the Super Chat (ADR 0001: Omnigent
 # owns everything; no engine sub-agents).
-# Background work: pinned to Haiku (Nova's Muse keeps NOVA_CLAUDE_MODEL). Parity plan Q9.
+{{BACKGROUND_NOTE}}
 executor:
   type: omnigent
-  model: claude-haiku-4-5
+{{BACKGROUND_PIN}}
   config:
-    harness: claude-sdk
+    harness: {{HARNESS}}
+{{EXECUTOR_EXTRA}}
 
 os_env:
   type: caller_process

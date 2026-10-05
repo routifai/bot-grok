@@ -40,12 +40,35 @@ def test_pi_bundle_differs_from_default_only_in_harness_keys() -> None:
     ]
 
 
-def test_prompt_and_helpers_are_identical_and_stay_on_claude_sdk() -> None:
+HELPERS = ("worker", "goal", "teacher", "worker/agents/subworker")
+PI_KEYS = ("context_files: false", "system_prompt_mode: replace", "skills: none")
+
+
+def test_prompt_is_identical_and_helpers_have_the_same_files() -> None:
     assert (CLAUDE / "AGENTS.md").read_text() == (PI / "AGENTS.md").read_text()
     cmp = filecmp.dircmp(CLAUDE / "agents", PI / "agents")
-    assert cmp.left_only == cmp.right_only == cmp.diff_files == []
-    for helper in ("worker", "goal", "teacher", "worker/agents/subworker"):
-        assert "harness: claude-sdk" in (PI / "agents" / helper / "config.yaml").read_text()
+    assert cmp.left_only == cmp.right_only == []
+
+
+@pytest.mark.parametrize("helper", HELPERS)
+def test_the_switch_is_total_every_helper_runs_on_the_bundles_harness(helper: str) -> None:
+    claude = (CLAUDE / "agents" / helper / "config.yaml").read_text()
+    pi = (PI / "agents" / helper / "config.yaml").read_text()
+    assert "harness: claude-sdk" in claude
+    assert "harness: pi" not in claude
+    assert not any(key in claude for key in PI_KEYS)
+    assert "harness: pi" in pi
+    assert "claude-sdk" not in pi
+    # The same pi keys as the Muse: one definition, rendered into every Type.
+    assert all(key in pi for key in PI_KEYS)
+
+
+@pytest.mark.parametrize("helper", ["goal", "teacher"])
+def test_background_types_pin_haiku_on_claude_and_nothing_on_pi(helper: str) -> None:
+    assert "model: claude-haiku-4-5" in (CLAUDE / "agents" / helper / "config.yaml").read_text()
+    text = (PI / "agents" / helper / "config.yaml").read_text()
+    assert "claude-haiku" not in text
+    assert "\n  model:" not in text
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
@@ -78,10 +101,20 @@ def test_real_loader_loads_both_bundles(
     spec = parse(AGENTS / name)
     assert spec.executor.config["harness"] == harness
     assert {a.name for a in spec.sub_agents} == {"worker", "goal", "teacher"}
+    worker = next(a for a in spec.sub_agents if a.name == "worker")
+    for sub in [*spec.sub_agents, *worker.sub_agents]:
+        assert sub.executor.config["harness"] == harness, sub.name
+        assert (sub.executor.model == "claude-haiku-4-5") == (
+            harness == "claude-sdk" and sub.name in {"goal", "teacher"}
+        ), sub.name
     if harness == "pi":
         assert spec.executor.config["context_files"] is False
         assert spec.executor.config["system_prompt_mode"] == "replace"
         assert spec.skills_filter == "none"
+        for sub in [*spec.sub_agents, *worker.sub_agents]:
+            assert sub.executor.config["context_files"] is False, sub.name
+            assert sub.executor.config["system_prompt_mode"] == "replace", sub.name
+            assert sub.skills_filter == "none", sub.name
 
 
 @pytest.mark.parametrize("name", ["nova-claude", "nova-pi"])

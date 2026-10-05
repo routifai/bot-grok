@@ -7,14 +7,17 @@ description: >-
   Advances one Goal for the Super Chat: reads the Goal, does the next Task, records its
   progress and reports what changed. Never reshapes the plan on its own.
 
-# Sub-agent Type: goal. Claude Agent SDK, same engine as the Super Chat (ADR 0001: Omnigent
+skills: none
+# Sub-agent Type: goal. Pi, same engine as the Super Chat (ADR 0001: Omnigent
 # owns everything; no engine sub-agents).
-# Background work: pinned to Haiku (Nova's Muse keeps NOVA_CLAUDE_MODEL). Parity plan Q9.
+# Background work: no model pinned; it follows the engine's `fast` mapping for pi, else the
+# parent's model (OMNIGENT_HELPER_MODEL_FAST_PI).
 executor:
   type: omnigent
-  model: claude-haiku-4-5
   config:
-    harness: claude-sdk
+    harness: pi
+    context_files: false
+    system_prompt_mode: replace
 
 # Shell and file tools (sys_os_*) run in the Computer's workspace. The Computer is the
 # sandbox, so no inner sandbox and no approval prompts.

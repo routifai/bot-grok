@@ -193,6 +193,45 @@ def test_helper_dispatch_rejects_unknown_effort() -> None:
         resolve_helper_dispatch(model="fast", reasoning_effort="ultra", env=_ENV)
 
 
+def test_helper_dispatch_on_a_multi_model_harness_ignores_the_global_ids() -> None:
+    # A pi Helper under a GPT-class parent must inherit it, not get the global Claude ids.
+    for choice in ("fast", "strong"):
+        assert resolve_helper_dispatch(
+            model=choice, reasoning_effort=None, harness="pi", env=_ENV
+        ) == (None, None)
+
+
+def test_helper_dispatch_on_a_multi_model_harness_reads_its_own_scoped_ids() -> None:
+    env = {**_ENV, "OMNIGENT_HELPER_MODEL_FAST_PI": "pi-fast-id"}
+    assert resolve_helper_dispatch(model="fast", reasoning_effort=None, harness="pi", env=env) == (
+        "pi-fast-id",
+        None,
+    )
+    # strong has no pi id: inherit, never the global one.
+    assert (
+        resolve_helper_dispatch(model="strong", reasoning_effort=None, harness="pi", env=env)[0]
+        is None
+    )
+
+
+def test_helper_dispatch_on_a_single_vendor_harness_keeps_the_global_ids() -> None:
+    assert resolve_helper_dispatch(
+        model="fast", reasoning_effort=None, harness="claude-sdk", env=_ENV
+    ) == ("fast-id", None)
+    scoped = {**_ENV, "OMNIGENT_HELPER_MODEL_FAST_CLAUDE_SDK": "scoped-id"}
+    assert resolve_helper_dispatch(
+        model="fast", reasoning_effort=None, harness="claude-sdk", env=scoped
+    ) == ("scoped-id", None)
+
+
+def test_scheduled_helper_follows_the_bundles_harness_for_its_model() -> None:
+    assert resolve_scheduled_helper("goal", None, env=_ENV, harness="pi") == ("goal", None)
+    assert resolve_scheduled_helper("goal", None, env=_ENV, harness="claude-sdk") == (
+        "goal",
+        "fast-id",
+    )
+
+
 # ── memory_profile_for / prepend_memory_profile ─────────────────────────────
 
 

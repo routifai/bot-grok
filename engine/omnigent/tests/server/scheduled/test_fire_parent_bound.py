@@ -6,6 +6,8 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -34,6 +36,7 @@ class _Parent:
     id: str = "conv_parent"
     agent_id: str = "ag_1"
     runner_id: str | None = "runner_1"
+    model_override: str | None = None
     labels: dict[str, str] = field(
         default_factory=lambda: {"omnigent.context.mode": "superside-chat", "other": "x"}
     )
@@ -66,11 +69,13 @@ class _Store(FakeScheduledTaskStore):
 
 def _bound_task(**overrides: Any) -> Any:
     return _task(
-        parent_session_id="conv_parent",
-        agent_type="researcher",
-        host_id=None,
-        workspace=None,
-        **overrides,
+        **{
+            "parent_session_id": "conv_parent",
+            "agent_type": "researcher",
+            "host_id": None,
+            "workspace": None,
+            **overrides,
+        }
     )
 
 
@@ -350,3 +355,80 @@ async def test_adhoc_helper_runs_now_without_waking_the_parent(
     assert sent["event"].data["content"] == content
     assert conv_id == sent["conv"].id
     assert perm.grants and perm.grants[0][2] == LEVEL_OWNER
+
+
+# ── The Helper's harness and model follow the bundle ────────────────────────
+
+_BUNDLES = Path(__file__).resolve().parents[5] / "infra/omnigent/agents"
+
+
+class _BundleAgentStore:
+    def get(self, agent_id: str) -> Any:
+        return SimpleNamespace(id=agent_id, bundle_location="bundle")
+
+
+class _BundleCache:
+    """Loads the real rendered bundle, like the server's agent cache."""
+
+    def __init__(self, bundle: str) -> None:
+        self._bundle = bundle
+
+    def load(self, agent_id: str, bundle_location: str) -> Any:
+        from omnigent.spec import parse
+
+        return SimpleNamespace(spec=parse(_BUNDLES / self._bundle))
+
+
+async def _scheduled_model(
+    bundle: str,
+    agent_type: str,
+    parent_model: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+    env: dict[str, str],
+) -> str | None:
+    monkeypatch.setenv("TAVILY_API_KEY", "x")
+    monkeypatch.setenv("NOVA_CLAUDE_MODEL", "muse-model")
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    conv_store = _ParentConversationStore(_Parent(model_override=parent_model))
+    store = _Store({"task_1": _bound_task(agent_type=agent_type)})
+    await _fire(
+        store,
+        conv_store,
+        _ok_launch,
+        agent_store=_BundleAgentStore(),
+        agent_cache=_BundleCache(bundle),
+    )
+    assert conv_store.created[0]["sub_agent_name"] == agent_type
+    return conv_store.created[0]["model_override"]
+
+
+_GLOBAL_CLAUDE_IDS = {
+    "OMNIGENT_HELPER_MODEL_FAST": "claude-haiku-4-5",
+    "OMNIGENT_HELPER_MODEL_STRONG": "claude-sonnet-4-6",
+}
+
+
+@pytest.mark.parametrize("agent_type", ["worker", "goal", "teacher"])
+async def test_scheduled_helper_on_pi_bundle_never_gets_a_global_claude_id(
+    agent_type: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = await _scheduled_model(
+        "nova-pi", agent_type, "openai/gpt-5.6-luna", monkeypatch, _GLOBAL_CLAUDE_IDS
+    )
+    assert model == "openai/gpt-5.6-luna"
+
+
+async def test_scheduled_helper_on_pi_bundle_uses_the_pi_fast_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = {**_GLOBAL_CLAUDE_IDS, "OMNIGENT_HELPER_MODEL_FAST_PI": "openai/gpt-5.6-mini"}
+    model = await _scheduled_model("nova-pi", "goal", "openai/gpt-5.6-luna", monkeypatch, env)
+    assert model == "openai/gpt-5.6-mini"
+
+
+async def test_scheduled_helper_on_claude_bundle_keeps_the_global_fast_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = await _scheduled_model("nova-claude", "worker", None, monkeypatch, _GLOBAL_CLAUDE_IDS)
+    assert model == "claude-haiku-4-5"

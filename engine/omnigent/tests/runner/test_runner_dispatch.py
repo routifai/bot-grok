@@ -3780,20 +3780,20 @@ async def test_sys_session_send_superside_chat_forwards_mode_label_to_child(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "override_args",
+    ("override_args", "refusal"),
     [
-        {"input": "do it", "model": "databricks-claude-sonnet-4-6"},
-        {"input": "do it", "reasoning_effort": "high"},
+        ({"input": "do it", "model": "claude-sonnet-x"}, "must be 'fast' or 'strong'"),
+        ({"input": "do it", "reasoning_effort": "max"}, "reasoning_effort must be one of"),
     ],
     ids=["model", "reasoning_effort"],
 )
 async def test_sys_session_send_superside_chat_refuses_dispatch_override(
     override_args: dict[str, Any],
+    refusal: str,
 ) -> None:
-    """A superside-chat caller cannot override the Sub-agent Type's model/effort.
+    """A superside-chat caller may only pick fast/strong and low/medium/high (ADR 0007).
 
-    rollover/CONTEXT.md ("Sub-agent Type"): a chat launches by Type, never
-    by naming a model — the Type's own config.yaml decides.
+    A raw model id or an unknown reasoning level is refused before any child exists.
     """
     from omnigent.runner import app as runner_app
     from omnigent.runner.tool_dispatch import execute_tool
@@ -3825,7 +3825,7 @@ async def test_sys_session_send_superside_chat_refuses_dispatch_override(
             runner_app._session_inboxes_ref.pop("conv_parent_override", None)
 
     assert output.startswith("Error:")
-    assert "not allowed in superside-chat" in output
+    assert refusal in output
     assert not create_posts, "override must be refused before any child is created"
 
 

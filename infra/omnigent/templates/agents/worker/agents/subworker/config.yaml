@@ -4,12 +4,14 @@ description: >-
   General Helper for the Super Chat: carries out one self-contained piece of work with the
   Muse's full work toolset. Leaf of a coordinating worker; cannot start further Helpers.
 
+{{SKILLS_FILTER}}
 # Leaf worker: same as the coordinator minus Helper management, so nesting stops here (the
 # engine refuses it too: omnigent.superchat.subagents.refuse_subagent_nesting).
 executor:
   type: omnigent
   config:
-    harness: claude-sdk
+    harness: {{HARNESS}}
+{{EXECUTOR_EXTRA}}
 
 os_env:
   type: caller_process

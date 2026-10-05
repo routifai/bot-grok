@@ -32,7 +32,7 @@ from omnigent.server.scheduled.run_reconciler import force_fail_stale_runs
 from omnigent.server.schemas import SessionEventInput
 from omnigent.stores.conversation_store import NameAlreadyExistsError
 from omnigent.superchat.activity.titles import fire_title_candidates
-from omnigent.superchat.subagents import resolve_scheduled_helper
+from omnigent.superchat.subagents import resolve_scheduled_helper, scheduled_helper_type
 
 # The same logger as ``fire`` (shared name, so existing log filters keep matching).
 _logger = logging.getLogger("omnigent.server.scheduled.fire")
@@ -306,7 +306,7 @@ async def _launch_helper(
             await asyncio.to_thread(
                 _require_declared_subagent,
                 agent=agent,
-                sub_agent_name=resolve_scheduled_helper(task.agent_type, None)[0],
+                sub_agent_name=scheduled_helper_type(task.agent_type),
                 agent_cache=deps.agent_cache,
             )
     except OmnigentError as exc:
@@ -339,6 +339,25 @@ async def _launch_helper(
     _logger.info("scheduled fire: task %s started helper %s", task.id, conv.id)
 
 
+async def _helper_harness(deps: FireDeps, parent: Conversation, sub_agent_name: str) -> str | None:
+    """The harness the bundle gives the Helper Type ``sub_agent_name`` (``None`` if unknown)."""
+    if deps.agent_cache is None or parent.agent_id is None:
+        return None
+    from omnigent.models.model_catalog import spec_harness
+    from omnigent.runtime.workflow import _find_spec_by_name
+
+    try:
+        agent = await asyncio.to_thread(deps.agent_store.get, parent.agent_id)
+        if agent is None:
+            return None
+        loaded = await asyncio.to_thread(deps.agent_cache.load, agent.id, agent.bundle_location)
+        sub = _find_spec_by_name(loaded.spec, sub_agent_name)
+        return spec_harness(sub) if sub is not None else None
+    except Exception:
+        _logger.exception("scheduled fire: could not resolve the Helper harness; using defaults")
+        return None
+
+
 async def _create_helper_session(
     deps: FireDeps, task: ScheduledTask, scheduled_at: int, *, wake_parent: bool = True
 ) -> Conversation:
@@ -366,7 +385,14 @@ async def _create_helper_session(
         labels[ADHOC_HELPER_LABEL_KEY] = task.id
     # ``"<agent_type>:<task name>"``: Activity splits on the first colon, so it reads
     # "<Type>: <task name>" instead of an opaque id (format owned by superchat.activity.titles).
-    run_type, run_model = resolve_scheduled_helper(task.agent_type, task.model_override)
+    run_type = scheduled_helper_type(task.agent_type)
+    _, run_model = resolve_scheduled_helper(
+        task.agent_type,
+        task.model_override,
+        harness=await _helper_harness(deps, parent, run_type),
+    )
+    # Nothing configured for this harness: inherit the parent's model like a dispatch does.
+    run_model = run_model or parent.model_override
     conv: Conversation | None = None
     for title in fire_title_candidates(task.agent_type, task.name, task.id, scheduled_at):
         try:
@@ -479,7 +505,7 @@ async def start_adhoc_helper(
         await asyncio.to_thread(
             _require_declared_subagent,
             agent=agent,
-            sub_agent_name=resolve_scheduled_helper(agent_type, None)[0],
+            sub_agent_name=scheduled_helper_type(agent_type),
             agent_cache=deps.agent_cache,
         )
     task = ScheduledTask(

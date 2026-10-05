@@ -2730,9 +2730,16 @@ async def _execute_subagent_tool(
         return f"Error: sys_session_send invalid 'cost_budget': {exc}"
 
     if is_superside_chat(labels):
+        named_agent = args.get("agent")
         try:
             model, reasoning_effort = resolve_helper_dispatch(
-                model=model, reasoning_effort=reasoning_effort
+                model=model,
+                reasoning_effort=reasoning_effort,
+                harness=(
+                    _subagent_harness(named_agent, agent_spec)
+                    if isinstance(named_agent, str)
+                    else None
+                ),
             )
         except ValueError as exc:
             return f"Error: sys_session_send {exc}"
