@@ -7330,7 +7330,16 @@ async def execute_tool(
             )
         elif tool_name in FEATURE_HANDLERS:
             output = await FEATURE_HANDLERS[tool_name](
-                HandlerCtx(tool_name, server_client, conversation_id, labels), args
+                HandlerCtx(
+                    tool_name,
+                    server_client,
+                    conversation_id,
+                    labels,
+                    agent_spec=agent_spec,
+                    publish_event=publish_event,
+                    session_inbox=session_inbox,
+                ),
+                args,
             )
         elif tool_name in _BROWSER_TOOLS:
             output = await _execute_browser_tool(

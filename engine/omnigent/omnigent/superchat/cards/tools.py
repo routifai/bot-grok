@@ -83,7 +83,16 @@ CARD_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
         unit=_STR,
     ),
     "person": _obj(["name"], name=_STR, role=_STR, org=_STR, email=_STR, phone=_STR, url=_STR),
-    "file": _obj(["name"], name=_STR, url=_STR, kind=_STR, size=_NUM),
+    "file": _obj(
+        ["name"],
+        name=_STR,
+        url=_STR,
+        kind=_STR,
+        size=_NUM,
+        artifactId=_STR,
+        version=_NUM,
+        versions=_NUM,
+    ),
     "progress": _obj(
         ["label", "value", "status"],
         label=_STR,

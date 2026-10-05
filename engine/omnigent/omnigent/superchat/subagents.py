@@ -293,6 +293,7 @@ def format_subagent_wake_notice_with_result(
     child_session_id: str,
     result_text: str | None,
     max_chars: int = RESULT_PREVIEW_MAX_CHARS,
+    saved_files: str = "",
 ) -> str:
     """Build a superside-chat wake notice that inlines the Result itself.
 
@@ -309,6 +310,7 @@ def format_subagent_wake_notice_with_result(
     :param result_text: The sub-agent's final message. ``None``/empty
         renders as ``"(no output)"``.
     :param max_chars: Cap on verbatim Result text kept in the notice.
+    :param saved_files: The block naming files the Helper saved (``format_saved_files``), if any.
     :returns: A ``[System: ...]`` notice string with the Result inlined.
     """
     text = (result_text or "").strip() or "(no output)"
@@ -320,7 +322,7 @@ def format_subagent_wake_notice_with_result(
     else:
         body = text
     return (
-        f"[System: sub-agent {agent}/{title} finished ({status}) — result:\n{body}\n"
+        f"[System: sub-agent {agent}/{title} finished ({status}) — result:\n{body}\n{saved_files}"
         "Use this Result to complete what the person originally asked for: deliver the finished "
         "thing (the answer, comparison or draft, as a card or file if that fits), not a status "
         "update. Mention anything still open in one line. Do not raise unrelated topics.]"

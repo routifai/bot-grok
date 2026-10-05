@@ -37,6 +37,17 @@ const reply = (text: string) => ({
 });
 
 describe("replyCardFromToolCall", () => {
+  it("keeps the artifact id of a file card a Helper's result named", () => {
+    const file = {
+      card: "file",
+      data: { name: "report.html", artifactId: "a1b2", version: 2 },
+      fallback: "Saved report.html",
+    };
+    expect(
+      replyCardFromToolCall(call("c1"), JSON.stringify({ type: "card", ...file })),
+    ).toMatchObject({ card: "file", data: file.data });
+  });
+
   it("builds the block from the engine's validated output", () => {
     expect(replyCardFromToolCall(call("c1"), JSON.stringify(result))).toEqual({
       kind: "reply_card",

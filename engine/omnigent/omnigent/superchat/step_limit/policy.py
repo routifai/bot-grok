@@ -44,8 +44,8 @@ _OVERRIDE_RE = re.compile(
 )
 
 REFUSAL = (
-    "Work-step limit reached for this turn. Hand the rest of this task to a worker Helper now: "
-    "start one with a brief that says what the person wants and everything you found so far, "
+    "Work-step limit reached for this turn. Hand the rest of this task to a Helper now: call "
+    "`start_helper` once with a task saying what the person wants and everything found so far, "
     "then tell the person in one plain line what you started (never mention Helpers or tools) "
     "and end your turn. Do not call more work tools yourself."
 )

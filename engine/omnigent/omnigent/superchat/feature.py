@@ -49,12 +49,18 @@ class HandlerCtx:
     :param server_client: HTTP client pointed at the Omnigent server (``None`` outside a runner).
     :param conversation_id: The calling session.
     :param labels: The calling session's labels, when the dispatcher has them.
+    :param agent_spec: The calling session's spec (its declared Helper types).
+    :param publish_event: Publishes child-session discovery events to the caller's stream.
+    :param session_inbox: The caller's inbox queue (Helper results land here).
     """
 
     tool_name: str
     server_client: httpx.AsyncClient | None
     conversation_id: str | None
     labels: Mapping[str, str] | None = None
+    agent_spec: Any = None
+    publish_event: Callable[[str, dict[str, Any]], None] | None = None
+    session_inbox: Any = None
 
 
 @dataclass(frozen=True)

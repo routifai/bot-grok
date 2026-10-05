@@ -65,7 +65,7 @@ def test_fourth_work_call_is_refused_with_handoff_text() -> None:
     state = {"n": 3, "free": False, "ts": time.time()}
     resp = sl.muse_step_limit(_call("web_search", state))
     assert resp["result"] == "DENY"
-    assert "worker Helper" in resp["reason"]
+    assert "start_helper" in resp["reason"]
     assert "end your turn" in resp["reason"]
 
 

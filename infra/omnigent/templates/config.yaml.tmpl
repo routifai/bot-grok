@@ -48,7 +48,7 @@ tools:
     - name: web_fetch
       fetch_provider: tavily
       api_key: ${TAVILY_API_KEY}
-  # Only what the Muse's job needs. Helpers are launched with sys_session_send and followed up
+  # Only what the Muse's job needs. Helpers are started with start_helper and followed up
   # with the inbox; everything else the framework registers (policy, comments, agent
   # management, model listing, skills, renaming) is withheld.
   allow:
@@ -59,7 +59,7 @@ tools:
     - "memory_*"
     - session_history
     - side_chat_open
-    - sys_session_send
+    - start_helper
     - sys_session_close
     - sys_session_list
     - sys_session_get_history

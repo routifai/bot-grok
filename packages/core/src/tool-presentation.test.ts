@@ -163,6 +163,16 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.snippet(output)).toBe("Analyst started.");
   });
 
+  it("start_helper: says it started and shows the Helper's plain title", () => {
+    const entry = TOOL_PRESENTATION.start_helper as ToolPresentation;
+    expect(entry.icon).toBe("helper");
+    expect(entry.title({ task: "Compare notes apps" })).toBe("Started background work");
+    expect(
+      entry.snippet('{"started":true,"helper_id":"conv_1","title":"Compare notes apps"}'),
+    ).toBe("Compare notes apps");
+    expect(entry.snippet('{"error":"cap reached"}')).toBe("cap reached");
+  });
+
   it("sys_session_create: starts background work for a title", () => {
     const entry = TOOL_PRESENTATION.sys_session_create as ToolPresentation;
     expect(entry.icon).toBe("helper");

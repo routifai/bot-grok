@@ -1,0 +1,73 @@
+"""Files a Helper saved with ``artifact_save``, carried in its result to the chat that started it.
+
+The runner notes each successful save under the saving session; when a Helper finishes, the wake
+notice lists its files (and its own Helpers' files, at any depth) with their artifact ids, so the
+Muse shows the real file card instead of guessing by name.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
+
+#: ``session id -> {file name -> saved record}``; a re-save of a name keeps only the newest.
+_saved: dict[str, dict[str, dict[str, Any]]] = {}
+
+
+def record_saved_file(session_id: str, output: str) -> None:
+    """Note one ``artifact_save`` result (its JSON output) under the session that saved it."""
+    try:
+        saved = json.loads(output)
+    except ValueError:
+        return
+    if not isinstance(saved, dict) or saved.get("type") != "artifact":
+        return
+    artifact_id, name = saved.get("id"), saved.get("name")
+    if not isinstance(artifact_id, str) or not isinstance(name, str):
+        return
+    record = {"id": artifact_id, "name": name, "title": saved.get("title")}
+    version = saved.get("version")
+    if isinstance(version, int):
+        record["version"] = version
+    _saved.setdefault(session_id, {})[name] = record
+
+
+def collect_saved_files(
+    session_id: str, children_of: Callable[[str], Iterable[str]]
+) -> list[dict[str, Any]]:
+    """Files saved by ``session_id`` and every Helper under it, in the order they were saved."""
+    found: dict[str, dict[str, Any]] = {}
+    seen: set[str] = set()
+    stack = [session_id]
+    while stack:
+        current = stack.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        for record in _saved.get(current, {}).values():
+            found[record["id"]] = record
+        stack.extend(children_of(current))
+    return list(found.values())
+
+
+def forget_saved_files(session_id: str) -> None:
+    """Drop what ``session_id`` saved (its result has been delivered)."""
+    _saved.pop(session_id, None)
+
+
+def format_saved_files(files: Iterable[Mapping[str, Any]]) -> str:
+    """The wake-notice block naming a Helper's saved files and how to show them ("" if none)."""
+    lines = []
+    for item in files:
+        label = item.get("title") or item["name"]
+        version = f", version {item['version']}" if item.get("version", 1) > 1 else ""
+        lines.append(f'- "{label}" (file name {item["name"]}, artifact_id {item["id"]}{version})')
+    if not lines:
+        return ""
+    return (
+        "Files it saved (already in the person's Library):\n" + "\n".join(lines) + "\n"
+        "Reply with one or two lines first, then show each file last with `render_card` "
+        '(card "file", data {"name": <file name>, "artifactId": <artifact_id>}). Never write a '
+        "file card without its artifact_id.\n"
+    )

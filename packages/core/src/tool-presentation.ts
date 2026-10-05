@@ -475,6 +475,19 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     snippet: helperHandleSnippet,
   },
 
+  start_helper: {
+    icon: "helper",
+    title: () => "Started background work",
+    snippet: (output) => {
+      const parsed = tryParseJson(output);
+      if (parsed === undefined) return null;
+      const error = errorMessage(parsed);
+      if (error) return clip(error);
+      const title = field(parsed, "title");
+      return isNonEmptyString(title) ? clip(title) : "Started.";
+    },
+  },
+
   sys_read_inbox: {
     icon: "helper",
     title: () => "Collected the result",

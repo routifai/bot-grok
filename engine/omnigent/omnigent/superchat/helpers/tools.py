@@ -1,0 +1,69 @@
+"""``start_helper`` tool definition (schema only; the runner handles the call)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from omnigent.tools.base import Tool
+
+START_HELPER_TOOL_NAME = "start_helper"
+
+
+class StartHelperTool(Tool):
+    """Start one Helper on a self-contained task; dispatched by the runner."""
+
+    @classmethod
+    def name(cls) -> str:
+        """:returns: ``"start_helper"``."""
+        return START_HELPER_TOOL_NAME
+
+    @classmethod
+    def description(cls) -> str:
+        """:returns: Human-readable description of the tool."""
+        return (
+            "Start a Helper on one self-contained piece of work. It runs on its own and its "
+            "result arrives here as a message when it finishes. `task` is the whole brief: what "
+            "to do, the outcome wanted, constraints and every detail it needs (it does not see "
+            "this conversation). One call per Helper; call it more than once in the same step to "
+            "run several in parallel. Never call it twice for the same task."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        """:returns: The OpenAI-format tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": "The complete brief for the Helper.",
+                        },
+                        "model": {
+                            "type": "string",
+                            "enum": ["fast", "strong"],
+                            "default": "strong",
+                            "description": (
+                                "fast: lookups, extraction, form filling. strong: judgment, "
+                                "synthesis, writing."
+                            ),
+                        },
+                        "reasoning": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": "How hard it should think. Omit for the default.",
+                        },
+                        "files": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Ids of uploaded files to hand to the Helper.",
+                        },
+                    },
+                    "required": ["task"],
+                    "additionalProperties": False,
+                },
+            },
+        }

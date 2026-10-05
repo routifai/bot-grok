@@ -196,6 +196,7 @@ from omnigent.server.schemas import (
 )
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
+from omnigent.superchat.helpers.saved_files import collect_saved_files, format_saved_files
 from omnigent.superchat.prompt_prefix import turn_prefix_blocks
 from omnigent.superchat.subagents import (
     format_subagent_wake_notice_with_result,
@@ -8156,13 +8157,9 @@ def create_runner_app(
                 _start_sign_in_watch(conv_id)
         else:
             if not has_buffered and not _suppress_status:
-                children = _subagent_work_by_parent.get(conv_id, set())
-                has_running_children = any(
-                    (e := _subagent_work_by_child.get(c)) is not None
-                    and e.status in ("launching", "running", "waiting")
-                    for c in children
+                _publish_turn_status(
+                    conv_id, "waiting" if _has_live_child_helpers(conv_id) else "idle"
                 )
-                _publish_turn_status(conv_id, "waiting" if has_running_children else "idle")
         if was_interrupted:
             if conv_id in _desynced_sessions and not has_buffered:
                 # This turn was torn down by desync recovery (which sets the
@@ -8187,7 +8184,14 @@ def create_runner_app(
                 status="failed",
                 output=f"Error: sub-agent turn failed: {error.get('message', 'unknown')}",
             )
-        elif not _is_native_harness(conv_id) and not has_buffered:
+        elif (
+            not _is_native_harness(conv_id)
+            and not has_buffered
+            # A Helper whose turn ends while its own child Helpers still run is waiting, not
+            # finished: each child's result wakes it, and only a turn ending with none live
+            # delivers the result to its parent.
+            and not _has_live_child_helpers(conv_id)
+        ):
             _mark_subagent_terminal_and_wake(
                 conv_id,
                 status="completed",
@@ -8728,6 +8732,12 @@ def create_runner_app(
                 status=entry.status,
                 child_session_id=entry.child_session_id,
                 result_text=entry.output,
+                saved_files=format_saved_files(
+                    collect_saved_files(
+                        entry.child_session_id,
+                        lambda sid: [w.child_session_id for w in list_subagent_work(sid)],
+                    )
+                ),
             )
             entry.wake_inlined = True
         else:
@@ -8848,6 +8858,14 @@ def create_runner_app(
 
         _retry_task.add_done_callback(_clear_retry_refs)
         _background_tasks.add(_retry_task)
+
+    def _has_live_child_helpers(conv_id: str) -> bool:
+        """Whether ``conv_id`` started sub-agents that have not reached a terminal status."""
+        return any(
+            (e := _subagent_work_by_child.get(c)) is not None
+            and e.status in ("launching", "running", "waiting")
+            for c in _subagent_work_by_parent.get(conv_id, set())
+        )
 
     def _mark_subagent_terminal_and_wake(
         child_session_id: str,
