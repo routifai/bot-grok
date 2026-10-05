@@ -44,6 +44,7 @@ export function SidePanelHeader({
         <MuseComputerTitle
           state={computer?.state}
           booting={booting}
+          runnerReady={computer?.runnerReady}
           screenFailed={Boolean(computerError) && !screenUrl}
         />
       ) : (

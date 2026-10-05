@@ -47,6 +47,10 @@ function mapError(error: unknown): never {
   if (error instanceof Error && /\(404\)/.test(error.message)) {
     throw new ORPCError("NOT_FOUND", { message: "File not found" });
   }
+  // The Computer's runner is still (re)connecting; the panel shows "starting" and retries.
+  if (error instanceof Error && /\(503\)/.test(error.message)) {
+    throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Starting the Computer" });
+  }
   throw error;
 }
 

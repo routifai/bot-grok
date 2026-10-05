@@ -76,7 +76,8 @@ def register_computer_routes(
         Report whether the session has a computer screen and whether a person controls it.
 
         :param session_id: Session identifier, e.g. ``"conv_abc123"``.
-        :returns: ``{"available": bool, "in_control": bool}``.
+        :returns: ``{"available": bool, "in_control": bool, "ready": bool}``; ``ready`` is
+            whether the Conversation's runner is connected (Files and tools can reach it).
         """
         user_id = _get_user_id(request, auth_provider)
         await _require_access_and_level(
@@ -84,10 +85,18 @@ def register_computer_routes(
         )
         target = await asyncio.to_thread(_target, request, session_id)
         if target is None:
-            return {"available": False, "in_control": False}
+            return {"available": False, "in_control": False, "ready": False}
         _launcher, _sandbox_id, host_id, host_store = target
         held = await asyncio.to_thread(host_store.get_computer_control_token, host_id)
-        return {"available": True, "in_control": held is not None}
+        conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+        tunnels = getattr(request.app.state, "tunnel_registry", None)
+        ready = bool(
+            conv is not None
+            and conv.runner_id
+            and tunnels is not None
+            and tunnels.get(conv.runner_id) is not None
+        )
+        return {"available": True, "in_control": held is not None, "ready": ready}
 
     @router.post(
         "/sessions/{session_id}/computer/screen",

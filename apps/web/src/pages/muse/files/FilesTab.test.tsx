@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from "react";
+import { i18n } from "@lingui/core";
+import { I18nProvider } from "@lingui/react";
+import type { ComponentProps } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
@@ -11,20 +13,24 @@ vi.mock("../../../lib/relative-time", () => ({ formatRelativeTime: () => "just n
 vi.mock("./FilePreviewDialog", () => ({
   FilePreviewDialog: ({ path }: { path: string }) => <div data-testid="preview">{path}</div>,
 }));
-vi.mock("@lingui/react/macro", () => {
-  const t = (parts: TemplateStringsArray, ...values: unknown[]) =>
-    parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, "");
-  return {
-    useLingui: () => ({ t }),
-    Trans: ({ children }: { children: ReactNode }) => children,
-  };
-});
+vi.mock("@orpc/client", () => ({
+  ORPCError: class extends Error {
+    code = "SERVICE_UNAVAILABLE";
+  },
+}));
 vi.mock("@aiden/ui-web", () => ({
   Input: (props: ComponentProps<"input">) => <input {...props} />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
-import { FilesTab } from "./FilesTab";
+import { FilesTab as Tab } from "./FilesTab";
+
+i18n.loadAndActivate({ locale: "en", messages: {} });
+const FilesTab = (props: { botId: string; refreshKey: number }) => (
+  <I18nProvider i18n={i18n}>
+    <Tab {...props} />
+  </I18nProvider>
+);
 
 const entry = (name: string, type: "file" | "directory", path = name, modifiedAt = 1) => ({
   name,
@@ -62,4 +68,40 @@ it("expands a folder lazily and opens a file in the preview", async () => {
   await act(async () => root.render(<FilesTab botId="bot-1" refreshKey={1} />));
   expect(api.list).toHaveBeenCalledTimes(4);
   await act(async () => root.unmount());
+});
+
+it("hides dotfiles until toggled", async () => {
+  api.list.mockReset();
+  api.list.mockResolvedValue({ entries: [entry(".env", "file"), entry("notes.txt", "file")] });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<FilesTab botId="bot-2" refreshKey={0} />));
+  expect(container.textContent).not.toContain(".env");
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>("[aria-label='Show hidden files']")?.click(),
+  );
+  expect(container.textContent).toContain(".env");
+  await act(async () => root.unmount());
+});
+
+it("shows a quiet starting state and retries until the Computer answers", async () => {
+  vi.useFakeTimers();
+  const { ORPCError } = await import("@orpc/client");
+  api.list.mockReset();
+  api.list
+    .mockRejectedValueOnce(new (ORPCError as unknown as new () => Error)())
+    .mockResolvedValue({ entries: [entry("notes.txt", "file")] });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<FilesTab botId="bot-3" refreshKey={0} />));
+  expect(container.textContent).toContain("Starting the Computer");
+  expect(container.textContent).not.toContain("Could not load");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2600);
+  });
+  expect(container.textContent).toContain("notes.txt");
+  await act(async () => root.unmount());
+  vi.useRealTimers();
 });

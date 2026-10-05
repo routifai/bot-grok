@@ -42,6 +42,16 @@ describe("engine files", () => {
     expect(entries[0]).toMatchObject({ type: "directory", size: null });
   });
 
+  it("maps an engine 503 (runner still reconnecting) to SERVICE_UNAVAILABLE", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ error: { code: "runner_unavailable", message: "offline" } }, 503)),
+    );
+    await expect(
+      engineListFiles(deps, client, actor, { botId: "bot-1", path: "" }),
+    ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  });
+
   it("rejects paths that leave the workspace without calling the engine", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

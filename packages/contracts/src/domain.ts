@@ -809,6 +809,8 @@ export const ComputerStatusSchema = z.object({
   controlBotId: Id.nullable(),
   takeoverRequested: z.boolean(),
   screenAvailable: z.boolean(),
+  /** The Conversation's runner is connected (Files and tools can reach it); absent when unknown. */
+  runnerReady: z.boolean().optional(),
   screenWidth: z.number().int().positive(),
   screenHeight: z.number().int().positive(),
   homeRevision: z.string().nullable(),

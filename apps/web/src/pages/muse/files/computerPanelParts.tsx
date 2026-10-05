@@ -70,17 +70,20 @@ export function MuseComputerTitle({
   state,
   booting,
   screenFailed,
+  runnerReady,
 }: {
   state?: string;
   booting: boolean;
+  /** The Conversation's runner is not connected yet (e.g. after a Computer restart). */
+  runnerReady?: boolean;
   /** The screen link could not be loaded, so the computer is not actually viewable. */
   screenFailed: boolean;
 }) {
   const { t } = useLingui();
-  const starting = booting || state === "booting";
+  const starting = booting || state === "booting" || (state === "running" && runnerReady === false);
   const failed = state === "error";
   const unreachable = state === "running" && screenFailed;
-  const running = state === "running" && !screenFailed;
+  const running = state === "running" && !screenFailed && !starting;
   return (
     <span className="flex items-center gap-2.5">
       <span className="text-[15.5px] font-semibold text-foreground">

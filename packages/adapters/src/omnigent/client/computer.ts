@@ -4,6 +4,8 @@ import { omnigentHeaders, throwOnError } from "./core.js";
 export interface OmnigentComputerState {
   available: boolean;
   in_control: boolean;
+  /** The session's runner is connected; absent on engines that predate it. */
+  ready?: boolean;
 }
 
 export interface OmnigentComputerScreen {

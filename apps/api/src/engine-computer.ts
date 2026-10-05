@@ -78,8 +78,8 @@ export async function engineComputerStatus(
   actor: Actor,
   botId: string,
 ): Promise<ComputerStatus> {
-  const { available, in_control } = await state(await resolve(deps, client, actor, botId));
-  return toComputerStatus(botId, {
+  const { available, in_control, ready } = await state(await resolve(deps, client, actor, botId));
+  const status = toComputerStatus(botId, {
     kind: "docker",
     state: available ? "running" : "stopped",
     scope: "dedicated",
@@ -87,6 +87,7 @@ export async function engineComputerStatus(
     controlBotId: in_control ? botId : null,
     homeRevision: "",
   });
+  return available && ready !== undefined ? { ...status, runnerReady: ready } : status;
 }
 
 function relayed(deps: EngineComputerDeps, target: EngineComputer, url: string, held: boolean) {

@@ -71,7 +71,7 @@ def _app(
         return JSONResponse({"error": str(exc)}, status_code=exc.http_status)
 
     router = APIRouter(prefix="/v1")
-    conv = SimpleNamespace(host_id="host_1" if with_host else None)
+    conv = SimpleNamespace(host_id="host_1" if with_host else None, runner_id=None)
     store = SimpleNamespace(get_conversation=lambda _sid: conv)
     register_computer_routes(router, conversation_store=store)  # type: ignore[arg-type]
     app.include_router(router)
@@ -88,13 +88,13 @@ async def _client(app: FastAPI) -> httpx.AsyncClient:
 async def test_status_reports_available_and_not_in_control() -> None:
     async with await _client(_app(StubLauncher())) as c:
         r = await c.get("/v1/sessions/conv_1/computer")
-    assert r.json() == {"available": True, "in_control": False}
+    assert r.json() == {"available": True, "in_control": False, "ready": False}
 
 
 async def test_status_unavailable_without_a_screen_capable_sandbox() -> None:
     async with await _client(_app(StubLauncher(screen=False))) as c:
         r = await c.get("/v1/sessions/conv_1/computer")
-    assert r.json() == {"available": False, "in_control": False}
+    assert r.json() == {"available": False, "in_control": False, "ready": False}
 
 
 async def test_take_over_then_release_round_trip() -> None:
@@ -142,3 +142,23 @@ async def test_control_state_is_read_from_the_store_not_process_memory() -> None
         assert again.calls[0][1][1] == token  # type: ignore[index]
         await c.post("/v1/sessions/conv_1/computer/release")
     assert shared == {}
+
+
+async def test_status_ready_follows_the_runner_tunnel() -> None:
+    live: set[str] = set()
+    conv = SimpleNamespace(host_id="host_1", runner_id="runner_1")
+    app = _app(StubLauncher())
+    router = APIRouter(prefix="/v1")
+    register_computer_routes(
+        router,
+        conversation_store=SimpleNamespace(get_conversation=lambda _s: conv),  # type: ignore[arg-type]
+    )
+    bound = FastAPI()
+    bound.include_router(router)
+    bound.state.host_store = app.state.host_store
+    bound.state.sandbox_config = app.state.sandbox_config
+    bound.state.tunnel_registry = SimpleNamespace(get=lambda rid: rid if rid in live else None)
+    async with await _client(bound) as c:
+        assert (await c.get("/v1/sessions/conv_1/computer")).json()["ready"] is False
+        live.add("runner_1")
+        assert (await c.get("/v1/sessions/conv_1/computer")).json()["ready"] is True

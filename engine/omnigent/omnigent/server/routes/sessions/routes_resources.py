@@ -164,6 +164,11 @@ def _attachment_upload_lock(session_id: str) -> asyncio.Lock:
     return lock
 
 
+# Bound on one read's wake wait; the launch itself keeps running past it, so
+# the client's retry rendezvouses on the same single-flighted launch.
+_READ_WAKE_BUDGET_S = 12.0
+
+
 def register_resources_routes(
     router: APIRouter,
     *,
@@ -388,10 +393,20 @@ def register_resources_routes(
             predates downloads.
         :raises HTTPException: 502 when no runner can be reached.
         """
-        runner_client = await _get_runner_client_for_resource_access(
-            session_id,
-            conversation=conversation,
-        )
+        try:
+            runner_client = await _get_runner_client_for_resource_access(
+                session_id,
+                conversation=conversation,
+            )
+        except OmnigentError as exc:
+            if exc.code != ErrorCode.RUNNER_UNAVAILABLE:
+                raise
+            # Same wake as the list/read paths: a restarted Computer rebinds here.
+            conversation = await _wake_runner_for_read(request, session_id, conversation, exc)
+            runner_client = await _get_runner_client_for_resource_access(
+                session_id,
+                conversation=conversation,
+            )
         if runner_client is None:
             raise HTTPException(
                 status_code=502,
@@ -511,6 +526,51 @@ def register_resources_routes(
             )
         return cast(dict[str, Any], response_payload)
 
+    async def _wake_runner_for_read(
+        request: Request | None,
+        session_id: str,
+        conversation: Conversation,
+        offline: OmnigentError,
+    ) -> Conversation:
+        """Bring the session's runner back for a read, like a chat turn would.
+
+        A Computer restarted under a live Conversation leaves it pinned to a
+        dead runner until a message relaunches one. Reads use the same wake
+        ladder (``ensure_runner_connected``) so the panel recovers without a
+        send, but only wait a bounded time: a slow start surfaces as a 503
+        the client retries, not a hung request.
+
+        :param request: Incoming request (app state for the wake); ``None``
+            for internal calls, which cannot wake.
+        :param session_id: Session/conversation identifier.
+        :param conversation: Conversation loaded during authorization.
+        :param offline: The runner-offline error to re-raise when nothing is
+            wakeable.
+        :returns: The re-read conversation, whose runner is now reachable.
+        :raises OmnigentError: 503 ``runner_unavailable`` while it starts.
+        """
+        if request is None or conversation.host_id is None:
+            raise offline
+        try:
+            runner_client, conv = await asyncio.wait_for(
+                ensure_runner_connected(
+                    session_id=session_id,
+                    conv=conversation,
+                    app_state=request.app.state,
+                    conversation_store=conversation_store,
+                    runner_router=runner_router or get_server_runner_router(),
+                ),
+                timeout=_READ_WAKE_BUDGET_S,
+            )
+        except asyncio.TimeoutError:
+            raise OmnigentError(
+                "The session's computer is still starting; try again shortly",
+                code=ErrorCode.RUNNER_UNAVAILABLE,
+            ) from None
+        if runner_client is None:
+            raise offline
+        return conv
+
     async def _fs_get_with_host_fallback(
         session_id: str,
         conversation: Conversation,
@@ -520,6 +580,7 @@ def register_resources_routes(
         runner_path: str,
         runner_params: dict[str, str] | None = None,
         host_workspace_resolver: Callable[[], Awaitable[str]] | None = None,
+        request: Request | None = None,
     ) -> dict[str, Any]:
         """Serve a filesystem read, falling back to the host when offline.
 
@@ -547,6 +608,8 @@ def register_resources_routes(
             has nothing for this to resolve against. Resolving it eagerly
             would refuse absolute browsing on exactly those sessions even
             though the online runner can serve them.
+        :param request: Incoming request; lets a read wake the runner when
+            neither the runner nor a host tunnel can serve it.
         :returns: The runner-shaped filesystem result.
         :raises OmnigentError: Re-raised runner-offline error when the
             host cannot serve the read either.
@@ -576,9 +639,17 @@ def register_resources_routes(
             workspace_override=host_workspace,
         )
         if payload is None:
-            # No reachable host either — surface the original offline
-            # error (503) so the client shows its reconnect affordance.
-            raise runner_offline
+            # No reachable host either: wake the runner like a chat turn
+            # would, then retry once. Nothing wakeable re-raises the 503.
+            conversation = await _wake_runner_for_read(
+                request, session_id, conversation, runner_offline
+            )
+            return await _proxy_get_to_runner(
+                session_id,
+                runner_path,
+                conversation,
+                params=runner_params,
+            )
         return payload
 
     async def _environment_reach_for_session(
@@ -2322,6 +2393,7 @@ def register_resources_routes(
                     "order": order,
                 },
                 runner_path=path,
+                request=request,
             ),
         )
 
@@ -2456,6 +2528,7 @@ def register_resources_routes(
             },
             runner_path=runner_path,
             host_workspace_resolver=resolver,
+            request=request,
         )
 
     @router.get(
@@ -2487,6 +2560,7 @@ def register_resources_routes(
             op="changes",
             host_params={},
             runner_path=path,
+            request=request,
         )
 
     @file_read_router.get(
@@ -2525,6 +2599,7 @@ def register_resources_routes(
             op="diff",
             host_params={"path": relative_path},
             runner_path=path,
+            request=request,
         )
 
     @file_read_router.get(
@@ -2557,6 +2632,7 @@ def register_resources_routes(
             host_params={"pr_url": pr_url} if pr_url else {},
             runner_params={"pr_url": pr_url} if pr_url else None,
             runner_path=f"/v1/sessions/{session_id}/resources/github/diff",
+            request=request,
         )
 
     @file_read_router.get(
@@ -2606,6 +2682,7 @@ def register_resources_routes(
             host_params={"base": base, "path": relative_path, **params},
             runner_path=f"/v1/sessions/{session_id}/resources/github/diff/{relative_path}",
             runner_params=params or None,
+            request=request,
         )
 
     @file_read_router.get(
@@ -2710,6 +2787,7 @@ def register_resources_routes(
                 },
                 runner_path=path,
                 host_workspace_resolver=resolver,
+                request=request,
             ),
         )
 
@@ -2885,6 +2963,7 @@ def register_resources_routes(
             host_params={"pr_url": pr_url} if pr_url else {},
             runner_params={"pr_url": pr_url} if pr_url else None,
             runner_path=f"/v1/sessions/{session_id}/resources/github",
+            request=request,
         )
 
     @router.get(
@@ -2911,6 +2990,7 @@ def register_resources_routes(
             host_params={"pr_url": pr_url} if pr_url else {},
             runner_params={"pr_url": pr_url} if pr_url else None,
             runner_path=f"/v1/sessions/{session_id}/resources/github/changes",
+            request=request,
         )
 
     @router.post("/sessions/{session_id}/resources/github/prs", response_model=None)

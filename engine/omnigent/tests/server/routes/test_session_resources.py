@@ -8621,3 +8621,62 @@ async def test_native_send_rechecks_runtime_after_upload(
     assert "Update Omnigent" in response.text
     assert runner.post_json_calls == []
     assert len(file_conv_store.appended_items) == 1 + int(retained_history)
+
+
+@pytest.mark.asyncio
+async def test_filesystem_list_wakes_the_runner_when_runner_and_host_are_offline(
+    offline_env_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A restarted Computer rebinds on a read: Files works without a chat turn."""
+    from omnigent.server.routes import _host_filesystem
+    from omnigent.server.routes.sessions import routes_resources as _routes
+
+    async def _no_host(**_kwargs: Any) -> dict[str, Any]:
+        raise _host_filesystem.HostFsUnavailableError("host gone")
+
+    woken: list[str] = []
+
+    async def _wake(*, session_id: str, conv: Conversation, **_kwargs: Any) -> Any:
+        woken.append(session_id)
+        entries = {"object": "list", "data": [{"name": "a.txt"}], "has_more": False}
+        set_runner_router(_FakeRunnerRouter(_FakeRunnerClient(payload=entries)))  # type: ignore[arg-type]
+        return object(), conv
+
+    monkeypatch.setattr(_host_filesystem, "read_workspace_from_host", _no_host)
+    monkeypatch.setattr(_routes, "ensure_runner_connected", _wake)
+
+    resp = await offline_env_client.get(
+        f"/v1/sessions/{_OFFLINE_SESSION}/resources/environments/default/filesystem?limit=10"
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"][0]["name"] == "a.txt"
+    assert woken == [_OFFLINE_SESSION]
+
+
+@pytest.mark.asyncio
+async def test_filesystem_list_is_503_while_the_computer_is_still_starting(
+    offline_env_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wake that outlives the read budget is a retryable 503, not a hang."""
+    from omnigent.server.routes import _host_filesystem
+    from omnigent.server.routes.sessions import routes_resources as _routes
+
+    async def _no_host(**_kwargs: Any) -> dict[str, Any]:
+        raise _host_filesystem.HostFsUnavailableError("host gone")
+
+    async def _slow(**_kwargs: Any) -> Any:
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(_host_filesystem, "read_workspace_from_host", _no_host)
+    monkeypatch.setattr(_routes, "ensure_runner_connected", _slow)
+    monkeypatch.setattr(_routes, "_READ_WAKE_BUDGET_S", 0.01)
+
+    resp = await offline_env_client.get(
+        f"/v1/sessions/{_OFFLINE_SESSION}/resources/environments/default/filesystem?limit=10"
+    )
+
+    assert resp.status_code == 503
+    assert resp.json()["error"]["code"] == ErrorCode.RUNNER_UNAVAILABLE
