@@ -152,7 +152,10 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s /opt/venv/bin/uv /usr/local/bin/uv
 
 # Strip CR so shebangs work even if the build context came from a CRLF checkout.
+# COPY --chmod=644 also gives the directory it creates mode 644 (no search bit), which left
+# the recorder's page script unreadable to USER 1000.
 RUN ldconfig \
+  && chmod 755 /usr/local/share/aiden \
   && sed -i 's/\r$//' /usr/local/bin/aiden-computer /usr/local/bin/aiden-computer-control /usr/local/bin/aiden-browser /usr/local/bin/aiden-page-browser /usr/local/bin/aiden-recorder \
     /etc/aiden/fluxbox/init /etc/aiden/fluxbox/apps /etc/aiden/fluxbox/menu \
     /etc/profile.d/aiden-local-bin.sh
