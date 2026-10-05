@@ -5708,6 +5708,44 @@ def test_switch_conversation_agent_same_family_keeps_model_settings(
     assert SWITCH_PREVIOUS_BUILTIN_LABEL_KEY not in updated.labels
 
 
+@pytest.mark.parametrize(
+    ("side_chat", "expect_kept"), [("1", True), (None, False)], ids=["side-chat", "plain-fork"]
+)
+def test_switch_conversation_agent_fork_source_label_survives_only_for_side_chat(
+    conversation_store: SqlAlchemyConversationStore,
+    side_chat: str | None,
+    expect_kept: bool,
+) -> None:
+    """A Side Chat keeps its parent link across a switch; a plain fork's directive is dropped."""
+    from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
+
+    created = conversation_store.create_session_with_agent(
+        agent_id="1f0c2a9b7d3e4c5a8b6d9e0f1a2b3c4d",
+        agent_name="claude (switch src)",
+        agent_bundle_location="1f0c2a9b7d3e4c5a8b6d9e0f1a2b3c4d/hash",
+        agent_description=None,
+    )
+    conv_id = created.conversation.id
+    labels = {FORK_SOURCE_LABEL_KEY: "parent_conv"}
+    if side_chat is not None:
+        labels[SIDE_CHAT_LABEL_KEY] = side_chat
+    conversation_store.set_labels(conv_id, labels)
+
+    updated = conversation_store.switch_conversation_agent(
+        conv_id,
+        new_agent_id="2e1d3b0c8a4f5d6b9c7e0a1f2b3c4d5e",
+        new_agent_name="pi (switch new)",
+        new_agent_bundle_location="2e1d3b0c8a4f5d6b9c7e0a1f2b3c4d5e/hash",
+        new_agent_description=None,
+        copy_model_settings=False,
+        carry_history_into_native=False,
+        presentation_labels={},
+        previous_builtin_id=None,
+    )
+
+    assert (FORK_SOURCE_LABEL_KEY in updated.labels) is expect_kept
+
+
 def test_get_session_connectivity_batches_runner_and_host(
     conversation_store: SqlAlchemyConversationStore,
     db_uri: str,

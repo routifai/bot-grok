@@ -101,6 +101,7 @@ from omnigent.stores.conversation_store import (
     FORK_SOURCE_LABEL_KEY,
     PINNED_LABEL_KEY,
     PROJECT_LABEL_KEY,
+    SIDE_CHAT_LABEL_KEY,
     SWITCH_PREVIOUS_BUILTIN_LABEL_KEY,
     ConversationAlreadyExistsError,
     ConversationNotFoundError,
@@ -4994,7 +4995,10 @@ class SqlAlchemyConversationStore(ConversationStore):
             row.updated_at = now
 
             existing = _fetch_labels(ap_sess, conversation_id)
-            present_drop = [key for key in drop_keys if key in existing]
+            # A Side Chat's fork-source label is its link to the parent Super Chat
+            # (discovery, host adoption), so switching its agent must keep it.
+            keep_keys = {FORK_SOURCE_LABEL_KEY} if SIDE_CHAT_LABEL_KEY in existing else set()
+            present_drop = [key for key in drop_keys - keep_keys if key in existing]
             if present_drop:
                 ap_sess.execute(
                     delete(SqlConversationLabel).where(
