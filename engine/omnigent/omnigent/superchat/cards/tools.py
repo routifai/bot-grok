@@ -166,6 +166,10 @@ def build_card(args: dict[str, Any]) -> dict[str, Any]:
     out.update({key: args[key] for key in ("id", "title") if args.get(key)})
     out["data"] = args["data"]
     out["fallback"] = fallback.strip()
+    # The model reacts to a tool result; without this it adds a line repeating the card.
+    out["note"] = (
+        "Shown to the person. A card ends your reply: end your turn now, with no more text."
+    )
     return out
 
 
@@ -188,8 +192,8 @@ class RenderCardTool(Tool):
             "Otherwise write normally. `data` must match the schema of the chosen `card`. "
             "`fallback` is a complete markdown summary of the card, used where it cannot be "
             "drawn and kept in your history; never repeat the card's content in your reply, "
-            "add one line of context at most. Reuse the same `id` to update a plan or "
-            "progress card in place."
+            "add one line of context at most, before the card; the card ends your reply. "
+            "Reuse the same `id` to update a plan or progress card in place."
         )
 
     def get_schema(self) -> dict[str, Any]:

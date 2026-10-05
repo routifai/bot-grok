@@ -36,6 +36,8 @@ def test_every_kind_has_a_valid_fixture() -> None:
 @pytest.mark.parametrize("kind", sorted(_VALID))
 def test_valid_card_returns_typed_payload(kind: str) -> None:
     out = _call(card=kind, id="c1", title="T", data=_VALID[kind], fallback=" Summary ")
+    # The note tells the model the card ended its reply, so it adds no trailing line.
+    assert "end your turn" in out.pop("note")
     assert out == {
         "type": "card",
         "card": kind,
