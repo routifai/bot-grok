@@ -92,10 +92,13 @@ def _is_tenant_authored(agent_store: AgentStore, agent: Any) -> bool:
     """Whether *agent*'s bundle may be tenant-supplied (no ``${VAR}`` expansion).
 
     Template agents (``session_id is None``) are operator-authored. A fork's
-    session-scoped clone points at the very same content-addressed bundle
-    (``<template id>/<sha256>``), so it is operator-authored too when that
-    prefix names a template whose bundle location is identical. A tenant
-    upload always lands under its own agent id, so it never matches.
+    session-scoped clone points at a content-addressed bundle under its source
+    template (``<template id>/<sha256>``), so it is operator-authored too
+    whenever that prefix names a template. It keeps that trust after the
+    template is re-uploaded (the template's bundle moves on, the clone's does
+    not), so the bundle locations are deliberately not compared. A tenant
+    upload is only ever written under its own agent id
+    (``PUT /sessions/{id}/agent``), so it never carries a template's prefix.
     """
     if agent.session_id is None:
         return False
@@ -103,11 +106,7 @@ def _is_tenant_authored(agent_store: AgentStore, agent: Any) -> bool:
     if source_id == agent.id:
         return True
     source = agent_store.get(source_id)
-    return not (
-        source is not None
-        and source.session_id is None
-        and source.bundle_location == agent.bundle_location
-    )
+    return source is None or source.session_id is not None
 
 
 def register_agent_routes(

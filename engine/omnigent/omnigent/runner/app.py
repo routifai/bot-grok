@@ -14989,6 +14989,13 @@ def _build_spawn_env_from_spec(
     # the concrete agent's slug must also reach the command and model resolvers.
     requested_harness = harness
     harness = canonicalize_harness(harness) or harness
+    # A ``${VAR}`` that survived spec loading must fail the turn here, not
+    # reach the provider as a literal model id.
+    from omnigent.spec.parser import check_unresolved_env_vars
+
+    configured_model = model_override or getattr(getattr(spec, "executor", None), "model", None)
+    if configured_model:
+        check_unresolved_env_vars("executor.model", configured_model)
     if requested_harness.startswith("acp:"):
         spec = dataclasses.replace(
             spec,

@@ -37,7 +37,20 @@ def test_tenant_upload_is_tenant_authored() -> None:
     assert _is_tenant_authored(_Store(template, upload), upload) is True  # type: ignore[arg-type]
 
 
-def test_forged_prefix_with_different_bundle_is_tenant_authored() -> None:
-    template = _agent("tpl", "tpl/abc", None)
-    forged = _agent("up", "tpl/evil", "sess")
-    assert _is_tenant_authored(_Store(template, forged), forged) is True  # type: ignore[arg-type]
+def test_clone_keeps_trust_after_template_is_reuploaded() -> None:
+    # The template's bundle moved on (new sha) after the clone was made; the
+    # clone still points at the old content under the template's prefix.
+    template = _agent("tpl", "tpl/new", None)
+    clone = _agent("clone", "tpl/old", "sess")
+    assert _is_tenant_authored(_Store(template, clone), clone) is False  # type: ignore[arg-type]
+
+
+def test_prefix_naming_a_session_scoped_agent_is_tenant_authored() -> None:
+    other = _agent("other", "other/abc", "sess2")
+    forged = _agent("up", "other/abc", "sess")
+    assert _is_tenant_authored(_Store(other, forged), forged) is True  # type: ignore[arg-type]
+
+
+def test_prefix_naming_a_missing_agent_is_tenant_authored() -> None:
+    forged = _agent("up", "ghost/abc", "sess")
+    assert _is_tenant_authored(_Store(forged), forged) is True  # type: ignore[arg-type]
