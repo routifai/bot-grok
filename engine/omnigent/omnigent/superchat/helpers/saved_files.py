@@ -11,8 +11,18 @@ import json
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
+from omnigent.superchat.feature import HandlerCtx, is_helper
+
+SAVE_TOOL_NAME = "artifact_save"
+
 #: ``session id -> {file name -> saved record}``; a re-save of a name keeps only the newest.
 _saved: dict[str, dict[str, dict[str, Any]]] = {}
+
+
+def note_saved_file(ctx: HandlerCtx, output: str) -> None:
+    """Feature result listener: note a Helper's ``artifact_save`` under its own session."""
+    if ctx.tool_name == SAVE_TOOL_NAME and ctx.conversation_id and is_helper(ctx.labels):
+        record_saved_file(ctx.conversation_id, output)
 
 
 def record_saved_file(session_id: str, output: str) -> None:
@@ -33,27 +43,36 @@ def record_saved_file(session_id: str, output: str) -> None:
     _saved.setdefault(session_id, {})[name] = record
 
 
-def collect_saved_files(
-    session_id: str, children_of: Callable[[str], Iterable[str]]
-) -> list[dict[str, Any]]:
-    """Files saved by ``session_id`` and every Helper under it, in the order they were saved."""
-    found: dict[str, dict[str, Any]] = {}
-    seen: set[str] = set()
+def _tree(session_id: str, children_of: Callable[[str], Iterable[str]]) -> list[str]:
+    """``session_id`` and every session under it, breadth first."""
+    seen: list[str] = []
     stack = [session_id]
     while stack:
         current = stack.pop(0)
         if current in seen:
             continue
-        seen.add(current)
+        seen.append(current)
+        stack.extend(children_of(current))
+    return seen
+
+
+def collect_saved_files(
+    session_id: str, children_of: Callable[[str], Iterable[str]]
+) -> list[dict[str, Any]]:
+    """Files saved by ``session_id`` and every Helper under it, in the order they were saved."""
+    found: dict[str, dict[str, Any]] = {}
+    for current in _tree(session_id, children_of):
         for record in _saved.get(current, {}).values():
             found[record["id"]] = record
-        stack.extend(children_of(current))
     return list(found.values())
 
 
-def forget_saved_files(session_id: str) -> None:
-    """Drop what ``session_id`` saved (its result has been delivered)."""
-    _saved.pop(session_id, None)
+def forget_saved_files(
+    session_id: str, children_of: Callable[[str], Iterable[str]] = lambda _s: ()
+) -> None:
+    """Drop what ``session_id`` and its Helpers saved (their result has been delivered)."""
+    for current in _tree(session_id, children_of):
+        _saved.pop(current, None)
 
 
 def format_saved_files(files: Iterable[Mapping[str, Any]]) -> str:

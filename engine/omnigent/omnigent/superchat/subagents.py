@@ -188,13 +188,11 @@ def refuse_subagent_dispatch_override(
 
 # ── Helper model choice: only ``fast`` or ``strong``, mapped in config ────
 
-#: Env vars mapping the two choices to real model ids. ``fast`` is the background Helper model
-#: (the same one the Goal and teacher Types pin in their ``config.yaml``); ``strong`` is the
-#: Muse's own model, falling back to ``NOVA_CLAUDE_MODEL`` and then to the parent session's
-#: model (the existing inheritance) when neither is set. Model ids never appear in prompts.
+#: Env vars mapping the two choices to real model ids; the product sets them. A choice with no
+#: id configured inherits the parent session's model (the existing inheritance). Model ids
+#: never appear in prompts.
 FAST_MODEL_ENV = "OMNIGENT_HELPER_MODEL_FAST"
 STRONG_MODEL_ENV = "OMNIGENT_HELPER_MODEL_STRONG"
-DEFAULT_FAST_MODEL = "claude-haiku-4-5"
 HELPER_MODEL_CHOICES = ("fast", "strong")
 HELPER_EFFORT_CHOICES = ("low", "medium", "high")
 
@@ -223,12 +221,9 @@ def resolve_helper_dispatch(
     if model is None:
         return None, reasoning_effort
     if model == "fast":
-        return source.get(FAST_MODEL_ENV) or DEFAULT_FAST_MODEL, reasoning_effort
+        return source.get(FAST_MODEL_ENV) or None, reasoning_effort
     if model == "strong":
-        return (
-            source.get(STRONG_MODEL_ENV) or source.get("NOVA_CLAUDE_MODEL") or None,
-            reasoning_effort,
-        )
+        return source.get(STRONG_MODEL_ENV) or None, reasoning_effort
     raise ValueError(f"model must be 'fast' or 'strong' in this chat, not {model!r}")
 
 

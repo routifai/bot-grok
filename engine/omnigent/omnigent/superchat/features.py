@@ -14,6 +14,7 @@ from omnigent.superchat.feature import (
     BackgroundJob,
     Feature,
     Handler,
+    HandlerCtx,
     InstallDeps,
     ToolManagerCtx,
 )
@@ -61,6 +62,13 @@ FEATURES: list[Feature] = _load()
 FEATURE_HANDLERS: dict[str, Handler] = {
     name: handler for feature in FEATURES for name, handler in feature.handlers.items()
 }
+
+
+def notify_result(ctx: HandlerCtx, output: str) -> None:
+    """Tell every feature that listens (``Feature.on_result``) what a handler just returned."""
+    for feature in FEATURES:
+        if feature.on_result is not None:
+            feature.on_result(ctx, output)
 
 
 def feature_tools(labels: Mapping[str, str] | None, ctx: ToolManagerCtx) -> list[Tool]:

@@ -55,8 +55,13 @@ sandbox:
   server_url: http://<host reachable from the container>:<the server's port>
   runner_env: [ANTHROPIC_API_KEY, TAVILY_API_KEY, NOVA_CLAUDE_MODEL,
                OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS, OMNIGENT_SUBAGENT_MAX_CONCURRENT,
-               OMNIGENT_BROWSER_BACKEND]
+               OMNIGENT_BROWSER_BACKEND, OMNIGENT_HELPER_MODEL_FAST,
+               OMNIGENT_HELPER_MODEL_STRONG]
 ```
+
+`OMNIGENT_HELPER_MODEL_FAST` / `OMNIGENT_HELPER_MODEL_STRONG` map `start_helper`'s `fast` and
+`strong` to model ids (set them in the server's environment and name them in `runner_env`);
+a choice with no id set runs on the calling session's own model.
 
 `OMNIGENT_BROWSER_BACKEND=local` (set in the Omnigent server's own environment,
 and named in `runner_env` above) makes the `browser_*` tools drive the

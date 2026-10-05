@@ -175,15 +175,12 @@ def test_helper_dispatch_maps_fast_and_strong_from_config() -> None:
     )
 
 
-def test_helper_dispatch_defaults_fast_to_haiku_and_strong_to_muse_model() -> None:
-    assert resolve_helper_dispatch(model="fast", reasoning_effort=None, env={})[0] == (
-        "claude-haiku-4-5"
-    )
-    assert resolve_helper_dispatch(model="strong", reasoning_effort=None, env={})[0] is None
+def test_helper_dispatch_with_nothing_configured_inherits_the_parent_model() -> None:
+    for choice in ("fast", "strong"):
+        assert resolve_helper_dispatch(model=choice, reasoning_effort=None, env={})[0] is None
+    # No product's model variable is read: only the generic helper variables count.
     env = {"NOVA_CLAUDE_MODEL": "muse-model"}
-    assert resolve_helper_dispatch(model="strong", reasoning_effort=None, env=env)[0] == (
-        "muse-model"
-    )
+    assert resolve_helper_dispatch(model="strong", reasoning_effort=None, env=env)[0] is None
 
 
 def test_helper_dispatch_rejects_any_other_model() -> None:

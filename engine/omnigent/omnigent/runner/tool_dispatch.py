@@ -43,8 +43,8 @@ from omnigent.context.labels import (
     uses_omnigent_context,
 )
 from omnigent.superchat._handler_http import session_kind_and_parent as _session_kind_and_parent
-from omnigent.superchat.feature import HandlerCtx
-from omnigent.superchat.features import FEATURE_HANDLERS
+from omnigent.superchat.feature import HandlerCtx, SpawnRequest, SpawnResult, SubAgentHost
+from omnigent.superchat.features import FEATURE_HANDLERS, notify_result
 from omnigent.superchat.prompt_prefix import fetch_memory_profile as _fetch_memory_profile_block
 from omnigent.superchat.subagents import (
     count_live_children,
@@ -2589,6 +2589,60 @@ async def _subagent_nesting_refusal(
             return "cannot verify sub-agent nesting cap: failed to look up the parent session"
         parent_kind, _ = parent_lookup
     return refuse_subagent_nesting(caller_kind=caller_kind, parent_kind=parent_kind)
+
+
+def _sub_agent_host(
+    *,
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None,
+    agent_spec: AgentSpec | None,
+    publish_event: Callable[[str, _JsonObject], None] | None,
+    session_inbox: asyncio.Queue[_JsonObject] | None,
+    labels: Mapping[str, str] | None,
+) -> SubAgentHost | None:
+    """The launcher a feature handler starts sub-agents with, over the generic create path."""
+    if server_client is None or not conversation_id:
+        return None
+
+    async def child_titles() -> list[str]:
+        rows = await _list_child_sessions(
+            server_client=server_client, conversation_id=conversation_id
+        )
+        return [str(row.get("title") or "") for row in rows] if isinstance(rows, list) else []
+
+    async def spawn(request: SpawnRequest) -> SpawnResult:
+        message: _JsonObject = {"input": request.task, "model": request.model}
+        if request.reasoning_effort is not None:
+            message["reasoning_effort"] = request.reasoning_effort
+        if request.file_ids:
+            message["file_ids"] = list(request.file_ids)
+        send_args: _JsonObject = {"agent": request.agent, "args": message}
+        if request.title:
+            send_args["title"] = request.title
+        output = await _execute_subagent_tool(
+            send_args,
+            server_client=server_client,
+            conversation_id=conversation_id,
+            agent_spec=agent_spec,
+            publish_event=publish_event,
+            session_inbox=session_inbox,
+            labels=labels,
+        )
+        try:
+            handle = json.loads(output)
+        except ValueError:
+            handle = None
+        if isinstance(handle, dict) and isinstance(handle.get("task_id"), str):
+            return SpawnResult(child_id=handle["task_id"])
+        reason = output.removeprefix("Error: ").removeprefix("sys_session_send ")
+        return SpawnResult(error=reason)
+
+    declared = tuple(
+        name
+        for sub in getattr(agent_spec, "sub_agents", None) or []
+        if isinstance(name := getattr(sub, "name", None), str)
+    )
+    return SubAgentHost(declared_types=declared, child_titles=child_titles, spawn=spawn)
 
 
 async def _execute_subagent_tool(
@@ -7330,18 +7384,22 @@ async def execute_tool(
                 conversation_id=conversation_id,
             )
         elif tool_name in FEATURE_HANDLERS:
-            output = await FEATURE_HANDLERS[tool_name](
-                HandlerCtx(
-                    tool_name,
-                    server_client,
-                    conversation_id,
-                    labels,
+            feature_ctx = HandlerCtx(
+                tool_name,
+                server_client,
+                conversation_id,
+                labels,
+                sub_agents=_sub_agent_host(
+                    server_client=server_client,
+                    conversation_id=conversation_id,
                     agent_spec=agent_spec,
                     publish_event=publish_event,
                     session_inbox=session_inbox,
+                    labels=labels,
                 ),
-                args,
             )
+            output = await FEATURE_HANDLERS[tool_name](feature_ctx, args)
+            notify_result(feature_ctx, output)
         elif tool_name in _BROWSER_TOOLS:
             output = await _execute_browser_tool(
                 tool_name,

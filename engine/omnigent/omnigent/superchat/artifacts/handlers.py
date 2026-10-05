@@ -16,7 +16,6 @@ from urllib.parse import quote
 from omnigent.superchat._handler_http import HEX_ID_RE, error, finish, resolve_caller
 from omnigent.superchat.artifacts.types import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
 from omnigent.superchat.feature import HandlerCtx
-from omnigent.superchat.helpers.saved_files import record_saved_file
 
 
 def workspace_roots() -> list[Path]:
@@ -88,10 +87,7 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
                 return error("artifact_delete requires a valid artifact_id")
             resp = await caller.client.delete(f"/v1/artifacts/{artifact_id}", timeout=30.0)
         else:
-            output = await _save(caller.client, chat_id, args)
-            if caller.is_helper:
-                record_saved_file(caller.conversation_id, output)
-            return output
+            return await _save(caller.client, chat_id, args)
     except Exception as exc:  # noqa: BLE001
         return error(f"{tool_name} failed: {exc}")
     return finish(resp)

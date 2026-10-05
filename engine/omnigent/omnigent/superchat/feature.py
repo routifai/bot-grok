@@ -42,6 +42,52 @@ class ToolManagerCtx:
 
 
 @dataclass(frozen=True)
+class SpawnRequest:
+    """One sub-agent launch a handler asks the runner for (the generic create path).
+
+    :param agent: The declared Sub-agent Type to start.
+    :param task: The brief (the child's first message).
+    :param title: Instance label, or ``None`` to leave naming to the engine.
+    :param model: The ``fast`` / ``strong`` choice.
+    :param reasoning_effort: ``low`` / ``medium`` / ``high``, or ``None`` for the default.
+    :param file_ids: Uploaded file ids to hand to the child.
+    """
+
+    agent: str
+    task: str
+    title: str | None = None
+    model: str = "strong"
+    reasoning_effort: str | None = None
+    file_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SpawnResult:
+    """Outcome of a :class:`SpawnRequest`: the child's id, or why it was refused.
+
+    :param child_id: The started child session (``None`` on refusal).
+    :param error: The runner's refusal reason, without a tool-name prefix.
+    """
+
+    child_id: str | None = None
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class SubAgentHost:
+    """What the runner offers a handler that starts sub-agents (built in ``tool_dispatch``).
+
+    :param declared_types: Names of the Sub-agent Types the calling session declares.
+    :param child_titles: Titles of the caller's existing child sessions.
+    :param spawn: Starts one child through the generic sub-agent create path.
+    """
+
+    declared_types: tuple[str, ...]
+    child_titles: Callable[[], Awaitable[list[str]]]
+    spawn: Callable[[SpawnRequest], Awaitable[SpawnResult]]
+
+
+@dataclass(frozen=True)
 class HandlerCtx:
     """What a runner-side feature handler needs about the call.
 
@@ -49,18 +95,14 @@ class HandlerCtx:
     :param server_client: HTTP client pointed at the Omnigent server (``None`` outside a runner).
     :param conversation_id: The calling session.
     :param labels: The calling session's labels, when the dispatcher has them.
-    :param agent_spec: The calling session's spec (its declared Helper types).
-    :param publish_event: Publishes child-session discovery events to the caller's stream.
-    :param session_inbox: The caller's inbox queue (Helper results land here).
+    :param sub_agents: The runner's sub-agent launcher (``None`` outside a runner).
     """
 
     tool_name: str
     server_client: httpx.AsyncClient | None
     conversation_id: str | None
     labels: Mapping[str, str] | None = None
-    agent_spec: Any = None
-    publish_event: Callable[[str, dict[str, Any]], None] | None = None
-    session_inbox: Any = None
+    sub_agents: SubAgentHost | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +130,7 @@ class BackgroundJob(Protocol):
 
 
 Handler = Callable[[HandlerCtx, dict[str, Any]], Awaitable[str]]
+ResultListener = Callable[[HandlerCtx, str], None]
 
 
 @dataclass(frozen=True)
@@ -97,6 +140,8 @@ class Feature:
     :param name: Folder / feature name, e.g. ``"vault"``.
     :param tools: ``(labels, ctx) -> tool defs`` (label-gated: Super Chat vs Helper).
     :param handlers: ``tool_name -> async handler`` run on the runner.
+    :param on_result: Sees every feature handler's ``(ctx, output)`` after it ran (any feature's
+        tool), so a feature can follow another's results without importing it.
     :param install: Wires stores + routers onto the FastAPI app.
     :param jobs: Returns background jobs (objects with ``start()`` / ``shutdown()``).
     """
@@ -104,5 +149,6 @@ class Feature:
     name: str
     tools: Callable[[Mapping[str, str] | None, ToolManagerCtx], list[Tool]]
     handlers: Mapping[str, Handler] = field(default_factory=dict)
+    on_result: ResultListener | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None

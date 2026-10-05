@@ -196,7 +196,11 @@ from omnigent.server.schemas import (
 )
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
-from omnigent.superchat.helpers.saved_files import collect_saved_files, format_saved_files
+from omnigent.superchat.helpers.saved_files import (
+    collect_saved_files,
+    forget_saved_files,
+    format_saved_files,
+)
 from omnigent.superchat.prompt_prefix import turn_prefix_blocks
 from omnigent.superchat.subagents import (
     format_subagent_wake_notice_with_result,
@@ -2015,6 +2019,11 @@ def unregister_subagent_work(
         _subagent_work_by_parent.pop(entry.parent_session_id, None)
 
 
+def _subagent_children(session_id: str) -> list[str]:
+    """Ids of the sub-agent sessions ``session_id`` started (still tracked)."""
+    return [w.child_session_id for w in list_subagent_work(session_id)]
+
+
 def unregister_subagent_work_for_session(session_id: str) -> None:
     """
     Remove sub-agent work associated with a deleted session.
@@ -2027,6 +2036,7 @@ def unregister_subagent_work_for_session(session_id: str) -> None:
         ``"conv_parent123"`` or ``"conv_child456"``.
     :returns: None.
     """
+    forget_saved_files(session_id, _subagent_children)
     unregister_subagent_work(session_id)
     _drained_delivered_subagent_children.discard(session_id)
     _in_flight_send_locks.pop(session_id, None)
@@ -8685,6 +8695,7 @@ def create_runner_app(
             server_client, target_id, notice, created_by=created_by
         )
         if delivered:
+            forget_saved_files(child_id, _subagent_children)
             _stranded_wake_parents.discard(parent_id)
             if is_rewake:
                 _last_rewake_notice[parent_id] = notice
@@ -8734,10 +8745,7 @@ def create_runner_app(
                 child_session_id=entry.child_session_id,
                 result_text=entry.output,
                 saved_files=format_saved_files(
-                    collect_saved_files(
-                        entry.child_session_id,
-                        lambda sid: [w.child_session_id for w in list_subagent_work(sid)],
-                    )
+                    collect_saved_files(entry.child_session_id, _subagent_children)
                 ),
             )
             entry.wake_inlined = True

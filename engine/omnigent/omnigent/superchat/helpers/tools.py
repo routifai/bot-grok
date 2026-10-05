@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHOICES
 from omnigent.tools.base import Tool
 
 START_HELPER_TOOL_NAME = "start_helper"
@@ -44,7 +45,7 @@ class StartHelperTool(Tool):
                         },
                         "model": {
                             "type": "string",
-                            "enum": ["fast", "strong"],
+                            "enum": list(HELPER_MODEL_CHOICES),
                             "default": "strong",
                             "description": (
                                 "fast: lookups, extraction, form filling. strong: judgment, "
@@ -53,7 +54,7 @@ class StartHelperTool(Tool):
                         },
                         "reasoning": {
                             "type": "string",
-                            "enum": ["low", "medium", "high"],
+                            "enum": list(HELPER_EFFORT_CHOICES),
                             "description": "How hard it should think. Omit for the default.",
                         },
                         "files": {

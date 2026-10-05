@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from omnigent.context.labels import is_superside_chat
 from omnigent.superchat.feature import Feature, ToolManagerCtx
 from omnigent.superchat.helpers.handlers import handle_start_helper, helper_type_for
+from omnigent.superchat.helpers.saved_files import note_saved_file
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME, StartHelperTool
 
 if TYPE_CHECKING:
@@ -25,4 +26,5 @@ HELPERS_FEATURE = Feature(
     name="helpers",
     tools=_tools,
     handlers={START_HELPER_TOOL_NAME: handle_start_helper},
+    on_result=note_saved_file,
 )

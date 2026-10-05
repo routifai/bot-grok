@@ -3,12 +3,11 @@
 // the engine rows are mapped onto the same shapes the Library and preview already speak, with
 // the engine's artifact id standing in for both the family id and the version id.
 import {
+  createChatOwnershipResolver,
   deleteOmnigentArtifact,
   fetchOmnigentArtifactContent,
   getOmnigentArtifact,
-  getOmnigentSession,
   listOmnigentArtifacts,
-  listOmnigentRelatedChats,
   type OmnigentArtifact,
   type OmnigentClientConfig,
 } from "@aiden/adapters";
@@ -49,8 +48,6 @@ function toArtifact(item: OmnigentArtifact, botId: string | null): Artifact {
   };
 }
 
-/** How far up a Helper chain (Helper of a Helper...) ownership is followed. */
-const HELPER_CHAIN_MAX_HOPS = 3;
 /** The engine's page cap for `GET /v1/artifacts` (it has no offset). */
 const ENGINE_LIST_MAX = 500;
 const DEFAULT_LIST_LIMIT = 200;
@@ -60,10 +57,9 @@ type OwnerOf = (sessionId: string) => Promise<string | undefined>;
 /**
  * Maps an engine session to the Muse it belongs to, for this person. A deliverable is keyed by
  * the chat that saved it (`artifact_save` by a Helper lands on the chat that launched it), so
- * besides a Muse's own Conversation its Side Chats and their Helpers (any depth) count, the same
- * rule as `resolveChatOwnership`. Built once per request: each Muse's Side Chats are fetched
- * once and parent hops are memoized, so a list costs O(Muses + distinct Helper sessions).
- * `onlyBotId` limits the map to one Muse. Sessions of no owned Muse resolve to undefined.
+ * besides a Muse's own Conversation its Side Chats and their Helpers (any depth) count: the
+ * adapter's one ownership rule, built once per request. `onlyBotId` limits the map to one Muse.
+ * Sessions of no owned Muse resolve to undefined.
  */
 async function ownerResolver(
   deps: EngineArtifactsDeps,
@@ -76,38 +72,9 @@ async function ownerResolver(
     where: { bot: { userId: actor.userId, spaceId: actor.spaceId }, botId: onlyBotId },
     select: { omnigentSessionId: true, botId: true },
   });
-  const owners = new Map(supers.map((row) => [row.omnigentSessionId, row.botId]));
-  await Promise.all(
-    supers.map(async (row) => {
-      const related = await listOmnigentRelatedChats(client, email, row.omnigentSessionId);
-      for (const chat of related.data) owners.set(chat.id, row.botId);
-    }),
-  );
-  const parents = new Map<string, Promise<string | null>>();
-  const parentOf = (id: string) => {
-    let parent = parents.get(id);
-    if (!parent) {
-      parent = getOmnigentSession(client, email, id).then(
-        (session) => session.parent_session_id ?? null,
-        (error: unknown) => {
-          // A deleted session has no owner; anything else is a real failure.
-          if (error instanceof Error && /\(404\)/.test(error.message)) return null;
-          throw error;
-        },
-      );
-      parents.set(id, parent);
-    }
-    return parent;
-  };
-  return async (sessionId) => {
-    let current: string | null = sessionId;
-    for (let hop = 0; hop <= HELPER_CHAIN_MAX_HOPS && current !== null; hop++) {
-      const owner = owners.get(current);
-      if (owner) return owner;
-      current = await parentOf(current);
-    }
-    return undefined;
-  };
+  const own = new Map(supers.map((row) => [row.omnigentSessionId, row.botId]));
+  const resolve = createChatOwnershipResolver(client, email, supers);
+  return async (sessionId) => own.get(sessionId) ?? (await resolve(sessionId))?.botId;
 }
 
 async function assertOwnMuse(

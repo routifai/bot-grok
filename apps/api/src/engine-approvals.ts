@@ -4,6 +4,7 @@
 // and never lets an unanswered one through.
 import {
   answerOmnigentApproval,
+  createChatOwnershipResolver,
   deleteOmnigentApprovalRule,
   getOmnigentApprovalSettings,
   listOmnigentApprovalRules,
@@ -11,7 +12,6 @@ import {
   type OmnigentApproval,
   type OmnigentClientConfig,
   putOmnigentApprovalSettings,
-  resolveChatOwnership,
 } from "@aiden/adapters";
 import type { Actor, ApprovalSpending, ApprovalStandingRule, Ask } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
@@ -76,17 +76,15 @@ export async function engineApprovalAsks(
   if (!superSessionId) return [];
   const waiting = await listOmnigentApprovals(client, email);
   const asks: Ask[] = [];
+  const ownershipOf = createChatOwnershipResolver(client, email, [
+    { botId, omnigentSessionId: superSessionId },
+  ]);
   for (const approval of waiting) {
     if (approval.session_id === superSessionId) {
       asks.push(toAsk(approval, null));
       continue;
     }
-    const owner = await resolveChatOwnership(
-      client,
-      email,
-      [{ botId, omnigentSessionId: superSessionId }],
-      approval.session_id,
-    );
+    const owner = await ownershipOf(approval.session_id);
     if (owner) asks.push(toAsk(approval, owner.kind === "side_chat" ? approval.session_id : null));
   }
   return asks;

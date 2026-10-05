@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createChatOwnershipResolver,
   deriveSideChatTitle,
   mapOmnigentItemsToMessages,
   mapRelatedChatToSummary,
@@ -7,6 +8,7 @@ import {
   resolveChatOwnership,
   sideChatStartToWire,
 } from "./chats.js";
+import { OmnigentApiError } from "./client/core.js";
 
 const { getOmnigentSession, listOmnigentRelatedChats } = vi.hoisted(() => ({
   getOmnigentSession: vi.fn(),
@@ -250,6 +252,29 @@ describe("resolveChatOwnership", () => {
     getOmnigentSession.mockResolvedValue({ id: "x", parent_session_id: null });
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_strangers");
     expect(ownership).toBeNull();
+  });
+
+  it("a resolver fetches related chats once and each parent hop once, however many chats", async () => {
+    listOmnigentRelatedChats.mockClear();
+    getOmnigentSession.mockClear();
+    listOmnigentRelatedChats.mockResolvedValue({ data: [] });
+    getOmnigentSession.mockImplementation(async (_c: unknown, _e: string, id: string) => ({
+      id,
+      parent_session_id: id === "conv_h1" ? "conv_h2" : "conv_super",
+    }));
+    const resolve = createChatOwnershipResolver(CLIENT, EMAIL, superChats);
+    const found = await Promise.all(["conv_h1", "conv_h2", "conv_h1", "conv_h2"].map(resolve));
+    expect(found.every((o) => o?.kind === "helper" && o.botId === "bot-1")).toBe(true);
+    expect(listOmnigentRelatedChats).toHaveBeenCalledTimes(1);
+    expect(getOmnigentSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats a session the engine no longer has as unowned but surfaces other failures", async () => {
+    listOmnigentRelatedChats.mockResolvedValue({ data: [] });
+    getOmnigentSession.mockRejectedValueOnce(new OmnigentApiError("gone (404)", "not_found"));
+    expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_gone")).toBeNull();
+    getOmnigentSession.mockRejectedValueOnce(new OmnigentApiError("boom (500)", undefined));
+    await expect(resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_x")).rejects.toThrow("boom");
   });
 
   it("never resolves the Super Chat's own id as a chat", async () => {

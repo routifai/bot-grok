@@ -7,6 +7,7 @@
 import type { ChatSummary, SideChatStart, ThreadMessage } from "@aiden/contracts";
 import { ENGINE_ERROR_NOTE, isEngineErrorText } from "@aiden/core";
 import { cardFromToolCall, toolOutputsByCallId } from "./cards.js";
+import { isSessionNotFoundError } from "./client/core.js";
 import {
   getOmnigentSession,
   listOmnigentRelatedChats,
@@ -170,60 +171,98 @@ export interface OwnedSuperChat {
   omnigentSessionId: string;
 }
 
+export type ChatOwnershipResolver = (chatId: string) => Promise<ChatOwnership | null>;
+
 /**
  * The ownership rule (docs/super-chat/WIRING.md "Identity and ownership"): `chatId` must be a
  * Side Chat of one of the caller's own Super Chats (`related_chats`), or a Helper whose
- * `parent_session_id` chain reaches one within `HELPER_CHAIN_MAX_HOPS` hops. Returns `null` —
- * never throws for "not found" — so the caller (apps/api/src/chats.ts) turns that into a
- * `NOT_FOUND` rather than leaking whether a chat exists at all.
+ * `parent_session_id` chain reaches one within `HELPER_CHAIN_MAX_HOPS` hops. The resolver
+ * returns `null` — never throws for "not found" — so the caller turns that into a `NOT_FOUND`
+ * rather than leaking whether a chat exists at all.
+ *
+ * Build one per request and reuse it: each Super Chat's `related_chats` is fetched once and
+ * every parent hop is memoized, so resolving many chats costs O(Super Chats + distinct Helper
+ * sessions). A session the engine no longer has (404) has no owner; any other failure throws.
  */
-export async function resolveChatOwnership(
+export function createChatOwnershipResolver(
+  client: OmnigentClientConfig,
+  email: string,
+  superChats: OwnedSuperChat[],
+): ChatOwnershipResolver {
+  // A Helper's parent is its Super Chat or one of its Side Chats, so both count as owners.
+  const superIds = new Set(superChats.map((chat) => chat.omnigentSessionId));
+  let related: Promise<{
+    sideChats: Map<string, { superChat: OwnedSuperChat; chat: OmnigentRelatedChat }>;
+    owners: Map<string, OwnedSuperChat>;
+  }> | null = null;
+  const loadRelated = () => {
+    related ??= (async () => {
+      const lists = await Promise.all(
+        superChats.map(async (superChat) => ({
+          superChat,
+          chats: (await listOmnigentRelatedChats(client, email, superChat.omnigentSessionId)).data,
+        })),
+      );
+      const owners = new Map(superChats.map((chat) => [chat.omnigentSessionId, chat]));
+      const sideChats = new Map<string, { superChat: OwnedSuperChat; chat: OmnigentRelatedChat }>();
+      for (const { superChat, chats } of lists) {
+        for (const chat of chats) {
+          owners.set(chat.id, superChat);
+          if (!superIds.has(chat.id)) sideChats.set(chat.id, { superChat, chat });
+        }
+      }
+      return { sideChats, owners };
+    })();
+    return related;
+  };
+
+  const parents = new Map<string, Promise<string | null>>();
+  const parentOf = (sessionId: string): Promise<string | null> => {
+    let parent = parents.get(sessionId);
+    if (!parent) {
+      parent = getOmnigentSession(client, email, sessionId).then(
+        (session) => session.parent_session_id ?? null,
+        (error: unknown) => {
+          if (isSessionNotFoundError(error)) return null;
+          throw error;
+        },
+      );
+      parents.set(sessionId, parent);
+    }
+    return parent;
+  };
+
+  return async (chatId) => {
+    const { sideChats, owners } = await loadRelated();
+    const side = sideChats.get(chatId);
+    if (side) {
+      return {
+        kind: "side_chat",
+        superSessionId: side.superChat.omnigentSessionId,
+        botId: side.superChat.botId,
+        seedItemId: side.chat.seed_item_id ?? null,
+        live: Boolean(side.chat.live),
+      };
+    }
+    let current: string | null = chatId;
+    for (let hop = 0; hop < HELPER_CHAIN_MAX_HOPS && current !== null; hop++) {
+      const parentId: string | null = await parentOf(current);
+      const owner = parentId ? owners.get(parentId) : undefined;
+      if (owner) {
+        return { kind: "helper", superSessionId: owner.omnigentSessionId, botId: owner.botId };
+      }
+      current = parentId;
+    }
+    return null;
+  };
+}
+
+/** One-off :func:`createChatOwnershipResolver` lookup, for a single chat per request. */
+export function resolveChatOwnership(
   client: OmnigentClientConfig,
   email: string,
   superChats: OwnedSuperChat[],
   chatId: string,
 ): Promise<ChatOwnership | null> {
-  // A Helper's parent is its Super Chat or one of its Side Chats, so both count as owners.
-  const bySessionId = new Map(superChats.map((chat) => [chat.omnigentSessionId, chat]));
-  for (const superChat of superChats) {
-    if (superChat.omnigentSessionId === chatId) continue; // the Super Chat itself isn't a "chat"
-    const related = await listOmnigentRelatedChats(client, email, superChat.omnigentSessionId);
-    const sideChat = related.data.find((chat) => chat.id === chatId);
-    if (sideChat) {
-      return {
-        kind: "side_chat",
-        superSessionId: superChat.omnigentSessionId,
-        botId: superChat.botId,
-        seedItemId: sideChat.seed_item_id ?? null,
-        live: Boolean(sideChat.live),
-      };
-    }
-    for (const chat of related.data) bySessionId.set(chat.id, superChat);
-  }
-
-  let current: string | null = chatId;
-  for (let hop = 0; hop < HELPER_CHAIN_MAX_HOPS && current !== null; hop++) {
-    const parentId: string | null = await fetchParentSessionId(client, email, current);
-    if (parentId) {
-      const owner = bySessionId.get(parentId);
-      if (owner) {
-        return { kind: "helper", superSessionId: owner.omnigentSessionId, botId: owner.botId };
-      }
-    }
-    current = parentId;
-  }
-  return null;
-}
-
-async function fetchParentSessionId(
-  client: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-): Promise<string | null> {
-  try {
-    const snapshot = await getOmnigentSession(client, email, sessionId);
-    return snapshot.parent_session_id ?? null;
-  } catch {
-    return null;
-  }
+  return createChatOwnershipResolver(client, email, superChats)(chatId);
 }
