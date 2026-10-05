@@ -33,6 +33,8 @@ import httpx
 _logger = logging.getLogger(__name__)
 
 PROACTIVE_PROVISION_ENV = "OMNIGENT_PROACTIVE_PROVISION"
+# Retired Type name kept as the Study task identity (existing rows, Activity titles); it runs as
+# a fast ``worker`` (superchat.subagents.resolve_scheduled_helper).
 AGENT_TYPE = "analyst"
 STUDY_NAME = "Study"
 # Standing tasks provisioned by an earlier version; deleted from existing chats.

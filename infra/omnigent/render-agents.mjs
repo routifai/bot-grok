@@ -19,7 +19,7 @@ const MODEL_ENV = "NOVA_CLAUDE_MODEL";
 /** One directory per Sub-agent Type (CONTEXT.md), each a static config.yaml — no templated
  * values inside them today, but rendered (not just copied) so a future per-type placeholder
  * does not require restructuring this script. */
-const SUB_AGENT_TYPES = ["researcher", "analyst", "drafter", "goal", "teacher"];
+const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker", "goal", "teacher"];
 const GENERATED_HEADER =
   "# GENERATED FILE — do not edit by hand. Edit the matching file under\n" +
   "# infra/omnigent/templates/, then run `node infra/omnigent/render-agents.mjs`.\n\n";
@@ -31,9 +31,22 @@ function render(template, values) {
   );
 }
 
+/** Indents every line but the first, so a multi-line partial fits a YAML block scalar. */
+function indent(text, spaces) {
+  const pad = " ".repeat(spaces);
+  return text
+    .trimEnd()
+    .split("\n")
+    .map((line, i) => (i === 0 || line === "" ? line : pad + line))
+    .join("\n");
+}
+
 function main() {
   const configTemplate = readFileSync(join(here, "templates/config.yaml.tmpl"), "utf8");
-  const agentsMd = readFileSync(join(here, "templates/AGENTS.md"), "utf8");
+  const filesystem = readFileSync(join(here, "templates/filesystem.md"), "utf8").trimEnd();
+  const agentsMd = render(readFileSync(join(here, "templates/AGENTS.md"), "utf8"), {
+    FILESYSTEM: filesystem,
+  });
 
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(join(OUT_DIR, "config.yaml"), render(configTemplate, { MODEL_ENV }));
@@ -44,7 +57,7 @@ function main() {
     const subTemplate = readFileSync(join(here, `templates/agents/${type}/config.yaml`), "utf8");
     const subDir = join(OUT_DIR, "agents", type);
     mkdirSync(subDir, { recursive: true });
-    writeFileSync(join(subDir, "config.yaml"), GENERATED_HEADER + render(subTemplate, {}));
+    writeFileSync(join(subDir, "config.yaml"), GENERATED_HEADER + render(subTemplate, { FILESYSTEM: indent(filesystem, 2) }));
     console.log(`wrote ${subDir}/config.yaml`);
   }
 }

@@ -155,7 +155,7 @@ def refuse_subagent_nesting(*, caller_kind: str | None, parent_kind: str | None)
     return None
 
 
-# ── Launch by Sub-agent Type only: no raw model/effort override ───────────
+# ── sys_session_create has no Type to pick a model for: no override at all ──
 
 
 def refuse_subagent_dispatch_override(
@@ -184,6 +184,81 @@ def refuse_subagent_dispatch_override(
             "reasoning effort"
         )
     return None
+
+
+# ── Helper model choice: only ``fast`` or ``strong``, mapped in config ────
+
+#: Env vars mapping the two choices to real model ids. ``fast`` is the background Helper model
+#: (the same one the Goal and teacher Types pin in their ``config.yaml``); ``strong`` is the
+#: Muse's own model, falling back to ``NOVA_CLAUDE_MODEL`` and then to the parent session's
+#: model (the existing inheritance) when neither is set. Model ids never appear in prompts.
+FAST_MODEL_ENV = "OMNIGENT_HELPER_MODEL_FAST"
+STRONG_MODEL_ENV = "OMNIGENT_HELPER_MODEL_STRONG"
+DEFAULT_FAST_MODEL = "claude-haiku-4-5"
+HELPER_MODEL_CHOICES = ("fast", "strong")
+HELPER_EFFORT_CHOICES = ("low", "medium", "high")
+
+
+def resolve_helper_dispatch(
+    *,
+    model: str | None,
+    reasoning_effort: str | None,
+    env: Mapping[str, str] | None = None,
+) -> tuple[str | None, str | None]:
+    """Map a Super Chat dispatch's ``fast``/``strong`` choice to a model id.
+
+    :param model: The dispatch's ``model`` argument: ``None``, ``"fast"`` or ``"strong"``.
+    :param reasoning_effort: The dispatch's reasoning level: ``None``, ``low``, ``medium`` or
+        ``high``.
+    :param env: Environment mapping to read; ``os.environ`` when ``None``.
+    :returns: ``(model_id, reasoning_effort)``; ``model_id`` is ``None`` for "inherit the
+        parent's model" (``strong`` with nothing configured, or no choice made).
+    :raises ValueError: When the choice is anything else; the message is shown to the model.
+    """
+    source = env if env is not None else os.environ
+    if reasoning_effort is not None and reasoning_effort not in HELPER_EFFORT_CHOICES:
+        raise ValueError(
+            f"reasoning_effort must be one of {', '.join(HELPER_EFFORT_CHOICES)} in this chat"
+        )
+    if model is None:
+        return None, reasoning_effort
+    if model == "fast":
+        return source.get(FAST_MODEL_ENV) or DEFAULT_FAST_MODEL, reasoning_effort
+    if model == "strong":
+        return (
+            source.get(STRONG_MODEL_ENV) or source.get("NOVA_CLAUDE_MODEL") or None,
+            reasoning_effort,
+        )
+    raise ValueError(f"model must be 'fast' or 'strong' in this chat, not {model!r}")
+
+
+# ── Retired Helper types and background model ─────────────────────────────
+
+#: Helper types replaced by the general ``worker`` (ADR 0007). Tasks stored with one of these
+#: (followed topics, the daily study, quiet-moment passes) keep running as a ``worker``.
+RETIRED_HELPER_TYPES = frozenset({"researcher", "analyst", "drafter"})
+WORKER_TYPE = "worker"
+
+
+def resolve_scheduled_helper(
+    agent_type: str, model_override: str | None, env: Mapping[str, str] | None = None
+) -> tuple[str, str | None]:
+    """The Type and model a scheduled or background Helper really runs with.
+
+    A retired Type runs as ``worker``. Background work is pinned to the fast model unless the
+    task names ``fast`` or ``strong``; a Type's own ``config.yaml`` pin still applies on top.
+
+    :param agent_type: The stored Sub-agent Type, e.g. ``"researcher"``.
+    :param model_override: The stored per-run model: ``None``, ``fast``, ``strong`` or a model id.
+    :param env: Environment mapping for the fast/strong ids; ``os.environ`` when ``None``.
+    :returns: ``(type, model_override)`` to run with.
+    """
+    resolved_type = WORKER_TYPE if agent_type in RETIRED_HELPER_TYPES else agent_type
+    if model_override in HELPER_MODEL_CHOICES or model_override is None:
+        model_override, _ = resolve_helper_dispatch(
+            model=model_override or "fast", reasoning_effort=None, env=env
+        )
+    return resolved_type, model_override
 
 
 # ── Brief + Memory Profile (hook for slice S6) ─────────────────────────────

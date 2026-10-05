@@ -29,6 +29,8 @@ from omnigent.superchat.daily_notes.store import SqlAlchemyDailyNoteStore
 
 _logger = logging.getLogger(__name__)
 
+# Retired Type name kept as the pass identity (Activity titles, rollover); it runs as a fast
+# ``worker`` (superchat.subagents.resolve_scheduled_helper).
 AGENT_TYPE = "analyst"
 IDLE_SECONDS_ENV = "OMNIGENT_QUIET_MOMENT_IDLE_SECONDS"
 DEFAULT_IDLE_SECONDS = 1200.0

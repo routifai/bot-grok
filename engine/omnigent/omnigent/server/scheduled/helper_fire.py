@@ -32,6 +32,7 @@ from omnigent.server.scheduled.run_reconciler import force_fail_stale_runs
 from omnigent.server.schemas import SessionEventInput
 from omnigent.stores.conversation_store import NameAlreadyExistsError
 from omnigent.superchat.activity.titles import fire_title_candidates
+from omnigent.superchat.subagents import resolve_scheduled_helper
 
 # The same logger as ``fire`` (shared name, so existing log filters keep matching).
 _logger = logging.getLogger("omnigent.server.scheduled.fire")
@@ -305,7 +306,7 @@ async def _launch_helper(
             await asyncio.to_thread(
                 _require_declared_subagent,
                 agent=agent,
-                sub_agent_name=task.agent_type,
+                sub_agent_name=resolve_scheduled_helper(task.agent_type, None)[0],
                 agent_cache=deps.agent_cache,
             )
     except OmnigentError as exc:
@@ -365,6 +366,7 @@ async def _create_helper_session(
         labels[ADHOC_HELPER_LABEL_KEY] = task.id
     # ``"<agent_type>:<task name>"``: Activity splits on the first colon, so it reads
     # "<Type>: <task name>" instead of an opaque id (format owned by superchat.activity.titles).
+    run_type, run_model = resolve_scheduled_helper(task.agent_type, task.model_override)
     conv: Conversation | None = None
     for title in fire_title_candidates(task.agent_type, task.name, task.id, scheduled_at):
         try:
@@ -375,9 +377,9 @@ async def _create_helper_session(
                 parent_conversation_id=parent.id,
                 agent_id=parent.agent_id,
                 runner_id=parent.runner_id,
-                sub_agent_name=task.agent_type,
+                sub_agent_name=run_type,
                 labels=labels,
-                model_override=task.model_override,
+                model_override=run_model,
                 reasoning_effort=task.reasoning_effort,
             )
             break
@@ -477,7 +479,7 @@ async def start_adhoc_helper(
         await asyncio.to_thread(
             _require_declared_subagent,
             agent=agent,
-            sub_agent_name=agent_type,
+            sub_agent_name=resolve_scheduled_helper(agent_type, None)[0],
             agent_cache=deps.agent_cache,
         )
     task = ScheduledTask(

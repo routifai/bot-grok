@@ -28,6 +28,7 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 
 from omnigent.cli_invocation import cli_invocation
+from omnigent.context.labels import is_superside_chat
 from omnigent.db.utils import generate_agent_id, generate_task_id
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import debug_event, runner_log_scope
@@ -8578,7 +8579,13 @@ async def _evaluate_input_policy(
     # default policies AND no session policies. Without this, default/
     # session policies (e.g. deny_pii_in_llm_request added via the UI)
     # are silently skipped for agents without a guardrails: YAML block.
-    if not spec.guardrails and not get_caps().default_policies and get_policy_store() is None:
+    # A Super Chat turn always passes the gate: its step-limit policy resets per user message.
+    if (
+        not spec.guardrails
+        and not get_caps().default_policies
+        and get_policy_store() is None
+        and not is_superside_chat(conv.labels)
+    ):
         return None
 
     # Text-like attachments (e.g. an uploaded CSV) arrive as ``input_file`` blocks

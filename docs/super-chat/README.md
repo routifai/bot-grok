@@ -87,9 +87,10 @@ analysis, drafting) while the conversation goes on.
    └──────── status: In progress ─────┘   Done │ Failed │ Cancelled
 ```
 
-- **Launched by type**, never by model: `researcher`, `analyst`, `drafter`,
-  each defined in the agent bundle with its own model, effort, and how many
-  can run at once.
+- **Launched by type**: `worker` (the general Helper; may coordinate one level
+  of further workers), `goal` and `teacher`, each defined in the agent bundle
+  with its own limits. The Muse picks only `fast` or `strong` for the model
+  (mapped in engine config); see `docs/adr/0007`.
 - **Starts fresh**: only the **Brief** the Muse writes plus the Memory
   Profile, never a copy of the conversation.
 - **Status** (from the Activity Feed):

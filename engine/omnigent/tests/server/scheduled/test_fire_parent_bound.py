@@ -111,7 +111,8 @@ async def test_fire_creates_helper_child_of_parent() -> None:
     created = conv_store.created[0]
     assert created["kind"] == "sub_agent"
     assert created["parent_conversation_id"] == "conv_parent"
-    assert created["sub_agent_name"] == "researcher"
+    # A stored retired Type (researcher) runs as the general worker.
+    assert created["sub_agent_name"] == "worker"
     assert created["agent_id"] == "ag_1"
     assert created["runner_id"] == "runner_1"
     assert created["model_override"] == "m1"

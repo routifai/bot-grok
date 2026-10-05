@@ -53,6 +53,7 @@ from omnigent.superchat.subagents import (
     refuse_subagent_dispatch_override,
     refuse_subagent_nesting,
     resolve_default_concurrency_cap,
+    resolve_helper_dispatch,
 )
 from omnigent.util.json_types import JsonObject as _JsonObject
 
@@ -2675,11 +2676,12 @@ async def _execute_subagent_tool(
         return f"Error: sys_session_send invalid 'cost_budget': {exc}"
 
     if is_superside_chat(labels):
-        override_refusal = refuse_subagent_dispatch_override(
-            model=model, reasoning_effort=reasoning_effort
-        )
-        if override_refusal is not None:
-            return f"Error: sys_session_send {override_refusal}"
+        try:
+            model, reasoning_effort = resolve_helper_dispatch(
+                model=model, reasoning_effort=reasoning_effort
+            )
+        except ValueError as exc:
+            return f"Error: sys_session_send {exc}"
 
     # By-session-id mode: post to an existing direct child instead of
     # spawning/continuing a named (agent, title) sub-agent.

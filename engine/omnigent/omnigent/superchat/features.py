@@ -33,6 +33,7 @@ def _load() -> list[Feature]:
     from omnigent.superchat.memory_tools import FEATURE as memory_tools
     from omnigent.superchat.objectives import FEATURE as objectives
     from omnigent.superchat.side_chats import FEATURE as side_chats
+    from omnigent.superchat.step_limit import FEATURE as step_limit
     from omnigent.superchat.suggestions import FEATURE as suggestions
     from omnigent.superchat.taught_skills import FEATURE as taught_skills
     from omnigent.superchat.vault import FEATURE as vault
@@ -48,6 +49,7 @@ def _load() -> list[Feature]:
         memory_tools,
         artifacts,
         side_chats,
+        step_limit,
     ]
 
 

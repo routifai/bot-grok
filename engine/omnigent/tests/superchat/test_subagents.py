@@ -23,6 +23,8 @@ from omnigent.superchat.subagents import (
     refuse_subagent_dispatch_override,
     refuse_subagent_nesting,
     resolve_default_concurrency_cap,
+    resolve_helper_dispatch,
+    resolve_scheduled_helper,
     resolve_wake_target,
 )
 
@@ -153,6 +155,47 @@ def test_dispatch_override_refuses_reasoning_effort() -> None:
     assert "reasoning_effort" in reason
 
 
+# ── resolve_helper_dispatch ─────────────────────────────────────────────────
+
+_ENV = {"OMNIGENT_HELPER_MODEL_FAST": "fast-id", "OMNIGENT_HELPER_MODEL_STRONG": "strong-id"}
+
+
+def test_helper_dispatch_without_a_choice_inherits() -> None:
+    assert resolve_helper_dispatch(model=None, reasoning_effort=None, env={}) == (None, None)
+
+
+def test_helper_dispatch_maps_fast_and_strong_from_config() -> None:
+    assert resolve_helper_dispatch(model="fast", reasoning_effort="low", env=_ENV) == (
+        "fast-id",
+        "low",
+    )
+    assert resolve_helper_dispatch(model="strong", reasoning_effort="high", env=_ENV) == (
+        "strong-id",
+        "high",
+    )
+
+
+def test_helper_dispatch_defaults_fast_to_haiku_and_strong_to_muse_model() -> None:
+    assert resolve_helper_dispatch(model="fast", reasoning_effort=None, env={})[0] == (
+        "claude-haiku-4-5"
+    )
+    assert resolve_helper_dispatch(model="strong", reasoning_effort=None, env={})[0] is None
+    env = {"NOVA_CLAUDE_MODEL": "muse-model"}
+    assert resolve_helper_dispatch(model="strong", reasoning_effort=None, env=env)[0] == (
+        "muse-model"
+    )
+
+
+def test_helper_dispatch_rejects_any_other_model() -> None:
+    with pytest.raises(ValueError, match="'fast' or 'strong'"):
+        resolve_helper_dispatch(model="claude-opus-4-7", reasoning_effort=None, env=_ENV)
+
+
+def test_helper_dispatch_rejects_unknown_effort() -> None:
+    with pytest.raises(ValueError, match="reasoning_effort"):
+        resolve_helper_dispatch(model="fast", reasoning_effort="ultra", env=_ENV)
+
+
 # ── memory_profile_for / prepend_memory_profile ─────────────────────────────
 
 
@@ -276,3 +319,20 @@ def test_wake_target_unchanged_when_fork_source_unknown(
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
     assert "conv_side" in warnings[0].getMessage()
+
+
+# ── resolve_scheduled_helper ────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("retired", ["researcher", "analyst", "drafter"])
+def test_retired_types_run_as_worker_on_the_fast_model(retired: str) -> None:
+    assert resolve_scheduled_helper(retired, None, env=_ENV) == ("worker", "fast-id")
+
+
+def test_declared_types_keep_their_name_and_background_runs_fast() -> None:
+    assert resolve_scheduled_helper("goal", None, env=_ENV) == ("goal", "fast-id")
+    assert resolve_scheduled_helper("worker", "strong", env=_ENV) == ("worker", "strong-id")
+
+
+def test_a_stored_model_id_is_left_alone() -> None:
+    assert resolve_scheduled_helper("worker", "some-model", env=_ENV) == ("worker", "some-model")

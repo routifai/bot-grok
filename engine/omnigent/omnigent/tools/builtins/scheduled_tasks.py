@@ -89,7 +89,7 @@ class SysScheduledTaskCreateTool(Tool):
                         "agent_type": {
                             "type": "string",
                             "description": (
-                                "Sub-agent Type the Helper runs as, e.g. 'researcher'. "
+                                "Sub-agent Type the Helper runs as, e.g. 'worker'. "
                                 "Required with parent_session_id."
                             ),
                         },

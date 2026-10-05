@@ -100,6 +100,28 @@ if [ -d "$ACTUAL_PROFILE" ] && ! profile_lock_is_live "$ACTUAL_PROFILE"; then
     done || true
 fi
 
+# Downloads land in the workspace (docs/adr/0007), not in a prompt. Chromium reads this from the
+# profile's Preferences and rewrites it on exit; skip a profile whose browser is still running.
+if ! profile_lock_is_live "$ACTUAL_PROFILE"; then
+  DOWNLOAD_DIR="$AIDEN_HOME/workspace/Downloads"
+  mkdir -p "$DOWNLOAD_DIR" "$ACTUAL_PROFILE/Default"
+  python3 - "$ACTUAL_PROFILE/Default/Preferences" "$DOWNLOAD_DIR" <<'PY' 2>/dev/null || true
+import json, sys
+path, folder = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        prefs = json.load(f)
+except (OSError, ValueError):
+    prefs = {}
+download = prefs.setdefault("download", {})
+download["default_directory"] = folder
+download["prompt_for_download"] = False
+prefs.setdefault("savefile", {})["default_directory"] = folder
+with open(path, "w") as f:
+    json.dump(prefs, f)
+PY
+fi
+
 # This container has no GPU. --disable-gpu keeps Chromium from probing one.
 # WebGL still needs SwiftShader: --disable-software-rasterizer blocks it, and
 # current Chromium allows that fallback only with --enable-unsafe-swiftshader.

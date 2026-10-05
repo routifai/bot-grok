@@ -4,6 +4,10 @@ export DISPLAY="${DISPLAY:-:1}"
 export HOME="${HOME:-/home/aiden}"
 AGENT_HOME="$HOME"
 mkdir -p "$AGENT_HOME" "$AGENT_HOME/.local/bin" "$AGENT_HOME/.config" /tmp/aiden /tmp/.X11-unix /tmp/fluxbox-home
+# The workspace layout delegated work lands in (docs/adr/0007): what the person should see, Goal
+# folders are created per Goal, what they hand over, and the browser's downloads.
+mkdir -p "$AGENT_HOME/workspace/your_files" "$AGENT_HOME/workspace/goals" \
+  "$AGENT_HOME/workspace/user/media_library" "$AGENT_HOME/workspace/Downloads"
 # Login shells re-apply ~/.local/bin from /etc/profile.d/aiden-local-bin.sh.
 export PATH="$AGENT_HOME/.local/bin:/usr/local/bin:$PATH"
 export NPM_CONFIG_PREFIX="$AGENT_HOME/.local"
