@@ -4,7 +4,7 @@ import type { MuseRailView } from "../../components/AppRail";
 import { MuseSidebar } from "../muse/chrome/MuseSidebar";
 import { SideChatSession, type SideChatWire } from "../muse/chrome/SideChatSession";
 import type { ChatListState } from "../muse/chrome/useChatList";
-import { sideChatView } from "../Shell";
+import { sideChatView } from "../muse/conversation/sideChatView";
 import {
   DEV_BOT_ID,
   DEV_PERSON_NAME,

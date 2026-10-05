@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { i18n } from "@lingui/core";
+import { I18nProvider } from "@lingui/react";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -266,15 +268,18 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
+  i18n.loadAndActivate({ locale: "en", messages: {} });
   await act(async () => {
     root.render(
-      <MemoryRouter initialEntries={["/app"]}>
-        <Routes>
-          <Route path="/app" element={<ShellPage />} />
-          <Route path="/app/:botId" element={<ShellPage />} />
-          <Route path="/app/g/:groupId" element={<ShellPage />} />
-        </Routes>
-      </MemoryRouter>,
+      <I18nProvider i18n={i18n}>
+        <MemoryRouter initialEntries={["/app"]}>
+          <Routes>
+            <Route path="/app" element={<ShellPage />} />
+            <Route path="/app/:botId" element={<ShellPage />} />
+            <Route path="/app/g/:groupId" element={<ShellPage />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
     );
   });
   // Let the bootstrap promise resolve and its state updates flush.
