@@ -28,6 +28,7 @@ from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import add_audit_attrs, debug_event, mark_request_audit_suppressed
 from omnigent.entities import (
     Conversation,
+    ConversationItem,
     ErrorData,
     NewConversationItem,
 )
@@ -235,9 +236,13 @@ from omnigent.server.routes._sessions.orchestration import (
     _persist_external_session_usage,
     _persist_host_launch_failure_turn,
     _persist_native_terminal_failure,
+    _persist_user_event_item,
     _resolve_elicitation,
     _wait_for_host_bound_runner_client,
     ensure_runner_connected,
+    managed_wake_may_precede_dispatch,
+    schedule_deferred_message_dispatch,
+    session_has_deferred_dispatch,
 )
 from omnigent.server.schemas import (
     BackgroundTaskInfo,
@@ -724,6 +729,7 @@ def register_events_routes(
         session_id: str,
         body: SessionEventInput,
         in_flight: contextlib.ExitStack | None = None,
+        persisted_item: ConversationItem | None = None,
     ) -> dict[str, bool | str]:
         """
         Submit a session event (input message, tool output,
@@ -807,6 +813,9 @@ def register_events_routes(
         :param in_flight: When given, the session is marked as having a
             dispatch in flight once the caller is authorized, for the rest
             of the request.
+        :param persisted_item: Set only by the early-ack path below: the user
+            message it already stored, whose runner wake and forward this
+            call now completes.
         :returns: ``{"queued": True, "item_id": "..."}`` for
             item-typed events, where ``item_id`` is the persisted
             conversation item id also emitted by
@@ -853,6 +862,7 @@ def register_events_routes(
             body.type == "message"
             and body.data.get("role", "user") == "user"
             and isinstance(request, Request)
+            and persisted_item is None
         ):
             schedule_proactive_provisioning(request, conv, session_id)
         # Validate event type at the route boundary. Anything not in
@@ -2118,6 +2128,45 @@ def register_events_routes(
         # message, even if we reused the original binding instead of launching
         # a replacement.
         _runner_needs_session_init = False
+        # A runner behind a managed sandbox may first need minutes of wake or
+        # relaunch. Store the message and acknowledge it now; the wake and the
+        # forward finish in the background, still ahead of the turn, so the
+        # turn sees exactly what it would have seen inline. A failed wake is
+        # then the turn's failure, never a lost message.
+        if (
+            persisted_item is None
+            and body.type == "message"
+            and conv.kind != "sub_agent"
+            and not _is_native_terminal_session(conv)
+            and (
+                session_has_deferred_dispatch(session_id)
+                or await managed_wake_may_precede_dispatch(
+                    conv, request.app.state, conversation_store
+                )
+            )
+        ):
+            stored = await _persist_user_event_item(
+                session_id, conv, body, conversation_store, created_by=created_by
+            )
+
+            async def _wake_and_forward() -> None:
+                await _post_event_impl(request, session_id, body, persisted_item=stored)
+
+            async def _fail_turn(exc: Exception) -> None:
+                failure = ErrorDetail(
+                    code=exc.code if isinstance(exc, OmnigentError) else "dispatch_failed",
+                    message=str(exc),
+                )
+                await _persist_session_status_error_labels(session_id, failure, conversation_store)
+                _publish_status(
+                    session_id,
+                    "failed",
+                    failure,
+                    failure_origin="runner_unavailable",
+                )
+
+            schedule_deferred_message_dispatch(session_id, _wake_and_forward, _fail_turn)
+            return {"queued": True, "item_id": stored.id}
         # A Side Chat shares its parent's host: wake it once, bind, then relaunch below.
         conv = await _adopt_parent_host_for_side_chat(
             session_id=session_id,
@@ -2651,6 +2700,7 @@ def register_events_routes(
             # Read only to refuse a codex `/side` when the host is too old to fork
             # one; absent, the dispatch forwards as before.
             host_registry=getattr(request.app.state, "host_registry", None),
+            persisted_item=persisted_item,
         )
         if pending_background_title is not None:
             pending_background_title.schedule(expected_seed_title=conv.title)

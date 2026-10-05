@@ -16,7 +16,7 @@ import re
 import secrets
 import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from typing import Any, Literal, cast
 
 import httpx
@@ -5889,6 +5889,37 @@ def _runner_reject_detail(response: httpx.Response) -> str:
     return f"{code}: {detail}" if code else detail
 
 
+async def _persist_user_event_item(
+    session_id: str,
+    conv: Conversation,
+    body: SessionEventInput,
+    conversation_store: ConversationStore,
+    *,
+    created_by: str | None = None,
+) -> ConversationItem:
+    """
+    Append a user event to the conversation and seed a missing title from it.
+
+    The single place a POSTed item event becomes a stored item: the inline
+    dispatch calls it, and so does the early-ack path (see
+    :func:`schedule_deferred_message_dispatch`) that stores the message
+    before waking the runner.
+
+    :param session_id: Session/conversation identifier.
+    :param conv: The conversation row for ``session_id``.
+    :param body: The validated event input from the client.
+    :param conversation_store: Store for item persistence.
+    :param created_by: Authenticated identity of the posting actor.
+    :returns: The stored item, with its store-assigned id.
+    """
+    import uuid
+
+    item = _build_new_item(body, f"turn_{uuid.uuid4().hex}", created_by=created_by)
+    persisted_items = await asyncio.to_thread(conversation_store.append, session_id, [item])
+    await _seed_missing_title_from_user_message(conv, item, conversation_store)
+    return persisted_items[0]
+
+
 async def _forward_event_to_runner(
     session_id: str,
     conv: Conversation,
@@ -5901,6 +5932,7 @@ async def _forward_event_to_runner(
     has_mcp_servers: bool = False,
     created_by: str | None = None,
     host_store: HostStore | None = None,
+    persisted_item: ConversationItem | None = None,
 ) -> str:
     """
     Persist a user event and forward it to the runner.
@@ -5932,22 +5964,15 @@ async def _forward_event_to_runner(
     :param host_store: Host registrations, read only to learn whether this
         session's harness is AI-Gateway-backed (which router may route it).
         ``None`` reads as unknown, which counts as backed.
+    :param persisted_item: The user item when the caller already stored it
+        (see :func:`_persist_user_event_item`); it is then forwarded without
+        a second append.
     :returns: The store-assigned id of the persisted item.
     """
-    import uuid
-
-    turn_id = f"turn_{uuid.uuid4().hex}"
-    item = _build_new_item(body, turn_id, created_by=created_by)
-    persisted_items = await asyncio.to_thread(
-        conversation_store.append,
-        session_id,
-        [item],
+    persisted_item = persisted_item or await _persist_user_event_item(
+        session_id, conv, body, conversation_store, created_by=created_by
     )
-    await _seed_missing_title_from_user_message(
-        conv,
-        item,
-        conversation_store,
-    )
+    persisted_items = [persisted_item]
     # Don't publish status="running" or input.consumed here —
     # wait until after the forward to the runner succeeds.
     # Publishing early causes the REPL to start its streaming
@@ -6630,6 +6655,116 @@ def _mark_dispatch_in_flight(conversation_id: str) -> Iterator[None]:
             _dispatch_in_flight.pop(conversation_id, None)
 
 
+# Sessions whose message dispatch was acknowledged early and is still waking
+# or reaching its runner, with the lock that keeps those dispatches in the
+# order the messages were stored.
+_deferred_dispatch_pending: dict[str, int] = {}
+_deferred_dispatch_locks: dict[str, asyncio.Lock] = {}
+_deferred_dispatch_tasks: set[asyncio.Task[None]] = set()
+
+
+def session_has_deferred_dispatch(session_id: str) -> bool:
+    """
+    Whether an early-acknowledged message of *session_id* has not reached its runner.
+
+    A later message must queue behind it, or it could overtake the earlier one
+    once the runner is up.
+
+    :param session_id: Session/conversation identifier.
+    """
+    return _deferred_dispatch_pending.get(session_id, 0) > 0
+
+
+async def managed_wake_may_precede_dispatch(
+    conv: Conversation,
+    app_state: Any,
+    conversation_store: ConversationStore,
+) -> bool:
+    """
+    Whether delivering a message to *conv* may first have to wake a managed sandbox.
+
+    A managed sandbox that was paused, expired or lost takes seconds to
+    provision again, so the message must be stored and acknowledged before
+    that wait. A Side Chat shares its parent's host.
+
+    :param conv: The session row.
+    :param app_state: ``request.app.state`` — supplies the host store.
+    :param conversation_store: Store holding the session rows.
+    :returns: ``True`` when the session's host is a managed sandbox.
+    """
+    host_store = getattr(app_state, "host_store", None)
+    if host_store is None:
+        return False
+    host_id = conv.host_id
+    if host_id is None:
+        parent_id = side_chat_parent_id(conv.labels)
+        parent = (
+            await asyncio.to_thread(conversation_store.get_conversation, parent_id)
+            if parent_id
+            else None
+        )
+        host_id = parent.host_id if parent is not None else None
+    if host_id is None:
+        return False
+    host = await asyncio.to_thread(host_store.get_host, host_id)
+    return host is not None and host.sandbox_provider is not None
+
+
+def schedule_deferred_message_dispatch(
+    session_id: str,
+    dispatch: Callable[[], Awaitable[object]],
+    on_error: Callable[[Exception], Awaitable[object]],
+) -> None:
+    """
+    Run a stored message's slow runner wake and forward after the HTTP ack.
+
+    The message is already persisted, so the person's send is never lost: when
+    *dispatch* fails, *on_error* records the failure as the turn's outcome.
+    Dispatches of one session run strictly in the order they were scheduled,
+    and the session reads as running from now until each finishes.
+
+    :param session_id: Session/conversation identifier.
+    :param dispatch: Wakes the runner and forwards the stored message.
+    :param on_error: Surfaces a failed *dispatch* to the session.
+    """
+    _deferred_dispatch_pending[session_id] = _deferred_dispatch_pending.get(session_id, 0) + 1
+    in_flight = contextlib.ExitStack()
+    in_flight.enter_context(_mark_dispatch_in_flight(session_id))
+    lock = _deferred_dispatch_locks.setdefault(session_id, asyncio.Lock())
+
+    async def _run() -> None:
+        try:
+            async with lock:
+                try:
+                    await dispatch()
+                except Exception as exc:  # noqa: BLE001 - any failure becomes the turn failure
+                    _logger.warning(
+                        "Deferred message dispatch failed for session=%s",
+                        session_id,
+                        exc_info=True,
+                        extra={"session_id": session_id},
+                    )
+                    await on_error(exc)
+        except Exception:  # noqa: BLE001 - a task nobody awaits must not die silently
+            _logger.exception(
+                "Could not record a failed message dispatch for session=%s",
+                session_id,
+                extra={"session_id": session_id},
+            )
+        finally:
+            in_flight.close()
+            remaining = _deferred_dispatch_pending.get(session_id, 1) - 1
+            if remaining > 0:
+                _deferred_dispatch_pending[session_id] = remaining
+            else:
+                _deferred_dispatch_pending.pop(session_id, None)
+                _deferred_dispatch_locks.pop(session_id, None)
+
+    task = asyncio.create_task(_run(), name=f"deferred-message-dispatch-{session_id}")
+    _deferred_dispatch_tasks.add(task)
+    task.add_done_callback(_deferred_dispatch_tasks.discard)
+
+
 def _session_is_starting(conversation_id: str) -> bool:
     """
     Whether a session has a message waiting on a runner that has not taken it.
@@ -6729,6 +6864,7 @@ async def _dispatch_session_event_to_runner_impl(
     host_store: HostStore | None = None,
     host_registry: HostRegistry | None = None,
     background_titles_enabled: bool = True,
+    persisted_item: ConversationItem | None = None,
 ) -> _SessionEventDispatchResult:
     """
     Forward an item-event to the runner with harness-aware dispatch.
@@ -6801,6 +6937,9 @@ async def _dispatch_session_event_to_runner_impl(
         session's harness is AI-Gateway-backed (which router may route it).
         ``None`` reads as unknown, which counts as backed — the same posture
         an older host row gets.
+    :param persisted_item: The user item when the caller already stored it
+        before waking the runner; the non-native path forwards it instead of
+        appending a second copy.
     :returns: A :class:`_SessionEventDispatchResult` carrying the
         persisted item id (non-native) or the pending-input id
         (claude-native message bypass).
@@ -7086,6 +7225,7 @@ async def _dispatch_session_event_to_runner_impl(
         has_mcp_servers=has_mcp_servers,
         created_by=created_by,
         host_store=host_store,
+        persisted_item=persisted_item,
     )
     return _SessionEventDispatchResult(item_id=item_id, pending_id=None)
 
@@ -11827,6 +11967,7 @@ __all__ = [
     "_persist_native_cumulative_usage",
     "_persist_native_terminal_failure",
     "_persist_session_event",
+    "_persist_user_event_item",
     "_publish_and_wait_for_harness_elicitation",
     "_publish_runner_recovered_status",
     "_publish_subtree_cost_to_ancestors",
@@ -11846,4 +11987,7 @@ __all__ = [
     "_wake_parent_for_blocked_child",
     "configure_subagent_block_notifier",
     "ensure_runner_connected",
+    "managed_wake_may_precede_dispatch",
+    "schedule_deferred_message_dispatch",
+    "session_has_deferred_dispatch",
 ]
