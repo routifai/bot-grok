@@ -2,7 +2,7 @@
 
 `engine/omnigent` is a full copy of Omnigent: every harness, provider,
 sandbox and deploy target it supports. Nova uses a small part of it
-(Claude SDK engine, `superside-chat`). This file tracks what we carry but
+(Claude SDK and Pi harnesses, `superside-chat`). This file tracks what we carry but
 don't use, so it can be removed before production.
 
 **How to use it**
@@ -20,7 +20,8 @@ don't use, so it can be removed before production.
 |---|---|---|
 | Server, runner, host daemon | `omnigent/server`, `omnigent/runner`, `omnigent/host` | Everything |
 | superside-chat | `omnigent/superchat`, `omnigent/context`, `rollover/` (docs) | Conversation, side chats, Helpers, Activity |
-| Claude SDK engine | `omnigent/inner/claude_sdk_*`, `claude_gateway_shim.py` | Every turn |
+| Claude SDK engine | `omnigent/inner/claude_sdk_*`, `claude_gateway_shim.py` | Every turn (default harness) |
+| Pi engine | `omnigent/inner/pi_executor.py`, `pi_harness.py`, `pi_settings.py` | `NOVA_MUSE_HARNESS=pi` (bundle `nova-pi`) |
 | Memory | `omnigent/memory`, `omnigent/server/memory_upkeep.py`, `session_memory.py` | Memory Profile, Upkeep |
 | LLM client: Anthropic | `omnigent/llms/adapters/anthropic.py` | Rollover summaries, Upkeep |
 | LLM client: OpenAI | `omnigent/llms/adapters/openai.py` | Memory search embeddings (`text-embedding-3-small`) |
@@ -41,8 +42,8 @@ don't use, so it can be removed before production.
 
 | Part | Path | Why we likely don't need it |
 |---|---|---|
-| Native CLI harnesses (claude, codex, pi, cursor, devin, goose, hermes, kimi, kiro, opencode, qwen, antigravity) | `omnigent/harnesses/*_native`, `omnigent/inner/*_native_*`, `omnigent/native`, `omnigent/cli_native.py` | Nova runs Claude SDK only |
-| Other SDK harnesses (codex, pi, openai-agents, antigravity, copilot, cursor, databricks, goose, hermes, kimi, qwen) | `omnigent/inner/{codex,pi,openai_agents_sdk,antigravity,copilot,cursor,databricks,goose,hermes,kimi,qwen}_*` | Same |
+| Native CLI harnesses (claude, codex, pi-native, cursor, devin, goose, hermes, kimi, kiro, opencode, qwen, antigravity) | `omnigent/harnesses/*_native`, `omnigent/inner/*_native_*`, `omnigent/native`, `omnigent/cli_native.py` | Nova runs Claude SDK and Pi only |
+| Other SDK harnesses (codex, openai-agents, antigravity, copilot, cursor, databricks, goose, hermes, kimi, qwen) | `omnigent/inner/{codex,openai_agents_sdk,antigravity,copilot,cursor,databricks,goose,hermes,kimi,qwen}_*` | Same |
 | ACP harnesses | `omnigent/inner/acp_*`, `omnigent/acp_cli_harnesses.py` | Same |
 | Native-CLI rollover mode (`omnigent.context.mode=rollover`) | parts of `omnigent/context/rollover.py`, `runner/native/orchestration.py`, `rollover/README.md` | Only `superside-chat` is used |
 | Harness install/availability/plugins | `omnigent/harness_*.py`, `omnigent/install_ledger.py` | One fixed engine |

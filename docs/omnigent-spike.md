@@ -1,6 +1,6 @@
 # Omnigent spike (week 1)
 
-> **Superseded by `docs/super-chat/README.md` and `WIRING.md`.** The week-1 shape this page
+> **Historical. Superseded by `docs/super-chat/README.md` and `WIRING.md`.** The week-1 shape this page
 > describes — four selectable harnesses (`pi`/`claude`/`openai`/`codex`), the
 > `nova_*` builtin tools, and the `/internal/omnigent/context` context-provider hook — has been
 > replaced by `omnigent.context.mode=superside-chat` (slice A1): a single `nova-claude` Super
@@ -64,8 +64,9 @@ untouched and still the default.
 
 Set `NOVA_MUSE_HARNESS=pi` to run the Muse on Pi; unset (or `claude-sdk`) runs it on the Claude
 Agent SDK. An explicit `OMNIGENT_AGENT_NAME` overrides the flag. An existing Conversation moves
-over through Omnigent's switch-agent before its next turn (see "Gateway" above). Helpers stay on
-the Claude Agent SDK.
+over through Omnigent's switch-agent before its next turn (see "Gateway" above). The switch is
+total: the Muse and every Helper type, scheduled and background runs included, share the
+bundle's harness.
 
 ### The Nova computer runner launcher
 

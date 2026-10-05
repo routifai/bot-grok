@@ -1,3 +1,5 @@
+> **Historical.** Describes the first version of Teach a task (in-browser recording, `libaiden-xcapture.so`, server-side playbook). It was rebuilt on the engine: see [ADR 0006](../adr/0006-taught-skills-are-recorded-in-the-computer-and-kept-on-the-server.md).
+
 # Teach a task: end-to-end test and fixes
 
 Teach a task lets a person show Aiden how to do something on its computer once, so Aiden can do it
@@ -7,7 +9,7 @@ what broke, and what was fixed.
 ## How it works
 
 1. **Start.** In the full computer view the person clicks **Teach a task**, describes the result
-   ("Open the browser and search Google for RBC careers") and clicks **Start recording**. The web
+   ("Open the browser and search Google for Acme careers") and clicks **Start recording**. The web
    app boots the computer (`computer.boot`) and starts a session (`skills.start`).
 2. **Record.** The person gets control of the screen. A banner shows the goal, a 10-minute timer and
    "bot is watching, not acting". Pointer and keyboard input is captured inside the computer by
@@ -31,7 +33,7 @@ A headless Chrome run against the real Docker stack (`./scripts/setup.sh`), no m
 | Sign up and onboarding (model set in `.env`, so no model step) | Pass |
 | Open the computer, **Teach a task**, describe the goal | Pass |
 | **Start recording** | Pass |
-| Demonstrate: click Google's search box, type "RBC careers", press Enter | Pass: input reached the computer and was recorded |
+| Demonstrate: click Google's search box, type "Acme careers", press Enter | Pass: input reached the computer and was recorded |
 | **Stop teaching** → skill draft with steps, check, boundaries | Pass |
 | **Save** | Pass: stored in `taught_skills` with status `saved` |
 | **Test** | Pass after the fixes below: Aiden opened a clean tab, replayed all three steps and confirmed the results page |

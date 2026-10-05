@@ -10,10 +10,15 @@ apps/web ──oRPC──▶ apps/api (auth, ownership) ──HTTP──▶ Omni
                      packages/adapters/src/omnigent/*
 ```
 
+Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for example
+`side-chats.ts`, `computer.ts`, `memory.ts`, `goals.ts`, `feed.ts`), their contracts in
+`packages/contracts/src/rpc/` (`chats.ts`, `computer.ts`, ...), and engine relays in
+`apps/api/src/engine-*.ts` and `apps/api/src/chats.ts` / `activities.ts`.
+
 ## Identity and ownership
 
-- Nova calls Omnigent as the person (`X-Forwarded-Email` + proxy secret, as
-  today).
+- Nova calls Omnigent as the person (`X-Forwarded-Email` + proxy secret, matching the
+  engine's `OMNIGENT_AUTH_HEADER_SECRET`).
 - One **Super Chat** per bot: the existing `OmnigentSession` row
   (`botId → omnigentSessionId`). It is created with the label
   `omnigent.context.mode=superside-chat`; an older session without it is
@@ -66,7 +71,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 
 | Change | Why |
 |---|---|
-| Agent bundle `nova-claude` = Super Chat bundle (claude-sdk, Nova prompt, one general Helper type `worker` with `fast`/`strong` models, ADR 0007); `nova-pi` is a second bundle from the same templates, chosen by `NOVA_MUSE_HARNESS=pi`; drop `nova-openai`, `nova-codex` and every `nova_*` tool | Claude SDK by default; the `nova_*` tools are gone from the engine |
+| Agent bundle `nova-claude` = Super Chat bundle (claude-sdk, Nova prompt, one general Helper type `worker` with `fast`/`strong` models, ADR 0007); `nova-pi` is a second bundle from the same templates, chosen by `NOVA_MUSE_HARNESS=pi`, with the Muse and every Helper type on Pi; drop `nova-openai`, `nova-codex` and every `nova_*` tool | Claude SDK by default; the `nova_*` tools are gone from the engine |
 | Gateway creates the Super Chat with the mode label; replaces a session without it | Turns the capability on |
 | Remove the context-provider route (`/internal/omnigent/context`) and `context-provider.ts` | The engine no longer calls it; memory comes from Omnigent |
 | Implement `chats.*` and add `activities.list` / `activities.get` (contracts + router + adapter client) with the ownership rule above | Side chats, Helper status, Activity panel |

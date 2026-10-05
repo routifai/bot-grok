@@ -61,7 +61,9 @@ sandbox:
 
 `OMNIGENT_HELPER_MODEL_FAST` / `OMNIGENT_HELPER_MODEL_STRONG` map `start_helper`'s `fast` and
 `strong` to model ids (set them in the server's environment and name them in `runner_env`);
-a choice with no id set runs on the calling session's own model.
+a choice with no id set runs on the calling session's own model. On a multi-model harness (Pi) the
+global ids do not apply: set `OMNIGENT_HELPER_MODEL_FAST_PI` / `OMNIGENT_HELPER_MODEL_STRONG_PI`
+(also in `runner_env`), or Pi Helpers run on the parent's model.
 
 `OMNIGENT_BROWSER_BACKEND=local` (set in the Omnigent server's own environment,
 and named in `runner_env` above) makes the `browser_*` tools drive the

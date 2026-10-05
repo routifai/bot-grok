@@ -2,7 +2,7 @@
 
 A reference implementation of the long-term memory component described in
 [README.md](README.md) ("For the long-term memory team"), modeled on how
-Meta's Muse does it, adapted for a work assistant used by bank employees. The
+established personal agents do it, adapted for a work assistant used by bank employees. The
 memory team can adopt or replace it; the tool contract stays the same.
 
 Decisions taken: reference implementation behind the README contract; the

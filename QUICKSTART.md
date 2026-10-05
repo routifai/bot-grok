@@ -1,5 +1,7 @@
 # Nova quickstart
 
+> Chat runs on the Omnigent engine, which `./scripts/setup.sh` does not start. For a full local setup follow the [README quickstart](./README.md#quickstart-local-development); this page covers the Docker app stack only.
+
 From zero to your own Nova in about 15 minutes. Everything runs in Docker on your machine; you
 don't need Node.js or pnpm.
 
@@ -8,7 +10,6 @@ don't need Node.js or pnpm.
 - **Docker** with enough disk for the first build (at least 40 GB):
   - colima: `colima start --cpu 4 --memory 8 --disk 60`
   - Docker Desktop: Settings → Resources → give it 4 CPUs, 8 GB memory, 60 GB disk.
-- **Access to the repo.** It's private: ask the owner to add you as a collaborator.
 - **A model.** Either an OpenRouter or Anthropic key, or your own OpenAI-compatible server
   (LiteLLM, vLLM, Ollama, LM Studio).
 
@@ -17,7 +18,6 @@ don't need Node.js or pnpm.
 ```bash
 git clone <repo-url> nova
 cd nova
-git checkout muse
 ```
 
 ## 3. Tell Nova which model to use

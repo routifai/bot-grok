@@ -106,7 +106,7 @@ function readDismissed(botId: string): Set<string> {
 }
 
 /**
- * F5 · Ideas. Things the Muse could start now (Meta Muse's Ideas page is the reference:
+ * F5 · Ideas. Things the Muse could start now (the reference design is
  * a plain title, a first-person subtitle, and quiet icon rows). Rows group under their
  * area only when every group gathers more than one idea; otherwise the area rides along
  * as a muted line. "Do it" starts a Conversation with the Idea; "Dismiss" hides it on this device.

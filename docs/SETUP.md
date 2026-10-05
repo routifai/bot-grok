@@ -1,8 +1,11 @@
 # Run Aiden locally with Docker
 
-This is the fastest way to run this fork (Aiden, the Muse edition) on your own laptop. It builds
-every service from this checkout, so you get this fork's changes — not the upstream project's
-published images.
+This builds the app stack (Postgres, API, worker, web, sandbox supervisor) from this checkout with
+Docker Compose. **Chat needs the Omnigent engine, which this stack does not start**: run it as
+described in the [README quickstart](../README.md#quickstart-local-development) and
+[RUNNERS.md](super-chat/RUNNERS.md), then set `OMNIGENT_URL` and `OMNIGENT_PROXY_SECRET` in `.env`.
+The `PI_DEFAULT_*` model settings below apply to the app's own model features, not to the Muse's
+model (see the README's Configuration table).
 
 ## Prerequisites
 
@@ -24,7 +27,7 @@ You do **not** need Node.js or pnpm — everything builds inside Docker.
 ## Quick start
 
 ```bash
-git clone <this-repository-url> aiden && cd aiden
+git clone <repository-url> nova && cd nova
 ./scripts/setup.sh
 ```
 

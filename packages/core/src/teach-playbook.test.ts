@@ -126,44 +126,44 @@ describe("formatSkillRunPrompt for a test run", () => {
   const playbook = {
     whenToUse: "Search Google",
     inputs: [],
-    steps: ["Click the search box.", 'Type "RBC careers".', "Press Enter."],
-    howToCheck: "The results page shows RBC careers.",
+    steps: ["Click the search box.", 'Type "Acme careers".', "Press Enter."],
+    howToCheck: "The results page shows Acme careers.",
     whatToReturn: "A short summary.",
     approvalBoundaries: "Ask before sending anything.",
     failureHandling: "Stop and ask.",
   };
 
   it("makes a test replay the steps from a clean state", () => {
-    const prompt = formatSkillRunPrompt("Search RBC careers", playbook, true);
+    const prompt = formatSkillRunPrompt("Search Acme careers", playbook, true);
     expect(prompt).toContain("Start from a clean state");
     expect(prompt).toContain("perform every step yourself");
     expect(prompt).toContain("1. Click the search box.");
   });
 
   it("keeps a normal run free of test instructions", () => {
-    expect(formatSkillRunPrompt("Search RBC careers", playbook)).not.toContain("clean state");
+    expect(formatSkillRunPrompt("Search Acme careers", playbook)).not.toContain("clean state");
   });
 });
 
 describe("taughtSkillToSkillMd", () => {
   it("turns a saved taught skill into a valid SKILL.md with its playbook", () => {
     const skill = taughtSkillToSkillMd(
-      "Search RBC careers",
+      "Search Acme careers",
       {
-        whenToUse: "When asked to find RBC job listings",
+        whenToUse: "When asked to find Acme job listings",
         inputs: [],
-        steps: ["Click the search box.", 'Type "RBC careers".'],
-        howToCheck: "Results show RBC careers.",
+        steps: ["Click the search box.", 'Type "Acme careers".'],
+        howToCheck: "Results show Acme careers.",
         whatToReturn: "A short summary.",
         approvalBoundaries: "Ask before sending anything.",
         failureHandling: "Stop and ask.",
       },
-      "Search Google for RBC careers",
+      "Search Google for Acme careers",
     );
     const parsed = parseSkillMd(skill.content);
     expect(parsed).toMatchObject({
-      name: "Search RBC careers",
-      description: "When asked to find RBC job listings",
+      name: "Search Acme careers",
+      description: "When asked to find Acme job listings",
     });
     expect(skill.content).toContain("1. Click the search box.");
     expect(skill.content).toContain("## How to check");

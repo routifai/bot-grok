@@ -1,16 +1,18 @@
+> **Partly historical.** Agent turns no longer run in the API process: the Omnigent engine runs them in a runner inside the Computer ([RUNNERS.md](super-chat/RUNNERS.md), ADR 0004). This page still describes the sandbox provider layer, workspace persistence and maintenance jobs; statements about a Pi agent session, Team bots and Team Computers predate the one-Muse-per-person model.
+
 # Computer runtime
 
 Aiden keeps the agent runtime and the computer runtime separate:
 
 ```text
-chat/API -> one Pi agent session -> Aiden computer tools -> SandboxProvider -> E2B / Daytona / Box
+chat/API -> Omnigent engine -> runner in the Computer -> SandboxProvider -> Docker / E2B / Daytona / Box
                                                    |-> Docker
                                                    |-> desktop/fake
 
 SandboxProvider workspace <-> AgentHomeStore <-> Aiden-owned DATA_DIR
 ```
 
-Pi runs in the Aiden API/worker process. It is not installed in, or executed by, E2B. The built-in tools are ordinary Pi tools, not Claude- or MCP-specific tools, so any model exposed through Pi can call them. Screen operation still requires a model that can accept image tool results and reason about screenshots.
+The engine runs the model loop in a runner inside the Computer. Screen operation requires a model that can accept image tool results and reason about screenshots.
 
 ## Computer contract
 

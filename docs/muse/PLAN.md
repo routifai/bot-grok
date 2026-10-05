@@ -1,6 +1,8 @@
+> **Historical.** This was the original build plan for the Muse edition (soft fork, in-process executor, the reference agent ports). The product now runs on the Omnigent engine; for the current design read [CONTEXT.md](../../CONTEXT.md), [docs/adr/](../adr) and [docs/super-chat/](../super-chat/README.md). Paths such as `executor.ts` no longer exist.
+
 # Muse edition — implementation plan
 
-Turn Aiden into a single proactive personal agent in the shape of Meta's Muse: one **Muse** per person that pursues **Goals** in the background, comes back with **Asks**, and keeps a **Feed**, **Ideas**, and a **Library**.
+Turn Aiden into a single proactive personal agent in the shape of established personal agents: one **Muse** per person that pursues **Goals** in the background, comes back with **Asks**, and keeps a **Feed**, **Ideas**, and a **Library**.
 
 This plan is written for implementation agents (Claude Sonnet 5, model id `claude-sonnet-5`) working in parallel as a **backend** stream and a **frontend** stream. Each work package below is sized for one agent in one isolated worktree.
 
@@ -12,10 +14,10 @@ This plan is written for implementation agents (Claude Sonnet 5, model id `claud
 
 ## Ground rules
 
-- **Reuse before building.** For every piece, first use what Aiden already has, then port from OpenMuse (github.com/OpenMuseAgent/OpenMuse, MIT, Python; clone it next to this repo), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
+- **Reuse before building.** For every piece, first use what Aiden already has, then port from an open-source reference agent (MIT, Python), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
 - **Our fork (ADR 0002).** Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner. This used to mean gating everything behind `AIDEN_PRODUCT_MODE=muse` and keeping the old multi-bot behaviour intact when the mode was off (package B0); that flag and the old mode it guarded have since been deleted outright (see B0 below), so there is no other mode left to preserve.
 - **Naming in code.** The glossary **Task** is `GoalTask` in code (the upstream `Task` model is an unrelated request record and keeps its name). Database tables use the upstream convention (`@@map("goal_tasks")`).
-- **OpenMuse ports.** When copying prompt text or logic from OpenMuse, keep a one-line comment at the top of the file: `// Adapted from OpenMuse (MIT) — openmuse/<path>`.
+- **the reference agent ports.** When copying prompt text or logic from the reference agent, keep a one-line comment at the top of the file: `// Adapted from the reference agent (MIT) — reference/<path>`.
 - **Out of scope for v1:** mobile screens (mobile keeps working with the Conversation only), spending limits, parallel Goal work, payments.
 
 ## Commands
@@ -51,20 +53,20 @@ Migrations go in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql
 
 ## Map: what exists, what is ported, what is new
 
-| Need | Aiden already has (reuse) | OpenMuse (port) | New |
+| Need | Aiden already has (reuse) | the reference agent (port) | New |
 |---|---|---|---|
 | Waking without the person | Graphile jobs, `background-job-handlers.ts`, `job-reconciler.ts`, `routine.wakeup` | — | `goal.advance`, `goal.checkin` job handlers |
 | Check-in schedules | `Routine.crons` + `timezone`, `schedule-tools.ts`, `RoutineSchedule.tsx` | — | reuse the same cron shape on Goal |
-| Background work prompt | turn execution in `executor.ts` | `ADVANCE_GOAL_PROMPT`, `CHECK_IN_PROMPT` in `openmuse/prompts.py` | — |
-| Goal / Task statuses, proposal flow | — | `openmuse/goals/store.py` (statuses, proposal), `openmuse/tools/goal_tools.py` (tool actions) | Prisma models + `goals` tool |
+| Background work prompt | turn execution in `executor.ts` | `ADVANCE_GOAL_PROMPT`, `CHECK_IN_PROMPT` in `reference/prompts.py` | — |
+| Goal / Task statuses, proposal flow | — | `reference/goals/store.py` (statuses, proposal), `reference/tools/goal_tools.py` (tool actions) | Prisma models + `goals` tool |
 | Plan in every turn | `scratchpad-context.ts` pattern | goal `render()` format | `goals-context.ts` |
 | Asks (approve, question) | `kind: "ask"` message blocks, `approval-ask.ts`, `AskCard.tsx`, `threads.answer` RPC | — | Proposal + blocked-Task asks reuse the same block; `asks.list` query |
-| Proactivity dial, quiet hours | — | `openmuse/server/service.py` (`proactivity`, `interval_seconds`, `in_quiet_hours`) | fields on the Muse + gate in job handler |
+| Proactivity dial, quiet hours | — | `reference/server/service.py` (`proactivity`, `interval_seconds`, `in_quiet_hours`) | fields on the Muse + gate in job handler |
 | Serial Goal work | Graphile named queues | — | one queue per Muse |
 | Helpers | `run_subagent` | — | — |
 | Push when an Ask opens | `notifications.registerPush`, VAPID web push | — | trigger on new Ask |
 | Library | `apps/web/src/pages/Artifacts.tsx`, `artifacts.*` RPCs | — | include Goal-log artifacts |
-| Feed / Ideas | — | feed + ideas behaviour in `openmuse/server/service.py` (`feed_posts`, ideas) | `Post`, `FollowedTopic`, `Idea` + daily jobs |
+| Feed / Ideas | — | feed + ideas behaviour in `reference/server/service.py` (`feed_posts`, ideas) | `Post`, `FollowedTopic`, `Idea` + daily jobs |
 | Avatar with states | `packages/ui-web/src/bot-avatar.tsx` (`BotAvatar`, `data-working`), avatar studio (color picker only) | idle / working / waiting state idea (`web/src/components/Avatar.tsx`) | Muse face (Aiden the lion, see DESIGN.md) replacing the Grok mascot shapes in muse mode + `waiting` state |
 | Onboarding | `apps/web/src/pages/Onboarding.tsx`, `apps/api/src/onboarding.ts` | first-run order (your name → Muse name → face → model) | name + face step, first-Goal handoff |
 
@@ -111,14 +113,14 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 - Acceptance: migration applies on a fresh DB and on your existing one.
 
 **B4 · `goals` tool** — depends on B3
-- Port the action set from `openmuse/tools/goal_tools.py`: `create` (title, description, due, check-in → creates Goal + first plan as a Proposal, not live Tasks), `get`, `list`, `update_task` (status + note; progress only), `propose` (reason + full revised task list). Plan-shape changes only through `propose`.
+- Port the action set from `reference/tools/goal_tools.py`: `create` (title, description, due, check-in → creates Goal + first plan as a Proposal, not live Tasks), `get`, `list`, `update_task` (status + note; progress only), `propose` (reason + full revised task list). Plan-shape changes only through `propose`.
 - Tool definition in `builtin-tools.ts` next to `scratchpad_*`; handler in a new `packages/adapters/src/goal-tools.ts` following `scratchpad-tools.ts`; dispatch from `executor.ts` the same way `scratchpad_add` is dispatched (around line 2751).
 - A `propose` or a first plan posts an ask block (reuse `buildApprovalAskBlock`'s shape; actions `accept` / `dismiss`) into the Conversation and links it in `GoalProposal.askMessageId`. A new proposal withdraws the previous open one (mark its ask block `withdrawn`).
 - `update_task` with `blocked` and a note that needs the person posts an ask block of kind `blocked_task`.
 - Acceptance: scripted-runtime tests for each action; proposal accept via `threads.answer` replaces the Task list; dismiss leaves it; only one open proposal.
 
 **B5 · Goals in context** — depends on B3
-- New `packages/adapters/src/goals-context.ts` modelled on `scratchpad-context.ts`: active Goals with their Tasks and statuses, wrapped as data (`<goals_active>…</goals_active>`), capped (e.g. 8 KB). Render format adapted from OpenMuse `Goal.render()`.
+- New `packages/adapters/src/goals-context.ts` modelled on `scratchpad-context.ts`: active Goals with their Tasks and statuses, wrapped as data (`<goals_active>…</goals_active>`), capped (e.g. 8 KB). Render format adapted from the reference agent `Goal.render()`.
 - Add it to the `Promise.all` context assembly in `executor.ts` (next to `scratchpadContext`) only in muse mode.
 - In a Goal-log turn, also include the Conversation thread's `historyCompactionSummary` as data (decision 7), and include only that Goal in full.
 - Acceptance: unit tests for rendering and the byte cap; executor test that a Goal-log turn gets the Conversation summary and not other Goal logs.
@@ -136,7 +138,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 3 — Proactivity
 
 **B7 · Muse settings** — depends on B3
-- Store `proactivity` (default `normal`) and `quietHours` (default `22:00-08:00`) on the Muse (bot settings or a small `muse_settings` table; prefer an existing per-bot settings location if one fits). Port `interval_seconds` and `in_quiet_hours` from `openmuse/server/service.py` to `packages/core/src/muse/proactivity.ts` with tests (intervals: low 4h, normal 1h, high 20m; quiet window may wrap midnight).
+- Store `proactivity` (default `normal`) and `quietHours` (default `22:00-08:00`) on the Muse (bot settings or a small `muse_settings` table; prefer an existing per-bot settings location if one fits). Port `interval_seconds` and `in_quiet_hours` from `reference/server/service.py` to `packages/core/src/muse/proactivity.ts` with tests (intervals: low 4h, normal 1h, high 20m; quiet window may wrap midnight).
 - Implement `muse.settings.*`.
 
 **B8 · Background Goal work** — depends on B4, B5, B7
@@ -166,11 +168,11 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 **B10 · Posts and Followed topics** — depends on B8
 - Models `Post` (botId, kind `goal_report | topic`, title, body, goalId?, sourceUrl?, createdAt) and `FollowedTopic` (botId, topic, createdAt).
 - Tools `follow_topic` / `unfollow_topic` (new, small, next to `remember`).
-- Job `feed.daily` at 07:00 in the person's timezone: for each Followed topic, `web_search` + a short summary → `Post` (kind `topic`) with the source URL. Behaviour and prompt adapted from OpenMuse's feed posts.
+- Job `feed.daily` at 07:00 in the person's timezone: for each Followed topic, `web_search` + a short summary → `Post` (kind `topic`) with the source URL. Behaviour and prompt adapted from the reference agent's feed posts.
 - `feed.list` returns open Asks first, then Posts.
 
 **B11 · Ideas** — depends on B5
-- `Idea` model (botId, text, area, createdAt), replaced wholesale on refresh. Job `ideas.refresh` daily and after a Goal changes status; one model call over active Goals, memory, and the Conversation summary returning 6 short ideas (prompt adapted from OpenMuse's ideas). `ideas.refresh` RPC for manual refresh.
+- `Idea` model (botId, text, area, createdAt), replaced wholesale on refresh. Job `ideas.refresh` daily and after a Goal changes status; one model call over active Goals, memory, and the Conversation summary returning 6 short ideas (prompt adapted from the reference agent's ideas). `ideas.refresh` RPC for manual refresh.
 
 **F5 · Feed** — depends on B1, wire to B10
 - `pages/muse/Feed.tsx`: open Asks pinned (same `AskCard`), then Posts; each Post links to its Goal log or source. Ideas section at the bottom (F6).

@@ -1,8 +1,10 @@
 # How Nova's conversation works: Super Chat, Side Chats, Helpers
 
 Nova's conversation backend is **Omnigent** (vendored at `engine/omnigent`)
-running the **Claude SDK** engine, in the mode
-`omnigent.context.mode=superside-chat`. Nova's own app (`apps/web`) is the
+in the mode `omnigent.context.mode=superside-chat`. The model loop runs on the
+**Claude SDK** harness by default, or on **Pi** (`NOVA_MUSE_HARNESS=pi`, which
+also runs non-Claude models through OpenRouter; see
+[../pi_futur_work.md](../pi_futur_work.md)). Nova's own app (`apps/web`) is the
 face; `apps/api` signs people in and passes calls through. Everything a
 conversation *is* (messages, side chats, helpers, activity, memory) lives in
 Omnigent.
@@ -34,7 +36,9 @@ not a Helper.
 
 - **One per person.** Nova creates it the first time the person writes, as an
   Omnigent session labelled `omnigent.context.mode=superside-chat`, on the
-  `nova-claude` agent (`harness: claude-sdk`).
+  `nova-claude` agent (`harness: claude-sdk`), or `nova-pi` when
+  `NOVA_MUSE_HARNESS=pi`. Both bundles are rendered from
+  `infra/omnigent/templates/` by `node infra/omnigent/render-agents.mjs`.
 - **It never fills up.** When it gets long, or when the person comes back
   after a quiet period (12 hours), Omnigent writes a summary of the older
   part and keeps the recent turns word for word. This is a **Rollover**. The
@@ -79,7 +83,9 @@ Conversation (Super Chat) ──open──▶ Side chat "Q4 checklist"   (knows 
 ## Helpers and their status
 
 A Helper is a background worker the Muse sends off for one task (research,
-analysis, drafting) while the conversation goes on.
+a written file, a multi-step check) while the conversation goes on. The Muse
+starts one with `start_helper`; a per-turn step limit pushes long work to
+Helpers (ADR 0007).
 
 ```
  Muse ──launch (type + brief)──▶ Helper ── works ──▶ Result ──▶ back to the chat that launched it

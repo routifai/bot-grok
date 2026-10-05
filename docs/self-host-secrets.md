@@ -1,6 +1,6 @@
 # Self-host secrets checklist
 
-Required and optional credentials for published-images and Compose deploys. For this fork's own
+Required and optional credentials for published-images and Compose deploys. For a local
 laptop install, `./scripts/setup.sh` ([docs/SETUP.md](./SETUP.md)) generates all of these for you;
 this page documents what it fills in and how to do it by hand.
 

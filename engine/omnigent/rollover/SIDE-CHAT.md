@@ -2,7 +2,7 @@
 
 How a side chat gets its context in a rollover session, how the main chat
 and a side chat read each other, and where it lives in the code. Modeled on
-Meta's Muse. The general contract is in [README.md](README.md).
+established personal agents. The general contract is in [README.md](README.md).
 
 ## What a side chat is
 
