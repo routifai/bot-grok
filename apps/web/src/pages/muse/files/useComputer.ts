@@ -95,6 +95,17 @@ export function useComputer({
     (computerBotId ? bots.find((bot) => bot.id === computerBotId) : undefined) ?? active;
   computerOpenRef.current = computerOpen;
   computerBotIdRef.current = computerBotId ?? active?.id;
+  // Closing the full window remounts the panel preview on a link the full view already used,
+  // which connects to nothing and stays black; give the preview a fresh link.
+  const wasComputerOpen = useRef(false);
+  useEffect(() => {
+    const closed = wasComputerOpen.current && !computerOpen;
+    wasComputerOpen.current = computerOpen;
+    const id = computerBotIdRef.current;
+    if (!closed || !id) return;
+    staleScreens.current.add(id);
+    void refreshComputerScreen(id, { force: true }).catch(() => undefined);
+  }, [computerOpen]);
 
   async function bootComputer({
     botId: targetBotId,
