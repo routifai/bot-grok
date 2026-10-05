@@ -31,6 +31,25 @@ def _obj(required: list[str], **props: Any) -> dict[str, Any]:
     }
 
 
+def _shape(schema: dict[str, Any]) -> str:
+    """Compact human-readable shape of a JSON schema, e.g. ``{items: [{title, url}]}``."""
+    kind = schema.get("type")
+    if kind == "object":
+        required = set(schema.get("required", ()))
+        fields = ", ".join(
+            f"{k}{'' if k in required else '?'}: {_shape(v)}"
+            for k, v in schema.get("properties", {}).items()
+        )
+        return "{" + fields + "}"
+    if kind == "array":
+        return "[" + _shape(schema["items"]) + "]"
+    return str(kind)
+
+
+def _kind_hints() -> str:
+    return "; ".join(f"{kind} {_shape(s)}" for kind, s in CARD_DATA_SCHEMAS.items())
+
+
 # Kinds that are the answer itself. ``plan`` and ``progress`` are living cards the Muse
 # re-renders (same ``id``) while it works, so they never end the reply; ``ask`` waits on
 # the person's pick.
@@ -199,7 +218,8 @@ class RenderCardTool(Tool):
             "numbers to compare (compare), a market quote (quote), a plan you will update "
             "(plan), a decision with options (ask), sources you read (sources), a series "
             "(chart), a contact (person), a file (file), long-running work (progress). "
-            "Otherwise write normally. `data` must match the schema of the chosen `card`. "
+            "Otherwise write normally. `data` is an object whose shape depends on `card` "
+            f"(`?` = optional): {_kind_hints()}. "
             "`fallback` is a complete markdown summary of the card, used where it cannot be "
             "drawn and kept in your history; never repeat the card's content in your reply, "
             "add one line of context at most, before the card; the card ends your reply. "
@@ -223,8 +243,8 @@ class RenderCardTool(Tool):
                         },
                         "title": {"type": "string", "description": "Optional short heading."},
                         "data": {
-                            "description": "Payload for the chosen card kind.",
-                            "anyOf": list(CARD_DATA_SCHEMAS.values()),
+                            "type": "object",
+                            "description": "Card payload; shapes are in the tool description.",
                         },
                         "fallback": {
                             "type": "string",

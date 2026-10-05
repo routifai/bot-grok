@@ -89,6 +89,25 @@ def test_resolution_always_wraps_never_substitutes_the_parent(bundle: Path) -> N
     assert resolved.spec is not parent_entry.spec
 
 
+def test_resolving_an_already_resolved_child_is_a_silent_no_op(
+    bundle: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The session cache holds the child entry; resolving it again must not miss.
+
+    Regression: the tree search never matches its own root, so re-resolving the cached
+    child logged "Sub-agent 'x' not found under spec 'x'" on every turn.
+    """
+    parent_entry = ResolvedSpec(spec=parse(bundle), workdir=bundle)
+    child = _resolve_sub_agent_spec_entry(parent_entry, "manager")
+    assert child is not None
+
+    with caplog.at_level("WARNING"):
+        again = _resolve_sub_agent_spec_entry(child, "manager")
+
+    assert again is child
+    assert "not found under spec" not in caplog.text
+
+
 def test_unknown_sub_agent_name_returns_none(bundle: Path) -> None:
     """A lookup miss yields ``None`` so callers can decline to swap."""
     entry = ResolvedSpec(spec=parse(bundle), workdir=bundle)

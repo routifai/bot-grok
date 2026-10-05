@@ -409,9 +409,13 @@ def _sanitize_schema(schema: ToolSpec) -> ToolSpec:
             # Prefer the object branch: collapsing to a primitive drops the properties.
             if isinstance(value, list) and value:
                 typed = [c for c in value if isinstance(c, dict) and "type" in c]
-                for candidate in typed:
-                    if candidate["type"] == "object":
-                        return _sanitize_schema(candidate)
+                objects = [c for c in typed if c["type"] == "object"]
+                if len(objects) > 1:
+                    # Several shapes (e.g. one per card kind): keeping one would make its
+                    # required fields mandatory for all. Stay permissive; the tool validates.
+                    return {"type": "object"}
+                if objects:
+                    return _sanitize_schema(objects[0])
                 if typed:
                     return _sanitize_schema(typed[0])
             continue

@@ -105,7 +105,12 @@ def test_schema_lists_every_kind_and_requires_fallback() -> None:
     params = RenderCardTool().get_schema()["function"]["parameters"]
     assert params["properties"]["card"]["enum"] == list(CARD_DATA_SCHEMAS)
     assert params["required"] == ["card", "data", "fallback"]
-    assert len(params["properties"]["data"]["anyOf"]) == len(CARD_DATA_SCHEMAS)
+    # A plain object: union schemas break harnesses (pi) that merge branches.
+    assert params["properties"]["data"]["type"] == "object"
+    assert "anyOf" not in params["properties"]["data"]
+    description = RenderCardTool().description()
+    assert all(kind in description for kind in CARD_DATA_SCHEMAS)
+    assert "sources {items: [{title: string, url: string, snippet?: string}]}" in description
 
 
 def test_dispatches_locally() -> None:

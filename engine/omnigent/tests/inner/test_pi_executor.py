@@ -187,6 +187,15 @@ class TestSanitizeSchema(unittest.TestCase):
         result = _sanitize_schema(schema)
         self.assertEqual(result, {"type": "string"})
 
+    def test_multiple_object_branches_become_permissive(self):
+        schema = {
+            "anyOf": [
+                {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"]},
+                {"type": "object", "properties": {"b": {"type": "string"}}, "required": ["b"]},
+            ]
+        }
+        self.assertEqual(_sanitize_schema(schema), {"type": "object"})
+
     def test_removes_additional_properties(self):
         schema = {
             "type": "object",

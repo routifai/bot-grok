@@ -10349,6 +10349,14 @@ def _resolve_sub_agent_spec_entry(parent_entry: Any, sub_agent_name: str) -> Res
     from omnigent.runtime.workflow import _find_spec_by_name
 
     parent_spec = _unwrap_resolved_spec(parent_entry)
+    if (
+        isinstance(parent_entry, ResolvedSpec)
+        and getattr(parent_spec, "name", None) == sub_agent_name
+    ):
+        # Already the child: the session cache holds the resolved entry, and sub-agent
+        # names are unique across the tree, so resolving again is a no-op. (The tree
+        # search never matches its own root, so this would otherwise be a spurious miss.)
+        return parent_entry
     child_spec = _find_spec_by_name(parent_spec, sub_agent_name)
     if child_spec is None:
         # Callers in runtime/workflow.py keep the parent spec on a lookup
