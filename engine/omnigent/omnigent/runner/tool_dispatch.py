@@ -43,9 +43,9 @@ from omnigent.context.labels import (
     uses_omnigent_context,
 )
 from omnigent.superchat._handler_http import session_kind_and_parent as _session_kind_and_parent
-from omnigent.superchat.chats import refuse_side_chat_open
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.features import FEATURE_HANDLERS
+from omnigent.superchat.prompt_prefix import fetch_memory_profile as _fetch_memory_profile_block
 from omnigent.superchat.subagents import (
     count_live_children,
     prepend_memory_profile,
@@ -109,7 +109,6 @@ from omnigent.tools.builtins.os_env import (
 )
 from omnigent.tools.builtins.session_history import SessionHistoryTool, status_from_labels
 from omnigent.tools.builtins.session_rename import SysSessionRenameTool
-from omnigent.tools.builtins.side_chat import SideChatOpenTool
 from omnigent.tools.builtins.spawn import (
     # Shared contract values with the in-process sys_session_* tools. Imported
     # (not duplicated) so the runner's REST-backed peek clamps to the same
@@ -365,11 +364,6 @@ _SESSION_SELF_WRITE_TOOLS = frozenset({SysSessionRenameTool.name()})
 # record only. Runner has no in-process ConversationStore (same REST
 # posture as _SESSION_QUERY_TOOLS), so it dispatches over server_client.
 _SESSION_HISTORY_TOOLS = frozenset({SessionHistoryTool.name()})
-
-# superside-chat (rollover/SUPERSIDE-CHAT-PLAN.md S4): ``side_chat_open``
-# forks or creates a new session and binds it to the Super Chat's own
-# host/runner — needs server_client, not an in-process ConversationStore.
-_SIDE_CHAT_TOOLS = frozenset({SideChatOpenTool.name()})
 
 # The title bound the rename tool advertises to the LLM — read once from the
 # tool schema so the dispatcher can never drift from the published contract.
@@ -976,7 +970,6 @@ _ALL_LOCAL_TOOLS = (
     | _POLICY_TOOLS
     | _SCHEDULED_TASK_TOOLS
     | FEATURE_TOOL_NAMES
-    | _SIDE_CHAT_TOOLS
 )
 _PLACEHOLDER_CWDS = (None, "", ".", "./")
 
@@ -2597,41 +2590,6 @@ async def _subagent_nesting_refusal(
     return refuse_subagent_nesting(caller_kind=caller_kind, parent_kind=parent_kind)
 
 
-async def _fetch_memory_profile_block(
-    server_client: httpx.AsyncClient | None, conversation_id: str | None
-) -> str | None:
-    """The originating chat owner's Memory Profile block, or ``None``.
-
-    Read from the server (``GET /v1/sessions/{id}/memory/profile``): the
-    memory store lives server-side. Any failure means "no profile".
-    """
-    if server_client is None or not conversation_id:
-        return None
-    try:
-        resp = await server_client.get(
-            f"/v1/sessions/{conversation_id}/memory/profile", timeout=10.0
-        )
-        if resp.status_code != 200:
-            _logger.warning(
-                "Memory Profile fetch failed for %s; proceeding without it: status=%s",
-                conversation_id,
-                resp.status_code,
-                extra={"session_id": conversation_id},
-            )
-            profile = None
-        else:
-            profile = resp.json().get("profile")
-    except (httpx.HTTPError, ValueError) as exc:
-        _logger.warning(
-            "Memory Profile fetch failed for %s; proceeding without it: %s",
-            conversation_id,
-            type(exc).__name__,
-            extra={"session_id": conversation_id},
-        )
-        return None
-    return profile if isinstance(profile, str) and profile else None
-
-
 async def _execute_subagent_tool(
     args: _JsonObject,
     *,
@@ -4145,83 +4103,6 @@ async def _session_create_from_config_path(
         title=args.get("title"),
         publish_event=publish_event,
     )
-
-
-async def _execute_side_chat_open(
-    args: _JsonObject,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None,
-    labels: Mapping[str, str] | None,
-) -> str:
-    """
-    Open a Side Chat branched from the Super Chat (``side_chat_open``).
-
-    One implementation: this calls ``POST /v1/sessions/{conversation_id}/
-    side_chats`` — the same route the web app's "+ New side chat" uses —
-    rather than forking / creating / binding the pieces itself. ``labels``
-    (the caller's own, already in hand from the dispatch context) is used
-    for a fast local pre-check only, so an obviously-ineligible caller
-    (not superside-chat, or itself a Side Chat) fails without a round
-    trip; the server re-checks authoritatively, including the Sub-agent
-    case local ``labels`` alone can't express.
-
-    :param args: Parsed arguments: ``title`` + ``start`` required,
-        ``first_message`` optional.
-    :param server_client: HTTP client pointed at the Omnigent server;
-        ``None`` returns an error string.
-    :param conversation_id: The caller's own session id (the would-be Super
-        Chat); ``None`` returns an error string.
-    :param labels: The caller's own labels, from the dispatch context.
-    :returns: JSON handle ``{conversation_id, title, start}`` on success; a
-        JSON error object otherwise.
-    """
-    if server_client is None:
-        return json.dumps({"error": "side_chat_open requires server access"})
-    if not conversation_id:
-        return json.dumps({"error": "side_chat_open requires a session id"})
-
-    title = args.get("title")
-    if not isinstance(title, str) or not title.strip():
-        return json.dumps({"error": "side_chat_open requires a non-empty 'title' string"})
-    start = args.get("start")
-    if start not in ("with_context", "blank"):
-        return json.dumps({"error": "side_chat_open 'start' must be 'with_context' or 'blank'"})
-    first_message = args.get("first_message")
-    if first_message is not None and not (isinstance(first_message, str) and first_message):
-        return json.dumps({"error": "side_chat_open 'first_message' must be a non-empty string"})
-
-    # Local fast path: the two refusals ``labels`` alone can decide (not
-    # superside-chat; already a Side Chat). The route re-checks everything,
-    # including the Sub-agent case, which needs the caller's stored
-    # ``kind`` / ``parent_session_id`` — not available here.
-    refusal = refuse_side_chat_open(labels=labels, kind=None, parent_session_id=None)
-    if refusal is not None:
-        return json.dumps({"error": refusal})
-
-    body: dict[str, object] = {"start": start, "title": title}
-    if isinstance(first_message, str) and first_message:
-        body["first_message"] = first_message
-    try:
-        resp = await server_client.post(f"/v1/sessions/{conversation_id}/side_chats", json=body)
-    except httpx.HTTPError as exc:
-        return json.dumps({"error": f"side_chat_open failed: {exc}"})
-    if resp.status_code != 201:
-        try:
-            detail = resp.json().get("error", {}).get("message", resp.text)
-        except (ValueError, AttributeError):
-            detail = resp.text
-        return json.dumps({"error": f"side_chat_open {start} failed: {detail}"})
-
-    new_conv = resp.json()
-    result = {
-        "conversation_id": new_conv["conversation_id"],
-        "title": new_conv.get("title") or title,
-        "start": start,
-    }
-    if new_conv.get("first_message_error"):
-        result["first_message_error"] = new_conv["first_message_error"]
-    return json.dumps(result)
 
 
 async def _execute_web_fetch_tool(
@@ -7346,13 +7227,6 @@ async def execute_tool(
                 conversation_id=conversation_id,
                 server_client=server_client,
             )
-        elif tool_name in _SIDE_CHAT_TOOLS:
-            output = await _execute_side_chat_open(
-                args,
-                server_client=server_client,
-                conversation_id=conversation_id,
-                labels=labels,
-            )
         elif tool_name in _WEB_FETCH_TOOLS:
             output = await _execute_web_fetch_tool(
                 args,
@@ -7454,7 +7328,7 @@ async def execute_tool(
             )
         elif tool_name in FEATURE_HANDLERS:
             output = await FEATURE_HANDLERS[tool_name](
-                HandlerCtx(tool_name, server_client, conversation_id), args
+                HandlerCtx(tool_name, server_client, conversation_id, labels), args
             )
         elif tool_name in _BROWSER_TOOLS:
             output = await _execute_browser_tool(

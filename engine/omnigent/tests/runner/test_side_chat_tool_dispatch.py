@@ -1,9 +1,9 @@
 """Tests for the runner-side ``side_chat_open`` dispatch.
 
-``_execute_side_chat_open`` (``omnigent.runner.tool_dispatch``) is a thin
+``_execute_side_chat_open`` (``omnigent.superchat.side_chats.handlers``) is a thin
 wrapper over ``POST /v1/sessions/{id}/side_chats`` — the one implementation
 also used by the web app's "+ New side chat" (see
-``omnigent/server/routes/sessions/routes_side_chats.py``). These tests mock
+``omnigent/superchat/side_chats/routes.py``). These tests mock
 that single endpoint instead of running a live server.
 """
 
@@ -15,11 +15,11 @@ import httpx
 import pytest
 
 from omnigent.runner.tool_dispatch import (
-    _execute_side_chat_open,
     _granted_tool_names,
     _ungranted_tool_reason,
 )
 from omnigent.spec.types import AgentSpec
+from omnigent.superchat.side_chats.handlers import _execute_side_chat_open
 
 CALLER = "conv_super_chat"
 _SUPERSIDE = {"omnigent.context.mode": "superside-chat"}

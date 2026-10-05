@@ -26,16 +26,19 @@ if TYPE_CHECKING:
 
 def _load() -> list[Feature]:
     """Import each feature folder (order is registration order)."""
+    from omnigent.superchat.approvals import FEATURE as approvals
     from omnigent.superchat.artifacts import ARTIFACTS_FEATURE as artifacts
     from omnigent.superchat.cards import FEATURE as cards
     from omnigent.superchat.daily_notes import FEATURE as daily_notes
     from omnigent.superchat.memory_tools import FEATURE as memory_tools
     from omnigent.superchat.objectives import FEATURE as objectives
+    from omnigent.superchat.side_chats import FEATURE as side_chats
     from omnigent.superchat.suggestions import FEATURE as suggestions
     from omnigent.superchat.taught_skills import FEATURE as taught_skills
     from omnigent.superchat.vault import FEATURE as vault
 
     return [
+        approvals,
         vault,
         suggestions,
         objectives,
@@ -44,6 +47,7 @@ def _load() -> list[Feature]:
         cards,
         memory_tools,
         artifacts,
+        side_chats,
     ]
 
 

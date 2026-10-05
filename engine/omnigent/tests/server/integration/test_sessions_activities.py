@@ -2,7 +2,7 @@
 
 ``GET /v1/sessions/{id}/activities`` and
 ``GET /v1/sessions/{id}/activities/{activity_id}`` — the owner-scoped,
-READ-gated wrapper around ``omnigent.superchat.activity`` (derivation
+READ-gated wrapper around ``omnigent.superchat.activity.derive`` (derivation
 unit-tested directly in tests/superchat/). These tests cover the route
 wiring: auth/404 handling and the end-to-end shape over a seeded
 Super Chat + Sub-agent.
@@ -85,7 +85,7 @@ async def test_activities_list_and_detail_for_superside_chat_session(
     db_uri: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("omnigent.superchat.activity._MIN_TURN_STEPS", 1)
+    monkeypatch.setattr("omnigent.superchat.activity.derive._MIN_TURN_STEPS", 1)
     session = await _create_session(client, "superside-agent")
     conv_store = SqlAlchemyConversationStore(db_uri)
     conv_store.set_labels(session["id"], {_MODE_LABEL: _MODE_VALUE})
@@ -201,7 +201,7 @@ async def test_activities_hide_family_members_the_caller_cannot_read(
 ) -> None:
     """Bob has READ on one Side Chat only; the Super Chat's and the other
     Side Chat's own activities must not leak into Bob's feed."""
-    monkeypatch.setattr("omnigent.superchat.activity._MIN_TURN_STEPS", 1)
+    monkeypatch.setattr("omnigent.superchat.activity.derive._MIN_TURN_STEPS", 1)
     conv_store = SqlAlchemyConversationStore(db_uri)
     perm_store = SqlAlchemyPermissionStore(db_uri)
 

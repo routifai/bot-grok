@@ -1,6 +1,6 @@
 """An archived Side Chat unarchives on its next user message.
 
-Decision documented in ``omnigent.superchat.chats.maybe_unarchive_on_user_message``:
+Decision documented in ``omnigent.superchat.side_chats.chats.maybe_unarchive_on_user_message``:
 Archived only means "hidden from the list, not ended", so a message to an
 archived Side Chat resumes it rather than being silently accepted into a
 hidden chat. Wired into ``POST /v1/sessions/{id}/events`` (routes_events.py).

@@ -883,7 +883,6 @@ def create_sessions_router(
 
     from omnigent.server.routes.sessions.routes_agent import register_agent_routes
     from omnigent.server.routes.sessions.routes_browser import register_browser_routes
-    from omnigent.server.routes.sessions.routes_computer import register_computer_routes
     from omnigent.server.routes.sessions.routes_core import register_core_routes
     from omnigent.server.routes.sessions.routes_elicitations import register_elicitations_routes
     from omnigent.server.routes.sessions.routes_events import register_events_routes
@@ -891,7 +890,8 @@ def create_sessions_router(
     from omnigent.server.routes.sessions.routes_items import register_items_routes
     from omnigent.server.routes.sessions.routes_permissions import register_permissions_routes
     from omnigent.server.routes.sessions.routes_resources import register_resources_routes
-    from omnigent.server.routes.sessions.routes_side_chats import register_side_chats_routes
+    from omnigent.superchat.computer.routes import register_computer_routes
+    from omnigent.superchat.side_chats.routes import register_side_chats_routes
 
     register_core_routes(
         router,

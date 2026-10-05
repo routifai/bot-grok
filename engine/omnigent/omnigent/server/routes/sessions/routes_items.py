@@ -54,7 +54,7 @@ from omnigent.server.schemas import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.activity import (
+from omnigent.superchat.activity.derive import (
     activities_missing_titles,
     activity_to_dict,
     get_activity,

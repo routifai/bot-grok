@@ -12,12 +12,12 @@ from omnigent.server.background_session_titles import (
     BackgroundTitleRequest,
 )
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
-from omnigent.superchat.activity import (
+from omnigent.superchat.activity.derive import (
     activities_missing_titles,
     list_activities,
     schedule_missing_titles,
 )
-from omnigent.superchat.activity_titles import (
+from omnigent.superchat.activity.titles import (
     ACTIVITY_TITLE_INSTRUCTIONS,
     clean_generated_label,
     clean_generated_title,
@@ -150,6 +150,20 @@ def test_generated_label_carries_an_optional_result_summary() -> None:
     assert clean_generated_label(" | only a summary here") is None
 
 
+def _more_steps() -> list[NewConversationItem]:
+    """Two more tool calls, so the turn has enough steps to count as an Activity."""
+    return [
+        NewConversationItem(
+            type="function_call",
+            response_id="resp_1",
+            data=FunctionCallData(
+                agent="brain", name="web_fetch", arguments="{}", call_id=f"call_{n}"
+            ),
+        )
+        for n in (2, 3)
+    ]
+
+
 async def test_missing_turn_title_is_written_by_the_model_and_used_on_the_next_read(
     conversation_store: SqlAlchemyConversationStore,
 ) -> None:
@@ -175,6 +189,7 @@ async def test_missing_turn_title_is_written_by_the_model_and_used_on_the_next_r
                     call_id="call_1",
                 ),
             ),
+            *_more_steps(),
         ],
     )
     requests: list[BackgroundTitleRequest] = []
@@ -251,6 +266,7 @@ async def test_finished_turn_gets_a_model_written_summary(
                     agent="brain", name="web_search", arguments="{}", call_id="call_1"
                 ),
             ),
+            *_more_steps(),
             NewConversationItem(
                 type="message",
                 response_id="resp_1",
@@ -287,7 +303,7 @@ async def test_finished_turn_gets_a_model_written_summary(
 
 
 def test_internal_words_never_reach_titles_or_summaries() -> None:
-    from omnigent.superchat.activity_titles import scrub_internal_words
+    from omnigent.superchat.activity.titles import scrub_internal_words
 
     assert scrub_internal_words("Sub-agent finished the background task in a session") == (
         "finished the task in a chat"

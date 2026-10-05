@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from omnigent.context.labels import SUBAGENT_LABEL_KEY, is_superside_chat, uses_omnigent_context
+from omnigent.context.labels import SUBAGENT_LABEL_KEY, uses_omnigent_context
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.inner.os_env import OSEnvironment
 from omnigent.runtime import get_caps
@@ -26,7 +26,6 @@ from omnigent.tools.builtins import (
     LoadSkillTool,
     ReadSkillFileTool,
     SessionHistoryTool,
-    SideChatOpenTool,
     SysAdviseModelsTool,
     SysAgentDownloadTool,
     SysAgentGetTool,
@@ -206,11 +205,6 @@ class ToolManager:
         self._register_session_history_tool()
         # memory_* tools: same label gate as session_history — available in
         # every rollover session regardless of which agent spec is bound.
-        # side_chat_open is auto-registered only for a superside-chat
-        # session (Super Chat, Side Chat, or Sub-agent alike carry the
-        # mode label); call-time checks in the runner dispatch further
-        # refuse it outside the Super Chat itself.
-        self._register_side_chat_tools()
         # Policy tool is always auto-registered so agents can add
         # inline CEL policies at runtime without spec changes.
         self._register_policy_tools()
@@ -283,14 +277,6 @@ class ToolManager:
 
         for tool in feature_tools(self._labels, ToolManagerCtx(spec=self._spec)):
             self._tools.setdefault(tool.name(), tool)
-
-    def _register_card_tools(self) -> None:
-        """Auto-register ``render_card`` for the Super Chat itself (never a Helper)."""
-        if not is_superside_chat(self._labels) or SUBAGENT_LABEL_KEY in self._labels:
-            return
-        from omnigent.tools.builtins.render_card import RenderCardTool
-
-        self._tools[RenderCardTool.name()] = RenderCardTool()
 
     def _register_async_inbox_tools(self) -> None:
         """
@@ -643,19 +629,6 @@ class ToolManager:
         """
         if uses_omnigent_context(self._labels):
             self._tools[SessionHistoryTool.name()] = SessionHistoryTool()
-
-    def _register_side_chat_tools(self) -> None:
-        """
-        Auto-register ``side_chat_open`` for a superside-chat session only.
-
-        Gated on ``is_superside_chat(self._labels)`` so the Super Chat, its
-        Side Chats, and its Sub-agents are all offered the tool (they all
-        carry the mode label); the runner's dispatch handler
-        (``omnigent/runner/tool_dispatch.py``) then refuses the call unless
-        the caller is the Super Chat itself.
-        """
-        if is_superside_chat(self._labels):
-            self._tools[SideChatOpenTool.name()] = SideChatOpenTool()
 
     def _register_browser_tools(self) -> None:
         """

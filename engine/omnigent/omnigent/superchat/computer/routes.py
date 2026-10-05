@@ -156,7 +156,7 @@ def register_computer_routes(
         )
         return {"screen_url": url, "in_control": False}
 
-    def _recording_ctx(request: Request, session_id: str) -> Any:
+    def _recording_ctx(request: Request, session_id: str) -> Any:  # noqa: ARG001
         store = getattr(request.app.state, "taught_skill_store", None)
         if store is None:
             raise OmnigentError("recording is not enabled", code=ErrorCode.NOT_FOUND)

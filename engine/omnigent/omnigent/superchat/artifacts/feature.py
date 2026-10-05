@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from omnigent.context.labels import is_superside_chat
-from omnigent.policies.builtins.approvals import Risk, register_classifier
+from omnigent.superchat.approvals.policy import Risk, register_classifier
 from omnigent.superchat.artifacts.handlers import handle_artifact_tool
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx

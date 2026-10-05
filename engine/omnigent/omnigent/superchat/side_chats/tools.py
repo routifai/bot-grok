@@ -1,16 +1,16 @@
-"""Built-in tool: open a Side Chat from the Super Chat (Muse's ``chat.create``).
+"""Tool: open a Side Chat from the Super Chat (Muse's ``chat.create``).
 
 Schema-only — like the browser tools, execution needs the runner's
 authenticated server client (fork/create a session, bind a host/runner),
 which :class:`~omnigent.tools.base.ToolContext` does not carry. The runner
-dispatches it via ``omnigent/runner/tool_dispatch.py``.
+dispatches it via ``superchat/side_chats/handlers.py``.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from omnigent.superchat.chats import SIDE_CHAT_START_VALUES
+from omnigent.superchat.side_chats.chats import SIDE_CHAT_START_VALUES
 from omnigent.tools.base import Tool
 
 

@@ -1,4 +1,4 @@
-"""Unit tests for omnigent.superchat.activity's pure derivation logic.
+"""Unit tests for omnigent.superchat.activity.derive's pure derivation logic.
 
 These build Conversation/ConversationItem objects directly (no store, no
 DB) so they stay fast and laptop-friendly; store-backed orchestration
@@ -20,7 +20,7 @@ from omnigent.entities import (
     FunctionCallOutputData,
     MessageData,
 )
-from omnigent.superchat.activity import (
+from omnigent.superchat.activity.derive import (
     ITEMS_SCAN_LIMIT_ENV,
     STATUS_CANCELLED,
     STATUS_DONE,
@@ -589,7 +589,7 @@ def _row(
     tools: tuple[str, ...] = ("a",),
     title: str = "T",
 ):
-    from omnigent.superchat.activity import STATUS_DONE, Activity, Step
+    from omnigent.superchat.activity.derive import STATUS_DONE, Activity, Step
 
     return Activity(
         id=id_,
@@ -609,7 +609,7 @@ def _row(
 
 
 def test_feed_omits_quick_turns_and_keeps_real_work() -> None:
-    from omnigent.superchat.activity import _feed
+    from omnigent.superchat.activity.derive import _feed
 
     rows = _feed(
         [
@@ -626,7 +626,7 @@ def test_feed_omits_quick_turns_and_keeps_real_work() -> None:
 
 
 def test_housekeeping_is_one_row_per_local_day() -> None:
-    from omnigent.superchat.activity import HOUSEKEEPING_TITLE, _feed
+    from omnigent.superchat.activity.derive import HOUSEKEEPING_TITLE, _feed
 
     # 2026-10-05 02:30 UTC and 2026-10-05 03:30 UTC are still Oct 4 in New York.
     base = 1_791_167_400

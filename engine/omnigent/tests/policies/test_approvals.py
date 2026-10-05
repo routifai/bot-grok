@@ -11,10 +11,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from omnigent.errors import OmnigentError
-from omnigent.policies.builtins import approvals
 from omnigent.runtime import pending_elicitations
-from omnigent.server.routes.approvals import create_approvals_router, install_pending_persistence
-from omnigent.stores.approval_store import SqlAlchemyApprovalStore
+from omnigent.superchat.approvals import policy as approvals
+from omnigent.superchat.approvals.routes import (
+    create_approvals_router,
+    install_pending_persistence,
+)
+from omnigent.superchat.approvals.store import SqlAlchemyApprovalStore
 
 
 @pytest.fixture

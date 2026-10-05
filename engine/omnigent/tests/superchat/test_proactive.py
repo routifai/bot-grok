@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 import pytest
 
-from omnigent.superchat.proactive import (
+from omnigent.superchat.proactive.provisioner import (
     CHECKIN_NAME,
     STUDY_NAME,
     ProactiveProvisioner,
@@ -128,7 +128,7 @@ async def test_off_creates_nothing_and_failure_backs_off() -> None:
 
 
 def test_study_prompt_checks_existing_work_before_proposing() -> None:
-    from omnigent.superchat.proactive import STUDY_PROMPT
+    from omnigent.superchat.proactive.provisioner import STUDY_PROMPT
 
     for needle in (
         "sys_scheduled_task_list",

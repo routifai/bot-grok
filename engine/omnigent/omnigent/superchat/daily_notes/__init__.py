@@ -57,7 +57,7 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 def _jobs(app: FastAPI) -> list[BackgroundJob]:
     """The quiet-moment worker, when proactive provisioning is on and the app has fire deps."""
     from omnigent.superchat.daily_notes.quiet_moment import QuietMoment
-    from omnigent.superchat.proactive import provisioning_enabled
+    from omnigent.superchat.proactive.provisioner import provisioning_enabled
 
     note_store = getattr(app.state, "daily_note_store", None)
     fire_deps = getattr(app.state, "fire_deps", None)

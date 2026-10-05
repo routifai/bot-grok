@@ -6,7 +6,7 @@ _execute_side_chat_open``, tested against a mocked route in
 ``tests/runner/test_side_chat_tool_dispatch.py``). Exercised here against
 the real app because the route itself calls the real fork / create /
 events routes in-process (``omnigent.server.routes.sessions.
-routes_side_chats._internal_call``).
+side_chats.routes._internal_call``).
 """
 
 from __future__ import annotations

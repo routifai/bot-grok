@@ -65,7 +65,6 @@ from omnigent.harness_plugins import (
     native_provider_for_key,
 )
 from omnigent.memory.service import MemoryService
-from omnigent.policies.builtins.approvals import configure_store as configure_approval_store
 from omnigent.resources import examples as _examples_resources
 from omnigent.runtime import (
     get_terminal_registry,
@@ -96,7 +95,6 @@ from omnigent.server.performance_metrics import (
     set_request_session_id_for_access_log,
     set_request_user_agent_for_access_log,
 )
-from omnigent.server.routes.approvals import create_approvals_router, install_pending_persistence
 from omnigent.server.routes.builtin_agents import create_builtin_agents_router
 from omnigent.server.routes.comments import create_comments_router
 from omnigent.server.routes.default_policies import create_default_policies_router
@@ -131,7 +129,6 @@ from omnigent.stores import (
     ConversationStore,
     FileStore,
 )
-from omnigent.stores.approval_store import SqlAlchemyApprovalStore
 from omnigent.stores.comment_store import CommentStore
 from omnigent.stores.conversation_store import (
     ConversationNotFoundError,
@@ -145,7 +142,6 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.policy_store import PolicyStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
-from omnigent.superchat.chats import SideChatArchiveSweeper
 from omnigent.superchat.feature import InstallDeps
 from omnigent.superchat.features import (
     install_features,
@@ -1766,7 +1762,6 @@ def create_app(
                 app_state=app_inst.state,
             )
             app_inst.state.fire_deps = fire_deps
-            await start_feature_jobs(app_inst)
             on_fire = build_on_fire(fire_deps)
             # The manual "run now" trigger reuses the same fire path (dispatch /
             # preflight / in-flight guard) as the scheduler; it only differs in
@@ -1813,11 +1808,8 @@ def create_app(
                 app_inst.state.managed_sandbox_reaper = managed_sandbox_reaper
                 await managed_sandbox_reaper.start()
 
-        # Side Chat auto-archive (rollover/SUPERSIDE-CHAT-PLAN.md S4): a
-        # cheap periodic sweep, never touching the Super Chat or Sub-agents.
-        side_chat_archive_sweeper = SideChatArchiveSweeper(conversation_store)
-        app_inst.state.side_chat_archive_sweeper = side_chat_archive_sweeper
-        await side_chat_archive_sweeper.start()
+        # Super Chat feature background jobs (Side Chat archive sweeper, quiet moment, ...).
+        await start_feature_jobs(app_inst)
 
         # Memory upkeep hourly sweep (rollover/SUPERSIDE-CHAT-PLAN.md S6):
         # the compaction trigger (routes_events.py) catches most signal
@@ -1841,7 +1833,6 @@ def create_app(
             await stop_feature_jobs(app_inst)
             if memory_upkeep_scheduler is not None:
                 await memory_upkeep_scheduler.shutdown()
-            await side_chat_archive_sweeper.shutdown()
             if managed_sandbox_reaper is not None:
                 await managed_sandbox_reaper.shutdown()
             # Run completion is event-driven (the _publish_status hook) plus a
@@ -3351,23 +3342,6 @@ def create_app(
             ),
             prefix="/v1",
             tags=["scheduled_tasks"],
-        )
-        # Approvals (standing rules, spending cap, pending prompts) share it too.
-        approval_store = SqlAlchemyApprovalStore(scheduled_task_store.storage_location)
-        app.state.approval_store = approval_store
-        configure_approval_store(approval_store)
-        install_pending_persistence(approval_store)
-        app.include_router(
-            create_approvals_router(
-                approval_store,
-                conversation_store=conversation_store,
-                agent_store=agent_store,
-                runner_router=runner_router,
-                permission_store=permission_store,
-                auth_provider=auth_provider,
-            ),
-            prefix="/v1",
-            tags=["approvals"],
         )
     install_features(
         app,

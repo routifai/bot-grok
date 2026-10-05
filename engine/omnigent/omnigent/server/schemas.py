@@ -2737,7 +2737,7 @@ class SideChatOpenRequest(BaseModel):
 
     Opens a Side Chat branched from a superside-chat Super Chat — the same
     operation the model-facing ``side_chat_open`` tool performs (see
-    ``omnigent/superchat/chats.py``). Refused unless the target session is
+    ``omnigent/superchat/side_chats/chats.py``). Refused unless the target session is
     itself the Super Chat (never a Side Chat, never a Sub-agent).
 
     :param start: ``"with_context"`` forks the Super Chat with a seeded

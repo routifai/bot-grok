@@ -30,7 +30,7 @@ from omnigent.context.labels import (
 )
 from omnigent.entities import Conversation, ConversationItem
 from omnigent.stores.conversation_store import ConversationStore
-from omnigent.superchat.activity_titles import (
+from omnigent.superchat.activity.titles import (
     ACTIVITY_TITLE_INSTRUCTIONS,
     clean_generated_label,
     is_generic_title,
@@ -147,7 +147,7 @@ class Activity:
         :data:`SOURCE_SIDE_CHAT`, :data:`SOURCE_BACKGROUND`,
         :data:`SOURCE_SCHEDULED` or :data:`SOURCE_GOAL`.
     :param title: Short task title: model-written once generated, else the
-        request tidied (see :mod:`omnigent.superchat.activity_titles`).
+        request tidied (see :mod:`omnigent.superchat.activity.titles`).
     :param outcome: One-line outcome, or ``None`` when nothing to report yet.
     :param summary: A short one-line gist of the outcome for the feed row, or
         ``None`` while in progress (the live Step stands in) or when there is none.

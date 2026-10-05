@@ -10,7 +10,6 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from omnigent.policies.builtins.approvals import classify_tool_call
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -18,6 +17,7 @@ from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
 from omnigent.stores.scheduled_task_store.sqlalchemy_store import SqlAlchemyScheduledTaskStore
+from omnigent.superchat.approvals.policy import classify_tool_call
 from omnigent.superchat.artifacts import handlers
 from omnigent.superchat.artifacts.handlers import handle_artifact_tool
 from omnigent.superchat.feature import HandlerCtx

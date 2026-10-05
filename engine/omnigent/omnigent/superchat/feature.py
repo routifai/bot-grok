@@ -48,11 +48,13 @@ class HandlerCtx:
     :param tool_name: The tool being called.
     :param server_client: HTTP client pointed at the Omnigent server (``None`` outside a runner).
     :param conversation_id: The calling session.
+    :param labels: The calling session's labels, when the dispatcher has them.
     """
 
     tool_name: str
     server_client: httpx.AsyncClient | None
     conversation_id: str | None
+    labels: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True)

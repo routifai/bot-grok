@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from omnigent.errors import OmnigentError
 from omnigent.onboarding.sandboxes.types import SandboxCapabilities
-from omnigent.server.routes.sessions.routes_computer import register_computer_routes
+from omnigent.superchat.computer.routes import register_computer_routes
 
 pytestmark = pytest.mark.asyncio
 

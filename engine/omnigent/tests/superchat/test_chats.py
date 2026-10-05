@@ -1,4 +1,4 @@
-"""Unit tests for ``omnigent.superchat.chats``: side_chat_open eligibility and
+"""Unit tests for ``omnigent.superchat.side_chats.chats``: side_chat_open eligibility and
 request bodies, the auto-archive sweep, and the unarchive-on-message rule.
 
 No DB, no server, no live calls — a tiny in-memory fake stands in for
@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from omnigent.superchat.chats import (
+from omnigent.superchat.side_chats.chats import (
     ARCHIVE_AFTER_SECONDS_ENV,
     DEFAULT_ARCHIVE_AFTER_SECONDS,
     SWEEP_INTERVAL_SECONDS_ENV,

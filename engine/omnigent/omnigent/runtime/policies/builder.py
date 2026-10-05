@@ -30,7 +30,6 @@ from omnigent.entities import Policy as StoredPolicy
 from omnigent.errors import ErrorCode, OmnigentError, restart_on_stale_cursor
 from omnigent.llms.context_window import fetch_model_pricing_with_provider
 from omnigent.policies.base import Policy
-from omnigent.policies.builtins import approvals as _approvals
 from omnigent.policies.function import resolve_function_policy
 from omnigent.policies.schema import (
     SESSION_COST_ASK_APPROVED_STATE_KEY,
@@ -51,6 +50,7 @@ from omnigent.spec.types import (
 )
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.stores.policy_store import PolicyStore
+from omnigent.superchat.approvals import policy as _approvals
 
 _logger = logging.getLogger(__name__)
 
@@ -79,13 +79,13 @@ _ASK_ON_ADD_POLICY_SPEC = FunctionPolicySpec(
 )
 
 # Asks before a Super Chat session sends, posts, deletes, spends, uploads or shares
-# (omnigent.policies.builtins.approvals). Installed only when the server bound an
+# (omnigent.superchat.approvals.policy). Installed only when the server bound an
 # approval store, and only for the Super Chat's tree (side chats, Helpers).
 _APPROVALS_POLICY_SPEC = FunctionPolicySpec(
     name=_approvals.POLICY_NAME,
     on=None,
     function=FunctionRef(
-        path="omnigent.policies.builtins.approvals.muse_approvals",
+        path="omnigent.superchat.approvals.policy.muse_approvals",
         arguments=None,
     ),
     ask_timeout=_approvals.ASK_TIMEOUT_SECONDS,

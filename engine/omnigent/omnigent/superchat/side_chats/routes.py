@@ -1,10 +1,10 @@
 """``POST /sessions/{id}/side_chats``: open a Side Chat from its Super Chat.
 
 The one implementation behind both the web app's "+ New side chat" and the
-model-facing ``side_chat_open`` tool (``omnigent.runner.tool_dispatch.
-_execute_side_chat_open``, which calls this route instead of forking /
+model-facing ``side_chat_open`` tool (``omnigent.superchat.side_chats.
+handlers``, which calls this route instead of forking /
 creating / binding the pieces itself). See ``rollover/SUPERSIDE-CHAT.md``
-and ``omnigent/superchat/chats.py`` for the eligibility rule and the two
+and ``omnigent/superchat/side_chats/chats.py`` for the eligibility rule and the two
 ``start`` modes.
 """
 
@@ -28,7 +28,7 @@ from omnigent.server.schemas import SideChatOpenRequest, SideChatOpenResponse
 from omnigent.stores import ConversationStore
 from omnigent.stores.conversation_store import SIDE_CHAT_START_LABEL_KEY
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.chats import (
+from omnigent.superchat.side_chats.chats import (
     SIDE_CHAT_START_WITH_CONTEXT,
     build_side_chat_blank_create_body,
     build_side_chat_fork_body,

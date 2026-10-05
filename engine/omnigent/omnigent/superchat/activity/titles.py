@@ -17,8 +17,10 @@ rules around it:
 from __future__ import annotations
 
 import re
+import time
+from datetime import UTC, datetime
 
-from omnigent.superchat.proactive import CHECKIN_NAME, STUDY_NAME
+from omnigent.superchat.proactive.provisioner import CHECKIN_NAME, STUDY_NAME
 
 #: Appended to the title service's prompt through its per-request
 #: ``additional_instructions`` (a title-format override, no runner change).
@@ -54,7 +56,7 @@ _FILLER_PREFIX = re.compile(
 _TRAILING_PUNCTUATION = re.compile(r"[\s?!.,;:]+$")
 
 #: The collision fallback a scheduled Helper's title can carry
-#: (``server/scheduled/fire.py``): `` (Oct 03 07:00 UTC)`` plus an optional task-id stub.
+#: (built by :func:`fire_title_candidates`): `` (Oct 03 07:00 UTC)`` plus an optional task-id stub.
 _FIRE_SUFFIX = re.compile(r"\s*\([A-Z][a-z]{2} \d{1,2} \d{2}:\d{2} UTC\)(?:\s+[0-9a-f]{8})?$")
 
 #: Opaque or ordinal sub-agent titles ("researcher-1", "web_fetch_91af03c2").
@@ -190,6 +192,23 @@ def is_generic_title(title: str | None) -> bool:
     """Whether a sub-agent title is only an id or ordinal (so says nothing about the work)."""
     stripped = (title or "").strip()
     return not stripped or bool(_GENERIC_TITLE.match(stripped)) or stripped.startswith("__")
+
+
+def fire_title_candidates(
+    agent_type: str, task_name: str | None, task_id: str, scheduled_at: float | None
+) -> list[str]:
+    """The session titles a scheduled Helper fire tries, in order (``"<agent_type>:<label>"``).
+
+    The ``(parent, title)`` pair is unique, so a repeat fire of the same task falls back to a
+    timestamped title and then a task-id stub; :data:`_FIRE_SUFFIX` strips exactly these for
+    display, so the two formats live together here.
+    """
+    base = (task_name or "").strip() or str(agent_type)
+    fired = datetime.fromtimestamp(scheduled_at or time.time(), tz=UTC).strftime("%b %d %H:%M UTC")
+    return [
+        f"{agent_type}:{label}"
+        for label in (base, f"{base} ({fired})", f"{base} ({fired}) {task_id[:8]}")
+    ]
 
 
 def strip_fire_suffix(title: str) -> str:

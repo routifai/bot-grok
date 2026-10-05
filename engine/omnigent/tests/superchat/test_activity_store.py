@@ -1,4 +1,4 @@
-"""Store-backed orchestration tests for omnigent.superchat.activity.
+"""Store-backed orchestration tests for omnigent.superchat.activity.derive.
 
 Covers list_chat_family / list_activities / get_activity against a real
 SqlAlchemyConversationStore (sqlite, per-test file) — the wiring between
@@ -15,7 +15,7 @@ import pytest
 from omnigent.entities import FunctionCallData, MessageData, NewConversationItem
 from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
-from omnigent.superchat.activity import (
+from omnigent.superchat.activity.derive import (
     STATUS_DONE,
     get_activity,
     list_activities,
@@ -150,7 +150,7 @@ def test_list_activities_covers_turn_and_sub_agent(
     conversation_store: SqlAlchemyConversationStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("omnigent.superchat.activity._MIN_TURN_STEPS", 1)
+    monkeypatch.setattr("omnigent.superchat.activity.derive._MIN_TURN_STEPS", 1)
     family = _build_super_chat_family(conversation_store, suffix="a")
     activities = list_activities(conversation_store, family["super_chat"].id)
     kinds_by_chat = {(a.kind, a.chat_id) for a in activities}
@@ -167,7 +167,7 @@ def test_list_activities_covers_the_newest_turn_beyond_the_scan_limit(
     """A conversation with more items than the scan limit must still surface
     its NEWEST turn — an ascending, limit-bounded scan would instead return
     only the oldest items and silently drop the current turn."""
-    import omnigent.superchat.activity as activity_mod
+    import omnigent.superchat.activity.derive as activity_mod
 
     monkeypatch.setattr(activity_mod, "_MIN_TURN_STEPS", 1)
     monkeypatch.setattr(activity_mod, "_ITEMS_SCAN_LIMIT", 15)  # 5 turns' worth

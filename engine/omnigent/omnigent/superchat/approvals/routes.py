@@ -18,11 +18,6 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.policies.builtins.approvals import (
-    CATEGORIES,
-    decode_reason,
-    rule_label,
-)
 from omnigent.runner.routing import RunnerRouter
 from omnigent.runtime import pending_elicitations
 from omnigent.server.auth import LEVEL_EDIT, RESERVED_USER_LOCAL, AuthProvider
@@ -30,7 +25,12 @@ from omnigent.server.routes._auth_helpers import require_access_and_level, requi
 from omnigent.server.routes._sessions.helpers import _apply_pending_policy_ask_writes
 from omnigent.server.routes._sessions.orchestration import _resolve_elicitation
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
-from omnigent.stores.approval_store import (
+from omnigent.superchat.approvals.policy import (
+    CATEGORIES,
+    decode_reason,
+    rule_label,
+)
+from omnigent.superchat.approvals.store import (
     LOCAL_OWNER,
     ApprovalRule,
     PendingApproval,

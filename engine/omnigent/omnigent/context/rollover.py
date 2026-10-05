@@ -40,7 +40,7 @@ from omnigent.stores.conversation_store import (
     SIDE_CHAT_START_LABEL_KEY,
     ConversationStore,
 )
-from omnigent.superchat.chats import SIDE_CHAT_START_WITH_CONTEXT
+from omnigent.superchat.side_chats.chats import SIDE_CHAT_START_WITH_CONTEXT
 
 # A turn in flight, read from the durable ``Conversation.live_status`` (no runner probe).
 _MID_TURN_LIVE_STATUSES = ("running", "waiting")

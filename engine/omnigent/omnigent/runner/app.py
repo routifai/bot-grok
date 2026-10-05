@@ -196,6 +196,7 @@ from omnigent.server.schemas import (
 )
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
+from omnigent.superchat.prompt_prefix import turn_prefix_blocks
 from omnigent.superchat.subagents import (
     format_subagent_wake_notice_with_result,
     resolve_wake_target,
@@ -9261,56 +9262,16 @@ def create_runner_app(
                 extra={"session_id": conv_id},
             )
 
-    async def _apply_memory_profile_block(body: _JsonObject, conv_id: str) -> _JsonObject:
-        """Prepend the user's Memory Profile delimiter block to this turn's content.
+    async def _apply_turn_prefix_blocks(body: _JsonObject, conv_id: str) -> _JsonObject:
+        """Prepend the Super Chat per-turn blocks (Memory Profile, local time) to the content.
 
-        Called only for ``superside-chat`` turns (``rollover/SUPERSIDE-CHAT-PLAN.md``
-        S6) — the caller has already checked the session's mode. Fetched fresh
-        every turn via the server's own API: the SDK's system prompt is frozen
-        per warm client, so a per-message block is the seam that still reaches
-        it (``omnigent/inner/claude_sdk_executor.py``).
+        Called only for ``superside-chat`` turns; the blocks come from the one
+        ``superchat.prompt_prefix`` hook, fetched fresh each turn (the SDK's system prompt is
+        frozen per warm client, so a per-message block is the seam that still reaches it).
         """
-        try:
-            resp = await server_client.get(
-                f"/v1/sessions/{conv_id}/memory/profile",
-                timeout=10.0,
-            )
-            if resp.status_code != 200:
-                _logger.warning(
-                    "Memory Profile fetch failed for %s; proceeding without it: status=%s",
-                    conv_id,
-                    resp.status_code,
-                    extra={"session_id": conv_id},
-                )
-                block = None
-            else:
-                block = resp.json().get("profile")
-        except (httpx.HTTPError, ValueError) as exc:
-            _logger.warning(
-                "Memory Profile fetch failed for %s; proceeding without it: %s",
-                conv_id,
-                type(exc).__name__,
-                extra={"session_id": conv_id},
-            )
-            return body
-        return _apply_memory_profile_to_body(body, block)
-
-    async def _apply_local_time_block(body: _JsonObject) -> _JsonObject:
-        """Prefix this turn with the person's local date/time (owner preference zone)."""
-        from omnigent.superchat.local_time import local_time_block
-
-        timezone: str | None = None
-        try:
-            resp = await server_client.get("/v1/me/proactivity", timeout=10.0)
-            if resp.status_code == 200:
-                timezone = resp.json().get("timezone")
-        except (httpx.HTTPError, ValueError, AttributeError):
-            pass
-        new_body = dict(body)
-        new_body["content"] = _prefix_content_with_tail(
-            body.get("content"), local_time_block(timezone)
-        )
-        return new_body
+        for block in await turn_prefix_blocks(server_client, conv_id):
+            body = _apply_memory_profile_to_body(body, block)
+        return body
 
     def _discard_comment_relay(session_id: str, relay: ClaudeNativeToolRelay) -> None:
         """Unbind and close *relay*, unless another path already replaced it.
@@ -9863,8 +9824,7 @@ def create_runner_app(
                 [],
             )
         if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
-            harness_body = await _apply_memory_profile_block(harness_body, conv)
-            harness_body = await _apply_local_time_block(harness_body)
+            harness_body = await _apply_turn_prefix_blocks(harness_body, conv)
         _content = cast(list[object], harness_body.get("content", []))
         _content_summary = []
         for _ci in _content:
