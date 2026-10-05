@@ -6,16 +6,26 @@ import { markdownToLine } from "../../../lib/markdown-plain-text";
 // clock times, and the polling cadence decision. Kept free of React/i18n so
 // activityGrouping.test.ts can exercise every branch directly.
 
-/** How often the panel polls `activities.list` while the tab is visible: briskly while
- * something is still running, relaxed once everything has settled. */
-export const ACTIVITY_POLL_ACTIVE_MS = 5_000;
+/** The feed re-reads on the engine's live signal (`activities.watch`); these are only the
+ * safety net under it, and the whole cadence when the signal is unavailable. While anything is
+ * running the net is tight, since a Helper's steps land continuously. */
+export const ACTIVITY_POLL_ACTIVE_MS = 3_000;
 export const ACTIVITY_POLL_IDLE_MS = 20_000;
+export const ACTIVITY_POLL_IDLE_WATCHED_MS = 60_000;
 
-/** The polling cadence decision: 5s while any Activity is in progress, 20s otherwise. */
-export function activitiesPollIntervalMs(activities: readonly Activity[]): number {
-  return activities.some((activity) => activity.status === "in_progress")
-    ? ACTIVITY_POLL_ACTIVE_MS
-    : ACTIVITY_POLL_IDLE_MS;
+/** True while this Activity is still being worked on. */
+export function isRunning(activity: Pick<Activity, "status">): boolean {
+  return activity.status === "in_progress";
+}
+
+/** The re-read cadence: tight while any Activity is running; otherwise relaxed, and more so
+ * while the live signal is connected (it would have said so). */
+export function activitiesPollIntervalMs(
+  activities: readonly Activity[],
+  watching = false,
+): number {
+  if (activities.some(isRunning)) return ACTIVITY_POLL_ACTIVE_MS;
+  return watching ? ACTIVITY_POLL_IDLE_WATCHED_MS : ACTIVITY_POLL_IDLE_MS;
 }
 
 /** A Helper's whole task (CONTEXT.md "Helper"; engine "sub_agent"), whose run page can show
@@ -144,4 +154,23 @@ export function mergeNewestPage(
   const currentIds = new Set(current.map((activity) => activity.id));
   const newOnes = newest.filter((activity) => !currentIds.has(activity.id));
   return [...newOnes, ...updatedExisting];
+}
+
+/** A span as people say it: "12s", "1m 20s", "1h 5m". Whole seconds, never negative. */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${minutes}m ${total % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** How long an Activity has been going (running) or took (settled), or null when unknown. */
+export function activityDurationMs(
+  activity: Pick<Activity, "status" | "startedAt" | "finishedAt">,
+  nowMs: number,
+): number | null {
+  const start = Date.parse(activity.startedAt);
+  const end = isRunning(activity) ? nowMs : Date.parse(activity.finishedAt ?? "");
+  return Number.isNaN(start) || Number.isNaN(end) ? null : Math.max(0, end - start);
 }

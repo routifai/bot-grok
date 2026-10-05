@@ -40,6 +40,12 @@ SUBAGENT_LABEL_KEY = "omnigent.subagent"
 #: for the parent wake on its first turn.
 SCHEDULED_HELPER_LABEL_KEY = "omnigent.subagent.scheduled_task_id"
 
+#: Stamped by the server on every child session when it creates it. It means "launched, no
+#: status reported yet": the Activity Feed reads such a child as starting (and, if it never
+#: reports one, as failed to start) instead of guessing from age alone. Inert once the child
+#: has a ``live_status``.
+LAUNCHING_LABEL_KEY = "omnigent.subagent.launching"
+
 #: Stamped on an ad-hoc Helper (``start_adhoc_helper``: the daily-note pass). It does not wake
 #: its parent, but like a scheduled Helper it may read the parent chat (``session_history``).
 ADHOC_HELPER_LABEL_KEY = "omnigent.subagent.adhoc"

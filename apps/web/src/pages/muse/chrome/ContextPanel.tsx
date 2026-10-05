@@ -46,7 +46,7 @@ import {
   nextConnectionLatch,
 } from "./connectionStatus";
 import { MemoryTab, type MemoryWire } from "./MemoryTab";
-import { type ActivitiesState, useActivities } from "./useActivities";
+import { type ActivitiesState, LIVE_ACTIVITY_WIRE, useActivities } from "./useActivities";
 import type { ChatListState } from "./useChatList";
 
 // The right-hand context panel beside the Conversation (docs/muse/DESIGN.md, "Conversation"):
@@ -573,13 +573,6 @@ export function ContextPanel({
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
   const liveActivities = useActivities(botId);
-  const liveActivityWire = useMemo<ActivityWire>(
-    () => ({
-      get: (input) => rpc.activities.get(input),
-      helperMessages: (input) => rpc.chats.messages(input),
-    }),
-    [],
-  );
   const liveMemoryWire = useMemo<MemoryWire>(
     () => ({
       profile: (input) => rpc.memory.profile(input),
@@ -593,7 +586,7 @@ export function ContextPanel({
   );
   const activitiesData = activitiesOverride ?? {
     state: liveActivities.state,
-    wire: liveActivityWire,
+    wire: LIVE_ACTIVITY_WIRE,
     loadEarlier: liveActivities.loadEarlier,
     loadingEarlier: liveActivities.loadingEarlier,
   };

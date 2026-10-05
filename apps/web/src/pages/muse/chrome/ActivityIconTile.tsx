@@ -13,19 +13,19 @@ export function ActivityIconTile({
   Icon: LucideIcon;
   live: boolean;
   failed: boolean;
-  size?: "md" | "lg";
+  size?: "sm" | "md" | "lg";
 }) {
   return (
     <span
       aria-hidden="true"
       className={cn(
         "flex shrink-0 items-center justify-center rounded-lg",
-        size === "lg" ? "size-10" : "size-9",
+        size === "lg" ? "size-10" : size === "sm" ? "size-7" : "size-9",
         failed ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
       )}
     >
       <Icon
-        size={size === "lg" ? 19 : 17}
+        size={size === "lg" ? 19 : size === "sm" ? 14 : 17}
         strokeWidth={1.75}
         className={cn(live && "motion-safe:animate-[rkPulse_2.4s_ease-in-out_infinite]")}
       />

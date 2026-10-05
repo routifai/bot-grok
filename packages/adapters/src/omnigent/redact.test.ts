@@ -19,6 +19,17 @@ describe("redactThreadMessages", () => {
     expect(redacted?.blocks).toEqual([{ kind: "text", text: "the key is [redacted], use it" }]);
   });
 
+  it("redacts a secret inside a Helper row's title", () => {
+    const withHelper: ThreadMessage = {
+      ...message,
+      blocks: [{ kind: "helper", helperId: "conv_h", title: "Use sk-live-topsecret" }],
+    };
+    const [redacted] = redactThreadMessages([withHelper], SECRETS);
+    expect(redacted?.blocks).toEqual([
+      { kind: "helper", helperId: "conv_h", title: "Use [redacted]" },
+    ]);
+  });
+
   it("is a no-op with no secrets configured", () => {
     const messages = [message];
     expect(redactThreadMessages(messages, [])).toBe(messages);

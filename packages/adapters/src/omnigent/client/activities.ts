@@ -1,6 +1,6 @@
 import type { OmnigentClientConfig } from "./core.js";
 import { omnigentHeaders, throwOnError } from "./core.js";
-import type { OmnigentPaginatedList } from "./sessions.js";
+import { type OmnigentPaginatedList, streamOmnigentSse } from "./sessions.js";
 
 export interface OmnigentActivityStep {
   item_id: string;
@@ -23,6 +23,7 @@ export interface OmnigentActivity {
   finished_at: number | null;
   date: string;
   steps?: OmnigentActivityStep[];
+  parent_chat_id?: string | null;
 }
 
 /** `GET /v1/sessions/{superId}/activities?before=&limit=` — the Activity Feed, newest first
@@ -61,4 +62,21 @@ export async function getOmnigentActivity(
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "get activity", config.secrets);
   return (await response.json()) as OmnigentActivity;
+}
+
+/** `GET /v1/sessions/{superId}/activities/stream` — a frame on connect and one each time the
+ * family's Activity Feed may have changed (a Helper started, stepped, settled). No content: the
+ * caller re-reads the feed. Ends when the response ends or `signal` aborts. */
+export function streamOmnigentActivityChanges(
+  config: OmnigentClientConfig,
+  email: string,
+  superSessionId: string,
+  signal?: AbortSignal,
+) {
+  return streamOmnigentSse(
+    config,
+    email,
+    `/v1/sessions/${encodeURIComponent(superSessionId)}/activities/stream`,
+    { signal, what: "watch activities" },
+  );
 }

@@ -11,8 +11,8 @@ function redactString(value: string, secrets: string[]): string {
   return secrets.length === 0 ? value : redactSecrets(value, secrets);
 }
 
-/** `chats.messages`: redacts every `text` block's text. Non-text blocks (none exist on an
- * Omnigent-mapped message today — see `mapOmnigentItemsToMessages`) pass through unchanged. */
+/** `chats.messages`: redacts every `text` block's text and every Helper row's title. The
+ * other blocks (cards carry their own redaction, see ./cards.ts) pass through unchanged. */
 export function redactThreadMessages(
   messages: ThreadMessage[],
   secrets: string[],
@@ -21,7 +21,11 @@ export function redactThreadMessages(
   return messages.map((message) => ({
     ...message,
     blocks: message.blocks.map((block) =>
-      block.kind === "text" ? { ...block, text: redactString(block.text, secrets) } : block,
+      block.kind === "text"
+        ? { ...block, text: redactString(block.text, secrets) }
+        : block.kind === "helper"
+          ? { ...block, title: redactString(block.title, secrets) }
+          : block,
     ),
   }));
 }

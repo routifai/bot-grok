@@ -65,6 +65,48 @@ async def test_activity_detail_404_for_nonexistent_session(client: httpx.AsyncCl
     assert resp.status_code == 404
 
 
+async def test_server_marks_a_new_child_session_as_launching(
+    client: httpx.AsyncClient,
+    db_uri: str,
+) -> None:
+    conv_store = SqlAlchemyConversationStore(db_uri)
+    parent = await _create_session(client, "launch-parent")
+    created = await client.post(
+        "/v1/sessions",
+        json={
+            "agent_id": parent["agent_id"],
+            "parent_session_id": parent["id"],
+            "initial_items": [],
+        },
+    )
+    assert created.status_code == 201, created.text
+    child = conv_store.get_conversation(created.json()["id"])
+    assert child is not None
+    assert child.labels.get("omnigent.subagent.launching") == "true"
+    top = conv_store.get_conversation(parent["id"])
+    assert top is not None
+    assert "omnigent.subagent.launching" not in top.labels
+
+
+async def test_activity_changes_stream_404_for_nonexistent_session(
+    client: httpx.AsyncClient,
+) -> None:
+    resp = await client.get("/v1/sessions/ad563e906854634c49e1a6fd2fbb31d4/activities/stream")
+    assert resp.status_code == 404
+
+
+async def test_activity_changes_stream_is_not_taken_for_an_activity_id(
+    client: httpx.AsyncClient,
+) -> None:
+    # A plain session has no feed to watch: the stream route answers (and ends) as a
+    # stream, rather than the detail route reading "stream" as an unknown activity id.
+    session = await _create_session(client, "plain-stream-agent")
+    resp = await client.get(f"/v1/sessions/{session['id']}/activities/stream")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert resp.text == ""
+
+
 # ── Non-superside-chat session: empty, not an error ──────────────────────
 
 

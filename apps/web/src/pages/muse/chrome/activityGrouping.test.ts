@@ -1,17 +1,20 @@
-import type { Activity } from "@aiden/contracts";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   ACTIVITY_POLL_ACTIVE_MS,
   ACTIVITY_POLL_IDLE_MS,
+  ACTIVITY_POLL_IDLE_WATCHED_MS,
   activitiesPollIntervalMs,
   activityDateLabel,
+  activityDurationMs,
   activityLineText,
   formatClockTime,
   formatDayAndTime,
+  formatDuration,
   groupActivitiesByDate,
   isHelperActivity,
   mergeNewestPage,
 } from "./activityGrouping";
+import { activity } from "./activityTestKit";
 
 // The day-grouping helpers read the local calendar day off `Date` getters, which follow
 // `process.env.TZ`. Pin it to UTC by default so every other test here is deterministic
@@ -26,23 +29,6 @@ afterEach(() => {
   process.env.TZ = originalTZ;
 });
 
-function activity(overrides: Partial<Activity> = {}): Activity {
-  return {
-    id: "act-1",
-    kind: "turn",
-    source: "turn",
-    chatId: "chat-1",
-    title: "Checked the budget totals",
-    outcome: "Everything ties out.",
-    summary: "Everything ties out.",
-    status: "done",
-    startedAt: "2026-10-03T11:21:00.000Z",
-    finishedAt: "2026-10-03T11:22:00.000Z",
-    date: "2026-10-03",
-    ...overrides,
-  };
-}
-
 const LABELS = {
   in_progress: "Working",
   done: "Done",
@@ -56,6 +42,29 @@ it("polls briskly while anything is in progress, and relaxed once everything has
   expect(
     activitiesPollIntervalMs([activity({ status: "done" }), activity({ status: "in_progress" })]),
   ).toBe(ACTIVITY_POLL_ACTIVE_MS);
+});
+
+it("relaxes further while the engine's live signal is connected, but never while running", () => {
+  expect(activitiesPollIntervalMs([], true)).toBe(ACTIVITY_POLL_IDLE_WATCHED_MS);
+  expect(activitiesPollIntervalMs([activity({ status: "in_progress" })], true)).toBe(
+    ACTIVITY_POLL_ACTIVE_MS,
+  );
+});
+
+it("says a span the way a person would", () => {
+  expect(formatDuration(0)).toBe("0s");
+  expect(formatDuration(12_900)).toBe("12s");
+  expect(formatDuration(80_000)).toBe("1m 20s");
+  expect(formatDuration(3_900_000)).toBe("1h 5m");
+  expect(formatDuration(-5)).toBe("0s");
+});
+
+it("times a running Activity against now and a settled one by its own finish", () => {
+  const running = activity({ status: "in_progress", finishedAt: null });
+  const now = Date.parse(running.startedAt) + 80_000;
+  expect(activityDurationMs(running, now)).toBe(80_000);
+  expect(activityDurationMs(activity(), now)).toBe(60_000);
+  expect(activityDurationMs(activity({ finishedAt: null }), now)).toBeNull();
 });
 
 it("marks a Helper's whole task as kind sub_agent, and a plain turn as not one", () => {

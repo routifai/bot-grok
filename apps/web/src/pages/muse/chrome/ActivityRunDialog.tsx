@@ -7,6 +7,7 @@ import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIconTile } from "./ActivityIconTile";
 import { formatClockTime, formatDayAndTime, isHelperActivity } from "./activityGrouping";
+import { RunStatusDot } from "./RunStatusDot";
 import { MessageRow } from "./SideChatSession";
 import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "./toolIcons";
 
@@ -16,30 +17,6 @@ export type ActivityWire = {
   get: (input: { botId: string; activityId: string }) => Promise<Activity>;
   helperMessages: (input: { chatId: string }) => Promise<ThreadMessagePage>;
 };
-
-/** The run page's status dot: breathing (in progress), a quiet muted dot (done /
- * cancelled), or — the one allowed color — the destructive token on the dot alone when
- * failed. Nothing else on the run page carries status color (lead review: "remove
- * green/red"; the pill's container and label stay neutral). */
-function RunStatusDot({ status }: { status: Activity["status"] }) {
-  if (status === "in_progress") {
-    return (
-      <span aria-hidden="true" className="relative flex size-2 items-center justify-center">
-        <span className="absolute inline-flex size-full animate-ping rounded-full bg-foreground/50 opacity-50 motion-reduce:animate-none" />
-        <span className="relative size-1.5 rounded-full bg-foreground motion-safe:animate-[rkPulse_2.4s_ease-in-out_infinite]" />
-      </span>
-    );
-  }
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-1.5 rounded-full",
-        status === "failed" ? "bg-destructive" : "bg-muted-foreground/60",
-      )}
-    />
-  );
-}
 
 function RunStatusPill({ status, label }: { status: Activity["status"]; label: string }) {
   return (
@@ -236,33 +213,26 @@ export function ActivityRunDialog({
     setHelperOpen(false);
   }, [activity?.id]);
 
-  // Fetches full detail (Steps) once, then — while this Activity is still in
-  // progress — every ~5s, so the run page doesn't go stale while it's open; stops the
-  // moment it finishes (or the dialog closes).
+  // Fetches full detail (Steps) when the Activity opens, and again each time the live feed
+  // reports a new Step or a settled status (useActivities.ts is the one clock), so the run
+  // page never goes stale while it is open and needs no timer of its own.
+  const stepCount = activity?.steps?.length ?? 0;
   useEffect(() => {
     if (!activity) return;
     const activityId = activity.id;
     const current = ++generation.current;
     let cancelled = false;
-    const fetchDetail = () => {
-      void wire
-        .get({ botId, activityId })
-        .then((full) => {
-          if (!cancelled && current === generation.current) setDetail(full);
-        })
-        .catch(() => undefined);
-    };
-    fetchDetail();
-    let timer: number | undefined;
-    if (activity.status === "in_progress") {
-      timer = window.setInterval(fetchDetail, 5_000);
-    }
+    void wire
+      .get({ botId, activityId })
+      .then((full) => {
+        if (!cancelled && current === generation.current) setDetail(full);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
       generation.current += 1;
-      if (timer !== undefined) window.clearInterval(timer);
     };
-  }, [botId, activity?.id, activity?.status, wire]);
+  }, [botId, activity?.id, activity?.status, stepCount, wire]);
 
   if (!activity) return null;
   const steps = detail?.steps ?? [];

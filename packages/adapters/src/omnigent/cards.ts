@@ -5,6 +5,7 @@
 // no network, so ./cards.test.ts exercises it directly.
 import type { MessageBlock, ReplyCardBlock } from "@aiden/contracts";
 import { redactSecrets } from "@aiden/core";
+import { helperBlockFromToolCall, isStartHelperCall } from "./helpers.js";
 
 const RENDER_CARD_TOOL = "render_card";
 const VAULT_REQUEST_TOOL = "vault_request_secret";
@@ -155,7 +156,8 @@ export function redactReplyCard(block: ReplyCardBlock, secrets: string[]): Messa
 /**
  * The blocks of one Super Chat turn: every card the Muse rendered, in order, with `replyText`
  * (the turn's final reply) at the position of the last assistant message. Earlier narration
- * stays dropped, as before cards existed.
+ * stays dropped, as before cards existed. The Helpers it started follow last, so their live
+ * rows sit right under the hand-off message.
  */
 export function turnBlocks(items: Item[], replyText: string): MessageBlock[] {
   const outputs = toolOutputsByCallId(items);
@@ -164,16 +166,20 @@ export function turnBlocks(items: Item[], replyText: string): MessageBlock[] {
     if (item.type === "message" && item.role === "assistant") replyIndex = index;
   });
   const blocks: MessageBlock[] = [];
+  const helpers: MessageBlock[] = [];
   let replied = false;
   items.forEach((item, index) => {
     if (index === replyIndex && replyText) {
       blocks.push({ kind: "text", text: replyText });
       replied = true;
+    } else if (isStartHelperCall(item)) {
+      const helper = helperBlockFromToolCall(outputs.get(String(item.call_id ?? "")));
+      if (helper) helpers.push(helper);
     } else {
       const block = cardFromToolCall(item, outputs);
       if (block && !block.pending) blocks.push(block);
     }
   });
   if (replyText && !replied) blocks.push({ kind: "text", text: replyText });
-  return blocks;
+  return [...blocks, ...helpers];
 }

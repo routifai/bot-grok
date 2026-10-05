@@ -216,9 +216,13 @@ export async function runTurnOnOmnigent(
       leaseOwner: workerId,
       leaseFence: fence,
       outcome: "completed",
-      blocks: turnBlocks(items, redacted).map((block) =>
-        block.kind === "reply_card" ? redactReplyCard(block, deps.secrets) : block,
-      ),
+      blocks: turnBlocks(items, redacted).map((block) => {
+        if (block.kind === "reply_card") return redactReplyCard(block, deps.secrets);
+        if (block.kind === "helper") {
+          return { ...block, title: redactSecrets(block.title, deps.secrets) };
+        }
+        return block;
+      }),
       markUnread: true,
     });
     if (!completed) {

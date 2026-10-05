@@ -10104,6 +10104,10 @@ async def _create_session_from_existing_agent(
 
     native_agent = native_coding_agent_for_agent_name(agent.name)
     initial_labels = dict(body.labels) if body.labels else {}
+    if body.parent_session_id is not None:
+        from omnigent.context.labels import LAUNCHING_LABEL_KEY
+
+        initial_labels[LAUNCHING_LABEL_KEY] = "true"
     if created_worktree_path is not None:
         from omnigent.server.routes._host_worktree import (
             WORKTREE_ROOT_LABEL_KEY,

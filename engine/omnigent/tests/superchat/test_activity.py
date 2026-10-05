@@ -44,6 +44,7 @@ def _conv(
     live_status: str | None = None,
     sub_agent_name: str | None = None,
     task_summary: str | None = None,
+    parent_id: str | None = None,
 ) -> Conversation:
     return Conversation(
         id=conv_id,
@@ -56,6 +57,7 @@ def _conv(
         live_status=live_status,
         sub_agent_name=sub_agent_name,
         task_summary=task_summary,
+        parent_conversation_id=parent_id,
     )
 
 
@@ -370,6 +372,67 @@ def test_sub_agent_status_done_when_closed_after_finishing() -> None:
 def test_sub_agent_status_done_when_idle_and_not_closed() -> None:
     conv = _conv(kind="sub_agent", live_status="idle")
     assert _sub_agent_status(conv) == STATUS_DONE
+
+
+_LAUNCHING = {"omnigent.subagent.launching": "true"}
+
+
+def test_sub_agent_status_launching_helper_reads_in_progress_not_done() -> None:
+    conv = _conv(kind="sub_agent", live_status=None, labels=_LAUNCHING)
+    assert _sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_IN_PROGRESS
+
+
+def test_sub_agent_status_helper_that_never_reports_after_launch_failed_to_start() -> None:
+    conv = _conv(kind="sub_agent", live_status=None, labels=_LAUNCHING)
+    assert _sub_agent_status(conv, [], now=conv.created_at + 3_600) == STATUS_FAILED
+
+
+def test_sub_agent_status_launch_failure_edge_reads_failed_at_once() -> None:
+    conv = _conv(kind="sub_agent", live_status="failed", labels=_LAUNCHING)
+    assert _sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_FAILED
+
+
+def test_sub_agent_status_launched_helper_follows_its_reported_status() -> None:
+    conv = _conv(kind="sub_agent", live_status="running", labels=_LAUNCHING)
+    assert _sub_agent_status(conv, [], now=conv.created_at + 3_600) == STATUS_IN_PROGRESS
+
+
+def test_sub_agent_status_unlabelled_silent_helper_stays_done() -> None:
+    conv = _conv(kind="sub_agent", live_status=None)
+    assert _sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_DONE
+
+
+def test_sub_agent_status_helper_that_replied_without_status_is_done() -> None:
+    conv = _conv(kind="sub_agent", live_status=None, labels=_LAUNCHING)
+    items = [_msg("a1", "assistant", "All done")]
+    assert _sub_agent_status(conv, items, now=conv.created_at + 5) == STATUS_DONE
+
+
+def test_failed_launch_says_so_in_plain_words() -> None:
+    conv = _conv(kind="sub_agent", title="researcher:japan", labels=_LAUNCHING)
+    [activity] = _activities_for_conversation(
+        _FakeItemsStore([]), conv, include_step_detail=False, super_chat_id="conv_root"
+    )
+    assert activity.status == STATUS_FAILED
+    assert activity.outcome == "Could not get started"
+
+
+def test_sub_agent_activity_names_the_chat_that_started_it() -> None:
+    conv = _conv(
+        "conv_child",
+        kind="sub_agent",
+        title="researcher:japan",
+        live_status="running",
+        parent_id="conv_parent",
+    )
+    [activity] = _activities_for_conversation(
+        _FakeItemsStore([_call("fc1", "memory_search", {"query": "japan"})]),
+        conv,
+        include_step_detail=False,
+        super_chat_id="conv_root",
+    )
+    assert activity.parent_chat_id == "conv_parent"
+    assert activity.status == STATUS_IN_PROGRESS
 
 
 def test_system_started_turn_is_titled_by_the_chat() -> None:

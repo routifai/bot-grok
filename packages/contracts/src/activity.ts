@@ -57,6 +57,9 @@ export const ActivitySchema = z.object({
   finishedAt: z.string().nullable(),
   /** Calendar date (local to the Activity) the panel groups by, e.g. "2026-10-03". */
   date: z.string(),
+  /** For a Helper, the chat that started it: the Conversation, a Side Chat, or — for a part of
+   * a bigger task — another Helper's chat (its `chatId`), which is how parts nest under it. */
+  parentChatId: Id.nullable().optional(),
   /** Present (possibly empty) on `activities.get`; omitted on the `activities.list` summary. */
   steps: z.array(ActivityStepSchema).optional(),
 });
@@ -68,3 +71,8 @@ export const ActivityPageSchema = z.object({
   hasMore: z.boolean(),
 });
 export type ActivityPage = z.infer<typeof ActivityPageSchema>;
+
+/** One frame of `activities.watch`: the feed may have changed, read it again. The first frame
+ * means the watch is live; `heartbeat` only keeps the connection from idling out. */
+export const ActivityChangedSchema = z.object({ type: z.enum(["changed", "heartbeat"]) });
+export type ActivityChanged = z.infer<typeof ActivityChangedSchema>;

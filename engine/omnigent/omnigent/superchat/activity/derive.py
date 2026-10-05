@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, tzinfo
@@ -25,6 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from omnigent.context.labels import (
     ADHOC_HELPER_LABEL_KEY,
+    LAUNCHING_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
     is_superside_chat,
 )
@@ -73,6 +75,9 @@ HOUSEKEEPING_TITLE = "Kept your notes up to date"
 _MIN_TURN_STEPS = 3
 _MIN_TURN_SECONDS = 60
 _GOAL_AGENT_TYPE = "goal"
+#: A Helper the server marked as launching that still has not reported any status after this
+#: long never started: it reads as failed rather than working forever.
+_LAUNCH_TIMEOUT_SECONDS = 300
 
 #: Env var overriding the per-chat Activity Feed items-scan limit below.
 ITEMS_SCAN_LIMIT_ENV = "OMNIGENT_ACTIVITY_ITEMS_SCAN_LIMIT"
@@ -162,6 +167,8 @@ class Activity:
     :param finished_at: Unix epoch timestamp of the last item, or ``None``
         while still in progress.
     :param steps: The Activity's Steps, chronological.
+    :param parent_chat_id: For a Sub-agent, the chat that started it (the Super Chat, a
+        Side Chat, or another Sub-agent when it is a sub-worker); ``None`` for a turn.
     """
 
     id: str
@@ -177,6 +184,7 @@ class Activity:
     summary: str | None = None
     title_prompt: str | None = None
     stored_summary: str | None = None
+    parent_chat_id: str | None = None
 
 
 def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
@@ -526,7 +534,12 @@ def _sub_agent_title(
     ), (f"Request to name:\n{_truncate(task, _TITLE_PROMPT_REQUEST_CHARS)}" if task else None)
 
 
-def _sub_agent_status(conversation: Conversation) -> str:
+def _sub_agent_status(
+    conversation: Conversation,
+    items: list[ConversationItem] | None = None,
+    *,
+    now: float | None = None,
+) -> str:
     """Map a sub-agent conversation's live status (+ close marker) to an Activity status.
 
     ``live_status`` is authoritative when the runtime has reported one.
@@ -534,15 +547,23 @@ def _sub_agent_status(conversation: Conversation) -> str:
     separate from a normal close, so a sub-agent tombstoned before ever
     reporting a turn (``live_status`` still unset) reads as Cancelled;
     one tombstoned after finishing at least one turn reads as Done.
+
+    A Helper the server marked as launching (``LAUNCHING_LABEL_KEY``) that has not reported a
+    status yet and has said nothing is *starting*: In progress, so it never shows as Done
+    before it has begun. If it still has not reported after ``_LAUNCH_TIMEOUT_SECONDS`` it
+    never started, which reads as Failed.
     """
     if conversation.live_status == "failed":
         return STATUS_FAILED
     if conversation.live_status in ("running", "waiting"):
         return STATUS_IN_PROGRESS
-    if conversation.live_status is None and is_session_closed(
-        conversation.labels, conversation.title
-    ):
-        return STATUS_CANCELLED
+    if conversation.live_status is None:
+        if is_session_closed(conversation.labels, conversation.title):
+            return STATUS_CANCELLED
+        launching = LAUNCHING_LABEL_KEY in conversation.labels
+        if launching and _last_assistant_text(items or []) is None:
+            age = (time.time() if now is None else now) - conversation.created_at
+            return STATUS_IN_PROGRESS if age < _LAUNCH_TIMEOUT_SECONDS else STATUS_FAILED
     return STATUS_DONE
 
 
@@ -554,7 +575,7 @@ def _sub_agent_activity(
     stored_summary: str | None = None,
 ) -> Activity:
     _agent, display_title = _split_sub_agent_title(conversation)
-    status = _sub_agent_status(conversation)
+    status = _sub_agent_status(conversation, items)
     source = _sub_agent_source(conversation)
     title, title_prompt = _sub_agent_title(
         conversation, display_title, _person_request(_first_user_message(items)), source
@@ -570,7 +591,11 @@ def _sub_agent_activity(
     if result and task and (title_prompt is not None or not stored_summary):
         title_prompt = _turn_title_prompt(task, [], result)
     if status == STATUS_FAILED:
-        outcome = _first_error_message(items) or "Could not complete the task"
+        outcome = _first_error_message(items) or (
+            "Could not get started"
+            if conversation.live_status is None
+            else "Could not complete the task"
+        )
     elif status == STATUS_CANCELLED:
         outcome = "Cancelled before finishing"
     else:
@@ -596,6 +621,7 @@ def _sub_agent_activity(
         summary=_status_summary(status, items, outcome, stored_summary),
         title_prompt=title_prompt,
         stored_summary=stored_summary,
+        parent_chat_id=conversation.parent_conversation_id,
     )
 
 
@@ -624,17 +650,11 @@ def resolve_super_chat_id(conv_store: ConversationStore, session_id: str) -> str
     return side_chat_parent_id(conversation.labels) or session_id
 
 
-def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[Conversation]:
-    """The Super Chat, its Side Chats, and every Sub-agent descendant of either.
+def list_chat_roots(conv_store: ConversationStore, super_chat_id: str) -> list[Conversation]:
+    """The Super Chat and its Side Chats: the chats a person talks in (no Helpers).
 
-    Returns ``[]`` when ``super_chat_id`` does not exist or is not a
-    ``superside-chat`` session — the Activity Feed only ever covers that
-    mode (``rollover/SUPERSIDE-CHAT-PLAN.md`` S5).
-
-    :param conv_store: Store to query.
-    :param super_chat_id: The Super Chat's conversation id.
-    :returns: ``[super_chat, *side_chats, *sub_agents]``, each a full
-        :class:`Conversation`.
+    Returns ``[]`` when ``super_chat_id`` does not exist or is not a ``superside-chat``
+    session. One cheap read however many Helpers the Muse has ever started.
     """
     from omnigent.context.rollover import list_related_chats
 
@@ -654,6 +674,24 @@ def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[
             if (conv := side_chats_by_id.get(conv_id)) is not None
             and is_superside_chat(conv.labels)
         )
+    return chats
+
+
+def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[Conversation]:
+    """The Super Chat, its Side Chats, and every Sub-agent descendant of either.
+
+    Returns ``[]`` when ``super_chat_id`` does not exist or is not a
+    ``superside-chat`` session — the Activity Feed only ever covers that
+    mode (``rollover/SUPERSIDE-CHAT-PLAN.md`` S5).
+
+    :param conv_store: Store to query.
+    :param super_chat_id: The Super Chat's conversation id.
+    :returns: ``[super_chat, *side_chats, *sub_agents]``, each a full
+        :class:`Conversation`.
+    """
+    chats = list_chat_roots(conv_store, super_chat_id)
+    if not chats:
+        return []
 
     sub_agents: list[Conversation] = []
     frontier = [chat.id for chat in chats]
@@ -674,6 +712,13 @@ def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[
             )
         frontier = next_frontier
     return chats + sub_agents
+
+
+def is_helper_live(conversation: Conversation) -> bool:
+    """Whether a Helper is not settled yet (starting, working or waiting on its parts)."""
+    return (
+        conversation.kind == "sub_agent" and _sub_agent_status(conversation) == STATUS_IN_PROGRESS
+    )
 
 
 def _activities_for_conversation(
@@ -989,4 +1034,5 @@ def activity_to_dict(activity: Activity, tz: str | None = None) -> dict[str, Any
         "finished_at": activity.finished_at,
         "date": iso_date(activity.started_at, tz),
         "steps": [step_to_dict(step) for step in activity.steps],
+        "parent_chat_id": activity.parent_chat_id,
     }

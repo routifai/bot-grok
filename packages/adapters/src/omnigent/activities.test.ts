@@ -55,6 +55,7 @@ describe("mapActivity", () => {
       startedAt: new Date(1000 * 1000).toISOString(),
       finishedAt: null,
       date: "2026-10-03",
+      parentChatId: null,
       steps: undefined,
     });
   });
@@ -145,5 +146,29 @@ describe("plainFailureOutcome", () => {
       outcome: "The model was busy.",
       summary: "The model was busy.",
     });
+  });
+});
+
+describe("mapActivity nesting", () => {
+  const helper = {
+    id: "sub_agent:conv_part",
+    kind: "sub_agent" as const,
+    source: "background" as const,
+    chat_id: "conv_part",
+    title: "Flights",
+    outcome: null,
+    summary: null,
+    status: "in_progress" as const,
+    started_at: 1000,
+    finished_at: null,
+    date: "2026-10-03",
+  };
+
+  it("carries the chat that started a Helper, so a part nests under its coordinator", () => {
+    expect(mapActivity({ ...helper, parent_chat_id: "conv_lead" }).parentChatId).toBe("conv_lead");
+  });
+
+  it("reads an engine that does not say as no parent", () => {
+    expect(mapActivity(helper).parentChatId).toBeNull();
   });
 });

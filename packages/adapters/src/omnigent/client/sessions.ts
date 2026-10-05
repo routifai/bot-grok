@@ -173,17 +173,30 @@ export async function listOmnigentSessionItems(
  * the `[DONE]` sentinel and unparsable keepalive lines) until the response body ends or
  * `signal` aborts. Buffering/parsing mirrors apps/mobile/lib/api.ts's `subscribeThread`.
  */
-export async function* streamOmnigentSession(
+export function streamOmnigentSession(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
   signal?: AbortSignal,
 ): AsyncGenerator<OmnigentStreamEvent> {
-  const response = await fetch(
-    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/stream`, config.baseUrl),
-    { headers: { ...omnigentHeaders(config, email), accept: "text/event-stream" }, signal },
-  );
-  await throwOnError(response, "stream session", config.secrets);
+  return streamOmnigentSse(config, email, `/v1/sessions/${encodeURIComponent(sessionId)}/stream`, {
+    signal,
+    what: "stream session",
+  });
+}
+
+/** Any Omnigent SSE endpoint: yields each parsed `data:` frame (see `streamOmnigentSession`). */
+export async function* streamOmnigentSse(
+  config: OmnigentClientConfig,
+  email: string,
+  path: string,
+  options: { signal?: AbortSignal; what: string },
+): AsyncGenerator<OmnigentStreamEvent> {
+  const response = await fetch(new URL(path, config.baseUrl), {
+    headers: { ...omnigentHeaders(config, email), accept: "text/event-stream" },
+    signal: options.signal,
+  });
+  await throwOnError(response, options.what, config.secrets);
   if (!response.body) return;
 
   const reader = response.body.getReader();

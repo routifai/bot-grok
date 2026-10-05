@@ -16,6 +16,7 @@ import {
   type OmnigentSessionItem,
   type OmnigentSideChatCreateResponse,
 } from "./client.js";
+import { type HelperBlock, helperBlockFromToolCall, isStartHelperCall } from "./helpers.js";
 
 /** `rollover/SUPERSIDE-CHAT.md` "Nesting": a Helper may coordinate one more level of Helpers,
  * launched from the Super Chat or from a Side Chat — so the longest real chain is Super Chat ->
@@ -106,7 +107,8 @@ export function isSystemNotice(item: OmnigentSessionItem, text: string): boolean
 
 /** `message` items (user/assistant) from `GET .../items` -> `ThreadMessage[]`, in the same
  * (ascending) order given. A `render_card` call becomes a bot message holding its reply card
- * (pending until its output arrives). Other tool-call items (`function_call`/
+ * (pending until its output arrives); a `start_helper` call becomes a Helper row that follows the
+ * next assistant message (the hand-off), never a message of its own. Other tool-call items (`function_call`/
  * `function_call_output`, etc.) and anything else that isn't a plain text turn are skipped — `chats.messages` renders a chat
  * transcript, not an Activity's Steps (that's `activities.get`). `seq` is synthesized from
  * position: Omnigent items aren't Nova's own thread rows, so there is no durable sequence
@@ -117,8 +119,14 @@ export function mapOmnigentItemsToMessages(
 ): ThreadMessage[] {
   const messages: ThreadMessage[] = [];
   const outputs = toolOutputsByCallId(items);
+  let helpersStarted: HelperBlock[] = [];
   for (const item of items) {
     if (item.type === "function_call") {
+      if (isStartHelperCall(item)) {
+        const helper = helperBlockFromToolCall(outputs.get(String(item.call_id ?? "")));
+        if (helper) helpersStarted.push(helper);
+        continue;
+      }
       const card = cardFromToolCall(item, outputs);
       if (card) {
         messages.push({
@@ -141,12 +149,14 @@ export function mapOmnigentItemsToMessages(
     // A raw engine/model failure is never shown: it reads as a calm system note.
     const notice = role === "bot" && isEngineErrorText(raw) ? ENGINE_ERROR_NOTE : null;
     const text = notice ?? raw;
+    const handOff = role === "bot" && !notice ? helpersStarted : [];
+    if (handOff.length > 0) helpersStarted = [];
     messages.push({
       id: item.id,
       threadId: chatId,
       seq: messages.length,
       role: notice ? "system" : role,
-      blocks: [{ kind: "text", text }],
+      blocks: [{ kind: "text", text }, ...handOff],
       createdAt: epochSecondsToIso(item.created_at),
     });
   }

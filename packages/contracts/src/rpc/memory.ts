@@ -1,6 +1,6 @@
-import { oc } from "@orpc/contract";
+import { eventIterator, oc } from "@orpc/contract";
 import * as z from "zod";
-import { ActivityPageSchema, ActivitySchema } from "../activity.js";
+import { ActivityChangedSchema, ActivityPageSchema, ActivitySchema } from "../activity.js";
 import { Id } from "../ids.js";
 
 import { botId } from "./shared.js";
@@ -114,5 +114,8 @@ export const memoryContract = {
       )
       .output(ActivityPageSchema),
     get: oc.input(z.object({ botId: Id, activityId: z.string().min(1) })).output(ActivitySchema),
+    /** Live signal: one event on connect and one each time the Activity Feed may have changed
+     * (a Helper started, stepped, settled). Carries no content; the client re-reads `list`. */
+    watch: oc.input(z.object({ botId: Id })).output(eventIterator(ActivityChangedSchema)),
   },
 };

@@ -7,6 +7,7 @@ import {
   listDailyNotes,
   listMemoryClaims,
   saveDailyNote,
+  watchActivities,
 } from "../activities.js";
 import { getVaultRequest, listVault, removeVaultEntry, saveVaultEntry } from "../vault.js";
 
@@ -58,6 +59,9 @@ export function memoryRouter(c: RouterContext) {
       get: museOnly.activities.get.handler(({ context, input }) =>
         getActivity(deps, context.actor, input),
       ),
+      watch: museOnly.activities.watch.handler(async function* ({ context, input }) {
+        yield* watchActivities(deps, context.actor, input, context.signal);
+      }),
     },
   };
 }

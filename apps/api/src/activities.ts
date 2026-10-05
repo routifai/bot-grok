@@ -19,8 +19,9 @@ import {
   putOmnigentDailyNote,
   redactActivity,
   redactMemoryProfile,
+  streamOmnigentActivityChanges,
 } from "@aiden/adapters";
-import type { Activity, ActivityPage, Actor } from "@aiden/contracts";
+import type { Activity, ActivityChanged, ActivityPage, Actor } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
 import { ORPCError } from "@orpc/server";
 import { onSuperChat } from "./omnigent-errors.js";
@@ -101,6 +102,34 @@ export async function getActivity(
     getOmnigentActivity(client, email, superSessionId, input.activityId, { tz: timezone }),
   );
   return redactActivity(mapActivity(activity), client.secrets ?? []);
+}
+
+/** `activities.watch`: tells the panel (and the chat's Helper rows) when to re-read the feed,
+ * relayed from the engine's own session streams, so a Helper shows the moment it starts. The
+ * stream ends when the engine's does; the web reconnects and re-reads. */
+export async function* watchActivities(
+  deps: ActivitiesDeps,
+  actor: Actor,
+  input: { botId: string },
+  signal: AbortSignal | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): AsyncGenerator<ActivityChanged> {
+  const client = requireClient(env);
+  const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
+  try {
+    for await (const frame of streamOmnigentActivityChanges(
+      client,
+      email,
+      superSessionId,
+      signal,
+    )) {
+      if (frame.type === "activities.changed") yield { type: "changed" };
+      else if (frame.type === "session.heartbeat") yield { type: "heartbeat" };
+    }
+  } catch (error) {
+    // A closed tab aborts the fetch; that is the normal end of a watch, not a failure.
+    if (!signal?.aborted) throw error;
+  }
 }
 
 /** `memory.profile`: the Muse's Memory Profile, read from the same Super Chat. */

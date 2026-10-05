@@ -22,6 +22,7 @@ import {
   McpApprovalCard,
 } from "../../shell/message-cards";
 import { FirstRunHint } from "../intro";
+import { HelperTracker } from "./HelperTracker";
 import { accessibleReplyExcerpt, previewMessageText } from "./messageText";
 import { FALLBACK_BOT_COLOR } from "./shared";
 
@@ -536,6 +537,13 @@ export const MessageView = memo(function MessageView({
           return <ReplyCardBlockView key={i} block={block} messageId={message.id} index={i} />;
         }
         if (block.kind === "cloud_agent") return <CloudAgentCard key={i} block={block} />;
+        if (block.kind === "helper") {
+          const botId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
+          if (!botId) return null;
+          return (
+            <HelperTracker key={i} botId={botId} helperId={block.helperId} title={block.title} />
+          );
+        }
         if (block.kind === "skill_draft") {
           return (
             <div key={i} className="flex justify-start">

@@ -10,6 +10,7 @@ from fastapi import (
     Query,
     Request,
 )
+from fastapi.responses import StreamingResponse
 
 from omnigent.entities import CompactionData
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
@@ -44,6 +45,7 @@ from omnigent.server.routes._sessions.common import (
     get_server_runner_router,
     set_server_runner_router,
 )
+from omnigent.server.routes._sessions.helpers import _format_sse
 from omnigent.server.routes._sessions.orchestration import (
     _child_session_summaries_from_conversations,
 )
@@ -54,11 +56,13 @@ from omnigent.server.schemas import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.superchat.activity.changes import watch_activity_changes
 from omnigent.superchat.activity.derive import (
     activities_missing_titles,
     activity_to_dict,
     get_activity,
     list_activities,
+    resolve_super_chat_id,
     schedule_missing_titles,
 )
 
@@ -464,6 +468,43 @@ def register_items_routes(
                 conversation_store, background_title_coordinator, missing_titles, title_chats
             )
         return PaginatedList(data=[activity_to_dict(activity, tz) for activity in activities])
+
+    # ── GET /sessions/{session_id}/activities/stream ─────────────
+    # Live "the feed changed" signal for the same family (no content: the
+    # client re-reads the feed). Registered before ``/activities/{activity_id}``
+    # so "stream" is never taken for an id.
+
+    @router.get("/sessions/{session_id}/activities/stream", response_model=None)
+    async def stream_session_activity_changes(
+        request: Request,
+        session_id: str,
+    ) -> StreamingResponse:
+        """
+        Subscribe to ``activities.changed`` signals for ``session_id``'s family.
+
+        :param session_id: A Super Chat or Side Chat session id.
+        :returns: An SSE stream of ``activities.changed`` / heartbeat frames.
+        :raises OmnigentError: 403 if the caller lacks READ on ``session_id``;
+            404 if no session exists there or it is not a Super Chat family.
+        """
+        user_id = _get_user_id(request, auth_provider)
+        await _require_access_and_level(
+            user_id, session_id, LEVEL_READ, permission_store, conversation_store
+        )
+        if await asyncio.to_thread(resolve_super_chat_id, conversation_store, session_id) is None:
+            raise _session_not_found()
+
+        async def frames():
+            async for event in watch_activity_changes(conversation_store, session_id):
+                if await request.is_disconnected():
+                    break
+                yield _format_sse(event["type"], event)
+
+        return StreamingResponse(
+            frames(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # ── GET /sessions/{session_id}/activities/{activity_id} ──────
     # One Activity in full: steps carry their capped call/result detail.

@@ -64,6 +64,7 @@ export function mapActivity(raw: OmnigentActivity): Activity {
     startedAt: epochSecondsToIso(raw.started_at),
     finishedAt: raw.finished_at === null ? null : epochSecondsToIso(raw.finished_at),
     date: raw.date,
+    parentChatId: raw.parent_chat_id ?? null,
     steps: raw.steps?.map(mapActivityStep),
   };
 }
