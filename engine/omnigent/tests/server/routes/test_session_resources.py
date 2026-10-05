@@ -8680,3 +8680,50 @@ async def test_filesystem_list_is_503_while_the_computer_is_still_starting(
 
     assert resp.status_code == 503
     assert resp.json()["error"]["code"] == ErrorCode.RUNNER_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_read_wake_timeout_leaves_the_launch_running_and_reads_share_it(
+    offline_env_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Files polls while the Computer boots: each 503 retry must rejoin one launch.
+
+    Concurrent reads give up at the budget (503) without cancelling the launch they
+    share; a later read finds it finished, and the launch ran exactly once.
+    """
+    from omnigent.server.routes import _host_filesystem
+    from omnigent.server.routes.sessions import routes_resources as _routes
+
+    async def _no_host(**_kwargs: Any) -> dict[str, Any]:
+        raise _host_filesystem.HostFsUnavailableError("host gone")
+
+    started = 0
+    finished = 0
+    release = asyncio.Event()
+
+    async def _launch(*, session_id: str, conv: Conversation, **_kwargs: Any) -> Any:
+        nonlocal started, finished
+        started += 1
+        await release.wait()
+        finished += 1
+        entries = {"object": "list", "data": [{"name": "a.txt"}], "has_more": False}
+        set_runner_router(_FakeRunnerRouter(_FakeRunnerClient(payload=entries)))  # type: ignore[arg-type]
+        return object(), conv
+
+    monkeypatch.setattr(_host_filesystem, "read_workspace_from_host", _no_host)
+    monkeypatch.setattr(_routes, "ensure_runner_connected", _launch)
+    monkeypatch.setattr(_routes, "_READ_WAKE_BUDGET_S", 0.05)
+    url = f"/v1/sessions/{_OFFLINE_SESSION}/resources/environments/default/filesystem?limit=10"
+
+    first = await asyncio.gather(*(offline_env_client.get(url) for _ in range(3)))
+    assert [r.status_code for r in first] == [503, 503, 503]
+    assert (started, finished) == (1, 0)  # one launch, not cancelled by the timeouts
+
+    release.set()
+    await asyncio.sleep(0)
+    resp = await offline_env_client.get(url)
+    assert resp.status_code == 200, resp.text
+    assert (started, finished) == (1, 1)
+    assert _routes._read_wakes == {}

@@ -54,7 +54,10 @@ class _Fixture:
         self.app.state.on_proxy_stream_end(sid)
 
     async def settle(self) -> None:
-        await asyncio.sleep(0.05)
+        # The wake notices are posted from background tasks: run them to completion.
+        me = asyncio.current_task()
+        while pending := [t for t in asyncio.all_tasks() if t is not me and not t.done()]:
+            await asyncio.wait_for(asyncio.gather(*pending), timeout=5)
 
     def close(self) -> None:
         for sid in (self.coord, *self.parts):

@@ -31,6 +31,12 @@ def _obj(required: list[str], **props: Any) -> dict[str, Any]:
     }
 
 
+# Kinds that are the answer itself. ``plan`` and ``progress`` are living cards the Muse
+# re-renders (same ``id``) while it works, so they never end the reply; ``ask`` waits on
+# the person's pick.
+_TERMINAL_CARDS = frozenset({"sources", "compare", "ask", "chart", "person", "file", "quote"})
+
+
 def _arr(items: dict[str, Any], *, min_items: int = 1, max_items: int = 50) -> dict[str, Any]:
     return {"type": "array", "items": items, "minItems": min_items, "maxItems": max_items}
 
@@ -167,9 +173,13 @@ def build_card(args: dict[str, Any]) -> dict[str, Any]:
     out["data"] = args["data"]
     out["fallback"] = fallback.strip()
     # The model reacts to a tool result; without this it adds a line repeating the card.
-    out["note"] = (
-        "Shown to the person. A card ends your reply: end your turn now, with no more text."
-    )
+    # Plan/progress cards are updated in place mid-work, so they must not stop the turn.
+    if card in _TERMINAL_CARDS:
+        out["note"] = (
+            "Shown to the person. A card ends your reply: end your turn now, with no more text."
+        )
+    else:
+        out["note"] = "Shown to the person. Do not repeat it in text; carry on with the work."
     return out
 
 

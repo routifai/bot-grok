@@ -144,6 +144,8 @@ export type OmnigentSessionItem = Record<string, unknown> & {
   role?: string;
   content?: unknown;
   created_at?: number;
+  /** Set by the engine on a message it wrote itself (a wake notice, a timer firing). */
+  is_system_notice?: boolean;
 };
 
 /** `GET /v1/sessions/{id}/items` — the committed conversation transcript, cursor-paginated

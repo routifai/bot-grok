@@ -1888,11 +1888,14 @@ class SessionContextSummaryResponse(BaseModel):
 
     :param summary: The latest ``compaction`` item's summary text, or
         ``None`` when the session has never rolled over.
+    :param summary_body: ``summary`` as the person should read it, without the
+        model-facing framing header; ``None`` when there is nothing to show.
     :param created_at: Unix epoch seconds that checkpoint was written, or
         ``None`` to match a ``None`` summary.
     """
 
     summary: str | None = None
+    summary_body: str | None = None
     created_at: int | None = None
 
 

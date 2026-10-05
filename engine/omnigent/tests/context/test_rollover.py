@@ -15,6 +15,8 @@ from omnigent.context.rollover import (
     SUMMARIZER_DATE_PLACEHOLDER,
     build_rollover_item,
     build_side_chat_seed,
+    is_checkpoint_text,
+    person_facing_summary,
     resolve_keep_tokens,
     resolve_rollover_threshold,
     select_recent,
@@ -806,6 +808,34 @@ def test_list_related_chats_single_user_mode_still_matches_unowned_sessions(
     assert related_ids == [parent.id]
 
 
+def test_list_related_chats_finds_side_chats_by_parent_label_and_old_fork_label(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Side Chat opened now links by its parent label; an older one only by the fork label."""
+    from omnigent.context.rollover import list_related_chats
+    from omnigent.stores.conversation_store import (
+        FORK_SOURCE_LABEL_KEY,
+        SIDE_CHAT_LABEL_KEY,
+        SIDE_CHAT_PARENT_LABEL_KEY,
+    )
+    from omnigent.stores.conversation_store.sqlalchemy_store import (
+        SqlAlchemyConversationStore,
+    )
+
+    monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
+    conv_store = SqlAlchemyConversationStore(db_uri)
+    parent = conv_store.create_conversation()
+    new = conv_store.create_conversation(
+        labels={SIDE_CHAT_PARENT_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
+    )
+    old = conv_store.create_conversation(
+        labels={FORK_SOURCE_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
+    )
+
+    assert {c["id"] for c in list_related_chats(conv_store, parent.id)} == {new.id, old.id}
+    assert [c["id"] for c in list_related_chats(conv_store, new.id)] == [parent.id]
+
+
 def test_list_related_chats_scheduled_helper_sees_parent_but_plain_subagent_does_not(
     db_uri: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -875,6 +905,10 @@ async def test_side_chat_seed_uses_side_chat_framing_not_the_rollover_header() -
     first = data.compacted_messages[0]["content"][0]["text"]
     assert first.startswith(SIDE_CHAT_SEED_HEADER)
     assert "grew past its context limit" not in first
+    # Codex re-roles any seed marker to developer; a side chat seed must still match.
+    assert is_checkpoint_text(first)
+    [rerolled] = codex_native._checkpoint_marker_as_developer(data.compacted_messages[:1])
+    assert rerolled["role"] == "developer"
 
 
 def test_summarizer_instruction_forbids_listing_tool_names() -> None:
@@ -963,3 +997,36 @@ def test_side_chat_seed_is_this_chats_checkpoint_not_the_copied_parents() -> Non
 
     conv = SimpleNamespace(id="side1", labels={SIDE_CHAT_START_LABEL_KEY: "with_context"})
     assert _side_chat_seed(Store(), conv) == ("the seed", "cmp_seed")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("header_name", ["SIDE_CHAT_SEED_HEADER", "CHECKPOINT_HEADER"])
+def test_person_facing_summary_drops_framing_title_and_tool_sections(header_name: str) -> None:
+    """A seed reads to the person as its body only, never as the model's framing."""
+    from omnigent.context import rollover
+
+    raw = "\n".join(
+        [
+            getattr(rollover, header_name),
+            "",
+            "## Context checkpoint — 2026-10-04 10:00 UTC",
+            "**Goal**: plan Q4",
+            "",
+            "## Technical capabilities confirmed",
+            "- sys_session_send, sys_os_write",
+            "",
+            "## Current position / next step",
+            "Draft the checklist.",
+        ]
+    )
+    assert person_facing_summary(raw) == (
+        "**Goal**: plan Q4\n\n## Current position / next step\nDraft the checklist."
+    )
+
+
+def test_person_facing_summary_reads_a_seed_stored_before_the_marker_prefix() -> None:
+    from omnigent.context.rollover import CHECKPOINT_MARKER, SIDE_CHAT_SEED_HEADER
+
+    legacy = SIDE_CHAT_SEED_HEADER.removeprefix(f"{CHECKPOINT_MARKER} ")
+    assert person_facing_summary(f"{legacy}\n\nBody") == "Body"
+    assert person_facing_summary(None) is None
+    assert person_facing_summary(SIDE_CHAT_SEED_HEADER) is None

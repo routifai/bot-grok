@@ -24,7 +24,6 @@ from omnigent.context.labels import (
     is_superside_chat,
 )
 from omnigent.stores.conversation_store import (
-    FORK_SOURCE_LABEL_KEY,
     SIDE_CHAT_LABEL_KEY,
     SIDE_CHAT_START_LABEL_KEY,
     ConversationStore,
@@ -89,26 +88,21 @@ def build_side_chat_blank_create_body(
     *,
     agent_id: str,
     title: str | None,
-    source_conversation_id: str,
 ) -> dict[str, object]:
     """``POST /v1/sessions`` body for a ``blank`` Side Chat.
 
     Not a fork: a fresh top-level session with no copied transcript, bound
-    to the same agent as the Super Chat. Stamped with the same two labels
-    ``list_related_chats`` (``omnigent/context/rollover.py``) reads to
-    discover a Side Chat — :data:`FORK_SOURCE_LABEL_KEY` pointing at the
-    Super Chat plus :data:`SIDE_CHAT_LABEL_KEY` — so a blank Side Chat is
-    just as discoverable from ``session_history``'s ``list_chats`` as a
-    forked one, plus the superside-chat mode label so it carries the same
-    capability, plus :data:`SIDE_CHAT_START_LABEL_KEY` so
-    ``list_related_chats`` can report how it started.
+    to the same agent as the Super Chat. Stamped with :data:`SIDE_CHAT_LABEL_KEY`
+    (what ``list_related_chats`` discovers a Side Chat by), the superside-chat mode
+    label so it carries the same capability, and :data:`SIDE_CHAT_START_LABEL_KEY`
+    so ``list_related_chats`` can report how it started. The parent link is
+    stamped by the open route, for blank and forked Side Chats alike.
     """
     body: dict[str, object] = {
         "agent_id": agent_id,
         "labels": {
             CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE,
             SIDE_CHAT_LABEL_KEY: "1",
-            FORK_SOURCE_LABEL_KEY: source_conversation_id,
             SIDE_CHAT_START_LABEL_KEY: SIDE_CHAT_START_BLANK,
         },
     }

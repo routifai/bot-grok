@@ -294,6 +294,10 @@ class MessageData(BaseModel):
         replayed to agents but hidden from user-facing transcripts,
         e.g. injected skill instructions. Defaults to ``False``
         and is omitted from serialized payloads in that case.
+    :param is_system_notice: ``True`` for a user-role message the runtime wrote
+        itself, e.g. a sub-agent wake notice or a timer firing, as opposed to
+        words a person typed. Defaults to ``False`` and is omitted from
+        serialized payloads in that case. Read it through :func:`is_system_notice`.
     :param interrupted: ``True`` when an assistant message is a
         durable partial response from an interrupted external-native
         turn, e.g. Codex ``turn/completed`` with status
@@ -309,6 +313,7 @@ class MessageData(BaseModel):
     content: list[dict[str, Any]]
     agent: str | None = Field(default=None, serialization_alias="model")
     is_meta: bool = Field(default=False, exclude_if=lambda value: value is False)
+    is_system_notice: bool = Field(default=False, exclude_if=lambda value: value is False)
     interrupted: bool = Field(default=False, exclude_if=lambda value: value is False)
     stream_message_id: str | None = None
 
@@ -331,6 +336,40 @@ class MessageData(BaseModel):
         if self.role == "assistant" and self.agent is None:
             raise ValueError("assistant messages require 'agent'")
         return self
+
+
+# Every runtime notice opened with this before ``MessageData.is_system_notice`` existed.
+_LEGACY_NOTICE_PREFIX = "[System"
+
+
+def is_system_notice_text(text: str) -> bool:
+    """
+    Whether message text carries the legacy runtime-notice prefix.
+
+    The one place that prefix is known. Prefer :func:`is_system_notice` on an item;
+    this is for text-only callers (a policy REQUEST event, a bare native prompt).
+
+    :param text: A user-role message's text.
+    :returns: ``True`` when it starts like a runtime notice, e.g. ``"[System: timer 1 fired]"``.
+    """
+    return text.lstrip().startswith(_LEGACY_NOTICE_PREFIX)
+
+
+def is_system_notice(data: MessageData) -> bool:
+    """
+    Whether a user-role message was written by the runtime, not typed by a person.
+
+    :param data: The message item's data.
+    :returns: ``True`` for a flagged notice. Items stored before the flag existed are
+        recognised by their text prefix.
+    """
+    if data.is_system_notice:
+        return True
+    text = next(
+        (b["text"] for b in data.content if isinstance(b.get("text"), str)),
+        "",
+    )
+    return is_system_notice_text(text)
 
 
 def synthesize_conversation_title(

@@ -68,6 +68,7 @@ def _msg(
     created_at: int = 1,
     agent: str | None = None,
     interrupted: bool = False,
+    is_system_notice: bool = False,
 ) -> ConversationItem:
     content = [{"type": "input_text" if role == "user" else "output_text", "text": text}]
     return ConversationItem(
@@ -81,6 +82,7 @@ def _msg(
             content=content,
             agent=agent or ("assistant-agent" if role == "assistant" else None),
             interrupted=interrupted,
+            is_system_notice=is_system_notice,
         ),
     )
 
@@ -383,6 +385,21 @@ def test_system_started_turn_is_titled_by_the_chat() -> None:
     )
     assert activities[0].title == "Here is the result", "named by what the turn said"
     assert activities[0].title_prompt is not None
+
+
+def test_flagged_notice_without_the_legacy_prefix_is_still_system_started() -> None:
+    # A wake notice is recognised by the runtime's flag, not by how its text opens.
+    conv = _conv(title="Side chat mechanics")
+    items = [
+        _msg("u1", "user", "Researcher finished: the result", created_at=1, is_system_notice=True),
+        _call("fc1", "sys_read_inbox", {}, created_at=2),
+        _call_output("fo1", "delivered", created_at=3),
+        _msg("a1", "assistant", "Here is the result", created_at=4),
+    ]
+    activities = _activities_for_conversation(
+        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+    )
+    assert activities[0].title == "Here is the result"
 
 
 def test_turn_titled_by_request_stored_outside_its_response_group() -> None:

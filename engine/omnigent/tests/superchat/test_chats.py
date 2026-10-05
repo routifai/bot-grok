@@ -82,15 +82,12 @@ def test_fork_body_omits_title_when_blank() -> None:
 
 
 def test_blank_create_body_carries_discovery_labels() -> None:
-    body = build_side_chat_blank_create_body(
-        agent_id="ag_123", title="Unrelated thing", source_conversation_id="conv_super"
-    )
+    body = build_side_chat_blank_create_body(agent_id="ag_123", title="Unrelated thing")
     assert body["agent_id"] == "ag_123"
     assert body["title"] == "Unrelated thing"
     assert body["labels"] == {
         "omnigent.context.mode": "superside-chat",
         "omnigent.side_chat": "1",
-        "omnigent.fork.source_id": "conv_super",
         "omnigent.side_chat.start": "blank",
     }
 

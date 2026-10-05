@@ -1733,12 +1733,8 @@ def create_app(
         # the run — all fire-and-forget so the timer re-arms immediately.
         scheduled_task_scheduler: ScheduledTaskScheduler | None = None
         if scheduled_task_store is not None:
-            from omnigent.server.scheduled.fire import (
-                FireDeps,
-                build_on_fire,
-                build_retry,
-                build_run_now,
-            )
+            from omnigent.server.scheduled.fire import FireDeps, build_on_fire, build_run_now
+            from omnigent.server.scheduled.helper_fire import build_retry
 
             fire_deps = FireDeps(
                 scheduled_task_store=scheduled_task_store,

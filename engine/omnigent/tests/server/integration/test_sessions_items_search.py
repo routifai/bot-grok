@@ -345,7 +345,7 @@ async def test_context_summary_is_null_without_a_rollover(client: httpx.AsyncCli
 
     resp = await client.get(f"/v1/sessions/{session_id}/context_summary")
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"summary": None, "created_at": None}
+    assert resp.json() == {"summary": None, "summary_body": None, "created_at": None}
 
 
 async def test_context_summary_reports_the_latest_checkpoint(
@@ -388,6 +388,7 @@ async def test_context_summary_reports_the_latest_checkpoint(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["summary"] == "Second, newer checkpoint."
+    assert body["summary_body"] == "Second, newer checkpoint."
     assert isinstance(body["created_at"], int)
 
 

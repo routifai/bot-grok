@@ -164,3 +164,17 @@ def test_synthesize_conversation_title_respects_custom_limit() -> None:
     """Custom ``limit`` is honored."""
     content = [{"type": "input_text", "text": "a" * 50}]
     assert synthesize_conversation_title(content, limit=10) == "a" * 9 + "…"
+
+
+def test_is_system_notice_by_flag_or_legacy_prefix() -> None:
+    from omnigent.entities.conversation import MessageData, is_system_notice
+
+    def user(text: str, **kwargs: bool) -> MessageData:
+        return MessageData(role="user", content=[{"type": "input_text", "text": text}], **kwargs)
+
+    assert is_system_notice(user("Researcher finished", is_system_notice=True))
+    # Stored before the flag existed: known by its text.
+    assert is_system_notice(user("[System: timer 1 fired]"))
+    assert not is_system_notice(user("please summarise this"))
+    assert "is_system_notice" not in user("hi").model_dump()
+    assert user("hi", is_system_notice=True).model_dump()["is_system_notice"] is True

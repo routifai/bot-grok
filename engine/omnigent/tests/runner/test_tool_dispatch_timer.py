@@ -90,6 +90,7 @@ async def test_timer_firing_posts_hidden_meta_message() -> None:
         "data": {
             "role": "user",
             "is_meta": True,
+            "is_system_notice": True,
             "content": [
                 {
                     "type": "input_text",

@@ -650,7 +650,13 @@ async def test_skill_slash_command_policy_body_uses_typed_command_text():
     # REQUEST content is the structured dict ({"user_content", "attachments"})
     # so policies can reason about attachments per-file; a slash command carries
     # no attachments.
-    assert seen_content == [{"user_content": "/grill-me review Canada rollout", "attachments": []}]
+    assert seen_content == [
+        {
+            "user_content": "/grill-me review Canada rollout",
+            "attachments": [],
+            "is_system_notice": False,
+        }
+    ]
     assert result["verdict"] == "deny"
     assert result["reason"] == "Input mentions Canada"
 
@@ -683,6 +689,47 @@ async def test_input_no_guardrails_skips_policy():
         )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("helper", "builds_engine"), [(False, True), (True, False)])
+async def test_input_policy_gate_only_builds_an_engine_for_the_super_chat(
+    helper: bool, builds_engine: bool
+):
+    """A Helper has no step limit, so with no guardrails its turn skips the engine build."""
+    from dataclasses import replace
+
+    from omnigent.context.labels import (
+        CONTEXT_MODE_LABEL,
+        SUBAGENT_LABEL_KEY,
+        SUPERSIDE_CHAT_MODE_VALUE,
+    )
+
+    conv_store = _FakeConversationStore()
+    labels = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
+    if helper:
+        labels[SUBAGENT_LABEL_KEY] = "worker"
+    conv = replace(conv_store.get_conversation("sess_1"), labels=labels)
+    loaded = LoadedAgent(spec=_make_spec_no_guardrails(), workdir="/tmp/fake")
+
+    async def _eval(_ctx: Any) -> PolicyResult:
+        return PolicyResult(action=PolicyAction.ALLOW)
+
+    with patch(_CACHE_PATCH) as mock_cache, patch(_ENGINE_PATCH) as mock_build:
+        mock_cache.return_value.load.return_value = loaded
+        mock_build.return_value.evaluate = _eval
+        mock_build.return_value.apply_label_writes = lambda x: None
+        await _evaluate_input_policy(
+            _FakeRequest(),
+            "sess_1",
+            conv,
+            _make_user_message_body(),
+            conv_store,
+            _FakeAgentStore(agent=_make_agent()),
+            None,
+        )
+
+    assert mock_build.called is builds_engine
 
 
 @pytest.mark.asyncio

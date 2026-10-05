@@ -34,11 +34,17 @@ class _FakePagedList:
         self.last_id = last_id
 
 
-def _fake_item(item_id: str, created_at: int, role: str, text: str) -> SimpleNamespace:
+def _fake_item(
+    item_id: str, created_at: int, role: str, text: str, *, is_system_notice: bool = False
+) -> SimpleNamespace:
     return SimpleNamespace(
         id=item_id,
         created_at=created_at,
-        data=SimpleNamespace(role=role, content=[{"type": "input_text", "text": text}]),
+        data=SimpleNamespace(
+            role=role,
+            content=[{"type": "input_text", "text": text}],
+            is_system_notice=is_system_notice,
+        ),
     )
 
 
@@ -311,6 +317,8 @@ def test_gather_window_skips_sessions_whose_user_messages_are_system_authored() 
 def test_gather_window_skips_system_notices_but_keeps_assistant_context() -> None:
     items = [
         _fake_item("a1", 30, "assistant", "ok"),
+        # Flagged by the runtime, and an older one known only by its prefix.
+        _fake_item("n2", 25, "user", "Study finished: x", is_system_notice=True),
         _fake_item(
             "n1", 20, "user", "[System: sub-agent analyst/Study finished (completed) — result: x]"
         ),

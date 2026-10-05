@@ -195,6 +195,8 @@ class PolicyEvent(TypedDict, total=False):
       inspect their names and types. Read it with :func:`request_user_text` /
       :func:`request_attachments` rather than assuming a bare string;
       those helpers also accept a plain string for backward compatibility.
+      ``"is_system_notice"`` marks a runtime-written message (wake notice,
+      timer firing); read it with :func:`request_is_system_notice`.
     - ``"tool_call"``: ``data`` is ``{"name": "<tool-name>",
       "arguments": {...}}``. ``target`` is the tool name.
     - ``"tool_result"``: ``data`` is ``{"result": <tool-output>}``.
@@ -387,6 +389,22 @@ def request_user_text(data: object) -> str:
         ]
         return "\n".join(part for part in parts if part)
     return ""
+
+
+def request_is_system_notice(data: object) -> bool:
+    """Whether a REQUEST-phase ``event["data"]`` is a runtime notice, not the person's message.
+
+    The server input gate sets ``is_system_notice`` on the request dict; a bare prompt
+    string (native hooks) carries no flag, so it is judged by its text.
+
+    :param data: The ``event["data"]`` payload at the REQUEST phase.
+    :returns: ``True`` for a wake notice or timer firing the runtime wrote.
+    """
+    if isinstance(data, dict) and data.get("is_system_notice") is True:
+        return True
+    from omnigent.entities.conversation import is_system_notice_text
+
+    return is_system_notice_text(request_user_text(data))
 
 
 def request_attachments(data: object) -> list[dict[str, object]]:

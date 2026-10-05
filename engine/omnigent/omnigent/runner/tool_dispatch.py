@@ -4577,6 +4577,7 @@ async def _timer_loop(
                         "data": {
                             "role": "user",
                             "is_meta": True,
+                            "is_system_notice": True,
                             "content": [{"type": "input_text", "text": text}],
                         },
                     },

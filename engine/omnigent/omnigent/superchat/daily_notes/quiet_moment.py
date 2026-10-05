@@ -157,7 +157,7 @@ def build_brief(note_date: str, note_text: str, *, finalize: bool) -> list[dict[
 
 
 def _in_quiet_hours(prefs: OwnerPreferences, now: float) -> bool:
-    from omnigent.server.scheduled.fire import _quiet_window_end
+    from omnigent.server.scheduled.helper_fire import _quiet_window_end
 
     return _quiet_window_end(prefs, now) is not None
 
@@ -271,7 +271,7 @@ class QuietMoment:
     async def _start_helper(
         self, session_id: str, owner: str, day: str, *, finalize: bool
     ) -> None:
-        from omnigent.server.scheduled.fire import start_adhoc_helper
+        from omnigent.server.scheduled.helper_fire import start_adhoc_helper
 
         note = await asyncio.to_thread(self._notes.get, owner, day)
         user_id = None if owner == self._notes.owner_key(None) else owner
@@ -377,7 +377,7 @@ class QuietMoment:
     async def _start_named(
         self, session_id: str, owner: str, name: str, content: list[dict[str, Any]]
     ) -> None:
-        from omnigent.server.scheduled.fire import start_adhoc_helper
+        from omnigent.server.scheduled.helper_fire import start_adhoc_helper
 
         user_id = None if owner == self._notes.owner_key(None) else owner
         await start_adhoc_helper(

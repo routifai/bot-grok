@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 
 from omnigent.server.routes._sessions import orchestration
-from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
+from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, SIDE_CHAT_PARENT_LABEL_KEY
 
-_SIDE_LABELS = {SIDE_CHAT_LABEL_KEY: "1", FORK_SOURCE_LABEL_KEY: "conv_parent"}
+_SIDE_LABELS = {SIDE_CHAT_LABEL_KEY: "1", SIDE_CHAT_PARENT_LABEL_KEY: "conv_parent"}
 
 
 class _Store:

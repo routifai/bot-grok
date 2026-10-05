@@ -25,6 +25,7 @@ from omnigent.context.labels import (
 )
 from omnigent.db.utils import now_epoch
 from omnigent.entities import MemoryEvidenceLink, MemoryUpkeepRun
+from omnigent.entities.conversation import is_system_notice
 from omnigent.memory.service import INFERRED_CONFIDENCE, STATED_CONFIDENCE, VALID_KINDS
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
@@ -305,12 +306,6 @@ def _is_person_session(conv: Any) -> bool:
     )
 
 
-def _is_system_authored(text: str) -> bool:
-    """Framework notices injected as user-role items (``[System: ...]`` wake,
-    timer, interrupt and steering notices) are not the person's words."""
-    return text.lstrip().startswith("[System")
-
-
 def _session_window_items(
     conversation_store: ConversationStore,
     session_id: str,
@@ -342,7 +337,8 @@ def _session_window_items(
             if role is None:
                 continue
             text = _message_text(item)
-            if role == "user" and _is_system_authored(text):
+            # Runtime notices injected as user-role items are not the person's words.
+            if role == "user" and is_system_notice(item.data):
                 continue
             collected.append(
                 WindowItem(

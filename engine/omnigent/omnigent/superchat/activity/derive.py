@@ -28,7 +28,8 @@ from omnigent.context.labels import (
     SCHEDULED_HELPER_LABEL_KEY,
     is_superside_chat,
 )
-from omnigent.entities import Conversation, ConversationItem
+from omnigent.entities import Conversation, ConversationItem, MessageData
+from omnigent.entities.conversation import is_system_notice
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.superchat.activity.titles import (
     ACTIVITY_TITLE_INSTRUCTIONS,
@@ -42,7 +43,7 @@ from omnigent.superchat.activity.titles import (
     strip_reply_filler,
     tidy_request_title,
 )
-from omnigent.superchat.step_limit.policy import is_work_tool
+from omnigent.superchat.work_tools import is_work_tool
 from omnigent.tools.builtins.spawn import _project_activity_item
 from omnigent.util.session_lifecycle import is_session_closed, title_without_closed_marker
 
@@ -250,13 +251,20 @@ def _message_text(item: ConversationItem) -> str | None:
     return text or None
 
 
-def _first_user_text(items: list[ConversationItem]) -> str | None:
+def _first_user_message(items: list[ConversationItem]) -> ConversationItem | None:
     for item in items:
         if item.type == "message" and getattr(item.data, "role", None) == "user":
-            text = _message_text(item)
-            if text:
-                return text
+            if _message_text(item):
+                return item
     return None
+
+
+def _person_request(item: ConversationItem | None) -> str | None:
+    """The person's own words in a user message, or ``None`` for a system-started turn
+    (a Result wake) or no message."""
+    if item is None or not isinstance(item.data, MessageData) or is_system_notice(item.data):
+        return None
+    return _message_text(item)
 
 
 def _last_assistant_text(items: list[ConversationItem]) -> str | None:
@@ -367,11 +375,6 @@ def _reply_outcome(reply: str | None) -> str | None:
     return _truncate(opened, _OUTCOME_MAX_CHARS) if opened else None
 
 
-def _user_request(request: str | None) -> str | None:
-    """The person's own request, or ``None`` for a system-started turn (a Result wake)."""
-    return None if not request or request.startswith("[System") else request
-
-
 def _status_summary(
     status: str,
     group: list[ConversationItem],
@@ -391,7 +394,7 @@ def _turn_title(conversation: Conversation, request: str | None, reply: str | No
     # Until a model-written title exists, the person's request names the work
     # (tidied); a system-started turn (a Result wake) is named by what it said,
     # then by the chat's title.
-    tidied = tidy_request_title(_user_request(request) or _plain_reply(reply))
+    tidied = tidy_request_title(request or _plain_reply(reply))
     if tidied:
         return tidied
     if conversation.title:
@@ -449,7 +452,7 @@ def _turn_activity(
     )
     # A system-started turn has no request of the person's: the reply names the work.
     reply = _last_assistant_text(group)
-    user_request = _user_request(request) or _plain_reply(reply)
+    user_request = request or _plain_reply(reply)
     outcome = _turn_outcome(group, status=status)
     result = _summarisable_result(reply) if status == STATUS_DONE else None
     needs_label = not stored_title or (result is not None and not stored_summary)
@@ -518,12 +521,9 @@ def _sub_agent_title(
             return named, None
     elif not is_generic_title(display_title):
         return _truncate(strip_fire_suffix(display_title), _TITLE_MAX_CHARS), None
-    request = _user_request(task)
-    return tidy_request_title(request) or (
+    return tidy_request_title(task) or (
         "Working on something" if source == SOURCE_BACKGROUND else "Scheduled work"
-    ), (
-        f"Request to name:\n{_truncate(request, _TITLE_PROMPT_REQUEST_CHARS)}" if request else None
-    )
+    ), (f"Request to name:\n{_truncate(task, _TITLE_PROMPT_REQUEST_CHARS)}" if task else None)
 
 
 def _sub_agent_status(conversation: Conversation) -> str:
@@ -557,7 +557,7 @@ def _sub_agent_activity(
     status = _sub_agent_status(conversation)
     source = _sub_agent_source(conversation)
     title, title_prompt = _sub_agent_title(
-        conversation, display_title, _first_user_text(items), source
+        conversation, display_title, _person_request(_first_user_message(items)), source
     )
     calls = [item for item in items if item.type == "function_call"]
     outputs_by_call_id = {
@@ -566,7 +566,7 @@ def _sub_agent_activity(
         if item.type == "function_call_output"
     }
     result = _summarisable_result(_last_assistant_text(items)) if status == STATUS_DONE else None
-    task = _user_request(_first_user_text(items))
+    task = _person_request(_first_user_message(items))
     if result and task and (title_prompt is not None or not stored_summary):
         title_prompt = _turn_title_prompt(task, [], result)
     if status == STATUS_FAILED:
@@ -615,14 +615,13 @@ def resolve_super_chat_id(conv_store: ConversationStore, session_id: str) -> str
         ``session_id`` does not exist.
     """
     conversation = conv_store.get_conversation(session_id)
-    # Sub-agent ids never carry FORK_SOURCE_LABEL_KEY, so without this guard
-    # one would otherwise resolve to itself as a (wrong) "Super Chat".
+    # A sub-agent is neither; without this guard it would resolve to itself as a
+    # (wrong) "Super Chat".
     if conversation is None or conversation.kind == "sub_agent":
         return None
-    from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY
+    from omnigent.stores.conversation_store import side_chat_parent_id
 
-    source_id = conversation.labels.get(FORK_SOURCE_LABEL_KEY)
-    return source_id or session_id
+    return side_chat_parent_id(conversation.labels) or session_id
 
 
 def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[Conversation]:
@@ -717,7 +716,9 @@ def _activities_for_conversation(
     # response group, so carry the latest one forward.
     request: str | None = None
     for index, group in enumerate(groups):
-        request = _first_user_text(group) or request
+        first = _first_user_message(group)
+        if first is not None:
+            request = _person_request(first)
         activity = _turn_activity(
             conversation,
             group,
@@ -750,10 +751,7 @@ def _did_real_work(activity: Activity) -> bool:
     if len(activity.steps) >= _MIN_TURN_STEPS:
         return True
     # One search, page read, file or browser step is still work the person may want to trace.
-    if any(
-        step.tool and (is_work_tool(step.tool) or "computer" in step.tool)
-        for step in activity.steps
-    ):
+    if any(step.tool and is_work_tool(step.tool) for step in activity.steps):
         return True
     end = activity.finished_at if activity.finished_at is not None else activity.started_at
     return end - activity.started_at > _MIN_TURN_SECONDS

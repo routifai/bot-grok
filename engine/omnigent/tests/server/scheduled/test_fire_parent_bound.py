@@ -15,7 +15,9 @@ from omnigent.context.labels import ADHOC_HELPER_LABEL_KEY, SCHEDULED_HELPER_LAB
 from omnigent.entities import OwnerPreferences, ScheduledTaskRun
 from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL
 from omnigent.server.scheduled import fire as fire_mod
-from omnigent.server.scheduled.fire import _quiet_window_end, build_on_fire, build_retry
+from omnigent.server.scheduled import helper_fire
+from omnigent.server.scheduled.fire import build_on_fire
+from omnigent.server.scheduled.helper_fire import _quiet_window_end, build_retry
 from omnigent.stores.conversation_store import NameAlreadyExistsError
 from tests.server.scheduled.test_fire import (
     FakeConversationStore,
@@ -331,7 +333,7 @@ async def test_adhoc_helper_runs_now_without_waking_the_parent(
     monkeypatch.setattr(fire_mod, "_make_parent_runner_dispatch", fake_dispatch)
     deps = _deps(_Store({}), conversation_store=conv_store, permission_store=perm)
     content = [{"type": "input_text", "text": "brief"}, {"type": "input_image", "image_url": "u"}]
-    conv_id = await fire_mod.start_adhoc_helper(
+    conv_id = await helper_fire.start_adhoc_helper(
         deps,
         parent_session_id="conv_parent",
         agent_type="teacher",

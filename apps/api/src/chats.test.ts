@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   createOmnigentSideChat,
+  getOmnigentContextSummary,
   listOmnigentSessionItems,
   postOmnigentMessage,
   omnigentClientConfigFromEnv,
   resolveChatOwnership,
 } = vi.hoisted(() => ({
   createOmnigentSideChat: vi.fn(),
+  getOmnigentContextSummary: vi.fn(),
   listOmnigentSessionItems: vi.fn(),
   postOmnigentMessage: vi.fn(),
   omnigentClientConfigFromEnv: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
   return {
     ...actual,
     createOmnigentSideChat,
+    getOmnigentContextSummary,
     listOmnigentSessionItems,
     postOmnigentMessage,
     omnigentClientConfigFromEnv,
@@ -35,7 +38,7 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
 });
 
 const { OmnigentSideChatError } = await import("@aiden/adapters");
-const { createSideChat, getChatMessages } = await import("./chats.js");
+const { createSideChat, getChatMessages, summaryPreview } = await import("./chats.js");
 
 const actor: Actor = {
   spaceId: "space-1",
@@ -150,6 +153,35 @@ describe("createSideChat", () => {
     await expect(
       createSideChat(deps, actor, { botId: "bot-1", start: "blank", text: "hi" }, ENV),
     ).rejects.toThrow(/Could not open a side chat/);
+  });
+});
+
+describe("summaryPreview", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
+  });
+
+  it("shows the engine's person-facing body, not the model-facing summary", async () => {
+    getOmnigentContextSummary.mockResolvedValue({
+      summary: "[framing] Goal: plan Q4",
+      summary_body: "Goal: plan Q4",
+      created_at: 1,
+    });
+    await expect(summaryPreview(depsFor(), actor, { botId: "bot-1" }, ENV)).resolves.toEqual({
+      summary: "Goal: plan Q4",
+    });
+  });
+
+  it("is empty before the Conversation has rolled over", async () => {
+    getOmnigentContextSummary.mockResolvedValue({
+      summary: null,
+      summary_body: null,
+      created_at: null,
+    });
+    await expect(summaryPreview(depsFor(), actor, { botId: "bot-1" }, ENV)).resolves.toEqual({
+      summary: "",
+    });
   });
 });
 

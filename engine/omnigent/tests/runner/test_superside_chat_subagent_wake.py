@@ -6,7 +6,7 @@ inbox]``, covered by ``test_stranded_wake_retry_on_reconnect.py``):
 - a ``superside_chat`` work entry's wake notice inlines the sub-agent's
   Result itself instead of only announcing "N results waiting";
 - when the Originating Chat is an archived Side Chat, the wake is
-  redirected to its Super Chat (resolved from ``omnigent.fork.source_id``),
+  redirected to its Super Chat (resolved from ``omnigent.side_chat.parent_id``),
   with a one-line note naming the archived chat.
 """
 
@@ -19,7 +19,7 @@ import httpx
 import pytest
 
 from omnigent.runner import create_runner_app
-from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
+from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, SIDE_CHAT_PARENT_LABEL_KEY
 from tests.runner.conftest import _FakeProcessManager, _runner_client, _ScriptedHarnessClient
 from tests.runner.helpers import NullServerClient
 
@@ -93,8 +93,10 @@ async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float])
                 await asyncio.sleep(0.01)
 
         assert len(server_client.posts) == 1
-        url, _body = server_client.posts[0]
+        url, body = server_client.posts[0]
         assert url == f"/v1/sessions/{parent_id}/events"
+        # Marked structurally, so nothing downstream sniffs the text to tell it from the person.
+        assert body["data"]["is_system_notice"] is True
         text = _notice_text(server_client.posts[0])
         assert "FINDINGS: the vault key rotated on March 3." in text
         assert "waiting in inbox" not in text
@@ -167,7 +169,7 @@ async def test_superside_chat_wake_redirects_archived_side_chat_to_super_chat(
                 "archived": True,
                 "labels": {
                     SIDE_CHAT_LABEL_KEY: "1",
-                    FORK_SOURCE_LABEL_KEY: super_chat_id,
+                    SIDE_CHAT_PARENT_LABEL_KEY: super_chat_id,
                 },
             },
         }

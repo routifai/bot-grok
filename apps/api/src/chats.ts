@@ -17,7 +17,6 @@ import {
   type OwnedSuperChat,
   omnigentClientConfigFromEnv,
   omnigentSuperChatConfigFromEnv,
-  personFacingSummary,
   postOmnigentMessage,
   redactThreadMessages,
   resolveChatOwnership,
@@ -159,7 +158,7 @@ export async function summaryPreview(
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
   const result = await onSuperChat(getOmnigentContextSummary(client, email, superSessionId));
-  return { summary: personFacingSummary(result.summary) };
+  return { summary: result.summary_body ?? "" };
 }
 
 /**

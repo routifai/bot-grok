@@ -2574,6 +2574,7 @@ async def _deliver_subagent_wake_post(
                     "type": "message",
                     "data": {
                         "role": "user",
+                        "is_system_notice": True,
                         "content": [{"type": "input_text", "text": notice}],
                     },
                     **(
@@ -8645,7 +8646,7 @@ def create_runner_app(
 
     async def _resolve_subagent_wake_target(parent_id: str) -> tuple[str, str | None]:
         """Redirect an archived Side Chat's wake to its Super Chat (slice S3)."""
-        from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
+        from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
 
         try:
             resp = await server_client.get(f"/v1/sessions/{parent_id}", timeout=10.0)
@@ -8658,12 +8659,12 @@ def create_runner_app(
             return parent_id, None
         raw_labels = data.get("labels")
         labels = raw_labels if isinstance(raw_labels, dict) else {}
-        fork_source = labels.get(FORK_SOURCE_LABEL_KEY)
+        super_chat_id = side_chat_parent_id(labels)
         return resolve_wake_target(
             parent_id=parent_id,
             archived=bool(data.get("archived")),
             is_side_chat=SIDE_CHAT_LABEL_KEY in labels,
-            fork_source_id=fork_source if isinstance(fork_source, str) else None,
+            fork_source_id=super_chat_id,
         )
 
     async def _post_subagent_wake_notice(

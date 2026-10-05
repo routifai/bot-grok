@@ -274,7 +274,7 @@ def register_items_routes(
 
         :param session_id: Session/conversation identifier,
             e.g. ``"conv_abc123"``.
-        :returns: ``{"summary", "created_at"}``, both ``None`` when the
+        :returns: ``{"summary", "summary_body", "created_at"}``, all ``None`` when the
             session has never rolled over.
         :raises OmnigentError: 404 if no session exists.
         """
@@ -295,8 +295,14 @@ def register_items_routes(
         )
         if not page.data or not isinstance(page.data[0].data, CompactionData):
             return SessionContextSummaryResponse(summary=None, created_at=None)
+        from omnigent.context.rollover import person_facing_summary
+
         item = page.data[0]
-        return SessionContextSummaryResponse(summary=item.data.summary, created_at=item.created_at)
+        return SessionContextSummaryResponse(
+            summary=item.data.summary,
+            summary_body=person_facing_summary(item.data.summary),
+            created_at=item.created_at,
+        )
 
     # ── GET /sessions/{session_id}/child_sessions ────────────────
 

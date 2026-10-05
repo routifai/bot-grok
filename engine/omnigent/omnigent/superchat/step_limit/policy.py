@@ -18,8 +18,14 @@ import re
 import time
 from typing import Any
 
-from omnigent.policies.schema import PolicyEvent, PolicyResponse, request_user_text
+from omnigent.policies.schema import (
+    PolicyEvent,
+    PolicyResponse,
+    request_is_system_notice,
+    request_user_text,
+)
 from omnigent.superchat.feature import is_super_chat
+from omnigent.superchat.work_tools import is_work_tool
 
 POLICY_NAME = "__muse_step_limit"
 STATE_KEY = "muse_step_limit"
@@ -29,9 +35,6 @@ DEFAULT_LIMIT = 3
 # A turn that never saw its REQUEST reset (the gate was skipped) must not lock the chat for
 # good: a quiet gap this long counts as a new turn.
 _STALE_SECONDS = 600
-
-# Artifact tools that only read never count.
-_FREE_ARTIFACT_TOOLS = frozenset({"artifact_list"})
 
 _OVERRIDE_RE = re.compile(
     r"\b(?:do|handle|run|finish|take care of)\s+(?:it|this|that|them|everything)\s+"
@@ -66,16 +69,6 @@ def step_limit(env: dict[str, str] | None = None) -> int:
         return DEFAULT_LIMIT
 
 
-def is_work_tool(name: str) -> bool:
-    """Whether a tool call counts as work (``mcp__<server>__`` prefixes are ignored)."""
-    base = name.rsplit("__", 1)[-1] if name.startswith("mcp__") else name
-    if base in _FREE_ARTIFACT_TOOLS:
-        return False
-    return base in ("web_search", "web_fetch") or base.startswith(
-        ("browser_", "sys_os_", "artifact_")
-    )
-
-
 def asks_to_do_it_here(text: str) -> bool:
     """Whether the person asked the Muse to do the work itself rather than delegate."""
     return bool(_OVERRIDE_RE.search(text))
@@ -99,7 +92,7 @@ def muse_step_limit(event: PolicyEvent) -> PolicyResponse | None:
     kind = event.get("type")
     if kind == "request":
         text = request_user_text(event.get("data"))
-        free = not text.lstrip().startswith("[System") and asks_to_do_it_here(text)
+        free = not request_is_system_notice(event.get("data")) and asks_to_do_it_here(text)
         return {
             "result": "ALLOW",
             "state_updates": _set({"n": 0, "free": free, "ts": now}),

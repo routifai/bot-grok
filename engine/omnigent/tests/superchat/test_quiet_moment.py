@@ -35,7 +35,7 @@ def harness(db_uri: str, monkeypatch: pytest.MonkeyPatch):
         started.append(kwargs)
         return "helper"
 
-    monkeypatch.setattr("omnigent.server.scheduled.fire.start_adhoc_helper", fake_start)
+    monkeypatch.setattr("omnigent.server.scheduled.helper_fire.start_adhoc_helper", fake_start)
     prefs = _Prefs()
     deps = SimpleNamespace(
         scheduled_task_store=prefs,

@@ -4,7 +4,7 @@ A parent-bound task fires as a Helper session under its Super Chat: it is gated 
 proactivity and quiet hours, deferred while another proactive run is in flight, retried once
 after a failure, and launched on the parent's own runner. The shared state and the plumbing
 common to every fire (``FireDeps``, run records, grants, the overlap guards) stay in
-:mod:`omnigent.server.scheduled.fire`, which imports this module and re-exports its public names;
+:mod:`omnigent.server.scheduled.fire`, which imports this module for its own use;
 this module reads them through ``fire`` at call time so there is a single owner of that state.
 """
 

@@ -1,11 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   deriveSideChatTitle,
-  isEngineWakeNotice,
   mapOmnigentItemsToMessages,
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
-  personFacingSummary,
   resolveChatOwnership,
   sideChatStartToWire,
 } from "./chats.js";
@@ -30,31 +28,6 @@ describe("sideChatStartToWire", () => {
   });
 });
 
-describe("personFacingSummary", () => {
-  it("drops framing, the checkpoint title and tool sections; keeps the rest", () => {
-    const raw = [
-      "[Side chat opened from the person's main Conversation. Below is a summary.]",
-      "",
-      "## Context checkpoint — 2026-10-04 10:00 UTC",
-      "**Goal**: plan Q4",
-      "",
-      "## Technical capabilities confirmed",
-      "- sys_session_send, sys_os_write",
-      "",
-      "## Current position / next step",
-      "Draft the checklist.",
-    ].join("\n");
-    const out = personFacingSummary(raw);
-    expect(out).toBe("**Goal**: plan Q4\n\n## Current position / next step\nDraft the checklist.");
-  });
-
-  it("strips the older rollover header line", () => {
-    const raw =
-      "[Context checkpoint inserted by the system, not a message from the user.] This conversation grew past its context limit and more.\n\nBody";
-    expect(personFacingSummary(raw)).toBe("Body");
-  });
-});
-
 describe("mapRelatedChatToSummary", () => {
   it("maps with_context, archived, and live through", () => {
     expect(
@@ -66,7 +39,8 @@ describe("mapRelatedChatToSummary", () => {
         last_message_preview: "ok",
         archived: true,
         start: "with_context",
-        summary: "A seed summary",
+        summary: "[framing] A seed summary",
+        summary_body: "A seed summary",
         live: true,
       }),
     ).toEqual({
@@ -286,26 +260,28 @@ describe("resolveChatOwnership", () => {
   });
 });
 
-describe("isEngineWakeNotice", () => {
-  it("recognizes a Helper wake notice, which is never shown", () => {
-    expect(
-      isEngineWakeNotice("[System: sub-agent worker/notes-tools-comparison finished (completed)]"),
-    ).toBe(true);
-    const messages = mapOmnigentItemsToMessages("c1", [
-      {
-        id: "i1",
-        type: "message",
-        role: "user",
-        created_at: 1,
-        content: [
-          { type: "input_text", text: "[System: sub-agent worker/x finished (completed) — y]" },
-        ],
-      },
-    ] as never);
-    expect(messages).toEqual([]);
+describe("system notices", () => {
+  const user = (text: string, extra: Record<string, unknown> = {}) =>
+    ({
+      id: "i1",
+      type: "message",
+      role: "user",
+      created_at: 1,
+      content: [{ type: "input_text", text }],
+      ...extra,
+    }) as never;
+
+  it("hides a message the engine flagged, whatever its text opens with", () => {
+    const flagged = user("Researcher finished: notes", { is_system_notice: true });
+    expect(mapOmnigentItemsToMessages("c1", [flagged])).toEqual([]);
+  });
+
+  it("hides an older Helper wake notice known only by its prefix", () => {
+    const old = user("[System: sub-agent worker/x finished (completed) — y]");
+    expect(mapOmnigentItemsToMessages("c1", [old])).toEqual([]);
   });
 
   it("leaves a person's own message alone", () => {
-    expect(isEngineWakeNotice("What is a CD?")).toBe(false);
+    expect(mapOmnigentItemsToMessages("c1", [user("What is a CD?")])).toHaveLength(1);
   });
 });

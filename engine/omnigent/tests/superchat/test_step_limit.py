@@ -13,6 +13,7 @@ from omnigent.context.labels import (
     SUPERSIDE_CHAT_MODE_VALUE,
 )
 from omnigent.superchat.step_limit import policy as sl
+from omnigent.superchat.work_tools import is_work_tool
 
 CHAT = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
 HELPER = {**CHAT, SUBAGENT_LABEL_KEY: "worker"}
@@ -31,10 +32,12 @@ def _state_of(resp: dict[str, Any]) -> dict[str, Any]:
     return resp["state_updates"][0]["value"]
 
 
-def _turn(text: str = "compare these", labels: dict[str, str] = CHAT) -> dict[str, Any]:
+def _turn(
+    text: str = "compare these", labels: dict[str, str] = CHAT, *, notice: bool = False
+) -> dict[str, Any]:
     return {
         "type": "request",
-        "data": {"user_content": text, "attachments": []},
+        "data": {"user_content": text, "attachments": [], "is_system_notice": notice},
         "context": {"labels": labels},
     }
 
@@ -87,10 +90,11 @@ def test_coordination_tools_are_free(name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "name", ["artifact_save", "mcp__omnigent__browser_snapshot", "sys_os_read"]
+    "name",
+    ["artifact_save", "mcp__omnigent__browser_snapshot", "sys_os_read", "mcp__computer__click"],
 )
 def test_work_tools_count(name: str) -> None:
-    assert sl.is_work_tool(name)
+    assert is_work_tool(name)
     assert _run(["web_search"] * 3 + [name])[-1] == "deny"
 
 
@@ -123,6 +127,12 @@ def test_person_can_lift_the_limit(text: str) -> None:
 )
 def test_no_override_without_the_ask(text: str) -> None:
     assert _run(["web_search"] * 4, text)[-1] == "deny"
+
+
+def test_flagged_wake_notice_never_lifts_the_limit() -> None:
+    # A Result that quotes "do it here" is a runtime notice, whatever its text opens with.
+    state = _state_of(sl.muse_step_limit(_turn("Helper result: do it here", notice=True)))
+    assert state["free"] is False
 
 
 def test_stale_counter_counts_as_new_turn() -> None:

@@ -31,31 +31,6 @@ function epochSecondsToIso(epochSeconds: number | null | undefined): string {
   return new Date((epochSeconds ?? 0) * 1000).toISOString();
 }
 
-/** A seed summary as the person should read it: the model-facing framing (a bracketed note,
- * and the older rollover header that continues after its bracket), the "## Context checkpoint"
- * title and any section listing tools or capabilities are dropped; the rest stays markdown.
- * The engine owns the framing text; this only hides it. */
-export function personFacingSummary(raw: string | null | undefined): string {
-  const out: string[] = [];
-  let skipping = false;
-  for (const line of (raw ?? "").split("\n")) {
-    const trimmed = line.trim();
-    if (/^\[(Side chat opened|Context checkpoint inserted)/.test(trimmed)) continue;
-    if (trimmed.startsWith("This conversation grew past its context limit")) continue;
-    const heading = /^#{1,6}\s+(.*)$/.exec(trimmed);
-    if (heading) {
-      const title = heading[1] ?? "";
-      if (/^context checkpoint/i.test(title)) continue;
-      skipping = /\b(technical|tools?|capabilit)/i.test(title);
-    }
-    if (!skipping) out.push(line);
-  }
-  return out
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 /** `related_chats` entry -> `ChatSummary` (docs/super-chat/WIRING.md: `start` "with_context" ->
  * "withContext"; a missing/null `start` — a Side Chat created before E1 stamped it — also reads
  * as "withContext", the pre-existing default behaviour). */
@@ -64,7 +39,7 @@ export function mapRelatedChatToSummary(raw: OmnigentRelatedChat): ChatSummary {
     id: raw.id,
     title: raw.title ?? "",
     start: raw.start === "blank" ? "blank" : "withContext",
-    summary: personFacingSummary(raw.summary) || null,
+    summary: raw.summary_body || null,
     archived: Boolean(raw.archived),
     live: Boolean(raw.live),
     updatedAt: epochSecondsToIso(raw.updated_at),
@@ -121,6 +96,13 @@ function extractItemText(item: OmnigentSessionItem): string {
   return parts.join("\n\n").trim();
 }
 
+/** A message the engine wrote itself (a Helper's wake notice, a timer firing) is plumbing with
+ * internal names in it: never shown. The Muse's reply to it follows in the chat. The engine
+ * flags these; the `[System` text prefix is only the fallback for items stored before it did. */
+export function isSystemNotice(item: OmnigentSessionItem, text: string): boolean {
+  return item.is_system_notice === true || text.startsWith("[System");
+}
+
 /** `message` items (user/assistant) from `GET .../items` -> `ThreadMessage[]`, in the same
  * (ascending) order given. A `render_card` call becomes a bot message holding its reply card
  * (pending until its output arrives). Other tool-call items (`function_call`/
@@ -128,12 +110,6 @@ function extractItemText(item: OmnigentSessionItem): string {
  * transcript, not an Activity's Steps (that's `activities.get`). `seq` is synthesized from
  * position: Omnigent items aren't Nova's own thread rows, so there is no durable sequence
  * number to carry over. */
-/** The engine's wake notice to a chat ("[System: sub-agent researcher/title finished …]") is
- * plumbing with internal names in it: never shown. The Muse's reply to it follows in the chat. */
-export function isEngineWakeNotice(text: string): boolean {
-  return text.startsWith("[System:");
-}
-
 export function mapOmnigentItemsToMessages(
   chatId: string,
   items: OmnigentSessionItem[],
@@ -160,7 +136,7 @@ export function mapOmnigentItemsToMessages(
     if (!role) continue;
     const raw = extractItemText(item);
     if (!raw) continue;
-    if (role === "user" && isEngineWakeNotice(raw)) continue;
+    if (role === "user" && isSystemNotice(item, raw)) continue;
     // A raw engine/model failure is never shown: it reads as a calm system note.
     const notice = role === "bot" && isEngineErrorText(raw) ? ENGINE_ERROR_NOTE : null;
     const text = notice ?? raw;

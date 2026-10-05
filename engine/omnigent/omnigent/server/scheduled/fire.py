@@ -69,13 +69,10 @@ from omnigent.server.routes._session_create_validation import (
     validate_session_model_metadata,
     validate_session_permission_mode,
 )
-from omnigent.server.scheduled.helper_fire import (  # noqa: F401 (re-exported)
+from omnigent.server.scheduled.helper_fire import (
     _create_helper_session,
     _make_parent_runner_dispatch,
-    _quiet_window_end,
     _run_parent_bound_fire,
-    build_retry,
-    start_adhoc_helper,
 )
 from omnigent.server.schemas import SessionEventInput
 

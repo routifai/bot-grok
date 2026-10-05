@@ -116,6 +116,29 @@ PINNED_LABEL_KEY = "omnigent.pinned"
 # otherwise behaves like any other session (its own runner, transcript).
 SIDE_CHAT_LABEL_KEY = "omnigent.side_chat"
 
+# The Super Chat a Side Chat was opened from. Stamped once at creation by
+# ``POST /v1/sessions/{id}/side_chats``. Kept apart from
+# :data:`FORK_SOURCE_LABEL_KEY`, which is a native-fork directive that switching a
+# session's agent drops: a Side Chat's parent link must survive that.
+SIDE_CHAT_PARENT_LABEL_KEY = "omnigent.side_chat.parent_id"
+
+
+def side_chat_parent_id(labels: Mapping[str, str]) -> str | None:
+    """
+    The Super Chat a Side Chat was opened from.
+
+    Side Chats opened before :data:`SIDE_CHAT_PARENT_LABEL_KEY` existed carry the
+    link only as :data:`FORK_SOURCE_LABEL_KEY`, so that is the fallback.
+
+    :param labels: A session's labels.
+    :returns: The parent session id, or ``None`` when this is not a Side Chat or
+        its parent is unknown.
+    """
+    if SIDE_CHAT_LABEL_KEY not in labels:
+        return None
+    return labels.get(SIDE_CHAT_PARENT_LABEL_KEY) or labels.get(FORK_SOURCE_LABEL_KEY)
+
+
 # How a Side Chat was opened: ``"with_context"`` (seeded from the Super
 # Chat's checkpoint) or ``"blank"`` (no seed). Stamped once at creation by
 # ``POST /v1/sessions/{id}/side_chats``; read back by ``list_related_chats``
@@ -735,6 +758,7 @@ class ConversationStore(ABC):
         pinned_owner: str | None = None,
         title: str | None = None,
         fork_source_id: str | None = None,
+        side_chat_parent_id: str | None = None,
     ) -> PagedList[Conversation]:
         """
         List conversations with cursor-based pagination.
@@ -853,6 +877,9 @@ class ConversationStore(ABC):
             the label is only stamped when the fork source had a workspace
             or bound native runner (see :data:`FORK_SOURCE_LABEL_KEY`), so
             this is not a complete "every fork of X" index.
+        :param side_chat_parent_id: When set, only return conversations whose
+            :data:`SIDE_CHAT_PARENT_LABEL_KEY` label equals this value — the
+            Side Chats opened from this session. ``None`` disables the filter.
         :returns: A :class:`PagedList` of :class:`Conversation`
             objects.
         :raises omnigent.errors.StaleCursorError: If the ``after``/``before``

@@ -29,6 +29,20 @@ def _call(**args: object) -> dict:
     return json.loads(RenderCardTool().invoke(json.dumps(args), _CTX))
 
 
+@pytest.mark.parametrize("kind", sorted(set(_VALID) - {"plan", "progress"}))
+def test_terminal_card_tells_the_model_to_end_its_turn(kind: str) -> None:
+    # A finished answer card: no trailing line repeating it.
+    out = _call(card=kind, data=_VALID[kind], fallback="s")
+    assert "end your turn" in out["note"]
+
+
+@pytest.mark.parametrize("kind", ["plan", "progress"])
+def test_living_card_does_not_end_the_turn(kind: str) -> None:
+    # Mid-work plan/progress cards are re-rendered under the same id; the Muse keeps going.
+    out = _call(card=kind, id="c1", data=_VALID[kind], fallback="s")
+    assert "end your turn" not in out["note"]
+
+
 def test_every_kind_has_a_valid_fixture() -> None:
     assert set(_VALID) == set(CARD_DATA_SCHEMAS)
 
@@ -36,8 +50,7 @@ def test_every_kind_has_a_valid_fixture() -> None:
 @pytest.mark.parametrize("kind", sorted(_VALID))
 def test_valid_card_returns_typed_payload(kind: str) -> None:
     out = _call(card=kind, id="c1", title="T", data=_VALID[kind], fallback=" Summary ")
-    # The note tells the model the card ended its reply, so it adds no trailing line.
-    assert "end your turn" in out.pop("note")
+    out.pop("note")
     assert out == {
         "type": "card",
         "card": kind,

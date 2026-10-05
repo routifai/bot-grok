@@ -26,7 +26,10 @@ from omnigent.server.routes._auth_helpers import (
 from omnigent.server.routes._errors import session_not_found as _session_not_found
 from omnigent.server.schemas import SideChatOpenRequest, SideChatOpenResponse
 from omnigent.stores import ConversationStore
-from omnigent.stores.conversation_store import SIDE_CHAT_START_LABEL_KEY
+from omnigent.stores.conversation_store import (
+    SIDE_CHAT_PARENT_LABEL_KEY,
+    SIDE_CHAT_START_LABEL_KEY,
+)
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.side_chats.chats import (
     SIDE_CHAT_START_WITH_CONTEXT,
@@ -150,7 +153,6 @@ def register_side_chats_routes(
                 build_side_chat_blank_create_body(
                     agent_id=agent_id,
                     title=body.title,
-                    source_conversation_id=session_id,
                 ),
             )
         if create_resp.status_code != 201:
@@ -165,7 +167,7 @@ def register_side_chats_routes(
         await asyncio.to_thread(
             conversation_store.set_labels,
             new_id,
-            {SIDE_CHAT_START_LABEL_KEY: body.start},
+            {SIDE_CHAT_START_LABEL_KEY: body.start, SIDE_CHAT_PARENT_LABEL_KEY: session_id},
         )
 
         host_id = caller.host_id

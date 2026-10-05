@@ -5708,16 +5708,16 @@ def test_switch_conversation_agent_same_family_keeps_model_settings(
     assert SWITCH_PREVIOUS_BUILTIN_LABEL_KEY not in updated.labels
 
 
-@pytest.mark.parametrize(
-    ("side_chat", "expect_kept"), [("1", True), (None, False)], ids=["side-chat", "plain-fork"]
-)
-def test_switch_conversation_agent_fork_source_label_survives_only_for_side_chat(
+def test_switch_conversation_agent_drops_fork_directive_and_keeps_side_chat_parent(
     conversation_store: SqlAlchemyConversationStore,
-    side_chat: str | None,
-    expect_kept: bool,
 ) -> None:
-    """A Side Chat keeps its parent link across a switch; a plain fork's directive is dropped."""
-    from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
+    """A switched Side Chat stays linked to its Super Chat and is no longer a native fork."""
+    from omnigent.stores.conversation_store import (
+        FORK_SOURCE_LABEL_KEY,
+        SIDE_CHAT_LABEL_KEY,
+        SIDE_CHAT_PARENT_LABEL_KEY,
+        side_chat_parent_id,
+    )
 
     created = conversation_store.create_session_with_agent(
         agent_id="1f0c2a9b7d3e4c5a8b6d9e0f1a2b3c4d",
@@ -5726,10 +5726,14 @@ def test_switch_conversation_agent_fork_source_label_survives_only_for_side_chat
         agent_description=None,
     )
     conv_id = created.conversation.id
-    labels = {FORK_SOURCE_LABEL_KEY: "parent_conv"}
-    if side_chat is not None:
-        labels[SIDE_CHAT_LABEL_KEY] = side_chat
-    conversation_store.set_labels(conv_id, labels)
+    conversation_store.set_labels(
+        conv_id,
+        {
+            SIDE_CHAT_LABEL_KEY: "1",
+            SIDE_CHAT_PARENT_LABEL_KEY: "parent_conv",
+            FORK_SOURCE_LABEL_KEY: "parent_conv",
+        },
+    )
 
     updated = conversation_store.switch_conversation_agent(
         conv_id,
@@ -5743,7 +5747,31 @@ def test_switch_conversation_agent_fork_source_label_survives_only_for_side_chat
         previous_builtin_id=None,
     )
 
-    assert (FORK_SOURCE_LABEL_KEY in updated.labels) is expect_kept
+    assert FORK_SOURCE_LABEL_KEY not in updated.labels
+    assert side_chat_parent_id(updated.labels) == "parent_conv"
+
+
+def test_side_chat_parent_id_falls_back_to_the_fork_label_for_older_side_chats() -> None:
+    from omnigent.stores.conversation_store import (
+        FORK_SOURCE_LABEL_KEY,
+        SIDE_CHAT_LABEL_KEY,
+        SIDE_CHAT_PARENT_LABEL_KEY,
+        side_chat_parent_id,
+    )
+
+    assert side_chat_parent_id({SIDE_CHAT_LABEL_KEY: "1", FORK_SOURCE_LABEL_KEY: "old"}) == "old"
+    assert (
+        side_chat_parent_id(
+            {
+                SIDE_CHAT_LABEL_KEY: "1",
+                SIDE_CHAT_PARENT_LABEL_KEY: "new",
+                FORK_SOURCE_LABEL_KEY: "x",
+            }
+        )
+        == "new"
+    )
+    # A plain fork is not a Side Chat: its fork label is no parent link.
+    assert side_chat_parent_id({FORK_SOURCE_LABEL_KEY: "src"}) is None
 
 
 def test_get_session_connectivity_batches_runner_and_host(

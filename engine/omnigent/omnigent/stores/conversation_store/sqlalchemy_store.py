@@ -101,7 +101,7 @@ from omnigent.stores.conversation_store import (
     FORK_SOURCE_LABEL_KEY,
     PINNED_LABEL_KEY,
     PROJECT_LABEL_KEY,
-    SIDE_CHAT_LABEL_KEY,
+    SIDE_CHAT_PARENT_LABEL_KEY,
     SWITCH_PREVIOUS_BUILTIN_LABEL_KEY,
     ConversationAlreadyExistsError,
     ConversationNotFoundError,
@@ -2685,6 +2685,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         pinned_owner: str | None = None,
         title: str | None = None,
         fork_source_id: str | None = None,
+        side_chat_parent_id: str | None = None,
     ) -> PagedList[Conversation]:
         """
         List conversations with cursor-based pagination.
@@ -2754,6 +2755,8 @@ class SqlAlchemyConversationStore(ConversationStore):
             ``False`` (default) disables the filter.
         :param fork_source_id: When set, only return conversations whose
             ``FORK_SOURCE_LABEL_KEY`` label equals this value.
+        :param side_chat_parent_id: When set, only return conversations whose
+            ``SIDE_CHAT_PARENT_LABEL_KEY`` label equals this value.
         :returns: A :class:`PagedList` of :class:`Conversation`
             objects.
         """
@@ -3064,15 +3067,20 @@ class SqlAlchemyConversationStore(ConversationStore):
                         )
                     )
                 )
-            if fork_source_id is not None:
-                # Colocated on the AP DB (fork labels, like pins, live there),
+            for label_key, label_value in (
+                (FORK_SOURCE_LABEL_KEY, fork_source_id),
+                (SIDE_CHAT_PARENT_LABEL_KEY, side_chat_parent_id),
+            ):
+                if label_value is None:
+                    continue
+                # Colocated on the AP DB (these labels, like pins, live there),
                 # so an inline IN-subquery is enough — no cross-DB prefetch.
                 stmt = stmt.where(
                     SqlConversation.id.in_(
                         select(SqlConversationLabel.conversation_id).where(
                             SqlConversationLabel.workspace_id == current_workspace_id(),
-                            SqlConversationLabel.key == FORK_SOURCE_LABEL_KEY,
-                            SqlConversationLabel.value == fork_source_id,
+                            SqlConversationLabel.key == label_key,
+                            SqlConversationLabel.value == label_value,
                         )
                     )
                 )
@@ -4995,10 +5003,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             row.updated_at = now
 
             existing = _fetch_labels(ap_sess, conversation_id)
-            # A Side Chat's fork-source label is its link to the parent Super Chat
-            # (discovery, host adoption), so switching its agent must keep it.
-            keep_keys = {FORK_SOURCE_LABEL_KEY} if SIDE_CHAT_LABEL_KEY in existing else set()
-            present_drop = [key for key in drop_keys - keep_keys if key in existing]
+            present_drop = [key for key in drop_keys if key in existing]
             if present_drop:
                 ap_sess.execute(
                     delete(SqlConversationLabel).where(

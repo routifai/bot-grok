@@ -28,7 +28,6 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 
 from omnigent.cli_invocation import cli_invocation
-from omnigent.context.labels import is_superside_chat
 from omnigent.db.utils import generate_agent_id, generate_task_id
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import debug_event, runner_log_scope
@@ -363,20 +362,20 @@ from omnigent.spec.types import (
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.artifact_store import ArtifactStore
 from omnigent.stores.conversation_store import (
-    FORK_SOURCE_LABEL_KEY,
     PINNED_LABEL_KEY,
     RUNNER_LIVENESS_TTL_S,
-    SIDE_CHAT_LABEL_KEY,
     ConversationNotFoundError,
     NameAlreadyExistsError,
     pinned_label_key,
     runner_seen_is_fresh,
+    side_chat_parent_id,
 )
 from omnigent.stores.file_store import FileStore
 from omnigent.stores.host_store import Host, HostStore, host_is_live
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.superchat.approvals.policy import remember_browser_snapshot
+from omnigent.superchat.feature import is_super_chat
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
 from omnigent.telemetry.anon import current_anon_user_id as _tel_current_anon
@@ -2013,6 +2012,7 @@ async def _persist_model_change_note(
         response_id=generate_task_id(),
         data=MessageData(
             role="user",
+            is_system_notice=True,
             content=[{"type": "input_text", "text": text}],
         ),
     )
@@ -3984,8 +3984,8 @@ async def _adopt_parent_host_for_side_chat(
         has no host.
     :raises OmnigentError: 503 when the parent's sandbox relaunch failed.
     """
-    parent_id = conv.labels.get(FORK_SOURCE_LABEL_KEY)
-    if conv.labels.get(SIDE_CHAT_LABEL_KEY) != "1" or not parent_id:
+    parent_id = side_chat_parent_id(conv.labels)
+    if not parent_id:
         return conv
     if await _get_runner_client(session_id, runner_router, conversation=conv) is not None:
         return conv
@@ -8579,12 +8579,13 @@ async def _evaluate_input_policy(
     # default policies AND no session policies. Without this, default/
     # session policies (e.g. deny_pii_in_llm_request added via the UI)
     # are silently skipped for agents without a guardrails: YAML block.
-    # A Super Chat turn always passes the gate: its step-limit policy resets per user message.
+    # A Super Chat turn always passes the gate: its step-limit policy resets per user message
+    # (a Helper has no step limit, so it takes the normal skip).
     if (
         not spec.guardrails
         and not get_caps().default_policies
         and get_policy_store() is None
-        and not is_superside_chat(conv.labels)
+        and not is_super_chat(conv.labels)
     ):
         return None
 
@@ -8609,7 +8610,11 @@ async def _evaluate_input_policy(
         return None
     # Structured request content ({"user_content", "attachments"}) so policies
     # can reason about attachments per-file instead of a merged string.
-    request_content = {"user_content": user_text, "attachments": attachments}
+    request_content = {
+        "user_content": user_text,
+        "attachments": attachments,
+        "is_system_notice": body.data.get("is_system_notice") is True,
+    }
 
     ctx = EvaluationContext(
         phase=Phase.REQUEST,
@@ -8730,6 +8735,7 @@ async def _wake_parent_for_blocked_child(
         type="message",
         data={
             "role": "user",
+            "is_system_notice": True,
             "content": [{"type": "input_text", "text": notice}],
         },
     )

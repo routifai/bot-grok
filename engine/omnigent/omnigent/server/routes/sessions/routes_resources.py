@@ -168,6 +168,19 @@ def _attachment_upload_lock(session_id: str) -> asyncio.Lock:
 # the client's retry rendezvouses on the same single-flighted launch.
 _READ_WAKE_BUDGET_S = 12.0
 
+# One in-flight wake per session: concurrent reads join it instead of each walking the
+# launch ladder, and it is dropped when it settles.
+# custom-lint: disable-next=workspace-scoped-cache -- keyed by session id; lives only while waking
+_read_wakes: dict[str, asyncio.Task[tuple[httpx.AsyncClient | None, Conversation]]] = {}
+
+
+def _forget_read_wake(session_id: str, task: asyncio.Task[Any]) -> None:
+    """Drop a settled wake; a failure nobody was left waiting on is not "never retrieved"."""
+    if _read_wakes.get(session_id) is task:
+        del _read_wakes[session_id]
+    if not task.cancelled():
+        task.exception()
+
 
 def register_resources_routes(
     router: APIRouter,
@@ -551,16 +564,23 @@ def register_resources_routes(
         """
         if request is None or conversation.host_id is None:
             raise offline
-        try:
-            runner_client, conv = await asyncio.wait_for(
+        wake = _read_wakes.get(session_id)
+        if wake is None:
+            wake = asyncio.create_task(
                 ensure_runner_connected(
                     session_id=session_id,
                     conv=conversation,
                     app_state=request.app.state,
                     conversation_store=conversation_store,
                     runner_router=runner_router or get_server_runner_router(),
-                ),
-                timeout=_READ_WAKE_BUDGET_S,
+                )
+            )
+            _read_wakes[session_id] = wake
+            wake.add_done_callback(lambda t: _forget_read_wake(session_id, t))
+        try:
+            # Shield: giving up on the wait must not cancel a launch mid-way.
+            runner_client, conv = await asyncio.wait_for(
+                asyncio.shield(wake), timeout=_READ_WAKE_BUDGET_S
             )
         except asyncio.TimeoutError:
             raise OmnigentError(

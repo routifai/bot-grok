@@ -2218,7 +2218,7 @@ def _checkpoint_marker_as_developer(history: list[_JsonObject]) -> list[_JsonObj
     The marker is system text; as a user message the model can mistake it for
     something the user said. Other messages pass through unchanged.
     """
-    from omnigent.context.rollover import CHECKPOINT_MARKER
+    from omnigent.context.rollover import is_checkpoint_text
 
     def is_marker(message: _JsonObject) -> bool:
         content = message.get("content")
@@ -2227,7 +2227,7 @@ def _checkpoint_marker_as_developer(history: list[_JsonObject]) -> list[_JsonObj
             message.get("type") == "message"
             and message.get("role") == "user"
             and isinstance(first, dict)
-            and str(first.get("text", "")).startswith(CHECKPOINT_MARKER)
+            and is_checkpoint_text(str(first.get("text", "")))
         )
 
     return [{**m, "role": "developer"} if is_marker(m) else m for m in history]

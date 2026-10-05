@@ -78,6 +78,8 @@ export interface OmnigentRelatedChat {
   archived?: boolean;
   start?: "with_context" | "blank" | null;
   summary?: string | null;
+  /** `summary` as the person reads it: the engine has already dropped its model-facing framing. */
+  summary_body?: string | null;
   /** First item that belongs to a with-context side chat itself (its seed checkpoint). */
   seed_item_id?: string | null;
   live?: boolean;
@@ -104,11 +106,15 @@ export async function getOmnigentContextSummary(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-): Promise<{ summary: string | null; created_at: number | null }> {
+): Promise<{ summary: string | null; summary_body: string | null; created_at: number | null }> {
   const response = await fetch(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/context_summary`, config.baseUrl),
     { headers: omnigentHeaders(config, email) },
   );
   await throwOnError(response, "get context summary", config.secrets);
-  return (await response.json()) as { summary: string | null; created_at: number | null };
+  return (await response.json()) as {
+    summary: string | null;
+    summary_body: string | null;
+    created_at: number | null;
+  };
 }

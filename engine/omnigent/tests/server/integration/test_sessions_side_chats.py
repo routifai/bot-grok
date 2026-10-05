@@ -18,6 +18,7 @@ from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALU
 from omnigent.stores.conversation_store import (
     FORK_SOURCE_LABEL_KEY,
     SIDE_CHAT_LABEL_KEY,
+    SIDE_CHAT_PARENT_LABEL_KEY,
     SIDE_CHAT_START_LABEL_KEY,
 )
 from tests.server.helpers import create_test_agent
@@ -78,6 +79,7 @@ async def test_with_context_forks_and_stamps_start_label(client: httpx.AsyncClie
     labels = labels_resp.json()["labels"]
     assert labels[SIDE_CHAT_LABEL_KEY] == "1"
     assert labels[SIDE_CHAT_START_LABEL_KEY] == "with_context"
+    assert labels[SIDE_CHAT_PARENT_LABEL_KEY] == super_chat_id
 
 
 # ── blank ──────────────────────────────────────────────────────────────
@@ -103,7 +105,9 @@ async def test_blank_creates_top_level_session_and_stamps_start_label(
     labels = labels_resp.json()["labels"]
     assert labels[SIDE_CHAT_LABEL_KEY] == "1"
     assert labels[SIDE_CHAT_START_LABEL_KEY] == "blank"
-    assert labels[FORK_SOURCE_LABEL_KEY] == super_chat_id
+    # Not a fork: no native-fork directive, just the Side Chat's own parent link.
+    assert FORK_SOURCE_LABEL_KEY not in labels
+    assert labels[SIDE_CHAT_PARENT_LABEL_KEY] == super_chat_id
     assert labels[CONTEXT_MODE_LABEL] == SUPERSIDE_CHAT_MODE_VALUE
 
     # A blank Side Chat has no copied transcript.

@@ -89,7 +89,9 @@ class _RecordingLauncher(SandboxLauncher):
         # honors its env prefix, independent of the setsid/nohup wrapper.
         self.backgrounded.append(command)
         self.backgrounded_env.append(env)
-        return super().run_background(sandbox_id, command, log_path=log_path, host_id=host_id, env=env)
+        return super().run_background(
+            sandbox_id, command, log_path=log_path, host_id=host_id, env=env
+        )
 
 
 def test_run_background_wraps_command_in_sh_c() -> None:

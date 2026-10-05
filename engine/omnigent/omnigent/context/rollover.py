@@ -9,6 +9,7 @@ itself: a side chat starts from the parent's summary plus recent turns.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -35,10 +36,10 @@ from omnigent.server.routes._sessions.common import (
     _LAST_CONTEXT_WINDOW_LABEL_KEY,
 )
 from omnigent.stores.conversation_store import (
-    FORK_SOURCE_LABEL_KEY,
     SIDE_CHAT_LABEL_KEY,
     SIDE_CHAT_START_LABEL_KEY,
     ConversationStore,
+    side_chat_parent_id,
 )
 from omnigent.superchat.side_chats.chats import SIDE_CHAT_START_WITH_CONTEXT
 
@@ -89,11 +90,63 @@ CHECKPOINT_HEADER = (
 
 # A side chat's seed reuses the checkpoint summary but not its framing: the
 # model must know it is a separate chat, not the conversation that rolled over.
+# It keeps the marker so every seed is recognised by :func:`is_checkpoint_text`.
 SIDE_CHAT_SEED_HEADER = (
+    f"{CHECKPOINT_MARKER} "
     "[Side chat opened from the person's main Conversation. Below is a summary "
     "of that Conversation and its recent turns, for context. This side chat is "
     "separate: it does not send anything back to the main Conversation.]"
 )
+
+
+def is_checkpoint_text(text: str) -> bool:
+    """:returns: Whether *text* opens a rollover or side-chat seed checkpoint."""
+    return text.startswith(CHECKPOINT_MARKER)
+
+
+# Seeds stored before the side-chat header carried the marker start with it bare.
+_SEED_HEADERS = (
+    SIDE_CHAT_SEED_HEADER,
+    SIDE_CHAT_SEED_HEADER.removeprefix(f"{CHECKPOINT_MARKER} "),
+    CHECKPOINT_HEADER,
+)
+# A heading that opens a section listing tools or capabilities: the person never reads it.
+_TOOLS_SECTION_TITLE = re.compile(r"\b(technical|tools?|capabilit)", re.IGNORECASE)
+_HEADING = re.compile(r"^#{1,6}\s+(.*)$")
+
+
+def _strip_seed_header(summary: str) -> str:
+    """:returns: *summary* without its model-facing seed or checkpoint header."""
+    for header in _SEED_HEADERS:
+        if summary.startswith(header):
+            return summary.removeprefix(header).lstrip()
+    return summary
+
+
+def person_facing_summary(summary: str | None) -> str | None:
+    """
+    A seed summary as the person should read it.
+
+    Drops the model-facing framing header, a "Context checkpoint" title and any section
+    whose heading lists tools or capabilities; the rest stays markdown.
+
+    :param summary: A stored checkpoint or seed summary, or ``None``.
+    :returns: The readable body, or ``None`` when *summary* is empty or nothing remains.
+    """
+    if not summary:
+        return None
+    kept: list[str] = []
+    skipping = False
+    for line in _strip_seed_header(summary).splitlines():
+        heading = _HEADING.match(line.strip())
+        if heading:
+            title = heading.group(1)
+            if title.lower().startswith("context checkpoint"):
+                continue
+            skipping = bool(_TOOLS_SECTION_TITLE.search(title))
+        if not skipping:
+            kept.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip() or None
 
 
 # Placeholder substituted by the pi-native resident bridge, which can't know
@@ -329,12 +382,7 @@ def _transcript_message(
     lines: list[str] = []
     if previous_summary:
         # Stored summaries carry the header; feed back only the summary itself.
-        body = (
-            previous_summary.removeprefix(CHECKPOINT_HEADER)
-            .removeprefix(SIDE_CHAT_SEED_HEADER)
-            .lstrip()
-        )
-        lines += [_SUMMARY_REQUEST_TEXT, "", body, ""]
+        lines += [_SUMMARY_REQUEST_TEXT, "", _strip_seed_header(previous_summary), ""]
     lines.append("<conversation>")
     for item in items:
         kind = item.get("type")
@@ -599,13 +647,32 @@ async def _side_chat_checkpoint(
     )
 
 
-async def build_side_chat_seed(items: list[dict[str, Any]], **kwargs: Any) -> CompactionData:
+async def build_side_chat_seed(
+    items: list[dict[str, Any]],
+    *,
+    keep_tokens: int = DEFAULT_KEEP_TOKENS,
+    model: str,
+    llm_client: Any = None,
+    connection: dict[str, str] | None = None,
+    runner_client: Any | None = None,
+    conversation_id: str | None = None,
+) -> CompactionData:
     """:func:`_side_chat_checkpoint` with the side chat's own framing header.
 
     Takes the same arguments; the checkpoint's "this conversation grew past its
     limit" header would make the side chat believe it IS the main Conversation.
     """
-    return _side_chat_framed(await _side_chat_checkpoint(items, **kwargs))
+    return _side_chat_framed(
+        await _side_chat_checkpoint(
+            items,
+            keep_tokens=keep_tokens,
+            model=model,
+            llm_client=llm_client,
+            connection=connection,
+            runner_client=runner_client,
+            conversation_id=conversation_id,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +767,7 @@ def _chat_summary(
         # the label) or a Side Chat from before this label existed.
         "start": conversation.labels.get(SIDE_CHAT_START_LABEL_KEY),
         "summary": seed_summary,
+        "summary_body": person_facing_summary(seed_summary),
         "seed_item_id": seed_item_id,
         "live": conversation.live_status in _MID_TURN_LIVE_STATUSES,
     }
@@ -719,15 +787,16 @@ def list_related_chats(
     Scoped to the SAME owner as *conversation_id*, resolved from the store
     (never an argument) exactly like ``resolve_memory_user`` scopes memory —
     a session merely shared with another user never surfaces as "related"
-    to them, and a side chat whose source lost its workspace-derived fork
-    label (see :data:`FORK_SOURCE_LABEL_KEY`) is simply not found, matching
-    that label's existing "not a complete fork index" caveat.
+    to them, and a side chat opened before
+    :data:`SIDE_CHAT_PARENT_LABEL_KEY` whose source lost its workspace-derived
+    fork label is simply not found.
 
     :param conv_store: Store to query.
     :param conversation_id: The calling (source) session id.
     :param limit: Maximum chats to return.
     :returns: ``[{"id", "title", "created_at", "updated_at",
-        "last_message_preview", "archived", "start", "summary", "seed_item_id", "live"},
+        "last_message_preview", "archived", "start", "summary", "summary_body", "seed_item_id",
+        "live"},
         ...]``, newest-updated child first, parent last; ``[]`` when
         *conversation_id* does not exist.
     """
@@ -749,25 +818,28 @@ def list_related_chats(
         return other_owner_id == owner_id
 
     related: list[Conversation] = []
-    children = conv_store.list_conversations(
-        limit=_RELATED_CHATS_FETCH_CAP,
-        kind="default",
-        fork_source_id=conversation_id,
-        order="desc",
-        sort_by="updated_at",
-        # Archived Side Chats stay readable; the ``archived`` flag lets a UI hide them.
-        include_archived=True,
-    )
-    for child in children.data:
+    # Side Chats opened before SIDE_CHAT_PARENT_LABEL_KEY only carry the fork label.
+    children: dict[str, Conversation] = {}
+    for link in ({"side_chat_parent_id": conversation_id}, {"fork_source_id": conversation_id}):
+        page = conv_store.list_conversations(
+            limit=_RELATED_CHATS_FETCH_CAP,
+            kind="default",
+            order="desc",
+            sort_by="updated_at",
+            # Archived Side Chats stay readable; the ``archived`` flag lets a UI hide them.
+            include_archived=True,
+            **link,
+        )
+        children.update((child.id, child) for child in page.data)
+    for child in sorted(children.values(), key=lambda c: c.updated_at, reverse=True):
         if SIDE_CHAT_LABEL_KEY in child.labels and same_owner(child.id):
             related.append(child)
 
-    if SIDE_CHAT_LABEL_KEY in caller.labels:
-        parent_id = caller.labels.get(FORK_SOURCE_LABEL_KEY)
-        if parent_id:
-            parent = conv_store.get_conversation(parent_id)
-            if parent is not None and same_owner(parent.id):
-                related.append(parent)
+    parent_id = side_chat_parent_id(caller.labels)
+    if parent_id:
+        parent = conv_store.get_conversation(parent_id)
+        if parent is not None and same_owner(parent.id):
+            related.append(parent)
 
     # A scheduled or ad-hoc Helper (Study, daily note) works for its parent chat and may
     # read it; an ordinary Sub-agent stays confined to its Brief.
