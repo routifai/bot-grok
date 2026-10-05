@@ -418,13 +418,9 @@ const TranscriptView = memo(function Transcript({
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
         ) : null}
-        {reactionView.visibleMessages.map((message, messageIndex) => {
+        {reactionView.visibleMessages.map((message) => {
           if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
             return null;
-          // Muse mode: the face sits beside the first of a run of the Muse's replies.
-          const museGutter = museMode && museFace && message.role === "bot";
-          const museFaceShown =
-            museGutter && reactionView.visibleMessages[messageIndex - 1]?.role !== "bot";
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
           return (
@@ -437,24 +433,9 @@ const TranscriptView = memo(function Transcript({
                 className={
                   peerReceipt
                     ? undefined
-                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}${
-                        museGutter ? " gap-3" : ""
-                      }`
+                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`
                 }
               >
-                {museGutter && museFace ? (
-                  <div className="w-8 shrink-0 pt-0.5" aria-hidden="true">
-                    {museFaceShown ? (
-                      <BotAvatar
-                        color={museFace.color}
-                        identity={museFace.identity}
-                        museState={museLiveState}
-                        face="muse"
-                        size={32}
-                      />
-                    ) : null}
-                  </div>
-                ) : null}
                 <div
                   data-testid={peerReceipt ? undefined : "message-bubble-frame"}
                   className={
