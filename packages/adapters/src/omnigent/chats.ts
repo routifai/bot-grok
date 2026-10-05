@@ -31,6 +31,31 @@ function epochSecondsToIso(epochSeconds: number | null | undefined): string {
   return new Date((epochSeconds ?? 0) * 1000).toISOString();
 }
 
+/** A seed summary as the person should read it: the model-facing framing (a bracketed note,
+ * and the older rollover header that continues after its bracket), the "## Context checkpoint"
+ * title and any section listing tools or capabilities are dropped; the rest stays markdown.
+ * The engine owns the framing text; this only hides it. */
+export function personFacingSummary(raw: string | null | undefined): string {
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of (raw ?? "").split("\n")) {
+    const trimmed = line.trim();
+    if (/^\[(Side chat opened|Context checkpoint inserted)/.test(trimmed)) continue;
+    if (trimmed.startsWith("This conversation grew past its context limit")) continue;
+    const heading = /^#{1,6}\s+(.*)$/.exec(trimmed);
+    if (heading) {
+      const title = heading[1] ?? "";
+      if (/^context checkpoint/i.test(title)) continue;
+      skipping = /\b(technical|tools?|capabilit)/i.test(title);
+    }
+    if (!skipping) out.push(line);
+  }
+  return out
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** `related_chats` entry -> `ChatSummary` (docs/super-chat/WIRING.md: `start` "with_context" ->
  * "withContext"; a missing/null `start` — a Side Chat created before E1 stamped it — also reads
  * as "withContext", the pre-existing default behaviour). */
@@ -39,7 +64,7 @@ export function mapRelatedChatToSummary(raw: OmnigentRelatedChat): ChatSummary {
     id: raw.id,
     title: raw.title ?? "",
     start: raw.start === "blank" ? "blank" : "withContext",
-    summary: raw.summary ?? null,
+    summary: personFacingSummary(raw.summary) || null,
     archived: Boolean(raw.archived),
     live: Boolean(raw.live),
     updatedAt: epochSecondsToIso(raw.updated_at),

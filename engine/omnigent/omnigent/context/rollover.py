@@ -87,6 +87,14 @@ CHECKPOINT_HEADER = (
     "earlier messages with the session_history tool before relying on them."
 )
 
+# A side chat's seed reuses the checkpoint summary but not its framing: the
+# model must know it is a separate chat, not the conversation that rolled over.
+SIDE_CHAT_SEED_HEADER = (
+    "[Side chat opened from the person's main Conversation. Below is a summary "
+    "of that Conversation and its recent turns, for context. This side chat is "
+    "separate: it does not send anything back to the main Conversation.]"
+)
+
 
 # Placeholder substituted by the pi-native resident bridge, which can't know
 # the real compaction date at session-launch time (the summary may be built
@@ -123,7 +131,9 @@ def state_file_summarizer_instruction(*, today: str | None = None) -> str:
         "about the user or the conversation: never record them as the reason "
         "earlier messages are missing, and never claim earlier messages are "
         "inaccessible — the full record is always recoverable with "
-        "session_history."
+        "session_history. Never list tool names, function names or other "
+        "internal system names (no 'technical capabilities' sections): the "
+        "person may read this summary."
     )
 
 
@@ -319,7 +329,11 @@ def _transcript_message(
     lines: list[str] = []
     if previous_summary:
         # Stored summaries carry the header; feed back only the summary itself.
-        body = previous_summary.removeprefix(CHECKPOINT_HEADER).lstrip()
+        body = (
+            previous_summary.removeprefix(CHECKPOINT_HEADER)
+            .removeprefix(SIDE_CHAT_SEED_HEADER)
+            .lstrip()
+        )
         lines += [_SUMMARY_REQUEST_TEXT, "", body, ""]
     lines.append("<conversation>")
     for item in items:
@@ -448,7 +462,32 @@ async def build_rollover_item(
     )
 
 
-async def build_side_chat_seed(
+def _side_chat_framed(seed: CompactionData) -> CompactionData:
+    """Swap the rollover checkpoint header for the side chat's own framing."""
+
+    def swap(text: str) -> str:
+        if text.startswith(CHECKPOINT_HEADER):
+            return SIDE_CHAT_SEED_HEADER + text.removeprefix(CHECKPOINT_HEADER)
+        return text
+
+    messages = seed.compacted_messages
+    if messages:
+        messages = [dict(m) for m in messages]
+        first = messages[0]
+        content = first.get("content")
+        if first.get("role") == "user" and isinstance(content, list):
+            first["content"] = [
+                {**b, "text": swap(b["text"])}
+                if isinstance(b, dict) and isinstance(b.get("text"), str)
+                else b
+                for b in content
+            ]
+    return seed.model_copy(
+        update={"summary": swap(seed.summary or ""), "compacted_messages": messages}
+    )
+
+
+async def _side_chat_checkpoint(
     items: list[dict[str, Any]],
     *,
     keep_tokens: int = DEFAULT_KEEP_TOKENS,
@@ -558,6 +597,15 @@ async def build_side_chat_seed(
         runner_client=runner_client,
         conversation_id=conversation_id,
     )
+
+
+async def build_side_chat_seed(items: list[dict[str, Any]], **kwargs: Any) -> CompactionData:
+    """:func:`_side_chat_checkpoint` with the side chat's own framing header.
+
+    Takes the same arguments; the checkpoint's "this conversation grew past its
+    limit" header would make the side chat believe it IS the main Conversation.
+    """
+    return _side_chat_framed(await _side_chat_checkpoint(items, **kwargs))
 
 
 # ---------------------------------------------------------------------------

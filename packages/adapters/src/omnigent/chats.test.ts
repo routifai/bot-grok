@@ -5,6 +5,7 @@ import {
   mapOmnigentItemsToMessages,
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
+  personFacingSummary,
   resolveChatOwnership,
   sideChatStartToWire,
 } from "./chats.js";
@@ -26,6 +27,31 @@ describe("sideChatStartToWire", () => {
   it("maps withContext/blank to with_context/blank", () => {
     expect(sideChatStartToWire("withContext")).toBe("with_context");
     expect(sideChatStartToWire("blank")).toBe("blank");
+  });
+});
+
+describe("personFacingSummary", () => {
+  it("drops framing, the checkpoint title and tool sections; keeps the rest", () => {
+    const raw = [
+      "[Side chat opened from the person's main Conversation. Below is a summary.]",
+      "",
+      "## Context checkpoint — 2026-10-04 10:00 UTC",
+      "**Goal**: plan Q4",
+      "",
+      "## Technical capabilities confirmed",
+      "- sys_session_send, sys_os_write",
+      "",
+      "## Current position / next step",
+      "Draft the checklist.",
+    ].join("\n");
+    const out = personFacingSummary(raw);
+    expect(out).toBe("**Goal**: plan Q4\n\n## Current position / next step\nDraft the checklist.");
+  });
+
+  it("strips the older rollover header line", () => {
+    const raw =
+      "[Context checkpoint inserted by the system, not a message from the user.] This conversation grew past its context limit and more.\n\nBody";
+    expect(personFacingSummary(raw)).toBe("Body");
   });
 });
 

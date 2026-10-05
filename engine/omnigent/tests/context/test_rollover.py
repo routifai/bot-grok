@@ -857,6 +857,31 @@ async def test_side_chat_seed_stops_at_parents_last_reply() -> None:
 
 
 @pytest.mark.asyncio
+async def test_side_chat_seed_uses_side_chat_framing_not_the_rollover_header() -> None:
+    """The seed must not tell the model it IS the conversation that rolled over."""
+    from omnigent.context.rollover import CHECKPOINT_HEADER, SIDE_CHAT_SEED_HEADER
+
+    data = await build_side_chat_seed(
+        _turn(1) + _turn(2),
+        keep_tokens=100_000,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient("SUMMARY"),
+    )
+
+    assert data.summary.startswith(SIDE_CHAT_SEED_HEADER)
+    assert data.summary.endswith("SUMMARY")
+    assert CHECKPOINT_HEADER not in data.summary
+    assert data.compacted_messages is not None
+    first = data.compacted_messages[0]["content"][0]["text"]
+    assert first.startswith(SIDE_CHAT_SEED_HEADER)
+    assert "grew past its context limit" not in first
+
+
+def test_summarizer_instruction_forbids_listing_tool_names() -> None:
+    assert "Never list tool names" in state_file_summarizer_instruction()
+
+
+@pytest.mark.asyncio
 async def test_side_chat_seed_with_no_reply_yet_still_excludes_the_trailing_request() -> None:
     """Even with NO assistant reply anywhere in the record yet, the seed
     must not inherit the unanswered request opening this fork — it stops

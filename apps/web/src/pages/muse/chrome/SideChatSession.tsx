@@ -5,7 +5,16 @@ import type {
   ThreadMessage,
   ThreadMessagePage,
 } from "@aiden/contracts";
-import { Button, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronRight, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
@@ -24,6 +33,15 @@ export type SideChatWire = {
   messages: (input: { chatId: string }) => Promise<ThreadMessagePage>;
   send: (input: { chatId: string; text: string }) => Promise<{ ok: true }>;
 };
+
+/** The context summary a person can read: markdown, capped in height, scrolls past it. */
+function SummaryBody({ text }: { text: string }) {
+  return (
+    <div className="max-h-[320px] overflow-y-auto px-4 py-3 text-[13px] leading-[1.55]">
+      <ChatMarkdown>{text}</ChatMarkdown>
+    </div>
+  );
+}
 
 /** The Muse a Side Chat belongs to: its face shows beside the replies. */
 export type SideChatBot = { id: string; name: string; color: string };
@@ -303,16 +321,25 @@ function DraftSideChat({
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-[320px] text-[12.5px] leading-[1.5]">
             {knows ? (
-              preview ? (
-                <Trans>It starts with this summary: “{preview}”</Trans>
-              ) : (
-                <Trans>It starts with a summary of this conversation.</Trans>
-              )
+              <Trans>It starts with a summary of this conversation.</Trans>
             ) : (
               <Trans>It starts fresh, with only what Nova knows about you.</Trans>
             )}
           </TooltipContent>
         </Tooltip>
+        {knows && preview ? (
+          <Popover>
+            <PopoverTrigger
+              type="button"
+              className="ms-2 inline-flex h-8 items-center rounded-full px-3 text-[13px] text-muted-foreground hover:text-foreground"
+            >
+              <Trans>See summary</Trans>
+            </PopoverTrigger>
+            <PopoverContent side="top" className="w-[min(420px,calc(100vw-2rem))] p-0">
+              <SummaryBody text={preview} />
+            </PopoverContent>
+          </Popover>
+        ) : null}
       </div>
       <view.Composer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
     </div>
@@ -459,9 +486,9 @@ function ExistingSideChat({
           <Trans>With context</Trans>
           <ChevronRight size={12} className="shrink-0 transition-transform group-open:rotate-90" />
         </summary>
-        <p className="mt-2 rounded-2xl bg-muted/60 px-4 py-2.5 text-foreground/80">
-          {chat.summary}
-        </p>
+        <div className="mt-2 rounded-2xl bg-muted/60 text-foreground/80">
+          <SummaryBody text={chat.summary} />
+        </div>
       </details>
     ) : null;
 
