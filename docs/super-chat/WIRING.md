@@ -66,7 +66,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 
 | Change | Why |
 |---|---|
-| Agent bundle `nova-claude` = Super Chat bundle (claude-sdk, Nova prompt, Helper types `researcher`/`analyst`/`drafter`); drop `nova-pi`, `nova-openai`, `nova-codex` and every `nova_*` tool | Claude SDK only; the `nova_*` tools are gone from the engine |
+| Agent bundle `nova-claude` = Super Chat bundle (claude-sdk, Nova prompt, one general Helper type `worker` with `fast`/`strong` models, ADR 0007); `nova-pi` is a second bundle from the same templates, chosen by `NOVA_MUSE_HARNESS=pi`; drop `nova-openai`, `nova-codex` and every `nova_*` tool | Claude SDK by default; the `nova_*` tools are gone from the engine |
 | Gateway creates the Super Chat with the mode label; replaces a session without it | Turns the capability on |
 | Remove the context-provider route (`/internal/omnigent/context`) and `context-provider.ts` | The engine no longer calls it; memory comes from Omnigent |
 | Implement `chats.*` and add `activities.list` / `activities.get` (contracts + router + adapter client) with the ownership rule above | Side chats, Helper status, Activity panel |
@@ -85,7 +85,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 
 1. First message creates a Super Chat with the mode label; reply appears.
 2. "+ New side chat" with the switch on answers from the Conversation; off does not.
-3. Ask the Muse to "use a researcher helper for X": the Activity panel shows
+3. Ask the Muse to "research X in the background" (a `worker` Helper): the Activity panel shows
    it In progress, then Done; the Result appears in the Conversation without
    a new message from the person.
 4. Open the Helper from the panel: messages are visible, no composer.

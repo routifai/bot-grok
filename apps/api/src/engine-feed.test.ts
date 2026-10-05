@@ -43,7 +43,7 @@ const topic = (id: string, name: string, extra = {}) => ({
   timezone: "UTC",
   state: "active",
   parent_session_id: "sess-1",
-  agent_type: "researcher",
+  agent_type: "worker",
   created_at: 1_700_000_000,
   ...extra,
 });
@@ -59,7 +59,7 @@ const assistant = (id: string, text: string) => ({
 afterEach(() => vi.unstubAllGlobals());
 
 describe("engine feed", () => {
-  it("lists only researcher tasks of this Super Chat as topics", async () => {
+  it("lists only worker tasks of this Super Chat as topics", async () => {
     stub({
       "GET /v1/scheduled-tasks": {
         scheduled_tasks: [
@@ -158,7 +158,7 @@ describe("engine feed", () => {
     ]);
   });
 
-  it("follows by creating a weekly researcher task on the Super Chat", async () => {
+  it("follows by creating a weekly worker task on the Super Chat", async () => {
     const fetchMock = stub({
       "GET /v1/scheduled-tasks": { scheduled_tasks: [] },
       "POST /v1/scheduled-tasks": topic("t9", "Fusion power"),
@@ -173,7 +173,7 @@ describe("engine feed", () => {
       name: "Fusion power",
       rrule: "FREQ=WEEKLY",
       parent_session_id: "sess-1",
-      agent_type: "researcher",
+      agent_type: "worker",
     });
   });
 

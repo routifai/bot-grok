@@ -1,6 +1,6 @@
 // `feed.list` posts and `topics.*` for Muses whose proactive work the engine owns
 // (docs/adr/0005-proactive-work-is-scheduled-helper-runs.md). A Followed topic is a scheduled
-// task on the engine parented on the Muse's Super Chat with agent_type "researcher"; a Post is
+// task on the engine parented on the Muse's Super Chat with agent_type "worker"; a Post is
 // one finished run's Result. Nova keeps no Post or FollowedTopic rows for these Muses.
 import {
   createOmnigentScheduledTask,
@@ -18,7 +18,7 @@ import type { Actor, FollowedTopic, Post } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
 import { ORPCError } from "@orpc/server";
 
-export const FOLLOWED_TOPIC_AGENT_TYPE = "researcher";
+export const FOLLOWED_TOPIC_AGENT_TYPE = "worker";
 const WEEKLY = "FREQ=WEEKLY";
 /** A run whose whole Result is this has nothing to show. */
 const NOTHING_NEW = "Nothing new.";

@@ -32,7 +32,6 @@ vi.mock("@aiden/ui-web", () => {
 });
 
 import { ArtifactFileCard } from "./ArtifactFileCard";
-import { ReplyCardBotProvider } from "./context";
 
 const hosts: HTMLElement[] = [];
 afterEach(() => {
@@ -40,35 +39,22 @@ afterEach(() => {
   list.mockReset();
 });
 
-it("matches a hand-written file card to the Muse's deliverable by name", async () => {
-  list.mockResolvedValue([{ id: "art-9", name: "plan.html", size: 10, version: 1 }]);
+function render(data: { name: string; artifactId?: string }): HTMLElement {
   const host = document.createElement("div");
   document.body.append(host);
   hosts.push(host);
-  await act(async () =>
-    createRoot(host).render(
-      <ReplyCardBotProvider botId="bot-1">
-        <ArtifactFileCard data={{ name: "plan.html", kind: "html" }} />
-      </ReplyCardBotProvider>,
-    ),
-  );
-  await vi.waitFor(() =>
-    expect(host.querySelector("[data-preview]")?.getAttribute("data-preview")).toBe("art-9"),
-  );
-  expect(list).toHaveBeenCalledWith({ botId: "bot-1" });
+  act(() => createRoot(host).render(<ArtifactFileCard data={data} />));
+  return host;
+}
+
+it("previews a card by its artifact id without listing deliverables", () => {
+  const host = render({ name: "plan.html", artifactId: "art-9" });
+  expect(host.querySelector("[data-preview]")?.getAttribute("data-preview")).toBe("art-9");
+  expect(list).not.toHaveBeenCalled();
 });
 
-it("keeps the plain card when no deliverable has that name", async () => {
-  list.mockResolvedValue([]);
-  const host = document.createElement("div");
-  document.body.append(host);
-  hosts.push(host);
-  await act(async () =>
-    createRoot(host).render(
-      <ReplyCardBotProvider botId="bot-1">
-        <ArtifactFileCard data={{ name: "none.html" }} />
-      </ReplyCardBotProvider>,
-    ),
-  );
+it("keeps the plain card, with no lookup, when the card has no artifact id", () => {
+  const host = render({ name: "none.html" });
   expect(host.querySelector("[data-plain-file]")).not.toBeNull();
+  expect(list).not.toHaveBeenCalled();
 });

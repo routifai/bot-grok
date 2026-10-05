@@ -38,12 +38,10 @@ untouched and still the default.
   `web_fetch` builtins only for week 1. `AGENTS.md` just says to follow
   `<deployment_context>` — all the real per-turn instructions arrive through the context-provider
   hook.
-- **Harness catalog** — `packages/adapters/src/omnigent/harnesses.ts` is the single source of
-  truth mapping each `NovaHarnessId` (`pi` | `claude` | `openai` | `codex`,
-  `packages/contracts/src/engine.ts`) to its built-in agent bundle name and to the env var that
-  must be set for it to be usable. `engine.info` / `engine.setHarness`
-  (`packages/contracts/src/rpc.ts`, implemented in `apps/api/src/engine-info.ts`) let a person
-  see and choose their Muse's harness; the choice persists on `Bot.museHarness`.
+- **Harness choice** — one deployment flag, `NOVA_MUSE_HARNESS` (`claude-sdk` default | `pi`),
+  picks the Muse's bundle by name in `packages/adapters/src/omnigent/env.ts`
+  (`museAgentNameFromEnv`): `nova-claude` or `nova-pi`, both rendered from the same templates.
+  There is no per-Muse choice and no `engine.*` route.
 - **Gateway** — `packages/adapters/src/omnigent/client.ts` (a small typed REST client:
   create/get sessions, post a message event, stream SSE, list items, switch a session's agent —
   no SDK, just `fetch` and a tiny SSE parser mirroring `apps/mobile/lib/api.ts`'s
@@ -64,18 +62,10 @@ untouched and still the default.
 
 ### Choosing a harness
 
-`engine.info({ botId })` returns whether the engine is enabled, the Muse's currently active
-harness (`null` when disabled, otherwise defaulting to `"pi"`), and the full harness catalog with
-per-harness availability computed from the API process's own env (missing key → `available:
-false` and an `unavailableReason` naming the variable to set). `engine.setHarness({ botId,
-harness })` persists a choice to `Bot.museHarness`, rejecting an unavailable harness or a call
-made while the engine isn't enabled. A person can switch mid-Conversation: the next turn's
-gateway call detects the mismatch against the session's recorded agent and calls switch-agent
-before posting the turn (see "Gateway" above).
-
-`Bot.museHarness` is `null` by default, meaning "use the deployment default" — today's single
-`OMNIGENT_AGENT_NAME` env var, resolved to a harness id for backwards compatibility with a
-deployment that hasn't adopted per-Muse choice yet.
+Set `NOVA_MUSE_HARNESS=pi` to run the Muse on Pi; unset (or `claude-sdk`) runs it on the Claude
+Agent SDK. An explicit `OMNIGENT_AGENT_NAME` overrides the flag. An existing Conversation moves
+over through Omnigent's switch-agent before its next turn (see "Gateway" above). Helpers stay on
+the Claude Agent SDK.
 
 ### The Nova computer runner launcher
 
@@ -218,7 +208,7 @@ this integration doesn't cover those yet.
 | --- | --- | --- |
 | `OMNIGENT_URL` | `apps/api`, `apps/worker` | Base URL of the Omnigent server, e.g. `http://127.0.0.1:8000`. Setting both this and the proxy secret routes eligible runs through the gateway. |
 | `OMNIGENT_PROXY_SECRET` | `apps/api`, `apps/worker` | Shared secret sent as `X-Omnigent-Proxy-Secret` on every gateway call, alongside `X-Forwarded-Email` (the person's email) for Omnigent's header-auth mode. Required together with `OMNIGENT_URL`. |
-| `OMNIGENT_AGENT_NAME` | `apps/api`, `apps/worker` | Which built-in agent bundle a Muse runs on when it has no `museHarness` choice of its own (deployment default). Defaults to `nova-pi`; set to `nova-claude`/`nova-openai`/`nova-codex` to change it. Superseded per-Muse by `engine.setHarness`. |
+| `OMNIGENT_AGENT_NAME` | `apps/api`, `apps/worker` | Overrides the Muse's agent bundle by name. Unset, `NOVA_MUSE_HARNESS` chooses between `nova-claude` (default) and `nova-pi`. |
 | `OMNIGENT_CONTEXT_PROVIDER_SECRET` | `apps/api` | Bearer secret the context-provider route requires. **Unset 404s the route entirely** — set this to enable the endpoint. |
 | `OPENROUTER_API_KEY` / `AIDEN_LOCAL_MODELS_URL` | `apps/api` | Either makes the `pi` harness available in `engine.info`'s catalog (Pi routes through OpenRouter or a locally configured OpenAI-compatible server). |
 | `ANTHROPIC_API_KEY` | `apps/api` | Makes the `claude` harness (Claude Agent SDK) available in `engine.info`'s catalog. |
@@ -233,7 +223,7 @@ From the repo root, with Nova's API running on `127.0.0.1:3100` (the default):
 export OMNIGENT_CONTEXT_PROVIDER_URL=http://127.0.0.1:3100/internal/omnigent/context
 export OMNIGENT_CONTEXT_PROVIDER_SECRET=some-long-random-dev-secret
 export OMNIGENT_AUTH_HEADER_SECRET=some-long-random-dev-secret   # see Open Questions below
-export OMNIGENT_BUILTIN_AGENT_DIRS="$(pwd)/infra/omnigent/agents/nova-pi:$(pwd)/infra/omnigent/agents/nova-claude:$(pwd)/infra/omnigent/agents/nova-openai:$(pwd)/infra/omnigent/agents/nova-codex"
+export OMNIGENT_BUILTIN_AGENT_DIRS="$(pwd)/infra/omnigent/agents/nova-claude:$(pwd)/infra/omnigent/agents/nova-pi"
 
 uv run --project engine/omnigent omnigent server
 ```

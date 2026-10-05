@@ -6,10 +6,11 @@ import {
   deleteOmnigentArtifact,
   fetchOmnigentArtifactContent,
   getOmnigentArtifact,
+  getOmnigentSession,
   listOmnigentArtifacts,
+  listOmnigentRelatedChats,
   type OmnigentArtifact,
   type OmnigentClientConfig,
-  resolveChatOwnership,
 } from "@aiden/adapters";
 import type { Actor, Artifact, ArtifactVersion, ArtifactWithContent } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
@@ -48,33 +49,65 @@ function toArtifact(item: OmnigentArtifact, botId: string | null): Artifact {
   };
 }
 
+/** How far up a Helper chain (Helper of a Helper...) ownership is followed. */
+const HELPER_CHAIN_MAX_HOPS = 3;
+/** The engine's page cap for `GET /v1/artifacts` (it has no offset). */
+const ENGINE_LIST_MAX = 500;
+const DEFAULT_LIST_LIMIT = 200;
+
+type OwnerOf = (sessionId: string) => Promise<string | undefined>;
+
 /**
- * The Muse each engine session belongs to, for this person. A deliverable is keyed by the chat
- * that saved it (`artifact_save` by a Helper lands on the chat that launched it), so besides a
- * Muse's own Conversation its Side Chats and their Helpers (any depth) count: the same
- * ownership rule chats.* uses, `resolveChatOwnership`. Sessions of no owned Muse are left out.
+ * Maps an engine session to the Muse it belongs to, for this person. A deliverable is keyed by
+ * the chat that saved it (`artifact_save` by a Helper lands on the chat that launched it), so
+ * besides a Muse's own Conversation its Side Chats and their Helpers (any depth) count, the same
+ * rule as `resolveChatOwnership`. Built once per request: each Muse's Side Chats are fetched
+ * once and parent hops are memoized, so a list costs O(Muses + distinct Helper sessions).
+ * `onlyBotId` limits the map to one Muse. Sessions of no owned Muse resolve to undefined.
  */
-async function botIdsBySession(
+async function ownerResolver(
   deps: EngineArtifactsDeps,
   client: OmnigentClientConfig,
   actor: Actor,
   email: string,
-  sessionIds: string[],
-): Promise<Map<string, string>> {
-  const resolved = new Map<string, string>();
-  if (sessionIds.length === 0) return resolved;
+  onlyBotId?: string,
+): Promise<OwnerOf> {
   const supers = await deps.prisma.omnigentSession.findMany({
-    where: { bot: { userId: actor.userId, spaceId: actor.spaceId } },
+    where: { bot: { userId: actor.userId, spaceId: actor.spaceId }, botId: onlyBotId },
     select: { omnigentSessionId: true, botId: true },
   });
-  const direct = new Map(supers.map((row) => [row.omnigentSessionId, row.botId]));
-  for (const id of sessionIds) {
-    const botId =
-      direct.get(id) ??
-      (await resolveChatOwnership(client, email, supers, id).catch(() => null))?.botId;
-    if (botId) resolved.set(id, botId);
-  }
-  return resolved;
+  const owners = new Map(supers.map((row) => [row.omnigentSessionId, row.botId]));
+  await Promise.all(
+    supers.map(async (row) => {
+      const related = await listOmnigentRelatedChats(client, email, row.omnigentSessionId);
+      for (const chat of related.data) owners.set(chat.id, row.botId);
+    }),
+  );
+  const parents = new Map<string, Promise<string | null>>();
+  const parentOf = (id: string) => {
+    let parent = parents.get(id);
+    if (!parent) {
+      parent = getOmnigentSession(client, email, id).then(
+        (session) => session.parent_session_id ?? null,
+        (error: unknown) => {
+          // A deleted session has no owner; anything else is a real failure.
+          if (error instanceof Error && /\(404\)/.test(error.message)) return null;
+          throw error;
+        },
+      );
+      parents.set(id, parent);
+    }
+    return parent;
+  };
+  return async (sessionId) => {
+    let current: string | null = sessionId;
+    for (let hop = 0; hop <= HELPER_CHAIN_MAX_HOPS && current !== null; hop++) {
+      const owner = owners.get(current);
+      if (owner) return owner;
+      current = await parentOf(current);
+    }
+    return undefined;
+  };
 }
 
 async function assertOwnMuse(
@@ -98,22 +131,20 @@ async function listWithCounts(
 ): Promise<Array<Artifact & { versionCount: number }>> {
   const email = await emailOf(deps, actor);
   if (botId) await assertOwnMuse(deps, actor, botId);
-  // All of the person's deliverables, then attributed to Muses: a Muse's own are not only the
-  // ones its Conversation saved.
-  const items = await listOmnigentArtifacts(client, email, undefined, 500);
-  const owners = await botIdsBySession(deps, client, actor, email, [
-    ...new Set(items.map((i) => i.parent_session_id)),
+  // The engine can only scope by one chat, and a Muse's deliverables span its Side Chats and
+  // Helpers, so take its newest page and attribute each row.
+  const [items, ownerOf] = await Promise.all([
+    listOmnigentArtifacts(client, email, undefined, ENGINE_LIST_MAX),
+    ownerResolver(deps, client, actor, email, botId),
   ]);
-  return items
-    .filter((item) => {
-      const owner = owners.get(item.parent_session_id);
-      return botId ? owner === botId : owner !== undefined;
-    })
-    .slice(0, limit)
-    .map((item) => ({
-      ...toArtifact(item, owners.get(item.parent_session_id) ?? null),
-      versionCount: item.versions,
-    }));
+  const owned: Array<Artifact & { versionCount: number }> = [];
+  for (const item of items) {
+    const owner = await ownerOf(item.parent_session_id);
+    if (!owner) continue;
+    owned.push({ ...toArtifact(item, owner), versionCount: item.versions });
+    if (owned.length === limit) break;
+  }
+  return owned;
 }
 
 export async function engineListArtifacts(
@@ -122,7 +153,7 @@ export async function engineListArtifacts(
   actor: Actor,
   botId: string,
 ): Promise<Artifact[]> {
-  return listWithCounts(deps, client, actor, botId, 200);
+  return listWithCounts(deps, client, actor, botId, DEFAULT_LIST_LIMIT);
 }
 
 export async function engineListSpaceArtifacts(
@@ -131,8 +162,14 @@ export async function engineListSpaceArtifacts(
   actor: Actor,
   input: { botId?: string; limit?: number },
 ): Promise<{ items: Array<Artifact & { versionCount: number }>; nextCursor: null }> {
-  // The engine returns the newest deliverables up to the cap in one page.
-  const items = await listWithCounts(deps, client, actor, input.botId, 200);
+  // The engine pages by newest-first cap only, so there is never a next page.
+  const items = await listWithCounts(
+    deps,
+    client,
+    actor,
+    input.botId,
+    input.limit ?? DEFAULT_LIST_LIMIT,
+  );
   return { items, nextCursor: null };
 }
 
@@ -162,9 +199,9 @@ export async function engineGetArtifact(
   const email = await emailOf(deps, actor);
   const detail = await getOmnigentArtifact(client, email, artifactId).catch(notFound);
   const bytes = await fetchOmnigentArtifactContent(client, email, artifactId);
-  const bots = await botIdsBySession(deps, client, actor, email, [detail.parent_session_id]);
+  const ownerOf = await ownerResolver(deps, client, actor, email);
   return {
-    ...toArtifact(detail, bots.get(detail.parent_session_id) ?? null),
+    ...toArtifact(detail, (await ownerOf(detail.parent_session_id)) ?? null),
     contentBase64: Buffer.from(bytes).toString("base64"),
   };
 }

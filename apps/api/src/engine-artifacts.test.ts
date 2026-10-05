@@ -45,6 +45,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("engine artifacts", () => {
   it("lists a Muse's deliverables in the Library's shape", async () => {
     const fetchMock = vi.fn(async (url: URL) => {
+      if (url.pathname.endsWith("/related_chats")) return json({ data: [] });
       expect(url.pathname).toBe("/v1/artifacts");
       expect(url.searchParams.get("parent_session_id")).toBeNull();
       return json({ artifacts: [row] });
@@ -92,6 +93,58 @@ describe("engine artifacts", () => {
     expect(all.items.map((item) => item.id).sort()).toEqual(["a1", "a2", "a3"]);
   });
 
+  it("resolves ownership with one related-chats call per Muse and memoized hops", async () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({
+      ...row,
+      id: `h${i}`,
+      parent_session_id: i % 2 ? "helper-1" : "helper-2",
+    }));
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) => {
+        calls.push(url.pathname);
+        if (url.pathname === "/v1/artifacts") return json({ artifacts: rows });
+        if (url.pathname === "/v1/sessions/sess-1/related_chats") return json({ data: [] });
+        if (url.pathname === "/v1/sessions/helper-1") {
+          return json({ id: "helper-1", parent_session_id: "helper-2" });
+        }
+        return json({ id: "helper-2", parent_session_id: "sess-1" });
+      }),
+    );
+    const page = await engineListSpaceArtifacts(deps, client, actor, {});
+    expect(page.items).toHaveLength(6);
+    expect(calls.filter((c) => c.includes("related_chats"))).toHaveLength(1);
+    expect(calls.filter((c) => c === "/v1/sessions/helper-1")).toHaveLength(1);
+    expect(calls.filter((c) => c === "/v1/sessions/helper-2")).toHaveLength(1);
+  });
+
+  it("honors the requested limit", async () => {
+    const rows = [row, { ...row, id: "a2" }, { ...row, id: "a3" }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) =>
+        url.pathname === "/v1/artifacts" ? json({ artifacts: rows }) : json({ data: [] }),
+      ),
+    );
+    const page = await engineListSpaceArtifacts(deps, client, actor, { limit: 2 });
+    expect(page.items.map((item) => item.id)).toEqual(["a1", "a2"]);
+  });
+
+  it("surfaces engine failures instead of dropping rows", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) => {
+        if (url.pathname === "/v1/artifacts") {
+          return json({ artifacts: [{ ...row, parent_session_id: "unknown" }] });
+        }
+        if (url.pathname === "/v1/sessions/unknown") return json({ error: "boom" }, 500);
+        return json({ data: [] });
+      }),
+    );
+    await expect(engineListSpaceArtifacts(deps, client, actor, {})).rejects.toThrow();
+  });
+
   it("returns versions, content as base64, and deletes", async () => {
     const detail = {
       ...row,
@@ -105,6 +158,7 @@ describe("engine artifacts", () => {
       vi.fn(async (url: URL, init?: RequestInit) => {
         if (init?.method === "DELETE") return json({ deleted: true });
         if (url.pathname.endsWith("/content")) return new Response("<h1>hi</h1>");
+        if (url.pathname.endsWith("/related_chats")) return json({ data: [] });
         return json(detail);
       }),
     );
