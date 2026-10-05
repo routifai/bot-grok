@@ -42,6 +42,7 @@ from omnigent.superchat.activity.titles import (
     strip_reply_filler,
     tidy_request_title,
 )
+from omnigent.superchat.step_limit.policy import is_work_tool
 from omnigent.tools.builtins.spawn import _project_activity_item
 from omnigent.util.session_lifecycle import is_session_closed, title_without_closed_marker
 
@@ -745,11 +746,12 @@ def local_day(epoch_seconds: int, tz: str | None = None) -> str:
 
 
 def _did_real_work(activity: Activity) -> bool:
-    """Whether a conversation turn is worth a row: it is not just a quick answer in chat."""
+    """Whether a conversation turn is worth a row: it did work, not just answered in chat."""
     if len(activity.steps) >= _MIN_TURN_STEPS:
         return True
+    # One search, page read, file or browser step is still work the person may want to trace.
     if any(
-        step.tool and (step.tool.startswith("browser_") or "computer" in step.tool)
+        step.tool and (is_work_tool(step.tool) or "computer" in step.tool)
         for step in activity.steps
     ):
         return True

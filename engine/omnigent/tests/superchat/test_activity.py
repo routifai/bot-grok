@@ -616,13 +616,15 @@ def test_feed_omits_quick_turns_and_keeps_real_work() -> None:
             _row("quick"),
             _row("steps", tools=("a", "b", "c")),
             _row("browser", tools=("browser_navigate",)),
+            _row("one_search", tools=("web_search",)),
+            _row("memory_only", tools=("memory_search",)),
             _row("slow", finished_at=1_061),
             _row("helper", kind="sub_agent", source="background", tools=()),
             _row("goal", kind="sub_agent", source="goal", tools=()),
         ],
         None,
     )
-    assert {r.id for r in rows} == {"steps", "browser", "slow", "helper", "goal"}
+    assert {r.id for r in rows} == {"steps", "browser", "one_search", "slow", "helper", "goal"}
 
 
 def test_housekeeping_is_one_row_per_local_day() -> None:
