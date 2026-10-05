@@ -13,7 +13,25 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(here, "agents/nova-claude");
+/** Where bundles are written; `NOVA_RENDER_AGENTS_DIR` redirects it (tests render to a temp dir). */
+// biome-ignore lint/suspicious/noUndeclaredEnvVars: a test-only redirect, not a build input
+const AGENTS_DIR = process.env.NOVA_RENDER_AGENTS_DIR || join(here, "agents");
+/** One entry per Muse bundle. The ONE flag `NOVA_MUSE_HARNESS` (`claude-sdk` default | `pi`)
+ * picks which one Conversations run on: this script renders BOTH every run from the same
+ * templates; the flag is read by the Nova API (packages/adapters/src/omnigent/env.ts) to name
+ * the bundle, and Omnigent's own switch-agent moves existing sessions across. Helpers (worker/goal/teacher) stay on claude-sdk in both. Pi's
+ * extra keys keep it from fighting Omnigent: no AGENTS.md/CLAUDE.md auto-discovery, our prompt
+ * replaces pi's base prompt, no host skills. (Compaction is switched off engine-side, in
+ * inner/pi_executor.py, for superside-chat.) */
+const MUSE_BUNDLES = [
+  { name: "nova-claude", harness: "claude-sdk", executorExtra: "", skillsFilter: "" },
+  {
+    name: "nova-pi",
+    harness: "pi",
+    executorExtra: "    context_files: false\n    system_prompt_mode: replace",
+    skillsFilter: "skills: none",
+  },
+];
 /** Env var naming documented in docs/omnigent-spike.md / docs/super-chat/README.md. */
 const MODEL_ENV = "NOVA_CLAUDE_MODEL";
 /** One directory per Sub-agent Type (CONTEXT.md), each a static config.yaml — no templated
@@ -25,10 +43,11 @@ const GENERATED_HEADER =
   "# infra/omnigent/templates/, then run `node infra/omnigent/render-agents.mjs`.\n\n";
 
 function render(template, values) {
-  return Object.entries(values).reduce(
-    (text, [key, value]) => text.replaceAll(`{{${key}}}`, value),
-    template,
-  );
+  return Object.entries(values).reduce((text, [key, value]) => {
+    // A line holding only an empty placeholder is dropped, so optional keys leave no blank line.
+    const withoutEmptyLine = value === "" ? text.replaceAll(`{{${key}}}\n`, "") : text;
+    return withoutEmptyLine.replaceAll(`{{${key}}}`, value);
+  }, template);
 }
 
 /** Indents every line but the first, so a multi-line partial fits a YAML block scalar. */
@@ -48,17 +67,32 @@ function main() {
     FILESYSTEM: filesystem,
   });
 
-  mkdirSync(OUT_DIR, { recursive: true });
-  writeFileSync(join(OUT_DIR, "config.yaml"), render(configTemplate, { MODEL_ENV }));
-  writeFileSync(join(OUT_DIR, "AGENTS.md"), agentsMd);
-  console.log(`wrote ${OUT_DIR}/config.yaml and AGENTS.md`);
+  for (const bundle of MUSE_BUNDLES) {
+    const outDir = join(AGENTS_DIR, bundle.name);
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(
+      join(outDir, "config.yaml"),
+      render(configTemplate, {
+        MODEL_ENV,
+        BUNDLE_NAME: bundle.name,
+        HARNESS: bundle.harness,
+        EXECUTOR_EXTRA: bundle.executorExtra,
+        SKILLS_FILTER: bundle.skillsFilter,
+      }),
+    );
+    writeFileSync(join(outDir, "AGENTS.md"), agentsMd);
+    console.log(`wrote ${outDir}/config.yaml and AGENTS.md`);
 
-  for (const type of SUB_AGENT_TYPES) {
-    const subTemplate = readFileSync(join(here, `templates/agents/${type}/config.yaml`), "utf8");
-    const subDir = join(OUT_DIR, "agents", type);
-    mkdirSync(subDir, { recursive: true });
-    writeFileSync(join(subDir, "config.yaml"), GENERATED_HEADER + render(subTemplate, { FILESYSTEM: indent(filesystem, 2) }));
-    console.log(`wrote ${subDir}/config.yaml`);
+    for (const type of SUB_AGENT_TYPES) {
+      const subTemplate = readFileSync(join(here, `templates/agents/${type}/config.yaml`), "utf8");
+      const subDir = join(outDir, "agents", type);
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(
+        join(subDir, "config.yaml"),
+        GENERATED_HEADER + render(subTemplate, { FILESYSTEM: indent(filesystem, 2) }),
+      );
+      console.log(`wrote ${subDir}/config.yaml`);
+    }
   }
 }
 

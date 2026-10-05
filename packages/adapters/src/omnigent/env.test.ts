@@ -1,6 +1,10 @@
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { describe, expect, it } from "vitest";
-import { omnigentClientConfigFromEnv, omnigentGatewayDepsFromEnv } from "./env.js";
+import {
+  museAgentNameFromEnv,
+  omnigentClientConfigFromEnv,
+  omnigentGatewayDepsFromEnv,
+} from "./env.js";
 
 const prisma = {} as PrismaClient;
 const events = {} as ThreadEvents;
@@ -27,5 +31,13 @@ describe("omnigent connection env", () => {
       omnigentGatewayDepsFromEnv({ OMNIGENT_PROXY_SECRET: "s" }, prisma, events, []),
     ).toThrow("OMNIGENT_URL");
     expect(omnigentClientConfigFromEnv({ OMNIGENT_URL: "http://x" })).toBeUndefined();
+  });
+
+  it("NOVA_MUSE_HARNESS picks the Muse bundle; an explicit agent name wins", () => {
+    expect(museAgentNameFromEnv({})).toBe("nova-claude");
+    expect(museAgentNameFromEnv({ NOVA_MUSE_HARNESS: "claude-sdk" })).toBe("nova-claude");
+    expect(museAgentNameFromEnv({ NOVA_MUSE_HARNESS: " PI " })).toBe("nova-pi");
+    expect(museAgentNameFromEnv({ NOVA_MUSE_HARNESS: "pi", OMNIGENT_AGENT_NAME: "x" })).toBe("x");
+    expect(() => museAgentNameFromEnv({ NOVA_MUSE_HARNESS: "codex" })).toThrow("NOVA_MUSE_HARNESS");
   });
 });

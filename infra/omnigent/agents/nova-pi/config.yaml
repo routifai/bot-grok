@@ -1,0 +1,85 @@
+# GENERATED FILE — do not edit by hand. Edit infra/omnigent/templates/ (config.yaml.tmpl,
+# AGENTS.md, agents/<type>/config.yaml), then run `node infra/omnigent/render-agents.mjs`.
+#
+# Nova's Super Chat bundle (docs/super-chat/README.md, WIRING.md slice A1): the one agent
+# bundle backing `omnigent.context.mode=superside-chat` Conversations, adapted from
+# engine/omnigent/examples/super-chat/ for Nova. Runs on the Claude Agent SDK harness, with
+# Sub-agent Types worker/goal/teacher under agents/<type>/ — a Muse launches one by its
+# declared name, never by naming a model. The prompt (AGENTS.md) carries the Nova/Muse voice;
+# per-turn Memory, Rollover, Side Chats and the Activity Feed all come from Omnigent itself
+# (ADR 0001, engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md) — Nova no longer
+# injects anything through a context-provider hook.
+spec_version: 1
+name: nova-pi
+description: >-
+  Nova's Super Chat: the person's one long-running assistant, which does quick work itself,
+  hands long multi-step work to worker Helpers, and keeps the conversation itself bounded with
+  Omnigent's own Rollover and Memory.
+
+skills: none
+executor:
+  type: omnigent
+  # The engine reads the launch model from executor.model (not config.model).
+  model: ${NOVA_CLAUDE_MODEL}
+  config:
+    harness: pi
+    context_files: false
+    system_prompt_mode: replace
+
+interaction:
+  conversational: true
+  modalities:
+    input: [text, file]
+    output: [text]
+
+# Shell and file tools (sys_os_*) run in the Computer's workspace. The Computer is the
+# sandbox, so no inner sandbox and no approval prompts.
+os_env:
+  type: caller_process
+  cwd: /home/aiden/workspace
+  sandbox:
+    type: none
+
+tools:
+  builtins:
+    # Web search goes straight to Tavily's API (no sandboxed web-research sub-agent).
+    - name: web_search
+      search_provider: tavily
+      api_key: ${TAVILY_API_KEY}
+      max_results: 5
+    # Read one page's text headlessly (Tavily extract); pairs with web_search.
+    - name: web_fetch
+      fetch_provider: tavily
+      api_key: ${TAVILY_API_KEY}
+  # Only what the Muse's job needs. Helpers are started with start_helper and followed up
+  # with the inbox; everything else the framework registers (policy, comments, agent
+  # management, model listing, skills, renaming) is withheld.
+  allow:
+    - web_search
+    - web_fetch
+    - "browser_*"
+    - "sys_os_*"
+    - "memory_*"
+    - session_history
+    - side_chat_open
+    - start_helper
+    - sys_session_close
+    - sys_session_list
+    - sys_session_get_history
+    - sys_session_get_info
+    - sys_read_inbox
+    - sys_cancel_task
+    - "sys_scheduled_task_*"
+    - "objective_*"
+    - "suggestion_*"
+    - "skill_*"
+    - "vault_*"
+    - "artifact_*"
+    - render_card
+  # The Sub-agent Types this Super Chat may launch — see agents/<dir>/. Each has its own
+  # executor and max_sessions; a turn launches one by its declared `name`, never by naming a
+  # model (CONTEXT.md "Sub-agent Type").
+  agents:
+    - worker
+    - goal
+    - teacher

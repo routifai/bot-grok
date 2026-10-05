@@ -145,6 +145,9 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  # the Muse's turns. Major-pinned (not "latest") since this image is rebuilt manually, not by
  # CI on every main commit — an unpinned install could jump a breaking major between builds.
  && npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2 \
+ # Pi coding agent CLI: the `pi` harness (NOVA_MUSE_HARNESS=pi, bundle nova-pi) spawns `pi --mode rpc`.
+ # Exact-pinned to the version verified on the host (needs Node >= 22.19).
+ && npm install -g --no-audit --no-fund @earendil-works/pi-coding-agent@0.87.1 \
  # /usr/local/bin is the only directory on the sandbox supervisor's fixed exec PATH
  # (infra/sandboxes/supervisor/src/index.ts) outside of $HOME, so the venv's entry points are
  # symlinked in rather than requiring a PATH change there.

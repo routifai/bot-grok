@@ -15,6 +15,23 @@ import type { OmnigentGatewayDeps } from "./gateway.js";
 /** Built-in agent bundle Nova Conversation turns run on unless env `OMNIGENT_AGENT_NAME`
  * overrides it (infra/omnigent/agents/nova-claude/). */
 export const DEFAULT_AGENT_NAME = "nova-claude";
+/** Bundle used when env `NOVA_MUSE_HARNESS=pi` (infra/omnigent/agents/nova-pi/, rendered from the
+ * same templates as `nova-claude`; see infra/omnigent/render-agents.mjs). */
+export const PI_AGENT_NAME = "nova-pi";
+
+/**
+ * The Muse's agent bundle: an explicit `OMNIGENT_AGENT_NAME` wins, otherwise the one flag
+ * `NOVA_MUSE_HARNESS` (`claude-sdk` default | `pi`) picks it. Nova only names the bundle;
+ * Omnigent owns the harness, and its switch-agent moves an existing session across.
+ */
+export function museAgentNameFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env.OMNIGENT_AGENT_NAME?.trim();
+  if (explicit) return explicit;
+  const harness = env.NOVA_MUSE_HARNESS?.trim().toLowerCase();
+  if (!harness || harness === "claude-sdk") return DEFAULT_AGENT_NAME;
+  if (harness === "pi") return PI_AGENT_NAME;
+  throw new Error(`NOVA_MUSE_HARNESS must be "claude-sdk" or "pi", got "${harness}"`);
+}
 
 export interface OmnigentSuperChatConfig {
   /** Upper bound on how long one Super Chat turn may run before the gateway gives up and fails
@@ -104,7 +121,7 @@ export function omnigentGatewayDepsFromEnv(
     events,
     client: { baseUrl, proxySecret, secrets },
     secrets,
-    agentName: env.OMNIGENT_AGENT_NAME?.trim() || DEFAULT_AGENT_NAME,
+    agentName: museAgentNameFromEnv(env),
     config: omnigentSuperChatConfigFromEnv(env),
   };
 }

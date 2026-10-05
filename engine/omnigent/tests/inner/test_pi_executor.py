@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.inner.databricks_executor import DatabricksCredentials
 from omnigent.inner.executor import (
     ExecutorConfig,
@@ -1908,6 +1909,69 @@ class TestBuildEnvAndDir(unittest.TestCase):
             import shutil
 
             shutil.rmtree(config.tmp_dir, ignore_errors=True)
+
+    def test_superside_chat_disables_pi_auto_compaction_gateway(self):
+        with (
+            patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
+            patch(
+                "omnigent.inner.pi_executor._read_databrickscfg",
+                return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
+            ),
+        ):
+            executor = PiExecutor(gateway=True)
+
+        on = executor._build_env_and_dir([], None, None, None, disable_auto_compaction=True)
+        off = executor._build_env_and_dir([], None, None, None)
+        try:
+            settings_on = json.loads(
+                (Path(on.env["PI_CODING_AGENT_DIR"]) / "settings.json").read_text()
+            )
+            settings_off = json.loads(
+                (Path(off.env["PI_CODING_AGENT_DIR"]) / "settings.json").read_text()
+            )
+            self.assertEqual(settings_on["compaction"], {"enabled": False})
+            self.assertIn("retry", settings_on)
+            self.assertNotIn("compaction", settings_off)
+        finally:
+            import shutil
+
+            shutil.rmtree(on.tmp_dir, ignore_errors=True)
+            shutil.rmtree(off.tmp_dir, ignore_errors=True)
+
+    def test_superside_chat_disables_pi_auto_compaction_direct(self):
+        import shutil
+        import tempfile
+
+        cwd = tempfile.mkdtemp()
+        with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
+            executor = PiExecutor(cwd=cwd)
+        config = executor._build_env_and_dir([], None, None, None, disable_auto_compaction=True)
+        try:
+            settings = json.loads((Path(cwd) / ".pi" / "settings.json").read_text())
+            self.assertEqual(settings["compaction"], {"enabled": False})
+        finally:
+            shutil.rmtree(config.tmp_dir, ignore_errors=True)
+            shutil.rmtree(cwd, ignore_errors=True)
+
+    def test_run_turn_passes_superside_chat_context_mode(self):
+        with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
+            executor = PiExecutor()
+        seen: list[bool] = []
+
+        async def fake_ensure(*args, **kwargs):
+            seen.append(kwargs["disable_auto_compaction"])
+            raise RuntimeError("stop")
+
+        async def _drain(config):
+            with patch.object(executor, "_ensure_rpc", fake_ensure):
+                async for _ in executor.run_turn(
+                    [{"role": "user", "content": "hi"}], [], "sys", config
+                ):
+                    pass
+
+        _run(_drain(ExecutorConfig(extra={"context_mode": SUPERSIDE_CHAT_MODE_VALUE})))
+        _run(_drain(ExecutorConfig()))
+        self.assertEqual(seen, [True, False])
 
     def test_tools_generate_extension_js(self):
         with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):

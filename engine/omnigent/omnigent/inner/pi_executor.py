@@ -49,6 +49,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, NotRequired, Protocol, TypeAlias, TypedDict, cast
 from urllib.parse import urlparse as _urlparse
 
+from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.harnesses.pi_native.credentials import (
     _databricks_workspace_url_for_gateway,
     _is_databricks_ai_gateway_url,
@@ -1769,6 +1770,23 @@ def _aggregate_pi_turn_usage(
     }
 
 
+def _pi_owned_context_settings() -> dict[str, object]:
+    """
+    Pi settings that hand context ownership to Omnigent (superside-chat).
+
+    Omnigent's rollover bounds the conversation
+    (rollover/adr/0001-omnigent-owns-everything.md), so Pi's own
+    auto-compaction must not fight it: ``compaction.enabled=false`` in
+    ``settings.json`` (Pi docs ``settings.md`` / ``compaction.md``; Pi's
+    ``autoCompactionEnabled`` getter reads exactly this key, so it covers the
+    threshold and overflow paths). Pi has no auto-memory feature, so there is
+    no counterpart to claude-sdk's auto-memory switch.
+
+    :returns: A settings overlay, e.g. ``{"compaction": {"enabled": False}}``.
+    """
+    return {"compaction": {"enabled": False}}
+
+
 def _pi_thinking_from_config(config: ExecutorConfig | None) -> str | None:
     """Resolve the per-turn ``--thinking``/RPC level from a turn's config.
 
@@ -2241,6 +2259,7 @@ class PiExecutor(Executor):
         tool_server_port: int | None,
         tool_server_token: str | None,
         model: str | None,
+        disable_auto_compaction: bool = False,
     ) -> PiSubprocessConfig:
         """Build env dict, temp dir, and extra CLI args for a Pi subprocess.
 
@@ -2256,8 +2275,13 @@ class PiExecutor(Executor):
             ``models.json`` on the gateway path so the
             ``provider/<model>`` selector resolves. ``None`` when no model
             is pinned (Pi picks its own default).
+        :param disable_auto_compaction: Merge Pi's ``compaction.enabled=false``
+            into the settings overlay (superside-chat only).
         """
         env = dict(self._env)
+        settings_overlay = dict(self._retry_policy.pi.settings())
+        if disable_auto_compaction:
+            settings_overlay.update(_pi_owned_context_settings())
         tmp_dir = tempfile.mkdtemp(prefix="omnigent_pi_")
         extra_args: list[str] = list(self._extra_args)
 
@@ -2283,7 +2307,7 @@ class PiExecutor(Executor):
 
             prepare_managed_pi_agent_dir(
                 pathlib.Path(tmp_dir),
-                overlay=self._retry_policy.pi.settings(),
+                overlay=settings_overlay,
             )
 
         # Pi natively supports retry config via ``.pi/settings.json``
@@ -2292,7 +2316,7 @@ class PiExecutor(Executor):
         # Gateway runs apply retry via :func:`prepare_managed_pi_agent_dir`
         # into the managed agent dir instead.
         if not self._gateway:
-            retry_settings = self._retry_policy.pi.settings()
+            retry_settings = settings_overlay
             settings_dir_root = self._cwd or tmp_dir
             settings_path = os.path.join(settings_dir_root, ".pi", "settings.json")
             try:
@@ -2419,6 +2443,7 @@ class PiExecutor(Executor):
         model: str | None,
         tools: list[ToolSpec],
         thinking: str | None = None,
+        disable_auto_compaction: bool = False,
     ) -> _PiRpcSession:
         """Get or create a Pi RPC subprocess for the given session.
 
@@ -2426,6 +2451,9 @@ class PiExecutor(Executor):
             A change on a live process is applied over RPC instead — see
             :meth:`_apply_thinking_level` — so it is not part of the reuse
             signature. A model change respawns, which re-asserts the level.
+        :param disable_auto_compaction: Write ``compaction.enabled=false`` into
+            Pi's settings for this spawn (superside-chat: Omnigent rollover owns
+            context). See :func:`_pi_owned_context_settings`.
         """
         state = self._session_states.setdefault(session_key, _PiSessionState())
 
@@ -2448,7 +2476,11 @@ class PiExecutor(Executor):
         tool_server_port = await self._ensure_tool_server(tools)
         tool_server_token = self._tool_server.token if self._tool_server is not None else None
         subprocess_config = self._build_env_and_dir(
-            tools, tool_server_port, tool_server_token, effective_model
+            tools,
+            tool_server_port,
+            tool_server_token,
+            effective_model,
+            disable_auto_compaction=disable_auto_compaction,
         )
         env = subprocess_config.env
         tmp_dir = subprocess_config.tmp_dir
@@ -2515,7 +2547,17 @@ class PiExecutor(Executor):
 
         prior_rpc = (self._session_states.get(session_key) or _PiSessionState()).rpc
         try:
-            rpc = await self._ensure_rpc(session_key, system_prompt, model, tools, thinking)
+            rpc = await self._ensure_rpc(
+                session_key,
+                system_prompt,
+                model,
+                tools,
+                thinking,
+                disable_auto_compaction=(
+                    (config.extra if config is not None else {}).get("context_mode")
+                    == SUPERSIDE_CHAT_MODE_VALUE
+                ),
+            )
         except Exception as exc:  # noqa: BLE001 — executor boundary surfaces startup errors as ExecutorError
             yield ExecutorError(message=f"Failed to start Pi: {exc}")
             return

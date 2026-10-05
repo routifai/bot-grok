@@ -10,18 +10,20 @@
 # (ADR 0001, engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md) — Nova no longer
 # injects anything through a context-provider hook.
 spec_version: 1
-name: nova-claude
+name: {{BUNDLE_NAME}}
 description: >-
   Nova's Super Chat: the person's one long-running assistant, which does quick work itself,
   hands long multi-step work to worker Helpers, and keeps the conversation itself bounded with
   Omnigent's own Rollover and Memory.
 
+{{SKILLS_FILTER}}
 executor:
   type: omnigent
   # The engine reads the launch model from executor.model (not config.model).
   model: ${{{MODEL_ENV}}}
   config:
-    harness: claude-sdk
+    harness: {{HARNESS}}
+{{EXECUTOR_EXTRA}}
 
 interaction:
   conversational: true

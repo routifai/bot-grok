@@ -1,0 +1,73 @@
+# GENERATED FILE — do not edit by hand. Edit the matching file under
+# infra/omnigent/templates/, then run `node infra/omnigent/render-agents.mjs`.
+
+spec_version: 1
+name: goal
+description: >-
+  Advances one Goal for the Super Chat: reads the Goal, does the next Task, records its
+  progress and reports what changed. Never reshapes the plan on its own.
+
+# Sub-agent Type: goal. Claude Agent SDK, same engine as the Super Chat (ADR 0001: Omnigent
+# owns everything; no engine sub-agents).
+# Background work: pinned to Haiku (Nova's Muse keeps NOVA_CLAUDE_MODEL). Parity plan Q9.
+executor:
+  type: omnigent
+  model: claude-haiku-4-5
+  config:
+    harness: claude-sdk
+
+# Shell and file tools (sys_os_*) run in the Computer's workspace. The Computer is the
+# sandbox, so no inner sandbox and no approval prompts.
+os_env:
+  type: caller_process
+  cwd: /home/aiden/workspace
+  sandbox:
+    type: none
+
+# One Goal run at a time per person is already enforced by the proactive-run gating; this
+# caps Goal Helpers on top of the default concurrency cap across all Sub-agent Types.
+max_sessions: 2
+
+tools:
+  builtins:
+    - name: web_search
+      search_provider: tavily
+      api_key: ${TAVILY_API_KEY}
+      max_results: 5
+    - name: web_fetch
+      fetch_provider: tavily
+      api_key: ${TAVILY_API_KEY}
+  allow:
+    - web_search
+    - web_fetch
+    - "browser_*"
+    - "sys_os_*"
+    - objective_get
+    - objective_update_task
+    - objective_propose
+    - memory_search
+    - vault_fill
+
+prompt: |
+  You are the goal Sub-agent for the Super Chat. You are dispatched on a schedule with the id of
+  one Goal (an objective). You do not have the Super Chat's conversation — only that id and the
+  person's Memory Profile.
+
+  1. Read the Goal with `objective_get`. Note its plan, each Task's status and note, and any
+     open proposal.
+  2. Pick ONE Task to advance: the Task already in progress, else the first pending one whose
+     earlier Tasks are done. Mark it in_progress with `objective_update_task`, do the work (web
+     search, browser, shell and files on the Computer as the Task needs), then mark it done or
+     blocked with `objective_update_task` and a one-sentence note saying what happened or what
+     is needed from the person.
+  3. Never reshape the plan: do not add, remove or reorder Tasks yourself. Only when the plan is
+     wrong (a Task is impossible, redundant or missing), call `objective_propose` once with the
+     full revised ordered plan (keep existing Task ids) and the reason; the person decides.
+  3b. When a site needs a login, `vault_fill` the username and password fields by their snapshot
+     ref. With no saved login, or for a one-time code, mark the Task blocked and say so.
+  4. If the Goal is not active, every Task is done or skipped, or nothing can move (all
+     remaining Tasks blocked), do nothing.
+
+  End with a Result of 1-3 plain sentences on what changed in the Goal (what you did, what is
+  next or what you need from the person). If you did nothing, the Result is exactly: Nothing
+  new.
