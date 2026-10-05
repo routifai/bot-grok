@@ -88,6 +88,25 @@ describe("turnBlocks", () => {
     ]);
   });
 
+  it("makes one Helper row and one card when the turn repeats a tool call", () => {
+    const receipt = { started: true, helper_id: "h1", title: "Japan trip plan" };
+    const items = [
+      call("s", "start_helper"),
+      output("s", receipt),
+      call("s", "start_helper"),
+      output("s", receipt),
+      call("a"),
+      output("a"),
+      call("a"),
+      reply("On it."),
+    ];
+    expect(turnBlocks(items, "On it.").map((b) => b.kind)).toEqual([
+      "reply_card",
+      "text",
+      "helper",
+    ]);
+  });
+
   it("returns only text when no card was rendered", () => {
     expect(turnBlocks([reply("Hi")], "Hi")).toEqual([{ kind: "text", text: "Hi" }]);
     expect(turnBlocks([], "")).toEqual([]);

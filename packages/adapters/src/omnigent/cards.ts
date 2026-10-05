@@ -167,8 +167,14 @@ export function turnBlocks(items: Item[], replyText: string): MessageBlock[] {
   });
   const blocks: MessageBlock[] = [];
   const helpers: MessageBlock[] = [];
+  const seenCalls = new Set<string>();
   let replied = false;
   items.forEach((item, index) => {
+    // A turn's streamed output can repeat a tool call; one call is one block.
+    if (item.type === "function_call" && typeof item.call_id === "string") {
+      if (seenCalls.has(item.call_id)) return;
+      seenCalls.add(item.call_id);
+    }
     if (index === replyIndex && replyText) {
       blocks.push({ kind: "text", text: replyText });
       replied = true;

@@ -120,8 +120,13 @@ export function mapOmnigentItemsToMessages(
   const messages: ThreadMessage[] = [];
   const outputs = toolOutputsByCallId(items);
   let helpersStarted: HelperBlock[] = [];
+  const seenCalls = new Set<string>();
   for (const item of items) {
     if (item.type === "function_call") {
+      // A repeated tool call (same call_id) is one block, never two.
+      const callId = String(item.call_id ?? "");
+      if (callId && seenCalls.has(callId)) continue;
+      if (callId) seenCalls.add(callId);
       if (isStartHelperCall(item)) {
         const helper = helperBlockFromToolCall(outputs.get(String(item.call_id ?? "")));
         if (helper) helpersStarted.push(helper);
