@@ -14,6 +14,17 @@ import { applyUiAppearance, watchSystemAppearance } from "./lib/ui-appearance";
 import { resolveUiLocale } from "./lib/ui-locale";
 import "./styles.css";
 
+// Warm the 3D Muse face while the app boots, so it is ready when the first face mounts.
+function warmMuseFace() {
+  void import("./components/ai/bloop/live");
+  void import("three");
+}
+if (typeof window.requestIdleCallback === "function") {
+  window.requestIdleCallback(warmMuseFace, { timeout: 1500 });
+} else {
+  globalThis.setTimeout(warmMuseFace, 200);
+}
+
 markOnce("rk:renderer:module-evaluated");
 installPreloadRecovery();
 applyUiDirection(resolveUiLocale());

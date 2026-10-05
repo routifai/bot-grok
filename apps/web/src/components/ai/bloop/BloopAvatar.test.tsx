@@ -23,6 +23,8 @@ vi.mock("@aiden/ui-web", () => ({
   MUSE_FACE_CHEEK: "#FF8E86",
   MUSE_FACE_INK: "#132320",
   MUSE_FACE_SHINE: "#FFFFFF",
+  MUSE_FACE_SPARK: "#F4B63F",
+  MUSE_SPARK_PATH: "M0 0",
 }));
 
 import { BloopAvatar } from "./BloopAvatar";
@@ -30,12 +32,12 @@ import { BloopAvatar } from "./BloopAvatar";
 const base = { color: "#0090FF", identity: "muse", waitingCount: 0 } as const;
 
 describe("BloopAvatar", () => {
-  it("renders the static Muse face first, with state and asks, so it works without WebGL", () => {
+  it("falls back to the static Muse face, with state and asks, when WebGL is unavailable", () => {
     const html = renderToString(
       <BloopAvatar {...base} size={120} state="thinking" waitingCount={3} />,
     );
 
-    expect(html).toContain('data-bloop="loading"');
+    expect(html).toContain('data-bloop="fallback"');
     expect(html).toContain('data-muse-state="thinking"');
     expect(html).toContain('data-asks="3"');
     expect(html).toContain('data-hidden="false"');

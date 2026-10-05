@@ -11,11 +11,10 @@ export interface BloopTheme {
   foreground: string;
 }
 
-/** The thought cloud, "…" bubble, spinner dot and trail circle, drawn once per theme and shared. */
+/** The thought cloud, "…" bubble and trail circle, drawn once per theme and shared. */
 export interface BloopPropTextures {
   cloud: ThreeNamespace.CanvasTexture[];
   chat: ThreeNamespace.CanvasTexture[];
-  dot: ThreeNamespace.CanvasTexture;
   circle: ThreeNamespace.CanvasTexture;
   dispose(): void;
 }
@@ -105,12 +104,6 @@ export function buildPropTextures(THREE: Three, theme: BloopTheme): BloopPropTex
       }),
     );
   }
-  const dot = draw(64, 64, (g) => {
-    g.fillStyle = theme.foreground;
-    g.beginPath();
-    g.arc(32, 32, 24, 0, TAU);
-    g.fill();
-  });
   const circle = draw(64, 64, (g) => {
     g.fillStyle = theme.card;
     g.strokeStyle = theme.border;
@@ -124,7 +117,6 @@ export function buildPropTextures(THREE: Three, theme: BloopTheme): BloopPropTex
   return {
     cloud,
     chat,
-    dot,
     circle,
     dispose() {
       for (const texture of all) texture.dispose();

@@ -8,6 +8,8 @@ export {
   MUSE_FACE_CHEEK,
   MUSE_FACE_INK,
   MUSE_FACE_SHINE,
+  MUSE_FACE_SPARK,
+  MUSE_SPARK_PATH,
   MuseAvatar,
   museAvatarState,
   parseBotAvatar,

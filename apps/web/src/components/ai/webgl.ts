@@ -1,13 +1,18 @@
+let webglSupport: boolean | null = null;
+
+/** Whether this browser can create a WebGL context. Probed once: every probe makes a context. */
 export function supportsWebGL(): boolean {
+  if (webglSupport !== null) return webglSupport;
   if (typeof window === "undefined" || typeof window.WebGLRenderingContext === "undefined") {
     return false;
   }
   try {
     const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+    webglSupport = Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
   } catch {
-    return false;
+    webglSupport = false;
   }
+  return webglSupport;
 }
 
 export function parseColor(

@@ -13,8 +13,9 @@ import type { BloopPropTextures } from "./props";
 
 type Three = typeof ThreeNamespace;
 
-// The jelly body: view-space light, rim glow and a soft see-through edge. `uShear` lags the tip
-// behind the body's tilt and `uWob` ripples the surface; limbs use a local gradient instead.
+// The body is a soft translucent jelly: view-space light, a gentle depth gradient, a glow at the
+// rim and a small bright highlight. `uShear` lags the tip behind the body's tilt and `uWob` ripples
+// the surface; limbs use a local gradient instead.
 const VERTEX_SHADER = `
 uniform float uTime;
 uniform vec2 uShear;
@@ -54,12 +55,12 @@ void main() {
   vec3 L = normalize(vec3(-0.45, 0.8, 0.6));
   float diff = max(dot(N, L), 0.0);
   vec3 base = mix(uBot, uTop, smoothstep(0.0, 1.0, vH));
-  vec3 col = base * (0.62 + 0.38 * diff) + uRim * fres * 0.7;
-  col += uBot * 0.22 * (1.0 - vH) * (1.0 - nv);
+  vec3 col = base * (0.72 + 0.3 * diff) + uRim * fres * 0.5;
+  col += uBot * 0.14 * (1.0 - vH) * (1.0 - nv);
   vec3 Hh = normalize(L + V);
-  col += vec3(1.0) * pow(max(dot(N, Hh), 0.0), 70.0) * 0.95;
-  col += vec3(1.0) * smoothstep(0.93, 0.965, dot(N, normalize(vec3(-0.55, 0.55, 0.63)))) * 0.45;
-  gl_FragColor = vec4(col, mix(0.84, 0.98, fres));
+  col += vec3(1.0) * pow(max(dot(N, Hh), 0.0), 60.0) * 0.55;
+  col += vec3(1.0) * smoothstep(0.88, 0.95, dot(N, normalize(vec3(-0.55, 0.55, 0.63)))) * 0.32;
+  gl_FragColor = vec4(col, mix(0.9, 0.98, fres));
 }
 `;
 
@@ -67,6 +68,9 @@ export interface BloopFaceColors {
   ink: string;
   cheek: string;
   shine: string;
+  /** The gold spark on the Muse's head, and its SVG path (a 120-unit box). */
+  spark: string;
+  sparkPath: string;
 }
 
 export interface BloopSceneOptions {
@@ -97,7 +101,6 @@ export interface BloopScene {
 const H0 = -0.92;
 const HT = 2.5;
 const RW = 1.05;
-const TAU = Math.PI * 2;
 
 function profile(y: number): number {
   const t = Math.min(0.9999, Math.max(0.0001, (y - H0) / HT));
@@ -157,7 +160,7 @@ export function createBloopScene(THREE: Three, options: BloopSceneOptions): Bloo
       color: palette.core,
       roughness: 0.5,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.55,
     }),
   );
   const inkMaterial = track(new THREE.MeshBasicMaterial({ color: face.ink }));
@@ -347,7 +350,7 @@ export function createBloopScene(THREE: Three, options: BloopSceneOptions): Bloo
   const footRight = makeFoot(1);
   const footLeft = makeFoot(-1);
 
-  // Floor: a soft contact shadow and a puddle in the body color.
+  // Floor: a soft contact shadow.
   const shadowTexture = (() => {
     const c = document.createElement("canvas");
     c.width = 128;
@@ -371,20 +374,7 @@ export function createBloopScene(THREE: Three, options: BloopSceneOptions): Bloo
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.004;
   scene.add(shadow);
-  const puddleMaterial = track(
-    new THREE.MeshBasicMaterial({
-      color: palette.bot,
-      transparent: true,
-      opacity: 0.32,
-      depthWrite: false,
-    }),
-  );
-  const puddle = new THREE.Mesh(track(new THREE.CircleGeometry(1, 48)), puddleMaterial);
-  puddle.rotation.x = -Math.PI / 2;
-  puddle.position.y = 0.008;
-  scene.add(puddle);
-
-  // ---- props: thought cloud, work spinner, "…" bubble (textures are shared, see props.ts) ----
+  // ---- props: thought cloud and "…" bubble (textures are shared, see props.ts) ----
   let props = options.props;
   function makeSprite(): ThreeNamespace.Sprite {
     const sprite = new THREE.Sprite(
@@ -397,15 +387,33 @@ export function createBloopScene(THREE: Three, options: BloopSceneOptions): Bloo
   const cloud = makeSprite();
   const chat = makeSprite();
   const thoughtTrail = [makeSprite(), makeSprite(), makeSprite()];
-  const spinnerDots = Array.from({ length: 8 }, () => makeSprite());
+
+  const sparkTexture = (() => {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext("2d");
+    if (g) {
+      g.translate(64, 64);
+      g.scale(2.6, 2.6);
+      g.translate(-60, -16);
+      g.fillStyle = face.spark;
+      g.fill(new Path2D(face.sparkPath));
+    }
+    return track(new THREE.CanvasTexture(c));
+  })();
+  const sparkSprite = new THREE.Sprite(
+    track(new THREE.SpriteMaterial({ map: sparkTexture, transparent: true, depthWrite: false })),
+  );
+  sparkSprite.renderOrder = 8;
+  attach.add(sparkSprite);
 
   function applyProps(next: BloopPropTextures | null) {
     props = next;
-    for (const dot of spinnerDots) dot.material.map = next?.dot ?? null;
     for (const dot of thoughtTrail) dot.material.map = next?.circle ?? null;
     cloud.material.map = next?.cloud[0] ?? null;
     chat.material.map = next?.chat[0] ?? null;
-    for (const sprite of [cloud, chat, ...thoughtTrail, ...spinnerDots]) {
+    for (const sprite of [cloud, chat, ...thoughtTrail]) {
       sprite.material.needsUpdate = true;
     }
   }
@@ -426,13 +434,12 @@ export function createBloopScene(THREE: Three, options: BloopSceneOptions): Bloo
 
   function applyPalette(color: string) {
     const next = bloopPalette(color);
+    coreMaterial.color.set(next.core);
     for (const material of [bodyMaterial, limbMaterial]) {
       material.uniforms.uTop?.value.set(next.top);
       material.uniforms.uBot?.value.set(next.bot);
       material.uniforms.uRim?.value.set(next.rim);
     }
-    coreMaterial.color.set(next.core);
-    puddleMaterial.color.set(next.bot);
   }
 
   function update(nowMs: number) {
@@ -488,6 +495,12 @@ export function createBloopScene(THREE: Three, options: BloopSceneOptions): Bloo
       material.opacity = 0.5 * Math.sin(Math.PI * phase);
     });
 
+    // The gold spark floats above the tip, twinkles, and spins while the Muse is working.
+    sparkSprite.position.set(0, 1.95 + 0.05 * Math.sin(now * 1.6), 0);
+    const twinkle = 1 + 0.08 * Math.sin(now * 3);
+    sparkSprite.scale.set(0.62 * twinkle, 0.62 * twinkle, 1);
+    sparkSprite.material.rotation += dt * 4 * pose.pSpin;
+
     // Face.
     look.x += (look.tx - look.x) * Math.min(1, dt * 6);
     look.y += (look.ty - look.y) * Math.min(1, dt * 6);
@@ -534,23 +547,10 @@ export function createBloopScene(THREE: Three, options: BloopSceneOptions): Bloo
     chat.position.set(1.8, 3.1 + 0.06 * Math.sin(now * 2), 0.3);
     chat.scale.set(1.3 * pose.pChat, 0.9 * pose.pChat, 1);
     if (props) chat.material.map = props.chat[frame] ?? null;
-    spinnerDots.forEach((dot, i) => {
-      dot.visible = props !== null && pose.pSpin > 0.03;
-      const a = -now * 5 + i * (TAU / 8);
-      const fade = 0.25 + 0.75 * (i / 8);
-      dot.position.set(Math.cos(a) * 0.4, 3.4 + Math.sin(a) * 0.4 + pose.hop, 0.2);
-      const size = 0.22 * fade * pose.pSpin;
-      dot.scale.set(size, size, 1);
-      dot.material.opacity = fade;
-    });
-
     // Floor.
     const lift = Math.min(1, pose.hop / 1.1);
     const shadowScale = 1 - lift * 0.35;
     shadow.scale.set(shadowScale, shadowScale, shadowScale);
-    const puddleWidth = 1.15 + Math.max(0, pose.squash) * 1.2 - lift * 0.3;
-    puddle.scale.set(puddleWidth, puddleWidth * 0.9, 1);
-    puddleMaterial.opacity = 0.32 * (1 - lift * 0.7);
   }
 
   return {

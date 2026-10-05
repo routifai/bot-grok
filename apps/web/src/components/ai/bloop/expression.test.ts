@@ -56,19 +56,43 @@ describe("bloop expressions", () => {
 });
 
 describe("bloop palette", () => {
-  it("derives a lighter top and a deeper bottom from the identity color", () => {
+  const lightness = (hex: string) => {
+    const n = Number.parseInt(hex.slice(1), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255) as [
+      number,
+      number,
+      number,
+    ];
+    return (Math.max(r, g, b) + Math.min(r, g, b)) / 2;
+  };
+
+  it("gives a light, soft palette: airy top, lighter-still rim, a mid bottom", () => {
     const { top, bot, rim, core } = bloopPalette(DEFAULT_MUSE_COLOR);
     for (const hex of [top, bot, rim, core]) expect(hex).toMatch(/^#[0-9a-f]{6}$/);
-    const lum = (hex: string) => {
-      const n = Number.parseInt(hex.slice(1), 16);
-      return ((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11;
-    };
-    expect(lum(top)).toBeGreaterThan(lum(DEFAULT_MUSE_COLOR));
-    expect(lum(bot)).toBeLessThan(lum(DEFAULT_MUSE_COLOR));
-    expect(lum(rim)).toBeGreaterThan(lum(top));
-    expect(lum(core)).toBeLessThan(lum(bot));
+    expect(lightness(rim)).toBeGreaterThan(lightness(top));
+    expect(lightness(top)).toBeGreaterThan(lightness(core));
+    expect(lightness(core)).toBeGreaterThan(lightness(bot));
+    expect(lightness(bot)).toBeGreaterThan(0.55);
   });
 
+  it("lands vivid and very dark identity colors on the same soft lightness", () => {
+    const vivid = bloopPalette("#0090FF");
+    const dark = bloopPalette("#0A1F5C");
+    expect(Math.abs(lightness(vivid.bot) - lightness(dark.bot))).toBeLessThan(0.02);
+    expect(Math.abs(lightness(vivid.top) - lightness(dark.top))).toBeLessThan(0.02);
+  });
+
+  it("falls back to the Muse blue for white and grey, which have no hue", () => {
+    expect(bloopPalette("#FFFFFF")).toEqual(bloopPalette(DEFAULT_MUSE_COLOR));
+    expect(bloopPalette("#8A8A8A")).toEqual(bloopPalette(DEFAULT_MUSE_COLOR));
+  });
+
+  it("keeps the hue of a colored identity", () => {
+    expect(bloopPalette("#F2B233").bot).not.toEqual(bloopPalette(DEFAULT_MUSE_COLOR).bot);
+  });
+});
+
+describe("shade", () => {
   it("falls back to the Muse color for an invalid value instead of throwing", () => {
     expect(shade("not a color", 0.1)).toBe(shade(DEFAULT_MUSE_COLOR, 0.1));
   });

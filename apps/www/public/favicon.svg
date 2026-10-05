@@ -1,12 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">Aiden mark</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
   <defs>
-    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2965EC" />
-      <stop offset="1" stop-color="#5C89F8" />
+    <linearGradient id="b" x1="30%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0" stop-color="#8ED0FF"/>
+      <stop offset=".5" stop-color="#3FA0F5"/>
+      <stop offset="1" stop-color="#1F6FDB"/>
     </linearGradient>
+    <radialGradient id="h" cx="35%" cy="28%" r="40%">
+      <stop offset="0" stop-color="#fff" stop-opacity=".75"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="512" height="512" rx="148" fill="url(#blue)" />
-  <rect x="157" y="196" width="62" height="120" rx="31" fill="#F2F2F0" />
-  <rect x="293" y="196" width="62" height="120" rx="31" fill="#F2F2F0" />
+  <ellipse fill="#2A6FD0" cx="38" cy="108" rx="13" ry="7"/>
+  <ellipse fill="#2A6FD0" cx="82" cy="108" rx="13" ry="7"/>
+  <path fill="url(#b)" d="M60 14C64 30 104 50 104 76C104 98 84 110 60 110C36 110 16 98 16 76C16 50 56 30 60 14Z"/>
+  <path fill="url(#h)" d="M60 14C64 30 104 50 104 76C104 98 84 110 60 110C36 110 16 98 16 76C16 50 56 30 60 14Z"/>
+  <ellipse fill="#fff" opacity=".55" cx="36" cy="64" rx="6" ry="10" transform="rotate(18 36 64)"/>
+  <ellipse fill="#FF8FA3" opacity=".85" cx="31" cy="84" rx="10" ry="7"/>
+  <ellipse fill="#FF8FA3" opacity=".85" cx="89" cy="84" rx="10" ry="7"/>
+  <ellipse fill="#10203F" cx="46" cy="76" rx="7" ry="9"/>
+  <ellipse fill="#10203F" cx="74" cy="76" rx="7" ry="9"/>
+  <circle fill="#fff" cx="48.5" cy="72.5" r="2.6"/>
+  <circle fill="#fff" cx="76.5" cy="72.5" r="2.6"/>
+  <path d="M54 90Q60 96 66 90" stroke="#10203F" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+  <path fill="#F4B63F" d="M60 0L63 9L72 12L63 15L60 24L57 15L48 12L57 9Z"/>
 </svg>

@@ -4,20 +4,30 @@ import {
   MUSE_FACE_CHEEK,
   MUSE_FACE_INK,
   MUSE_FACE_SHINE,
+  MUSE_FACE_SPARK,
+  MUSE_SPARK_PATH,
   MuseAvatar,
 } from "@aiden/ui-web";
 import { useEffect, useRef, useState } from "react";
+import { supportsWebGL } from "../webgl";
+import { bloopPalette } from "./expression";
 import type { LiveBloopHandle } from "./live";
 
 // The Muse's 3D face (docs/muse/DESIGN.md): a jelly drop whose expression follows the Muse state.
 // It is supplied app-wide through `LiveMuseFaceProvider`, so every `BotAvatar face="muse"` uses
-// it. The static SVG face and its Ask badge render first and stay as the fallback when WebGL is
-// unavailable or the page already shows several live faces; the shared renderer (live.ts) loads
-// lazily and the 3D face fades in over it once ready.
+// it. The static SVG face is only a fallback, shown when WebGL is unavailable, fails to start, or
+// the page already shows its share of live faces; it is never drawn first and then replaced. The
+// Ask badge is always drawn. The shared renderer (live.ts) is warmed at app start (main.tsx).
 
 /** Below this size the thought cloud, spinner and "…" bubble would be unreadable specks. */
 const PROPS_MIN_SIZE = 32;
-const FACE_COLORS = { ink: MUSE_FACE_INK, cheek: MUSE_FACE_CHEEK, shine: MUSE_FACE_SHINE };
+const FACE_COLORS = {
+  ink: MUSE_FACE_INK,
+  cheek: MUSE_FACE_CHEEK,
+  shine: MUSE_FACE_SHINE,
+  spark: MUSE_FACE_SPARK,
+  sparkPath: MUSE_SPARK_PATH,
+};
 
 export function BloopAvatar({ color, size, state, waitingCount, className }: LiveMuseFaceProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -25,7 +35,10 @@ export function BloopAvatar({ color, size, state, waitingCount, className }: Liv
   const handleRef = useRef<LiveBloopHandle | null>(null);
   const latest = useRef({ color, state, size });
   latest.current = { color, state, size };
-  const [ready, setReady] = useState(false);
+  // loading: the 3D face is on its way (nothing drawn yet); ready: showing; fallback: static face.
+  const [mode, setMode] = useState<"loading" | "ready" | "fallback">(() =>
+    supportsWebGL() ? "loading" : "fallback",
+  );
   const withProps = size >= PROPS_MIN_SIZE;
 
   useEffect(() => {
@@ -50,13 +63,16 @@ export function BloopAvatar({ color, size, state, waitingCount, className }: Liv
           withProps,
         }).then((handle) => {
           acquiring = false;
-          if (!handle) return;
+          if (!handle) {
+            if (!disposed) setMode("fallback");
+            return;
+          }
           if (disposed) {
             handle.release();
             return;
           }
           handleRef.current = handle;
-          setReady(true);
+          setMode("ready");
         }),
       );
     }
@@ -78,7 +94,7 @@ export function BloopAvatar({ color, size, state, waitingCount, className }: Liv
       observer?.disconnect();
       handleRef.current?.release();
       handleRef.current = null;
-      setReady(false);
+      setMode((current) => (current === "fallback" ? current : "loading"));
     };
   }, [withProps]);
 
@@ -91,7 +107,7 @@ export function BloopAvatar({ color, size, state, waitingCount, className }: Liv
   return (
     <div
       ref={wrapperRef}
-      data-bloop={ready ? "ready" : "loading"}
+      data-bloop={mode}
       className={cn("relative inline-flex shrink-0 items-center justify-center", className)}
       style={{ width: size, height: size }}
     >
@@ -99,18 +115,33 @@ export function BloopAvatar({ color, size, state, waitingCount, className }: Liv
         aria-hidden="true"
         className={cn(
           "pointer-events-none absolute start-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-300 motion-reduce:transition-none",
-          ready ? "opacity-100" : "opacity-0",
+          mode === "ready" ? "opacity-100" : "opacity-0",
         )}
         style={{ width: canvasSize, height: canvasSize }}
       >
         <canvas ref={canvasRef} className="size-full" />
       </div>
+      {mode === "loading" ? (
+        // Until the 3D face is ready: a soft drop in its own tint, never the old flat face.
+        <div
+          aria-hidden="true"
+          data-testid="bloop-placeholder"
+          className="absolute start-1/2 top-[58%] -translate-x-1/2 -translate-y-1/2 rotate-[-45deg] animate-pulse motion-reduce:animate-none"
+          style={{
+            width: size * 0.5,
+            height: size * 0.5,
+            borderRadius: "0 50% 50% 50%",
+            background: bloopPalette(color).top,
+            opacity: 0.7,
+          }}
+        />
+      ) : null}
       <MuseAvatar
         color={color}
         size={size}
         state={state}
         waitingCount={waitingCount}
-        faceHidden={ready}
+        faceHidden={mode !== "fallback"}
       />
     </div>
   );

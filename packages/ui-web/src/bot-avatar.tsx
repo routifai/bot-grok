@@ -393,11 +393,11 @@ function OrganicAvatar({
  */
 export const MUSE_FACE_INK = "#132320";
 export const MUSE_FACE_CHEEK = "#FF8E86";
-const MUSE_FACE_SPARK = "#F4B63F";
+export const MUSE_FACE_SPARK = "#F4B63F";
 export const MUSE_FACE_SHINE = "#FFFFFF";
 const MUSE_BODY_PATH =
   "M60 24C90 24 104 44 104 68C104 94 86 108 60 108C34 108 16 94 16 68C16 44 30 24 60 24Z";
-const MUSE_SPARK_PATH = "M60 3L63 13L73 16L63 19L60 29L57 19L47 16L57 13Z";
+export const MUSE_SPARK_PATH = "M60 3L63 13L73 16L63 19L60 29L57 19L47 16L57 13Z";
 
 /** Below this size a numeric waiting badge stops being legible; show a dot instead. */
 const MUSE_BADGE_TEXT_MIN_SIZE = 32;

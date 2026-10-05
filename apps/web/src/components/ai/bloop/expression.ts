@@ -241,12 +241,20 @@ export interface BloopPalette {
   core: string;
 }
 
-/** The body is the only part that takes the identity color; the rest is derived from it. */
+/**
+ * A light, candy-soft jelly palette from the identity color's hue alone. Lightness is fixed so
+ * every identity color reads soft and cute (a deep navy or a vivid blue both land on the same
+ * airy tones), and greys and whites, which have no hue, fall back to the Muse blue.
+ */
 export function bloopPalette(hex: string): BloopPalette {
+  let hsl = rgbToHsl(parseHex(hex));
+  if (hsl.s < 0.18) hsl = rgbToHsl(parseHex(DEFAULT_MUSE_COLOR));
+  const s = Math.min(hsl.s, 0.9);
+  const at = (l: number, saturation: number) => hslToHex({ h: hsl.h, s: saturation, l });
   return {
-    top: shade(hex, 0.14),
-    bot: shade(hex, -0.1),
-    rim: shade(hex, 0.22),
-    core: shade(hex, -0.2),
+    top: at(0.82, s * 0.85),
+    bot: at(0.6, s),
+    rim: at(0.9, s * 0.7),
+    core: at(0.7, s * 0.9),
   };
 }
