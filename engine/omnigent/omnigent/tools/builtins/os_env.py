@@ -95,15 +95,18 @@ _OS_EDIT_SCHEMA: dict[str, Any] = {
         },
         "oldText": {
             "type": "string",
-            "description": "Exact text to replace.",
+            "description": "Exact text to replace (single edit; leave out when using edits).",
         },
         "newText": {
             "type": "string",
-            "description": "Replacement text.",
+            "description": "Replacement text (single edit; leave out when using edits).",
         },
         "edits": {
             "type": "array",
-            "description": "Optional batch of exact edits.",
+            "description": (
+                "Several exact edits in one call. Use this OR oldText/newText, never both; "
+                "leave it out for a single edit."
+            ),
             "items": {
                 "type": "object",
                 "properties": {
@@ -299,7 +302,10 @@ class SysOsEditTool(_OSEnvBackedTool):
     @classmethod
     def description(cls) -> str:
         """:returns: Description shown to the LLM."""
-        return "Perform exact text replacements in a file in the OS environment."
+        return (
+            "Perform exact text replacements in a file in the OS environment. "
+            "One edit: pass oldText and newText. Several: pass edits only."
+        )
 
     @classmethod
     def get_schema(cls) -> dict[str, Any]:

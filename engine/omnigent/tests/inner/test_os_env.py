@@ -423,3 +423,17 @@ def test_shell_command_does_not_see_omnigent_project_root(
     out = result.get("stdout", "")
     assert project_entry in out
     assert str(_project_root()) not in out
+
+
+def test_normalize_edits_treats_an_empty_batch_as_absent() -> None:
+    """Models fill every optional field, so oldText/newText plus ``edits: []`` is one edit."""
+    from omnigent.inner.os_env import _normalize_edits
+
+    assert _normalize_edits("a", "b", []) == [{"oldText": "a", "newText": "b"}]
+    assert _normalize_edits(None, None, [{"oldText": "a", "newText": "b"}]) == [
+        {"oldText": "a", "newText": "b"}
+    ]
+    with pytest.raises(ValueError, match="not both"):
+        _normalize_edits("a", "b", [{"oldText": "a", "newText": "b"}])
+    with pytest.raises(ValueError, match="requires"):
+        _normalize_edits(None, None, [])

@@ -321,3 +321,73 @@ async def test_file_tools_in_a_project_still_reach_the_workspace(home: Path) -> 
     assert not (other / "report.md").exists()
     await env([str(home)]).write(path=target, content="x")
     assert (other / "report.md").read_text() == "x"
+
+
+def test_block_lists_top_level_file_names_capped_without_recursing(home: Path) -> None:
+    folder = _card(home, "deck")
+    for i in range(10):
+        (folder / f"f{i:02d}.md").write_text("x")
+    (folder / ".hidden").write_text("x")
+    (folder / "sub").mkdir()
+    (folder / "sub" / "deep.md").write_text("x")
+    block = projects_block(None)
+    assert block is not None
+    assert (
+        "Files: f00.md, f01.md, f02.md, f03.md, f04.md, f05.md, f06.md, f07.md (+3 more)" in block
+    )
+    assert "PROJECT.md" not in block.split("Files:")[1]
+    assert ".hidden" not in block and "deep.md" not in block
+
+
+def test_block_tells_the_model_to_match_every_project(home: Path) -> None:
+    _card(home, "taxes")
+    block = projects_block(None)
+    assert block is not None
+    header = " ".join(block.split("\n")[0].split())
+    assert "EVERY Project" in header and "not just the open one" in header
+    assert "ask which" in header and "edit nothing" in header
+
+
+async def test_project_list_reaches_the_prompt_of_claude_sdk_and_pi(home: Path) -> None:
+    """The per-turn list is in the text each harness sends the model, in both turn shapes."""
+    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.inner.pi_executor import _build_pi_prompt
+    from omnigent.runner.app import _prepend_turn_blocks
+
+    _card(home, "taxes")
+    blocks = await prompt_prefix.turn_prefix_blocks(None, "conv", home)
+    flat = {"content": [{"type": "input_text", "text": "what is in taxes?"}]}
+    history = {
+        "content": [
+            {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "yo"}],
+            },
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "what is in taxes?"}],
+            },
+        ]
+    }
+
+    def flatten(prompt: object) -> str:
+        return prompt if isinstance(prompt, str) else json.dumps(prompt)
+
+    for body in (flat, history):
+        sent = _prepend_turn_blocks(body, blocks, "conv")["content"]
+        messages = (
+            sent
+            if sent and sent[0].get("type") == "message"
+            else [{"role": "user", "content": sent}]
+        )
+        for first in (True, False):
+            assert "- taxes: Taxes. About taxes" in flatten(
+                _build_pi_prompt(messages, is_first_turn=first)
+            )
+        for resume in (True, False):
+            assert "- taxes: Taxes. About taxes" in flatten(
+                ClaudeSDKExecutor._build_prompt(messages, resume_session=resume)
+            )

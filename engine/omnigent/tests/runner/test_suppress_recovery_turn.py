@@ -140,6 +140,7 @@ def _session_init_payload(
     *,
     suppress_recovery_turn: bool,
     server_version: str = "0.0.0-test",
+    model_override: str | None = None,
 ) -> dict[str, Any]:
     from omnigent.entities import Conversation
 
@@ -150,6 +151,7 @@ def _session_init_payload(
         created_at=0,
         updated_at=0,
         root_conversation_id=SESSION_ID,
+        model_override=model_override,
     )
     return build_runner_session_init_payload(
         conv,
@@ -537,3 +539,27 @@ async def test_native_activity_during_initialization_distinguishes_turns_from_re
         assert len(harness.posted_bodies) == int(startup_repaint is not None)
         assert (await client.post("/v1/sessions", json=payload)).status_code == 201
         assert len(harness.posted_bodies) == int(startup_repaint is not None)
+
+
+@pytest.mark.asyncio
+async def test_recovery_turn_runs_on_the_session_model_override() -> None:
+    """The history-resume turn started by init carries the persisted /model override.
+
+    Without it the first turn after a switch-agent + override ran on the bundle's model
+    (the live 400 "claude-sonnet-5-5 is not a valid model ID") and respawned onto the override
+    on the next turn.
+    """
+    app, _pm, harness = _build_sdk_app(_HistoryServerClient())
+
+    async with _runner_client(app) as client:
+        init_resp = await client.post(
+            "/v1/sessions",
+            json=_session_init_payload(
+                suppress_recovery_turn=False, model_override="openai/gpt-test"
+            ),
+        )
+        assert init_resp.status_code == 201, init_resp.text
+        await asyncio.sleep(0.1)
+
+    assert len(harness.posted_bodies) == 1
+    assert harness.posted_bodies[0].get("model_override") == "openai/gpt-test"

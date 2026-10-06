@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from omnigent.superchat.projects.card import (
+    CARD_FILE,
     ProjectCard,
     is_slug,
     list_cards,
@@ -16,6 +17,8 @@ from omnigent.superchat.projects.card import (
 MAX_LISTED = 15
 _MAX_ALIASES = 6
 _MAX_SUMMARY_CHARS = 160
+#: Most top-level file names listed per Project (one directory listing, never recursive).
+_MAX_FILES = 8
 
 
 def open_project_slug(workspace: Path | None) -> str | None:
@@ -30,6 +33,27 @@ def open_project_slug(workspace: Path | None) -> str | None:
     return slug if is_slug(slug) else None
 
 
+def _top_level_files(card: ProjectCard) -> str:
+    """Up to ``_MAX_FILES`` top-level names in the Project's folder (not the card), or ``""``.
+
+    One directory listing, no recursion and no reads; hidden entries are skipped.
+    """
+    try:
+        names = sorted(
+            entry.name
+            for entry in card.path.iterdir()
+            if entry.name != CARD_FILE and not entry.name.startswith(".")
+        )
+    except OSError:
+        return ""
+    if not names:
+        return ""
+    shown = ", ".join(names[:_MAX_FILES])
+    return f" Files: {shown}" + (
+        f" (+{len(names) - _MAX_FILES} more)" if len(names) > _MAX_FILES else ""
+    )
+
+
 def _line(card: ProjectCard, *, is_open: bool) -> str:
     text = f"- {card.slug}: {card.name}"
     if card.aliases:
@@ -39,6 +63,7 @@ def _line(card: ProjectCard, *, is_open: bool) -> str:
         if len(summary) > _MAX_SUMMARY_CHARS:
             summary = summary[: _MAX_SUMMARY_CHARS - 1].rstrip() + "…"
         text += f". {summary}"
+    text += _top_level_files(card)
     return text + (" [open now]" if is_open else "")
 
 
@@ -57,6 +82,10 @@ def projects_block(workspace: Path | None) -> str | None:
         return None
     lines = [_line(card, is_open=card.slug == open_slug) for card in cards]
     return (
-        "[Projects (folders under ~/workspace/projects/). When this conversation is about one, "
-        "call open_project with its slug before working in it.\n" + "\n".join(lines) + "]"
+        "[Projects (folders under ~/workspace/projects/). Before touching any file for this "
+        "message, decide which Project it is about: compare it with EVERY Project below (name, "
+        "aliases, summary, files), not just the open one, which is only where you happen to be. "
+        "If it belongs to another, call open_project with that slug first. If it could fit two "
+        'or more (e.g. "the brief" when several Projects have one), ask which, naming the '
+        "options, and edit nothing until the person answers.\n" + "\n".join(lines) + "]"
     )

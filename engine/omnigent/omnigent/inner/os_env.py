@@ -1571,6 +1571,9 @@ def _normalize_edits(
     new_text: str | None,
     edits: JsonValue,
 ) -> list[EditEntry]:
+    # Models fill every optional field of the schema, so an empty batch means "not given".
+    if edits == []:
+        edits = None
     if edits is not None and (old_text is not None or new_text is not None):
         raise ValueError("Provide either oldText/newText or edits, not both")
     if edits is not None:
