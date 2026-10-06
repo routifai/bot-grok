@@ -55,6 +55,8 @@ export interface OmnigentSessionSnapshot extends OmnigentSessionResponse {
   /** Session labels, including `omnigent.context.mode` (superside-chat.md). Used by
    * ./gateway.ts to detect a Super Chat created before the mode label existed. */
   labels?: Record<string, string>;
+  /** The session's working directory on its host; moves when the Muse opens a Project. */
+  workspace?: string | null;
 }
 
 export async function getOmnigentSession(

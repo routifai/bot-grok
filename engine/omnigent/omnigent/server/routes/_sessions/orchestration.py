@@ -10081,10 +10081,12 @@ async def _create_session_from_existing_agent(
     # Inherit runner affinity from the parent session so the child
     # is assigned to the same runner (sub-agent co-location).
     inherited_runner_id: str | None = None
+    parent_workspace: str | None = None
     if body.parent_session_id is not None:
         parent_conv = conversation_store.get_conversation(body.parent_session_id)
         if parent_conv is not None:
             inherited_runner_id = parent_conv.runner_id
+            parent_workspace = parent_conv.workspace
             # Defense-in-depth: don't inherit a runner the
             # caller doesn't own.
             if (
@@ -10095,6 +10097,10 @@ async def _create_session_from_existing_agent(
                 runner_owner = runner_router.runner_owner(inherited_runner_id)
                 if runner_owner is not None and runner_owner != user_id:
                     inherited_runner_id = None
+    # A child that shares the parent's runner starts in the parent's *current* working
+    # directory (it may have moved since the parent was created, see ``PUT .../workspace``).
+    if inherited_runner_id is None:
+        parent_workspace = None
 
     # Workspace validation: if the caller is binding to a host,
     # they must also pass a workspace, and the workspace must
@@ -10104,6 +10110,8 @@ async def _create_session_from_existing_agent(
     # With git worktree creation, the validated path is the source
     # repo; the worktree it produces becomes the stored workspace.
     canonical_workspace: str | None = body.workspace
+    if canonical_workspace is None and body.host_id is None:
+        canonical_workspace = parent_workspace
     if body.host_id is not None:
         canonical_workspace = await _validate_session_workspace(
             user_id=user_id,

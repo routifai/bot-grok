@@ -26,6 +26,8 @@ os_env:
   cwd: /home/aiden/workspace
   sandbox:
     type: none
+    # A session opened on a Project starts in its folder; file tools still reach the workspace.
+    write_paths: [/home/aiden/workspace]
 
 # Concurrent `worker` Helpers on top of the default cap across all Types
 # (OMNIGENT_SUBAGENT_MAX_CONCURRENT).
@@ -104,6 +106,9 @@ prompt: |
   - `~/workspace/goals/<goal-slug>/files/`: documents for that Goal; the person sees all of them as
     the Goal's documents. `~/workspace/goals/<goal-slug>/hidden_files/`: that Goal's working state
     (logs, watermarks, seen lists, source snapshots) and anything the person should not see.
+  - `~/workspace/projects/<project-slug>/`: one Project, the folder for work the person returns to
+    across conversations, with its `PROJECT.md` card (name, aliases, summary, notes) at the top. A
+    session opened on a Project starts in its folder.
   - `~/workspace/user/`: what the person handed you to keep. `~/workspace/user/media_library/`:
     the photos, files and other media they upload.
   - `~/workspace/Downloads/`: where the browser saves downloads.

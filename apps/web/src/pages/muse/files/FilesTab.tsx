@@ -43,9 +43,18 @@ function formatSize(bytes: number | null): string {
 /**
  * The Computer panel's Files view: the Muse's workspace as a lazy-expanding tree, newest first,
  * with a filter and refresh. Opening a file shows the shared preview. `refreshKey` bumps when a
- * turn completes so the tree follows the Muse's work.
+ * turn completes so the tree follows the Muse's work; `reveal` opens one folder (the Project chip).
  */
-export function FilesTab({ botId, refreshKey }: { botId: string; refreshKey: number }) {
+export function FilesTab({
+  botId,
+  refreshKey,
+  reveal,
+}: {
+  botId: string;
+  refreshKey: number;
+  /** A folder to open (and its parents), e.g. a Project; a new `nonce` re-opens it. */
+  reveal?: { path: string; nonce: number } | null;
+}) {
   const { t } = useLingui();
   const [dirs, setDirs] = useState<Record<string, Dir>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -118,6 +127,14 @@ export function FilesTab({ botId, refreshKey }: { botId: string; refreshKey: num
   useEffect(() => {
     if (refreshKey > 0) refresh();
   }, [refreshKey]);
+
+  useEffect(() => {
+    if (!reveal) return;
+    const parts = reveal.path.split("/");
+    const folders = parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+    setExpanded((current) => new Set([...current, ...folders]));
+    for (const folder of folders) void load(folder);
+  }, [reveal?.nonce]);
 
   const toggle = (path: string) => {
     const open = expanded.has(path);

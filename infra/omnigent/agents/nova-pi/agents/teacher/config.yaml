@@ -24,6 +24,8 @@ os_env:
   cwd: /home/aiden/workspace
   sandbox:
     type: none
+    # A session opened on a Project starts in its folder; file tools still reach the workspace.
+    write_paths: [/home/aiden/workspace]
 
 # Teaching is a person-initiated, one-at-a-time job.
 max_sessions: 1

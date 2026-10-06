@@ -30,6 +30,7 @@ export function ComputerPreview({
   screen,
   computerView,
   filesRefreshKey,
+  filesReveal,
   sandboxProvider,
   children,
 }: {
@@ -39,6 +40,7 @@ export function ComputerPreview({
   screen: ReturnType<typeof useComputerScreen>;
   computerView: ComputerView;
   filesRefreshKey: number;
+  filesReveal: { path: string; nonce: number } | null;
   sandboxProvider: string | undefined;
   children: ReactNode;
 }) {
@@ -49,7 +51,7 @@ export function ComputerPreview({
   return (
     <div>
       {museMode && computerView === "files" ? (
-        <FilesTab botId={active.id} refreshKey={filesRefreshKey} />
+        <FilesTab botId={active.id} refreshKey={filesRefreshKey} reveal={filesReveal} />
       ) : null}
       <div className={museMode && computerView === "files" ? "hidden" : undefined}>
         <div

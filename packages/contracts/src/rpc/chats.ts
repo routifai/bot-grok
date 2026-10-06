@@ -21,6 +21,11 @@ export const chatsContract = {
     send: oc
       .input(z.object({ chatId: Id, text: z.string().min(1) }))
       .output(z.object({ ok: z.literal(true) })),
+    /** The Project a chat is working in (its working directory is a Project folder), or null.
+     * Without `chatId`, the Conversation itself. */
+    project: oc
+      .input(z.object({ botId: Id, chatId: Id.optional() }))
+      .output(z.object({ project: z.object({ slug: z.string(), name: z.string() }).nullable() })),
   },
   // Muse edition. Goals are created by talking to the Muse, so there is no goals.create.
 };

@@ -173,6 +173,17 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.snippet('{"error":"cap reached"}')).toBe("cap reached");
   });
 
+  it("open_project: says a Project was opened and shows its name", () => {
+    const entry = TOOL_PRESENTATION.open_project as ToolPresentation;
+    expect(entry.title({ slug: "q3-deck" })).toBe("Opened a project");
+    expect(entry.title({ slug: null })).toBe("Left the project");
+    expect(entry.snippet('{"opened":"q3-deck","name":"Q3 board deck","path":"/p"}')).toBe(
+      "Q3 board deck",
+    );
+    expect(entry.snippet('{"opened":null,"path":"/w"}')).toBeNull();
+    expect(entry.snippet('{"error":"no Project"}')).toBe("no Project");
+  });
+
   it("sys_session_create: starts background work for a title", () => {
     const entry = TOOL_PRESENTATION.sys_session_create as ToolPresentation;
     expect(entry.icon).toBe("helper");

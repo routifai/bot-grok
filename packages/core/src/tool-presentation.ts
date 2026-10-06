@@ -488,6 +488,19 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     },
   },
 
+  open_project: {
+    icon: "generic",
+    title: (args) => (args.slug === null ? "Left the project" : "Opened a project"),
+    snippet: (output) => {
+      const parsed = tryParseJson(output);
+      if (parsed === undefined) return null;
+      const error = errorMessage(parsed);
+      if (error) return clip(error);
+      const name = field(parsed, "name");
+      return isNonEmptyString(name) ? clip(name) : null;
+    },
+  },
+
   sys_read_inbox: {
     icon: "helper",
     title: () => "Collected the result",

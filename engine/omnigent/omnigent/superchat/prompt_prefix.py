@@ -9,10 +9,12 @@ profile means "no profile".
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import httpx
 
 from omnigent.superchat.local_time import local_time_block
+from omnigent.superchat.projects.block import projects_block
 
 _logger = logging.getLogger(__name__)
 
@@ -65,17 +67,33 @@ async def fetch_local_time_line(server_client: httpx.AsyncClient | None) -> str:
     return local_time_block(timezone)
 
 
+def _safe_projects_block(workspace: Path | None) -> str | None:
+    """The Project list block; a filesystem or parsing surprise means "no block"."""
+    try:
+        return projects_block(workspace)
+    except Exception:  # noqa: BLE001 - the list is a convenience, never a reason to fail a turn
+        _logger.warning("Project list failed; proceeding without it", exc_info=True)
+        return None
+
+
 async def turn_prefix_blocks(
-    server_client: httpx.AsyncClient | None, conversation_id: str
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str,
+    workspace: Path | None = None,
 ) -> list[str]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
     Each block is prepended in turn, so the last one ends up first: ``[memory profile (when
-    any), local time]`` renders as local time, then the profile, then the person's message.
+    any), Projects (when any), local time]`` renders as local time, then the Projects, then the
+    profile, then the person's message.
+
+    :param workspace: The session's current working directory (marks the open Project).
     """
     blocks: list[str] = []
     profile = await fetch_memory_profile(server_client, conversation_id)
     if profile:
         blocks.append(profile)
+    if (projects := _safe_projects_block(workspace)) is not None:
+        blocks.append(projects)
     blocks.append(await fetch_local_time_line(server_client))
     return blocks

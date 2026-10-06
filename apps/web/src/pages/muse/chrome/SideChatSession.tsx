@@ -20,6 +20,7 @@ import { ChevronRight, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { ReplyCardSendProvider } from "../../../components/cards/context";
+import { type ChatProject, ProjectChip, useChatProject } from "./ProjectChip";
 
 /** The Side Chat session's wire: what it needs from `chats.*`, kept as an explicit shape
  * (not the `rpc` client) so the dev fixture page can supply fakes instead. */
@@ -32,6 +33,8 @@ export type SideChatWire = {
   }) => Promise<ChatSummary>;
   messages: (input: { chatId: string }) => Promise<ThreadMessagePage>;
   send: (input: { chatId: string; text: string }) => Promise<{ ok: true }>;
+  /** The Project the chat has open; fixtures may leave it out. */
+  project?: (input: { botId: string; chatId: string }) => Promise<{ project: ChatProject | null }>;
 };
 
 /** The context summary a person can read: markdown, capped in height, scrolls past it. */
@@ -80,6 +83,7 @@ export function SideChatSession({
   onCreated,
   onReplied,
   onClose,
+  onOpenProject,
 }: {
   bot: SideChatBot;
   /** "draft": not created yet. Otherwise the chat being viewed (possibly archived). */
@@ -91,6 +95,8 @@ export function SideChatSession({
   /** A reply finished: the chat is no longer live, so the Chat List should refresh. */
   onReplied?: () => void;
   onClose: () => void;
+  /** Show a Project's folder (the "Working in" chip). */
+  onOpenProject?: (project: ChatProject) => void;
 }) {
   // The draft's first message, handed to the chat it becomes so it never blinks out.
   const [first, setFirst] = useState<{ chatId: string; text: string } | null>(null);
@@ -118,6 +124,7 @@ export function SideChatSession({
       firstText={first?.chatId === chat.id ? first.text : undefined}
       onReplied={onReplied}
       onClose={onClose}
+      onOpenProject={onOpenProject}
     />
   );
 }
@@ -360,6 +367,7 @@ function ExistingSideChat({
   firstText,
   onReplied,
   onClose,
+  onOpenProject,
 }: {
   bot: SideChatBot;
   chat: ChatSummary;
@@ -368,6 +376,7 @@ function ExistingSideChat({
   firstText?: string;
   onReplied?: () => void;
   onClose: () => void;
+  onOpenProject?: (project: ChatProject) => void;
 }) {
   const { t } = useLingui();
   const [messages, setMessages] = useState<ThreadMessage[] | null>(null);
@@ -427,6 +436,12 @@ function ExistingSideChat({
   }, [chat.id, wire]);
 
   const awaitingReply = !chat.archived && (waiting || engineRunning);
+  const loadProject = wire.project;
+  const project = useChatProject(
+    loadProject ? () => loadProject({ botId: bot.id, chatId: chat.id }) : undefined,
+    chat.id,
+    `${messages?.length ?? 0}:${awaitingReply}`,
+  );
   useEffect(() => {
     if (!awaitingReply) return;
     const startedAt = Date.now();
@@ -497,10 +512,17 @@ function ExistingSideChat({
       <SessionHeader
         title={chat.title}
         meta={
-          chat.archived ? (
-            <span className="text-[12px] text-muted-foreground">
-              <Trans>Archived</Trans>
-            </span>
+          chat.archived || (project && onOpenProject) ? (
+            <div className="mt-1 flex items-center gap-2">
+              {chat.archived ? (
+                <span className="text-[12px] text-muted-foreground">
+                  <Trans>Archived</Trans>
+                </span>
+              ) : null}
+              {project && onOpenProject ? (
+                <ProjectChip project={project} onOpen={onOpenProject} />
+              ) : null}
+            </div>
           ) : undefined
         }
         onClose={onClose}

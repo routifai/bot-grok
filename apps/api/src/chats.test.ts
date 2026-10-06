@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   createOmnigentSideChat,
   getOmnigentContextSummary,
+  getOmnigentWorkingProject,
   listOmnigentSessionItems,
   postOmnigentMessage,
   omnigentClientConfigFromEnv,
@@ -12,6 +13,7 @@ const {
 } = vi.hoisted(() => ({
   createOmnigentSideChat: vi.fn(),
   getOmnigentContextSummary: vi.fn(),
+  getOmnigentWorkingProject: vi.fn(),
   listOmnigentSessionItems: vi.fn(),
   postOmnigentMessage: vi.fn(),
   omnigentClientConfigFromEnv: vi.fn(),
@@ -30,6 +32,7 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
     ...actual,
     createOmnigentSideChat,
     getOmnigentContextSummary,
+    getOmnigentWorkingProject,
     listOmnigentSessionItems,
     postOmnigentMessage,
     omnigentClientConfigFromEnv,
@@ -38,7 +41,9 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
 });
 
 const { OmnigentSideChatError } = await import("@aiden/adapters");
-const { createSideChat, getChatMessages, summaryPreview } = await import("./chats.js");
+const { createSideChat, getChatMessages, getChatProject, summaryPreview } = await import(
+  "./chats.js"
+);
 
 const actor: Actor = {
   spaceId: "space-1",
@@ -295,5 +300,54 @@ describe("getChatMessages", () => {
       expect.objectContaining({ before: "msg_1" }),
     );
     expect(page.olderItemCursor).toBeNull();
+  });
+});
+
+describe("getChatProject", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
+  });
+
+  it("reads the Conversation's own Project when no chat is named", async () => {
+    getOmnigentWorkingProject.mockResolvedValue({ slug: "q3-deck", name: "Q3 board deck" });
+
+    const result = await getChatProject(depsFor(), actor, { botId: "bot-1" }, ENV);
+
+    expect(result).toEqual({ project: { slug: "q3-deck", name: "Q3 board deck" } });
+    expect(getOmnigentWorkingProject).toHaveBeenCalledWith(
+      CLIENT,
+      "person@example.test",
+      "conv_super",
+    );
+    expect(resolveChatOwnership).not.toHaveBeenCalled();
+  });
+
+  it("reads a Side Chat's Project once the Muse owns that chat", async () => {
+    resolveChatOwnership.mockResolvedValue({ botId: "bot-1", live: false });
+    getOmnigentWorkingProject.mockResolvedValue(null);
+
+    const result = await getChatProject(
+      depsFor(),
+      actor,
+      { botId: "bot-1", chatId: "conv_side" },
+      ENV,
+    );
+
+    expect(result).toEqual({ project: null });
+    expect(getOmnigentWorkingProject).toHaveBeenCalledWith(
+      CLIENT,
+      "person@example.test",
+      "conv_side",
+    );
+  });
+
+  it("refuses a chat the person does not own", async () => {
+    resolveChatOwnership.mockResolvedValue(null);
+
+    await expect(
+      getChatProject(depsFor(), actor, { botId: "bot-1", chatId: "conv_other" }, ENV),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(getOmnigentWorkingProject).not.toHaveBeenCalled();
   });
 });

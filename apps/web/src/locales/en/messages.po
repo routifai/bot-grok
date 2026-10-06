@@ -3425,6 +3425,9 @@ msgstr "With context"
 msgid "Working"
 msgstr "Working"
 
+msgid "Working in {name}"
+msgstr "Working in {name}"
+
 msgid "Working on it"
 msgstr "Working on it"
 

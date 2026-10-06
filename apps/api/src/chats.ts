@@ -7,6 +7,7 @@ import {
   createOmnigentSideChat,
   deriveSideChatTitle,
   getOmnigentContextSummary,
+  getOmnigentWorkingProject,
   listOmnigentRelatedChats,
   listOmnigentSessionItems,
   mapOmnigentItemsToMessages,
@@ -206,6 +207,31 @@ export async function getChatMessages(
     olderItemCursor: hasOlder ? oldestItemId : null,
     running: Boolean(ownership.live),
   };
+}
+
+/** The Project this chat has open (ADR 0008): the Conversation, or one of its Side Chats. */
+export async function getChatProject(
+  deps: ChatsDeps,
+  actor: Actor,
+  input: { botId: string; chatId?: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ project: { slug: string; name: string } | null }> {
+  const client = requireClient(env);
+  const email = await actorEmail(deps, actor);
+  let sessionId: string;
+  if (input.chatId) {
+    const ownership = await resolveChatOwnership(
+      client,
+      email,
+      await ownedSuperChats(deps, actor),
+      input.chatId,
+    );
+    if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
+    sessionId = input.chatId;
+  } else {
+    sessionId = await requireSuperChatSessionId(deps, actor, input.botId);
+  }
+  return { project: await onSuperChat(getOmnigentWorkingProject(client, email, sessionId)) };
 }
 
 export async function sendToChat(

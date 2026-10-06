@@ -1,6 +1,7 @@
 import {
   createSideChat,
   getChatMessages,
+  getChatProject,
   listChats,
   sendToChat,
   summaryPreview,
@@ -28,6 +29,9 @@ export function sideChatsRouter(c: RouterContext) {
       ),
       send: museOnly.chats.send.handler(({ context, input }) =>
         sendToChat(deps, context.actor, input),
+      ),
+      project: museOnly.chats.project.handler(({ context, input }) =>
+        getChatProject(deps, context.actor, input),
       ),
     },
   };

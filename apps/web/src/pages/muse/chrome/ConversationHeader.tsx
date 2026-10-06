@@ -2,6 +2,7 @@ import type { ThreadMessage } from "@aiden/contracts";
 import { BotAvatar, cn } from "@aiden/ui-web";
 import type { ReactNode } from "react";
 import { MuseLiveStatus } from "./MuseLiveStatus";
+import { type ChatProject, ProjectChip } from "./ProjectChip";
 import type { MuseLiveRun } from "./useMuseLiveState";
 
 /**
@@ -11,7 +12,8 @@ import type { MuseLiveRun } from "./useMuseLiveState";
  * Agent Identity header isn't visible (`identityCollapsed`: collapsed, a side panel
  * open, or below `xl` — ContextPanel.tsx), so the Muse's identity still shows exactly
  * once, whichever of the two layouts is active. The live Muse indicator sits in the
- * center (nothing while idle), and quiet round controls (the context panel, the
+ * center (nothing while idle) beside a quiet "Working in" chip when a Project is open, and
+ * quiet round controls (the context panel, the
  * computer) sit on the right.
  */
 export function ConversationHeader({
@@ -23,6 +25,8 @@ export function ConversationHeader({
   actions,
   identityCollapsed,
   onOpenWaiting,
+  project,
+  onOpenProject,
 }: {
   botId: string;
   museName: string;
@@ -34,6 +38,8 @@ export function ConversationHeader({
    * header's compact identity should show instead. */
   identityCollapsed: boolean;
   onOpenWaiting?: () => void;
+  project?: ChatProject | null;
+  onOpenProject?: (project: ChatProject) => void;
 }) {
   return (
     <div className="app-drag pointer-events-none absolute inset-x-0 top-0 z-10 flex h-16 items-center justify-center px-4 md:px-6">
@@ -52,7 +58,8 @@ export function ConversationHeader({
           {museName}
         </span>
       </div>
-      <div className="app-no-drag pointer-events-auto">
+      <div className="app-no-drag pointer-events-auto flex items-center gap-2">
+        {project && onOpenProject ? <ProjectChip project={project} onOpen={onOpenProject} /> : null}
         <MuseLiveStatus
           botId={botId}
           color={color}

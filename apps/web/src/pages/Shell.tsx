@@ -52,6 +52,7 @@ import { EmptyConversation } from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
+import { type ChatProject, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
 import { SideChatSession, type SideChatWire } from "./muse/chrome/SideChatSession";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
@@ -189,6 +190,7 @@ export function ShellPage() {
       createSide: (input) => chatList.createSide(input.start, input.text),
       messages: (input) => rpc.chats.messages(input),
       send: (input) => rpc.chats.send(input),
+      project: (input) => rpc.chats.project(input),
     }),
     [chatList.createSide],
   );
@@ -301,6 +303,24 @@ export function ShellPage() {
   const [computerView, setComputerView] = useComputerView();
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
+  // The Project folder to show in the Files tab, set by the "Working in" chip.
+  const [filesReveal, setFilesReveal] = useState<{ path: string; nonce: number } | null>(null);
+  const openProjectFiles = useCallback(
+    (project: ChatProject) => {
+      setFilesReveal((current) => ({
+        path: `projects/${project.slug}`,
+        nonce: (current?.nonce ?? 0) + 1,
+      }));
+      setComputerView("files");
+      setPanel("computer");
+    },
+    [setComputerView],
+  );
+  const conversationProject = useChatProject(
+    active ? () => rpc.chats.project({ botId: active.id }) : undefined,
+    active?.id ?? "",
+    filesRefreshKey,
+  );
   const wasRunningRef = useRef(false);
   useEffect(() => {
     if (wasRunningRef.current && !composerRunning) setFilesRefreshKey((key) => key + 1);
@@ -651,6 +671,7 @@ export function ShellPage() {
                 onCreated={setActiveChat}
                 onReplied={chatList.refresh}
                 onClose={() => setActiveChat(null)}
+                onOpenProject={openProjectFiles}
               />
             </div>
             {chatArtifacts.panel}
@@ -715,6 +736,8 @@ export function ShellPage() {
                   // below `xl`), this header's compact identity covers it instead.
                   identityCollapsed={contextPanelCollapsed || panel !== null}
                   onOpenWaiting={() => setWaitingOpen(true)}
+                  project={conversationProject}
+                  onOpenProject={openProjectFiles}
                   actions={
                     <>
                       <button
@@ -1017,6 +1040,7 @@ export function ShellPage() {
                 screen={screen}
                 computerView={computerView}
                 filesRefreshKey={filesRefreshKey}
+                filesReveal={filesReveal}
                 sandboxProvider={bootstrapMe?.sandboxProvider}
               >
                 <RoutineList
