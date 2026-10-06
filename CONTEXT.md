@@ -21,8 +21,12 @@ A short-lived task executor the Muse starts for one piece of work. It does not i
 _Avoid_: subagent, sub-bot, peer bot, worker
 
 **Goal**:
-An outcome the person wants and has handed to the Muse to pursue over time. It has a plan of Tasks and may have a due date and a check-in schedule. Quick errands are not Goals; they are just done in conversation.
-_Avoid_: project, objective, tracker
+An outcome the person wants and has handed to the Muse to pursue over time. It has a plan of Tasks and may have a due date and a check-in schedule. Quick errands are not Goals; they are just done in conversation. A Goal may link to a Project that holds its files.
+_Avoid_: objective, tracker
+
+**Project**:
+A body of work the person and the Muse come back to across conversations, kept as one folder on the Computer with a short card (its name, the names the person uses for it, a one-line summary, the people involved). When the conversation is about a Project, the Muse works inside its folder. Not every Project has a Goal.
+_Avoid_: workspace, space, folder (when meaning the whole body of work)
 
 **Task**:
 One item in a Goal's plan: something the Muse does, or waits on the person for. A Task always belongs to exactly one Goal.
