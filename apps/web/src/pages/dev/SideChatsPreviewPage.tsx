@@ -69,7 +69,7 @@ export function SideChatsPreviewPage() {
           return created;
         });
       },
-      messages: (input) =>
+      transcript: (input) =>
         delay({
           threadId: input.chatId,
           messages: messagesByChat.current.get(input.chatId) ?? [],

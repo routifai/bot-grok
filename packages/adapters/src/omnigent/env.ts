@@ -40,12 +40,7 @@ export interface OmnigentSuperChatConfig {
   /** How long a claimed run's lease is held before another worker invocation may reclaim it
    * (env `OMNIGENT_LEASE_DURATION_MS`). */
   leaseDurationMs: number;
-  /** Only Super Chats with Omnigent-side activity this recently are scanned by the mirror job
-   * (env `OMNIGENT_MIRROR_LOOKBACK_MS`; ./mirror.ts). */
-  mirrorLookbackMs: number;
-  /** Items fetched per Super Chat per mirror tick (env `OMNIGENT_MIRROR_PAGE_SIZE`). */
-  mirrorPageSize: number;
-  /** Messages fetched per `chats.messages` page (env `OMNIGENT_CHATS_PAGE_SIZE`;
+  /** Messages fetched per `chats.transcript` page (env `OMNIGENT_CHATS_PAGE_SIZE`;
    * apps/api/src/chats.ts). */
   chatsPageSize: number;
 }
@@ -53,10 +48,6 @@ export interface OmnigentSuperChatConfig {
 export const DEFAULT_OMNIGENT_SUPERCHAT_CONFIG: OmnigentSuperChatConfig = {
   turnTimeoutMs: 5 * 60_000,
   leaseDurationMs: 5 * 60_000,
-  // A week, not a day: a Super Chat that only gets a Helper Result mirrored back once every
-  // few days (not every turn) must not fall out of the mirror job's scan window in between.
-  mirrorLookbackMs: 7 * 24 * 60 * 60 * 1000,
-  mirrorPageSize: 50,
   chatsPageSize: 50,
 };
 
@@ -72,11 +63,6 @@ export function omnigentSuperChatConfigFromEnv(
   return {
     turnTimeoutMs: positiveIntFromEnv(env.OMNIGENT_TURN_TIMEOUT_MS, defaults.turnTimeoutMs),
     leaseDurationMs: positiveIntFromEnv(env.OMNIGENT_LEASE_DURATION_MS, defaults.leaseDurationMs),
-    mirrorLookbackMs: positiveIntFromEnv(
-      env.OMNIGENT_MIRROR_LOOKBACK_MS,
-      defaults.mirrorLookbackMs,
-    ),
-    mirrorPageSize: positiveIntFromEnv(env.OMNIGENT_MIRROR_PAGE_SIZE, defaults.mirrorPageSize),
     chatsPageSize: positiveIntFromEnv(env.OMNIGENT_CHATS_PAGE_SIZE, defaults.chatsPageSize),
   };
 }
@@ -84,7 +70,7 @@ export function omnigentSuperChatConfigFromEnv(
 /**
  * The secrets redacted out of anything Omnigent sends back before it reaches a log, a thrown
  * `Error`, or an RPC response. Same composition `apps/api/src/app.ts` / `apps/worker/src/
- * index.ts` already assemble as `runtimeSecrets` for ./gateway.ts and ./mirror.ts — both
+ * index.ts` already assemble as `runtimeSecrets` for the engine client — both
  * composition roots now call this instead of inlining it twice, and the `chats.*`/
  * `activities.*`/`memory.profile` read paths (apps/api/src/{chats,activities}.ts) call it too,
  * so every Omnigent-facing surface redacts with the identical list.
@@ -120,7 +106,6 @@ export function omnigentGatewayDepsFromEnv(
     prisma,
     events,
     client: { baseUrl, proxySecret, secrets },
-    secrets,
     agentName: museAgentNameFromEnv(env),
     config: omnigentSuperChatConfigFromEnv(env),
   };

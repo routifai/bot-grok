@@ -1,18 +1,19 @@
 // @vitest-environment jsdom
 
-import type { ChatSummary } from "@aiden/contracts";
+import type { ChatSummary, FamilyEvent } from "@aiden/contracts";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { beforeEach, expect, it, vi } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   chats: {
     list: vi.fn(),
     createSide: vi.fn(),
     summaryPreview: vi.fn(),
-    messages: vi.fn(),
+    transcript: vi.fn(),
+    watch: vi.fn(),
     send: vi.fn(),
   },
 }));
@@ -45,6 +46,13 @@ vi.mock("@aiden/ui-web", () => ({
     <div data-testid="tooltip-content">{children}</div>
   ),
   Button: (props: ComponentProps<"button">) => <button {...props} />,
+  Popover: ({ children }: { children: ReactNode }) => children,
+  PopoverTrigger: ({ children, ...props }: ComponentProps<"button">) => (
+    <button type="button" {...props}>
+      {children}
+    </button>
+  ),
+  PopoverContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Switch: ({
     checked,
     onCheckedChange,
@@ -115,10 +123,36 @@ function chat(overrides: Partial<ChatSummary>): ChatSummary {
   };
 }
 
+const roots: Root[] = [];
+
+/** A family stream the test pushes events into. */
+function familyStream() {
+  const queue: FamilyEvent[] = [];
+  let wake: (() => void) | null = null;
+  const iterable: AsyncIterable<FamilyEvent> = {
+    async *[Symbol.asyncIterator]() {
+      for (;;) {
+        while (queue.length > 0) yield queue.shift() as FamilyEvent;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    },
+  };
+  return {
+    iterable,
+    push(event: FamilyEvent) {
+      queue.push(event);
+      wake?.();
+    },
+  };
+}
+
 async function mount(node: ReactNode) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  roots.push(root);
   await act(async () => {
     root.render(node);
   });
@@ -138,8 +172,17 @@ beforeEach(() => {
   api.chats.list.mockReset();
   api.chats.createSide.mockReset();
   api.chats.summaryPreview.mockReset();
-  api.chats.messages.mockReset();
+  api.chats.transcript.mockReset();
+  api.chats.watch.mockReset();
+  // Quiet by default: the stream opens and says nothing.
+  api.chats.watch.mockImplementation(async () => familyStream().iterable);
   api.chats.send.mockReset();
+});
+
+afterEach(async () => {
+  await act(async () => {
+    for (const root of roots.splice(0)) root.unmount();
+  });
 });
 
 it("extends the Chat List wire's createSide to carry the first message", async () => {
@@ -242,7 +285,7 @@ it("a Side Chat draft locks its start from the switch and calls createSide with 
   const wire: SideChatWire = {
     summaryPreview: vi.fn().mockResolvedValue({ summary: "A summary" }),
     createSide: vi.fn().mockResolvedValue(created),
-    messages: vi.fn().mockResolvedValue({ threadId: "t", messages: [], olderCursor: null }),
+    transcript: vi.fn().mockResolvedValue({ threadId: "t", messages: [], olderCursor: null }),
     send: vi.fn(),
   };
   const onCreated = vi.fn();
@@ -288,7 +331,7 @@ it("clicking the switch knob itself toggles 'Knows our conversation' exactly onc
   const wire: SideChatWire = {
     summaryPreview: vi.fn().mockResolvedValue({ summary: "A summary" }),
     createSide: vi.fn(),
-    messages: vi.fn(),
+    transcript: vi.fn(),
     send: vi.fn(),
   };
   const host = await mount(
@@ -321,7 +364,7 @@ it("an archived Side Chat opens read-only: no composer, its messages still show"
   const wire: SideChatWire = {
     summaryPreview: vi.fn(),
     createSide: vi.fn(),
-    messages: vi.fn().mockResolvedValue({
+    transcript: vi.fn().mockResolvedValue({
       threadId: "side-old",
       messages: [
         {
@@ -361,7 +404,9 @@ it("a failed Side Chat send is retried once, then shows a calm note with a Retry
     const wire: SideChatWire = {
       summaryPreview: vi.fn(),
       createSide: vi.fn(),
-      messages: vi.fn().mockResolvedValue({ threadId: "side-1", messages: [], olderCursor: null }),
+      transcript: vi
+        .fn()
+        .mockResolvedValue({ threadId: "side-1", messages: [], olderCursor: null }),
       send,
     };
     const host = await mount(
@@ -412,7 +457,7 @@ it("a failed Side Chat draft keeps the message and offers Retry", async () => {
   const wire: SideChatWire = {
     summaryPreview: vi.fn().mockResolvedValue({ summary: "" }),
     createSide,
-    messages: vi.fn(),
+    transcript: vi.fn(),
     send: vi.fn(),
   };
   const host = await mount(
@@ -436,4 +481,101 @@ it("a failed Side Chat draft keeps the message and offers Retry", async () => {
   await act(async () => {});
   expect(host.textContent).toContain("hello");
   expect(host.textContent).toContain("Didn’t send. Try again");
+});
+
+it("the Chat List reads again when the engine says a chat changed or a reply landed, without polling", async () => {
+  vi.useFakeTimers();
+  try {
+    const stream = familyStream();
+    api.chats.watch.mockImplementation(async () => stream.iterable);
+    api.chats.list.mockResolvedValue([]);
+    function Harness() {
+      useChatList("bot-1");
+      return null;
+    }
+    await mount(<Harness />);
+    expect(api.chats.list).toHaveBeenCalledTimes(1);
+
+    // A quiet minute is not a reason to read again.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(api.chats.list).toHaveBeenCalledTimes(1);
+
+    stream.push({ type: "chatsChanged" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(api.chats.list).toHaveBeenCalledTimes(2);
+
+    stream.push({ type: "messageDone", chatId: "side-1", itemId: "i1" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(api.chats.list).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("a Side Chat reads its transcript again when its own reply lands, and not on a timer", async () => {
+  vi.useFakeTimers();
+  try {
+    const stream = familyStream();
+    api.chats.watch.mockImplementation(async () => stream.iterable);
+    const reply = {
+      id: "m2",
+      threadId: "side-1",
+      seq: 1,
+      role: "bot" as const,
+      blocks: [{ kind: "text" as const, text: "Here is the answer." }],
+      createdAt: "2026-10-03T10:00:00.000Z",
+    };
+    const transcript = vi
+      .fn()
+      .mockResolvedValueOnce({ threadId: "side-1", messages: [], olderCursor: null })
+      .mockResolvedValue({ threadId: "side-1", messages: [reply], olderCursor: null });
+    const wire: SideChatWire = {
+      summaryPreview: vi.fn(),
+      createSide: vi.fn(),
+      transcript,
+      watch: (botId, listener) => {
+        void (async () => {
+          for await (const event of await api.chats.watch({ botId })) listener(event);
+        })();
+        return () => undefined;
+      },
+      send: vi.fn(),
+    };
+    const host = await mount(
+      <SideChatSession
+        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        view={fakeView}
+        chat={chat({ id: "side-1" })}
+        wire={wire}
+        onCreated={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    const quiet = transcript.mock.calls.length;
+    expect(host.textContent).not.toContain("Here is the answer.");
+
+    // Another chat's reply is not this chat's business.
+    stream.push({ type: "messageDone", chatId: "side-2", itemId: "x" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(transcript).toHaveBeenCalledTimes(quiet);
+
+    stream.push({ type: "messageDone", chatId: "side-1", itemId: "m2" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(host.textContent).toContain("Here is the answer.");
+  } finally {
+    vi.useRealTimers();
+  }
 });

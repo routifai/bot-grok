@@ -73,6 +73,21 @@ export const ChatSummarySchema = z.object({
 });
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
 
+/** One event of a Muse's live family stream (the Conversation, its Side Chats and Helpers).
+ * Ids only: the client refetches what changed. `open` is local to the relay: the stream just
+ * (re)connected, so anything may have been missed. */
+export const FamilyEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("open") }),
+  z.object({ type: z.literal("messageDone"), chatId: z.string(), itemId: z.string() }),
+  /** A turn in this chat ended (completed, failed, incomplete or cancelled); a failure's
+   * error note is already in the transcript. */
+  z.object({ type: z.literal("turnDone"), chatId: z.string(), status: z.string() }),
+  z.object({ type: z.literal("chatsChanged") }),
+  z.object({ type: z.literal("activitiesChanged") }),
+  z.object({ type: z.literal("heartbeat") }),
+]);
+export type FamilyEvent = z.infer<typeof FamilyEventSchema>;
+
 export const GoalSchema = z.object({
   id: Id,
   botId: Id,

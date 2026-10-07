@@ -92,6 +92,28 @@ export const MessageView = memo(function MessageView({
   onOpenComputer: (botId?: string) => void;
 }) {
   const { t } = useLingui();
+  /** The engine sends a failure's code, never its wording: the copy is ours. */
+  const errorNote = (code: string) => {
+    switch (code) {
+      case "provider_unavailable":
+        return t`I lost the connection. Try again.`;
+      case "timeout":
+        return t`That took too long. Try again.`;
+      case "rate_limited":
+      case "overloaded":
+        return t`The model is busy. Try again in a moment.`;
+      case "insufficient_credit":
+        return t`The model account is out of credit.`;
+      case "auth_failed":
+        return t`The model refused my key.`;
+      case "context_too_long":
+        return t`This conversation is too long for the model.`;
+      case "sandbox_unavailable":
+        return t`My computer restarted. Try again.`;
+      default:
+        return t`Something went wrong on my side. Try again.`;
+    }
+  };
   const isNarration =
     message.role === "bot" &&
     message.blocks.length > 0 &&
@@ -429,6 +451,17 @@ export const MessageView = memo(function MessageView({
                 museMode={museMode}
               />
             </div>
+          );
+        }
+        if (block.kind === "error") {
+          return (
+            <p
+              key={i}
+              data-testid="message-error-note"
+              className="self-center py-1 text-center text-[12.5px] text-muted-foreground"
+            >
+              {errorNote(block.code)}
+            </p>
           );
         }
         if (block.kind === "text" && message.role === "user") {

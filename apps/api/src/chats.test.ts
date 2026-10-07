@@ -6,21 +6,23 @@ const {
   createOmnigentSideChat,
   getOmnigentContextSummary,
   getOmnigentWorkingProject,
-  listOmnigentSessionItems,
+  getOmnigentTranscript,
   postOmnigentMessage,
   omnigentClientConfigFromEnv,
   resolveChatOwnership,
+  streamOmnigentFamily,
 } = vi.hoisted(() => ({
   createOmnigentSideChat: vi.fn(),
   getOmnigentContextSummary: vi.fn(),
   getOmnigentWorkingProject: vi.fn(),
-  listOmnigentSessionItems: vi.fn(),
+  getOmnigentTranscript: vi.fn(),
   postOmnigentMessage: vi.fn(),
   omnigentClientConfigFromEnv: vi.fn(),
   // The ownership rule itself is covered against a mocked Omnigent client in
-  // packages/adapters/src/omnigent/chats.test.ts — here it's faked so `getChatMessages`
+  // packages/adapters/src/omnigent/chats.test.ts — here it's faked so `getChatTranscript`
   // never makes a real network call just to resolve which Super Chat owns `chatId`.
   resolveChatOwnership: vi.fn(),
+  streamOmnigentFamily: vi.fn(),
 }));
 
 // Real mapping/error classes (OmnigentSideChatError, mapSideChatCreateToSummary, ...) stay
@@ -33,17 +35,17 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
     createOmnigentSideChat,
     getOmnigentContextSummary,
     getOmnigentWorkingProject,
-    listOmnigentSessionItems,
+    getOmnigentTranscript,
     postOmnigentMessage,
     omnigentClientConfigFromEnv,
     resolveChatOwnership,
+    streamOmnigentFamily,
   };
 });
 
 const { OmnigentSideChatError } = await import("@aiden/adapters");
-const { createSideChat, getChatMessages, getChatProject, summaryPreview } = await import(
-  "./chats.js"
-);
+const { createSideChat, getChatProject, getChatTranscript, summaryPreview, watchFamily } =
+  await import("./chats.js");
 
 const actor: Actor = {
   spaceId: "space-1",
@@ -190,7 +192,18 @@ describe("summaryPreview", () => {
   });
 });
 
-describe("getChatMessages", () => {
+const transcriptPage = (
+  data: unknown[],
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  data,
+  has_more: false,
+  older_cursor: null,
+  lineage: { kind: "side", root_id: "conv_super", parent_id: "conv_super", seed_item_id: null },
+  ...extra,
+});
+
+describe("getChatTranscript", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
@@ -201,42 +214,50 @@ describe("getChatMessages", () => {
     });
   });
 
-  it("fetches newest-first, reverses for display, and redacts message text", async () => {
-    listOmnigentSessionItems.mockResolvedValue({
-      data: [
-        {
-          id: "msg_2",
-          type: "message",
-          role: "assistant",
-          created_at: 2000,
-          content: [{ type: "output_text", text: "the key is sk-secret" }],
-        },
-        {
-          id: "msg_1",
-          type: "message",
-          role: "user",
-          created_at: 1000,
-          content: [{ type: "input_text", text: "hi" }],
-        },
-      ],
-      has_more: true,
-    });
-    const deps = depsFor();
+  it("maps the engine's page as it comes, and redacts message text", async () => {
+    getOmnigentTranscript.mockResolvedValue(
+      transcriptPage(
+        [
+          { id: "msg_1", role: "user", created_at: 1000, blocks: [{ type: "text", text: "hi" }] },
+          {
+            id: "msg_2",
+            role: "assistant",
+            created_at: 2000,
+            blocks: [{ type: "text", text: "the key is sk-secret" }],
+          },
+        ],
+        { has_more: true, older_cursor: "msg_1" },
+      ),
+    );
 
-    const page = await getChatMessages(deps, actor, { chatId: "conv_side" }, ENV);
+    const page = await getChatTranscript(
+      depsFor(),
+      actor,
+      { botId: "bot-1", chatId: "conv_side" },
+      ENV,
+    );
 
-    expect(listOmnigentSessionItems).toHaveBeenCalledWith(
+    expect(getOmnigentTranscript).toHaveBeenCalledWith(
       CLIENT,
       "person@example.test",
       "conv_side",
-      expect.objectContaining({ order: "desc", before: undefined }),
+      expect.objectContaining({ before: undefined }),
     );
-    // Reversed: oldest (msg_1) first, newest (msg_2) last.
     expect(page.messages.map((m) => m.id)).toEqual(["msg_1", "msg_2"]);
     expect(page.messages[1]?.blocks).toEqual([{ kind: "text", text: "the key is [redacted]" }]);
-    // has_more: true -> the oldest item in the fetched (desc) page is the next "before" cursor.
     expect(page.olderItemCursor).toBe("msg_1");
     expect(page.running).toBe(false);
+  });
+
+  it("reads the Conversation itself when no chat is named", async () => {
+    getOmnigentTranscript.mockResolvedValue(transcriptPage([]));
+
+    const page = await getChatTranscript(depsFor(), actor, { botId: "bot-1" }, ENV);
+
+    expect(getOmnigentTranscript.mock.calls[0]?.[2]).toBe("conv_super");
+    expect(resolveChatOwnership).not.toHaveBeenCalled();
+    expect(page.threadId).toBe("conv_super");
+    expect(page.running).toBeUndefined();
   });
 
   it("reports a reply still being written so the client keeps following it", async () => {
@@ -246,60 +267,107 @@ describe("getChatMessages", () => {
       botId: "bot-1",
       live: true,
     });
-    listOmnigentSessionItems.mockResolvedValue({ data: [], has_more: false });
+    getOmnigentTranscript.mockResolvedValue(transcriptPage([]));
 
-    const page = await getChatMessages(depsFor(), actor, { chatId: "conv_side" }, ENV);
+    const page = await getChatTranscript(
+      depsFor(),
+      actor,
+      { botId: "bot-1", chatId: "conv_side" },
+      ENV,
+    );
 
     expect(page.running).toBe(true);
   });
 
-  it("shows only a with-context side chat's own messages, after its seed", async () => {
-    resolveChatOwnership.mockResolvedValue({
-      kind: "side_chat",
-      superSessionId: "conv_super",
-      botId: "bot-1",
-      seedItemId: "seed_1",
-    });
-    listOmnigentSessionItems.mockResolvedValue({
-      data: [
-        {
-          id: "msg_own",
-          type: "message",
-          role: "user",
-          created_at: 3000,
-          content: [{ type: "input_text", text: "side question" }],
-        },
-        { id: "seed_1", type: "compaction", created_at: 2000 },
-        {
-          id: "msg_copied",
-          type: "message",
-          role: "user",
-          created_at: 1000,
-          content: [{ type: "input_text", text: "copied from the Conversation" }],
-        },
-      ],
-      has_more: true,
-    });
+  it("forwards the before cursor", async () => {
+    getOmnigentTranscript.mockResolvedValue(transcriptPage([]));
 
-    const page = await getChatMessages(depsFor(), actor, { chatId: "conv_side" }, ENV);
+    const page = await getChatTranscript(
+      depsFor(),
+      actor,
+      { botId: "bot-1", chatId: "conv_side", before: "msg_1" },
+      ENV,
+    );
 
-    expect(page.messages.map((m) => m.id)).toEqual(["msg_own"]);
-    expect(page.olderItemCursor).toBeNull();
-  });
-
-  it("forwards the before cursor and reports no older page when has_more is false", async () => {
-    listOmnigentSessionItems.mockResolvedValue({ data: [], has_more: false });
-    const deps = depsFor();
-
-    const page = await getChatMessages(deps, actor, { chatId: "conv_side", before: "msg_1" }, ENV);
-
-    expect(listOmnigentSessionItems).toHaveBeenCalledWith(
+    expect(getOmnigentTranscript).toHaveBeenCalledWith(
       CLIENT,
       "person@example.test",
       "conv_side",
       expect.objectContaining({ before: "msg_1" }),
     );
     expect(page.olderItemCursor).toBeNull();
+  });
+
+  it("refuses a chat that belongs to another Muse", async () => {
+    resolveChatOwnership.mockResolvedValue({
+      kind: "side_chat",
+      superSessionId: "conv_other",
+      botId: "bot-2",
+    });
+
+    await expect(
+      getChatTranscript(depsFor(), actor, { botId: "bot-1", chatId: "conv_side" }, ENV),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(getOmnigentTranscript).not.toHaveBeenCalled();
+  });
+});
+
+describe("watchFamily", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
+  });
+
+  it("relays the engine's family events as ids only", async () => {
+    streamOmnigentFamily.mockImplementation(async function* () {
+      yield { type: "message.done", chat_id: "conv_side", item_id: "msg_9" };
+      yield { type: "chats.changed", root_id: "conv_super" };
+      yield { type: "activities.changed", root_id: "conv_super" };
+      yield { type: "session.heartbeat" };
+    });
+
+    const events = [];
+    for await (const event of watchFamily(depsFor(), actor, { botId: "bot-1" }, undefined, ENV)) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: "open" },
+      { type: "messageDone", chatId: "conv_side", itemId: "msg_9" },
+      { type: "chatsChanged" },
+      { type: "activitiesChanged" },
+      { type: "heartbeat" },
+    ]);
+    expect(streamOmnigentFamily.mock.calls[0]?.slice(0, 3)).toEqual([
+      CLIENT,
+      "person@example.test",
+      "conv_super",
+    ]);
+  });
+
+  it("treats a closed tab as the normal end of the watch", async () => {
+    const abort = new AbortController();
+    streamOmnigentFamily.mockImplementation(() => ({
+      [Symbol.asyncIterator]: () => ({
+        next: async () => {
+          abort.abort();
+          throw new DOMException("aborted", "AbortError");
+        },
+      }),
+    }));
+
+    const events = [];
+    for await (const event of watchFamily(
+      depsFor(),
+      actor,
+      { botId: "bot-1" },
+      abort.signal,
+      ENV,
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([{ type: "open" }]);
   });
 });
 

@@ -140,36 +140,6 @@ export interface OmnigentPaginatedList<T> {
   has_more?: boolean;
 }
 
-export type OmnigentSessionItem = Record<string, unknown> & {
-  id: string;
-  type: string;
-  role?: string;
-  content?: unknown;
-  created_at?: number;
-  /** Set by the engine on a message it wrote itself (a wake notice, a timer firing). */
-  is_system_notice?: boolean;
-};
-
-/** `GET /v1/sessions/{id}/items` — the committed conversation transcript, cursor-paginated
- * (engine/omnigent/omnigent/server/routes/sessions/routes_items.py). Used both for a chat's
- * message history (apps/api/src/chats.ts) and the mirror job's scan for items the Super Chat
- * produced on its own (./mirror.ts). */
-export async function listOmnigentSessionItems(
-  config: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-  options: { limit?: number; after?: string; before?: string; order?: "asc" | "desc" } = {},
-): Promise<OmnigentPaginatedList<OmnigentSessionItem>> {
-  const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/items`, config.baseUrl);
-  if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
-  if (options.after) url.searchParams.set("after", options.after);
-  if (options.before) url.searchParams.set("before", options.before);
-  if (options.order) url.searchParams.set("order", options.order);
-  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "list session items", config.secrets);
-  return (await response.json()) as OmnigentPaginatedList<OmnigentSessionItem>;
-}
-
 /**
  * `GET /v1/sessions/{id}/stream` — live SSE tail. Yields each parsed `data:` frame (skipping
  * the `[DONE]` sentinel and unparsable keepalive lines) until the response body ends or

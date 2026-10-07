@@ -62,15 +62,6 @@ export function errorCodeFromBody(raw: string): string | undefined {
   }
 }
 
-/** True for `OmnigentApiError`s whose `error.code` is `"stale_cursor"` — the cursor passed to a
- * paginated list route (e.g. `GET .../items`) names an item that no longer exists, so
- * enumeration cannot continue from it (engine/omnigent/omnigent/server/routes/_errors.py).
- * Callers that keep a persisted cursor (./mirror.ts) reset it to start over on the next page
- * rather than treating this as a generic failure. */
-export function isStaleCursorError(error: unknown): boolean {
-  return error instanceof OmnigentApiError && error.code === "stale_cursor";
-}
-
 /** The engine no longer has the session (deleted, or a different engine database). */
 export function isSessionNotFoundError(error: unknown): boolean {
   return error instanceof OmnigentApiError && error.code === "not_found";

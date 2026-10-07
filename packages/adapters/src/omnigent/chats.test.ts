@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createChatOwnershipResolver,
   deriveSideChatTitle,
-  mapOmnigentItemsToMessages,
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
   resolveChatOwnership,
@@ -128,78 +127,6 @@ describe("mapSideChatCreateToSummary", () => {
   });
 });
 
-describe("mapOmnigentItemsToMessages", () => {
-  it("renders a raw engine failure as a calm system note, never its text", () => {
-    const [message] = mapOmnigentItemsToMessages("conv_1", [
-      {
-        id: "msg_err",
-        type: "message",
-        role: "assistant",
-        created_at: 1000,
-        content: [
-          {
-            type: "output_text",
-            text: "There's an issue with the selected model (x). It may not exist or you may not have access to it.",
-          },
-        ],
-      },
-    ]);
-    expect(message?.role).toBe("system");
-    expect(message?.blocks).toEqual([
-      { kind: "text", text: "Something went wrong on my side. Try again." },
-    ]);
-  });
-
-  it("maps user and assistant message items, skipping tool-call items", () => {
-    const messages = mapOmnigentItemsToMessages("conv_1", [
-      {
-        id: "msg_1",
-        type: "message",
-        role: "user",
-        created_at: 1000,
-        content: [{ type: "input_text", text: "hi" }],
-      },
-      {
-        id: "fc_1",
-        type: "function_call",
-        created_at: 1001,
-      },
-      {
-        id: "msg_2",
-        type: "message",
-        role: "assistant",
-        created_at: 1002,
-        content: [{ type: "output_text", text: "hello there" }],
-      },
-    ]);
-    expect(messages).toEqual([
-      {
-        id: "msg_1",
-        threadId: "conv_1",
-        seq: 0,
-        role: "user",
-        blocks: [{ kind: "text", text: "hi" }],
-        createdAt: new Date(1000 * 1000).toISOString(),
-      },
-      {
-        id: "msg_2",
-        threadId: "conv_1",
-        seq: 1,
-        role: "bot",
-        blocks: [{ kind: "text", text: "hello there" }],
-        createdAt: new Date(1002 * 1000).toISOString(),
-      },
-    ]);
-  });
-
-  it("skips a message item with no text content", () => {
-    const messages = mapOmnigentItemsToMessages("conv_1", [
-      { id: "msg_1", type: "message", role: "user", created_at: 0, content: [] },
-    ]);
-    expect(messages).toEqual([]);
-  });
-});
-
 describe("resolveChatOwnership", () => {
   const superChats = [{ botId: "bot-1", omnigentSessionId: "conv_super" }];
 
@@ -221,7 +148,6 @@ describe("resolveChatOwnership", () => {
       kind: "side_chat",
       superSessionId: "conv_super",
       botId: "bot-1",
-      seedItemId: null,
       live: true,
     });
   });
@@ -282,31 +208,5 @@ describe("resolveChatOwnership", () => {
     getOmnigentSession.mockResolvedValue({ id: "conv_super", parent_session_id: null });
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_super");
     expect(ownership).toBeNull();
-  });
-});
-
-describe("system notices", () => {
-  const user = (text: string, extra: Record<string, unknown> = {}) =>
-    ({
-      id: "i1",
-      type: "message",
-      role: "user",
-      created_at: 1,
-      content: [{ type: "input_text", text }],
-      ...extra,
-    }) as never;
-
-  it("hides a message the engine flagged, whatever its text opens with", () => {
-    const flagged = user("Researcher finished: notes", { is_system_notice: true });
-    expect(mapOmnigentItemsToMessages("c1", [flagged])).toEqual([]);
-  });
-
-  it("hides an older Helper wake notice known only by its prefix", () => {
-    const old = user("[System: sub-agent worker/x finished (completed) — y]");
-    expect(mapOmnigentItemsToMessages("c1", [old])).toEqual([]);
-  });
-
-  it("leaves a person's own message alone", () => {
-    expect(mapOmnigentItemsToMessages("c1", [user("What is a CD?")])).toHaveLength(1);
   });
 });

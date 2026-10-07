@@ -7,17 +7,16 @@ import {
   getOmnigentComputer,
   getOmnigentMemoryProfile,
   getOmnigentSession,
-  isStaleCursorError,
+  getOmnigentTranscript,
   listOmnigentDailyNotes,
   listOmnigentMemoryClaims,
-  listOmnigentSessionItems,
-  OmnigentApiError,
   OmnigentSideChatError,
   openOmnigentComputerScreen,
   patchOmnigentMemoryClaim,
   postOmnigentMessage,
   putOmnigentDailyNote,
   releaseOmnigentComputer,
+  streamOmnigentFamily,
   streamOmnigentSession,
   switchOmnigentAgent,
 } from "./client.js";
@@ -265,30 +264,6 @@ describe("throwOnError redaction (docs/super-chat/WIRING.md review item 5)", () 
       /sk-live-topsecret/,
     );
   });
-
-  it("surfaces the documented stale_cursor error code via isStaleCursorError", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse({ error: { code: "stale_cursor", message: "cursor is gone" } }, 400),
-      ),
-    );
-
-    let caught: unknown;
-    try {
-      await listOmnigentSessionItems(CONFIG, "p@x.test", "conv_1", { after: "item_gone" });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(OmnigentApiError);
-    expect(isStaleCursorError(caught)).toBe(true);
-  });
-
-  it("isStaleCursorError is false for an unrelated error code or a plain Error", async () => {
-    expect(isStaleCursorError(new OmnigentApiError("boom", "not_found"))).toBe(false);
-    expect(isStaleCursorError(new Error("boom"))).toBe(false);
-    expect(isStaleCursorError("boom")).toBe(false);
-  });
 });
 
 describe("createOmnigentSideChat error handling (docs/super-chat/WIRING.md review item 3)", () => {
@@ -399,5 +374,56 @@ describe("memory claims", () => {
     expect(patch.body).toBe(JSON.stringify({ text: "Maya, manager" }));
     const [, forget] = fetchMock.mock.calls[2] as unknown as [URL, RequestInit];
     expect(forget.body).toBe(JSON.stringify({ claim_id: "c1", confirm: true }));
+  });
+});
+
+describe("transcript and family stream", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads one transcript page with its cursor and seed flag", async () => {
+    const page = {
+      data: [],
+      has_more: false,
+      older_cursor: null,
+      lineage: { kind: "super", root_id: "s1", parent_id: null, seed_item_id: null },
+    };
+    const fetchMock = vi.fn(async () => jsonResponse(page));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(
+      await getOmnigentTranscript(CONFIG, "p@example.test", "s 1", {
+        limit: 20,
+        before: "i9",
+        includeSeed: true,
+      }),
+    ).toEqual(page);
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(String(url)).toBe(
+      "http://omnigent.test/v1/sessions/s%201/transcript?limit=20&before=i9&include_seed=true",
+    );
+  });
+
+  it("yields the family events and ignores any other frame", async () => {
+    const fetchMock = vi.fn(async () =>
+      sseResponse([
+        'event: message.done\ndata: {"type":"message.done","chat_id":"c1","item_id":"i1"}\n\n',
+        'event: other\ndata: {"type":"other"}\n\n',
+        'event: session.heartbeat\ndata: {"type":"session.heartbeat"}\n\n',
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const events = [];
+    for await (const event of streamOmnigentFamily(CONFIG, "p@example.test", "s1")) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: "message.done", chat_id: "c1", item_id: "i1" },
+      { type: "session.heartbeat" },
+    ]);
+    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(String(url)).toBe("http://omnigent.test/v1/sessions/s1/family/stream");
   });
 });

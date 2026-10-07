@@ -577,6 +577,11 @@ export function useThreadSync({
   }, [active, groupId, inGroup, snapshot?.botId, snapshot?.groupId, snapshot?.threadId]);
 
   const loadOlder = useCallback(() => loadOlderMessagesRef.current(), []);
+  /** Scrolls to a row already rendered (or about to be): the Muse's transcript loads it itself. */
+  const scrollToMessage = useCallback((messageId: string) => {
+    jumpGeneration.current += 1;
+    setScrollRequest({ messageId, nonce: jumpGeneration.current });
+  }, []);
   const jumpToReplyMessage = useCallback((messageId: string) => {
     const existing = document.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
     if (existing) {
@@ -611,6 +616,7 @@ export function useThreadSync({
     jumpToMessage,
     loadOlder,
     jumpToReplyMessage,
+    scrollToMessage,
     resetThreadHistory,
   };
 }

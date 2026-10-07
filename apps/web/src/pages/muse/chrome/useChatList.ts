@@ -1,6 +1,7 @@
 import type { ChatSummary, SideChatStart } from "@aiden/contracts";
 import { ORPCError } from "@orpc/client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";
 
 /** The Chat List wire: a Muse's Side Chats, or why they can't be shown. */
@@ -10,9 +11,8 @@ export type ChatListState =
   | { status: "unavailable" }
   | { status: "error" };
 
-/** How often the sidebar refreshes the list, so a chat started elsewhere (or one Nova
- * just finished working in) shows up without a reload. */
-const REFRESH_INTERVAL_MS = 15_000;
+/** Events arrive in bursts (a rename, a Helper start, a reply): read the list once per burst. */
+const REFRESH_THROTTLE_MS = 150;
 
 const isUnavailable = (error: unknown) =>
   error instanceof ORPCError && error.code === "NOT_IMPLEMENTED";
@@ -36,14 +36,38 @@ export function useChatList(botId: string) {
       });
   }, [botId]);
 
+  // The list follows the engine's family stream: a chat opened, renamed or archived, a Helper
+  // started, or a reply finished (its live dot and order). A reconnect re-reads what was missed.
   useEffect(() => {
     load();
-    const timer = window.setInterval(load, REFRESH_INTERVAL_MS);
+    if (!botId) return;
+    let timer: number | undefined;
+    let connected = false;
+    const refresh = () => {
+      if (timer !== undefined) return;
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        load();
+      }, REFRESH_THROTTLE_MS);
+    };
+    const stop = watchFamily(botId, (event) => {
+      if (
+        event.type === "chatsChanged" ||
+        event.type === "messageDone" ||
+        event.type === "turnDone"
+      )
+        refresh();
+      else if (event.type === "open") {
+        if (connected) refresh();
+        connected = true;
+      }
+    });
     return () => {
       generation.current += 1;
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
+      stop();
     };
-  }, [load]);
+  }, [botId, load]);
 
   /** Creates a Side Chat and sends its first message atomically, then refreshes the list. */
   const createSide = useCallback(

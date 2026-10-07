@@ -16,7 +16,7 @@ const isUnavailable = (error: unknown) =>
 /** The Activity run page's live wire: full detail and a Helper's messages. */
 export const LIVE_ACTIVITY_WIRE: ActivityWire = {
   get: (input) => rpc.activities.get(input),
-  helperMessages: (input) => rpc.chats.messages(input),
+  helperMessages: (input) => rpc.chats.transcript(input),
 };
 
 const feeds = new Map<string, ActivityFeed>();

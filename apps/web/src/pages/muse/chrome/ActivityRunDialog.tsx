@@ -15,7 +15,7 @@ import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "./toolIcons";
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */
 export type ActivityWire = {
   get: (input: { botId: string; activityId: string }) => Promise<Activity>;
-  helperMessages: (input: { chatId: string }) => Promise<ThreadMessagePage>;
+  helperMessages: (input: { botId: string; chatId: string }) => Promise<ThreadMessagePage>;
 };
 
 function RunStatusPill({ status, label }: { status: Activity["status"]; label: string }) {
@@ -130,10 +130,12 @@ function StepsTimeline({ steps, running }: { steps: ActivityStep[]; running: boo
 /** A Helper's messages, read-only (CONTEXT.md "Helper": "Visible, read-only"): no
  * composer, one line saying so, reusing the Side Chat session's own bubble rendering. */
 function HelperReadView({
+  botId,
   chatId,
   wire,
   onBack,
 }: {
+  botId: string;
   chatId: string;
   wire: ActivityWire;
   onBack: () => void;
@@ -146,7 +148,7 @@ function HelperReadView({
     const current = ++generation.current;
     setMessages(null);
     void wire
-      .helperMessages({ chatId })
+      .helperMessages({ botId, chatId })
       .then((page) => {
         if (current === generation.current) setMessages(page.messages);
       })
@@ -156,7 +158,7 @@ function HelperReadView({
     return () => {
       generation.current += 1;
     };
-  }, [chatId, wire]);
+  }, [botId, chatId, wire]);
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -279,6 +281,7 @@ export function ActivityRunDialog({
         >
           {showHelper ? (
             <HelperReadView
+              botId={botId}
               chatId={activity.chatId}
               wire={wire}
               onBack={() => setHelperOpen(false)}

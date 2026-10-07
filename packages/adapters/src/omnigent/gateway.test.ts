@@ -84,7 +84,6 @@ function fakeEvents(): ThreadEvents {
 
 const DEPS_BASE = {
   client: { baseUrl: "http://omnigent.test", proxySecret: "secret" },
-  secrets: [],
   agentName: "nova-pi",
 };
 
@@ -246,7 +245,8 @@ describe("runTurnOnOmnigent", () => {
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({
         outcome: "completed",
-        blocks: [{ kind: "text", text: "Hello there" }],
+        // The reply is the engine's transcript, never a Nova message.
+        blocks: [],
         runId: "run-1",
       }),
     );
@@ -300,49 +300,19 @@ describe("runTurnOnOmnigent", () => {
     expect(events.finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));
   });
 
-  it("records the turn's last item id so the mirror job never re-delivers it", async () => {
+  it("finishes the run on response.completed whatever the stream carried", async () => {
     findOmnigentAgentIdByName.mockResolvedValue("ag_1");
     createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
     streamOmnigentSession.mockReturnValue(
       eventsFrom([
         {
-          type: "response.completed",
-          response: {
-            output: [
-              {
-                id: "item_abc",
-                type: "message",
-                role: "assistant",
-                content: [{ type: "output_text", text: "Hello there" }],
-              },
-            ],
+          type: "response.output_item.done",
+          item: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "Let me check." }],
           },
         },
-      ]),
-    );
-
-    const prisma = fakePrisma();
-    const events = fakeEvents();
-    await runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
-
-    expect(prisma.omnigentSession.update).toHaveBeenCalledWith({
-      where: { botId: "bot-1" },
-      data: { lastMirroredItemId: "item_abc" },
-    });
-  });
-
-  it("takes the reply from the last assistant output item when response.completed has no output", async () => {
-    findOmnigentAgentIdByName.mockResolvedValue("ag_1");
-    createOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
-    const assistant = (text: string) => ({
-      type: "response.output_item.done",
-      item: { type: "message", role: "assistant", content: [{ type: "output_text", text }] },
-    });
-    streamOmnigentSession.mockReturnValue(
-      eventsFrom([
-        assistant("Let me check."),
-        { type: "response.output_item.done", item: { type: "function_call", name: "web_search" } },
-        assistant("Here is the answer."),
         { type: "response.completed", response: { output: [] } },
       ]),
     );
@@ -351,10 +321,10 @@ describe("runTurnOnOmnigent", () => {
     await runTurnOnOmnigent({ prisma: fakePrisma(), events, ...DEPS_BASE }, "run-1", "worker-1");
 
     expect(events.finalizeRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        outcome: "completed",
-        blocks: [{ kind: "text", text: "Here is the answer." }],
-      }),
+      expect.objectContaining({ outcome: "completed", blocks: [] }),
+    );
+    expect(events.finalizeRun).not.toHaveBeenCalledWith(
+      expect.objectContaining({ markUnread: true }),
     );
   });
 
@@ -519,9 +489,7 @@ describe("runTurnOnOmnigent", () => {
       );
 
       expect(switchOmnigentAgent).not.toHaveBeenCalled();
-      // The session row is still touched once, to bump updatedAt (keeps an active Super Chat
-      // inside the mirror job's lookback window) — but never with an agentName write, which
-      // only switch-agent persistence does.
+      // The session row is never written with an agentName, which only switch-agent persistence does.
       expect(updateMock).not.toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ agentName: expect.anything() }),
@@ -607,16 +575,8 @@ describe("runTurnOnOmnigent", () => {
       expect(upsertMock).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { botId: "bot-1" },
-          // The fresh Omnigent session has its own item id space (docs/super-chat/WIRING.md
-          // review item 1): a stale cursor into the old one must not carry over.
-          create: expect.objectContaining({
-            omnigentSessionId: "conv_new",
-            lastMirroredItemId: null,
-          }),
-          update: expect.objectContaining({
-            omnigentSessionId: "conv_new",
-            lastMirroredItemId: null,
-          }),
+          create: expect.objectContaining({ omnigentSessionId: "conv_new" }),
+          update: expect.objectContaining({ omnigentSessionId: "conv_new" }),
         }),
       );
       expect(postOmnigentMessage).toHaveBeenCalledWith(

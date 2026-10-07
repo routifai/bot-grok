@@ -7,23 +7,29 @@ import {
   createOmnigentSideChat,
   deriveSideChatTitle,
   getOmnigentContextSummary,
+  getOmnigentTranscript,
   getOmnigentWorkingProject,
   listOmnigentRelatedChats,
-  listOmnigentSessionItems,
-  mapOmnigentItemsToMessages,
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
+  mapTranscriptPage,
   type OmnigentClientConfig,
   OmnigentSideChatError,
   type OwnedSuperChat,
   omnigentClientConfigFromEnv,
   omnigentSuperChatConfigFromEnv,
   postOmnigentMessage,
-  redactThreadMessages,
   resolveChatOwnership,
   sideChatStartToWire,
+  streamOmnigentFamily,
 } from "@aiden/adapters";
-import type { Actor, ChatSummary, SideChatStart, ThreadMessagePage } from "@aiden/contracts";
+import type {
+  Actor,
+  ChatSummary,
+  FamilyEvent,
+  SideChatStart,
+  ThreadMessagePage,
+} from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
@@ -163,50 +169,74 @@ export async function summaryPreview(
 }
 
 /**
- * Newest page by default; `input.before` (an earlier page's `olderItemCursor`) pages further
- * back (docs/super-chat/WIRING.md review item 2). Fetched `order: "desc"` (Omnigent's cursor
- * pagination is keyset-based off the *newest* end), then reversed so `messages` reads oldest
- * first like every other `ThreadMessagePage`. `olderCursor` (the Nova-native integer-seq field)
- * is always null here — Omnigent items have no such sequence; `olderItemCursor` is the real
- * cursor for this page shape.
+ * The Conversation (no `chatId`), one of its Side Chats, or a Helper, as the engine's transcript
+ * (ADR 0009). Newest page by default; `input.before` (an earlier page's `olderItemCursor`) pages
+ * further back. The engine owns every rule (de-duping, system notices, a Side Chat's seed); this
+ * only checks who is asking and maps the page onto the chat's block types.
  */
-export async function getChatMessages(
+export async function getChatTranscript(
   deps: ChatsDeps,
   actor: Actor,
-  input: { chatId: string; before?: string },
+  input: { botId: string; chatId?: string; before?: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ThreadMessagePage> {
   const client = requireClient(env);
   const email = await actorEmail(deps, actor);
-  const superChats = await ownedSuperChats(deps, actor);
-  const ownership = await resolveChatOwnership(client, email, superChats, input.chatId);
-  if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
-
+  let sessionId: string;
+  let running: boolean | undefined;
+  if (input.chatId) {
+    const ownership = await resolveChatOwnership(
+      client,
+      email,
+      await ownedSuperChats(deps, actor),
+      input.chatId,
+    );
+    if (!ownership || ownership.botId !== input.botId) {
+      throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
+    }
+    sessionId = input.chatId;
+    running = ownership.kind === "side_chat" ? Boolean(ownership.live) : undefined;
+  } else {
+    sessionId = await requireSuperChatSessionId(deps, actor, input.botId);
+  }
   const config = omnigentSuperChatConfigFromEnv(env);
   const page = await onSuperChat(
-    listOmnigentSessionItems(client, email, input.chatId, {
-      order: "desc",
+    getOmnigentTranscript(client, email, sessionId, {
       limit: config.chatsPageSize,
       before: input.before,
     }),
   );
-  // A with-context side chat starts with a copy of the Conversation; show only what
-  // follows its seed checkpoint (the context itself is shown in the side chat's header).
-  const seedIndex = ownership.seedItemId
-    ? page.data.findIndex((item) => item.id === ownership.seedItemId)
-    : -1;
-  const own = seedIndex === -1 ? page.data : page.data.slice(0, seedIndex);
-  const ascending = [...own].reverse();
-  const secrets = client.secrets ?? [];
-  const oldestItemId = own.at(-1)?.id ?? null;
-  const hasOlder = seedIndex === -1 && page.has_more;
-  return {
-    threadId: input.chatId,
-    messages: redactThreadMessages(mapOmnigentItemsToMessages(input.chatId, ascending), secrets),
-    olderCursor: null,
-    olderItemCursor: hasOlder ? oldestItemId : null,
-    running: Boolean(ownership.live),
-  };
+  return mapTranscriptPage(sessionId, page, client.secrets ?? [], running);
+}
+
+/** `chats.watch`: the Muse's family stream (Conversation, Side Chats, Helpers), relayed as ids
+ * only so the client refetches what changed. Ends when the engine's stream does; the client
+ * reconnects and refetches. */
+export async function* watchFamily(
+  deps: ChatsDeps,
+  actor: Actor,
+  input: { botId: string },
+  signal: AbortSignal | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): AsyncGenerator<FamilyEvent> {
+  const client = requireClient(env);
+  const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
+  const email = await actorEmail(deps, actor);
+  yield { type: "open" };
+  try {
+    for await (const frame of streamOmnigentFamily(client, email, superSessionId, signal)) {
+      if (frame.type === "message.done") {
+        yield { type: "messageDone", chatId: frame.chat_id, itemId: frame.item_id };
+      } else if (frame.type === "turn.done") {
+        yield { type: "turnDone", chatId: frame.chat_id, status: frame.status };
+      } else if (frame.type === "chats.changed") yield { type: "chatsChanged" };
+      else if (frame.type === "activities.changed") yield { type: "activitiesChanged" };
+      else yield { type: "heartbeat" };
+    }
+  } catch (error) {
+    // A closed tab aborts the fetch; that is the normal end of a watch, not a failure.
+    if (!signal?.aborted) throw error;
+  }
 }
 
 /** The Project this chat has open (ADR 0008): the Conversation, or one of its Side Chats. */

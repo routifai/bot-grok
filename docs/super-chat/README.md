@@ -150,15 +150,13 @@ derived only from the call's arguments, and a `snippet(output)` — or
 | Memory search | `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` + its key (server) | `openai/text-embedding-3-small` | — |
 | Web search | `TAVILY_API_KEY` on the host, plus `OMNIGENT_RUNNER_ENV_PASSTHROUGH=TAVILY_API_KEY` so it reaches runners | required for `web_search` | — |
 
-Nova's own side of the gateway/mirror job (`packages/adapters/src/omnigent/env.ts`'s
+Nova's own side of the gateway (`packages/adapters/src/omnigent/env.ts`'s
 `omnigentSuperChatConfigFromEnv`):
 
 | What | Where | Default |
 |---|---|---|
 | Turn timeout | `OMNIGENT_TURN_TIMEOUT_MS` | 300000 (5 min) |
 | Run lease duration | `OMNIGENT_LEASE_DURATION_MS` | 300000 (5 min) |
-| Mirror job lookback | `OMNIGENT_MIRROR_LOOKBACK_MS` | 604800000 (7 days) |
-| Mirror job page size | `OMNIGENT_MIRROR_PAGE_SIZE` | 50 |
 | `chats.messages` page size | `OMNIGENT_CHATS_PAGE_SIZE` | 50 |
 
 ## What this replaced

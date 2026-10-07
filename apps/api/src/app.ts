@@ -47,7 +47,6 @@ import {
   pipedreamConfigFromEnv,
   pushTokenPath,
   reconcileComputerUpdates,
-  reconcileOmnigentMirror,
   SmtpEmailProvider,
   sandboxProviderOptionsFromEnv,
 } from "@aiden/adapters";
@@ -360,9 +359,6 @@ export async function createApp(
         prisma,
         jobs,
         reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
-        reconcileOmnigentMirror: omnigent
-          ? () => reconcileOmnigentMirror({ ...omnigent, workerId: "api" })
-          : undefined,
       })
     : undefined;
   reconciler?.start();

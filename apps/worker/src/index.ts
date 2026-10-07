@@ -32,7 +32,6 @@ import {
   PostgresRealtimeFanout,
   pipedreamConfigFromEnv,
   reconcileComputerUpdates,
-  reconcileOmnigentMirror,
   resolveDeploymentModel,
   resolveSandboxProvider,
   sandboxProviderOptionsFromEnv,
@@ -185,9 +184,6 @@ async function main() {
     events,
     leadership: createPostgresReconciliationLeadership(pool),
     reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
-    reconcileOmnigentMirror: omnigent
-      ? () => reconcileOmnigentMirror({ ...omnigent, workerId: process.pid.toString() })
-      : undefined,
   });
   reconciler.start();
 

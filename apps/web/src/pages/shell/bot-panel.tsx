@@ -210,7 +210,8 @@ export function BotSettings({
     thinkingLevel?: ThinkingLevel | null;
   }) => Promise<void>;
   onExport: () => Promise<void>;
-  onClear: () => void;
+  /** Left out for a Muse whose Conversation lives in the engine, which has no way to clear it. */
+  onClear?: () => void;
 }) {
   const { t } = useLingui();
   const [advancedOpened, setAdvancedOpened] = useState(false);
@@ -583,14 +584,16 @@ export function BotSettings({
         <Button variant="ghost" size="sm" className="-ms-2.5" onClick={() => void onExport()}>
           <Trans>Export</Trans>
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ms-2.5 text-destructive hover:text-destructive"
-          onClick={onClear}
-        >
-          <Trans>Clear conversation</Trans>
-        </Button>
+        {onClear ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ms-2.5 text-destructive hover:text-destructive"
+            onClick={onClear}
+          >
+            <Trans>Clear conversation</Trans>
+          </Button>
+        ) : null}
       </div>
     </div>
   );

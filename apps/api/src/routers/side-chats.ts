@@ -1,10 +1,11 @@
 import {
   createSideChat,
-  getChatMessages,
   getChatProject,
+  getChatTranscript,
   listChats,
   sendToChat,
   summaryPreview,
+  watchFamily,
 } from "../chats.js";
 
 import type { RouterContext } from "./context.js";
@@ -24,9 +25,12 @@ export function sideChatsRouter(c: RouterContext) {
       summaryPreview: museOnly.chats.summaryPreview.handler(({ context, input }) =>
         summaryPreview(deps, context.actor, input),
       ),
-      messages: museOnly.chats.messages.handler(({ context, input }) =>
-        getChatMessages(deps, context.actor, input),
+      transcript: museOnly.chats.transcript.handler(({ context, input }) =>
+        getChatTranscript(deps, context.actor, input),
       ),
+      watch: museOnly.chats.watch.handler(async function* ({ context, input }) {
+        yield* watchFamily(deps, context.actor, input, context.signal);
+      }),
       send: museOnly.chats.send.handler(({ context, input }) =>
         sendToChat(deps, context.actor, input),
       ),

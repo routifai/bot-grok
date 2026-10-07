@@ -15,4 +15,5 @@ export * from "./client/settings.js";
 export * from "./client/side-chats.js";
 export * from "./client/suggestions.js";
 export * from "./client/taught-skills.js";
+export * from "./client/transcript.js";
 export * from "./client/vault.js";

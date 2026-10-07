@@ -9,11 +9,9 @@
 // `ThreadEvents.finalizeRun` so the thread, task, and run rows land in the same state a normal
 // turn would.
 
-import { containsSecret, redactSecrets } from "@aiden/core";
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { STEERING_CONTINUATION_PROMPT } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
-import { redactReplyCard, turnBlocks } from "./cards.js";
 import {
   createOmnigentSession,
   findOmnigentAgentIdByName,
@@ -44,8 +42,6 @@ export interface OmnigentGatewayDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
   client: OmnigentClientConfig;
-  /** Secret values redacted from the assistant's reply before it is persisted. */
-  secrets: string[];
   /** Built-in Omnigent agent bundle name Nova Conversation turns run on — resolved once at
    * boot from `OMNIGENT_AGENT_NAME` (./env.ts). */
   agentName: string;
@@ -154,20 +150,6 @@ export async function runTurnOnOmnigent(
     }
 
     const sessionId = await ensureOmnigentSession(deps, user.email, run, deps.agentName);
-    // Keeps an active Super Chat inside the mirror job's lookback window (./mirror.ts,
-    // ./env.ts's `mirrorLookbackMs`) even on a long-running or low-traffic Muse whose session
-    // row would otherwise only get touched by `createBoundOmnigentSession`/`switch-agent`.
-    // Best-effort: a failure here only risks the mirror job scanning one fewer tick, never a
-    // lost turn. Plain try/await (not `.catch()` chained on the call) so a test double that
-    // returns `undefined` instead of a Promise cannot throw "catch is not a function" here.
-    try {
-      await deps.prisma.omnigentSession.update({
-        where: { botId: run.botId },
-        data: { updatedAt: new Date() },
-      });
-    } catch (error) {
-      getLogger().error("omnigent gateway: bumping session updatedAt failed", error);
-    }
     // Messages the person sent while a run was active are SteeringMessage rows, not Task.prompt:
     // a continuation's prompt is only a marker. Claim them so the engine gets every exact text.
     const steering = await deps.events.claimSteering({
@@ -182,29 +164,7 @@ export async function runTurnOnOmnigent(
       task.prompt,
       steering.map((item) => item.text),
     );
-    const { text, lastItemId, items } = await sendTurnAndAwaitReply(
-      deps,
-      user.email,
-      sessionId,
-      turnInput,
-      config,
-    );
-    const redacted = redactSecrets(text, deps.secrets);
-    if (containsSecret(redacted, deps.secrets)) {
-      throw new Error("refusing to persist a secret in the thread");
-    }
-
-    // Mirror job dedup (docs/super-chat/WIRING.md slice A1, ./mirror.ts): this turn's reply is
-    // about to be delivered through the normal run path below, so the mirror job must never
-    // look at it (or anything before it) again. Best-effort: a failure here only risks a
-    // harmless duplicate mirrored message, never a lost reply.
-    if (lastItemId) {
-      await deps.prisma.omnigentSession
-        .update({ where: { botId: run.botId }, data: { lastMirroredItemId: lastItemId } })
-        .catch((error) =>
-          getLogger().error("omnigent gateway: recording lastMirroredItemId failed", error),
-        );
-    }
+    await sendTurnAndAwaitCompletion(deps, user.email, sessionId, turnInput, config);
 
     const completed = await deps.events.finalizeRun({
       spaceId: run.spaceId,
@@ -216,14 +176,8 @@ export async function runTurnOnOmnigent(
       leaseOwner: workerId,
       leaseFence: fence,
       outcome: "completed",
-      blocks: turnBlocks(items, redacted).map((block) => {
-        if (block.kind === "reply_card") return redactReplyCard(block, deps.secrets);
-        if (block.kind === "helper") {
-          return { ...block, title: redactSecrets(block.title, deps.secrets) };
-        }
-        return block;
-      }),
-      markUnread: true,
+      // The reply lives in the engine's transcript (ADR 0009); this run only tracks the turn.
+      blocks: [],
     });
     if (!completed) {
       getLogger().error("omnigent gateway: finalizeRun(completed) did not apply", { runId });
@@ -384,10 +338,7 @@ async function checkSessionRepair(
  * Creates a fresh Omnigent session whose runner is launched inside the Muse's own computer
  * (`host_type: "managed"` with the "computer" sandbox provider, docs/omnigent-spike.md "Nova
  * computer" launcher) and records it as this bot's current session, overwriting whatever was
- * there (a stale/unbound session). Always resets `lastMirroredItemId` to null: a fresh Omnigent
- * session has a different item id space, so a cursor into the old one would either match
- * nothing (harmless) or, worse, collide with an unrelated item id in the new session — see
- * ./mirror.ts.
+ * there (a stale/unbound session).
  */
 async function createBoundOmnigentSession(
   deps: OmnigentGatewayDeps,
@@ -417,13 +368,11 @@ async function createBoundOmnigentSession(
       omnigentSessionId: session.id,
       agentName: desiredAgentName,
       runnerLocation: RUNNER_LOCATION,
-      lastMirroredItemId: null,
     },
     update: {
       omnigentSessionId: session.id,
       agentName: desiredAgentName,
       runnerLocation: RUNNER_LOCATION,
-      lastMirroredItemId: null,
     },
   });
   return saved.omnigentSessionId;
@@ -459,23 +408,19 @@ async function switchOmnigentSessionAgent(
 }
 
 /**
- * Posts the turn's message, then reads the live stream until `response.completed`, returning
- * the assistant's text. The GET stream request is started (its body opened) before the POST so
- * a fast reply cannot race ahead of the listener — see engine/omnigent/omnigent/server/API.md's
- * "Reconnect Contract" note on opening the stream first.
+ * Posts the turn's message, then reads the live stream until `response.completed`, so the run
+ * tracks the turn (working row, stop, failure). The reply itself is not kept here: the engine's
+ * transcript holds it (ADR 0009). The GET stream request is started (its body opened) before the
+ * POST so a fast reply cannot race ahead of the listener — see
+ * engine/omnigent/omnigent/server/API.md's "Reconnect Contract" note on opening the stream first.
  */
-async function sendTurnAndAwaitReply(
+async function sendTurnAndAwaitCompletion(
   deps: OmnigentGatewayDeps,
   email: string,
   sessionId: string,
   turnInput: string,
   config: OmnigentSuperChatConfig,
-): Promise<{
-  text: string;
-  lastItemId: string | undefined;
-  /** The turn's finished items in order (messages and tool calls), for reply cards. */
-  items: Array<Record<string, unknown>>;
-}> {
+): Promise<void> {
   const signal = AbortSignal.timeout(config.turnTimeoutMs);
   const iterator = streamOmnigentSession(deps.client, email, sessionId, signal)[
     Symbol.asyncIterator
@@ -483,35 +428,10 @@ async function sendTurnAndAwaitReply(
   const first = iterator.next();
   await postOmnigentMessage(deps.client, email, sessionId, turnInput);
 
-  // Omnigent streams each finished item as response.output_item.done and may leave
-  // response.completed's own output empty, so the reply is the last assistant message seen.
-  // lastItemId tracks the newest item's id regardless of role, so the mirror job's "after"
-  // cursor (./mirror.ts) always starts strictly past everything this turn produced.
-  let lastReply = "";
-  let lastItemId: string | undefined;
-  const items: Array<Record<string, unknown>> = [];
   let step = await first;
   while (!step.done) {
     const event = step.value;
-    if (event.type === "response.output_item.done") {
-      const item = event.item as Record<string, unknown> | undefined;
-      if (typeof item?.id === "string") lastItemId = item.id;
-      if (item) items.push(item);
-      const text = item ? extractAssistantText([item]) : "";
-      if (text) lastReply = text;
-    }
-    if (event.type === "response.completed") {
-      const response = event.response as { output?: Array<Record<string, unknown>> } | undefined;
-      for (const item of response?.output ?? []) {
-        if (typeof item.id === "string") lastItemId = item.id;
-      }
-      const output = response?.output ?? [];
-      return {
-        text: extractAssistantText(output) || lastReply,
-        lastItemId,
-        items: output.length ? output : items,
-      };
-    }
+    if (event.type === "response.completed") return;
     if (event.type === "response.failed" || event.type === "response.error") {
       // Omnigent nests the failure under response.error, like response.completed's output.
       const response = event.response as { error?: { message?: string } } | undefined;
@@ -526,29 +446,6 @@ async function sendTurnAndAwaitReply(
   }
   getLogger().error("omnigent gateway: session stream ended before response.completed");
   throw new Error(CHAT_UNAVAILABLE_MESSAGE);
-}
-
-/** `response.output` items → assistant message text (OpenAI Responses-style content parts).
- * Also reused by ./mirror.ts for the flattened item shape `GET .../items` returns (same
- * `{type, role, content}` fields — engine/omnigent/omnigent/entities/conversation.py's
- * `to_api_dict`). */
-export function extractAssistantText(output: Array<Record<string, unknown>>): string {
-  const parts: string[] = [];
-  for (const item of output) {
-    if (item.type !== "message" || item.role !== "assistant") continue;
-    const content = Array.isArray(item.content) ? item.content : [];
-    for (const block of content) {
-      if (
-        block &&
-        typeof block === "object" &&
-        (block as { type?: unknown }).type === "output_text" &&
-        typeof (block as { text?: unknown }).text === "string"
-      ) {
-        parts.push((block as { text: string }).text);
-      }
-    }
-  }
-  return parts.join("\n\n").trim();
 }
 
 export type { OmnigentClientConfig };

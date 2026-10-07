@@ -115,7 +115,7 @@ const TranscriptView = memo(function Transcript({
   onScrollRequestHandled: () => void;
   artifactTarget: ArtifactTarget;
   messages: ThreadMessage[];
-  olderCursor: number | null;
+  olderCursor: number | string | null;
   loadingOlder: boolean;
   answerableAskMessageId: string | null;
   running: boolean;

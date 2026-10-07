@@ -40,6 +40,7 @@ import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { authClient } from "../lib/auth";
+import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { activeThreadRuns } from "../lib/thread-events";
@@ -60,14 +61,17 @@ import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
 import { useChatList } from "./muse/chrome/useChatList";
 import { useCreateBot } from "./muse/chrome/useCreateBot";
+import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
 import { useVoice } from "./muse/chrome/useVoice";
 import { ClearConversationHost } from "./muse/conversation/ClearConversationHost";
 import { Composer } from "./muse/conversation/Composer";
+import { conversationMessages as layerConversation } from "./muse/conversation/museTranscript";
 import { FALLBACK_BOT_COLOR } from "./muse/conversation/shared";
 import { sideChatView } from "./muse/conversation/sideChatView";
 import { Transcript } from "./muse/conversation/Transcript";
 import { useChatArtifacts } from "./muse/conversation/useChatArtifacts";
 import { useComposerSend } from "./muse/conversation/useComposerSend";
+import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
 import { useThreadState } from "./muse/conversation/useThreadState";
 import { useThreadSync } from "./muse/conversation/useThreadSync";
 import { FeedScreen } from "./muse/FeedScreen";
@@ -188,7 +192,8 @@ export function ShellPage() {
     () => ({
       summaryPreview: (input) => rpc.chats.summaryPreview(input),
       createSide: (input) => chatList.createSide(input.start, input.text),
-      messages: (input) => rpc.chats.messages(input),
+      transcript: (input) => rpc.chats.transcript(input),
+      watch: (botId, listener) => watchFamily(botId, listener),
       send: (input) => rpc.chats.send(input),
       project: (input) => rpc.chats.project(input),
     }),
@@ -232,6 +237,7 @@ export function ShellPage() {
     jumpToMessage,
     loadOlder,
     jumpToReplyMessage,
+    scrollToMessage,
     resetThreadHistory,
   } = useThreadSync({
     target: { active, activeGroup, groupId, inGroup, activeBotId, activeGroupId },
@@ -243,12 +249,6 @@ export function ShellPage() {
     lists: { setRoutines, setRoutinesBotId, setTaughtSkills, setTaughtSkillsBotId },
     searchParamsRef,
     bootstrappedThread,
-  });
-  const { voiceStatus, setVoiceStatus, speakingMessageId, speakMessage } = useVoice({
-    active,
-    snapshot,
-    callOpen,
-    activeBotId,
   });
 
   useEffect(() => {
@@ -279,13 +279,21 @@ export function ShellPage() {
       setSearchParams(next, { replace: true });
     }
     if (messageId) {
-      void jumpToMessage({ botId: active.id, messageId }).finally(() => {
+      // The Muse's Conversation is the engine's transcript: page back to the hit, then scroll.
+      const jump =
+        museMode && !inGroup
+          ? revealMessageRef.current(messageId).then((found) => {
+              if (found) scrollToMessage(messageId);
+            })
+          : jumpToMessage({ botId: active.id, messageId });
+      void jump.finally(() => {
         const next = new URLSearchParams(searchParams);
         next.delete("m");
         setSearchParams(next, { replace: true });
       });
     }
   }, [active?.id, groupId, inGroup, routines, routinesBotId, searchParams, setSearchParams]);
+  const revealMessageRef = useRef<(messageId: string) => Promise<boolean>>(async () => false);
   const activeSnapshot = inGroup
     ? snapshot?.groupId === groupId
       ? snapshot
@@ -326,10 +334,51 @@ export function ShellPage() {
     if (wasRunningRef.current && !composerRunning) setFilesRefreshKey((key) => key + 1);
     wasRunningRef.current = composerRunning;
   }, [composerRunning]);
-  const transcriptMessages = useMemo(
-    () => userVisibleMessages(activeSnapshot?.messages ?? [], { includePeerReceipts: true }),
-    [activeSnapshot?.messages],
+  // The Muse's Conversation is the engine's transcript (ADR 0009); Nova's thread only supplies
+  // the person's message from the moment it is accepted until the transcript shows it. A group
+  // thread is still Nova's own.
+  const museTranscript = useMuseTranscript(
+    museMode && !inGroup ? active?.id : undefined,
+    messageScroll,
   );
+  useReplyAlerts({
+    bot: museMode && !inGroup ? active : undefined,
+    conversationId: museTranscript.threadId,
+    notifyBrowserForEvent,
+    refreshBots,
+  });
+  const readTranscript = museTranscript.refresh;
+  revealMessageRef.current = museTranscript.reveal;
+  const runsKey = currentRuns.map((run) => `${run.id}:${run.status}`).join(",");
+  // The engine records the person's message when a run starts and the reply when it ends, and
+  // the stream only announces replies: read again on each run change.
+  const seenRunsKey = useRef(runsKey);
+  useEffect(() => {
+    if (seenRunsKey.current === runsKey) return;
+    seenRunsKey.current = runsKey;
+    readTranscript();
+  }, [runsKey, readTranscript]);
+  const conversationMessages = useMemo(() => {
+    const fromEngine = museTranscript.messages;
+    if (!museMode || inGroup) return activeSnapshot?.messages ?? [];
+    if (!fromEngine) return [];
+    return layerConversation(fromEngine, activeSnapshot?.messages ?? []);
+  }, [museTranscript.messages, inGroup, activeSnapshot?.messages]);
+  const transcriptMessages = useMemo(
+    () => userVisibleMessages(conversationMessages, { includePeerReceipts: true }),
+    [conversationMessages],
+  );
+  // What voice (auto-speak, calls) reads the reply from.
+  const conversationSnapshot = useMemo(
+    () => (activeSnapshot ? { ...activeSnapshot, messages: conversationMessages } : null),
+    [activeSnapshot, conversationMessages],
+  );
+  const { voiceStatus, setVoiceStatus, speakingMessageId, speakMessage } = useVoice({
+    active,
+    snapshot: conversationSnapshot,
+    callOpen,
+    activeBotId,
+  });
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
     [active?.id, groupId, inGroup],
@@ -842,7 +891,11 @@ export function ShellPage() {
                     <Trans>Create new Bot</Trans>
                   </Button>
                 </div>
-              ) : museMode && active && transcriptMessages.length === 0 && !transcriptRunning ? (
+              ) : museMode &&
+                active &&
+                museTranscript.messages !== null &&
+                transcriptMessages.length === 0 &&
+                !transcriptRunning ? (
                 <EmptyConversation
                   botName={active.name}
                   personName={bootstrapMe?.name ?? ""}
@@ -863,12 +916,16 @@ export function ShellPage() {
                   onScrollRequestHandled={clearScrollRequest}
                   artifactTarget={transcriptArtifactTarget}
                   messages={transcriptMessages}
-                  olderCursor={activeSnapshot?.olderCursor ?? null}
-                  loadingOlder={loadingOlder}
+                  olderCursor={
+                    museMode && !inGroup
+                      ? museTranscript.olderCursor
+                      : (activeSnapshot?.olderCursor ?? null)
+                  }
+                  loadingOlder={museMode && !inGroup ? museTranscript.loadingOlder : loadingOlder}
                   answerableAskMessageId={answerableAskMessageId}
                   running={transcriptRunning}
                   workingBots={workingBots}
-                  onLoadOlder={loadOlder}
+                  onLoadOlder={museMode && !inGroup ? museTranscript.loadOlder : loadOlder}
                   onOpenBot={openBot}
                   onAnswer={answerMessage}
                   onSendCard={sendCardReply}
@@ -1074,7 +1131,7 @@ export function ShellPage() {
                 active={active}
                 setAgentSkills={setAgentSkills}
                 refreshBots={refreshBots}
-                onClear={() => setClearTarget({ kind: "bot", chat: active })}
+                // The engine has no way to clear a Conversation, so the action is not offered.
               />
             ) : null}
             {panel === "routine" && active ? (
@@ -1143,7 +1200,7 @@ export function ShellPage() {
             botId={active.id}
             botName={active.name}
             transcribe={Boolean(voiceStatus?.transcribe)}
-            snapshot={activeSnapshot}
+            snapshot={conversationSnapshot}
             onSend={sendMessage}
             onFollowUp={followUpMessage}
             onAnswer={answerMessage}

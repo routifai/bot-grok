@@ -28,7 +28,7 @@ import { aiConsentStatus, allowAiConsent } from "../ai-consent.js";
 import { withEngineComputer } from "../engine-computer.js";
 import { syncEngineTimezone } from "../engine-timezone.js";
 import { listSpaceRuns } from "../runs.js";
-import { querySpaceSearch } from "../search.js";
+import { engineSearch, querySpaceSearch } from "../search.js";
 import { loadAllMessages } from "../thread-message-pages.js";
 import { resolveThreadTarget, threadSnapshot } from "../thread-target.js";
 import type { RouterContext, RouterDeps } from "./context.js";
@@ -545,7 +545,12 @@ export function accountRouter(c: RouterContext) {
     },
     search: {
       query: authed.search.query.handler(async ({ context, input }) => ({
-        hits: await querySpaceSearch(deps.prisma, context.actor, input.q),
+        hits: await querySpaceSearch(
+          deps.prisma,
+          context.actor,
+          input.q,
+          await engineSearch(deps.prisma, context.actor),
+        ),
       })),
     },
     runs: {

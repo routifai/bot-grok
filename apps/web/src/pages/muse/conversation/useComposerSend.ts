@@ -23,6 +23,7 @@ import { notifyAsksChanged } from "../asks";
 import type { useCreateBot } from "../chrome/useCreateBot";
 import type { useComputerStore } from "../files/useComputerStore";
 import { markFirstRunSeen } from "../intro";
+import { quotedMessageText } from "./museTranscript";
 import { type PendingAttachment, readFileAsBase64 } from "./shared";
 import type { useThreadState } from "./useThreadState";
 import type { useThreadSync } from "./useThreadSync";
@@ -291,14 +292,15 @@ export function useComposerSend({
             replyQuote: reroutedToGroup ? undefined : (activeReplyQuote ?? undefined),
           });
         } else if (botTarget) {
+          // The Muse's messages are the engine's, with ids Nova has no row for: a quote travels
+          // as text the engine records and the model reads, not as a reply link.
+          const quoted = activeReplyQuote ? quotedMessageText(activeReplyQuote, trimmed) : trimmed;
           const sent = await rpc.threads.send({
             botId: botTarget,
             clientNonce,
-            text: trimmed || undefined,
+            text: quoted || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
-            replyToMessageId: activeReplyTarget?.id,
-            replyQuote: activeReplyQuote ?? undefined,
           });
           if (activeBotId.current === botTarget) {
             updateSnapshot((current) =>

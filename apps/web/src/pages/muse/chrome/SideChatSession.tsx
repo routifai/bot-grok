@@ -1,6 +1,7 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type {
   ChatSummary,
+  FamilyEvent,
   SideChatStart,
   ThreadMessage,
   ThreadMessagePage,
@@ -31,7 +32,10 @@ export type SideChatWire = {
     start: SideChatStart;
     text: string;
   }) => Promise<ChatSummary>;
-  messages: (input: { chatId: string }) => Promise<ThreadMessagePage>;
+  transcript: (input: { botId: string; chatId: string }) => Promise<ThreadMessagePage>;
+  /** Listens to the Muse's family stream (ids only); returns the unsubscribe. Fixtures may leave
+   * it out: the chat then only reads when it is opened and after a send. */
+  watch?: (botId: string, listener: (event: FamilyEvent) => void) => () => void;
   send: (input: { chatId: string; text: string }) => Promise<{ ok: true }>;
   /** The Project the chat has open; fixtures may leave it out. */
   project?: (input: { botId: string; chatId: string }) => Promise<{ project: ChatProject | null }>;
@@ -353,8 +357,10 @@ function DraftSideChat({
   );
 }
 
-const REPLY_POLL_INTERVAL_MS = 1000;
-const REPLY_POLL_MAX_MS = 3 * 60 * 1000;
+/** How long a reply may take before the send is reported as failed. */
+const REPLY_WAIT_MAX_MS = 3 * 60 * 1000;
+/** A reply's message can land just before the chat stops being live: look once more. */
+const SETTLE_RECHECK_MS = 1500;
 
 const userCount = (messages: ThreadMessage[] | null) =>
   messages?.filter((message) => message.role === "user").length ?? 0;
@@ -402,7 +408,7 @@ function ExistingSideChat({
   const refresh = () => {
     const current = generation.current;
     return wire
-      .messages({ chatId: chat.id })
+      .transcript({ botId: bot.id, chatId: chat.id })
       .then((page) => {
         if (current !== generation.current) return;
         const running = page.running ?? false;
@@ -436,29 +442,45 @@ function ExistingSideChat({
   }, [chat.id, wire]);
 
   const awaitingReply = !chat.archived && (waiting || engineRunning);
+  const awaitingRef = useRef(awaitingReply);
+  awaitingRef.current = awaitingReply;
   const loadProject = wire.project;
   const project = useChatProject(
     loadProject ? () => loadProject({ botId: bot.id, chatId: chat.id }) : undefined,
     chat.id,
     `${messages?.length ?? 0}:${awaitingReply}`,
   );
+  // The chat reads again when the engine says a reply landed (and after a reconnect); a quiet
+  // heartbeat settles a chat whose last reply raced its live flag.
+  useEffect(() => {
+    if (!wire.watch) return;
+    let recheck: number | undefined;
+    const stop = wire.watch(bot.id, (event) => {
+      if ((event.type === "messageDone" || event.type === "turnDone") && event.chatId === chat.id) {
+        void refresh();
+        window.clearTimeout(recheck);
+        recheck = window.setTimeout(() => void refresh(), SETTLE_RECHECK_MS);
+      } else if (event.type === "open" || (event.type === "heartbeat" && awaitingRef.current)) {
+        void refresh();
+      }
+    });
+    return () => {
+      window.clearTimeout(recheck);
+      stop();
+    };
+  }, [bot.id, chat.id, wire]);
+
   useEffect(() => {
     if (!awaitingReply) return;
-    const startedAt = Date.now();
-    const timer = window.setInterval(() => {
-      if (Date.now() - startedAt > REPLY_POLL_MAX_MS) {
-        window.clearInterval(timer);
-        setWaiting(false);
-        setFailure(
-          (now) =>
-            now ?? (pendingRef.current ? { text: pendingRef.current.text, stage: "failed" } : null),
-        );
-        return;
-      }
-      void refresh();
-    }, REPLY_POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [awaitingReply, chat.id, wire]);
+    const timer = window.setTimeout(() => {
+      setWaiting(false);
+      setFailure(
+        (now) =>
+          now ?? (pendingRef.current ? { text: pendingRef.current.text, stage: "failed" } : null),
+      );
+    }, REPLY_WAIT_MAX_MS);
+    return () => window.clearTimeout(timer);
+  }, [awaitingReply, chat.id]);
 
   const send = (text: string) => {
     setPending({ text, base: userCount(messages) });

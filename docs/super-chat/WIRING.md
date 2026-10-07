@@ -33,11 +33,11 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 | Screen | oRPC | Omnigent |
 |---|---|---|
 | Conversation: send | existing run path (`runTurnOnOmnigent`) | `POST /v1/sessions/{super}/events` + `/stream` |
-| Conversation: Muse speaks first (Helper Results) | mirror job → Nova thread | `GET /v1/sessions/{super}/items` after the last mirrored item |
+| Conversation: read, incl. Muse speaks first (Helper Results) | `chats.transcript({botId})`, refetched on `chats.watch` | `GET /v1/sessions/{super}/transcript` + `GET /v1/sessions/{super}/family/stream` |
 | Sidebar Chat List | `chats.list({botId})` | `GET /v1/sessions/{super}/related_chats` |
 | "+ New side chat" first send | `chats.createSide({botId, start, text})` | `POST /v1/sessions/{super}/side_chats` |
 | "Knows our conversation" hover | `chats.summaryPreview({botId})` | `GET /v1/sessions/{super}/context_summary` |
-| Side chat / Helper messages | `chats.messages({chatId})` | `GET /v1/sessions/{chatId}/items` |
+| Side chat / Helper messages | `chats.transcript({botId, chatId})` | `GET /v1/sessions/{chatId}/transcript` |
 | Side chat send | `chats.send({chatId, text})` | `POST /v1/sessions/{chatId}/events` |
 | Activity panel | `activities.list({botId, before?, limit?})` | `GET /v1/sessions/{super}/activities` |
 | Memory tab | `memory.profile({botId})` | `GET /v1/sessions/{super}/memory/profile` |
@@ -75,7 +75,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 | Gateway creates the Super Chat with the mode label; replaces a session without it | Turns the capability on |
 | Remove the context-provider route (`/internal/omnigent/context`) and `context-provider.ts` | The engine no longer calls it; memory comes from Omnigent |
 | Implement `chats.*` and add `activities.list` / `activities.get` (contracts + router + adapter client) with the ownership rule above | Side chats, Helper status, Activity panel |
-| Mirror job: copy assistant messages the Super Chat produced on its own (Helper Results) into the Nova thread; remember the last mirrored item id | "Muse speaks first" shows in the Conversation |
+| Read the Conversation from the transcript and refetch on the family stream (ADR 0009); no mirror job | "Muse speaks first" shows in the Conversation |
 | Remove the engine picker and `engine.*` routes | One engine |
 
 ### U1 · Web (`apps/web`)

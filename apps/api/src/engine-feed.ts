@@ -6,13 +6,12 @@ import {
   createOmnigentScheduledTask,
   deleteOmnigentScheduledTask,
   getOmnigentScheduledTask,
+  getOmnigentTranscript,
   listOmnigentScheduledTaskRuns,
   listOmnigentScheduledTasks,
-  listOmnigentSessionItems,
-  mapOmnigentItemsToMessages,
+  mapTranscriptPage,
   type OmnigentClientConfig,
   type OmnigentScheduledTask,
-  redactThreadMessages,
 } from "@aiden/adapters";
 import type { Actor, FollowedTopic, Post } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
@@ -98,14 +97,8 @@ const toTopic = (task: OmnigentScheduledTask): FollowedTopic => {
 
 /** The run session's final assistant message, or `null` when there is none. */
 async function resultOf(target: Target, sessionId: string): Promise<string | null> {
-  const page = await listOmnigentSessionItems(target.client, target.email, sessionId, {
-    order: "desc",
-    limit: 20,
-  });
-  const messages = redactThreadMessages(
-    mapOmnigentItemsToMessages(sessionId, [...page.data].reverse()),
-    target.client.secrets ?? [],
-  );
+  const page = await getOmnigentTranscript(target.client, target.email, sessionId, { limit: 20 });
+  const { messages } = mapTranscriptPage(sessionId, page, target.client.secrets ?? []);
   const last = messages.findLast((message) => message.role === "bot");
   const block = last?.blocks.find((b) => b.kind === "text");
   return block?.kind === "text" ? block.text : null;

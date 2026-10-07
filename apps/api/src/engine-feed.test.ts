@@ -50,10 +50,17 @@ const topic = (id: string, name: string, extra = {}) => ({
 
 const assistant = (id: string, text: string) => ({
   id,
-  type: "message",
   role: "assistant",
-  content: [{ type: "output_text", text }],
   created_at: 1,
+  blocks: [{ type: "text", text }],
+});
+
+/** The engine's transcript page: messages oldest first. */
+const transcript = (...data: ReturnType<typeof assistant>[]) => ({
+  data,
+  has_more: false,
+  older_cursor: null,
+  lineage: { kind: "helper", root_id: "sess-1", parent_id: "sess-1", seed_item_id: null },
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -145,11 +152,12 @@ describe("engine feed", () => {
           },
         ],
       },
-      "GET /v1/sessions/c2/items": { data: [assistant("i2", "Nothing new.")] },
-      "GET /v1/sessions/c1/items": {
-        data: [assistant("i1b", "New release shipped."), assistant("i1a", "Working on it")],
-      },
-      "GET /v1/sessions/c0/items": { data: [assistant("i0", "Older finding.")] },
+      "GET /v1/sessions/c2/transcript": transcript(assistant("i2", "Nothing new.")),
+      "GET /v1/sessions/c1/transcript": transcript(
+        assistant("i1a", "Working on it"),
+        assistant("i1b", "New release shipped."),
+      ),
+      "GET /v1/sessions/c0/transcript": transcript(assistant("i0", "Older finding.")),
     });
     const { posts } = await engineListFeedPosts(deps(), client, actor, "bot-1");
     expect(posts.map((p) => [p.id, p.title, p.body, p.kind])).toEqual([

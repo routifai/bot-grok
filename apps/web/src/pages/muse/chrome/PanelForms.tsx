@@ -61,7 +61,7 @@ export function BotSettingsPanel({
   active: Bot;
   setAgentSkills: Dispatch<SetStateAction<AgentSkillCatalogEntry[]>>;
   refreshBots: () => Promise<void>;
-  onClear: () => void;
+  onClear?: () => void;
 }) {
   return (
     <BotSettings

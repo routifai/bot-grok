@@ -1,18 +1,19 @@
-// Redaction for Omnigent read paths (docs/super-chat/WIRING.md review item 4): `chats.messages`
+// Redaction for Omnigent read paths (docs/super-chat/WIRING.md review item 4): `chats.transcript`
 // text, `activities.list`/`activities.get` (title, outcome, summary, step titles, and step `detail`
 // recursively for string values), and `memory.profile`. Built on the same `redactSecrets`
-// primitive ./gateway.ts and ./mirror.ts redact a turn's reply with, over the same secrets list
+// primitive the engine client redacts an error body with, over the same secrets list
 // (./env.ts's `omnigentRedactionSecretsFromEnv`) — so nothing Omnigent returns can surface a
 // deployment secret anywhere it reaches a person, whichever path read it.
 import type { Activity, ActivityStep, ThreadMessage } from "@aiden/contracts";
 import { redactSecrets } from "@aiden/core";
+import { redactReplyCard } from "./cards.js";
 
 function redactString(value: string, secrets: string[]): string {
   return secrets.length === 0 ? value : redactSecrets(value, secrets);
 }
 
-/** `chats.messages`: redacts every `text` block's text and every Helper row's title. The
- * other blocks (cards carry their own redaction, see ./cards.ts) pass through unchanged. */
+/** `chats.transcript`: redacts every `text` block's text, every Helper row's title and every
+ * card (one holding a secret degrades to its redacted fallback, ./cards.ts). */
 export function redactThreadMessages(
   messages: ThreadMessage[],
   secrets: string[],
@@ -25,7 +26,9 @@ export function redactThreadMessages(
         ? { ...block, text: redactString(block.text, secrets) }
         : block.kind === "helper"
           ? { ...block, title: redactString(block.title, secrets) }
-          : block,
+          : block.kind === "reply_card"
+            ? redactReplyCard(block, secrets)
+            : block,
     ),
   }));
 }

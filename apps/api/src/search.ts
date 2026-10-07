@@ -1,3 +1,8 @@
+import {
+  type OmnigentClientConfig,
+  omnigentClientConfigFromEnv,
+  searchOmnigentMessages,
+} from "@aiden/adapters";
 import type { Actor, MessageBlock, SearchHit } from "@aiden/contracts";
 import { extractLinksFromText, matchesSearchQuery, snippetAroundMatch } from "@aiden/core";
 import { Prisma, type PrismaClient } from "@aiden/db";
@@ -41,6 +46,9 @@ export async function querySpaceSearch(
   prisma: PrismaClient,
   actor: Actor,
   q: string,
+  /** When the engine is connected, a Muse's Conversation is searched there (its messages live
+   * in the engine's transcript), not in Nova's thread rows. */
+  engine?: { client: OmnigentClientConfig; email: string },
 ): Promise<SearchHit[]> {
   const query = q.trim();
   if (!query) return [];
@@ -240,6 +248,7 @@ export async function querySpaceSearch(
       AND t."userId" = ${actor.userId}
       AND b."archivedAt" IS NULL
       AND m.blocks::text ILIKE ${pattern}
+      ${engine ? Prisma.sql`AND NOT EXISTS (SELECT 1 FROM omnigent_sessions os WHERE os."botId" = b.id)` : Prisma.empty}
     ORDER BY m."createdAt" DESC
     LIMIT ${SEARCH_LIMIT}
   `;
@@ -253,6 +262,39 @@ export async function querySpaceSearch(
       query,
       push: (hit) => pushInto(contentHits, hit, contentBudget),
     });
+  }
+
+  if (engine) {
+    const sessions = await prisma.omnigentSession.findMany({
+      where: { bot: { spaceId: actor.spaceId, userId: actor.userId, archivedAt: null } },
+      select: { omnigentSessionId: true, bot: { select: { id: true, name: true } } },
+    });
+    const found = await Promise.all(
+      sessions.map((session) =>
+        searchOmnigentMessages(engine.client, engine.email, session.omnigentSessionId, query).then(
+          (messages) => ({ bot: session.bot, messages }),
+          // One Muse's engine failing must not take the whole search down.
+          () => ({ bot: session.bot, messages: [] }),
+        ),
+      ),
+    );
+    for (const { bot, messages } of found) {
+      for (const message of messages) {
+        pushInto(
+          contentHits,
+          {
+            kind: "message",
+            botId: bot.id,
+            botName: bot.name,
+            title: bot.name,
+            snippet: snippetAroundMatch(message.text, query),
+            messageId: message.id,
+            seq: 0,
+          },
+          contentBudget,
+        );
+      }
+    }
   }
 
   const groupMessageRows = await prisma.$queryRaw<
@@ -348,4 +390,20 @@ function pushMessageHits(
       seq: ctx.seq,
     });
   }
+}
+
+/** The engine connection search reads a Muse's Conversation through, or `undefined` when the
+ * engine is not configured (search then stays on Nova's own rows). */
+export async function engineSearch(
+  prisma: PrismaClient,
+  actor: Actor,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ client: OmnigentClientConfig; email: string } | undefined> {
+  const client = omnigentClientConfigFromEnv(env);
+  if (!client) return undefined;
+  const user = await prisma.user.findUnique({
+    where: { id: actor.userId },
+    select: { email: true },
+  });
+  return user ? { client, email: user.email } : undefined;
 }

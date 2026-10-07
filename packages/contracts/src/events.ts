@@ -169,6 +169,13 @@ export const MessageBlock = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("meta"), text: z.string() }),
   z.object({
+    /** A turn that failed or was cut short. The engine sends a code, never wording; the client
+        maps it to its own short copy. */
+    kind: z.literal("error"),
+    code: z.string(),
+    level: z.literal("info").optional(),
+  }),
+  z.object({
     kind: z.literal("progress"),
     text: z.string(),
     /** Provider-generated tool status rather than assistant-authored narration. */

@@ -19,7 +19,7 @@ const api = vi.hoisted(() => ({
     dailyNotes: vi.fn(),
     saveDailyNote: vi.fn(),
   },
-  chats: { messages: vi.fn() },
+  chats: { transcript: vi.fn() },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
 vi.mock("@lingui/core/macro", () => ({
@@ -171,7 +171,7 @@ beforeEach(() => {
   api.memory.forgetClaim.mockReset();
   api.memory.dailyNotes.mockReset().mockResolvedValue({ notes: [] });
   api.memory.saveDailyNote.mockReset();
-  api.chats.messages.mockReset();
+  api.chats.transcript.mockReset();
   stubLocalStorage();
   // jsdom doesn't implement matchMedia, and the progress ring's draw-in reads it directly
   // (prefers-reduced-motion); requestAnimationFrame is stubbed to run synchronously so the
