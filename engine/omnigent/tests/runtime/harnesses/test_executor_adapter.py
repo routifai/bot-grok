@@ -679,7 +679,7 @@ def test_build_error_detail_uses_omnigent_error_code() -> None:
     # code. If the override stops calling .code and falls through,
     # this assertion would fail.
     base_detail = HarnessApp._build_error_detail(adapter, RuntimeError("oops"))
-    assert base_detail.code == "RuntimeError"
+    assert base_detail.code == "internal"
 
 
 def test_classify_openai_exception_maps_known_types() -> None:

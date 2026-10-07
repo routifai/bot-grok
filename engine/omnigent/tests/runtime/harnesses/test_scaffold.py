@@ -604,12 +604,10 @@ async def test_run_turn_raise_synthesizes_response_failed_event(
         f"retry-classification has nothing to read and falls back "
         f"to permanent failure."
     )
-    # Default base-class error_detail uses ``type(exc).__name__``
-    # as the code. The fixture raises ``RuntimeError`` so we
-    # expect that exact string.
-    assert error["code"] == "RuntimeError", (
-        f"Expected error.code='RuntimeError' (from "
-        f"type(exception).__name__); got {error['code']!r}. If "
+    # Default base-class error_detail is the public ``internal`` code:
+    # an exception class name is never a code.
+    assert error["code"] == "internal", (
+        f"Expected error.code='internal'; got {error['code']!r}. If "
         f"the code is something else, the synthesizer is using a "
         f"different classifier than _build_error_detail."
     )

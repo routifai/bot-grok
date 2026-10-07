@@ -69,6 +69,7 @@ from omnigent.models.pi_model_compatibility import (
 )
 from omnigent.onboarding.provider_config import CHAT_WIRE_API, RESPONSES_WIRE_API
 from omnigent.runner.identity import OMNIGENT_SESSION_ENV_VAR
+from omnigent.runtime.public_error_codes import classify_provider_failure
 from omnigent.spec.types import RetryPolicy
 from omnigent.util.json_types import JsonObject as _JsonObject
 from omnigent.util.json_types import JsonValue
@@ -2657,7 +2658,10 @@ class PiExecutor(Executor):
                     logger.debug("PiExecutor: stdout idle past budget; pi still running, waiting")
                     continue
                 if pending_error is not None:
-                    yield ExecutorError(message=pending_error)
+                    yield ExecutorError(
+                        message=pending_error,
+                        code=classify_provider_failure(message=pending_error),
+                    )
                 elif not streamed_any and not response_text:
                     stderr = "\n".join(rpc._stderr_lines) if rpc._stderr_lines else ""
                     stderr_suffix = f" Stderr: {stderr}" if stderr else ""
@@ -2805,7 +2809,11 @@ class PiExecutor(Executor):
             # Agent ended — the turn is complete.
             if event_type == "agent_end":
                 if pending_error is not None:
-                    yield ExecutorError(message=pending_error)
+                    # Pi reports the provider failure as text only: translate it.
+                    yield ExecutorError(
+                        message=pending_error,
+                        code=classify_provider_failure(message=pending_error),
+                    )
                     return
                 end_messages = event.get("messages", [])
                 if not response_text:

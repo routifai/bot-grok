@@ -59,6 +59,11 @@ from omnigent.models.claude_model_vocabulary import (
 )
 from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.runtime.mcp_tool_result import decode_mcp_image_result
+from omnigent.runtime.public_error_codes import (
+    AUTH_FAILED,
+    PROVIDER_UNAVAILABLE,
+    classify_provider_failure,
+)
 from omnigent.spec.types import RetryPolicy
 from omnigent.util.json_types import JsonObject as _JsonObject
 from omnigent.util.reasoning_effort import CLAUDE_EFFORTS, validate_effort
@@ -279,6 +284,9 @@ class _AssistantMessageObj(Protocol):
     # ``"claude-opus-4-8"``. The only place the executor learns the concrete
     # model when the spec pins none and the gateway resolves it internally.
     model: str | None
+    # The CLI's own failure marker on a synthetic provider-failure message
+    # (``billing_error``, ``rate_limit``, ``authentication_failed`` ...), else ``None``.
+    error: str | None
 
 
 class _UserMessageObj(Protocol):
@@ -293,6 +301,8 @@ class _ResultMessageObj(Protocol):
     result: str | None
     is_error: bool | None
     usage: dict[str, Any] | None  # type: ignore[explicit-any]
+    # HTTP status of the failing API call (CLI >= 2.1.110), else ``None``.
+    api_error_status: int | None
 
 
 class _SystemMessageObj(Protocol):
@@ -2829,6 +2839,12 @@ class ClaudeSDKExecutor(Executor):
         observed_model: str | None = None
         system_diagnostics: list[str] = []
         terminal_error: str | None = None
+        # Public failure code for ``terminal_error`` (``None`` -> the adapter says ``internal``).
+        terminal_code: str | None = None
+        # Provider failure the CLI reported as an assistant message: its error marker, and its
+        # text, which is withheld from the transcript as assistant content.
+        provider_error_type: str | None = None
+        provider_error_text = ""
         compaction_occurred: bool = False
         claude_session_id: str | None = None
         compaction_transcript_path: pathlib.Path | None = None
@@ -3121,6 +3137,12 @@ class ClaudeSDKExecutor(Executor):
 
                     elif isinstance(message, sdk.AssistantMessage):
                         assistant_msg = cast(_AssistantMessageObj, message)
+                        # A provider failure (no credit, rate limit, bad key) arrives from
+                        # the CLI as an assistant message carrying an error marker. It is a
+                        # failed turn, not something the assistant said.
+                        _am_error = getattr(assistant_msg, "error", None)
+                        if isinstance(_am_error, str) and _am_error:
+                            provider_error_type = _am_error
                         # Capture the concrete model the SDK used (the resolved
                         # config ``model`` is None when the spec pins none).
                         _am_model = concrete_reported_model(getattr(assistant_msg, "model", None))
@@ -3160,6 +3182,9 @@ class ClaudeSDKExecutor(Executor):
                             for block in assistant_msg.content:
                                 if isinstance(block, sdk.TextBlock):
                                     text_block = cast(_TextBlockObj, block)
+                                    if provider_error_type:
+                                        provider_error_text += text_block.text
+                                        continue
                                     response_text += text_block.text
                                     yield TextChunk(text=text_block.text)
                                 elif isinstance(block, sdk.ThinkingBlock):
@@ -3238,6 +3263,13 @@ class ClaudeSDKExecutor(Executor):
                                 failure_text,
                             )
                             terminal_error = failure_text
+                            terminal_code = classify_provider_failure(
+                                error_type=provider_error_type,
+                                status=getattr(result_msg, "api_error_status", None),
+                                # Provider translation, last resort: the CLI reports some
+                                # failures with no structured marker.
+                                message=failure_text,
+                            )
                         elif not response_text and result_msg.result:
                             response_text = result_msg.result
                         raw_usage = getattr(result_msg, "usage", None)
@@ -3324,6 +3356,7 @@ class ClaudeSDKExecutor(Executor):
                                     f" ({retry_error}, status={error_status}). "
                                     f"{auth_hint}"
                                 )
+                                terminal_code = AUTH_FAILED
                                 break
 
                             if error_status == 404:
@@ -3339,6 +3372,7 @@ class ClaudeSDKExecutor(Executor):
                                     f"({retry_error}, status={error_status}). "
                                     f"{endpoint_hint}"
                                 )
+                                terminal_code = PROVIDER_UNAVAILABLE
                                 break
                         elif getattr(system_msg, "hook_event_name", None) == "PreCompact":
                             compaction_occurred = True
@@ -3429,12 +3463,20 @@ class ClaudeSDKExecutor(Executor):
         if turn_usage is None:
             turn_usage = _usage_from_observed_call(last_call_usage, observed_model or model)
 
+        if provider_error_type and not terminal_error:
+            # The CLI flagged a provider failure but sent no failing ResultMessage.
+            terminal_error = (
+                provider_error_text.strip() or f"provider error: {provider_error_type}"
+            )
+            terminal_code = classify_provider_failure(
+                error_type=provider_error_type, message=provider_error_text
+            )
         if terminal_error:
             if compaction_occurred and claude_session_id:
                 compaction_event = _build_compaction_complete_event()
                 if compaction_event is not None:
                     yield compaction_event
-            yield ExecutorError(message=terminal_error, usage=turn_usage)
+            yield ExecutorError(message=terminal_error, usage=turn_usage, code=terminal_code)
             return
 
         # ── LLM_RESPONSE policy evaluation ───────────────────────

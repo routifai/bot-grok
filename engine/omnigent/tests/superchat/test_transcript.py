@@ -174,6 +174,27 @@ def test_artifact_save_becomes_a_file_block_and_secret_request_a_secure_entry() 
     ]
 
 
+@pytest.mark.parametrize(
+    ("stored", "public"),
+    [
+        ("RuntimeError", "internal"),
+        ("ConnectionClosedException", "internal"),
+        ("model_unavailable", "internal"),
+        ("rate_limit_exceeded", "rate_limited"),
+        ("connection_error", "provider_unavailable"),
+        ("server_error", "provider_unavailable"),
+        ("context_length_exceeded", "context_too_long"),
+        ("budget_exhausted", "insufficient_credit"),
+        ("managed_sandbox_workspace_reset", "sandbox_unavailable"),
+        ("timeout", "timeout"),
+        ("insufficient_credit", "insufficient_credit"),
+    ],
+)
+def test_legacy_error_codes_read_as_the_closed_set(stored: str, public: str) -> None:
+    (message,) = project_items([{"id": "e1", "type": "error", "code": stored, "message": "x"}])
+    assert message["blocks"] == [{"type": "error", "code": public}]
+
+
 def test_error_item_carries_a_code_and_no_text() -> None:
     item = {"id": "e1", "type": "error", "code": "rate_limited", "message": "Too many requests"}
     (message,) = project_items([item])
@@ -293,7 +314,7 @@ async def test_store_items_project_end_to_end_with_error_code_and_helper_status(
             _say("assistant", "Started."),
             _new(
                 "error",
-                ErrorData(source="llm", code="model_unavailable", message="Raw English failure"),
+                ErrorData(source="llm", code="RuntimeError", message="Raw English failure"),
             ),
         ],
     )
@@ -301,7 +322,7 @@ async def test_store_items_project_end_to_end_with_error_code_and_helper_status(
     assistant, error = body["data"][1], body["data"][2]
     assert assistant["blocks"][1]["status"] == "in_progress"
     assert assistant["blocks"][1]["session_id"] == helper.id
-    assert error["blocks"] == [{"type": "error", "code": "model_unavailable"}]
+    assert error["blocks"] == [{"type": "error", "code": "internal"}]
     helper_view = (await client.get(f"/v1/sessions/{helper.id}/transcript")).json()
     assert helper_view["lineage"]["kind"] == "helper"
     assert helper_view["lineage"]["root_id"] == root.id

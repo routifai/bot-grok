@@ -9,7 +9,8 @@ out. The rules a client would otherwise copy:
   nothing; a card still running is ``pending``);
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
 * one ``call_id`` is one block, however often the call repeats;
-* an ``error`` item is an ``error`` block carrying its code, never its text.
+* an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
+  through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set.
 
 Wording stays with the client: nothing here is copy.
 """
@@ -21,6 +22,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from omnigent.entities.conversation import is_system_notice_text
+from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.superchat.artifacts.types import KIND_MIME
 from omnigent.superchat.cards.tools import CARD_TOOL_NAME
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
@@ -230,7 +232,7 @@ def project_items(
         elif kind == "error":
             code = item.get("code")
             if isinstance(code, str) and code:
-                block = {"type": "error", "code": code}
+                block = {"type": "error", "code": public_error_code(code)}
                 if item.get("level") == "info":
                     block["level"] = "info"
                 messages.append(_message(item, "assistant", [block]))

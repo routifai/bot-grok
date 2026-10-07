@@ -4300,6 +4300,78 @@ async def test_result_message_is_error_yields_executor_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_provider_failure_assistant_message_becomes_coded_executor_error() -> None:
+    """A CLI provider failure is a coded ``ExecutorError``, never assistant text.
+
+    The CLI reports "Credit balance is too low" as an assistant message carrying
+    ``error="billing_error"``, followed by a failing ``ResultMessage``.
+    """
+    from unittest.mock import patch
+
+    from claude_agent_sdk.types import AssistantMessage as SDKAssistantMessage
+    from claude_agent_sdk.types import ClaudeAgentOptions as SDKClaudeAgentOptions
+    from claude_agent_sdk.types import ResultMessage as SDKResultMessage
+    from claude_agent_sdk.types import StreamEvent as SDKStreamEvent
+    from claude_agent_sdk.types import TextBlock as SDKTextBlock
+
+    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.inner.executor import ExecutorError, TextChunk, TurnComplete
+
+    text = "Credit balance is too low"
+    messages = [
+        SDKAssistantMessage(
+            content=[SDKTextBlock(text=text)], model="claude", error="billing_error"
+        ),
+        SDKResultMessage(
+            subtype="success",
+            session_id="s1",
+            result=text,
+            total_cost_usd=0.0,
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=True,
+            num_turns=1,
+            usage=None,
+        ),
+    ]
+
+    class _FakeSDK:
+        AssistantMessage = SDKAssistantMessage
+        UserMessage = type("UserMessage", (), {})
+        SystemMessage = type("SystemMessage", (), {})
+        StreamEvent = SDKStreamEvent
+        ResultMessage = SDKResultMessage
+        TextBlock = SDKTextBlock
+        ClaudeAgentOptions = SDKClaudeAgentOptions
+
+        class ClaudeSDKClient:
+            def __init__(self, options):
+                self.options = options
+
+            async def connect(self):
+                return None
+
+            async def query(self, prompt, session_id="default"):
+                return None
+
+            async def receive_response(self):
+                for message in messages:
+                    yield message
+
+            async def disconnect(self):
+                return None
+
+    executor = ClaudeSDKExecutor()
+    with patch("omnigent.inner.claude_sdk_executor._ensure_sdk", return_value=_FakeSDK):
+        events = [e async for e in executor.run_turn([{"role": "user", "content": "hi"}], [], "")]
+
+    errors = [e for e in events if isinstance(e, ExecutorError)]
+    assert [e.code for e in errors] == ["insufficient_credit"]
+    assert not [e for e in events if isinstance(e, TextChunk)]
+    assert not [e for e in events if isinstance(e, TurnComplete)]
+
+
+@pytest.mark.asyncio
 async def test_context_tokens_uses_last_call_not_cumulative_on_multi_iteration_turn() -> None:
     """``context_tokens`` must reflect the LAST API call, not the cumulative sum.
 

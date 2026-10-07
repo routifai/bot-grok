@@ -53,6 +53,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnigent.errors import ErrorCode, HarnessTransportClosedError, OmnigentError
 from omnigent.native import _native_forwarder_health as native_forwarder_health
 from omnigent.policies.types import FAIL_CLOSED_PHASES
+from omnigent.runtime.public_error_codes import INTERNAL
 from omnigent.runtime.tool_output import cap_tool_output
 from omnigent.server.schemas import (
     CompletedEvent,
@@ -882,9 +883,9 @@ class HarnessApp:
         """
         Translate a ``run_turn`` exception into an :class:`ErrorDetail`.
 
-        Default implementation: uses the exception class name as
-        the error code (e.g. ``"RuntimeError"``, ``"ValueError"``)
-        and ``str(exception)`` as the message. AP's retryable-error
+        Default implementation: the public ``"internal"`` code (the
+        exception class name is logged, never exposed as a code) and
+        ``str(exception)`` as the message. AP's retryable-error
         allowlist at
         :data:`omnigent.runtime.harnesses._client_executor._RETRYABLE_HARNESS_ERROR_CODES`
         uses semantic names (``"rate_limit_exceeded"``,
@@ -915,7 +916,9 @@ class HarnessApp:
         if getattr(exception, "code", None) == _TURN_CONTEXT_DESYNC_CODE:
             return ErrorDetail(code=_TURN_CONTEXT_DESYNC_CODE, message=str(exception))
 
-        return ErrorDetail(code=type(exception).__name__, message=str(exception))
+        # An exception class name is not a public code; keep it in the log for debugging.
+        _logger.warning("turn failed with unclassified %s", type(exception).__name__)
+        return ErrorDetail(code=INTERNAL, message=str(exception))
 
     def build(self) -> FastAPI:
         """
