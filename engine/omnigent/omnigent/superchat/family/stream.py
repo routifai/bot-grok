@@ -4,6 +4,8 @@ Events carry ids only; the client refetches what changed:
 
 * ``message.done {chat_id, item_id}``: an assistant message was stored in a family chat
   (``item_id`` is the store id; published where the message is persisted);
+* ``turn.done {chat_id, status}``: a turn in a family chat ended (completed, failed,
+  incomplete or cancelled); a failed turn's error item is stored before this is sent;
 * ``chats.changed {root_id}``: a Side Chat was opened, renamed or archived, or a Helper started;
 * ``activities.changed {root_id}``: the Activity Feed may have changed;
 * ``session.heartbeat``: sent after ~15s of quiet.
@@ -31,12 +33,22 @@ from omnigent.superchat.family.signals import listen_chats_changed, listen_messa
 
 #: Session events that mean the chat list changed: a rename, a Helper or part being started.
 _CHATS_EVENT_TYPES = frozenset({"session.title", "session.created"})
+#: Terminal response events: the turn ended, however it ended.
+_TURN_END_STATUS = {
+    "response.completed": "completed",
+    "response.failed": "failed",
+    "response.incomplete": "incomplete",
+    "response.cancelled": "cancelled",
+}
 
 
-def _derive(root_id: str, event: dict[str, Any]) -> dict[str, Any] | None:
+def _derive(chat_id: str, root_id: str, event: dict[str, Any]) -> dict[str, Any] | None:
     """The family event one session-stream event stands for, if any."""
-    if event.get("type") in _CHATS_EVENT_TYPES:
+    kind = event.get("type")
+    if kind in _CHATS_EVENT_TYPES:
         return {"type": "chats.changed", "root_id": root_id}
+    if isinstance(kind, str) and kind in _TURN_END_STATUS:
+        return {"type": "turn.done", "chat_id": chat_id, "status": _TURN_END_STATUS[kind]}
     return None
 
 
@@ -68,7 +80,7 @@ async def watch_family(
             stop = listen_message_done(chat_id, out)
             try:
                 async for event in subscribe(chat_id):
-                    if (derived := _derive(root_id, event)) is not None:
+                    if (derived := _derive(chat_id, root_id, event)) is not None:
                         out.put_nowait(derived)
                     yield event
             finally:

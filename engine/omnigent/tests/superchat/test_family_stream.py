@@ -107,6 +107,27 @@ async def test_message_done_comes_only_from_the_persist_seam(
     await stream.aclose()
 
 
+async def test_a_turn_ending_in_any_family_chat_is_a_turn_done(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    """A failed turn stores an error item, not a message: turn.done still tells clients."""
+    root_id, side_id = _family(conversation_store)
+    bus = _Bus()
+    stream = await _open(conversation_store, root_id, bus)
+    bus.publish(side_id, {"type": "response.failed", "response": {}})
+    bus.publish(root_id, {"type": "response.completed", "response": {}})
+    seen = []
+    while len(seen) < 2:
+        event = await _next(stream)
+        if event["type"] == "turn.done":
+            seen.append(event)
+    assert seen == [
+        {"type": "turn.done", "chat_id": side_id, "status": "failed"},
+        {"type": "turn.done", "chat_id": root_id, "status": "completed"},
+    ]
+    await stream.aclose()
+
+
 async def test_relay_persist_and_external_publish_signal_the_stored_id(
     conversation_store: SqlAlchemyConversationStore,
 ) -> None:
