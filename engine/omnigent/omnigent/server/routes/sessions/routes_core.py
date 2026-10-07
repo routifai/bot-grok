@@ -2684,6 +2684,10 @@ def register_core_routes(
         )
         if updated is None:
             raise _session_not_found()
+        if body.archived is not None or body.title is not None:
+            from omnigent.superchat.family.signals import notify_session_changed
+
+            await notify_session_changed(conversation_store, session_id)
         # Archiving hides the session from the default view (and its unread
         # dot), so drop its per-user read-state to bound in-memory growth.
         # Only on archive→true; unarchiving leaves it pruned (reads as seen).

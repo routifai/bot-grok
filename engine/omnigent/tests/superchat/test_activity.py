@@ -28,10 +28,10 @@ from omnigent.superchat.activity.derive import (
     STATUS_IN_PROGRESS,
     _activities_for_conversation,
     _resolve_items_scan_limit,
-    _sub_agent_status,
     _turn_status,
     is_superside_chat,
     step_title_for_call,
+    sub_agent_status,
 )
 
 
@@ -343,12 +343,12 @@ def test_turn_status_older_group_ignores_live_status() -> None:
 
 def test_sub_agent_status_failed() -> None:
     conv = _conv(kind="sub_agent", live_status="failed")
-    assert _sub_agent_status(conv) == STATUS_FAILED
+    assert sub_agent_status(conv) == STATUS_FAILED
 
 
 def test_sub_agent_status_in_progress() -> None:
     conv = _conv(kind="sub_agent", live_status="running")
-    assert _sub_agent_status(conv) == STATUS_IN_PROGRESS
+    assert sub_agent_status(conv) == STATUS_IN_PROGRESS
 
 
 def test_sub_agent_status_cancelled_when_closed_before_any_turn() -> None:
@@ -357,7 +357,7 @@ def test_sub_agent_status_cancelled_when_closed_before_any_turn() -> None:
         live_status=None,
         labels={"omnigent.closed": "true"},
     )
-    assert _sub_agent_status(conv) == STATUS_CANCELLED
+    assert sub_agent_status(conv) == STATUS_CANCELLED
 
 
 def test_sub_agent_status_done_when_closed_after_finishing() -> None:
@@ -366,12 +366,12 @@ def test_sub_agent_status_done_when_closed_after_finishing() -> None:
         live_status="idle",
         labels={"omnigent.closed": "true"},
     )
-    assert _sub_agent_status(conv) == STATUS_DONE
+    assert sub_agent_status(conv) == STATUS_DONE
 
 
 def test_sub_agent_status_done_when_idle_and_not_closed() -> None:
     conv = _conv(kind="sub_agent", live_status="idle")
-    assert _sub_agent_status(conv) == STATUS_DONE
+    assert sub_agent_status(conv) == STATUS_DONE
 
 
 _LAUNCHING = {"omnigent.subagent.launching": "true"}
@@ -379,33 +379,33 @@ _LAUNCHING = {"omnigent.subagent.launching": "true"}
 
 def test_sub_agent_status_launching_helper_reads_in_progress_not_done() -> None:
     conv = _conv(kind="sub_agent", live_status=None, labels=_LAUNCHING)
-    assert _sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_IN_PROGRESS
+    assert sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_IN_PROGRESS
 
 
 def test_sub_agent_status_helper_that_never_reports_after_launch_failed_to_start() -> None:
     conv = _conv(kind="sub_agent", live_status=None, labels=_LAUNCHING)
-    assert _sub_agent_status(conv, [], now=conv.created_at + 3_600) == STATUS_FAILED
+    assert sub_agent_status(conv, [], now=conv.created_at + 3_600) == STATUS_FAILED
 
 
 def test_sub_agent_status_launch_failure_edge_reads_failed_at_once() -> None:
     conv = _conv(kind="sub_agent", live_status="failed", labels=_LAUNCHING)
-    assert _sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_FAILED
+    assert sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_FAILED
 
 
 def test_sub_agent_status_launched_helper_follows_its_reported_status() -> None:
     conv = _conv(kind="sub_agent", live_status="running", labels=_LAUNCHING)
-    assert _sub_agent_status(conv, [], now=conv.created_at + 3_600) == STATUS_IN_PROGRESS
+    assert sub_agent_status(conv, [], now=conv.created_at + 3_600) == STATUS_IN_PROGRESS
 
 
 def test_sub_agent_status_unlabelled_silent_helper_stays_done() -> None:
     conv = _conv(kind="sub_agent", live_status=None)
-    assert _sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_DONE
+    assert sub_agent_status(conv, [], now=conv.created_at + 5) == STATUS_DONE
 
 
 def test_sub_agent_status_helper_that_replied_without_status_is_done() -> None:
     conv = _conv(kind="sub_agent", live_status=None, labels=_LAUNCHING)
     items = [_msg("a1", "assistant", "All done")]
-    assert _sub_agent_status(conv, items, now=conv.created_at + 5) == STATUS_DONE
+    assert sub_agent_status(conv, items, now=conv.created_at + 5) == STATUS_DONE
 
 
 def test_failed_launch_says_so_in_plain_words() -> None:

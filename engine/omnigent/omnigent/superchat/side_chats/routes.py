@@ -31,6 +31,7 @@ from omnigent.stores.conversation_store import (
     SIDE_CHAT_START_LABEL_KEY,
 )
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.superchat.family.signals import notify_chats_changed
 from omnigent.superchat.side_chats.chats import (
     SIDE_CHAT_START_WITH_CONTEXT,
     build_side_chat_blank_create_body,
@@ -169,6 +170,7 @@ def register_side_chats_routes(
             new_id,
             {SIDE_CHAT_START_LABEL_KEY: body.start, SIDE_CHAT_PARENT_LABEL_KEY: session_id},
         )
+        notify_chats_changed(session_id)
 
         host_id = caller.host_id
         workspace = caller.workspace

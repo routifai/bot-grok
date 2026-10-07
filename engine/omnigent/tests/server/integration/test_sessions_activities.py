@@ -309,3 +309,59 @@ async def test_activities_hide_family_members_the_caller_cannot_read(
     alice_chat_ids = {row["chat_id"] for row in alice_resp.json()["data"]}
     assert super_chat.id in alice_chat_ids
     assert side_b.id in alice_chat_ids
+
+
+# ── Transcript and family stream: same gates as the items / activities routes ──
+
+
+def _family_with_users(db_uri: str) -> tuple[Any, Any, str, str]:
+    conv_store = SqlAlchemyConversationStore(db_uri)
+    perm_store = SqlAlchemyPermissionStore(db_uri)
+    super_chat = conv_store.create_conversation(labels={_MODE_LABEL: _MODE_VALUE})
+    side = conv_store.create_conversation(
+        labels={
+            _MODE_LABEL: _MODE_VALUE,
+            FORK_SOURCE_LABEL_KEY: super_chat.id,
+            SIDE_CHAT_LABEL_KEY: "1",
+        }
+    )
+    alice, bob = "alice@example.com", "bob@example.com"
+    perm_store.ensure_user(alice)
+    perm_store.ensure_user(bob)
+    for conv in (super_chat, side):
+        perm_store.grant(alice, conv.id, LEVEL_OWNER)
+    return super_chat, side, alice, bob
+
+
+async def test_transcript_is_gated_exactly_like_items(
+    auth_client: httpx.AsyncClient, db_uri: str
+) -> None:
+    super_chat, _, alice, bob = _family_with_users(db_uri)
+    owner = await auth_client.get(
+        f"/v1/sessions/{super_chat.id}/transcript", headers={"X-Forwarded-Email": alice}
+    )
+    assert owner.status_code == 200, owner.text
+    items_for_bob = await auth_client.get(
+        f"/v1/sessions/{super_chat.id}/items", headers={"X-Forwarded-Email": bob}
+    )
+    transcript_for_bob = await auth_client.get(
+        f"/v1/sessions/{super_chat.id}/transcript", headers={"X-Forwarded-Email": bob}
+    )
+    assert items_for_bob.status_code in (403, 404)
+    assert transcript_for_bob.status_code == items_for_bob.status_code
+
+
+async def test_family_stream_needs_read_on_the_whole_family(
+    auth_client: httpx.AsyncClient, db_uri: str
+) -> None:
+    """Bob may read one Side Chat only: its family stream would carry the Super Chat's events."""
+    super_chat, side, _, bob = _family_with_users(db_uri)
+    SqlAlchemyPermissionStore(db_uri).grant(bob, side.id, LEVEL_READ)
+    resp = await auth_client.get(
+        f"/v1/sessions/{side.id}/family/stream", headers={"X-Forwarded-Email": bob}
+    )
+    assert resp.status_code in (403, 404), resp.text  # the gate hides unreadable sessions
+    nothing = await auth_client.get(
+        f"/v1/sessions/{super_chat.id}/family/stream", headers={"X-Forwarded-Email": bob}
+    )
+    assert nothing.status_code in (403, 404)

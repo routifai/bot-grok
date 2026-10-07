@@ -978,7 +978,7 @@ def test_side_chat_seed_is_this_chats_checkpoint_not_the_copied_parents() -> Non
     """The fork's deep copy carries the parent's own compactions before the seed."""
     from types import SimpleNamespace
 
-    from omnigent.context.rollover import _side_chat_seed
+    from omnigent.context.rollover import side_chat_seed_checkpoint
     from omnigent.entities import CompactionData
     from omnigent.stores.conversation_store import SIDE_CHAT_START_LABEL_KEY
 
@@ -996,7 +996,7 @@ def test_side_chat_seed_is_this_chats_checkpoint_not_the_copied_parents() -> Non
             return SimpleNamespace(data=items, has_more=False, last_id=items[-1].id)
 
     conv = SimpleNamespace(id="side1", labels={SIDE_CHAT_START_LABEL_KEY: "with_context"})
-    assert _side_chat_seed(Store(), conv) == ("the seed", "cmp_seed")  # type: ignore[arg-type]
+    assert side_chat_seed_checkpoint(Store(), conv) == ("the seed", "cmp_seed")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("header_name", ["SIDE_CHAT_SEED_HEADER", "CHECKPOINT_HEADER"])

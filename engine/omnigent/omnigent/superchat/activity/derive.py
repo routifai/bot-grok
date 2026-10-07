@@ -534,7 +534,7 @@ def _sub_agent_title(
     ), (f"Request to name:\n{_truncate(task, _TITLE_PROMPT_REQUEST_CHARS)}" if task else None)
 
 
-def _sub_agent_status(
+def sub_agent_status(
     conversation: Conversation,
     items: list[ConversationItem] | None = None,
     *,
@@ -575,7 +575,7 @@ def _sub_agent_activity(
     stored_summary: str | None = None,
 ) -> Activity:
     _agent, display_title = _split_sub_agent_title(conversation)
-    status = _sub_agent_status(conversation, items)
+    status = sub_agent_status(conversation, items)
     source = _sub_agent_source(conversation)
     title, title_prompt = _sub_agent_title(
         conversation, display_title, _person_request(_first_user_message(items)), source
@@ -717,7 +717,7 @@ def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[
 def is_helper_live(conversation: Conversation) -> bool:
     """Whether a Helper is not settled yet (starting, working or waiting on its parts)."""
     return (
-        conversation.kind == "sub_agent" and _sub_agent_status(conversation) == STATUS_IN_PROGRESS
+        conversation.kind == "sub_agent" and sub_agent_status(conversation) == STATUS_IN_PROGRESS
     )
 
 

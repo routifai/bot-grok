@@ -712,7 +712,7 @@ def _related_chat_preview(items: list[ConversationItem]) -> str | None:
     return None
 
 
-def _side_chat_seed(
+def side_chat_seed_checkpoint(
     conv_store: ConversationStore, conversation: Conversation
 ) -> tuple[str | None, str | None]:
     """``(summary, item_id)`` of a ``with_context`` Side Chat's seed, else ``(None, None)``.
@@ -754,7 +754,7 @@ def _side_chat_seed(
 def _chat_summary(
     conv_store: ConversationStore, conversation: Conversation, preview: str | None
 ) -> dict[str, Any]:
-    seed_summary, seed_item_id = _side_chat_seed(conv_store, conversation)
+    seed_summary, seed_item_id = side_chat_seed_checkpoint(conv_store, conversation)
     return {
         "id": conversation.id,
         "title": conversation.title,

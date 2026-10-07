@@ -2943,6 +2943,23 @@ async def _handle_external_session_todos(
     session_stream.publish(session_id, event.model_dump())
 
 
+def _signal_message_stored(session_id: str, item: ConversationItem) -> None:
+    """Tell the session's family stream an assistant message was stored (``message.done``).
+
+    The one publish for it: every path that persists a visible assistant message calls this
+    with the store-assigned item, so the id a client refetches by always exists.
+    """
+    if (
+        item.type == "message"
+        and isinstance(item.data, MessageData)
+        and item.data.role == "assistant"
+        and not item.data.is_meta
+    ):
+        from omnigent.superchat.family.signals import notify_message_done
+
+        notify_message_done(session_id, item.id)
+
+
 def _publish_external_conversation_item(
     session_id: str,
     item: ConversationItem,
@@ -2983,6 +3000,7 @@ def _publish_external_conversation_item(
         and item.data.role == "assistant"
     ):
         inflight_text.retire_native_previews(session_id)
+    _signal_message_stored(session_id, item)
     event = OutputItemDoneEvent(type="response.output_item.done", item=item.to_api_dict())
     payload = event.model_dump()
     if message_id is not None:
@@ -7936,11 +7954,14 @@ async def _relay_persist(
     if conversation_store is None:
         return
     try:
-        await asyncio.to_thread(
+        persisted = await asyncio.to_thread(
             conversation_store.append,
             session_id,
             [item],
         )
+        for stored in persisted:
+            if not stored.deduplicated:
+                _signal_message_stored(session_id, stored)
     except Exception:  # noqa: BLE001
         _logger.exception(
             "Relay persist failed for session=%s",
@@ -8163,6 +8184,7 @@ async def _flush_relay_text(
     # docstring). Ordered before the boundary item / terminal event the
     # caller publishes next; clients match it back to the streamed text
     # by byte-equal content, not by open-section state.
+    _signal_message_stored(session_id, persisted[0])
     done_event = OutputItemDoneEvent(
         type="response.output_item.done",
         item=persisted[0].to_api_dict(),
