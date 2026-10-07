@@ -31,8 +31,10 @@ import httpx
 from omnigent.context.labels import is_superside_chat
 from omnigent.context.rollover import (
     build_rollover_item,
+    reported_context_window,
     resolve_keep_tokens,
     resolve_rollover_threshold,
+    split_at_latest_compaction,
 )
 from omnigent.entities import CompactionData
 
@@ -84,6 +86,27 @@ def should_roll_over_for_threshold(
     if not is_superside_chat(labels) or context_tokens is None:
         return False
     return context_tokens >= resolve_rollover_threshold(labels, model_window=model_window)
+
+
+#: Fraction of the model's context window at which another turn would overflow
+#: it. At or past this fill the next turn waits (bounded) for an in-flight
+#: rollover; below it, turns never wait on the summarizer.
+HARD_CONTEXT_WINDOW_FRACTION = 0.95
+
+
+def exceeds_hard_context_limit(
+    labels: Mapping[str, str] | None,
+    *,
+    context_tokens: int | None,
+) -> bool:
+    """Whether *context_tokens* is at/over the hard fraction of the session's window.
+
+    ``False`` when the tokens or the session's reported window are unknown.
+    """
+    window = reported_context_window(labels)
+    if context_tokens is None or window is None:
+        return False
+    return context_tokens >= int(window * HARD_CONTEXT_WINDOW_FRACTION)
 
 
 def should_roll_over_for_idle(
@@ -160,14 +183,10 @@ async def _fetch_items_since_last_compaction(
         after = page_items[-1].get("id")
         if not page.get("has_more", False):
             break
-    last_compaction_index = next(
-        (i for i in range(len(items) - 1, -1, -1) if items[i].get("type") == "compaction"),
-        None,
-    )
-    if last_compaction_index is None:
+    items_since, checkpoint = split_at_latest_compaction(items)
+    if checkpoint is None:
         return items, None, None
-    checkpoint = items[last_compaction_index]
-    return items[last_compaction_index + 1 :], checkpoint.get("summary"), checkpoint.get("id")
+    return items_since, checkpoint.get("summary"), checkpoint.get("id")
 
 
 def _compaction_event_body(

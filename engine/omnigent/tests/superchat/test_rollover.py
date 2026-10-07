@@ -16,7 +16,9 @@ from omnigent.llms.types import MessageOutput, OutputText, Response
 from omnigent.superchat import rollover as rollover_mod
 from omnigent.superchat.rollover import (
     DEFAULT_IDLE_REFRESH_SECONDS,
+    HARD_CONTEXT_WINDOW_FRACTION,
     OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS_ENV,
+    exceeds_hard_context_limit,
     resolve_idle_refresh_seconds,
     roll_over_session,
     should_roll_over_for_idle,
@@ -376,3 +378,56 @@ async def test_roll_over_session_clears_in_flight_after_completion() -> None:
     )
 
     assert "conv_1" not in rollover_mod._in_flight
+
+
+# ── hard context limit ────────────────────────────────────────────────────
+
+
+def test_hard_limit_needs_a_known_window_and_tokens() -> None:
+    window_label = {"omnigent.last_context_window": "200000"}
+    assert not exceeds_hard_context_limit(window_label, context_tokens=None)
+    assert not exceeds_hard_context_limit(_SUPERSIDE, context_tokens=10_000_000)
+
+
+def test_hard_limit_boundary_is_the_hard_fraction_of_the_window() -> None:
+    labels = {"omnigent.last_context_window": "200000"}
+    limit = int(200_000 * HARD_CONTEXT_WINDOW_FRACTION)
+    assert not exceeds_hard_context_limit(labels, context_tokens=limit - 1)
+    assert exceeds_hard_context_limit(labels, context_tokens=limit)
+
+
+# ── a turn that ran during the rollover stays in context ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_turn_during_rollover_is_not_covered_by_the_checkpoint() -> None:
+    """Items between the anchor and the (later-posted) checkpoint still count.
+
+    The rollover anchored on ``a1``; ``u2``/``a2`` landed while it summarized,
+    so the compaction item sits after them. The next rollover must summarize
+    them, not treat them as already covered.
+    """
+    items = [
+        _msg("u1", "user", "first"),
+        _msg("a1", "assistant", "first answer"),
+        _msg("u2", "user", "asked during the rollover"),
+        _msg("a2", "assistant", "answered during the rollover"),
+        _compaction_item("c1", summary="OLD SUMMARY", last_item_id="a1"),
+    ]
+    client = _FakeServerClient(items=items)
+
+    ok = await roll_over_session(
+        "conv_1",
+        labels=_SUPERSIDE,
+        model="gpt-4o",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=_ReturnsTextClient("NEXT SUMMARY"),
+    )
+
+    assert ok is True
+    posted_data = client.posted[0]["data"]
+    assert posted_data["last_item_id"] == "a2"
+    assert posted_data["expected_previous_compaction_id"] == "c1"
+    ids = [m.get("id") for m in posted_data["compacted_messages"] if m.get("id")]
+    assert "u2" in ids and "a2" in ids
+    assert "u1" not in ids

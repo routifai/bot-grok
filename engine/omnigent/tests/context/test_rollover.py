@@ -1030,3 +1030,43 @@ def test_person_facing_summary_reads_a_seed_stored_before_the_marker_prefix() ->
     assert person_facing_summary(f"{legacy}\n\nBody") == "Body"
     assert person_facing_summary(None) is None
     assert person_facing_summary(SIDE_CHAT_SEED_HEADER) is None
+
+
+# ── split_at_latest_compaction ────────────────────────────────────────────
+
+
+def _split_item(item_id: str, item_type: str = "message", **extra: Any) -> dict[str, Any]:
+    return {"id": item_id, "type": item_type, **extra}
+
+
+def test_split_without_compaction_returns_everything() -> None:
+    from omnigent.context.rollover import split_at_latest_compaction
+
+    items = [_split_item("u1"), _split_item("a1")]
+    assert split_at_latest_compaction(items) == (items, None)
+
+
+def test_split_keeps_items_that_landed_between_anchor_and_checkpoint() -> None:
+    from omnigent.context.rollover import split_at_latest_compaction
+
+    ckpt = _split_item("c1", "compaction", last_item_id="a1")
+    items = [
+        _split_item("u1"),
+        _split_item("a1"),
+        _split_item("u2"),  # turn that ran while the rollover summarized
+        _split_item("a2"),
+        ckpt,
+        _split_item("u3"),
+    ]
+    after, found = split_at_latest_compaction(items)
+    assert found is ckpt
+    assert [i["id"] for i in after] == ["u2", "a2", "u3"]
+
+
+def test_split_with_unknown_anchor_falls_back_to_after_the_checkpoint() -> None:
+    from omnigent.context.rollover import split_at_latest_compaction
+
+    ckpt = _split_item("c1", "compaction", last_item_id="compact_boundary_x")
+    items = [_split_item("u1"), ckpt, _split_item("u2")]
+    after, _ = split_at_latest_compaction(items)
+    assert [i["id"] for i in after] == ["u2"]

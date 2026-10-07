@@ -8,8 +8,9 @@
    ``_superside_chat_pending_refresh``) rather than releasing the harness
    subprocess out from under that turn, and is applied at the start of the
    session's next turn (``_consume_superside_chat_pending_refresh``).
-3. The next turn waits (bounded) for an in-flight rollover of the same
-   session before dispatching, so it never runs on pre-rollover state.
+3. The next turn dispatches without waiting for an in-flight rollover; only
+   at the hard context limit does it wait (bounded).
+4. At most one rollover task per session at a time.
 
 No DB, no server, no live LLM calls — the harness, the Omnigent server
 client, and the summarizer LLM client are all tiny in-memory fakes.
@@ -324,13 +325,53 @@ async def test_release_deferred_while_turn_active_applied_at_next_turn_start(
 
 
 @pytest.mark.asyncio
-async def test_next_turn_waits_for_an_in_flight_rollover(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A turn started while a rollover is in flight waits for it before dispatching."""
+async def test_next_turn_does_not_wait_below_the_hard_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Below the hard limit the next turn dispatches while the rollover is still gated."""
     gate = asyncio.Event()
     llm_client = _GatedLLMClient(gate)
     monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
 
-    server_client = _ThresholdServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
+    # 500k fill of a 1M window: over the rollover threshold, under the 95% hard limit.
+    labels = {**_SUPERSIDE_LABELS, "omnigent.last_context_window": "1000000"}
+    server_client = _ThresholdServerClient(labels=labels, items=_history_items())
+    harness_client = _SequencedHarnessClient([_triggering_frames(500_000), _plain_frames()])
+    app, pm = _build_app(harness_client, server_client)
+    conv_id = "conv_nowait"
+
+    async with _runner_client(app) as client:
+        resp = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
+        assert resp.status_code == 202
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+
+        rollover_task = app.state.superside_chat_rollover_tasks[conv_id]
+        assert not rollover_task.done()
+
+        resp2 = await asyncio.wait_for(_post_turn(client, conv_id, "second"), timeout=5.0)
+        assert resp2.status_code == 202
+        await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=2.0)
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        assert not rollover_task.done(), "the turn must not have waited for the summarizer"
+
+        gate.set()
+        await asyncio.wait_for(rollover_task, timeout=5.0)
+
+    assert len(server_client.posted_compactions) == 1
+    # No turn active when the rollover landed: the warm client drops at once.
+    assert pm.released == [conv_id]
+
+
+@pytest.mark.asyncio
+async def test_next_turn_waits_at_the_hard_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """At/over the hard fraction of the window the next turn waits for the rollover."""
+    gate = asyncio.Event()
+    llm_client = _GatedLLMClient(gate)
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+
+    # 500k fill of a 400k window: dispatching would overflow.
+    labels = {**_SUPERSIDE_LABELS, "omnigent.last_context_window": "400000"}
+    server_client = _ThresholdServerClient(labels=labels, items=_history_items())
     harness_client = _SequencedHarnessClient([_triggering_frames(500_000), _plain_frames()])
     app, pm = _build_app(harness_client, server_client)
     conv_id = "conv_wait"
@@ -344,15 +385,13 @@ async def test_next_turn_waits_for_an_in_flight_rollover(monkeypatch: pytest.Mon
         assert not rollover_task.done()
         assert len(harness_client.posted_bodies) == 1
 
-        # Start the next turn while the rollover is still gated. It must
-        # claim _active_turns (the POST returns 202) but NOT reach the
-        # harness yet — it's waiting on the in-flight rollover task.
+        # The turn claims its slot (202) but must not reach the harness yet.
         resp2_task = asyncio.create_task(_post_turn(client, conv_id, "second"))
         await _wait_until(lambda: conv_id in app.state.active_turns, timeout=2.0)
 
         await asyncio.sleep(0.2)
         assert len(harness_client.posted_bodies) == 1, (
-            "the second turn dispatched to the harness before the in-flight rollover finished"
+            "the second turn dispatched at the hard limit before the rollover finished"
         )
 
         gate.set()
@@ -362,6 +401,67 @@ async def test_next_turn_waits_for_an_in_flight_rollover(monkeypatch: pytest.Mon
 
     assert len(harness_client.posted_bodies) == 2
     assert pm.released == [conv_id]
+
+
+@pytest.mark.asyncio
+async def test_hard_limit_wait_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rollover that never finishes only holds the turn for the wait timeout."""
+    monkeypatch.setattr("omnigent.runner.app._SUPERSIDE_CHAT_ROLLOVER_WAIT_TIMEOUT_S", 0.2)
+    gate = asyncio.Event()  # never set until cleanup
+    llm_client = _GatedLLMClient(gate)
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+
+    labels = {**_SUPERSIDE_LABELS, "omnigent.last_context_window": "400000"}
+    server_client = _ThresholdServerClient(labels=labels, items=_history_items())
+    harness_client = _SequencedHarnessClient([_triggering_frames(500_000), _plain_frames()])
+    app, _pm = _build_app(harness_client, server_client)
+    conv_id = "conv_bounded"
+
+    async with _runner_client(app) as client:
+        await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        rollover_task = app.state.superside_chat_rollover_tasks[conv_id]
+
+        await asyncio.wait_for(_post_turn(client, conv_id, "second"), timeout=5.0)
+        await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=3.0)
+        assert not rollover_task.done()
+
+        gate.set()
+        await asyncio.wait_for(rollover_task, timeout=5.0)
+
+
+@pytest.mark.asyncio
+async def test_second_rollover_is_not_scheduled_while_one_is_in_flight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two consecutive over-threshold turns share one rollover task."""
+    gate = asyncio.Event()
+    llm_client = _GatedLLMClient(gate)
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+
+    labels = {**_SUPERSIDE_LABELS, "omnigent.last_context_window": "1000000"}
+    server_client = _ThresholdServerClient(labels=labels, items=_history_items())
+    harness_client = _SequencedHarnessClient(
+        [_triggering_frames(500_000), _triggering_frames(520_000)]
+    )
+    app, _pm = _build_app(harness_client, server_client)
+    conv_id = "conv_two"
+
+    async with _runner_client(app) as client:
+        await asyncio.wait_for(_post_turn(client, conv_id, "one"), timeout=5.0)
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        first = app.state.superside_chat_rollover_tasks[conv_id]
+
+        await asyncio.wait_for(_post_turn(client, conv_id, "two"), timeout=5.0)
+        await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=2.0)
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        assert app.state.superside_chat_rollover_tasks[conv_id] is first
+
+        gate.set()
+        await asyncio.wait_for(first, timeout=5.0)
+
+    assert llm_client.call_count == 1
+    assert len(server_client.posted_compactions) == 1
 
 
 class _FlakyThenSuccessLabelsServerClient(_ThresholdServerClient):

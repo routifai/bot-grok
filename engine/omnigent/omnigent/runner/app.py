@@ -1357,9 +1357,10 @@ _GATED_COMPOSED_INSTRUCTION_HARNESSES = frozenset({"opencode-native", "hermes"})
 _POST_COMPACTION_TAIL_HARNESSES = frozenset({"claude-native", "codex-native"})
 
 # Bound on a turn's wait for a same-session superside-chat rollover already
-# in flight (see _consume_superside_chat_pending_refresh) before dispatching
-# on what could be pre-rollover state. The rollover itself is not cancelled
-# on timeout — only this wait gives up.
+# in flight (see _consume_superside_chat_pending_refresh). Only applies at the
+# hard context limit (omnigent.superchat.rollover.HARD_CONTEXT_WINDOW_FRACTION):
+# below it the turn dispatches immediately and never waits on the summarizer.
+# The rollover itself is not cancelled on timeout — only this wait gives up.
 _SUPERSIDE_CHAT_ROLLOVER_WAIT_TIMEOUT_S = 60.0
 
 
@@ -3456,6 +3457,8 @@ def create_runner_app(
     # _consume_superside_chat_pending_refresh).
     _superside_chat_pending_refresh: set[str] = set()
     _superside_chat_rollover_tasks: dict[str, asyncio.Task[None]] = {}
+    # conv_id -> context fill the session's latest turn reported (hard-limit check).
+    _superside_chat_last_context_tokens: dict[str, int] = {}
     app.state.superside_chat_pending_refresh = _superside_chat_pending_refresh
     app.state.superside_chat_rollover_tasks = _superside_chat_rollover_tasks
     _last_server_item_id: dict[str, str] = {}
@@ -5579,14 +5582,15 @@ def create_runner_app(
     def _convert_raw_items_to_input(
         items: list[_JsonObject],
     ) -> list[_JsonObject]:
-        compaction_idx: int | None = None
-        for i, item in enumerate(items):
-            if item.get("type") == "compaction":
-                compaction_idx = i
+        from omnigent.context.rollover import split_at_latest_compaction
+
+        # Items after the checkpoint's anchor, including any turn that ran
+        # while the rollover was summarizing (see split_at_latest_compaction).
+        remaining, c = split_at_latest_compaction(items)
+        compaction_idx = None if c is None else items.index(c)
 
         result: list[_JsonObject] = []
-        if compaction_idx is not None:
-            c = items[compaction_idx]
+        if c is not None:
             _compacted = cast(list[_JsonObject] | None, c.get("compacted_messages"))
             if _compacted:
                 result.extend(_compacted)
@@ -5619,9 +5623,6 @@ def create_runner_app(
                         ],
                     }
                 )
-            remaining = items[compaction_idx + 1 :]
-        else:
-            remaining = items
 
         _skipped_types: list[str] = []
         for item in remaining:
@@ -9103,21 +9104,53 @@ def create_runner_app(
         if process_manager is not None:
             await process_manager.release(conv_id)
 
+    async def _superside_chat_at_hard_context_limit(conv_id: str) -> bool:
+        """Whether *conv_id*'s last known context fill leaves no room for another turn.
+
+        Uses the fill the last turn reported (recorded by
+        ``_schedule_superside_chat_threshold_rollover``, else the session's
+        ``last_context_tokens`` label) against the session's reported window.
+        ``False`` when either is unknown: the turn then dispatches without
+        waiting, since the rollover threshold sits well below the window.
+        """
+        from omnigent.context.rollover import reported_context_tokens
+        from omnigent.superchat.rollover import exceeds_hard_context_limit
+
+        labels = await _session_labels_for_runner_spawn(
+            server_client=server_client, session_id=conv_id
+        )
+        tokens = _superside_chat_last_context_tokens.get(conv_id)
+        if tokens is None:
+            tokens = reported_context_tokens(labels)
+        return exceeds_hard_context_limit(labels, context_tokens=tokens)
+
     async def _consume_superside_chat_pending_refresh(conv_id: str) -> None:
         """Apply a deferred superside-chat warm-client drop at the start of a turn.
 
         Called unconditionally at the top of ``_run_turn_bg_setup_and_stream``
         for every turn (cheap no-op for a session with nothing pending).
-        First waits (bounded) for an in-flight rollover task for *conv_id* —
-        scheduled by ``_maybe_superside_chat_threshold_rollover`` as a
-        background task so the turn that triggered it isn't blocked on the
-        summarizer — so this turn never dispatches on pre-rollover state.
-        Then, if that rollover (or an earlier one) deferred its drop because
-        THIS session had an active turn at the time, applies it now: this
-        turn is the next one, so no turn is active yet.
+
+        A rollover still in flight (a background task scheduled by
+        ``_maybe_superside_chat_threshold_rollover``) is NOT waited on: the
+        turn dispatches at once on the current state (the warm client, or a
+        cold replay of the full history — the checkpoint doesn't exist yet),
+        because the rollover threshold sits below the model's window, so one
+        more turn fits. If the rollover finishes while that turn is active,
+        its warm-client drop is deferred (``_drop_superside_chat_warm_client``)
+        and applied here on the turn after. The one exception is the hard
+        limit (``_superside_chat_at_hard_context_limit``): dispatching would
+        overflow the window, so the turn waits (bounded) for the rollover.
+
+        Then, if a rollover deferred its drop because THIS session had an
+        active turn at the time, applies it now: this turn is the next one,
+        so no turn is active yet.
         """
         task = _superside_chat_rollover_tasks.get(conv_id)
-        if task is not None and not task.done():
+        if (
+            task is not None
+            and not task.done()
+            and await _superside_chat_at_hard_context_limit(conv_id)
+        ):
             try:
                 await asyncio.wait_for(
                     asyncio.shield(task), timeout=_SUPERSIDE_CHAT_ROLLOVER_WAIT_TIMEOUT_S
@@ -9148,6 +9181,15 @@ def create_runner_app(
         session's next turn can wait for it — see
         ``_consume_superside_chat_pending_refresh``).
         """
+        usage = resp_response.get("usage")
+        reported = usage.get("context_tokens") if isinstance(usage, dict) else None
+        if isinstance(reported, int):
+            _superside_chat_last_context_tokens[conv_id] = reported
+        pending = _superside_chat_rollover_tasks.get(conv_id)
+        if pending is not None and not pending.done():
+            # One rollover per session at a time; the next turn over the
+            # threshold re-checks once this one lands.
+            return
         task = asyncio.create_task(
             _maybe_superside_chat_threshold_rollover(conv_id, resp_response),
             name=f"superside-chat-rollover-{conv_id}",
