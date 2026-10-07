@@ -1,4 +1,4 @@
-"""Built-in tools for artifacts (deliverable files the person can open in Nova).
+"""Built-in tools for artifacts (deliverable files the person can open in the app).
 
 Schema-only classes: the runner dispatches each to the server's ``/v1/artifacts`` REST
 endpoints (``artifact_save`` first reads the file from the Computer workspace).

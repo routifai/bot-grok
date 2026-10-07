@@ -69,6 +69,37 @@ def test_muse_and_worker_get_it_subworker_does_not() -> None:
     assert _offered(None, _spec("worker")) == []
 
 
+def test_a_type_declares_its_role_in_params() -> None:
+    spec = SimpleNamespace(
+        sub_agents=[
+            SimpleNamespace(name="doer", params={"helper_type": "worker"}),
+            SimpleNamespace(name="leaf", params={"helper_type": "subworker"}),
+            SimpleNamespace(name="other", params={}),
+        ]
+    )
+    assert h.helper_roles_for(spec) == {"doer": "worker", "leaf": "subworker"}
+    assert h.helper_type_for(spec) == "doer"
+    assert h.helper_type_for(SimpleNamespace(sub_agents=[spec.sub_agents[1]])) == "leaf"
+    assert h.helper_role("leaf", {"leaf": "subworker"}) == "subworker"
+    # an undeclared or invalid role falls back to the literal name
+    bad = SimpleNamespace(sub_agents=[SimpleNamespace(name="worker", params={"helper_type": "x"})])
+    assert h.helper_type_for(bad) == "worker"
+
+
+def test_bundles_declare_the_roles() -> None:
+    for name in ("nova-claude", "nova-pi"):
+        worker = yaml.safe_load(
+            (REPO / f"infra/omnigent/agents/{name}/agents/worker/config.yaml").read_text()
+        )
+        sub = yaml.safe_load(
+            (
+                REPO / f"infra/omnigent/agents/{name}/agents/worker/agents/subworker/config.yaml"
+            ).read_text()
+        )
+        assert worker["params"] == {"helper_type": "worker"}
+        assert sub["params"] == {"helper_type": "subworker"}
+
+
 def test_bundle_surfaces() -> None:
     bundle = REPO / "infra/omnigent/agents/nova-claude"
     muse = yaml.safe_load((bundle / "config.yaml").read_text())["tools"]["allow"]
@@ -122,6 +153,7 @@ def _host(
         declared_types=tuple(sub.name for sub in spec.sub_agents),
         child_titles=titles,
         spawn=spawn,
+        helper_roles=h.helper_roles_for(spec),
     )
 
 

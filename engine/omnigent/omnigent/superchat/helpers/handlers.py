@@ -11,7 +11,7 @@ import asyncio
 import json
 import re
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from omnigent.superchat.activity.titles import tidy_request_title
@@ -28,20 +28,57 @@ _recent: dict[tuple[str, str], tuple[float, str]] = {}
 _locks: dict[str, asyncio.Lock] = {}
 
 
-def helper_type(declared: Iterable[str]) -> str | None:
-    """The Helper type a caller starts: ``worker`` from the Muse, ``subworker`` from a worker."""
+#: A Sub-agent Type's own ``params:`` key declaring its Helper role (``worker`` or ``subworker``).
+HELPER_TYPE_PARAM = "helper_type"
+_ROLES = ("worker", "subworker")
+
+
+def declared_role(sub: Any) -> str | None:
+    """The Helper role a Sub-agent Type spec declares in ``params.helper_type``, if valid."""
+    params = getattr(sub, "params", None)
+    value = params.get(HELPER_TYPE_PARAM) if isinstance(params, Mapping) else None
+    default = getattr(value, "default", value)  # the inner loader wraps scalars in ParamDef
+    return default if default in _ROLES else None
+
+
+def helper_roles_for(spec: Any) -> dict[str, str]:
+    """``{type name: role}`` for the declared Types of ``spec`` that declare a role."""
+    return {
+        name: role
+        for sub in getattr(spec, "sub_agents", None) or []
+        if isinstance(name := getattr(sub, "name", None), str)
+        and (role := declared_role(sub)) is not None
+    }
+
+
+def helper_role(name: str, roles: Mapping[str, str] | None = None) -> str | None:
+    """The role of Type ``name``: its declared role, else ``name`` itself if it is a role."""
+    return (roles or {}).get(name) or (name if name in _ROLES else None)
+
+
+def helper_type(declared: Iterable[str], roles: Mapping[str, str] | None = None) -> str | None:
+    """The Helper Type a caller starts: a ``worker`` Type if declared, else a ``subworker`` one.
+
+    A Type's role comes from its ``params.helper_type``; a Type named ``worker`` or ``subworker``
+    that declares nothing keeps that role.
+    """
     names = [n for n in declared if not n.startswith("__")]
-    if "worker" in names:
-        return "worker"
-    return "subworker" if "subworker" in names else None
+    for wanted in _ROLES:
+        for name in names:
+            if helper_role(name, roles) == wanted:
+                return name
+    return None
 
 
 def helper_type_for(spec: Any) -> str | None:
     """:func:`helper_type` for the Types ``spec`` declares (tool gating, before any call)."""
     return helper_type(
-        n
-        for sub in getattr(spec, "sub_agents", None) or []
-        if isinstance(n := getattr(sub, "name", None), str)
+        (
+            n
+            for sub in getattr(spec, "sub_agents", None) or []
+            if isinstance(n := getattr(sub, "name", None), str)
+        ),
+        helper_roles_for(spec),
     )
 
 
@@ -129,7 +166,7 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     host = ctx.sub_agents
     if host is None or not ctx.conversation_id:
         return "Error: start_helper requires server access"
-    agent = helper_type(host.declared_types)
+    agent = helper_type(host.declared_types, host.helper_roles)
     if agent is None:
         return "Error: start_helper is not available here"
     invalid = _invalid_input(args)
@@ -160,6 +197,10 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
         )
         if result.child_id is None:
             return _refusal(result.error)
-        receipt = _receipt(title or "your task", result.child_id, agent=agent)
+        receipt = _receipt(
+            title or "your task",
+            result.child_id,
+            agent=helper_role(agent, host.helper_roles) or "worker",
+        )
         _recent[key] = (time.monotonic(), receipt)
         return receipt

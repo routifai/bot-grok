@@ -1,7 +1,7 @@
 """Built-in tools for the secrets vault. Schema-only: the runner dispatches them.
 
-* ``vault_request_secret`` — ask the person to save a login on a secure Nova form; the value
-  never enters the chat. Returns a request id Nova renders as a secure-entry card.
+* ``vault_request_secret`` — ask the person to save a login on a secure form; the value
+  never enters the chat. Returns a request id the client renders as a secure-entry card.
 * ``vault_fill`` — type one saved value into a field of the Computer's browser. The result only
   says "filled"; the model never sees the value.
 """

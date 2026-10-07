@@ -10,9 +10,11 @@ from typing import TYPE_CHECKING
 
 from omnigent.superchat.cards.handlers import handle_card_tool
 from omnigent.superchat.cards.tools import CARD_TOOL_NAME
-from omnigent.superchat.feature import Feature, ToolManagerCtx, is_super_chat
+from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx, is_super_chat
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
+
     from omnigent.tools.base import Tool
 
 
@@ -23,4 +25,14 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     return [RenderCardTool()] if is_super_chat(labels) else []
 
 
-FEATURE = Feature(name="cards", tools=_tools, handlers={CARD_TOOL_NAME: handle_card_tool})
+def _install(app: FastAPI, deps: InstallDeps) -> None:
+    from omnigent.superchat.cards.routes import create_cards_router
+
+    app.include_router(
+        create_cards_router(auth_provider=deps.auth_provider), prefix="/v1", tags=["cards"]
+    )
+
+
+FEATURE = Feature(
+    name="cards", tools=_tools, handlers={CARD_TOOL_NAME: handle_card_tool}, install=_install
+)

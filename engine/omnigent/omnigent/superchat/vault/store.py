@@ -174,7 +174,7 @@ class VaultStore:
     def create_request(
         self, *, user_id: str | None, session_id: str, name: str, site: str, reason: str
     ) -> VaultRequest:
-        """Open a one-time request the person answers on a Nova form."""
+        """Open a one-time request the person answers on a secure form."""
         _key()  # fail closed: never show a card that cannot save
         name = _clean_name(name)
         site = normalize_site(site)

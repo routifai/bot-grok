@@ -1,6 +1,6 @@
 """Runner-side handlers for the vault tools.
 
-``vault_request_secret`` opens a secure-entry request (the value is entered on a Nova form,
+``vault_request_secret`` opens a secure-entry request (the value is entered on a secure form,
 never here). ``vault_fill`` fetches the value with the runner's session auth and types it into
 the Computer's browser; the value stays in local variables, is never logged, and the result only
 says it was filled.

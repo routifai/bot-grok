@@ -107,6 +107,42 @@ def test_prepare_for_launch_targets_novas_computer_key_when_given() -> None:
     assert (launcher._bot_id, launcher._space_id) == ("team-space_1", SPACE_ID)
 
 
+def test_prepare_for_launch_reads_generic_labels() -> None:
+    launcher = make_launcher(FakeSupervisor())
+    launcher.prepare_for_launch(
+        labels={
+            "omnigent.computer.key": "team-1",
+            "omnigent.computer.owner": "owner-1",
+            "omnigent.tenant": "tenant-1",
+            "nova.bot": "ignored",
+            "nova.space": "ignored",
+        }
+    )
+    assert (launcher._bot_id, launcher._space_id) == ("team-1", "tenant-1")
+
+
+def test_prepare_for_launch_owner_label_is_the_key_when_no_key_label() -> None:
+    launcher = make_launcher(FakeSupervisor())
+    launcher.prepare_for_launch(
+        labels={"omnigent.computer.owner": "owner-1", "omnigent.tenant": "tenant-1"}
+    )
+    assert (launcher._bot_id, launcher._space_id) == ("owner-1", "tenant-1")
+
+
+def test_deprecated_env_names_still_configure_the_launcher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(SUPERVISOR_URL_ENV_VAR, raising=False)
+    monkeypatch.delenv("OMNIGENT_COMPUTER_SUPERVISOR_TOKEN", raising=False)
+    monkeypatch.setenv("OMNIGENT_NOVA_SUPERVISOR_URL", "http://old.test/")
+    monkeypatch.setenv("OMNIGENT_NOVA_SUPERVISOR_TOKEN", "old-token")
+    launcher = ComputerSandboxLauncher()
+    assert launcher._supervisor_url == "http://old.test"
+    assert launcher._supervisor_token == "old-token"
+    monkeypatch.setenv(SUPERVISOR_URL_ENV_VAR, "http://new.test")
+    assert ComputerSandboxLauncher()._supervisor_url == "http://new.test"
+
+
 def test_prepare_for_launch_recovers_identity_from_previous_sandbox_id_on_relaunch() -> None:
     """A relaunch has no session labels handy; it passes back this launcher's own earlier
     provision() return value instead, and identity must still resolve from that alone."""

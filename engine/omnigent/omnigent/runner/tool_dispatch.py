@@ -2642,7 +2642,14 @@ def _sub_agent_host(
         for sub in getattr(agent_spec, "sub_agents", None) or []
         if isinstance(name := getattr(sub, "name", None), str)
     )
-    return SubAgentHost(declared_types=declared, child_titles=child_titles, spawn=spawn)
+    from omnigent.superchat.helpers.handlers import helper_roles_for
+
+    return SubAgentHost(
+        declared_types=declared,
+        child_titles=child_titles,
+        spawn=spawn,
+        helper_roles=helper_roles_for(agent_spec),
+    )
 
 
 async def _execute_subagent_tool(

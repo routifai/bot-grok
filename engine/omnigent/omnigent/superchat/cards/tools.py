@@ -167,6 +167,19 @@ def _check(value: Any, schema: dict[str, Any], path: str) -> str | None:
     return None
 
 
+def card_catalog() -> list[dict[str, Any]]:
+    """
+    The render_card catalog: every card kind with the JSON schema of its ``data``.
+
+    :returns: ``[{"kind", "ends_reply", "data_schema"}]`` in catalog order; ``ends_reply`` is
+        true for answer cards and false for living cards (plan, progress) updated in place.
+    """
+    return [
+        {"kind": kind, "ends_reply": kind in _TERMINAL_CARDS, "data_schema": schema}
+        for kind, schema in CARD_DATA_SCHEMAS.items()
+    ]
+
+
 def build_card(args: dict[str, Any]) -> dict[str, Any]:
     """
     Validate ``render_card`` arguments and build the typed result payload.

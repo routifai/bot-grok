@@ -8,6 +8,11 @@ description: >-
   (research, browsing, forms, files, writing) with the Muse's full work toolset, and can start
   one level of further workers to split a multi-part job.
 
+# The Helper role start_helper uses for this Type (omnigent.superchat.helpers); a Type that
+# declares none keeps the role of its own name.
+params:
+  helper_type: worker
+
 # Sub-agent Type: worker. Claude Agent SDK, same engine as the Super Chat (ADR 0001, ADR 0007).
 # No model pinned: the Muse picks `fast` or `strong` per dispatch (engine config maps them), and
 # an unpinned Helper otherwise inherits the Muse's model.

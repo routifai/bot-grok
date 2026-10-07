@@ -1,8 +1,9 @@
 """``/v1/me/vault``: the person's encrypted logins (secrets vault).
 
-The value goes in once, from a Nova form, and is never echoed: every response carries metadata
-only, except ``/fill`` which the runner calls to type a value into the Computer's browser and
-which returns the saved origin with the value so the page helper can refuse any other site.
+The value goes in once, from the client's secure form, and is never echoed: every response
+carries metadata only, except ``/fill`` which the runner calls to type a value into the
+Computer's browser and which returns the saved origin with the value so the page helper can
+refuse any other site.
 Owner-scoped.
 """
 
@@ -74,7 +75,7 @@ def entry_to_response(entry: VaultEntry) -> dict[str, Any]:
 
 
 def request_to_response(req: VaultRequest) -> dict[str, Any]:
-    """A secure-entry request as Nova renders it."""
+    """A secure-entry request as the client renders it."""
     return {
         "id": req.id,
         "session_id": req.session_id,
@@ -115,7 +116,7 @@ def create_vault_router(
 
     @router.post("/me/vault")
     async def save_secret(request: Request, body: SaveRequest) -> dict[str, Any]:
-        """Save a login from the Nova form. The password is encrypted and never echoed."""
+        """Save a login from the secure form. The password is encrypted and never echoed."""
         owner = _owner(request)
         if body.request_id:
             _check_id(body.request_id, "request_id")
@@ -175,7 +176,7 @@ def create_vault_router(
         """Hand the runner one value to type; the browser helper enforces the saved origin.
 
         Only the runner bound to ``session_id`` may call this (its runner bearer plus binding
-        token); the owner's own credentials, Nova's API included, are refused and audited.
+        token); the owner's own credentials, the client's API included, are refused and audited.
         """
         owner = _owner(request)
         _check_id(body.session_id, "session_id")

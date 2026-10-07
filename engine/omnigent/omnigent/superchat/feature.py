@@ -78,6 +78,8 @@ class SubAgentHost:
     """What the runner offers a handler that starts sub-agents (built in ``tool_dispatch``).
 
     :param declared_types: Names of the Sub-agent Types the calling session declares.
+    :param helper_roles: ``{type name: "worker" | "subworker"}`` for Types that declare a Helper
+        role in their ``params.helper_type``; Types without one keep their literal name.
     :param child_titles: Titles of the caller's existing child sessions.
     :param spawn: Starts one child through the generic sub-agent create path.
     """
@@ -85,6 +87,7 @@ class SubAgentHost:
     declared_types: tuple[str, ...]
     child_titles: Callable[[], Awaitable[list[str]]]
     spawn: Callable[[SpawnRequest], Awaitable[SpawnResult]]
+    helper_roles: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

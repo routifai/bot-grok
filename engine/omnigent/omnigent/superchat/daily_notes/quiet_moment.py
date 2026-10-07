@@ -85,7 +85,7 @@ The note for {date} (the person's local day):
 
 {note}
 
-How Nova works with the person today (`working_style` memories; `edited` ones were written by \
+How we work with the person today (`working_style` memories; `edited` ones were written by \
 the person and are never changed):
 
 {styles}

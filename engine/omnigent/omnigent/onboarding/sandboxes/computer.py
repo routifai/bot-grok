@@ -18,10 +18,11 @@ Implements :class:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher` (via
 Identity: unlike every other provider, this launcher's sandbox is not a fresh box it creates —
 it is a PRE-EXISTING, Nova-owned resource keyed by the session's Muse, not by the launch-chosen
 ``name`` :meth:`SandboxHostLauncher.provision` normally receives. Nova's gateway stamps every
-Omnigent session with ``nova.bot`` / ``nova.user`` / ``nova.space`` labels (see
-``packages/adapters/src/omnigent/gateway.ts``); :meth:`prepare_for_launch` is the extension point
+Omnigent session with ``omnigent.computer.key`` / ``omnigent.computer.owner`` /
+``omnigent.tenant`` labels (the older ``nova.computer`` / ``nova.bot`` / ``nova.space`` labels
+are still read, deprecated, removal in 0.19); :meth:`prepare_for_launch` is the extension point
 :mod:`omnigent.server.managed_hosts` already threads a first launch's session labels through, and
-this launcher reads ``nova.bot`` / ``nova.space`` off them. A RELAUNCH (existing host, fresh
+this launcher reads the key and tenant labels off them. A RELAUNCH (existing host, fresh
 sandbox generation — see :func:`omnigent.server.managed_hosts.relaunch_managed_host`) has no
 session labels handy, so it instead passes ``previous_sandbox_id`` — this launcher's own encoded
 :meth:`provision` return value from the earlier launch — and recovers the same identity from it.
@@ -32,7 +33,7 @@ container id, needed by every ``/computers/{id}/...`` call after ``provision``.
 
 Authentication, both directions:
 
-- Omnigent → Nova's supervisor: a static bearer (``OMNIGENT_NOVA_SUPERVISOR_TOKEN``) plus the
+- Omnigent → Nova's supervisor: a static bearer (``OMNIGENT_COMPUTER_SUPERVISOR_TOKEN``) plus the
   ``x-aiden-bot-id`` / ``x-aiden-space-id`` identity headers the supervisor cross-checks against
   the container it resolves — the same shared-secret posture
   ``packages/adapters/src/docker-sandbox.ts`` already uses from Nova's own API process
@@ -94,21 +95,48 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-SUPERVISOR_URL_ENV_VAR: str = "OMNIGENT_NOVA_SUPERVISOR_URL"
-"""Base URL of Nova's sandbox supervisor, e.g. ``"http://sandbox-supervisor:7091"``
-(``infra/sandboxes/supervisor``)."""
+SUPERVISOR_URL_ENV_VAR: str = "OMNIGENT_COMPUTER_SUPERVISOR_URL"
+"""Base URL of the computer supervisor, e.g. ``"http://sandbox-supervisor:7091"``."""
 
-SUPERVISOR_TOKEN_ENV_VAR: str = "OMNIGENT_NOVA_SUPERVISOR_TOKEN"
-"""Shared bearer the supervisor expects on every request — the same secret Nova's own API
-process reads via ``resolveSupervisorToken``/``SANDBOX_SUPERVISOR_TOKEN`` (see
-``packages/core/src/secrets-guard.ts``). Never a per-user credential."""
+SUPERVISOR_TOKEN_ENV_VAR: str = "OMNIGENT_COMPUTER_SUPERVISOR_TOKEN"
+"""Shared bearer the supervisor expects on every request. Never a per-user credential."""
 
-HOME_ROOT_ENV_VAR: str = "OMNIGENT_NOVA_HOME_ROOT"
-"""Root directory a Muse's persistent home lives under, joined as ``<root>/homes/<bot_id>`` —
-must resolve to the SAME host path Nova's own API process uses (``dataDir`` in
-``packages/adapters/src/home.ts``'s ``resolveAgentHomePath``), since both processes provision
-containers for the very same Muse. Defaults to ``"./data"`` (Nova API's own default) only for
-local/dev parity; a real deployment should set this to an absolute, shared path."""
+HOME_ROOT_ENV_VAR: str = "OMNIGENT_COMPUTER_HOME_ROOT"
+"""Root directory a computer's persistent home lives under, joined as ``<root>/homes/<key>``.
+It must resolve to the same host path the supervisor's client uses. Defaults to ``"./data"``."""
+
+LABEL_COMPUTER_KEY: str = "omnigent.computer.key"
+"""Session label naming the computer to run in (shared by every session with the same key)."""
+
+LABEL_COMPUTER_OWNER: str = "omnigent.computer.owner"
+"""Session label naming the computer's owner; used as the key when no key label is set."""
+
+LABEL_TENANT: str = "omnigent.tenant"
+"""Session label naming the tenant (space) the computer belongs to."""
+
+# Deprecated names, read as a fallback so existing deployments keep working.
+# Deprecated in 0.17: remove in 0.19 once clients send the ``omnigent.*`` labels and the
+# ``OMNIGENT_COMPUTER_*`` settings.
+_DEPRECATED_SUPERVISOR_URL_ENV_VAR: str = "OMNIGENT_NOVA_SUPERVISOR_URL"
+_DEPRECATED_SUPERVISOR_TOKEN_ENV_VAR: str = "OMNIGENT_NOVA_SUPERVISOR_TOKEN"
+_DEPRECATED_HOME_ROOT_ENV_VAR: str = "OMNIGENT_NOVA_HOME_ROOT"
+_DEPRECATED_LABEL_COMPUTER_KEY: str = "nova.computer"
+_DEPRECATED_LABEL_COMPUTER_OWNER: str = "nova.bot"
+_DEPRECATED_LABEL_TENANT: str = "nova.space"
+
+
+def _env_with_fallback(name: str, deprecated_name: str) -> str:
+    """Read *name*, falling back to the deprecated *deprecated_name* (warns once per use)."""
+    value = os.environ.get(name)
+    if value is not None and value != "":
+        return value
+    old = os.environ.get(deprecated_name, "")
+    if old:
+        _logger.warning(
+            "%s is deprecated (removal in 0.19); use %s instead", deprecated_name, name
+        )
+    return old
+
 
 _DEFAULT_HOME_ROOT: str = "./data"
 
@@ -186,15 +214,17 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
         self._supervisor_url = (
             supervisor_url
             if supervisor_url is not None
-            else os.environ.get(SUPERVISOR_URL_ENV_VAR, "")
+            else _env_with_fallback(SUPERVISOR_URL_ENV_VAR, _DEPRECATED_SUPERVISOR_URL_ENV_VAR)
         ).rstrip("/")
         self._supervisor_token = (
             supervisor_token
             if supervisor_token is not None
-            else os.environ.get(SUPERVISOR_TOKEN_ENV_VAR, "")
+            else _env_with_fallback(SUPERVISOR_TOKEN_ENV_VAR, _DEPRECATED_SUPERVISOR_TOKEN_ENV_VAR)
         )
         self._home_root = (
-            home_root if home_root is not None else os.environ.get(HOME_ROOT_ENV_VAR, "")
+            home_root
+            if home_root is not None
+            else _env_with_fallback(HOME_ROOT_ENV_VAR, _DEPRECATED_HOME_ROOT_ENV_VAR)
         ) or _DEFAULT_HOME_ROOT
         self._injected_client = client
         # Set by prepare_for_launch before provision() needs them; provision() is the only
@@ -217,7 +247,7 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
         """
         Resolve this launch's target Muse from session labels, or a relaunch's prior sandbox id.
 
-        A first launch supplies *labels* (the session's ``nova.bot`` / ``nova.space`` — see the
+        A first launch supplies *labels* (``omnigent.computer.key`` / ``omnigent.tenant``, see the
         module docstring); a relaunch of an existing host supplies *previous_sandbox_id* instead
         (no session labels are threaded to that path). *labels* wins when both are present, since
         it reflects the CURRENT session row rather than whatever an earlier launch encoded.
@@ -230,10 +260,14 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
             relaunch, or ``None`` for a first launch.
         """
         del agent_name
-        # Nova's computer key (``nova.computer``) names the machine Nova itself shows the
-        # person — shared per space in team mode — so the runner lands on that same computer.
-        bot_id = (labels or {}).get("nova.computer") or (labels or {}).get("nova.bot")
-        space_id = (labels or {}).get("nova.space")
+        found = labels or {}
+        bot_id = (
+            found.get(LABEL_COMPUTER_KEY)
+            or found.get(LABEL_COMPUTER_OWNER)
+            or found.get(_DEPRECATED_LABEL_COMPUTER_KEY)
+            or found.get(_DEPRECATED_LABEL_COMPUTER_OWNER)
+        )
+        space_id = found.get(LABEL_TENANT) or found.get(_DEPRECATED_LABEL_TENANT)
         if bot_id and space_id:
             self._bot_id, self._space_id = bot_id, space_id
             return
@@ -244,18 +278,18 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
         if not self._supervisor_url:
             raise click.ClickException(
                 f"{SUPERVISOR_URL_ENV_VAR} is not set — the 'computer' sandbox provider needs "
-                "Nova's sandbox supervisor URL (see docs/omnigent-spike.md)"
+                "the computer supervisor URL"
             )
         if not self._supervisor_token:
             raise click.ClickException(
                 f"{SUPERVISOR_TOKEN_ENV_VAR} is not set — the 'computer' sandbox provider needs "
-                "the shared secret Nova's sandbox supervisor expects on every request"
+                "the shared secret the computer supervisor expects on every request"
             )
         if not self._bot_id or not self._space_id:
             raise click.ClickException(
-                "the 'computer' sandbox provider could not resolve this Muse's identity — the "
-                "launching session must carry 'nova.bot' and 'nova.space' labels "
-                "(packages/adapters/src/omnigent/gateway.ts)"
+                "the 'computer' sandbox provider could not resolve this computer's identity — the "
+                f"launching session must carry '{LABEL_COMPUTER_KEY}' "
+                f"(or '{LABEL_COMPUTER_OWNER}') and '{LABEL_TENANT}' labels"
             )
 
     def _client(self) -> httpx.Client:

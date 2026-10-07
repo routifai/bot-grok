@@ -7,6 +7,11 @@ description: >-
   General Helper for the Super Chat: carries out one self-contained piece of work with the
   Muse's full work toolset. Leaf of a coordinating worker; cannot start further Helpers.
 
+# The Helper role start_helper uses for this Type (omnigent.superchat.helpers); a Type that
+# declares none keeps the role of its own name.
+params:
+  helper_type: subworker
+
 # Leaf worker: same as the coordinator minus Helper management, so nesting stops here (the
 # engine refuses it too: omnigent.superchat.subagents.refuse_subagent_nesting).
 executor:
