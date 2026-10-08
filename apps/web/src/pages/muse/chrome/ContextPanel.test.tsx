@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Ask, Goal } from "@aiden/contracts";
+import type * as UiWeb from "@aiden/ui-web";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
@@ -34,7 +35,8 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@aiden/ui-web", async (importOriginal) => ({
+  ...(await importOriginal<typeof UiWeb>()),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   BotAvatar: ({ face }: { face?: string }) => (
     <div data-testid="context-panel-empty-face" data-face={face} />
@@ -292,7 +294,7 @@ it("shows a 'View all' action once there are more open Asks than fit", async () 
   }
 });
 
-it("hides a section with nothing in it, and shows one quiet line with the Muse's face when everything is empty", async () => {
+it("hides a section with nothing in it, and shows one quiet line (no face) when everything is empty", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.goals.list.mockResolvedValue([]);
@@ -309,7 +311,7 @@ it("hides a section with nothing in it, and shows one quiet line with the Muse's
     expect(page.container.querySelector("[data-testid='context-panel-asks']")).toBeNull();
     expect(page.container.querySelector("[data-testid='context-panel-goals']")).toBeNull();
     expect(page.container.querySelector("[data-testid='context-panel-checkins']")).toBeNull();
-    expect(page.container.querySelector("[data-testid='context-panel-empty-face']")).toBeTruthy();
+    expect(page.container.querySelector("[data-testid='context-panel-empty-face']")).toBeNull();
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

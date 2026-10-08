@@ -1,7 +1,7 @@
 import type { Ask, Goal } from "@aiden/contracts";
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { nextCronDateAcross } from "@aiden/core";
-import { BotAvatar, cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
+import { cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import type { LucideIcon } from "lucide-react";
@@ -485,20 +485,15 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
  * `ConversationHeader.tsx`'s compact identity covers exactly those cases, so the Muse's
  * identity still shows once, whichever of the two is visible. */
 function IdentityHeader({
-  botId,
   museName,
-  avatarColor,
   connection,
 }: {
-  botId: string;
   museName: string;
-  avatarColor: string;
   connection: "connected" | "connecting";
 }) {
   const { t: tt } = useLingui();
   return (
     <div className="flex flex-col items-center gap-2 pt-1 text-center">
-      <BotAvatar color={avatarColor} identity={botId} face="muse" size={56} />
       <span
         data-testid="context-panel-muse-name"
         className="text-[15px] font-semibold text-foreground"
@@ -640,12 +635,7 @@ export function ContextPanel({
       )}
     >
       <div className="flex shrink-0 flex-col gap-4 px-5 pt-5">
-        <IdentityHeader
-          botId={botId}
-          museName={museName}
-          avatarColor={avatarColor}
-          connection={connection}
-        />
+        <IdentityHeader museName={museName} connection={connection} />
         <PanelTabBar tab={tab} onChange={setTab} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto rk-scroll px-5 pb-5">
@@ -661,7 +651,6 @@ export function ContextPanel({
           <MemoryTab botId={botId} wire={memoryWireToUse} />
         ) : contextEmpty ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
-            <BotAvatar color={avatarColor} identity={botId} face="muse" size={40} />
             <p className="text-[14.5px] text-muted-foreground">{tt`You're all caught up.`}</p>
           </div>
         ) : (

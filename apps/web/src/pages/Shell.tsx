@@ -951,13 +951,12 @@ export function ShellPage() {
                             members={activeSnapshot?.members ?? activeGroup?.members ?? []}
                             size={26}
                           />
-                        ) : active ? (
+                        ) : active && !museMode ? (
                           <BotAvatar
                             color={active.color}
                             identity={active.id}
                             size={26}
                             status={active.status}
-                            face={museMode ? "muse" : undefined}
                           />
                         ) : null}
                         <span className="min-w-0">

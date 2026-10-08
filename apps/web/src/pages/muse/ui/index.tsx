@@ -354,7 +354,8 @@ export function EmptyState({
   className?: string;
 }) {
   const rich = Boolean(suggestions?.length && onSuggestion);
-  const showFace = rich || face;
+  // The face is hidden by default for now (owner request); pass `face` to show it.
+  const showFace = Boolean(face);
   return (
     <div
       className={cn(
