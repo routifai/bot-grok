@@ -17,7 +17,8 @@ msgstr ""
 msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
 
-#. placeholder {0}: mark.count
+#. placeholder {0}: 1
+#. placeholder {0}: group.count
 #. placeholder {0}: under.total
 msgid "{0, plural, one {# fork} other {# forks}}"
 msgstr "{0, plural, one {# fork} other {# forks}}"
@@ -141,6 +142,9 @@ msgstr "{steps, plural, one {# step} other {# steps}}"
 
 msgid "{toolCount, plural, one {# tool} other {# tools}}"
 msgstr "{toolCount, plural, one {# tool} other {# tools}}"
+
+msgid "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
+msgstr "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
 
 msgid "{working, plural, one {Working on # thing} other {Working on # things}}"
 msgstr "{working, plural, one {Working on # thing} other {Working on # things}}"
@@ -1583,6 +1587,9 @@ msgstr "Finish signing in at <0>{0}</0>. The final page may not load; paste its 
 
 msgid "finished"
 msgstr "finished"
+
+msgid "Finished"
+msgstr "Finished"
 
 #. js-lingui-explicit-id
 msgid "Finished."

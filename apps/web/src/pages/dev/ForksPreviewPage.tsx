@@ -252,7 +252,14 @@ export function ForksPreviewPage() {
               onOpenComputer={noop}
               onFork={forks.startAsk}
               renderUnder={forks.renderUnder}
-              aside={<ForkGutter scrollRef={scrollRef} messages={messages} onJump={forks.jump} />}
+              aside={
+                <ForkGutter
+                  scrollRef={scrollRef}
+                  messages={messages}
+                  forks={forks.rows}
+                  onJump={forks.jump}
+                />
+              }
             />
           )}
         </div>

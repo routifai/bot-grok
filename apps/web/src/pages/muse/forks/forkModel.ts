@@ -97,33 +97,48 @@ export function forkUnder(forks: readonly MessageFork[] | undefined): ForkUnder 
   };
 }
 
-/** One dot of the gutter: a message with forks, where it sits along the Conversation. */
-export type GutterMark = {
+/** One fork in a gutter mark, as the popover lists it. */
+export type GutterFork = {
+  chatId: string;
   messageId: string;
-  /** Center, as a fraction (0…1) of the scrolled content's height. */
-  at: number;
-  /** Dot diameter in px, by how many forks the message has. */
-  size: number;
-  count: number;
-  /** Its first open fork's color; `done` when every fork is added back or archived. */
+  title: string;
+  status: ForkStatus;
   tone: ForkTone;
+};
+
+/**
+ * One mark of the rail: a single fork (a dot while open, a tick once finished) or a group of two
+ * or more (a count capsule), at `y` px from the top of the rail.
+ */
+export type GutterGroup = {
+  /** The first message's id: a stable key and the single mark's jump target. */
+  messageId: string;
+  /** Center, in px from the top of the rail. */
+  y: number;
+  forks: GutterFork[];
+  count: number;
+  /** The first open fork's color (a group's ring); `done` when every fork is finished. */
+  tone: ForkTone;
+  /** Some fork is still open. */
+  open: boolean;
+  /** Nova is working in one of them. */
   live: boolean;
-  done: boolean;
 };
 
 export type GutterLayout = {
-  marks: GutterMark[];
+  groups: GutterGroup[];
   /** The visible part of the Conversation, as fractions of its height. */
   view: { top: number; height: number };
 };
 
-const GUTTER_DOT_MIN = 10;
-const GUTTER_DOT_MAX = 18;
+/** Marks closer than this (px) on the rail merge into one capsule. */
+export const GUTTER_MERGE_PX = 16;
 
 /**
- * Where the gutter's dots go: one per message with forks, at that message's middle relative to
- * the whole scrolled height (measured from the DOM by the caller), plus the band for what is in
- * view. Pure, so it is tested without a browser.
+ * Where the rail's marks go: one per message with forks at that message's middle, scaled to the
+ * rail's pixel height (`railHeight`), then consecutive marks closer than GUTTER_MERGE_PX merge
+ * into one group at their mean y; plus the band for what is in view. Pure, so it is tested
+ * without a browser.
  */
 export function gutterLayout({
   rows,
@@ -131,6 +146,7 @@ export function gutterLayout({
   scrollHeight,
   scrollTop,
   clientHeight,
+  railHeight,
 }: {
   /** Each rendered message's box, relative to the top of the scrolled content. */
   rows: ReadonlyArray<{ messageId: string; top: number; height: number }>;
@@ -138,31 +154,64 @@ export function gutterLayout({
   scrollHeight: number;
   scrollTop: number;
   clientHeight: number;
+  /** The rail's drawable height in px (its strip minus the edge insets). */
+  railHeight: number;
 }): GutterLayout {
   const total = Math.max(scrollHeight, clientHeight, 1);
-  const marks: GutterMark[] = [];
+  const marks: Array<{ messageId: string; y: number; forks: GutterFork[] }> = [];
   for (const row of rows) {
     const forks = forksById.get(row.messageId);
     if (!forks?.length) continue;
-    const statuses = forks.map((fork) => ({
-      chatId: fork.chatId,
-      status: messageForkStatus(fork),
-    }));
-    const firstOpen = statuses.find((fork) => isOpen(fork.status));
     marks.push({
       messageId: row.messageId,
-      at: clamp01((row.top + row.height / 2) / total),
-      size: Math.min(GUTTER_DOT_MAX, GUTTER_DOT_MIN + (forks.length - 1) * 2),
-      count: forks.length,
-      tone: firstOpen ? forkTone(firstOpen) : "done",
-      live: statuses.some((fork) => fork.status === "live"),
-      done: !firstOpen,
+      y: clamp01((row.top + row.height / 2) / total) * Math.max(railHeight, 0),
+      forks: forks.map((fork) => {
+        const status = messageForkStatus(fork);
+        return {
+          chatId: fork.chatId,
+          messageId: row.messageId,
+          title: fork.title,
+          status,
+          tone: forkTone({ chatId: fork.chatId, status }),
+        };
+      }),
     });
   }
+  marks.sort((a, b) => a.y - b.y);
+  const clusters: Array<typeof marks> = [];
+  for (const mark of marks) {
+    const cluster = clusters[clusters.length - 1];
+    const last = cluster?.[cluster.length - 1];
+    if (cluster && last && mark.y - last.y < GUTTER_MERGE_PX) cluster.push(mark);
+    else clusters.push([mark]);
+  }
+  const groups = clusters.map((cluster): GutterGroup => {
+    const forks = cluster.flatMap((mark) => mark.forks);
+    const firstOpen = forks.find((fork) => isOpen(fork.status));
+    return {
+      messageId: cluster[0]?.messageId ?? "",
+      y: cluster.reduce((sum, mark) => sum + mark.y, 0) / cluster.length,
+      forks,
+      count: forks.length,
+      tone: firstOpen?.tone ?? "done",
+      open: Boolean(firstOpen),
+      live: forks.some((fork) => fork.status === "live"),
+    };
+  });
   return {
-    marks,
+    groups,
     view: { top: clamp01(scrollTop / total), height: clamp01(clientHeight / total) },
   };
+}
+
+/** Forks (not archived) whose anchor message is not in the loaded Conversation yet: they sit in
+ * older history, so the rail says "↑ N" until that history is loaded. */
+export function unloadedForkCount(
+  rows: readonly Pick<ForkRow, "status" | "anchorItemId">[],
+  loadedMessageIds: ReadonlySet<string>,
+): number {
+  return rows.filter((row) => row.status !== "archived" && !loadedMessageIds.has(row.anchorItemId))
+    .length;
 }
 
 function clamp01(value: number): number {

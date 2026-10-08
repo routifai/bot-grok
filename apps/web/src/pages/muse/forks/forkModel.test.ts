@@ -10,6 +10,7 @@ import {
   forkUnder,
   groupForks,
   gutterLayout,
+  unloadedForkCount,
 } from "./forkModel";
 
 function fork(overrides: Partial<MessageFork> = {}): MessageFork {
@@ -135,47 +136,103 @@ describe("gutterLayout", () => {
   const forksById = new Map<string, MessageFork[]>([
     ["m1", [fork({ chatId: "a", state: "added" })]],
     ["m2", [fork({ chatId: "b", live: true }), fork({ chatId: "c" }), fork({ chatId: "d" })]],
+    ["m3", [fork({ chatId: "e" })]],
+    ["m4", [fork({ chatId: "f", state: "added" })]],
   ]);
-
-  it("puts one dot per message with forks at the message's middle, sized by count", () => {
-    const layout = gutterLayout({
-      rows: [
-        { messageId: "m0", top: 0, height: 100 },
-        { messageId: "m1", top: 100, height: 100 },
-        { messageId: "m2", top: 700, height: 200 },
-      ],
+  const layout = (
+    rows: Array<{ messageId: string; top: number; height: number }>,
+    railHeight = 1000,
+  ) =>
+    gutterLayout({
+      rows,
       forksById,
       scrollHeight: 1000,
       scrollTop: 500,
       clientHeight: 250,
+      railHeight,
     });
-    expect(layout.marks.map((mark) => [mark.messageId, mark.at, mark.count])).toEqual([
-      ["m1", 0.15, 1],
-      ["m2", 0.8, 3],
+
+  it("puts one mark per message at its middle in rail px: an open dot, a finished tick", () => {
+    const result = layout([
+      { messageId: "m0", top: 0, height: 100 },
+      { messageId: "m1", top: 100, height: 100 },
+      { messageId: "m3", top: 400, height: 100 },
     ]);
-    expect(layout.marks[0]).toMatchObject({ done: true, tone: "done", live: false, size: 10 });
-    expect(layout.marks[1]).toMatchObject({
-      done: false,
-      live: true,
-      size: 14,
-      tone: forkColorIndex("b"),
-    });
-    expect(layout.view).toEqual({ top: 0.5, height: 0.25 });
+    expect(result.groups.map((g) => [g.messageId, g.y, g.count, g.open])).toEqual([
+      ["m1", 150, 1, false],
+      ["m3", 450, 1, true],
+    ]);
+    expect(result.groups[0]).toMatchObject({ tone: "done", live: false });
+    expect(result.groups[1]).toMatchObject({ tone: forkColorIndex("e"), live: false });
+    expect(result.view).toEqual({ top: 0.5, height: 0.25 });
   });
 
-  it("caps the dot size and keeps positions inside the strip", () => {
-    const many = Array.from({ length: 20 }, (_, i) => fork({ chatId: `f${i}` }));
-    const layout = gutterLayout({
+  it("scales to the rail height", () => {
+    const [group] = layout([{ messageId: "m1", top: 100, height: 100 }], 500).groups;
+    expect(group?.y).toBe(75);
+  });
+
+  it("keeps one message's forks as one group, ringed by its first open fork, live when one works", () => {
+    const [group] = layout([{ messageId: "m2", top: 700, height: 200 }]).groups;
+    expect(group).toMatchObject({
+      count: 3,
+      open: true,
+      live: true,
+      tone: forkColorIndex("b"),
+    });
+    expect(group?.forks.map((f) => [f.chatId, f.status])).toEqual([
+      ["b", "live"],
+      ["c", "open"],
+      ["d", "open"],
+    ]);
+  });
+
+  it("merges marks closer than 16px at their mean y, and keeps ones 16px apart", () => {
+    const merged = layout([
+      { messageId: "m1", top: 100, height: 20 }, // y 110
+      { messageId: "m3", top: 115, height: 20 }, // y 125
+    ]).groups;
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ count: 2, y: 117.5, open: true, tone: forkColorIndex("e") });
+    const apart = layout([
+      { messageId: "m1", top: 100, height: 20 }, // y 110
+      { messageId: "m3", top: 116, height: 20 }, // y 126
+    ]).groups;
+    expect(apart).toHaveLength(2);
+  });
+
+  it("is a muted group when every merged fork is finished", () => {
+    const [group] = layout([
+      { messageId: "m1", top: 100, height: 20 },
+      { messageId: "m4", top: 105, height: 20 },
+    ]).groups;
+    expect(group).toMatchObject({ count: 2, open: false, live: false, tone: "done" });
+  });
+
+  it("keeps positions inside the rail and everything in view when content is short", () => {
+    const result = gutterLayout({
       rows: [{ messageId: "m3", top: 990, height: 40 }],
-      forksById: new Map([["m3", many]]),
+      forksById,
       scrollHeight: 1000,
       scrollTop: 0,
       clientHeight: 2000,
+      railHeight: 800,
     });
-    expect(layout.marks[0]?.size).toBe(18);
-    expect(layout.marks[0]?.at).toBeLessThanOrEqual(1);
-    // Content shorter than the viewport: everything is in view.
-    expect(layout.view).toEqual({ top: 0, height: 1 });
+    expect(result.groups[0]?.y).toBeLessThanOrEqual(800);
+    expect(result.view).toEqual({ top: 0, height: 1 });
+  });
+});
+
+describe("unloadedForkCount", () => {
+  it("counts forks not archived whose anchor is not loaded", () => {
+    const rows = [
+      { status: "open", anchorItemId: "old" },
+      { status: "added", anchorItemId: "old-2" },
+      { status: "archived", anchorItemId: "old-3" },
+      { status: "live", anchorItemId: "m1" },
+    ] as const;
+    expect(unloadedForkCount(rows, new Set(["m1"]))).toBe(2);
+    expect(unloadedForkCount(rows, new Set(["m1", "old", "old-2"]))).toBe(0);
   });
 });
 

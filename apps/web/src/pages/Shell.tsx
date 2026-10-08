@@ -1143,7 +1143,13 @@ export function ShellPage() {
                         <ForkGutter
                           scrollRef={messageScroll}
                           messages={transcriptMessages}
+                          forks={forks.rows}
                           onJump={forks.jump}
+                          onLoadEarlier={
+                            museTranscript.canShowEarlier
+                              ? museTranscript.showEarlier
+                              : museTranscript.loadOlder
+                          }
                         />
                       ) : undefined
                     }
