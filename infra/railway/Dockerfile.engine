@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1.7
+# Omnigent engine for Railway. Build context is the REPO ROOT (Railway: root directory "/"),
+# because the image needs both engine/omnigent (the engine, incl. the "computer" sandbox
+# launcher) and infra/omnigent/agents (the rendered nova-claude bundle).
+# The server stages mirror engine/omnigent/deploy/docker/Dockerfile (server target) with
+# `engine/omnigent/` path prefixes; keep them in step when that file changes.
+ARG PYTHON_VERSION=3.12
+ARG NODE_VERSION=22
+
+FROM node:${NODE_VERSION}-slim AS web-builder
+WORKDIR /web
+COPY engine/omnigent/pnpm-workspace.yaml engine/omnigent/pnpm-lock.yaml ./
+COPY engine/omnigent/web/package.json ./web/
+COPY engine/omnigent/web/electron/package.json ./web/electron/
+RUN npm install -g pnpm@11.15.1
+RUN pnpm install --frozen-lockfile --filter web
+COPY engine/omnigent/web/ ./web/
+RUN pnpm --filter web run build
+
+FROM python:${PYTHON_VERSION}-slim AS builder
+ENV PYTHONDONTWRITEBYTECODE=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential \
+ && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir uv
+WORKDIR /build
+COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py ./
+COPY engine/omnigent/LICENSE engine/omnigent/NOTICE ./
+COPY engine/omnigent/sdks/ ./sdks/
+COPY engine/omnigent/omnigent/ ./omnigent/
+COPY engine/omnigent/examples/ ./examples/
+RUN python -m venv /opt/venv
+ENV VIRTUAL_ENV=/opt/venv PATH="/opt/venv/bin:${PATH}"
+RUN uv pip install --no-cache-dir -e .
+
+FROM builder AS server-builder
+COPY --from=web-builder /web/omnigent/server/static/web-ui ./omnigent/server/static/web-ui
+RUN test -f ./omnigent/server/static/web-ui/index.html
+RUN uv pip install --no-cache-dir 'psycopg[binary]>=3.1,<4'
+# `memory` = the long-term memory tools the Muse uses.
+ARG OMNIGENT_EXTRAS=memory
+RUN if [ -n "${OMNIGENT_EXTRAS}" ]; then uv pip install --no-cache-dir -e ".[${OMNIGENT_EXTRAS}]"; fi
+
+FROM python:${PYTHON_VERSION}-slim AS runtime
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PATH="/opt/venv/bin:${PATH}"
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=server-builder /opt/venv /opt/venv
+COPY --from=server-builder /build /build
+COPY engine/omnigent/deploy/docker/entrypoint.py /app/entrypoint.py
+# Nova additions: the agent bundle(s), the config template and the start wrapper.
+COPY infra/omnigent/agents /opt/nova/agents
+COPY infra/railway/engine.config.yaml.tmpl /opt/nova/config.yaml.tmpl
+COPY --chmod=755 infra/railway/engine-start.sh /opt/nova/engine-start.sh
+WORKDIR /app
+RUN mkdir -p /data/artifacts
+
+# Non-secret defaults. Anything here can be overridden with a Railway service variable.
+ENV PORT=8000 \
+    ARTIFACT_DIR=/data/artifacts \
+    OMNIGENT_DATA_DIR=/data \
+    OMNIGENT_CONFIG_HOME=/data/config \
+    OMNIGENT_DISABLE_KEYRING=1 \
+    OMNIGENT_BUILTIN_AGENT_DIRS=/opt/nova/agents/nova-claude:/opt/nova/agents/nova-pi \
+    OMNIGENT_AUTH_PROVIDER=header \
+    OMNIGENT_AUTH_TENANT_HEADER=X-Omnigent-Tenant \
+    OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-claude \
+    OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER=computer \
+    OMNIGENT_COMPUTER_HOME_ROOT=/data \
+    OMNIGENT_BROWSER_BACKEND=local \
+    OMNIGENT_PROACTIVE_PROVISION=1 \
+    NOVA_CLAUDE_MODEL=claude-sonnet-5-5 \
+    OMNIGENT_HELPER_MODEL_FAST=claude-haiku-4-5
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
+CMD ["/opt/nova/engine-start.sh"]

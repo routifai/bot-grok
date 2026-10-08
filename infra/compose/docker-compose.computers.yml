@@ -1,0 +1,135 @@
+# Computers-only VPS: the sandbox supervisor, the Computer image and a TLS front.
+#
+# The Omnigent engine (Railway) calls the supervisor over HTTPS to create each Muse's Computer
+# and to run commands in it. Nothing else of Nova runs here. Guide: docs/deploy-split.md.
+#
+#   docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build
+#
+# Public ports: 80/443 (Caddy) only. The supervisor has no host port; it is reachable solely
+# through Caddy, and every request still needs the bearer SANDBOX_SUPERVISOR_TOKEN. The supervisor
+# holds the Docker socket (root-equivalent on this VM), so keep this VM single-purpose.
+name: nova-computers
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Builds the Computer desktop image (Chromium, Omnigent runner, Claude Code CLI) once. The
+  # supervisor refuses to start a Computer if this tag is missing. Never runs a command.
+  computer-image:
+    image: ${AIDEN_COMPUTER_IMAGE:-aiden/computer:local}
+    build:
+      context: ../..
+      dockerfile: infra/sandboxes/computer/Dockerfile
+    command: ["true"]
+    network_mode: none
+    restart: "no"
+
+  # Computer homes live in the `computers-data` volume, owned by the Computer user (uid 1000).
+  data-init:
+    image: ${BUSYBOX_IMAGE:-busybox:1}
+    command: ["chown", "-R", "1000:1000", "/data"]
+    network_mode: none
+    restart: "no"
+    volumes:
+      - computers-data:/data
+
+  supervisor:
+    image: nova/computer-supervisor:local
+    build:
+      context: ../..
+      dockerfile: infra/sandboxes/supervisor/Dockerfile
+    # Runs as the Computer uid so it may create homes itself (a root supervisor refuses to), and
+    # joins the host's docker group to use the socket. Start the stack with the group id from
+    # `stat -c %g /var/run/docker.sock` in DOCKER_GID (the guide shows how).
+    user: "1000:1000"
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID (stat -c %g /var/run/docker.sock)}"
+    command: ["./node_modules/.bin/tsx", "src/index.ts"]
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 512m
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      SUPERVISOR_HOST: "0.0.0.0"
+      SUPERVISOR_PORT: "7091"
+      DOCKER_SOCKET: /var/run/docker.sock
+      AIDEN_COMPUTER_IMAGE: ${AIDEN_COMPUTER_IMAGE:-aiden/computer:local}
+      # Per-Computer ceilings. "0", "none" or "unlimited" removes one.
+      AIDEN_COMPUTER_MEMORY: ${AIDEN_COMPUTER_MEMORY:-2g}
+      AIDEN_COMPUTER_CPUS: ${AIDEN_COMPUTER_CPUS:-2}
+      AIDEN_COMPUTER_PIDS_LIMIT: ${AIDEN_COMPUTER_PIDS_LIMIT:-2048}
+      SANDBOX_COMMAND_TIMEOUT_MS: ${SANDBOX_COMMAND_TIMEOUT_MS:-300000}
+      SANDBOX_MAX_COMPUTERS_PER_SPACE: ${SANDBOX_MAX_COMPUTERS_PER_SPACE:-0}
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}
+      # One private Docker network per Computer; the supervisor joins each to reach it.
+      SANDBOX_SCREEN_NETWORK: isolated
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - computers-data:/data
+    networks:
+      - edge
+    logging: *logging
+    depends_on:
+      computer-image:
+        condition: service_completed_successfully
+      data-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok&&r.status!==401)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2@sha256:df7f1c2fb114453b951de51a98efc010db1655a92c2e86be6706714e2417a78d}
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    pids_limit: 128
+    mem_limit: 256m
+    environment:
+      COMPUTERS_HOST: ${COMPUTERS_HOST:?Set COMPUTERS_HOST (the DNS name that points at this VM)}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.computers:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    tmpfs:
+      - /tmp
+    networks:
+      - edge
+    logging: *logging
+    depends_on:
+      supervisor:
+        condition: service_healthy
+
+volumes:
+  computers-data:
+  caddydata:
+  caddyconfig:
+
+networks:
+  edge:

@@ -1,0 +1,22 @@
+# Omnigent server config for the Nova engine on Railway. NON-SECRET: engine-start.sh renders
+# __ENGINE_PUBLIC_URL__ from the ENGINE_PUBLIC_URL variable; ${...} is expanded by the engine.
+llm:
+  # Server-side helper model (titles, summaries). Same generic Anthropic connection as the Muse.
+  model: anthropic/claude-haiku-4-5-20251001
+  connection:
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: https://api.anthropic.com/v1
+sandbox:
+  provider: computer
+  # Where the runner inside each Computer dials back: this service's PUBLIC https URL.
+  server_url: __ENGINE_PUBLIC_URL__
+  # NAMES only. Resolved from this service's environment and handed to each Computer's runner.
+  runner_env:
+    - ANTHROPIC_API_KEY
+    - TAVILY_API_KEY
+    - OPENROUTER_API_KEY
+    - NOVA_CLAUDE_MODEL
+    - OMNIGENT_HELPER_MODEL_FAST
+    - OMNIGENT_HELPER_MODEL_STRONG
+    - OMNIGENT_BROWSER_BACKEND
+    - OMNIGENT_SUBAGENT_MAX_CONCURRENT

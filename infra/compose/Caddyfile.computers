@@ -1,0 +1,20 @@
+# TLS front for the sandbox supervisor. Caddy gets and renews the certificate for
+# $COMPUTERS_HOST by itself (ports 80 and 443 must reach this VM). The supervisor checks the
+# bearer token on every /computers request; Caddy only terminates TLS and drops other paths.
+{$COMPUTERS_HOST} {
+	encode zstd gzip
+
+	@supervisor path /health /computers /computers/*
+	handle @supervisor {
+		reverse_proxy supervisor:7091 {
+			# Provisioning a Computer can take a while the first time.
+			transport http {
+				response_header_timeout 150s
+			}
+		}
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+}
