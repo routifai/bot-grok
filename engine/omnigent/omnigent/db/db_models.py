@@ -2505,6 +2505,47 @@ class SqlVaultSecret(OmnigentBase):
     __table_args__ = (Index("ix_vault_secrets_owner", "workspace_id", "user_id", "name"),)
 
 
+class SqlUserModelCredential(OmnigentBase):
+    """
+    SQLAlchemy model for the ``user_model_credential`` table: one sealed provider key per user.
+
+    The primary key ``(workspace_id, user_id)`` is what keeps it to exactly one active key per
+    user: saving another replaces the row.
+
+    :param user_id: Owner identity.
+    :param provider: ``anthropic`` or ``openrouter``.
+    :param ciphertext: AES-GCM envelope of the key (never plaintext).
+    :param hint: Last 4 characters of the key, for display.
+    :param validated_at: Epoch seconds of the last successful provider probe.
+    :param status: ``valid`` or ``invalid``.
+    """
+
+    __tablename__ = "user_model_credential"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    hint: Mapped[str] = mapped_column(String(8), nullable=False)
+    validated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(8), nullable=False, server_default="valid")
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('anthropic', 'openrouter')", name="ck_user_model_credential_provider"
+        ),
+        CheckConstraint("status IN ('valid', 'invalid')", name="ck_user_model_credential_status"),
+    )
+
+
 class SqlVaultRequest(OmnigentBase):
     """
     SQLAlchemy model for the ``vault_requests`` table: a one-time secure-entry request.
