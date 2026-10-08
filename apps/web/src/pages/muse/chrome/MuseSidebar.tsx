@@ -27,6 +27,8 @@ import type { MouseEvent, ReactNode } from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { MuseRailView as MuseView } from "../../../components/AppRail";
 import { rpc } from "../../../lib/rpc";
+import { FORK_TONE_CLASS, type ForkFilter, type ForkRow } from "../forks/forkModel";
+import { BranchIcon, LiveDot } from "../forks/forkParts";
 import type { ChatListState } from "./useChatList";
 import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
 
@@ -104,6 +106,10 @@ export function MuseSidebar({
   onOpenSettings,
   onOpenChat,
   onNewDraft,
+  forks = [],
+  activeForkId = null,
+  onOpenFork,
+  onShowForks,
   mobileOpen = false,
   onMobileOpenChange,
 }: {
@@ -124,6 +130,13 @@ export function MuseSidebar({
   onOpenChat: (chat: ChatSummary) => void;
   /** Opens an empty, unsent Side Chat draft. */
   onNewDraft: () => void;
+  /** The Conversation's forks (ADR 0010), listed under it by state. */
+  forks?: readonly ForkRow[];
+  /** The fork open in the thread view. */
+  activeForkId?: string | null;
+  onOpenFork?: (fork: ForkRow) => void;
+  /** Opens the All forks list with this filter. */
+  onShowForks?: (filter: ForkFilter) => void;
   /** Below `md` the sidebar is an off-canvas drawer; the shell owns whether it is open. */
   mobileOpen?: boolean;
   onMobileOpenChange?: (open: boolean) => void;
@@ -271,6 +284,10 @@ export function MuseSidebar({
                     activeChatId={activeChatId ?? null}
                     onOpenChat={(chat) => go(onOpenChat, chat)}
                     onNewDraft={() => go(onNewDraft)}
+                    forks={forks}
+                    activeForkId={activeForkId}
+                    onOpenFork={onOpenFork ? (fork) => go(onOpenFork, fork) : undefined}
+                    onShowForks={onShowForks ? (filter) => go(onShowForks, filter) : undefined}
                   />
                 ) : null}
               </Fragment>
@@ -393,16 +410,27 @@ export function ChatTree({
   activeChatId,
   onOpenChat,
   onNewDraft,
+  forks = [],
+  activeForkId = null,
+  onOpenFork,
+  onShowForks,
 }: {
   state: ChatListState;
   collapsed: boolean;
   activeChatId: string | null;
   onOpenChat: (chat: ChatSummary) => void;
   onNewDraft: () => void;
+  forks?: readonly ForkRow[];
+  activeForkId?: string | null;
+  onOpenFork?: (fork: ForkRow) => void;
+  onShowForks?: (filter: ForkFilter) => void;
 }) {
   const [archivedOpen, setArchivedOpen] = useState(false);
   if (state.status !== "ready") return null;
-  const sorted = [...state.chats].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  // Forks are listed by state above; the rest are plain Side Chats, listed as before.
+  const sorted = [...state.chats]
+    .filter((chat) => !chat.anchorItemId)
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   const live = sorted.filter((chat) => !chat.archived);
   const archived = sorted.filter((chat) => chat.archived);
   return (
@@ -411,6 +439,15 @@ export function ChatTree({
       aria-hidden={collapsed || undefined}
       className="app-no-drag relative ms-[26px] flex flex-col gap-0.5 border-s border-line py-0.5 ps-3.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
     >
+      {onOpenFork && onShowForks ? (
+        <ForkGroups
+          forks={forks}
+          collapsed={collapsed}
+          activeForkId={activeForkId}
+          onOpenFork={onOpenFork}
+          onShowForks={onShowForks}
+        />
+      ) : null}
       {live.map((chat) => (
         <button
           key={chat.id}
@@ -507,6 +544,119 @@ export function ChatTree({
             : null}
         </>
       ) : null}
+    </div>
+  );
+}
+
+/** Open forks shown before the rest fold into "N more open". */
+const MAX_OPEN_FORKS = 4;
+
+/**
+ * The Conversation's forks in the sidebar (ADR 0010): the ones Nova is working in, then the open
+ * ones (a few, then a link to the rest), then the finished ones folded into counts that open the
+ * All forks list. Nothing renders without forks.
+ */
+function ForkGroups({
+  forks,
+  collapsed,
+  activeForkId,
+  onOpenFork,
+  onShowForks,
+}: {
+  forks: readonly ForkRow[];
+  collapsed: boolean;
+  activeForkId: string | null;
+  onOpenFork: (fork: ForkRow) => void;
+  onShowForks: (filter: ForkFilter) => void;
+}) {
+  const { t } = useLingui();
+  if (!forks.length) return null;
+  const working = forks.filter((fork) => fork.status === "live");
+  const open = forks.filter((fork) => fork.status === "open");
+  const added = forks.filter((fork) => fork.status === "added").length;
+  const archived = forks.filter((fork) => fork.status === "archived").length;
+  const tab = collapsed ? -1 : undefined;
+  const heading = (label: string) => (
+    <div className="px-2.5 pt-2 pb-1 text-[11.5px] font-semibold whitespace-nowrap text-ink-3">
+      {label}
+    </div>
+  );
+  const row = (fork: ForkRow) => (
+    <button
+      key={fork.chatId}
+      type="button"
+      tabIndex={tab}
+      onClick={() => onOpenFork(fork)}
+      aria-current={activeForkId === fork.chatId ? "page" : undefined}
+      className={cn(
+        "grid w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-[10px] px-2.5 py-1.5 text-start text-[13.5px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+        activeForkId === fork.chatId ? "bg-selection" : "hover:bg-selection",
+      )}
+    >
+      <BranchIcon className={FORK_TONE_CLASS[fork.tone].text} />
+      <span className="truncate font-medium text-foreground" dir="auto">
+        {fork.title}
+      </span>
+      {fork.status === "live" ? (
+        <LiveDot tone={fork.tone} />
+      ) : fork.unread && activeForkId !== fork.chatId ? (
+        <>
+          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-foreground" />
+          <span className="sr-only">
+            <Trans>Unread</Trans>
+          </span>
+        </>
+      ) : (
+        <span />
+      )}
+      {fork.anchorText ? (
+        <small className="col-start-2 col-end-4 truncate text-[11.5px] text-ink-3" dir="auto">
+          {t`from “${fork.anchorText}”`}
+        </small>
+      ) : null}
+    </button>
+  );
+  const fold = (label: string, count: number, filter: ForkFilter) => (
+    <button
+      type="button"
+      tabIndex={tab}
+      onClick={() => onShowForks(filter)}
+      className={cn(TWIG_ROW, "h-8 justify-between text-[13px] text-ink-2 hover:bg-selection")}
+    >
+      <span className="truncate">{label}</span>
+      <span className="shrink-0 font-mono text-[12px] tabular-nums text-ink-3">{count}</span>
+    </button>
+  );
+  return (
+    <div data-testid="fork-groups" className="flex flex-col gap-0.5 pb-1.5">
+      {working.length ? (
+        <>
+          {heading(t`Working · ${working.length}`)}
+          {working.map(row)}
+        </>
+      ) : null}
+      {open.length ? (
+        <>
+          {heading(t`Open · ${open.length}`)}
+          {open.slice(0, MAX_OPEN_FORKS).map(row)}
+          {open.length > MAX_OPEN_FORKS ? (
+            <button
+              type="button"
+              tabIndex={tab}
+              onClick={() => onShowForks("open")}
+              className={cn(
+                TWIG_ROW,
+                "h-8 justify-between text-[13px] font-medium text-foreground hover:bg-selection",
+              )}
+            >
+              <span className="truncate">{t`${open.length - MAX_OPEN_FORKS} more open`}</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          ) : null}
+        </>
+      ) : null}
+      {added ? fold(t`Added to Conversation`, added, "added") : null}
+      {archived ? fold(t`Archived`, archived, "archived") : null}
     </div>
   );
 }

@@ -159,11 +159,17 @@ function optimisticMessage(chatId: string, text: string): ThreadMessage {
 }
 
 /** A calm inline note under the message that did not go through. */
-type SendFailure = { text: string; stage: "retrying" | "failed" };
+export type SendFailure = { text: string; stage: "retrying" | "failed" };
 
 const SEND_RETRY_DELAY_MS = 2500;
 
-function SendFailureNote({ failure, onRetry }: { failure: SendFailure; onRetry: () => void }) {
+export function SendFailureNote({
+  failure,
+  onRetry,
+}: {
+  failure: SendFailure;
+  onRetry: () => void;
+}) {
   return (
     <div
       role="status"
@@ -378,32 +384,33 @@ const SETTLE_RECHECK_MS = 1500;
 const userCount = (messages: ThreadMessage[] | null) =>
   messages?.filter((message) => message.role === "user").length ?? 0;
 
-function ExistingSideChat({
+/** The chat a session reads: enough of a `ChatSummary` (a fork's stub carries no more). */
+export type SideChatRef = Pick<ChatSummary, "id" | "live" | "unread" | "archived">;
+
+/**
+ * One Side Chat's messages and sending, shared by its full-size session and a Fork's thread
+ * view: reads the transcript when opened, after a send and when the family stream says a reply
+ * landed; shows the person's message at once; marks the chat read while it is in view; retries
+ * a failed send once, then reports it.
+ */
+export function useSideChatThread({
   bot,
   chat,
-  view,
   wire,
   firstText,
   firstFailed = false,
-  focusMessageId,
   onReplied,
-  onClose,
-  onOpenProject,
 }: {
-  bot: SideChatBot;
-  chat: ChatSummary;
-  view: SideChatView;
+  bot: { id: string };
+  chat: SideChatRef;
   wire: SideChatWire;
   firstText?: string;
   /** The chat was created but its first message did not send: shown as not sent, to resend. */
   firstFailed?: boolean;
-  focusMessageId?: string;
   onReplied?: () => void;
-  onClose: () => void;
-  onOpenProject?: (project: ChatProject) => void;
 }) {
-  const { t } = useLingui();
   const [messages, setMessages] = useState<ThreadMessage[] | null>(null);
+  const [lineage, setLineage] = useState<ThreadMessagePage["lineage"] | null>(null);
   /** Sent but not yet in the fetched messages; shown at once, dropped when it arrives. */
   const [pending, setPending] = useState<{ text: string; base: number } | null>(
     firstText ? { text: firstText, base: 0 } : null,
@@ -435,6 +442,7 @@ function ExistingSideChat({
         if (current !== generation.current) return;
         const running = page.running ?? false;
         setMessages(page.messages);
+        setLineage(page.lineage ?? null);
         setReadOnly(page.readOnly ?? false);
         if (pendingRef.current && userCount(page.messages) > pendingRef.current.base) {
           pendingRef.current = null;
@@ -490,14 +498,9 @@ function ExistingSideChat({
   const awaitingReply = !chat.archived && (waiting || engineRunning);
   const awaitingRef = useRef(awaitingReply);
   awaitingRef.current = awaitingReply;
-  const loadProject = wire.project;
-  const project = useChatProject(
-    loadProject ? () => loadProject({ botId: bot.id, chatId: chat.id }) : undefined,
-    chat.id,
-    `${messages?.length ?? 0}:${awaitingReply}`,
-  );
   // The chat reads again when the engine says a reply landed (and after a reconnect); a quiet
-  // heartbeat settles a chat whose last reply raced its live flag.
+  // heartbeat settles a chat whose last reply raced its live flag. A change to the family's
+  // chats (a fork of this chat opened or added back) reads it too.
   useEffect(() => {
     if (!wire.watch) return;
     let recheck: number | undefined;
@@ -507,7 +510,11 @@ function ExistingSideChat({
         void refresh();
         window.clearTimeout(recheck);
         recheck = window.setTimeout(() => void refresh(), SETTLE_RECHECK_MS);
-      } else if (event.type === "open" || (event.type === "heartbeat" && awaitingRef.current)) {
+      } else if (
+        event.type === "open" ||
+        event.type === "chatsChanged" ||
+        (event.type === "heartbeat" && awaitingRef.current)
+      ) {
         void refresh();
       }
     });
@@ -558,14 +565,76 @@ function ExistingSideChat({
       .finally(() => setSending(false));
   };
 
-  const scrollRequest = useMemo(
-    () => (focusMessageId ? { messageId: focusMessageId, nonce: 1 } : null),
-    [focusMessageId],
-  );
   const shown =
     pending === null
       ? (messages ?? [])
       : [...(messages ?? []), optimisticMessage(chat.id, pending.text)];
+
+  return {
+    /** `null` until the first read. */
+    messages,
+    /** The messages plus the person's message not yet recorded. */
+    shown,
+    /** Nothing to show yet: not read, and nothing sent. */
+    loading: messages === null && pending === null,
+    lineage,
+    readOnly,
+    sending,
+    failure,
+    awaitingReply,
+    followSignal,
+    send,
+    refresh,
+  };
+}
+
+function ExistingSideChat({
+  bot,
+  chat,
+  view,
+  wire,
+  firstText,
+  firstFailed = false,
+  focusMessageId,
+  onReplied,
+  onClose,
+  onOpenProject,
+}: {
+  bot: SideChatBot;
+  chat: ChatSummary;
+  view: SideChatView;
+  wire: SideChatWire;
+  firstText?: string;
+  /** The chat was created but its first message did not send: shown as not sent, to resend. */
+  firstFailed?: boolean;
+  focusMessageId?: string;
+  onReplied?: () => void;
+  onClose: () => void;
+  onOpenProject?: (project: ChatProject) => void;
+}) {
+  const { t } = useLingui();
+  const {
+    messages,
+    shown,
+    loading,
+    readOnly,
+    sending,
+    failure,
+    awaitingReply,
+    followSignal,
+    send,
+  } = useSideChatThread({ bot, chat, wire, firstText, firstFailed, onReplied });
+  const loadProject = wire.project;
+  const project = useChatProject(
+    loadProject ? () => loadProject({ botId: bot.id, chatId: chat.id }) : undefined,
+    chat.id,
+    `${messages?.length ?? 0}:${awaitingReply}`,
+  );
+
+  const scrollRequest = useMemo(
+    () => (focusMessageId ? { messageId: focusMessageId, nonce: 1 } : null),
+    [focusMessageId],
+  );
 
   const context =
     chat.start === "withContext" && chat.summary ? (
@@ -600,7 +669,7 @@ function ExistingSideChat({
         }
         onClose={onClose}
       />
-      {messages === null && pending === null ? (
+      {loading ? (
         <div data-testid="side-chat-loading" className="flex flex-1 items-center justify-center">
           <LoadingState label={t`Loading…`} />
         </div>

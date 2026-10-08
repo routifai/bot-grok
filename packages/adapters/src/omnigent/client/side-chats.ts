@@ -1,6 +1,6 @@
 import { redactSecrets } from "@aiden/core";
 import type { OmnigentClientConfig } from "./core.js";
-import { omnigentHeaders, throwOnError } from "./core.js";
+import { errorCodeFromBody, omnigentHeaders, throwOnError } from "./core.js";
 import type { OmnigentPaginatedList } from "./sessions.js";
 
 export interface OmnigentSideChatCreateResponse {
@@ -12,6 +12,9 @@ export interface OmnigentSideChatCreateResponse {
   first_message_error?: string | null;
   /** The failure's code (e.g. `runner_unavailable`, `transport_error`). */
   first_message_error_code?: string | null;
+  /** A Fork (ADR 0010): the message it started from, and the chat holding it. */
+  anchor_item_id?: string | null;
+  parent_id?: string | null;
 }
 
 /** Thrown by `createOmnigentSideChat` on a non-2xx response. `conversationId` is set when the
@@ -20,10 +23,13 @@ export interface OmnigentSideChatCreateResponse {
  * "it exists, but something about it (its first message) failed". */
 export class OmnigentSideChatError extends Error {
   conversationId: string | null;
-  constructor(message: string, conversationId: string | null) {
+  /** The engine's error code (e.g. `fork_too_deep`, `fork_anchor_invalid`). */
+  code: string | undefined;
+  constructor(message: string, conversationId: string | null, code?: string) {
     super(message);
     this.name = "OmnigentSideChatError";
     this.conversationId = conversationId;
+    this.code = code;
   }
 }
 
@@ -37,14 +43,21 @@ function conversationIdFromBody(raw: string): string | null {
 }
 
 /** `POST /v1/sessions/{superId}/side_chats` (docs/super-chat/WIRING.md slice E1): creates a
- * Side Chat of the Super Chat `superId`, optionally seeded with its first message. Diverges
+ * Side Chat of the Super Chat `superId`, optionally seeded with its first message. With
+ * `anchorItemId` it opens a Fork (ADR 0010) and `superSessionId` is the chat holding that
+ * message (the Super Chat, or a fork of it). Diverges
  * from the generic `throwOnError` path on a non-2xx response (see `OmnigentSideChatError`)
  * because a Side Chat can exist even when this call reports an error. */
 export async function createOmnigentSideChat(
   config: OmnigentClientConfig,
   email: string,
   superSessionId: string,
-  input: { start: "with_context" | "blank"; title?: string; firstMessage?: string },
+  input: {
+    start: "with_context" | "blank";
+    title?: string;
+    firstMessage?: string;
+    anchorItemId?: string;
+  },
 ): Promise<OmnigentSideChatCreateResponse> {
   const response = await fetch(
     new URL(`/v1/sessions/${encodeURIComponent(superSessionId)}/side_chats`, config.baseUrl),
@@ -55,6 +68,7 @@ export async function createOmnigentSideChat(
         start: input.start,
         ...(input.title ? { title: input.title } : {}),
         ...(input.firstMessage ? { first_message: input.firstMessage } : {}),
+        ...(input.anchorItemId ? { anchor_item_id: input.anchorItemId } : {}),
       }),
     },
   );
@@ -65,6 +79,7 @@ export async function createOmnigentSideChat(
     throw new OmnigentSideChatError(
       `omnigent create side chat failed (${response.status}): ${body}`,
       conversationId,
+      errorCodeFromBody(raw),
     );
   }
   return (await response.json()) as OmnigentSideChatCreateResponse;
@@ -87,6 +102,10 @@ export interface OmnigentRelatedChat {
   /** The caller's read state: a reply landed that they have not seen. */
   unread?: boolean;
   last_read_at?: number | null;
+  /** A Fork's anchor (ADR 0010); `null` for a plain Side Chat. */
+  anchor_item_id?: string | null;
+  /** How many forks hang off this chat's messages. */
+  fork_count?: number;
 }
 
 /** `GET /v1/sessions/{superId}/related_chats` — the Super Chat's Side Chats (not cursor-
@@ -121,4 +140,57 @@ export async function getOmnigentContextSummary(
     summary_body: string | null;
     created_at: number | null;
   };
+}
+
+/** `POST /v1/sessions/{forkId}/add_to_conversation` — adds a Fork's one-line summary back under
+ * its anchor (ADR 0010); the engine writes the summary when none is given. */
+export async function addOmnigentForkToConversation(
+  config: OmnigentClientConfig,
+  email: string,
+  forkId: string,
+  summary?: string,
+): Promise<{
+  fork_id: string;
+  session_id: string;
+  anchor_item_id: string | null;
+  item_id: string | null;
+  title: string | null;
+  summary: string;
+  state: "added" | "archived";
+}> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(forkId)}/add_to_conversation`, config.baseUrl),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify(summary ? { summary } : {}),
+    },
+  );
+  await throwOnError(response, "add fork to conversation", config.secrets);
+  return (await response.json()) as {
+    fork_id: string;
+    session_id: string;
+    anchor_item_id: string | null;
+    item_id: string | null;
+    title: string | null;
+    summary: string;
+    state: "added" | "archived";
+  };
+}
+
+/** `PATCH /v1/sessions/{id}` with `archived` — the Side Chat archive (CONTEXT.md "Archived"). */
+export async function archiveOmnigentSession(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+): Promise<void> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}`, config.baseUrl),
+    {
+      method: "PATCH",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify({ archived: true }),
+    },
+  );
+  await throwOnError(response, "archive session", config.secrets);
 }

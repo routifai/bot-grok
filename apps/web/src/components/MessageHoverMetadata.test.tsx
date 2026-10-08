@@ -47,4 +47,17 @@ describe("MessageHoverMetadata", () => {
     expect(html).toContain("pointer-events-auto opacity-100");
     expect(html).not.toContain("group-hover/message:opacity-100");
   });
+
+  it("floats above the bubble as a toolbar on hover-capable pointers when asked", () => {
+    const html = renderToStaticMarkup(
+      <MessageHoverMetadata above side="end">
+        <div data-testid="message-actions" />
+      </MessageHoverMetadata>,
+    );
+
+    expect(html).toContain("[@media(hover:hover)_and_(pointer:fine)]:bottom-full");
+    expect(html).toContain("[@media(hover:hover)_and_(pointer:fine)]:start-0");
+    // Touch keeps the rail beside the bubble.
+    expect(html).toContain("start-full");
+  });
 });

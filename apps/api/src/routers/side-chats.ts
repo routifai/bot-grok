@@ -1,4 +1,7 @@
 import {
+  addForkToConversation,
+  archiveChat,
+  createFork,
   createSideChat,
   getChatProject,
   getChatTranscript,
@@ -23,6 +26,15 @@ export function sideChatsRouter(c: RouterContext) {
       ),
       createSide: museOnly.chats.createSide.handler(({ context, input }) =>
         createSideChat(deps, context.actor, input),
+      ),
+      createFork: museOnly.chats.createFork.handler(({ context, input }) =>
+        createFork(deps, context.actor, input),
+      ),
+      addToConversation: museOnly.chats.addToConversation.handler(({ context, input }) =>
+        addForkToConversation(deps, context.actor, input),
+      ),
+      archive: museOnly.chats.archive.handler(({ context, input }) =>
+        archiveChat(deps, context.actor, input),
       ),
       summaryPreview: museOnly.chats.summaryPreview.handler(({ context, input }) =>
         summaryPreview(deps, context.actor, input),

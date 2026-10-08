@@ -4,6 +4,8 @@
 // packages/adapters/src/omnigent/chats.ts so it can be unit-tested with a mocked Omnigent
 // client, same as ./engine-info.ts does for `engine.*`.
 import {
+  addOmnigentForkToConversation,
+  archiveOmnigentSession,
   createOmnigentSideChat,
   deriveSideChatTitle,
   getOmnigentContextSummary,
@@ -27,12 +29,14 @@ import {
   sideChatStartToWire,
   streamOmnigentFamily,
 } from "@aiden/adapters";
-import type {
-  Actor,
-  ChatSummary,
-  FamilyEvent,
-  SideChatStart,
-  ThreadMessagePage,
+import {
+  type Actor,
+  type ChatSummary,
+  type FamilyEvent,
+  FORK_ANCHOR_INVALID,
+  FORK_TOO_DEEP,
+  type SideChatStart,
+  type ThreadMessagePage,
 } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
 import { ORPCError } from "@orpc/server";
@@ -142,6 +146,111 @@ export async function createSideChat(
   }
 
   return mapSideChatCreateToSummary(created, input.text);
+}
+
+/** A Side Chat (or Fork) the actor's Muse `botId` owns; `NOT_FOUND` for anything else, so a
+ * chat's existence never leaks. Helpers are refused: they are read-only. */
+async function requireOwnSideChat(
+  deps: ChatsDeps,
+  actor: Actor,
+  client: OmnigentClientConfig,
+  email: string,
+  botId: string,
+  chatId: string,
+): Promise<void> {
+  const ownership = await resolveChatOwnership(
+    client,
+    email,
+    await ownedSuperChats(deps, actor),
+    chatId,
+  );
+  if (!ownership || ownership.botId !== botId || ownership.kind !== "side_chat") {
+    throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
+  }
+}
+
+/**
+ * Opens a Fork of one message (ADR 0010) and sends its first message: the Conversation's
+ * message, or (with `chatId`) a fork's own message for a fork of a fork. The engine owns every
+ * rule (the depth limit, which messages can anchor a fork, the seed up to the anchor); its two
+ * refusals reach the client as their own codes so it can offer a plain Side Chat instead.
+ */
+export async function createFork(
+  deps: ChatsDeps,
+  actor: Actor,
+  input: { botId: string; chatId?: string; anchorItemId: string; text: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<ChatSummary> {
+  const client = requireClient(env, actor);
+  const email = await actorEmail(deps, actor);
+  let parentId: string;
+  if (input.chatId) {
+    await requireOwnSideChat(deps, actor, client, email, input.botId, input.chatId);
+    parentId = input.chatId;
+  } else {
+    parentId = await requireSuperChatSessionId(deps, actor, input.botId);
+  }
+  await syncEngineTimezone(deps.prisma, actor, env);
+
+  let created: Awaited<ReturnType<typeof createOmnigentSideChat>>;
+  try {
+    created = await createOmnigentSideChat(client, email, parentId, {
+      start: "with_context",
+      title: deriveSideChatTitle(input.text),
+      firstMessage: input.text,
+      anchorItemId: input.anchorItemId,
+    });
+  } catch (error) {
+    if (error instanceof OmnigentSideChatError) {
+      if (error.code === "fork_too_deep") {
+        throw new ORPCError(FORK_TOO_DEEP, { status: 422, message: "This fork can't be forked." });
+      }
+      if (error.code === "fork_anchor_invalid") {
+        throw new ORPCError(FORK_ANCHOR_INVALID, {
+          status: 422,
+          message: "This message can't be forked.",
+        });
+      }
+      if (error.conversationId) {
+        throw new ORPCError("BAD_GATEWAY", {
+          message: "Fork opened, but the first message didn't send.",
+        });
+      }
+    }
+    throw new ORPCError("BAD_GATEWAY", { message: "Could not open a fork." });
+  }
+  return mapSideChatCreateToSummary(created, input.text);
+}
+
+/** `chats.addToConversation`: the Fork's one-line summary goes back under its anchor. The
+ * engine announces it on the family stream (`chats.changed`, then `message.done`). */
+export async function addForkToConversation(
+  deps: ChatsDeps,
+  actor: Actor,
+  input: { botId: string; chatId: string; summary?: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ summary: string }> {
+  const client = requireClient(env, actor);
+  const email = await actorEmail(deps, actor);
+  await requireOwnSideChat(deps, actor, client, email, input.botId, input.chatId);
+  const added = await onSuperChat(
+    addOmnigentForkToConversation(client, email, input.chatId, input.summary),
+  );
+  return { summary: added.summary };
+}
+
+/** `chats.archive`: the Side Chat archive, on the person's request. */
+export async function archiveChat(
+  deps: ChatsDeps,
+  actor: Actor,
+  input: { botId: string; chatId: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ ok: true }> {
+  const client = requireClient(env, actor);
+  const email = await actorEmail(deps, actor);
+  await requireOwnSideChat(deps, actor, client, email, input.botId, input.chatId);
+  await onSuperChat(archiveOmnigentSession(client, email, input.chatId));
+  return { ok: true as const };
 }
 
 export async function summaryPreview(

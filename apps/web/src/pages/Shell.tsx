@@ -81,6 +81,12 @@ import { useComputer } from "./muse/files/useComputer";
 import { useComputerScreen } from "./muse/files/useComputerScreen";
 import { useComputerStore } from "./muse/files/useComputerStore";
 import { useComputerView } from "./muse/files/useComputerView";
+import { AllForks, ForkViewSwitch } from "./muse/forks/AllForks";
+import { ForkAsk } from "./muse/forks/ForkAsk";
+import { ForkGutter } from "./muse/forks/ForkGutter";
+import type { ForkWire } from "./muse/forks/ForkOverlay";
+import { ForkThread, type ForkThreadTarget } from "./muse/forks/ForkThread";
+import { forkChatSummary, useForkView } from "./muse/forks/useForkView";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { IdeasScreen } from "./muse/IdeasScreen";
 import { LibraryScreen } from "./muse/LibraryScreen";
@@ -201,6 +207,24 @@ export function ShellPage() {
     }),
     [chatList.createSide],
   );
+  const refreshChatList = chatList.refresh;
+  const forkWire = useMemo<ForkWire>(
+    () => ({
+      ...sideChatWire,
+      createFork: (input) =>
+        rpc.chats.createFork(input).then((chat) => {
+          refreshChatList();
+          return chat;
+        }),
+      addToConversation: (input) => rpc.chats.addToConversation(input),
+      archive: (input) =>
+        rpc.chats.archive(input).then((result) => {
+          refreshChatList();
+          return result;
+        }),
+    }),
+    [sideChatWire, refreshChatList],
+  );
   const navigateMuseView = useCallback(
     (view: MuseRailView) => {
       setActiveChat(null);
@@ -288,7 +312,21 @@ export function ShellPage() {
         chatList.state.status === "ready"
           ? chatList.state.chats.find((item) => item.id === chatParam)
           : undefined;
-      if (chat) {
+      if (chat?.anchorItemId) {
+        // A hit in a fork: it opens over its message, like any other way into a fork.
+        setActiveChat(null);
+        setMuseView("conversation");
+        openForkRef.current({
+          chat: {
+            id: chat.id,
+            title: chat.title,
+            live: chat.live,
+            unread: Boolean(chat.unread),
+            archived: chat.archived,
+          },
+          anchor: null,
+        });
+      } else if (chat) {
         setActiveChat(chat);
         setMuseView("conversation");
         if (messageId) setChatFocus({ chatId: chat.id, messageId });
@@ -324,6 +362,7 @@ export function ShellPage() {
     chatList.state,
   ]);
   const revealMessageRef = useRef<(messageId: string) => Promise<boolean>>(async () => false);
+  const openForkRef = useRef<(target: ForkThreadTarget) => void>(() => undefined);
   const activeSnapshot = inGroup
     ? snapshot?.groupId === groupId
       ? snapshot
@@ -379,6 +418,25 @@ export function ShellPage() {
   });
   const readTranscript = museTranscript.refresh;
   revealMessageRef.current = museTranscript.reveal;
+  const forks = useForkView({
+    chatList: chatList.state,
+    messages: museMode && !inGroup ? museTranscript.messages : null,
+    scrollRef: messageScroll,
+    reveal: museTranscript.reveal,
+    scrollToMessage,
+  });
+  const resetForks = forks.reset;
+  openForkRef.current = forks.openFork;
+  // The fork views belong to the Conversation: leaving it (another section, a full-size side
+  // chat, another Muse) closes them.
+  useEffect(() => {
+    if (museView !== "conversation" || activeChat) resetForks();
+  }, [museView, activeChat, resetForks]);
+  useEffect(() => {
+    resetForks();
+  }, [active?.id, resetForks]);
+  const forksView = museMode && !inGroup && forks.view === "forks";
+  const forkOverlayOpen = Boolean(forks.thread || forks.ask);
   const runsKey = currentRuns.map((run) => `${run.id}:${run.status}`).join(",");
   // The engine records the person's message when a run starts and the reply when it ends, and
   // the stream only announces replies: read again on each run change.
@@ -693,6 +751,18 @@ export function ShellPage() {
             setActiveChat("draft");
             setMuseView("conversation");
           }}
+          forks={forks.rows}
+          activeForkId={forks.thread?.chat.id ?? null}
+          onOpenFork={(row) => {
+            setActiveChat(null);
+            setMuseView("conversation");
+            forks.openRow(row);
+          }}
+          onShowForks={(filter) => {
+            setActiveChat(null);
+            setMuseView("conversation");
+            forks.showForks(filter);
+          }}
           mobileOpen={navOpen}
           onMobileOpenChange={setNavOpen}
         />
@@ -808,260 +878,323 @@ export function ShellPage() {
                   : "contents"
               }
             >
-              {museMode && active ? (
-                <ConversationHeader
-                  botId={active.id}
-                  museName={active.name}
-                  color={active.color}
-                  runs={currentRuns}
-                  messages={activeSnapshot?.messages}
-                  // Same condition as the context panel's own `collapsed` below: whenever
-                  // its identity header isn't visible (collapsed, a side panel open, or
-                  // below `xl`), this header's compact identity covers it instead.
-                  identityCollapsed={contextPanelCollapsed || panel !== null}
-                  onOpenWaiting={() => setWaitingOpen(true)}
-                  project={conversationProject}
-                  onOpenProject={openProjectFiles}
-                  actions={
-                    <>
-                      <button
-                        type="button"
-                        title={
-                          contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
-                        }
-                        aria-label={
-                          contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
-                        }
-                        aria-pressed={!contextPanelCollapsed}
-                        onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                        className="hidden size-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring xl:grid"
-                      >
-                        {contextPanelCollapsed ? (
-                          <PanelRightOpen size={17} strokeWidth={1.75} />
-                        ) : (
-                          <PanelRightClose size={17} strokeWidth={1.75} />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        title={t`Agent computer`}
-                        aria-label={t`Agent computer`}
-                        onClick={() => {
-                          const next = panel === "computer" ? null : "computer";
-                          setPanel(next);
-                          if (next === "computer") {
-                            // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                            void refreshThread(active.id).catch(() => undefined);
+              {/* Behind a fork's thread view or "lift and ask", the Conversation is out of reach. */}
+              <div className="contents" inert={forkOverlayOpen || undefined}>
+                {museMode && active ? (
+                  <ConversationHeader
+                    botId={active.id}
+                    museName={active.name}
+                    color={active.color}
+                    runs={currentRuns}
+                    messages={activeSnapshot?.messages}
+                    // Same condition as the context panel's own `collapsed` below: whenever
+                    // its identity header isn't visible (collapsed, a side panel open, or
+                    // below `xl`), this header's compact identity covers it instead.
+                    identityCollapsed={contextPanelCollapsed || panel !== null}
+                    onOpenWaiting={() => setWaitingOpen(true)}
+                    project={conversationProject}
+                    onOpenProject={openProjectFiles}
+                    actions={
+                      <>
+                        {forks.rows.length || forksView ? (
+                          <ForkViewSwitch view={forks.view} onChange={forks.setView} />
+                        ) : null}
+                        <button
+                          type="button"
+                          title={
+                            contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
                           }
-                        }}
-                        data-active={panel === "computer" ? "" : undefined}
-                        className="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground data-active:bg-selection data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                      >
-                        <Monitor size={17} strokeWidth={1.75} />
-                      </button>
-                    </>
-                  }
-                />
-              ) : (
-                <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <button
-                      type="button"
-                      data-testid="bot-settings-trigger"
-                      onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-                      className="app-no-drag flex min-w-0 items-center gap-3"
-                    >
-                      {inGroup ? (
-                        <GroupAvatar
-                          members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                          size={26}
-                        />
-                      ) : active ? (
-                        <BotAvatar
-                          color={active.color}
-                          identity={active.id}
-                          size={26}
-                          status={active.status}
-                          face={museMode ? "muse" : undefined}
-                        />
-                      ) : null}
-                      <span className="min-w-0">
-                        <span
-                          className="block truncate text-[16px] font-medium text-foreground"
-                          dir="auto"
+                          aria-label={
+                            contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
+                          }
+                          aria-pressed={!contextPanelCollapsed}
+                          onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
+                          className="hidden size-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring xl:grid"
                         >
-                          {inGroup
-                            ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                            : (active?.name ?? t`Select a bot`)}
-                        </span>
-                      </span>
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {!inGroup && active ? (
+                          {contextPanelCollapsed ? (
+                            <PanelRightOpen size={17} strokeWidth={1.75} />
+                          ) : (
+                            <PanelRightClose size={17} strokeWidth={1.75} />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title={t`Agent computer`}
+                          aria-label={t`Agent computer`}
+                          onClick={() => {
+                            const next = panel === "computer" ? null : "computer";
+                            setPanel(next);
+                            if (next === "computer") {
+                              // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                              void refreshThread(active.id).catch(() => undefined);
+                            }
+                          }}
+                          data-active={panel === "computer" ? "" : undefined}
+                          className="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground data-active:bg-selection data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                        >
+                          <Monitor size={17} strokeWidth={1.75} />
+                        </button>
+                      </>
+                    }
+                  />
+                ) : (
+                  <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
+                    <div className="flex min-w-0 items-center gap-2">
                       <button
                         type="button"
-                        title={t`Agent computer`}
-                        onClick={() => {
-                          const next = panel === "computer" ? null : "computer";
-                          setPanel(next);
-                          if (next === "computer" && active) {
-                            // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                            void refreshThread(active.id).catch(() => undefined);
-                          }
-                        }}
-                        data-active={panel === "computer" ? "" : undefined}
-                        className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                        data-testid="bot-settings-trigger"
+                        onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
+                        className="app-no-drag flex min-w-0 items-center gap-3"
                       >
-                        <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                        {inGroup ? (
+                          <GroupAvatar
+                            members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                            size={26}
+                          />
+                        ) : active ? (
+                          <BotAvatar
+                            color={active.color}
+                            identity={active.id}
+                            size={26}
+                            status={active.status}
+                            face={museMode ? "muse" : undefined}
+                          />
+                        ) : null}
+                        <span className="min-w-0">
+                          <span
+                            className="block truncate text-[16px] font-medium text-foreground"
+                            dir="auto"
+                          >
+                            {inGroup
+                              ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                              : (active?.name ?? t`Select a bot`)}
+                          </span>
+                        </span>
                       </button>
-                    ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!inGroup && active ? (
+                        <button
+                          type="button"
+                          title={t`Agent computer`}
+                          onClick={() => {
+                            const next = panel === "computer" ? null : "computer";
+                            setPanel(next);
+                            if (next === "computer" && active) {
+                              // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                              void refreshThread(active.id).catch(() => undefined);
+                            }
+                          }}
+                          data-active={panel === "computer" ? "" : undefined}
+                          className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                        >
+                          <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              )}
-              {!active && !activeGroup && initialBotsLoaded ? (
-                <div className="grid flex-1 place-items-center">
-                  <Button onClick={() => setPanel("create")}>
-                    <Plus size={16} aria-hidden="true" />
-                    <Trans>Create new Bot</Trans>
-                  </Button>
-                </div>
-              ) : museMode &&
-                active &&
-                museTranscript.messages !== null &&
-                transcriptMessages.length === 0 &&
-                !transcriptRunning ? (
-                <EmptyConversation
-                  botName={active.name}
-                  personName={bootstrapMe?.name ?? ""}
-                  avatarColor={active.color}
-                  onSend={(text) => void sendMessage(text)}
-                  onTryIt={setComposerSeed}
-                />
-              ) : (
-                <Transcript
-                  key={activeSnapshot?.threadId}
-                  museMode={museMode}
-                  botDisplayName={active?.name}
-                  followSignal={followSignal}
-                  museFace={active ? { color: active.color, identity: active.id } : undefined}
-                  museRuns={currentRuns}
-                  scrollRef={messageScroll}
-                  scrollRequest={scrollRequest}
-                  onScrollRequestHandled={clearScrollRequest}
-                  artifactTarget={transcriptArtifactTarget}
-                  messages={transcriptMessages}
-                  olderCursor={
-                    museMode && !inGroup
-                      ? museTranscript.olderCursor
-                      : (activeSnapshot?.olderCursor ?? null)
-                  }
-                  loadingOlder={museMode && !inGroup ? museTranscript.loadingOlder : loadingOlder}
-                  answerableAskMessageId={answerableAskMessageId}
-                  running={transcriptRunning}
-                  workingBots={workingBots}
-                  onLoadOlder={museMode && !inGroup ? museTranscript.loadOlder : loadOlder}
-                  onShowEarlier={
-                    museMode && !inGroup && museTranscript.canShowEarlier
-                      ? museTranscript.showEarlier
-                      : undefined
-                  }
-                  onOpenBot={openBot}
-                  onAnswer={answerMessage}
-                  onSendCard={sendCardReply}
-                  onReply={(message) => {
-                    setReplyTarget(message);
-                    setReplyQuote(null);
-                  }}
-                  onQuote={(message, quote) => {
-                    setReplyTarget(message);
-                    setReplyQuote(quote);
-                  }}
-                  onReact={reactToMessage}
-                  onJumpToMessage={jumpToReplyMessage}
-                  onOpenPeerMessages={(peer) => {
-                    setPeerConversation(peer);
-                  }}
-                  memberName={resolveTranscriptMemberName}
-                  peerBot={resolveTranscriptBot}
-                  onRefresh={refreshActiveThread}
-                  onBotChanged={refreshBots}
-                  onAddRoutine={addSkillRoutine}
-                  voiceReady={Boolean(voiceStatus?.ready)}
-                  speakingMessageId={speakingMessageId}
-                  onSpeak={speakMessage}
-                  onOpenComputer={onOpenComputer}
-                  trailing={
-                    museMode && active ? (
-                      <ApprovalCards botId={active.id} chatId={null} />
-                    ) : undefined
-                  }
-                />
-              )}
-              {recordingSkill ? (
-                <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-                  <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
-                </div>
-              ) : null}
-              {active || activeGroup ? (
-                <Composer
-                  key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
-                  museMode={museMode}
-                  activeName={
-                    inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
-                  }
-                  running={composerRunning}
-                  disabled={Boolean(recordingSkill)}
-                  pendingAttachments={activePendingAttachments}
-                  attachmentNotice={attachmentNotice}
-                  sendError={sendError}
-                  runError={displayedRunError}
-                  runErrorId={displayedRunErrorId}
-                  onRunErrorPresented={handleRunErrorPresented}
-                  onDismissError={dismissComposerError}
-                  sending={sending}
-                  fileInputRef={fileInputRef}
-                  onAttachmentPick={onAttachmentPick}
-                  onRemoveAttachment={removeAttachment}
-                  onSend={sendMessage}
-                  seedText={composerSeed}
-                  onSeedConsumed={() => setComposerSeed(null)}
-                  onStop={stopRun}
-                  onVoice={
-                    !inGroup && active
-                      ? () => {
-                          if (!voiceStatus?.ready) {
-                            openSettings("voice");
-                            return;
-                          }
-                          setCallOpen(true);
+                )}
+                {!active && !activeGroup && initialBotsLoaded ? (
+                  <div className="grid flex-1 place-items-center">
+                    <Button onClick={() => setPanel("create")}>
+                      <Plus size={16} aria-hidden="true" />
+                      <Trans>Create new Bot</Trans>
+                    </Button>
+                  </div>
+                ) : forksView ? (
+                  <AllForks
+                    rows={forks.rows}
+                    filter={forks.filter}
+                    onFilter={forks.setFilter}
+                    onOpen={forks.openRow}
+                  />
+                ) : museMode &&
+                  active &&
+                  museTranscript.messages !== null &&
+                  transcriptMessages.length === 0 &&
+                  !transcriptRunning ? (
+                  <EmptyConversation
+                    botName={active.name}
+                    personName={bootstrapMe?.name ?? ""}
+                    avatarColor={active.color}
+                    onSend={(text) => void sendMessage(text)}
+                    onTryIt={setComposerSeed}
+                  />
+                ) : (
+                  <Transcript
+                    key={activeSnapshot?.threadId}
+                    museMode={museMode}
+                    botDisplayName={active?.name}
+                    followSignal={followSignal}
+                    museFace={active ? { color: active.color, identity: active.id } : undefined}
+                    museRuns={currentRuns}
+                    scrollRef={messageScroll}
+                    scrollRequest={scrollRequest}
+                    onScrollRequestHandled={clearScrollRequest}
+                    artifactTarget={transcriptArtifactTarget}
+                    messages={transcriptMessages}
+                    olderCursor={
+                      museMode && !inGroup
+                        ? museTranscript.olderCursor
+                        : (activeSnapshot?.olderCursor ?? null)
+                    }
+                    loadingOlder={museMode && !inGroup ? museTranscript.loadingOlder : loadingOlder}
+                    answerableAskMessageId={answerableAskMessageId}
+                    running={transcriptRunning}
+                    workingBots={workingBots}
+                    onLoadOlder={museMode && !inGroup ? museTranscript.loadOlder : loadOlder}
+                    onShowEarlier={
+                      museMode && !inGroup && museTranscript.canShowEarlier
+                        ? museTranscript.showEarlier
+                        : undefined
+                    }
+                    onOpenBot={openBot}
+                    onAnswer={answerMessage}
+                    onSendCard={sendCardReply}
+                    onReply={(message) => {
+                      setReplyTarget(message);
+                      setReplyQuote(null);
+                    }}
+                    onQuote={(message, quote) => {
+                      setReplyTarget(message);
+                      setReplyQuote(quote);
+                    }}
+                    onReact={reactToMessage}
+                    onJumpToMessage={jumpToReplyMessage}
+                    onOpenPeerMessages={(peer) => {
+                      setPeerConversation(peer);
+                    }}
+                    memberName={resolveTranscriptMemberName}
+                    peerBot={resolveTranscriptBot}
+                    onRefresh={refreshActiveThread}
+                    onBotChanged={refreshBots}
+                    onAddRoutine={addSkillRoutine}
+                    voiceReady={Boolean(voiceStatus?.ready)}
+                    speakingMessageId={speakingMessageId}
+                    onSpeak={speakMessage}
+                    onOpenComputer={onOpenComputer}
+                    trailing={
+                      museMode && active ? (
+                        <ApprovalCards botId={active.id} chatId={null} />
+                      ) : undefined
+                    }
+                    onFork={museMode && !inGroup ? forks.startAsk : undefined}
+                    renderUnder={museMode && !inGroup ? forks.renderUnder : undefined}
+                    aside={
+                      museMode && !inGroup ? (
+                        <ForkGutter
+                          scrollRef={messageScroll}
+                          messages={transcriptMessages}
+                          onJump={forks.jump}
+                        />
+                      ) : undefined
+                    }
+                  />
+                )}
+                {recordingSkill ? (
+                  <div className="px-6 pb-2 text-center text-[13px] text-destructive">
+                    <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
+                  </div>
+                ) : null}
+                {active || activeGroup ? (
+                  // Kept mounted under the Forks list so a half-written message survives.
+                  <div className="contents" hidden={forksView || undefined}>
+                    <Composer
+                      key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+                      museMode={museMode}
+                      activeName={
+                        inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
+                      }
+                      running={composerRunning}
+                      disabled={Boolean(recordingSkill)}
+                      pendingAttachments={activePendingAttachments}
+                      attachmentNotice={attachmentNotice}
+                      sendError={sendError}
+                      runError={displayedRunError}
+                      runErrorId={displayedRunErrorId}
+                      onRunErrorPresented={handleRunErrorPresented}
+                      onDismissError={dismissComposerError}
+                      sending={sending}
+                      fileInputRef={fileInputRef}
+                      onAttachmentPick={onAttachmentPick}
+                      onRemoveAttachment={removeAttachment}
+                      onSend={sendMessage}
+                      seedText={composerSeed}
+                      onSeedConsumed={() => setComposerSeed(null)}
+                      onStop={stopRun}
+                      onVoice={
+                        !inGroup && active
+                          ? () => {
+                              if (!voiceStatus?.ready) {
+                                openSettings("voice");
+                                return;
+                              }
+                              setCallOpen(true);
+                            }
+                          : undefined
+                      }
+                      replyTarget={activeReplyTarget}
+                      replyQuote={activeReplyQuote}
+                      replyTargetName={replyTargetName}
+                      onClearReply={clearReply}
+                      mentionTargets={composerMentionTargets}
+                      agentSkills={agentSkills}
+                      onSlashOpen={refreshAgentSkills}
+                      onSlashAction={(action) => {
+                        if (action === "chat-settings") {
+                          setPanel(inGroup ? "group-settings" : "settings");
+                          return;
                         }
-                      : undefined
-                  }
-                  replyTarget={activeReplyTarget}
-                  replyQuote={activeReplyQuote}
-                  replyTargetName={replyTargetName}
-                  onClearReply={clearReply}
-                  mentionTargets={composerMentionTargets}
-                  agentSkills={agentSkills}
-                  onSlashOpen={refreshAgentSkills}
-                  onSlashAction={(action) => {
-                    if (action === "chat-settings") {
-                      setPanel(inGroup ? "group-settings" : "settings");
-                      return;
-                    }
-                    if (action === "settings-general") {
-                      openSettings("general");
-                      return;
-                    }
-                    if (action === "settings-usage") {
-                      void rpc.usage
-                        .summary()
-                        .then(setUsage)
-                        .catch(() => undefined);
-                      openSettings("usage");
-                    }
+                        if (action === "settings-general") {
+                          openSettings("general");
+                          return;
+                        }
+                        if (action === "settings-usage") {
+                          void rpc.usage
+                            .summary()
+                            .then(setUsage)
+                            .catch(() => undefined);
+                          openSettings("usage");
+                        }
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              {museMode && active && forks.ask ? (
+                <ForkAsk
+                  botId={active.id}
+                  wire={forkWire}
+                  anchor={forks.ask.anchor}
+                  chatId={forks.ask.chatId}
+                  onClose={() => forks.setAsk(null)}
+                  onCreated={forks.created}
+                  onOpenSideChat={(chat) => {
+                    chatList.refresh();
+                    setActiveChat(chat);
                   }}
+                />
+              ) : null}
+              {museMode && active && forks.thread && !forks.ask ? (
+                <ForkThread
+                  key={forks.thread.chat.id}
+                  bot={{ id: active.id, name: active.name, color: active.color }}
+                  wire={forkWire}
+                  target={forks.thread}
+                  conversationId={museTranscript.threadId}
+                  conversationMessages={transcriptMessages}
+                  onClose={forks.closeThread}
+                  onOpenFork={forks.openFork}
+                  onAsk={forks.startAsk}
+                  onOpenSideChat={(chat) => setActiveChat(forkChatSummary(chat, chatList.state))}
+                  onAdded={(anchorItemId) => {
+                    readTranscript();
+                    forks.closeThread();
+                    if (anchorItemId) forks.jump(anchorItemId);
+                  }}
+                  onArchived={forks.closeThread}
+                  onReplied={chatList.refresh}
+                  onMissingAnchor={forks.revealAnchor}
                 />
               ) : null}
             </div>

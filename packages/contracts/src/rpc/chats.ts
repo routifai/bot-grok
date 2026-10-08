@@ -11,6 +11,28 @@ export const chatsContract = {
     createSide: oc
       .input(z.object({ botId: Id, start: SideChatStartSchema, text: z.string().min(1) }))
       .output(ChatSummarySchema),
+    /** Opens a Fork of one message (ADR 0010) and sends its first message. `chatId` is the chat
+     * holding the anchor (absent: the Conversation; a fork, for a fork of a fork). Refusals are
+     * `FORK_TOO_DEEP` and `FORK_ANCHOR_INVALID` (422). */
+    createFork: oc
+      .input(
+        z.object({
+          botId: Id,
+          chatId: Id.optional(),
+          anchorItemId: z.string().min(1),
+          text: z.string().min(1),
+        }),
+      )
+      .output(ChatSummarySchema),
+    /** Adds the Fork's one-line summary back under its anchor (the engine writes it when
+     * `summary` is absent). */
+    addToConversation: oc
+      .input(z.object({ botId: Id, chatId: Id, summary: z.string().min(1).optional() }))
+      .output(z.object({ summary: z.string() })),
+    /** Archives a Side Chat or Fork (CONTEXT.md "Archived"); writing in it brings it back. */
+    archive: oc
+      .input(z.object({ botId: Id, chatId: Id }))
+      .output(z.object({ ok: z.literal(true) })),
     /** The summary a new Side Chat would start with, for the "Knows our conversation" switch. */
     summaryPreview: oc.input(z.object({ botId: Id })).output(z.object({ summary: z.string() })),
     /** The Conversation (no `chatId`), one of its Side Chats, or a Helper, as typed blocks.

@@ -119,6 +119,41 @@ body,
   }
 }
 
+/* Forks (ADR 0010): the thread view fades in, the anchor message lifts, replies rise, and a
+   message the person jumps to flashes once. Off under reduced motion. */
+@keyframes forkFade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes forkLift {
+  from {
+    transform: scale(0.96) translateY(10px);
+    opacity: 0.4;
+  }
+}
+@keyframes forkRise {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+@keyframes forkFlash {
+  from {
+    background-color: var(--selection);
+  }
+}
+[data-fork-flash] {
+  border-radius: 14px;
+  animation: forkFlash 1.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-fork-flash] {
+    animation: none;
+    background-color: var(--selection);
+  }
+}
+
 /* Muse: the transcript fades out under the top edge once scrolled, like a
    reading view. The mask only uses alpha, so it follows both themes. */
 [data-product="muse"] [data-fade-top][data-scrolled="true"] {

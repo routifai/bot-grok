@@ -3,6 +3,8 @@ import type { PrismaClient } from "@aiden/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  addOmnigentForkToConversation,
+  archiveOmnigentSession,
   createOmnigentSideChat,
   getOmnigentContextSummary,
   getOmnigentWorkingProject,
@@ -14,6 +16,8 @@ const {
   resolveChatOwnership,
   streamOmnigentFamily,
 } = vi.hoisted(() => ({
+  addOmnigentForkToConversation: vi.fn(),
+  archiveOmnigentSession: vi.fn(),
   createOmnigentSideChat: vi.fn(),
   getOmnigentContextSummary: vi.fn(),
   getOmnigentWorkingProject: vi.fn(),
@@ -36,6 +40,8 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@aiden/adapters")>();
   return {
     ...actual,
+    addOmnigentForkToConversation,
+    archiveOmnigentSession,
     createOmnigentSideChat,
     getOmnigentContextSummary,
     getOmnigentWorkingProject,
@@ -52,6 +58,9 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
 const { OmnigentSideChatError } = await import("@aiden/adapters");
 const { OmnigentApiError } = await import("@aiden/adapters");
 const {
+  addForkToConversation,
+  archiveChat,
+  createFork,
   createSideChat,
   getChatProject,
   getChatTranscript,
@@ -153,6 +162,122 @@ describe("createSideChat", () => {
     await expect(
       createSideChat(deps, actor, { botId: "bot-1", start: "blank", text: "hi" }, ENV),
     ).rejects.toThrow(/Could not open a side chat/);
+  });
+});
+
+describe("forks", () => {
+  const OWNED = {
+    kind: "side_chat",
+    superSessionId: "conv_super",
+    botId: "bot-1",
+    project: null,
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
+  });
+
+  it("opens a fork of a Conversation message with its anchor and first message", async () => {
+    createOmnigentSideChat.mockResolvedValue({
+      conversation_id: "conv_fork",
+      title: "Would 6.6% win it back?",
+      start: "with_context",
+      anchor_item_id: "msg_1",
+      parent_id: "conv_super",
+    });
+
+    const result = await createFork(
+      depsFor(),
+      actor,
+      { botId: "bot-1", anchorItemId: "msg_1", text: "Would 6.6% win it back?" },
+      ENV,
+    );
+
+    expect(createOmnigentSideChat).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_super",
+      {
+        start: "with_context",
+        title: "Would 6.6% win it back?",
+        firstMessage: "Would 6.6% win it back?",
+        anchorItemId: "msg_1",
+      },
+    );
+    expect(result).toMatchObject({ id: "conv_fork", anchorItemId: "msg_1", live: true });
+  });
+
+  it("opens a fork of a fork's message from that fork, once the Muse owns it", async () => {
+    resolveChatOwnership.mockResolvedValue(OWNED);
+    createOmnigentSideChat.mockResolvedValue({
+      conversation_id: "conv_fork2",
+      title: "t",
+      start: "with_context",
+      anchor_item_id: "msg_9",
+    });
+
+    await createFork(
+      depsFor(),
+      actor,
+      { botId: "bot-1", chatId: "conv_fork", anchorItemId: "msg_9", text: "and?" },
+      ENV,
+    );
+
+    expect(createOmnigentSideChat.mock.calls[0]?.[2]).toBe("conv_fork");
+  });
+
+  it("refuses a chat the person does not own before asking the engine", async () => {
+    resolveChatOwnership.mockResolvedValue(null);
+    await expect(
+      createFork(
+        depsFor(),
+        actor,
+        { botId: "bot-1", chatId: "someone_else", anchorItemId: "m", text: "x" },
+        ENV,
+      ),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(createOmnigentSideChat).not.toHaveBeenCalled();
+  });
+
+  it("passes the engine's refusals through as their own codes", async () => {
+    createOmnigentSideChat.mockRejectedValueOnce(
+      new OmnigentSideChatError("422", null, "fork_too_deep"),
+    );
+    await expect(
+      createFork(depsFor(), actor, { botId: "bot-1", anchorItemId: "m", text: "x" }, ENV),
+    ).rejects.toMatchObject({ code: "FORK_TOO_DEEP", status: 422 });
+
+    createOmnigentSideChat.mockRejectedValueOnce(
+      new OmnigentSideChatError("422", null, "fork_anchor_invalid"),
+    );
+    await expect(
+      createFork(depsFor(), actor, { botId: "bot-1", anchorItemId: "m", text: "x" }, ENV),
+    ).rejects.toMatchObject({ code: "FORK_ANCHOR_INVALID", status: 422 });
+  });
+
+  it("adds a fork's summary back and archives it, only for the Muse's own chats", async () => {
+    resolveChatOwnership.mockResolvedValue(OWNED);
+    addOmnigentForkToConversation.mockResolvedValue({ summary: "Bars by segment" });
+
+    expect(
+      await addForkToConversation(depsFor(), actor, { botId: "bot-1", chatId: "conv_fork" }, ENV),
+    ).toEqual({ summary: "Bars by segment" });
+    expect(addOmnigentForkToConversation).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_fork",
+      undefined,
+    );
+
+    expect(
+      await archiveChat(depsFor(), actor, { botId: "bot-1", chatId: "conv_fork" }, ENV),
+    ).toEqual({ ok: true });
+    expect(archiveOmnigentSession).toHaveBeenCalledWith(BOUND, "person@example.test", "conv_fork");
+
+    resolveChatOwnership.mockResolvedValue({ ...OWNED, kind: "helper" });
+    await expect(
+      addForkToConversation(depsFor(), actor, { botId: "bot-1", chatId: "helper_1" }, ENV),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 

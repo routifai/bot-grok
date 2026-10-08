@@ -14,6 +14,7 @@ import {
 } from "./lib/session-gate";
 import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
+import { ForksPreviewPage } from "./pages/dev/ForksPreviewPage";
 import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
 import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { IntegrationSetupPage } from "./pages/IntegrationSetup";
@@ -53,6 +54,10 @@ export function App() {
   // reasoning — `activities.*` isn't served by the local dev API either.
   if (import.meta.env.DEV && window.location.pathname === "/dev/activity") {
     return <ActivityPreviewPage />;
+  }
+  // Dev-only fixture route for message forks (ForksPreviewPage.tsx), same reasoning.
+  if (import.meta.env.DEV && window.location.pathname === "/dev/forks") {
+    return <ForksPreviewPage />;
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/memory") {
     return <MemoryPreviewPage />;

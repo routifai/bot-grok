@@ -15,6 +15,7 @@ import { Check, Copy, MoreHorizontal, Reply, Smile } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MessageHoverMetadata } from "../../../components/MessageHoverMetadata";
 import { copyableMessageText } from "../../../lib/message-text";
+import { BranchIcon } from "../forks/forkParts";
 
 export function MessageHoverActions({
   message,
@@ -22,6 +23,8 @@ export function MessageHoverActions({
   time,
   onReply,
   onReact,
+  onFork,
+  above = Boolean(onFork),
   conversational = true,
 }: {
   message: ThreadMessage;
@@ -32,6 +35,10 @@ export function MessageHoverActions({
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
   /** Team-chat actions (reactions, reply threads); a one-on-one Muse keeps just More. */
   conversational?: boolean;
+  /** Fork this message (ADR 0010); the actions then float above the bubble as a toolbar. */
+  onFork?: (message: ThreadMessage) => void;
+  /** Float above the bubble even without Fork, to match the messages around it that have it. */
+  above?: boolean;
 }) {
   const { t } = useLingui();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -57,7 +64,7 @@ export function MessageHoverActions({
     "grid h-7 w-7 place-items-center text-muted-foreground transition-colors hover:text-foreground";
 
   return (
-    <MessageHoverMetadata pinned={moreOpen || reactionsOpen} side={side}>
+    <MessageHoverMetadata pinned={moreOpen || reactionsOpen} side={side} above={above}>
       {time}
       <div data-testid="message-hover-actions" className="flex items-center gap-0.5">
         {conversational && canReactToThreadMessage(message) ? (
@@ -114,6 +121,20 @@ export function MessageHoverActions({
         >
           {copied ? <Check size={15} strokeWidth={1.7} /> : <Copy size={14} strokeWidth={1.7} />}
         </button>
+        {onFork ? (
+          <button
+            type="button"
+            title={t`Fork`}
+            aria-label={t`Fork`}
+            onClick={() => onFork(message)}
+            className={cn(
+              iconButtonClass,
+              "h-11 w-11 [@media(hover:hover)_and_(pointer:fine)]:h-7 [@media(hover:hover)_and_(pointer:fine)]:w-7",
+            )}
+          >
+            <BranchIcon size={15} />
+          </button>
+        ) : null}
         {onReply ? (
           <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
             <DropdownMenuTrigger

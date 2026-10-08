@@ -97,6 +97,9 @@ const TranscriptView = memo(function Transcript({
   speakingMessageId,
   onSpeak,
   onOpenComputer,
+  onFork,
+  renderUnder,
+  aside,
 }: {
   museMode?: boolean;
   /** Muse mode: the face shown beside the Muse's replies. */
@@ -141,6 +144,12 @@ const TranscriptView = memo(function Transcript({
   speakingMessageId: string | null;
   onSpeak: (message: ThreadMessage) => void;
   onOpenComputer: (botId?: string) => void;
+  /** Fork a message (ADR 0010): offered on the messages the engine can anchor a fork to. */
+  onFork?: (message: ThreadMessage) => void;
+  /** Rendered under a message (its forks); return null for nothing. */
+  renderUnder?: (message: ThreadMessage) => ReactNode;
+  /** A strip beside the scrolling column, on the panel's end edge (the fork gutter). */
+  aside?: ReactNode;
 }) {
   const { t } = useLingui();
   const { label: museLiveLabel } = useMuseLiveState({
@@ -486,6 +495,8 @@ const TranscriptView = memo(function Transcript({
                       onReply={onReply}
                       onReact={onReact}
                       conversational={!museMode}
+                      onFork={onFork && message.forks !== undefined ? onFork : undefined}
+                      above={Boolean(onFork)}
                     />
                   )}
                   <MessageView
@@ -526,6 +537,7 @@ const TranscriptView = memo(function Transcript({
                   />
                 </div>
               </div>
+              {peerReceipt ? null : renderUnder?.(message)}
               {!peerReceipt && messageReactions ? (
                 <div
                   data-testid="message-reactions"
@@ -575,6 +587,7 @@ const TranscriptView = memo(function Transcript({
         ) : null}
         {trailing}
       </div>
+      {aside}
       {quoteDraft && onQuote ? (
         <QuoteSelectionButton
           range={quoteDraft.range}

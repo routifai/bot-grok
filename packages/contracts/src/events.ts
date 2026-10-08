@@ -205,6 +205,14 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     title: z.string(),
   }),
   z.object({
+    /** A Fork's summary, added back under its anchor message (ADR 0010). */
+    kind: z.literal("fork_summary"),
+    forkId: z.string(),
+    anchorItemId: z.string(),
+    title: z.string(),
+    summary: z.string(),
+  }),
+  z.object({
     kind: z.literal("child_bot"),
     botId: z.string(),
     name: z.string(),
@@ -327,6 +335,22 @@ export const ProductEventSchema = z.object({
 });
 export type ProductEvent = z.infer<typeof ProductEventSchema>;
 
+/** A Fork started from a message (ADR 0010): a Side Chat anchored there. `open` and `added`
+ * (its summary is under the anchor) or `archived`. */
+export const MessageForkStateSchema = z.enum(["open", "added", "archived"]);
+export type MessageForkState = z.infer<typeof MessageForkStateSchema>;
+export const MessageForkSchema = z.object({
+  chatId: z.string(),
+  title: z.string(),
+  replies: z.number().int().nonnegative(),
+  live: z.boolean(),
+  unread: z.boolean(),
+  state: MessageForkStateSchema,
+  summary: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type MessageFork = z.infer<typeof MessageForkSchema>;
+
 export const ThreadMessageSchema = z.object({
   id: Id,
   threadId: Id,
@@ -338,6 +362,9 @@ export const ThreadMessageSchema = z.object({
   replyQuote: z.string().optional(),
   runId: Id.optional(),
   createdAt: z.string(),
+  /** `chats.transcript` only: the forks started from this message, oldest first. Present on
+   * every message the engine can anchor a fork to (empty when none). */
+  forks: z.array(MessageForkSchema).optional(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
 

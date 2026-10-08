@@ -916,6 +916,16 @@ export const ThreadMessagePageSchema = z.object({
   reset: z.object({ itemId: z.string(), createdAt: z.string() }).nullable().optional(),
   /** `chats.transcript` only: a Helper's chat, which the person reads but never writes to. */
   readOnly: z.boolean().optional(),
+  /** `chats.transcript` only: where the chat sits in the Muse's family. A Fork has an
+   * `anchorItemId`; its `parentId` is the chat holding that message (the Conversation, `rootId`,
+   * or for a fork of a fork, the fork it came from). */
+  lineage: z
+    .object({
+      rootId: z.string().nullable(),
+      parentId: z.string().nullable(),
+      anchorItemId: z.string().nullable(),
+    })
+    .optional(),
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
 

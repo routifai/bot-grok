@@ -30,13 +30,34 @@ export type OmnigentTranscriptBlock =
       versions?: number;
     }
   | { type: "secure_entry"; request_id: string; name: string; site: string; reason?: string }
-  | { type: "error"; code: string; level?: "info" };
+  | { type: "error"; code: string; level?: "info" }
+  | {
+      type: "fork_summary";
+      fork_id: string;
+      anchor_item_id: string;
+      title: string | null;
+      summary: string;
+    };
+
+/** A Fork started from a transcript message (ADR 0010). */
+export interface OmnigentTranscriptFork {
+  session_id: string;
+  title: string | null;
+  replies: number;
+  live: boolean;
+  unread: boolean;
+  state: "open" | "added" | "archived";
+  summary: string | null;
+  created_at: number | null;
+}
 
 export interface OmnigentTranscriptMessage {
   id: string;
   role: "user" | "assistant";
   created_at: number | null;
   blocks: OmnigentTranscriptBlock[];
+  /** The forks of this message, oldest first (`[]` when none). */
+  forks?: OmnigentTranscriptFork[];
 }
 
 export interface OmnigentTranscriptLineage {
@@ -44,6 +65,8 @@ export interface OmnigentTranscriptLineage {
   root_id: string | null;
   parent_id: string | null;
   seed_item_id: string | null;
+  /** A Fork's anchor; its `parent_id` is then the chat holding that message. */
+  anchor_item_id?: string | null;
 }
 
 export interface OmnigentTranscriptPage {

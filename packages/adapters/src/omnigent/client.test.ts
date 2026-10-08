@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  addOmnigentForkToConversation,
   adoptOmnigentMuse,
   answerOmnigentAsk,
+  archiveOmnigentSession,
   createOmnigentSideChat,
   forgetOmnigentMemoryClaim,
   getOmnigentComputer,
@@ -316,6 +318,74 @@ describe("createOmnigentSideChat error handling (docs/super-chat/WIRING.md revie
       firstMessage: "hi",
     });
     expect(result.first_message_error).toBe("could not post");
+  });
+
+  it("opens a fork with its anchor, and carries the engine's refusal code", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          conversation_id: "conv_fork",
+          title: "t",
+          start: "with_context",
+          anchor_item_id: "msg_1",
+          parent_id: "conv_super",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { code: "fork_too_deep", message: "too deep" } }, 422),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const created = await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", {
+      start: "with_context",
+      firstMessage: "why?",
+      anchorItemId: "msg_1",
+    });
+    expect(created.anchor_item_id).toBe("msg_1");
+    const [, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      start: "with_context",
+      first_message: "why?",
+      anchor_item_id: "msg_1",
+    });
+
+    const refused = await createOmnigentSideChat(CONFIG, "p@x.test", "conv_fork2", {
+      start: "with_context",
+      anchorItemId: "msg_2",
+    }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(OmnigentSideChatError);
+    expect((refused as OmnigentSideChatError).code).toBe("fork_too_deep");
+  });
+
+  it("adds a fork back and archives a chat on their own routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          fork_id: "f 1",
+          session_id: "conv_super",
+          anchor_item_id: "msg_1",
+          item_id: "notice_1",
+          title: "t",
+          summary: "Bars by segment",
+          state: "added",
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "f 1", archived: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const added = await addOmnigentForkToConversation(CONFIG, "p@x.test", "f 1");
+    expect(added.summary).toBe("Bars by segment");
+    await archiveOmnigentSession(CONFIG, "p@x.test", "f 1");
+
+    const calls = fetchMock.mock.calls as unknown as [URL, RequestInit][];
+    expect(calls.map(([url, init]) => `${init.method} ${url.pathname}`)).toEqual([
+      "POST /v1/sessions/f%201/add_to_conversation",
+      "PATCH /v1/sessions/f%201",
+    ]);
+    expect(JSON.parse(calls[0]![1].body as string)).toEqual({});
+    expect(JSON.parse(calls[1]![1].body as string)).toEqual({ archived: true });
   });
 
   it("computer calls hit the session-scoped routes with identity/proxy headers", async () => {

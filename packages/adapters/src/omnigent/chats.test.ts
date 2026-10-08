@@ -47,8 +47,25 @@ describe("mapRelatedChatToSummary", () => {
       archived: true,
       live: true,
       unread: true,
+      anchorItemId: null,
+      forkCount: 0,
       updatedAt: new Date(1_700_000_100 * 1000).toISOString(),
     });
+  });
+
+  it("maps a fork's anchor and the forks hanging off a chat", () => {
+    const mapped = mapRelatedChatToSummary({
+      id: "conv_fork",
+      title: "6.6% and margin",
+      created_at: 0,
+      updated_at: 0,
+      last_message_preview: null,
+      start: "with_context",
+      anchor_item_id: "msg_9",
+      fork_count: 2,
+    });
+    expect(mapped.anchorItemId).toBe("msg_9");
+    expect(mapped.forkCount).toBe(2);
   });
 
   it("maps blank start and defaults missing fields", () => {
