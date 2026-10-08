@@ -90,6 +90,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     unzip \
   && rm -rf /var/lib/apt/lists/* \
+  # Debian's novnc package creates an unused `nova` system account (from OpenStack Nova)
+  # that owns no files; drop it so the Computer user can take the name.
+  && if id -u nova >/dev/null 2>&1; then userdel nova; fi \
+  && if getent group nova >/dev/null; then groupdel nova; fi \
   && groupadd --gid 1000 nova \
   && useradd --uid 1000 --gid nova --create-home --shell /bin/bash nova \
   && mkdir -p /etc/nova/fluxbox \
