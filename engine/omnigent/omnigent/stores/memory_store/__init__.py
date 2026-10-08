@@ -76,19 +76,25 @@ class MemoryStore(ABC):
         *,
         kind: str | None = None,
         min_confidence: float | None = None,
+        include_expired: bool = False,
         limit: int = 1000,
     ) -> list[MemoryClaim]:
         """List a user's active claims, newest first.
 
+        Claims past ``valid_until`` are left out unless *include_expired*; their
+        ``status`` column stays ``active`` (expiry is derived, see
+        :meth:`MemoryClaim.effective_status`).
+
         :param kind: Restrict to one kind, or ``None`` for all kinds.
         :param min_confidence: Only claims with ``confidence >=`` this value.
+        :param include_expired: Also return claims past ``valid_until``.
         :param limit: Maximum rows returned.
         """
         ...
 
     @abstractmethod
     def list_all_active(self, limit: int = 100_000) -> list[MemoryClaim]:
-        """List every active claim across every user, for index rebuilds."""
+        """List every live (active, unexpired) claim across every user, for index rebuilds."""
         ...
 
     @abstractmethod

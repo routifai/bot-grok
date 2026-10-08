@@ -113,13 +113,15 @@ def _jaccard(a: str, b: str) -> float:
 
 
 def _claim_to_dict(claim: MemoryClaim, *, score: float | None = None) -> dict[str, Any]:
+    # ``status`` is derived: an active claim past ``valid_until`` reads as expired.
     result: dict[str, Any] = {
         "claim_id": claim.id,
         "text": claim.claim_text,
         "kind": claim.kind,
         "explicitness": claim.explicitness,
         "confidence": round(claim.confidence, 3),
-        "status": claim.status,
+        "status": claim.effective_status(time.time()),
+        "valid_until": claim.valid_until,
         "last_confirmed": claim.reinforced_at or claim.first_seen,
         "first_seen": claim.first_seen,
         "person_authored": claim.person_authored,
@@ -147,7 +149,7 @@ class MemoryService:
         # profile()'s render cache, per user; invalidated on any claim write
         # for that user (see _invalidate_profile). Unbounded by design: one
         # entry per user who has ever been profiled, a short string each.
-        self._profile_cache: dict[str, tuple[int, str | None]] = {}
+        self._profile_cache: dict[str, tuple[int, int | None, str | None]] = {}
 
     def _invalidate_profile(self, user_id: str) -> None:
         """Drop a cached profile so the next call re-renders it from the store."""
@@ -177,7 +179,7 @@ class MemoryService:
         )
         if replaces_claim_id:
             old = self._store.get(replaces_claim_id, user_id)
-            if old is None or old.status != "active":
+            if old is None or not old.is_live(time.time()):
                 return {"error": f"no active claim {replaces_claim_id} to replace"}
             if old.person_authored:
                 # The person wrote this: keep it and add the new text beside it.
@@ -314,7 +316,7 @@ class MemoryService:
         upkeep run. ``{"error": ...}`` if *old_claim_id* is not an active
         claim belonging to *user_id*."""
         old = self._store.get(old_claim_id, user_id)
-        if old is None or old.status != "active":
+        if old is None or not old.is_live(time.time()):
             return {"error": f"no active claim {old_claim_id} to replace"}
         resolved_kind = kind if kind in VALID_KINDS else DEFAULT_KIND
         if old.person_authored:
@@ -377,7 +379,7 @@ class MemoryService:
         results: list[dict[str, Any]] = []
         for rank, hit in ranked[:limit]:
             claim = self._store.get(hit["id"], user_id)
-            if claim is None or claim.status != "active":
+            if claim is None or not claim.is_live(now):
                 continue
             results.append(_claim_to_dict(claim, score=rank))
         return results
@@ -423,11 +425,15 @@ class MemoryService:
     # ── The person's edits (Memory tab) ─────────────────────────────
 
     def list_claims(self, user_id: str, *, kinds: list[str] | None = None) -> list[dict[str, Any]]:
-        """Every active claim of *kinds* (all kinds when omitted), newest first."""
+        """Every active claim of *kinds* (all kinds when omitted), newest first.
+
+        Claims past ``valid_until`` are included, with ``status: "expired"``, so
+        the person can still see and forget them; context and search skip them.
+        """
         wanted = [k for k in kinds if k in VALID_KINDS] if kinds else sorted(VALID_KINDS)
         claims: list[MemoryClaim] = []
         for kind in wanted:
-            claims.extend(self._store.list_active(user_id, kind=kind))
+            claims.extend(self._store.list_active(user_id, kind=kind, include_expired=True))
         claims.sort(key=lambda c: c.reinforced_at or c.first_seen, reverse=True)
         return [_claim_to_dict(c) for c in claims]
 
@@ -496,17 +502,21 @@ class MemoryService:
             see :func:`render_profile_block`), or ``None`` when there is
             nothing to show.
         """
-        # Re-render once a day so aged-out focus claims leave without a write.
-        today = int(time.time() // 86_400)
+        # Re-render once a day so aged-out focus claims leave without a write,
+        # and as soon as the earliest ``valid_until`` among the rendered claims passes.
+        now = time.time()
+        today = int(now // 86_400)
         cached = self._profile_cache.get(user_id)
-        if cached is not None and cached[0] == today:
-            return cached[1]
-        rendered = self._render_profile(user_id)
-        self._profile_cache[user_id] = (today, rendered)
+        if cached is not None and cached[0] == today and (cached[1] is None or now < cached[1]):
+            return cached[2]
+        rendered, next_expiry = self._render_profile(user_id)
+        self._profile_cache[user_id] = (today, next_expiry, rendered)
         return rendered
 
-    def _render_profile(self, user_id: str) -> str | None:
+    def _render_profile(self, user_id: str) -> tuple[str | None, int | None]:
+        """Render the profile and the earliest ``valid_until`` among its candidate claims."""
         lines: list[str] = []
+        next_expiry: int | None = None
         char_count = 0
         for kind in PROFILE_KINDS:
             claims = self._store.list_active(
@@ -517,6 +527,9 @@ class MemoryService:
                 claims = [c for c in claims if (c.reinforced_at or c.first_seen or 0) >= cutoff]
             if not claims:
                 continue
+            expiries = [c.valid_until for c in claims if c.valid_until is not None]
+            if expiries:
+                next_expiry = min([*expiries, *([next_expiry] if next_expiry else [])])
             claims.sort(key=lambda c: c.reinforced_at or c.first_seen, reverse=True)
             header = f"{_PROFILE_GROUP_LABELS[kind]}:"
             if char_count + len(header) + 1 > _PROFILE_MAX_CHARS:
@@ -532,7 +545,7 @@ class MemoryService:
             if len(section) > 1:
                 lines.extend(section)
                 char_count += section_chars
-        return "\n".join(lines) if lines else None
+        return ("\n".join(lines) if lines else None), next_expiry
 
     # ── Maintenance ─────────────────────────────────────────────────
 

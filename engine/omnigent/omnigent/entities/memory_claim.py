@@ -70,3 +70,22 @@ class MemoryClaim:
     person_authored: bool = False
     created_at: int = 0
     updated_at: int | None = None
+
+    def is_expired(self, now: int | float) -> bool:
+        """Whether ``valid_until`` has passed at *now* (epoch seconds).
+
+        The single source of truth for date-based expiry: ``status`` is never
+        flipped by a sweep, so every reader derives expiry through this (or
+        :meth:`effective_status`).
+        """
+        return self.valid_until is not None and self.valid_until <= now
+
+    def effective_status(self, now: int | float) -> str:
+        """``status``, except an ``active`` claim past ``valid_until`` is ``expired``."""
+        if self.status == "active" and self.is_expired(now):
+            return "expired"
+        return self.status
+
+    def is_live(self, now: int | float) -> bool:
+        """Whether the claim is ``active`` and not past ``valid_until`` at *now*."""
+        return self.effective_status(now) == "active"

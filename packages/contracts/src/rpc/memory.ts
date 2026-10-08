@@ -41,6 +41,8 @@ const MemoryClaimSchema = z.object({
   personAuthored: z.boolean(),
   /** Epoch seconds the claim was last confirmed (first written when never reinforced). */
   date: z.number(),
+  /** Past its end date: kept out of Nova's context and search, shown so the person can forget it. */
+  expired: z.boolean(),
 });
 
 export const memoryContract = {

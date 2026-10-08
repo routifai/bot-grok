@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, desc, or_, select
 from sqlalchemy.orm import Session
 
 from omnigent.db.db_models import SqlMemoryClaim, current_workspace_id
@@ -18,6 +19,11 @@ from omnigent.entities import MemoryClaim, MemoryEvidenceLink
 from omnigent.stores.memory_store import MemoryStore
 
 _ACTIVE = "active"
+
+
+def _not_expired(now: int) -> Any:
+    """SQL predicate matching ``MemoryClaim.is_expired(now)`` being false."""
+    return or_(SqlMemoryClaim.valid_until.is_(None), SqlMemoryClaim.valid_until > now)
 
 
 def _encode_evidence(evidence: list[MemoryEvidenceLink] | None) -> str | None:
@@ -147,9 +153,14 @@ class SqlAlchemyMemoryStore(MemoryStore):
         *,
         kind: str | None = None,
         min_confidence: float | None = None,
+        include_expired: bool = False,
         limit: int = 1000,
     ) -> list[MemoryClaim]:
-        """List a user's active claims, newest first."""
+        """List a user's active claims, newest first.
+
+        Claims past ``valid_until`` are excluded unless *include_expired*
+        (the person's own list shows them, marked expired).
+        """
         with self._session("list_active_memory_claims") as session:
             stmt = (
                 select(SqlMemoryClaim)
@@ -157,6 +168,8 @@ class SqlAlchemyMemoryStore(MemoryStore):
                 .where(SqlMemoryClaim.user_id == user_id)
                 .where(SqlMemoryClaim.status == _ACTIVE)
             )
+            if not include_expired:
+                stmt = stmt.where(_not_expired(now_epoch()))
             if kind is not None:
                 stmt = stmt.where(SqlMemoryClaim.kind == kind)
             if min_confidence is not None:
@@ -174,6 +187,7 @@ class SqlAlchemyMemoryStore(MemoryStore):
                 select(SqlMemoryClaim)
                 .where(SqlMemoryClaim.workspace_id == current_workspace_id())
                 .where(SqlMemoryClaim.status == _ACTIVE)
+                .where(_not_expired(now_epoch()))
                 .order_by(asc(SqlMemoryClaim.created_at), asc(SqlMemoryClaim.id))
                 .limit(limit)
             )
@@ -188,7 +202,7 @@ class SqlAlchemyMemoryStore(MemoryStore):
 
         def write(session: Session) -> MemoryClaim | None:
             row = session.get(SqlMemoryClaim, (current_workspace_id(), claim_id))
-            if row is None or row.user_id != user_id or row.status != _ACTIVE:
+            if row is None or row.user_id != user_id or not _to_entity(row).is_live(now):
                 return None
             row.reinforcement_count += 1
             row.reinforced_at = now
@@ -282,7 +296,7 @@ class SqlAlchemyMemoryStore(MemoryStore):
 
         def write(session: Session) -> MemoryClaim | None:
             row = session.get(SqlMemoryClaim, (current_workspace_id(), claim_id))
-            if row is None or row.user_id != user_id or row.status != _ACTIVE:
+            if row is None or row.user_id != user_id or not _to_entity(row).is_live(now):
                 return None
             row.claim_text = claim_text
             row.person_authored = True

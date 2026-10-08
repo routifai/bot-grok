@@ -44,6 +44,8 @@ export type MemoryClaim = {
   date: number;
   /** The person's own words this came from, when the engine kept them. */
   quote?: string;
+  /** Past its end date: Nova no longer uses it; it stays listed so the person can forget it. */
+  expired?: boolean;
 };
 
 /** The Memory tab's claim wire: `rpc.memory.claims` / `editClaim` / `forgetClaim`. */
@@ -288,7 +290,7 @@ function Claim({
       className="group/claim nova-row flex min-h-[52px] items-center gap-3 px-3 py-2 transition-colors hover:bg-selection focus-within:bg-selection"
       data-testid="memory-claim"
     >
-      {isCommitment ? (
+      {isCommitment && !claim.expired ? (
         <span className="grid size-7 shrink-0 place-items-center">
           <Checkbox
             checked={false}
@@ -316,11 +318,21 @@ function Claim({
             ) : null}
           </>
         ) : (
-          <p className="line-clamp-2 text-[14px] leading-5 text-foreground" dir="auto">
+          <p
+            className={cn(
+              "line-clamp-2 text-[14px] leading-5",
+              claim.expired ? "text-ink-3" : "text-foreground",
+            )}
+            dir="auto"
+          >
             {title}
           </p>
         )}
-        {due ? (
+        {claim.expired ? (
+          <span className="mt-0.5 inline-flex h-5 items-center rounded-md bg-muted px-1.5 text-[11px] leading-none text-muted-foreground">
+            {t`Expired`}
+          </span>
+        ) : due ? (
           <span
             className={cn(
               "mt-0.5 inline-flex h-5 items-center rounded-md px-1.5 text-[11px] leading-none",
@@ -354,10 +366,12 @@ function Claim({
             <MoreHorizontal className="size-3.5" aria-hidden />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-auto min-w-32">
-            <DropdownMenuItem onClick={() => setDraft(claim.text)}>
-              <Pencil aria-hidden />
-              {t`Edit`}
-            </DropdownMenuItem>
+            {claim.expired ? null : (
+              <DropdownMenuItem onClick={() => setDraft(claim.text)}>
+                <Pencil aria-hidden />
+                {t`Edit`}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem variant="destructive" onClick={startForget}>
               <Trash2 aria-hidden />
               {t`Forget`}

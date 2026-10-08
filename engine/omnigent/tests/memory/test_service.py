@@ -533,3 +533,59 @@ def test_list_claims_filters_kinds_and_commitment_is_valid(service: MemoryServic
     assert len(service.list_claims("u1")) == 2
     profile = service.profile("u1") or ""
     assert "Commitments:" in profile
+
+
+# ── valid_until expiry (derived at read time) ───────────────────────────────
+
+
+def _expiring_service_claim(service: MemoryService, text: str, valid_until: int) -> str:
+    result = service.record_claim("alice", "fact", text, valid_until=valid_until)
+    return result["claim"]["claim_id"]
+
+
+def test_expired_claim_leaves_profile_search_and_is_marked_in_list(
+    service: MemoryService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    soon = int(time.time()) + 3600
+    claim_id = _expiring_service_claim(service, "Works from the Toronto office until June", soon)
+    service.record_claim("alice", "fact", "Works on the payments team")
+    assert "Toronto office" in (service.profile("alice") or "")
+    assert any(r["claim_id"] == claim_id for r in service.search("alice", "Toronto office"))
+
+    real = time.time
+    monkeypatch.setattr(time, "time", lambda: real() + 2 * 3600)
+    # No _invalidate_profile: the cached profile must lapse on its own at valid_until.
+    profile = service.profile("alice") or ""
+    assert "Toronto office" not in profile
+    assert "payments team" in profile
+    assert not [r for r in service.search("alice", "Toronto office") if r["claim_id"] == claim_id]
+
+    listed = {c["claim_id"]: c for c in service.list_claims("alice")}
+    assert listed[claim_id]["status"] == "expired"
+    assert listed[claim_id]["valid_until"] == soon
+    assert service.get("alice", claim_id)["status"] == "expired"  # type: ignore[index]
+
+
+def test_future_valid_until_stays_active(service: MemoryService) -> None:
+    import time
+
+    claim_id = _expiring_service_claim(
+        service, "Out of office next week", int(time.time()) + 86_400
+    )
+    listed = {c["claim_id"]: c for c in service.list_claims("alice")}
+    assert listed[claim_id]["status"] == "active"
+    assert "Out of office" in (service.profile("alice") or "")
+
+
+def test_expired_claim_cannot_be_reinforced_edited_or_superseded(
+    service: MemoryService,
+) -> None:
+    import time
+
+    claim_id = _expiring_service_claim(service, "Covering for Sam", int(time.time()) - 10)
+    assert service.reinforce_claim(claim_id, "alice", confidence_increment=0.05) is None
+    assert service.edit("alice", claim_id, "Covering for Sam and Lee") is None
+    assert "error" in service.supersede_claim(claim_id, "alice", kind="fact", text="New")
+    assert service.rebuild_index() == 0  # expired claims are not indexed on rebuild

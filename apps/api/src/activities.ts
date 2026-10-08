@@ -153,6 +153,7 @@ function mapClaim(claim: OmnigentMemoryClaim, secrets: string[]) {
     origin: claim.origin,
     personAuthored: claim.person_authored,
     date: claim.last_confirmed,
+    expired: claim.status === "expired",
   };
 }
 

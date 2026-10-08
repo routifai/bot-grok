@@ -23,6 +23,8 @@ export interface OmnigentMemoryClaim {
   origin: "said" | "edited" | "noticed";
   person_authored: boolean;
   last_confirmed: number;
+  /** Derived by the engine: an active claim past its `valid_until` reads as `expired`. */
+  status: "active" | "expired";
 }
 
 /** `GET .../memory/claims` — every active claim, newest first. */

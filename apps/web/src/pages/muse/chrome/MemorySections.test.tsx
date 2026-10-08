@@ -184,3 +184,29 @@ it("filters across sections by the search text", async () => {
   expect(container.textContent).toContain("Maya Chen");
   expect(container.textContent).not.toContain("Works in finance");
 });
+
+it("marks an expired memory and offers only Forget for it", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const wire: ClaimsWire & { profile: () => Promise<{ profile: null }> } = {
+    profile: async () => ({ profile: null }),
+    claims: async () => ({ claims: [claim({ expired: true })] }),
+    editClaim: async () => claim({}),
+    forgetClaim: async () => ({ ok: true as const }),
+  };
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mounted.push(() => act(() => root.unmount()));
+  await act(async () => {
+    root.render(<MemoryTab botId="b1" wire={wire} />);
+  });
+  const row = container.querySelector('[data-testid="memory-claim"]');
+  expect(row?.textContent).toContain("Expired");
+  const more = row?.querySelector('[aria-label="More"]') as HTMLElement;
+  await act(async () => {
+    more.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    more.click();
+  });
+  const items = [...document.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent);
+  expect(items).toEqual(["Forget"]);
+});
