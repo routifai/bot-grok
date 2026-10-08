@@ -15,7 +15,7 @@ import { ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { MuseRailView as MuseView } from "../../../components/AppRail";
-import { NovaOrb } from "../../../components/ai/orb";
+import { NovaOrb, useIsDesktop, useOrbHome } from "../../../components/ai/orb";
 import { rpc } from "../../../lib/rpc";
 import { FORK_TONE_CLASS, type ForkFilter, type ForkRow } from "../forks/forkModel";
 import { LiveDot } from "../forks/forkParts";
@@ -49,7 +49,9 @@ const FADE =
 /** A section's header in the sidebar ("Nova", "Side chats", "Open · 2", "Goals"). */
 const GROUP_LABEL = "px-2.5 pt-3.5 pb-1 text-[11px] font-bold whitespace-nowrap text-ink-3";
 
-function useSidebarCollapsed() {
+/** Whether the person collapsed the desktop sidebar, remembered across sessions. The shell
+ * owns it, since the orb's home depends on it (components/ai/orb/placement.tsx). */
+export function useSidebarCollapsed() {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSED_KEY) === "1";
@@ -88,16 +90,20 @@ function Badge({ count, tone = "quiet" }: { count: number; tone?: "alert" | "qui
   );
 }
 
-/** Nova at the top of the sidebar: the live orb, the name, and what it is doing. */
+/** Nova at the top of the sidebar: the orb's home, the name, and what it is doing. While the
+ * orb lives elsewhere (the start page, or the toolbar while collapsed) the slot keeps its size
+ * empty, so nothing shifts when the orb lands here. */
 function NovaIdentity({
   name,
   working,
   collapsed,
+  hasOrb,
   onToggle,
 }: {
   name: string;
   working: number;
   collapsed: boolean;
+  hasOrb: boolean;
   onToggle?: () => void;
 }) {
   const { t } = useLingui();
@@ -106,7 +112,11 @@ function NovaIdentity({
     : t`Ready`;
   return (
     <div className="flex items-center gap-2.5 px-0.5 pt-1 pb-2">
-      <NovaOrb size={34} />
+      {hasOrb ? (
+        <NovaOrb size={34} />
+      ) : (
+        <span aria-hidden="true" data-testid="nova-orb-slot" className="size-[34px] shrink-0" />
+      )}
       <div className={cn("min-w-0 flex-1", FADE)}>
         <p
           className="truncate text-[15px] font-semibold tracking-[-0.2px] text-foreground"
@@ -163,7 +173,12 @@ export function MuseSidebar({
   onShowForks,
   mobileOpen = false,
   onMobileOpenChange,
+  collapsed: collapsedProp,
+  onToggleCollapsed,
 }: {
+  /** The shell's collapsed state (`useSidebarCollapsed`); the sidebar keeps its own without it. */
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
   botId: string;
   /** The name shown beside the orb. */
   museName?: string;
@@ -199,7 +214,11 @@ export function MuseSidebar({
   const { count: working } = useNovaWork({ botId, runs, messages });
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
-  const [desktopCollapsed, toggleCollapsed] = useSidebarCollapsed();
+  const [ownCollapsed, ownToggle] = useSidebarCollapsed();
+  const desktopCollapsed = collapsedProp ?? ownCollapsed;
+  const toggleCollapsed = onToggleCollapsed ?? ownToggle;
+  const orbInSidebar = useOrbHome("sidebar");
+  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     const current = ++generation.current;
@@ -306,6 +325,7 @@ export function MuseSidebar({
           name={museName}
           working={working}
           collapsed={collapsed}
+          hasOrb={orbInSidebar && !collapsed && mobile !== isDesktop}
           onToggle={mobile ? undefined : toggleCollapsed}
         />
         {/* Sections, chats and goals scroll together; the footer stays pinned below them. */}

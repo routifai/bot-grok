@@ -1,8 +1,7 @@
 import type { Bot, ComputerStatus, TaughtSkill } from "@aiden/contracts";
 import { BotAvatar, Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { X } from "lucide-react";
-import { NovaOrb } from "../../../components/ai/orb";
+import { Monitor, X } from "lucide-react";
 import { ComputerMaintenanceActions } from "../../../components/ComputerMaintenanceActions";
 import { TeachCaptureOverlay } from "../../../components/teach/TeachCaptureOverlay";
 import { TeachComputerOverlayControl } from "../../../components/teach/TeachComputerOverlay";
@@ -13,6 +12,7 @@ import {
 import { screenIframeSandbox } from "../../../lib/computer-screen";
 import { type activeThreadRuns, userHoldsComputerControl } from "../../../lib/thread-events";
 import { museMode } from "../chrome/museMode";
+import { NovaTile } from "../chrome/NovaTile";
 import { StatusPill } from "../ui";
 import {
   ComputerReleaseActions,
@@ -117,7 +117,9 @@ export function ComputerOverlay({
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 {museMode ? (
-                  <NovaOrb size={28} />
+                  <NovaTile tone="gray" size={28}>
+                    <Monitor strokeWidth={2.2} />
+                  </NovaTile>
                 ) : (
                   <BotAvatar
                     color={computerBot.color}

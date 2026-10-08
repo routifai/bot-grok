@@ -2,7 +2,6 @@ import type { IllustrationKey } from "@aiden/contracts";
 import { cn } from "@aiden/ui-web";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { NovaOrb } from "../../../components/ai/orb";
 import { illustrationUrl } from "../../../lib/illustrations";
 
 // Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen
@@ -490,7 +489,8 @@ export function EmptyState({
   className?: string;
 }) {
   const rich = Boolean(suggestions?.length && onSuggestion);
-  // Nova's orb is hidden by default (owner request); pass `face` to show it.
+  // Nova's orb has one home (the sidebar), so an empty state never shows it; `face` now only
+  // shows the section's illustration.
   const showFace = Boolean(face);
   return (
     <div
@@ -499,18 +499,8 @@ export function EmptyState({
         className,
       )}
     >
-      {showFace ? (
-        <div className="relative">
-          <NovaOrb size={72} />
-          {illustration ? (
-            <img
-              src={illustrationUrl(illustration)}
-              alt=""
-              loading="lazy"
-              className="-right-3 -bottom-1.5 absolute size-9 rotate-[10deg] drop-shadow-sm"
-            />
-          ) : null}
-        </div>
+      {showFace && illustration ? (
+        <img src={illustrationUrl(illustration)} alt="" loading="lazy" className="size-14" />
       ) : null}
       <div className="max-w-[380px]">
         {headline ? (

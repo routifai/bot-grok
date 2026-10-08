@@ -1,6 +1,7 @@
 import { Trans } from "@lingui/react/macro";
-import { NovaOrb } from "../../../components/ai/orb";
 import { illustrationUrl } from "../../../lib/illustrations";
+import { SparkGlyph } from "../chrome/NovaGlyphs";
+import { NovaTile } from "../chrome/NovaTile";
 
 const CARD = "nova-card p-4";
 
@@ -13,7 +14,9 @@ export function FeedPreview(_props: { botName: string; color: string }) {
     <div aria-hidden="true" className="flex flex-col gap-3 rounded-[22px] bg-window p-5 sm:p-7">
       <div className={CARD}>
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <NovaOrb size={20} />
+          <NovaTile tone="blue" size={20}>
+            <SparkGlyph />
+          </NovaTile>
           <Trans>From Q3 portfolio review · 7:40</Trans>
         </div>
         <div className="mt-2.5 flex gap-4">

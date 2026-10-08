@@ -1,7 +1,7 @@
 import type { ThreadMessage } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
 import type { ReactNode } from "react";
-import { NovaOrb } from "../../../components/ai/orb";
+import { NovaOrb, useOrbHome } from "../../../components/ai/orb";
 import { MuseLiveStatus } from "./MuseLiveStatus";
 import { type ChatProject, ProjectChip } from "./ProjectChip";
 import type { MuseLiveRun } from "./useMuseLiveState";
@@ -22,8 +22,8 @@ export function ToolbarGroup({ children }: { children: ReactNode }) {
 /**
  * The Conversation's toolbar (docs/muse/DESIGN.md "Window"): 56px, no hairline. The title
  * with a quiet subtitle beside it (Nova's live status while it works, "New" on the start
- * page), and the header actions on the right in one glass pill group. Below `xl`, where the
- * inspector and its Nova header are hidden, a small orb leads the title so Nova still shows.
+ * page), and the header actions on the right in one glass pill group. While the sidebar is
+ * collapsed or hidden, Nova's orb leads the title (its one fallback home, placement.tsx).
  */
 export function ConversationHeader({
   botId,
@@ -32,7 +32,6 @@ export function ConversationHeader({
   messages,
   actions,
   leading,
-  identityCollapsed,
   isNew = false,
   onOpenWaiting,
   project,
@@ -48,8 +47,8 @@ export function ConversationHeader({
   actions?: ReactNode;
   /** Controls that sit before the pill group (the Chat | Forks switch). */
   leading?: ReactNode;
-  /** Whether the inspector's own Nova header isn't visible right now. */
-  identityCollapsed: boolean;
+  /** Kept for callers; the orb's place comes from `useOrbHome`. */
+  identityCollapsed?: boolean;
   /** The empty start page: the subtitle reads "New". */
   isNew?: boolean;
   onOpenWaiting?: () => void;
@@ -57,14 +56,15 @@ export function ConversationHeader({
   onOpenProject?: (project: ChatProject) => void;
 }) {
   const { t } = useLingui();
+  // The orb's fallback home: here only while the sidebar is collapsed or hidden.
+  const orbHere = useOrbHome("toolbar");
   return (
     <div className="app-drag relative z-10 flex h-14 shrink-0 items-center gap-2.5 ps-5 pe-4">
-      <span
-        data-testid="conversation-header-compact-identity"
-        className={identityCollapsed ? "flex" : "flex xl:hidden"}
-      >
-        <NovaOrb size={22} />
-      </span>
+      {orbHere ? (
+        <span data-testid="conversation-header-compact-identity" className="flex">
+          <NovaOrb size={22} />
+        </span>
+      ) : null}
       <h1
         data-testid="conversation-header-title"
         className="shrink-0 text-[15px] font-semibold tracking-[-0.2px] text-foreground"

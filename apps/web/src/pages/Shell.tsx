@@ -36,9 +36,17 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppRail, type MuseRailView } from "../components/AppRail";
-import { NovaPresenceProvider } from "../components/ai/orb";
+import {
+  flyOrb,
+  NovaPresenceProvider,
+  type OrbFlight,
+  OrbHomeProvider,
+  orbPlacement,
+  useIsDesktop,
+} from "../components/ai/orb";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
 import type { ArtifactTarget } from "../lib/artifact-open";
@@ -57,7 +65,7 @@ import {
   EmptyConversationLead,
   EmptyConversationSuggestions,
 } from "./muse/chrome/EmptyConversation";
-import { MuseSidebar } from "./muse/chrome/MuseSidebar";
+import { MuseSidebar, useSidebarCollapsed } from "./muse/chrome/MuseSidebar";
 import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
 import { type ChatProject, useChatProject } from "./muse/chrome/ProjectChip";
@@ -492,8 +500,38 @@ export function ShellPage() {
       messageCount: transcriptMessages.length,
       running: transcriptRunning,
     }) === "start";
+  // The start page stays on screen until the orb's flight begins: `shownStart` follows
+  // `startPage`, but leaving it runs through flyOrb (a View Transition, a FLIP, or a cut under
+  // reduced motion), so the orb reads as one object moving from the center to its home.
+  const [shownStart, setShownStart] = useState(startPage);
+  const orbFlight = useRef<OrbFlight | null>(null);
+  const flightQueued = useRef(false);
+  const latestStartPage = useRef(startPage);
+  latestStartPage.current = startPage;
+  useLayoutEffect(() => {
+    if (startPage === shownStart) return;
+    if (startPage) {
+      setShownStart(true);
+      return;
+    }
+    if (flightQueued.current) return;
+    flightQueued.current = true;
+    // Out of the commit phase, so the update can flush synchronously inside the transition.
+    queueMicrotask(() => {
+      flightQueued.current = false;
+      if (latestStartPage.current) return;
+      orbFlight.current = flyOrb(() => flushSync(() => setShownStart(false)));
+    });
+  }, [startPage, shownStart]);
   const composerDock = useRef<HTMLDivElement>(null);
-  useDockTransition(composerDock, startPage);
+  // A View Transition already glides the composer (`nova-composer`); the FLIP is the fallback.
+  useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
+  const [sidebarCollapsed, toggleSidebarCollapsed] = useSidebarCollapsed();
+  const isDesktop = useIsDesktop();
+  const orbHome = orbPlacement({
+    startPage: shownStart,
+    sidebarVisible: isDesktop ? !sidebarCollapsed : navOpen,
+  });
   const conversationSnapshot = useMemo(
     () => (activeSnapshot ? { ...activeSnapshot, messages: conversationMessages } : null),
     [activeSnapshot, conversationMessages],
@@ -802,6 +840,8 @@ export function ShellPage() {
             forks.showForks(filter);
           }}
           mobileOpen={navOpen}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={toggleSidebarCollapsed}
           onMobileOpenChange={setNavOpen}
         />
       ) : (
@@ -911,7 +951,7 @@ export function ShellPage() {
                     // below `xl`), this header's compact identity covers it instead.
                     identityCollapsed={contextPanelCollapsed || panel !== null}
                     onOpenWaiting={() => setWaitingOpen(true)}
-                    isNew={startPage}
+                    isNew={shownStart}
                     project={conversationProject}
                     onOpenProject={openProjectFiles}
                     leading={
@@ -1029,7 +1069,7 @@ export function ShellPage() {
                     onFilter={forks.setFilter}
                     onOpen={forks.openRow}
                   />
-                ) : startPage ? (
+                ) : shownStart ? (
                   <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
                 ) : (
                   <Transcript
@@ -1109,7 +1149,11 @@ export function ShellPage() {
                 ) : null}
                 {active || activeGroup ? (
                   // Kept mounted under the Forks list so a half-written message survives.
-                  <div ref={composerDock} hidden={forksView || undefined}>
+                  <div
+                    ref={composerDock}
+                    hidden={forksView || undefined}
+                    style={{ viewTransitionName: museMode ? "nova-composer" : undefined }}
+                  >
                     <Composer
                       key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
                       museMode={museMode}
@@ -1171,7 +1215,7 @@ export function ShellPage() {
                     />
                   </div>
                 ) : null}
-                {startPage ? (
+                {shownStart ? (
                   <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
                 ) : null}
               </div>
@@ -1414,13 +1458,15 @@ export function ShellPage() {
           // The window ground around Nova's rounded content window.
           <div className="muse-wash flex h-full md:p-2">
             {active ? (
-              <NovaPresence
-                botId={active.id}
-                runs={currentRuns}
-                messages={activeSnapshot?.messages}
-              >
-                {shell}
-              </NovaPresence>
+              <OrbHomeProvider home={orbHome}>
+                <NovaPresence
+                  botId={active.id}
+                  runs={currentRuns}
+                  messages={activeSnapshot?.messages}
+                >
+                  {shell}
+                </NovaPresence>
+              </OrbHomeProvider>
             ) : (
               shell
             )}

@@ -7,7 +7,12 @@ import { useLayoutEffect, useRef } from "react";
  * animates from where it was). Positions are only read while centered, which is the one side
  * the glide starts from, so a busy thread pays nothing. Skipped under reduced motion.
  */
-export function useDockTransition(ref: RefObject<HTMLElement | null>, centered: boolean): void {
+export function useDockTransition(
+  ref: RefObject<HTMLElement | null>,
+  centered: boolean,
+  /** True when something else (a View Transition) already moves the composer. */
+  handledElsewhere?: () => boolean,
+): void {
   const centeredTop = useRef<number | null>(null);
   useLayoutEffect(() => {
     const element = ref.current;
@@ -19,6 +24,7 @@ export function useDockTransition(ref: RefObject<HTMLElement | null>, centered: 
     const from = centeredTop.current;
     centeredTop.current = null;
     if (from === null || typeof element.animate !== "function") return;
+    if (handledElsewhere?.()) return;
     const delta = from - element.offsetTop;
     if (Math.abs(delta) < 2) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;

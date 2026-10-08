@@ -12,7 +12,6 @@ import {
   XIcon,
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
-import { NovaOrb } from "../components/ai/orb";
 import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
 import {
   ComputerSettingsPanel,
@@ -36,8 +35,9 @@ export type SettingsSection =
   | "computer"
   | "updates";
 
-/** Nova's Settings sidebar: one colored tile per section, Mac style (Nova itself is the orb). */
+/** Nova's Settings sidebar: one colored tile per section, Mac style. */
 const SETTINGS_TONE: Partial<Record<SettingsSection, TileTone>> = {
+  aiden: "blue",
   general: "gray",
   voice: "red",
   computer: "blue",
@@ -212,17 +212,13 @@ export function SettingsOverlay({
                   }
                 >
                   {museMode ? (
-                    item.id === "aiden" ? (
-                      <NovaOrb size={22} className="max-sm:hidden" />
-                    ) : (
-                      <NovaTile
-                        tone={SETTINGS_TONE[item.id] ?? "gray"}
-                        size={22}
-                        className="max-sm:hidden"
-                      >
-                        <Icon strokeWidth={2.4} />
-                      </NovaTile>
-                    )
+                    <NovaTile
+                      tone={SETTINGS_TONE[item.id] ?? "gray"}
+                      size={22}
+                      className="max-sm:hidden"
+                    >
+                      <Icon strokeWidth={2.4} />
+                    </NovaTile>
                   ) : (
                     <Icon className="size-4 shrink-0 max-sm:hidden" strokeWidth={1.75} />
                   )}

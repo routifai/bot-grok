@@ -6,7 +6,6 @@ import { useLingui } from "@lingui/react/macro";
 import { Bell, BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MuseRailView } from "../../../components/AppRail";
-import { NovaOrb } from "../../../components/ai/orb";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { rpc } from "../../../lib/rpc";
 import { AskDecisionCard, useAsks } from "../asks";
@@ -442,7 +441,6 @@ function IdentityHeader({
   const { t: tt } = useLingui();
   return (
     <div className="flex min-w-0 items-center gap-2.5 px-1 py-0.5">
-      <NovaOrb size={26} />
       <span
         data-testid="context-panel-muse-name"
         className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.2px] text-foreground"

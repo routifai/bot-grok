@@ -3,10 +3,20 @@ import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import { CircleAlert, CircleSlash } from "lucide-react";
 import type { ReactNode } from "react";
-import { NovaOrb } from "../../../components/ai/orb";
 import { ChevronGlyph } from "./NovaGlyphs";
 import { NovaTile, type TileTone } from "./NovaTile";
 import { ACTIVITY_SOURCE_ICON } from "./toolIcons";
+
+/** Live work: a small accent dot with a slow opacity pulse (still under reduced motion). The
+ * orb itself lives in one place only (components/ai/orb/placement.tsx). */
+export function WorkingDot() {
+  return (
+    <span
+      aria-hidden="true"
+      className="size-[7px] shrink-0 rounded-full bg-tint motion-safe:animate-[rkPulse_1.6s_ease-in-out_infinite]"
+    />
+  );
+}
 
 /** Where a settled piece of work came from, as a tile color. */
 const SOURCE_TONE: Record<ActivitySource, TileTone> = {
@@ -29,7 +39,13 @@ function WorkLead({
   source?: ActivitySource;
   size: number;
 }) {
-  if (status === "in_progress") return <NovaOrb size={size - 6} state="working" />;
+  if (status === "in_progress") {
+    return (
+      <span aria-hidden="true" className="grid place-items-center" style={{ width: size }}>
+        <WorkingDot />
+      </span>
+    );
+  }
   if (!status) {
     return (
       <span aria-hidden="true" className="grid place-items-center" style={{ width: size }}>
@@ -61,11 +77,11 @@ function WorkLead({
 
 /**
  * One piece of work (the "Working" line), in two shapes:
- * - `list` (the inspector): an iOS grouped-list row, 52px, a live orb or a colored source tile
+ * - `list` (the inspector): an iOS grouped-list row, 52px, a pulsing dot or a colored source tile
  *   on the left, the title over "Now · <live step>" or the outcome, a mono figure (elapsed
  *   while working, else the clock) and a chevron. Rows sit in a `.nova-group`.
  * - `inline` (under a message that started a Helper): a soft rounded row with a tiny orb, the
- *   title, the step and a timer.
+ *   title, the step and a timer (a small pulsing dot while it works).
  */
 export function ActivityLine({
   status,

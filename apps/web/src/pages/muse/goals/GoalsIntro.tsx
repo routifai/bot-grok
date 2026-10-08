@@ -2,9 +2,10 @@ import { cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ArrowUp, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { NovaOrb } from "../../../components/ai/orb";
 import type { IllustrationKey } from "../../../lib/illustrations";
 import { illustrationUrl } from "../../../lib/illustrations";
+import { GoalsGlyph, SparkGlyph } from "../chrome/NovaGlyphs";
+import { NovaTile } from "../chrome/NovaTile";
 import { MUSE_TYPE, MuseColumn } from "../ui";
 import { GoalRing, GoalStep } from "./visuals";
 
@@ -49,9 +50,9 @@ function GoalStage({ botName }: { botName: string }) {
         <div className="sm:ms-auto sm:w-[380px]">
           <div className="rounded-[22px] border border-line bg-panel p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
             <div className="flex items-start gap-3">
-              <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-card shadow-sm">
-                <NovaOrb size={30} />
-              </span>
+              <NovaTile tone="blue" size={36}>
+                <SparkGlyph />
+              </NovaTile>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-[13px] font-semibold text-foreground">{botName}</span>
@@ -94,7 +95,9 @@ function GoalComposer({ onStart }: { onStart: (text: string) => void }) {
         if (ready) onStart(text.trim());
       }}
     >
-      <NovaOrb size={34} />
+      <NovaTile tone="green" size={34}>
+        <GoalsGlyph />
+      </NovaTile>
       <input
         value={text}
         onChange={(event) => setText(event.target.value)}

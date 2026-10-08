@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
-import { NovaOrb } from "../../../components/ai/orb";
+import { NovaOrb, useOrbHome } from "../../../components/ai/orb";
 import { greetingLead } from "./greeting";
 import { CalendarGlyph, GoalsGlyph, SearchGlyph, SparkGlyph } from "./NovaGlyphs";
 import { NovaTile, type TileTone } from "./NovaTile";
@@ -16,13 +16,14 @@ export function EmptyConversationLead({ personName }: { personName: string }) {
   // Stable for the life of this empty state; a running clock here would be
   // motion the person never asked for.
   const lead = useMemo(() => greetingLead(new Date(), personName), [personName]);
+  const orbHere = useOrbHome("hero");
   return (
     <div
       data-testid="empty-conversation"
       className="flex flex-1 flex-col justify-end px-5 pt-10 pb-5 sm:px-8"
     >
       <div className="mx-auto flex w-full max-w-[640px] flex-col items-center text-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-500">
-        <NovaOrb size={96} />
+        {orbHere ? <NovaOrb size={96} /> : <span aria-hidden="true" className="size-24" />}
         <h1 className="mt-5 text-[30px] leading-[1.15] font-semibold tracking-[-0.4px] text-balance text-foreground">
           {lead}
         </h1>
@@ -63,7 +64,6 @@ export function EmptyConversationSuggestions({ onSend }: { onSend: (text: string
           <button
             key={app.prompt}
             type="button"
-            title={app.prompt}
             onClick={() => onSend(app.prompt)}
             className="group/app flex w-[72px] flex-col items-center gap-[7px] rounded-xl pb-1 text-[12px] tracking-[-0.08px] text-ink-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >

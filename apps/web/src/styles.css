@@ -396,6 +396,30 @@ body,
   translate: 18px 0;
 }
 
+/* The orb's flight from the start page to its home (components/ai/orb/flight.ts): the orb and
+   the composer move as one object each on an Apple-like spring; the rest crossfades. */
+::view-transition-group(nova-orb),
+::view-transition-group(nova-composer) {
+  animation-duration: 600ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+::view-transition-old(nova-orb),
+::view-transition-new(nova-orb) {
+  animation-duration: 600ms;
+  height: 100%;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 300ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+}
+
 /* Keyboard focus everywhere in Nova: the accent at 50%. */
 [data-product="muse"] :focus-visible {
   outline-color: var(--ring);
