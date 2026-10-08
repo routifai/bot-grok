@@ -354,7 +354,9 @@ export function MuseSidebar({
             icon={<ConversationGlyph />}
             tint="text-tint"
             label={t`Conversation`}
-            current={active === "conversation" && !activeChatId}
+            current={
+              active === "conversation" && !activeChatId && !activeForkId
+            }
             onClick={() => go(onNavigate, "conversation")}
           />
           <ChatTree

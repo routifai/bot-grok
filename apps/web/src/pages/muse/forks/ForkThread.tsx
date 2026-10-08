@@ -18,7 +18,12 @@ import {
 import { MessageHoverActions } from "../conversation/MessageHoverActions";
 import { MessageView } from "../conversation/MessageView";
 import { ForkComposer } from "./ForkComposer";
-import { ForkOverlay, type ForkWire, LiftedMessage, OverlayTopBar } from "./ForkOverlay";
+import {
+  ForkOverlay,
+  type ForkWire,
+  LiftedMessage,
+  OverlayTopBar,
+} from "./ForkOverlay";
 import { ForkUnderMessage } from "./ForkUnderMessage";
 import {
   FORK_TONE_CLASS,
@@ -40,7 +45,10 @@ export type ForkThreadTarget = {
 };
 
 /** A fork's entry on its anchor as a thread target. */
-export function forkTarget(fork: MessageFork, anchor: ThreadMessage | null): ForkThreadTarget {
+export function forkTarget(
+  fork: MessageFork,
+  anchor: ThreadMessage | null,
+): ForkThreadTarget {
   return {
     chat: {
       id: fork.chatId,
@@ -125,14 +133,24 @@ export function ForkThread({
     void wire
       .transcript({ botId: bot.id, chatId: parentId })
       .then((page) => {
-        if (!cancelled) setParentAnchor(page.messages.find((m) => m.id === anchorId) ?? null);
+        if (!cancelled)
+          setParentAnchor(page.messages.find((m) => m.id === anchorId) ?? null);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [anchorId, bot.id, parentId, parentIsConversation, wire, thread.messages?.length]);
-  const inConversation = conversationMessages.find((message) => message.id === anchorId);
+  }, [
+    anchorId,
+    bot.id,
+    parentId,
+    parentIsConversation,
+    wire,
+    thread.messages?.length,
+  ]);
+  const inConversation = conversationMessages.find(
+    (message) => message.id === anchorId,
+  );
   const anchor = inConversation ?? parentAnchor ?? target.anchor;
   const missingRef = useRef(onMissingAnchor);
   missingRef.current = onMissingAnchor;
@@ -158,7 +176,8 @@ export function ForkThread({
   );
   const siblings = pills.length > 1 ? pills : [];
   // A fork of the Conversation can be forked once more; deeper starts a plain Side Chat.
-  const canFork = Boolean(lineage && parentIsConversation) && status !== "archived";
+  const canFork =
+    Boolean(lineage && parentIsConversation) && status !== "archived";
   const writable = status !== "archived" && !thread.readOnly;
 
   const messages = useMemo(
@@ -182,7 +201,8 @@ export function ForkThread({
     if (!element) return;
     const onScroll = () => {
       following.current =
-        element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_SLACK_PX;
+        element.scrollHeight - element.scrollTop - element.clientHeight <
+        FOLLOW_SLACK_PX;
     };
     element.addEventListener("scroll", onScroll, { passive: true });
     return () => element.removeEventListener("scroll", onScroll);
@@ -209,7 +229,10 @@ export function ForkThread({
     }
   };
 
-  const artifactTarget = useMemo<ArtifactTarget>(() => ({ botId: bot.id }), [bot.id]);
+  const artifactTarget = useMemo<ArtifactTarget>(
+    () => ({ botId: bot.id }),
+    [bot.id],
+  );
 
   return (
     <ForkOverlay
@@ -224,14 +247,19 @@ export function ForkThread({
       >
         <OverlayTopBar onClose={onClose} backRef={backRef}>
           {siblings.map((fork) => {
-            const siblingTone = forkTone({ chatId: fork.chatId, status: messageForkStatus(fork) });
+            const siblingTone = forkTone({
+              chatId: fork.chatId,
+              status: messageForkStatus(fork),
+            });
             const current = fork.chatId === chat.id;
             return (
               <button
                 key={fork.chatId}
                 type="button"
                 aria-current={current || undefined}
-                onClick={() => (current ? undefined : onOpenFork(forkTarget(fork, anchor)))}
+                onClick={() =>
+                  current ? undefined : onOpenFork(forkTarget(fork, anchor))
+                }
                 className={cn(
                   "inline-flex h-7 max-w-[220px] items-center gap-1.5 rounded-full border bg-card px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
                   current
@@ -241,7 +269,10 @@ export function ForkThread({
               >
                 <i
                   aria-hidden="true"
-                  className={cn("size-2 shrink-0 rounded-full", FORK_TONE_CLASS[siblingTone].bg)}
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    FORK_TONE_CLASS[siblingTone].bg,
+                  )}
                 />
                 <span className="truncate" dir="auto">
                   {fork.title}
@@ -280,7 +311,9 @@ export function ForkThread({
                     artifactTarget={artifactTarget}
                     canFork={canFork && message.forks !== undefined}
                     onFork={(anchorMessage) => onAsk(anchorMessage, chat.id)}
-                    onOpenFork={(fork, forkAnchor) => onOpenFork(forkTarget(fork, forkAnchor))}
+                    onOpenFork={(fork, forkAnchor) =>
+                      onOpenFork(forkTarget(fork, forkAnchor))
+                    }
                   />
                 ))}
                 {working ? (
@@ -303,7 +336,8 @@ export function ForkThread({
           </ReplyCardThreadProvider>
         </ReplyCardBotProvider>
 
-        <div className="sticky bottom-0 mt-auto flex flex-col gap-2.5 pt-2 sm:ps-[52px]">
+        {/* The reply bar floats over the thread: a soft ground fades the messages out behind it. */}
+        <div className="sticky bottom-0 isolate mt-auto flex flex-col gap-2.5 pt-2 pb-3 before:absolute before:-inset-x-6 before:-top-8 before:-bottom-7 before:-z-10 before:bg-linear-to-t before:from-ground before:from-60% before:to-transparent before:content-[''] sm:ps-[52px]">
           {writable ? (
             <ForkComposer
               tone={tone}
@@ -352,7 +386,10 @@ export function ForkThread({
               </Button>
             ) : null}
             {actionFailed ? (
-              <span role="alert" className="text-[12.5px] text-muted-foreground">
+              <span
+                role="alert"
+                className="text-[12.5px] text-muted-foreground"
+              >
                 {t`Something went wrong.`}
               </span>
             ) : null}
@@ -424,7 +461,9 @@ function ThreadReply({
 }) {
   const user = message.role === "user";
   const text = user
-    ? message.blocks.flatMap((block) => (block.kind === "text" ? [block.text] : [])).join("\n\n")
+    ? message.blocks
+        .flatMap((block) => (block.kind === "text" ? [block.text] : []))
+        .join("\n\n")
     : "";
   return (
     <div
@@ -435,7 +474,9 @@ function ThreadReply({
         user ? "items-end" : "items-start",
       )}
     >
-      <div className={cn("relative min-w-0", user ? "max-w-[82%]" : "max-w-[92%]")}>
+      <div
+        className={cn("relative min-w-0", user ? "max-w-[82%]" : "max-w-[92%]")}
+      >
         {message.id === "optimistic" ? null : (
           <MessageHoverActions
             message={message}
