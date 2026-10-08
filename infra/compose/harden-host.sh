@@ -4,9 +4,11 @@ set -Eeuo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
 SSH_PORT="${SSH_PORT:-22}"
+# Addresses fail2ban never bans, e.g. the admin machine running the setup (space-separated).
+FAIL2BAN_IGNORE_IP="${FAIL2BAN_IGNORE_IP:-}"
 
 if [[ "${EUID}" -ne 0 ]]; then
-  exec sudo --preserve-env=DEPLOY_USER,SSH_PORT bash "$0" "$@"
+  exec sudo --preserve-env=DEPLOY_USER,SSH_PORT,FAIL2BAN_IGNORE_IP bash "$0" "$@"
 fi
 
 if ! id "${DEPLOY_USER}" >/dev/null 2>&1; then
@@ -58,6 +60,7 @@ sshd -t
 cat >/etc/fail2ban/jail.d/sshd.local <<EOF
 [sshd]
 enabled = true
+ignoreip = 127.0.0.1/8 ::1 ${FAIL2BAN_IGNORE_IP}
 backend = systemd
 port = ${SSH_PORT}
 maxretry = 3
