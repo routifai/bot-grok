@@ -3274,6 +3274,12 @@ def create_runner_app(
         tuple[str, str, str | None, str | None], asyncio.Task[JSONResponse]
     ] = {}
     _recovery_turn_ids: dict[str, set[str]] = {}
+    # session_id → id of the persisted user item a history-resume recovery
+    # turn (started by session init) is answering. The server's forward of
+    # that same item (``persisted_item_id``) is then already answered and is
+    # dropped instead of buffered into a second turn — the double reply after
+    # a cold start, when the tunnel-reconnect init races the message forward.
+    _recovery_resumed_item_ids: dict[str, str] = {}
     _session_init_envelopes: dict[str, tuple[float, RunnerSessionInitEnvelope]] = {}
     # session_id → canonical reasoning effort, seeded from the session-init
     # snapshot and updated by ``effort_change``. In-process harnesses learn the
@@ -5051,6 +5057,9 @@ def create_runner_app(
                 and session_id not in _active_turns
             ):
                 recovery_turn = "history_resume"
+                resumed_item_id = _last_server_item_id.get(session_id)
+                if last_type == "message" and last_role == "user" and resumed_item_id:
+                    _recovery_resumed_item_ids[session_id] = resumed_item_id
                 _begin_turn_slot(session_id)
                 _publish_turn_status(session_id, "running")
                 msg_body = {
@@ -5367,6 +5376,7 @@ def create_runner_app(
         # Clear all desync/turn state so a recreated same-id session starts clean.
         _turn_bind_epoch.pop(session_id, None)
         _recovery_turn_ids.pop(session_id, None)
+        _recovery_resumed_item_ids.pop(session_id, None)
         _desync_terminalized.pop(session_id, None)
         _desynced_sessions.discard(session_id)
         _required_terminal_exit_errors.pop(session_id, None)
@@ -11195,6 +11205,29 @@ def create_runner_app(
                 while _ingest_now_serving.get(conversation_id, 0) != _seq:
                     await _cond.wait()
             try:
+                _persisted_item_id = message_body.get("persisted_item_id")
+                if (
+                    _persisted_item_id
+                    and _recovery_resumed_item_ids.get(conversation_id) == _persisted_item_id
+                ):
+                    # Session init already started a recovery turn for this
+                    # exact persisted message (it was the trailing user item in
+                    # history). Running it again would answer it twice.
+                    _recovery_resumed_item_ids.pop(conversation_id, None)
+                    _logger.info(
+                        "post_session_events: message %s already answered by the "
+                        "recovery turn; not starting another conv=%s",
+                        _persisted_item_id,
+                        conversation_id,
+                        extra={"session_id": conversation_id},
+                    )
+                    return JSONResponse(
+                        status_code=202,
+                        content={
+                            "status": "already_running",
+                            "detail": "The recovery turn is already answering this message.",
+                        },
+                    )
                 _raw_content = message_body.get("content")
                 if isinstance(_raw_content, list):
                     message_body["content"] = await _resolve_forwarded_message_content(

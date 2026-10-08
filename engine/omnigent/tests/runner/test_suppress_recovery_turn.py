@@ -256,12 +256,11 @@ async def test_without_suppress_recovery_turn_starts_recovery_turn_from_history(
 ) -> None:
     """Without suppress_recovery_turn the runner starts a recovery turn from history.
 
-    This documents the pre-fix behaviour: when the session-init envelope does
-    NOT carry suppress_recovery_turn=True, the runner sees the persisted user
-    message in history and starts a recovery turn immediately.  A subsequent
-    forward then finds an active turn and buffers the message.  After the
-    recovery turn finishes, _check_and_start_next_turn processes the buffered
-    message as a second turn, so the harness is called twice.
+    When the session-init envelope does NOT carry suppress_recovery_turn=True
+    (the tunnel-reconnect hook), the runner sees the persisted user message in
+    history and answers it with a recovery turn. The server's later forward of
+    that same item (``persisted_item_id``) is already answered: it must not
+    start a second turn.
     """
     app, _pm, harness = _build_sdk_app(_HistoryServerClient())
     caplog.set_level(logging.INFO, logger="omnigent.runner.app")
@@ -284,10 +283,6 @@ async def test_without_suppress_recovery_turn_starts_recovery_turn_from_history(
         _assert_browser_tools_hidden(harness.posted_bodies[0])
         assert _init_rows(caplog)[0]["recovery_turn"] == "history_resume"
 
-        # Now forward the message: since the recovery turn already ran and
-        # _active_turns is now empty, the forward triggers a second turn.
-        # (In the original bug, the forward would have been buffered _during_
-        # the recovery turn and then replayed after it, resulting in two turns.)
         forward_resp = await client.post(
             f"/v1/sessions/{SESSION_ID}/events",
             params={"stream": "true"},
@@ -299,16 +294,79 @@ async def test_without_suppress_recovery_turn_starts_recovery_turn_from_history(
                 "persisted_item_id": "msg_001",
             },
         )
-        assert forward_resp.status_code == 200, (
-            f"Message forward returned {forward_resp.status_code}: {forward_resp.text}"
-        )
-        _ = forward_resp.text  # drain
+        assert forward_resp.status_code == 202, forward_resp.text
+        assert forward_resp.json()["status"] == "already_running"
+        await asyncio.sleep(0.1)
 
-        # Second turn ran — harness called twice total.
-        assert len(harness.posted_bodies) == 2, (
-            "Expected two harness calls total (recovery turn + forward-triggered turn); "
-            f"got {len(harness.posted_bodies)}"
+        assert len(harness.posted_bodies) == 1, (
+            "the forward of the message the recovery turn answered ran a second turn"
         )
+
+
+@pytest.mark.asyncio
+async def test_forward_during_recovery_turn_is_not_replayed_after_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The live double reply: the forward lands while the recovery turn runs.
+
+    A cold-started runner's reconnect init starts a recovery turn for the
+    trailing user message; the server's forward of that same message arrives
+    mid-turn. It must not be buffered and replayed as a second turn once the
+    recovery turn ends. A different message arriving later still runs.
+    """
+    started, release = asyncio.Event(), asyncio.Event()
+    original = _ScriptedHarnessClient._StreamHandle.aiter_text
+
+    async def gated_stream(handle: Any) -> Any:
+        started.set()
+        await release.wait()
+        async for frame in original(handle):
+            yield frame
+
+    monkeypatch.setattr(_ScriptedHarnessClient._StreamHandle, "aiter_text", gated_stream)
+    app, _pm, harness = _build_sdk_app(_HistoryServerClient())
+    async with _runner_client(app) as client:
+        init_resp = await client.post(
+            "/v1/sessions", json=_session_init_payload(suppress_recovery_turn=False)
+        )
+        assert init_resp.status_code == 201, init_resp.text
+        await asyncio.wait_for(started.wait(), timeout=5)
+        turn = app.state.active_turns[SESSION_ID]
+        try:
+            forward_resp = await client.post(
+                f"/v1/sessions/{SESSION_ID}/events",
+                json={
+                    "type": "message",
+                    "role": "user",
+                    "agent_id": AGENT_ID,
+                    "content": [{"type": "input_text", "text": "hello from history"}],
+                    "persisted_item_id": "msg_001",
+                },
+            )
+            assert forward_resp.status_code == 202, forward_resp.text
+            assert forward_resp.json()["status"] == "already_running"
+        finally:
+            release.set()
+        await asyncio.wait_for(turn, timeout=5)
+        await asyncio.sleep(0.1)
+        assert len(harness.posted_bodies) == 1, "the recovered message was answered twice"
+
+        newer = await client.post(
+            f"/v1/sessions/{SESSION_ID}/events",
+            json={
+                "type": "message",
+                "role": "user",
+                "agent_id": AGENT_ID,
+                "content": [{"type": "input_text", "text": "a newer message"}],
+                "persisted_item_id": "msg_002",
+            },
+        )
+        assert newer.status_code == 202, newer.text
+        assert newer.json().get("status") != "already_running"
+        next_turn = app.state.active_turns.get(SESSION_ID)
+        if next_turn is not None:
+            await asyncio.wait_for(next_turn, timeout=5)
+        assert len(harness.posted_bodies) == 2
 
 
 @pytest.mark.asyncio
