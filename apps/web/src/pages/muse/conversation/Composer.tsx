@@ -411,7 +411,7 @@ export const Composer = memo(function Composer({
       onDrop={handleDrop}
       className={cn(
         "relative z-30 m-0 min-w-0 border-0 px-3 pb-4 pt-3 md:px-6 md:pb-6",
-        museMode && "mx-auto w-full max-w-[820px]",
+        museMode && "mx-auto w-full max-w-[748px] pt-2 md:pb-[18px]",
         draggingFiles && "rounded-[14px] ring-2 ring-inset ring-ring",
       )}
     >
@@ -593,7 +593,9 @@ export const Composer = memo(function Composer({
         data-testid="composer-bar"
         className={cn(
           "flex items-center gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-colors focus-within:border-ring",
-          museMode ? "rounded-[24px] shadow-float" : "rounded-full",
+          museMode
+            ? "min-h-[52px] gap-2.5 rounded-[26px] border-line bg-solid py-[7px] pe-2 ps-2.5"
+            : "rounded-full",
         )}
       >
         {onAttachmentPick ? (
@@ -737,7 +739,7 @@ export const Composer = memo(function Composer({
             rows={1}
             className={cn(
               "max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40",
-              museMode ? "text-[16px]" : "text-[15.5px]",
+              museMode ? "text-[15px] placeholder:text-ink-3" : "text-[15.5px]",
             )}
           />
         </div>
@@ -764,7 +766,7 @@ export const Composer = memo(function Composer({
               className={cn(
                 "size-8 rounded-full shadow-sm transition-transform active:scale-95",
                 museMode
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  ? "size-9 bg-primary text-primary-foreground shadow-none hover:bg-primary/90"
                   : "bg-white text-black hover:bg-white/90",
               )}
             >
@@ -790,7 +792,7 @@ export const Composer = memo(function Composer({
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",
               museMode
-                ? "bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-primary/20 disabled:text-primary-foreground/40 disabled:shadow-none"
+                ? "size-9 bg-primary text-primary-foreground shadow-none hover:bg-primary/90 disabled:bg-selection disabled:text-ink-3 disabled:opacity-100"
                 : "bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none",
             )}
           >

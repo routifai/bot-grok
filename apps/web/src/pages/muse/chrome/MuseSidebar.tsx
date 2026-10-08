@@ -36,11 +36,11 @@ const COLLAPSED_KEY = "muse:sidebar-collapsed";
 // One layout for both states: the width animates and labels fade, so every icon keeps
 // exactly the same position whether the sidebar is expanded or collapsed. Icon centers sit
 // on one column (42px from the edge), which is also the avatar's center.
-const ROW = "flex h-11 w-full items-center gap-4 rounded-xl ps-[19px] pe-3 text-start";
+const ROW = "flex h-10 w-full items-center gap-3.5 rounded-xl ps-[19px] pe-3 text-start";
 const LABEL =
   "min-w-0 flex-1 truncate whitespace-nowrap transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0";
 const ICON_MOTION =
-  "relative grid size-[22px] shrink-0 place-items-center transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/row:-translate-y-0.5 group-hover/row:scale-[1.18] group-hover/row:-rotate-6 group-active/row:scale-95 motion-reduce:transition-none motion-reduce:transform-none [&_svg]:size-[22px] [&_svg]:stroke-[1.75]";
+  "relative grid size-[22px] shrink-0 place-items-center transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/row:-translate-y-0.5 group-hover/row:scale-[1.18] group-hover/row:-rotate-6 group-active/row:scale-95 motion-reduce:transition-none motion-reduce:transform-none [&_svg]:size-5 [&_svg]:stroke-[1.75]";
 
 function useSidebarCollapsed() {
   const [collapsed, setCollapsed] = useState(() => {
@@ -233,11 +233,11 @@ export function MuseSidebar({
         data-collapsed={collapsed || undefined}
         aria-label={t`Sections`}
         className={cn(
-          "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden px-3 pt-5 pb-4",
+          "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden px-3 pt-3.5 pb-3",
           mobile
             ? "h-full w-full overflow-y-auto"
-            : "hidden border border-glass-border bg-glass shadow-float backdrop-blur-xl transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex md:rounded-2xl",
-          !mobile && (collapsed ? "w-[84px]" : "w-[320px]"),
+            : "hidden border border-line bg-panel backdrop-blur-xl transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex md:rounded-[18px]",
+          !mobile && (collapsed ? "w-[84px]" : "w-[288px]"),
         )}
       >
         {/* Sections, chats and goals scroll together; the footer stays pinned below them. */}
@@ -245,9 +245,9 @@ export function MuseSidebar({
           <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-sidebar-accent/80 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
+              className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-selection/70 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
               style={{
-                height: nav.glide?.height ?? 44,
+                height: nav.glide?.height ?? 40,
                 transform: `translateY(${nav.glide?.top ?? 0}px)`,
                 opacity: nav.glide ? 1 : 0,
               }}
@@ -282,7 +282,7 @@ export function MuseSidebar({
               aria-hidden={collapsed || undefined}
               className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
             >
-              <div className="ps-[19px] pb-2 text-[13.5px] font-semibold whitespace-nowrap text-muted-foreground">
+              <div className="ps-[19px] pb-1.5 text-[12px] font-semibold whitespace-nowrap text-ink-3">
                 <Trans>Goals</Trans>
               </div>
               {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
@@ -295,7 +295,7 @@ export function MuseSidebar({
                     type="button"
                     tabIndex={collapsed ? -1 : undefined}
                     onClick={() => onNavigate("goals")}
-                    className="flex items-center gap-3 rounded-xl ps-[26px] pe-3 py-2.5 text-start text-[15px] whitespace-nowrap text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
+                    className="flex h-9 items-center gap-3 rounded-[10px] ps-[26px] pe-3 text-start text-[14px] whitespace-nowrap text-foreground/85 transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     <span
                       aria-hidden="true"
@@ -308,7 +308,7 @@ export function MuseSidebar({
                       {goal.title}
                     </span>
                     {goal.tasks.length > 0 ? (
-                      <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
+                      <span className="shrink-0 font-mono text-[12px] tabular-nums text-ink-3">
                         {done}/{goal.tasks.length}
                       </span>
                     ) : null}
@@ -337,7 +337,7 @@ export function MuseSidebar({
           {personName ? (
             <div
               title={collapsed ? personName : undefined}
-              className={cn(ROW, "mt-1 ps-[17px] text-[15.5px] text-sidebar-foreground")}
+              className={cn(ROW, "mt-1 ps-[17px] text-[15px] font-medium text-foreground")}
             >
               <span
                 aria-hidden="true"
@@ -362,7 +362,7 @@ export function MuseSidebar({
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="w-[min(86vw,320px)] gap-0 border-glass-border bg-glass p-0 backdrop-blur-xl md:hidden"
+          className="w-[min(86vw,320px)] gap-0 border-line bg-panel p-0 backdrop-blur-xl md:hidden"
         >
           <SheetTitle className="sr-only">
             <Trans>Sections</Trans>
@@ -378,7 +378,7 @@ export function MuseSidebar({
 }
 
 const TWIG_ROW =
-  "flex h-[34px] w-full items-center gap-2 rounded-lg px-2.5 text-start text-[14px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
+  "flex h-[34px] w-full items-center gap-2 rounded-[10px] px-2.5 text-start text-[13.5px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
 
 /**
  * The Side Chats, nested under the Conversation row they branch from (agreed behavior
@@ -409,7 +409,7 @@ export function ChatTree({
     <div
       data-testid="chat-tree"
       aria-hidden={collapsed || undefined}
-      className="app-no-drag relative ms-[26px] flex flex-col gap-0.5 border-s border-border/70 py-0.5 ps-3.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
+      className="app-no-drag relative ms-[26px] flex flex-col gap-0.5 border-s border-line py-0.5 ps-3.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
     >
       {live.map((chat) => (
         <button
@@ -421,8 +421,8 @@ export function ChatTree({
           className={cn(
             TWIG_ROW,
             activeChatId === chat.id
-              ? "bg-sidebar-accent font-medium text-foreground"
-              : "text-sidebar-foreground/80 hover:bg-sidebar-accent",
+              ? "bg-selection font-medium text-foreground"
+              : "text-foreground/85 hover:bg-selection",
           )}
         >
           <span className="min-w-0 flex-1 truncate" dir="auto">
@@ -455,8 +455,8 @@ export function ChatTree({
         aria-current={activeChatId === "draft" ? "page" : undefined}
         className={cn(
           TWIG_ROW,
-          "gap-2 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
-          activeChatId === "draft" && "bg-sidebar-accent text-foreground",
+          "gap-2 text-muted-foreground hover:bg-selection hover:text-foreground",
+          activeChatId === "draft" && "bg-selection text-foreground",
         )}
       >
         <Plus size={14} strokeWidth={1.75} className="shrink-0" />
@@ -471,7 +471,7 @@ export function ChatTree({
             tabIndex={collapsed ? -1 : undefined}
             onClick={() => setArchivedOpen((value) => !value)}
             aria-expanded={archivedOpen}
-            className={cn(TWIG_ROW, "gap-1.5 text-muted-foreground hover:bg-sidebar-accent")}
+            className={cn(TWIG_ROW, "gap-1.5 text-muted-foreground hover:bg-selection")}
           >
             <ChevronRight
               size={13}
@@ -480,7 +480,9 @@ export function ChatTree({
             <span className="truncate">
               <Trans>Archived</Trans>
             </span>
-            <span className="ms-auto shrink-0 text-[12px] tabular-nums">{archived.length}</span>
+            <span className="ms-auto shrink-0 font-mono text-[12px] tabular-nums text-ink-3">
+              {archived.length}
+            </span>
           </button>
           {archivedOpen
             ? archived.map((chat) => (
@@ -493,8 +495,8 @@ export function ChatTree({
                   className={cn(
                     TWIG_ROW,
                     activeChatId === chat.id
-                      ? "bg-sidebar-accent font-medium text-foreground"
-                      : "text-muted-foreground hover:bg-sidebar-accent",
+                      ? "bg-selection font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-selection",
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate" dir="auto">
@@ -530,17 +532,15 @@ function RailRow({
 }) {
   const classes = cn(
     ROW,
-    "group/row relative text-[16px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-    current
-      ? "bg-primary/10 font-medium text-foreground"
-      : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
+    "group/row relative text-[15px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+    current ? "bg-selection text-foreground" : "text-foreground/85 hover:text-foreground",
   );
   const content = (
     <>
       <span
         className={cn(
           ICON_MOTION,
-          current ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground",
+          current ? "text-foreground" : "text-ink-2 group-hover/row:text-foreground",
         )}
       >
         {icon}
@@ -559,8 +559,8 @@ function RailRow({
       {meta && !collapsed ? (
         <span
           className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-[12.5px] font-medium tabular-nums",
-            attention ? "bg-warning/15 text-warning" : "text-muted-foreground",
+            "shrink-0 rounded-full px-2 py-0.5 font-mono text-[12px] font-medium tabular-nums",
+            attention ? "bg-warning/15 text-warning" : "text-ink-3",
           )}
         >
           {meta}

@@ -31,20 +31,20 @@ export function WaitingSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:sm:inset-y-3 data-[side=right]:sm:right-3 data-[side=right]:sm:h-auto data-[side=right]:sm:max-w-[440px] data-[side=right]:sm:rounded-3xl data-[side=right]:sm:border data-[side=right]:sm:border-border data-[side=right]:sm:shadow-float">
-        <SheetHeader className="flex-row items-center gap-2.5 px-6 pt-6 pb-2">
-          <SheetTitle className="text-[22px] font-semibold tracking-[-0.01em] text-foreground">
+      <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:sm:inset-y-3 data-[side=right]:sm:right-3 data-[side=right]:sm:h-auto data-[side=right]:sm:max-w-[440px] data-[side=right]:sm:rounded-[18px] data-[side=right]:sm:border data-[side=right]:sm:border-line data-[side=right]:sm:shadow-float">
+        <SheetHeader className="h-14 shrink-0 flex-row items-center gap-2.5 border-b border-line px-6 py-0">
+          <SheetTitle className="text-[17px] font-semibold tracking-[-0.01em] text-foreground">
             {t`Waiting on you`}
           </SheetTitle>
           {asks.length > 0 ? (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[13px] font-medium text-muted-foreground tabular-nums">
+            <span className="rounded-full bg-selection px-2 py-0.5 font-mono text-[12px] font-medium text-ink-2 tabular-nums">
               {asks.length}
             </span>
           ) : null}
         </SheetHeader>
         <div
           data-fade-top=""
-          className="rk-scroll flex flex-1 flex-col overflow-y-auto px-6 pt-3 pb-6"
+          className="rk-scroll flex flex-1 flex-col overflow-y-auto px-6 pt-4 pb-6"
         >
           {asks.length === 0 && loading ? (
             <CardSkeletonList count={2} />

@@ -1,13 +1,14 @@
 import type { ThreadMessage } from "@aiden/contracts";
 import { BotAvatar, cn } from "@aiden/ui-web";
+import { useLingui } from "@lingui/react/macro";
 import type { ReactNode } from "react";
 import { MuseLiveStatus } from "./MuseLiveStatus";
 import { type ChatProject, ProjectChip } from "./ProjectChip";
 import type { MuseLiveRun } from "./useMuseLiveState";
 
 /**
- * The Conversation's floating chrome (docs/muse/DESIGN.md "Conversation" / "Status"): no
- * title bar and no border. It floats over the transcript, which fades out beneath it.
+ * The Conversation's header (docs/muse/DESIGN.md "Conversation" / "Status"): a 56px strip
+ * above the transcript with a hairline underneath.
  * A compact identity (face + name) sits at the start whenever the context panel's own
  * Agent Identity header isn't visible (`identityCollapsed`: collapsed, a side panel
  * open, or below `xl` — ContextPanel.tsx), so the Muse's identity still shows exactly
@@ -41,8 +42,9 @@ export function ConversationHeader({
   project?: ChatProject | null;
   onOpenProject?: (project: ChatProject) => void;
 }) {
+  const { t } = useLingui();
   return (
-    <div className="app-drag pointer-events-none absolute inset-x-0 top-0 z-10 flex h-16 items-center justify-center px-4 md:px-6">
+    <div className="app-drag pointer-events-none relative z-10 flex h-14 shrink-0 items-center justify-center border-b border-line px-4 md:px-6">
       <div
         data-testid="conversation-header-compact-identity"
         className={cn(
@@ -54,10 +56,20 @@ export function ConversationHeader({
         )}
       >
         <BotAvatar color={color} identity={botId} face="muse" size={28} />
-        <span className="truncate text-[14.5px] font-medium text-foreground" dir="auto">
+        <span className="truncate text-[15px] font-semibold text-foreground" dir="auto">
           {museName}
         </span>
       </div>
+      {identityCollapsed ? null : (
+        // Wherever the compact identity hides (the context panel shows the Muse instead),
+        // the strip names the view, as the rail does.
+        <h1
+          data-testid="conversation-header-title"
+          className="pointer-events-none absolute inset-y-0 start-4 hidden items-center text-[15px] font-semibold text-foreground md:start-6 xl:flex"
+        >
+          {t`Conversation`}
+        </h1>
+      )}
       <div className="app-no-drag pointer-events-auto flex items-center gap-2">
         {project && onOpenProject ? <ProjectChip project={project} onOpen={onOpenProject} /> : null}
         <MuseLiveStatus

@@ -126,15 +126,22 @@ body,
   mask-image: linear-gradient(to bottom, transparent 0, #000 88px);
 }
 
-/* Muse glass shell (docs/muse/DESIGN.md "Background wash"): the shell root's own
-   background — large, heavily-blurred color blobs behind the whole signed-in shell.
-   Plain radial gradients fading to transparent, not a blur filter, so it paints once
-   and stays cheap however the panels above it resize. Colors come only from the wash
-   tokens. */
+/* Muse glass shell (docs/muse/DESIGN.md "Background wash"): the shell root paints the
+   ground with one soft radial wash; the rail, chat and context panels float above it as
+   translucent `panel` surfaces. A plain gradient, not a blur filter, so it paints once. */
 [data-product="muse"] .muse-wash {
-  background-color: var(--background);
-  background-image:
-    radial-gradient(760px 620px at 6% -8%, var(--wash-1), transparent 60%),
-    radial-gradient(700px 640px at 98% 14%, var(--wash-2), transparent 58%),
-    radial-gradient(820px 680px at 46% 112%, var(--wash-3), transparent 62%);
+  background-color: var(--ground);
+  background-image: radial-gradient(1200px 600px at 75% -10%, var(--ground-wash), transparent 70%);
+}
+
+/* Reduced motion: unlayered, so it outranks Tailwind's layered animation and transition
+   utilities without !important. */
+@media (prefers-reduced-motion: reduce) {
+  [data-product="muse"] *,
+  [data-product="muse"] *::before,
+  [data-product="muse"] *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
 }

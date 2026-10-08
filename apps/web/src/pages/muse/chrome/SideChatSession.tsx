@@ -196,9 +196,9 @@ function SessionHeader({
 }) {
   const { t } = useLingui();
   return (
-    <div className="app-drag pointer-events-none absolute inset-x-0 top-0 z-10 flex h-16 items-center gap-3 px-4 md:px-6">
+    <div className="app-drag pointer-events-none relative z-10 flex min-h-14 shrink-0 items-center gap-3 border-b border-line px-4 py-2 md:px-6">
       <div className="pointer-events-auto min-w-0 flex-1">
-        <div className="truncate text-[14.5px] font-medium text-foreground" dir="auto">
+        <div className="truncate text-[15px] font-semibold text-foreground" dir="auto">
           {title}
         </div>
         {meta}
@@ -207,7 +207,7 @@ function SessionHeader({
         type="button"
         onClick={onClose}
         aria-label={t`Back to the conversation`}
-        className="app-no-drag pointer-events-auto grid size-9 shrink-0 place-items-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground"
+        className="app-no-drag pointer-events-auto grid size-9 shrink-0 place-items-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
       >
         <X size={17} strokeWidth={1.75} />
       </button>
@@ -237,7 +237,7 @@ export function MessageRow({ message }: { message: ThreadMessage }) {
     return (
       <div className="flex w-fit max-w-full justify-end">
         <div
-          className="max-w-full rounded-3xl bg-chat-user px-5 py-3 text-[16px] leading-[1.6] whitespace-pre-wrap wrap-anywhere text-chat-user-foreground"
+          className="max-w-full rounded-[20px] rounded-ee-[6px] bg-bubble px-4 py-2.5 text-[15.5px] leading-[1.6] whitespace-pre-wrap wrap-anywhere text-chat-user-foreground"
           dir="auto"
         >
           {text}
@@ -247,7 +247,7 @@ export function MessageRow({ message }: { message: ThreadMessage }) {
   }
   return (
     <div className="flex w-fit max-w-full justify-start">
-      <div className="max-w-full text-[16px] leading-[1.65] text-foreground" dir="auto">
+      <div className="max-w-full text-[15.5px] leading-[1.6] text-foreground" dir="auto">
         <ChatMarkdown>{text}</ChatMarkdown>
       </div>
     </div>
@@ -323,7 +323,7 @@ function DraftSideChat({
         />
       )}
       <div
-        className={`mx-auto mb-1 w-full max-w-[820px] justify-center px-4 ${sent === null ? "flex" : "hidden"}`}
+        className={`mx-auto mb-1 w-full max-w-[748px] justify-center px-4 ${sent === null ? "flex" : "hidden"}`}
       >
         <Tooltip>
           <TooltipTrigger

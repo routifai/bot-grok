@@ -64,7 +64,7 @@ function ActivityRow({
         data-testid="activity-row"
         data-status={activity.status}
         className={cn(
-          "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
+          "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring",
           nested && "py-1.5",
         )}
       >
@@ -73,7 +73,7 @@ function ActivityRow({
           <span
             className={cn(
               "block min-w-0 truncate font-medium text-foreground",
-              nested ? "text-[13px]" : "text-[14px]",
+              nested ? "text-[13px]" : "text-[13.5px]",
             )}
             dir="auto"
           >
@@ -81,8 +81,8 @@ function ActivityRow({
           </span>
           <span
             className={cn(
-              "block min-w-0 truncate text-[13px]",
-              live ? "text-foreground/80" : "text-muted-foreground",
+              "block min-w-0 truncate text-[12.5px]",
+              live ? "text-ink-2" : "text-ink-3",
               failed && "text-foreground",
             )}
             aria-live={live ? "polite" : undefined}
@@ -93,14 +93,14 @@ function ActivityRow({
         </span>
         {live ? (
           <span
-            className="shrink-0 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums"
+            className="shrink-0 font-mono text-[11.5px] whitespace-nowrap text-ink-3 tabular-nums"
             data-testid="activity-elapsed"
           >
             {duration === null ? "" : formatDuration(duration)}
           </span>
         ) : (
           <time
-            className="shrink-0 text-[12px] whitespace-nowrap text-muted-foreground"
+            className="shrink-0 font-mono text-[11.5px] whitespace-nowrap text-ink-3 tabular-nums"
             dateTime={activity.startedAt}
           >
             {formatClockTime(activity.startedAt, i18n.locale)}
@@ -108,7 +108,7 @@ function ActivityRow({
         )}
       </button>
       {children.length > 0 ? (
-        <div className="ms-[22px] flex flex-col border-s border-border ps-1.5">
+        <div className="ms-[22px] flex flex-col border-s border-line ps-1.5">
           {children.map((child) => (
             <ActivityRow
               key={child.activity.id}
@@ -205,9 +205,7 @@ export function ActivityPanel({
     <div className="flex flex-col gap-4" data-testid="activity-panel">
       {working.length > 0 ? (
         <section className="flex flex-col gap-1" data-testid="activity-working">
-          <h3 className="px-1 text-[12.5px] font-semibold text-muted-foreground">
-            {t`Working now`}
-          </h3>
+          <h3 className="px-1 text-[12px] font-semibold text-ink-3">{t`Working now`}</h3>
           <div className="flex flex-col gap-0.5">
             {working.map((node) => (
               <ActivityRow
@@ -222,7 +220,7 @@ export function ActivityPanel({
       ) : null}
       {groups.map((group) => (
         <section key={group.date} className="flex flex-col gap-1">
-          <h3 className="px-1 text-[12.5px] font-semibold text-muted-foreground">
+          <h3 className="px-1 text-[12px] font-semibold text-ink-3">
             {group.label.kind === "today"
               ? t`Today`
               : group.label.kind === "yesterday"

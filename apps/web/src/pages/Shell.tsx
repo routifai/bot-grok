@@ -105,10 +105,9 @@ const CallView = lazy(() => import("./CallView").then((module) => ({ default: mo
 
 /** Muse glass shell (docs/muse/DESIGN.md "Background wash"): the floating panel look
  * shared by the main content area and the Conversation column inside it — a translucent
- * card over the wash, a hairline light border, and a soft wide shadow. Flush edge to
- * edge on small screens; rounded once there's room for the gaps around it. */
-const MUSE_GLASS_PANEL =
-  "border border-glass-border bg-glass shadow-float backdrop-blur-xl md:rounded-2xl";
+ * panel over the ground with a 1px line. Flush edge to edge on small screens; rounded
+ * once there's room for the gaps around it. */
+const MUSE_GLASS_PANEL = "border border-line bg-panel backdrop-blur-xl md:rounded-[18px]";
 
 export function ShellPage() {
   const { t } = useLingui();
@@ -662,7 +661,7 @@ export function ShellPage() {
       data-ready={shellReady}
       className={
         museMode
-          ? "muse-wash relative flex h-full min-w-0 overflow-hidden text-foreground/90 md:gap-2 md:p-2"
+          ? "muse-wash relative flex h-full min-w-0 overflow-hidden text-foreground md:gap-3 md:p-3"
           : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
       }
     >
@@ -736,7 +735,7 @@ export function ShellPage() {
           </div>
         ) : null}
         {museMode && active && museView === "conversation" && activeChat ? (
-          <div className="flex min-h-0 flex-1 gap-0 md:gap-2">
+          <div className="flex min-h-0 flex-1 gap-0 md:gap-3">
             <div
               className={cn(
                 "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
@@ -798,7 +797,7 @@ export function ShellPage() {
             )}
           </div>
         ) : (
-          <div className={museMode && active ? "flex min-h-0 flex-1 gap-0 md:gap-2" : "contents"}>
+          <div className={museMode && active ? "flex min-h-0 flex-1 gap-0 md:gap-3" : "contents"}>
             <div
               className={
                 museMode && active
@@ -835,7 +834,7 @@ export function ShellPage() {
                         }
                         aria-pressed={!contextPanelCollapsed}
                         onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                        className="hidden size-9 items-center justify-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground xl:grid"
+                        className="hidden size-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring xl:grid"
                       >
                         {contextPanelCollapsed ? (
                           <PanelRightOpen size={17} strokeWidth={1.75} />
@@ -856,7 +855,7 @@ export function ShellPage() {
                           }
                         }}
                         data-active={panel === "computer" ? "" : undefined}
-                        className="grid size-9 place-items-center rounded-full border border-border/60 bg-card/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground data-active:bg-accent data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                        className="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground data-active:bg-selection data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                       >
                         <Monitor size={17} strokeWidth={1.75} />
                       </button>
@@ -1097,12 +1096,12 @@ export function ShellPage() {
         data-testid="side-panel"
         data-panel={panel ?? "closed"}
         className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
-          museMode ? "border-glass-border bg-glass shadow-float backdrop-blur-xl" : "bg-background"
+          museMode ? "border-line bg-panel backdrop-blur-xl" : "bg-background"
         } ${
           panel && (active || activeGroup || panel === "create")
             ? museMode
               ? // Muse: an inset panel like <main>; the computer gets room for a real preview.
-                `w-full md:rounded-2xl md:border ${
+                `w-full md:rounded-[18px] md:border ${
                   panel === "computer"
                     ? "max-w-[520px] md:w-[520px] md:max-w-none"
                     : "max-w-[400px] md:w-[400px] md:max-w-none"

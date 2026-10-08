@@ -44,16 +44,33 @@ export type ColorTokens = {
   overlay: string;
   scrollbar: string;
   scrollbarHover: string;
-  /** Muse only: a floating panel's translucent fill, over the background wash. */
-  glass?: string;
-  /** Muse only: a floating panel's hairline border, over the background wash. */
-  "glass-border"?: string;
-  /** Muse only: the wash's first blurred color blob (sky blue family). */
-  "wash-1"?: string;
-  /** Muse only: the wash's second blurred color blob (faint lilac). */
-  "wash-2"?: string;
-  /** Muse only: the wash's third blurred color blob (faint cyan). */
-  "wash-3"?: string;
+  /** Muse only: the ground the shell's panels float on. */
+  ground?: string;
+  /** Muse only: the ground's single soft radial wash, top right. */
+  "ground-wash"?: string;
+  /** Muse only: a floating panel's translucent fill (rail, chat, context panel). */
+  panel?: string;
+  /** Muse only: an opaque surface on a panel (composer, popovers, cards). */
+  solid?: string;
+  /** Muse only: every hairline: panel edges, dividers, the composer's border. */
+  line?: string;
+  /** Muse only: primary text. */
+  ink?: string;
+  /** Muse only: secondary text and icons. */
+  "ink-2"?: string;
+  /** Muse only: faint text: placeholders, counts, timestamps. */
+  "ink-3"?: string;
+  /** Muse only: the person's message bubble. */
+  bubble?: string;
+  /** Muse only: the selected or hovered row. */
+  selection?: string;
+  /** Muse only: side-chat (fork) identity colors, one per fork, cycled. */
+  "fork-1"?: string;
+  "fork-2"?: string;
+  "fork-3"?: string;
+  "fork-4"?: string;
+  "fork-5"?: string;
+  "fork-6"?: string;
 };
 
 export const darkTokens = {
@@ -127,91 +144,128 @@ export const lightTokens = {
 } as const satisfies ColorTokens;
 
 /**
- * Muse edition palettes (docs/muse/DESIGN.md). Light-first and quiet: white surfaces,
- * hairline borders, ink primary. Applied only under `[data-product="muse"]`, so upstream
- * Aiden keeps its own palettes.
+ * Nova's surfaces (docs/muse/DESIGN.md): quiet glass panels on a cool ground, ink text in
+ * three strengths, hairline lines. The Muse palettes below map the shadcn slots onto these
+ * same values, so each color is written once. `background` is the solid surface (shadcn
+ * controls paint it inside panels); only the shell root paints `ground`.
+ *
+ * `fork-*` are an owner-approved exception to the monochrome rule (where only bots carry
+ * an identity color): each side chat (fork) gets one, so a fork reads as the same thread
+ * in the rail, the transcript and its own view.
+ */
+const novaLight = {
+  ground: "#EEF1F7",
+  "ground-wash": "#E4EAF6",
+  panel: "rgba(255, 255, 255, 0.8)",
+  solid: "#FFFFFF",
+  line: "#E3E6EE",
+  ink: "#15171C",
+  "ink-2": "#5B6170",
+  "ink-3": "#9AA0AE",
+  bubble: "#EEF0F4",
+  selection: "#E9EDF5",
+  "fork-1": "#2F7BF5",
+  "fork-2": "#8A5CF6",
+  "fork-3": "#E0782F",
+  "fork-4": "#1F9E8A",
+  "fork-5": "#D9467A",
+  "fork-6": "#B8860B",
+} as const;
+
+const novaDark = {
+  ground: "#101218",
+  "ground-wash": "#0B0D12",
+  panel: "rgba(24, 27, 34, 0.88)",
+  solid: "#191C23",
+  line: "#272B35",
+  ink: "#ECEEF3",
+  "ink-2": "#A3A9B6",
+  "ink-3": "#6A7080",
+  bubble: "#232731",
+  selection: "#222734",
+  "fork-1": "#4B8DFF",
+  "fork-2": "#A786FF",
+  "fork-3": "#F29A57",
+  "fork-4": "#3CC4AE",
+  "fork-5": "#F06C9B",
+  "fork-6": "#E0B43C",
+} as const;
+
+/**
+ * Muse edition palettes. Light-first and quiet: ink primary, glass panels, hairline
+ * borders. Applied only under `[data-product="muse"]`, so upstream Aiden keeps its own
+ * palettes.
  */
 export const museLightTokens = {
-  background: "#FFFFFF",
-  foreground: "#15161A",
-  card: "#FFFFFF",
-  cardForeground: "#15161A",
-  popover: "#FFFFFF",
-  popoverForeground: "#15161A",
-  primary: "#15161A",
-  primaryForeground: "#FFFFFF",
-  secondary: "#F4F4F5",
-  secondaryForeground: "#15161A",
-  chatUser: "#F2F3F5",
-  chatUserForeground: "#15161A",
-  muted: "#F7F7F8",
-  mutedForeground: "#6A6E76",
-  accent: "#F1F2F4",
-  accentForeground: "#15161A",
+  background: novaLight.solid,
+  foreground: novaLight.ink,
+  card: novaLight.solid,
+  cardForeground: novaLight.ink,
+  popover: novaLight.solid,
+  popoverForeground: novaLight.ink,
+  primary: novaLight.ink,
+  primaryForeground: novaLight.solid,
+  secondary: novaLight.selection,
+  secondaryForeground: novaLight.ink,
+  chatUser: novaLight.bubble,
+  chatUserForeground: novaLight.ink,
+  muted: novaLight.bubble,
+  mutedForeground: novaLight["ink-2"],
+  accent: novaLight.selection,
+  accentForeground: novaLight.ink,
   destructive: "#D6363C",
   destructiveForeground: "#FFFFFF",
-  border: "#E8E9EC",
-  input: "#E3E4E8",
-  ring: "#9A9EA6",
-  sidebar: "#F3F3F5",
-  sidebarForeground: "#15161A",
-  sidebarBorder: "#E6E7EA",
-  sidebarAccent: "#E7E8EC",
-  sidebarAccentForeground: "#15161A",
+  border: novaLight.line,
+  input: novaLight.line,
+  ring: novaLight["ink-3"],
+  sidebar: novaLight.ground,
+  sidebarForeground: novaLight.ink,
+  sidebarBorder: novaLight.line,
+  sidebarAccent: novaLight.selection,
+  sidebarAccentForeground: novaLight.ink,
   link: "#1F6FEB",
   success: "#1E8A4E",
   warning: "#B26A00",
   overlay: "rgba(17, 18, 22, 0.32)",
   scrollbar: "#D6D8DC",
   scrollbarHover: "#B6B9BF",
-  // Glass shell (docs/muse/DESIGN.md "Background wash"): floating panels over a soft,
-  // blurred wash of Aiden's sky blue plus a faint lilac and cyan.
-  glass: "rgba(255, 255, 255, 0.74)",
-  "glass-border": "rgba(255, 255, 255, 0.6)",
-  "wash-1": "rgba(59, 130, 246, 0.16)",
-  "wash-2": "rgba(168, 139, 250, 0.12)",
-  "wash-3": "rgba(94, 211, 217, 0.1)",
+  ...novaLight,
 } as const satisfies ColorTokens;
 
 export const museDarkTokens = {
-  background: "#17181B",
-  foreground: "#ECEDEF",
-  card: "#1E1F23",
-  cardForeground: "#ECEDEF",
-  popover: "#212226",
-  popoverForeground: "#ECEDEF",
-  primary: "#F2F2F3",
-  primaryForeground: "#17181B",
-  secondary: "#25262B",
-  secondaryForeground: "#ECEDEF",
-  chatUser: "#2A2B30",
-  chatUserForeground: "#ECEDEF",
-  muted: "#1E1F23",
-  mutedForeground: "#999CA3",
-  accent: "#26272C",
-  accentForeground: "#ECEDEF",
+  background: novaDark.solid,
+  foreground: novaDark.ink,
+  card: novaDark.solid,
+  cardForeground: novaDark.ink,
+  popover: novaDark.solid,
+  popoverForeground: novaDark.ink,
+  primary: novaDark.ink,
+  primaryForeground: novaDark.solid,
+  secondary: novaDark.selection,
+  secondaryForeground: novaDark.ink,
+  chatUser: novaDark.bubble,
+  chatUserForeground: novaDark.ink,
+  muted: novaDark.bubble,
+  mutedForeground: novaDark["ink-2"],
+  accent: novaDark.selection,
+  accentForeground: novaDark.ink,
   destructive: "#F0565C",
   destructiveForeground: "#FFFFFF",
-  border: "#2C2D32",
-  input: "#303137",
-  ring: "#6B6F77",
-  sidebar: "#121316",
-  sidebarForeground: "#ECEDEF",
-  sidebarBorder: "#222328",
-  sidebarAccent: "#24252A",
-  sidebarAccentForeground: "#ECEDEF",
+  border: novaDark.line,
+  input: novaDark.line,
+  ring: novaDark["ink-3"],
+  sidebar: novaDark.ground,
+  sidebarForeground: novaDark.ink,
+  sidebarBorder: novaDark.line,
+  sidebarAccent: novaDark.selection,
+  sidebarAccentForeground: novaDark.ink,
   link: "#6EA8FE",
   success: "#4CC382",
   warning: "#E3A63B",
   overlay: "rgba(0, 0, 0, 0.6)",
   scrollbar: "#2F3036",
   scrollbarHover: "#43454C",
-  // Deeper and lower-opacity than the light wash, so the blobs stay a quiet tint.
-  glass: "rgba(30, 31, 35, 0.74)",
-  "glass-border": "rgba(255, 255, 255, 0.07)",
-  "wash-1": "rgba(59, 130, 246, 0.1)",
-  "wash-2": "rgba(139, 92, 246, 0.09)",
-  "wash-3": "rgba(45, 175, 185, 0.08)",
+  ...novaDark,
 } as const satisfies ColorTokens;
 
 /** Dark palette. Prefer `tokensForAppearance` when theme-aware. */

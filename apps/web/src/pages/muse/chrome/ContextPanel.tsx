@@ -201,8 +201,8 @@ function PanelSectionHeader({
         aria-hidden="true"
         className="shrink-0 text-muted-foreground"
       />
-      <h3 className="text-[14px] font-semibold text-foreground">{title}</h3>
-      <span className="ms-auto text-[13px] tabular-nums text-muted-foreground">{count}</span>
+      <h3 className="text-[13.5px] font-semibold text-foreground">{title}</h3>
+      <span className="ms-auto font-mono text-[12px] tabular-nums text-ink-3">{count}</span>
     </div>
   );
 }
@@ -440,7 +440,7 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
     <div
       role="tablist"
       aria-label={t`Panel sections`}
-      className="inline-flex items-center gap-0.5 self-center rounded-full bg-muted p-1"
+      className="inline-flex items-center gap-0.5 self-center rounded-full bg-selection p-[3px]"
     >
       {PANEL_TABS.map((item, index) => {
         const previous = PANEL_TABS[index - 1];
@@ -449,9 +449,7 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
         const Icon = item.icon;
         return (
           <Fragment key={item.id}>
-            {showDivider ? (
-              <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
-            ) : null}
+            {showDivider ? <span aria-hidden="true" className="h-4 w-px shrink-0 bg-line" /> : null}
             <Tooltip>
               <TooltipTrigger
                 type="button"
@@ -463,8 +461,8 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
                 className={cn(
                   "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring",
                   tab === item.id
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-solid text-foreground shadow-xs"
+                    : "text-ink-2 hover:text-foreground",
                 )}
               >
                 <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -503,7 +501,7 @@ function IdentityHeader({
       <BotAvatar color={avatarColor} identity={botId} face="muse" size={56} />
       <span
         data-testid="context-panel-muse-name"
-        className="text-[16px] font-medium text-foreground"
+        className="text-[15px] font-semibold text-foreground"
         dir="auto"
       >
         {museName}
@@ -637,7 +635,7 @@ export function ContextPanel({
     <div
       data-testid="context-panel"
       className={cn(
-        "hidden w-[340px] shrink-0 flex-col gap-4 border border-glass-border bg-glass shadow-float backdrop-blur-xl md:rounded-2xl",
+        "hidden w-[340px] shrink-0 flex-col gap-4 border border-line bg-panel backdrop-blur-xl md:rounded-[18px]",
         !collapsed && "xl:flex",
       )}
     >

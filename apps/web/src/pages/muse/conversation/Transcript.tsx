@@ -1,6 +1,6 @@
 import type { MessageReaction, ThreadMessage } from "@aiden/contracts";
 import { isPeerReceiptBlocks, isToolActivityBlock, projectMessageReactions } from "@aiden/core";
-import { BotAvatar, cn, type GroupAvatarMember } from "@aiden/ui-web";
+import { cn, type GroupAvatarMember } from "@aiden/ui-web";
 import { i18n } from "@lingui/core";
 import { useLingui } from "@lingui/react/macro";
 import { ArrowDown } from "lucide-react";
@@ -143,7 +143,7 @@ const TranscriptView = memo(function Transcript({
   onOpenComputer: (botId?: string) => void;
 }) {
   const { t } = useLingui();
-  const { state: museLiveState, label: museLiveLabel } = useMuseLiveState({
+  const { label: museLiveLabel } = useMuseLiveState({
     botId: museFace?.identity ?? "",
     runs: museRuns ?? [],
     messages,
@@ -407,7 +407,7 @@ const TranscriptView = memo(function Transcript({
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
           museMode &&
-            "mx-auto w-full max-w-[820px] gap-4 overflow-x-hidden pt-16 [overflow-wrap:anywhere] md:pt-20 md:pb-10",
+            "mx-auto w-full max-w-[748px] gap-[22px] overflow-x-hidden pt-5 [overflow-wrap:anywhere] md:px-6 md:pt-[26px] md:pb-6",
         )}
       >
         {leading}
@@ -562,16 +562,9 @@ const TranscriptView = memo(function Transcript({
               <div
                 data-testid="muse-live-row"
                 aria-hidden="true"
-                className="flex min-h-10 items-center gap-2.5 px-1"
+                className="flex min-h-10 items-center"
               >
-                <BotAvatar
-                  color={museFace.color}
-                  identity={museFace.identity}
-                  museState={museLiveState}
-                  face="muse"
-                  size={32}
-                />
-                <span className="text-[15px] text-muted-foreground">
+                <span className="text-[15.5px] text-ink-3">
                   <Shimmer>{museLiveLabel}</Shimmer>
                 </span>
               </div>

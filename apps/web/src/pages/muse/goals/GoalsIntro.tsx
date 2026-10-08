@@ -46,7 +46,7 @@ function GoalStage({ botName, color }: { botName: string; color: string }) {
         </div>
 
         <div className="sm:ms-auto sm:w-[380px]">
-          <div className="rounded-[22px] border border-glass-border bg-glass p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
+          <div className="rounded-[22px] border border-line bg-panel p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
             <div className="flex items-start gap-3">
               <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-card shadow-sm">
                 <BotAvatar color={color} identity={botName} face="muse" size={30} />

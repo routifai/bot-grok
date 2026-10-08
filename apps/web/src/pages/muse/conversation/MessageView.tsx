@@ -184,7 +184,7 @@ export const MessageView = memo(function MessageView({
             className={cn(
               "max-w-full space-y-2.5",
               museMode
-                ? "text-[16px] leading-[1.65] text-foreground"
+                ? "text-[15.5px] leading-[1.6] text-foreground"
                 : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
             )}
             dir="auto"
@@ -290,7 +290,7 @@ export const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[16px] leading-[1.65] text-foreground"
+                    ? "text-[15.5px] leading-[1.6] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
@@ -471,10 +471,10 @@ export const MessageView = memo(function MessageView({
                 data-testid="message-user-bubble"
                 data-quote-message-id={quoteMessageId}
                 className={cn(
-                  "max-w-full whitespace-pre-wrap wrap-anywhere bg-chat-user text-chat-user-foreground",
+                  "max-w-full whitespace-pre-wrap wrap-anywhere text-chat-user-foreground",
                   museMode
-                    ? "rounded-3xl px-5 py-3 text-[16px] leading-[1.6]"
-                    : "rounded-[20px] px-[18px] py-3 text-[15.5px] leading-[1.45]",
+                    ? "rounded-[20px] rounded-ee-[6px] bg-bubble px-4 py-2.5 text-[15.5px] leading-[1.6]"
+                    : "rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45]",
                 )}
                 dir="auto"
               >
@@ -502,7 +502,7 @@ export const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[16px] leading-[1.65] text-foreground"
+                    ? "text-[15.5px] leading-[1.6] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
