@@ -435,9 +435,6 @@ msgstr "Ask before purchases"
 msgid "Ask before sending external email"
 msgstr "Ask before sending external email"
 
-msgid "Ask me anything, I'll do the work"
-msgstr "Ask me anything, I'll do the work"
-
 msgid "Ask me anything, or tell me what you're working toward."
 msgstr "Ask me anything, or tell me what you're working toward."
 
@@ -1351,9 +1348,6 @@ msgstr "Dismiss"
 msgid "Dismiss error"
 msgstr "Dismiss error"
 
-msgid "Dismiss the intro"
-msgstr "Dismiss the intro"
-
 msgid "Dismissed. Reconnect anytime from MCP settings."
 msgstr "Dismissed. Reconnect anytime from MCP settings."
 
@@ -1400,9 +1394,6 @@ msgstr "Downloading…"
 
 msgid "Draft"
 msgstr "Draft"
-
-msgid "Draft my client follow-up email and check with me before sending it"
-msgstr "Draft my client follow-up email and check with me before sending it"
 
 msgid "Draft talking points per client"
 msgstr "Draft talking points per client"
@@ -1666,9 +1657,6 @@ msgstr "Git event"
 msgid "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
 msgstr "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
 
-msgid "Give me a Goal, I'll keep going"
-msgstr "Give me a Goal, I'll keep going"
-
 msgid "Goal options"
 msgstr "Goal options"
 
@@ -1717,17 +1705,8 @@ msgstr "Header value"
 msgid "Hear a sample"
 msgstr "Hear a sample"
 
-msgid "Help me prepare the Q3 client portfolio review"
-msgstr "Help me prepare the Q3 client portfolio review"
-
 msgid "Here's my plan"
 msgstr "Here's my plan"
-
-msgid "Hi {trimmedName}, I'm {botName}. Here's how we'll work together."
-msgstr "Hi {trimmedName}, I'm {botName}. Here's how we'll work together."
-
-msgid "Hi, I'm {botName}. Here's how we'll work together."
-msgstr "Hi, I'm {botName}. Here's how we'll work together."
 
 msgid "Hi, I'm Nova — <0>already on it.</0>"
 msgstr "Hi, I'm Nova — <0>already on it.</0>"
@@ -1787,9 +1766,6 @@ msgstr "I check on your Goals every few hours."
 msgid "I couldn't turn that into a skill. Discard it and show me again."
 msgstr "I couldn't turn that into a skill. Discard it and show me again."
 
-msgid "I have my own computer, browser and files."
-msgstr "I have my own computer, browser and files."
-
 msgid "I keep working on your Goals throughout the day."
 msgstr "I keep working on your Goals throughout the day."
 
@@ -1804,9 +1780,6 @@ msgstr "I won't work on Goals or message you during quiet hours."
 
 msgid "I'd like to change the plan"
 msgstr "I'd like to change the plan"
-
-msgid "I'll ask when I need you"
-msgstr "I'll ask when I need you"
 
 msgid "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
 msgstr "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
@@ -2654,9 +2627,6 @@ msgstr "Q3 client portfolio review"
 msgid "Questions"
 msgstr "Questions"
 
-msgid "Questions and approvals collect in Waiting on you; answer in one tap."
-msgstr "Questions and approvals collect in Waiting on you; answer in one tap."
-
 msgid "Quiet hours"
 msgstr "Quiet hours"
 
@@ -2971,9 +2941,6 @@ msgstr "Saving..."
 msgid "Saving…"
 msgstr "Saving…"
 
-msgid "Say something bigger and I'll propose a plan; you approve it; I work in the background, check in, and show progress in Goals."
-msgstr "Say something bigger and I'll propose a plan; you approve it; I work in the background, check in, and show progress in Goals."
-
 msgid "Say something. Silence sends it."
 msgstr "Say something. Silence sends it."
 
@@ -3272,9 +3239,6 @@ msgstr "subagent"
 msgid "Submit"
 msgstr "Submit"
 
-msgid "Summarize this week's rate-change news into a one-pager"
-msgstr "Summarize this week's rate-change news into a one-pager"
-
 msgid "Supports images"
 msgstr "Supports images"
 
@@ -3461,15 +3425,8 @@ msgstr "Treg token"
 msgid "Try again"
 msgstr "Try again"
 
-msgid "Try it"
-msgstr "Try it"
-
 msgid "Try one"
 msgstr "Try one"
-
-#. placeholder {0}: card.example
-msgid "Try: \"{0}\""
-msgstr "Try: \"{0}\""
 
 msgid "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
 msgstr "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."

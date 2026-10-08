@@ -121,8 +121,6 @@ export function PostList({
   onLoadMore,
 }: {
   posts: Post[];
-  /** Kept for callers; Posts no longer show the Muse's face. */
-  avatarColor?: string;
   nextCursor: string | null;
   loadingMore: boolean;
   onLoadMore: () => void;

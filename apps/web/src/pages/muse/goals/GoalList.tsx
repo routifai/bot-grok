@@ -1,4 +1,4 @@
-import { DEFAULT_MUSE_COLOR, type Goal } from "@aiden/contracts";
+import type { Goal } from "@aiden/contracts";
 import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useState } from "react";
@@ -214,7 +214,6 @@ export function GoalList({
   botName,
   onSelect,
   onChanged,
-  avatarColor,
   starters,
   onSendIdea,
 }: {
@@ -223,21 +222,13 @@ export function GoalList({
   onSelect: (goalId: string) => void;
   /** A Goal came back changed (its plan accepted or dismissed from the list). */
   onChanged?: (goal: Goal) => void;
-  avatarColor?: string;
   starters?: readonly GoalStarter[];
   onSendIdea?: (text: string) => void;
 }) {
   const { t } = useLingui();
 
   if (goals.length === 0) {
-    return (
-      <GoalsIntro
-        botName={botName}
-        avatarColor={avatarColor ?? DEFAULT_MUSE_COLOR}
-        starters={starters ?? []}
-        onStart={onSendIdea}
-      />
-    );
+    return <GoalsIntro botName={botName} starters={starters ?? []} onStart={onSendIdea} />;
   }
 
   const active = goals.filter((goal) => goal.status !== "paused");

@@ -487,8 +487,6 @@ export function ContextPanel({
   botId: string;
   /** The Muse's own name, for the panel's identity header. */
   museName: string;
-  /** Kept for callers; Nova shows as the orb. */
-  avatarColor?: string;
   collapsed: boolean;
   /** The sidebar's Chat List poll (Shell.tsx's `chatList.state`), folded into the
    * Connection Status line alongside the Activity poll — either one landing counts. */

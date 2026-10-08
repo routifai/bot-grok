@@ -218,7 +218,7 @@ export function IdeasScreen({
         {ideas === null ? (
           <IdeasSkeleton />
         ) : visible.length === 0 ? (
-          <EmptyState face illustration="light-bulb" headline={t`Nothing to suggest yet`}>
+          <EmptyState illustration="light-bulb" headline={t`Nothing to suggest yet`}>
             <Trans>I'll show ideas here as I learn what's useful to you.</Trans>
           </EmptyState>
         ) : grouped ? (

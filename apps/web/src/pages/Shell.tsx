@@ -910,19 +910,9 @@ export function ShellPage() {
         ) : museMode && active && museView !== "conversation" ? (
           <div className={MUSE_CONTENT_PANE}>
             {museView === "goals" ? (
-              <GoalsScreen
-                botId={active.id}
-                botName={active.name}
-                avatarColor={active.color}
-                onSendIdea={handleSendIdea}
-              />
+              <GoalsScreen botId={active.id} botName={active.name} onSendIdea={handleSendIdea} />
             ) : museView === "feed" ? (
-              <FeedScreen
-                botId={active.id}
-                botName={active.name}
-                avatarColor={active.color}
-                onSendIdea={handleSendIdea}
-              />
+              <FeedScreen botId={active.id} onSendIdea={handleSendIdea} />
             ) : museView === "ideas" ? (
               <IdeasScreen
                 botId={active.id}
@@ -930,12 +920,7 @@ export function ShellPage() {
                 onOpenConversation={() => setMuseView("conversation")}
               />
             ) : (
-              <LibraryScreen
-                botId={active.id}
-                botName={active.name}
-                avatarColor={active.color}
-                onSendIdea={handleSendIdea}
-              />
+              <LibraryScreen botId={active.id} botName={active.name} onSendIdea={handleSendIdea} />
             )}
           </div>
         ) : (
@@ -1265,7 +1250,6 @@ export function ShellPage() {
               <ContextPanel
                 botId={active.id}
                 museName={active.name}
-                avatarColor={active.color}
                 chatListState={chatList.state}
                 // The computer (or settings) side panel takes that column; two side panels
                 // would crush the conversation.
@@ -1279,12 +1263,7 @@ export function ShellPage() {
       </main>
 
       {museMode && active ? (
-        <WaitingSheet
-          botId={active.id}
-          avatarColor={active.color}
-          open={waitingOpen}
-          onOpenChange={setWaitingOpen}
-        />
+        <WaitingSheet botId={active.id} open={waitingOpen} onOpenChange={setWaitingOpen} />
       ) : null}
 
       <aside

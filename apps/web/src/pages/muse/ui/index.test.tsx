@@ -28,32 +28,22 @@ async function render(props: ComponentProps<typeof EmptyState>) {
   };
 }
 
-it("renders the illustration image beside the face when both are given", async () => {
-  const page = await render({ face: true, illustration: "trophy", headline: "Nothing yet" });
+it("renders the section's illustration, and never Nova's orb", async () => {
+  const page = await render({ illustration: "trophy", headline: "Nothing yet" });
   try {
     const img = page.container.querySelector("img");
     expect(img?.getAttribute("src")).toBe("/illustrations/trophy.png");
     expect(img?.getAttribute("alt")).toBe("");
-    expect(page.container.querySelector('[data-testid="bot-avatar"]')).toBeTruthy();
+    expect(page.container.querySelector('[data-testid="bot-avatar"]')).toBeNull();
   } finally {
     await page.cleanup();
   }
 });
 
 it("omits the illustration image when none is given", async () => {
-  const page = await render({ face: true, headline: "Nothing yet" });
+  const page = await render({ headline: "Nothing yet" });
   try {
     expect(page.container.querySelector("img")).toBeNull();
-  } finally {
-    await page.cleanup();
-  }
-});
-
-it("omits the illustration image when there is no face to accompany", async () => {
-  const page = await render({ illustration: "trophy", headline: "Nothing matches" });
-  try {
-    expect(page.container.querySelector("img")).toBeNull();
-    expect(page.container.querySelector('[data-testid="bot-avatar"]')).toBeNull();
   } finally {
     await page.cleanup();
   }

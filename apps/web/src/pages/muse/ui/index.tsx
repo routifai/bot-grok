@@ -458,29 +458,22 @@ export function Progress({ value, label }: { value: number; label: string }) {
 
 /**
  * The one empty state (docs/muse/DESIGN.md): centered in the available space, the
- * Muse's face, a plain sans headline, one muted line, and — when `suggestions` and
- * `onSuggestion` are both given — a few chips that start a Conversation with that
- * prompt. Omit both for a quieter inline message (e.g. "nothing matches your search"),
- * which drops the face and chips but keeps the same centered, breathing layout.
+ * section's illustration, a plain sans headline, one muted line, and — when
+ * `suggestions` and `onSuggestion` are both given — a few chips that start a
+ * Conversation with that prompt. Omit them for a quieter inline message (e.g. "nothing
+ * matches your search"), which keeps the same centered, breathing layout. Nova's orb
+ * has one home (the sidebar), so an empty state never shows it.
  */
 export function EmptyState({
   headline,
   children,
   suggestions,
   onSuggestion,
-  face,
   illustration,
   className,
 }: {
-  /** Kept for callers; Nova shows as the orb. */
-  avatarColor?: string;
-  /** Show the Muse's face even without suggestions (it always shows with them). */
-  face?: boolean;
-  /**
-   * A bundled 3D illustration fitting this section (e.g. a trophy for Goals, books for
-   * Library), tilted beside the Muse's face — a companion to the hero, never a
-   * replacement. Only shown alongside the face.
-   */
+  /** A bundled 3D illustration fitting this section (e.g. a trophy for Goals, books for
+   * Library). Leave it out for a quiet inline message. */
   illustration?: IllustrationKey;
   headline?: ReactNode;
   children?: ReactNode;
@@ -489,9 +482,6 @@ export function EmptyState({
   className?: string;
 }) {
   const rich = Boolean(suggestions?.length && onSuggestion);
-  // Nova's orb has one home (the sidebar), so an empty state never shows it; `face` now only
-  // shows the section's illustration.
-  const showFace = Boolean(face);
   return (
     <div
       className={cn(
@@ -499,7 +489,7 @@ export function EmptyState({
         className,
       )}
     >
-      {showFace && illustration ? (
+      {illustration ? (
         <img src={illustrationUrl(illustration)} alt="" loading="lazy" className="size-14" />
       ) : null}
       <div className="max-w-[380px]">

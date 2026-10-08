@@ -53,13 +53,10 @@ const LIBRARY_SUGGESTIONS = [
  */
 export function LibraryScreen({
   botId,
-  avatarColor,
   onSendIdea,
 }: {
   botId: string;
   botName?: string;
-  /** The Muse's identity color, for the empty state's face. */
-  avatarColor?: string;
   /** Starts a Conversation with a suggestion from the empty state. */
   onSendIdea?: (text: string) => void;
 }) {
@@ -238,7 +235,7 @@ export function LibraryScreen({
           }
         />
         {view === "skills" ? (
-          <SkillsPanel botId={botId} avatarColor={avatarColor} />
+          <SkillsPanel botId={botId} />
         ) : (
           <>
             {total > 0 ? (
@@ -267,7 +264,6 @@ export function LibraryScreen({
                 <p className="py-10 text-[14px] text-destructive">{loadError}</p>
               ) : (
                 <EmptyState
-                  avatarColor={avatarColor}
                   illustration="books"
                   headline={t`Nothing here yet.`}
                   suggestions={LIBRARY_SUGGESTIONS}

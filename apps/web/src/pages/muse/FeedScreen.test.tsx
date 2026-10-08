@@ -99,7 +99,7 @@ async function renderFeed(onSendIdea: (text: string) => void = vi.fn()) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<FeedScreen botId="bot-1" avatarColor="#F2B233" onSendIdea={onSendIdea} />);
+    root.render(<FeedScreen botId="bot-1" onSendIdea={onSendIdea} />);
   });
   return {
     container,

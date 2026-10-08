@@ -1,5 +1,4 @@
 import type { Ask, FollowedTopic } from "@aiden/contracts";
-import { DEFAULT_MUSE_COLOR, DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -16,13 +15,8 @@ import { MuseScreen, MuseWideCenter, ScreenHeader, ScreenHero } from "./ui";
 // The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
 // Waiting-on-you sheet), then Posts grouped Today / Earlier, then Followed topics as a
 // chip row. Ideas live in their own section now (F5), not here.
-export function FeedScreen(props: {
-  botId: string;
-  botName?: string;
-  avatarColor?: string;
-  onSendIdea?: (text: string) => void;
-}) {
-  const { botId, botName = DEFAULT_MUSE_NAME, avatarColor = DEFAULT_MUSE_COLOR } = props;
+export function FeedScreen(props: { botId: string; onSendIdea?: (text: string) => void }) {
+  const { botId } = props;
   const { t } = useLingui();
 
   const { asks, answer } = useAsks(botId);
@@ -142,7 +136,7 @@ export function FeedScreen(props: {
             </h2>
             <div className="relative">
               <ExampleTag />
-              <FeedPreview botName={botName} color={avatarColor} />
+              <FeedPreview />
             </div>
           </section>
         ) : (

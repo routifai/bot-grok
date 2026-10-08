@@ -20,12 +20,10 @@ type Decided = { ask: Ask; label: string; primary: boolean; at: Date };
  */
 export function WaitingSheet({
   botId,
-  avatarColor,
   open,
   onOpenChange,
 }: {
   botId: string;
-  avatarColor?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -71,12 +69,7 @@ export function WaitingSheet({
             {asks.length === 0 && loading ? (
               <CardSkeletonList count={2} />
             ) : asks.length === 0 ? (
-              <EmptyState
-                face
-                illustration="bell"
-                avatarColor={avatarColor}
-                headline={t`You're all caught up`}
-              >
+              <EmptyState illustration="bell" headline={t`You're all caught up`}>
                 {t`When I need a decision or an answer, it'll show up here.`}
               </EmptyState>
             ) : (

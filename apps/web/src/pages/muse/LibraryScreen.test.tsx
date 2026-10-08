@@ -107,7 +107,7 @@ async function renderLibrary(onSendIdea: (text: string) => void = vi.fn()) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<LibraryScreen botId="bot-1" avatarColor="#F2B233" onSendIdea={onSendIdea} />);
+    root.render(<LibraryScreen botId="bot-1" onSendIdea={onSendIdea} />);
   });
   return {
     container,

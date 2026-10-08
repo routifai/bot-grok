@@ -1,5 +1,5 @@
 import type { Goal } from "@aiden/contracts";
-import { DEFAULT_MUSE_COLOR, DEFAULT_MUSE_NAME } from "@aiden/contracts";
+import { DEFAULT_MUSE_NAME } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -40,13 +40,10 @@ const GOAL_STARTERS: readonly GoalStarter[] = [
 export function GoalsScreen({
   botId,
   botName,
-  avatarColor,
   onSendIdea,
 }: {
   botId: string;
   botName?: string;
-  /** The Muse's identity color, for the empty state's face. */
-  avatarColor?: string;
   /** Starts a Conversation with a suggestion from the empty state. */
   onSendIdea?: (text: string) => void;
 }) {
@@ -103,7 +100,6 @@ export function GoalsScreen({
         <GoalDetail
           key={selectedGoal.id}
           goal={selectedGoal}
-          color={avatarColor ?? DEFAULT_MUSE_COLOR}
           onBack={() => setSelectedGoalId(null)}
           onChanged={handleChanged}
           onPlanIt={
@@ -118,7 +114,6 @@ export function GoalsScreen({
           botName={botName ?? DEFAULT_MUSE_NAME}
           onSelect={setSelectedGoalId}
           onChanged={handleChanged}
-          avatarColor={avatarColor}
           starters={GOAL_STARTERS}
           onSendIdea={onSendIdea}
         />

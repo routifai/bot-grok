@@ -12,7 +12,7 @@ import {
   HELPER_MESSAGES,
   INITIAL_ACTIVITIES,
 } from "./activity-fixture";
-import { DEV_MUSE_COLOR, DEV_MUSE_NAME } from "./side-chat-fixture";
+import { DEV_MUSE_NAME } from "./side-chat-fixture";
 
 function delay<T>(value: T, ms = 350): Promise<T> {
   return new Promise((resolve) => {
@@ -94,7 +94,6 @@ export function ActivityPreviewPage() {
       <ContextPanel
         botId={DEV_ACTIVITY_BOT_ID}
         museName={DEV_MUSE_NAME}
-        avatarColor={DEV_MUSE_COLOR}
         collapsed={false}
         onNavigate={() => undefined}
         onOpenWaiting={() => undefined}

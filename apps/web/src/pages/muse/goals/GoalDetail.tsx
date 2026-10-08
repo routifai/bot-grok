@@ -33,8 +33,6 @@ export function GoalDetail({
   onPlanIt,
 }: {
   goal: Goal;
-  /** Kept for callers; the ring uses the Goals signature color. */
-  color?: string;
   onBack: () => void;
   onChanged: (updated: Goal) => void;
   /** Asks the Muse, in the Conversation, to propose a plan for this Goal. */

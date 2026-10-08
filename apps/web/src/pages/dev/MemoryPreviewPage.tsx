@@ -3,7 +3,7 @@ import { ContextPanel } from "../muse/chrome/ContextPanel";
 import type { MemoryClaim } from "../muse/chrome/MemorySections";
 import type { MemoryWire } from "../muse/chrome/MemoryTab";
 import { DEV_CLAIMS, DEV_MEMORY_BOT_ID, DEV_NOTES } from "./memory-fixture";
-import { DEV_MUSE_COLOR, DEV_MUSE_NAME } from "./side-chat-fixture";
+import { DEV_MUSE_NAME } from "./side-chat-fixture";
 
 /**
  * Dev-only route (`/dev/memory`, gated by `import.meta.env.DEV`, following `/dev/activity`):
@@ -58,7 +58,6 @@ export function MemoryPreviewPage() {
       <ContextPanel
         botId={DEV_MEMORY_BOT_ID}
         museName={DEV_MUSE_NAME}
-        avatarColor={DEV_MUSE_COLOR}
         collapsed={false}
         onNavigate={() => undefined}
         onOpenWaiting={() => undefined}

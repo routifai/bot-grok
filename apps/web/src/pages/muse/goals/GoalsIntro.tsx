@@ -135,12 +135,10 @@ export interface GoalStarter {
  */
 export function GoalsIntro({
   botName,
-  avatarColor: _avatarColor,
   starters,
   onStart,
 }: {
   botName: string;
-  avatarColor: string;
   starters: readonly GoalStarter[];
   onStart?: (prompt: string) => void;
 }) {

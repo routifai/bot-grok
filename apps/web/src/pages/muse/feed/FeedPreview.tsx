@@ -9,7 +9,7 @@ const CARD = "nova-card p-4";
  * What a Feed morning looks like before there is one: a finished-work report from a
  * Goal and a sourced find on a followed topic, shown on a soft stage.
  */
-export function FeedPreview(_props: { botName: string; color: string }) {
+export function FeedPreview() {
   return (
     <div aria-hidden="true" className="flex flex-col gap-3 rounded-[22px] bg-window p-5 sm:p-7">
       <div className={CARD}>
