@@ -48,6 +48,8 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
   const previewButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // The card's big title: the document's own heading once its preview has loaded.
+  const [heading, setHeading] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const kind = artifactKind(props.mimeType);
 
@@ -77,11 +79,11 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
           openRef={previewButton}
           kind={kind}
           brand={kind === "document" ? t`Nova Report` : kindLabel(kind)}
-          title={props.name}
+          title={heading ?? readableFileName(props.name)}
           art={
             hasLivePreview(artifact) ? (
               <MediaFrame>
-                <ArtifactPreviewThumbnail artifact={artifact} />
+                <ArtifactPreviewThumbnail artifact={artifact} onHeading={setHeading} />
               </MediaFrame>
             ) : (
               <MediaArt kind={kind} />
@@ -361,4 +363,14 @@ function formatBytes(size: number) {
     }).format(value);
   if (size < 1024 * 1024) return t`${format(size / 1024)} KB`;
   return t`${format(size / (1024 * 1024))} MB`;
+}
+
+/** A file name as a title: no extension, separators as spaces, first letter capitalized
+ * (`plateau_cafes_montreal.md` → `Plateau cafes montreal`). */
+export function readableFileName(name: string): string {
+  const base = name
+    .replace(/\.[A-Za-z0-9]{1,5}$/, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return base ? base.charAt(0).toUpperCase() + base.slice(1) : name;
 }

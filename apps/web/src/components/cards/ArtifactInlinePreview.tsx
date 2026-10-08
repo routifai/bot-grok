@@ -7,6 +7,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import { decodeArtifactBase64 } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
 import { useObjectUrl } from "../../lib/use-object-url";
+import { documentHeading } from "../ArtifactPreviewThumbnail";
 import { SandboxedHtmlViewer } from "../SandboxedHtmlViewer";
 import { formatSize } from "./catalog";
 
@@ -52,8 +53,11 @@ export function ArtifactInlinePreview({
   size,
   version,
   onFailed,
+  onHeading,
   className,
 }: {
+  /** The document's own title, once its bytes are here (see `documentHeading`). */
+  onHeading?: (heading: string) => void;
   /** Overrides the box (the result tile frames it smaller). */
   className?: string;
   artifactId: string;
@@ -101,6 +105,12 @@ export function ArtifactInlinePreview({
       cancelled = true;
     };
   }, [near, key, artifactId, size]);
+
+  useEffect(() => {
+    if (state.status !== "ready" || !onHeading || state.mimeType.startsWith("image/")) return;
+    const heading = documentHeading(new TextDecoder("utf-8").decode(state.bytes));
+    if (heading) onHeading(heading);
+  }, [state, onHeading]);
 
   const mimeType = state.status === "ready" ? state.mimeType : "";
   return (

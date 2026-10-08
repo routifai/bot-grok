@@ -102,9 +102,20 @@ function useCoverScale(viewportWidth: number): [RefObject<HTMLDivElement | null>
  * or transcript never pulls every artifact's full bytes at once. PDFs, decks, larger
  * pages, and anything still off-screen show their type icon instead.
  */
+/** A text document's own title: its first Markdown `#` heading, else an HTML `<h1>` or
+ * `<title>`. `null` when it has none. */
+export function documentHeading(text: string): string | null {
+  const markdown = /^#[ \t]+(.+?)[ \t#]*$/m.exec(text)?.[1];
+  const html = (/<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(text) ??
+    /<title[^>]*>([\s\S]*?)<\/title>/i.exec(text))?.[1];
+  const heading = (markdown ?? html?.replace(/<[^>]+>/g, ""))?.replace(/\s+/g, " ").trim();
+  return heading ? heading.slice(0, 120) : null;
+}
+
 export function ArtifactPreviewThumbnail({
   artifact,
   onReady,
+  onHeading,
   fallback,
 }: {
   artifact: PreviewableArtifact;
@@ -112,6 +123,8 @@ export function ArtifactPreviewThumbnail({
   fallback?: ReactNode;
   /** Fires once the real preview has content to show, so a card can fade its skeleton out. */
   onReady?: () => void;
+  /** The document's own title, once its bytes are here (see {@link documentHeading}). */
+  onHeading?: (heading: string) => void;
 }) {
   const kind = artifactKind(artifact.mimeType);
   const [ref, near] = useNearViewport();
@@ -147,6 +160,12 @@ export function ArtifactPreviewThumbnail({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eligible, near, bytes, artifact.id]);
+
+  useEffect(() => {
+    if (!bytes || !onHeading || kind === "image") return;
+    const heading = documentHeading(new TextDecoder("utf-8").decode(bytes));
+    if (heading) onHeading(heading);
+  }, [bytes, kind, onHeading]);
 
   const Icon = KIND_ICON[kind];
 

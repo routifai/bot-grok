@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
+import { i18n } from "@lingui/core";
+import { I18nProvider } from "@lingui/react";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ getById: vi.fn() }));
 vi.mock("../lib/rpc", () => ({ rpc: { artifacts: api } }));
@@ -53,6 +55,8 @@ vi.mock("@aiden/ui-web", () => {
 
 import { ArtifactFileCard } from "./ArtifactFileCard";
 
+i18n.loadAndActivate({ locale: "en", messages: {} });
+
 /** Immediately reports every observed element as intersecting, so the lazy
  *  thumbnail fetch in `ArtifactPreviewThumbnail` runs synchronously in tests. */
 class ImmediateIntersectionObserver {
@@ -80,7 +84,11 @@ async function renderCard(props: ComponentProps<typeof ArtifactFileCard>) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<ArtifactFileCard {...props} />);
+    root.render(
+      <I18nProvider i18n={i18n}>
+        <ArtifactFileCard {...props} />
+      </I18nProvider>,
+    );
   });
   return {
     container,
@@ -210,10 +218,29 @@ it("gives a PDF the same muse card, with its type icon and no thumbnail fetch", 
   try {
     expect(view.container.querySelector("iframe")).toBeNull();
     expect(api.getById).not.toHaveBeenCalled();
-    expect(view.container.textContent).toContain("Q3 report.pdf");
+    expect(view.container.textContent).toContain("Q3 report"); // the title reads as a name; the buttons keep the file name
     expect(buttonsNamed(view.container, "Open Q3 report.pdf")).toHaveLength(1);
     expect(buttonsNamed(view.container, "Download Q3 report.pdf")).toHaveLength(1);
   } finally {
     await view.cleanup();
   }
+});
+
+describe("card titles", () => {
+  it("prefers a document's own heading", async () => {
+    const { documentHeading } = await import("./ArtifactPreviewThumbnail");
+    expect(documentHeading("intro\n# Three Cafés in the Plateau, Montréal\n\ntext")).toBe(
+      "Three Cafés in the Plateau, Montréal",
+    );
+    expect(documentHeading("<html><title>T</title><h1>Page <b>one</b></h1>")).toBe("Page one");
+    expect(documentHeading("<title> Only title </title>")).toBe("Only title");
+    expect(documentHeading("no heading here")).toBeNull();
+  });
+
+  it("falls back to a readable file name", async () => {
+    const { readableFileName } = await import("./ArtifactFileCard");
+    expect(readableFileName("plateau_cafes_montreal.md")).toBe("Plateau cafes montreal");
+    expect(readableFileName("q3-report.pdf")).toBe("Q3 report");
+    expect(readableFileName(".md")).toBe(".md");
+  });
 });

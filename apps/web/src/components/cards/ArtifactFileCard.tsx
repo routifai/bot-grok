@@ -11,6 +11,7 @@ import { lazy, Suspense, useState } from "react";
 import type { ArtifactKind } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { readableFileName } from "../ArtifactFileCard";
 import { MEDIA_ACTION, MediaFrame, MediaTile } from "../MediaTile";
 import { ArtifactInlinePreview } from "./ArtifactInlinePreview";
 import { catalog, formatSize } from "./catalog";
@@ -48,13 +49,15 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
   const artifactId = data.artifactId;
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Without a title from Nova, the card reads the document's own heading once it loads.
+  const [documentTitle, setDocumentTitle] = useState<string | null>(null);
   const panel = useArtifactPanel();
   const newest = useLatestSavedFile(data.name);
   if (!artifactId) return null;
   const version = data.version ?? 1;
   const versions = Math.max(data.versions ?? 1, version);
   const superseded = newest !== undefined && newest.version > version ? newest : null;
-  const heading = title || data.name;
+  const heading = title || documentTitle || readableFileName(data.name);
 
   function expand() {
     if (!artifactId) return;
@@ -133,6 +136,7 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
               kind={data.kind}
               size={data.size}
               version={data.version}
+              onHeading={setDocumentTitle}
               className="h-full rounded-none border-0 sm:h-full"
             />
           </MediaFrame>

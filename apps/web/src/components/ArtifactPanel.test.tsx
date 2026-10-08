@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { i18n } from "@lingui/core";
+import { I18nProvider } from "@lingui/react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -23,6 +25,8 @@ import { ArtifactPanel } from "./ArtifactPanel";
 import { ArtifactFileCard } from "./cards/ArtifactFileCard";
 import { ArtifactPanelProvider, ReplyCardThreadProvider } from "./cards/context";
 
+i18n.loadAndActivate({ locale: "en", messages: {} });
+
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal(
@@ -44,7 +48,7 @@ async function mount(node: React.ReactNode) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(node));
+  await act(async () => root.render(<I18nProvider i18n={i18n}>{node}</I18nProvider>));
   return container;
 }
 
