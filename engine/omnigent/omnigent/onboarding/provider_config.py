@@ -127,6 +127,8 @@ SUBSCRIPTION_KIND = "subscription"
 GATEWAY_KIND = "gateway"
 LOCAL_KIND = "local"
 DATABRICKS_KIND: Literal["databricks"] = "databricks"
+# ``connection: model`` on a gateway provider: the owner's saved Anthropic/OpenRouter key.
+MODEL_CONNECTION = "model"
 CLI_CONFIG_KIND = "cli-config"
 BEDROCK_KIND = "bedrock"
 
@@ -1021,6 +1023,24 @@ def _parse_provider(name: str, raw: dict[str, object]) -> ProviderEntry:
             # pi-incapable (its ``default: pi`` is still rejected at parse).
             default_families=_parse_default_families(
                 name, default_raw, {OPENAI_FAMILY}, pi_capable=True
+            ),
+        )
+
+    if kind == "gateway" and raw.get("connection") is not None:
+        # ``connection: model``: the session owner's own provider key, held by the engine and
+        # reached through its model proxy. Nothing is resolved here; the inference snapshot
+        # (server/inference_catalog.py) supplies the proxy base_url + auth command per owner.
+        if raw["connection"] != MODEL_CONNECTION:
+            raise OmnigentError(
+                f"provider {name!r}: a gateway connection must be 'model'.",
+                code=ErrorCode.INVALID_INPUT,
+            )
+        return ProviderEntry(
+            name=name,
+            kind=kind,
+            connection=MODEL_CONNECTION,
+            default_families=_parse_default_families(
+                name, default_raw, {ANTHROPIC_FAMILY}, pi_capable=True
             ),
         )
 

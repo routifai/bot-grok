@@ -734,3 +734,65 @@ async def test_another_saved_binding_cannot_persist_embedded_credentials(field, 
         )
     assert "inline-test-secret" not in str(error.value)
     assert "user:secret" not in str(error.value)
+
+
+def _byok_state(key_by_owner):
+    config = {
+        "providers": {
+            "byok": {
+                "kind": "gateway",
+                "connection": "model",
+                "anthropic": {"models": {"sonnet": "claude-sonnet-4-6"}},
+            }
+        },
+        "inference": {
+            "harnesses": {
+                "claude-sdk": {
+                    "provider": "byok",
+                    "model_allowlist": ["claude-sonnet-4-6"],
+                    "default_model": "claude-sonnet-4-6",
+                }
+            }
+        },
+    }
+    target = ManagedSandboxConfig(
+        server_url="https://engine.example/",
+        launcher_factory=lambda: None,
+        token_ttl_s=100,
+        provider="computer",
+        host_config=config,
+    )
+
+    class _Store:
+        def get_plaintext(self, user_id):
+            return key_by_owner.get(user_id)
+
+    return SimpleNamespace(
+        sandbox_config=ManagedSandboxDeployment.single(target),
+        databricks_store=None,
+        databricks_client=None,
+        model_credential_store=_Store(),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["anthropic", "openrouter"])
+async def test_model_connection_points_the_computer_at_the_engine_proxy(provider):
+    state = _byok_state({"alice": (provider, "sk-secret-ALICE")})
+    snapshot = await SandboxInferenceService(state).prepare("computer", "claude-sdk", "alice")
+    assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
+    family = snapshot["runtime_config"]["providers"]["byok"]["anthropic"]
+    assert family["base_url"] == f"https://engine.example/v1/model/{provider}"
+    assert family["auth_command"] == "python3 -m omnigent.host.model_credential token"
+    assert family["models"] == {"sonnet": "claude-sonnet-4-6"}
+    assert "sk-secret-ALICE" not in json.dumps(snapshot)
+
+
+@pytest.mark.asyncio
+async def test_model_connection_without_a_key_needs_one():
+    state = _byok_state({"alice": ("anthropic", "sk-secret-ALICE")})
+    with pytest.raises(OmnigentError) as caught:
+        await SandboxInferenceService(state).prepare("computer", "claude-sdk", "bob")
+    assert str(caught.value.code) == "model_key_required"
+    assert caught.value.http_status == 412
+    assert "Anthropic or OpenRouter API key in Settings" in str(caught.value)

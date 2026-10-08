@@ -204,6 +204,10 @@ class ErrorCode:
         level only (HTTP 422).
     :cvar MODEL_PROVIDER_UNREACHABLE: The model provider (Anthropic, OpenRouter) could not
         be reached or answered unexpectedly while checking a key; retrying later may help.
+    :cvar MODEL_KEY_REQUIRED: The session owner has not saved a model API key (Anthropic or
+        OpenRouter) and the deployment bills model calls to the owner's key. HTTP 412, like
+        ``HARNESS_NOT_CONFIGURED``: the request is valid and a retry cannot succeed until
+        the user adds a key in Settings.
     :cvar NOT_A_FORK: The session is not a fork (a side chat with an anchor)
         (HTTP 422).
     :cvar UNAUTHORIZED: No valid authentication credentials (HTTP 401).
@@ -272,6 +276,7 @@ class ErrorCode:
     FORK_TOO_DEEP = "fork_too_deep"
     NOT_A_FORK = "not_a_fork"
     MODEL_PROVIDER_UNREACHABLE = "model_provider_unreachable"
+    MODEL_KEY_REQUIRED = "model_key_required"
 
 
 # Single source of truth for error code → HTTP status.
@@ -321,6 +326,7 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.FORK_TOO_DEEP: 422,
     ErrorCode.NOT_A_FORK: 422,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: 502,
+    ErrorCode.MODEL_KEY_REQUIRED: 412,
 }
 
 
@@ -367,6 +373,7 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     ErrorCode.FORK_TOO_DEEP: ErrorCategory.USER,
     ErrorCode.NOT_A_FORK: ErrorCategory.USER,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorCategory.UPSTREAM,
+    ErrorCode.MODEL_KEY_REQUIRED: ErrorCategory.USER,
 }
 
 
@@ -418,6 +425,7 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.FORK_TOO_DEEP: ErrorImpact.BENIGN,
     ErrorCode.NOT_A_FORK: ErrorImpact.BENIGN,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorImpact.TRANSIENT,
+    ErrorCode.MODEL_KEY_REQUIRED: ErrorImpact.BENIGN,
 }
 
 
@@ -464,6 +472,7 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     ErrorCode.FORK_TOO_DEEP: ErrorPhase.REQUEST,
     ErrorCode.NOT_A_FORK: ErrorPhase.REQUEST,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorPhase.REQUEST,
+    ErrorCode.MODEL_KEY_REQUIRED: ErrorPhase.REQUEST,
 }
 
 

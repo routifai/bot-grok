@@ -3868,6 +3868,12 @@ def create_app(
             prefix="/v1",
             tags=["hosts"],
         )
+        # Model proxy: a Computer's model calls are made with its owner's own key, which
+        # stays in the engine (see omnigent.model_credentials.proxy). The saved-key store is
+        # read at request time; without it the route answers model_key_required.
+        from omnigent.model_credentials.proxy import create_model_proxy_router
+
+        app.include_router(create_model_proxy_router(host_store), prefix="/v1", tags=["hosts"])
 
     # Per-user connection routes (/v1/connections/{provider}/*): connect /
     # callback / status / disconnect. One registry entry per provider; each is

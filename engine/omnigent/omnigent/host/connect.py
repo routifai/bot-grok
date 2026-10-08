@@ -4931,6 +4931,11 @@ def run_host_process(
     from omnigent.host.databricks_credential import configure_host_databricks
 
     configure_host_databricks(server_url, identity.host_id)
+    # Model proxy credential (the Computer's launch token only; the owner's model key stays in
+    # the engine). No-op outside a managed sandbox.
+    from omnigent.host.model_credential import configure_host_model
+
+    configure_host_model(identity.host_id)
     _generate_ucode_configs()
 
     if lifecycle_lock is None and daemon_target is not None:

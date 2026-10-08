@@ -30,6 +30,7 @@ SANDBOX_UNAVAILABLE = "sandbox_unavailable"  # the computer/sandbox the turn run
 # Not a failure (stored at ``level: info``): the sandbox was replaced by a fresh one and files
 # it held that were not saved elsewhere are gone. The chat goes on.
 WORKSPACE_RESET = "workspace_reset"
+MODEL_KEY_REQUIRED = "model_key_required"  # the owner has not saved a model API key (Settings)
 INTERNAL = "internal"  # anything else: our bug or an unclassified failure
 
 PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
@@ -43,6 +44,7 @@ PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
         TIMEOUT,
         SANDBOX_UNAVAILABLE,
         WORKSPACE_RESET,
+        MODEL_KEY_REQUIRED,
         INTERNAL,
     }
 )

@@ -21,12 +21,21 @@ from omnigent.inference_config import (
     resolve_bound_provider,
     validate_inference_credentials,
 )
+from omnigent.model_credentials.proxy import KEY_REQUIRED_MESSAGE
+from omnigent.model_credentials.store import get_owner_model_credential
 from omnigent.models import model_catalog
 from omnigent.models.model_catalog import ModelEntry, ResolvedModelProvider
 from omnigent.models.model_metadata import ModelCapability, ModelWireAPI
-from omnigent.onboarding.provider_config import ProviderEntry, load_providers, resolve_secret
+from omnigent.onboarding.provider_config import (
+    MODEL_CONNECTION,
+    ProviderEntry,
+    load_providers,
+    resolve_secret,
+)
 from omnigent.server.auth import RESERVED_USER_LOCAL
 from omnigent.server.databricks_identity import resolve_databricks_token
+
+MODEL_PROXY_AUTH_COMMAND = "python3 -m omnigent.host.model_credential token"
 
 
 def _invalid(message: str) -> OmnigentError:
@@ -215,6 +224,44 @@ class SandboxInferenceService:
                     raise _invalid(
                         "Databricks connection is unavailable. Reconnect your account."
                     ) from None
+        # ``connection: model`` gateways: the owner's saved key stays in the engine; the Computer
+        # is pointed at the engine's model proxy and authenticates with its own launch token.
+        model_names = [
+            name
+            for name, entry in load_providers(raw).items()
+            if entry.kind == "gateway" and entry.connection == MODEL_CONNECTION
+        ]
+        model_providers: dict[str, str] = {}
+        if model_names:
+            model_store = getattr(self._state, "model_credential_store", None)
+            saved = (
+                await asyncio.to_thread(get_owner_model_credential, model_store, owner)
+                if model_store is not None
+                else None
+            )
+            if saved is None:
+                if bound is not None and bound.name in model_names:
+                    raise OmnigentError(KEY_REQUIRED_MESSAGE, code=ErrorCode.MODEL_KEY_REQUIRED)
+            else:
+                proxy_url = _endpoint(f"{target.server_url.rstrip('/')}/v1/model/{saved[0]}")
+                for name in model_names:
+                    model_providers[name] = saved[0]
+                    family = raw["providers"][name].get("anthropic", {})
+                    runtime["providers"][name] = {
+                        "kind": "gateway",
+                        "default": raw["providers"][name].get("default", False),
+                        "display_name": raw["providers"][name].get("display_name"),
+                        "anthropic": {
+                            **{
+                                key: value
+                                for key, value in family.items()
+                                if key
+                                in {"models", "pricing", "context_window", "max_output_tokens"}
+                            },
+                            "base_url": proxy_url,
+                            "auth_command": MODEL_PROXY_AUTH_COMMAND,
+                        },
+                    }
         if bound is not None and bound.kind == "databricks" and bound.connection != "databricks":
             raise _invalid("Sandbox Databricks inference requires connection: databricks.")
         if bound is not None and bound.name in connected_names and connection is None:
@@ -293,6 +340,7 @@ class SandboxInferenceService:
                 {
                     "model_discovery": discovery,
                     "connections": connections,
+                    "model_providers": model_providers,
                     "target_id": target_id,
                     "harness": harness,
                 },
