@@ -24,6 +24,7 @@ from starlette.datastructures import Headers
 from starlette.types import Message, Receive, Scope, Send
 
 from omnigent.context.labels import is_superside_chat
+from omnigent.context.side_chat_seeds import seed_pending, wait_for_seed
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import add_audit_attrs, debug_event, mark_request_audit_suppressed
 from omnigent.entities import (
@@ -860,6 +861,12 @@ def register_events_routes(
             # Marked only after authorization, so an unauthorized caller
             # cannot flip a session to "running" even transiently.
             in_flight.enter_context(_mark_dispatch_in_flight(session_id))
+        if body.type in ("message", _SLASH_COMMAND_TYPE) and seed_pending(session_id):
+            # A side chat's seed must land before its first own message.
+            await wait_for_seed(session_id)
+            conv = (
+                await asyncio.to_thread(conversation_store.get_conversation, session_id)
+            ) or conv
         created_by = _attribution_user(user_id)
         body_created_by = _attribution_user(body.created_by)
         if body_created_by is not None:

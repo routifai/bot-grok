@@ -95,26 +95,39 @@ describe("forkUnder", () => {
       fork({ chatId: "e", replies: 5 }),
       fork({ chatId: "f", replies: 6 }),
     ]);
+    // The archived fork is left out: it is found only in All forks.
     expect(under).toMatchObject({
       kind: "pill",
-      total: 6,
+      total: 5,
       open: 4,
-      more: 3,
-      replies: 21,
+      more: 2,
+      replies: 17,
       live: true,
     });
     if (under.kind !== "pill") throw new Error("expected a pill");
     expect(under.pips.map((pip) => pip.chatId)).toEqual(["b", "c", "e"]);
   });
 
-  it("shows grey pips when every fork is done", () => {
+  it("shows grey pips when every fork is added back", () => {
     const under = forkUnder([
       fork({ chatId: "a", state: "added" }),
-      fork({ chatId: "b", state: "archived" }),
+      fork({ chatId: "b", state: "added" }),
     ]);
     if (under.kind !== "pill") throw new Error("expected a pill");
     expect(under.open).toBe(0);
     expect(under.pips.map((pip) => pip.tone)).toEqual(["done", "done"]);
+  });
+
+  it("leaves archived forks out: one left is a reply line, none left is nothing", () => {
+    expect(
+      forkUnder([fork({ chatId: "a" }), fork({ chatId: "b", state: "archived" })]),
+    ).toMatchObject({ kind: "stub", fork: { chatId: "a" } });
+    expect(
+      forkUnder([
+        fork({ chatId: "a", state: "archived" }),
+        fork({ chatId: "b", state: "archived" }),
+      ]),
+    ).toEqual({ kind: "none" });
   });
 });
 

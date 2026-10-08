@@ -152,7 +152,11 @@ export function ForkThread({
           : "open";
   const tone = forkTone({ chatId: chat.id, status });
   const toneClass = FORK_TONE_CLASS[tone];
-  const siblings = anchor?.forks && anchor.forks.length > 1 ? anchor.forks : [];
+  // The message's other forks as pills (never archived ones; this one even when it is).
+  const pills = (anchor?.forks ?? []).filter(
+    (fork) => fork.chatId === chat.id || fork.state !== "archived",
+  );
+  const siblings = pills.length > 1 ? pills : [];
   // A fork of the Conversation can be forked once more; deeper starts a plain Side Chat.
   const canFork = Boolean(lineage && parentIsConversation) && status !== "archived";
   const writable = status !== "archived" && !thread.readOnly;

@@ -4,7 +4,7 @@ import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Check } from "lucide-react";
 import { useState } from "react";
-import { FORK_TONE_CLASS, forkTone, forkUnder, messageForkStatus } from "./forkModel";
+import { FORK_TONE_CLASS, forkTone, forkUnder, messageForkStatus, shownForks } from "./forkModel";
 import { BranchIcon, forkTime, LiveDot, ReplyCurve } from "./forkParts";
 
 const replies = (count: number) => plural(count, { one: "# reply", other: "# replies" });
@@ -101,7 +101,7 @@ function ForkPill({
 }) {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  const forks = message.forks ?? [];
+  const forks = shownForks(message.forks);
   const now = new Date();
   return (
     <Popover open={open} onOpenChange={setOpen}>

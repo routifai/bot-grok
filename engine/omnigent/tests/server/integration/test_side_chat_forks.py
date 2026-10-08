@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
+from omnigent.context.side_chat_seeds import seed_pending, wait_for_seed
 from omnigent.entities import CompactionData, MessageData, NewConversationItem
 from omnigent.stores.conversation_store import (
     SIDE_CHAT_LABEL_KEY,
@@ -111,6 +112,7 @@ async def _fork(client: httpx.AsyncClient, chat_id: str, anchor: str, **extra: A
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["anchor_item_id"] == anchor and body["parent_id"] == chat_id
+    await wait_for_seed(body["conversation_id"])  # the seed is written after the response
     return body["conversation_id"]
 
 
@@ -168,8 +170,8 @@ async def test_fork_seed_ends_at_the_anchor(
     user_fork = await _fork(client, root_id, ids["q2"])
     assert _seed(store, user_fork).last_item_id == ids["q2"]
 
-    # Without a title the fork gets the existing derived title (renamed later by auto-title).
-    assert store.get_conversation(user_fork).title  # type: ignore[union-attr]
+    # Without a title it stays untitled (never "Fork of …"): its first message titles it.
+    assert store.get_conversation(user_fork).title is None  # type: ignore[union-attr]
 
 
 async def test_invalid_anchors_are_refused(
@@ -685,3 +687,109 @@ async def test_a_fork_without_a_seed_still_hides_its_copied_context(
     store.append(fork_id, [_say("user", "mine", "m1"), _say("assistant", "my reply", "m1")])
     shown = (await client.get(f"/v1/sessions/{fork_id}/transcript")).json()["data"]
     assert _shown(shown) == ["mine", "my reply"]
+
+
+async def test_a_fork_opens_before_its_seed_and_its_first_message_waits_for_it(
+    client: httpx.AsyncClient,
+    store: SqlAlchemyConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.context import rollover as rollover_module
+    from omnigent.superchat.side_chats import routes as side_chat_routes
+
+    release = asyncio.Event()
+
+    async def slow_summary(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        del args, kwargs
+        await release.wait()
+        return {"text": "SUMMARY", "token_count": 3}
+
+    delivered: list[bool] = []
+    sent = asyncio.Event()
+
+    async def deliver(_request: Any, _store: Any, chat_id: str, text: str) -> tuple[None, None]:
+        # The message goes out only once the seed is in the chat.
+        delivered.append(bool(_seed(store, chat_id)) and text == QUESTION)
+        sent.set()
+        return None, None
+
+    titled: list[str | None] = []
+
+    class _Pending:
+        def schedule(self, *, expected_seed_title: str | None) -> None:
+            titled.append(expected_seed_title)
+
+    monkeypatch.setattr(rollover_module, "summarize_history", slow_summary)
+    monkeypatch.setattr(side_chat_routes, "_deliver_first_message", deliver)
+    monkeypatch.setattr(
+        side_chat_routes, "prepare_background_session_title", lambda **_: _Pending()
+    )
+    root_id = await _super_chat(client, "forks-background-seed")
+    ids = _conversation(store, root_id)
+
+    resp = await client.post(
+        f"/v1/sessions/{root_id}/side_chats",
+        json={"start": "with_context", "anchor_item_id": ids["a2"], "first_message": QUESTION},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    fork_id = body["conversation_id"]
+    # Answered while the seed is still being written; titled from the question at once.
+    assert seed_pending(fork_id) and not delivered
+    assert body["title"] == QUESTION and body["first_message_error"] is None
+    assert store.get_conversation(fork_id).title == QUESTION  # type: ignore[union-attr]
+
+    assert titled == []  # the short title waits for the delivered message
+
+    release.set()
+    await asyncio.wait_for(sent.wait(), timeout=5)
+    await asyncio.sleep(0)
+    assert delivered == [True]
+    assert titled == [QUESTION]
+
+
+async def test_a_message_posted_while_the_seed_is_written_lands_after_it(
+    client: httpx.AsyncClient,
+    store: SqlAlchemyConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.context import rollover as rollover_module
+
+    release = asyncio.Event()
+
+    async def slow_summary(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        del args, kwargs
+        await release.wait()
+        return {"text": "SUMMARY", "token_count": 3}
+
+    monkeypatch.setattr(rollover_module, "summarize_history", slow_summary)
+    root_id = await _super_chat(client, "forks-message-waits")
+    ids = _conversation(store, root_id)
+    resp = await client.post(
+        f"/v1/sessions/{root_id}/side_chats",
+        json={"start": "with_context", "anchor_item_id": ids["a2"]},
+    )
+    fork_id = resp.json()["conversation_id"]
+
+    post = asyncio.create_task(
+        client.post(
+            f"/v1/sessions/{fork_id}/events",
+            json={
+                "type": "message",
+                "data": {"role": "user", "content": [{"type": "input_text", "text": "mine"}]},
+            },
+        )
+    )
+    await asyncio.sleep(0.05)
+    assert not post.done()  # held until the seed lands
+    release.set()
+    await post  # delivered or not (no runner here), it never goes in ahead of the seed
+    items = store.list_items(fork_id, limit=500, order="asc").data
+    seed_at = next(
+        i for i, item in enumerate(items) if item.response_id == f"rollover_seed_{fork_id}"
+    )
+    mine = [i for i, item in enumerate(items) if "mine" in str(item.to_api_dict())]
+    assert all(i > seed_at for i in mine)
+
+
+QUESTION = "Which is cheaper in year one?"

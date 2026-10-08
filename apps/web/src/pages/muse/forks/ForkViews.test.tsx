@@ -153,11 +153,13 @@ it("draws several forks as one pill that fans out into a list and a new fork", (
   );
   expect(host.querySelector('[data-testid="fork-stub"]')).toBeNull();
   const pill = host.querySelector('[data-testid="fork-pill"]');
-  expect(pill?.textContent).toContain("5 forks");
+  // The archived fork is not counted, drawn or listed.
+  expect(pill?.textContent).toContain("4 forks");
   expect(pill?.textContent).toContain("3 open");
-  expect(pill?.textContent).toContain("+2");
+  expect(pill?.textContent).toContain("+1");
   expect(pill?.querySelectorAll("i")).toHaveLength(3);
 
+  expect(buttonNamed("Branch feedback")).toBeUndefined();
   act(() => buttonNamed("Show the math")?.click());
   expect(onOpenFork).toHaveBeenCalledWith(
     expect.objectContaining({ chatId: "b" }),
@@ -358,4 +360,52 @@ it("the thread view of an added fork offers no second add, only a side chat and 
   expect(buttonNamed("Open as side chat")).toBeDefined();
   expect(buttonNamed("Archive")).toBeDefined();
   expect(host.textContent).toContain("Added to Conversation");
+});
+
+function renderThread(target: ComponentProps<typeof ForkThread>["target"], forkWire = wire()) {
+  render(
+    <ForkThread
+      bot={{ id: "bot-1", name: "Nova", color: "sky" }}
+      wire={forkWire}
+      target={target}
+      conversationId="conv"
+      conversationMessages={target.anchor ? [target.anchor] : []}
+      onClose={vi.fn()}
+      onOpenFork={vi.fn()}
+      onAsk={vi.fn()}
+      onOpenSideChat={vi.fn()}
+      onAdded={vi.fn()}
+      onArchived={vi.fn()}
+    />,
+  );
+}
+
+const openChat = { id: "fork-a", title: "Which four banks?", live: false, unread: false };
+
+it("a fork just opened shows its question and Nova working before the engine records it", async () => {
+  // The engine sends the first message once the fork's context is ready: until then the
+  // transcript is empty and not running.
+  renderThread({
+    chat: { ...openChat, live: true, archived: false },
+    anchor: message({ forks: [fork()] }),
+    firstText: "Which four banks?",
+  });
+  await flush();
+  const thread = host.querySelector('[data-testid="fork-thread"]');
+  expect(thread?.textContent).toContain("Which four banks?");
+  expect(host.querySelector('[data-testid="fork-working"]')).not.toBeNull();
+});
+
+it("the thread view's sibling pills leave archived forks out", async () => {
+  const anchor = message({
+    forks: [
+      fork({ chatId: "fork-a" }),
+      fork({ chatId: "old", title: "Old test fork", state: "archived" }),
+      fork({ chatId: "b", title: "Show the math" }),
+    ],
+  });
+  renderThread({ chat: { ...openChat, archived: false }, anchor });
+  await flush();
+  expect(buttonNamed("Show the math")).toBeDefined();
+  expect(buttonNamed("Old test fork")).toBeUndefined();
 });

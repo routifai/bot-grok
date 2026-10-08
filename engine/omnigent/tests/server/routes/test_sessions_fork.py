@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.testclient import TestClient
 
+from omnigent.context.side_chat_seeds import wait_for_seed
 from omnigent.db.utils import builtin_agent_id
 from omnigent.entities import (
     Agent,
@@ -1354,6 +1355,15 @@ def _make_compaction_item(
     )
 
 
+def _fork_side_chat_and_wait_for_seed(conv_store: Any, source_id: str) -> Any:
+    """POST a side-chat fork, then wait for its seed (written after the response)."""
+    with TestClient(_build_app(conv_store)) as client:
+        resp = client.post(f"/v1/sessions/{source_id}/fork", json={"side_chat": True})
+        if resp.status_code == 201:
+            client.portal.call(wait_for_seed, resp.json()["id"])
+    return resp
+
+
 @pytest.mark.asyncio
 async def test_fork_side_chat_of_rollover_keeps_labels_and_reuses_checkpoint() -> None:
     """A side-chat fork of a rollover super chat stays a rollover session.
@@ -1376,12 +1386,7 @@ async def test_fork_side_chat_of_rollover_keeps_labels_and_reuses_checkpoint() -
         conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
         items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
     )
-    client = TestClient(_build_app(conv_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"side_chat": True},
-    )
+    resp = _fork_side_chat_and_wait_for_seed(conv_store, "e9f8f58523cec9a57d3bdf93be543e8c")
 
     assert resp.status_code == 201, f"got {resp.status_code}: {resp.text}"
     assert conv_store.fork_calls[0]["dropped_label_keys"] == frozenset(), (
@@ -1421,12 +1426,7 @@ async def test_fork_side_chat_of_rollover_without_checkpoint_summarizes_now(
         conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
         items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
     )
-    client = TestClient(_build_app(conv_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"side_chat": True},
-    )
+    resp = _fork_side_chat_and_wait_for_seed(conv_store, "e9f8f58523cec9a57d3bdf93be543e8c")
 
     assert resp.status_code == 201, f"got {resp.status_code}: {resp.text}"
     assert len(conv_store.appended) == 1
@@ -2666,12 +2666,7 @@ async def test_fork_side_chat_seed_summarizes_on_the_sessions_reported_model(
         conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
         items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
     )
-    client = TestClient(_build_app(conv_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"side_chat": True},
-    )
+    resp = _fork_side_chat_and_wait_for_seed(conv_store, "e9f8f58523cec9a57d3bdf93be543e8c")
 
     assert resp.status_code == 201, resp.text
     assert seen["model"] == "claude-haiku-4-5-20251001"
@@ -2711,12 +2706,7 @@ async def test_fork_side_chat_seed_uses_server_llm_when_no_runner_is_connected(
         conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
         items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
     )
-    client = TestClient(_build_app(conv_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"side_chat": True},
-    )
+    resp = _fork_side_chat_and_wait_for_seed(conv_store, "e9f8f58523cec9a57d3bdf93be543e8c")
 
     assert resp.status_code == 201, resp.text
     assert seen == {"model": "anthropic/claude-haiku-4-5-20251001", "has_client": True}

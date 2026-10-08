@@ -65,9 +65,16 @@ export type ForkUnder =
 
 export const MAX_PIPS = 3;
 
+/** The forks a message shows (stub, pill, pips, gutter, sibling pills): archived ones are
+ * found only in All forks, so a message whose forks are all archived shows none. */
+export function shownForks(forks: readonly MessageFork[] | undefined): MessageFork[] {
+  return (forks ?? []).filter((fork) => fork.state !== "archived");
+}
+
 export function forkUnder(forks: readonly MessageFork[] | undefined): ForkUnder {
-  if (!forks?.length) return { kind: "none" };
-  const rows = forks.map((fork) => {
+  const shown = shownForks(forks);
+  if (!shown.length) return { kind: "none" };
+  const rows = shown.map((fork) => {
     const status = messageForkStatus(fork);
     return { fork, status, tone: forkTone({ chatId: fork.chatId, status }) };
   });

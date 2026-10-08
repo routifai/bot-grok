@@ -326,6 +326,36 @@ async def test_generated_title_is_normalized_before_rename(db_uri: str) -> None:
     assert store.get_conversation(session_id).title == "Debug authentication timeout"
 
 
+async def test_a_side_chat_rename_tells_its_family(db_uri: str) -> None:
+    from omnigent.stores.conversation_store import (
+        SIDE_CHAT_LABEL_KEY,
+        SIDE_CHAT_PARENT_LABEL_KEY,
+    )
+    from omnigent.superchat.family.signals import listen_chats_changed
+
+    store = SqlAlchemyConversationStore(db_uri)
+    root = store.create_conversation(kind="default", title="Conversation")
+    side_id = _seed_session(store, "Which is cheaper for a small team in year one")
+    store.set_labels(side_id, {SIDE_CHAT_LABEL_KEY: "1", SIDE_CHAT_PARENT_LABEL_KEY: root.id})
+    events: asyncio.Queue[dict] = asyncio.Queue()
+    stop = listen_chats_changed(root.id, events)
+
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        return "AWS vs Azure year one"
+
+    coordinator = BackgroundSessionTitleCoordinator(store, generator)
+    coordinator.schedule(
+        session_id=side_id,
+        prompt="Which is cheaper for a small team in year one",
+        expected_seed_title="Which is cheaper for a small team in year one",
+    )
+    await coordinator.wait_for_idle()
+    stop()
+
+    assert store.get_conversation(side_id).title == "AWS vs Azure year one"
+    assert (await asyncio.wait_for(events.get(), timeout=1))["type"] == "chats.changed"
+
+
 async def test_title_normalizer_rejects_empty_and_oversized_output() -> None:
     assert normalize_background_title(None) is None
     assert normalize_background_title("   \n  ") is None

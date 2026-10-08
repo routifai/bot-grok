@@ -7,7 +7,6 @@ import {
   addOmnigentForkToConversation,
   archiveOmnigentSession,
   createOmnigentSideChat,
-  deriveSideChatTitle,
   getOmnigentContextSummary,
   getOmnigentTranscript,
   getOmnigentWorkingProject,
@@ -133,7 +132,6 @@ export async function createSideChat(
   try {
     created = await createOmnigentSideChat(client, email, superSessionId, {
       start: sideChatStartToWire(input.start),
-      title: deriveSideChatTitle(input.text),
       firstMessage: input.text,
     });
   } catch (error) {
@@ -196,7 +194,6 @@ export async function createFork(
   try {
     created = await createOmnigentSideChat(client, email, parentId, {
       start: "with_context",
-      title: deriveSideChatTitle(input.text),
       firstMessage: input.text,
       anchorItemId: input.anchorItemId,
     });

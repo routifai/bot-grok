@@ -418,6 +418,11 @@ class BackgroundSessionTitleCoordinator:
                 expected_seed_title,
                 title,
             )
+            if updated is not None:
+                # A Side Chat or Fork shows its title in its family's lists and pills.
+                from omnigent.superchat.family.signals import notify_session_changed
+
+                await notify_session_changed(self._conversation_store, request.session_id)
             _logger.info(
                 "background session title completed session=%s renamed=%s elapsed_ms=%.1f",
                 request.session_id,

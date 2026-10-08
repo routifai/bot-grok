@@ -3,7 +3,7 @@ import { cn } from "@aiden/ui-web";
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import { type RefObject, useEffect, useMemo, useState } from "react";
-import { FORK_TONE_CLASS, type GutterLayout, gutterLayout } from "./forkModel";
+import { FORK_TONE_CLASS, type GutterLayout, gutterLayout, shownForks } from "./forkModel";
 
 /** Dots never sit closer than this to the strip's ends. */
 const EDGE_PX = 18;
@@ -30,7 +30,8 @@ export function ForkGutter({
   const forksById = useMemo(() => {
     const map = new Map<string, readonly MessageFork[]>();
     for (const message of messages) {
-      if (message.forks?.length) map.set(message.id, message.forks);
+      const forks = shownForks(message.forks);
+      if (forks.length) map.set(message.id, forks);
     }
     return map;
   }, [messages]);

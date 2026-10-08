@@ -82,10 +82,10 @@ def build_side_chat_fork_body(
     transcript (``routes_core.fork_session`` / ``_seed_rollover_side_chat``).
     A Fork's *anchor* ends the seed at that item and stops the copy at the
     end of its turn, so nothing later than that turn reaches the new chat.
+    Without a *title* it is sent empty, not omitted: the chat stays untitled
+    (never ``"Fork of …"``) so its first message titles it in the background.
     """
-    body: dict[str, object] = {"side_chat": True}
-    if title:
-        body["title"] = title
+    body: dict[str, object] = {"side_chat": True, "title": title or ""}
     if anchor is not None:
         body["side_chat_anchor_item_id"] = anchor.id
         if anchor.response_id:

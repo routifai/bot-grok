@@ -8262,7 +8262,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional first user message, posted to the new Side Chat once it exists.",
+            "description": "Optional first user message, posted to the new Side Chat once it exists \u2014 after its seed when it starts `\"with_context\"`, so then after this request has answered.",
             "title": "First Message"
           },
           "start": {
@@ -8284,7 +8284,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional title for the new Side Chat. `None` lets the server derive one (`\"Fork of <source_title>\"` for `\"with_context\"`; unset for `\"blank\"`).",
+            "description": "Optional title for the new Side Chat. `None` titles it from `first_message` (then a short model-written title replaces that in the background), or leaves it untitled until its first message.",
             "title": "Title"
           }
         },
@@ -8323,7 +8323,7 @@
                 "type": "null"
               }
             ],
-            "description": "Set when the Side Chat was created but its `first_message` could not be delivered, after the server's own bounded retry; the caller may resend it.",
+            "description": "Set when the Side Chat was created but its `first_message` could not be delivered, after the server's own bounded retry; the caller may resend it. Never set for a message sent after the response (`\"with_context\"`): that one shows as unanswered instead.",
             "title": "First Message Error"
           },
           "first_message_error_code": {
@@ -16431,7 +16431,7 @@
     },
     "/v1/sessions/{session_id}/side_chats": {
       "post": {
-        "description": "Open a Side Chat branched from a Super Chat.\n\nDoes exactly what the `side_chat_open` tool does today: refuses\nunless *session_id* is itself a superside-chat Super Chat (never a\nSide Chat, never a Sub-agent \u2014 `refuse_side_chat_open`);\n`start: \"with_context\"` forks it with a seeded checkpoint\n(`POST /sessions/{id}/fork`, `side_chat: true`); `\"blank\"`\ncreates a fresh top-level session carrying the discovery labels\n(`POST /sessions`). Either way the new Side Chat is stamped with\nhow it started, bound to the Super Chat's host (best-effort, as\n`POST /hosts/{host_id}/runners` already is for an unbound fork),\nand \u2014 when `first_message` is given \u2014 sent that as its first\nuser message.\n\nWith `anchor_item_id` it opens a Fork (ADR 0010): *session_id* may\nthen also be a fork of the Super Chat (once), the seed ends at the\nanchor, and the anchor and its chat are stamped on the new Side Chat\n(`omnigent/superchat/side_chats/forks.py`).\n\n**Parameters**\n\n- `body` \u2014 `start` (required), optional `title` / `first_message` / `anchor_item_id`.\n\n**Returns:** `{conversation_id, title, start, anchor_item_id, parent_id}`.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if *session_id* does not exist; 403 if it is a Side Chat (an anchorless one, for a fork) or a Sub-agent, or isn't in superside-chat mode; 422 `fork_too_deep` / `fork_anchor_invalid` for a fork; whatever the fork/create/message step raises on failure.",
+        "description": "Open a Side Chat branched from a Super Chat.\n\nDoes exactly what the `side_chat_open` tool does today: refuses\nunless *session_id* is itself a superside-chat Super Chat (never a\nSide Chat, never a Sub-agent \u2014 `refuse_side_chat_open`);\n`start: \"with_context\"` forks it with a seeded checkpoint\n(`POST /sessions/{id}/fork`, `side_chat: true`); `\"blank\"`\ncreates a fresh top-level session carrying the discovery labels\n(`POST /sessions`). Either way the new Side Chat is stamped with\nhow it started, bound to the Super Chat's host (best-effort, as\n`POST /hosts/{host_id}/runners` already is for an unbound fork),\nand \u2014 when `first_message` is given \u2014 sent that as its first\nuser message. A `with_context` chat answers before its seed is written\n(`omnigent/context/side_chat_seeds.py`): its first message goes out once\nthe seed lands. An untitled chat is titled from that message at once, and\nby the model in the background once it is delivered.\n\nWith `anchor_item_id` it opens a Fork (ADR 0010): *session_id* may\nthen also be a fork of the Super Chat (once), the seed ends at the\nanchor, and the anchor and its chat are stamped on the new Side Chat\n(`omnigent/superchat/side_chats/forks.py`).\n\n**Parameters**\n\n- `body` \u2014 `start` (required), optional `title` / `first_message` / `anchor_item_id`.\n\n**Returns:** `{conversation_id, title, start, anchor_item_id, parent_id}`.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if *session_id* does not exist; 403 if it is a Side Chat (an anchorless one, for a fork) or a Sub-agent, or isn't in superside-chat mode; 422 `fork_too_deep` / `fork_anchor_invalid` for a fork; whatever the fork/create/message step raises on failure.",
         "operationId": "open_side_chat_v1_sessions__session_id__side_chats_post",
         "parameters": [
           {

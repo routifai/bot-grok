@@ -13,15 +13,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Request
 
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
+from omnigent.context.side_chat_seeds import seed_pending, wait_for_seed
 from omnigent.entities import Conversation
+from omnigent.entities.conversation import synthesize_conversation_title
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_EDIT, AuthProvider
+from omnigent.server.background_session_titles import (
+    background_session_titles_enabled,
+    prepare_background_session_title,
+)
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
 from omnigent.server.routes._auth_helpers import (
     require_access_and_level as _require_access_and_level,
@@ -29,7 +36,12 @@ from omnigent.server.routes._auth_helpers import (
 from omnigent.server.routes._errors import session_not_found as _session_not_found
 from omnigent.server.routes._sessions.common import get_server_runner_router
 from omnigent.server.routes._sessions.helpers import _forward_session_change_to_runner
-from omnigent.server.schemas import ForkAddRequest, SideChatOpenRequest, SideChatOpenResponse
+from omnigent.server.schemas import (
+    ForkAddRequest,
+    SessionEventInput,
+    SideChatOpenRequest,
+    SideChatOpenResponse,
+)
 from omnigent.stores import ConversationStore
 from omnigent.stores.conversation_store import (
     SIDE_CHAT_PARENT_LABEL_KEY,
@@ -124,7 +136,10 @@ def register_side_chats_routes(
         how it started, bound to the Super Chat's host (best-effort, as
         ``POST /hosts/{host_id}/runners`` already is for an unbound fork),
         and — when ``first_message`` is given — sent that as its first
-        user message.
+        user message. A ``with_context`` chat answers before its seed is written
+        (``omnigent/context/side_chat_seeds.py``): its first message goes out once
+        the seed lands. An untitled chat is titled from that message at once, and
+        by the model in the background once it is delivered.
 
         With ``anchor_item_id`` it opens a Fork (ADR 0010): *session_id* may
         then also be a fork of the Super Chat (once), the seed ends at the
@@ -209,6 +224,11 @@ def register_side_chats_routes(
         # A fork of a fork copies its parent's labels: not its "added to the Conversation" state.
         for key in FORK_ADDED_LABEL_KEYS & caller.labels.keys():
             await asyncio.to_thread(conversation_store.delete_label, new_id, key)
+        title, start_title = new_conv.get("title"), None
+        if body.first_message and not title:
+            title, start_title = await _title_from_first_message(
+                request, conversation_store, new_id, body.first_message
+            )
         notify_chats_changed(root_id)
 
         host_id = caller.host_id
@@ -230,16 +250,24 @@ def register_side_chats_routes(
 
         first_message_error: str | None = None
         first_message_error_code: str | None = None
-        if body.first_message:
+        if body.first_message and seed_pending(new_id):
+            # The message waits for the seed (tens of seconds): send it after answering, so
+            # the new chat opens at once. A failure then shows as an unanswered message.
+            _send_in_background(
+                request, conversation_store, new_id, body.first_message, root_id, start_title
+            )
+        elif body.first_message:
             # The Side Chat already exists; report the failed message instead of
             # erroring, so the caller doesn't retry into a duplicate chat.
             first_message_error, first_message_error_code = await _deliver_first_message(
                 request, conversation_store, new_id, body.first_message
             )
+            if first_message_error is None and start_title is not None:
+                start_title()
 
         return SideChatOpenResponse(
             conversation_id=new_id,
-            title=new_conv.get("title"),
+            title=title,
             start=body.start,
             first_message_error=first_message_error,
             first_message_error_code=first_message_error_code,
@@ -337,6 +365,61 @@ async def _write_summary(
     if not summary:
         raise OmnigentError("The fork has nothing to add yet", code=ErrorCode.INVALID_INPUT)
     return summary
+
+
+async def _title_from_first_message(
+    request: Request, conv_store: ConversationStore, chat_id: str, text: str
+) -> tuple[str | None, Callable[[], None] | None]:
+    """Title an untitled new chat from its first message now, as the events route would.
+
+    The short model-written title is the events route's own background title too, but it
+    must start only once the message is delivered (the chat's runner writes it).
+
+    :returns: ``(title, start)``: the title set now, and what starts the background title
+        (``None`` when titles are off or the chat is not titled from its message).
+    """
+    conv = await asyncio.to_thread(conv_store.get_conversation, chat_id)
+    content = [{"type": "input_text", "text": text}]
+    seed_title = synthesize_conversation_title(content)
+    if conv is None or conv.title is not None or seed_title is None:
+        return (conv.title if conv is not None else None), None
+    pending = prepare_background_session_title(
+        coordinator=getattr(request.app.state, "background_title_coordinator", None),
+        conversation=conv,
+        event=SessionEventInput(type="message", data={"role": "user", "content": content}),
+        enabled=background_session_titles_enabled(request.headers),
+    )
+    await asyncio.to_thread(conv_store.update_conversation, chat_id, title=seed_title)
+    if pending is None:
+        return seed_title, None
+    return seed_title, lambda: pending.schedule(expected_seed_title=seed_title)
+
+
+#: First messages being sent after their chat's open request answered (kept so none is
+#: garbage-collected mid-flight).
+_background_sends: set[asyncio.Task[None]] = set()
+
+
+def _send_in_background(
+    request: Request,
+    conv_store: ConversationStore,
+    chat_id: str,
+    text: str,
+    root_id: str,
+    start_title: Callable[[], None] | None,
+) -> None:
+    """Deliver a new chat's first message once its seed lands, without holding up the open."""
+
+    async def send() -> None:
+        await wait_for_seed(chat_id)  # the events route waits too; no need to hold its slot
+        error, _ = await _deliver_first_message(request, conv_store, chat_id, text)
+        if error is None and start_title is not None:
+            start_title()
+        notify_chats_changed(root_id)  # its live flag changed with the message
+
+    task = asyncio.create_task(send(), name=f"side-chat-first-message-{chat_id}")
+    _background_sends.add(task)
+    task.add_done_callback(_background_sends.discard)
 
 
 #: Statuses worth one more try: a runner still starting, a conflict, a server blip.

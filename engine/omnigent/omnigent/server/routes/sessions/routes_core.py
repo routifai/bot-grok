@@ -3013,6 +3013,7 @@ def register_core_routes(
             build_side_chat_seed,
             resolve_keep_tokens,
         )
+        from omnigent.context.side_chat_seeds import SIDE_CHAT_SEED_TIMEOUT_S
         from omnigent.entities import NewConversationItem
 
         items: list[dict[str, Any]] = []
@@ -3059,16 +3060,18 @@ def register_core_routes(
                 connection = _resolve_server_llm_connection(server_llm)
                 model = server_llm.model
         seed_labels = source_conv.labels if source_conv else None
-        seed = await build_side_chat_seed(
-            items,
-            keep_tokens=resolve_keep_tokens(seed_labels),
-            model=model,
-            llm_client=llm_client,
-            connection=connection,
-            runner_client=runner_client,
-            conversation_id=source_id,
-            anchor_item_id=anchor_item_id,
-        )
+        # Bounded: a message to the new chat waits for this seed.
+        async with asyncio.timeout(SIDE_CHAT_SEED_TIMEOUT_S):
+            seed = await build_side_chat_seed(
+                items,
+                keep_tokens=resolve_keep_tokens(seed_labels),
+                model=model,
+                llm_client=llm_client,
+                connection=connection,
+                runner_client=runner_client,
+                conversation_id=source_id,
+                anchor_item_id=anchor_item_id,
+            )
         await asyncio.to_thread(
             conversation_store.append,
             new_conv_id,
@@ -3080,6 +3083,35 @@ def register_core_routes(
                 )
             ],
         )
+
+    async def _seed_side_chat_in_background(
+        new_conv_id: str, source_id: str, anchor_item_id: str | None
+    ) -> None:
+        """
+        Write a side chat's seed after its fork has returned; never raises.
+
+        Appended AFTER the deep copy so it is the fork's LATEST item — resume
+        rebuilders restart there. Best-effort: on failure a Fork's copy marker
+        still ends its copied context, and a plain side chat keeps the full copy.
+        """
+        try:
+            await _seed_rollover_side_chat(new_conv_id, source_id, anchor_item_id)
+        except Exception:
+            _logger.warning(
+                "rollover side-chat seed failed for fork %s of %s; "
+                "leaving the copied history in place",
+                new_conv_id,
+                source_id,
+                exc_info=True,
+            )
+            return
+        # The family's chat rows carry the seed summary ("Knows our conversation").
+        from omnigent.superchat.family.signals import notify_session_changed
+
+        try:
+            await notify_session_changed(conversation_store, new_conv_id)
+        except Exception:
+            _logger.warning("side-chat seed notify failed for %s", new_conv_id, exc_info=True)
 
     # ── POST /sessions/{source_id}/fork ─────────────────────────
 
@@ -3602,21 +3634,16 @@ def register_core_routes(
             ) from exc
 
         if body.side_chat and source_is_rollover:
-            # Appended AFTER the deep copy so it is the fork's LATEST item —
-            # resume rebuilders restart there. Best-effort: a failure here
-            # just leaves the full copy in place, never breaks the fork.
-            try:
-                await _seed_rollover_side_chat(
+            # The seed is model-written (tens of seconds), so it is built in the
+            # background: a message to the fork waits for it (``side_chat_seeds``).
+            from omnigent.context.side_chat_seeds import start_seed
+
+            start_seed(
+                new_conv.id,
+                _seed_side_chat_in_background(
                     new_conv.id, source_id, body.side_chat_anchor_item_id
-                )
-            except Exception:
-                _logger.warning(
-                    "rollover side-chat seed failed for fork %s of %s; "
-                    "leaving the full copied history in place",
-                    new_conv.id,
-                    source_id,
-                    exc_info=True,
-                )
+                ),
+            )
 
         # Create the fork-owned rows the rewritten items now reference —
         # before the fork is announced or returned, so no reader sees the ids

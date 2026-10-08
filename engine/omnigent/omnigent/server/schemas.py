@@ -2782,11 +2782,12 @@ class SideChatOpenRequest(BaseModel):
     :param start: ``"with_context"`` forks the Super Chat with a seeded
         checkpoint summary; ``"blank"`` creates a fresh top-level session
         carrying only the discovery labels.
-    :param title: Optional title for the new Side Chat. ``None`` lets the
-        server derive one (``"Fork of <source_title>"`` for
-        ``"with_context"``; unset for ``"blank"``).
+    :param title: Optional title for the new Side Chat. ``None`` titles it
+        from ``first_message`` (then a short model-written title replaces that
+        in the background), or leaves it untitled until its first message.
     :param first_message: Optional first user message, posted to the new
-        Side Chat once it exists.
+        Side Chat once it exists — after its seed when it starts
+        ``"with_context"``, so then after this request has answered.
     :param anchor_item_id: Opens a Fork (ADR 0010): a visible user or assistant
         message of the chat this is posted to (the Super Chat, or a fork of it).
         The fork knows that chat only up to and including this message. Requires
@@ -2811,7 +2812,8 @@ class SideChatOpenResponse(BaseModel):
     :param start: Echoes the request's ``start``.
     :param first_message_error: Set when the Side Chat was created but its
         ``first_message`` could not be delivered, after the server's own bounded retry;
-        the caller may resend it.
+        the caller may resend it. Never set for a message sent after the response
+        (``"with_context"``): that one shows as unanswered instead.
     :param first_message_error_code: The failure's code: the events route's error code
         (e.g. ``runner_unavailable``, ``invalid_input``) or ``transport_error``.
     :param anchor_item_id: A Fork's anchor (echoes the request), else ``None``.

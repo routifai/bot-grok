@@ -76,9 +76,11 @@ def test_fork_body_has_side_chat_flag_and_title() -> None:
     assert body == {"side_chat": True, "title": "Checking the spreadsheet"}
 
 
-def test_fork_body_omits_title_when_blank() -> None:
-    assert build_side_chat_fork_body(None) == {"side_chat": True}
-    assert build_side_chat_fork_body("") == {"side_chat": True}
+def test_fork_body_leaves_an_untitled_chat_untitled() -> None:
+    # An empty title, not an omitted one: the fork route would name it "Fork of …",
+    # which stops the first message from titling it.
+    assert build_side_chat_fork_body(None) == {"side_chat": True, "title": ""}
+    assert build_side_chat_fork_body("") == {"side_chat": True, "title": ""}
 
 
 def test_blank_create_body_carries_discovery_labels() -> None:

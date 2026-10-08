@@ -118,6 +118,16 @@ describe("createSideChat", () => {
 
     expect(result.id).toBe("conv_new");
     expect(postOmnigentMessage).not.toHaveBeenCalled();
+    // No title: the engine titles the side chat from its first exchange.
+    expect(createOmnigentSideChat).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_super",
+      {
+        start: "blank",
+        firstMessage: "lunch ideas",
+      },
+    );
   });
 
   it("does not retry the first message itself; the engine's failure code reaches the summary", async () => {
@@ -197,9 +207,9 @@ describe("forks", () => {
       BOUND,
       "person@example.test",
       "conv_super",
+      // No title: the engine titles the fork from its first exchange.
       {
         start: "with_context",
-        title: "Would 6.6% win it back?",
         firstMessage: "Would 6.6% win it back?",
         anchorItemId: "msg_1",
       },

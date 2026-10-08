@@ -450,7 +450,9 @@ export function useSideChatThread({
         setEngineRunning(running);
         setPending((now) => (now && userCount(page.messages) > now.base ? null : now));
         if (running) busy.current = true;
-        if (!running && page.messages.at(-1)?.role !== "user") {
+        // A message not recorded yet (a new chat's first one goes out once its context is
+        // ready) is still being answered, even before the engine says it is running.
+        if (!running && !pendingRef.current && page.messages.at(-1)?.role !== "user") {
           setWaiting(false);
           // The sidebar's live dot comes from the list: tell it this chat went quiet.
           if (busy.current) {
