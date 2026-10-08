@@ -4,10 +4,10 @@ export function prefersReducedMotion(): boolean {
   return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-/** True once the element has reached the screen (once, never un-set). Reduced motion: at once. */
-export function useReveal<T extends Element>(margin = "0px 0px -18% 0px") {
+/** True once the element has reached the screen (once, never un-set). Reduced motion or `immediate`: at once. */
+export function useReveal<T extends Element>(margin = "0px 0px -18% 0px", immediate = false) {
   const ref = useRef<T>(null);
-  const [shown, setShown] = useState(prefersReducedMotion);
+  const [shown, setShown] = useState(() => immediate || prefersReducedMotion());
   useEffect(() => {
     const el = ref.current;
     if (shown || !el || typeof IntersectionObserver !== "function") return;
@@ -33,18 +33,25 @@ export const useShown = () => useContext(ShownContext);
 export function Reveal({
   as: Tag = "div",
   className,
+  immediate,
   children,
   ...rest
 }: {
   as?: "div" | "section";
   className?: string;
+  immediate?: boolean;
   children: ReactNode;
   [key: `data-${string}`]: string | undefined;
 }) {
-  const [ref, shown] = useReveal<HTMLDivElement>();
+  const [ref, shown] = useReveal<HTMLDivElement>(undefined, immediate);
   return (
     <ShownContext.Provider value={shown}>
-      <Tag ref={ref as never} className={className} data-in={shown ? "true" : "false"} {...rest}>
+      <Tag
+        ref={ref as never}
+        className={`group ${className ?? ""}`}
+        data-in={shown ? "true" : "false"}
+        {...rest}
+      >
         {children}
       </Tag>
     </ShownContext.Provider>

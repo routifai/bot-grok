@@ -223,6 +223,17 @@ export type ColorTokens = {
   "welcome-orb-deep"?: string;
   /** Signed-out welcome page (light in both themes): the orb edge. */
   "welcome-orb-lo"?: string;
+  /** Signed-out welcome page (light in both themes): the web tool glyph. */
+  "welcome-violet"?: string;
+  /** Signed-out welcome page (light in both themes): the artifact canvas. */
+  "welcome-canvas"?: string;
+  /** Signed-out welcome page (light in both themes): the side-chat list. */
+  "welcome-panel"?: string;
+  /** Signed-out welcome page (light in both themes): a switch that is off. */
+  /** Signed-out welcome page (light in both themes): the recording label. */
+  "welcome-rec"?: string;
+  /** Signed-out welcome page (light in both themes): the recording dot. */
+  "welcome-rec-dot"?: string;
 };
 
 export const darkTokens = {
@@ -374,6 +385,11 @@ const tiles = {
   "welcome-orb-mid": "#6B7CFF",
   "welcome-orb-deep": "#4B2FB0",
   "welcome-orb-lo": "#141433",
+  "welcome-violet": "#7A5AF5",
+  "welcome-canvas": "#FAFAFC",
+  "welcome-panel": "#F4F4F7",
+  "welcome-rec": "#C2335E",
+  "welcome-rec-dot": "#FF4D6D",
 } as const;
 
 const novaLight = {

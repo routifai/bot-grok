@@ -53,7 +53,7 @@ export function WelcomePage() {
         </Link>
       </header>
 
-      <main>
+      <main className="overflow-visible!">
         <section
           className={`mx-auto max-w-[1120px] pt-[clamp(48px,10vh,110px)] pb-10 text-center ${GUTTER}`}
         >

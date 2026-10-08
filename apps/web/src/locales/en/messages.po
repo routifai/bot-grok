@@ -179,9 +179,6 @@ msgstr "A new plan for “{0}”"
 msgid "A plan is ready for “{0}”"
 msgstr "A plan is ready for “{0}”"
 
-msgid "a side question"
-msgstr "a side question"
-
 msgid "About groups"
 msgstr "About groups"
 
@@ -581,6 +578,9 @@ msgstr "Browse MCP servers"
 msgid "Built-in skills can't be edited."
 msgstr "Built-in skills can't be edited."
 
+msgid "Calendar · Thu 2:00"
+msgstr "Calendar · Thu 2:00"
+
 msgid "Call"
 msgstr "Call"
 
@@ -632,6 +632,9 @@ msgstr "Changing…"
 
 msgid "Channels"
 msgstr "Channels"
+
+msgid "Chart · revenue by quarter"
+msgstr "Chart · revenue by quarter"
 
 msgid "Chart failed to render: {error}"
 msgstr "Chart failed to render: {error}"
@@ -1254,6 +1257,9 @@ msgstr "credential saved"
 msgid "Credentials are encrypted and never sent to the model."
 msgstr "Credentials are encrypted and never sent to the model."
 
+msgid "CRM · Q3 numbers"
+msgstr "CRM · Q3 numbers"
+
 msgid "Cron"
 msgstr "Cron"
 
@@ -1412,6 +1418,9 @@ msgstr "Don’t have an account?"
 msgid "Done"
 msgstr "Done"
 
+msgid "Done. It's a line chart now, with the target marked. Saved as v2."
+msgstr "Done. It's a line chart now, with the target marked. Saved as v2."
+
 msgid "Download"
 msgstr "Download"
 
@@ -1431,6 +1440,9 @@ msgstr "Downloading…"
 
 msgid "Draft"
 msgstr "Draft"
+
+msgid "Draft a pricing proposal for Northwind's second team."
+msgstr "Draft a pricing proposal for Northwind's second team."
 
 msgid "Draft talking points per client"
 msgstr "Draft talking points per client"
@@ -1471,6 +1483,12 @@ msgstr "Edited by you"
 
 msgid "Email"
 msgstr "Email"
+
+msgid "Email · 4 threads"
+msgstr "Email · 4 threads"
+
+msgid "Email it to Maya"
+msgstr "Email it to Maya"
 
 msgid "Engage when... Ignore..."
 msgstr "Engage when... Ignore..."
@@ -1556,6 +1574,9 @@ msgstr "Export"
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
 
+msgid "Export to a sheet"
+msgstr "Export to a sheet"
+
 msgid "External conversation"
 msgstr "External conversation"
 
@@ -1595,6 +1616,9 @@ msgstr "Filter files"
 
 msgid "Filter forks"
 msgstr "Filter forks"
+
+msgid "Filter renewals in the next 30 days"
+msgstr "Filter renewals in the next 30 days"
 
 msgid "Filters"
 msgstr "Filters"
@@ -1655,6 +1679,9 @@ msgstr "Forgot password?"
 msgid "Fork"
 msgstr "Fork"
 
+msgid "forked from this message"
+msgstr "forked from this message"
+
 msgid "Forks"
 msgstr "Forks"
 
@@ -1687,9 +1714,6 @@ msgstr "From a fork:"
 
 msgid "From Q3 portfolio review · 7:40"
 msgstr "From Q3 portfolio review · 7:40"
-
-msgid "From three weeks ago"
-msgstr "From three weeks ago"
 
 msgid "From your goal · {when}"
 msgstr "From your goal · {when}"
@@ -1772,6 +1796,9 @@ msgstr "Hear a sample"
 msgid "Here is one week of working with it."
 msgstr "Here is one week of working with it."
 
+msgid "Here's a draft, using the discount we agreed on in May."
+msgstr "Here's a draft, using the discount we agreed on in May."
+
 msgid "Here's my plan"
 msgstr "Here's my plan"
 
@@ -1795,6 +1822,9 @@ msgstr "Hide password"
 
 msgid "High"
 msgstr "High"
+
+msgid "Hiring plan"
+msgstr "Hiring plan"
 
 msgid "hour"
 msgstr "hour"
@@ -2058,6 +2088,9 @@ msgstr "Made for you"
 msgid "Make sure nothing is still running on this computer."
 msgstr "Make sure nothing is still running on this computer."
 
+msgid "Make this a line chart and show the target."
+msgstr "Make this a line chart and show the target."
+
 msgid "Manage MCP servers"
 msgstr "Manage MCP servers"
 
@@ -2090,9 +2123,6 @@ msgstr "Maximum images per request"
 
 msgid "Maximum output tokens"
 msgstr "Maximum output tokens"
-
-msgid "Maya likes the one-page summary first, so I put it on top, like last time."
-msgstr "Maya likes the one-page summary first, so I put it on top, like last time."
 
 msgid "MCP servers"
 msgstr "MCP servers"
@@ -2194,8 +2224,14 @@ msgstr "Models from server"
 msgid "MON 11:40"
 msgstr "MON 11:40"
 
+msgid "MON 14:00"
+msgstr "MON 14:00"
+
 msgid "MON 9:02"
 msgstr "MON 9:02"
+
+msgid "MON 9:10"
+msgstr "MON 9:10"
 
 msgid "MONDAY"
 msgstr "MONDAY"
@@ -2395,8 +2431,8 @@ msgstr "None yet"
 msgid "Normal"
 msgstr "Normal"
 
-msgid "Northwind · Q3"
-msgstr "Northwind · Q3"
+msgid "Northwind · one page"
+msgstr "Northwind · one page"
 
 msgid "Northwind Q3 Review"
 msgstr "Northwind Q3 Review"
@@ -2464,8 +2500,11 @@ msgstr "Nova starts fresh. You can still show earlier messages."
 msgid "Nova, in 47 seconds"
 msgstr "Nova, in 47 seconds"
 
-msgid "Nova's computer"
-msgstr "Nova's computer"
+msgid "Nova's computer · Live"
+msgstr "Nova's computer · Live"
+
+msgid "Nova's computer: a browser open on the Northwind account in a CRM"
+msgstr "Nova's computer: a browser open on the Northwind account in a CRM"
 
 msgid "Now"
 msgstr "Now"
@@ -2541,6 +2580,9 @@ msgstr "Open loops"
 
 msgid "Open questions"
 msgstr "Open questions"
+
+msgid "Open the CRM"
+msgstr "Open the CRM"
 
 msgid "Open what's waiting on you"
 msgstr "Open what's waiting on you"
@@ -2688,6 +2730,9 @@ msgstr "Preview isn't available for this file type — download it to view it."
 msgid "Preview isn't available for this file type."
 msgstr "Preview isn't available for this file type."
 
+msgid "Pricing proposal"
+msgstr "Pricing proposal"
+
 msgid "Private"
 msgstr "Private"
 
@@ -2721,8 +2766,8 @@ msgstr "Pull holdings and returns for 12 clients"
 msgid "Pull request"
 msgstr "Pull request"
 
-msgid "pulling Q3 numbers · reading last month's notes"
-msgstr "pulling Q3 numbers · reading last month's notes"
+msgid "Q3 at a glance"
+msgstr "Q3 at a glance"
 
 msgid "Q3 client portfolio review"
 msgstr "Q3 client portfolio review"
@@ -2757,6 +2802,9 @@ msgstr "Read replies aloud"
 msgid "read-only"
 msgstr "read-only"
 
+msgid "reading the threads · pulling Q3 · checking the news"
+msgstr "reading the threads · pulling Q3 · checking the news"
+
 msgid "Ready"
 msgstr "Ready"
 
@@ -2771,6 +2819,9 @@ msgstr "Reconnect OAuth"
 
 msgid "Reconnecting"
 msgstr "Reconnecting"
+
+msgid "Recording · you show, Nova watches"
+msgstr "Recording · you show, Nova watches"
 
 msgid "Recording may have started, but the view could not refresh"
 msgstr "Recording may have started, but the view could not refresh"
@@ -2827,6 +2878,9 @@ msgstr "Release computer"
 
 msgid "Release interrupted computer?"
 msgstr "Release interrupted computer?"
+
+msgid "Remembered from July"
+msgstr "Remembered from July"
 
 msgid "Remove"
 msgstr "Remove"
@@ -2960,8 +3014,8 @@ msgstr "Retry screen"
 msgid "Return to Nova"
 msgstr "Return to Nova"
 
-msgid "Revenue +8%"
-msgstr "Revenue +8%"
+msgid "Revenue is up 8%. Usage dipped in August, then recovered."
+msgstr "Revenue is up 8%. Usage dipped in August, then recovered."
 
 msgid "Review"
 msgstr "Review"
@@ -3038,14 +3092,14 @@ msgstr "Saved {0} · not used yet"
 msgid "Saved {0} · used {1}"
 msgstr "Saved {0} · used {1}"
 
+msgid "Saved skill: weekly renewals report · Mondays 8:00"
+msgstr "Saved skill: weekly renewals report · Mondays 8:00"
+
 msgid "Saved to Library"
 msgstr "Saved to Library"
 
 msgid "Saved, but list refresh failed"
 msgstr "Saved, but list refresh failed"
-
-msgid "Saved: weekly renewals report · Mondays 8:00"
-msgstr "Saved: weekly renewals report · Mondays 8:00"
 
 msgid "Saved."
 msgstr "Saved."
@@ -3435,11 +3489,8 @@ msgstr "Test run"
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
-msgid "The brief is ready. Two open risks are on page 1."
-msgstr "The brief is ready. Two open risks are on page 1."
-
-msgid "the brief stays as it is"
-msgstr "the brief stays as it is"
+msgid "The brief is ready. In July you said Legal reviews any renewal over $40k, so I added Dana from Legal to Thursday."
+msgstr "The brief is ready. In July you said Legal reviews any renewal over $40k, so I added Dana from Legal to Thursday."
 
 msgid "The key is stored encrypted and only used for voice."
 msgstr "The key is stored encrypted and only used for voice."
@@ -3518,8 +3569,8 @@ msgstr "This week"
 msgid "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
 msgstr "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
 
-msgid "THU 8:15"
-msgstr "THU 8:15"
+msgid "THU 13:45"
+msgstr "THU 13:45"
 
 msgid "THURSDAY"
 msgstr "THURSDAY"
@@ -3558,6 +3609,9 @@ msgstr "Tool sources"
 msgid "Tools"
 msgstr "Tools"
 
+msgid "Top: the two open risks"
+msgstr "Top: the two open risks"
+
 msgid "Topics I follow for you"
 msgstr "Topics I follow for you"
 
@@ -3573,14 +3627,17 @@ msgstr "Try again"
 msgid "Try one"
 msgstr "Try one"
 
-msgid "TUE 16:20"
-msgstr "TUE 16:20"
+msgid "TUE 10:15"
+msgstr "TUE 10:15"
+
+msgid "TUE 16:30"
+msgstr "TUE 16:30"
 
 msgid "TUESDAY"
 msgstr "TUESDAY"
 
-msgid "Two of their teams paused for a system migration. Both came back in September."
-msgstr "Two of their teams paused for a system migration. Both came back in September."
+msgid "Two of their teams paused for a system migration. Both were back in September."
+msgstr "Two of their teams paused for a system migration. Both were back in September."
 
 msgid "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
 msgstr "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
@@ -3731,6 +3788,9 @@ msgstr "Watch the 47-second film"
 msgid "Watching you work…"
 msgstr "Watching you work…"
 
+msgid "Web · 6 pages"
+msgstr "Web · 6 pages"
+
 msgid "Webhook"
 msgstr "Webhook"
 
@@ -3797,8 +3857,8 @@ msgstr "When to run"
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
 
-msgid "Why did their usage drop in August?"
-msgstr "Why did their usage drop in August?"
+msgid "Why did usage dip in August?"
+msgstr "Why did usage dip in August?"
 
 msgid "With context"
 msgstr "With context"
@@ -3846,8 +3906,8 @@ msgstr "You can close this tab if it does not redirect automatically."
 msgid "You can close this window."
 msgstr "You can close this window."
 
-msgid "You exported the renewals by hand again. Want me to do it every Monday?"
-msgstr "You exported the renewals by hand again. Want me to do it every Monday?"
+msgid "You exported the renewals by hand again. Show me once, and I'll do it every Monday."
+msgstr "You exported the renewals by hand again. Show me once, and I'll do it every Monday."
 
 msgid "You have control"
 msgstr "You have control"
@@ -3884,6 +3944,9 @@ msgstr "Your model"
 
 msgid "Your name"
 msgstr "Your name"
+
+msgid "Your Northwind review starts in 15 minutes. Here's the one-pager Maya likes to see first."
+msgstr "Your Northwind review starts in 15 minutes. Here's the one-pager Maya likes to see first."
 
 msgid "YOUR STACK"
 msgstr "YOUR STACK"

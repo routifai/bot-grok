@@ -68,26 +68,46 @@ it("shows the headline and links the CTAs to sign-up and sign-in", async () => {
   expect(hrefs("Sign in")).toEqual(["/sign-in"]);
 });
 
-it("tells the week in six beats, all visible under reduced motion", async () => {
+it("tells the week in nine beats, all visible under reduced motion", async () => {
   await render();
   const beats = [...host.querySelectorAll("[data-day]")];
-  expect(beats).toHaveLength(6);
+  expect(beats).toHaveLength(9);
   expect(beats.every((b) => b.getAttribute("data-in") === "true")).toBe(true);
   const text = host.textContent ?? "";
   for (const part of [
     "Prep me for Thursday's review with Northwind",
+    "Email · 4 threads",
     "Take over",
     "you were in meetings",
-    "Northwind Q3 Review",
-    "a side question",
-    "Every Monday",
-    "Saved: weekly renewals report",
-    "From three weeks ago",
+    "Remembered from July",
+    "Saved as v2",
+    "forked from this message",
+    "Knows our conversation",
+    "Saved skill",
+    "starts in 15 minutes",
     "Send the follow-up to Maya?",
     "Sent",
   ]) {
     expect(text).toContain(part);
   }
+  const shot = host.querySelector("img");
+  expect(shot?.getAttribute("alt")).toBe(
+    "Nova's computer: a browser open on the Northwind account in a CRM",
+  );
+  expect(shot?.getAttribute("width")).toBe("1280");
+  expect(shot?.getAttribute("loading")).toBe("lazy");
+});
+
+it("reveals the first beat at once, without scrolling, and the rest on arrival", async () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  await render();
+  const beats = [...host.querySelectorAll("[data-day]")];
+  expect(beats.map((b) => b.getAttribute("data-in"))).toEqual(["true", ...Array(8).fill("false")]);
 });
 
 it("has the enterprise section with its eight items", async () => {

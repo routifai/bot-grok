@@ -131,6 +131,11 @@
   --color-welcome-orb-mid: var(--welcome-orb-mid);
   --color-welcome-orb-deep: var(--welcome-orb-deep);
   --color-welcome-orb-lo: var(--welcome-orb-lo);
+  --color-welcome-violet: var(--welcome-violet);
+  --color-welcome-canvas: var(--welcome-canvas);
+  --color-welcome-panel: var(--welcome-panel);
+  --color-welcome-rec: var(--welcome-rec);
+  --color-welcome-rec-dot: var(--welcome-rec-dot);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

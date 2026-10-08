@@ -203,6 +203,11 @@
   --welcome-orb-mid: #6b7cff;
   --welcome-orb-deep: #4b2fb0;
   --welcome-orb-lo: #141433;
+  --welcome-violet: #7a5af5;
+  --welcome-canvas: #fafafc;
+  --welcome-panel: #f4f4f7;
+  --welcome-rec: #c2335e;
+  --welcome-rec-dot: #ff4d6d;
   --radius: 0.75rem;
 }
 
@@ -332,5 +337,10 @@
   --welcome-orb-mid: #6b7cff;
   --welcome-orb-deep: #4b2fb0;
   --welcome-orb-lo: #141433;
+  --welcome-violet: #7a5af5;
+  --welcome-canvas: #fafafc;
+  --welcome-panel: #f4f4f7;
+  --welcome-rec: #c2335e;
+  --welcome-rec-dot: #ff4d6d;
   --radius: 0.75rem;
 }

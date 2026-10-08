@@ -32,6 +32,11 @@
   );
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--welcome-orb-mid) 25%, transparent);
 }
+@keyframes welcomeBlink {
+  50% {
+    opacity: 0;
+  }
+}
 @keyframes welcomePulse {
   0% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--welcome-me) 45%, transparent);
