@@ -46,7 +46,11 @@ _Avoid_: thread, chat, main thread
 
 **Side chat**:
 A separate, full-size chat the person (or the Muse, when asked) opens from the Conversation for one focused topic. It starts either knowing the Conversation (a summary plus recent turns) or blank (only what the Muse remembers about the person), sends nothing back, and can't open another side chat. See `docs/super-chat/README.md`.
-_Avoid_: thread, sub-chat, fork, branch
+_Avoid_: thread, sub-chat, branch
+
+**Fork**:
+A side chat started from one message of the Conversation (its anchor). It knows the Conversation only up to that message, shows under it as a small reply line, and, when the person asks, adds a one-line summary back under that message. A fork can be forked once more; deeper than that becomes a plain side chat. See `docs/adr/0010-a-fork-is-a-side-chat-with-an-anchor.md`.
+_Avoid_: branch, thread, reply
 
 **Archived**:
 A side chat with no messages for a month: hidden from the main list under an Archived fold, still readable by the person and the Muse, and back in the list when the person writes in it. Never deleted.
