@@ -1,16 +1,15 @@
 import type { Ask, Goal } from "@aiden/contracts";
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { nextCronDateAcross } from "@aiden/core";
 import { cn } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import type { LucideIcon } from "lucide-react";
-import { Bell, BookmarkPlus, Clock, HelpCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { Bell, BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MuseRailView } from "../../../components/AppRail";
+import { NovaOrb } from "../../../components/ai/orb";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { rpc } from "../../../lib/rpc";
-import { useAsks } from "../asks";
+import { AskDecisionCard, useAsks } from "../asks";
 import {
   dueMeta,
   type GoalDisplayStatus,
@@ -18,8 +17,8 @@ import {
   nextUnfinishedTask,
   taskCounts,
 } from "../goals/format";
-import { StatusPill, Surface } from "../ui";
-import { ActivityPanel } from "./ActivityPanel";
+import { StatusPill } from "../ui";
+import { ActivityPanel, GROUP_LABEL } from "./ActivityPanel";
 import type { ActivityWire } from "./ActivityRunDialog";
 import {
   type ConnectionLatch,
@@ -27,6 +26,8 @@ import {
   nextConnectionLatch,
 } from "./connectionStatus";
 import { MemoryTab, type MemoryWire } from "./MemoryTab";
+import { ChevronGlyph } from "./NovaGlyphs";
+import { NovaTile, type TileTone } from "./NovaTile";
 import { type ActivitiesState, LIVE_ACTIVITY_WIRE, useActivities } from "./useActivities";
 import type { ChatListState } from "./useChatList";
 
@@ -164,27 +165,13 @@ function formatCheckInChip(
   return { label: `${weekday} ${time}`, isToday: false };
 }
 
-/** A section's calm header: a small icon, a plain title, and a muted count. */
-function PanelSectionHeader({
-  icon: Icon,
-  title,
-  count,
-}: {
-  icon: LucideIcon;
-  title: string;
-  count: number;
-}) {
+/** A grouped list's header: the title in ink and a quiet count beside it. */
+function PanelSectionHeader({ title, count }: { title: string; count: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <Icon
-        size={16}
-        strokeWidth={1.75}
-        aria-hidden="true"
-        className="shrink-0 text-muted-foreground"
-      />
-      <h3 className="text-[13.5px] font-semibold text-foreground">{title}</h3>
-      <span className="ms-auto font-mono text-[12px] tabular-nums text-ink-3">{count}</span>
-    </div>
+    <h3 className={GROUP_LABEL}>
+      {title}
+      <span className="ms-1 font-normal text-ink-3 tabular-nums">{count}</span>
+    </h3>
   );
 }
 
@@ -249,7 +236,7 @@ function GoalRing({ done, total }: { done: number; total: number }) {
           strokeDasharray={RING_CIRCUMFERENCE}
           strokeDashoffset={offset}
           className={cn(
-            "stroke-foreground",
+            "stroke-sig-goals",
             !reducedMotion && "transition-[stroke-dashoffset] duration-700 ease-out",
           )}
         />
@@ -273,48 +260,37 @@ function InProgressGoalCard({ goal, onNavigate }: { goal: Goal; onNavigate: () =
   const status = goalDisplayStatus(goal);
 
   return (
-    <Surface
-      interactive
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       data-testid="context-panel-goal-card"
       aria-label={goal.title}
       onClick={onNavigate}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onNavigate();
-        }
-      }}
-      className="flex items-start gap-3 rounded-xl p-3.5 outline-none transition-[border-color,box-shadow,transform] duration-150 motion-safe:hover:-translate-y-px"
+      className="nova-row flex w-full items-start gap-3 p-3 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
     >
       <GoalRing done={done} total={total} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
-        <p
-          className="line-clamp-2 text-[14.5px] leading-snug font-medium text-foreground"
+      <span className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
+        <span
+          className="line-clamp-2 text-[14px] leading-snug font-medium text-foreground"
           dir="auto"
         >
           {goal.title}
-        </p>
+        </span>
         {next ? (
-          <p
-            className="flex min-w-0 items-center gap-1 text-[13px] text-muted-foreground"
-            dir="auto"
-          >
+          <span className="flex min-w-0 items-center gap-1 text-[12px] text-ink-3" dir="auto">
             <span aria-hidden="true">→</span>
             <span className="min-w-0 truncate">{next.title}</span>
-          </p>
+          </span>
         ) : null}
-        <div className="mt-1 flex flex-wrap items-center gap-2">
+        <span className="mt-1 flex flex-wrap items-center gap-2">
           <StatusPill tone={IN_PROGRESS_TONE[status]}>{inProgressLabel(status)}</StatusPill>
           {due ? (
-            <span className="text-[12px] text-muted-foreground">
+            <span className="text-[12px] text-ink-3">
               {due.kind === "absolute" ? t`Due ${due.date}` : t`in ${due.weeks} weeks`}
             </span>
           ) : null}
-        </div>
-      </div>
-    </Surface>
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -336,19 +312,19 @@ function CheckInRow({
 }) {
   const chip = formatCheckInChip(next, goal.timezone, locale, now);
   return (
-    <li className="relative">
+    <li className="nova-row">
       <button
         type="button"
         onClick={onNavigate}
         data-testid="context-panel-checkin-row"
-        className="flex w-full items-center gap-2 rounded-lg py-1 pe-1 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex min-h-11 w-full items-center gap-2 px-2 py-1.5 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       >
         <span className={CHECKIN_NODE}>
           <span
             aria-hidden="true"
             className={cn(
-              "size-[7px] rounded-full ring-4 ring-background",
-              chip.isToday ? "bg-foreground" : "bg-muted-foreground/50",
+              "size-[7px] rounded-full",
+              chip.isToday ? "bg-sig-waiting" : "bg-ink-3/60",
             )}
           />
         </span>
@@ -356,8 +332,8 @@ function CheckInRow({
           className={cn(
             "shrink-0 rounded-full border px-2 py-0.5 text-[11.5px] tabular-nums",
             chip.isToday
-              ? "border-foreground/25 bg-foreground/[0.06] font-semibold text-foreground"
-              : "border-border text-muted-foreground",
+              ? "border-transparent bg-selection-strong font-semibold text-tint-ink"
+              : "border-transparent bg-selection text-ink-2",
           )}
         >
           {chip.label}
@@ -376,7 +352,16 @@ function CheckInRow({
   );
 }
 
-/** One compact "Waiting on you" row: a kind icon, the Ask's title, and a relative time. */
+const ASK_TONE: Record<Ask["kind"], TileTone> = {
+  approval: "orange",
+  proposal: "purple",
+  question: "blue",
+  blocked_task: "yellow",
+  skill_offer: "indigo",
+};
+
+/** One "Waiting on you" row of a grouped list: a kind tile, the Ask's title, a relative time
+ * and a chevron. */
 function WaitingRow({ ask, onOpenWaiting }: { ask: Ask; onOpenWaiting: () => void }) {
   const Icon = ASK_ICON[ask.kind];
   const title = ask.kind === "approval" ? t`One yes before I send this` : ask.text;
@@ -385,20 +370,18 @@ function WaitingRow({ ask, onOpenWaiting }: { ask: Ask; onOpenWaiting: () => voi
       type="button"
       onClick={onOpenWaiting}
       data-testid="context-panel-ask-row"
-      className="flex items-center gap-2.5 rounded-lg py-1.5 pe-1 text-start transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+      className="nova-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto_8px] items-center gap-x-3 px-3 py-2 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
     >
-      <span
-        aria-hidden="true"
-        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted"
-      >
-        <Icon size={13} strokeWidth={1.75} className="text-muted-foreground" />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[14px] text-foreground" dir="auto">
+      <NovaTile tone={ASK_TONE[ask.kind]} size={28}>
+        <Icon strokeWidth={2.4} />
+      </NovaTile>
+      <span className="line-clamp-2 text-[14px] leading-[1.3] text-foreground" dir="auto">
         {title}
       </span>
-      <span className="shrink-0 text-[12px] text-muted-foreground">
+      <span className="shrink-0 font-mono text-[12px] text-ink-3 tabular-nums">
         {formatRelativeTime(ask.createdAt)}
       </span>
+      <ChevronGlyph className="h-[13px] w-2 text-ink-3 opacity-60" />
     </button>
   );
 }
@@ -420,7 +403,7 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
     <div
       role="tablist"
       aria-label={t`Panel sections`}
-      className="grid grid-cols-3 gap-0.5 rounded-[10px] bg-selection p-[3px]"
+      className="grid grid-cols-3 rounded-lg bg-selection p-0.5"
     >
       {PANEL_TABS.map((item) => (
         <button
@@ -431,9 +414,9 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
           data-testid={`context-panel-tab-${item.id}`}
           onClick={() => onChange(item.id)}
           className={cn(
-            "h-7 rounded-[8px] text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+            "h-6 rounded-md text-[12px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
             tab === item.id
-              ? "bg-solid text-foreground shadow-xs"
+              ? "bg-group text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.14)]"
               : "text-ink-2 hover:text-foreground",
           )}
         >
@@ -458,24 +441,25 @@ function IdentityHeader({
 }) {
   const { t: tt } = useLingui();
   return (
-    <div className="flex min-w-0 items-center justify-between gap-3">
+    <div className="flex min-w-0 items-center gap-2.5 px-1 py-0.5">
+      <NovaOrb size={26} />
       <span
         data-testid="context-panel-muse-name"
-        className="min-w-0 truncate text-[15px] font-semibold text-foreground"
+        className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.2px] text-foreground"
         dir="auto"
       >
         {museName}
       </span>
       <span
         data-testid="context-panel-connection"
-        className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-[12px] font-medium text-ink-2"
+        className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full bg-selection px-2.5 text-[11.5px] text-ink-2"
       >
         <span
           aria-hidden="true"
           className={cn(
             "size-1.5 rounded-full",
             connection === "connected"
-              ? "bg-success"
+              ? "bg-ok"
               : "animate-pulse bg-ink-3 motion-reduce:animate-none",
           )}
         />
@@ -495,7 +479,6 @@ function IdentityHeader({
 export function ContextPanel({
   botId,
   museName,
-  avatarColor = DEFAULT_MUSE_COLOR,
   collapsed,
   chatListState,
   activitiesOverride,
@@ -506,7 +489,7 @@ export function ContextPanel({
   botId: string;
   /** The Muse's own name, for the panel's identity header. */
   museName: string;
-  /** The Muse's own color, for its face in the header and the empty state. */
+  /** Kept for callers; Nova shows as the orb. */
   avatarColor?: string;
   collapsed: boolean;
   /** The sidebar's Chat List poll (Shell.tsx's `chatList.state`), folded into the
@@ -527,7 +510,7 @@ export function ContextPanel({
 }) {
   const { t: tt, i18n } = useLingui();
   const [tab, setTab] = useState<PanelTab>("activity");
-  const { asks } = useAsks(botId);
+  const { asks, answer } = useAsks(botId);
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
   const liveActivities = useActivities(botId);
@@ -595,35 +578,61 @@ export function ContextPanel({
     <div
       data-testid="context-panel"
       className={cn(
-        "hidden w-[340px] shrink-0 flex-col gap-4 border border-line bg-panel backdrop-blur-xl md:rounded-[18px]",
+        "nova-glass m-2 hidden w-[300px] shrink-0 flex-col gap-2.5",
         !collapsed && "xl:flex",
       )}
     >
-      <div className="flex shrink-0 flex-col gap-3.5 px-4 pt-4">
+      <div className="flex shrink-0 flex-col gap-2.5 px-3 pt-3.5">
         <IdentityHeader museName={museName} connection={connection} />
         <PanelTabBar tab={tab} onChange={setTab} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rk-scroll px-4 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto rk-scroll px-3 pb-3.5">
         {tab === "activity" ? (
-          <ActivityPanel
-            botId={botId}
-            wire={activitiesData.wire}
-            state={activitiesData.state}
-            loadEarlier={activitiesData.loadEarlier}
-            loadingEarlier={activitiesData.loadingEarlier}
-          />
+          <div className="flex flex-col gap-4">
+            {topAsks.length > 0 ? (
+              <section className="flex flex-col gap-1.5" data-testid="context-panel-decisions">
+                <PanelSectionHeader title={tt`Waiting on you`} count={asks.length} />
+                {topAsks.map((ask) => (
+                  <AskDecisionCard
+                    key={ask.id}
+                    ask={ask}
+                    onOpenWaiting={onOpenWaiting}
+                    onAnswer={(choiceId) =>
+                      answer({ askId: ask.id, runId: ask.runId, answer: choiceId })
+                    }
+                  />
+                ))}
+                {asks.length > ASKS_LIMIT ? (
+                  <button
+                    type="button"
+                    onClick={onOpenWaiting}
+                    className="self-start rounded-md px-1.5 text-[12.5px] text-link transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    {tt`View all`}
+                  </button>
+                ) : null}
+              </section>
+            ) : null}
+            <ActivityPanel
+              botId={botId}
+              wire={activitiesData.wire}
+              state={activitiesData.state}
+              loadEarlier={activitiesData.loadEarlier}
+              loadingEarlier={activitiesData.loadingEarlier}
+            />
+          </div>
         ) : tab === "memory" ? (
           <MemoryTab botId={botId} wire={memoryWireToUse} />
         ) : contextEmpty ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
-            <p className="text-[14.5px] text-muted-foreground">{tt`You're all caught up.`}</p>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
+            <p className="text-[12.5px] text-ink-3">{tt`You're all caught up.`}</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-7">
+          <div className="flex flex-col gap-4">
             {topAsks.length > 0 ? (
-              <section className="flex flex-col gap-2" data-testid="context-panel-asks">
-                <PanelSectionHeader icon={Bell} title={tt`Waiting on you`} count={asks.length} />
-                <div className="flex flex-col gap-0.5">
+              <section className="flex flex-col gap-1.5" data-testid="context-panel-asks">
+                <PanelSectionHeader title={tt`Waiting on you`} count={asks.length} />
+                <div className="nova-group">
                   {topAsks.map((ask) => (
                     <WaitingRow key={ask.id} ask={ask} onOpenWaiting={onOpenWaiting} />
                   ))}
@@ -633,7 +642,7 @@ export function ContextPanel({
                     type="button"
                     onClick={onOpenWaiting}
                     data-testid="context-panel-view-all"
-                    className="self-start rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    className="self-start rounded-md px-1.5 text-[12.5px] text-link transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     {tt`View all`}
                   </button>
@@ -642,13 +651,9 @@ export function ContextPanel({
             ) : null}
 
             {inProgress.length > 0 ? (
-              <section className="flex flex-col gap-2.5" data-testid="context-panel-goals">
-                <PanelSectionHeader
-                  icon={Target}
-                  title={tt`In progress`}
-                  count={activeGoals.length}
-                />
-                <div className="flex flex-col gap-2.5">
+              <section className="flex flex-col gap-1.5" data-testid="context-panel-goals">
+                <PanelSectionHeader title={tt`In progress`} count={activeGoals.length} />
+                <div className="nova-group">
                   {inProgress.map((goal) => (
                     <InProgressGoalCard
                       key={goal.id}
@@ -661,13 +666,9 @@ export function ContextPanel({
             ) : null}
 
             {checkIns.length > 0 ? (
-              <section className="flex flex-col gap-2" data-testid="context-panel-checkins">
-                <PanelSectionHeader icon={Clock} title={tt`Coming up`} count={checkIns.length} />
-                <ol className="relative flex flex-col">
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-2.5 start-2.5 w-px bg-border"
-                  />
+              <section className="flex flex-col gap-1.5" data-testid="context-panel-checkins">
+                <PanelSectionHeader title={tt`Coming up`} count={checkIns.length} />
+                <ol className="nova-group relative flex flex-col">
                   {checkIns.map(({ goal, next }) => (
                     <CheckInRow
                       key={goal.id}

@@ -2,6 +2,7 @@ import type { Bot, ComputerStatus, TaughtSkill } from "@aiden/contracts";
 import { BotAvatar, Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { X } from "lucide-react";
+import { NovaOrb } from "../../../components/ai/orb";
 import { ComputerMaintenanceActions } from "../../../components/ComputerMaintenanceActions";
 import { TeachCaptureOverlay } from "../../../components/teach/TeachCaptureOverlay";
 import { TeachComputerOverlayControl } from "../../../components/teach/TeachComputerOverlay";
@@ -12,7 +13,6 @@ import {
 import { screenIframeSandbox } from "../../../lib/computer-screen";
 import { type activeThreadRuns, userHoldsComputerControl } from "../../../lib/thread-events";
 import { museMode } from "../chrome/museMode";
-import { deriveMuseState } from "../chrome/museState";
 import { StatusPill } from "../ui";
 import {
   ComputerReleaseActions,
@@ -73,7 +73,7 @@ export function ComputerOverlay({
   } = ctl;
   const { screenReloadKey } = screen;
   const { recordingSkill, teachBusy, stopTeaching, refreshActiveTeaching } = teach;
-  const { currentRuns, composerRunning, sending, sendError, stopRun } = run;
+  const { composerRunning, sending, sendError, stopRun } = run;
   const { embeddedScreenUrl, computerScreenError } = screenView(screen, computerBot);
   const hasControl = userHoldsComputerControl(computer, computerBot?.id);
   // On the engine the person demonstrates straight into the interactive stream (the engine holds
@@ -116,14 +116,16 @@ export function ComputerOverlay({
               }
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <BotAvatar
-                  color={computerBot.color}
-                  identity={computerBot.id}
-                  size={28}
-                  status={computerBot.status}
-                  museState={museMode ? deriveMuseState(currentRuns, 0) : undefined}
-                  face={museMode ? "muse" : undefined}
-                />
+                {museMode ? (
+                  <NovaOrb size={28} />
+                ) : (
+                  <BotAvatar
+                    color={computerBot.color}
+                    identity={computerBot.id}
+                    size={28}
+                    status={computerBot.status}
+                  />
+                )}
                 {recordingSkill ? (
                   <TeachRecordingChrome
                     recording={recordingSkill}

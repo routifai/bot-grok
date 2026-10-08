@@ -83,10 +83,7 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
     return (
       <div className="flex flex-col gap-4" data-testid="memory-panel">
         {claims.length === 0 ? (
-          <p
-            className="py-8 text-center text-[13px] text-muted-foreground"
-            data-testid="memory-empty"
-          >
+          <p className="py-8 text-center text-[12.5px] text-ink-3" data-testid="memory-empty">
             {t`Nothing remembered yet.`}
           </p>
         ) : (
@@ -104,10 +101,7 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
   if (state.sections.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <p
-          className="py-8 text-center text-[13px] text-muted-foreground"
-          data-testid="memory-empty"
-        >
+        <p className="py-8 text-center text-[12.5px] text-ink-3" data-testid="memory-empty">
           {t`Nothing remembered yet.`}
         </p>
         {days}
@@ -120,15 +114,13 @@ export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) 
       {state.sections.map((section, index) => (
         <section key={section.heading || index} className="flex flex-col gap-1">
           {section.heading ? (
-            <h3 className="px-1 text-[12.5px] font-semibold text-muted-foreground">
-              {section.heading}
-            </h3>
+            <h3 className="px-1.5 text-[13px] font-semibold text-foreground">{section.heading}</h3>
           ) : null}
-          <ul className="flex flex-col gap-0.5">
+          <ul className="nova-group flex flex-col">
             {section.items.map((item, itemIndex) => (
               <li
                 key={itemIndex}
-                className="rounded-lg px-2 py-1 text-[13.5px] leading-[1.5] text-foreground"
+                className="nova-row nova-row-plain px-3 py-2.5 text-[14px] leading-[1.4] text-foreground"
                 dir="auto"
               >
                 {addressMemoryItem(item)}

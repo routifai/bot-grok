@@ -11,7 +11,17 @@ import {
   TooltipTrigger,
 } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import { MoreHorizontal, Pencil, Quote, Search, Trash2 } from "lucide-react";
+import {
+  HelpCircle,
+  MoreHorizontal,
+  Pencil,
+  Quote,
+  Search,
+  Sparkles,
+  Target,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MemoryEmptyLine, MemorySection } from "./MemorySection";
 import {
@@ -23,6 +33,7 @@ import {
   parsePerson,
   questionLabel,
 } from "./memoryProfile";
+import { NovaTile } from "./NovaTile";
 
 export type MemoryClaim = {
   id: string;
@@ -109,7 +120,25 @@ function shapeOf(sectionId: SectionId, text: string) {
 }
 
 const iconButton =
-  "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-background data-popup-open:text-foreground";
+  "inline-flex size-7 items-center justify-center rounded-full text-ink-3 outline-none hover:bg-selection hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-selection data-popup-open:text-foreground";
+
+/** A memory's tile by section: you (blue), projects (green), open questions (purple), how
+ * Nova works with you (indigo). */
+function SectionTile({ sectionId }: { sectionId: SectionId }) {
+  const [tone, Icon] =
+    sectionId === "projects"
+      ? (["green", Target] as const)
+      : sectionId === "questions"
+        ? (["purple", HelpCircle] as const)
+        : sectionId === "working"
+          ? (["indigo", Sparkles] as const)
+          : (["blue", UserRound] as const);
+  return (
+    <NovaTile tone={tone} size={28}>
+      <Icon strokeWidth={2.4} />
+    </NovaTile>
+  );
+}
 
 function Claim({
   botId,
@@ -118,11 +147,14 @@ function Claim({
   wire,
   onChanged,
   onRemoved,
+  editing = false,
 }: {
   botId: string;
   sectionId: SectionId;
   claim: MemoryClaim;
   wire: ClaimsWire;
+  /** The section's Edit is on: the row's actions stay visible. */
+  editing?: boolean;
   onChanged: (claim: MemoryClaim) => void;
   onRemoved: (id: string) => void;
 }) {
@@ -200,7 +232,7 @@ function Claim({
 
   if (draft !== null) {
     return (
-      <li className="px-3 py-1.5" data-testid="memory-claim">
+      <li className="nova-row nova-row-plain px-3 py-2" data-testid="memory-claim">
         <textarea
           // biome-ignore lint/a11y/noAutofocus: the person just chose to edit this memory
           autoFocus
@@ -235,14 +267,14 @@ function Claim({
   if (pending) {
     return (
       <li
-        className="flex items-start gap-2.5 px-3 py-1.5 text-[14px] leading-5"
+        className="nova-row flex min-h-[52px] items-center gap-3 px-3 py-2 text-[14px] leading-5"
         data-testid="memory-claim-pending"
       >
         {isCommitment ? <Checkbox checked className="mt-0.5" aria-label={title} /> : null}
         <span className="min-w-0 flex-1 truncate text-muted-foreground line-through">{title}</span>
         <button
           type="button"
-          className="shrink-0 text-[12px] leading-5 text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="shrink-0 text-[13px] leading-5 text-link underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
           onClick={undo}
         >
           {t`Undo`}
@@ -253,45 +285,33 @@ function Claim({
 
   return (
     <li
-      className="group/claim relative flex items-start gap-2.5 rounded-lg px-3 py-1.5 hover:bg-muted/60 focus-within:bg-muted/60"
+      className="group/claim nova-row flex min-h-[52px] items-center gap-3 px-3 py-2 transition-colors hover:bg-selection focus-within:bg-selection"
       data-testid="memory-claim"
     >
       {isCommitment ? (
-        <Checkbox
-          className="mt-0.5"
-          checked={false}
-          aria-label={t`Mark done: ${title}`}
-          onCheckedChange={startForget}
-        />
-      ) : null}
-      {person ? (
-        <span
-          aria-hidden
-          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground"
-        >
-          {initials(person.name)}
+        <span className="grid size-7 shrink-0 place-items-center">
+          <Checkbox
+            checked={false}
+            aria-label={t`Mark done: ${title}`}
+            onCheckedChange={startForget}
+          />
         </span>
-      ) : null}
-      {sectionId === "questions" ? (
-        <span
-          aria-hidden
-          className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[10px] leading-none font-medium text-muted-foreground"
-        >
-          ?
-        </span>
-      ) : null}
+      ) : person ? (
+        <NovaTile tone="orange" size={28}>
+          <span className="text-[11px] font-semibold">{initials(person.name)}</span>
+        </NovaTile>
+      ) : (
+        <SectionTile sectionId={sectionId} />
+      )}
       <div className="min-w-0 flex-1">
         {person ? (
           <>
             <p className="truncate text-[14px] leading-5 text-foreground" dir="auto">
               {person.name}
-              {person.relation ? (
-                <span className="text-[12px] text-muted-foreground"> · {person.relation}</span>
-              ) : null}
             </p>
-            {person.facts ? (
-              <p className="truncate text-[12px] leading-4 text-muted-foreground" dir="auto">
-                {person.facts}
+            {person.relation || person.facts ? (
+              <p className="truncate text-[12px] leading-4 text-ink-3" dir="auto">
+                {[person.relation, person.facts].filter(Boolean).join(" · ")}
               </p>
             ) : null}
           </>
@@ -314,7 +334,12 @@ function Claim({
           <p className="text-[12px] leading-4 text-destructive">{t`Could not save`}</p>
         ) : null}
       </div>
-      <span className="absolute top-1 right-1.5 flex items-center gap-0.5 rounded-md bg-muted opacity-0 transition-opacity group-focus-within/claim:opacity-100 group-hover/claim:opacity-100 has-data-popup-open:opacity-100 [@media(hover:none)]:opacity-100">
+      <span
+        className={cn(
+          "flex shrink-0 items-center gap-0.5 transition-opacity group-focus-within/claim:opacity-100 group-hover/claim:opacity-100 has-data-popup-open:opacity-100 [@media(hover:none)]:opacity-100",
+          editing ? "opacity-100" : "opacity-0",
+        )}
+      >
         <Tooltip>
           <TooltipTrigger aria-label={t`Source`} className={iconButton}>
             <Quote className="size-3.5" aria-hidden />
@@ -361,6 +386,7 @@ export function MemorySections({
 }) {
   const { t } = useLingui();
   const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<SectionId | null>(null);
   const claimsRef = useRef(claims);
   claimsRef.current = claims;
 
@@ -387,10 +413,10 @@ export function MemorySections({
   );
 
   return (
-    <div className="-mx-3 flex flex-col gap-3">
-      <div className="relative px-3">
+    <div className="flex flex-col gap-3">
+      <div className="relative">
         <Search
-          className="pointer-events-none absolute top-1/2 left-5.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3"
           aria-hidden
         />
         <Input
@@ -399,7 +425,7 @@ export function MemorySections({
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t`Find a memory`}
           aria-label={t`Find a memory`}
-          className="h-8 pl-8 text-[13px] md:text-[13px]"
+          className="h-8 rounded-lg border-0 bg-selection pl-8 text-[13px] md:text-[13px]"
         />
       </div>
       {visible.length === 0 ? <MemoryEmptyLine>{t`No matches`}</MemoryEmptyLine> : null}
@@ -410,11 +436,17 @@ export function MemorySections({
           title={titles[group.id]}
           count={group.claims.length}
           forceOpen={needle !== ""}
+          editing={editing === group.id}
+          onEdit={
+            group.claims.length > 0
+              ? () => setEditing((current) => (current === group.id ? null : group.id))
+              : undefined
+          }
         >
           {group.claims.length === 0 ? (
             <MemoryEmptyLine>{t`Nothing yet`}</MemoryEmptyLine>
           ) : (
-            <ul className="flex flex-col">
+            <ul className="nova-group flex flex-col">
               {group.claims.map((claim) => (
                 <Claim
                   key={claim.id}
@@ -422,6 +454,7 @@ export function MemorySections({
                   sectionId={group.id}
                   claim={claim}
                   wire={wire}
+                  editing={editing === group.id}
                   onChanged={(saved) =>
                     onChange(claimsRef.current.map((c) => (c.id === saved.id ? saved : c)))
                   }

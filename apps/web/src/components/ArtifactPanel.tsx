@@ -47,7 +47,7 @@ export function ArtifactPanel({
     <section
       data-testid="artifact-panel"
       aria-label={title || name || t`Artifact`}
-      className="fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background md:relative md:inset-auto md:z-auto md:w-[min(46vw,640px)] md:shrink-0 md:rounded-[18px] md:border md:border-line md:bg-panel md:backdrop-blur-xl"
+      className="fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background md:relative md:inset-auto md:z-auto md:m-2 md:w-[min(46vw,640px)] md:shrink-0 md:rounded-[18px] md:bg-glass md:ring-[0.5px] md:ring-glass-line md:ring-inset md:backdrop-blur-[30px] md:backdrop-saturate-[1.8]"
     >
       <header className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5">
         <div className="min-w-0 flex-1">

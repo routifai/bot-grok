@@ -1,7 +1,8 @@
-import { BotAvatar, cn } from "@aiden/ui-web";
+import { cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ArrowUp, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { NovaOrb } from "../../../components/ai/orb";
 import type { IllustrationKey } from "../../../lib/illustrations";
 import { illustrationUrl } from "../../../lib/illustrations";
 import { MUSE_TYPE, MuseColumn } from "../ui";
@@ -16,7 +17,7 @@ const PRESS =
  * next check-in) and, under it, the kind of check-in banner the Muse sends —
  * which is also how an Ask looks when it needs a decision. Both stack, never overlap.
  */
-function GoalStage({ botName, color }: { botName: string; color: string }) {
+function GoalStage({ botName }: { botName: string }) {
   const { t } = useLingui();
   return (
     <div className="flex flex-col gap-4 rounded-[28px] bg-muted/60 p-5 sm:p-8">
@@ -25,9 +26,9 @@ function GoalStage({ botName, color }: { botName: string; color: string }) {
         <Trans>Example</Trans>
       </span>
       <div aria-hidden="true" className="flex flex-col gap-4">
-        <div className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-12px_rgb(0_0_0/0.18)]">
+        <div className="nova-card p-5">
           <div className="flex items-center gap-4">
-            <GoalRing value={0.4} color={color} />
+            <GoalRing value={0.4} toneClass="stroke-sig-goals" />
             <div className="min-w-0 flex-1">
               <p className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">
                 <Trans>Q3 client portfolio review</Trans>
@@ -49,7 +50,7 @@ function GoalStage({ botName, color }: { botName: string; color: string }) {
           <div className="rounded-[22px] border border-line bg-panel p-3.5 shadow-[0_18px_40px_-16px_rgb(0_0_0/0.28)] backdrop-blur-2xl">
             <div className="flex items-start gap-3">
               <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-card shadow-sm">
-                <BotAvatar color={color} identity={botName} face="muse" size={30} />
+                <NovaOrb size={30} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
@@ -81,15 +82,7 @@ function GoalStage({ botName, color }: { botName: string; color: string }) {
   );
 }
 
-function GoalComposer({
-  botName,
-  color,
-  onStart,
-}: {
-  botName: string;
-  color: string;
-  onStart: (text: string) => void;
-}) {
+function GoalComposer({ onStart }: { onStart: (text: string) => void }) {
   const { t } = useLingui();
   const [text, setText] = useState("");
   const ready = text.trim().length > 0;
@@ -101,7 +94,7 @@ function GoalComposer({
         if (ready) onStart(text.trim());
       }}
     >
-      <BotAvatar color={color} identity={botName} face="muse" size={34} />
+      <NovaOrb size={34} />
       <input
         value={text}
         onChange={(event) => setText(event.target.value)}
@@ -139,7 +132,7 @@ export interface GoalStarter {
  */
 export function GoalsIntro({
   botName,
-  avatarColor,
+  avatarColor: _avatarColor,
   starters,
   onStart,
 }: {
@@ -162,19 +155,19 @@ export function GoalsIntro({
         </p>
         {onStart ? (
           <div className="mt-6">
-            <GoalComposer botName={botName} color={avatarColor} onStart={onStart} />
+            <GoalComposer onStart={onStart} />
           </div>
         ) : null}
       </header>
 
-      <GoalStage botName={botName} color={avatarColor} />
+      <GoalStage botName={botName} />
 
       {onStart && starters.length > 0 ? (
         <section className="pt-4">
           <h2 className="px-1 pb-2.5 text-[15px] font-medium text-muted-foreground">
             <Trans>Try one</Trans>
           </h2>
-          <ul className="overflow-hidden rounded-[22px] bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-14px_rgb(0_0_0/0.14)] ring-1 ring-border/60">
+          <ul className="nova-group">
             {starters.map((starter, index) => (
               <li key={starter.title}>
                 <button

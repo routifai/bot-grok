@@ -1,12 +1,14 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { Ask } from "@aiden/contracts";
-import { Button, Input } from "@aiden/ui-web";
+import { cn, Input } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
-import { DetailRows } from "../ui";
+import { NovaTile } from "../chrome/NovaTile";
+import { DetailRows, PRIMARY_BUTTON, QUIET_BUTTON } from "../ui";
+import { askDecision } from "./askDecision";
 
 const KIND_ICON = {
   approval: ShieldCheck,
@@ -34,8 +36,9 @@ function parseDetailRows(detail: string): { label: string; value: string }[] | n
 }
 
 /**
- * Renders one open Ask (docs/muse/DESIGN.md, "Waiting on you") as a single quiet inbox
- * row: a small icon slot, a title, and one meta line saying where it came from and when.
+ * Renders one open Ask (docs/muse/DESIGN.md, "Waiting on you") as a big decision card: a
+ * 44px tile for its kind, the title, where it came from and when, what it would do, then the
+ * choices (two as an equal pair, the primary in the accent on the right).
  * Shared by the Feed and the Waiting-on-you sheet, so an Ask looks and answers the same
  * everywhere (CONTEXT.md: answering anywhere closes it everywhere). Matches the look of
  * `AskCard.tsx` (the Conversation's own ask block), but reads the `Ask` view type instead
@@ -92,85 +95,118 @@ export function AskItem({
     }
   }
 
+  const tone = askDecision(ask, title).tone;
+  const [primary, secondary, ...more] = ask.choices;
+  // Two choices read as one decision: the second as the quiet button on the left, the first
+  // (the Ask's own primary) in the accent on the right. More choices stack in order.
+  const pair = !ask.input && primary && more.length === 0 ? { primary, secondary } : null;
+  const choiceLabel = (choice: { id: string; label: string }) =>
+    pending === choice.id ? <Trans>Sending…</Trans> : choice.label;
+
   return (
-    <div className="flex gap-3 border-l-2 border-l-warning py-4 pl-3">
-      <span
-        aria-hidden="true"
-        className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"
-      >
-        <Icon size={15} strokeWidth={1.75} className="text-muted-foreground" />
-      </span>
+    <div data-testid="ask-item" className="nova-card flex flex-col gap-3 p-4">
+      <div className="flex items-start gap-3.5">
+        <NovaTile tone={tone} size={44}>
+          <Icon strokeWidth={2.2} />
+        </NovaTile>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-0.5">
+          <h3 className="text-[16px] leading-[1.3] font-semibold tracking-[-0.1px] text-foreground">
+            {title}
+          </h3>
+          {onOpenSource ? (
+            <button
+              type="button"
+              onClick={onOpenSource}
+              className="self-start text-start text-[12.5px] text-ink-3 transition-colors hover:text-foreground"
+            >
+              {metaText}
+            </button>
+          ) : (
+            <p className="text-[12.5px] text-ink-3">{metaText}</p>
+          )}
+          {subtitle ? (
+            <div className="mt-1 text-[13.5px] leading-[1.5] text-ink-2">
+              <ChatMarkdown>{subtitle}</ChatMarkdown>
+            </div>
+          ) : null}
+        </div>
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <h3 className="text-[15px] leading-[1.4] font-medium text-foreground">{title}</h3>
+      {structuredDetail ? (
+        detailRows ? (
+          <DetailRows rows={detailRows} />
+        ) : (
+          <p className="whitespace-pre-wrap text-[13.5px] leading-[1.6] text-ink-2">
+            {structuredDetail}
+          </p>
+        )
+      ) : null}
 
-        {onOpenSource ? (
+      {ask.input ? (
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit(text);
+          }}
+        >
+          <Input
+            aria-label={t`Answer`}
+            type={ask.input === "secret" ? "password" : "text"}
+            autoComplete="off"
+            spellCheck={ask.input !== "secret"}
+            disabled={submitting}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={t`Type your answer`}
+            className="h-[34px] rounded-xl"
+          />
+          <button
+            type="submit"
+            className={cn(PRIMARY_BUTTON, "shrink-0 px-4")}
+            disabled={!text.trim() || submitting}
+          >
+            {submitting ? <Trans>Sending…</Trans> : <Trans>Send</Trans>}
+          </button>
+        </form>
+      ) : pair ? (
+        <div className={cn("grid gap-2", pair.secondary ? "grid-cols-2" : "grid-cols-1")}>
+          {pair.secondary ? (
+            <button
+              type="button"
+              className={QUIET_BUTTON}
+              disabled={submitting}
+              onClick={() => pair.secondary && void submit(pair.secondary.id)}
+            >
+              {choiceLabel(pair.secondary)}
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={onOpenSource}
-            className="self-start text-start text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+            className={PRIMARY_BUTTON}
+            disabled={submitting}
+            onClick={() => void submit(pair.primary.id)}
           >
-            {metaText}
+            {choiceLabel(pair.primary)}
           </button>
-        ) : (
-          <p className="text-[13px] text-muted-foreground">{metaText}</p>
-        )}
-
-        {subtitle ? (
-          <div className="text-[13.5px] leading-[1.5] text-muted-foreground">
-            <ChatMarkdown>{subtitle}</ChatMarkdown>
-          </div>
-        ) : null}
-
-        {structuredDetail ? (
-          detailRows ? (
-            <DetailRows rows={detailRows} />
-          ) : (
-            <p className="whitespace-pre-wrap text-[13.5px] leading-[1.6] text-muted-foreground">
-              {structuredDetail}
-            </p>
-          )
-        ) : null}
-
-        {ask.input ? (
-          <form
-            className="flex flex-col gap-2 pt-1"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit(text);
-            }}
-          >
-            <Input
-              aria-label={t`Answer`}
-              type={ask.input === "secret" ? "password" : "text"}
-              autoComplete="off"
-              spellCheck={ask.input !== "secret"}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {ask.choices.map((choice, index) => (
+            <button
+              key={choice.id}
+              type="button"
+              className={index === 0 ? PRIMARY_BUTTON : QUIET_BUTTON}
               disabled={submitting}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={t`Type your answer`}
-            />
-            <Button type="submit" className="self-start" disabled={!text.trim() || submitting}>
-              {submitting ? <Trans>Sending…</Trans> : <Trans>Send</Trans>}
-            </Button>
-          </form>
-        ) : (
-          <div className="flex flex-wrap gap-2 pt-1">
-            {ask.choices.map((choice, index) => (
-              <Button
-                key={choice.id}
-                variant={index === 0 ? "default" : "ghost"}
-                disabled={submitting}
-                onClick={() => void submit(choice.id)}
-              >
-                {pending === choice.id ? <Trans>Sending…</Trans> : choice.label}
-              </Button>
-            ))}
-          </div>
-        )}
+              onClick={() => void submit(choice.id)}
+            >
+              {choiceLabel(choice)}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {error ? <p className="text-[13px] text-destructive">{error}</p> : null}
-      </div>
+      {error ? <p className="text-[13px] text-destructive">{error}</p> : null}
     </div>
   );
 }
@@ -220,13 +256,13 @@ export function AskList({
 }) {
   const groups = groupAsks(asks);
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {groups.map((group) => (
         <div key={group.label ?? "asks"} className="flex flex-col gap-2">
           {group.label ? (
-            <h4 className="text-[12.5px] font-medium text-muted-foreground">{group.label}</h4>
+            <h4 className="px-1.5 text-[13px] font-semibold text-foreground">{group.label}</h4>
           ) : null}
-          <div className="flex flex-col divide-y divide-border">
+          <div className="flex flex-col gap-3">
             {group.asks.map((ask) => (
               <AskItem key={ask.id} ask={ask} onAnswer={(value) => onAnswer(ask, value)} />
             ))}

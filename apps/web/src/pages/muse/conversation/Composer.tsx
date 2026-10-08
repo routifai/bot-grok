@@ -594,7 +594,7 @@ export const Composer = memo(function Composer({
         className={cn(
           "flex gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-[border-color,box-shadow] duration-150 focus-within:border-ring",
           museMode
-            ? "min-h-[52px] items-end gap-2 rounded-[26px] border-line bg-solid py-[7px] pe-2 ps-2 shadow-float focus-within:border-ink-3"
+            ? "nova-ask min-h-12 items-end gap-2 rounded-[24px] border-0 bg-group py-[6px] ps-2 pe-1.5"
             : "items-center rounded-full",
         )}
       >
@@ -617,7 +617,7 @@ export const Composer = memo(function Composer({
               className={cn(
                 "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                 museMode
-                  ? "size-9 border-0 bg-transparent text-ink-3"
+                  ? "size-[34px] border-0 bg-transparent text-ink-3"
                   : "border border-border bg-muted",
               )}
             >
@@ -728,7 +728,7 @@ export const Composer = memo(function Composer({
                 ? (placeholder ??
                   (activeName
                     ? museMode
-                      ? t`Message ${activeName}…`
+                      ? t`Ask ${activeName}`
                       : t`Message ${activeName}`
                     : t`Message…`))
                 : undefined
@@ -763,7 +763,7 @@ export const Composer = memo(function Composer({
             className={cn(
               "size-8 shrink-0 rounded-full",
               museMode
-                ? "size-9 text-ink-3 hover:bg-accent hover:text-foreground"
+                ? "size-[34px] text-ink-3 hover:bg-selection hover:text-foreground"
                 : "text-foreground/75",
             )}
           >
@@ -780,7 +780,7 @@ export const Composer = memo(function Composer({
               className={cn(
                 "size-8 rounded-full shadow-sm transition-transform active:scale-95",
                 museMode
-                  ? "size-9 bg-primary text-primary-foreground shadow-none hover:bg-primary/90"
+                  ? "size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110"
                   : "bg-white text-black hover:bg-white/90",
               )}
             >
@@ -806,7 +806,7 @@ export const Composer = memo(function Composer({
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",
               museMode
-                ? "size-9 bg-primary text-primary-foreground shadow-none hover:bg-primary/90 disabled:bg-selection disabled:text-ink-3 disabled:opacity-100"
+                ? "size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110 disabled:bg-selection disabled:text-ink-3 disabled:opacity-100"
                 : "bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none",
             )}
           >

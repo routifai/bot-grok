@@ -1,10 +1,12 @@
 import type { Idea } from "@aiden/contracts";
-import { Button, cn, Skeleton } from "@aiden/ui-web";
+import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
+import { IdeasGlyph } from "./chrome/NovaGlyphs";
+import { NovaTile, type TileTone } from "./chrome/NovaTile";
 import { areaLabel, ideaIcon } from "./ideas/areaIcon";
-import { EmptyState, MUSE_TYPE, MuseColumn, MuseScreen } from "./ui";
+import { EmptyState, MuseScreen, MuseWideCenter, ScreenHeader, ScreenHero } from "./ui";
 
 /** Ideas kept in the order their area first appeared, not re-sorted alphabetically. */
 function groupByArea(ideas: Idea[]): { area: string; ideas: Idea[] }[] {
@@ -26,6 +28,19 @@ function worthGrouping(groups: { ideas: Idea[] }[]): boolean {
   return groups.length > 1 && groups.length <= 4 && groups.every((group) => group.ideas.length > 1);
 }
 
+/** A tile color per area, stable for the area's name. */
+const AREA_TONES: TileTone[] = ["yellow", "teal", "purple", "blue", "green", "orange", "indigo"];
+
+function areaTone(area: string): TileTone {
+  let hash = 0;
+  for (const char of area) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return AREA_TONES[hash % AREA_TONES.length] ?? "yellow";
+}
+
+const ROW_ACTION =
+  "h-7 shrink-0 rounded-full px-3 text-[12.5px] font-medium transition-[filter,background-color] focus-visible:outline-2 focus-visible:outline-ring";
+
+/** One Idea as a grouped-list row: its area's tile, the Idea and its detail, Dismiss and Do it. */
 function IdeaRow({
   idea,
   index,
@@ -43,35 +58,39 @@ function IdeaRow({
   const Icon = ideaIcon(idea);
   return (
     <li
-      className="flex items-start gap-4 py-4 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:fill-mode-both motion-safe:duration-300"
+      className="nova-row grid min-h-[52px] grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2.5 motion-safe:animate-in motion-safe:fade-in motion-safe:fill-mode-both motion-safe:duration-300"
       style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
     >
-      <span
-        aria-hidden="true"
-        className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-foreground"
-      >
-        <Icon size={19} strokeWidth={1.75} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[16px] font-medium leading-snug text-foreground">{idea.text}</p>
+      <NovaTile tone={areaTone(idea.area)} size={28}>
+        <Icon strokeWidth={2.4} />
+      </NovaTile>
+      <div className="min-w-0">
+        <p className="text-[14px] leading-[1.3] tracking-[-0.15px] text-foreground" dir="auto">
+          {idea.text}
+        </p>
         {detail ? (
-          <p className="mt-1 text-[15px] leading-[1.5] text-muted-foreground">{detail}</p>
+          <p className="mt-0.5 line-clamp-2 text-[12px] leading-[1.35] text-ink-3" dir="auto">
+            {detail}
+          </p>
         ) : showArea ? (
-          <p className="mt-0.5 text-[13.5px] text-muted-foreground">{areaLabel(idea.area)}</p>
+          <p className="mt-0.5 text-[12px] text-ink-3">{areaLabel(idea.area)}</p>
         ) : null}
-        <div className="mt-3 flex items-center gap-1.5">
-          <Button size="sm" variant="outline" className="rounded-full" onClick={() => onSend(idea)}>
-            <Trans>Do it</Trans>
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="rounded-full text-muted-foreground"
-            onClick={() => onDismiss(idea.id)}
-          >
-            <Trans>Dismiss</Trans>
-          </Button>
-        </div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          className={cn(ROW_ACTION, "text-ink-2 hover:bg-selection")}
+          onClick={() => onDismiss(idea.id)}
+        >
+          <Trans>Dismiss</Trans>
+        </button>
+        <button
+          type="button"
+          className={cn(ROW_ACTION, "bg-tint text-white hover:brightness-110")}
+          onClick={() => onSend(idea)}
+        >
+          <Trans>Do it</Trans>
+        </button>
       </div>
     </li>
   );
@@ -79,10 +98,10 @@ function IdeaRow({
 
 function IdeasSkeleton() {
   return (
-    <div className="flex flex-col gap-2" aria-hidden="true">
+    <div className="nova-group flex flex-col" aria-hidden="true">
       {[0, 1, 2, 3].map((key) => (
-        <div key={key} className="flex items-center gap-4 py-3">
-          <Skeleton className="size-10 shrink-0 rounded-xl" />
+        <div key={key} className="flex items-center gap-3 px-3 py-3">
+          <Skeleton className="size-7 shrink-0 rounded-[30%]" />
           <div className="flex flex-1 flex-col gap-2">
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-3 w-24" />
@@ -182,16 +201,19 @@ export function IdeasScreen({
   let index = 0;
 
   return (
-    <MuseScreen>
-      <MuseColumn className="flex min-h-full flex-col pt-14 pb-12">
-        <header className="pb-8">
-          <h1 className={MUSE_TYPE.pageTitle}>
-            <Trans>Ideas</Trans>
-          </h1>
-          <p className={cn("mt-2", MUSE_TYPE.pageSubtitle)}>
+    <MuseScreen header={<ScreenHeader title={t`Ideas`} dragRegion />}>
+      <MuseWideCenter className="min-h-full">
+        <ScreenHero
+          tile={
+            <NovaTile tone="orange" size={44}>
+              <IdeasGlyph />
+            </NovaTile>
+          }
+          title={<Trans>Ideas</Trans>}
+          subtitle={
             <Trans>I'm always looking for new ways to help. My favourite ideas show up here.</Trans>
-          </p>
-        </header>
+          }
+        />
 
         {ideas === null ? (
           <IdeasSkeleton />
@@ -200,13 +222,13 @@ export function IdeasScreen({
             <Trans>I'll show ideas here as I learn what's useful to you.</Trans>
           </EmptyState>
         ) : grouped ? (
-          <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-4">
             {groups.map((group) => (
-              <section key={group.area}>
-                <h2 className="pb-1 text-[17px] font-semibold text-foreground">
+              <section key={group.area} className="flex flex-col gap-1.5">
+                <h2 className="px-1.5 text-[13px] font-semibold text-foreground">
                   {areaLabel(group.area)}
                 </h2>
-                <ul className="flex flex-col divide-y divide-border/60">
+                <ul className="nova-group">
                   {group.ideas.map((idea) => (
                     <IdeaRow
                       key={idea.id}
@@ -222,7 +244,7 @@ export function IdeasScreen({
             ))}
           </div>
         ) : (
-          <ul className="flex flex-col divide-y divide-border/60">
+          <ul className="nova-group">
             {visible.map((idea, i) => (
               <IdeaRow
                 key={idea.id}
@@ -235,7 +257,7 @@ export function IdeasScreen({
             ))}
           </ul>
         )}
-      </MuseColumn>
+      </MuseWideCenter>
     </MuseScreen>
   );
 }

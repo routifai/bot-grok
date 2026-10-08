@@ -3,7 +3,6 @@ import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
-import { illustrationUrl } from "../../../lib/illustrations";
 
 const SUGGESTED_TOPICS = [
   "Fintech regulation",
@@ -13,12 +12,10 @@ const SUGGESTED_TOPICS = [
   "Wealth management",
 ];
 
-const INSET_GROUP =
-  "overflow-hidden rounded-[22px] bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-14px_rgb(0_0_0/0.14)] ring-1 ring-border/60";
-
 /**
- * Followed topics as an iOS-style inset group: follow anything by typing it, follow a
- * suggestion with one tap, and stop following from the row. The Muse researches every
+ * Followed topics as pills (docs/muse/DESIGN.md "Feed"): each with its own × to stop
+ * following, and "Follow a topic" opening a field plus one-tap suggestions (open from the
+ * start while nothing is followed). The Muse researches every
  * followed topic on its own schedule and posts what it finds to the Feed.
  */
 export function TopicsCard({
@@ -33,6 +30,7 @@ export function TopicsCard({
   const { t } = useLingui();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const followed = new Set(topics.map((topic) => topic.topic.toLowerCase()));
   const suggestions = SUGGESTED_TOPICS.filter((topic) => !followed.has(topic.toLowerCase()));
 
@@ -65,83 +63,91 @@ export function TopicsCard({
         ? t`Checked hourly`
         : t`Checked daily`;
 
+  const adding = addOpen || topics.length === 0;
+  const PILL =
+    "inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-[filter] focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50";
+
   return (
     <div className="flex flex-col gap-3">
-      <div className={INSET_GROUP}>
-        <form
-          className="flex items-center gap-3 px-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void follow(draft);
-          }}
-        >
-          <img src={illustrationUrl("globe")} alt="" className="size-8 shrink-0" />
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            aria-label={t`Follow a topic`}
-            placeholder={t`Follow a topic, like OSFI guidance`}
-            className="min-w-0 flex-1 bg-transparent py-4 text-[16px] tracking-[-0.01em] text-foreground outline-none placeholder:text-muted-foreground"
-          />
-          <button
-            type="submit"
-            aria-label={t`Follow`}
-            disabled={!draft.trim() || busy !== null}
-            className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-25 active:scale-95"
-          >
-            <Plus size={16} strokeWidth={2.25} />
-          </button>
-        </form>
+      <div className="flex flex-wrap items-center gap-2">
         {topics.map((topic) => (
-          <div key={topic.id} className="flex items-center gap-3 ps-4">
-            <span aria-hidden="true" className="size-8 shrink-0" />
-            <div className="flex min-w-0 flex-1 items-center gap-3 border-t border-border/70 py-3.5 pe-3">
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[16px] tracking-[-0.01em] text-foreground">
-                  {topic.topic}
-                </span>
-                <span className="block text-[13px] text-muted-foreground">
-                  {cadenceLabel(topic.cadence)}
-                </span>
-              </span>
-              <button
-                type="button"
-                aria-label={t`Stop following ${topic.topic}`}
-                title={t`Stop following ${topic.topic}`}
-                disabled={busy === topic.id}
-                onClick={() => void remove(topic)}
-                className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-              >
-                <X size={15} strokeWidth={2} />
-              </button>
-            </div>
-          </div>
+          <span
+            key={topic.id}
+            title={cadenceLabel(topic.cadence)}
+            className="inline-flex h-8 items-center gap-1 rounded-full bg-selection ps-3.5 pe-1 text-[13px] text-foreground"
+          >
+            {topic.topic}
+            <span className="sr-only"> · {cadenceLabel(topic.cadence)}</span>
+            <button
+              type="button"
+              aria-label={t`Stop following ${topic.topic}`}
+              title={t`Stop following ${topic.topic}`}
+              disabled={busy === topic.id}
+              onClick={() => void remove(topic)}
+              className="grid size-6 place-items-center rounded-full text-ink-3 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"
+            >
+              <X size={12} strokeWidth={2.25} />
+            </button>
+          </span>
         ))}
+        {adding ? null : (
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className={cn(PILL, "text-link ring-1 ring-separator ring-inset hover:bg-selection")}
+          >
+            <Plus size={13} strokeWidth={2.25} aria-hidden="true" />
+            {t`Follow a topic`}
+          </button>
+        )}
       </div>
 
-      {suggestions.length > 0 ? (
-        <div className="flex flex-wrap gap-2 px-1">
-          {suggestions.map((topic) => (
+      {adding ? (
+        <>
+          <form
+            className="nova-group flex h-11 max-w-[520px] items-center gap-2 rounded-full ps-4 pe-1.5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void follow(draft);
+            }}
+          >
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              aria-label={t`Follow a topic`}
+              placeholder={t`Follow a topic, like OSFI guidance`}
+              className="min-w-0 flex-1 bg-transparent text-[14px] tracking-[-0.15px] text-foreground outline-none placeholder:text-ink-3"
+            />
             <button
-              key={topic}
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void follow(topic)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full bg-card px-3.5 py-2 text-[14px] text-foreground ring-1 ring-border/70 transition-[transform,background-color] hover:bg-accent/60 active:scale-95 disabled:opacity-50",
-                busy === topic && "opacity-50",
-              )}
+              type="submit"
+              aria-label={t`Follow`}
+              disabled={!draft.trim() || busy !== null}
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-white transition-opacity disabled:bg-selection disabled:text-ink-3 active:scale-95"
             >
-              <Plus
-                size={14}
-                strokeWidth={2}
-                className="text-muted-foreground"
-                aria-hidden="true"
-              />
-              {topic}
+              <Plus size={15} strokeWidth={2.25} />
             </button>
-          ))}
-        </div>
+          </form>
+          {suggestions.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void follow(topic)}
+                  className={cn(
+                    PILL,
+                    "bg-group text-foreground ring-[0.5px] ring-separator ring-inset hover:bg-selection",
+                    busy === topic && "opacity-50",
+                  )}
+                >
+                  <Plus size={13} strokeWidth={2} className="text-ink-3" aria-hidden="true" />
+                  {topic}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

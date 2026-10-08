@@ -76,10 +76,15 @@ body,
   }
 }
 
+/* Muse edition type: the system font first (SF Pro on Apple devices), Instrument Sans where
+   there is no system San Francisco. */
 [data-product="muse"] body,
 [data-product="muse"] #root {
-  font-family: "Instrument Sans Variable", "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  font-feature-settings: "ss01", "cv11";
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Instrument Sans Variable", "Geist Variable",
+    ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.08px;
+  -webkit-font-smoothing: antialiased;
 }
 
 .rk-scroll::-webkit-scrollbar {
@@ -165,8 +170,235 @@ body,
    ground with one soft radial wash; the rail, chat and context panels float above it as
    translucent `panel` surfaces. A plain gradient, not a blur filter, so it paints once. */
 [data-product="muse"] .muse-wash {
-  background-color: var(--ground);
-  background-image: radial-gradient(1200px 600px at 75% -10%, var(--ground-wash), transparent 70%);
+  background-color: var(--window);
+}
+
+/* Nova's Mac window (docs/muse/DESIGN.md "Window"): the content is one rounded window on
+   the window ground; the sidebar and inspector float inside it as glass panels inset 8px. */
+[data-product="muse"] {
+  --nova-window-shadow: 0 10px 30px rgb(0 0 0 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.1);
+  --nova-lift: 0 1px 3px rgb(0 0 0 / 0.06);
+}
+[data-product="muse"][data-theme="dark"] {
+  --nova-window-shadow: 0 10px 30px rgb(0 0 0 / 0.5), 0 0 0 0.5px rgb(255 255 255 / 0.08);
+  --nova-lift: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+/* Nova's surfaces live in the components layer, so a utility on the same element still wins. */
+@layer components {
+  .nova-window {
+    background-color: var(--content);
+  }
+  @media (min-width: 768px) {
+    .nova-window {
+      border-radius: 22px;
+      box-shadow: var(--nova-window-shadow);
+    }
+  }
+  .nova-glass {
+    background-color: var(--glass);
+    -webkit-backdrop-filter: blur(30px) saturate(1.8);
+    backdrop-filter: blur(30px) saturate(1.8);
+    box-shadow: inset 0 0 0 0.5px var(--glass-line);
+  }
+  @media (min-width: 768px) {
+    .nova-glass {
+      border-radius: 18px;
+    }
+  }
+  /* A small glass pill (the toolbar's button group). */
+  .nova-glass-pill {
+    background-color: var(--glass);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    box-shadow:
+      inset 0 0 0 0.5px var(--glass-line),
+      var(--nova-lift);
+  }
+  /* iOS inset grouped list: one rounded card, rows split by inset hairlines. */
+  .nova-group {
+    background-color: var(--group);
+    border-radius: 16px;
+    box-shadow: inset 0 0 0 0.5px var(--separator);
+    overflow: hidden;
+  }
+  .nova-group > .nova-row + .nova-row::before {
+    content: "";
+    position: absolute;
+    inset-inline: 52px 0;
+    top: 0;
+    height: 0.5px;
+    background: var(--separator);
+  }
+  .nova-row {
+    position: relative;
+  }
+  /* A row without a tile: its separator starts at the text. */
+  .nova-group > .nova-row-plain + .nova-row::before,
+  .nova-group > .nova-row + .nova-row-plain::before {
+    inset-inline-start: 12px;
+  }
+  /* A card (Goals, Waiting decisions, Library tiles): 18px, the group fill, a hairline. */
+  .nova-card {
+    background-color: var(--group);
+    border-radius: 18px;
+    box-shadow:
+      inset 0 0 0 0.5px var(--separator),
+      0 1px 3px rgb(0 0 0 / 0.04);
+  }
+  /* The Feed's media tiles take a tone: warm, pink or green instead of the blue glow. */
+  .nova-media[data-tone="warm"] {
+    background-image: radial-gradient(
+      120% 120% at 80% 110%,
+      var(--media-warm-glow) 0%,
+      var(--media-warm-deep) 45%,
+      var(--media) 85%
+    );
+  }
+  .nova-media[data-tone="pink"] {
+    background-image: radial-gradient(
+      120% 120% at 80% 110%,
+      var(--media-pink-glow) 0%,
+      var(--media-pink-deep) 50%,
+      var(--media) 85%
+    );
+  }
+  .nova-media[data-tone="green"] {
+    background-image: radial-gradient(
+      120% 120% at 80% 110%,
+      var(--media-green-glow) 0%,
+      var(--media-green-deep) 50%,
+      var(--media) 85%
+    );
+  }
+
+  /* The Ask field (the composer): a rounded 24px field on the group surface, a hairline and a
+     soft drop; focus adds a quiet accent halo. */
+  .nova-ask {
+    box-shadow:
+      inset 0 0 0 0.5px var(--separator),
+      0 6px 20px rgb(0 0 0 / 0.06);
+  }
+  .nova-ask:focus-within {
+    box-shadow:
+      inset 0 0 0 0.5px var(--separator),
+      0 0 0 4px color-mix(in srgb, var(--tint) 25%, transparent),
+      0 6px 20px rgb(0 0 0 / 0.06);
+  }
+
+  /* A colored app tile: an Apple-style rounded square with a soft top-to-bottom gradient. */
+  .nova-tile {
+    display: grid;
+    place-items: center;
+    flex: none;
+    color: #fff;
+    border-radius: 30%;
+    box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.06);
+  }
+  .nova-tile > svg {
+    width: 60%;
+    height: 60%;
+  }
+  .nova-tile[data-tone="blue"] {
+    background-image: linear-gradient(var(--tile-blue-from), var(--tile-blue-to));
+  }
+  .nova-tile[data-tone="green"] {
+    background-image: linear-gradient(var(--tile-green-from), var(--tile-green-to));
+  }
+  .nova-tile[data-tone="yellow"] {
+    background-image: linear-gradient(var(--tile-yellow-from), var(--tile-yellow-to));
+  }
+  .nova-tile[data-tone="orange"] {
+    background-image: linear-gradient(var(--tile-orange-from), var(--tile-orange-to));
+  }
+  .nova-tile[data-tone="purple"] {
+    background-image: linear-gradient(var(--tile-purple-from), var(--tile-purple-to));
+  }
+  .nova-tile[data-tone="red"] {
+    background-image: linear-gradient(var(--tile-red-from), var(--tile-red-to));
+  }
+  .nova-tile[data-tone="indigo"] {
+    background-image: linear-gradient(var(--tile-indigo-from), var(--tile-indigo-to));
+  }
+  .nova-tile[data-tone="teal"] {
+    background-image: linear-gradient(var(--tile-teal-from), var(--tile-teal-to));
+  }
+  .nova-tile[data-tone="gray"] {
+    background-image: linear-gradient(var(--tile-gray-from), var(--tile-gray-to));
+  }
+
+  /* The result tile (Conversation): a dark card with a deep blue glow from the bottom right. */
+  .nova-media {
+    background-color: var(--media);
+    background-image: radial-gradient(
+      120% 120% at 85% 110%,
+      var(--media-glow) 0%,
+      var(--media-deep) 45%,
+      var(--media) 80%
+    );
+  }
+  .nova-media-bar {
+    background-image: linear-gradient(var(--media-bar), var(--media-bar-2));
+    box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.08);
+  }
+  .nova-media-key {
+    background-image: linear-gradient(
+      var(--media-key-from),
+      var(--tile-blue-to) 60%,
+      var(--media-key-to)
+    );
+    box-shadow: 0 0 40px color-mix(in srgb, var(--tile-blue-to) 55%, transparent);
+  }
+
+  /* Nova's orb before its first frame, and where WebGL is unavailable: a still sphere in the
+     shader's own colors (components/ai/orb/shader.ts), filling the same 90% circle. */
+  .nova-orb {
+    background: radial-gradient(
+      circle closest-side,
+      rgb(16 17 28) 0%,
+      rgb(13 14 26) 52%,
+      rgb(66 92 210) 74%,
+      rgb(150 110 240) 84%,
+      rgb(240 110 190) 89%,
+      transparent 91%
+    );
+  }
+  .nova-orb[data-orb-state="working"][data-orb-fallback] {
+    filter: brightness(1.25) saturate(1.2);
+  }
+  .nova-orb:has(canvas) {
+    background: none;
+  }
+}
+
+/* Nova's switches are iOS toggles: 44×26, green when on, a white knob with a soft shadow.
+   Unlayered, so it outranks the shadcn switch's utilities. */
+[data-product="muse"] [data-slot="switch"][data-size="default"] {
+  width: 44px;
+  height: 26px;
+  border: 0;
+  padding: 2px;
+}
+[data-product="muse"] [data-slot="switch"][data-checked] {
+  background-color: var(--ok);
+}
+[data-product="muse"] [data-slot="switch"][data-unchecked] {
+  background-color: var(--selection);
+}
+[data-product="muse"] [data-slot="switch"][data-size="default"] [data-slot="switch-thumb"] {
+  width: 22px;
+  height: 22px;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.2);
+}
+[data-product="muse"]
+  [data-slot="switch"][data-size="default"]
+  [data-slot="switch-thumb"][data-checked] {
+  translate: 18px 0;
+}
+
+/* Keyboard focus everywhere in Nova: the accent at 50%. */
+[data-product="muse"] :focus-visible {
+  outline-color: var(--ring);
 }
 
 /* Reduced motion: unlayered, so it outranks Tailwind's layered animation and transition

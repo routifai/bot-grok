@@ -4,12 +4,14 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { useAsks } from "./asks";
+import { FeedGlyph } from "./chrome/NovaGlyphs";
+import { NovaTile } from "./chrome/NovaTile";
 import { CardSkeletonList } from "./feed/CardSkeleton";
 import { FeedAsks } from "./feed/FeedAsks";
 import { FeedPreview } from "./feed/FeedPreview";
 import { PostList } from "./feed/PostList";
 import { TopicsCard } from "./feed/TopicsCard";
-import { MuseColumn, MuseScreen } from "./ui";
+import { MuseScreen, MuseWideCenter, ScreenHeader, ScreenHero } from "./ui";
 
 // The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
 // Waiting-on-you sheet), then Posts grouped Today / Earlier, then Followed topics as a
@@ -102,8 +104,8 @@ export function FeedScreen(props: {
     topics.length === 0;
 
   const topicsSection = (
-    <section>
-      <h2 className="px-1 pb-2.5 text-[15px] font-medium text-muted-foreground">
+    <section aria-labelledby="feed-topics" className="flex flex-col gap-2">
+      <h2 id="feed-topics" className="sr-only">
         <Trans>Topics I follow for you</Trans>
       </h2>
       <TopicsCard topics={topics ?? []} onFollow={handleFollowTopic} onRemove={handleRemoveTopic} />
@@ -111,52 +113,52 @@ export function FeedScreen(props: {
   );
 
   return (
-    <MuseScreen>
-      <MuseColumn className="flex min-h-full flex-col gap-10 pt-14 pb-16">
-        <header>
-          <h1 className="text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground">
-            <Trans>Feed</Trans>
-          </h1>
-          <p className="mt-2 max-w-[560px] text-[17px] leading-[1.45] tracking-[-0.01em] text-muted-foreground">
+    <MuseScreen header={<ScreenHeader title={t`Feed`} dragRegion />}>
+      <MuseWideCenter className="min-h-full">
+        <ScreenHero
+          tile={
+            <NovaTile tone="red" size={44}>
+              <FeedGlyph />
+            </NovaTile>
+          }
+          title={<Trans>Feed</Trans>}
+          subtitle={
             <Trans>
               What I finished while you were away, and what's new on the topics you follow.
             </Trans>
-          </p>
-        </header>
+          }
+        />
+
+        {topics !== null ? topicsSection : null}
 
         {loadError ? <p className="text-[13.5px] text-destructive">{loadError}</p> : null}
 
         {posts === null && !loadError ? (
           <CardSkeletonList />
         ) : empty ? (
-          <>
-            {topicsSection}
-            <section>
-              <h2 className="px-1 pb-2.5 text-[15px] font-medium text-muted-foreground">
-                <Trans>Example: what a morning with me looks like</Trans>
-              </h2>
-              <div className="relative">
-                <ExampleTag />
-                <FeedPreview botName={botName} color={avatarColor} />
-              </div>
-            </section>
-          </>
+          <section className="pt-2">
+            <h2 className="px-1 pb-2.5 text-[13px] font-semibold text-foreground">
+              <Trans>Example: what a morning with me looks like</Trans>
+            </h2>
+            <div className="relative">
+              <ExampleTag />
+              <FeedPreview botName={botName} color={avatarColor} />
+            </div>
+          </section>
         ) : (
           <>
             <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
             {posts ? (
               <PostList
                 posts={posts}
-                avatarColor={avatarColor}
                 nextCursor={nextCursor}
                 loadingMore={loadingMore}
                 onLoadMore={() => void loadMorePosts()}
               />
             ) : null}
-            {topicsSection}
           </>
         )}
-      </MuseColumn>
+      </MuseWideCenter>
     </MuseScreen>
   );
 }
@@ -164,7 +166,7 @@ export function FeedScreen(props: {
 /** Marks sample content so it is never mistaken for the person's own Feed. */
 function ExampleTag() {
   return (
-    <span className="absolute top-3 end-3 z-10 rounded-full bg-background/80 px-2.5 py-1 text-[12px] font-medium text-muted-foreground ring-1 ring-border/60 backdrop-blur">
+    <span className="absolute top-3 end-3 z-10 rounded-full bg-selection px-2.5 py-1 text-[12px] font-medium text-ink-2 backdrop-blur">
       <Trans>Example</Trans>
     </span>
   );

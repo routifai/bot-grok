@@ -1,3 +1,4 @@
+import { Trans } from "@lingui/react/macro";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -29,8 +30,14 @@ export function MemorySection({
   title,
   count,
   forceOpen = false,
+  editing = false,
+  onEdit,
   children,
 }: {
+  /** The section's Edit is on. */
+  editing?: boolean;
+  /** Shows "Edit" / "Done" on the header's right. */
+  onEdit?: () => void;
   id: string;
   title: string;
   count?: number;
@@ -47,20 +54,34 @@ export function MemorySection({
     writeClosed(next ? closed : [...closed, id]);
   };
   return (
-    <section className="flex flex-col" data-testid={`memory-section-${id}`}>
-      <button
-        type="button"
-        aria-expanded={shown}
-        onClick={toggle}
-        className="group/header flex h-7 items-center gap-1 rounded-md px-3 text-left text-[11px] font-medium tracking-wider text-muted-foreground uppercase outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        <ChevronRight
-          className={`size-3 shrink-0 transition-transform ${shown ? "rotate-90" : ""}`}
-          aria-hidden
-        />
-        <span>{title}</span>
-        {count === undefined ? null : <span className="tabular-nums">· {count}</span>}
-      </button>
+    <section className="flex flex-col gap-1.5" data-testid={`memory-section-${id}`}>
+      <div className="flex items-center justify-between gap-2 px-1.5">
+        <button
+          type="button"
+          aria-expanded={shown}
+          onClick={toggle}
+          className="group/header flex min-w-0 items-center gap-1 rounded-md text-left text-[13px] font-semibold tracking-[-0.1px] text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <span className="truncate">{title}</span>
+          {count === undefined ? null : (
+            <span className="font-normal text-ink-3 tabular-nums">{count}</span>
+          )}
+          <ChevronRight
+            className={`size-3 shrink-0 text-ink-3 opacity-0 transition-[transform,opacity] group-hover/header:opacity-100 ${shown ? "rotate-90" : ""}`}
+            aria-hidden
+          />
+        </button>
+        {onEdit && shown ? (
+          <button
+            type="button"
+            aria-pressed={editing}
+            onClick={onEdit}
+            className="shrink-0 rounded-md text-[13px] text-link outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            {editing ? <Trans>Done</Trans> : <Trans>Edit</Trans>}
+          </button>
+        ) : null}
+      </div>
       {shown ? <div className="flex flex-col">{children}</div> : null}
     </section>
   );
@@ -68,5 +89,5 @@ export function MemorySection({
 
 /** The one muted line an empty section shows. */
 export function MemoryEmptyLine({ children }: { children: ReactNode }) {
-  return <p className="px-3 py-1 text-[12px] leading-4 text-muted-foreground">{children}</p>;
+  return <p className="px-1.5 py-1 text-[12px] leading-4 text-ink-3">{children}</p>;
 }

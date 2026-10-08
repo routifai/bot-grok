@@ -1,6 +1,7 @@
 import { cn } from "@aiden/ui-web";
-import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
+import { ChevronGlyph } from "../chrome/NovaGlyphs";
+import { NovaTile, type TileTone } from "../chrome/NovaTile";
 import { MUSE_INSET_GROUP } from "../ui";
 
 /**
@@ -20,31 +21,58 @@ export function SettingsGroup({
   return (
     <section>
       {title ? (
-        <h3 className="px-4 pb-2 text-[13.5px] font-medium text-muted-foreground">{title}</h3>
+        <h3 className="px-1.5 pb-1.5 text-[13px] font-semibold tracking-[-0.1px] text-foreground">
+          {title}
+        </h3>
       ) : null}
-      <div className={cn(MUSE_INSET_GROUP, "divide-y divide-border/70")}>{children}</div>
-      {footer ? <p className="px-4 pt-2 text-[13px] text-muted-foreground">{footer}</p> : null}
+      <div className={MUSE_INSET_GROUP}>{children}</div>
+      {footer ? <p className="px-1.5 pt-1.5 text-[12px] text-ink-3">{footer}</p> : null}
     </section>
   );
 }
 
-export const SETTINGS_ROW = "flex min-h-[52px] w-full items-center justify-between gap-4 px-4";
+export const SETTINGS_ROW =
+  "nova-row flex min-h-[52px] w-full items-center justify-between gap-3 px-3 py-2 text-[14px] tracking-[-0.15px]";
+
+/** A row's colored tile (docs/muse/DESIGN.md "Settings"). */
+export type SettingsIcon = { tone: TileTone; glyph: ReactNode };
+
+/** The row's lead: its tile, then the label with an optional quiet line under it. */
+function RowLead({ icon, label, sub }: { icon?: SettingsIcon; label: ReactNode; sub?: ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-center gap-3">
+      {icon ? (
+        <NovaTile tone={icon.tone} size={28}>
+          {icon.glyph}
+        </NovaTile>
+      ) : null}
+      <span className="min-w-0">
+        <span className="block truncate text-foreground">{label}</span>
+        {sub ? <span className="block truncate text-[12px] text-ink-3">{sub}</span> : null}
+      </span>
+    </span>
+  );
+}
 
 /** A label on the left and a value (or control) on the right. */
 export function SettingsRow({
   label,
+  sub,
+  icon,
   value,
   children,
 }: {
   label: ReactNode;
+  sub?: ReactNode;
+  icon?: SettingsIcon;
   value?: ReactNode;
   children?: ReactNode;
 }) {
   return (
-    <div className={SETTINGS_ROW}>
-      <span className="min-w-0 truncate text-[16px] text-foreground">{label}</span>
+    <div className={cn(SETTINGS_ROW, !icon && "nova-row-plain")}>
+      <RowLead icon={icon} label={label} sub={sub} />
       {value !== undefined ? (
-        <span className="min-w-0 truncate text-[15px] text-muted-foreground">{value}</span>
+        <span className="min-w-0 truncate text-[13.5px] text-ink-3">{value}</span>
       ) : null}
       {children}
     </div>
@@ -54,11 +82,15 @@ export function SettingsRow({
 /** A row that opens something: a chevron, the whole row tappable. */
 export function SettingsLinkRow({
   label,
+  sub,
+  icon,
   value,
   onClick,
   expanded,
 }: {
   label: ReactNode;
+  sub?: ReactNode;
+  icon?: SettingsIcon;
   value?: ReactNode;
   onClick: () => void;
   /** For rows that expand in place rather than navigate. */
@@ -71,18 +103,16 @@ export function SettingsLinkRow({
       aria-expanded={expanded}
       className={cn(
         SETTINGS_ROW,
-        "group text-start transition-colors hover:bg-accent/50 active:bg-accent",
+        !icon && "nova-row-plain",
+        "group text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
       )}
     >
-      <span className="min-w-0 truncate text-[16px] text-foreground">{label}</span>
-      <span className="flex min-w-0 items-center gap-1.5 text-[15px] text-muted-foreground">
+      <RowLead icon={icon} label={label} sub={sub} />
+      <span className="flex min-w-0 items-center gap-2 text-[13.5px] text-ink-3">
         {value ? <span className="truncate">{value}</span> : null}
-        <ChevronRight
-          size={17}
-          strokeWidth={2}
-          aria-hidden="true"
+        <ChevronGlyph
           className={cn(
-            "shrink-0 text-muted-foreground/60 transition-transform",
+            "h-[13px] w-2 shrink-0 opacity-60 transition-transform",
             expanded ? "rotate-90" : "group-hover:translate-x-0.5",
           )}
         />
@@ -106,11 +136,11 @@ export function SettingsSegmented<T extends string>({
   testId?: string;
 }) {
   return (
-    <div className="p-1.5">
+    <div className="p-2">
       <fieldset
         aria-label={label}
         data-testid={testId}
-        className="grid gap-1 rounded-[16px] bg-muted p-1"
+        className="m-0 grid rounded-lg border-0 bg-selection p-0.5"
         style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
       >
         {options.map((option) => {
@@ -125,10 +155,10 @@ export function SettingsSegmented<T extends string>({
                 if (!selected) onChange(option.value);
               }}
               className={cn(
-                "rounded-[12px] py-2 text-[14.5px] font-medium transition-[background-color,box-shadow,color] duration-200",
+                "h-7 rounded-md text-[13px] transition-[background-color,box-shadow,color] duration-200 focus-visible:outline-2 focus-visible:outline-ring",
                 selected
-                  ? "bg-card text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)]"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "bg-group text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.14)]"
+                  : "text-ink-2 hover:text-foreground",
               )}
             >
               {option.label}

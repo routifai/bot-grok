@@ -69,7 +69,7 @@ function Day({
   const filled = DAY_SECTION_KEYS.filter((key) => (note.sections[key] ?? "").trim() !== "");
   return (
     <li
-      className="group/day rounded-lg px-3 py-1.5 hover:bg-muted/60 focus-within:bg-muted/60"
+      className="group/day nova-row nova-row-plain px-3 py-2.5 transition-colors hover:bg-selection focus-within:bg-selection"
       data-testid="day-note"
     >
       <div className="flex items-baseline justify-between gap-2">
@@ -77,7 +77,7 @@ function Day({
         {draft ? null : (
           <button
             type="button"
-            className="text-[12px] text-muted-foreground opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/day:opacity-100 [@media(hover:none)]:opacity-100"
+            className="text-[13px] text-link opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/day:opacity-100 [@media(hover:none)]:opacity-100"
             onClick={() => setDraft({ ...note.sections })}
           >
             {t`Edit`}
@@ -165,9 +165,9 @@ export function DaysSection({ botId, wire }: { botId: string; wire: DaysWire }) 
 
   if (notes.length === 0) return null;
   return (
-    <div className="-mx-3" data-testid="memory-days">
+    <div data-testid="memory-days">
       <MemorySection id="days" title={t`Days`} count={notes.length}>
-        <ul className="flex flex-col">
+        <ul className="nova-group flex flex-col">
           {notes.map((note) => (
             <Day key={note.date} botId={botId} note={note} wire={wire} onSaved={replace} />
           ))}

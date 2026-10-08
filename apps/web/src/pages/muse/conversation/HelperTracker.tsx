@@ -26,8 +26,8 @@ function findActivity(node: ActivityNode, id: string): Activity | undefined {
   return undefined;
 }
 
-/** One Helper (or one part of its task) as the "Working" line (ActivityLine): a status dot, its
- * title, its step count and time in mono, and "Now · <live step>" underneath while it works.
+/** One Helper (or one part of its task) as the inline "Working" line (ActivityLine): a tiny orb
+ * while it works, its title, its step count and time in mono, and "Now · <live step>" underneath while it works.
  * Reads the same Activity the panel row shows; opening it opens the same run page. */
 function HelperLine({
   activity,
@@ -43,7 +43,7 @@ function HelperLine({
   onOpen?: () => void;
 }) {
   const { t } = useLingui();
-  if (!activity) return <ActivityLine title={fallbackTitle} nested={nested} />;
+  if (!activity) return <ActivityLine variant="inline" title={fallbackTitle} nested={nested} />;
   const steps = stepCount(activity);
   const duration = activityDurationMs(activity, now);
   const meta = [
@@ -54,7 +54,9 @@ function HelperLine({
     .join(" · ");
   return (
     <ActivityLine
+      variant="inline"
       status={activity.status}
+      source={activity.source}
       title={presentActivityTitle(activity.title)}
       meta={meta || undefined}
       liveStep={isRunning(activity) ? (latestStepTitle(activity) ?? t`Starting`) : undefined}
@@ -84,7 +86,7 @@ function HelperTree({
   onOpen: (activityId: string) => void;
 }) {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col items-start">
       <HelperLine
         activity={node.activity}
         fallbackTitle=""
@@ -93,7 +95,7 @@ function HelperTree({
         onOpen={() => onOpen(node.activity.id)}
       />
       {node.children.length > 0 ? (
-        <ActivityBranch>
+        <ActivityBranch variant="inline">
           {node.children.map((child) => (
             <HelperTree key={child.activity.id} node={child} nested now={now} onOpen={onOpen} />
           ))}
@@ -137,7 +139,7 @@ export function HelperTracker({
 
   const open = node && openId ? findActivity(node, openId) : undefined;
   return (
-    <div className="-ms-2 flex w-[min(440px,100%)] flex-col" data-testid="helper-tracker">
+    <div className="flex max-w-full flex-col items-start" data-testid="helper-tracker">
       {node ? (
         <HelperTree node={node} nested={false} now={now} onOpen={setOpenId} />
       ) : (

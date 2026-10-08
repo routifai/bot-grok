@@ -12,6 +12,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
+import { NovaOrb } from "../components/ai/orb";
 import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
 import {
   ComputerSettingsPanel,
@@ -21,6 +22,7 @@ import {
 } from "./AccountSettingsOverlay";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { AidenSettingsPanel } from "./muse/AidenSettingsPanel";
+import { NovaTile, type TileTone } from "./muse/chrome/NovaTile";
 import { GeneralPanel } from "./muse/settings/GeneralPanel";
 import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
@@ -33,6 +35,16 @@ export type SettingsSection =
   | "usage"
   | "computer"
   | "updates";
+
+/** Nova's Settings sidebar: one colored tile per section, Mac style (Nova itself is the orb). */
+const SETTINGS_TONE: Partial<Record<SettingsSection, TileTone>> = {
+  general: "gray",
+  voice: "red",
+  computer: "blue",
+  usage: "green",
+  models: "indigo",
+  updates: "teal",
+};
 
 type NavItem = {
   id: SettingsSection;
@@ -158,7 +170,9 @@ export function SettingsOverlay({
         initialFocus={() =>
           section === "usage" ? (usageRef.current ?? panelRef.current) : panelRef.current
         }
-        className={`flex max-h-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-h-[calc(100%-5rem)] ${
+        className={`flex max-h-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100%-5rem)] ${
+          museMode ? "nova-window rounded-[22px] ring-0" : "rounded-2xl"
+        } ${
           widePane && !museMode
             ? "h-[min(760px,calc(100%-2rem))] w-[min(1080px,calc(100%-2rem))] sm:max-w-[1080px]"
             : "h-[min(720px,calc(100%-2rem))] w-[min(920px,calc(100%-2rem))] sm:max-w-[920px]"
@@ -168,7 +182,9 @@ export function SettingsOverlay({
           <nav
             data-testid="settings-nav"
             aria-label={t`Settings`}
-            className="flex shrink-0 flex-row gap-1 overflow-x-auto overscroll-x-contain border-b border-border px-3 py-3 max-sm:justify-between md:w-[200px] md:flex-col md:overflow-y-auto md:border-b-0 md:border-e md:px-3 md:py-4"
+            className={`flex shrink-0 flex-row gap-1 overflow-x-auto overscroll-x-contain border-b border-border px-3 py-3 max-sm:justify-between md:w-[200px] md:flex-col md:overflow-y-auto md:border-b-0 md:border-e md:px-3 md:py-4 ${
+              museMode ? "md:m-2 md:gap-px md:rounded-[18px] md:border-e-0 md:px-2 nova-glass" : ""
+            }`}
           >
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -181,15 +197,35 @@ export function SettingsOverlay({
                   aria-current={active ? "page" : undefined}
                   disabled={panelBusy}
                   onClick={() => setSection(item.id)}
-                  className={`flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-[13.5px] transition-colors disabled:pointer-events-none disabled:opacity-50 ${
-                    active
-                      ? museMode
-                        ? "bg-primary/10 font-medium text-foreground"
-                        : "bg-muted text-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  }`}
+                  className={
+                    museMode
+                      ? `flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 text-start text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 ${
+                          active
+                            ? "bg-tint font-medium text-white"
+                            : "text-foreground hover:bg-selection"
+                        }`
+                      : `flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-[13.5px] transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                          active
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                        }`
+                  }
                 >
-                  <Icon className="size-4 shrink-0 max-sm:hidden" strokeWidth={1.75} />
+                  {museMode ? (
+                    item.id === "aiden" ? (
+                      <NovaOrb size={22} className="max-sm:hidden" />
+                    ) : (
+                      <NovaTile
+                        tone={SETTINGS_TONE[item.id] ?? "gray"}
+                        size={22}
+                        className="max-sm:hidden"
+                      >
+                        <Icon strokeWidth={2.4} />
+                      </NovaTile>
+                    )
+                  ) : (
+                    <Icon className="size-4 shrink-0 max-sm:hidden" strokeWidth={1.75} />
+                  )}
                   <span className="whitespace-nowrap">{item.label}</span>
                 </button>
               );
@@ -201,7 +237,7 @@ export function SettingsOverlay({
               <DialogTitle
                 className={
                   museMode
-                    ? "text-[28px] font-bold tracking-[-0.025em] text-foreground"
+                    ? "text-[28px] font-bold tracking-[0.2px] text-foreground"
                     : "text-2xl font-medium text-foreground"
                 }
               >

@@ -27,12 +27,12 @@ export function ApprovalCards({ botId, chatId }: { botId: string; chatId: string
   return (
     <div
       data-testid="approval-cards"
-      className="mx-auto flex w-full max-w-[820px] flex-col gap-3 px-4 pb-3"
+      className="mx-auto flex w-full max-w-[700px] flex-col gap-3 px-4 pb-3"
     >
       {locked.map(({ ask, label }) => (
         <div
           key={ask.id}
-          className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3 text-[14px] text-muted-foreground"
+          className="nova-card flex items-center gap-3 px-4 py-3 text-[14px] text-ink-2"
         >
           <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" />
           <span className="min-w-0 flex-1" dir="auto">
@@ -45,7 +45,7 @@ export function ApprovalCards({ botId, chatId }: { botId: string; chatId: string
         </div>
       ))}
       {open.map((ask) => (
-        <div key={ask.id} className="rounded-2xl border border-border px-4">
+        <div key={ask.id}>
           <AskItem
             ask={ask}
             onAnswer={async (value) => {

@@ -1,8 +1,8 @@
 import type { IllustrationKey } from "@aiden/contracts";
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
-import { BotAvatar, cn } from "@aiden/ui-web";
+import { cn } from "@aiden/ui-web";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
+import { NovaOrb } from "../../../components/ai/orb";
 import { illustrationUrl } from "../../../lib/illustrations";
 
 // Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen
@@ -15,22 +15,26 @@ import { illustrationUrl } from "../../../lib/illustrations";
  * body font — never `font-display`, which is reserved for the signed-out welcome and
  * auth screens). Geist Mono (`label`) is for small tags only, never a whole heading.
  */
-/** iOS-style inset grouped list: one rounded card whose rows are split by inset hairlines. */
-export const MUSE_INSET_GROUP =
-  "overflow-hidden rounded-[22px] bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-14px_rgb(0_0_0/0.14)] ring-1 ring-border/60";
+/** iOS-style inset grouped list: one rounded card whose rows are split by inset hairlines
+ * (`.nova-group` in styles.css; rows that take the inset separator carry `nova-row`). */
+export const MUSE_INSET_GROUP = "nova-group";
+
+/** One row of an inset grouped list: 52px, a 28px tile, title over a quiet subtitle. */
+export const MUSE_LIST_ROW =
+  "nova-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2 text-start text-[14px] tracking-[-0.15px]";
 
 export const MUSE_TYPE = {
   /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
-  chromeTitle: "text-[17px] font-semibold tracking-[-0.01em] text-foreground",
+  chromeTitle: "text-[15px] font-semibold tracking-[-0.2px] text-foreground",
   /** The empty Conversation's greeting: a calm start-page headline, balanced over two lines. */
   heroTitle:
     "text-[28px] font-semibold leading-[1.15] tracking-[-0.02em] text-balance text-foreground",
   /** A big in-content heading for a screen that reads like its own page (Ideas). */
-  pageTitle: "text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground",
+  pageTitle: "text-[28px] font-bold leading-[1.1] tracking-[0.2px] text-foreground",
   /** A one-line page subtitle under `pageTitle`, in the Muse's own voice. */
-  pageSubtitle: "text-[17px] leading-[1.5] text-muted-foreground",
+  pageSubtitle: "text-[14px] leading-[1.45] text-ink-2",
   /** A group heading inside a screen ("Productivity", "Paused", "Plan"). */
-  sectionTitle: "text-[15px] font-semibold text-foreground",
+  sectionTitle: "text-[13px] font-semibold tracking-[-0.1px] text-foreground",
   /** A card's or row's own title (a Goal, a Post, a Library item, an Idea). */
   cardTitle: "text-[16px] font-semibold leading-snug text-foreground",
   /** Regular reading text inside a card or row. */
@@ -50,6 +54,99 @@ export function MuseColumn({ className, ...props }: ComponentProps<"div">) {
     />
   );
 }
+
+/** The column the Apple-style screens share: 860px, centered, 28px sides. */
+export function MuseWideCenter({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-[860px] flex-col gap-[18px] px-5 pt-1 pb-10 sm:px-7",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * A screen's hero (docs/muse/DESIGN.md "Screens"): the section's colored tile, a 28px bold
+ * title over one quiet line, and an optional control on the right.
+ */
+export function ScreenHero({
+  tile,
+  title,
+  subtitle,
+  action,
+}: {
+  tile: ReactNode;
+  title: ReactNode;
+  subtitle?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <header className="flex flex-wrap items-center gap-3.5 pt-1.5">
+      {tile}
+      <div className="min-w-0 flex-1">
+        <h1 className={MUSE_TYPE.pageTitle}>{title}</h1>
+        {subtitle ? <p className={cn("mt-0.5", MUSE_TYPE.pageSubtitle)}>{subtitle}</p> : null}
+      </div>
+      {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
+    </header>
+  );
+}
+
+/** A Mac segmented control: one quiet track, the selected segment raised. */
+export function SegmentedControl<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  className,
+}: {
+  label: string;
+  options: readonly { value: T; label: ReactNode }[];
+  value: T;
+  onChange: (next: T) => void;
+  className?: string;
+}) {
+  return (
+    <fieldset
+      aria-label={label}
+      className={cn("m-0 flex min-w-0 rounded-lg border-0 bg-selection p-0.5", className)}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={option.value === value}
+          onClick={() => {
+            if (option.value !== value) onChange(option.value);
+          }}
+          className={cn(
+            "h-6 min-w-0 flex-1 truncate rounded-md px-3 text-[12px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+            option.value === value
+              ? "bg-group text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.14)]"
+              : "text-ink-2 hover:text-foreground",
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
+/** A small accent button for a screen's one primary action (the hero's "New goal"). */
+export const ACCENT_BUTTON =
+  "inline-flex h-8 items-center gap-1.5 rounded-full bg-tint px-3.5 text-[13px] font-medium text-white transition-[filter] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60";
+
+/** A quiet, equal-weight secondary button (a decision's "Not now"). */
+export const QUIET_BUTTON =
+  "inline-flex h-[34px] items-center justify-center rounded-xl bg-selection px-3 text-[14px] font-medium text-foreground transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60";
+
+/** Its accent counterpart (a decision's primary choice). */
+export const PRIMARY_BUTTON =
+  "inline-flex h-[34px] items-center justify-center rounded-xl bg-tint px-3 text-[14px] font-medium text-white transition-[filter] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60";
 
 /**
  * Wide, left-aligned layout for screens that fill the panel instead of reading like a
@@ -117,16 +214,16 @@ export function ScreenHeader({
   return (
     <header
       className={cn(
-        "flex h-16 shrink-0 items-center justify-between gap-3 px-4 md:px-6",
+        "flex h-14 shrink-0 items-center justify-between gap-3 ps-5 pe-4",
         dragRegion && "app-drag",
       )}
     >
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
         <span className={cn("truncate", MUSE_TYPE.chromeTitle)}>{title}</span>
         {meta}
       </div>
       {actions ? (
-        <div className={cn("flex shrink-0 items-center gap-1", dragRegion && "app-no-drag")}>
+        <div className={cn("flex shrink-0 items-center gap-2", dragRegion && "app-no-drag")}>
           {actions}
         </div>
       ) : null}
@@ -175,8 +272,9 @@ export function Section({
 type SurfaceTone = "default" | "attention" | "quiet";
 
 /**
- * The one card surface. `attention` is for things waiting on the person (warm tint and
- * edge); `quiet` is for secondary content (muted fill, no border).
+ * The one card surface (`.nova-card`: 18px, the `group` fill, a half-pixel hairline).
+ * `attention` reads the same (what waits on the person carries an orange tile instead);
+ * `quiet` sits on the window fill.
  */
 export function Surface({
   tone = "default",
@@ -187,12 +285,11 @@ export function Surface({
   return (
     <div
       className={cn(
-        "rounded-2xl",
-        tone === "default" && "border border-border bg-card",
-        tone === "attention" && "border border-warning/35 bg-warning/[0.06]",
-        tone === "quiet" && "bg-muted",
+        tone === "default" && "nova-card",
+        tone === "attention" && "nova-card",
+        tone === "quiet" && "rounded-[18px] bg-window",
         interactive &&
-          "cursor-pointer transition-[border-color,box-shadow] duration-150 hover:border-ring/50 hover:shadow-float focus-visible:outline-2 focus-visible:outline-ring",
+          "cursor-pointer transition-[background-color] duration-150 hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring",
         className,
       )}
       {...props}
@@ -228,17 +325,17 @@ export function StatusPill({
           <span
             className={cn(
               "absolute inline-flex size-full animate-ping rounded-full opacity-60 motion-reduce:animate-none",
-              tone === "attention" ? "bg-warning" : "bg-success",
+              tone === "attention" ? "bg-warn" : "bg-ok",
             )}
           />
         ) : null}
         <span
           className={cn(
             "relative size-1.5 rounded-full",
-            tone === "neutral" && "bg-muted-foreground/60",
-            tone === "live" && "bg-success",
-            tone === "attention" && "bg-warning",
-            tone === "done" && "bg-success",
+            tone === "neutral" && "bg-ink-3",
+            tone === "live" && "bg-ok",
+            tone === "attention" && "bg-warn",
+            tone === "done" && "bg-ok",
           )}
         />
       </span>
@@ -246,12 +343,10 @@ export function StatusPill({
     </>
   );
   const classes = cn(
-    "inline-flex min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-[13px] font-medium",
-    tone === "attention"
-      ? "border-warning/40 bg-warning/[0.08] text-foreground"
-      : "border-border bg-card text-muted-foreground",
+    "inline-flex h-[22px] min-w-0 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] font-medium",
+    tone === "attention" ? "bg-warn/15 text-foreground" : "bg-selection text-ink-2",
     onClick &&
-      "cursor-pointer transition-colors hover:border-warning/70 focus-visible:outline-2 focus-visible:outline-ring",
+      "cursor-pointer transition-colors hover:bg-warn/25 focus-visible:outline-2 focus-visible:outline-ring",
     className,
   );
   return onClick ? (
@@ -274,10 +369,10 @@ export function Chip({
       type="button"
       aria-pressed={selected}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors",
+        "inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors",
         selected
-          ? "border-foreground bg-foreground text-background"
-          : "border-border bg-card text-foreground hover:bg-accent",
+          ? "bg-foreground text-background"
+          : "bg-selection text-foreground hover:brightness-95",
         "focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
         className,
       )}
@@ -311,10 +406,10 @@ export function SuggestionChips({
           <Chip
             key={text}
             onClick={() => onSuggestion(text)}
-            className="h-9 gap-2 border-line px-3.5 text-[13.5px] text-ink-2 hover:border-ink-3/40 hover:bg-solid hover:text-foreground"
+            className="gap-[7px] bg-group text-foreground ring-[0.5px] ring-separator ring-inset hover:bg-selection"
           >
             {Icon ? (
-              <Icon size={15} strokeWidth={1.75} aria-hidden="true" className="text-ink-3" />
+              <Icon size={14} strokeWidth={1.9} aria-hidden="true" className="text-tint" />
             ) : null}
             {text}
           </Chip>
@@ -331,7 +426,7 @@ export function SuggestionChips({
  */
 export function DetailRows({ rows }: { rows: { label: ReactNode; value: ReactNode }[] }) {
   return (
-    <dl className="grid grid-cols-[76px_1fr] gap-x-3 gap-y-1.5 rounded-lg bg-muted/50 p-3 text-[14px]">
+    <dl className="grid grid-cols-[76px_1fr] gap-x-3 gap-y-1.5 rounded-xl bg-window p-3 text-[13.5px]">
       {rows.map((row, index) => (
         <div key={index} className="contents">
           <dt className="text-muted-foreground">{row.label}</dt>
@@ -352,10 +447,10 @@ export function Progress({ value, label }: { value: number; label: string }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(clamped * 100)}
-      className="h-1 w-full overflow-hidden rounded-full bg-muted"
+      className="h-1 w-full overflow-hidden rounded-full bg-selection"
     >
       <div
-        className="h-full rounded-full bg-foreground transition-[width] duration-300"
+        className="h-full rounded-full bg-sig-goals transition-[width] duration-300"
         style={{ width: `${clamped * 100}%` }}
       />
     </div>
@@ -370,7 +465,6 @@ export function Progress({ value, label }: { value: number; label: string }) {
  * which drops the face and chips but keeps the same centered, breathing layout.
  */
 export function EmptyState({
-  avatarColor,
   headline,
   children,
   suggestions,
@@ -379,7 +473,7 @@ export function EmptyState({
   illustration,
   className,
 }: {
-  /** The Muse's identity color; defaults to gold when the screen has none handy. */
+  /** Kept for callers; Nova shows as the orb. */
   avatarColor?: string;
   /** Show the Muse's face even without suggestions (it always shows with them). */
   face?: boolean;
@@ -396,7 +490,7 @@ export function EmptyState({
   className?: string;
 }) {
   const rich = Boolean(suggestions?.length && onSuggestion);
-  // The face is hidden by default for now (owner request); pass `face` to show it.
+  // Nova's orb is hidden by default (owner request); pass `face` to show it.
   const showFace = Boolean(face);
   return (
     <div
@@ -407,12 +501,7 @@ export function EmptyState({
     >
       {showFace ? (
         <div className="relative">
-          <BotAvatar
-            color={avatarColor ?? DEFAULT_MUSE_COLOR}
-            identity="aiden"
-            face="muse"
-            size={88}
-          />
+          <NovaOrb size={72} />
           {illustration ? (
             <img
               src={illustrationUrl(illustration)}
@@ -424,9 +513,11 @@ export function EmptyState({
         </div>
       ) : null}
       <div className="max-w-[380px]">
-        {headline ? <p className="text-[18px] font-semibold text-foreground">{headline}</p> : null}
+        {headline ? (
+          <p className="text-[17px] font-semibold tracking-[-0.2px] text-foreground">{headline}</p>
+        ) : null}
         {children ? (
-          <p className={cn("text-[14px] text-muted-foreground", headline ? "mt-1.5" : undefined)}>
+          <p className={cn("text-[13.5px] text-ink-2", headline ? "mt-1" : undefined)}>
             {children}
           </p>
         ) : null}

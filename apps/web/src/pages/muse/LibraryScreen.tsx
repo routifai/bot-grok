@@ -7,7 +7,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  cn,
 } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Search } from "lucide-react";
@@ -16,11 +15,25 @@ import type { ArtifactKind } from "../../lib/artifact-kind";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { LibraryGlyph } from "./chrome/NovaGlyphs";
+import { NovaTile } from "./chrome/NovaTile";
 import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import { SkillsPanel } from "./library/SkillsPanel";
 import type { ArtifactSummary } from "./library/types";
-import { Chip, EmptyState, MUSE_TYPE, MuseColumn, MuseScreen } from "./ui";
+import {
+  EmptyState,
+  MuseScreen,
+  MuseWideCenter,
+  ScreenHeader,
+  ScreenHero,
+  SegmentedControl,
+} from "./ui";
+
+/** A facet's count, quiet beside its label. */
+function Count({ n }: { n: number }) {
+  return <span className="text-ink-3 tabular-nums">{n}</span>;
+}
 
 const LIST_PAGE_SIZE = 60;
 // Safety net against an unbounded fetch loop; a Library this size is not realistic.
@@ -146,50 +159,20 @@ export function LibraryScreen({
   const visibleKinds = KIND_ORDER.filter((kind) => (facetCounts.get(kind) ?? 0) > 0);
 
   return (
-    <MuseScreen>
-      <MuseColumn className="flex min-h-full flex-col pt-14 pb-12">
-        <header className="pb-8">
-          <h1 className={MUSE_TYPE.pageTitle}>
-            <Trans>Library</Trans>
-          </h1>
-        </header>
-        <fieldset
-          aria-label={t`Library view`}
-          className="m-0 mb-5 grid w-full min-w-0 max-w-[340px] grid-cols-2 gap-1 rounded-[16px] border-0 bg-muted p-1"
-        >
-          {(
-            [
-              ["made", t`Made for you`],
-              ["skills", t`Skills`],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={view === id}
-              onClick={() => setView(id)}
-              className={cn(
-                "rounded-[12px] py-2 text-[14.5px] font-medium transition-[background-color,box-shadow,color] duration-200",
-                view === id
-                  ? "bg-card text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)]"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </fieldset>
-        {view === "skills" ? (
-          <SkillsPanel botId={botId} avatarColor={avatarColor} />
-        ) : (
-          <>
-            {total > 0 ? (
-              <div className="flex flex-col gap-3 pb-8">
-                <div className="relative w-full">
+    <MuseScreen
+      header={
+        <ScreenHeader
+          title={t`Library`}
+          dragRegion
+          actions={
+            <>
+              {view === "made" && total > 0 ? (
+                <label className="relative hidden sm:block">
                   <Search
-                    size={15}
-                    strokeWidth={1.75}
-                    className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    size={14}
+                    strokeWidth={1.9}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-3"
                   />
                   <input
                     type="search"
@@ -197,25 +180,84 @@ export function LibraryScreen({
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder={t`Search your Library…`}
                     aria-label={t`Search your Library`}
-                    className="w-full rounded-full border border-border bg-card py-2 ps-10 pe-4 text-[13.5px] text-foreground outline-none transition-colors focus:border-ring"
+                    className="nova-glass-pill h-8 w-[200px] rounded-full ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
                   />
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Chip selected={selectedKind === "all"} onClick={() => setSelectedKind("all")}>
-                    {t`All`} {total}
-                  </Chip>
-                  {visibleKinds.map((kind) => (
-                    <Chip
-                      key={kind}
-                      selected={selectedKind === kind}
-                      onClick={() => setSelectedKind(kind)}
-                    >
-                      {kindFacetLabel(kind)} {facetCounts.get(kind)}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
+                </label>
+              ) : null}
+              <SegmentedControl
+                label={t`Library view`}
+                value={view}
+                onChange={setView}
+                className="w-[200px]"
+                options={[
+                  { value: "made", label: t`Made for you` },
+                  { value: "skills", label: t`Skills` },
+                ]}
+              />
+            </>
+          }
+        />
+      }
+    >
+      <MuseWideCenter className="min-h-full">
+        <ScreenHero
+          tile={
+            <NovaTile tone="indigo" size={44}>
+              <LibraryGlyph />
+            </NovaTile>
+          }
+          title={<Trans>Library</Trans>}
+          subtitle={view === "made" ? <Trans>Everything I made for you.</Trans> : undefined}
+          action={
+            view === "made" && total > 0 ? (
+              <SegmentedControl
+                label={t`Kind`}
+                value={selectedKind}
+                onChange={setSelectedKind}
+                className="max-w-full"
+                options={[
+                  {
+                    value: "all" as const,
+                    label: (
+                      <>
+                        {t`All`} <Count n={total} />
+                      </>
+                    ),
+                  },
+                  ...visibleKinds.map((kind) => ({
+                    value: kind,
+                    label: (
+                      <>
+                        {kindFacetLabel(kind)} <Count n={facetCounts.get(kind) ?? 0} />
+                      </>
+                    ),
+                  })),
+                ]}
+              />
+            ) : undefined
+          }
+        />
+        {view === "skills" ? (
+          <SkillsPanel botId={botId} avatarColor={avatarColor} />
+        ) : (
+          <>
+            {total > 0 ? (
+              <label className="relative block sm:hidden">
+                <Search
+                  size={14}
+                  strokeWidth={1.9}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-3"
+                />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={t`Search your Library…`}
+                  aria-label={t`Search your Library`}
+                  className="h-9 w-full rounded-full bg-selection ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
+                />
+              </label>
             ) : null}
 
             {items === null ? (
@@ -246,7 +288,7 @@ export function LibraryScreen({
             )}
           </>
         )}
-      </MuseColumn>
+      </MuseWideCenter>
 
       {openArtifactId ? (
         <ArtifactPreviewDialog

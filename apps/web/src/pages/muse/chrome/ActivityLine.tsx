@@ -1,27 +1,87 @@
-import type { Activity } from "@aiden/contracts";
+import type { Activity, ActivitySource } from "@aiden/contracts";
 import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { CircleAlert, CircleSlash } from "lucide-react";
 import type { ReactNode } from "react";
-import { RunStatusDot } from "./RunStatusDot";
+import { NovaOrb } from "../../../components/ai/orb";
+import { ChevronGlyph } from "./NovaGlyphs";
+import { NovaTile, type TileTone } from "./NovaTile";
+import { ACTIVITY_SOURCE_ICON } from "./toolIcons";
+
+/** Where a settled piece of work came from, as a tile color. */
+const SOURCE_TONE: Record<ActivitySource, TileTone> = {
+  turn: "blue",
+  side_chat: "teal",
+  background: "indigo",
+  housekeeping: "yellow",
+  scheduled: "orange",
+  goal: "green",
+};
+
+/** The lead of a work row: a small live orb while it works, else a tile for its source (a
+ * red alert when it failed, gray when cancelled), or a plain dot before the feed lists it. */
+function WorkLead({
+  status,
+  source,
+  size,
+}: {
+  status?: Activity["status"];
+  source?: ActivitySource;
+  size: number;
+}) {
+  if (status === "in_progress") return <NovaOrb size={size - 6} state="working" />;
+  if (!status) {
+    return (
+      <span aria-hidden="true" className="grid place-items-center" style={{ width: size }}>
+        <span className="size-1.5 rounded-full bg-ink-3/60" />
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <NovaTile tone="red" size={size}>
+        <CircleAlert strokeWidth={2.4} />
+      </NovaTile>
+    );
+  }
+  if (status === "cancelled") {
+    return (
+      <NovaTile tone="gray" size={size}>
+        <CircleSlash strokeWidth={2.4} />
+      </NovaTile>
+    );
+  }
+  const Icon = ACTIVITY_SOURCE_ICON[source ?? "turn"];
+  return (
+    <NovaTile tone={SOURCE_TONE[source ?? "turn"]} size={size}>
+      <Icon strokeWidth={2.4} />
+    </NovaTile>
+  );
+}
 
 /**
- * One piece of work as a quiet two-line row (the "Working" line, shared by the Activity panel
- * and the Helper rows under a message): a status dot, the title, a mono figure on the right
- * (how long it has gone, or the clock), and under the title either "Now · <live step>" while it
- * works or one muted line once it has settled.
+ * One piece of work (the "Working" line), in two shapes:
+ * - `list` (the inspector): an iOS grouped-list row, 52px, a live orb or a colored source tile
+ *   on the left, the title over "Now · <live step>" or the outcome, a mono figure (elapsed
+ *   while working, else the clock) and a chevron. Rows sit in a `.nova-group`.
+ * - `inline` (under a message that started a Helper): a soft rounded row with a tiny orb, the
+ *   title, the step and a timer.
  */
 export function ActivityLine({
   status,
+  source,
   title,
   meta,
   liveStep,
   detail,
   nested = false,
+  variant = "list",
   onClick,
   testId,
 }: {
   /** Undefined while the feed has not listed it yet: a plain muted dot. */
   status?: Activity["status"];
+  source?: ActivitySource;
   title: string;
   /** Mono figures on the right: an elapsed time, a duration, a clock time. */
   meta?: ReactNode;
@@ -30,59 +90,106 @@ export function ActivityLine({
   /** The one muted line under a settled row (an outcome, "Didn't finish"). */
   detail?: string;
   nested?: boolean;
+  variant?: "list" | "inline";
   onClick?: () => void;
   testId?: string;
 }) {
   const { t } = useLingui();
+  const sub = liveStep ? (
+    <span aria-live="polite">
+      {t`Now`} · {liveStep}
+    </span>
+  ) : (
+    detail
+  );
+
+  if (variant === "inline") {
+    const body = (
+      <>
+        <WorkLead status={status} source={source} size={22} />
+        <span
+          data-testid="activity-line-title"
+          className={cn("min-w-0 truncate text-foreground", nested && "text-ink-2")}
+          dir="auto"
+        >
+          {title}
+        </span>
+        {sub ? (
+          <span
+            className={cn(
+              "min-w-0 truncate text-[12px]",
+              status === "failed" ? "text-ink-2" : "text-ink-3",
+            )}
+            dir="auto"
+          >
+            · {sub}
+          </span>
+        ) : null}
+        {meta ? (
+          <span className="ms-1.5 shrink-0 font-mono text-[12px] whitespace-nowrap text-ink-3 tabular-nums">
+            {meta}
+          </span>
+        ) : null}
+      </>
+    );
+    const className =
+      "inline-flex w-fit max-w-full min-w-0 items-center gap-2.5 rounded-xl bg-window py-1.5 ps-1.5 pe-3 text-start text-[13px]";
+    if (!onClick) return <div className={className}>{body}</div>;
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid={testId}
+        data-status={status}
+        className={cn(
+          className,
+          "transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring",
+        )}
+      >
+        {body}
+      </button>
+    );
+  }
+
   const body = (
     <>
-      <span className="flex h-5 items-center justify-center">
-        {status ? (
-          <RunStatusDot status={status} />
-        ) : (
-          <span aria-hidden="true" className="size-1.5 rounded-full bg-ink-3/60" />
-        )}
+      <span className="grid place-items-center">
+        <WorkLead status={status} source={source} size={nested ? 22 : 28} />
       </span>
-      <span
-        data-testid="activity-line-title"
-        className={cn(
-          "min-w-0 truncate leading-5 text-foreground",
-          nested ? "text-[13px]" : "text-[13.5px] font-medium",
-        )}
-        dir="auto"
-      >
-        {title}
+      <span className="min-w-0">
+        <span
+          data-testid="activity-line-title"
+          className="line-clamp-2 text-[14px] leading-[1.3] tracking-[-0.15px] text-foreground"
+          dir="auto"
+        >
+          {title}
+        </span>
+        {sub ? (
+          <span
+            className={cn(
+              "mt-px line-clamp-2 block text-[12px] leading-[1.35]",
+              status === "failed" ? "text-ink-2" : "text-ink-3",
+            )}
+            dir="auto"
+          >
+            {sub}
+          </span>
+        ) : null}
       </span>
       {meta ? (
-        <span className="shrink-0 font-mono text-[11.5px] leading-5 whitespace-nowrap text-ink-3 tabular-nums">
+        <span className="shrink-0 font-mono text-[12px] whitespace-nowrap text-ink-3 tabular-nums">
           {meta}
         </span>
       ) : (
         <span />
       )}
-      {liveStep ? (
-        <span
-          className="col-start-2 col-end-4 truncate text-[12.5px] leading-[18px] text-ink-2"
-          aria-live="polite"
-          dir="auto"
-        >
-          <span className="font-medium text-foreground">{t`Now`}</span> · {liveStep}
-        </span>
-      ) : detail ? (
-        <span
-          className={cn(
-            "col-start-2 col-end-4 truncate text-[12.5px] leading-[18px]",
-            status === "failed" ? "text-ink-2" : "text-ink-3",
-          )}
-          dir="auto"
-        >
-          {detail}
-        </span>
-      ) : null}
+      {onClick ? <ChevronGlyph className="h-[13px] w-2 text-ink-3 opacity-60" /> : <span />}
     </>
   );
-  const className =
-    "grid w-full grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px rounded-lg px-2 py-1.5 text-start";
+  const className = cn(
+    "nova-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto_8px] items-center gap-x-3 py-2 pe-3 text-start",
+    nested ? "ps-6" : "ps-3",
+  );
   if (!onClick) return <div className={className}>{body}</div>;
   return (
     <button
@@ -92,7 +199,7 @@ export function ActivityLine({
       data-status={status}
       className={cn(
         className,
-        "transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring",
+        "transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
       )}
     >
       {body}
@@ -100,7 +207,17 @@ export function ActivityLine({
   );
 }
 
-/** A Helper's parts, hung off its row on a thin connector line. */
-export function ActivityBranch({ children }: { children: ReactNode }) {
-  return <div className="ms-[13px] flex flex-col border-s border-line ps-1">{children}</div>;
+/** A Helper's parts under its row. In the inspector they are indented rows of the same
+ * group; in the conversation they hang off a thin connector line. */
+export function ActivityBranch({
+  children,
+  variant = "list",
+}: {
+  children: ReactNode;
+  variant?: "list" | "inline";
+}) {
+  if (variant === "list") return <>{children}</>;
+  return (
+    <div className="ms-[18px] mt-1 flex flex-col gap-1 border-s border-line ps-2">{children}</div>
+  );
 }

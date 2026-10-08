@@ -14,7 +14,10 @@ export function LibraryGrid({
   onDelete: (item: ArtifactSummary) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2" data-testid="library-grid">
+    <div
+      className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-[18px] pb-8"
+      data-testid="library-grid"
+    >
       {items.map((item) => (
         <LibraryCard
           key={item.id}
@@ -33,18 +36,15 @@ const SKELETON_COUNT = 6;
 export function LibrarySkeletonGrid() {
   return (
     <div
-      className="grid grid-cols-1 gap-5 pb-8 sm:grid-cols-2"
+      className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-[18px] pb-8"
       aria-hidden="true"
       data-testid="library-skeleton"
     >
       {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
-        <div key={index} className="flex flex-col overflow-hidden rounded-2xl border border-border">
-          <Skeleton className="aspect-[16/10] w-full rounded-none" />
-          <div className="flex flex-col gap-2 p-5">
-            <Skeleton className="h-2.5 w-12 rounded-full" />
-            <Skeleton className="h-4 w-3/4 rounded-full" />
-            <Skeleton className="h-3 w-1/2 rounded-full" />
-          </div>
+        <div key={index} className="flex flex-col gap-2">
+          <Skeleton className="aspect-[4/3] w-full rounded-[14px]" />
+          <Skeleton className="h-3.5 w-3/4 rounded-full" />
+          <Skeleton className="h-3 w-1/2 rounded-full" />
         </div>
       ))}
     </div>

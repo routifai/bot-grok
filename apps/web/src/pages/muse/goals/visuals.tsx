@@ -8,28 +8,28 @@ import { goalTaskStatusLabel } from "./taskStatusLabel";
 export function GoalRing({
   value,
   color,
+  toneClass,
   size = "md",
 }: {
   value: number;
-  color: string;
-  size?: "md" | "lg";
+  /** A raw color (the detail view's Muse color); `toneClass` wins when given. */
+  color?: string;
+  /** A stroke token class, e.g. `stroke-sig-goals`. */
+  toneClass?: string;
+  size?: "sm" | "md" | "lg";
 }) {
   const radius = 17;
   const circumference = 2 * Math.PI * radius;
   return (
     <svg
       viewBox="0 0 40 40"
-      className={cn("shrink-0 -rotate-90", size === "lg" ? "size-16" : "size-12")}
+      className={cn(
+        "shrink-0 -rotate-90",
+        size === "lg" ? "size-16" : size === "sm" ? "size-11" : "size-12",
+      )}
       aria-hidden="true"
     >
-      <circle
-        cx="20"
-        cy="20"
-        r={radius}
-        fill="none"
-        strokeWidth="4"
-        className="stroke-foreground/10"
-      />
+      <circle cx="20" cy="20" r={radius} fill="none" strokeWidth="4" className="stroke-selection" />
       {value > 0 ? (
         <circle
           cx="20"
@@ -38,10 +38,10 @@ export function GoalRing({
           fill="none"
           strokeWidth="4"
           strokeLinecap="round"
-          stroke={color}
+          stroke={toneClass ? undefined : color}
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - Math.min(1, value))}
-          className="transition-[stroke-dashoffset] duration-700 ease-out"
+          className={cn("transition-[stroke-dashoffset] duration-700 ease-out", toneClass)}
         />
       ) : null}
     </svg>

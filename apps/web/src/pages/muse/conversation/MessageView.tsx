@@ -169,7 +169,7 @@ export const MessageView = memo(function MessageView({
             className={cn(
               "max-w-full space-y-2.5",
               museMode
-                ? "muse-reply text-[15.5px] leading-[1.6] text-foreground"
+                ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
                 : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
             )}
             dir="auto"
@@ -275,7 +275,7 @@ export const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "muse-reply text-[15.5px] leading-[1.6] text-foreground"
+                    ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
@@ -448,10 +448,10 @@ export const MessageView = memo(function MessageView({
                 data-testid="message-user-bubble"
                 data-quote-message-id={quoteMessageId}
                 className={cn(
-                  "max-w-full whitespace-pre-wrap wrap-anywhere text-chat-user-foreground",
+                  "max-w-full whitespace-pre-wrap wrap-anywhere",
                   museMode
-                    ? "rounded-[20px] rounded-ee-[6px] bg-bubble px-4 py-2.5 text-[15.5px] leading-[1.6]"
-                    : "rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45]",
+                    ? "rounded-[18px] bg-tint px-3.5 py-2 text-[15px] leading-[1.47] tracking-[-0.24px] text-white"
+                    : "rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground",
                 )}
                 dir="auto"
               >
@@ -471,7 +471,7 @@ export const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "muse-reply text-[15.5px] leading-[1.6] text-foreground"
+                    ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"

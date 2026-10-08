@@ -1,49 +1,69 @@
 import { DEFAULT_MUSE_COLOR, type Goal } from "@aiden/contracts";
-import { Skeleton } from "@aiden/ui-web";
+import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { MUSE_TYPE, MuseColumn, Section } from "../ui";
-import { dueMeta, goalDisplayStatus, goalsSummary, taskCounts } from "./format";
+import { useState } from "react";
+import { rpc } from "../../../lib/rpc";
+import { GoalsGlyph, SparkGlyph } from "../chrome/NovaGlyphs";
+import { NovaTile } from "../chrome/NovaTile";
+import {
+  ACCENT_BUTTON,
+  MuseWideCenter,
+  PRIMARY_BUTTON,
+  QUIET_BUTTON,
+  ScreenHero,
+  Section,
+} from "../ui";
+import {
+  dueMeta,
+  type GoalDisplayStatus,
+  goalDisplayStatus,
+  goalsSummary,
+  nextUnfinishedTask,
+  taskCounts,
+} from "./format";
 import { type GoalStarter, GoalsIntro } from "./GoalsIntro";
-import { GoalRing, GoalStep, type GoalStepState, stepStateOf } from "./visuals";
+import { GoalRing } from "./visuals";
 
-/** The plan steps a card previews: live Tasks, or the proposed first plan before it starts. */
-function previewSteps(goal: Goal): { title: string; state: GoalStepState }[] {
-  if (goal.tasks.length > 0) {
-    return [...goal.tasks]
-      .sort((a, b) => a.idx - b.idx)
-      .map((task) => ({ title: task.title, state: stepStateOf(task.status) }));
-  }
-  return (goal.openProposal?.tasks ?? []).map((task) => ({ title: task.title, state: "next" }));
+/** A ring color per card: waiting is orange, paused gray, the rest cycle green, blue, purple. */
+const RING_TONES = ["stroke-sig-goals", "stroke-tint", "stroke-sig-forks"] as const;
+
+function ringTone(status: GoalDisplayStatus, index: number): string {
+  if (status === "waiting") return "stroke-sig-waiting";
+  if (status === "paused") return "stroke-ink-3";
+  return RING_TONES[index % RING_TONES.length] ?? "stroke-sig-goals";
 }
 
-const PREVIEW_STEPS = 4;
-
+/** One Goal as a card (docs/muse/DESIGN.md "Goals"): a progress ring with "3 of 5", the title,
+ * the next Task, and a quiet meta line (status, due date). */
 function GoalCard({
   goal,
-  color,
+  index,
   onSelect,
 }: {
   goal: Goal;
-  color: string;
+  index: number;
   onSelect: (goalId: string) => void;
 }) {
   const { t, i18n } = useLingui();
   const { done, total } = taskCounts(goal);
   const due = dueMeta(goal.due, i18n.locale);
   const status = goalDisplayStatus(goal);
-  const steps = previewSteps(goal);
-  // Show the step being worked on in context: start the preview just before it.
-  const firstOpen = Math.max(
-    0,
-    steps.findIndex((step) => step.state !== "done"),
-  );
-  const start = Math.max(0, Math.min(firstOpen - 1, steps.length - PREVIEW_STEPS));
-  const shown = steps.slice(start, start + PREVIEW_STEPS);
-  const hidden = steps.length - shown.length;
+  const next = nextUnfinishedTask(goal);
   const firstPlan = goal.tasks.length === 0 && goal.openProposal;
-
+  const statusLabel =
+    status === "waiting"
+      ? firstPlan
+        ? t`Plan to review`
+        : t`Needs you`
+      : status === "paused"
+        ? t`Paused`
+        : status === "working"
+          ? t`Working`
+          : status === "noPlan"
+            ? t`No plan yet`
+            : null;
   const meta = [
-    firstPlan ? t`${steps.length} steps planned` : total > 0 ? t`${done} of ${total}` : null,
+    statusLabel,
     due ? (due.kind === "absolute" ? t`Due ${due.date}` : t`in ${due.weeks} weeks`) : null,
   ]
     .filter(Boolean)
@@ -55,84 +75,145 @@ function GoalCard({
       data-testid="goal-row"
       aria-label={goal.title}
       onClick={() => onSelect(goal.id)}
-      className="w-full rounded-[22px] bg-card p-5 text-start shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-14px_rgb(0_0_0/0.16)] ring-1 ring-border/50 transition-[transform,box-shadow] duration-200 hover:shadow-[0_1px_2px_rgb(0_0_0/0.05),0_16px_40px_-14px_rgb(0_0_0/0.22)] active:scale-[0.99] motion-reduce:active:scale-100"
+      className="nova-card flex min-w-0 flex-col gap-2.5 p-4 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
-      <div className="flex items-center gap-4">
-        <GoalRing value={total > 0 ? done / total : 0} color={color} />
-        <div className="min-w-0 flex-1">
-          <h3
-            className="truncate text-[17px] font-semibold tracking-[-0.02em] text-foreground"
-            dir="auto"
-          >
-            {goal.title}
-          </h3>
-          <p className="mt-0.5 truncate text-[13.5px] text-muted-foreground">{meta}</p>
-        </div>
-        {status === "waiting" ? (
-          <span className="shrink-0 text-[13px] font-medium text-warning">
-            {firstPlan ? <Trans>Plan to review</Trans> : <Trans>Needs you</Trans>}
-          </span>
-        ) : status === "paused" ? (
-          <span className="shrink-0 text-[13px] text-muted-foreground">
-            <Trans>Paused</Trans>
-          </span>
-        ) : status === "working" ? (
-          <span className="shrink-0 text-[13px] text-muted-foreground">
-            <Trans>Working</Trans>
-          </span>
-        ) : status === "noPlan" ? (
-          <span className="shrink-0 text-[13px] text-muted-foreground">
-            <Trans>No plan yet</Trans>
+      <span className="flex items-center gap-3">
+        <GoalRing
+          value={total > 0 ? done / total : 0}
+          toneClass={ringTone(status, index)}
+          size="sm"
+        />
+        {total > 0 ? (
+          <span className="text-[22px] font-semibold tabular-nums text-foreground">
+            {done}
+            <span className="ms-1 text-[13px] font-medium text-ink-3">{t`of ${total}`}</span>
           </span>
         ) : null}
-      </div>
-      {shown.length > 0 ? (
-        <ul className="mt-4 border-t border-border/70 pt-2">
-          {shown.map((step, index) => (
-            <GoalStep key={`${start + index}-${step.title}`} state={step.state}>
-              {step.title}
-            </GoalStep>
-          ))}
-          {hidden > 0 ? (
-            <li className="ps-[34px] pt-1 text-[13px] text-muted-foreground">
-              <Trans>{hidden} more</Trans>
-            </li>
-          ) : null}
-        </ul>
+      </span>
+      <span
+        className="line-clamp-2 text-[16px] leading-[1.25] font-semibold tracking-[-0.1px] text-foreground"
+        dir="auto"
+      >
+        {goal.title}
+      </span>
+      {next ? (
+        <span className="line-clamp-2 text-[13px] text-ink-2" dir="auto">
+          {t`Next:`} <span className="font-medium text-foreground">{next.title}</span>
+        </span>
+      ) : null}
+      {meta ? (
+        <span
+          className={cn(
+            "text-[12.5px]",
+            status === "waiting" ? "font-medium text-sig-waiting" : "text-ink-3",
+          )}
+        >
+          {meta}
+        </span>
       ) : null}
     </button>
+  );
+}
+
+/** A Goal's open plan as a decision card at the top of the list: Start it, or not now. */
+function ProposalDecision({ goal, onChanged }: { goal: Goal; onChanged: (goal: Goal) => void }) {
+  const { t } = useLingui();
+  const [pending, setPending] = useState<"accept" | "dismiss" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const proposal = goal.openProposal;
+  if (!proposal) return null;
+  const first = goal.tasks.length === 0;
+  const firstStep = proposal.tasks[0]?.title;
+
+  async function run(action: "accept" | "dismiss") {
+    if (pending || !proposal) return;
+    setPending(action);
+    setError(null);
+    try {
+      const input = { goalId: goal.id, proposalId: proposal.id };
+      onChanged(
+        await (action === "accept"
+          ? rpc.goals.acceptProposal(input)
+          : rpc.goals.dismissProposal(input)),
+      );
+    } catch {
+      setError(t`Could not save`);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <div data-testid="goal-proposal-decision" className="nova-card flex flex-col gap-1.5 p-3.5">
+      <div className="flex items-start gap-2.5">
+        <NovaTile tone="orange" size={28}>
+          <SparkGlyph />
+        </NovaTile>
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] leading-[1.3] font-semibold text-foreground" dir="auto">
+            {first ? t`A plan is ready for “${goal.title}”` : t`A new plan for “${goal.title}”`}
+          </p>
+          {firstStep ? (
+            <p className="mt-0.5 truncate text-[12px] text-ink-3" dir="auto">
+              {t`First: ${firstStep}`}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={pending !== null}
+          onClick={() => void run("dismiss")}
+          className={QUIET_BUTTON}
+        >
+          {first ? t`Not now` : t`Keep current`}
+        </button>
+        <button
+          type="button"
+          disabled={pending !== null}
+          onClick={() => void run("accept")}
+          className={PRIMARY_BUTTON}
+        >
+          {pending === "accept" ? t`Starting…` : first ? t`Start this plan` : t`Use the new plan`}
+        </button>
+      </div>
+      {error ? <p className="text-[12px] text-destructive">{error}</p> : null}
+    </div>
   );
 }
 
 /** Loading placeholder for the Goals list: a few skeleton cards. */
 export function GoalListSkeleton() {
   return (
-    <MuseColumn className="pt-10">
-      <Skeleton className="h-9 w-32" />
-      <Skeleton className="mt-3 mb-7 h-4 w-24" />
-      <div className="flex flex-col gap-4">
-        {[0, 1].map((key) => (
-          <div key={key} className="rounded-[22px] bg-card p-5 ring-1 ring-border/50">
-            <div className="flex items-center gap-4">
-              <Skeleton className="size-12 rounded-full" />
-              <div className="flex-1">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="mt-2 h-3 w-1/4" />
-              </div>
-            </div>
-            <Skeleton className="mt-5 h-3 w-2/3" />
-            <Skeleton className="mt-3 h-3 w-1/2" />
+    <MuseWideCenter>
+      <div className="flex items-center gap-3.5 pt-1.5">
+        <Skeleton className="size-11 rounded-[30%]" />
+        <div className="flex-1">
+          <Skeleton className="h-7 w-32" />
+          <Skeleton className="mt-2 h-3.5 w-40" />
+        </div>
+      </div>
+      <div className={GOAL_GRID}>
+        {[0, 1, 2].map((key) => (
+          <div key={key} className="nova-card flex flex-col gap-3 p-4">
+            <Skeleton className="size-11 rounded-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
           </div>
         ))}
       </div>
-    </MuseColumn>
+    </MuseWideCenter>
   );
 }
+
+const GOAL_GRID = "grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3.5";
 
 export function GoalList({
   goals,
   botName,
   onSelect,
+  onChanged,
   avatarColor,
   starters,
   onSendIdea,
@@ -140,6 +221,8 @@ export function GoalList({
   goals: Goal[];
   botName: string;
   onSelect: (goalId: string) => void;
+  /** A Goal came back changed (its plan accepted or dismissed from the list). */
+  onChanged?: (goal: Goal) => void;
   avatarColor?: string;
   starters?: readonly GoalStarter[];
   onSendIdea?: (text: string) => void;
@@ -159,31 +242,50 @@ export function GoalList({
 
   const active = goals.filter((goal) => goal.status !== "paused");
   const paused = goals.filter((goal) => goal.status === "paused");
+  const proposals = onChanged ? active.filter((goal) => goal.openProposal) : [];
   const { active: activeCount, waiting } = goalsSummary(goals);
   const subtitle =
     waiting > 0 ? t`${activeCount} active · ${waiting} need you` : t`${activeCount} active`;
-  const color = avatarColor ?? DEFAULT_MUSE_COLOR;
 
   return (
-    <MuseColumn className="pt-10 pb-16" data-testid="goals-list">
-      <h1 className={MUSE_TYPE.pageTitle}>
-        <Trans>Goals</Trans>
-      </h1>
-      <p className="mt-1.5 pb-7 text-[15px] text-muted-foreground">{subtitle}</p>
-      <div className="flex flex-col gap-4">
-        {active.map((goal) => (
-          <GoalCard key={goal.id} goal={goal} color={color} onSelect={onSelect} />
+    <MuseWideCenter data-testid="goals-list">
+      <ScreenHero
+        tile={
+          <NovaTile tone="green" size={44}>
+            <GoalsGlyph />
+          </NovaTile>
+        }
+        title={<Trans>Goals</Trans>}
+        subtitle={subtitle}
+        action={
+          onSendIdea ? (
+            <button
+              type="button"
+              className={ACCENT_BUTTON}
+              onClick={() => onSendIdea(t`Start a new goal`)}
+            >
+              {t`New goal`}
+            </button>
+          ) : undefined
+        }
+      />
+      {proposals.map((goal) =>
+        onChanged ? <ProposalDecision key={goal.id} goal={goal} onChanged={onChanged} /> : null,
+      )}
+      <div className={GOAL_GRID}>
+        {active.map((goal, index) => (
+          <GoalCard key={goal.id} goal={goal} index={index} onSelect={onSelect} />
         ))}
       </div>
       {paused.length > 0 ? (
-        <Section title={<Trans>Paused</Trans>} className="mt-10">
-          <div className="flex flex-col gap-4">
-            {paused.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} color={color} onSelect={onSelect} />
+        <Section title={<Trans>Paused</Trans>} className="mt-4">
+          <div className={GOAL_GRID}>
+            {paused.map((goal, index) => (
+              <GoalCard key={goal.id} goal={goal} index={index} onSelect={onSelect} />
             ))}
           </div>
         </Section>
       ) : null}
-    </MuseColumn>
+    </MuseWideCenter>
   );
 }

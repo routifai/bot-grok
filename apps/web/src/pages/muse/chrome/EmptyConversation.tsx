@@ -1,14 +1,15 @@
 import { useLingui } from "@lingui/react/macro";
-import { CalendarDays, Sparkles, Target } from "lucide-react";
+import type { ReactNode } from "react";
 import { useMemo } from "react";
-import type { Suggestion } from "../ui";
-import { MUSE_TYPE, SuggestionChips } from "../ui";
+import { NovaOrb } from "../../../components/ai/orb";
 import { greetingLead } from "./greeting";
+import { CalendarGlyph, GoalsGlyph, SearchGlyph, SparkGlyph } from "./NovaGlyphs";
+import { NovaTile, type TileTone } from "./NovaTile";
 
 /**
- * The empty Conversation's start page, above the composer: a time-of-day greeting and one
- * muted line, sitting on the composer (Shell.tsx centers the composer between this and
- * `EmptyConversationSuggestions`). No face; the greeting is the whole welcome.
+ * The empty Conversation's start page, above the composer (docs/muse/DESIGN.md "First run"):
+ * Nova's orb, a time-of-day greeting and one muted line, sitting on the Ask field (Shell.tsx
+ * centers the composer between this and `EmptyConversationSuggestions`).
  */
 export function EmptyConversationLead({ personName }: { personName: string }) {
   const { t } = useLingui();
@@ -18,11 +19,14 @@ export function EmptyConversationLead({ personName }: { personName: string }) {
   return (
     <div
       data-testid="empty-conversation"
-      className="flex flex-1 flex-col justify-end px-5 pt-10 pb-6 sm:px-8"
+      className="flex flex-1 flex-col justify-end px-5 pt-10 pb-5 sm:px-8"
     >
-      <div className="mx-auto w-full max-w-[640px] text-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-500">
-        <h1 className={MUSE_TYPE.heroTitle}>{lead}</h1>
-        <p className="mt-2 text-[15px] leading-[1.5] text-pretty text-ink-2">
+      <div className="mx-auto flex w-full max-w-[640px] flex-col items-center text-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-500">
+        <NovaOrb size={96} />
+        <h1 className="mt-5 text-[30px] leading-[1.15] font-semibold tracking-[-0.4px] text-balance text-foreground">
+          {lead}
+        </h1>
+        <p className="mt-3.5 text-[15px] leading-[1.47] tracking-[-0.24px] text-pretty text-ink-2">
           {t`Ask me anything, or tell me what you're working toward.`}
         </p>
       </div>
@@ -30,21 +34,50 @@ export function EmptyConversationLead({ personName }: { personName: string }) {
   );
 }
 
-/** The start page's suggestions, under the composer: a few quiet chips that send at once. */
+type StartApp = { label: string; prompt: string; tone: TileTone; glyph: ReactNode };
+
+/**
+ * The start page's app row, under the Ask field: colored 48px tiles with a label under each,
+ * each sending its starting prompt at once.
+ */
 export function EmptyConversationSuggestions({ onSend }: { onSend: (text: string) => void }) {
   const { t } = useLingui();
-  const suggestions: Suggestion[] = [
-    { text: t`Plan my week`, icon: CalendarDays },
-    { text: t`Start a new goal`, icon: Target },
-    { text: t`What can you do?`, icon: Sparkles },
+  const apps: StartApp[] = [
+    { label: t`Plan week`, prompt: t`Plan my week`, tone: "red", glyph: <CalendarGlyph /> },
+    { label: t`New goal`, prompt: t`Start a new goal`, tone: "green", glyph: <GoalsGlyph /> },
+    {
+      label: t`Research`,
+      prompt: t`Research something for me`,
+      tone: "blue",
+      glyph: <SearchGlyph />,
+    },
+    { label: t`Explore`, prompt: t`What can you do?`, tone: "purple", glyph: <SparkGlyph /> },
   ];
   return (
-    <div className="flex flex-1 flex-col px-5 pt-1 pb-10 sm:px-8">
-      <SuggestionChips
-        suggestions={suggestions}
-        onSuggestion={onSend}
-        className="mx-auto max-w-[640px] motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700"
-      />
+    <div className="flex flex-1 flex-col px-5 pt-3 pb-10 sm:px-8">
+      <fieldset
+        aria-label={t`Start with`}
+        className="m-0 mx-auto flex min-w-0 flex-wrap justify-center gap-[22px] border-0 p-0 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700"
+      >
+        {apps.map((app) => (
+          <button
+            key={app.prompt}
+            type="button"
+            title={app.prompt}
+            onClick={() => onSend(app.prompt)}
+            className="group/app flex w-[72px] flex-col items-center gap-[7px] rounded-xl pb-1 text-[12px] tracking-[-0.08px] text-ink-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <NovaTile
+              tone={app.tone}
+              size={48}
+              className="rounded-[32%] shadow-[0_4px_12px_rgb(0_0_0/0.12)] transition-transform duration-200 group-hover/app:-translate-y-0.5 motion-reduce:transition-none"
+            >
+              {app.glyph}
+            </NovaTile>
+            {app.label}
+          </button>
+        ))}
+      </fieldset>
     </div>
   );
 }

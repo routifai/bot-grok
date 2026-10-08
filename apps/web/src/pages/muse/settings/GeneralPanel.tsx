@@ -1,5 +1,6 @@
 import { Button, Input, Switch } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { KeyRound, Link2, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApprovalRulesSettings } from "../../../components/ApprovalRulesSettings";
@@ -15,6 +16,8 @@ import {
   getUiAppearancePreference,
   setUiAppearance,
 } from "../../../lib/ui-appearance";
+import { SparkGlyph } from "../chrome/NovaGlyphs";
+import { NovaTile } from "../chrome/NovaTile";
 import {
   SETTINGS_ROW,
   SettingsGroup,
@@ -58,11 +61,22 @@ export function GeneralPanel({
   }
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-6">
       <SettingsGroup title={<Trans>Account</Trans>}>
-        <SettingsRow label={<Trans>Name</Trans>} value={name} />
-        {email ? <SettingsRow label={<Trans>Email</Trans>} value={email} /> : null}
+        <SettingsRow
+          icon={{ tone: "blue", glyph: <UserRound strokeWidth={2.4} /> }}
+          label={<Trans>Name</Trans>}
+          value={name}
+        />
+        {email ? (
+          <SettingsRow
+            icon={{ tone: "blue", glyph: <Mail strokeWidth={2.4} /> }}
+            label={<Trans>Email</Trans>}
+            value={email}
+          />
+        ) : null}
         <SettingsLinkRow
+          icon={{ tone: "gray", glyph: <KeyRound strokeWidth={2.4} /> }}
           label={<Trans>Change password</Trans>}
           expanded={passwordOpen}
           onClick={() => setPasswordOpen((open) => !open)}
@@ -94,8 +108,13 @@ export function GeneralPanel({
         footer={<Trans>Approvals choose which actions wait for your OK.</Trans>}
       >
         <label htmlFor={streamId} className={SETTINGS_ROW}>
-          <span className="text-[16px] text-foreground">
-            <Trans>Show replies as they're written</Trans>
+          <span className="flex min-w-0 items-center gap-3">
+            <NovaTile tone="purple" size={28}>
+              <SparkGlyph />
+            </NovaTile>
+            <span className="min-w-0 truncate text-foreground">
+              <Trans>Show replies as they're written</Trans>
+            </span>
           </span>
           <Switch
             id={streamId}
@@ -108,6 +127,7 @@ export function GeneralPanel({
           />
         </label>
         <SettingsLinkRow
+          icon={{ tone: "orange", glyph: <ShieldCheck strokeWidth={2.4} /> }}
           label={<Trans>Approvals</Trans>}
           expanded={approvalsOpen}
           onClick={() => setApprovalsOpen((open) => !open)}
@@ -122,6 +142,7 @@ export function GeneralPanel({
       {isDeploymentOwner ? (
         <SettingsGroup title={<Trans>Server</Trans>}>
           <SettingsLinkRow
+            icon={{ tone: "teal", glyph: <Link2 strokeWidth={2.4} /> }}
             label={<Trans>Integrations</Trans>}
             onClick={() => navigate("/integrations/setup")}
           />
@@ -133,7 +154,7 @@ export function GeneralPanel({
           type="button"
           disabled={signingOut}
           onClick={() => void logOut()}
-          className={`${SETTINGS_ROW} text-start text-[16px] text-destructive transition-colors hover:bg-accent/50 disabled:opacity-60`}
+          className={`${SETTINGS_ROW} nova-row-plain text-start text-destructive transition-colors hover:bg-selection disabled:opacity-60`}
         >
           {signingOut ? <Trans>Logging out…</Trans> : <Trans>Log out</Trans>}
         </button>

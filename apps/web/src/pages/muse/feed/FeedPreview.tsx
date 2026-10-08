@@ -1,20 +1,19 @@
-import { BotAvatar } from "@aiden/ui-web";
 import { Trans } from "@lingui/react/macro";
+import { NovaOrb } from "../../../components/ai/orb";
 import { illustrationUrl } from "../../../lib/illustrations";
 
-const CARD =
-  "rounded-[22px] bg-card p-4 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-14px_rgb(0_0_0/0.18)]";
+const CARD = "nova-card p-4";
 
 /**
  * What a Feed morning looks like before there is one: a finished-work report from a
  * Goal and a sourced find on a followed topic, shown on a soft stage.
  */
-export function FeedPreview({ botName, color }: { botName: string; color: string }) {
+export function FeedPreview(_props: { botName: string; color: string }) {
   return (
-    <div aria-hidden="true" className="flex flex-col gap-3 rounded-[28px] bg-muted/60 p-5 sm:p-7">
+    <div aria-hidden="true" className="flex flex-col gap-3 rounded-[22px] bg-window p-5 sm:p-7">
       <div className={CARD}>
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <BotAvatar color={color} identity={botName} face="muse" size={20} />
+          <NovaOrb size={20} />
           <Trans>From Q3 portfolio review · 7:40</Trans>
         </div>
         <div className="mt-2.5 flex gap-4">

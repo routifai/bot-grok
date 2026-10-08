@@ -13,6 +13,7 @@ import {
 } from "../../../components/ArtifactPreviewCard";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";
 import { formatRelativeTime } from "../../../lib/relative-time";
+import { LibraryArt } from "./LibraryArt";
 import type { ArtifactSummary } from "./types";
 
 export function LibraryCard({
@@ -38,13 +39,14 @@ export function LibraryCard({
       buttonLabel={t`Open ${artifact.name}`}
       onOpen={onOpen}
       testId="library-card"
+      fallback={<LibraryArt kind={kind} name={artifact.name} />}
       actions={
         <>
           <GlassAction label={t`Open ${artifact.name}`} onClick={onOpen}>
-            <Maximize2 size={14} strokeWidth={1.75} />
+            <Maximize2 size={13} strokeWidth={1.9} />
           </GlassAction>
           <GlassAction label={t`Download ${artifact.name}`} onClick={onDownload}>
-            <Download size={14} strokeWidth={1.75} />
+            <Download size={13} strokeWidth={1.9} />
           </GlassAction>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -57,7 +59,7 @@ export function LibraryCard({
                 />
               }
             >
-              <Ellipsis size={14} strokeWidth={1.75} />
+              <Ellipsis size={13} strokeWidth={1.9} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem variant="destructive" onClick={onDelete}>

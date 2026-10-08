@@ -17,7 +17,6 @@ import {
   useState,
 } from "react";
 import { ActiveBotGlyph } from "../../../components/ai/CollaborationMarker";
-import { Shimmer } from "../../../components/ai/primitives";
 import {
   ReplyCardBotProvider,
   ReplyCardSendProvider,
@@ -34,6 +33,7 @@ import { MessageHoverActions } from "./MessageHoverActions";
 import { MessageView } from "./MessageView";
 import { hasOpenMuseAsk } from "./messageText";
 import { QuoteSelectionButton } from "./QuoteSelectionButton";
+import { WorkingRow } from "./WorkingRow";
 
 /** The transcript, with its reply cards resolved across the whole thread (in-place updates,
  * answered asks). */
@@ -591,15 +591,7 @@ const TranscriptView = memo(function Transcript({
         ) ? (
           museMode && museFace ? (
             museLiveLabel ? (
-              <div
-                data-testid="muse-live-row"
-                aria-hidden="true"
-                className="flex min-h-10 items-center"
-              >
-                <span className="text-[15.5px] text-ink-3">
-                  <Shimmer>{museLiveLabel}</Shimmer>
-                </span>
-              </div>
+              <WorkingRow label={museLiveLabel} />
             ) : null
           ) : (
             <ActiveBotGlyph bots={workingBots} label={workingLabel} />

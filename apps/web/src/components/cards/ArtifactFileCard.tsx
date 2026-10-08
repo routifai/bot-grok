@@ -1,18 +1,19 @@
 import type { ReplyCardDataOf } from "@aiden/contracts";
 import {
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import { Download, ExternalLink, Maximize2, MoreHorizontal } from "lucide-react";
+import { Download, ExternalLink, MoreHorizontal } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
+import type { ArtifactKind } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { MEDIA_ACTION, MediaFrame, MediaTile } from "../MediaTile";
 import { ArtifactInlinePreview } from "./ArtifactInlinePreview";
-import { catalog, Frame, formatSize } from "./catalog";
+import { catalog, formatSize } from "./catalog";
 import { useArtifactPanel, useLatestSavedFile } from "./context";
 
 // The expanded view pulls in the PDF and markdown viewers; load them only when opened.
@@ -96,75 +97,71 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
+  // The result tile (docs/muse/DESIGN.md "Results"): the live preview framed on the right,
+  // Open as the white pill, Download and Open in new tab in the menu.
+  const tileKind = data.kind ? kindFromLabel(data.kind) : "file";
   return (
-    <Frame className="w-[min(42rem,calc(100vw-3rem))]">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={expand}
-          className="min-w-0 flex-1 rounded-md text-start outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <div className="truncate text-[14px] font-medium" dir="auto">
-            {heading}
-          </div>
-          <div className="truncate text-[12.5px] text-muted-foreground">
-            {failed ? t`Could not download this.` : meta}
-          </div>
-        </button>
-        {superseded ? (
-          <button
-            type="button"
-            data-testid="artifact-updated"
-            onClick={() => panel?.open(superseded.artifactId, title)}
-            className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11.5px] tabular-nums text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            {t`Updated — v${superseded.version}`}
-          </button>
-        ) : versions > 1 ? (
-          <span
-            data-testid="artifact-version"
-            className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11.5px] tabular-nums text-muted-foreground"
-          >
-            {`v${version}`}
-          </span>
-        ) : null}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t`Expand ${data.name}`}
-          className="text-muted-foreground"
-          onClick={expand}
-        >
-          <Maximize2 />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            aria-label={t`More actions for ${data.name}`}
-            render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground" />}
-          >
-            <MoreHorizontal />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-auto min-w-40">
-            <DropdownMenuItem onClick={() => void download()}>
-              <Download />
-              {t`Download`}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void openInNewTab()}>
-              <ExternalLink />
-              {t`Open in new tab`}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <div className="mt-3">
-        <ArtifactInlinePreview
-          artifactId={artifactId}
-          name={data.name}
-          kind={data.kind}
-          size={data.size}
-          version={data.version}
-        />
-      </div>
+    <div>
+      <MediaTile
+        kind={tileKind}
+        brand={tileKind === "document" ? t`Nova Report` : (data.kind?.toUpperCase() ?? t`File`)}
+        title={heading}
+        badge={
+          superseded ? (
+            <button
+              type="button"
+              data-testid="artifact-updated"
+              onClick={() => panel?.open(superseded.artifactId, title)}
+              className="ms-1.5 rounded-full bg-white/15 px-2 py-0.5 text-[11.5px] font-normal tabular-nums text-white hover:bg-white/25"
+            >
+              {t`Updated — v${superseded.version}`}
+            </button>
+          ) : versions > 1 ? (
+            <span
+              data-testid="artifact-version"
+              className="ms-1.5 rounded-full bg-white/15 px-2 py-0.5 text-[11.5px] font-normal tabular-nums text-white"
+            >
+              {`v${version}`}
+            </span>
+          ) : undefined
+        }
+        art={
+          <MediaFrame>
+            <ArtifactInlinePreview
+              artifactId={artifactId}
+              name={data.name}
+              kind={data.kind}
+              size={data.size}
+              version={data.version}
+              className="h-full rounded-none border-0 sm:h-full"
+            />
+          </MediaFrame>
+        }
+        meta={failed ? t`Could not download this.` : meta}
+        openLabel={t`Open`}
+        openAriaLabel={t`Expand ${data.name}`}
+        onOpen={expand}
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={t`More actions for ${data.name}`}
+              className={MEDIA_ACTION}
+            >
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-auto min-w-40">
+              <DropdownMenuItem onClick={() => void download()}>
+                <Download />
+                {t`Download`}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void openInNewTab()}>
+                <ExternalLink />
+                {t`Open in new tab`}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
       {open ? (
         <Suspense fallback={null}>
           <ArtifactPreviewDialog
@@ -175,6 +172,17 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
           />
         </Suspense>
       ) : null}
-    </Frame>
+    </div>
   );
+}
+
+/** A reply card's `kind` label ("pdf", "html", "pptx", "png"…) as an artifact kind. */
+function kindFromLabel(label: string): ArtifactKind {
+  const value = label.toLowerCase();
+  if (value === "pdf" || value === "md" || value === "markdown" || value === "docx")
+    return "document";
+  if (value === "html" || value === "page") return "page";
+  if (value === "pptx" || value === "ppt" || value === "key" || value === "deck") return "deck";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "image"].includes(value)) return "image";
+  return "file";
 }

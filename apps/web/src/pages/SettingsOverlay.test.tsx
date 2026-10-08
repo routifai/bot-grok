@@ -12,6 +12,7 @@ vi.mock("@lingui/react/macro", () => {
 });
 
 vi.mock("@aiden/ui-web", () => ({
+  cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
   Dialog: ({ children }: { children?: ReactNode }) => <>{children}</>,
   DialogContent: ({

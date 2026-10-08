@@ -71,6 +71,104 @@ export type ColorTokens = {
   "fork-4"?: string;
   "fork-5"?: string;
   "fork-6"?: string;
+  /** Muse only: the ground the content window sits on. */
+  window?: string;
+  /** Muse only: the rounded content window. */
+  content?: string;
+  /** Muse only: a floating glass panel's translucent fill (sidebar, inspector). */
+  glass?: string;
+  /** Muse only: a glass panel's half-pixel edge. */
+  "glass-line"?: string;
+  /** Muse only: an inset grouped list or card. */
+  group?: string;
+  /** Muse only: inset hairlines between rows. */
+  separator?: string;
+  /** Muse only: a soft accent fill. */
+  "selection-strong"?: string;
+  /** Muse only: the accent: the primary action, the selected row, the person's bubble. */
+  tint?: string;
+  /** Muse only: accent text on a soft accent fill. */
+  "tint-ink"?: string;
+  /** Muse only: live / done dot. */
+  ok?: string;
+  /** Muse only: waiting dot. */
+  warn?: string;
+  /** Muse only: the red count badge. */
+  alert?: string;
+  /** Muse only: section signature color. */
+  "sig-goals"?: string;
+  /** Muse only: section signature color. */
+  "sig-feed"?: string;
+  /** Muse only: section signature color. */
+  "sig-ideas"?: string;
+  /** Muse only: section signature color. */
+  "sig-library"?: string;
+  /** Muse only: section signature color. */
+  "sig-waiting"?: string;
+  /** Muse only: section signature color. */
+  "sig-forks"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-blue-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-blue-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-green-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-green-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-yellow-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-yellow-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-orange-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-orange-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-purple-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-purple-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-red-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-red-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-indigo-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-indigo-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-teal-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-teal-to"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-gray-from"?: string;
+  /** Muse only: Apple tile gradient stop. */
+  "tile-gray-to"?: string;
+  /** Muse only: the dark result tile. */
+  media?: string;
+  /** Muse only: the dark result tile. */
+  "media-deep"?: string;
+  /** Muse only: the dark result tile. */
+  "media-glow"?: string;
+  /** Muse only: the dark result tile. */
+  "media-bar"?: string;
+  /** Muse only: the dark result tile. */
+  "media-bar-2"?: string;
+  /** Muse only: the dark result tile. */
+  "media-key-from"?: string;
+  /** Muse only: the dark result tile. */
+  "media-key-to"?: string;
+  /** Muse only: a Feed media tile's glow. */
+  "media-warm-glow"?: string;
+  /** Muse only: a Feed media tile's glow. */
+  "media-warm-deep"?: string;
+  /** Muse only: a Feed media tile's glow. */
+  "media-pink-glow"?: string;
+  /** Muse only: a Feed media tile's glow. */
+  "media-pink-deep"?: string;
+  /** Muse only: a Feed media tile's glow. */
+  "media-green-glow"?: string;
+  /** Muse only: a Feed media tile's glow. */
+  "media-green-deep"?: string;
 };
 
 export const darkTokens = {
@@ -144,52 +242,132 @@ export const lightTokens = {
 } as const satisfies ColorTokens;
 
 /**
- * Nova's surfaces (docs/muse/DESIGN.md): quiet glass panels on a cool ground, ink text in
- * three strengths, hairline lines. The Muse palettes below map the shadcn slots onto these
- * same values, so each color is written once. `background` is the solid surface (shadcn
- * controls paint it inside panels); only the shell root paints `ground`.
+ * Nova's surfaces (docs/muse/DESIGN.md): a Mac app. The content sits in one rounded
+ * `content` window on the `window` ground; the sidebar and inspector float inside it as
+ * blurred `glass` panels with a half-pixel `glass-line`; iOS inset grouped lists sit on
+ * `group`. Ink comes in three strengths, hairlines are `separator`. The Muse palettes below
+ * map the shadcn slots onto these same values, so each color is written once. `background`
+ * is the solid surface (shadcn controls paint it inside panels).
  *
- * `fork-*` are an owner-approved exception to the monochrome rule (where only bots carry
- * an identity color): each side chat (fork) gets one, so a fork reads as the same thread
- * in the rail, the transcript and its own view.
+ * Owner-approved exceptions to the monochrome rule (Apple Mac-app redesign): the `tint`
+ * accent (the one primary action, the selected row, the person's bubble), the colored app
+ * `tile-*` gradients, one signature color per section (`sig-*`), the red `alert` badge, the
+ * dark `media-*` result tile, and `fork-*` (each side chat (fork) keeps one color in the
+ * rail, the transcript and its own view).
+ *
+ * `ground`, `panel`, `solid`, `line`, `bubble` and `selection` are the older names the
+ * screens still read; they now resolve to the window, glass, group, separator and fill.
  */
+const tiles = {
+  "tile-blue-from": "#3F9BFF",
+  "tile-blue-to": "#0A7AFF",
+  "tile-green-from": "#45D36C",
+  "tile-green-to": "#2FB34F",
+  "tile-yellow-from": "#FFD23F",
+  "tile-yellow-to": "#FBB72C",
+  "tile-orange-from": "#FFA63D",
+  "tile-orange-to": "#FF8A00",
+  "tile-purple-from": "#C977F0",
+  "tile-purple-to": "#A347D6",
+  "tile-red-from": "#FF6961",
+  "tile-red-to": "#FF3B30",
+  "tile-indigo-from": "#7D7AFF",
+  "tile-indigo-to": "#5856D6",
+  "tile-teal-from": "#5BD2E6",
+  "tile-teal-to": "#30B0C7",
+  "tile-gray-from": "#A1A1A6",
+  "tile-gray-to": "#8E8E93",
+  // The result tile (Conversation): a dark card with a blue glow, the same in both themes.
+  media: "#000000",
+  "media-deep": "#071A3D",
+  "media-glow": "#0B3D91",
+  "media-bar": "#2C2C2E",
+  "media-bar-2": "#1C1C1E",
+  "media-key-from": "#7FD4FF",
+  "media-key-to": "#0060DF",
+  // The Feed's other media tiles: warm, pink and green glows.
+  "media-warm-glow": "#B25B00",
+  "media-warm-deep": "#4A2300",
+  "media-pink-glow": "#C21F54",
+  "media-pink-deep": "#4B0B22",
+  "media-green-glow": "#1F8F4A",
+  "media-green-deep": "#0B3A1F",
+} as const;
+
 const novaLight = {
-  ground: "#EEF1F7",
-  "ground-wash": "#E4EAF6",
-  panel: "rgba(255, 255, 255, 0.8)",
+  window: "#F5F5F7",
+  content: "#FFFFFF",
+  glass: "rgba(246, 246, 248, 0.78)",
+  "glass-line": "rgba(0, 0, 0, 0.08)",
+  group: "#FFFFFF",
+  separator: "rgba(60, 60, 67, 0.12)",
+  "selection-strong": "rgba(0, 113, 227, 0.12)",
+  tint: "#0071E3",
+  "tint-ink": "#0066CC",
+  ok: "#34C759",
+  warn: "#FF9F0A",
+  alert: "#FF3B30",
+  "sig-goals": "#34C759",
+  "sig-feed": "#FF2D55",
+  "sig-ideas": "#FF9F0A",
+  "sig-library": "#5856D6",
+  "sig-waiting": "#FF9500",
+  "sig-forks": "#AF52DE",
+  ground: "#F5F5F7",
+  "ground-wash": "#F5F5F7",
+  panel: "rgba(246, 246, 248, 0.78)",
   solid: "#FFFFFF",
-  line: "#E3E6EE",
-  ink: "#15171C",
-  "ink-2": "#5B6170",
-  "ink-3": "#9AA0AE",
-  bubble: "#EEF0F4",
-  selection: "#E9EDF5",
+  line: "rgba(60, 60, 67, 0.12)",
+  ink: "#1D1D1F",
+  "ink-2": "#6E6E73",
+  "ink-3": "#8E8E93",
+  bubble: "#F2F2F7",
+  selection: "rgba(0, 0, 0, 0.06)",
   "fork-1": "#2F7BF5",
   "fork-2": "#8A5CF6",
   "fork-3": "#E0782F",
   "fork-4": "#1F9E8A",
   "fork-5": "#D9467A",
   "fork-6": "#B8860B",
+  ...tiles,
 } as const;
 
 const novaDark = {
-  // Deeper ground with a visible blue glow, so the lifted panels read as separate surfaces.
-  ground: "#0A0B0F",
-  "ground-wash": "#172038",
-  panel: "rgba(26, 29, 38, 0.84)",
-  solid: "#1C1F28",
-  line: "#2B303C",
-  ink: "#ECEEF3",
-  "ink-2": "#A7ADBA",
-  "ink-3": "#6E7485",
-  bubble: "#272B36",
-  selection: "#272D3B",
+  window: "#000000",
+  content: "#161617",
+  glass: "rgba(36, 36, 38, 0.72)",
+  "glass-line": "rgba(255, 255, 255, 0.08)",
+  group: "#232325",
+  separator: "rgba(84, 84, 88, 0.45)",
+  "selection-strong": "rgba(41, 151, 255, 0.18)",
+  tint: "#0A84FF",
+  "tint-ink": "#64B4FF",
+  ok: "#30D158",
+  warn: "#FF9F0A",
+  alert: "#FF453A",
+  "sig-goals": "#30D158",
+  "sig-feed": "#FF375F",
+  "sig-ideas": "#FF9F0A",
+  "sig-library": "#5E5CE6",
+  "sig-waiting": "#FF9F0A",
+  "sig-forks": "#BF5AF2",
+  ground: "#000000",
+  "ground-wash": "#000000",
+  panel: "rgba(36, 36, 38, 0.72)",
+  solid: "#232325",
+  line: "rgba(84, 84, 88, 0.45)",
+  ink: "#F5F5F7",
+  "ink-2": "#A1A1A6",
+  "ink-3": "#8E8E93",
+  bubble: "#2C2C2E",
+  selection: "rgba(255, 255, 255, 0.08)",
   "fork-1": "#4B8DFF",
   "fork-2": "#A786FF",
   "fork-3": "#F29A57",
   "fork-4": "#3CC4AE",
   "fork-5": "#F06C9B",
   "fork-6": "#E0B43C",
+  ...tiles,
 } as const;
 
 /**
@@ -214,19 +392,20 @@ export const museLightTokens = {
   mutedForeground: novaLight["ink-2"],
   accent: novaLight.selection,
   accentForeground: novaLight.ink,
-  destructive: "#D6363C",
+  destructive: "#FF3B30",
   destructiveForeground: "#FFFFFF",
   border: novaLight.line,
   input: novaLight.line,
-  ring: novaLight["ink-3"],
-  sidebar: novaLight.ground,
+  // Keyboard focus: the accent at 50%.
+  ring: "rgba(0, 113, 227, 0.5)",
+  sidebar: novaLight.glass,
   sidebarForeground: novaLight.ink,
   sidebarBorder: novaLight.line,
   sidebarAccent: novaLight.selection,
   sidebarAccentForeground: novaLight.ink,
-  link: "#1F6FEB",
-  success: "#1E8A4E",
-  warning: "#B26A00",
+  link: "#0066CC",
+  success: "#248A3D",
+  warning: "#C93400",
   overlay: "rgba(17, 18, 22, 0.32)",
   scrollbar: "#D6D8DC",
   scrollbarHover: "#B6B9BF",
@@ -250,19 +429,19 @@ export const museDarkTokens = {
   mutedForeground: novaDark["ink-2"],
   accent: novaDark.selection,
   accentForeground: novaDark.ink,
-  destructive: "#F0565C",
+  destructive: "#FF453A",
   destructiveForeground: "#FFFFFF",
   border: novaDark.line,
   input: novaDark.line,
-  ring: novaDark["ink-3"],
-  sidebar: novaDark.ground,
+  ring: "rgba(10, 132, 255, 0.55)",
+  sidebar: novaDark.glass,
   sidebarForeground: novaDark.ink,
   sidebarBorder: novaDark.line,
   sidebarAccent: novaDark.selection,
   sidebarAccentForeground: novaDark.ink,
-  link: "#6EA8FE",
-  success: "#4CC382",
-  warning: "#E3A63B",
+  link: "#2997FF",
+  success: "#30D158",
+  warning: "#FF9F0A",
   overlay: "rgba(0, 0, 0, 0.6)",
   scrollbar: "#2F3036",
   scrollbarHover: "#43454C",
@@ -368,6 +547,7 @@ function renderBlock(selector: string, colorScheme: ResolvedAppearance, palette:
 export function renderTokensCss(): string {
   return `${[
     "/* Generated by `pnpm --filter @aiden/ui-tokens generate`. Edit src/index.ts instead. */",
+    "/* Muse: tint, tile-*, sig-*, alert, media-* and fork-* are owner-approved exceptions to the monochrome rule (Apple Mac-app design). */",
     renderBlock(':root,\n[data-theme="dark"]', "dark", darkTokens),
     renderBlock('[data-theme="light"]', "light", lightTokens),
     renderBlock('[data-product="muse"]', "light", museLightTokens),

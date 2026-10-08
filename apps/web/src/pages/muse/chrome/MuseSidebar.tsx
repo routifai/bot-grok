@@ -9,40 +9,45 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@aiden/ui-web";
+import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import {
-  Bell,
-  ChevronRight,
-  Library,
-  Lightbulb,
-  MessageCircle,
-  Newspaper,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  Settings,
-  Target,
-} from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { ChevronRight, Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { MuseRailView as MuseView } from "../../../components/AppRail";
+import { NovaOrb } from "../../../components/ai/orb";
 import { rpc } from "../../../lib/rpc";
 import { FORK_TONE_CLASS, type ForkFilter, type ForkRow } from "../forks/forkModel";
-import { BranchIcon, LiveDot } from "../forks/forkParts";
+import { LiveDot } from "../forks/forkParts";
+import {
+  ConversationGlyph,
+  FeedGlyph,
+  ForkGlyph,
+  GoalsGlyph,
+  IdeasGlyph,
+  LibraryGlyph,
+  SettingsGlyph,
+  SidebarGlyph,
+  WaitingGlyph,
+} from "./NovaGlyphs";
 import type { ChatListState } from "./useChatList";
 import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
+import { useNovaWork } from "./useNovaWork";
 
 const MAX_SIDEBAR_GOALS = 3;
 const COLLAPSED_KEY = "muse:sidebar-collapsed";
 
 // One layout for both states: the width animates and labels fade, so every icon keeps
-// exactly the same position whether the sidebar is expanded or collapsed. Icon centers sit
-// on one column (42px from the edge), which is also the avatar's center.
-const ROW = "flex h-10 w-full items-center gap-3.5 rounded-xl ps-[19px] pe-3 text-start";
+// exactly the same position whether the sidebar is expanded or collapsed. Rows are 32px,
+// 13px, a 17px glyph 10px in from the row's edge.
+const ROW =
+  "flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-start text-[13px] whitespace-nowrap";
 const LABEL =
   "min-w-0 flex-1 truncate whitespace-nowrap transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0";
-const ICON_MOTION =
-  "relative grid size-[22px] shrink-0 place-items-center transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/row:-translate-y-0.5 group-hover/row:scale-[1.18] group-hover/row:-rotate-6 group-active/row:scale-95 motion-reduce:transition-none motion-reduce:transform-none [&_svg]:size-5 [&_svg]:stroke-[1.75]";
+const FADE =
+  "transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0";
+/** A section's header in the sidebar ("Nova", "Side chats", "Open · 2", "Goals"). */
+const GROUP_LABEL = "px-2.5 pt-3.5 pb-1 text-[11px] font-bold whitespace-nowrap text-ink-3";
 
 function useSidebarCollapsed() {
   const [collapsed, setCollapsed] = useState(() => {
@@ -65,36 +70,82 @@ function useSidebarCollapsed() {
   return [collapsed, toggle] as const;
 }
 
-/** A pill that glides to whichever row the pointer is over (hidden when none). */
-function useGlide() {
-  const listRef = useRef<HTMLDivElement>(null);
-  const [glide, setGlide] = useState<{ top: number; height: number } | null>(null);
-  const onRowEnter = (event: MouseEvent<HTMLElement>) => {
-    const list = listRef.current;
-    if (!list) return;
-    const row = event.currentTarget.getBoundingClientRect();
-    const box = list.getBoundingClientRect();
-    // Rects are in zoomed pixels; convert back to layout pixels for the transform.
-    const scale = box.height / list.offsetHeight || 1;
-    setGlide({ top: (row.top - box.top) / scale, height: row.height / scale });
-  };
-  // Hide the pill when the pointer leaves the list (listener, not a handler on a div).
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const hide = () => setGlide(null);
-    list.addEventListener("mouseleave", hide);
-    return () => list.removeEventListener("mouseleave", hide);
-  }, []);
-  return { listRef, glide, onRowEnter };
+/** A count badge: red for what waits on the person, a fork's color for forks, else quiet. */
+function Badge({ count, tone = "quiet" }: { count: number; tone?: "alert" | "quiet" | string }) {
+  return (
+    <span
+      className={cn(
+        "grid h-[18px] min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[11.5px] font-semibold tabular-nums",
+        tone === "alert"
+          ? "bg-alert text-white"
+          : tone === "quiet"
+            ? "bg-selection text-ink-2"
+            : cn(tone, "text-white"),
+      )}
+    >
+      {count}
+    </span>
+  );
+}
+
+/** Nova at the top of the sidebar: the live orb, the name, and what it is doing. */
+function NovaIdentity({
+  name,
+  working,
+  collapsed,
+  onToggle,
+}: {
+  name: string;
+  working: number;
+  collapsed: boolean;
+  onToggle?: () => void;
+}) {
+  const { t } = useLingui();
+  const status = working
+    ? plural(working, { one: "Working on # thing", other: "Working on # things" })
+    : t`Ready`;
+  return (
+    <div className="flex items-center gap-2.5 px-0.5 pt-1 pb-2">
+      <NovaOrb size={34} />
+      <div className={cn("min-w-0 flex-1", FADE)}>
+        <p
+          className="truncate text-[15px] font-semibold tracking-[-0.2px] text-foreground"
+          dir="auto"
+        >
+          {name}
+        </p>
+        <p
+          data-testid="nova-status"
+          className="flex items-center gap-1.5 text-[11.5px] text-ink-3"
+          aria-live="polite"
+        >
+          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-ok" />
+          <span className="truncate">{status}</span>
+        </p>
+      </div>
+      {onToggle && !collapsed ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          title={t`Collapse sidebar`}
+          aria-label={t`Collapse sidebar`}
+          className="grid size-7 shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-4"
+        >
+          <SidebarGlyph />
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 /**
- * The Muse-mode sidebar (docs/muse/DESIGN.md "Sidebar"): Aiden and what he's doing, the
- * four places, what's waiting, the active Goals, and settings. Collapses to an icon rail.
+ * The Muse-mode sidebar (docs/muse/DESIGN.md "Sidebar"): a glass panel with Nova and what
+ * it is doing, the Conversation with its side chats and forks, Nova's places, the active
+ * Goals, and the person with Settings. Collapses to an icon rail.
  */
 export function MuseSidebar({
   botId,
+  museName = "Nova",
   runs,
   messages,
   personName,
@@ -114,6 +165,8 @@ export function MuseSidebar({
   onMobileOpenChange,
 }: {
   botId: string;
+  /** The name shown beside the orb. */
+  museName?: string;
   runs: readonly MuseLiveRun[];
   messages: readonly ThreadMessage[] | undefined;
   personName?: string;
@@ -142,13 +195,11 @@ export function MuseSidebar({
   onMobileOpenChange?: (open: boolean) => void;
 }) {
   const { t } = useLingui();
-  // Only the Ask count is needed here — the Muse's face, name, and busy caption now live
-  // once, in the context panel's identity header (ContextPanel.tsx's `IdentityHeader`).
   const { askCount } = useMuseLiveState({ botId, runs, messages });
+  const { count: working } = useNovaWork({ botId, runs, messages });
   const [goals, setGoals] = useState<Goal[]>([]);
   const generation = useRef(0);
   const [desktopCollapsed, toggleCollapsed] = useSidebarCollapsed();
-  const nav = useGlide();
 
   useEffect(() => {
     const current = ++generation.current;
@@ -183,57 +234,55 @@ export function MuseSidebar({
 
   const activeGoals = goals.filter((goal) => goal.status === "active");
 
-  const rows: Array<{
-    key: string;
+  const places: Array<{
+    key: MuseView | "waiting";
     icon: ReactNode;
+    /** The glyph's signature color (sig-* tokens). */
+    tint: string;
     label: string;
-    meta?: number;
-    attention?: boolean;
+    badge?: ReactNode;
     current?: boolean;
     onClick: () => void;
   }> = [
     {
-      key: "conversation",
-      icon: <MessageCircle />,
-      label: t`Conversation`,
-      current: active === "conversation" && !activeChatId,
-      onClick: () => go(onNavigate, "conversation"),
-    },
-    {
       key: "goals",
-      icon: <Target />,
+      icon: <GoalsGlyph />,
+      tint: "text-sig-goals",
       label: t`Goals`,
-      meta: activeGoals.length || undefined,
+      badge: activeGoals.length ? <Badge count={activeGoals.length} /> : undefined,
       current: active === "goals",
       onClick: () => go(onNavigate, "goals"),
     },
     {
       key: "feed",
-      icon: <Newspaper />,
+      icon: <FeedGlyph />,
+      tint: "text-sig-feed",
       label: t`Feed`,
       current: active === "feed",
       onClick: () => go(onNavigate, "feed"),
     },
     {
       key: "ideas",
-      icon: <Lightbulb />,
+      icon: <IdeasGlyph />,
+      tint: "text-sig-ideas",
       label: t`Ideas`,
       current: active === "ideas",
       onClick: () => go(onNavigate, "ideas"),
     },
     {
       key: "library",
-      icon: <Library />,
+      icon: <LibraryGlyph />,
+      tint: "text-sig-library",
       label: t`Library`,
       current: active === "library",
       onClick: () => go(onNavigate, "library"),
     },
     {
       key: "waiting",
-      icon: <Bell />,
+      icon: <WaitingGlyph />,
+      tint: "text-sig-waiting",
       label: t`Waiting on you`,
-      meta: askCount || undefined,
-      attention: askCount > 0,
+      badge: askCount ? <Badge count={askCount} tone="alert" /> : undefined,
       onClick: () => goOverlay(onOpenWaiting),
     },
   ];
@@ -246,60 +295,63 @@ export function MuseSidebar({
         data-collapsed={collapsed || undefined}
         aria-label={t`Sections`}
         className={cn(
-          "group/rail app-drag flex shrink-0 flex-col gap-6 overflow-hidden px-3 pt-3.5 pb-3",
+          "group/rail app-drag flex shrink-0 flex-col overflow-hidden px-2 pt-2.5 pb-2",
           mobile
             ? "h-full w-full overflow-y-auto"
-            : "hidden border border-line bg-panel backdrop-blur-xl transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex md:rounded-[18px]",
-          !mobile && (collapsed ? "w-[84px]" : "w-[288px]"),
+            : "nova-glass m-2 hidden transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex",
+          !mobile && (collapsed ? "w-[54px]" : "w-[244px]"),
         )}
       >
+        <NovaIdentity
+          name={museName}
+          working={working}
+          collapsed={collapsed}
+          onToggle={mobile ? undefined : toggleCollapsed}
+        />
         {/* Sections, chats and goals scroll together; the footer stays pinned below them. */}
-        <div className="app-no-drag -mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1">
-          <div ref={nav.listRef} className="app-no-drag relative flex flex-col gap-0.5">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 rounded-xl bg-selection/70 transition-[transform,height,opacity] duration-200 ease-out motion-reduce:transition-none"
-              style={{
-                height: nav.glide?.height ?? 40,
-                transform: `translateY(${nav.glide?.top ?? 0}px)`,
-                opacity: nav.glide ? 1 : 0,
-              }}
-            />
-            {rows.map((row) => (
+        <div className="app-no-drag -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1">
+          <RailRow
+            collapsed={collapsed}
+            icon={<ConversationGlyph />}
+            tint="text-tint"
+            label={t`Conversation`}
+            current={active === "conversation" && !activeChatId}
+            onClick={() => go(onNavigate, "conversation")}
+          />
+          <ChatTree
+            state={chatListState}
+            collapsed={collapsed}
+            activeChatId={activeChatId ?? null}
+            onOpenChat={(chat) => go(onOpenChat, chat)}
+            onNewDraft={() => go(onNewDraft)}
+            forks={forks}
+            activeForkId={activeForkId}
+            onOpenFork={onOpenFork ? (fork) => go(onOpenFork, fork) : undefined}
+            onShowForks={onShowForks ? (filter) => go(onShowForks, filter) : undefined}
+          />
+
+          <div aria-hidden={collapsed || undefined} className={cn(GROUP_LABEL, FADE)}>
+            <Trans>Nova</Trans>
+          </div>
+          <div className="flex flex-col gap-px">
+            {places.map((row) => (
               <Fragment key={row.key}>
                 <RailRow
                   collapsed={collapsed}
                   icon={row.icon}
+                  tint={row.tint}
                   label={row.label}
-                  meta={row.meta}
-                  attention={row.attention}
+                  badge={row.badge}
                   current={row.current}
                   onClick={row.onClick}
-                  onMouseEnter={nav.onRowEnter}
                 />
-                {row.key === "conversation" ? (
-                  <ChatTree
-                    state={chatListState}
-                    collapsed={collapsed}
-                    activeChatId={activeChatId ?? null}
-                    onOpenChat={(chat) => go(onOpenChat, chat)}
-                    onNewDraft={() => go(onNewDraft)}
-                    forks={forks}
-                    activeForkId={activeForkId}
-                    onOpenFork={onOpenFork ? (fork) => go(onOpenFork, fork) : undefined}
-                    onShowForks={onShowForks ? (filter) => go(onShowForks, filter) : undefined}
-                  />
-                ) : null}
               </Fragment>
             ))}
           </div>
 
           {activeGoals.length ? (
-            <div
-              aria-hidden={collapsed || undefined}
-              className="app-no-drag flex min-h-0 flex-col transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
-            >
-              <div className={cn(GROUP_LABEL, "ps-[19px]")}>
+            <div aria-hidden={collapsed || undefined} className={cn("flex min-h-0 flex-col", FADE)}>
+              <div className={GROUP_LABEL}>
                 <Trans>Goals</Trans>
               </div>
               {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
@@ -312,17 +364,14 @@ export function MuseSidebar({
                     type="button"
                     tabIndex={collapsed ? -1 : undefined}
                     onClick={() => onNavigate("goals")}
-                    className={cn(
-                      TWIG_ROW,
-                      "gap-[18px] ps-[23px] pe-3 text-foreground/85 hover:bg-selection/70 hover:text-foreground",
-                    )}
+                    className={cn(TWIG_ROW, "text-foreground", TWIG_HOVER)}
                   >
                     <GoalProgress done={done} total={goal.tasks.length} waiting={waiting} />
                     <span className="min-w-0 flex-1 truncate" dir="auto">
                       {goal.title}
                     </span>
                     {goal.tasks.length > 0 ? (
-                      <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-3">
+                      <span className="shrink-0 text-[11.5px] tabular-nums text-ink-3">
                         {done}/{goal.tasks.length}
                       </span>
                     ) : null}
@@ -333,39 +382,50 @@ export function MuseSidebar({
           ) : null}
         </div>
 
-        <div className="app-no-drag flex shrink-0 flex-col">
-          {mobile ? null : (
+        <div className="app-no-drag flex shrink-0 flex-col gap-px pt-2">
+          {collapsed ? (
             <RailRow
               quiet
-              collapsed={collapsed}
-              icon={collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-              label={collapsed ? t`Expand sidebar` : t`Collapse sidebar`}
+              collapsed
+              icon={<SidebarGlyph />}
+              label={t`Expand sidebar`}
               onClick={toggleCollapsed}
             />
-          )}
-          <RailRow
-            quiet
-            collapsed={collapsed}
-            icon={<Settings />}
-            label={t`Settings`}
-            onClick={() => goOverlay(onOpenSettings)}
-          />
-          {personName ? (
-            <div
-              title={collapsed ? personName : undefined}
-              className={cn(ROW, "mt-1 h-9 ps-[20px] text-[14px] text-ink-2")}
-            >
-              <span
-                aria-hidden="true"
-                className="grid size-5 shrink-0 place-items-center rounded-full bg-selection text-[11px] font-semibold text-foreground"
-              >
-                {personName.trim().charAt(0).toUpperCase()}
-              </span>
-              <span className={LABEL} dir="auto">
-                {personName}
-              </span>
-            </div>
           ) : null}
+          <div className="flex items-center gap-1">
+            {personName && !collapsed ? (
+              <div className={cn(ROW, "min-w-0 flex-1 text-ink-2")}>
+                <span
+                  aria-hidden="true"
+                  className="grid size-[22px] shrink-0 place-items-center rounded-full bg-linear-to-br from-tile-gray-from to-tile-gray-to text-[10px] font-semibold text-white"
+                >
+                  {personName.trim().charAt(0).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1 truncate" dir="auto">
+                  {personName}
+                </span>
+              </div>
+            ) : null}
+            {collapsed || !personName ? (
+              <RailRow
+                quiet
+                collapsed={collapsed}
+                icon={<SettingsGlyph />}
+                label={t`Settings`}
+                onClick={() => goOverlay(onOpenSettings)}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => goOverlay(onOpenSettings)}
+                title={t`Settings`}
+                aria-label={t`Settings`}
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring [&_svg]:size-4"
+              >
+                <SettingsGlyph />
+              </button>
+            )}
+          </div>
         </div>
       </nav>
     );
@@ -378,7 +438,7 @@ export function MuseSidebar({
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="w-[min(86vw,320px)] gap-0 border-line bg-panel p-0 backdrop-blur-xl md:hidden"
+          className="nova-glass w-[min(86vw,320px)] gap-0 border-0 p-0 md:hidden"
         >
           <SheetTitle className="sr-only">
             <Trans>Sections</Trans>
@@ -393,22 +453,20 @@ export function MuseSidebar({
   );
 }
 
-// Rows under the Conversation (forks, Side Chats) and under Goals: 32px tall on the 4pt grid,
-// a 14px lead (icon or ring) on one left edge, the same hover and selected fills everywhere.
+// Rows under the Conversation (side chats, forks) and under Goals: 28px, a small 13px glyph,
+// the same hover and selected fills everywhere.
 const TWIG_ROW =
-  "flex h-8 w-full items-center gap-2 rounded-[10px] px-2 text-start text-[13.5px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
-const TWIG_HOVER = "hover:bg-selection/70 hover:text-foreground";
-const TWIG_SELECTED = "bg-selection font-medium text-foreground";
-/** A group's label in the sidebar ("Open · 2", "Added to Conversation", "Goals"). */
-const GROUP_LABEL = "px-2 pt-2 pb-1 text-[11.5px] font-semibold whitespace-nowrap text-ink-3";
+  "flex h-7 w-full items-center gap-2.5 rounded-lg ps-3 pe-2.5 text-start text-[13px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
+const TWIG_HOVER = "hover:bg-selection";
+const TWIG_SELECTED = "bg-tint text-white [&_svg]:text-white";
 
-/** The quiet unread mark: a 6px dot, never heavy black. */
+/** The quiet unread mark: a 7px accent dot (or the fork's own color). */
 function UnreadDot({ className }: { className?: string }) {
   return (
     <>
       <span
         aria-hidden="true"
-        className={cn("size-1.5 shrink-0 rounded-full bg-ink-2", className)}
+        className={cn("size-[7px] shrink-0 rounded-full bg-tint", className)}
       />
       <span className="sr-only">
         <Trans>Unread</Trans>
@@ -418,12 +476,12 @@ function UnreadDot({ className }: { className?: string }) {
 }
 
 /** A Goal's progress as a tiny ring (done of total), or a plain dot when it has no plan yet.
- * Waiting on the person, it takes the warning token. */
+ * Waiting on the person, it takes the waiting color. */
 function GoalProgress({ done, total, waiting }: { done: number; total: number; waiting: boolean }) {
   if (total === 0) {
     return (
       <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center">
-        <span className={cn("size-1.5 rounded-full", waiting ? "bg-warning" : "bg-ink-3")} />
+        <span className={cn("size-1.5 rounded-full", waiting ? "bg-sig-waiting" : "bg-ink-3")} />
       </span>
     );
   }
@@ -433,7 +491,10 @@ function GoalProgress({ done, total, waiting }: { done: number; total: number; w
     <svg
       aria-hidden="true"
       viewBox="0 0 14 14"
-      className={cn("size-3.5 shrink-0 -rotate-90", waiting ? "text-warning" : "text-ink-2")}
+      className={cn(
+        "size-3.5 shrink-0 -rotate-90",
+        waiting ? "text-sig-waiting" : "text-sig-goals",
+      )}
     >
       <circle cx="7" cy="7" r={radius} fill="none" strokeWidth="1.75" className="stroke-line" />
       <circle
@@ -452,8 +513,8 @@ function GoalProgress({ done, total, waiting }: { done: number; total: number; w
 }
 
 /**
- * The Side Chats, nested under the Conversation row they branch from (agreed behavior
- * #1): a small tree with a connector line, newest first, a pulsing dot while Nova is
+ * The Side Chats, under the Conversation row they branch from (agreed behavior #1): small
+ * rows with a 13px glyph under a "Side chats" header, newest first, a pulsing dot while Nova is
  * working in one, a "New side chat" row, and a collapsed-by-default Archived fold.
  * Nothing renders while the chats wire can't be reached (NOT_IMPLEMENTED): no heading,
  * no disabled button.
@@ -491,7 +552,7 @@ export function ChatTree({
     <div
       data-testid="chat-tree"
       aria-hidden={collapsed || undefined}
-      className="app-no-drag relative ms-[30px] flex flex-col border-s border-line py-1 ps-2.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
+      className={cn("app-no-drag relative flex flex-col gap-px", FADE)}
     >
       {onOpenFork && onShowForks ? (
         <ForkGroups
@@ -501,6 +562,11 @@ export function ChatTree({
           onOpenFork={onOpenFork}
           onShowForks={onShowForks}
         />
+      ) : null}
+      {live.length ? (
+        <div className={GROUP_LABEL}>
+          <Trans>Side chats</Trans>
+        </div>
       ) : null}
       {live.map((chat) => (
         <button
@@ -513,15 +579,10 @@ export function ChatTree({
             TWIG_ROW,
             activeChatId === chat.id
               ? TWIG_SELECTED
-              : cn(TWIG_HOVER, chat.unread ? "font-medium text-foreground" : "text-foreground/85"),
+              : cn(TWIG_HOVER, chat.unread ? "font-medium text-foreground" : "text-foreground"),
           )}
         >
-          <MessageCircle
-            size={14}
-            strokeWidth={1.75}
-            aria-hidden="true"
-            className="shrink-0 text-ink-3"
-          />
+          <ConversationGlyph className="size-[13px] shrink-0 text-ink-3" />
           <span className="min-w-0 flex-1 truncate" dir="auto">
             {chat.title}
           </span>
@@ -542,7 +603,7 @@ export function ChatTree({
           activeChatId === "draft" ? TWIG_SELECTED : cn("text-ink-2", TWIG_HOVER),
         )}
       >
-        <Plus size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+        <Plus size={13} strokeWidth={2} aria-hidden="true" className="shrink-0" />
         <span className="truncate">
           <Trans>New side chat</Trans>
         </span>
@@ -557,7 +618,7 @@ export function ChatTree({
             className={cn(TWIG_ROW, "text-ink-2", TWIG_HOVER)}
           >
             <ChevronRight
-              size={14}
+              size={13}
               strokeWidth={1.75}
               aria-hidden="true"
               className={cn("shrink-0 transition-transform", archivedOpen && "rotate-90")}
@@ -565,7 +626,7 @@ export function ChatTree({
             <span className="truncate">
               <Trans>Archived</Trans>
             </span>
-            <span className="ms-auto shrink-0 font-mono text-[11.5px] tabular-nums text-ink-3">
+            <span className="ms-auto shrink-0 text-[11.5px] tabular-nums text-ink-3">
               {archived.length}
             </span>
           </button>
@@ -579,7 +640,7 @@ export function ChatTree({
                   aria-current={activeChatId === chat.id ? "page" : undefined}
                   className={cn(
                     TWIG_ROW,
-                    "ps-[30px]",
+                    "ps-[34px]",
                     activeChatId === chat.id ? TWIG_SELECTED : cn("text-ink-2", TWIG_HOVER),
                   )}
                 >
@@ -632,23 +693,34 @@ function ForkGroups({
       onClick={() => onOpenFork(fork)}
       aria-current={activeForkId === fork.chatId ? "page" : undefined}
       className={cn(
-        "grid min-h-8 w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 rounded-[10px] px-2 py-1.5 text-start text-[13.5px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-        activeForkId === fork.chatId ? "bg-selection" : "hover:bg-selection/70",
+        "grid min-h-7 w-full grid-cols-[13px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg ps-3 pe-2.5 py-1 text-start text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+        activeForkId === fork.chatId ? TWIG_SELECTED : TWIG_HOVER,
       )}
     >
-      <BranchIcon className={FORK_TONE_CLASS[fork.tone].text} />
-      <span className="truncate font-medium text-foreground" dir="auto">
+      <ForkGlyph className={cn("size-[13px]", FORK_TONE_CLASS[fork.tone].text)} />
+      <span
+        className={cn("truncate", activeForkId === fork.chatId ? "text-white" : "text-foreground")}
+        dir="auto"
+      >
         {fork.title}
       </span>
       {fork.status === "live" ? (
         <LiveDot tone={fork.tone} className="size-1.5" />
       ) : fork.unread && activeForkId !== fork.chatId ? (
         <UnreadDot className={FORK_TONE_CLASS[fork.tone].bg} />
+      ) : fork.replies ? (
+        <Badge count={fork.replies} tone={FORK_TONE_CLASS[fork.tone].bg} />
       ) : (
         <span />
       )}
       {fork.anchorText ? (
-        <small className="col-start-2 col-end-4 truncate text-[12px] text-ink-3" dir="auto">
+        <small
+          className={cn(
+            "col-start-2 col-end-4 truncate text-[11.5px]",
+            activeForkId === fork.chatId ? "text-white/80" : "text-ink-3",
+          )}
+          dir="auto"
+        >
           {t`from “${fork.anchorText}”`}
         </small>
       ) : null}
@@ -663,11 +735,11 @@ function ForkGroups({
       onClick={() => onShowForks(filter)}
       className={cn(
         GROUP_LABEL,
-        "flex w-full items-center justify-between rounded-[10px] pb-2 text-start transition-colors hover:text-ink-2 focus-visible:outline-2 focus-visible:outline-ring",
+        "flex w-full items-center justify-between rounded-lg pb-2 text-start transition-colors hover:text-ink-2 focus-visible:outline-2 focus-visible:outline-ring",
       )}
     >
       <span className="truncate">{label}</span>
-      <span className="shrink-0 font-mono tabular-nums">{count}</span>
+      <span className="shrink-0 tabular-nums">{count}</span>
     </button>
   );
   return (
@@ -687,11 +759,7 @@ function ForkGroups({
               type="button"
               tabIndex={tab}
               onClick={() => onShowForks("open")}
-              className={cn(
-                TWIG_ROW,
-                "justify-between ps-[30px] text-[13px] text-ink-2",
-                TWIG_HOVER,
-              )}
+              className={cn(TWIG_ROW, "justify-between ps-[34px] text-ink-2", TWIG_HOVER)}
             >
               <span className="truncate">{t`${open.length - MAX_OPEN_FORKS} more open`}</span>
               <span aria-hidden="true" className="text-ink-3">
@@ -708,71 +776,49 @@ function ForkGroups({
 
 function RailRow({
   icon,
+  tint,
   label,
-  meta,
-  attention = false,
+  badge,
   current = false,
   quiet = false,
   collapsed,
   onClick,
-  onMouseEnter,
 }: {
   icon: ReactNode;
+  /** The glyph's color at rest (a section's signature color). */
+  tint?: string;
   label: string;
-  meta?: number;
-  attention?: boolean;
+  badge?: ReactNode;
   current?: boolean;
-  /** The footer's rows (Collapse, Settings): shorter, smaller, in the secondary ink. */
+  /** The footer's rows (Expand, Settings): in the secondary ink. */
   quiet?: boolean;
   collapsed: boolean;
   onClick: () => void;
-  onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const classes = cn(
     ROW,
     "group/row relative transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-    quiet
-      ? "h-9 text-[14px] text-ink-2 hover:bg-selection/70 hover:text-foreground"
-      : "text-[15px] font-medium",
-    !quiet &&
-      (current ? "bg-selection text-foreground" : "text-foreground/85 hover:text-foreground"),
+    current
+      ? "bg-tint font-medium text-white"
+      : quiet
+        ? "text-ink-2 hover:bg-selection hover:text-foreground"
+        : "text-foreground hover:bg-selection",
   );
   const content = (
     <>
       <span
         className={cn(
-          ICON_MOTION,
-          quiet && "[&_svg]:size-[18px]",
-          current
-            ? "text-foreground"
-            : quiet
-              ? "text-ink-3 group-hover/row:text-foreground"
-              : "text-ink-2 group-hover/row:text-foreground",
+          "relative grid size-[17px] shrink-0 place-items-center [&_svg]:size-[17px]",
+          current ? "text-white" : (tint ?? "text-ink-2"),
         )}
       >
         {icon}
-        {meta && collapsed ? (
-          <span
-            className={cn(
-              "absolute -top-2 -end-2.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-              attention ? "bg-warning text-background" : "bg-foreground text-background",
-            )}
-          >
-            {meta}
-          </span>
+        {badge && collapsed ? (
+          <span className="absolute -top-2 -end-2.5 scale-90">{badge}</span>
         ) : null}
       </span>
       <span className={LABEL}>{label}</span>
-      {meta && !collapsed ? (
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 font-mono text-[12px] font-medium tabular-nums",
-            attention ? "bg-warning/15 text-warning" : "text-ink-3",
-          )}
-        >
-          {meta}
-        </span>
-      ) : null}
+      {badge && !collapsed ? badge : null}
     </>
   );
   if (!collapsed) {
@@ -780,7 +826,6 @@ function RailRow({
       <button
         type="button"
         onClick={onClick}
-        onMouseEnter={onMouseEnter}
         aria-current={current ? "page" : undefined}
         className={classes}
       >
@@ -792,7 +837,6 @@ function RailRow({
     <Tooltip>
       <TooltipTrigger
         onClick={onClick}
-        onMouseEnter={onMouseEnter}
         aria-label={label}
         aria-current={current ? "page" : undefined}
         className={classes}

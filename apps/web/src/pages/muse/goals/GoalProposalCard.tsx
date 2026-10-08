@@ -1,8 +1,10 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { GoalProposal, GoalTask } from "@aiden/contracts";
-import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useState } from "react";
+import { SparkGlyph } from "../chrome/NovaGlyphs";
+import { NovaTile } from "../chrome/NovaTile";
+import { PRIMARY_BUTTON, QUIET_BUTTON } from "../ui";
 
 type ProposalDiff = {
   next: { title: string; added: boolean }[];
@@ -60,13 +62,15 @@ export function GoalProposalCard({
 
   const first = currentTasks.length === 0;
   return (
-    <section
-      data-testid="goal-proposal-card"
-      className="rounded-[22px] bg-card p-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_32px_-14px_rgb(0_0_0/0.16)] ring-1 ring-warning/30"
-    >
-      <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">
-        {first ? <Trans>Here's my plan</Trans> : <Trans>I'd like to change the plan</Trans>}
-      </h2>
+    <section data-testid="goal-proposal-card" className="nova-card p-4">
+      <div className="flex items-center gap-2.5">
+        <NovaTile tone="orange" size={28}>
+          <SparkGlyph />
+        </NovaTile>
+        <h2 className="text-[15px] font-semibold tracking-[-0.2px] text-foreground">
+          {first ? <Trans>Here's my plan</Trans> : <Trans>I'd like to change the plan</Trans>}
+        </h2>
+      </div>
       {!first && proposal.reason ? (
         <div className="mt-1 text-[14.5px] leading-[1.5] text-muted-foreground">
           <ChatMarkdown>{proposal.reason}</ChatMarkdown>
@@ -81,7 +85,7 @@ export function GoalProposalCard({
             <span className="min-w-0 flex-1 text-foreground" dir="auto">
               {item.title}
               {item.added && !first ? (
-                <span className="ms-2 text-[12.5px] font-medium text-success">
+                <span className="ms-2 text-[12.5px] font-medium text-ok">
                   <Trans>New</Trans>
                 </span>
               ) : null}
@@ -101,9 +105,18 @@ export function GoalProposalCard({
           </li>
         ))}
       </ol>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Button
-          className="rounded-full px-4"
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className={QUIET_BUTTON}
+          disabled={pending !== null}
+          onClick={() => void run("dismiss")}
+        >
+          {first ? <Trans>Not now</Trans> : <Trans>Keep current</Trans>}
+        </button>
+        <button
+          type="button"
+          className={PRIMARY_BUTTON}
           disabled={pending !== null}
           onClick={() => void run("accept")}
         >
@@ -114,15 +127,7 @@ export function GoalProposalCard({
           ) : (
             <Trans>Use the new plan</Trans>
           )}
-        </Button>
-        <Button
-          variant="ghost"
-          className="rounded-full px-4"
-          disabled={pending !== null}
-          onClick={() => void run("dismiss")}
-        >
-          {first ? <Trans>Not now</Trans> : <Trans>Keep current</Trans>}
-        </Button>
+        </button>
       </div>
       {error ? <p className="mt-3 text-[13px] text-destructive">{error}</p> : null}
     </section>

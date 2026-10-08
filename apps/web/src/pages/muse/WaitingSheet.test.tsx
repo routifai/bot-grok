@@ -30,6 +30,7 @@ vi.mock("@aiden/ui-web", () => ({
   SheetContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   SheetHeader: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
+  SheetDescription: ({ children }: { children?: ReactNode }) => <p>{children}</p>,
   BotAvatar: () => <span data-testid="muse-face" />,
   Button: (props: ComponentProps<"button">) => <button {...props} />,
   Input: (props: ComponentProps<"input">) => <input {...props} />,
@@ -146,10 +147,15 @@ it("answering a choice calls asks.answer with {askId, runId, answer} and removes
     });
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).not.toContain("Which evenings work?");
+        const open = page.container.querySelector("[data-testid='waiting-open']");
+        expect(open?.textContent).not.toContain("Which evenings work?");
       });
     });
     expect(api.answer).toHaveBeenCalledWith({ askId: "ask-1", runId: "run-1", answer: "mon" });
+    // It moves to this session's Decided list, with the choice made.
+    const decided = page.container.querySelector("[data-testid='waiting-decided']");
+    expect(decided?.textContent).toContain("Which evenings work?");
+    expect(decided?.textContent).toContain("Monday");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

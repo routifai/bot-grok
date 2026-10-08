@@ -6,7 +6,7 @@ import { rpc } from "../../lib/rpc";
 import { GoalDetail } from "./goals/GoalDetail";
 import { GoalList, GoalListSkeleton } from "./goals/GoalList";
 import type { GoalStarter } from "./goals/GoalsIntro";
-import { MuseColumn, MuseScreen } from "./ui";
+import { MuseColumn, MuseScreen, ScreenHeader } from "./ui";
 
 const GOAL_STARTERS: readonly GoalStarter[] = [
   {
@@ -92,7 +92,7 @@ export function GoalsScreen({
   const selectedGoal = goals?.find((goal) => goal.id === selectedGoalId) ?? null;
 
   return (
-    <MuseScreen>
+    <MuseScreen header={<ScreenHeader title={t`Goals`} dragRegion />}>
       {error ? (
         <MuseColumn>
           <p className="pt-12 text-[13.5px] text-destructive">{error}</p>
@@ -117,6 +117,7 @@ export function GoalsScreen({
           goals={goals}
           botName={botName ?? DEFAULT_MUSE_NAME}
           onSelect={setSelectedGoalId}
+          onChanged={handleChanged}
           avatarColor={avatarColor}
           starters={GOAL_STARTERS}
           onSendIdea={onSendIdea}

@@ -6,6 +6,7 @@ import type {
   Group,
   Routine,
   TaughtSkill,
+  ThreadMessage,
   ThreadSnapshot,
 } from "@aiden/contracts";
 import {
@@ -24,6 +25,7 @@ import {
 } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Menu, Monitor, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import {
   lazy,
   Suspense,
@@ -36,6 +38,7 @@ import {
 } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppRail, type MuseRailView } from "../components/AppRail";
+import { NovaPresenceProvider } from "../components/ai/orb";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
 import type { ArtifactTarget } from "../lib/artifact-open";
@@ -48,7 +51,7 @@ import { memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
 import { ApprovalCards } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
-import { ConversationHeader } from "./muse/chrome/ConversationHeader";
+import { ConversationHeader, TOOLBAR_BUTTON } from "./muse/chrome/ConversationHeader";
 import { conversationLayout } from "./muse/chrome/conversationLayout";
 import {
   EmptyConversationLead,
@@ -65,6 +68,8 @@ import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
 import { useChatList } from "./muse/chrome/useChatList";
 import { useCreateBot } from "./muse/chrome/useCreateBot";
+import type { MuseLiveRun } from "./muse/chrome/useMuseLiveState";
+import { useNovaWork } from "./muse/chrome/useNovaWork";
 import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
 import { useVoice } from "./muse/chrome/useVoice";
 import { ClearConversationHost } from "./muse/conversation/ClearConversationHost";
@@ -114,11 +119,26 @@ const PeerMessagesOverlay = lazy(() =>
 );
 const CallView = lazy(() => import("./CallView").then((module) => ({ default: module.CallView })));
 
-/** Muse glass shell (docs/muse/DESIGN.md "Background wash"): the floating panel look
- * shared by the main content area and the Conversation column inside it — a translucent
- * panel over the ground with a 1px line. Flush edge to edge on small screens; rounded
- * once there's room for the gaps around it. */
-const MUSE_GLASS_PANEL = "border border-line bg-panel backdrop-blur-xl md:rounded-[18px]";
+/** Nova's Mac window (docs/muse/DESIGN.md "Window"): the Conversation and the other screens
+ * sit flat on the rounded content window; only the sidebar, the inspector and side panels
+ * float as glass inside it. */
+/** Every orb brightens while Nova works (useNovaWork). */
+function NovaPresence({
+  botId,
+  runs,
+  messages,
+  children,
+}: {
+  botId: string;
+  runs: readonly MuseLiveRun[];
+  messages: readonly ThreadMessage[] | undefined;
+  children: ReactNode;
+}) {
+  const { orb } = useNovaWork({ botId, runs, messages });
+  return <NovaPresenceProvider state={orb}>{children}</NovaPresenceProvider>;
+}
+
+const MUSE_CONTENT_PANE = "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
 
 export function ShellPage() {
   const { t } = useLingui();
@@ -736,7 +756,7 @@ export function ShellPage() {
       data-ready={shellReady}
       className={
         museMode
-          ? "muse-wash relative flex h-full min-w-0 overflow-hidden text-foreground md:gap-3 md:p-3"
+          ? "nova-window relative flex h-full min-w-0 flex-1 overflow-hidden text-foreground"
           : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
       }
     >
@@ -751,6 +771,7 @@ export function ShellPage() {
       {active ? (
         <MuseSidebar
           botId={active.id}
+          museName={active.name}
           runs={currentRuns}
           messages={activeSnapshot?.messages}
           personName={bootstrapMe?.name}
@@ -822,13 +843,8 @@ export function ShellPage() {
           </div>
         ) : null}
         {museMode && active && museView === "conversation" && activeChat ? (
-          <div className="flex min-h-0 flex-1 gap-0 md:gap-3">
-            <div
-              className={cn(
-                "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                MUSE_GLASS_PANEL,
-              )}
-            >
+          <div className="flex min-h-0 flex-1">
+            <div className={MUSE_CONTENT_PANE}>
               <SideChatSession
                 chat={activeChat}
                 bot={{ id: active.id, name: active.name, color: active.color }}
@@ -848,12 +864,7 @@ export function ShellPage() {
             {chatArtifacts.panel}
           </div>
         ) : museMode && active && museView !== "conversation" ? (
-          <div
-            className={cn(
-              "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-              MUSE_GLASS_PANEL,
-            )}
-          >
+          <div className={MUSE_CONTENT_PANE}>
             {museView === "goals" ? (
               <GoalsScreen
                 botId={active.id}
@@ -884,17 +895,8 @@ export function ShellPage() {
             )}
           </div>
         ) : (
-          <div className={museMode && active ? "flex min-h-0 flex-1 gap-0 md:gap-3" : "contents"}>
-            <div
-              className={
-                museMode && active
-                  ? cn(
-                      "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                      MUSE_GLASS_PANEL,
-                    )
-                  : "contents"
-              }
-            >
+          <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
+            <div className={museMode && active ? MUSE_CONTENT_PANE : "contents"}>
               {/* Behind a fork's thread view or "lift and ask", the Conversation is out of reach. */}
               <div className="contents" inert={forkOverlayOpen || undefined}>
                 {museMode && active ? (
@@ -909,13 +911,16 @@ export function ShellPage() {
                     // below `xl`), this header's compact identity covers it instead.
                     identityCollapsed={contextPanelCollapsed || panel !== null}
                     onOpenWaiting={() => setWaitingOpen(true)}
+                    isNew={startPage}
                     project={conversationProject}
                     onOpenProject={openProjectFiles}
+                    leading={
+                      forks.rows.length || forksView ? (
+                        <ForkViewSwitch view={forks.view} onChange={forks.setView} />
+                      ) : undefined
+                    }
                     actions={
                       <>
-                        {forks.rows.length || forksView ? (
-                          <ForkViewSwitch view={forks.view} onChange={forks.setView} />
-                        ) : null}
                         <button
                           type="button"
                           title={
@@ -926,12 +931,12 @@ export function ShellPage() {
                           }
                           aria-pressed={!contextPanelCollapsed}
                           onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                          className="hidden size-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring xl:grid"
+                          className={cn(TOOLBAR_BUTTON, "hidden xl:grid")}
                         >
                           {contextPanelCollapsed ? (
-                            <PanelRightOpen size={17} strokeWidth={1.75} />
+                            <PanelRightOpen strokeWidth={1.75} />
                           ) : (
-                            <PanelRightClose size={17} strokeWidth={1.75} />
+                            <PanelRightClose strokeWidth={1.75} />
                           )}
                         </button>
                         <button
@@ -947,9 +952,9 @@ export function ShellPage() {
                             }
                           }}
                           data-active={panel === "computer" ? "" : undefined}
-                          className="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-selection hover:text-foreground data-active:bg-selection data-active:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                          className={TOOLBAR_BUTTON}
                         >
-                          <Monitor size={17} strokeWidth={1.75} />
+                          <Monitor strokeWidth={1.75} />
                         </button>
                       </>
                     }
@@ -1238,12 +1243,12 @@ export function ShellPage() {
         data-testid="side-panel"
         data-panel={panel ?? "closed"}
         className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
-          museMode ? "border-line bg-panel backdrop-blur-xl" : "bg-background"
+          museMode ? "nova-glass" : "bg-background"
         } ${
           panel && (active || activeGroup || panel === "create")
             ? museMode
               ? // Muse: an inset panel like <main>; the computer gets room for a real preview.
-                `w-full md:rounded-[18px] md:border ${
+                `w-full md:m-2 ${
                   panel === "computer"
                     ? "max-w-[520px] md:w-[520px] md:max-w-none"
                     : "max-w-[400px] md:w-[400px] md:max-w-none"
@@ -1404,7 +1409,26 @@ export function ShellPage() {
 
   return (
     <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>
-      <ArtifactPanelProvider value={chatArtifacts.api}>{shell}</ArtifactPanelProvider>
+      <ArtifactPanelProvider value={chatArtifacts.api}>
+        {museMode ? (
+          // The window ground around Nova's rounded content window.
+          <div className="muse-wash flex h-full md:p-2">
+            {active ? (
+              <NovaPresence
+                botId={active.id}
+                runs={currentRuns}
+                messages={activeSnapshot?.messages}
+              >
+                {shell}
+              </NovaPresence>
+            ) : (
+              shell
+            )}
+          </div>
+        ) : (
+          shell
+        )}
+      </ArtifactPanelProvider>
     </AvatarStyleProvider>
   );
 }

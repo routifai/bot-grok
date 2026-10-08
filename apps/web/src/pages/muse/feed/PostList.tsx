@@ -1,93 +1,93 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import type { Post } from "@aiden/contracts";
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
-import { BotAvatar, Button, Sheet, SheetContent, SheetHeader, SheetTitle } from "@aiden/ui-web";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Globe } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
-import { MUSE_TYPE, Section, Surface } from "../ui";
+import { MUSE_TYPE, QUIET_BUTTON, Section } from "../ui";
 import { groupPostsByRecency, postPreview } from "./format";
 
-// "Finished while you were away" (docs/muse/DESIGN.md): a Goal report, in the same plain
-// card as every other Post — no accent bar, just the Muse's own face marking whose work
-// this is.
-function GoalReportCard({ post, avatarColor }: { post: Post; avatarColor?: string }) {
-  const { t } = useLingui();
-  return (
-    <Surface className="flex flex-col gap-3 p-5">
-      <h3 className={MUSE_TYPE.cardTitle}>{post.title}</h3>
-      <div className={MUSE_TYPE.body}>
-        <ChatMarkdown>{post.body}</ChatMarkdown>
-      </div>
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <span className={`flex items-center gap-2 ${MUSE_TYPE.meta}`}>
-          <BotAvatar
-            color={avatarColor ?? DEFAULT_MUSE_COLOR}
-            identity="aiden"
-            face="muse"
-            size={18}
-          />
-          {t`From your goal · ${formatRelativeTime(post.createdAt)}`}
-        </span>
-        {post.goalId ? (
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            <Trans>Open goal</Trans>
-          </Button>
-        ) : null}
-      </div>
-    </Surface>
-  );
-}
+type TileTone = "blue" | "warm" | "pink" | "green";
+const TOPIC_TONES: TileTone[] = ["blue", "warm", "pink"];
 
-// "Found for you" (docs/muse/DESIGN.md): a finding on a Followed topic. The engine writes
-// markdown, so the card shows a plain preview (first heading as the title, the topic as the
-// quiet meta line, domain chips for its sources) and a tap opens the full text.
-function TopicCard({ post }: { post: Post }) {
+/**
+ * One Post as a media tile (docs/muse/DESIGN.md "Feed"): a dark card with a colored glow, a
+ * small uppercase kicker (the topic, or "From your goal") with the time, the title, a short
+ * preview, its sources, and a white "Read" pill that opens the full text. A Goal report glows
+ * green; topic findings cycle blue, warm and pink.
+ */
+function PostTile({ post, index }: { post: Post; index: number }) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
+  const goalReport = post.kind === "goal_report";
   const { heading, text, sources } = useMemo(
-    () => postPreview(post.body, post.sourceUrl),
-    [post.body, post.sourceUrl],
+    () => postPreview(post.body, goalReport ? null : post.sourceUrl),
+    [post.body, post.sourceUrl, goalReport],
   );
-  const title = heading ?? post.title;
-  const meta = [heading ? post.title : null, formatRelativeTime(post.createdAt)]
-    .filter(Boolean)
-    .join(" · ");
+  const title = goalReport ? post.title : (heading ?? post.title);
+  const when = formatRelativeTime(post.createdAt);
+  const kicker = goalReport
+    ? t`From your goal · ${when}`
+    : [heading ? post.title : null, when].filter(Boolean).join(" · ");
+  const tone: TileTone = goalReport ? "green" : (TOPIC_TONES[index % TOPIC_TONES.length] ?? "blue");
+  const body = goalReport
+    ? post.body
+    : heading
+      ? post.body.replace(/^\s*#{1,6}\s+.*\n*/, "")
+      : post.body;
+
   return (
-    <Surface className="flex flex-col gap-3 p-5">
+    <article
+      data-testid="feed-post"
+      data-tone={tone}
+      className="nova-media relative flex min-h-[230px] min-w-0 flex-col justify-between gap-4 overflow-hidden rounded-[28px] p-[22px] text-white"
+    >
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="-m-1 flex flex-col gap-3 rounded-xl p-1 text-start focus-visible:outline-2 focus-visible:outline-ring"
+        className="-m-1 flex flex-col gap-1.5 rounded-2xl p-1 text-start focus-visible:outline-2 focus-visible:outline-ring"
       >
-        <span className="flex flex-col gap-1">
-          <span className={`line-clamp-2 ${MUSE_TYPE.cardTitle}`} dir="auto">
-            {title}
-          </span>
-          <span className={`truncate ${MUSE_TYPE.meta}`}>{meta}</span>
+        <span className="truncate text-[12px] font-semibold tracking-[0.02em] text-white/80 uppercase">
+          {kicker}
+        </span>
+        <span
+          className="line-clamp-3 text-[22px] leading-[1.15] font-semibold tracking-[0.1px] text-balance"
+          dir="auto"
+        >
+          {title}
         </span>
         {text ? (
-          <span className={`line-clamp-3 ${MUSE_TYPE.body}`} dir="auto">
+          <span className="line-clamp-2 text-[13.5px] leading-[1.4] text-white/75" dir="auto">
             {text}
           </span>
         ) : null}
       </button>
-      {sources.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {sources.map((source) => (
-            <a
-              key={source.url}
-              href={source.url}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Globe size={12} strokeWidth={1.75} aria-hidden="true" />
-              {source.host}
-            </a>
-          ))}
-        </div>
-      ) : null}
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="h-10 shrink-0 rounded-full bg-white px-5 text-[15px] font-medium tracking-[-0.24px] text-black transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {t`Read`}
+        </button>
+        {sources.length > 0 ? (
+          <span className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-[12.5px] text-white/75">
+            {sources.map((source) => (
+              <a
+                key={source.url}
+                href={source.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1 rounded-full transition-colors hover:text-white"
+              >
+                <Globe size={12} strokeWidth={1.75} aria-hidden="true" />
+                {source.host}
+              </a>
+            ))}
+          </span>
+        ) : null}
+      </div>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:sm:inset-y-3 data-[side=right]:sm:right-3 data-[side=right]:sm:h-auto data-[side=right]:sm:max-w-[560px] data-[side=right]:sm:rounded-3xl data-[side=right]:sm:border data-[side=right]:sm:border-border data-[side=right]:sm:shadow-float">
           <SheetHeader className="gap-1 px-6 pe-14 pt-6 pb-2">
@@ -97,39 +97,31 @@ function TopicCard({ post }: { post: Post }) {
             >
               {title}
             </SheetTitle>
-            <span className={MUSE_TYPE.meta}>{meta}</span>
+            <span className={MUSE_TYPE.meta}>{kicker}</span>
           </SheetHeader>
           <div
             data-fade-top=""
             className={`rk-scroll flex-1 overflow-y-auto px-6 pt-3 pb-6 ${MUSE_TYPE.body}`}
             dir="auto"
           >
-            <ChatMarkdown>
-              {heading ? post.body.replace(/^\s*#{1,6}\s+.*\n*/, "") : post.body}
-            </ChatMarkdown>
+            <ChatMarkdown>{body}</ChatMarkdown>
           </div>
         </SheetContent>
       </Sheet>
-    </Surface>
+    </article>
   );
 }
 
-function PostCard({ post, avatarColor }: { post: Post; avatarColor?: string }) {
-  return post.kind === "goal_report" ? (
-    <GoalReportCard post={post} avatarColor={avatarColor} />
-  ) : (
-    <TopicCard post={post} />
-  );
-}
+const POST_GRID = "grid grid-cols-1 gap-3.5 md:grid-cols-[1.4fr_1fr]";
 
 export function PostList({
   posts,
-  avatarColor,
   nextCursor,
   loadingMore,
   onLoadMore,
 }: {
   posts: Post[];
+  /** Kept for callers; Posts no longer show the Muse's face. */
   avatarColor?: string;
   nextCursor: string | null;
   loadingMore: boolean;
@@ -139,30 +131,35 @@ export function PostList({
   const { today, earlier } = useMemo(() => groupPostsByRecency(posts), [posts]);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       {today.length > 0 ? (
         <Section title={t`Today`}>
-          <div className="flex flex-col gap-3">
-            {today.map((post) => (
-              <PostCard key={post.id} post={post} avatarColor={avatarColor} />
+          <div className={POST_GRID}>
+            {today.map((post, index) => (
+              <PostTile key={post.id} post={post} index={index} />
             ))}
           </div>
         </Section>
       ) : null}
       {earlier.length > 0 ? (
         <Section title={t`Earlier`}>
-          <div className="flex flex-col gap-3">
-            {earlier.map((post) => (
-              <PostCard key={post.id} post={post} avatarColor={avatarColor} />
+          <div className={POST_GRID}>
+            {earlier.map((post, index) => (
+              <PostTile key={post.id} post={post} index={today.length + index} />
             ))}
           </div>
         </Section>
       ) : null}
       {nextCursor ? (
         <div className="flex justify-center">
-          <Button variant="outline" size="sm" disabled={loadingMore} onClick={onLoadMore}>
+          <button
+            type="button"
+            className={QUIET_BUTTON}
+            disabled={loadingMore}
+            onClick={onLoadMore}
+          >
             {loadingMore ? <Trans>Loading…</Trans> : <Trans>Load more</Trans>}
-          </Button>
+          </button>
         </div>
       ) : null}
     </div>

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { artifactKind, KIND_ICON } from "../lib/artifact-kind";
 import { decodeArtifactBase64 } from "../lib/artifact-open";
@@ -27,6 +27,16 @@ export type PreviewableArtifact = {
   /** Included when known, so an edited artifact's cached bytes don't stick around under the same id. */
   version?: number;
 };
+
+/** Whether this artifact gets a real rendered thumbnail (a small image or page), rather than
+ * its type icon. */
+export function hasLivePreview(artifact: Pick<PreviewableArtifact, "mimeType" | "size">): boolean {
+  const kind = artifactKind(artifact.mimeType);
+  return (
+    (kind === "image" && artifact.size <= IMAGE_PREVIEW_MAX_BYTES) ||
+    (kind === "page" && artifact.size <= HTML_PREVIEW_MAX_BYTES)
+  );
+}
 
 function cacheKey(artifact: PreviewableArtifact): string {
   return artifact.version !== undefined ? `${artifact.id}:${artifact.version}` : artifact.id;
@@ -95,16 +105,17 @@ function useCoverScale(viewportWidth: number): [RefObject<HTMLDivElement | null>
 export function ArtifactPreviewThumbnail({
   artifact,
   onReady,
+  fallback,
 }: {
   artifact: PreviewableArtifact;
+  /** Drawn instead of the type icon while there is no real preview. */
+  fallback?: ReactNode;
   /** Fires once the real preview has content to show, so a card can fade its skeleton out. */
   onReady?: () => void;
 }) {
   const kind = artifactKind(artifact.mimeType);
   const [ref, near] = useNearViewport();
-  const eligible =
-    (kind === "image" && artifact.size <= IMAGE_PREVIEW_MAX_BYTES) ||
-    (kind === "page" && artifact.size <= HTML_PREVIEW_MAX_BYTES);
+  const eligible = hasLivePreview(artifact);
   const [bytes, setBytes] = useState<Uint8Array | null>(
     () => bytesCache.get(cacheKey(artifact)) ?? null,
   );
@@ -146,7 +157,7 @@ export function ArtifactPreviewThumbnail({
       ) : bytes && kind === "page" ? (
         <ScaledHtmlThumbnail bytes={bytes} title={artifact.name} onReady={onReady} />
       ) : (
-        <Icon size={36} strokeWidth={1.5} className="text-muted-foreground/50" />
+        (fallback ?? <Icon size={36} strokeWidth={1.5} className="text-muted-foreground/50" />)
       )}
     </div>
   );

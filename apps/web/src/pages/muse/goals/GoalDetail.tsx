@@ -28,14 +28,13 @@ import { GoalRing, GoalStep, stepStateOf } from "./visuals";
 
 export function GoalDetail({
   goal,
-  color,
   onBack,
   onChanged,
   onPlanIt,
 }: {
   goal: Goal;
-  /** The Muse's color, for the progress ring. */
-  color: string;
+  /** Kept for callers; the ring uses the Goals signature color. */
+  color?: string;
   onBack: () => void;
   onChanged: (updated: Goal) => void;
   /** Asks the Muse, in the Conversation, to propose a plan for this Goal. */
@@ -158,7 +157,7 @@ export function GoalDetail({
       </div>
 
       <div className="mt-5 flex items-center gap-5">
-        <GoalRing value={total > 0 ? done / total : 0} color={color} size="lg" />
+        <GoalRing value={total > 0 ? done / total : 0} toneClass="stroke-sig-goals" size="lg" />
         <div className="min-w-0 flex-1">
           <h1 className={MUSE_TYPE.pageTitle} dir="auto">
             {goal.title}
@@ -204,10 +203,7 @@ export function GoalDetail({
 
       {orderedTasks.length > 0 ? (
         <Section title={<Trans>Plan</Trans>} className="mt-10">
-          <ul
-            data-testid="goal-task-list"
-            className="rounded-[22px] bg-card px-5 py-3 ring-1 ring-border/50"
-          >
+          <ul data-testid="goal-task-list" className="nova-card px-5 py-3">
             {orderedTasks.map((task) => (
               <GoalStep
                 key={task.id}

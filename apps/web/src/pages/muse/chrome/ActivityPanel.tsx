@@ -43,9 +43,10 @@ function ActivityRow({
   const live = isRunning(activity);
   const duration = live ? activityDurationMs(activity, now) : null;
   return (
-    <div className="flex flex-col">
+    <>
       <ActivityLine
         status={activity.status}
+        source={activity.source}
         title={presentActivityTitle(activity.title)}
         meta={
           live ? (
@@ -82,14 +83,16 @@ function ActivityRow({
           ))}
         </ActivityBranch>
       ) : null}
-    </div>
+    </>
   );
 }
 
 const EMPTY_ACTIVITIES: Activity[] = [];
 
-/** A group's label ("Working now", "Today"): small, quiet, on the rows' text edge. */
-const GROUP_LABEL = "px-2 pb-0.5 text-[11.5px] font-semibold text-ink-3";
+/** A grouped list's header ("Working now 2", "Today"): 13px semibold ink, a quiet count. */
+export const GROUP_LABEL =
+  "px-1.5 pt-1 text-[13px] font-semibold tracking-[-0.1px] text-foreground";
+const GROUP_COUNT = "ms-1 font-normal text-ink-3 tabular-nums";
 
 /** How long the skeleton may stand in before the panel settles on its empty line instead. */
 export const ACTIVITY_LOADING_GRACE_MS = 4_000;
@@ -121,7 +124,7 @@ function useLoadingOverdue(loading: boolean): boolean {
 function EmptyActivities() {
   const { t } = useLingui();
   return (
-    <p className="py-2 text-[13px] text-ink-3" data-testid="activity-empty">
+    <p className="px-3 py-8 text-center text-[12.5px] text-ink-3" data-testid="activity-empty">
       {t`Nothing yet — once I do something, it shows up here.`}
     </p>
   );
@@ -192,11 +195,14 @@ export function ActivityPanel({
   }
 
   return (
-    <div className="-mx-2 flex flex-col gap-5" data-testid="activity-panel">
+    <div className="flex flex-col gap-4" data-testid="activity-panel">
       {working.length > 0 ? (
-        <section className="flex flex-col gap-1" data-testid="activity-working">
-          <h3 className={GROUP_LABEL}>{t`Working now`}</h3>
-          <div className="flex flex-col gap-0.5">
+        <section className="flex flex-col gap-1.5" data-testid="activity-working">
+          <h3 className={GROUP_LABEL}>
+            {t`Working now`}
+            <span className={GROUP_COUNT}>{working.length}</span>
+          </h3>
+          <div className="nova-group">
             {working.map((node) => (
               <ActivityRow
                 key={node.activity.id}
@@ -209,7 +215,7 @@ export function ActivityPanel({
         </section>
       ) : null}
       {groups.map((group) => (
-        <section key={group.date} className="flex flex-col gap-1">
+        <section key={group.date} className="flex flex-col gap-1.5">
           <h3 className={GROUP_LABEL}>
             {group.label.kind === "today"
               ? t`Today`
@@ -217,7 +223,7 @@ export function ActivityPanel({
                 ? t`Yesterday`
                 : group.label.text}
           </h3>
-          <div className="flex flex-col gap-0.5">
+          <div className="nova-group">
             {group.activities.map((activity) => (
               <ActivityRow
                 key={activity.id}

@@ -1,5 +1,6 @@
 import { ChatMarkdown } from "@aiden/chat-ui/web";
 import { isAttachmentImageMimeType } from "@aiden/contracts";
+import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import { File, FileText, Presentation, Table2 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
@@ -51,7 +52,10 @@ export function ArtifactInlinePreview({
   size,
   version,
   onFailed,
+  className,
 }: {
+  /** Overrides the box (the result tile frames it smaller). */
+  className?: string;
   artifactId: string;
   name: string;
   kind?: string;
@@ -104,7 +108,10 @@ export function ArtifactInlinePreview({
       ref={ref}
       data-testid="artifact-preview"
       data-preview={state.status === "ready" ? previewKind(mimeType) : "cover"}
-      className="relative h-[200px] overflow-hidden rounded-lg border border-border bg-muted/40 sm:h-[260px]"
+      className={cn(
+        "relative h-[200px] overflow-hidden rounded-lg border border-border bg-muted/40 sm:h-[260px]",
+        className,
+      )}
     >
       {state.status === "ready" ? (
         <PreviewBody name={name} kind={kind} size={size} {...state} />

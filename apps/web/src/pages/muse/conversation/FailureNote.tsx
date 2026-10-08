@@ -31,17 +31,10 @@ export function useFailureNoteText(): (code: string) => string {
   };
 }
 
-const ROW = "flex min-h-7 items-center gap-2 text-[13.5px] leading-[1.4] text-ink-2";
+const ROW = "flex min-h-7 items-center gap-1.5 text-[12.5px] leading-[1.4] text-ink-3";
 
 function FailureIcon() {
-  return (
-    <CircleAlert
-      size={14}
-      strokeWidth={1.75}
-      aria-hidden="true"
-      className="shrink-0 text-destructive/75"
-    />
-  );
+  return <CircleAlert size={13} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />;
 }
 
 /** One failed reply as a quiet inline row on Nova's side: a small mark and the note. */
@@ -84,7 +77,7 @@ export function FailureRun({ messages }: { messages: readonly ThreadMessage[] })
           aria-expanded={open}
           aria-controls={listId}
           onClick={() => setOpen((value) => !value)}
-          className="rounded-md px-1.5 py-0.5 text-[12.5px] font-medium text-ink-3 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          className="rounded-md px-1 py-0.5 text-[12.5px] text-link transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-ring"
         >
           {open ? t`Hide` : t`Show`}
         </button>

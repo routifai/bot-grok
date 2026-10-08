@@ -1,88 +1,92 @@
 import type { ThreadMessage } from "@aiden/contracts";
-import { BotAvatar, cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
 import type { ReactNode } from "react";
+import { NovaOrb } from "../../../components/ai/orb";
 import { MuseLiveStatus } from "./MuseLiveStatus";
 import { type ChatProject, ProjectChip } from "./ProjectChip";
 import type { MuseLiveRun } from "./useMuseLiveState";
 
+/** A button inside the toolbar's glass pill group. */
+export const TOOLBAR_BUTTON =
+  "grid h-7 min-w-[30px] place-items-center rounded-full px-2.5 text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring data-active:bg-selection data-active:text-foreground [&_svg]:size-[15px]";
+
+/** The toolbar's glass pill that groups its buttons, Mac style. */
+export function ToolbarGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="nova-glass-pill inline-flex h-8 items-center gap-px rounded-full p-0.5">
+      {children}
+    </div>
+  );
+}
+
 /**
- * The Conversation's header (docs/muse/DESIGN.md "Conversation" / "Status"): a 56px strip
- * above the transcript with a hairline underneath.
- * A compact identity (face + name) sits at the start whenever the context panel's own
- * Agent Identity header isn't visible (`identityCollapsed`: collapsed, a side panel
- * open, or below `xl` — ContextPanel.tsx), so the Muse's identity still shows exactly
- * once, whichever of the two layouts is active. The live Muse indicator sits in the
- * center (nothing while idle) beside a quiet "Working in" chip when a Project is open, and
- * quiet round controls (the context panel, the
- * computer) sit on the right.
+ * The Conversation's toolbar (docs/muse/DESIGN.md "Window"): 56px, no hairline. The title
+ * with a quiet subtitle beside it (Nova's live status while it works, "New" on the start
+ * page), and the header actions on the right in one glass pill group. Below `xl`, where the
+ * inspector and its Nova header are hidden, a small orb leads the title so Nova still shows.
  */
 export function ConversationHeader({
   botId,
-  museName,
   color,
   runs,
   messages,
   actions,
+  leading,
   identityCollapsed,
+  isNew = false,
   onOpenWaiting,
   project,
   onOpenProject,
 }: {
   botId: string;
-  museName: string;
+  /** Kept for callers; the orb replaced the colored face. */
+  museName?: string;
   color: string;
   runs: readonly MuseLiveRun[];
   messages: readonly ThreadMessage[] | undefined;
+  /** Buttons for the glass pill group. */
   actions?: ReactNode;
-  /** Whether the context panel's own identity header isn't visible right now, so this
-   * header's compact identity should show instead. */
+  /** Controls that sit before the pill group (the Chat | Forks switch). */
+  leading?: ReactNode;
+  /** Whether the inspector's own Nova header isn't visible right now. */
   identityCollapsed: boolean;
+  /** The empty start page: the subtitle reads "New". */
+  isNew?: boolean;
   onOpenWaiting?: () => void;
   project?: ChatProject | null;
   onOpenProject?: (project: ChatProject) => void;
 }) {
   const { t } = useLingui();
   return (
-    <div className="app-drag pointer-events-none relative z-10 flex h-14 shrink-0 items-center justify-center border-b border-line px-4 md:px-6">
-      <div
+    <div className="app-drag relative z-10 flex h-14 shrink-0 items-center gap-2.5 ps-5 pe-4">
+      <span
         data-testid="conversation-header-compact-identity"
-        className={cn(
-          "app-no-drag pointer-events-auto absolute inset-y-0 start-4 flex min-w-0 items-center gap-2 md:start-6",
-          // Forced-collapsed (`identityCollapsed`): the context panel never shows, at any
-          // width, so this stays visible unconditionally. Otherwise it only fills in
-          // below `xl`, where the context panel's own header disappears on its own.
-          !identityCollapsed && "xl:hidden",
-        )}
+        className={identityCollapsed ? "flex" : "flex xl:hidden"}
       >
-        <BotAvatar color={color} identity={botId} face="muse" size={28} />
-        <span className="truncate text-[15px] font-semibold text-foreground" dir="auto">
-          {museName}
-        </span>
-      </div>
-      {identityCollapsed ? null : (
-        // Wherever the compact identity hides (the context panel shows the Muse instead),
-        // the strip names the view, as the rail does.
-        <h1
-          data-testid="conversation-header-title"
-          className="pointer-events-none absolute inset-y-0 start-4 hidden items-center text-[15px] font-semibold text-foreground md:start-6 xl:flex"
-        >
-          {t`Conversation`}
-        </h1>
-      )}
-      <div className="app-no-drag pointer-events-auto flex items-center gap-2">
-        {project && onOpenProject ? <ProjectChip project={project} onOpen={onOpenProject} /> : null}
+        <NovaOrb size={22} />
+      </span>
+      <h1
+        data-testid="conversation-header-title"
+        className="shrink-0 text-[15px] font-semibold tracking-[-0.2px] text-foreground"
+      >
+        {t`Conversation`}
+      </h1>
+      <div className="app-no-drag flex min-w-0 items-center gap-2 text-[12px] text-ink-3">
         <MuseLiveStatus
           botId={botId}
           color={color}
           runs={runs}
           messages={messages}
           onOpenWaiting={onOpenWaiting}
+          fallback={isNew ? t`New` : null}
         />
+        {project && onOpenProject ? <ProjectChip project={project} onOpen={onOpenProject} /> : null}
       </div>
-      {actions ? (
-        <div className="app-no-drag pointer-events-auto absolute inset-y-0 end-4 flex items-center gap-1.5 md:end-6">
-          {actions}
+      <span className="flex-1" />
+      {leading || actions ? (
+        <div className="app-no-drag flex shrink-0 items-center gap-2">
+          {leading}
+          {actions ? <ToolbarGroup>{actions}</ToolbarGroup> : null}
         </div>
       ) : null}
     </div>

@@ -47,17 +47,17 @@ export function ForkUnderMessage({
           type="button"
           data-testid="fork-summary"
           onClick={() => open(block.forkId)}
-          className="flex max-w-[560px] items-start gap-2 rounded-xl bg-selection px-3 py-2 text-start text-[13.5px] leading-[1.5] text-ink-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex max-w-[560px] items-start gap-2 rounded-xl bg-window px-3.5 py-2.5 text-start text-[13.5px] leading-[1.45] text-ink-2 transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring"
         >
           <Check
-            size={14}
-            strokeWidth={2}
+            size={13}
+            strokeWidth={2.2}
             aria-hidden="true"
-            className="mt-[3px] shrink-0 text-success"
+            className="mt-[3px] shrink-0 text-ok"
           />
           <span dir="auto">
             <Trans>From a fork:</Trans>{" "}
-            <span className="font-medium text-foreground">{block.summary}</span>
+            <span className="font-semibold text-foreground">{block.summary}</span>
           </span>
         </button>
       ))}
@@ -71,7 +71,7 @@ export function ForkUnderMessage({
           <ReplyCurve tone={under.tone} />
           <span
             className={cn(
-              "min-w-0 truncate font-semibold",
+              "min-w-0 truncate",
               under.tone === "done" ? "text-ink-2" : FORK_TONE_CLASS[under.tone].text,
             )}
             dir="auto"
