@@ -244,22 +244,31 @@ class SandboxInferenceService:
                     raise OmnigentError(KEY_REQUIRED_MESSAGE, code=ErrorCode.MODEL_KEY_REQUIRED)
             else:
                 proxy_url = _endpoint(f"{target.server_url.rstrip('/')}/v1/model/{saved[0]}")
+                # Anthropic Messages at the proxy root serves claude-sdk (and pi's Claude ids).
+                # OpenRouter also serves any other model on Chat Completions, which pi uses at
+                # ``<proxy>/v1`` (pi appends ``/chat/completions``): the openai family.
                 for name in model_names:
                     model_providers[name] = saved[0]
-                    family = raw["providers"][name].get("anthropic", {})
+                    entry_raw = raw["providers"][name]
+                    keep = {"models", "pricing", "context_window", "max_output_tokens"}
+                    families = {"anthropic": {"base_url": proxy_url}}
+                    if saved[0] == "openrouter":
+                        families["openai"] = {"base_url": f"{proxy_url}/v1", "wire_api": "chat"}
                     runtime["providers"][name] = {
                         "kind": "gateway",
-                        "default": raw["providers"][name].get("default", False),
-                        "display_name": raw["providers"][name].get("display_name"),
-                        "anthropic": {
-                            **{
-                                key: value
-                                for key, value in family.items()
-                                if key
-                                in {"models", "pricing", "context_window", "max_output_tokens"}
-                            },
-                            "base_url": proxy_url,
-                            "auth_command": MODEL_PROXY_AUTH_COMMAND,
+                        "default": entry_raw.get("default", False),
+                        "display_name": entry_raw.get("display_name"),
+                        **{
+                            family_name: {
+                                **{
+                                    key: value
+                                    for key, value in entry_raw.get(family_name, {}).items()
+                                    if key in keep
+                                },
+                                **extra,
+                                "auth_command": MODEL_PROXY_AUTH_COMMAND,
+                            }
+                            for family_name, extra in families.items()
                         },
                     }
         if bound is not None and bound.kind == "databricks" and bound.connection != "databricks":

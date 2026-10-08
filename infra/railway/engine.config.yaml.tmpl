@@ -41,8 +41,22 @@ sandbox:
       #     api_key_ref: env:ANTHROPIC_API_KEY
     inference:
       harnesses:
-        # pi is left unbound (it still expects a key in its env); bind it here once verified.
         claude-sdk:
           provider: byok          # operator-key self-hosting: provider: operator
           model_allowlist: [claude-sonnet-5-5, claude-haiku-4-5]
+          default_model: claude-sonnet-5-5
+        # pi is the hosted default Muse harness (Dockerfile.engine: nova-pi). With an Anthropic key
+        # it speaks Anthropic Messages through /v1/model/anthropic; with an OpenRouter key it
+        # speaks Chat Completions through /v1/model/openrouter/v1. Anthropic ids and OpenRouter
+        # ids share this list (the person's model picker offers all of them; use ids that match
+        # the provider of the saved key). Per-person model choice is a separate design.
+        pi:
+          provider: byok
+          model_allowlist:
+            - claude-sonnet-5-5
+            - claude-haiku-4-5
+            - deepseek/deepseek-chat
+            - qwen/qwen3-coder
+            - moonshotai/kimi-k2
+            - anthropic/claude-sonnet-4.5
           default_model: claude-sonnet-5-5
