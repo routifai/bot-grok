@@ -17,11 +17,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import type { MuseRailView as MuseView } from "../../../components/AppRail";
 import { NovaOrb, useIsDesktop, useOrbHome } from "../../../components/ai/orb";
 import { rpc } from "../../../lib/rpc";
-import {
-  FORK_TONE_CLASS,
-  type ForkFilter,
-  type ForkRow,
-} from "../forks/forkModel";
+import { FORK_TONE_CLASS, type ForkFilter, type ForkRow } from "../forks/forkModel";
 import { LiveDot } from "../forks/forkParts";
 import {
   ConversationGlyph,
@@ -51,8 +47,7 @@ const LABEL =
 const FADE =
   "transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0";
 /** A section's header in the sidebar ("Nova", "Side chats", "Open · 2", "Goals"). */
-const GROUP_LABEL =
-  "px-2.5 pt-3.5 pb-1 text-[11px] font-bold whitespace-nowrap text-ink-3";
+const GROUP_LABEL = "px-2.5 pt-3.5 pb-1 text-[11px] font-bold whitespace-nowrap text-ink-3";
 
 /** Whether the person collapsed the desktop sidebar, remembered across sessions. The shell
  * owns it, since the orb's home depends on it (components/ai/orb/placement.tsx). */
@@ -79,13 +74,7 @@ export function useSidebarCollapsed() {
 
 /** A count: a red capsule for what waits on the person, else a plain number in the secondary
  * ink (white on the selected row), the way Mail and Notes count in their sidebars. */
-function Badge({
-  count,
-  tone = "quiet",
-}: {
-  count: number;
-  tone?: "alert" | "quiet";
-}) {
+function Badge({ count, tone = "quiet" }: { count: number; tone?: "alert" | "quiet" }) {
   return tone === "alert" ? (
     <span className="grid h-[18px] min-w-5 shrink-0 place-items-center rounded-full bg-alert px-1.5 text-[11.5px] font-semibold text-white tabular-nums">
       {count}
@@ -115,21 +104,14 @@ function NovaIdentity({
 }) {
   const { t } = useLingui();
   const status = working
-    ? plural(working, {
-        one: "Working on # thing",
-        other: "Working on # things",
-      })
+    ? plural(working, { one: "Working on # thing", other: "Working on # things" })
     : t`Ready`;
   return (
     <div className="flex items-center gap-2.5 px-0.5 pt-1 pb-2">
       {hasOrb ? (
         <NovaOrb size={34} />
       ) : (
-        <span
-          aria-hidden="true"
-          data-testid="nova-orb-slot"
-          className="size-[34px] shrink-0"
-        />
+        <span aria-hidden="true" data-testid="nova-orb-slot" className="size-[34px] shrink-0" />
       )}
       <div className={cn("min-w-0 flex-1", FADE)}>
         <p
@@ -143,10 +125,7 @@ function NovaIdentity({
           className="flex items-center gap-1.5 text-[11.5px] text-ink-3"
           aria-live="polite"
         >
-          <span
-            aria-hidden="true"
-            className="size-1.5 shrink-0 rounded-full bg-ok"
-          />
+          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-ok" />
           <span className="truncate">{status}</span>
         </p>
       </div>
@@ -285,9 +264,7 @@ export function MuseSidebar({
       icon: <GoalsGlyph />,
       tint: "text-sig-goals",
       label: t`Goals`,
-      badge: activeGoals.length ? (
-        <Badge count={activeGoals.length} />
-      ) : undefined,
+      badge: activeGoals.length ? <Badge count={activeGoals.length} /> : undefined,
       current: active === "goals",
       onClick: () => go(onNavigate, "goals"),
     },
@@ -354,9 +331,7 @@ export function MuseSidebar({
             icon={<ConversationGlyph />}
             tint="text-tint"
             label={t`Conversation`}
-            current={
-              active === "conversation" && !activeChatId && !activeForkId
-            }
+            current={active === "conversation" && !activeChatId && !activeForkId}
             onClick={() => go(onNavigate, "conversation")}
           />
           <ChatTree
@@ -368,15 +343,10 @@ export function MuseSidebar({
             forks={forks}
             activeForkId={activeForkId}
             onOpenFork={onOpenFork ? (fork) => go(onOpenFork, fork) : undefined}
-            onShowForks={
-              onShowForks ? (filter) => go(onShowForks, filter) : undefined
-            }
+            onShowForks={onShowForks ? (filter) => go(onShowForks, filter) : undefined}
           />
 
-          <div
-            aria-hidden={collapsed || undefined}
-            className={cn(GROUP_LABEL, FADE)}
-          >
+          <div aria-hidden={collapsed || undefined} className={cn(GROUP_LABEL, FADE)}>
             <Trans>Nova</Trans>
           </div>
           <div className="flex flex-col gap-px">
@@ -396,20 +366,14 @@ export function MuseSidebar({
           </div>
 
           {activeGoals.length ? (
-            <div
-              aria-hidden={collapsed || undefined}
-              className={cn("flex min-h-0 flex-col", FADE)}
-            >
+            <div aria-hidden={collapsed || undefined} className={cn("flex min-h-0 flex-col", FADE)}>
               <div className={GROUP_LABEL}>
                 <Trans>Goals</Trans>
               </div>
               {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
-                const done = goal.tasks.filter(
-                  (task) => task.status === "done",
-                ).length;
+                const done = goal.tasks.filter((task) => task.status === "done").length;
                 const waiting =
-                  goal.openProposal != null ||
-                  goal.tasks.some((task) => task.status === "blocked");
+                  goal.openProposal != null || goal.tasks.some((task) => task.status === "blocked");
                 return (
                   <button
                     key={goal.id}
@@ -418,11 +382,7 @@ export function MuseSidebar({
                     onClick={() => onNavigate("goals")}
                     className={cn(TWIG_ROW, "text-foreground", TWIG_HOVER)}
                   >
-                    <GoalProgress
-                      done={done}
-                      total={goal.tasks.length}
-                      waiting={waiting}
-                    />
+                    <GoalProgress done={done} total={goal.tasks.length} waiting={waiting} />
                     <span className="min-w-0 flex-1 truncate" dir="auto">
                       {goal.title}
                     </span>
@@ -490,10 +450,7 @@ export function MuseSidebar({
   return (
     <>
       {renderNav(false)}
-      <Sheet
-        open={mobileOpen}
-        onOpenChange={(open) => onMobileOpenChange?.(open)}
-      >
+      <Sheet open={mobileOpen} onOpenChange={(open) => onMobileOpenChange?.(open)}>
         <SheetContent
           side="left"
           showCloseButton={false}
@@ -536,27 +493,11 @@ function UnreadDot({ className }: { className?: string }) {
 
 /** A Goal's progress as a tiny ring (done of total), or a plain dot when it has no plan yet.
  * Waiting on the person, it takes the waiting color. */
-function GoalProgress({
-  done,
-  total,
-  waiting,
-}: {
-  done: number;
-  total: number;
-  waiting: boolean;
-}) {
+function GoalProgress({ done, total, waiting }: { done: number; total: number; waiting: boolean }) {
   if (total === 0) {
     return (
-      <span
-        aria-hidden="true"
-        className="grid size-3.5 shrink-0 place-items-center"
-      >
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            waiting ? "bg-sig-waiting" : "bg-ink-3",
-          )}
-        />
+      <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center">
+        <span className={cn("size-1.5 rounded-full", waiting ? "bg-sig-waiting" : "bg-ink-3")} />
       </span>
     );
   }
@@ -571,14 +512,7 @@ function GoalProgress({
         waiting ? "text-sig-waiting" : "text-sig-goals",
       )}
     >
-      <circle
-        cx="7"
-        cy="7"
-        r={radius}
-        fill="none"
-        strokeWidth="1.75"
-        className="stroke-line"
-      />
+      <circle cx="7" cy="7" r={radius} fill="none" strokeWidth="1.75" className="stroke-line" />
       <circle
         cx="7"
         cy="7"
@@ -661,12 +595,7 @@ export function ChatTree({
             TWIG_ROW,
             activeChatId === chat.id
               ? TWIG_SELECTED
-              : cn(
-                  TWIG_HOVER,
-                  chat.unread
-                    ? "font-medium text-foreground"
-                    : "text-foreground",
-                ),
+              : cn(TWIG_HOVER, chat.unread ? "font-medium text-foreground" : "text-foreground"),
           )}
         >
           <ConversationGlyph className="size-[13px] shrink-0 text-ink-3" />
@@ -687,17 +616,10 @@ export function ChatTree({
         aria-current={activeChatId === "draft" ? "page" : undefined}
         className={cn(
           TWIG_ROW,
-          activeChatId === "draft"
-            ? TWIG_SELECTED
-            : cn("text-ink-2", TWIG_HOVER),
+          activeChatId === "draft" ? TWIG_SELECTED : cn("text-ink-2", TWIG_HOVER),
         )}
       >
-        <Plus
-          size={13}
-          strokeWidth={2}
-          aria-hidden="true"
-          className="shrink-0"
-        />
+        <Plus size={13} strokeWidth={2} aria-hidden="true" className="shrink-0" />
         <span className="truncate">
           <Trans>New side chat</Trans>
         </span>
@@ -715,10 +637,7 @@ export function ChatTree({
               size={13}
               strokeWidth={1.75}
               aria-hidden="true"
-              className={cn(
-                "shrink-0 transition-transform",
-                archivedOpen && "rotate-90",
-              )}
+              className={cn("shrink-0 transition-transform", archivedOpen && "rotate-90")}
             />
             <span className="truncate">
               <Trans>Archived</Trans>
@@ -738,9 +657,7 @@ export function ChatTree({
                   className={cn(
                     TWIG_ROW,
                     "ps-[34px]",
-                    activeChatId === chat.id
-                      ? TWIG_SELECTED
-                      : cn("text-ink-2", TWIG_HOVER),
+                    activeChatId === chat.id ? TWIG_SELECTED : cn("text-ink-2", TWIG_HOVER),
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate" dir="auto">
@@ -796,14 +713,9 @@ function ForkGroups({
         activeForkId === fork.chatId ? TWIG_SELECTED : TWIG_HOVER,
       )}
     >
-      <ForkGlyph
-        className={cn("size-[13px]", FORK_TONE_CLASS[fork.tone].text)}
-      />
+      <ForkGlyph className={cn("size-[13px]", FORK_TONE_CLASS[fork.tone].text)} />
       <span
-        className={cn(
-          "truncate",
-          activeForkId === fork.chatId ? "text-white" : "text-foreground",
-        )}
+        className={cn("truncate", activeForkId === fork.chatId ? "text-white" : "text-foreground")}
         dir="auto"
       >
         {fork.title}
@@ -863,11 +775,7 @@ function ForkGroups({
               type="button"
               tabIndex={tab}
               onClick={() => onShowForks("open")}
-              className={cn(
-                TWIG_ROW,
-                "justify-between ps-[34px] text-ink-2",
-                TWIG_HOVER,
-              )}
+              className={cn(TWIG_ROW, "justify-between ps-[34px] text-ink-2", TWIG_HOVER)}
             >
               <span className="truncate">{t`${open.length - MAX_OPEN_FORKS} more open`}</span>
               <span aria-hidden="true" className="text-ink-3">
