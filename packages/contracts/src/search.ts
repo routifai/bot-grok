@@ -14,6 +14,8 @@ export const SearchHitSchema = z
     title: z.string(),
     snippet: z.string(),
     messageId: Id.optional(),
+    /** A hit in one of the Muse's side chats: the chat to open (absent: the Conversation). */
+    chatId: Id.optional(),
     seq: z.number().int().nonnegative().optional(),
     artifactId: Id.optional(),
     routineId: Id.optional(),

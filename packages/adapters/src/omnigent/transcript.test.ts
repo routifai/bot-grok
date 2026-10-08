@@ -72,7 +72,6 @@ describe("mapTranscriptPage", () => {
           blocks: [{ type: "error", code: "x", level: "info" }],
         },
       ]),
-      [],
     );
     expect(result.messages.map((message) => message.role)).toEqual([
       "user",
@@ -112,31 +111,20 @@ describe("mapTranscriptPage", () => {
   });
 
   it("pages back with the engine's cursor and reports a live chat", () => {
-    expect(mapTranscriptPage("s1", page([], true), [], true)).toMatchObject({
+    expect(mapTranscriptPage("s1", { ...page([], true), live: true })).toMatchObject({
       threadId: "s1",
       olderItemCursor: "cursor-1",
       running: true,
     });
-    expect(mapTranscriptPage("s1", page([]), []).olderItemCursor).toBeNull();
+    expect(mapTranscriptPage("s1", page([])).olderItemCursor).toBeNull();
   });
 
-  it("redacts secrets in text, Helper titles and cards", () => {
-    const result = mapTranscriptPage(
-      "s1",
-      page([
-        {
-          id: "m1",
-          role: "assistant",
-          created_at: 1,
-          blocks: [
-            { type: "text", text: "key hunter2" },
-            { type: "helper", call_id: "c", session_id: "h", title: "use hunter2", status: "done" },
-            { type: "card", card: { card: "n", data: {}, fallback: "has hunter2" } },
-          ],
-        },
-      ]),
-      ["hunter2"],
-    );
-    expect(JSON.stringify(result.messages)).not.toContain("hunter2");
+  it("passes the engine's reset checkpoint through, and none when there is none", () => {
+    const cleared = mapTranscriptPage("s1", {
+      ...page([]),
+      reset: { item_id: "r1", created_at: 60 },
+    });
+    expect(cleared.reset).toEqual({ itemId: "r1", createdAt: new Date(60_000).toISOString() });
+    expect(mapTranscriptPage("s1", page([])).reset).toBeNull();
   });
 });

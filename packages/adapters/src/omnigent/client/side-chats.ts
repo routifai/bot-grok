@@ -7,10 +7,11 @@ export interface OmnigentSideChatCreateResponse {
   conversation_id: string;
   title: string | null;
   start: "with_context" | "blank";
-  /** Set by the engine (docs/super-chat/WIRING.md slice A1 review) when the Side Chat itself
-   * was created but its seed first message could not be posted — the chat still exists;
-   * `apps/api/src/chats.ts#createSideChat` retries the post once. */
+  /** Set by the engine when the Side Chat itself was created but its first message could not
+   * be delivered, after the engine's own retry; the chat exists and the person resends in it. */
   first_message_error?: string | null;
+  /** The failure's code (e.g. `runner_unavailable`, `transport_error`). */
+  first_message_error_code?: string | null;
 }
 
 /** Thrown by `createOmnigentSideChat` on a non-2xx response. `conversationId` is set when the
@@ -83,6 +84,9 @@ export interface OmnigentRelatedChat {
   /** First item that belongs to a with-context side chat itself (its seed checkpoint). */
   seed_item_id?: string | null;
   live?: boolean;
+  /** The caller's read state: a reply landed that they have not seen. */
+  unread?: boolean;
+  last_read_at?: number | null;
 }
 
 /** `GET /v1/sessions/{superId}/related_chats` — the Super Chat's Side Chats (not cursor-

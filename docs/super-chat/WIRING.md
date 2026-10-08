@@ -39,6 +39,10 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 | "Knows our conversation" hover | `chats.summaryPreview({botId})` | `GET /v1/sessions/{super}/context_summary` |
 | Side chat / Helper messages | `chats.transcript({botId, chatId})` | `GET /v1/sessions/{chatId}/transcript` |
 | Side chat send | `chats.send({chatId, text})` | `POST /v1/sessions/{chatId}/events` |
+| Chat viewed (clears its unread dot) | `chats.markRead({botId, chatId?})` | `POST /v1/sessions/{chatId}/read` `{item_id?}`; emits `chats.changed` |
+| Clear conversation | `chats.reset({botId})` | `POST /v1/sessions/{super}/reset` |
+| Show earlier messages | `chats.transcript({botId, beforeReset: true})` | `GET /v1/sessions/{super}/transcript?before_reset=true` |
+| Search | `search.query` (hits carry `chatId` for a side chat) | `GET /v1/sessions/{super}/items/search?query=…&scope=family` |
 | Activity panel | `activities.list({botId, before?, limit?})` | `GET /v1/sessions/{super}/activities` |
 | Memory tab | `memory.profile({botId})` | `GET /v1/sessions/{super}/memory/profile` |
 | Activity / Helper detail | `activities.get({botId, activityId})` | `GET /v1/sessions/{super}/activities/{id}` |
@@ -50,7 +54,36 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 `ChatSummary` (contracts `muse.ts`) maps from `related_chats`:
 `id`, `title`, `start` (`with_context` → `withContext`), `summary` (the seed
 summary of a with-context chat, else `null`), `archived`, `live` (a turn is
-running), `updatedAt`.
+running), `unread`, `updatedAt`.
+
+### Engine route shapes Nova relies on (ADR 0009)
+
+- **Unread.** `related_chats` rows add `unread: bool` and `last_read_at`. `POST /v1/sessions/{id}/read`
+  `{item_id?}` marks a chat read (baseline never moves back) and emits `chats.changed`. The sidebar
+  dot is `ChatSummary.unread`; a chat in view is marked read on opening, on each `message.done`
+  while visible and focused, and when the window regains focus. The root Conversation is not in
+  `related_chats` and the session GET only carries `viewer_last_seen` / `viewer_unread` (the
+  explicit flag), so its unread stays Nova's (`threads.markUnread` on a reply while the window
+  is not focused).
+- **Family search.** `GET /v1/sessions/{id}/items/search?query=…&scope=family` →
+  `{data:[{session_id, message_id, role, created_at, text, item}]}` for the Conversation and its side
+  chats. A hit whose `session_id` is not the root becomes `SearchHit.chatId`; the web deep link is
+  `?chat=<chatId>&m=<messageId>`.
+- **Reset.** `POST /v1/sessions/{id}/reset` (owner, Super Chat only, 409 `conflict` while a turn runs)
+  → `{session_id, reset_item_id, created_at}`. Family event `chat.reset {chat_id, item_id}` →
+  `FamilyEvent.chatReset`; clients refetch. The transcript response has `reset: {item_id, created_at}|null`,
+  stops (`has_more: false`) at the reset, and `?before_reset=true` pages the older history
+  (`ThreadMessagePage.reset`, `chats.transcript({beforeReset})`). The 409 reaches the client as
+  `CONFLICT` ("Wait for Nova to finish, then clear.").
+- **Live.** The transcript response has `live: bool` → `ThreadMessagePage.running`; the session GET
+  is no longer read for it.
+- **Side chat creation.** `POST /v1/sessions/{id}/side_chats` retries the first message itself and
+  answers `first_message_error` + `first_message_error_code` when it still fails. Nova does not
+  retry; `ChatSummary.firstMessageErrorCode` opens the chat in the "Didn't send" state, to resend there.
+- **Redaction.** The engine redacts engine-known secrets (secret-named env vars, vault values) on
+  transcript, items, search, related chats, activities, feed and asks, so Nova passes those through.
+  Nova still redacts what the engine does not: the Goal log (`redactThreadMessages`), the memory
+  profile, claims and daily notes (`redactMemoryProfile`), and engine error bodies in thrown errors.
 
 The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 `OMNIGENT_PROXY_SECRET` set on api and worker. Computer ownership:

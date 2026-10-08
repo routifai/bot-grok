@@ -22,6 +22,7 @@ export const sideChatView: SideChatView = {
     leading,
     trailing,
     followSignal,
+    scrollRequest,
     bot,
   }) {
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -45,7 +46,7 @@ export const sideChatView: SideChatView = {
         trailing={trailing}
         followSignal={followSignal}
         scrollRef={scrollRef}
-        scrollRequest={null}
+        scrollRequest={scrollRequest ?? null}
         onScrollRequestHandled={noop}
         artifactTarget={artifactTarget}
         messages={visible}

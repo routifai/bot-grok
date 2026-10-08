@@ -911,6 +911,9 @@ export const ThreadMessagePageSchema = z.object({
   olderItemCursor: z.string().nullable().optional(),
   /** `chats.transcript` only: the chat is working on a reply right now. */
   running: z.boolean().optional(),
+  /** `chats.transcript` only: the chat was cleared; the page starts at the reset, and older
+   * history is read with `beforeReset`. */
+  reset: z.object({ itemId: z.string(), createdAt: z.string() }).nullable().optional(),
   /** `chats.transcript` only: a Helper's chat, which the person reads but never writes to. */
   readOnly: z.boolean().optional(),
 });

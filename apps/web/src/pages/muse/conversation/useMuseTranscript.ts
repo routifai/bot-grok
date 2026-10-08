@@ -9,12 +9,20 @@ const REFRESH_THROTTLE_MS = 150;
 /** How far back a search jump may page (50 messages a page). */
 const MAX_REVEAL_PAGES = 40;
 
-type Loaded = { threadId: string; messages: ThreadMessage[]; olderCursor: string | null };
+type Loaded = {
+  threadId: string;
+  messages: ThreadMessage[];
+  olderCursor: string | null;
+  /** The Conversation was cleared: the transcript starts at the reset. */
+  reset: boolean;
+  /** The history from before the reset is shown (and paged with `beforeReset`). */
+  earlier: boolean;
+};
 
 /**
  * The Muse's Conversation, read from the engine's transcript (ADR 0009) and refreshed on its
  * family stream: when a reply lands (`messageDone` for this Conversation), when a Side Chat or
- * Helper starts (`chatsChanged`), and after a reconnect. `refresh()` is for the caller's own
+ * Helper starts (`chatsChanged`), when it is cleared (`chatReset`), and after a reconnect. `refresh()` is for the caller's own
  * moments the stream has no event for (the person's send being recorded).
  */
 export function useMuseTranscript(
@@ -40,12 +48,26 @@ export function useMuseTranscript(
       const page = await rpc.chats.transcript({ botId });
       if (current !== generation.current) return;
       const prev = loadedRef.current?.botId === botId ? loadedRef.current : null;
-      commit({ botId, ...mergeNewestTranscriptPage(prev, page) });
+      const merged = mergeNewestTranscriptPage(prev, page);
+      commit({
+        botId,
+        ...merged,
+        reset: Boolean(page.reset),
+        // The earlier history stays only while the merge kept it (the first message is unchanged).
+        earlier: Boolean(prev?.earlier && merged.messages[0]?.id === prev.messages[0]?.id),
+      });
     } catch {
       // Keep what is shown; the next event or send reads again. A Muse with no Conversation
       // yet simply shows none.
       if (current === generation.current && !loadedRef.current) {
-        commit({ botId, threadId: "", messages: [], olderCursor: null });
+        commit({
+          botId,
+          threadId: "",
+          messages: [],
+          olderCursor: null,
+          reset: false,
+          earlier: false,
+        });
       }
     }
   }, [botId, commit]);
@@ -67,6 +89,12 @@ export function useMuseTranscript(
     const stop = watchFamily(botId, (event) => {
       if (event.type === "messageDone" || event.type === "turnDone") {
         if (event.chatId === loadedRef.current?.threadId) refresh();
+      } else if (event.type === "chatReset") {
+        if (event.chatId === loadedRef.current?.threadId) {
+          // Nothing loaded survives a clear: read the Conversation afresh.
+          loadedRef.current = null;
+          refresh();
+        }
       } else if (event.type === "chatsChanged") {
         refresh();
       } else if (event.type === "open") {
@@ -92,7 +120,11 @@ export function useMuseTranscript(
     const epoch = generation.current;
     setLoadingOlder(true);
     try {
-      const page = await rpc.chats.transcript({ botId, before: current.olderCursor });
+      const page = await rpc.chats.transcript({
+        botId,
+        before: current.olderCursor,
+        ...(current.earlier ? { beforeReset: true } : {}),
+      });
       const latest = loadedRef.current;
       if (epoch !== generation.current || !latest) return;
       commit({
@@ -109,6 +141,27 @@ export function useMuseTranscript(
     }
   }, [botId, commit, loadingOlder, scrollRef]);
 
+  /** Reads the history from before the latest clear and shows it above the Conversation. */
+  const showEarlier = useCallback(async () => {
+    const current = loadedRef.current;
+    if (!botId || !current || current.botId !== botId || !current.reset || current.earlier) return;
+    const epoch = generation.current;
+    setLoadingOlder(true);
+    try {
+      const page = await rpc.chats.transcript({ botId, beforeReset: true });
+      const latest = loadedRef.current;
+      if (epoch !== generation.current || !latest) return;
+      commit({
+        ...latest,
+        messages: [...page.messages, ...latest.messages],
+        olderCursor: page.olderItemCursor ?? null,
+        earlier: true,
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [botId, commit]);
+
   /** Pages back until the message is loaded (a search hit can be far up); false if it is not
    * in the Conversation. */
   const reveal = useCallback(
@@ -119,8 +172,16 @@ export function useMuseTranscript(
         const current = loadedRef.current;
         if (!botId || !current || current.botId !== botId) return false;
         if (current.messages.some((message) => message.id === messageId)) return true;
-        if (!current.olderCursor) return false;
-        const page = await rpc.chats.transcript({ botId, before: current.olderCursor });
+        if (!current.olderCursor) {
+          if (!current.reset || current.earlier) return false;
+          await showEarlier();
+          continue;
+        }
+        const page = await rpc.chats.transcript({
+          botId,
+          before: current.olderCursor,
+          ...(current.earlier ? { beforeReset: true } : {}),
+        });
         const latest = loadedRef.current;
         if (epoch !== generation.current || !latest) return false;
         commit({
@@ -131,7 +192,7 @@ export function useMuseTranscript(
       }
       return false;
     },
-    [botId, commit],
+    [botId, commit, showEarlier],
   );
 
   const forBot = loaded?.botId === botId ? loaded : null;
@@ -144,6 +205,9 @@ export function useMuseTranscript(
     olderCursor: forBot?.olderCursor ?? null,
     loadingOlder,
     loadOlder,
+    /** The Conversation was cleared and its earlier history is not shown yet. */
+    canShowEarlier: Boolean(forBot?.reset && !forBot.earlier),
+    showEarlier,
     reveal,
     refresh,
   };

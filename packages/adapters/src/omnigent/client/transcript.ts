@@ -51,6 +51,10 @@ export interface OmnigentTranscriptPage {
   has_more: boolean;
   older_cursor: string | null;
   lineage: OmnigentTranscriptLineage;
+  /** The chat was cleared: the page starts at this checkpoint. */
+  reset?: { item_id: string; created_at: number | null } | null;
+  /** A turn is running in the chat right now. */
+  live?: boolean;
 }
 
 /** `GET /v1/sessions/{id}/transcript` — a session's messages as typed blocks, oldest first.
@@ -59,12 +63,13 @@ export async function getOmnigentTranscript(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-  options: { limit?: number; before?: string; includeSeed?: boolean } = {},
+  options: { limit?: number; before?: string; includeSeed?: boolean; beforeReset?: boolean } = {},
 ): Promise<OmnigentTranscriptPage> {
   const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/transcript`, config.baseUrl);
   if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
   if (options.before) url.searchParams.set("before", options.before);
   if (options.includeSeed) url.searchParams.set("include_seed", "true");
+  if (options.beforeReset) url.searchParams.set("before_reset", "true");
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "get transcript", config.secrets);
   return (await response.json()) as OmnigentTranscriptPage;
@@ -74,6 +79,7 @@ export async function getOmnigentTranscript(
 export type OmnigentFamilyEvent =
   | { type: "message.done"; chat_id: string; item_id: string }
   | { type: "turn.done"; chat_id: string; status: string }
+  | { type: "chat.reset"; chat_id: string; item_id: string }
   | { type: "chats.changed"; root_id: string }
   | { type: "activities.changed"; root_id: string }
   | { type: "session.heartbeat" };
@@ -95,6 +101,7 @@ export async function* streamOmnigentFamily(
     if (
       frame.type === "message.done" ||
       frame.type === "turn.done" ||
+      frame.type === "chat.reset" ||
       frame.type === "chats.changed" ||
       frame.type === "activities.changed" ||
       frame.type === "session.heartbeat"
@@ -104,43 +111,49 @@ export async function* streamOmnigentFamily(
   }
 }
 
-/** A message the engine's search found: its id is the transcript message's id. */
+/** A message the engine's family search found: `sessionId` is the chat it is in (the
+ * Conversation or one of its Side Chats), `id` its transcript message's id. */
 export interface OmnigentSearchHit {
+  sessionId: string;
   id: string;
   role: "user" | "assistant";
   text: string;
 }
 
-/** `GET /v1/sessions/{id}/items/search` — full-text search over one session's own items,
- * ranked, at most 20. Only the person's and the Muse's messages are returned (tool calls and
- * outputs are the engine's plumbing). */
-export async function searchOmnigentMessages(
+/** `GET /v1/sessions/{root}/items/search?scope=family` — full-text search over the
+ * Conversation and its Side Chats, ranked. Only the person's and the Muse's messages are
+ * returned (tool calls and outputs are the engine's plumbing); the engine has already
+ * redacted the text. */
+export async function searchOmnigentFamily(
   config: OmnigentClientConfig,
   email: string,
-  sessionId: string,
+  rootSessionId: string,
   query: string,
   limit = 10,
 ): Promise<OmnigentSearchHit[]> {
-  const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/items/search`, config.baseUrl);
+  const url = new URL(
+    `/v1/sessions/${encodeURIComponent(rootSessionId)}/items/search`,
+    config.baseUrl,
+  );
   url.searchParams.set("query", query);
+  url.searchParams.set("scope", "family");
   url.searchParams.set("limit", String(Math.min(limit, 20)));
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "search session", config.secrets);
-  const body = (await response.json()) as { data?: Array<Record<string, unknown>> };
+  await throwOnError(response, "search family", config.secrets);
+  const body = (await response.json()) as {
+    data?: Array<{
+      session_id?: unknown;
+      message_id?: unknown;
+      role?: unknown;
+      text?: unknown;
+    }>;
+  };
   const hits: OmnigentSearchHit[] = [];
-  for (const item of body.data ?? []) {
-    if (item.type !== "message" || (item.role !== "user" && item.role !== "assistant")) continue;
-    if (typeof item.id !== "string" || !Array.isArray(item.content)) continue;
-    const text = item.content
-      .map((part: unknown) =>
-        part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
-          ? (part as { text: string }).text
-          : "",
-      )
-      .filter(Boolean)
-      .join("\n\n")
-      .trim();
-    if (text) hits.push({ id: item.id, role: item.role, text });
+  for (const hit of body.data ?? []) {
+    if (hit.role !== "user" && hit.role !== "assistant") continue;
+    if (typeof hit.session_id !== "string" || typeof hit.message_id !== "string") continue;
+    const text = typeof hit.text === "string" ? hit.text.trim() : "";
+    if (text) hits.push({ sessionId: hit.session_id, id: hit.message_id, role: hit.role, text });
   }
   return hits;
 }

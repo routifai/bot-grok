@@ -438,6 +438,13 @@ export function ChatTree({
                 <Trans>Nova is working</Trans>
               </span>
             </>
+          ) : chat.unread && activeChatId !== chat.id ? (
+            <>
+              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-foreground" />
+              <span className="sr-only">
+                <Trans>Unread</Trans>
+              </span>
+            </>
           ) : null}
         </button>
       ))}

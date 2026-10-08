@@ -18,7 +18,6 @@ import {
   omnigentClientFor,
   patchOmnigentMemoryClaim,
   putOmnigentDailyNote,
-  redactActivity,
   redactMemoryProfile,
   streamOmnigentActivityChanges,
 } from "@aiden/adapters";
@@ -85,9 +84,8 @@ export async function listActivities(
       tz: timezone,
     }),
   );
-  const secrets = client.secrets ?? [];
   return {
-    activities: page.data.map((raw) => redactActivity(mapActivity(raw), secrets)),
+    activities: page.data.map((raw) => mapActivity(raw)),
     hasMore: Boolean(page.has_more),
   };
 }
@@ -103,7 +101,7 @@ export async function getActivity(
   const activity = await onSuperChat(
     getOmnigentActivity(client, email, superSessionId, input.activityId, { tz: timezone }),
   );
-  return redactActivity(mapActivity(activity), client.secrets ?? []);
+  return mapActivity(activity);
 }
 
 /** `activities.watch`: tells the panel (and the chat's Helper rows) when to re-read the feed,

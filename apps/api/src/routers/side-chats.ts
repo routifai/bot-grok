@@ -3,6 +3,8 @@ import {
   getChatProject,
   getChatTranscript,
   listChats,
+  markChatRead,
+  resetConversation,
   sendToChat,
   summaryPreview,
   watchFamily,
@@ -27,6 +29,12 @@ export function sideChatsRouter(c: RouterContext) {
       ),
       transcript: museOnly.chats.transcript.handler(({ context, input }) =>
         getChatTranscript(deps, context.actor, input),
+      ),
+      markRead: museOnly.chats.markRead.handler(({ context, input }) =>
+        markChatRead(deps, context.actor, input),
+      ),
+      reset: museOnly.chats.reset.handler(({ context, input }) =>
+        resetConversation(deps, context.actor, input),
       ),
       watch: museOnly.chats.watch.handler(async function* ({ context, input }) {
         yield* watchFamily(deps, context.actor, input, context.signal);

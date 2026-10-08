@@ -80,6 +80,7 @@ const TranscriptView = memo(function Transcript({
   running,
   workingBots,
   onLoadOlder,
+  onShowEarlier,
   onOpenBot,
   onAnswer,
   onReply,
@@ -121,6 +122,8 @@ const TranscriptView = memo(function Transcript({
   running: boolean;
   workingBots: GroupAvatarMember[];
   onLoadOlder: () => void | Promise<void>;
+  /** The Conversation was cleared and its earlier history can be shown (the Muse only). */
+  onShowEarlier?: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   /** Without reply/quote handlers (a Side Chat has no reply threads) those actions are hidden. */
@@ -408,6 +411,16 @@ const TranscriptView = memo(function Transcript({
         )}
       >
         {leading}
+        {onShowEarlier ? (
+          <button
+            type="button"
+            disabled={loadingOlder}
+            onClick={() => void onShowEarlier()}
+            className="self-center rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground/75 disabled:opacity-50"
+          >
+            {loadingOlder ? t`Loading…` : t`Show earlier messages`}
+          </button>
+        ) : null}
         {olderCursor != null ? (
           <button
             type="button"

@@ -1,10 +1,10 @@
-// Redaction for Omnigent read paths (docs/super-chat/WIRING.md review item 4): `chats.transcript`
-// text, `activities.list`/`activities.get` (title, outcome, summary, step titles, and step `detail`
-// recursively for string values), and `memory.profile`. Built on the same `redactSecrets`
-// primitive the engine client redacts an error body with, over the same secrets list
-// (./env.ts's `omnigentRedactionSecretsFromEnv`) — so nothing Omnigent returns can surface a
-// deployment secret anywhere it reaches a person, whichever path read it.
-import type { Activity, ActivityStep, ThreadMessage } from "@aiden/contracts";
+// Redaction for the Omnigent read paths the engine does not redact itself. The engine redacts
+// what it knows (secret-named env vars, vault values) on the transcript, items, search, related
+// chats, activities, feed and asks (ADR 0009), so those paths pass through untouched. What stays
+// here, built on the same `redactSecrets` primitive over `omnigentRedactionSecretsFromEnv`:
+// the Goal log (`redactThreadMessages`, objective runs) and `memory.profile`/claims/daily notes
+// (`redactMemoryProfile`), neither of which the engine redacts.
+import type { ThreadMessage } from "@aiden/contracts";
 import { redactSecrets } from "@aiden/core";
 import { redactReplyCard } from "./cards.js";
 
@@ -12,7 +12,7 @@ function redactString(value: string, secrets: string[]): string {
   return secrets.length === 0 ? value : redactSecrets(value, secrets);
 }
 
-/** `chats.transcript`: redacts every `text` block's text, every Helper row's title and every
+/** The Goal log: redacts every `text` block's text, every Helper row's title and every
  * card (one holding a secret degrades to its redacted fallback, ./cards.ts). */
 export function redactThreadMessages(
   messages: ThreadMessage[],
@@ -31,47 +31,6 @@ export function redactThreadMessages(
             : block,
     ),
   }));
-}
-
-/** Recursively redacts every string value in a Step's `detail` (an arbitrary tool-call
- * arguments/output snapshot, capped by the engine — engine/omnigent/omnigent/superchat/
- * activity.py) — keys, numbers, and booleans are left alone. */
-function redactDetailDeep(value: unknown, secrets: string[]): unknown {
-  if (typeof value === "string") return redactString(value, secrets);
-  if (Array.isArray(value)) return value.map((item) => redactDetailDeep(item, secrets));
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
-        key,
-        redactDetailDeep(nested, secrets),
-      ]),
-    );
-  }
-  return value;
-}
-
-function redactActivityStep(step: ActivityStep, secrets: string[]): ActivityStep {
-  return {
-    ...step,
-    title: redactString(step.title, secrets),
-    detail:
-      step.detail === undefined || step.detail === null
-        ? step.detail
-        : (redactDetailDeep(step.detail, secrets) as ActivityStep["detail"]),
-  };
-}
-
-/** `activities.list`/`activities.get`: redacts `title`, `outcome`, `summary`, and every Step's `title` and
- * `detail`. */
-export function redactActivity(activity: Activity, secrets: string[]): Activity {
-  if (secrets.length === 0) return activity;
-  return {
-    ...activity,
-    title: redactString(activity.title, secrets),
-    outcome: activity.outcome === null ? null : redactString(activity.outcome, secrets),
-    summary: activity.summary === null ? null : redactString(activity.summary, secrets),
-    steps: activity.steps?.map((step) => redactActivityStep(step, secrets)),
-  };
 }
 
 /** `memory.profile`: redacts the Memory Profile text itself. */

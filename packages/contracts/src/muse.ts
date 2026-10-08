@@ -69,6 +69,11 @@ export const ChatSummarySchema = z.object({
   archived: z.boolean(),
   /** Whether Nova is currently working in this Side Chat. */
   live: z.boolean(),
+  /** The engine's per-person read state: a reply landed that the person has not seen. */
+  unread: z.boolean().optional(),
+  /** `chats.createSide` only: the chat exists but its first message did not send (the engine's
+   * error code); the person resends in it. */
+  firstMessageErrorCode: z.string().nullable().optional(),
   updatedAt: z.string(),
 });
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
@@ -82,6 +87,8 @@ export const FamilyEventSchema = z.discriminatedUnion("type", [
   /** A turn in this chat ended (completed, failed, incomplete or cancelled); a failure's
    * error note is already in the transcript. */
   z.object({ type: z.literal("turnDone"), chatId: z.string(), status: z.string() }),
+  /** The chat was cleared; its transcript now starts at the reset. */
+  z.object({ type: z.literal("chatReset"), chatId: z.string(), itemId: z.string() }),
   z.object({ type: z.literal("chatsChanged") }),
   z.object({ type: z.literal("activitiesChanged") }),
   z.object({ type: z.literal("heartbeat") }),

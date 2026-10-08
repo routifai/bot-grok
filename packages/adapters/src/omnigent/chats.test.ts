@@ -37,6 +37,7 @@ describe("mapRelatedChatToSummary", () => {
         summary: "[framing] A seed summary",
         summary_body: "A seed summary",
         live: true,
+        unread: true,
       }),
     ).toEqual({
       id: "conv_1",
@@ -45,6 +46,7 @@ describe("mapRelatedChatToSummary", () => {
       summary: "A seed summary",
       archived: true,
       live: true,
+      unread: true,
       updatedAt: new Date(1_700_000_100 * 1000).toISOString(),
     });
   });
@@ -111,6 +113,20 @@ describe("mapSideChatCreateToSummary", () => {
     });
   });
 
+  it("carries the engine's first-message failure code", () => {
+    const mapped = mapSideChatCreateToSummary(
+      {
+        conversation_id: "conv_new",
+        title: "t",
+        start: "blank",
+        first_message_error: "x",
+        first_message_error_code: "runner_unavailable",
+      },
+      "hi",
+    );
+    expect(mapped.firstMessageErrorCode).toBe("runner_unavailable");
+  });
+
   it("derives a title from the first message when Omnigent returns none", () => {
     const mapped = mapSideChatCreateToSummary(
       { conversation_id: "conv_new", title: null, start: "with_context" },
@@ -136,7 +152,7 @@ describe("resolveChatOwnership", () => {
     project,
   });
 
-  it("resolves a Side Chat of the caller's Super Chat, live while a turn runs", async () => {
+  it("resolves a Side Chat of the caller's Super Chat", async () => {
     const project = { slug: "q3-deck", name: "Q3 board deck" };
     getOmnigentSession.mockResolvedValue(
       session("conv_side", family("side", "conv_super", project), "running"),
@@ -146,7 +162,6 @@ describe("resolveChatOwnership", () => {
       kind: "side_chat",
       superSessionId: "conv_super",
       botId: "bot-1",
-      live: true,
       project,
     });
   });
@@ -158,7 +173,6 @@ describe("resolveChatOwnership", () => {
       kind: "helper",
       superSessionId: "conv_super",
       botId: "bot-1",
-      live: false,
       project: null,
     });
   });

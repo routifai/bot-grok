@@ -17,8 +17,22 @@ export const chatsContract = {
      * Newest page by default; pass `before` (an `olderItemCursor` from a previous page) to page
      * further back. */
     transcript: oc
-      .input(z.object({ botId: Id, chatId: Id.optional(), before: z.string().min(1).optional() }))
+      .input(
+        z.object({
+          botId: Id,
+          chatId: Id.optional(),
+          before: z.string().min(1).optional(),
+          /** Read the history older than the chat's latest reset instead. */
+          beforeReset: z.boolean().optional(),
+        }),
+      )
       .output(ThreadMessagePageSchema),
+    /** The person has the chat open: marks it read (and clears its unread dot). */
+    markRead: oc
+      .input(z.object({ botId: Id, chatId: Id.optional() }))
+      .output(z.object({ ok: z.literal(true) })),
+    /** Clears the Muse's Conversation (CONFLICT while a turn is running). */
+    reset: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** The Muse's live family stream: ids only, refetch what changed. */
     watch: oc.input(z.object({ botId: Id })).output(eventIterator(FamilyEventSchema)),
     send: oc

@@ -34,6 +34,7 @@ export function mapRelatedChatToSummary(raw: OmnigentRelatedChat): ChatSummary {
     summary: raw.summary_body || null,
     archived: Boolean(raw.archived),
     live: Boolean(raw.live),
+    unread: Boolean(raw.unread),
     updatedAt: epochSecondsToIso(raw.updated_at),
   };
 }
@@ -62,6 +63,10 @@ export function mapSideChatCreateToSummary(
     summary: null,
     archived: false,
     live: true,
+    unread: false,
+    ...(created.first_message_error_code || created.first_message_error
+      ? { firstMessageErrorCode: created.first_message_error_code ?? "unknown" }
+      : {}),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -73,8 +78,6 @@ export interface ChatOwnership {
   /** The caller's Super Chat `chatId` resolves under. */
   superSessionId: string;
   botId: string;
-  /** A turn is running in the chat right now. */
-  live: boolean;
   /** The Project the chat has open (ADR 0008). */
   project: { slug: string; name: string } | null;
 }
@@ -115,7 +118,6 @@ export function createChatOwnershipResolver(
       kind: family.kind === "side" ? "side_chat" : "helper",
       superSessionId: owner.omnigentSessionId,
       botId: owner.botId,
-      live: session?.status === "running",
       project: family.project ?? null,
     };
   };

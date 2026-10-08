@@ -10,7 +10,6 @@ import type {
   ThreadMessagePage,
 } from "@aiden/contracts";
 import type { OmnigentTranscriptBlock, OmnigentTranscriptPage } from "./client/transcript.js";
-import { redactThreadMessages } from "./redact.js";
 
 function epochSecondsToIso(epochSeconds: number | null | undefined): string {
   return new Date((epochSeconds ?? 0) * 1000).toISOString();
@@ -76,14 +75,8 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
   }
 }
 
-/** One transcript page for chat `chatId`, redacted with `secrets`. `running` is the chat's own
- * live flag (the related-chats list carries it; the transcript does not). */
-export function mapTranscriptPage(
-  chatId: string,
-  page: OmnigentTranscriptPage,
-  secrets: string[],
-  running?: boolean,
-): ThreadMessagePage {
+/** One transcript page for chat `chatId`. The engine has already redacted its secrets. */
+export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage): ThreadMessagePage {
   const messages: ThreadMessage[] = page.data.map((message, seq) => ({
     id: message.id,
     threadId: chatId,
@@ -94,9 +87,17 @@ export function mapTranscriptPage(
   }));
   return {
     threadId: chatId,
-    messages: redactThreadMessages(messages, secrets),
+    messages,
     olderCursor: null,
     olderItemCursor: page.has_more ? page.older_cursor : null,
-    ...(running === undefined ? {} : { running }),
+    ...(page.live === undefined ? {} : { running: page.live }),
+    ...(page.reset
+      ? {
+          reset: {
+            itemId: page.reset.item_id,
+            createdAt: epochSecondsToIso(page.reset.created_at),
+          },
+        }
+      : { reset: null }),
   };
 }

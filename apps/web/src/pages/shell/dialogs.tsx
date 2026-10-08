@@ -293,10 +293,7 @@ export function ClearConversationDialog({
             <Trans>Clear {bot.name}’s conversation?</Trans>
           </AlertDialogTitle>
           <AlertDialogDescription>
-            <Trans>
-              This permanently removes every message and stops current work. The chat remains
-              available.
-            </Trans>
+            <Trans>Nova starts fresh. You can still show earlier messages.</Trans>
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error ? <p className="text-[13.5px] text-destructive">{error}</p> : null}

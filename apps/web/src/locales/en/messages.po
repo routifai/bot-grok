@@ -2305,6 +2305,9 @@ msgstr "Nova is working"
 msgid "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
 msgstr "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
 
+msgid "Nova starts fresh. You can still show earlier messages."
+msgstr "Nova starts fresh. You can still show earlier messages."
+
 #. placeholder {0}: selected.label
 msgid "Now using {0}."
 msgstr "Now using {0}."
@@ -2955,6 +2958,9 @@ msgstr "Show computer"
 msgid "Show context panel"
 msgstr "Show context panel"
 
+msgid "Show earlier messages"
+msgstr "Show earlier messages"
+
 msgid "Show hidden files"
 msgstr "Show hidden files"
 
@@ -3248,9 +3254,6 @@ msgstr "this Mac"
 msgid "This month"
 msgstr "This month"
 
-msgid "This permanently removes every message and stops current work. The chat remains available."
-msgstr "This permanently removes every message and stops current work. The chat remains available."
-
 msgid "This reset link is invalid or expired"
 msgstr "This reset link is invalid or expired"
 
@@ -3348,6 +3351,9 @@ msgstr "Unlink"
 
 msgid "Unpin"
 msgstr "Unpin"
+
+msgid "Unread"
+msgstr "Unread"
 
 #. placeholder {0}: pending.file.name
 msgid "Unsupported file type: {0}"
@@ -3451,6 +3457,9 @@ msgstr "View details"
 
 msgid "Voice"
 msgstr "Voice"
+
+msgid "Wait for Nova to finish, then clear."
+msgstr "Wait for Nova to finish, then clear."
 
 msgid "Waiting for sign-in…"
 msgstr "Waiting for sign-in…"

@@ -188,6 +188,8 @@ export function ShellPage() {
   // (agreed behavior #2); "draft" is an unsent one. Cleared by navigating anywhere else.
   const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(null);
   const chatList = useChatList(active?.id ?? "");
+  // A search hit inside a side chat (`?chat=…&m=…`): the message to scroll to once it is open.
+  const [chatFocus, setChatFocus] = useState<{ chatId: string; messageId: string } | null>(null);
   const sideChatWire = useMemo<SideChatWire>(
     () => ({
       summaryPreview: (input) => rpc.chats.summaryPreview(input),
@@ -195,6 +197,7 @@ export function ShellPage() {
       transcript: (input) => rpc.chats.transcript(input),
       watch: (botId, listener) => watchFamily(botId, listener),
       send: (input) => rpc.chats.send(input),
+      markRead: (input) => rpc.chats.markRead(input),
       project: (input) => rpc.chats.project(input),
     }),
     [chatList.createSide],
@@ -278,6 +281,25 @@ export function ShellPage() {
       next.delete("routine");
       setSearchParams(next, { replace: true });
     }
+    const chatParam = searchParams.get("chat");
+    if (chatParam && museMode && !inGroup) {
+      // A hit in a side chat: open it (waiting for the list), then drop the jump URL.
+      if (chatList.state.status === "loading") return;
+      const chat =
+        chatList.state.status === "ready"
+          ? chatList.state.chats.find((item) => item.id === chatParam)
+          : undefined;
+      if (chat) {
+        setActiveChat(chat);
+        setMuseView("conversation");
+        if (messageId) setChatFocus({ chatId: chat.id, messageId });
+      }
+      const next = new URLSearchParams(searchParams);
+      next.delete("chat");
+      next.delete("m");
+      setSearchParams(next, { replace: true });
+      return;
+    }
     if (messageId) {
       // The Muse's Conversation is the engine's transcript: page back to the hit, then scroll.
       const jump =
@@ -292,7 +314,16 @@ export function ShellPage() {
         setSearchParams(next, { replace: true });
       });
     }
-  }, [active?.id, groupId, inGroup, routines, routinesBotId, searchParams, setSearchParams]);
+  }, [
+    active?.id,
+    groupId,
+    inGroup,
+    routines,
+    routinesBotId,
+    searchParams,
+    setSearchParams,
+    chatList.state,
+  ]);
   const revealMessageRef = useRef<(messageId: string) => Promise<boolean>>(async () => false);
   const activeSnapshot = inGroup
     ? snapshot?.groupId === groupId
@@ -721,6 +752,11 @@ export function ShellPage() {
                 onReplied={chatList.refresh}
                 onClose={() => setActiveChat(null)}
                 onOpenProject={openProjectFiles}
+                focusMessageId={
+                  activeChat !== "draft" && chatFocus?.chatId === activeChat.id
+                    ? chatFocus.messageId
+                    : undefined
+                }
               />
             </div>
             {chatArtifacts.panel}
@@ -926,6 +962,11 @@ export function ShellPage() {
                   running={transcriptRunning}
                   workingBots={workingBots}
                   onLoadOlder={museMode && !inGroup ? museTranscript.loadOlder : loadOlder}
+                  onShowEarlier={
+                    museMode && !inGroup && museTranscript.canShowEarlier
+                      ? museTranscript.showEarlier
+                      : undefined
+                  }
                   onOpenBot={openBot}
                   onAnswer={answerMessage}
                   onSendCard={sendCardReply}
@@ -1131,7 +1172,7 @@ export function ShellPage() {
                 active={active}
                 setAgentSkills={setAgentSkills}
                 refreshBots={refreshBots}
-                // The engine has no way to clear a Conversation, so the action is not offered.
+                onClear={() => setClearTarget({ kind: "bot", chat: active })}
               />
             ) : null}
             {panel === "routine" && active ? (

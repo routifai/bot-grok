@@ -19,7 +19,8 @@ export interface ReplyAlertDeps {
 
 /**
  * A reply landed in the Conversation or a Side Chat (`messageDone` on the family stream):
- * unless the person is looking, mark the Muse unread (Conversation only) and raise the browser
+ * unless the person is looking, mark the Muse unread (Conversation only: the engine has no unread
+ * for the root Conversation; a Side Chat's comes from `related_chats`) and raise the browser
  * notification, under the same rules as before (`shouldNotifyBrowser`: permission, once per
  * message, not while the window is focused).
  */

@@ -19,7 +19,8 @@ import {
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChevronRight, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LoadingState } from "../../../components/ai/primitives";
 import { ReplyCardSendProvider } from "../../../components/cards/context";
 import { type ChatProject, ProjectChip, useChatProject } from "./ProjectChip";
 
@@ -37,6 +38,8 @@ export type SideChatWire = {
    * it out: the chat then only reads when it is opened and after a send. */
   watch?: (botId: string, listener: (event: FamilyEvent) => void) => () => void;
   send: (input: { chatId: string; text: string }) => Promise<{ ok: true }>;
+  /** The person has the chat open: clears its unread flag. Fixtures may leave it out. */
+  markRead?: (input: { botId: string; chatId: string }) => Promise<unknown>;
   /** The Project the chat has open; fixtures may leave it out. */
   project?: (input: { botId: string; chatId: string }) => Promise<{ project: ChatProject | null }>;
 };
@@ -67,6 +70,8 @@ export type SideChatView = {
     leading?: ReactNode;
     /** Rendered at the bottom of the scrolling column, e.g. a send-failure note. */
     trailing?: ReactNode;
+    /** Scroll to this message once it is rendered (a search hit). */
+    scrollRequest?: { messageId: string; nonce: number } | null;
   }>;
   /** Approvals waiting in this chat (the real app supplies it; fixtures leave it out). */
   Approvals?: ComponentType<{ botId: string; chatId: string }>;
@@ -88,6 +93,7 @@ export function SideChatSession({
   onReplied,
   onClose,
   onOpenProject,
+  focusMessageId,
 }: {
   bot: SideChatBot;
   /** "draft": not created yet. Otherwise the chat being viewed (possibly archived). */
@@ -101,9 +107,14 @@ export function SideChatSession({
   onClose: () => void;
   /** Show a Project's folder (the "Working in" chip). */
   onOpenProject?: (project: ChatProject) => void;
+  /** A search hit: scroll to this message once the chat has loaded. */
+  focusMessageId?: string;
 }) {
-  // The draft's first message, handed to the chat it becomes so it never blinks out.
-  const [first, setFirst] = useState<{ chatId: string; text: string } | null>(null);
+  // The draft's first message, handed to the chat it becomes so it never blinks out. `failed`:
+  // the chat exists but the engine could not deliver it.
+  const [first, setFirst] = useState<{ chatId: string; text: string; failed: boolean } | null>(
+    null,
+  );
   if (chat === "draft") {
     return (
       <DraftSideChat
@@ -111,7 +122,7 @@ export function SideChatSession({
         view={view}
         wire={wire}
         onCreated={(created, text) => {
-          setFirst({ chatId: created.id, text });
+          setFirst({ chatId: created.id, text, failed: Boolean(created.firstMessageErrorCode) });
           onCreated(created);
         }}
         onClose={onClose}
@@ -126,6 +137,8 @@ export function SideChatSession({
       view={view}
       wire={wire}
       firstText={first?.chatId === chat.id ? first.text : undefined}
+      firstFailed={first?.chatId === chat.id && first.failed}
+      focusMessageId={focusMessageId}
       onReplied={onReplied}
       onClose={onClose}
       onOpenProject={onOpenProject}
@@ -371,6 +384,8 @@ function ExistingSideChat({
   view,
   wire,
   firstText,
+  firstFailed = false,
+  focusMessageId,
   onReplied,
   onClose,
   onOpenProject,
@@ -380,6 +395,9 @@ function ExistingSideChat({
   view: SideChatView;
   wire: SideChatWire;
   firstText?: string;
+  /** The chat was created but its first message did not send: shown as not sent, to resend. */
+  firstFailed?: boolean;
+  focusMessageId?: string;
   onReplied?: () => void;
   onClose: () => void;
   onOpenProject?: (project: ChatProject) => void;
@@ -391,16 +409,18 @@ function ExistingSideChat({
     firstText ? { text: firstText, base: 0 } : null,
   );
   /** A reply is expected: from send until the engine has answered and gone idle. */
-  const [waiting, setWaiting] = useState(Boolean(firstText));
+  const [waiting, setWaiting] = useState(Boolean(firstText) && !firstFailed);
   const [engineRunning, setEngineRunning] = useState(chat.live);
   /** A Helper's chat: read, never written to. */
   const [readOnly, setReadOnly] = useState(false);
   const [sending, setSending] = useState(false);
-  const [failure, setFailure] = useState<SendFailure | null>(null);
+  const [failure, setFailure] = useState<SendFailure | null>(
+    firstFailed && firstText ? { text: firstText, stage: "failed" } : null,
+  );
   const [followSignal, setFollowSignal] = useState(0);
   const generation = useRef(0);
   /** A turn is in flight (from the list's live dot or our own send) until we see it end. */
-  const busy = useRef(Boolean(firstText) || chat.live);
+  const busy = useRef((Boolean(firstText) && !firstFailed) || chat.live);
   const pendingRef = useRef<{ text: string; base: number } | null>(
     firstText ? { text: firstText, base: 0 } : null,
   );
@@ -444,6 +464,29 @@ function ExistingSideChat({
     };
   }, [chat.id, wire]);
 
+  // Viewing the chat reads it: on opening an unread one, when a reply lands while it is in
+  // view, and when the person comes back to the window. The engine announces the change.
+  const unreadRef = useRef(chat.unread ?? false);
+  unreadRef.current = chat.unread ?? false;
+  const markSeen = () => {
+    if (!wire.markRead || document.visibilityState !== "visible" || !document.hasFocus()) return;
+    void wire.markRead({ botId: bot.id, chatId: chat.id }).catch(() => undefined);
+  };
+  const markSeenRef = useRef(markSeen);
+  markSeenRef.current = markSeen;
+  useEffect(() => {
+    if (unreadRef.current) markSeenRef.current();
+    const onBack = () => {
+      if (unreadRef.current) markSeenRef.current();
+    };
+    window.addEventListener("focus", onBack);
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      window.removeEventListener("focus", onBack);
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, [chat.id]);
+
   const awaitingReply = !chat.archived && (waiting || engineRunning);
   const awaitingRef = useRef(awaitingReply);
   awaitingRef.current = awaitingReply;
@@ -460,6 +503,7 @@ function ExistingSideChat({
     let recheck: number | undefined;
     const stop = wire.watch(bot.id, (event) => {
       if ((event.type === "messageDone" || event.type === "turnDone") && event.chatId === chat.id) {
+        if (event.type === "messageDone") markSeenRef.current();
         void refresh();
         window.clearTimeout(recheck);
         recheck = window.setTimeout(() => void refresh(), SETTLE_RECHECK_MS);
@@ -514,6 +558,10 @@ function ExistingSideChat({
       .finally(() => setSending(false));
   };
 
+  const scrollRequest = useMemo(
+    () => (focusMessageId ? { messageId: focusMessageId, nonce: 1 } : null),
+    [focusMessageId],
+  );
   const shown =
     pending === null
       ? (messages ?? [])
@@ -552,23 +600,30 @@ function ExistingSideChat({
         }
         onClose={onClose}
       />
-      <ReplyCardSendProvider send={(text) => void send(text)}>
-        <view.Transcript
-          bot={bot}
-          messages={shown}
-          running={sending || awaitingReply}
-          followSignal={followSignal}
-          leading={context}
-          trailing={
-            <>
-              {view.Approvals ? <view.Approvals botId={bot.id} chatId={chat.id} /> : null}
-              {failure ? (
-                <SendFailureNote failure={failure} onRetry={() => void send(failure.text)} />
-              ) : null}
-            </>
-          }
-        />
-      </ReplyCardSendProvider>
+      {messages === null && pending === null ? (
+        <div data-testid="side-chat-loading" className="flex flex-1 items-center justify-center">
+          <LoadingState label={t`Loading…`} />
+        </div>
+      ) : (
+        <ReplyCardSendProvider send={(text) => void send(text)}>
+          <view.Transcript
+            bot={bot}
+            messages={shown}
+            running={sending || awaitingReply}
+            followSignal={followSignal}
+            leading={context}
+            scrollRequest={scrollRequest}
+            trailing={
+              <>
+                {view.Approvals ? <view.Approvals botId={bot.id} chatId={chat.id} /> : null}
+                {failure ? (
+                  <SendFailureNote failure={failure} onRetry={() => void send(failure.text)} />
+                ) : null}
+              </>
+            }
+          />
+        </ReplyCardSendProvider>
+      )}
       {chat.archived || readOnly ? null : (
         <view.Composer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
       )}

@@ -77,7 +77,7 @@ describe("artifact search batching", () => {
 describe("engine-backed Conversation search", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("finds a Muse's messages in the engine, by the transcript's message id, and skips Nova's copies", async () => {
+  it("finds a Muse's messages and side chats' in the engine, by the transcript's message id, and skips Nova's copies", async () => {
     const { prisma } = fixture(0);
     const withSession = {
       ...prisma,
@@ -91,12 +91,21 @@ describe("engine-backed Conversation search", () => {
       Response.json({
         data: [
           {
-            id: "item-9",
-            type: "message",
+            session_id: "sess-1",
+            message_id: "item-9",
             role: "assistant",
-            content: [{ type: "output_text", text: "The quarterly report is ready." }],
+            created_at: 1,
+            text: "The quarterly report is ready.",
+            item: {},
           },
-          { id: "call-1", type: "function_call" },
+          {
+            session_id: "side-1",
+            message_id: "item-3",
+            role: "user",
+            created_at: 2,
+            text: "Where is the report?",
+            item: {},
+          },
         ],
       }),
     );
@@ -109,10 +118,17 @@ describe("engine-backed Conversation search", () => {
 
     expect(hits).toEqual([
       expect.objectContaining({ kind: "message", botId: "bot-1", messageId: "item-9" }),
+      expect.objectContaining({
+        kind: "message",
+        botId: "bot-1",
+        messageId: "item-3",
+        chatId: "side-1",
+      }),
     ]);
+    expect(hits[0]?.chatId).toBeUndefined();
     const [url] = fetchMock.mock.calls[0] as unknown as [URL];
     expect(String(url)).toBe(
-      "http://engine.test/v1/sessions/sess-1/items/search?query=report&limit=10",
+      "http://engine.test/v1/sessions/sess-1/items/search?query=report&scope=family&limit=10",
     );
     // Nova's own message rows are left out for a Muse the engine holds.
     const messageQuery = withSession.$queryRaw.mock.calls.find(

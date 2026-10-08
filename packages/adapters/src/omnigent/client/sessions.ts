@@ -55,6 +55,44 @@ export async function postOmnigentMessage(
   await throwOnError(response, "post message event", config.secrets);
 }
 
+/** `POST /v1/sessions/{id}/read` — the person has the chat open: moves their read baseline
+ * (up to `itemId`, default now) and clears its unread flag. */
+export async function markOmnigentRead(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  itemId?: string,
+): Promise<void> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/read`, config.baseUrl),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify(itemId ? { item_id: itemId } : {}),
+    },
+  );
+  await throwOnError(response, "mark read", config.secrets);
+}
+
+/** `POST /v1/sessions/{id}/reset` — clears a Super Chat's Conversation. Owner only; the
+ * engine answers 409 (`conflict`) while a turn is running. */
+export async function resetOmnigentSession(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+): Promise<{ session_id: string; reset_item_id: string | null; created_at: number | null }> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/reset`, config.baseUrl),
+    { method: "POST", headers: omnigentHeaders(config, email) },
+  );
+  await throwOnError(response, "reset session", config.secrets);
+  return (await response.json()) as {
+    session_id: string;
+    reset_item_id: string | null;
+    created_at: number | null;
+  };
+}
+
 export interface OmnigentPaginatedList<T> {
   data: T[];
   first_id?: string | null;

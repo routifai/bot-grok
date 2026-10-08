@@ -579,3 +579,124 @@ it("a Side Chat reads its transcript again when its own reply lands, and not on 
     vi.useRealTimers();
   }
 });
+
+it("marks an unread Side Chat with a dot, except the one that is open", async () => {
+  const chats = [
+    chat({ id: "a", title: "Unseen chat", unread: true }),
+    chat({ id: "b", title: "Open chat", unread: true }),
+    chat({ id: "c", title: "Read chat", unread: false }),
+  ];
+  const host = await mount(
+    <ChatTree
+      state={{ status: "ready", chats }}
+      collapsed={false}
+      activeChatId="b"
+      onOpenChat={() => undefined}
+      onNewDraft={() => undefined}
+    />,
+  );
+  const unreadRows = [...host.querySelectorAll("button")].filter((b) =>
+    b.textContent?.includes("Unread"),
+  );
+  expect(unreadRows.map((row) => row.textContent)).toEqual(["Unseen chatUnread"]);
+});
+
+it("shows a loading state until a Side Chat's first page arrives", async () => {
+  let release: (page: unknown) => void = () => undefined;
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn(),
+    createSide: vi.fn(),
+    transcript: vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    ) as unknown as SideChatWire["transcript"],
+    send: vi.fn(),
+  };
+  const host = await mount(
+    <SideChatSession
+      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      view={fakeView}
+      chat={chat({})}
+      wire={wire}
+      onCreated={() => undefined}
+      onClose={() => undefined}
+    />,
+  );
+  expect(host.querySelector('[data-testid="side-chat-loading"]')).not.toBeNull();
+  await act(async () => {
+    release({ threadId: "side-1", messages: [], olderCursor: null });
+  });
+  expect(host.querySelector('[data-testid="side-chat-loading"]')).toBeNull();
+});
+
+it("reads an unread Side Chat when it is opened in view", async () => {
+  const markRead = vi.fn().mockResolvedValue({ ok: true });
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn(),
+    createSide: vi.fn(),
+    transcript: vi.fn().mockResolvedValue({ threadId: "side-1", messages: [], olderCursor: null }),
+    send: vi.fn(),
+    markRead,
+  };
+  await mount(
+    <SideChatSession
+      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      view={fakeView}
+      chat={chat({ unread: true })}
+      wire={wire}
+      onCreated={() => undefined}
+      onClose={() => undefined}
+    />,
+  );
+  expect(markRead).toHaveBeenCalledWith({ botId: "bot-1", chatId: "side-1" });
+});
+
+it("opens the chat the engine created when its first message did not send, ready to resend", async () => {
+  const created = chat({
+    id: "side-9",
+    title: "Check the backlog",
+    firstMessageErrorCode: "runner_unavailable",
+  });
+  const send = vi.fn().mockResolvedValue({ ok: true });
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn().mockResolvedValue({ summary: "" }),
+    createSide: vi.fn().mockResolvedValue(created),
+    transcript: vi.fn().mockResolvedValue({ threadId: "side-9", messages: [], olderCursor: null }),
+    send,
+  };
+  function Harness() {
+    const [current, setCurrent] = useState<ChatSummary | "draft">("draft");
+    return (
+      <SideChatSession
+        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        view={fakeView}
+        chat={current}
+        wire={wire}
+        onCreated={setCurrent}
+        onClose={() => undefined}
+      />
+    );
+  }
+  const host = await mount(<Harness />);
+  await act(async () => {
+    setInputValue(host.querySelector<HTMLTextAreaElement>("textarea")!, "Check the backlog");
+  });
+  await act(async () => {
+    host
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await act(async () => {});
+  await act(async () => {});
+  expect(host.querySelector('[data-testid="side-chat-send-note"]')?.textContent).toContain(
+    "Didn’t send",
+  );
+  const retry = [...host.querySelectorAll("button")].find((b) => b.textContent === "Retry");
+  await act(async () => {
+    retry?.click();
+  });
+  expect(send).toHaveBeenCalledWith({ chatId: "side-9", text: "Check the backlog" });
+});

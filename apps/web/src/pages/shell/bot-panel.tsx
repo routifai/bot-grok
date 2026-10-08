@@ -210,7 +210,6 @@ export function BotSettings({
     thinkingLevel?: ThinkingLevel | null;
   }) => Promise<void>;
   onExport: () => Promise<void>;
-  /** Left out for a Muse whose Conversation lives in the engine, which has no way to clear it. */
   onClear?: () => void;
 }) {
   const { t } = useLingui();
