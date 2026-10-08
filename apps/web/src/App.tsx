@@ -100,7 +100,10 @@ function SessionApp() {
   const user = session.data?.user;
   return (
     <div className="h-full" data-aiden-app-state="ready">
-      <Suspense fallback={<div className="h-full bg-background" />}>
+      {/* Signed out, every page wears the night welcome surface, so the loading frame does too. */}
+      <Suspense
+        fallback={<div className={`h-full ${user ? "bg-background" : "bg-welcome-night"}`} />}
+      >
         <Routes>
           <Route path="/" element={user ? <Navigate to="/app" replace /> : <WelcomePage />} />
           <Route

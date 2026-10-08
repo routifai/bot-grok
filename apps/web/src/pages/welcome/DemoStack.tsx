@@ -10,16 +10,16 @@ export function DemoStack({ scrollRef }: { scrollRef: RefObject<HTMLElement | nu
   const [front, setFront] = useState<number | null>(null);
 
   useScrollEffect(scrollRef, () => {
-    // The front card: the last one whose top has reached its sticky position.
+    // The front card: the last one that has risen into the top part of the page, where the
+    // cards stack. Not compared with the computed sticky `top`: under browser zoom that value
+    // and the measured position disagree, and no card would ever count as arrived.
+    const scroller = scrollRef.current?.getBoundingClientRect();
+    if (!scroller) return;
+    const line = scroller.top + scroller.height * 0.45;
     let next: number | null = null;
     cards.current.forEach((c, i) => {
-      if (!c) return;
-      if (c.getBoundingClientRect().top <= Number.parseFloat(getComputedStyle(c).top) + 2) next = i;
+      if (c && c.getBoundingClientRect().top <= line) next = i;
     });
-    const first = cards.current[0];
-    if (next === null && first && first.getBoundingClientRect().top < window.innerHeight * 0.6) {
-      next = 0;
-    }
     setFront(next);
   });
 
