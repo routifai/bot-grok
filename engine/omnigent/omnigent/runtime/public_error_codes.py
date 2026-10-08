@@ -31,6 +31,8 @@ SANDBOX_UNAVAILABLE = "sandbox_unavailable"  # the computer/sandbox the turn run
 # it held that were not saved elsewhere are gone. The chat goes on.
 WORKSPACE_RESET = "workspace_reset"
 MODEL_KEY_REQUIRED = "model_key_required"  # the owner has not saved a model API key (Settings)
+# The chosen model is not served by the owner's connection (e.g. a Claude-only key, a GPT model).
+MODEL_NOT_SUPPORTED = "model_not_supported"
 INTERNAL = "internal"  # anything else: our bug or an unclassified failure
 
 PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
@@ -45,6 +47,7 @@ PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
         SANDBOX_UNAVAILABLE,
         WORKSPACE_RESET,
         MODEL_KEY_REQUIRED,
+        MODEL_NOT_SUPPORTED,
         INTERNAL,
     }
 )

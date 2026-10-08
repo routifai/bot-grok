@@ -23,9 +23,13 @@ from omnigent.inference_config import (
 )
 from omnigent.model_credentials.proxy import KEY_REQUIRED_MESSAGE
 from omnigent.model_credentials.store import resolve_model_connection
-from omnigent.model_credentials.upstreams import preferred_providers
+from omnigent.model_credentials.upstreams import harness_family, preferred_providers
 from omnigent.models import model_catalog
-from omnigent.models.model_catalog import ModelEntry, ResolvedModelProvider
+from omnigent.models.model_catalog import (
+    ModelEntry,
+    ResolvedModelProvider,
+    model_family_conflict,
+)
 from omnigent.models.model_metadata import ModelCapability, ModelWireAPI
 from omnigent.onboarding.provider_config import (
     MODEL_CONNECTION,
@@ -241,11 +245,7 @@ class SandboxInferenceService:
                     resolve_model_connection,
                     model_store,
                     owner_id=owner,
-                    preferred=preferred_providers(
-                        "multi"
-                        if canonicalize_harness(normalize_inference_harness(harness)) == "pi"
-                        else "claude"
-                    ),
+                    preferred=preferred_providers(harness_family(harness)),
                 )
                 if model_store is not None
                 else None
@@ -410,6 +410,7 @@ class SandboxInferenceService:
         result: dict[str, Any],
         binding: HarnessInferenceBinding,
         provider: ProviderEntry,
+        harness: str,
     ) -> dict[str, Any]:
         """Serve the operator's curated list when no server discovery is configured.
 
@@ -423,7 +424,7 @@ class SandboxInferenceService:
                 "or a model_allowlist for this harness."
             )
             return result
-        ids = list(binding.model_allowlist)
+        ids = [m for m in binding.model_allowlist if model_family_conflict(harness, m) is None]
         if not ids:
             result.update(status="empty", error="No models are permitted for this harness.")
             return result
@@ -474,7 +475,7 @@ class SandboxInferenceService:
             if not workspace and not isinstance(
                 snapshot.get("model_discovery", {}).get(provider.name), dict
             ):
-                return self._static_catalog(result, binding, provider)
+                return self._static_catalog(result, binding, provider, harness)
             if workspace:
                 connection = await self._connection(snapshot["owner_id"])
                 if connection is None:
@@ -496,7 +497,8 @@ class SandboxInferenceService:
             available = {
                 entry.id: entry
                 for entry in entries
-                if (
+                if model_family_conflict(harness, entry.id) is None
+                and (
                     not entry.metadata.wire_apis
                     or (
                         bool(_configured_wires(provider) & entry.metadata.wire_apis)

@@ -19,6 +19,7 @@ bodies are never logged.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 
@@ -28,7 +29,7 @@ from starlette.responses import StreamingResponse
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.model_credentials.store import resolve_model_connection
-from omnigent.model_credentials.upstreams import UPSTREAMS
+from omnigent.model_credentials.upstreams import UPSTREAMS, Upstream
 from omnigent.stores.host_store import HostStore
 
 _logger = logging.getLogger(__name__)
@@ -67,6 +68,32 @@ def split_credential(request: Request) -> tuple[str, str] | None:
     return host_id, token
 
 
+def _checked_body(content: bytes, upstream_cfg: Upstream) -> bytes:
+    """Enforce the upstream's vendor family on a request body's ``model`` and respell its id.
+
+    Only the (small) request body is parsed; a body that is not a JSON object with a string
+    ``model`` is forwarded untouched, and so is one whose id the upstream already spells right.
+
+    :raises OmnigentError: ``MODEL_NOT_SUPPORTED`` when the upstream cannot serve the model.
+    """
+    try:
+        payload = json.loads(content)
+    except ValueError:
+        return content
+    model = payload.get("model") if isinstance(payload, dict) else None
+    if not isinstance(model, str):
+        return content
+    if not upstream_cfg.serves_model(model):
+        raise OmnigentError(
+            f"{upstream_cfg.label} only serves Claude models; {model!r} needs another connection.",
+            code=ErrorCode.MODEL_NOT_SUPPORTED,
+        )
+    mapped = upstream_cfg.upstream_model(model)
+    if mapped == model:
+        return content
+    return json.dumps({**payload, "model": mapped}, separators=(",", ":")).encode()
+
+
 def create_model_proxy_router(
     host_store: HostStore, *, transport: httpx.AsyncBaseTransport | None = None
 ) -> APIRouter:
@@ -96,6 +123,9 @@ def create_model_proxy_router(
         )
         if connection is None:
             raise OmnigentError(KEY_REQUIRED_MESSAGE, code=ErrorCode.MODEL_KEY_REQUIRED)
+        content = await request.body()
+        if request.method == "POST":
+            content = _checked_body(content, upstream_cfg)
         headers = {
             name: value
             for name, value in request.headers.items()
@@ -108,7 +138,7 @@ def create_model_proxy_router(
             f"{upstream_cfg.base_url}/{path}",
             params=request.query_params,
             headers=headers,
-            content=await request.body(),
+            content=content,
         )
         try:
             upstream = await client.send(upstream_request, stream=True)

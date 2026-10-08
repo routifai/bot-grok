@@ -204,6 +204,9 @@ class ErrorCode:
         level only (HTTP 422).
     :cvar MODEL_PROVIDER_UNREACHABLE: The model provider (Anthropic, OpenRouter) could not
         be reached or answered unexpectedly while checking a key; retrying later may help.
+    :cvar MODEL_NOT_SUPPORTED: The model asked for cannot be served by the connection the
+        session owner's key belongs to (a Claude-only key asked for another vendor's model).
+        HTTP 400: the caller must pick a different model or add a connection that serves it.
     :cvar MODEL_KEY_REQUIRED: The session owner has not saved a model API key (Anthropic or
         OpenRouter) and the deployment bills model calls to the owner's key. HTTP 412, like
         ``HARNESS_NOT_CONFIGURED``: the request is valid and a retry cannot succeed until
@@ -277,6 +280,7 @@ class ErrorCode:
     NOT_A_FORK = "not_a_fork"
     MODEL_PROVIDER_UNREACHABLE = "model_provider_unreachable"
     MODEL_KEY_REQUIRED = "model_key_required"
+    MODEL_NOT_SUPPORTED = "model_not_supported"
 
 
 # Single source of truth for error code → HTTP status.
@@ -327,6 +331,7 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.NOT_A_FORK: 422,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: 502,
     ErrorCode.MODEL_KEY_REQUIRED: 412,
+    ErrorCode.MODEL_NOT_SUPPORTED: 400,
 }
 
 
@@ -374,6 +379,7 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     ErrorCode.NOT_A_FORK: ErrorCategory.USER,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorCategory.UPSTREAM,
     ErrorCode.MODEL_KEY_REQUIRED: ErrorCategory.USER,
+    ErrorCode.MODEL_NOT_SUPPORTED: ErrorCategory.USER,
 }
 
 
@@ -426,6 +432,7 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.NOT_A_FORK: ErrorImpact.BENIGN,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorImpact.TRANSIENT,
     ErrorCode.MODEL_KEY_REQUIRED: ErrorImpact.BENIGN,
+    ErrorCode.MODEL_NOT_SUPPORTED: ErrorImpact.BENIGN,
 }
 
 
@@ -473,6 +480,7 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     ErrorCode.NOT_A_FORK: ErrorPhase.REQUEST,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorPhase.REQUEST,
     ErrorCode.MODEL_KEY_REQUIRED: ErrorPhase.REQUEST,
+    ErrorCode.MODEL_NOT_SUPPORTED: ErrorPhase.REQUEST,
 }
 
 

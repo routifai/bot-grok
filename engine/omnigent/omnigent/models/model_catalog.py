@@ -410,6 +410,20 @@ def model_family_token(model_id: str) -> str:
     return "other"
 
 
+def model_family_conflict(harness: str, model_id: str) -> str | None:
+    """Return a rejection reason when *model_id* is recognizably another vendor's model.
+
+    :func:`~omnigent.models.model_override.model_family_mismatch` also rejects ids whose family
+    cannot be told (the right call for a sub-agent dispatch). Operator catalogs name gateway
+    aliases (``gateway/fast``) that only resolve later, so a configured or listed model is
+    rejected only when its family token says Claude or GPT/GLM/Kimi and the harness cannot run it.
+
+    :returns: The mismatch reason, or ``None`` when compatible or when the family is unknown.
+    """
+    reason = model_family_mismatch(harness, model_id)
+    return reason if reason and model_family_token(model_id) != "other" else None
+
+
 def catalog_model_entries(provider_name: str) -> tuple[ModelEntry, ...]:
     """Load provider chat models as normalized resolver candidates.
 

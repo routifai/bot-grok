@@ -96,7 +96,7 @@ def test_injects_owner_key_and_strips_caller_auth(store) -> None:
     seen: list[httpx.Request] = []
     r = _client(store, seen).post(
         "/v1/model/anthropic/v1/messages?beta=true",
-        json={"model": "m"},
+        json={"model": "claude-sonnet-5-5"},
         headers={
             "x-api-key": CRED,
             "authorization": "Bearer other",
@@ -113,7 +113,7 @@ def test_injects_owner_key_and_strips_caller_auth(store) -> None:
     assert (
         req.headers["anthropic-version"] == "2023-06-01" and req.headers["anthropic-beta"] == "x"
     )
-    assert req.read() == b'{"model":"m"}'
+    assert req.read() == b'{"model":"claude-sonnet-5-5"}'
 
 
 def test_openrouter_uses_bearer_and_api_base(store) -> None:

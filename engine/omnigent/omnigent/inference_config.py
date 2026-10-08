@@ -130,6 +130,11 @@ def parse_inference_config(config: dict[str, object]) -> dict[str, HarnessInfere
             raise ValueError(f"Harness {name!r} does not support inference bindings")
         if key in result:
             raise ValueError(f"Duplicate inference binding for harness {key!r}")
+        from omnigent.models.model_catalog import model_family_conflict
+
+        for model in (*(allowed or ()), *([default] if default else [])):
+            if reason := model_family_conflict(key, model):
+                raise ValueError(f"Harness {name!r} cannot use model {model!r}: {reason}")
         result[key] = HarnessInferenceBinding(
             provider=provider,
             default_model=default,
