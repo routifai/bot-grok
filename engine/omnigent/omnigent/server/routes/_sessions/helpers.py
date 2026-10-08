@@ -95,6 +95,7 @@ from omnigent.runtime import (
 )
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.policies.engine import PolicyEngine
+from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.runtime.tool_output import cap_tool_output
 from omnigent.server import presence, session_live_state, shutdown_state
 from omnigent.server._elicitation_registry import (
@@ -7939,6 +7940,57 @@ async def _relay_persist_error_once(
         return "failed"
 
 
+async def _record_turn_failure(
+    conversation_store: ConversationStore | None,
+    session_id: str,
+    failure: ErrorDetail,
+    *,
+    failure_origin: str,
+) -> None:
+    """
+    Record a turn that failed before reaching a runner, and publish its end.
+
+    The one place such a failure becomes visible: it stores a single ``error``
+    item carrying a public code (``runner_unavailable`` reads as
+    ``sandbox_unavailable``; deduplicated against a repeat with no user message
+    in between), publishes a terminal ``response.failed`` event so streams that
+    follow turn ends (the family stream's ``turn.done``) fire, then publishes the
+    ``failed`` status.
+
+    :param conversation_store: Store used for the durable append.
+    :param session_id: Session/conversation identifier, e.g. ``"conv_abc123"``.
+    :param failure: The failure, e.g. ``ErrorDetail(code="runner_unavailable", ...)``.
+    :param failure_origin: Slug naming the failing path, for the status log.
+    """
+    turn_id = generate_task_id()
+    error = ErrorData(
+        source="execution",
+        code=public_error_code(failure.code),
+        message=failure.message,
+    )
+    persisted = await _relay_persist_error_once(
+        conversation_store,
+        session_id,
+        NewConversationItem(type="error", response_id=turn_id, data=error),
+    )
+    if persisted == "persisted":
+        _publish_error_event(session_id, error)
+    session_stream.publish(
+        session_id,
+        {
+            "type": "response.failed",
+            "source": "execution",
+            "response": {
+                "id": turn_id,
+                "object": "response",
+                "status": "failed",
+                "error": {"code": error.code, "message": error.message},
+            },
+        },
+    )
+    _publish_status(session_id, "failed", failure, failure_origin=failure_origin)
+
+
 async def _relay_persist(
     conversation_store: ConversationStore | None,
     session_id: str,
@@ -11603,6 +11655,7 @@ __all__ = [
     "_read_state_entry",
     "_read_upload_capped",
     "_record_daily_cost",
+    "_record_turn_failure",
     "_registered_runner_id",
     "_reject_reserved_cost_control_label_seed",
     "_reject_server_reserved_label_seed",

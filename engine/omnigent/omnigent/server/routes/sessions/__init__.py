@@ -496,6 +496,7 @@ from omnigent.server.routes._sessions.helpers import (
     _reject_reserved_cost_control_label_seed as _reject_reserved_cost_control_label_seed,
     _reject_server_reserved_label_seed as _reject_server_reserved_label_seed,
     _relay_persist as _relay_persist,
+    _record_turn_failure as _record_turn_failure,
     _relay_persist_error_once as _relay_persist_error_once,
     _remove_session_worktree_best_effort as _remove_session_worktree_best_effort,
     _repl_terminal_ui_labels as _repl_terminal_ui_labels,

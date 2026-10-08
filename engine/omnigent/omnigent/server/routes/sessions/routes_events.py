@@ -200,6 +200,7 @@ from omnigent.server.routes._sessions.helpers import (
     _publish_policy_deny,
     _publish_session_superseded,
     _publish_status,
+    _record_turn_failure,
     _remove_session_worktree_best_effort,
     _require_external_status_forward,
     _require_filesystem_attachment_harness,
@@ -2189,9 +2190,9 @@ def register_events_routes(
                     message=str(exc),
                 )
                 await _persist_session_status_error_labels(session_id, failure, conversation_store)
-                _publish_status(
+                await _record_turn_failure(
+                    conversation_store,
                     session_id,
-                    "failed",
                     failure,
                     failure_origin="runner_unavailable",
                 )
