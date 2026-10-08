@@ -176,6 +176,27 @@
   --media-pink-deep: #4b0b22;
   --media-green-glow: #1f8f4a;
   --media-green-deep: #0b3a1f;
+  --welcome-night: #07070c;
+  --welcome-win: #101018;
+  --welcome-win-2: #171722;
+  --welcome-bubble: #1f1f2c;
+  --welcome-hair: rgba(214, 214, 255, 0.09);
+  --welcome-hair-2: rgba(214, 214, 255, 0.16);
+  --welcome-ink: #eeedf7;
+  --welcome-ink-2: #a6a5bb;
+  --welcome-ink-3: #71708a;
+  --welcome-glow: #8b93ff;
+  --welcome-glow-hi: #c9ceff;
+  --welcome-glow-lo: #3b2a8f;
+  --welcome-lilac: #cfd2ff;
+  --welcome-rose: #ff7ab6;
+  --welcome-sky: #5fb4ff;
+  --welcome-me: #3f6dff;
+  --welcome-amber: #ffb547;
+  --welcome-file-from: #16193a;
+  --welcome-paper: #f4f3f8;
+  --welcome-paper-ink: #222222;
+  --welcome-paper-mute: #777777;
   --radius: 0.75rem;
 }
 
@@ -278,5 +299,26 @@
   --media-pink-deep: #4b0b22;
   --media-green-glow: #1f8f4a;
   --media-green-deep: #0b3a1f;
+  --welcome-night: #07070c;
+  --welcome-win: #101018;
+  --welcome-win-2: #171722;
+  --welcome-bubble: #1f1f2c;
+  --welcome-hair: rgba(214, 214, 255, 0.09);
+  --welcome-hair-2: rgba(214, 214, 255, 0.16);
+  --welcome-ink: #eeedf7;
+  --welcome-ink-2: #a6a5bb;
+  --welcome-ink-3: #71708a;
+  --welcome-glow: #8b93ff;
+  --welcome-glow-hi: #c9ceff;
+  --welcome-glow-lo: #3b2a8f;
+  --welcome-lilac: #cfd2ff;
+  --welcome-rose: #ff7ab6;
+  --welcome-sky: #5fb4ff;
+  --welcome-me: #3f6dff;
+  --welcome-amber: #ffb547;
+  --welcome-file-from: #16193a;
+  --welcome-paper: #f4f3f8;
+  --welcome-paper-ink: #222222;
+  --welcome-paper-mute: #777777;
   --radius: 0.75rem;
 }

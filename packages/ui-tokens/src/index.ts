@@ -169,6 +169,48 @@ export type ColorTokens = {
   "media-green-glow"?: string;
   /** Muse only: a Feed media tile's glow. */
   "media-green-deep"?: string;
+  /** Signed-out welcome page (dark only): the page. */
+  "welcome-night"?: string;
+  /** Signed-out welcome page (dark only): the window. */
+  "welcome-win"?: string;
+  /** Signed-out welcome page (dark only): a raised card. */
+  "welcome-win-2"?: string;
+  /** Signed-out welcome page (dark only): a message bubble. */
+  "welcome-bubble"?: string;
+  /** Signed-out welcome page (dark only): a hairline. */
+  "welcome-hair"?: string;
+  /** Signed-out welcome page (dark only): a stronger hairline. */
+  "welcome-hair-2"?: string;
+  /** Signed-out welcome page (dark only): text. */
+  "welcome-ink"?: string;
+  /** Signed-out welcome page (dark only): secondary text. */
+  "welcome-ink-2"?: string;
+  /** Signed-out welcome page (dark only): tertiary text. */
+  "welcome-ink-3"?: string;
+  /** Signed-out welcome page (dark only): the orb glow. */
+  "welcome-glow"?: string;
+  /** Signed-out welcome page (dark only): the glow highlight. */
+  "welcome-glow-hi"?: string;
+  /** Signed-out welcome page (dark only): the glow shadow. */
+  "welcome-glow-lo"?: string;
+  /** Signed-out welcome page (dark only): the italic accent. */
+  "welcome-lilac"?: string;
+  /** Signed-out welcome page (dark only): a fork color. */
+  "welcome-rose"?: string;
+  /** Signed-out welcome page (dark only): a fork color. */
+  "welcome-sky"?: string;
+  /** Signed-out welcome page (dark only): the user bubble. */
+  "welcome-me"?: string;
+  /** Signed-out welcome page (dark only): the ask icon. */
+  "welcome-amber"?: string;
+  /** Signed-out welcome page (dark only): the file card gradient start. */
+  "welcome-file-from"?: string;
+  /** Signed-out welcome page (dark only): the file page. */
+  "welcome-paper"?: string;
+  /** Signed-out welcome page (dark only): the file page text. */
+  "welcome-paper-ink"?: string;
+  /** Signed-out welcome page (dark only): the file page muted text. */
+  "welcome-paper-mute"?: string;
 };
 
 export const darkTokens = {
@@ -292,6 +334,28 @@ const tiles = {
   "media-pink-deep": "#4B0B22",
   "media-green-glow": "#1F8F4A",
   "media-green-deep": "#0B3A1F",
+  // The signed-out welcome page is dark in both themes.
+  "welcome-night": "#07070C",
+  "welcome-win": "#101018",
+  "welcome-win-2": "#171722",
+  "welcome-bubble": "#1F1F2C",
+  "welcome-hair": "rgba(214, 214, 255, 0.09)",
+  "welcome-hair-2": "rgba(214, 214, 255, 0.16)",
+  "welcome-ink": "#EEEDF7",
+  "welcome-ink-2": "#A6A5BB",
+  "welcome-ink-3": "#71708A",
+  "welcome-glow": "#8B93FF",
+  "welcome-glow-hi": "#C9CEFF",
+  "welcome-glow-lo": "#3B2A8F",
+  "welcome-lilac": "#CFD2FF",
+  "welcome-rose": "#FF7AB6",
+  "welcome-sky": "#5FB4FF",
+  "welcome-me": "#3F6DFF",
+  "welcome-amber": "#FFB547",
+  "welcome-file-from": "#16193A",
+  "welcome-paper": "#F4F3F8",
+  "welcome-paper-ink": "#222222",
+  "welcome-paper-mute": "#777777",
 } as const;
 
 const novaLight = {

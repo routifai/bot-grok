@@ -12,17 +12,18 @@
 /* Muse edition type and elevation (docs/muse/DESIGN.md). */
 @theme {
   --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-welcome: "Newsreader Variable", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
   --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 32px -12px rgb(0 0 0 / 0.14);
 }
 
-@keyframes museFloat {
-  0%,
-  100% {
-    translate: 0 0;
+@keyframes welcomePulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--welcome-glow) 55%, transparent);
   }
-  50% {
-    translate: 0 -4px;
+  70%,
+  100% {
+    box-shadow: 0 0 0 10px transparent;
   }
 }
 
