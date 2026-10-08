@@ -105,6 +105,8 @@ logger = logging.getLogger(__name__)
 # unset. Not Databricks-specific: the same fallback applies to any gateway
 # producer (Databricks AI gateway or a generic key/gateway provider).
 _GATEWAY_AUTH_REFRESH_MS = 900_000
+#: Emitted between consecutive assistant text blocks so they never glue together.
+_TEXT_BLOCK_SEPARATOR = "\n\n"
 _CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV = "ENABLE_TOOL_SEARCH"
 
 # Claude Code forwards the ANTHROPIC_CUSTOM_HEADERS value verbatim as
@@ -2829,6 +2831,7 @@ class ClaudeSDKExecutor(Executor):
         # We observe the message stream and yield ExecutorEvents so the
         # CLI can render text chunks and tool-call progress in real time.
         response_text = ""
+        separate_next_text = False
         turn_usage: dict[str, Any] | None = None  # type: ignore[explicit-any]
         # The concrete model the SDK reports on its assistant messages, e.g.
         # ``"claude-opus-4-8"``. Captured from the stream because the resolved
@@ -3094,6 +3097,10 @@ class ClaudeSDKExecutor(Executor):
                                     event_type="reasoning_started",
                                 )
                                 continue
+                            if block_type == "text" and response_text.strip():
+                                # A new text block after earlier text: mark the
+                                # boundary so consumers never see glued blocks.
+                                separate_next_text = True
                             if block_type == "tool_use":
                                 raw_tool_id = block_evt.get("id")
                                 # SSE stream events from the SDK should
@@ -3123,6 +3130,10 @@ class ClaudeSDKExecutor(Executor):
                             if delta_type == "text_delta":
                                 text = delta.get("text")
                                 if isinstance(text, str) and text:
+                                    if separate_next_text:
+                                        separate_next_text = False
+                                        response_text += _TEXT_BLOCK_SEPARATOR
+                                        yield TextChunk(text=_TEXT_BLOCK_SEPARATOR)
                                     response_text += text
                                     yield TextChunk(text=text)
                             elif delta_type == "thinking_delta":
@@ -3185,6 +3196,9 @@ class ClaudeSDKExecutor(Executor):
                                     if provider_error_type:
                                         provider_error_text += text_block.text
                                         continue
+                                    if response_text.strip() and text_block.text:
+                                        response_text += _TEXT_BLOCK_SEPARATOR
+                                        yield TextChunk(text=_TEXT_BLOCK_SEPARATOR)
                                     response_text += text_block.text
                                     yield TextChunk(text=text_block.text)
                                 elif isinstance(block, sdk.ThinkingBlock):

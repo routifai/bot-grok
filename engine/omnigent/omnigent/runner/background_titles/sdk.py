@@ -19,6 +19,12 @@ from omnigent.runner.background_titles.service import (
 _logger = logging.getLogger("omnigent.runner.background_titles.sdk")
 
 
+def final_text_block(text: str) -> str | None:
+    """Return the last non-empty blank-line-separated block (the model's final answer)."""
+    blocks = [block.strip() for block in text.split("\n\n") if block.strip()]
+    return blocks[-1] if blocks else None
+
+
 async def generate_background_title(context: BackgroundTitleContext) -> str | None:
     """Generate a title with a synthetic tool-free SDK harness session."""
     spawn_env = dict(context.spawn_env)
@@ -128,7 +134,6 @@ async def generate_background_title(context: BackgroundTitleContext) -> str | No
                         raise BackgroundTitleHarnessError(detail)
                     elif event_type == "response.completed":
                         break
-        title = "".join(text_parts).strip()
-        return title or None
+        return final_text_block("".join(text_parts))
     finally:
         await context.process_manager.release(process_key)

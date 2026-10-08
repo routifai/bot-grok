@@ -3216,6 +3216,114 @@ class TestStreamEventStreaming(unittest.TestCase):
 
         _run(_t())
 
+    def test_second_text_block_is_separated_from_first(self):
+        from claude_agent_sdk.types import (
+            ClaudeAgentOptions as SDKClaudeAgentOptions,
+        )
+        from claude_agent_sdk.types import (
+            ResultMessage as SDKResultMessage,
+        )
+        from claude_agent_sdk.types import (
+            StreamEvent as SDKStreamEvent,
+        )
+
+        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+
+        class _Sentinel:
+            pass
+
+        class _FakeSDK:
+            AssistantMessage = _Sentinel
+            UserMessage = _Sentinel
+            SystemMessage = _Sentinel
+            StreamEvent = SDKStreamEvent
+            ResultMessage = SDKResultMessage
+            ClaudeAgentOptions = SDKClaudeAgentOptions
+            messages = [
+                SDKStreamEvent(
+                    uuid="u0",
+                    session_id="s1",
+                    event={
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                ),
+                SDKStreamEvent(
+                    uuid="u1",
+                    session_id="s1",
+                    event={
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "text_delta", "text": "Context-Free Title Request"},
+                    },
+                ),
+                SDKStreamEvent(
+                    uuid="u2",
+                    session_id="s1",
+                    event={
+                        "type": "content_block_start",
+                        "index": 1,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                ),
+                SDKStreamEvent(
+                    uuid="u3",
+                    session_id="s1",
+                    event={
+                        "type": "content_block_delta",
+                        "index": 1,
+                        "delta": {"type": "text_delta", "text": "Unclear Question"},
+                    },
+                ),
+                SDKResultMessage(
+                    subtype="result",
+                    session_id="s1",
+                    result="Hello world",
+                    total_cost_usd=0.0,
+                    duration_ms=100,
+                    duration_api_ms=80,
+                    is_error=False,
+                    num_turns=1,
+                ),
+            ]
+
+            class ClaudeSDKClient:
+                def __init__(self, options):
+                    self.options = options
+
+                async def connect(self):
+                    return None
+
+                async def query(self, prompt, session_id="default"):
+                    return None
+
+                async def receive_response(self):
+                    for message in _FakeSDK.messages:
+                        yield message
+
+                async def disconnect(self):
+                    return None
+
+        async def _t():
+            executor = ClaudeSDKExecutor()
+            with patch("omnigent.inner.claude_sdk_executor._ensure_sdk", return_value=_FakeSDK):
+                events = [
+                    e
+                    async for e in executor.run_turn(
+                        [{"role": "user", "content": "hi"}],
+                        [],
+                        "",
+                    )
+                ]
+            chunks = [e for e in events if isinstance(e, TextChunk)]
+            joined = "".join(c.text for c in chunks)
+            self.assertEqual(joined, "Context-Free Title Request\n\nUnclear Question")
+            self.assertEqual(joined.split("\n\n")[-1], "Unclear Question")
+            self.assertIsInstance(events[-1], TurnComplete)
+
+        _run(_t())
+
     def test_tool_use_assembly_yields_tool_call_request_with_args(self):
         """
         A streaming turn that contains a ``content_block_start`` tool_use

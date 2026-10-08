@@ -1399,3 +1399,12 @@ async def test_background_title_timeout_releases_process(
     assert response.json()["error"] == "title_harness_timeout"
     [process_key] = process_manager.released
     assert uuid.UUID(process_key).hex == process_key
+
+
+def test_final_text_block_keeps_only_last_block() -> None:
+    from omnigent.runner.background_titles.sdk import final_text_block
+
+    glued = "Context-Free Title Request\n\nUnclear Question About Something"
+    assert final_text_block(glued) == "Unclear Question About Something"
+    assert final_text_block("Debug authentication timeout") == "Debug authentication timeout"
+    assert final_text_block(" \n\n ") is None
