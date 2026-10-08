@@ -4,6 +4,13 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+
+vi.mock("react-dom/client", async (orig) =>
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
+);
+
 import { ACTIVITY_LOADING_GRACE_MS, ActivityPanel } from "./ActivityPanel";
 import { activity, helper, step } from "./activityTestKit";
 

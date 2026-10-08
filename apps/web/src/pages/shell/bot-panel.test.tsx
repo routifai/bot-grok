@@ -6,6 +6,10 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
+vi.mock("react-dom/client", async (orig) =>
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+);
+
 const api = vi.hoisted(() => ({
   voice: { voices: vi.fn().mockResolvedValue([]) },
   models: { credentials: vi.fn().mockResolvedValue([]), list: vi.fn().mockResolvedValue([]) },

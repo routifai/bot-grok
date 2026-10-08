@@ -5,6 +5,10 @@ import { act, createContext, useContext } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
+vi.mock("react-dom/client", async (orig) =>
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+);
+
 const api = vi.hoisted(() => ({ settings: vi.fn(), updateSettings: vi.fn() }));
 const preferences = vi.hoisted(() => ({ update: vi.fn().mockResolvedValue({}) }));
 vi.mock("../../lib/rpc", () => ({ rpc: { muse: api, preferences } }));
