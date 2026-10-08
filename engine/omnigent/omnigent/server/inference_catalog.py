@@ -22,7 +22,8 @@ from omnigent.inference_config import (
     validate_inference_credentials,
 )
 from omnigent.model_credentials.proxy import KEY_REQUIRED_MESSAGE
-from omnigent.model_credentials.store import get_owner_model_credential
+from omnigent.model_credentials.store import resolve_model_connection
+from omnigent.model_credentials.upstreams import preferred_providers
 from omnigent.models import model_catalog
 from omnigent.models.model_catalog import ModelEntry, ResolvedModelProvider
 from omnigent.models.model_metadata import ModelCapability, ModelWireAPI
@@ -233,9 +234,19 @@ class SandboxInferenceService:
         ]
         model_providers: dict[str, str] = {}
         if model_names:
-            model_store = getattr(self._state, "model_credential_store", None)
+            model_store = getattr(self._state, "model_connection_store", None)
+            # Operator env providers (config, not connections) would be tried here on None.
             saved = (
-                await asyncio.to_thread(get_owner_model_credential, model_store, owner)
+                await asyncio.to_thread(
+                    resolve_model_connection,
+                    model_store,
+                    owner_id=owner,
+                    preferred=preferred_providers(
+                        "multi"
+                        if canonicalize_harness(normalize_inference_harness(harness)) == "pi"
+                        else "claude"
+                    ),
+                )
                 if model_store is not None
                 else None
             )
@@ -243,16 +254,16 @@ class SandboxInferenceService:
                 if bound is not None and bound.name in model_names:
                     raise OmnigentError(KEY_REQUIRED_MESSAGE, code=ErrorCode.MODEL_KEY_REQUIRED)
             else:
-                proxy_url = _endpoint(f"{target.server_url.rstrip('/')}/v1/model/{saved[0]}")
+                proxy_url = _endpoint(f"{target.server_url.rstrip('/')}/v1/model/{saved.provider}")
                 # Anthropic Messages at the proxy root serves claude-sdk (and pi's Claude ids).
                 # OpenRouter also serves any other model on Chat Completions, which pi uses at
                 # ``<proxy>/v1`` (pi appends ``/chat/completions``): the openai family.
                 for name in model_names:
-                    model_providers[name] = saved[0]
+                    model_providers[name] = saved.provider
                     entry_raw = raw["providers"][name]
                     keep = {"models", "pricing", "context_window", "max_output_tokens"}
                     families = {"anthropic": {"base_url": proxy_url}}
-                    if saved[0] == "openrouter":
+                    if saved.provider == "openrouter":
                         families["openai"] = {"base_url": f"{proxy_url}/v1", "wire_api": "chat"}
                     runtime["providers"][name] = {
                         "kind": "gateway",

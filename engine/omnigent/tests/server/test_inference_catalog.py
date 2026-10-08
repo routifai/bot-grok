@@ -764,14 +764,15 @@ def _byok_state(key_by_owner):
     )
 
     class _Store:
-        def get_plaintext(self, user_id):
-            return key_by_owner.get(user_id)
+        def get_plaintext(self, scope, owner_id, preferred):
+            found = key_by_owner.get(owner_id) if scope == "user" else None
+            return found if found and found[0] in preferred else None
 
     return SimpleNamespace(
         sandbox_config=ManagedSandboxDeployment.single(target),
         databricks_store=None,
         databricks_client=None,
-        model_credential_store=_Store(),
+        model_connection_store=_Store(),
     )
 
 

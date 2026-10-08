@@ -10,9 +10,9 @@ leaves the engine process.
 
 Route: ``/v1/model/{provider}/{path}``. There is no host id in the path: the base URL is fixed in
 the session snapshot before the Computer exists, so the host id travels inside the credential.
-``provider`` is ``anthropic`` (``https://api.anthropic.com``) or ``openrouter``
-(``https://openrouter.ai/api``, whose Anthropic-compatible Messages API lives at
-``/api/v1/messages``) and must match the provider of the owner's saved key. Auth headers and
+``provider`` is an upstream from :mod:`omnigent.model_credentials.upstreams` (base URL and auth
+style come from there) and is resolved to the owner's connection for exactly that provider: their
+own key first, else the organization's. Auth headers and
 bodies are never logged.
 """
 
@@ -27,15 +27,12 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import StreamingResponse
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.model_credentials.store import get_owner_model_credential
+from omnigent.model_credentials.store import resolve_model_connection
+from omnigent.model_credentials.upstreams import UPSTREAMS
 from omnigent.stores.host_store import HostStore
 
 _logger = logging.getLogger(__name__)
 
-_UPSTREAM = {
-    "anthropic": "https://api.anthropic.com",
-    "openrouter": "https://openrouter.ai/api",
-}
 KEY_REQUIRED_MESSAGE = "Add your Anthropic or OpenRouter API key in Settings to use Nova."
 # connect/write/pool are short; a long read covers a model that thinks silently for minutes.
 _TIMEOUT = httpx.Timeout(connect=10.0, read=900.0, write=60.0, pool=10.0)
@@ -85,37 +82,30 @@ def create_model_proxy_router(
         managed = await asyncio.to_thread(host_store.resolve_launch_token, *credential)
         if managed is None:
             raise HTTPException(status_code=401, detail="unauthenticated")
-        base = _UPSTREAM.get(provider)
+        upstream_cfg = UPSTREAMS.get(provider)
         segments = path.split("/")
-        if base is None or segments[0] != "v1" or ".." in segments or "" in segments:
+        if upstream_cfg is None or segments[0] != "v1" or ".." in segments or "" in segments:
             raise HTTPException(status_code=404, detail="unknown model route")
-        store = getattr(request.app.state, "model_credential_store", None)
-        saved = (
-            await asyncio.to_thread(get_owner_model_credential, store, managed.user_id)
+        store = getattr(request.app.state, "model_connection_store", None)
+        connection = (
+            await asyncio.to_thread(
+                resolve_model_connection, store, owner_id=managed.user_id, preferred=(provider,)
+            )
             if store is not None
             else None
         )
-        if saved is None:
+        if connection is None:
             raise OmnigentError(KEY_REQUIRED_MESSAGE, code=ErrorCode.MODEL_KEY_REQUIRED)
-        saved_provider, api_key = saved
-        if saved_provider != provider:
-            raise OmnigentError(
-                f"Your saved key is for {saved_provider}; this Computer is set up for {provider}.",
-                code=ErrorCode.MODEL_KEY_REQUIRED,
-            )
         headers = {
             name: value
             for name, value in request.headers.items()
             if name.lower() not in _DROP_REQUEST
         }
-        if provider == "anthropic":
-            headers["x-api-key"] = api_key
-        else:
-            headers["Authorization"] = f"Bearer {api_key}"
+        headers.update(upstream_cfg.key_header(connection.plaintext))
         client = httpx.AsyncClient(transport=transport, timeout=_TIMEOUT, follow_redirects=False)
         upstream_request = client.build_request(
             request.method,
-            f"{base}/{path}",
+            f"{upstream_cfg.base_url}/{path}",
             params=request.query_params,
             headers=headers,
             content=await request.body(),

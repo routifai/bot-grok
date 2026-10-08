@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import httpx
 
-PROVIDERS = ("anthropic", "openrouter")
-_LABELS = {"anthropic": "Anthropic", "openrouter": "OpenRouter"}
+from omnigent.model_credentials.upstreams import PROVIDERS, UPSTREAMS
+
+__all__ = ["PROVIDERS", "KeyRejectedError", "ProbeUnavailableError", "probe_key", "provider_label"]
+
 _TIMEOUT_SECONDS = 10.0
 
 
@@ -19,24 +19,9 @@ class ProbeUnavailableError(Exception):
     """The provider could not be reached or answered something unexpected."""
 
 
-@dataclass(frozen=True)
-class _Probe:
-    url: str
-    headers: dict[str, str]
-
-
 def provider_label(provider: str) -> str:
     """:returns: The display name of provider."""
-    return _LABELS[provider]
-
-
-def _probe(provider: str, api_key: str) -> _Probe:
-    if provider == "anthropic":
-        return _Probe(
-            "https://api.anthropic.com/v1/models",
-            {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-        )
-    return _Probe("https://openrouter.ai/api/v1/key", {"Authorization": f"Bearer {api_key}"})
+    return UPSTREAMS[provider].label
 
 
 async def probe_key(
@@ -48,13 +33,13 @@ async def probe_key(
     :raises KeyRejectedError: 401/403.
     :raises ProbeUnavailableError: network error, timeout or any other status.
     """
-    probe = _probe(provider, api_key)
-    label = provider_label(provider)
+    upstream = UPSTREAMS[provider]
+    label = upstream.label
     try:
         async with httpx.AsyncClient(
             transport=transport, timeout=_TIMEOUT_SECONDS, follow_redirects=False
         ) as client:
-            response = await client.get(probe.url, headers=probe.headers)
+            response = await client.get(upstream.probe_url, headers=upstream.auth_headers(api_key))
     except httpx.HTTPError as exc:
         # Only the exception type is kept: its text could carry request details.
         raise ProbeUnavailableError(

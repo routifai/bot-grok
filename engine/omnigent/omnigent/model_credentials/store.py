@@ -1,146 +1,228 @@
-"""Per-account model credential: one sealed provider key per user, never returned in plaintext.
+"""Model connections: sealed provider keys, per user or per organization, never shown back.
 
-Exactly one active key per user is enforced by the primary key ``(workspace_id, user_id)``: a new
-key replaces the old one by upsert. The key is sealed with the vault's AES-256-GCM
-(``OMNIGENT_VAULT_KEY``), associated data ``"<user_id>|<provider>"``, and fails closed when the
-vault key is missing. Plaintext leaves only through :func:`get_owner_model_credential` /
-:meth:`ModelCredentialStore.get_plaintext` (server side, for the run path); it is never logged.
+A connection is one key for one provider held by an owner: ``scope='user'`` with the user id as
+``owner_id``, or ``scope='org'`` (the workspace) with ``owner_id=''``. The primary key
+``(workspace_id, scope, owner_id, provider)`` keeps it to one key per provider per owner; saving
+again replaces it. The key is sealed with the vault's AES-256-GCM (``OMNIGENT_VAULT_KEY``) with
+associated data ``"<scope>:<owner_id>|<provider>"`` (so a ciphertext cannot be replayed under
+another scope, owner or provider) and fails closed when the vault key is missing. Plaintext leaves
+only through :func:`resolve_model_connection` / :meth:`ModelConnectionStore.get_plaintext` (server
+side, for the run path); it is never logged.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from omnigent.db.db_models import SqlUserModelCredential, current_workspace_id
+from omnigent.db.db_models import SqlModelConnection, current_workspace_id
 from omnigent.db.utils import (
     get_or_create_engine,
     make_named_managed_session_maker,
     now_epoch,
     run_write_transaction,
 )
-from omnigent.model_credentials.probe import PROVIDERS
+from omnigent.model_credentials.upstreams import PROVIDERS
 from omnigent.superchat.vault.store import seal, unseal
 
 STATUS_VALID = "valid"
+SCOPE_USER = "user"
+SCOPE_ORG = "org"
+ORG_OWNER = ""
+MAX_LABEL = 64
 
 
-class CredentialInputError(ValueError):
-    """The provider or key is not acceptable."""
+class ConnectionInputError(ValueError):
+    """The provider, scope or key is not acceptable."""
 
 
 @dataclass(frozen=True)
-class CredentialMeta:
-    """What a client may see about the saved key: never the key."""
+class ConnectionMeta:
+    """What a client may see about a saved key: never the key."""
 
     provider: str
     hint: str
     validated_at: int
     status: str
+    label: str | None
+    scope: str
 
 
-def _meta(row: SqlUserModelCredential) -> CredentialMeta:
-    return CredentialMeta(row.provider, row.hint, row.validated_at, row.status)
+@dataclass(frozen=True)
+class ResolvedConnection:
+    """The connection a run uses: server side only."""
+
+    provider: str
+    plaintext: str = field(repr=False)
+    scope: str
 
 
-def _aad_id(provider: str) -> str:
-    return provider
+def _meta(row: SqlModelConnection) -> ConnectionMeta:
+    return ConnectionMeta(
+        row.provider, row.hint, row.validated_at, row.status, row.label, row.scope
+    )
 
 
-class ModelCredentialStore:
-    """SQLAlchemy-backed store, owner-scoped by ``user_id``."""
+def _aad(scope: str, owner_id: str) -> str:
+    # The vault binds "{user_id}|{secret_id}": this makes the AAD "{scope}:{owner_id}|{provider}".
+    return f"{scope}:{owner_id}"
+
+
+def seal_key(scope: str, owner_id: str, provider: str, api_key: str) -> str:
+    """:returns: *api_key* sealed for exactly this scope, owner and provider."""
+    return seal(api_key, user_id=_aad(scope, owner_id), secret_id=provider)
+
+
+def unseal_key(scope: str, owner_id: str, provider: str, token: str) -> str:
+    """:returns: The plaintext key; raises ``VaultUnavailableError`` on a wrong binding or key."""
+    return unseal(token, user_id=_aad(scope, owner_id), secret_id=provider)
+
+
+def _check_owner(scope: str, owner_id: str) -> None:
+    if scope == SCOPE_USER and owner_id:
+        return
+    if scope == SCOPE_ORG and owner_id == ORG_OWNER:
+        return
+    raise ConnectionInputError("scope must be 'user' with an owner, or 'org' without one")
+
+
+class ModelConnectionStore:
+    """SQLAlchemy-backed store of model connections."""
 
     def __init__(self, storage_location: str) -> None:
         """:param storage_location: SQLAlchemy database URI."""
         self.storage_location = storage_location
         self._engine = get_or_create_engine(storage_location)
         self._session = make_named_managed_session_maker(
-            self._engine, query_name_prefix="omnigent.model_credential_store"
+            self._engine, query_name_prefix="omnigent.model_connection_store"
         )
         self._session_immediate = make_named_managed_session_maker(
-            self._engine, query_name_prefix="omnigent.model_credential_store", immediate=True
+            self._engine, query_name_prefix="omnigent.model_connection_store", immediate=True
         )
 
     def put(
-        self, user_id: str, provider: str, api_key: str, *, validated_at: int | None = None
-    ) -> CredentialMeta:
-        """Seal and store the key, replacing any previous one.
+        self,
+        scope: str,
+        owner_id: str,
+        provider: str,
+        api_key: str,
+        *,
+        label: str | None = None,
+        validated_at: int | None = None,
+    ) -> ConnectionMeta:
+        """Seal and store the key, replacing the owner's previous key for that provider.
 
         :raises VaultUnavailableError: no usable ``OMNIGENT_VAULT_KEY`` (nothing is stored).
-        :raises CredentialInputError: unknown provider or empty key.
+        :raises ConnectionInputError: unknown provider or scope, or empty key.
         """
+        _check_owner(scope, owner_id)
         if provider not in PROVIDERS:
-            raise CredentialInputError("provider must be 'anthropic' or 'openrouter'")
+            raise ConnectionInputError(f"provider must be one of: {', '.join(PROVIDERS)}")
         api_key = api_key.strip()
         if not api_key:
-            raise CredentialInputError("api_key is required")
-        ciphertext = seal(api_key, user_id=user_id, secret_id=_aad_id(provider))
+            raise ConnectionInputError("api_key is required")
+        label = (label or "").strip()[:MAX_LABEL] or None
+        ciphertext = seal_key(scope, owner_id, provider, api_key)
         now = now_epoch()
         stamp = validated_at if validated_at is not None else now
 
-        def write(session: Session) -> CredentialMeta:
-            row = session.get(SqlUserModelCredential, (current_workspace_id(), user_id))
+        def write(session: Session) -> ConnectionMeta:
+            key = (current_workspace_id(), scope, owner_id, provider)
+            row = session.get(SqlModelConnection, key)
             if row is None:
-                row = SqlUserModelCredential(user_id=user_id, created_at=now)
+                row = SqlModelConnection(
+                    scope=scope, owner_id=owner_id, provider=provider, created_at=now
+                )
                 session.add(row)
-            row.provider = provider
             row.ciphertext = ciphertext
             row.hint = api_key[-4:]
             row.validated_at = stamp
             row.status = STATUS_VALID
+            row.label = label
             row.updated_at = now
             session.flush()
             return _meta(row)
 
-        return run_write_transaction(self._session_immediate, "model_credential_put", write)
+        return run_write_transaction(self._session_immediate, "model_connection_put", write)
 
-    def get_meta(self, user_id: str) -> CredentialMeta | None:
-        """:returns: Masked metadata of the user's key, or ``None``."""
-        with self._session("model_credential_get_meta") as session:
-            row = session.scalars(
-                select(SqlUserModelCredential).where(
-                    SqlUserModelCredential.user_id == user_id,
-                    SqlUserModelCredential.workspace_id == current_workspace_id(),
+    def list(self, scope: str, owner_id: str) -> list[ConnectionMeta]:
+        """:returns: Masked metadata of the owner's connections, ordered by provider."""
+        _check_owner(scope, owner_id)
+        with self._session("model_connection_list") as session:
+            rows = session.scalars(
+                select(SqlModelConnection)
+                .where(
+                    SqlModelConnection.workspace_id == current_workspace_id(),
+                    SqlModelConnection.scope == scope,
+                    SqlModelConnection.owner_id == owner_id,
                 )
-            ).first()
-            return _meta(row) if row else None
+                .order_by(SqlModelConnection.provider)
+            ).all()
+            return [_meta(row) for row in rows]
 
-    def get_plaintext(self, user_id: str) -> tuple[str, str] | None:
-        """:returns: ``(provider, api_key)`` or ``None``. Server side only.
+    def get_plaintext(
+        self, scope: str, owner_id: str, preferred: Sequence[str]
+    ) -> tuple[str, str] | None:
+        """:returns: ``(provider, api_key)`` for the first of *preferred* the owner holds.
+
+        Server side only.
 
         :raises VaultUnavailableError: the vault key is missing or cannot open the value.
         """
-        with self._session("model_credential_get") as session:
-            row = session.scalars(
-                select(SqlUserModelCredential).where(
-                    SqlUserModelCredential.user_id == user_id,
-                    SqlUserModelCredential.workspace_id == current_workspace_id(),
+        _check_owner(scope, owner_id)
+        with self._session("model_connection_get") as session:
+            rows = {
+                row.provider: row.ciphertext
+                for row in session.scalars(
+                    select(SqlModelConnection).where(
+                        SqlModelConnection.workspace_id == current_workspace_id(),
+                        SqlModelConnection.scope == scope,
+                        SqlModelConnection.owner_id == owner_id,
+                        SqlModelConnection.provider.in_(list(preferred)),
+                    )
                 )
-            ).first()
-            if row is None:
-                return None
-            provider, token = row.provider, row.ciphertext
-        return provider, unseal(token, user_id=user_id, secret_id=_aad_id(provider))
+            }
+        for provider in preferred:
+            if provider in rows:
+                return provider, unseal_key(scope, owner_id, provider, rows[provider])
+        return None
 
-    def delete(self, user_id: str) -> bool:
+    def delete(self, scope: str, owner_id: str, provider: str) -> bool:
         """:returns: ``True`` when a key was removed."""
+        _check_owner(scope, owner_id)
 
         def write(session: Session) -> bool:
             result = session.execute(
-                delete(SqlUserModelCredential).where(
-                    SqlUserModelCredential.user_id == user_id,
-                    SqlUserModelCredential.workspace_id == current_workspace_id(),
+                delete(SqlModelConnection).where(
+                    SqlModelConnection.workspace_id == current_workspace_id(),
+                    SqlModelConnection.scope == scope,
+                    SqlModelConnection.owner_id == owner_id,
+                    SqlModelConnection.provider == provider,
                 )
             )
             return bool(result.rowcount)
 
-        return run_write_transaction(self._session_immediate, "model_credential_delete", write)
+        return run_write_transaction(self._session_immediate, "model_connection_delete", write)
 
 
-def get_owner_model_credential(
-    store: ModelCredentialStore, user_id: str
-) -> tuple[str, str] | None:
-    """The owner's ``(provider, plaintext key)`` for the run path, or ``None``; server side."""
-    return store.get_plaintext(user_id)
+def resolve_model_connection(
+    store: ModelConnectionStore, *, owner_id: str, preferred: Sequence[str]
+) -> ResolvedConnection | None:
+    """The connection a run uses, for the run path; server side.
+
+    Order: the user's own connection, then the organization's, else ``None``. Within a scope the
+    first of *preferred* (providers, best first) wins. Operator-configured env providers are
+    config, not connections: the caller handles them when this returns ``None``.
+
+    :raises VaultUnavailableError: the vault key is missing or cannot open the value.
+    """
+    for scope, scope_owner in ((SCOPE_USER, owner_id), (SCOPE_ORG, ORG_OWNER)):
+        if scope == SCOPE_USER and not scope_owner:
+            continue
+        found = store.get_plaintext(scope, scope_owner, preferred)
+        if found is not None:
+            return ResolvedConnection(provider=found[0], plaintext=found[1], scope=scope)
+    return None

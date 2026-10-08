@@ -18,7 +18,7 @@ from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.inner.pi_executor import _build_models_json, _only_configured_family
 from omnigent.model_credentials.proxy import create_model_proxy_router
-from omnigent.model_credentials.store import ModelCredentialStore
+from omnigent.model_credentials.store import ModelConnectionStore
 from omnigent.onboarding.provider_config import load_providers
 from omnigent.runtime.workflow import _apply_provider_to_pi
 from omnigent.server.inference_catalog import SandboxInferenceService
@@ -37,14 +37,15 @@ def _hosted_state(creds: dict[str, tuple[str, str]]) -> SimpleNamespace:
     assert deployment is not None
 
     class _Store:
-        def get_plaintext(self, user_id):
-            return creds.get(user_id)
+        def get_plaintext(self, scope, owner_id, preferred):
+            found = creds.get(owner_id) if scope == "user" else None
+            return found if found and found[0] in preferred else None
 
     return SimpleNamespace(
         sandbox_config=deployment,
         databricks_store=None,
         databricks_client=None,
-        model_credential_store=_Store(),
+        model_connection_store=_Store(),
     )
 
 
@@ -131,12 +132,12 @@ def test_hosted_engine_defaults_to_the_pi_bundle() -> None:
 
 
 @pytest.fixture
-def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ModelCredentialStore:
+def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ModelConnectionStore:
     monkeypatch.setenv(VAULT_KEY_ENV, base64.b64encode(os.urandom(32)).decode())
     uri = f"sqlite:///{tmp_path / 'p.db'}"
     OmnigentBase.metadata.create_all(get_or_create_engine(uri))
-    s = ModelCredentialStore(uri)
-    s.put("bob", "openrouter", "sk-or-v1-BOB")
+    s = ModelConnectionStore(uri)
+    s.put("user", "bob", "openrouter", "sk-or-v1-BOB")
     return s
 
 
@@ -154,7 +155,7 @@ def test_proxy_forwards_an_openai_chat_completion_with_bearer_injected(store) ->
             )
 
     app = FastAPI()
-    app.state.model_credential_store = store
+    app.state.model_connection_store = store
     app.include_router(
         create_model_proxy_router(_Hosts(), transport=httpx.MockTransport(respond)),  # type: ignore[arg-type]
         prefix="/v1",

@@ -19,11 +19,12 @@ from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
 from omnigent.host import model_credential as host_side
 from omnigent.model_credentials.proxy import create_model_proxy_router
-from omnigent.model_credentials.store import ModelCredentialStore
+from omnigent.model_credentials.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
 ALICE_KEY = "sk-ant-api03-ALICE-SECRET-1111"
 BOB_KEY = "sk-or-v1-BOB-SECRET-2222"
+ORG_KEY = "sk-ant-api03-ORG-SECRET-3333"
 CRED = "host-a:tok-a"
 
 
@@ -33,7 +34,7 @@ class _Managed:
 
 
 class _Hosts:
-    """host-a/tok-a -> alice, host-b/tok-b -> bob, host-c/tok-c -> carol (no key)."""
+    """host-a/tok-a -> alice, host-b/tok-b -> bob, host-c/tok-c -> carol (org key only)."""
 
     _rows = {
         ("host-a", "tok-a"): "alice",
@@ -53,13 +54,14 @@ class _Chunks(httpx.AsyncByteStream):
 
 
 @pytest.fixture
-def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ModelCredentialStore:
+def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ModelConnectionStore:
     monkeypatch.setenv(VAULT_KEY_ENV, base64.b64encode(os.urandom(32)).decode())
     uri = f"sqlite:///{tmp_path / 'p.db'}"
     OmnigentBase.metadata.create_all(get_or_create_engine(uri))
-    s = ModelCredentialStore(uri)
-    s.put("alice", "anthropic", ALICE_KEY)
-    s.put("bob", "openrouter", BOB_KEY)
+    s = ModelConnectionStore(uri)
+    s.put("user", "alice", "anthropic", ALICE_KEY)
+    s.put("user", "bob", "openrouter", BOB_KEY)
+    s.put("org", "", "anthropic", ORG_KEY)
     return s
 
 
@@ -75,7 +77,7 @@ def _client(store, upstream: list[httpx.Request], *, stream: bool = False) -> Te
         )
 
     app = FastAPI()
-    app.state.model_credential_store = store
+    app.state.model_connection_store = store
     app.include_router(
         create_model_proxy_router(_Hosts(), transport=httpx.MockTransport(respond)),  # type: ignore[arg-type]
         prefix="/v1",
@@ -139,18 +141,37 @@ def test_bad_or_foreign_token_is_rejected_without_upstream_call(store, cred) -> 
 def test_owner_cannot_use_another_owners_key(store) -> None:
     seen: list[httpx.Request] = []
     client = _client(store, seen)
-    # bob's token with alice's provider: bob has no anthropic key, alice's is never used
+    # bob's token on bob's provider with no org key for it: alice's key is never used
     r = client.post(
         "/v1/model/anthropic/v1/messages", json={}, headers={"x-api-key": "host-b:tok-b"}
     )
-    assert r.status_code == 412 and r.json()["code"] == "model_key_required"
-    assert seen == [] and ALICE_KEY not in r.text
+    # bob has no anthropic key of his own, so the org's anthropic key serves him, never alice's
+    assert r.status_code == 200
+    assert seen[0].headers["x-api-key"] == ORG_KEY and ALICE_KEY not in str(seen[0].headers)
 
 
-def test_no_saved_key_is_model_key_required(store) -> None:
+def test_org_connection_serves_a_user_without_a_key(store) -> None:
     seen: list[httpx.Request] = []
     r = _client(store, seen).post(
         "/v1/model/anthropic/v1/messages", json={}, headers={"x-api-key": "host-c:tok-c"}
+    )
+    assert r.status_code == 200
+    assert seen[0].headers["x-api-key"] == ORG_KEY
+
+
+def test_users_own_key_wins_over_the_org_key(store) -> None:
+    seen: list[httpx.Request] = []
+    _client(store, seen).post(
+        "/v1/model/anthropic/v1/messages", json={}, headers={"x-api-key": CRED}
+    )
+    assert seen[0].headers["x-api-key"] == ALICE_KEY
+
+
+def test_provider_without_any_connection_is_model_key_required(store) -> None:
+    seen: list[httpx.Request] = []
+    # carol has only the org's anthropic key: openrouter has none
+    r = _client(store, seen).post(
+        "/v1/model/openrouter/v1/messages", json={}, headers={"x-api-key": "host-c:tok-c"}
     )
     assert r.status_code == 412
     assert r.json() == {
@@ -187,7 +208,7 @@ def test_upstream_unreachable_is_502(store) -> None:
         raise httpx.ConnectError(f"cannot reach {request.headers['x-api-key']}")
 
     app = FastAPI()
-    app.state.model_credential_store = store
+    app.state.model_connection_store = store
     app.include_router(
         create_model_proxy_router(_Hosts(), transport=httpx.MockTransport(boom)),  # type: ignore[arg-type]
         prefix="/v1",
@@ -214,7 +235,7 @@ def test_keys_and_credentials_never_reach_logs(store, caplog) -> None:
     )
     client.post("/v1/model/anthropic/v1/messages", json={}, headers={"x-api-key": "host-c:tok-c"})
     client.post("/v1/model/anthropic/v1/messages", json={}, headers={"x-api-key": "host-a:bad"})
-    for secret in (ALICE_KEY, BOB_KEY, "tok-a", "tok-c", "BODY"):
+    for secret in (ALICE_KEY, BOB_KEY, ORG_KEY, "tok-a", "tok-c", "BODY"):
         assert secret not in caplog.text
 
 

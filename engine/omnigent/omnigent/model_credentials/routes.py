@@ -1,15 +1,18 @@
-"""``/v1/me/model-credential``: the caller's own provider API key (bring your own key).
+"""Model connection routes: bring-your-own provider keys, per user or per organization.
 
-``GET`` returns ``{provider, hint, validated_at, status}`` or 404. ``PUT {provider, api_key}``
-probes the key with the provider, seals and stores it, and returns the same masked metadata.
-``DELETE`` removes it. The key is never echoed, returned or logged: the body model keeps it out
-of ``repr`` and carries no validators (so a validation error cannot quote it), and errors name
-only the provider.
+``/v1/me/model-connections`` is the caller's own; ``/v1/admin/model-connections`` is the
+organization's (admin only, via the same gate as default policies). Each has ``GET`` (list of
+masked metadata ``{provider, hint, status, validated_at, label, scope}``), ``PUT /{provider}``
+(body ``{api_key, label?}``: probe with the provider, seal, store, replacing that provider's
+previous key) and ``DELETE /{provider}``. The key is never echoed, returned or logged: the body
+model keeps it out of ``repr`` and carries no validators (so a validation error cannot quote it),
+and errors name only the provider.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -17,92 +20,107 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.model_credentials.probe import (
-    PROVIDERS,
-    KeyRejectedError,
-    ProbeUnavailableError,
-    probe_key,
-)
+from omnigent.model_credentials.probe import KeyRejectedError, ProbeUnavailableError, probe_key
 from omnigent.model_credentials.store import (
-    CredentialInputError,
-    CredentialMeta,
-    ModelCredentialStore,
+    ORG_OWNER,
+    SCOPE_ORG,
+    SCOPE_USER,
+    ConnectionInputError,
+    ConnectionMeta,
+    ModelConnectionStore,
 )
+from omnigent.model_credentials.upstreams import PROVIDERS
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
+from omnigent.server.routes.default_policies import _require_admin
 from omnigent.superchat.vault.store import VaultUnavailableError
 
 
-class PutModelCredential(BaseModel):
-    """Body of ``PUT /v1/me/model-credential``."""
+class PutModelConnection(BaseModel):
+    """Body of ``PUT .../model-connections/{provider}``."""
 
     model_config = ConfigDict(extra="forbid")
 
     # Defaults, not required fields: a "missing field" 422 would quote the whole body.
-    provider: str = ""
     api_key: str = Field("", repr=False)
+    label: str | None = None
 
 
-def meta_to_response(meta: CredentialMeta) -> dict[str, Any]:
+def meta_to_response(meta: ConnectionMeta) -> dict[str, Any]:
     """Masked metadata only: never the key."""
     return {
         "provider": meta.provider,
         "hint": meta.hint,
-        "validated_at": meta.validated_at,
         "status": meta.status,
+        "validated_at": meta.validated_at,
+        "label": meta.label,
+        "scope": meta.scope,
     }
 
 
-def create_model_credential_router(
-    store: ModelCredentialStore,
+def create_model_connection_router(
+    store: ModelConnectionStore,
     *,
     auth_provider: AuthProvider | None = None,
+    permission_store: Any = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> APIRouter:
     """Build the router, mounted with ``prefix="/v1"``. *transport* makes the probe injectable."""
     router = APIRouter()
 
-    def _owner(request: Request) -> str:
-        return require_user(request, auth_provider) or RESERVED_USER_LOCAL
+    async def _me(request: Request) -> tuple[str, str]:
+        return SCOPE_USER, require_user(request, auth_provider) or RESERVED_USER_LOCAL
 
-    @router.get("/me/model-credential")
-    async def get_credential(request: Request) -> dict[str, Any]:
-        """The caller's saved key as masked metadata, or 404."""
-        meta = await asyncio.to_thread(store.get_meta, _owner(request))
-        if meta is None:
-            raise OmnigentError("No model credential saved", code=ErrorCode.NOT_FOUND)
-        return meta_to_response(meta)
+    async def _org(request: Request) -> tuple[str, str]:
+        await _require_admin(request, auth_provider, permission_store)
+        return SCOPE_ORG, ORG_OWNER
 
-    @router.put("/me/model-credential")
-    async def put_credential(request: Request, body: PutModelCredential) -> dict[str, Any]:
-        """Probe the key with its provider, then store it sealed (replacing any previous one)."""
-        owner = _owner(request)
-        if body.provider not in PROVIDERS:
-            raise OmnigentError(
-                "provider must be 'anthropic' or 'openrouter'", code=ErrorCode.INVALID_INPUT
-            )
-        api_key = body.api_key.strip()
-        if not api_key:
-            raise OmnigentError("api_key is required", code=ErrorCode.INVALID_INPUT)
-        try:
-            await probe_key(body.provider, api_key, transport=transport)
-        except KeyRejectedError as exc:
-            raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from None
-        except ProbeUnavailableError as exc:
-            raise OmnigentError(str(exc), code=ErrorCode.MODEL_PROVIDER_UNREACHABLE) from None
-        try:
-            meta = await asyncio.to_thread(store.put, owner, body.provider, api_key)
-        except VaultUnavailableError as exc:
-            raise OmnigentError(str(exc), code=ErrorCode.SUPERCHAT_NOT_CONFIGURED) from None
-        except CredentialInputError as exc:
-            raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from None
-        return meta_to_response(meta)
+    def _mount(prefix: str, owner: Callable[[Request], Awaitable[tuple[str, str]]]) -> None:
+        @router.get(prefix)
+        async def list_connections(request: Request) -> dict[str, Any]:
+            """The owner's connections as masked metadata."""
+            scope, owner_id = await owner(request)
+            metas = await asyncio.to_thread(store.list, scope, owner_id)
+            return {"object": "list", "data": [meta_to_response(m) for m in metas]}
 
-    @router.delete("/me/model-credential", status_code=204)
-    async def delete_credential(request: Request) -> Response:
-        """Remove the caller's saved key."""
-        if not await asyncio.to_thread(store.delete, _owner(request)):
-            raise OmnigentError("No model credential saved", code=ErrorCode.NOT_FOUND)
-        return Response(status_code=204)
+        @router.put(prefix + "/{provider}")
+        async def put_connection(
+            request: Request, provider: str, body: PutModelConnection
+        ) -> dict[str, Any]:
+            """Probe the key with its provider, then store it sealed (replacing the old one)."""
+            scope, owner_id = await owner(request)
+            if provider not in PROVIDERS:
+                raise OmnigentError(
+                    f"provider must be one of: {', '.join(PROVIDERS)}",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+            api_key = body.api_key.strip()
+            if not api_key:
+                raise OmnigentError("api_key is required", code=ErrorCode.INVALID_INPUT)
+            try:
+                await probe_key(provider, api_key, transport=transport)
+            except KeyRejectedError as exc:
+                raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from None
+            except ProbeUnavailableError as exc:
+                raise OmnigentError(str(exc), code=ErrorCode.MODEL_PROVIDER_UNREACHABLE) from None
+            try:
+                meta = await asyncio.to_thread(
+                    lambda: store.put(scope, owner_id, provider, api_key, label=body.label)
+                )
+            except VaultUnavailableError as exc:
+                raise OmnigentError(str(exc), code=ErrorCode.SUPERCHAT_NOT_CONFIGURED) from None
+            except ConnectionInputError as exc:
+                raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from None
+            return meta_to_response(meta)
 
+        @router.delete(prefix + "/{provider}", status_code=204)
+        async def delete_connection(request: Request, provider: str) -> Response:
+            """Remove the owner's key for that provider."""
+            scope, owner_id = await owner(request)
+            if not await asyncio.to_thread(store.delete, scope, owner_id, provider):
+                raise OmnigentError("No model connection saved", code=ErrorCode.NOT_FOUND)
+            return Response(status_code=204)
+
+    _mount("/me/model-connections", _me)
+    _mount("/admin/model-connections", _org)
     return router
