@@ -42,8 +42,8 @@ const DEFAULT_FAILURE =
 const DEFAULT_APPROVAL =
   "Do not send messages, spend money, publish content, or delete data without explicit user approval.";
 
-function engineClient(): OmnigentClientConfig {
-  const client = engineComputerClient();
+function engineClient(actor: Actor): OmnigentClientConfig {
+  const client = engineComputerClient(actor);
   if (!client) throw new ORPCError("BAD_REQUEST", { message: "Teaching needs the engine" });
   return client;
 }
@@ -115,7 +115,7 @@ export async function assertTeachingSendAllowed(
   actor: Actor,
   botId: string,
 ): Promise<void> {
-  const client = engineComputerClient();
+  const client = engineComputerClient(actor);
   if (!client) return;
   const recording = await (async () => {
     try {
@@ -134,7 +134,7 @@ export async function assertTeachingSendAllowed(
 export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
   /** The engine skill with the Muse it belongs to, checked against the actor. */
   async function owned(actor: Actor, skillId: string) {
-    const client = engineClient();
+    const client = engineClient(actor);
     const user = await deps.prisma.user.findUnique({
       where: { id: actor.userId },
       select: { email: true },
@@ -223,7 +223,7 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
 
   return {
     async list(actor: Actor, botId: string): Promise<TaughtSkill[]> {
-      const client = engineClient();
+      const client = engineClient(actor);
       const { email, sessionId } = await engineSessionOf(deps, client, actor, botId);
       if (!sessionId) return [];
       const skills = await listOmnigentTaughtSkills(client, email, sessionId);
@@ -236,7 +236,7 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
     },
 
     async start(actor: Actor, botId: string, goal: string): Promise<TaughtSkill> {
-      const client = engineClient();
+      const client = engineClient(actor);
       const bot = await deps.prisma.bot.findFirst({
         where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
         include: { thread: true },

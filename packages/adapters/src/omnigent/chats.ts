@@ -8,17 +8,11 @@ import type { ChatSummary, SideChatStart } from "@aiden/contracts";
 import { isSessionNotFoundError } from "./client/core.js";
 import {
   getOmnigentSession,
-  listOmnigentRelatedChats,
   type OmnigentClientConfig,
   type OmnigentRelatedChat,
   type OmnigentSideChatCreateResponse,
 } from "./client.js";
 
-/** `rollover/SUPERSIDE-CHAT.md` "Nesting": a Helper may coordinate one more level of Helpers,
- * launched from the Super Chat or from a Side Chat — so the longest real chain is Super Chat ->
- * Side Chat -> Helper -> nested Helper, three hops from the nested Helper back to the Super
- * Chat. docs/super-chat/WIRING.md's ownership rule caps the walk here. */
-const HELPER_CHAIN_MAX_HOPS = 3;
 const SIDE_CHAT_TITLE_MAX_CHARS = 40;
 
 export function sideChatStartToWire(start: SideChatStart): "with_context" | "blank" {
@@ -79,8 +73,10 @@ export interface ChatOwnership {
   /** The caller's Super Chat `chatId` resolves under. */
   superSessionId: string;
   botId: string;
-  /** A side chat's turn is running right now. */
-  live?: boolean;
+  /** A turn is running in the chat right now. */
+  live: boolean;
+  /** The Project the chat has open (ADR 0008). */
+  project: { slug: string; name: string } | null;
 }
 
 export interface OwnedSuperChat {
@@ -91,85 +87,45 @@ export interface OwnedSuperChat {
 export type ChatOwnershipResolver = (chatId: string) => Promise<ChatOwnership | null>;
 
 /**
- * The ownership rule (docs/super-chat/WIRING.md "Identity and ownership"): `chatId` must be a
- * Side Chat of one of the caller's own Super Chats (`related_chats`), or a Helper whose
- * `parent_session_id` chain reaches one within `HELPER_CHAIN_MAX_HOPS` hops. The resolver
- * returns `null` — never throws for "not found" — so the caller turns that into a `NOT_FOUND`
- * rather than leaking whether a chat exists at all.
+ * The ownership rule (ADR 0009): `chatId` is a Side Chat or Helper whose family root, as the
+ * engine reports it on the session (`superchat.root_id`), is one of the caller's own Super Chats.
+ * The engine itself answers 404 for a session the caller cannot read. Returns `null`, never
+ * throws, for "not yours", so the caller turns that into a `NOT_FOUND` rather than leaking
+ * whether a chat exists; any other failure throws.
  *
- * Build one per request and reuse it: each Super Chat's `related_chats` is fetched once and
- * every parent hop is memoized, so resolving many chats costs O(Super Chats + distinct Helper
- * sessions). A session the engine no longer has (404) has no owner; any other failure throws.
+ * Build one per request and reuse it: each chat's session is read once.
  */
 export function createChatOwnershipResolver(
   client: OmnigentClientConfig,
   email: string,
   superChats: OwnedSuperChat[],
 ): ChatOwnershipResolver {
-  // A Helper's parent is its Super Chat or one of its Side Chats, so both count as owners.
-  const superIds = new Set(superChats.map((chat) => chat.omnigentSessionId));
-  let related: Promise<{
-    sideChats: Map<string, { superChat: OwnedSuperChat; chat: OmnigentRelatedChat }>;
-    owners: Map<string, OwnedSuperChat>;
-  }> | null = null;
-  const loadRelated = () => {
-    related ??= (async () => {
-      const lists = await Promise.all(
-        superChats.map(async (superChat) => ({
-          superChat,
-          chats: (await listOmnigentRelatedChats(client, email, superChat.omnigentSessionId)).data,
-        })),
-      );
-      const owners = new Map(superChats.map((chat) => [chat.omnigentSessionId, chat]));
-      const sideChats = new Map<string, { superChat: OwnedSuperChat; chat: OmnigentRelatedChat }>();
-      for (const { superChat, chats } of lists) {
-        for (const chat of chats) {
-          owners.set(chat.id, superChat);
-          if (!superIds.has(chat.id)) sideChats.set(chat.id, { superChat, chat });
-        }
-      }
-      return { sideChats, owners };
-    })();
-    return related;
+  const owners = new Map(superChats.map((chat) => [chat.omnigentSessionId, chat]));
+  const resolved = new Map<string, Promise<ChatOwnership | null>>();
+  const resolve = async (chatId: string): Promise<ChatOwnership | null> => {
+    const session = await getOmnigentSession(client, email, chatId).catch((error: unknown) => {
+      if (isSessionNotFoundError(error)) return null;
+      throw error;
+    });
+    const family = session?.superchat;
+    if (!family?.root_id || (family.kind !== "side" && family.kind !== "helper")) return null;
+    const owner = owners.get(family.root_id);
+    if (!owner) return null;
+    return {
+      kind: family.kind === "side" ? "side_chat" : "helper",
+      superSessionId: owner.omnigentSessionId,
+      botId: owner.botId,
+      live: session?.status === "running",
+      project: family.project ?? null,
+    };
   };
-
-  const parents = new Map<string, Promise<string | null>>();
-  const parentOf = (sessionId: string): Promise<string | null> => {
-    let parent = parents.get(sessionId);
-    if (!parent) {
-      parent = getOmnigentSession(client, email, sessionId).then(
-        (session) => session.parent_session_id ?? null,
-        (error: unknown) => {
-          if (isSessionNotFoundError(error)) return null;
-          throw error;
-        },
-      );
-      parents.set(sessionId, parent);
+  return (chatId) => {
+    let found = resolved.get(chatId);
+    if (!found) {
+      found = resolve(chatId);
+      resolved.set(chatId, found);
     }
-    return parent;
-  };
-
-  return async (chatId) => {
-    const { sideChats, owners } = await loadRelated();
-    const side = sideChats.get(chatId);
-    if (side) {
-      return {
-        kind: "side_chat",
-        superSessionId: side.superChat.omnigentSessionId,
-        botId: side.superChat.botId,
-        live: Boolean(side.chat.live),
-      };
-    }
-    let current: string | null = chatId;
-    for (let hop = 0; hop < HELPER_CHAIN_MAX_HOPS && current !== null; hop++) {
-      const parentId: string | null = await parentOf(current);
-      const owner = parentId ? owners.get(parentId) : undefined;
-      if (owner) {
-        return { kind: "helper", superSessionId: owner.omnigentSessionId, botId: owner.botId };
-      }
-      current = parentId;
-    }
-    return null;
+    return found;
   };
 }
 

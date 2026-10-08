@@ -71,7 +71,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 
 | Change | Why |
 |---|---|
-| Agent bundle `nova-claude` = Super Chat bundle (claude-sdk, Nova prompt, one general Helper type `worker` with `fast`/`strong` models, ADR 0007); `nova-pi` is a second bundle from the same templates, chosen by `NOVA_MUSE_HARNESS=pi`, with the Muse and every Helper type on Pi; drop `nova-openai`, `nova-codex` and every `nova_*` tool | Claude SDK by default; the `nova_*` tools are gone from the engine |
+| Agent bundle `nova-claude` = Super Chat bundle (claude-sdk, Nova prompt, one general Helper type `worker` with `fast`/`strong` models, ADR 0007); `nova-pi` is a second bundle from the same templates, chosen by the engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi`, with the Muse and every Helper type on Pi; drop `nova-openai`, `nova-codex` and every `nova_*` tool | Claude SDK by default; the `nova_*` tools are gone from the engine |
 | Gateway creates the Super Chat with the mode label; replaces a session without it | Turns the capability on |
 | Remove the context-provider route (`/internal/omnigent/context`) and `context-provider.ts` | The engine no longer calls it; memory comes from Omnigent |
 | Implement `chats.*` and add `activities.list` / `activities.get` (contracts + router + adapter client) with the ownership rule above | Side chats, Helper status, Activity panel |

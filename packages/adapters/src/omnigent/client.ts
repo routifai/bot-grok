@@ -5,9 +5,12 @@
 // SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
 export * from "./client/activities.js";
 export * from "./client/approvals.js";
+export * from "./client/asks.js";
 export * from "./client/computer.js";
 export * from "./client/core.js";
+export * from "./client/feed.js";
 export * from "./client/memory.js";
+export * from "./client/muse.js";
 export * from "./client/objectives.js";
 export * from "./client/scheduled.js";
 export * from "./client/sessions.js";

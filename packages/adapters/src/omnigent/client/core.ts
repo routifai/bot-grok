@@ -5,7 +5,9 @@
 // SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
 import { redactSecrets } from "@aiden/core";
 
-export interface OmnigentClientConfig {
+/** How to reach the engine (env `OMNIGENT_URL` / `OMNIGENT_PROXY_SECRET`), before a caller's
+ * tenant is known. Bind one with `omnigentClientFor` to make calls. */
+export interface OmnigentConnection {
   /** Base URL of the Omnigent server, e.g. "http://127.0.0.1:8000". */
   baseUrl: string;
   /** Shared secret Omnigent's header-auth proxy mode expects on every request. */
@@ -16,6 +18,23 @@ export interface OmnigentClientConfig {
    * up here" — `throwOnError` then drops the body entirely rather than risking an unredacted
    * leak. */
   secrets?: string[];
+}
+
+/** A connection bound to the caller's tenant: the Nova space id, sent on every call so the
+ * engine scopes per-person resources (`/v1/me/muse`, the Muse's Computer) to that space. */
+export interface OmnigentClientConfig extends OmnigentConnection {
+  tenant: string;
+}
+
+/** The header the engine reads the tenant from; the engine's `OMNIGENT_AUTH_TENANT_HEADER`
+ * must name it. */
+export const OMNIGENT_TENANT_HEADER = "X-Omnigent-Tenant";
+
+export function omnigentClientFor(
+  connection: OmnigentConnection,
+  tenant: string,
+): OmnigentClientConfig {
+  return { ...connection, tenant };
 }
 
 export interface OmnigentSessionResponse {
@@ -38,6 +57,7 @@ export function omnigentHeaders(
     "content-type": "application/json",
     "X-Forwarded-Email": email,
     "X-Omnigent-Proxy-Secret": config.proxySecret,
+    [OMNIGENT_TENANT_HEADER]: config.tenant,
   };
 }
 
@@ -85,4 +105,19 @@ export async function throwOnError(
     throw new OmnigentApiError(`omnigent ${what} failed (${response.status}): ${body}`, code);
   }
   return response;
+}
+
+/** What a person sees for an engine error code that can reach the UI (wording is Nova's; the
+ * engine sends only the code). */
+const ERROR_COPY: Record<string, string> = {
+  helper_read_only: "Helpers are read-only.",
+  superchat_not_configured: "Chat is not available right now.",
+  muse_already_set: "You already have a Conversation here.",
+  muse_tenant_mismatch: "This Conversation belongs to another space.",
+  not_a_super_chat: "This chat can't be your Conversation.",
+};
+
+/** Short client copy for an engine error, or `undefined` when its code has none. */
+export function omnigentErrorCopy(error: unknown): string | undefined {
+  return error instanceof OmnigentApiError && error.code ? ERROR_COPY[error.code] : undefined;
 }

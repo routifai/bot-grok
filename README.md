@@ -31,8 +31,9 @@ is `aiden` (packages are `@aiden/*`).
 - **Control.** Approvals, a spending cap, an encrypted vault.
 - **Teach a task.** Record a demonstration on the Computer; it becomes a reusable skill.
 - **Activity panel.** Plain-language steps for everything the Muse did.
-- **Harness choice.** Claude SDK by default, or Pi (`NOVA_MUSE_HARNESS=pi`) for the whole Muse,
-  Helpers and background work included, which also runs non-Claude models through OpenRouter.
+- **Harness choice.** Claude SDK by default, or Pi (engine `OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi`)
+  for the whole Muse, Helpers and background work included, which also runs non-Claude models
+  through OpenRouter.
 
 ## Architecture
 
@@ -129,8 +130,9 @@ Set these in `.env` (Nova) or the engine server's environment. Names only; never
 | Variable | Where | Purpose |
 | --- | --- | --- |
 | `OMNIGENT_URL`, `OMNIGENT_PROXY_SECRET` | Nova API, worker | Engine connection; both required |
-| `NOVA_MUSE_HARNESS` | Nova API, worker | `claude-sdk` (default) or `pi`; applies to the Muse and every Helper and background run |
-| `OMNIGENT_AGENT_NAME` | Nova API, worker | Override the bundle name (`nova-claude` / `nova-pi`) |
+| `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` | engine | Bundle a new Muse runs on: `nova-claude`, or `nova-pi` for Pi (Muse, Helpers and background runs) |
+| `OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER=computer` | engine | Launch each new Muse on its own Computer |
+| `OMNIGENT_AUTH_TENANT_HEADER=X-Omnigent-Tenant` | engine | Header Nova sends the space in on every call; scopes each person's Muse to a space |
 | `OMNIGENT_BUILTIN_AGENT_DIRS` | engine | Path-separated bundle dirs under `infra/omnigent/agents/` to seed |
 | `NOVA_CLAUDE_MODEL` | engine, runners | Muse model for the Claude bundle |
 | `OMNIGENT_HELPER_MODEL_FAST`, `OMNIGENT_HELPER_MODEL_STRONG` | engine, runners | Models behind `fast` and `strong` on the Claude SDK |
@@ -141,7 +143,7 @@ Set these in `.env` (Nova) or the engine server's environment. Names only; never
 | `TAVILY_API_KEY` | engine | Web search; also set `OMNIGENT_RUNNER_ENV_PASSTHROUGH=TAVILY_API_KEY` |
 | `OMNIGENT_AUTH_PROVIDER=header`, `OMNIGENT_AUTH_HEADER_SECRET` | engine | Header auth shared with Nova |
 | `OMNIGENT_BROWSER_BACKEND=local` | engine, runners | `browser_*` drives the Computer's own Chromium |
-| `OMNIGENT_NOVA_SUPERVISOR_URL`, `OMNIGENT_NOVA_SUPERVISOR_TOKEN`, `OMNIGENT_NOVA_HOME_ROOT` | engine | Where the supervisor is and where Computer homes live |
+| `OMNIGENT_COMPUTER_SUPERVISOR_URL`, `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN`, `OMNIGENT_COMPUTER_HOME_ROOT` | engine | Where the supervisor is and where Computer homes live |
 | `SANDBOX_SUPERVISOR_URL`, `SANDBOX_SUPERVISOR_TOKEN`, `DATA_DIR` | Nova, supervisor | Must match the engine side; `DATA_DIR` is shared |
 | `OMNIGENT_VAULT_KEY` | engine | Encrypts the vault |
 | `OMNIGENT_PROACTIVE_PROVISION=1` | engine | Daily study and quiet-moment notes |

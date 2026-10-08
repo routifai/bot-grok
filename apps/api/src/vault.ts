@@ -8,6 +8,7 @@ import {
   type OmnigentClientConfig,
   type OmnigentVaultEntry,
   omnigentClientConfigFromEnv,
+  omnigentClientFor,
   saveOmnigentVaultEntry,
 } from "@aiden/adapters";
 import type { Actor } from "@aiden/contracts";
@@ -19,8 +20,9 @@ export interface VaultDeps {
 }
 
 async function resolve(deps: VaultDeps, actor: Actor, botId: string, env: NodeJS.ProcessEnv) {
-  const client: OmnigentClientConfig | undefined = omnigentClientConfigFromEnv(env);
-  if (!client) throw new ORPCError("BAD_REQUEST", { message: "The vault is not available." });
+  const connection = omnigentClientConfigFromEnv(env);
+  if (!connection) throw new ORPCError("BAD_REQUEST", { message: "The vault is not available." });
+  const client: OmnigentClientConfig = omnigentClientFor(connection, actor.spaceId);
   const [bot, user] = await Promise.all([
     deps.prisma.bot.findFirst({
       where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },

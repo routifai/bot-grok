@@ -1,7 +1,8 @@
 import type { Actor } from "@aiden/contracts";
 import type { PrismaClient } from "@aiden/db";
 import { RPCHandler } from "@orpc/server/fetch";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
 import { createRouter, type RouterDeps } from "./router.js";
 
 const actor: Actor = {
@@ -176,5 +177,99 @@ describe("muse.updateSettings", () => {
 
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("Muse settings on the engine", () => {
+  const ENV = { OMNIGENT_URL: "http://engine.test", OMNIGENT_PROXY_SECRET: "s" };
+  const prefs = (extra = {}) => ({
+    proactivity: "normal",
+    quiet_start: null,
+    quiet_end: null,
+    timezone: "UTC",
+    ...extra,
+  });
+
+  function engineDeps(bot: BotRow) {
+    const update = vi.fn(async () => bot);
+    const prisma = {
+      bot: { findFirst: vi.fn(async () => bot), update },
+      user: { findUnique: vi.fn(async () => ({ email: "user@aiden.test" })) },
+    } as unknown as PrismaClient;
+    return { deps: { prisma }, update };
+  }
+
+  function engine(current: Record<string, unknown>) {
+    const fetchMock = vi.fn(async (_url: URL, init?: RequestInit) => {
+      const body = init?.body ? { ...current, ...JSON.parse(String(init.body)) } : current;
+      return new Response(JSON.stringify(body), {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads the engine's values, high and quiet hours included", async () => {
+    const fetchMock = engine(
+      prefs({ proactivity: "high", quiet_start: "21:00", quiet_end: "07:00" }),
+    );
+    const { deps, update } = engineDeps({ museProactivity: null, museQuietHours: null });
+
+    await expect(getMuseSettings(deps, actor, "bot-1", ENV)).resolves.toEqual({
+      proactivity: "high",
+      quietHours: "21:00-07:00",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect((init.headers as Record<string, string>)["X-Omnigent-Tenant"]).toBe("space-1");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("carries values set in Nova over once, when the engine still has its defaults", async () => {
+    const fetchMock = engine(prefs());
+    const { deps, update } = engineDeps({ museProactivity: "high", museQuietHours: "" });
+
+    await expect(getMuseSettings(deps, actor, "bot-1", ENV)).resolves.toEqual({
+      proactivity: "high",
+      quietHours: null,
+    });
+    const [, init] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual({
+      proactivity: "high",
+      quiet_start: null,
+      quiet_end: null,
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "bot-1" },
+      data: { museProactivity: null, museQuietHours: null },
+    });
+  });
+
+  it("never overwrites values the person already set on the engine", async () => {
+    const fetchMock = engine(prefs({ proactivity: "low" }));
+    const { deps, update } = engineDeps({ museProactivity: "high", museQuietHours: null });
+
+    await expect(getMuseSettings(deps, actor, "bot-1", ENV)).resolves.toEqual({
+      proactivity: "low",
+      quietHours: null,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledOnce();
+  });
+
+  it("writes only the changed field to the engine", async () => {
+    const fetchMock = engine(prefs({ quiet_start: "22:00", quiet_end: "08:00" }));
+    const { deps } = engineDeps({ museProactivity: null, museQuietHours: null });
+
+    await expect(
+      updateMuseSettings(deps, actor, { botId: "bot-1", proactivity: "high" }, ENV),
+    ).resolves.toEqual({ proactivity: "high", quietHours: "22:00-08:00" });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/v1/me/proactivity");
+    expect(JSON.parse(String(init.body))).toEqual({ proactivity: "high" });
   });
 });

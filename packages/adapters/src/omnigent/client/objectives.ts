@@ -125,23 +125,3 @@ export async function listOmnigentObjectiveLog(
   const body = (await response.json()) as { log?: OmnigentObjectiveLogEntry[] };
   return body.log ?? [];
 }
-
-/** `PATCH /v1/objectives/{id}/tasks/{task_id}` — a task's status and/or note, in place. */
-export async function updateOmnigentObjectiveTask(
-  config: OmnigentClientConfig,
-  email: string,
-  objectiveId: string,
-  taskId: string,
-  patch: { status?: OmnigentObjectiveTask["status"]; note?: string },
-): Promise<OmnigentObjectiveTask> {
-  const response = await fetch(
-    objectiveUrl(config, objectiveId, `/tasks/${encodeURIComponent(taskId)}`),
-    {
-      method: "PATCH",
-      headers: omnigentHeaders(config, email),
-      body: JSON.stringify(patch),
-    },
-  );
-  await throwOnError(response, "update objective task", config.secrets);
-  return (await response.json()) as OmnigentObjectiveTask;
-}

@@ -17,11 +17,9 @@ import {
   patchOmnigentObjective,
   patchOmnigentScheduledTask,
   redactThreadMessages,
-  updateOmnigentObjectiveTask,
 } from "@aiden/adapters";
 import type {
   Actor,
-  Ask,
   Goal,
   GoalProposal,
   GoalStatus,
@@ -323,95 +321,4 @@ export async function engineGoalLog(
     messages: redactThreadMessages(messages, client.secrets ?? []),
     olderCursor: null,
   };
-}
-
-/** Open plan changes and blocked Tasks of the Muse's Goals, as Asks. A Proposal Ask is named by
- * its proposal id and a blocked-Task Ask by its task id; both carry the Goal id as `runId`, which
- * is how `engineAnswerAsk` finds the objective again. */
-export async function engineGoalAsks(
-  deps: EngineGoalsDeps,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  botId: string,
-): Promise<Ask[]> {
-  const sessionId = await superChatOf(deps, actor, botId);
-  if (!sessionId) return [];
-  const objectives = await listOmnigentObjectives(client, await email(deps, actor), sessionId);
-  const asks: Ask[] = [];
-  for (const objective of objectives) {
-    if (objective.status !== "active") continue;
-    const proposal = objective.open_proposal;
-    if (proposal) {
-      const first = objective.plan.length === 0;
-      const steps = proposal.plan.map((item, index) => `${index + 1}. ${item.title}`);
-      asks.push({
-        id: proposal.id,
-        runId: objective.id,
-        kind: "proposal",
-        goalId: objective.id,
-        goalTitle: objective.title,
-        text: first
-          ? `Here's my plan for "${objective.title}"`
-          : `Change the plan for "${objective.title}"?`,
-        detail: (first ? steps : [proposal.reason, ...steps]).join("\n"),
-        choices: first
-          ? [
-              { id: "accept", label: "Start this plan" },
-              { id: "dismiss", label: "Not now" },
-            ]
-          : [
-              { id: "accept", label: "Use the new plan" },
-              { id: "dismiss", label: "Keep current" },
-            ],
-        input: null,
-        createdAt: iso(proposal.created_at),
-      });
-    }
-    for (const task of objective.plan) {
-      if (task.status !== "blocked") continue;
-      asks.push({
-        id: task.id,
-        runId: objective.id,
-        kind: "blocked_task",
-        goalId: objective.id,
-        goalTitle: objective.title,
-        text: task.note?.trim() || task.title,
-        choices: [],
-        input: "text",
-        createdAt: iso(objective.updated_at ?? objective.created_at),
-      });
-    }
-  }
-  return asks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-/** Answers a Goal Ask: a Proposal is accepted or dismissed, a blocked Task gets the answer in its
- * note and goes back to pending. `null` when `askId` is neither (so the caller can say so). */
-export async function engineAnswerAsk(
-  deps: EngineGoalsDeps,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  input: { askId: string; runId: string; answer: string },
-): Promise<{ ok: true } | null> {
-  const own = await ownObjective(deps, client, actor, input.runId).catch((error) => {
-    if (error instanceof ORPCError && error.code === "NOT_FOUND") return null;
-    throw error;
-  });
-  if (!own) return null;
-  const { target, objective } = own;
-  if (input.askId === objective.open_proposal?.id) {
-    if (input.answer !== "accept" && input.answer !== "dismiss") {
-      throw new ORPCError("BAD_REQUEST", { message: "Answer a Proposal accept or dismiss." });
-    }
-    await applyDecision(target, { goalId: input.runId, proposalId: input.askId }, input.answer);
-    return { ok: true as const };
-  }
-  const task = objective.plan.find((item) => item.id === input.askId && item.status === "blocked");
-  if (!task) return null;
-  const note = task.note ? `${task.note}\n\nAnswer: ${input.answer}` : `Answer: ${input.answer}`;
-  await updateOmnigentObjectiveTask(client, target.email, input.runId, task.id, {
-    status: "pending",
-    note: note.slice(0, 2000),
-  });
-  return { ok: true as const };
 }

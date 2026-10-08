@@ -7,7 +7,12 @@ import {
   engineRemoveArtifact,
 } from "./engine-artifacts.js";
 
-const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [] };
+const client = {
+  baseUrl: "http://engine.test",
+  proxySecret: "proxy",
+  secrets: [],
+  tenant: "space-1",
+};
 const actor = { userId: "user-1", spaceId: "space-1" } as never;
 const prisma = {
   bot: {
@@ -39,6 +44,13 @@ const row = {
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+/** A session in the Muse's family, as `GET /v1/sessions/{id}` reports it. */
+const family = (id: string, kind: "side" | "helper") => ({
+  id,
+  status: "idle",
+  superchat: { kind, root_id: "sess-1", parent_id: "sess-1", seed_item_id: null, project: null },
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -74,14 +86,10 @@ describe("engine artifacts", () => {
         if (url.pathname === "/v1/artifacts") {
           return json({ artifacts: [row, side, helperSaved, stranger] });
         }
-        if (url.pathname === "/v1/sessions/sess-1/related_chats") {
-          return json({ data: [{ id: "side-1", title: "Side" }] });
-        }
-        if (url.pathname === "/v1/sessions/helper-1") {
-          return json({ id: "helper-1", parent_session_id: "side-1" });
-        }
+        if (url.pathname === "/v1/sessions/side-1") return json(family("side-1", "side"));
+        if (url.pathname === "/v1/sessions/helper-1") return json(family("helper-1", "helper"));
         if (url.pathname === "/v1/sessions/elsewhere") {
-          return json({ id: "elsewhere", parent_session_id: null });
+          return json({ id: "elsewhere", status: "idle", superchat: null });
         }
         return json({ data: [] });
       }),
@@ -93,7 +101,7 @@ describe("engine artifacts", () => {
     expect(all.items.map((item) => item.id).sort()).toEqual(["a1", "a2", "a3"]);
   });
 
-  it("resolves ownership with one related-chats call per Muse and memoized hops", async () => {
+  it("resolves each chat's owner from its session once", async () => {
     const rows = Array.from({ length: 6 }, (_, i) => ({
       ...row,
       id: `h${i}`,
@@ -105,16 +113,11 @@ describe("engine artifacts", () => {
       vi.fn(async (url: URL) => {
         calls.push(url.pathname);
         if (url.pathname === "/v1/artifacts") return json({ artifacts: rows });
-        if (url.pathname === "/v1/sessions/sess-1/related_chats") return json({ data: [] });
-        if (url.pathname === "/v1/sessions/helper-1") {
-          return json({ id: "helper-1", parent_session_id: "helper-2" });
-        }
-        return json({ id: "helper-2", parent_session_id: "sess-1" });
+        return json(family(url.pathname.split("/").at(-1) ?? "", "helper"));
       }),
     );
     const page = await engineListSpaceArtifacts(deps, client, actor, {});
     expect(page.items).toHaveLength(6);
-    expect(calls.filter((c) => c.includes("related_chats"))).toHaveLength(1);
     expect(calls.filter((c) => c === "/v1/sessions/helper-1")).toHaveLength(1);
     expect(calls.filter((c) => c === "/v1/sessions/helper-2")).toHaveLength(1);
   });

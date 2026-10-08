@@ -93,9 +93,14 @@ The Omnigent server process itself needs:
 
 | Variable | What it is |
 |---|---|
-| `OMNIGENT_NOVA_SUPERVISOR_URL` | Base URL of Nova's sandbox supervisor, e.g. `http://localhost:7091` |
-| `OMNIGENT_NOVA_SUPERVISOR_TOKEN` | The shared bearer the supervisor expects on every request (same secret Nova's own API process uses — `resolveSupervisorToken` / `SANDBOX_SUPERVISOR_TOKEN`) |
-| `OMNIGENT_NOVA_HOME_ROOT` | Root directory a Muse's persistent home lives under (`<root>/homes/<bot_id>`) — must resolve to the SAME host path Nova's API process uses (`resolveAgentHomePath` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only. |
+| `OMNIGENT_COMPUTER_SUPERVISOR_URL` | Base URL of Nova's sandbox supervisor, e.g. `http://localhost:7091` |
+| `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN` | The shared bearer the supervisor expects on every request (same secret Nova's own API process uses — `resolveSupervisorToken` / `SANDBOX_SUPERVISOR_TOKEN`) |
+| `OMNIGENT_COMPUTER_HOME_ROOT` | Root directory a Computer's persistent home lives under (`<root>/homes/<key>`) — must resolve to the SAME host path Nova's API process uses (`resolveAgentHomePath` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only. |
+| `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` | The bundle a new Muse runs on (`nova-claude`, or `nova-pi` for Pi). The engine creates the Muse (`GET /v1/me/muse`); Nova names no bundle. |
+| `OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER` | `computer`, so a new Muse's runner launches on its own Computer. |
+| `OMNIGENT_AUTH_TENANT_HEADER` | `X-Omnigent-Tenant`: Nova sends the space id in it on every call, and a Muse belongs to one person in one space. |
+
+The `OMNIGENT_NOVA_*` names are deprecated and still read.
 
 Plus the usual `sandbox.server_url` (the engine server's own URL on the
 server's port, reachable from inside the container so the host can dial back) and `sandbox.host_config` for
@@ -108,10 +113,12 @@ Deployment requirements found live:
 - Nova's api/worker `DATA_DIR` must equal the supervisor's `DATA_DIR`: the
   supervisor accepts only `homePath = <dataDir>/homes/<botId>` and rejects
   anything else (`assertBotHomePath`, `infra/sandboxes/supervisor/src/index.ts`).
-- Sessions carry `nova.bot` / `nova.space` and an optional `nova.computer`
-  label. The computer provider prefers `nova.computer` (the machine Nova
-  shows the person, shared per space in team mode) and falls back to
-  `nova.bot` (`prepare_for_launch`, `computer.py`).
+- Sessions carry `omnigent.computer.key` or `omnigent.computer.owner`, and
+  `omnigent.tenant`. A Muse the engine creates sets the owner (its opaque
+  person-and-space key) and the tenant itself. The provider prefers the key and
+  falls back to the owner (`prepare_for_launch`, `computer.py`). Conversations
+  started before ADR 0009 keep their deprecated `nova.computer` / `nova.bot` /
+  `nova.space` labels, which are still read.
 
 ## The Computer: screen and Take over
 

@@ -4,35 +4,15 @@
 // OMNIGENT_PROXY_SECRET.
 import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { resolveDeploymentModel } from "../deployment-model.js";
-import type { OmnigentClientConfig } from "./client.js";
+import type { OmnigentConnection } from "./client.js";
 import type { OmnigentGatewayDeps } from "./gateway.js";
 
 /**
  * Settings documented in docs/super-chat/README.md's Settings table. Every value is resolved
  * once per call (from a passed-in or `process.env`) rather than cached, so tests can pass a
- * plain object instead of mutating env.
+ * plain object instead of mutating env. The Muse's agent is the engine's choice
+ * (`OMNIGENT_SUPERCHAT_DEFAULT_AGENT`, ADR 0009), so none is named here.
  */
-/** Built-in agent bundle Nova Conversation turns run on unless env `OMNIGENT_AGENT_NAME`
- * overrides it (infra/omnigent/agents/nova-claude/). */
-export const DEFAULT_AGENT_NAME = "nova-claude";
-/** Bundle used when env `NOVA_MUSE_HARNESS=pi` (infra/omnigent/agents/nova-pi/, rendered from the
- * same templates as `nova-claude`; see infra/omnigent/render-agents.mjs). */
-export const PI_AGENT_NAME = "nova-pi";
-
-/**
- * The Muse's agent bundle: an explicit `OMNIGENT_AGENT_NAME` wins, otherwise the one flag
- * `NOVA_MUSE_HARNESS` (`claude-sdk` default | `pi`) picks it. Nova only names the bundle;
- * Omnigent owns the harness, and its switch-agent moves an existing session across.
- */
-export function museAgentNameFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit = env.OMNIGENT_AGENT_NAME?.trim();
-  if (explicit) return explicit;
-  const harness = env.NOVA_MUSE_HARNESS?.trim().toLowerCase();
-  if (!harness || harness === "claude-sdk") return DEFAULT_AGENT_NAME;
-  if (harness === "pi") return PI_AGENT_NAME;
-  throw new Error(`NOVA_MUSE_HARNESS must be "claude-sdk" or "pi", got "${harness}"`);
-}
-
 export interface OmnigentSuperChatConfig {
   /** Upper bound on how long one Super Chat turn may run before the gateway gives up and fails
    * it (env `OMNIGENT_TURN_TIMEOUT_MS`). */
@@ -106,13 +86,12 @@ export function omnigentGatewayDepsFromEnv(
     prisma,
     events,
     client: { baseUrl, proxySecret, secrets },
-    agentName: museAgentNameFromEnv(env),
     config: omnigentSuperChatConfigFromEnv(env),
   };
 }
 
 /**
- * The Omnigent client config for query-side Super Chat calls (`chats.*`/`activities.*`,
+ * The engine connection for query-side Super Chat calls (`chats.*`/`activities.*`,
  * apps/api/src/chats.ts and ./activities.ts) — `undefined` whenever `OMNIGENT_URL` or
  * `OMNIGENT_PROXY_SECRET` is missing, so callers can surface a clean "not available" response
  * instead of throwing at request time. Boot-time wiring (`omnigentGatewayDepsFromEnv`, run
@@ -120,7 +99,7 @@ export function omnigentGatewayDepsFromEnv(
  */
 export function omnigentClientConfigFromEnv(
   env: NodeJS.ProcessEnv,
-): OmnigentClientConfig | undefined {
+): OmnigentConnection | undefined {
   const baseUrl = env.OMNIGENT_URL?.trim();
   const proxySecret = env.OMNIGENT_PROXY_SECRET?.trim();
   if (!baseUrl || !proxySecret) return undefined;

@@ -43,7 +43,7 @@ export function computerControlProcedures(c: RouterContext) {
   const { deps, authed, repos, taughtSkills } = c;
   return {
     takeover: authed.computer.takeover.handler(async ({ context, input }) => {
-      const engine = engineComputerClient();
+      const engine = engineComputerClient(context.actor);
       if (engine) return engineComputerTakeover(deps, engine, context.actor, input.botId);
       let bot = await repos.getBot(context.actor, input.botId);
       if (!bot.computer?.providerRef || bot.computer.state !== "running") {
@@ -195,7 +195,7 @@ export function computerControlProcedures(c: RouterContext) {
       return { leaseId, expiresAt: expiresAt.toISOString() };
     }),
     release: authed.computer.release.handler(async ({ context, input }) => {
-      const engine = engineComputerClient();
+      const engine = engineComputerClient(context.actor);
       if (engine) return engineComputerRelease(deps, engine, context.actor, input.botId);
       const bot = await repos.getBot(context.actor, input.botId);
       if (!bot.computer) throw new IsolationError();
@@ -345,7 +345,7 @@ export function computerControlProcedures(c: RouterContext) {
       return { path: input.path, content };
     }),
     screenUrl: authed.computer.screenUrl.handler(async ({ context, input }) => {
-      const engine = engineComputerClient();
+      const engine = engineComputerClient(context.actor);
       if (engine) return engineComputerScreenUrl(deps, engine, context.actor, input.botId);
       let bot = await repos.getBot(context.actor, input.botId);
       if (await expireStaleComputerControl(deps, bot.computer)) {

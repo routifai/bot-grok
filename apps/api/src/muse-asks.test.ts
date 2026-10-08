@@ -302,41 +302,24 @@ describe("answerAsk", () => {
     ).rejects.toThrow(/no longer awaiting/);
   });
 
-  it("answers a Goal Ask on the engine when it is not a Conversation message", async () => {
+  it("answers an engine ask on the engine, never through a Conversation message", async () => {
     const { deps: answerDeps, answerRunInput } = fakeAnswerDeps({ noMessage: true });
-    const prisma = answerDeps.prisma as unknown as {
-      user: unknown;
-      omnigentSession: unknown;
-    };
+    const prisma = answerDeps.prisma as unknown as { user: unknown };
     prisma.user = { findUnique: vi.fn().mockResolvedValue({ email: "p@example.test" }) };
-    prisma.omnigentSession = { findFirst: vi.fn().mockResolvedValue({ botId: BOT_ID }) };
     const calls: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: URL, init?: RequestInit) => {
-        calls.push(`${init?.method ?? "GET"} ${url.pathname}`);
-        const objective = {
-          id: "obj-1",
-          parent_session_id: "sess-1",
-          title: "Ship it",
-          description: "",
-          status: "active",
-          due: null,
-          scheduled_task_id: null,
-          created_at: 1_700_000_000,
-          updated_at: null,
-          plan: [],
-          open_proposal: { id: "prop-1", reason: "", plan: [], status: "open", created_at: 1 },
-        };
-        return new Response(JSON.stringify(objective), {
+        calls.push(`${init?.method ?? "GET"} ${url.pathname} ${String(init?.body)}`);
+        return new Response(JSON.stringify({ ok: true }), {
           headers: { "content-type": "application/json" },
         });
       }),
     );
     try {
-      const client = { baseUrl: "http://engine.test", proxySecret: "p", secrets: [] };
+      const client = { baseUrl: "http://engine.test", proxySecret: "p", secrets: [], tenant: "s" };
       const result = await answerAsk(answerDeps, client, actor, {
-        askId: "prop-1",
+        askId: "proposal:obj-1:prop-1",
         runId: "obj-1",
         answer: "accept",
       });
@@ -345,10 +328,10 @@ describe("answerAsk", () => {
       vi.unstubAllGlobals();
     }
     expect(calls).toEqual([
-      "GET /v1/objectives/obj-1",
-      "POST /v1/objectives/obj-1/proposals/prop-1/accept",
+      'POST /v1/me/asks/proposal%3Aobj-1%3Aprop-1/answer {"choice":"accept"}',
     ]);
     expect(answerRunInput).not.toHaveBeenCalled();
+    expect(answerDeps.prisma.message.findFirst).not.toHaveBeenCalled();
   });
 
   it("rejects an Ask that is neither a Conversation message nor a Goal Ask", async () => {

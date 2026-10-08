@@ -17,6 +17,7 @@ import {
   OmnigentSideChatError,
   type OwnedSuperChat,
   omnigentClientConfigFromEnv,
+  omnigentClientFor,
   omnigentSuperChatConfigFromEnv,
   postOmnigentMessage,
   resolveChatOwnership,
@@ -40,12 +41,13 @@ export interface ChatsDeps {
   prisma: PrismaClient;
 }
 
-function requireClient(env: NodeJS.ProcessEnv): OmnigentClientConfig {
-  const client = omnigentClientConfigFromEnv(env);
-  if (!client) {
+/** The engine client for the actor's space (the tenant every engine call carries). */
+function requireClient(env: NodeJS.ProcessEnv, actor: Actor): OmnigentClientConfig {
+  const connection = omnigentClientConfigFromEnv(env);
+  if (!connection) {
     throw new ORPCError("BAD_REQUEST", { message: "Chat is not available right now." });
   }
-  return client;
+  return omnigentClientFor(connection, actor.spaceId);
 }
 
 async function actorEmail(deps: ChatsDeps, actor: Actor): Promise<string> {
@@ -95,7 +97,7 @@ export async function listChats(
   input: { botId: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ChatSummary[]> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
   const related = await onSuperChat(listOmnigentRelatedChats(client, email, superSessionId));
@@ -120,10 +122,10 @@ export async function createSideChat(
   input: { botId: string; start: SideChatStart; text: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ChatSummary> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
-  await syncEngineTimezone(deps.prisma, actor.userId, env);
+  await syncEngineTimezone(deps.prisma, actor, env);
 
   let created: Awaited<ReturnType<typeof createOmnigentSideChat>>;
   try {
@@ -161,7 +163,7 @@ export async function summaryPreview(
   input: { botId: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ summary: string }> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
   const result = await onSuperChat(getOmnigentContextSummary(client, email, superSessionId));
@@ -180,10 +182,11 @@ export async function getChatTranscript(
   input: { botId: string; chatId?: string; before?: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ThreadMessagePage> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const email = await actorEmail(deps, actor);
   let sessionId: string;
   let running: boolean | undefined;
+  let readOnly = false;
   if (input.chatId) {
     const ownership = await resolveChatOwnership(
       client,
@@ -195,7 +198,8 @@ export async function getChatTranscript(
       throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
     }
     sessionId = input.chatId;
-    running = ownership.kind === "side_chat" ? Boolean(ownership.live) : undefined;
+    running = ownership.kind === "side_chat" ? ownership.live : undefined;
+    readOnly = ownership.kind === "helper";
   } else {
     sessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   }
@@ -206,7 +210,8 @@ export async function getChatTranscript(
       before: input.before,
     }),
   );
-  return mapTranscriptPage(sessionId, page, client.secrets ?? [], running);
+  const mapped = mapTranscriptPage(sessionId, page, client.secrets ?? [], running);
+  return readOnly ? { ...mapped, readOnly } : mapped;
 }
 
 /** `chats.watch`: the Muse's family stream (Conversation, Side Chats, Helpers), relayed as ids
@@ -219,7 +224,7 @@ export async function* watchFamily(
   signal: AbortSignal | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): AsyncGenerator<FamilyEvent> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
   yield { type: "open" };
@@ -239,16 +244,16 @@ export async function* watchFamily(
   }
 }
 
-/** The Project this chat has open (ADR 0008): the Conversation, or one of its Side Chats. */
+/** The Project this chat has open (ADR 0008), as the engine reports it on the session: the
+ * Conversation, or one of its Side Chats. */
 export async function getChatProject(
   deps: ChatsDeps,
   actor: Actor,
   input: { botId: string; chatId?: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ project: { slug: string; name: string } | null }> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const email = await actorEmail(deps, actor);
-  let sessionId: string;
   if (input.chatId) {
     const ownership = await resolveChatOwnership(
       client,
@@ -257,10 +262,9 @@ export async function getChatProject(
       input.chatId,
     );
     if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
-    sessionId = input.chatId;
-  } else {
-    sessionId = await requireSuperChatSessionId(deps, actor, input.botId);
+    return { project: ownership.project };
   }
+  const sessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   return { project: await onSuperChat(getOmnigentWorkingProject(client, email, sessionId)) };
 }
 
@@ -270,15 +274,13 @@ export async function sendToChat(
   input: { chatId: string; text: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ ok: true }> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const email = await actorEmail(deps, actor);
   const superChats = await ownedSuperChats(deps, actor);
   const ownership = await resolveChatOwnership(client, email, superChats, input.chatId);
   if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
-  if (ownership.kind === "helper") {
-    throw new ORPCError("BAD_REQUEST", { message: "Helpers are read-only." });
-  }
-  await syncEngineTimezone(deps.prisma, actor.userId, env);
-  await postOmnigentMessage(client, email, input.chatId, input.text);
+  await syncEngineTimezone(deps.prisma, actor, env);
+  // A Helper is read-only: the engine refuses the post (`helper_read_only`).
+  await onSuperChat(postOmnigentMessage(client, email, input.chatId, input.text));
   return { ok: true as const };
 }

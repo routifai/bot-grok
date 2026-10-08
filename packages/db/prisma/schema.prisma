@@ -383,11 +383,13 @@ model Bot {
   // Muse edition (packages/contracts/src/muse.ts, MuseSettings): null means the default
   // from DEFAULT_MUSE_SETTINGS. museProactivity is a Proactivity level; museQuietHours is
   // a QuietHoursSchema string ("HH:MM-HH:MM") or the literal "" for "no quiet hours".
+  // Only used without the engine: on it, the person's engine preferences (/v1/me/proactivity)
+  // hold these, and a value left here is carried over once, then cleared (apps/api/src/
+  // muse-settings.ts).
   museProactivity        String?
   museQuietHours         String?
-  /// Which Omnigent harness (packages/contracts/src/engine.ts, NovaHarnessId) this Muse's
-  /// Conversation turns run on. Null means the deployment default (OMNIGENT_AGENT_NAME's
-  /// harness, "pi" unless overridden) — see packages/adapters/src/omnigent/harnesses.ts.
+  /// Unused: the engine picks the Muse's agent (OMNIGENT_SUPERCHAT_DEFAULT_AGENT, ADR 0009).
+  /// Kept, not dropped.
   museHarness            String?
   /// Where this Muse's Omnigent runner executes (packages/contracts/src/engine.ts,
   /// NovaRunnerLocationId): "computer" (Omnigent launches it inside this Muse's own sandbox
@@ -972,28 +974,23 @@ model Episode {
   @@map("episodes")
 }
 
-/// Omnigent chat engine (docs/omnigent-spike.md): the Omnigent session id backing one
-/// Muse's Conversation, so every turn continues the same session instead of starting a new
-/// one. One row per bot; week 1 only ever creates a "private"-scope session.
+/// The engine session behind one Muse's Conversation (ADR 0009). The engine owns which session
+/// that is (`GET /v1/me/muse`); this row is Nova's copy of the answer, read by the routes that
+/// need the id. One row per bot.
 model OmnigentSession {
   id                String   @id @default(cuid())
   botId             String   @unique
   bot               Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   omnigentSessionId String
-  /// Built-in Omnigent agent bundle name (e.g. "nova-claude") this session currently runs on;
-  /// kept in sync by packages/adapters/src/omnigent/gateway.ts when a turn's resolved
-  /// harness (Bot.museHarness) differs and switch-agent succeeds.
+  /// Built-in agent the session last reported running on (`GET /v1/me/muse`'s `agent`).
   agentName         String   @default("nova-claude")
-  /// Runner location (NovaRunnerLocationId) this session was bound on; recreated (a fresh
-  /// Omnigent session, since there is no switch-location RPC) when Bot.museRunnerLocation no
-  /// longer matches — see ensureOmnigentSession in packages/adapters/src/omnigent/gateway.ts.
+  /// Unused since the engine owns the Muse (ADR 0009). Kept, not dropped.
   runnerLocation    String   @default("computer")
-  /// Super Chat slice A1 (docs/super-chat/WIRING.md): the id of the last Omnigent item the
-  /// mirror job (packages/adapters/src/omnigent/mirror.ts) has copied into the Nova thread, or
-  /// that the gateway has already delivered through the normal run path (set right after every
-  /// turn — packages/adapters/src/omnigent/gateway.ts) — so the mirror job only ever looks at
-  /// items after it and never double-posts a reply the run path already delivered.
+  /// Unused since the mirror job was removed (ADR 0009). Kept, not dropped.
   lastMirroredItemId String?
+  /// When the engine adopted this row's session as the person's Muse (`POST
+  /// /v1/me/muse/adopt`), so a Conversation started before ADR 0009 is claimed once and kept.
+  engineAdoptedAt   DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

@@ -17,24 +17,29 @@ export function goalsRouter(c: RouterContext) {
   return {
     goals: {
       list: museOnly.goals.list.handler(({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         return engine ? engineListGoals(deps, engine, context.actor, input) : [];
       }),
       get: museOnly.goals.get.handler(({ context, input }) =>
         engineGetGoal(
           deps,
-          requireGoalsEngine(engineComputerClient()),
+          requireGoalsEngine(engineComputerClient(context.actor)),
           context.actor,
           input.goalId,
         ),
       ),
       update: museOnly.goals.update.handler(({ context, input }) =>
-        engineUpdateGoal(deps, requireGoalsEngine(engineComputerClient()), context.actor, input),
+        engineUpdateGoal(
+          deps,
+          requireGoalsEngine(engineComputerClient(context.actor)),
+          context.actor,
+          input,
+        ),
       ),
       acceptProposal: museOnly.goals.acceptProposal.handler(({ context, input }) =>
         engineAcceptProposal(
           deps,
-          requireGoalsEngine(engineComputerClient()),
+          requireGoalsEngine(engineComputerClient(context.actor)),
           context.actor,
           input,
         ),
@@ -42,7 +47,7 @@ export function goalsRouter(c: RouterContext) {
       dismissProposal: museOnly.goals.dismissProposal.handler(({ context, input }) =>
         engineDismissProposal(
           deps,
-          requireGoalsEngine(engineComputerClient()),
+          requireGoalsEngine(engineComputerClient(context.actor)),
           context.actor,
           input,
         ),
@@ -50,7 +55,7 @@ export function goalsRouter(c: RouterContext) {
       log: museOnly.goals.log.handler(({ context, input }) =>
         engineGoalLog(
           deps,
-          requireGoalsEngine(engineComputerClient()),
+          requireGoalsEngine(engineComputerClient(context.actor)),
           context.actor,
           input.goalId,
         ),
@@ -58,13 +63,13 @@ export function goalsRouter(c: RouterContext) {
     },
     asks: {
       list: museOnly.asks.list.handler(({ context, input }) =>
-        listAsks(deps, engineComputerClient(), context.actor, input.botId),
+        listAsks(deps, engineComputerClient(context.actor), context.actor, input.botId),
       ),
       count: museOnly.asks.count.handler(({ context, input }) =>
-        countAsks(deps, engineComputerClient(), context.actor, input.botId),
+        countAsks(deps, engineComputerClient(context.actor), context.actor, input.botId),
       ),
       answer: museOnly.asks.answer.handler(({ context, input }) =>
-        answerAsk(deps, engineComputerClient(), context.actor, input),
+        answerAsk(deps, engineComputerClient(context.actor), context.actor, input),
       ),
     },
   };

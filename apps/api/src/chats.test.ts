@@ -44,8 +44,15 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
 });
 
 const { OmnigentSideChatError } = await import("@aiden/adapters");
-const { createSideChat, getChatProject, getChatTranscript, summaryPreview, watchFamily } =
-  await import("./chats.js");
+const { OmnigentApiError } = await import("@aiden/adapters");
+const {
+  createSideChat,
+  getChatProject,
+  getChatTranscript,
+  sendToChat,
+  summaryPreview,
+  watchFamily,
+} = await import("./chats.js");
 
 const actor: Actor = {
   spaceId: "space-1",
@@ -55,6 +62,8 @@ const actor: Actor = {
 };
 
 const CLIENT = { baseUrl: "http://omnigent.test", proxySecret: "secret", secrets: ["sk-secret"] };
+/** The connection bound to the actor's space, as every engine call sends it. */
+const BOUND = { ...CLIENT, tenant: "space-1" };
 const ENV = { OMNIGENT_URL: "http://omnigent.test", OMNIGENT_PROXY_SECRET: "secret" };
 
 function depsFor(overrides: Record<string, unknown> = {}) {
@@ -112,7 +121,7 @@ describe("createSideChat", () => {
     );
 
     expect(postOmnigentMessage).toHaveBeenCalledWith(
-      CLIENT,
+      BOUND,
       "person@example.test",
       "conv_new",
       "lunch ideas",
@@ -211,6 +220,8 @@ describe("getChatTranscript", () => {
       kind: "side_chat",
       superSessionId: "conv_super",
       botId: "bot-1",
+      live: false,
+      project: null,
     });
   });
 
@@ -238,7 +249,7 @@ describe("getChatTranscript", () => {
     );
 
     expect(getOmnigentTranscript).toHaveBeenCalledWith(
-      CLIENT,
+      BOUND,
       "person@example.test",
       "conv_side",
       expect.objectContaining({ before: undefined }),
@@ -290,7 +301,7 @@ describe("getChatTranscript", () => {
     );
 
     expect(getOmnigentTranscript).toHaveBeenCalledWith(
-      CLIENT,
+      BOUND,
       "person@example.test",
       "conv_side",
       expect.objectContaining({ before: "msg_1" }),
@@ -339,7 +350,7 @@ describe("watchFamily", () => {
       { type: "heartbeat" },
     ]);
     expect(streamOmnigentFamily.mock.calls[0]?.slice(0, 3)).toEqual([
-      CLIENT,
+      BOUND,
       "person@example.test",
       "conv_super",
     ]);
@@ -384,16 +395,16 @@ describe("getChatProject", () => {
 
     expect(result).toEqual({ project: { slug: "q3-deck", name: "Q3 board deck" } });
     expect(getOmnigentWorkingProject).toHaveBeenCalledWith(
-      CLIENT,
+      BOUND,
       "person@example.test",
       "conv_super",
     );
     expect(resolveChatOwnership).not.toHaveBeenCalled();
   });
 
-  it("reads a Side Chat's Project once the Muse owns that chat", async () => {
-    resolveChatOwnership.mockResolvedValue({ botId: "bot-1", live: false });
-    getOmnigentWorkingProject.mockResolvedValue(null);
+  it("reads a Side Chat's Project from its session once the Muse owns that chat", async () => {
+    const project = { slug: "q3-deck", name: "Q3 board deck" };
+    resolveChatOwnership.mockResolvedValue({ botId: "bot-1", live: false, project });
 
     const result = await getChatProject(
       depsFor(),
@@ -402,12 +413,8 @@ describe("getChatProject", () => {
       ENV,
     );
 
-    expect(result).toEqual({ project: null });
-    expect(getOmnigentWorkingProject).toHaveBeenCalledWith(
-      CLIENT,
-      "person@example.test",
-      "conv_side",
-    );
+    expect(result).toEqual({ project });
+    expect(getOmnigentWorkingProject).not.toHaveBeenCalled();
   });
 
   it("refuses a chat the person does not own", async () => {
@@ -417,5 +424,48 @@ describe("getChatProject", () => {
       getChatProject(depsFor(), actor, { botId: "bot-1", chatId: "conv_other" }, ENV),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(getOmnigentWorkingProject).not.toHaveBeenCalled();
+  });
+});
+
+describe("Helpers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
+    resolveChatOwnership.mockResolvedValue({
+      kind: "helper",
+      superSessionId: "conv_super",
+      botId: "bot-1",
+      live: false,
+      project: null,
+    });
+  });
+
+  it("marks a Helper's transcript read-only so the client shows no composer", async () => {
+    getOmnigentTranscript.mockResolvedValue({ data: [], has_more: false, older_cursor: null });
+
+    const page = await getChatTranscript(
+      depsFor(),
+      actor,
+      { botId: "bot-1", chatId: "conv_helper" },
+      ENV,
+    );
+
+    expect(page.readOnly).toBe(true);
+  });
+
+  it("leaves refusing a post to the engine, and says why in short copy", async () => {
+    postOmnigentMessage.mockRejectedValue(
+      new OmnigentApiError("omnigent post message event failed (403)", "helper_read_only"),
+    );
+
+    await expect(
+      sendToChat(depsFor(), actor, { chatId: "conv_helper", text: "hi" }, ENV),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: "Helpers are read-only." });
+    expect(postOmnigentMessage).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_helper",
+      "hi",
+    );
   });
 });

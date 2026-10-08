@@ -1,62 +1,23 @@
 import type { OmnigentClientConfig, OmnigentSessionResponse, OmnigentStreamEvent } from "./core.js";
 import { omnigentHeaders, throwOnError } from "./core.js";
 
-/**
- * `POST /v1/sessions` from an existing (built-in) agent id, with session labels.
- *
- * Runner-location binding (docs/omnigent-spike.md "Nova computer" launcher; schema at
- * engine/omnigent/omnigent/server/schemas.py `_SessionCreateRequestBase`): omit every `host*`
- * field for the pre-existing external/caller-managed behavior, or set exactly one of —
- * - `hostType: "managed"` (+ optional `sandboxProvider`) so Omnigent provisions and binds the
- *   host itself (the "computer" runner location); `hostId`/`workspace` must stay unset.
- * - `hostId` + `workspace` (an absolute path on that host) to bind an already-connected host
- *   directly (the "local" runner location).
- */
-export async function createOmnigentSession(
-  config: OmnigentClientConfig,
-  email: string,
-  input: {
-    agentId: string;
-    labels: Record<string, string>;
-    title?: string;
-    hostType?: "managed" | "external";
-    sandboxProvider?: string;
-    hostId?: string;
-    workspace?: string;
-  },
-): Promise<OmnigentSessionResponse> {
-  const response = await fetch(new URL("/v1/sessions", config.baseUrl), {
-    method: "POST",
-    headers: omnigentHeaders(config, email),
-    body: JSON.stringify({
-      agent_id: input.agentId,
-      labels: input.labels,
-      title: input.title,
-      ...(input.hostType ? { host_type: input.hostType } : {}),
-      ...(input.sandboxProvider ? { sandbox_provider: input.sandboxProvider } : {}),
-      ...(input.hostId ? { host_id: input.hostId } : {}),
-      ...(input.workspace ? { workspace: input.workspace } : {}),
-    }),
-  });
-  await throwOnError(response, "create session", config.secrets);
-  return (await response.json()) as OmnigentSessionResponse;
+/** Where a session sits in a Super Chat family (ADR 0009), or `null` outside one. */
+export interface OmnigentSessionSuperchat {
+  kind: "super" | "side" | "helper" | null;
+  /** The family's Super Chat. */
+  root_id: string | null;
+  /** A Side Chat's Super Chat, or a Helper's direct parent. */
+  parent_id: string | null;
+  seed_item_id: string | null;
+  /** The Project the session has open (ADR 0008). */
+  project: { slug: string; name: string } | null;
 }
 
-/**
- * `GET /v1/sessions/{id}` — a cheap session snapshot (no items/liveness/usage), used by
- * ./gateway.ts to check whether a reused session ever got a runner bound (`host_id`). A pre-fix
- * session created with no `host_type` binds no host at all and stays that way forever — see
- * ensureOmnigentSession's repair path.
- */
+/** `GET /v1/sessions/{id}` — a cheap session snapshot (no items, liveness or usage). */
 export interface OmnigentSessionSnapshot extends OmnigentSessionResponse {
   host_id?: string | null;
-  /** Helper (sub-agent) / Side Chat ancestry: null for a Super Chat (superside-chat.md). */
-  parent_session_id?: string | null;
-  /** Session labels, including `omnigent.context.mode` (superside-chat.md). Used by
-   * ./gateway.ts to detect a Super Chat created before the mode label existed. */
   labels?: Record<string, string>;
-  /** The session's working directory on its host; moves when the Muse opens a Project. */
-  workspace?: string | null;
+  superchat?: OmnigentSessionSuperchat | null;
 }
 
 export async function getOmnigentSession(
@@ -71,20 +32,6 @@ export async function getOmnigentSession(
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "get session", config.secrets);
   return (await response.json()) as OmnigentSessionSnapshot;
-}
-
-/** `GET /v1/agents` — resolves a built-in agent's durable id by its bundle name. */
-export async function findOmnigentAgentIdByName(
-  config: OmnigentClientConfig,
-  email: string,
-  name: string,
-): Promise<string | undefined> {
-  const url = new URL("/v1/agents", config.baseUrl);
-  url.searchParams.set("limit", "100");
-  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "list agents", config.secrets);
-  const body = (await response.json()) as { data?: Array<{ id: string; name: string }> };
-  return body.data?.find((agent) => agent.name === name)?.id;
 }
 
 /** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text. */
@@ -106,31 +53,6 @@ export async function postOmnigentMessage(
     },
   );
   await throwOnError(response, "post message event", config.secrets);
-}
-
-/**
- * `POST /v1/sessions/{id}/switch-agent` — rebinds an existing session in place to a different
- * built-in agent bundle (engine/omnigent/omnigent/server/routes/sessions/routes_core.py
- * ~3580-3700, request body `SessionSwitchAgentRequest` in
- * engine/omnigent/omnigent/server/schemas.py:2683-2697). Only works while the session is idle
- * and only for a built-in (not session-scoped) target agent id.
- */
-export async function switchOmnigentAgent(
-  config: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-  agentId: string,
-): Promise<OmnigentSessionResponse> {
-  const response = await fetch(
-    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/switch-agent`, config.baseUrl),
-    {
-      method: "POST",
-      headers: omnigentHeaders(config, email),
-      body: JSON.stringify({ agent_id: agentId }),
-    },
-  );
-  await throwOnError(response, "switch agent", config.secrets);
-  return (await response.json()) as OmnigentSessionResponse;
 }
 
 export interface OmnigentPaginatedList<T> {

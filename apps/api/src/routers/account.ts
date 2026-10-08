@@ -229,7 +229,7 @@ export function accountRouter(c: RouterContext) {
         if (input.timezone !== undefined) data.timezone = validTimezoneOrUtc(input.timezone);
         if (Object.keys(data).length > 0) {
           await deps.prisma.user.update({ where: { id: context.actor.userId }, data });
-          if (data.timezone) await syncEngineTimezone(deps.prisma, context.actor.userId);
+          if (data.timezone) await syncEngineTimezone(deps.prisma, context.actor);
         }
         return meDto(deps, context.actor);
       }),

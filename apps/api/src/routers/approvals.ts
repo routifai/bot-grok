@@ -118,13 +118,13 @@ export function approvalsRouter(c: RouterContext) {
     },
     approvals: {
       rules: museOnly.approvals.rules.handler(({ context, input }) =>
-        listApprovalRules(deps, engineComputerClient(), context.actor, input.botId),
+        listApprovalRules(deps, engineComputerClient(context.actor), context.actor, input.botId),
       ),
       revoke: museOnly.approvals.revoke.handler(({ context, input }) =>
-        revokeApprovalRule(deps, engineComputerClient(), context.actor, input),
+        revokeApprovalRule(deps, engineComputerClient(context.actor), context.actor, input),
       ),
       setSpending: museOnly.approvals.setSpending.handler(({ context, input }) =>
-        setApprovalSpending(deps, engineComputerClient(), context.actor, input),
+        setApprovalSpending(deps, engineComputerClient(context.actor), context.actor, input),
       ),
     },
     agentSecrets: {

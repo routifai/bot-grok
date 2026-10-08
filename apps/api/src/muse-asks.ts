@@ -16,17 +16,16 @@ import {
 } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import { ORPCError } from "@orpc/server";
-import { engineAnswerApproval, engineApprovalAsks } from "./engine-approvals.js";
-import { engineAnswerAsk, engineGoalAsks } from "./engine-goals.js";
+import { engineAnswerAsk, engineListAsks, isEngineAskId } from "./engine-asks.js";
 
-// Asks list (docs/muse/PLAN.md, decision 5). An Ask is a view over a pending "ask" or
-// unanswered "choice" message block in the Conversation, plus the engine's open Goal plan
-// changes and blocked Tasks (engine-goals.ts); the block itself stays the one source of truth
-// (CONTEXT.md "Ask"). This module only reads/routes.
+// Asks list (docs/muse/PLAN.md, decision 5). On the engine, the Asks are the engine's decisions
+// inbox (./engine-asks.ts, ADR 0009). Without it, an Ask is a view over a pending "ask" or
+// unanswered "choice" message block in the Conversation; the block itself stays the one source
+// of truth (CONTEXT.md "Ask"). This module only reads/routes.
 //
-// Answering: most Asks (approval, question) go through the same commit path as
-// `threads.answer` (packages/db/src/events.ts answerRunInput), which requires a paused run. A
-// skill offer is applied directly, and a Goal Ask is answered on the engine.
+// Answering without the engine: most Asks (approval, question) go through the same commit path
+// as `threads.answer` (packages/db/src/events.ts answerRunInput), which requires a paused run,
+// and a skill offer is applied directly.
 
 type AskBlock = Extract<MessageBlock, { kind: "ask" }>;
 type ChoiceBlock = Extract<MessageBlock, { kind: "choice" }>;
@@ -136,19 +135,17 @@ export interface AsksDeps {
   prisma: PrismaClient;
 }
 
-/** Shared by `asks.list` and `asks.count`: the Conversation's Asks and the engine's Goal Asks. */
+/** Shared by `asks.list` and `asks.count`: the engine's inbox for this Muse, or without the
+ * engine the Conversation's own Asks. */
 async function loadAsks(
   deps: AsksDeps,
   engine: OmnigentClientConfig | undefined,
   actor: Actor,
   botId: string,
 ): Promise<Ask[]> {
-  const [thread, goals, approvals] = await Promise.all([
-    loadThreadAsks(deps.prisma, actor, botId),
-    engine ? engineGoalAsks(deps, engine, actor, botId) : [],
-    engine ? engineApprovalAsks(deps, engine, actor, botId) : [],
-  ]);
-  return [...thread, ...goals, ...approvals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return engine
+    ? engineListAsks(deps, engine, actor, botId)
+    : loadThreadAsks(deps.prisma, actor, botId);
 }
 
 export const listAsks = loadAsks;
@@ -219,9 +216,9 @@ async function answerSkillOffer(
 }
 
 /**
- * Answer an Ask, however it answers: a Goal Ask (`runId` is its Goal's id) is answered on the
- * engine, a skill offer is applied directly, and everything else routes to the same commit path
- * `threads.answer` uses (`ThreadEvents.answerRunInput`). `askId` is the message id (see `Ask.id`).
+ * Answer an Ask, however it answers: an engine ask on the engine, a skill offer directly, and
+ * everything else through the same commit path `threads.answer` uses
+ * (`ThreadEvents.answerRunInput`), where `askId` is the message id (see `Ask.id`).
  */
 export async function answerAsk(
   deps: AnswerAskDeps,
@@ -229,18 +226,12 @@ export async function answerAsk(
   actor: Actor,
   input: { askId: string; runId: string; answer: string; username?: string },
 ): Promise<{ ok: true }> {
+  if (engine && isEngineAskId(input.askId)) return engineAnswerAsk(deps, engine, actor, input);
   const message = await deps.prisma.message.findFirst({
     where: { id: input.askId, runId: input.runId, role: "bot" },
     select: { id: true, threadId: true, blocks: true, thread: { select: { botId: true } } },
   });
-  if (!message) {
-    const answered = engine
-      ? ((await engineAnswerApproval(deps, engine, actor, input)) ??
-        (await engineAnswerAsk(deps, engine, actor, input)))
-      : null;
-    if (!answered) throw new IsolationError();
-    return answered;
-  }
+  if (!message) throw new IsolationError();
   const targetBotId = message.thread.botId;
   if (!targetBotId) throw new IsolationError();
   // Authorizes like every other bot-scoped route: throws unless `targetBotId` is one of this

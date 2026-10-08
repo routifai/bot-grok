@@ -28,14 +28,14 @@ export function computerRouter(c: RouterContext) {
   return {
     computer: {
       status: authed.computer.status.handler(async ({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         return engine
           ? engineComputerStatus(deps, engine, context.actor, input.botId)
           : computerStatus(deps, context.actor, input.botId);
       }),
       boot: authed.computer.boot.handler(async ({ context, input }) => {
         // The engine's Computer is always on: nothing to boot.
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (engine) return engineComputerStatus(deps, engine, context.actor, input.botId);
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();

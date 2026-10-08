@@ -17,17 +17,6 @@ export interface OmnigentScheduledTask {
   next_run_at?: string | null;
 }
 
-export interface OmnigentScheduledTaskRun {
-  id: string;
-  scheduled_task_id: string;
-  status: "scheduled" | "running" | "succeeded" | "failed" | "skipped" | string;
-  scheduled_at: number;
-  /** The run's session: its final assistant message is the run's Result. */
-  conversation_id: string | null;
-  fired_at: number | null;
-  finished_at: number | null;
-}
-
 function scheduledTaskUrl(config: OmnigentClientConfig, id?: string, tail = ""): URL {
   const path = id ? `/v1/scheduled-tasks/${encodeURIComponent(id)}${tail}` : "/v1/scheduled-tasks";
   return new URL(path, config.baseUrl);
@@ -59,21 +48,6 @@ export async function getOmnigentScheduledTask(
   return (await response.json()) as OmnigentScheduledTask;
 }
 
-/** `GET /v1/scheduled-tasks/{id}/runs` — newest first. */
-export async function listOmnigentScheduledTaskRuns(
-  config: OmnigentClientConfig,
-  email: string,
-  id: string,
-  limit = 5,
-): Promise<OmnigentScheduledTaskRun[]> {
-  const url = scheduledTaskUrl(config, id, "/runs");
-  url.searchParams.set("limit", String(limit));
-  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
-  await throwOnError(response, "list scheduled task runs", config.secrets);
-  const body = (await response.json()) as { runs?: OmnigentScheduledTaskRun[] };
-  return body.runs ?? [];
-}
-
 export async function createOmnigentScheduledTask(
   config: OmnigentClientConfig,
   email: string,
@@ -83,6 +57,8 @@ export async function createOmnigentScheduledTask(
     rrule: string;
     parentSessionId: string;
     agentType: string;
+    /** Product marker, e.g. `followed_topic`. */
+    kind?: string;
     timezone?: string;
   },
 ): Promise<OmnigentScheduledTask> {
@@ -95,6 +71,7 @@ export async function createOmnigentScheduledTask(
       rrule: input.rrule,
       parent_session_id: input.parentSessionId,
       agent_type: input.agentType,
+      ...(input.kind ? { kind: input.kind } : {}),
       ...(input.timezone ? { timezone: input.timezone } : {}),
     }),
   });

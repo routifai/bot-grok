@@ -9,17 +9,11 @@ import {
 } from "./chats.js";
 import { OmnigentApiError } from "./client/core.js";
 
-const { getOmnigentSession, listOmnigentRelatedChats } = vi.hoisted(() => ({
-  getOmnigentSession: vi.fn(),
-  listOmnigentRelatedChats: vi.fn(),
-}));
+const { getOmnigentSession } = vi.hoisted(() => ({ getOmnigentSession: vi.fn() }));
 
-vi.mock("./client.js", () => ({
-  getOmnigentSession,
-  listOmnigentRelatedChats,
-}));
+vi.mock("./client.js", () => ({ getOmnigentSession }));
 
-const CLIENT = { baseUrl: "http://omnigent.test", proxySecret: "secret" };
+const CLIENT = { baseUrl: "http://omnigent.test", proxySecret: "secret", tenant: "space-1" };
 const EMAIL = "person@example.test";
 
 describe("sideChatStartToWire", () => {
@@ -129,74 +123,65 @@ describe("mapSideChatCreateToSummary", () => {
 
 describe("resolveChatOwnership", () => {
   const superChats = [{ botId: "bot-1", omnigentSessionId: "conv_super" }];
+  const session = (
+    id: string,
+    superchat: Record<string, unknown> | null,
+    status = "idle",
+  ): Record<string, unknown> => ({ id, status, superchat });
+  const family = (kind: string, root: string, project: unknown = null) => ({
+    kind,
+    root_id: root,
+    parent_id: root,
+    seed_item_id: null,
+    project,
+  });
 
-  it("resolves a direct Side Chat via related_chats", async () => {
-    listOmnigentRelatedChats.mockResolvedValue({
-      data: [
-        {
-          id: "conv_side",
-          title: "t",
-          created_at: 0,
-          updated_at: 0,
-          last_message_preview: null,
-          live: true,
-        },
-      ],
-    });
+  it("resolves a Side Chat of the caller's Super Chat, live while a turn runs", async () => {
+    const project = { slug: "q3-deck", name: "Q3 board deck" };
+    getOmnigentSession.mockResolvedValue(
+      session("conv_side", family("side", "conv_super", project), "running"),
+    );
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_side");
     expect(ownership).toEqual({
       kind: "side_chat",
       superSessionId: "conv_super",
       botId: "bot-1",
       live: true,
+      project,
     });
   });
 
-  it("resolves a Helper one hop below the Super Chat", async () => {
-    listOmnigentRelatedChats.mockResolvedValue({ data: [] });
-    getOmnigentSession.mockResolvedValue({ id: "conv_helper", parent_session_id: "conv_super" });
+  it("resolves a Helper at any depth by its family root", async () => {
+    getOmnigentSession.mockResolvedValue(session("conv_helper", family("helper", "conv_super")));
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_helper");
-    expect(ownership).toEqual({ kind: "helper", superSessionId: "conv_super", botId: "bot-1" });
-  });
-
-  it("resolves a Helper launched from a Side Chat (Side Chats are top-level sessions)", async () => {
-    listOmnigentRelatedChats.mockResolvedValue({
-      data: [
-        { id: "conv_side", title: "t", created_at: 0, updated_at: 0, last_message_preview: null },
-      ],
+    expect(ownership).toEqual({
+      kind: "helper",
+      superSessionId: "conv_super",
+      botId: "bot-1",
+      live: false,
+      project: null,
     });
-    getOmnigentSession.mockImplementation(async (_client: unknown, _email: string, id: string) => {
-      if (id === "conv_nested_helper") return { id, parent_session_id: "conv_side" };
-      return { id, parent_session_id: null };
-    });
-    const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_nested_helper");
-    expect(ownership).toEqual({ kind: "helper", superSessionId: "conv_super", botId: "bot-1" });
   });
 
-  it("returns null (not found) past the hop limit or outside the caller's own Super Chats", async () => {
-    listOmnigentRelatedChats.mockResolvedValue({ data: [] });
-    getOmnigentSession.mockResolvedValue({ id: "x", parent_session_id: null });
-    const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_strangers");
-    expect(ownership).toBeNull();
+  it("returns null outside the caller's own Super Chats or outside any family", async () => {
+    getOmnigentSession.mockResolvedValue(session("x", family("side", "conv_other")));
+    expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "x")).toBeNull();
+    getOmnigentSession.mockResolvedValue(session("x", null));
+    expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "x")).toBeNull();
   });
 
-  it("a resolver fetches related chats once and each parent hop once, however many chats", async () => {
-    listOmnigentRelatedChats.mockClear();
+  it("a resolver reads each chat's session once", async () => {
     getOmnigentSession.mockClear();
-    listOmnigentRelatedChats.mockResolvedValue({ data: [] });
-    getOmnigentSession.mockImplementation(async (_c: unknown, _e: string, id: string) => ({
-      id,
-      parent_session_id: id === "conv_h1" ? "conv_h2" : "conv_super",
-    }));
+    getOmnigentSession.mockImplementation(async (_c: unknown, _e: string, id: string) =>
+      session(id, family("helper", "conv_super")),
+    );
     const resolve = createChatOwnershipResolver(CLIENT, EMAIL, superChats);
     const found = await Promise.all(["conv_h1", "conv_h2", "conv_h1", "conv_h2"].map(resolve));
     expect(found.every((o) => o?.kind === "helper" && o.botId === "bot-1")).toBe(true);
-    expect(listOmnigentRelatedChats).toHaveBeenCalledTimes(1);
     expect(getOmnigentSession).toHaveBeenCalledTimes(2);
   });
 
   it("treats a session the engine no longer has as unowned but surfaces other failures", async () => {
-    listOmnigentRelatedChats.mockResolvedValue({ data: [] });
     getOmnigentSession.mockRejectedValueOnce(new OmnigentApiError("gone (404)", "not_found"));
     expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_gone")).toBeNull();
     getOmnigentSession.mockRejectedValueOnce(new OmnigentApiError("boom (500)", undefined));
@@ -204,9 +189,9 @@ describe("resolveChatOwnership", () => {
   });
 
   it("never resolves the Super Chat's own id as a chat", async () => {
-    listOmnigentRelatedChats.mockResolvedValue({ data: [] });
-    getOmnigentSession.mockResolvedValue({ id: "conv_super", parent_session_id: null });
-    const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_super");
-    expect(ownership).toBeNull();
+    getOmnigentSession.mockResolvedValue(
+      session("conv_super", { ...family("super", "conv_super"), parent_id: null }),
+    );
+    expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_super")).toBeNull();
   });
 });

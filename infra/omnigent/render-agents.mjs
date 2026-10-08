@@ -16,13 +16,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** Where bundles are written; `NOVA_RENDER_AGENTS_DIR` redirects it (tests render to a temp dir). */
 // biome-ignore lint/suspicious/noUndeclaredEnvVars: a test-only redirect, not a build input
 const AGENTS_DIR = process.env.NOVA_RENDER_AGENTS_DIR || join(here, "agents");
-/** One entry per Muse bundle. The ONE flag `NOVA_MUSE_HARNESS` (`claude-sdk` default | `pi`)
- * picks which one Conversations run on: this script renders BOTH every run from the same
- * templates; the flag is read by the Nova API (packages/adapters/src/omnigent/env.ts) to name
- * the bundle, and Omnigent's own switch-agent moves existing sessions across. The switch is
- * total: every Sub-agent Type (worker, subworker, goal, teacher) of a bundle runs on that
- * bundle's harness, so the Muse, its Helpers and scheduled/background Helper runs all share one
- * harness. Pi's extra keys keep it from fighting Omnigent: no AGENTS.md/CLAUDE.md
+/** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`nova-claude` |
+ * `nova-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
+ * from the same templates. The choice is total: every Sub-agent Type (worker, subworker, goal,
+ * teacher) of a bundle runs on that bundle's harness, so the Muse, its Helpers and
+ * scheduled/background Helper runs all share one harness. Pi's extra keys keep it from fighting Omnigent: no AGENTS.md/CLAUDE.md
  * auto-discovery, our prompt replaces pi's base prompt, no host skills; they are defined once
  * here and rendered into the Muse and every Sub-agent Type alike. (Compaction is switched off
  * engine-side, in inner/pi_executor.py, for superside-chat.)

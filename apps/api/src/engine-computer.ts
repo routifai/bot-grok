@@ -5,6 +5,7 @@ import {
   getOmnigentComputer,
   type OmnigentClientConfig,
   omnigentClientConfigFromEnv,
+  omnigentClientFor,
   openOmnigentComputerScreen,
   releaseOmnigentComputer,
 } from "@aiden/adapters";
@@ -27,11 +28,14 @@ interface EngineComputer {
   bot: { id: string; screenGeneration: number };
 }
 
-/** The engine's client config when Nova runs on the engine; `undefined` keeps the Pi-era path. */
+/** The engine client for this actor's space (the tenant every engine call carries), when Nova
+ * runs on the engine; `undefined` keeps the Pi-era path. */
 export function engineComputerClient(
+  actor: Pick<Actor, "spaceId">,
   env: NodeJS.ProcessEnv = process.env,
 ): OmnigentClientConfig | undefined {
-  return omnigentClientConfigFromEnv(env);
+  const connection = omnigentClientConfigFromEnv(env);
+  return connection ? omnigentClientFor(connection, actor.spaceId) : undefined;
 }
 
 async function resolve(
@@ -157,7 +161,7 @@ export async function engineComputerRelease(
 export async function withEngineComputer<
   T extends { botId?: string; computer?: ComputerStatus | null },
 >(deps: EngineComputerDeps, actor: Actor, snapshot: T): Promise<T> {
-  const client = engineComputerClient();
+  const client = engineComputerClient(actor);
   if (!client || !snapshot.botId || !snapshot.computer) return snapshot;
   const computer = await engineComputerStatus(deps, client, actor, snapshot.botId);
   return { ...snapshot, computer };

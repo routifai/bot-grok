@@ -7,6 +7,24 @@
 > Chat bundle, with Memory, Rollover, Side Chats and the Activity Feed owned entirely by
 > Omnigent. Everything below is kept for history; read the Super Chat docs for what's current.
 
+## Since ADR 0009 (the engine finds the Muse)
+
+The gateway no longer creates, repairs or switches sessions, and Nova names no agent bundle:
+
+- Each turn asks the engine for the person's Muse in the current space (`GET /v1/me/muse`). The
+  engine creates one when there is none, on its `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` bundle,
+  launched on the Computer when `OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER=computer`, and labels its
+  Computer itself (`omnigent.computer.owner`, `omnigent.tenant`).
+- A Conversation Nova started before that is adopted once (`POST /v1/me/muse/adopt`) before the
+  first `GET`, so the person keeps it. `omnigent_sessions.engineAdoptedAt` records it, and the row
+  then only mirrors the engine's answer for the routes that need the session id.
+- Every engine call sends the Nova space id in `X-Omnigent-Tenant`, next to `X-Forwarded-Email`
+  and the proxy secret. The engine reads it from the header named by
+  `OMNIGENT_AUTH_TENANT_HEADER`.
+- `NOVA_MUSE_HARNESS` and `OMNIGENT_AGENT_NAME` are gone from Nova: the harness is the engine's
+  default agent (`nova-claude`, or `nova-pi` for Pi). The sections below on harness switching,
+  runner locations, session repair and the `nova.*` labels describe the old gateway.
+
 Nova is moving its agent loop onto [Omnigent](https://github.com/omnigent-ai/omnigent) (vendored
 read-only at `engine/omnigent/`, upstream `omnigent-main`): Omnigent runs the agent loop, tools,
 policies, and harness switching; Nova stays the context layer and product UI. This spike lets one
@@ -167,9 +185,9 @@ Environment variables (Omnigent server process):
 
 | Variable | Purpose |
 | --- | --- |
-| `OMNIGENT_NOVA_SUPERVISOR_URL` | Base URL of Nova's sandbox supervisor, e.g. `http://sandbox-supervisor:7091`. |
-| `OMNIGENT_NOVA_SUPERVISOR_TOKEN` | The shared bearer Nova's supervisor expects on every request — the same secret Nova's own API process reads via `resolveSupervisorToken`/`SANDBOX_SUPERVISOR_TOKEN` (`packages/core/src/secrets-guard.ts`). Never a per-user credential. |
-| `OMNIGENT_NOVA_HOME_ROOT` | Root directory a Muse's persistent home lives under (`<root>/homes/<bot_id>`) — must resolve to the SAME host path Nova's own API process uses (`dataDir` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only; set an absolute, shared path in any real deployment. |
+| `OMNIGENT_COMPUTER_SUPERVISOR_URL` | Base URL of Nova's sandbox supervisor, e.g. `http://sandbox-supervisor:7091`. (Was `OMNIGENT_NOVA_SUPERVISOR_URL`, still read.) |
+| `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN` | The shared bearer Nova's supervisor expects on every request — the same secret Nova's own API process reads via `resolveSupervisorToken`/`SANDBOX_SUPERVISOR_TOKEN` (`packages/core/src/secrets-guard.ts`). Never a per-user credential. |
+| `OMNIGENT_COMPUTER_HOME_ROOT` | Root directory a Computer's persistent home lives under (`<root>/homes/<key>`) — must resolve to the SAME host path Nova's own API process uses (`dataDir` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only; set an absolute, shared path in any real deployment. |
 
 **Known gaps, not yet proven end-to-end:**
 
@@ -208,8 +226,10 @@ this integration doesn't cover those yet.
 | Variable | Where | Purpose |
 | --- | --- | --- |
 | `OMNIGENT_URL` | `apps/api`, `apps/worker` | Base URL of the Omnigent server, e.g. `http://127.0.0.1:8000`. Setting both this and the proxy secret routes eligible runs through the gateway. |
-| `OMNIGENT_PROXY_SECRET` | `apps/api`, `apps/worker` | Shared secret sent as `X-Omnigent-Proxy-Secret` on every gateway call, alongside `X-Forwarded-Email` (the person's email) for Omnigent's header-auth mode. Required together with `OMNIGENT_URL`. |
-| `OMNIGENT_AGENT_NAME` | `apps/api`, `apps/worker` | Overrides the Muse's agent bundle by name. Unset, `NOVA_MUSE_HARNESS` chooses between `nova-claude` (default) and `nova-pi`. |
+| `OMNIGENT_PROXY_SECRET` | `apps/api`, `apps/worker` | Shared secret sent as `X-Omnigent-Proxy-Secret` on every gateway call, alongside `X-Forwarded-Email` (the person's email) and `X-Omnigent-Tenant` (the space) for Omnigent's header-auth mode. Required together with `OMNIGENT_URL`. |
+| `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` | Omnigent server process | The bundle a new Muse runs on (`nova-claude` or `nova-pi`). Without it, a person with no Muse yet gets "Chat is not available right now." |
+| `OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER` | Omnigent server process | `computer` launches each new Muse on its own Computer. |
+| `OMNIGENT_AUTH_TENANT_HEADER` | Omnigent server process | `X-Omnigent-Tenant`, the header Nova sends the space in. |
 | `OMNIGENT_CONTEXT_PROVIDER_SECRET` | `apps/api` | Bearer secret the context-provider route requires. **Unset 404s the route entirely** — set this to enable the endpoint. |
 | `OPENROUTER_API_KEY` / `AIDEN_LOCAL_MODELS_URL` | `apps/api` | Either makes the `pi` harness available in `engine.info`'s catalog (Pi routes through OpenRouter or a locally configured OpenAI-compatible server). |
 | `ANTHROPIC_API_KEY` | `apps/api` | Makes the `claude` harness (Claude Agent SDK) available in `engine.info`'s catalog. |

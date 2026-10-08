@@ -15,6 +15,7 @@ import {
   type OmnigentDailyNote,
   type OmnigentMemoryClaim,
   omnigentClientConfigFromEnv,
+  omnigentClientFor,
   patchOmnigentMemoryClaim,
   putOmnigentDailyNote,
   redactActivity,
@@ -30,12 +31,13 @@ export interface ActivitiesDeps {
   prisma: PrismaClient;
 }
 
-function requireClient(env: NodeJS.ProcessEnv): OmnigentClientConfig {
-  const client = omnigentClientConfigFromEnv(env);
-  if (!client) {
+/** The engine client for the actor's space (the tenant every engine call carries). */
+function requireClient(env: NodeJS.ProcessEnv, actor: Actor): OmnigentClientConfig {
+  const connection = omnigentClientConfigFromEnv(env);
+  if (!connection) {
     throw new ORPCError("BAD_REQUEST", { message: "Chat is not available right now." });
   }
-  return client;
+  return omnigentClientFor(connection, actor.spaceId);
 }
 
 async function requireSuperChat(
@@ -74,7 +76,7 @@ export async function listActivities(
   input: { botId: string; before?: number; limit?: number },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ActivityPage> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { superSessionId, email, timezone } = await requireSuperChat(deps, actor, input.botId);
   const page = await onSuperChat(
     listOmnigentActivities(client, email, superSessionId, {
@@ -96,7 +98,7 @@ export async function getActivity(
   input: { botId: string; activityId: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<Activity> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { superSessionId, email, timezone } = await requireSuperChat(deps, actor, input.botId);
   const activity = await onSuperChat(
     getOmnigentActivity(client, email, superSessionId, input.activityId, { tz: timezone }),
@@ -114,7 +116,7 @@ export async function* watchActivities(
   signal: AbortSignal | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): AsyncGenerator<ActivityChanged> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   try {
     for await (const frame of streamOmnigentActivityChanges(
@@ -139,7 +141,7 @@ export async function getMemoryProfile(
   input: { botId: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ profile: string | null }> {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   const result = await onSuperChat(getOmnigentMemoryProfile(client, email, superSessionId));
   return { profile: redactMemoryProfile(result.profile, client.secrets ?? []) };
@@ -163,7 +165,7 @@ export async function listMemoryClaims(
   input: { botId: string },
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   const claims = await onSuperChat(listOmnigentMemoryClaims(client, email, superSessionId));
   return { claims: claims.map((claim) => mapClaim(claim, client.secrets ?? [])) };
@@ -176,7 +178,7 @@ export async function editMemoryClaim(
   input: { botId: string; claimId: string; text: string },
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   const claim = await onSuperChat(
     patchOmnigentMemoryClaim(client, email, superSessionId, input.claimId, input.text),
@@ -191,7 +193,7 @@ export async function forgetMemoryClaim(
   input: { botId: string; claimId: string },
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { superSessionId, email } = await requireSuperChat(deps, actor, input.botId);
   await onSuperChat(forgetOmnigentMemoryClaim(client, email, superSessionId, input.claimId));
   return { ok: true as const };
@@ -219,7 +221,7 @@ export async function listDailyNotes(
   input: { botId: string; limit: number },
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { email } = await requireSuperChat(deps, actor, input.botId);
   const notes = await onSuperChat(listOmnigentDailyNotes(client, email, input.limit));
   return { notes: notes.map((note) => mapDailyNote(note, client.secrets ?? [])) };
@@ -232,7 +234,7 @@ export async function saveDailyNote(
   input: { botId: string; date: string; sections: Record<string, string> },
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const client = requireClient(env);
+  const client = requireClient(env, actor);
   const { email } = await requireSuperChat(deps, actor, input.botId);
   const note = await onSuperChat(putOmnigentDailyNote(client, email, input.date, input.sections));
   return mapDailyNote(note, client.secrets ?? []);

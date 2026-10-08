@@ -7,7 +7,12 @@ import {
   engineRemoveTopic,
 } from "./engine-feed.js";
 
-const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [] };
+const client = {
+  baseUrl: "http://engine.test",
+  proxySecret: "proxy",
+  secrets: [],
+  tenant: "space-1",
+};
 const actor = { userId: "user-1", spaceId: "space-1" } as never;
 
 function deps(session: string | null = "sess-1") {
@@ -38,41 +43,37 @@ function stub(routes: Record<string, unknown>) {
 const topic = (id: string, name: string, extra = {}) => ({
   id,
   name,
-  prompt: "p",
+  cadence: "weekly",
   rrule: "FREQ=WEEKLY",
   timezone: "UTC",
   state: "active",
-  parent_session_id: "sess-1",
-  agent_type: "worker",
+  session_id: "sess-1",
   created_at: 1_700_000_000,
   ...extra,
 });
 
-const assistant = (id: string, text: string) => ({
+const post = (id: string, topicId: string, text: string, createdAt: number) => ({
   id,
-  role: "assistant",
-  created_at: 1,
-  blocks: [{ type: "text", text }],
-});
-
-/** The engine's transcript page: messages oldest first. */
-const transcript = (...data: ReturnType<typeof assistant>[]) => ({
-  data,
-  has_more: false,
-  older_cursor: null,
-  lineage: { kind: "helper", root_id: "sess-1", parent_id: "sess-1", seed_item_id: null },
+  topic_id: topicId,
+  run_id: id,
+  session_id: `run-${id}`,
+  created_at: createdAt,
+  text,
+  cards: [],
+  nothing_new: false,
 });
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("engine feed", () => {
-  it("lists only worker tasks of this Super Chat as topics", async () => {
+  it("lists only this Super Chat's topics, with the engine's cadence", async () => {
     stub({
-      "GET /v1/scheduled-tasks": {
-        scheduled_tasks: [
+      "GET /v1/me/topics": {
+        data: [
           topic("t1", "AI agent news"),
-          topic("t2", "Other", { agent_type: null }),
-          topic("t3", "Foreign", { parent_session_id: "sess-2" }),
+          topic("t2", "Daily", { cadence: "daily" }),
+          topic("t3", "Monthly", { cadence: null }),
+          topic("t4", "Foreign", { session_id: "sess-2" }),
         ],
       },
     });
@@ -84,110 +85,72 @@ describe("engine feed", () => {
         createdAt: "2023-11-14T22:13:20.000Z",
         cadence: "weekly",
       },
+      { id: "t2", topic: "Daily", createdAt: "2023-11-14T22:13:20.000Z", cadence: "daily" },
+      { id: "t3", topic: "Monthly", createdAt: "2023-11-14T22:13:20.000Z" },
     ]);
-  });
-
-  it("derives the cadence from the rrule frequency", async () => {
-    stub({
-      "GET /v1/scheduled-tasks": {
-        scheduled_tasks: [
-          topic("t1", "A", { rrule: "FREQ=DAILY;BYHOUR=9" }),
-          topic("t2", "B", { rrule: "FREQ=HOURLY" }),
-          topic("t3", "C", { rrule: "FREQ=MONTHLY" }),
-        ],
-      },
-    });
-    const topics = await engineListTopics(deps(), client, actor, "bot-1");
-    expect(topics.map((entry) => entry.cadence)).toEqual(["daily", "hourly", undefined]);
   });
 
   it("has no topics or posts before the Muse has a Conversation", async () => {
     expect(await engineListTopics(deps(null), client, actor, "bot-1")).toEqual([]);
-    expect(await engineListFeedPosts(deps(null), client, actor, "bot-1")).toEqual({
+    expect(await engineListFeedPosts(deps(null), client, actor, { botId: "bot-1" })).toEqual({
       posts: [],
       nextCursor: null,
     });
   });
 
-  it("turns succeeded runs into posts newest first and drops Nothing new.", async () => {
-    stub({
-      "GET /v1/scheduled-tasks": { scheduled_tasks: [topic("t1", "AI agent news")] },
-      "GET /v1/scheduled-tasks/t1/runs": {
-        runs: [
-          {
-            id: "r3",
-            scheduled_task_id: "t1",
-            status: "running",
-            scheduled_at: 30,
-            conversation_id: "c3",
-            fired_at: 30,
-            finished_at: null,
-          },
-          {
-            id: "r2",
-            scheduled_task_id: "t1",
-            status: "succeeded",
-            scheduled_at: 20,
-            conversation_id: "c2",
-            fired_at: 20,
-            finished_at: 25,
-          },
-          {
-            id: "r1",
-            scheduled_task_id: "t1",
-            status: "succeeded",
-            scheduled_at: 10,
-            conversation_id: "c1",
-            fired_at: 10,
-            finished_at: 15,
-          },
-          {
-            id: "r0",
-            scheduled_task_id: "t1",
-            status: "succeeded",
-            scheduled_at: 5,
-            conversation_id: "c0",
-            fired_at: 5,
-            finished_at: 6,
-          },
-        ],
+  it("shows the engine's posts of this Muse's topics and pages with its cursor", async () => {
+    const fetchMock = stub({
+      "GET /v1/me/topics": {
+        data: [topic("t1", "AI agent news"), topic("t2", "Foreign", { session_id: "sess-2" })],
       },
-      "GET /v1/sessions/c2/transcript": transcript(assistant("i2", "Nothing new.")),
-      "GET /v1/sessions/c1/transcript": transcript(
-        assistant("i1a", "Working on it"),
-        assistant("i1b", "New release shipped."),
-      ),
-      "GET /v1/sessions/c0/transcript": transcript(assistant("i0", "Older finding.")),
+      "GET /v1/me/feed": {
+        data: [
+          post("r2", "t1", "New release shipped.", 20),
+          post("r9", "t2", "Someone else's Muse.", 15),
+          post("r1", "t1", "Older finding.", 10),
+        ],
+        has_more: true,
+        next_cursor: "10:r1",
+      },
     });
-    const { posts } = await engineListFeedPosts(deps(), client, actor, "bot-1");
-    expect(posts.map((p) => [p.id, p.title, p.body, p.kind])).toEqual([
-      ["r1", "AI agent news", "New release shipped.", "topic"],
-      ["r0", "AI agent news", "Older finding.", "topic"],
+    const page = await engineListFeedPosts(deps(), client, actor, {
+      botId: "bot-1",
+      cursor: "30:r3",
+    });
+    expect(page.posts.map((p) => [p.id, p.title, p.body, p.kind])).toEqual([
+      ["r2", "AI agent news", "New release shipped.", "topic"],
+      ["r1", "AI agent news", "Older finding.", "topic"],
     ]);
+    expect(page.nextCursor).toBe("10:r1");
+    const feedUrl = fetchMock.mock.calls
+      .map(([url]) => url as URL)
+      .find((url) => url.pathname === "/v1/me/feed");
+    expect(feedUrl?.searchParams.get("before")).toBe("30:r3");
   });
 
-  it("follows by creating a weekly worker task on the Super Chat", async () => {
+  it("follows by creating a weekly followed-topic task on the Super Chat", async () => {
     const fetchMock = stub({
-      "GET /v1/scheduled-tasks": { scheduled_tasks: [] },
-      "POST /v1/scheduled-tasks": topic("t9", "Fusion power"),
+      "GET /v1/me/topics": { data: [] },
+      "POST /v1/scheduled-tasks": { ...topic("t9", "Fusion power"), prompt: "p" },
     });
     const followed = await engineFollowTopic(deps(), client, actor, {
       botId: "bot-1",
       topic: " Fusion power ",
     });
     expect(followed.id).toBe("t9");
-    const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
-    expect(JSON.parse(post?.[1]?.body as string)).toMatchObject({
+    const created = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(created?.[1]?.body as string)).toMatchObject({
       name: "Fusion power",
       rrule: "FREQ=WEEKLY",
       parent_session_id: "sess-1",
       agent_type: "worker",
+      kind: "followed_topic",
     });
   });
 
   it("unfollows by deleting the task, only when it is the actor's followed topic", async () => {
     const fetchMock = stub({
-      "GET /v1/scheduled-tasks/t1": topic("t1", "AI agent news"),
+      "GET /v1/me/topics": { data: [topic("t1", "AI agent news")] },
       "DELETE /v1/scheduled-tasks/t1": { ok: true },
     });
     expect(await engineRemoveTopic(deps(), client, actor, "t1")).toEqual({ ok: true });
@@ -196,6 +159,9 @@ describe("engine feed", () => {
     const foreign = deps();
     (foreign.prisma.omnigentSession.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     await expect(engineRemoveTopic(foreign, client, actor, "t1")).rejects.toThrow(
+      "Topic not found",
+    );
+    await expect(engineRemoveTopic(deps(), client, actor, "t-missing")).rejects.toThrow(
       "Topic not found",
     );
   });

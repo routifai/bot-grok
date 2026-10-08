@@ -1,27 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createOmnigentSession,
+  adoptOmnigentMuse,
+  answerOmnigentAsk,
   createOmnigentSideChat,
-  findOmnigentAgentIdByName,
   forgetOmnigentMemoryClaim,
   getOmnigentComputer,
   getOmnigentMemoryProfile,
+  getOmnigentMuse,
+  getOmnigentProactivity,
   getOmnigentSession,
   getOmnigentTranscript,
   listOmnigentDailyNotes,
+  listOmnigentFeed,
   listOmnigentMemoryClaims,
+  OmnigentApiError,
   OmnigentSideChatError,
+  omnigentErrorCopy,
   openOmnigentComputerScreen,
   patchOmnigentMemoryClaim,
   postOmnigentMessage,
   putOmnigentDailyNote,
+  putOmnigentMuseAgent,
+  putOmnigentProactivity,
   releaseOmnigentComputer,
   streamOmnigentFamily,
   streamOmnigentSession,
-  switchOmnigentAgent,
 } from "./client.js";
 
-const CONFIG = { baseUrl: "http://omnigent.test", proxySecret: "proxy-secret" };
+const CONFIG = { baseUrl: "http://omnigent.test", proxySecret: "proxy-secret", tenant: "space-1" };
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -46,68 +52,98 @@ afterEach(() => {
 });
 
 describe("omnigent client", () => {
-  it("createOmnigentSession sends identity/proxy headers and the agent id + labels", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ id: "conv_1", status: "running" }));
+  it("sends identity, proxy secret and the tenant on every call", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ session_id: "conv_1", agent: "superchat", created: true }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await createOmnigentSession(CONFIG, "person@example.test", {
-      agentId: "ag_1",
-      labels: { "nova.scope": "private" },
-    });
+    const muse = await getOmnigentMuse(CONFIG, "person@example.test");
 
-    expect(result.id).toBe("conv_1");
+    expect(muse).toEqual({ session_id: "conv_1", agent: "superchat", created: true });
     const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/v1/sessions");
-    expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>)["X-Forwarded-Email"]).toBe(
-      "person@example.test",
+    expect(url.pathname).toBe("/v1/me/muse");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Forwarded-Email"]).toBe("person@example.test");
+    expect(headers["X-Omnigent-Proxy-Secret"]).toBe("proxy-secret");
+    expect(headers["X-Omnigent-Tenant"]).toBe("space-1");
+  });
+
+  it("switches and adopts the Muse through /v1/me/muse", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ session_id: "conv_1", agent: "superchat", created: false }),
     );
-    expect((init.headers as Record<string, string>)["X-Omnigent-Proxy-Secret"]).toBe(
-      "proxy-secret",
+    vi.stubGlobal("fetch", fetchMock);
+
+    await putOmnigentMuseAgent(CONFIG, "e@x.test", "superchat");
+    await adoptOmnigentMuse(CONFIG, "e@x.test", "conv_1");
+
+    const [putUrl, putInit] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(putUrl.pathname).toBe("/v1/me/muse");
+    expect(putInit.method).toBe("PUT");
+    expect(JSON.parse(putInit.body as string)).toEqual({ agent: "superchat" });
+    const [adoptUrl, adoptInit] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(adoptUrl.pathname).toBe("/v1/me/muse/adopt");
+    expect(JSON.parse(adoptInit.body as string)).toEqual({ session_id: "conv_1" });
+  });
+
+  it("carries the engine's error code, which has short copy where it reaches the UI", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ error: { code: "muse_already_set", message: "x" } }, 409)),
     );
-    expect(JSON.parse(init.body as string)).toMatchObject({
-      agent_id: "ag_1",
-      labels: { "nova.scope": "private" },
+    const error = await adoptOmnigentMuse(CONFIG, "e@x.test", "conv_1").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(OmnigentApiError);
+    expect((error as OmnigentApiError).code).toBe("muse_already_set");
+    expect(omnigentErrorCopy(error)).toBe("You already have a Conversation here.");
+    expect(omnigentErrorCopy(new OmnigentApiError("x", "helper_read_only"))).toBe(
+      "Helpers are read-only.",
+    );
+    expect(omnigentErrorCopy(new OmnigentApiError("x", "not_found"))).toBeUndefined();
+  });
+
+  it("answers an ask with its choice id and note", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await answerOmnigentAsk(CONFIG, "e@x.test", "task:obj_1:task_1", {
+      choice: "answer",
+      note: "Use the Q3 numbers",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/v1/me/asks/task%3Aobj_1%3Atask_1/answer");
+    expect(JSON.parse(init.body as string)).toEqual({
+      choice: "answer",
+      note: "Use the Q3 numbers",
     });
   });
 
-  it("createOmnigentSession sends host_type/sandbox_provider for a managed runner binding", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ id: "conv_1", status: "running" }));
+  it("pages the feed with the engine's cursor", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ data: [], has_more: false, next_cursor: null }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createOmnigentSession(CONFIG, "person@example.test", {
-      agentId: "ag_1",
-      labels: {},
-      hostType: "managed",
-      sandboxProvider: "computer",
-    });
+    await listOmnigentFeed(CONFIG, "e@x.test", { limit: 20, before: "100:run_1" });
 
-    const [, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-    const body = JSON.parse(init.body as string);
-    expect(body.host_type).toBe("managed");
-    expect(body.sandbox_provider).toBe("computer");
-    expect(body).not.toHaveProperty("host_id");
-    expect(body).not.toHaveProperty("workspace");
+    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(url.pathname).toBe("/v1/me/feed");
+    expect(url.searchParams.get("limit")).toBe("20");
+    expect(url.searchParams.get("before")).toBe("100:run_1");
   });
 
-  it("createOmnigentSession sends host_id/workspace for an external runner binding", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ id: "conv_1", status: "running" }));
+  it("reads and writes proactivity on /v1/me/proactivity", async () => {
+    const prefs = { proactivity: "high", quiet_start: null, quiet_end: null, timezone: "UTC" };
+    const fetchMock = vi.fn(async () => jsonResponse(prefs));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createOmnigentSession(CONFIG, "person@example.test", {
-      agentId: "ag_1",
-      labels: {},
-      hostType: "external",
-      hostId: "host_1",
-      workspace: "/Users/person/nova/bot-1",
-    });
+    await expect(getOmnigentProactivity(CONFIG, "e@x.test")).resolves.toEqual(prefs);
+    await putOmnigentProactivity(CONFIG, "e@x.test", { proactivity: "high" });
 
-    const [, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-    const body = JSON.parse(init.body as string);
-    expect(body.host_type).toBe("external");
-    expect(body.host_id).toBe("host_1");
-    expect(body.workspace).toBe("/Users/person/nova/bot-1");
-    expect(body).not.toHaveProperty("sandbox_provider");
+    const [, init] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ proactivity: "high" });
   });
 
   it("getOmnigentSession requests a cheap snapshot and returns host_id", async () => {
@@ -124,47 +160,6 @@ describe("omnigent client", () => {
     expect(url.searchParams.get("include_items")).toBe("false");
     expect(url.searchParams.get("include_liveness")).toBe("false");
     expect(url.searchParams.get("include_usage")).toBe("false");
-  });
-
-  it("findOmnigentAgentIdByName finds a matching agent by name", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse({
-          data: [
-            { id: "ag_1", name: "nova-pi" },
-            { id: "ag_2", name: "nova-claude" },
-          ],
-        }),
-      ),
-    );
-    await expect(findOmnigentAgentIdByName(CONFIG, "e@x.test", "nova-claude")).resolves.toBe(
-      "ag_2",
-    );
-    await expect(findOmnigentAgentIdByName(CONFIG, "e@x.test", "missing")).resolves.toBeUndefined();
-  });
-
-  it("switchOmnigentAgent posts the target agent id to the switch-agent endpoint", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ id: "conv_1", status: "idle" }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await switchOmnigentAgent(CONFIG, "person@example.test", "conv_1", "ag_2");
-
-    expect(result.status).toBe("idle");
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/v1/sessions/conv_1/switch-agent");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ agent_id: "ag_2" });
-  });
-
-  it("switchOmnigentAgent throws with a descriptive error on a non-2xx response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "busy" }, 409)),
-    );
-    await expect(switchOmnigentAgent(CONFIG, "e@x.test", "conv_1", "ag_2")).rejects.toThrow(
-      /switch agent failed \(409\)/,
-    );
   });
 
   it("postOmnigentMessage throws with a descriptive error on a non-2xx response", async () => {

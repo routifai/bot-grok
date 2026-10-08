@@ -1,6 +1,7 @@
 import {
   type OmnigentClientConfig,
   omnigentClientConfigFromEnv,
+  omnigentClientFor,
   searchOmnigentMessages,
 } from "@aiden/adapters";
 import type { Actor, MessageBlock, SearchHit } from "@aiden/contracts";
@@ -399,8 +400,9 @@ export async function engineSearch(
   actor: Actor,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ client: OmnigentClientConfig; email: string } | undefined> {
-  const client = omnigentClientConfigFromEnv(env);
-  if (!client) return undefined;
+  const connection = omnigentClientConfigFromEnv(env);
+  if (!connection) return undefined;
+  const client = omnigentClientFor(connection, actor.spaceId);
   const user = await prisma.user.findUnique({
     where: { id: actor.userId },
     select: { email: true },

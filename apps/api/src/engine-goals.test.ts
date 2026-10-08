@@ -2,16 +2,19 @@ import type { PrismaClient } from "@aiden/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   engineAcceptProposal,
-  engineAnswerAsk,
   engineDismissProposal,
   engineGetGoal,
-  engineGoalAsks,
   engineGoalLog,
   engineListGoals,
   engineUpdateGoal,
 } from "./engine-goals.js";
 
-const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: ["sk-secret"] };
+const client = {
+  baseUrl: "http://engine.test",
+  proxySecret: "proxy",
+  secrets: ["sk-secret"],
+  tenant: "space-1",
+};
 const actor = { userId: "user-1", spaceId: "space-1" } as never;
 
 function deps({ session = "sess-1", owned = true } = {}) {
@@ -277,87 +280,6 @@ describe("engine goals", () => {
       { kind: "text", text: "**Done**: used [redacted] here" },
     ]);
     expect(page.messages[0]?.createdAt).toBe("2023-11-14T22:20:00.000Z");
-  });
-
-  it("lists open proposals and blocked tasks as Asks", async () => {
-    stub({
-      "GET /v1/objectives": {
-        objectives: [
-          objective({
-            plan: [{ id: "t1", title: "Pick a venue", status: "blocked", note: "Which city?" }],
-            open_proposal: proposal({ plan: [{ id: "t1", title: "Pick a venue" }] }),
-          }),
-          objective({ id: "obj-2", status: "paused", open_proposal: proposal({ id: "prop-2" }) }),
-          objective({
-            id: "obj-3",
-            plan: [],
-            open_proposal: proposal({ id: "prop-3", created_at: 1_700_000_900 }),
-          }),
-        ],
-      },
-    });
-    const asks = await engineGoalAsks(deps(), client, actor, "bot-1");
-    expect(asks.map((ask) => [ask.kind, ask.id, ask.runId])).toEqual([
-      ["proposal", "prop-3", "obj-3"],
-      ["proposal", "prop-1", "obj-1"],
-      ["blocked_task", "t1", "obj-1"],
-    ]);
-    const first = asks.find((ask) => ask.id === "prop-3");
-    expect(first).toMatchObject({
-      goalId: "obj-3",
-      goalTitle: "Ship the approvals framework",
-      text: 'Here\'s my plan for "Ship the approvals framework"',
-      detail: "1. Draft outline\n2. Review with compliance",
-      choices: [
-        { id: "accept", label: "Start this plan" },
-        { id: "dismiss", label: "Not now" },
-      ],
-      input: null,
-    });
-    expect(asks.find((ask) => ask.id === "prop-1")).toMatchObject({
-      text: 'Change the plan for "Ship the approvals framework"?',
-      detail: "Add a review step\n1. Pick a venue",
-      choices: [
-        { id: "accept", label: "Use the new plan" },
-        { id: "dismiss", label: "Keep current" },
-      ],
-    });
-    expect(asks.find((ask) => ask.id === "t1")).toMatchObject({
-      kind: "blocked_task",
-      text: "Which city?",
-      input: "text",
-      choices: [],
-    });
-  });
-
-  it("answers a blocked task by noting the answer and putting it back to pending", async () => {
-    let body: unknown;
-    stub({
-      "GET /v1/objectives/obj-1": objective({
-        plan: [{ id: "t1", title: "Pick a venue", status: "blocked", note: "Which city?" }],
-      }),
-      "PATCH /v1/objectives/obj-1/tasks/t1": (init?: RequestInit) => {
-        body = JSON.parse(String(init?.body));
-        return { id: "t1", title: "Pick a venue", status: "pending", note: "x" };
-      },
-    });
-    const result = await engineAnswerAsk(deps(), client, actor, {
-      askId: "t1",
-      runId: "obj-1",
-      answer: "Toronto",
-    });
-    expect(result).toEqual({ ok: true });
-    expect(body).toEqual({ status: "pending", note: "Which city?\n\nAnswer: Toronto" });
-  });
-
-  it("only takes a proposal answer of accept or dismiss, and ignores an unknown Ask", async () => {
-    stub({ "GET /v1/objectives/obj-1": objective({ open_proposal: proposal() }) });
-    await expect(
-      engineAnswerAsk(deps(), client, actor, { askId: "prop-1", runId: "obj-1", answer: "maybe" }),
-    ).rejects.toThrow(/accept or dismiss/);
-    expect(
-      await engineAnswerAsk(deps(), client, actor, { askId: "zzz", runId: "obj-1", answer: "x" }),
-    ).toBeNull();
   });
 });
 

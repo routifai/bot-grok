@@ -13,27 +13,18 @@ import type { PrismaClient, ThreadEvents } from "@aiden/db";
 import { STEERING_CONTINUATION_PROMPT } from "@aiden/db";
 import { getLogger } from "@aiden/logging";
 import {
-  createOmnigentSession,
-  findOmnigentAgentIdByName,
-  getOmnigentSession,
-  isSessionNotFoundError,
+  adoptOmnigentMuse,
+  getOmnigentMuse,
+  OmnigentApiError,
   type OmnigentClientConfig,
+  type OmnigentConnection,
+  omnigentClientFor,
+  omnigentErrorCopy,
   postOmnigentMessage,
   putOmnigentTimezone,
   streamOmnigentSession,
-  switchOmnigentAgent,
 } from "./client.js";
 import { DEFAULT_OMNIGENT_SUPERCHAT_CONFIG, type OmnigentSuperChatConfig } from "./env.js";
-
-/** Sandbox provider name Omnigent's "computer" launcher registers under (see
- * docs/omnigent-spike.md) — selected explicitly on every managed create so a deployment that
- * also offers other sandbox providers still routes the runner into the Muse's own computer. */
-const COMPUTER_SANDBOX_PROVIDER = "computer";
-
-/** Value stored in OmnigentSession.runnerLocation: every session's runner lives in the Muse's
- * own computer. The column is kept (no migration); a stored value other than this (a retired
- * "local" session) is recreated on its next turn. */
-const RUNNER_LOCATION = "computer";
 
 /** What a person sees when a turn cannot run for an engine-side reason (details go to the log). */
 export const CHAT_UNAVAILABLE_MESSAGE = "Chat is not available right now.";
@@ -41,10 +32,8 @@ export const CHAT_UNAVAILABLE_MESSAGE = "Chat is not available right now.";
 export interface OmnigentGatewayDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
-  client: OmnigentClientConfig;
-  /** Built-in Omnigent agent bundle name Nova Conversation turns run on — resolved once at
-   * boot from `OMNIGENT_AGENT_NAME` (./env.ts). */
-  agentName: string;
+  /** The engine connection; each turn binds it to the run's space (the tenant). */
+  client: OmnigentConnection;
   /** Settings documented in docs/super-chat/README.md's Settings table
    * (./env.ts#omnigentSuperChatConfigFromEnv). Defaults apply when omitted, so existing
    * callers/tests that construct deps by hand keep today's behavior unchanged. */
@@ -129,6 +118,7 @@ export async function runTurnOnOmnigent(
   });
 
   try {
+    const client = omnigentClientFor(deps.client, run.spaceId);
     const [user, task] = await Promise.all([
       deps.prisma.user.findUniqueOrThrow({
         where: { id: run.userId },
@@ -143,13 +133,13 @@ export async function runTurnOnOmnigent(
     // Settings reaches the engine before the next message.
     if (user.timezone) {
       try {
-        await putOmnigentTimezone(deps.client, user.email, user.timezone);
+        await putOmnigentTimezone(client, user.email, user.timezone);
       } catch (error) {
         getLogger().error("omnigent gateway: timezone sync failed, continuing", error);
       }
     }
 
-    const sessionId = await ensureOmnigentSession(deps, user.email, run, deps.agentName);
+    const sessionId = await resolveMuseSession(deps, client, user.email, run.botId);
     // Messages the person sent while a run was active are SteeringMessage rows, not Task.prompt:
     // a continuation's prompt is only a marker. Claim them so the engine gets every exact text.
     const steering = await deps.events.claimSteering({
@@ -164,7 +154,7 @@ export async function runTurnOnOmnigent(
       task.prompt,
       steering.map((item) => item.text),
     );
-    await sendTurnAndAwaitCompletion(deps, user.email, sessionId, turnInput, config);
+    await sendTurnAndAwaitCompletion(client, user.email, sessionId, turnInput, config);
 
     const completed = await deps.events.finalizeRun({
       spaceId: run.spaceId,
@@ -195,7 +185,7 @@ export async function runTurnOnOmnigent(
         leaseOwner: workerId,
         leaseFence: fence,
         outcome: "failed",
-        error: error instanceof Error ? error.message : String(error),
+        error: omnigentErrorCopy(error) ?? (error instanceof Error ? error.message : String(error)),
       })
       .catch((finalizeError) =>
         getLogger().error("omnigent gateway: finalizeRun(failed) also failed", finalizeError),
@@ -219,191 +209,71 @@ export function buildTurnInput(prompt: string, steeringTexts: string[]): string 
   return texts.length ? [prompt, ...texts].join("\n\n") : prompt;
 }
 
-/** Turns on Omnigent's Super Chat capability (docs/super-chat/README.md, SUPERSIDE-CHAT.md):
- * Rollover, Memory, Side Chats, Sub-agents and the Activity Feed, for this session and
- * everything created from it. Fixed at session-creation time — a session without it is
- * recreated the next time a turn runs on it (see `checkSessionRepair`). */
-const SUPERSIDE_CHAT_MODE_LABEL = "omnigent.context.mode";
-const SUPERSIDE_CHAT_MODE_VALUE = "superside-chat";
-
-/** Session labels the Super Chat is created with. */
-function sessionLabels(
-  run: { userId: string; spaceId: string; botId: string },
-  computerKey?: string | null,
-) {
-  return {
-    "nova.user": run.userId,
-    "nova.space": run.spaceId,
-    "nova.bot": run.botId,
-    // The computer Nova shows the person (shared per space in team mode): the engine
-    // launches the Muse's runner on this same machine.
-    ...(computerKey ? { "nova.computer": computerKey } : {}),
-    "nova.scope": "private",
-    [SUPERSIDE_CHAT_MODE_LABEL]: SUPERSIDE_CHAT_MODE_VALUE,
-  };
-}
-
-/** The Muse's Nova computer key (Computer.homeKey), or null when it has none yet. */
-async function museComputerKey(deps: OmnigentGatewayDeps, botId: string): Promise<string | null> {
-  const bot = await deps.prisma.bot.findUnique({
-    where: { id: botId },
-    select: { computer: { select: { homeKey: true } } },
-  });
-  return bot?.computer?.homeKey ?? null;
-}
-
 /**
- * One Omnigent session per Muse (bot), stored so every turn continues the same conversation.
+ * The Muse's Conversation, as the engine decides it (ADR 0009): `GET /v1/me/muse` finds the
+ * person's Muse for this space, or creates it on the engine's default agent.
  *
- * Recreates the session (a fresh Omnigent session, since there is no switch-host RPC) when
- * either:
- * - it was bound on a runner location other than the Muse's computer (a retired "local"
- *   binding from before that option was removed), or
- * - the existing session never got a runner bound at all (`checkSessionRepair`) — the fix for
- *   sessions created before this gateway set `host_type`/`host_id` at all, which otherwise fail
- *   every turn with Omnigent's "no runner bound for session" error forever.
- *
- * Otherwise, when the recorded `agentName` no longer matches `desiredAgentName`, switches it in
- * place — the session is idle between turns, which is switch-agent's only precondition
- * (engine/omnigent/omnigent/server/routes/sessions/routes_core.py ~3580-3700).
+ * A Conversation Nova started before that is claimed first, once: its session is adopted with
+ * `POST /v1/me/muse/adopt`, so the person keeps it. The row remembers the adoption
+ * (`engineAdoptedAt`) and then simply mirrors what the engine answers.
  */
-async function ensureOmnigentSession(
+async function resolveMuseSession(
   deps: OmnigentGatewayDeps,
-  email: string,
-  run: { userId: string; spaceId: string; botId: string },
-  desiredAgentName: string,
-): Promise<string> {
-  const existing = await deps.prisma.omnigentSession.findUnique({
-    where: { botId: run.botId },
-  });
-  if (existing) {
-    // A retired runner location recreates unconditionally (the stale session's health is
-    // irrelevant once its own binding no longer applies), so only spend a snapshot fetch on
-    // the repair check when the binding is current.
-    if (existing.runnerLocation !== RUNNER_LOCATION) {
-      return await createBoundOmnigentSession(deps, email, run, desiredAgentName);
-    }
-    const repair = await checkSessionRepair(deps, email, existing.omnigentSessionId);
-    if (repair.needsRepair) {
-      return await createBoundOmnigentSession(deps, email, run, desiredAgentName);
-    }
-    if (existing.agentName !== desiredAgentName) {
-      await switchOmnigentSessionAgent(
-        deps,
-        email,
-        run.botId,
-        existing.omnigentSessionId,
-        desiredAgentName,
-      );
-    }
-    return existing.omnigentSessionId;
-  }
-
-  return await createBoundOmnigentSession(deps, email, run, desiredAgentName);
-}
-
-interface SessionRepairCheck {
-  needsRepair: boolean;
-}
-
-/**
- * Needs repair when a reused session's Omnigent side never got a runner bound (`host_id` null)
- * — the bug this gateway's `host_type`/`host_id` binding fixes, for any session created before
- * it did — or is missing the Super Chat mode label (docs/super-chat/WIRING.md: "an older
- * session without it is replaced on the next turn", since the label is fixed at creation and
- * there is no "add a label" RPC). Fails OPEN (`needsRepair: false`) on a snapshot-fetch error so
- * a transient Omnigent hiccup cannot force a recreate on every single turn; a genuine problem
- * still surfaces from `postOmnigentMessage` right after.
- */
-async function checkSessionRepair(
-  deps: OmnigentGatewayDeps,
-  email: string,
-  omnigentSessionId: string,
-): Promise<SessionRepairCheck> {
-  try {
-    const snapshot = await getOmnigentSession(deps.client, email, omnigentSessionId);
-    const needsRepair =
-      snapshot.host_id == null ||
-      snapshot.labels?.[SUPERSIDE_CHAT_MODE_LABEL] !== SUPERSIDE_CHAT_MODE_VALUE;
-    return { needsRepair };
-  } catch (error) {
-    // A session the engine no longer has can never take a turn: recreate it.
-    if (isSessionNotFoundError(error)) return { needsRepair: true };
-    getLogger().error("omnigent gateway: session snapshot check failed, continuing", error);
-    return { needsRepair: false };
-  }
-}
-
-/**
- * Creates a fresh Omnigent session whose runner is launched inside the Muse's own computer
- * (`host_type: "managed"` with the "computer" sandbox provider, docs/omnigent-spike.md "Nova
- * computer" launcher) and records it as this bot's current session, overwriting whatever was
- * there (a stale/unbound session).
- */
-async function createBoundOmnigentSession(
-  deps: OmnigentGatewayDeps,
-  email: string,
-  run: { userId: string; spaceId: string; botId: string },
-  desiredAgentName: string,
-): Promise<string> {
-  const agentId = await findOmnigentAgentIdByName(deps.client, email, desiredAgentName);
-  if (!agentId) {
-    getLogger().error(
-      `omnigent gateway: no agent bundle named "${desiredAgentName}" is registered`,
-    );
-    throw new Error(CHAT_UNAVAILABLE_MESSAGE);
-  }
-  const computerKey = await museComputerKey(deps, run.botId);
-  const session = await createOmnigentSession(deps.client, email, {
-    agentId,
-    labels: sessionLabels(run, computerKey),
-    title: "Nova Conversation",
-    hostType: "managed",
-    sandboxProvider: COMPUTER_SANDBOX_PROVIDER,
-  });
-  const saved = await deps.prisma.omnigentSession.upsert({
-    where: { botId: run.botId },
-    create: {
-      botId: run.botId,
-      omnigentSessionId: session.id,
-      agentName: desiredAgentName,
-      runnerLocation: RUNNER_LOCATION,
-    },
-    update: {
-      omnigentSessionId: session.id,
-      agentName: desiredAgentName,
-      runnerLocation: RUNNER_LOCATION,
-    },
-  });
-  return saved.omnigentSessionId;
-}
-
-/**
- * Rebinds an existing Omnigent session to `desiredAgentName` before this turn's message posts.
- * Never fails the turn: on any error (agent id lookup, switch-agent itself, e.g. the session
- * turned out to be busy or the target bundle failed to load) this logs and returns, leaving the
- * DB record untouched so the next turn simply retries the switch against the still-current
- * agent.
- */
-async function switchOmnigentSessionAgent(
-  deps: OmnigentGatewayDeps,
+  client: OmnigentClientConfig,
   email: string,
   botId: string,
-  omnigentSessionId: string,
-  desiredAgentName: string,
+): Promise<string> {
+  const existing = await deps.prisma.omnigentSession.findUnique({ where: { botId } });
+  if (existing && !existing.engineAdoptedAt) {
+    await adoptExistingConversation(client, email, existing.omnigentSessionId);
+  }
+  const muse = await getOmnigentMuse(client, email);
+  const adoptedAt = existing?.engineAdoptedAt ?? new Date();
+  await deps.prisma.omnigentSession.upsert({
+    where: { botId },
+    create: {
+      botId,
+      omnigentSessionId: muse.session_id,
+      agentName: muse.agent,
+      engineAdoptedAt: adoptedAt,
+    },
+    update: {
+      omnigentSessionId: muse.session_id,
+      agentName: muse.agent,
+      engineAdoptedAt: adoptedAt,
+    },
+  });
+  return muse.session_id;
+}
+
+/**
+ * Claims a Conversation Nova started before the engine owned the Muse. Done when the engine
+ * adopts it, or already has it as the Muse. A session the engine no longer has, or one that was
+ * never a Super Chat, has nothing to keep, so the engine's own Muse takes over. Anything else
+ * (another Muse already set, another space) fails the turn rather than replacing the
+ * Conversation, and is retried on the next one.
+ */
+async function adoptExistingConversation(
+  client: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
 ): Promise<void> {
   try {
-    const agentId = await findOmnigentAgentIdByName(deps.client, email, desiredAgentName);
-    if (!agentId) {
-      throw new Error(`no agent bundle named "${desiredAgentName}" is registered`);
-    }
-    await switchOmnigentAgent(deps.client, email, omnigentSessionId, agentId);
-    await deps.prisma.omnigentSession.update({
-      where: { botId },
-      data: { agentName: desiredAgentName },
-    });
+    await adoptOmnigentMuse(client, email, sessionId);
   } catch (error) {
-    getLogger().error("omnigent gateway: switch-agent failed, continuing on current agent", error);
+    if (!(error instanceof OmnigentApiError)) throw error;
+    if (error.code === "not_found" || error.code === "not_a_super_chat") {
+      getLogger().error("omnigent gateway: old Conversation cannot be adopted, using the Muse", {
+        code: error.code,
+      });
+      return;
+    }
+    if (error.code === "muse_already_set") {
+      const current = await getOmnigentMuse(client, email);
+      if (current.session_id === sessionId) return;
+    }
+    getLogger().error("omnigent gateway: adopting the existing Conversation failed", error);
+    throw error;
   }
 }
 
@@ -415,18 +285,16 @@ async function switchOmnigentSessionAgent(
  * engine/omnigent/omnigent/server/API.md's "Reconnect Contract" note on opening the stream first.
  */
 async function sendTurnAndAwaitCompletion(
-  deps: OmnigentGatewayDeps,
+  client: OmnigentClientConfig,
   email: string,
   sessionId: string,
   turnInput: string,
   config: OmnigentSuperChatConfig,
 ): Promise<void> {
   const signal = AbortSignal.timeout(config.turnTimeoutMs);
-  const iterator = streamOmnigentSession(deps.client, email, sessionId, signal)[
-    Symbol.asyncIterator
-  ]();
+  const iterator = streamOmnigentSession(client, email, sessionId, signal)[Symbol.asyncIterator]();
   const first = iterator.next();
-  await postOmnigentMessage(deps.client, email, sessionId, turnInput);
+  await postOmnigentMessage(client, email, sessionId, turnInput);
 
   let step = await first;
   while (!step.done) {
@@ -448,4 +316,4 @@ async function sendTurnAndAwaitCompletion(
   throw new Error(CHAT_UNAVAILABLE_MESSAGE);
 }
 
-export type { OmnigentClientConfig };
+export type { OmnigentClientConfig, OmnigentConnection };

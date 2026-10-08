@@ -28,17 +28,17 @@ export function artifactsRouter(c: RouterContext) {
   return {
     files: {
       list: authed.files.list.handler(async ({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (!engine) return { entries: [] };
         return engineListFiles(engineFilesDeps, engine, context.actor, input);
       }),
       read: authed.files.read.handler(async ({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
         return engineReadFile(engineFilesDeps, engine, context.actor, input);
       }),
       saveToLibrary: authed.files.saveToLibrary.handler(async ({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
         return engineSaveFileToLibrary(engineFilesDeps, engine, context.actor, input);
       }),
@@ -46,7 +46,7 @@ export function artifactsRouter(c: RouterContext) {
     artifacts: {
       list: authed.artifacts.list.handler(async ({ context, input }) => {
         await repos.getBot(context.actor, input.botId);
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (engine)
           return engineListArtifacts(engineArtifactsDeps, engine, context.actor, input.botId);
         const rows = await deps.prisma.artifact.findMany({
@@ -72,7 +72,7 @@ export function artifactsRouter(c: RouterContext) {
       }),
       listSpace: authed.artifacts.listSpace.handler(async ({ context, input }) => {
         if (input.botId) await repos.getBot(context.actor, input.botId);
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (engine)
           return engineListSpaceArtifacts(engineArtifactsDeps, engine, context.actor, input);
         try {
@@ -85,7 +85,7 @@ export function artifactsRouter(c: RouterContext) {
         }
       }),
       listVersions: authed.artifacts.listVersions.handler(async ({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (engine) {
           return engineListArtifactVersions(
             engineArtifactsDeps,
@@ -133,13 +133,13 @@ export function artifactsRouter(c: RouterContext) {
         }
       }),
       getById: authed.artifacts.getById.handler(async ({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (engine)
           return engineGetArtifact(engineArtifactsDeps, engine, context.actor, input.artifactId);
         return getSpaceArtifactById(deps, context.actor, input);
       }),
       remove: authed.artifacts.remove.handler(async ({ context, input }) => {
-        const engine = engineComputerClient();
+        const engine = engineComputerClient(context.actor);
         if (engine)
           return engineRemoveArtifact(engineArtifactsDeps, engine, context.actor, input.artifactId);
         return deleteArtifactFamily(deps, context.actor, { familyId: input.artifactId });

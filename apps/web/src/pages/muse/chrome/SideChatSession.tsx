@@ -393,6 +393,8 @@ function ExistingSideChat({
   /** A reply is expected: from send until the engine has answered and gone idle. */
   const [waiting, setWaiting] = useState(Boolean(firstText));
   const [engineRunning, setEngineRunning] = useState(chat.live);
+  /** A Helper's chat: read, never written to. */
+  const [readOnly, setReadOnly] = useState(false);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<SendFailure | null>(null);
   const [followSignal, setFollowSignal] = useState(0);
@@ -413,6 +415,7 @@ function ExistingSideChat({
         if (current !== generation.current) return;
         const running = page.running ?? false;
         setMessages(page.messages);
+        setReadOnly(page.readOnly ?? false);
         if (pendingRef.current && userCount(page.messages) > pendingRef.current.base) {
           pendingRef.current = null;
         }
@@ -566,7 +569,7 @@ function ExistingSideChat({
           }
         />
       </ReplyCardSendProvider>
-      {chat.archived ? null : (
+      {chat.archived || readOnly ? null : (
         <view.Composer placeholder={t`Message this side chat`} sending={sending} onSend={send} />
       )}
     </div>

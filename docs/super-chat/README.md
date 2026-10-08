@@ -2,7 +2,8 @@
 
 Nova's conversation backend is **Omnigent** (vendored at `engine/omnigent`)
 in the mode `omnigent.context.mode=superside-chat`. The model loop runs on the
-**Claude SDK** harness by default, or on **Pi** (`NOVA_MUSE_HARNESS=pi`, which
+**Claude SDK** harness by default, or on **Pi** (the engine's
+`OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi`, which
 also runs non-Claude models through OpenRouter; see
 [../pi_futur_work.md](../pi_futur_work.md)). Nova's own app (`apps/web`) is the
 face; `apps/api` signs people in and passes calls through. Everything a
@@ -34,10 +35,12 @@ not a Helper.
 
 ## The Conversation (Super Chat)
 
-- **One per person.** Nova creates it the first time the person writes, as an
-  Omnigent session labelled `omnigent.context.mode=superside-chat`, on the
-  `nova-claude` agent (`harness: claude-sdk`), or `nova-pi` when
-  `NOVA_MUSE_HARNESS=pi`. Both bundles are rendered from
+- **One per person in a space.** The engine finds or creates it
+  (`GET /v1/me/muse`, ADR 0009) the first time the person writes, as an
+  Omnigent session labelled `omnigent.context.mode=superside-chat`, on its
+  `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` bundle: `nova-claude`
+  (`harness: claude-sdk`), or `nova-pi`. A Conversation Nova created before
+  that is adopted once, so it is kept. Both bundles are rendered from
   `infra/omnigent/templates/` by `node infra/omnigent/render-agents.mjs`.
 - **It never fills up.** When it gets long, or when the person comes back
   after a quiet period (12 hours), Omnigent writes a summary of the older
