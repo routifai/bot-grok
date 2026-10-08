@@ -4,7 +4,7 @@ import hashlib
 import math
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -120,6 +120,9 @@ SIDE_CHAT_LABEL_KEY = "omnigent.side_chat"
 # ``POST /v1/sessions/{id}/side_chats``. Kept apart from
 # :data:`FORK_SOURCE_LABEL_KEY`, which is a native-fork directive that switching a
 # session's agent drops: a Side Chat's parent link must survive that.
+#: Stamped on a Fork (ADR 0010): the last item copied from its parent (an item id of the fork
+#: itself). Everything up to and including it is copied context, never the fork's own message.
+SIDE_CHAT_COPIED_UNTIL_LABEL_KEY = "omnigent.side_chat.copied_until_item_id"
 SIDE_CHAT_PARENT_LABEL_KEY = "omnigent.side_chat.parent_id"
 
 
@@ -655,6 +658,24 @@ class ConversationStore(ABC):
         :returns: The item, or ``None``.
         """
         ...
+
+    def get_items(
+        self, refs: Iterable[tuple[str, str]]
+    ) -> dict[tuple[str, str], ConversationItem]:
+        """
+        Fetch several items in one read: the batched counterpart of :meth:`get_item`.
+
+        The default calls :meth:`get_item` per ref; a store with a real query overrides it.
+
+        :param refs: ``(conversation_id, item_id)`` pairs.
+        :returns: ``{(conversation_id, item_id): item}`` for the pairs that exist.
+        """
+        found: dict[tuple[str, str], ConversationItem] = {}
+        for conversation_id, item_id in dict.fromkeys(refs):
+            item = self.get_item(conversation_id, item_id)
+            if item is not None:
+                found[(conversation_id, item_id)] = item
+        return found
 
     @abstractmethod
     def list_items(
@@ -1787,6 +1808,7 @@ class ConversationStore(ABC):
         resume_source_native_session: bool = True,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
+        up_to_item_id: str | None = None,
         project_id: str | None = None,
         file_id_map: Mapping[str, str] | None = None,
         created_by: str | None = None,
@@ -1879,6 +1901,10 @@ class ConversationStore(ABC):
             harness: a native target supplies ``{ui: terminal, wrapper:
             ...}``; an SDK target supplies ``{}`` (drop them → chat mode).
             ``None`` (default, same-agent fork) keeps the copied labels.
+        :param up_to_item_id: When set, copy only the items up to and including this item (by
+            position, so later items of the same turn, errors and notices are never copied) and
+            stamp :data:`SIDE_CHAT_COPIED_UNTIL_LABEL_KEY`. Takes precedence over
+            *up_to_response_id*.
         :param up_to_response_id: When set, copy only the items up to and
             including the last item of this response (by position), e.g.
             ``"resp_abc123"`` — a "fork from this response" truncation.

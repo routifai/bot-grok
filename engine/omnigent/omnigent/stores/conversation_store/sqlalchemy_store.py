@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from pathlib import PureWindowsPath
 from typing import Any, Protocol, cast
@@ -101,6 +101,7 @@ from omnigent.stores.conversation_store import (
     FORK_SOURCE_LABEL_KEY,
     PINNED_LABEL_KEY,
     PROJECT_LABEL_KEY,
+    SIDE_CHAT_COPIED_UNTIL_LABEL_KEY,
     SIDE_CHAT_PARENT_LABEL_KEY,
     SWITCH_PREVIOUS_BUILTIN_LABEL_KEY,
     ConversationAlreadyExistsError,
@@ -2102,6 +2103,37 @@ class SqlAlchemyConversationStore(ConversationStore):
                 return None
             [data] = self._decode_item_data_batch([row.data])
             return _to_item(row, data)
+
+    def get_items(
+        self, refs: Iterable[tuple[str, str]]
+    ) -> dict[tuple[str, str], ConversationItem]:
+        """
+        Fetch several items in one query (``conversation_id`` and ``id`` both ``IN`` lists).
+
+        :param refs: ``(conversation_id, item_id)`` pairs.
+        :returns: ``{(conversation_id, item_id): item}`` for the pairs that exist.
+        """
+        wanted = set(refs)
+        if not wanted:
+            return {}
+        with self._conv_session("get_items") as session:
+            rows = (
+                session.execute(
+                    select(SqlConversationItem).where(
+                        SqlConversationItem.workspace_id == current_workspace_id(),
+                        SqlConversationItem.conversation_id.in_({c for c, _ in wanted}),
+                        SqlConversationItem.id.in_({i for _, i in wanted}),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            rows = [row for row in rows if (row.conversation_id, row.id) in wanted]
+            decoded = self._decode_item_data_batch([row.data for row in rows])
+            return {
+                (row.conversation_id, row.id): _to_item(row, data)
+                for row, data in zip(rows, decoded, strict=True)
+            }
 
     def list_items(
         self,
@@ -4342,6 +4374,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         resume_source_native_session: bool = True,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
+        up_to_item_id: str | None = None,
         project_id: str | None = None,
         file_id_map: Mapping[str, str] | None = None,
         created_by: str | None = None,
@@ -4448,6 +4481,10 @@ class SqlAlchemyConversationStore(ConversationStore):
             switched-to TARGET harness (native → ``{ui: terminal, wrapper:
             ...}``; SDK → ``{}``). ``None`` keeps the copied labels (same-
             agent fork).
+        :param up_to_item_id: When set, copy only the items up to and including this item (by
+            position, so later items of the same turn, errors and notices are never copied) and
+            stamp ``SIDE_CHAT_COPIED_UNTIL_LABEL_KEY``. Takes precedence over
+            *up_to_response_id*.
         :param up_to_response_id: When set, copy only the items up to and
             including the last item of this response (by position), e.g.
             ``"resp_abc123"`` — a "fork from this response" truncation.
@@ -4500,6 +4537,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             resume_source_native_session=resume_source_native_session,
             presentation_labels=presentation_labels,
             up_to_response_id=up_to_response_id,
+            up_to_item_id=up_to_item_id,
             project_id=project_id,
             file_id_map=file_id_map,
             created_by=created_by,
@@ -4529,6 +4567,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         resume_source_native_session: bool = True,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
+        up_to_item_id: str | None = None,
         project_id: str | None = None,
         file_id_map: Mapping[str, str] | None = None,
         created_by: str | None = None,
@@ -4619,7 +4658,20 @@ class SqlAlchemyConversationStore(ConversationStore):
             # the source's native transcript verbatim.
             truncated = False
             cutoff_position: int | None = None
-            if up_to_response_id is not None:
+            if up_to_item_id is not None:
+                cutoff_position = session.execute(
+                    select(SqlConversationItem.position).where(
+                        SqlConversationItem.workspace_id == current_workspace_id(),
+                        SqlConversationItem.conversation_id == source_conversation_id,
+                        SqlConversationItem.id == up_to_item_id,
+                    )
+                ).scalar_one_or_none()
+                if cutoff_position is None:
+                    raise ValueError(
+                        f"item not found in conversation "
+                        f"{source_conversation_id!r}: {up_to_item_id!r}"
+                    )
+            elif up_to_response_id is not None:
                 cutoff_position = session.execute(
                     select(func.max(SqlConversationItem.position)).where(
                         SqlConversationItem.workspace_id == current_workspace_id(),
@@ -4632,6 +4684,7 @@ class SqlAlchemyConversationStore(ConversationStore):
                         f"response not found in conversation "
                         f"{source_conversation_id!r}: {up_to_response_id!r}"
                     )
+            if cutoff_position is not None:
                 last_position = session.execute(
                     select(func.max(SqlConversationItem.position)).where(
                         SqlConversationItem.workspace_id == current_workspace_id(),
@@ -4880,6 +4933,11 @@ class SqlAlchemyConversationStore(ConversationStore):
             # only path that sets it, and only from an explicit request field.
             if extra_labels:
                 fork_labels.update(extra_labels)
+            if up_to_item_id is not None and source_items:
+                # The explicit copy marker: nothing up to this item is the fork's own.
+                fork_labels[SIDE_CHAT_COPIED_UNTIL_LABEL_KEY] = copied_item_ids[
+                    source_items[-1].id
+                ]
 
         def insert_ap(session: Session) -> SqlConversation:
             if (

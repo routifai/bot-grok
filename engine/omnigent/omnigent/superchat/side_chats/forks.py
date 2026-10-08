@@ -22,7 +22,11 @@ from omnigent.db.db_models import InvalidUuidError, uuid_to_bytes
 from omnigent.entities import Conversation, ConversationItem, MessageData, NewConversationItem
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.stores import ConversationStore
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
+from omnigent.stores.conversation_store import (
+    SIDE_CHAT_COPIED_UNTIL_LABEL_KEY,
+    SIDE_CHAT_LABEL_KEY,
+    side_chat_parent_id,
+)
 from omnigent.superchat.family.search import own_items, shown_text
 from omnigent.superchat.feature import is_helper
 
@@ -187,12 +191,53 @@ def fork_counts(forks: Iterable[Conversation]) -> Counter[str]:
 
 
 def _own_messages(items: list[ConversationItem], fork: Conversation) -> list[ConversationItem]:
-    """The fork's own visible messages in *items*: copies keep the parent's older timestamps."""
+    """The fork's own visible messages in *items* (newest first): never its copied context.
+
+    The copy marker (:data:`SIDE_CHAT_COPIED_UNTIL_LABEL_KEY`) ends the copied context; a fork
+    without one (older ones) falls back to timestamps, as copies keep the parent's older times.
+    """
+    copied_until = fork.labels.get(SIDE_CHAT_COPIED_UNTIL_LABEL_KEY)
+    if copied_until:
+        end = next((i for i, item in enumerate(items) if item.id == copied_until), None)
+        items = items if end is None else items[:end]
+        return [item for item in items if shown_text(item) is not None]
     return [
         item
         for item in items
         if item.created_at >= fork.created_at and shown_text(item) is not None
     ]
+
+
+def fork_replies(latest: list[ConversationItem], fork: Conversation) -> int:
+    """A fork's ``replies``: its own visible messages among its newest :data:`REPLIES_SCANNED`."""
+    return len(_own_messages(latest, fork))
+
+
+#: Characters of an anchor message kept for ``anchor_snippet``.
+ANCHOR_SNIPPET_CHARS = 120
+
+
+def anchor_snippets(
+    conv_store: ConversationStore, forks: Iterable[Conversation]
+) -> dict[str, str | None]:
+    """``{fork id: first ~120 chars of its anchor message}``, anchors read in one batched query.
+
+    The text is the visible text (whitespace collapsed); ``None`` when the anchor is gone.
+    """
+    refs: dict[str, tuple[str, str]] = {}
+    for fork in forks:
+        anchor, parent = fork_anchor_id(fork.labels), fork_parent_id(fork.labels)
+        if anchor is not None and parent is not None:
+            refs[fork.id] = (parent, anchor)
+    items = conv_store.get_items(refs.values())
+    snippets: dict[str, str | None] = {}
+    for fork_id, ref in refs.items():
+        item = items.get(ref)
+        text = " ".join((shown_text(item) or "").split()) if item is not None else ""
+        if len(text) > ANCHOR_SNIPPET_CHARS:
+            text = text[: ANCHOR_SNIPPET_CHARS - 1].rstrip() + "…"
+        snippets[fork_id] = text or None
+    return snippets
 
 
 def forks_by_anchor(
@@ -229,7 +274,7 @@ def forks_by_anchor(
             {
                 "session_id": fork.id,
                 "title": fork.title,
-                "replies": len(_own_messages(latest.get(fork.id, []), fork)),
+                "replies": fork_replies(latest.get(fork.id, []), fork),
                 "live": fork.live_status in _MID_TURN_LIVE_STATUSES,
                 "unread": unread[fork.id]["unread"],
                 "state": fork_state(fork),

@@ -36,6 +36,7 @@ from omnigent.server.routes._sessions.common import (
     _LAST_CONTEXT_WINDOW_LABEL_KEY,
 )
 from omnigent.stores.conversation_store import (
+    SIDE_CHAT_COPIED_UNTIL_LABEL_KEY,
     SIDE_CHAT_LABEL_KEY,
     SIDE_CHAT_START_LABEL_KEY,
     ConversationStore,
@@ -836,6 +837,11 @@ def side_chat_seed_checkpoint(
         if not page.has_more or not page.data:
             break
         after = page.last_id
+    if item is None:
+        # A Fork whose seed was not written still knows where its copy ends (ADR 0010).
+        copied_until = conversation.labels.get(SIDE_CHAT_COPIED_UNTIL_LABEL_KEY)
+        if copied_until:
+            return None, copied_until
     item = item or first
     if item is None:
         return None, None
@@ -848,8 +854,15 @@ def _chat_summary(
     conversation: Conversation,
     preview: str | None,
     fork_count: int = 0,
+    fork_extras: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    from omnigent.superchat.side_chats.forks import fork_anchor_id
+    from omnigent.superchat.lineage import open_project
+    from omnigent.superchat.side_chats.forks import (
+        fork_anchor_id,
+        fork_parent_id,
+        fork_state,
+        fork_summary,
+    )
 
     seed_summary, seed_item_id = side_chat_seed_checkpoint(conv_store, conversation)
     return {
@@ -870,6 +883,24 @@ def _chat_summary(
         # A Fork's anchor (ADR 0010), and how many forks hang off this chat's messages.
         "anchor_item_id": fork_anchor_id(conversation.labels),
         "fork_count": fork_count,
+        # Fork rows only (null otherwise): the sidebar / "All forks" list reads these without
+        # loading the Conversation transcript. ``state`` and ``replies`` match the transcript's.
+        "fork_state": None,
+        "fork_summary": None,
+        "fork_parent_id": None,
+        "anchor_snippet": None,
+        "project": open_project(conversation),
+        "replies": None,
+        **(
+            {
+                "fork_state": fork_state(conversation),
+                "fork_summary": fork_summary(conversation),
+                "fork_parent_id": fork_parent_id(conversation.labels),
+                **(fork_extras or {}),
+            }
+            if fork_anchor_id(conversation.labels) is not None
+            else {}
+        ),
     }
 
 
@@ -896,11 +927,19 @@ def list_related_chats(
     :param limit: Maximum chats to return.
     :returns: ``[{"id", "title", "created_at", "updated_at",
         "last_message_preview", "archived", "start", "summary", "summary_body", "seed_item_id",
-        "live", "anchor_item_id", "fork_count"},
-        ...]``, newest-updated child first, parent last; ``[]`` when
-        *conversation_id* does not exist.
+        "live", "anchor_item_id", "fork_count", "fork_state", "fork_summary", "fork_parent_id",
+        "anchor_snippet", "project", "replies"},
+        ...]`` (all but ``project`` are null on a non-fork row), newest-updated child first,
+        parent last; ``[]`` when *conversation_id* does not exist.
     """
-    from omnigent.superchat.side_chats.forks import fork_counts, list_forks
+    from omnigent.superchat.side_chats.forks import (
+        REPLIES_SCANNED,
+        anchor_snippets,
+        fork_anchor_id,
+        fork_counts,
+        fork_replies,
+        list_forks,
+    )
 
     caller = conv_store.get_conversation(conversation_id)
     if caller is None:
@@ -958,12 +997,22 @@ def list_related_chats(
     # The Super Chat's own children are all its forks; from a Side Chat, read the family's.
     family_root = side_chat_parent_id(caller.labels)
     counts = fork_counts(list_forks(conv_store, family_root) if family_root else children.values())
+    # Fork rows: replies and anchor snippets, each one batched read for all forks.
+    fork_rows = [c for c in related if fork_anchor_id(c.labels) is not None]
+    latest = conv_store.list_latest_message_items_for_conversations(
+        [c.id for c in fork_rows], REPLIES_SCANNED
+    )
+    snippets = anchor_snippets(conv_store, fork_rows)
     return [
         _chat_summary(
             conv_store,
             conversation,
             _related_chat_preview(previews_by_id.get(conversation.id, [])),
             counts.get(conversation.id, 0),
+            {
+                "replies": fork_replies(latest.get(conversation.id, []), conversation),
+                "anchor_snippet": snippets.get(conversation.id),
+            },
         )
         for conversation in related
     ]

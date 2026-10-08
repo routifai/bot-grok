@@ -129,6 +129,11 @@ def _texts(messages: list[dict[str, Any]] | None) -> list[str]:
     return [m.get("content", [{}])[0].get("text", "") for m in messages or []]
 
 
+def _shown(messages: list[dict[str, Any]]) -> list[str]:
+    """The text blocks of transcript messages."""
+    return [b["text"] for m in messages for b in m["blocks"] if b["type"] == "text"]
+
+
 async def _error_code(resp: httpx.Response) -> str:
     return resp.json()["error"]["code"]
 
@@ -498,3 +503,185 @@ async def test_add_to_conversation_writes_a_summary_when_none_is_given(
 
     not_fork = await client.post(f"/v1/sessions/{root_id}/add_to_conversation")
     assert not_fork.status_code == 422 and await _error_code(not_fork) == "not_a_fork"
+
+
+# ── related_chats rows ──────────────────────────────────────────────────
+
+
+def _set_workspace(store: SqlAlchemyConversationStore, chat_id: str, workspace: str) -> None:
+    from omnigent.db.db_models import SqlConversationMetadata, current_workspace_id
+
+    with store._session("test_set_workspace") as session:
+        meta = session.get(SqlConversationMetadata, (current_workspace_id(), chat_id))
+        assert meta is not None
+        meta.workspace = workspace
+
+
+async def test_related_chats_rows_carry_the_fork_fields(
+    client: httpx.AsyncClient, store: SqlAlchemyConversationStore, summarized: list[str]
+) -> None:
+    from omnigent.superchat.lineage import PROJECT_NAME_LABEL_KEY
+
+    root_id = await _super_chat(client, "forks-rows")
+    ids = _conversation(store, root_id)
+    resp = await client.post(f"/v1/sessions/{root_id}/side_chats", json={"start": "blank"})
+    assert resp.status_code == 201, resp.text
+    plain_id = resp.json()["conversation_id"]
+
+    open_id = await _fork(client, root_id, ids["a1"], title="Open")
+    added_id = await _fork(client, root_id, ids["a2"], title="Added")
+    archived_id = await _fork(client, root_id, ids["q3"], title="Archived")
+    store.append(open_id, [_say("user", "why?", "o1"), _say("assistant", "because", "o1")])
+    _, own = store.append(
+        added_id,
+        [
+            _say("user", "margins?", "a1x"),
+            _say("assistant", "  Costs\n   fell,  prices   too.  " + "x" * 200, "a1x"),
+        ],
+    )
+    resp = await client.post(
+        f"/v1/sessions/{added_id}/add_to_conversation", json={"summary": "Margins fell"}
+    )
+    assert resp.status_code == 200, resp.text
+    store.update_conversation(archived_id, archived=True)
+    nested_id = await _fork(client, added_id, own.id)
+    store.append(nested_id, [_say("user", "and then?", "n1")])
+    store.set_labels(open_id, {PROJECT_NAME_LABEL_KEY: "Q3 board deck"})
+    _set_workspace(store, open_id, "/home/u/workspace/projects/q3-deck")
+
+    data = (await client.get(f"/v1/sessions/{root_id}/related_chats")).json()["data"]
+    rows = {row["id"]: row for row in data}
+    fork_keys = ("fork_state", "fork_summary", "fork_parent_id", "anchor_snippet", "replies")
+
+    plain = rows[plain_id]
+    assert [plain[key] for key in fork_keys] == [None] * 5 and plain["project"] is None
+
+    opened = rows[open_id]
+    assert opened["fork_state"] == "open" and opened["fork_summary"] is None
+    assert opened["fork_parent_id"] == root_id and opened["anchor_snippet"] == "a1"
+    assert opened["replies"] == 2
+    assert opened["project"] == {"slug": "q3-deck", "name": "Q3 board deck"}
+
+    added = rows[added_id]
+    assert added["fork_state"] == "added" and added["fork_summary"] == "Margins fell"
+    assert added["fork_parent_id"] == root_id and added["anchor_snippet"] == "a2"
+    assert added["replies"] == 2 and added["project"] is None
+
+    archived = rows[archived_id]
+    assert archived["fork_state"] == "archived" and archived["fork_summary"] is None
+    assert archived["anchor_snippet"] == "q3" and archived["replies"] == 0
+
+    nested = rows[nested_id]
+    assert nested["fork_state"] == "open" and nested["fork_parent_id"] == added_id
+    assert len(nested["anchor_snippet"]) == 120 and nested["anchor_snippet"].endswith("…")
+    assert nested["anchor_snippet"].startswith("Costs fell, prices too. xxx")
+    assert nested["replies"] == 1
+
+    # The same numbers as the transcript's forks[].
+    transcript = (await client.get(f"/v1/sessions/{root_id}/transcript")).json()["data"]
+    forks = {row["session_id"]: row for m in transcript for row in m["forks"]}
+    for fork_id in (open_id, added_id, archived_id):
+        assert forks[fork_id]["replies"] == rows[fork_id]["replies"]
+        assert forks[fork_id]["state"] == rows[fork_id]["fork_state"]
+        assert forks[fork_id]["summary"] == rows[fork_id]["fork_summary"]
+
+
+# ── a fork's copy ends at its anchor ────────────────────────────────────
+
+
+def _late_items() -> list[NewConversationItem]:
+    """What comes after the anchor in the same turn, and after it (no response id)."""
+    from omnigent.entities import ErrorData, FunctionCallData, FunctionCallOutputData
+
+    return [
+        NewConversationItem(
+            type="function_call",
+            response_id="r2",
+            data=FunctionCallData(
+                agent="brain", name="artifact_save", arguments="{}", call_id="c1"
+            ),
+        ),
+        NewConversationItem(
+            type="function_call_output",
+            response_id="r2",
+            data=FunctionCallOutputData(call_id="c1", output="saved"),
+        ),
+        _say("assistant", "late reply", "r2"),
+        NewConversationItem(
+            type="error",
+            response_id="err1",
+            data=ErrorData(source="harness", code="sandbox_unavailable", message="restarted"),
+        ),
+        NewConversationItem(
+            type="message",
+            response_id="notice",
+            data=MessageData(
+                role="user",
+                is_system_notice=True,
+                content=[{"type": "input_text", "text": "[System: later notice]"}],
+            ),
+        ),
+        _say("user", "q9", "r9"),
+        _say("assistant", "a9", "r9"),
+    ]
+
+
+async def test_a_fork_copies_nothing_after_its_anchor(
+    client: httpx.AsyncClient, store: SqlAlchemyConversationStore, summarized: list[str]
+) -> None:
+    root_id = await _super_chat(client, "forks-cut")
+    ids = _conversation(store, root_id)
+    # Same turn (response r2) as the anchor "a2", then errors, notices and later turns.
+    store.append(root_id, _late_items())
+    fork_id = await _fork(client, root_id, ids["a2"])
+    fork = store.get_conversation(fork_id)
+    assert fork is not None
+
+    texts = [
+        text
+        for item in store.list_items(fork_id, limit=500).data
+        if isinstance(item.data, MessageData)
+        for text in [item.data.content[0].get("text", "")]
+    ]
+    assert "a2" in texts
+    for late in ("late reply", "[System: later notice]", "q9", "a9", "q3", "a3"):
+        assert late not in texts
+    types = [item.type for item in store.list_items(fork_id, limit=500).data]
+    assert "function_call" not in types and "error" not in types
+    # The Muse's seed is written from the record cut at the anchor, too.
+    assert "late reply" not in summarized[-1] and "q9" not in summarized[-1]
+
+    store.append(fork_id, [_say("user", "mine", "m1"), _say("assistant", "my reply", "m1")])
+    shown = (await client.get(f"/v1/sessions/{fork_id}/transcript")).json()["data"]
+    assert _shown(shown) == ["mine", "my reply"]
+    full = (await client.get(f"/v1/sessions/{fork_id}/transcript?include_seed=true")).json()[
+        "data"
+    ]
+    assert "a2" in _shown(full) and "late reply" not in _shown(full)
+
+
+async def test_a_fork_without_a_seed_still_hides_its_copied_context(
+    client: httpx.AsyncClient,
+    store: SqlAlchemyConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.context import rollover as rollover_module
+
+    async def broken(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("no model")
+
+    monkeypatch.setattr(rollover_module, "summarize_history", broken)
+    root_id = await _super_chat(client, "forks-noseed")
+    ids = _conversation(store, root_id)
+    store.append(root_id, _late_items())
+    fork_id = await _fork(client, root_id, ids["a2"])
+    fork = store.get_conversation(fork_id)
+    assert fork is not None
+    assert not [
+        i
+        for i in store.list_items(fork_id, limit=500, type="compaction").data
+        if i.response_id == f"rollover_seed_{fork_id}"
+    ]
+    store.append(fork_id, [_say("user", "mine", "m1"), _say("assistant", "my reply", "m1")])
+    shown = (await client.get(f"/v1/sessions/{fork_id}/transcript")).json()["data"]
+    assert _shown(shown) == ["mine", "my reply"]

@@ -3578,6 +3578,12 @@ def register_core_routes(
                 resume_source_native_session=resume_source_native_session,
                 presentation_labels=presentation_labels,
                 up_to_response_id=body.up_to_response_id,
+                # A Fork's copy ends at its anchor item, not at the end of the anchor's turn.
+                **(
+                    {"up_to_item_id": body.side_chat_anchor_item_id}
+                    if body.side_chat_anchor_item_id
+                    else {}
+                ),
                 project_id=fork_project_id,
                 file_id_map=fork_file_id_map,
                 created_by=user_id,
