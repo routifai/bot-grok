@@ -3,6 +3,7 @@ import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { MessageCircle, Search } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
+import { RestoreButton } from "../chrome/RestoreButton";
 import {
   FORK_FILTERS,
   FORK_TONE_CLASS,
@@ -82,12 +83,15 @@ export function AllForks({
   filter,
   onFilter,
   onOpen,
+  onRestore,
   now,
 }: {
   rows: readonly ForkRow[];
   filter: ForkFilter;
   onFilter: (filter: ForkFilter) => void;
   onOpen: (row: ForkRow) => void;
+  /** Restores an archived fork; without it archived rows have no Restore. */
+  onRestore?: (row: ForkRow) => Promise<unknown>;
   now?: Date;
 }) {
   const { t } = useLingui();
@@ -145,52 +149,56 @@ export function AllForks({
                 {labels.group[group]}
               </h3>
               {inGroup.map((row) => (
-                <button
-                  key={row.chatId}
-                  type="button"
-                  data-testid="all-forks-row"
-                  onClick={() => onOpen(row)}
-                  className="grid w-full grid-cols-[4px_minmax(0,1fr)_auto] items-center gap-x-3.5 rounded-xl px-3 py-2.5 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn("h-[38px] w-1 rounded", FORK_TONE_CLASS[row.tone].bg)}
-                  />
-                  <span className="min-w-0">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span
-                        className="truncate text-[14px] font-semibold text-foreground"
-                        dir="auto"
-                      >
-                        {row.title}
+                <div key={row.chatId} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid="all-forks-row"
+                    onClick={() => onOpen(row)}
+                    className="grid min-w-0 flex-1 grid-cols-[4px_minmax(0,1fr)_auto] items-center gap-x-3.5 rounded-xl px-3 py-2.5 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn("h-[38px] w-1 rounded", FORK_TONE_CLASS[row.tone].bg)}
+                    />
+                    <span className="min-w-0">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="truncate text-[14px] font-semibold text-foreground"
+                          dir="auto"
+                        >
+                          {row.title}
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full bg-selection px-[7px] py-px text-[11px] font-semibold",
+                            TAG_CLASS[row.status],
+                          )}
+                        >
+                          {labels.filter[row.status]}
+                        </span>
                       </span>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full bg-selection px-[7px] py-px text-[11px] font-semibold",
-                          TAG_CLASS[row.status],
-                        )}
-                      >
-                        {labels.filter[row.status]}
-                      </span>
+                      {row.anchorText ? (
+                        <span className="mt-0.5 block truncate text-[12.5px] text-ink-3" dir="auto">
+                          {t`from “${row.anchorText}”`}
+                        </span>
+                      ) : null}
                     </span>
-                    {row.anchorText ? (
-                      <span className="mt-0.5 block truncate text-[12.5px] text-ink-3" dir="auto">
-                        {t`from “${row.anchorText}”`}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="flex flex-col items-end gap-0.5 text-end font-mono text-[11.5px] whitespace-nowrap tabular-nums text-ink-3">
-                    {row.project ? (
-                      <span className="max-w-[160px] truncate font-sans text-[12px]" dir="auto">
-                        {row.project.name}
-                      </span>
-                    ) : null}
-                    {row.replies !== null ? (
-                      <span>{plural(row.replies, { one: "# reply", other: "# replies" })}</span>
-                    ) : null}
-                    <span>{forkTime(row.updatedAt, now)}</span>
-                  </span>
-                </button>
+                    <span className="flex flex-col items-end gap-0.5 text-end font-mono text-[11.5px] whitespace-nowrap tabular-nums text-ink-3">
+                      {row.project ? (
+                        <span className="max-w-[160px] truncate font-sans text-[12px]" dir="auto">
+                          {row.project.name}
+                        </span>
+                      ) : null}
+                      {row.replies !== null ? (
+                        <span>{plural(row.replies, { one: "# reply", other: "# replies" })}</span>
+                      ) : null}
+                      <span>{forkTime(row.updatedAt, now)}</span>
+                    </span>
+                  </button>
+                  {row.status === "archived" && onRestore ? (
+                    <RestoreButton className="shrink-0" onRestore={() => onRestore(row)} />
+                  ) : null}
+                </div>
               ))}
             </section>
           ))

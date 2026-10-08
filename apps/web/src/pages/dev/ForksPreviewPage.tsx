@@ -135,6 +135,12 @@ export function ForksPreviewPage() {
         );
         return delay({ summary: "Above $2M only, 6.6% recovers 0.2 points" });
       },
+      unarchive: (input) => {
+        setSeeds((current) =>
+          current.map((seed) => (seed.id === input.chatId ? { ...seed, state: "open" } : seed)),
+        );
+        return delay({ ok: true as const });
+      },
       archive: (input) => {
         setSeeds((current) =>
           current.map((seed) =>
@@ -210,6 +216,9 @@ export function ForksPreviewPage() {
               filter={forks.filter}
               onFilter={forks.setFilter}
               onOpen={forks.openRow}
+              onRestore={(row) =>
+                wire.unarchive?.({ botId: DEV_BOT_ID, chatId: row.chatId }) ?? Promise.resolve()
+              }
             />
           ) : (
             <Transcript
@@ -275,6 +284,7 @@ export function ForksPreviewPage() {
               if (anchorItemId) forks.jump(anchorItemId);
             }}
             onArchived={forks.closeThread}
+            onRestored={() => forks.thread && forks.markRestored(forks.thread.chat.id)}
             onMissingAnchor={forks.revealAnchor}
           />
         ) : null}

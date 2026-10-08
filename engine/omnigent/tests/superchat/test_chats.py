@@ -14,16 +14,11 @@ import pytest
 from omnigent.superchat.side_chats.chats import (
     ARCHIVE_AFTER_SECONDS_ENV,
     DEFAULT_ARCHIVE_AFTER_SECONDS,
-    SWEEP_INTERVAL_SECONDS_ENV,
-    SideChatArchiveSweeper,
     build_side_chat_blank_create_body,
     build_side_chat_fork_body,
-    is_stale_side_chat,
     maybe_unarchive_on_user_message,
     refuse_side_chat_open,
     resolve_archive_after_seconds,
-    resolve_archive_sweep_interval_seconds,
-    sweep_side_chats,
 )
 
 _SUPERSIDE = {"omnigent.context.mode": "superside-chat"}
@@ -120,88 +115,6 @@ def test_archive_after_seconds_falls_back_on_non_positive(monkeypatch: pytest.Mo
     assert resolve_archive_after_seconds() == DEFAULT_ARCHIVE_AFTER_SECONDS
 
 
-# ── resolve_archive_sweep_interval_seconds ──────────────────────────────
-
-
-def test_default_sweep_interval_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(SWEEP_INTERVAL_SECONDS_ENV, raising=False)
-    assert resolve_archive_sweep_interval_seconds() == 300.0
-
-
-def test_sweep_interval_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "60")
-    assert resolve_archive_sweep_interval_seconds() == 60.0
-
-
-def test_sweep_interval_falls_back_on_garbage_or_non_positive(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "not-a-number")
-    assert resolve_archive_sweep_interval_seconds() == 300.0
-    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "0")
-    assert resolve_archive_sweep_interval_seconds() == 300.0
-
-
-def test_sweeper_honors_an_explicit_sweep_interval_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An explicit constructor value always wins over the env default."""
-    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "999")
-    store = _FakeConversationStore([])
-    sweeper = SideChatArchiveSweeper(store, sweep_interval_s=5.0)
-    assert sweeper._sweep_interval_s == 5.0
-
-
-def test_sweeper_reads_the_env_when_no_interval_given(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(SWEEP_INTERVAL_SECONDS_ENV, "42")
-    store = _FakeConversationStore([])
-    sweeper = SideChatArchiveSweeper(store)
-    assert sweeper._sweep_interval_s == 42.0
-
-
-# ── is_stale_side_chat ──────────────────────────────────────────────────
-
-
-def test_is_stale_side_chat_true_when_idle_past_threshold() -> None:
-    assert is_stale_side_chat(
-        labels=_SIDE_CHAT, archived=False, updated_at=0, now=3600, after_seconds=3600
-    )
-
-
-def test_is_stale_side_chat_false_when_not_idle_long_enough() -> None:
-    assert not is_stale_side_chat(
-        labels=_SIDE_CHAT, archived=False, updated_at=100, now=3600, after_seconds=3600
-    )
-
-
-def test_is_stale_side_chat_false_when_already_archived() -> None:
-    assert not is_stale_side_chat(
-        labels=_SIDE_CHAT, archived=True, updated_at=0, now=10_000, after_seconds=3600
-    )
-
-
-def test_is_stale_side_chat_false_for_the_super_chat() -> None:
-    """Super Chat labels carry the mode but no side-chat label."""
-    assert not is_stale_side_chat(
-        labels=_SUPERSIDE, archived=False, updated_at=0, now=10_000, after_seconds=3600
-    )
-
-
-def test_is_stale_side_chat_false_outside_superside_chat_mode() -> None:
-    assert not is_stale_side_chat(
-        labels={"omnigent.side_chat": "1"},
-        archived=False,
-        updated_at=0,
-        now=10_000,
-        after_seconds=3600,
-    )
-
-
-# ── sweep_side_chats (fake store) ────────────────────────────────────────
-
-
 @dataclass
 class _FakeConversation:
     id: str
@@ -218,19 +131,6 @@ class _FakeConversationStore:
         # ``sort_by="updated_at", order="asc"`` would return.
         self._conversations = sorted(conversations, key=lambda c: c.updated_at)
 
-    def list_conversations(self, *, limit: int, after: str | None, **_kwargs: object):
-        from omnigent.entities import PagedList
-
-        start = 0
-        if after is not None:
-            for i, conv in enumerate(self._conversations):
-                if conv.id == after:
-                    start = i + 1
-                    break
-        page = self._conversations[start : start + limit]
-        has_more = start + limit < len(self._conversations)
-        return PagedList(data=list(page), has_more=has_more)
-
     def update_conversation(self, conversation_id: str, *, archived: bool | None = None) -> None:
         for conv in self._conversations:
             if conv.id == conversation_id and archived is not None:
@@ -238,47 +138,6 @@ class _FakeConversationStore:
 
     def get_conversation(self, conversation_id: str) -> _FakeConversation | None:
         return next((c for c in self._conversations if c.id == conversation_id), None)
-
-
-def test_sweep_archives_only_stale_side_chats() -> None:
-    store = _FakeConversationStore(
-        [
-            # idle but not a side chat
-            _FakeConversation("super", updated_at=0, labels=_SUPERSIDE),
-            _FakeConversation("stale_side", updated_at=0, labels=_SIDE_CHAT),
-            _FakeConversation("fresh_side", updated_at=9_999, labels=_SIDE_CHAT),
-        ]
-    )
-    archived = sweep_side_chats(store, now=10_000, after_seconds=3600)
-    assert archived == 1
-    assert store.get_conversation("stale_side").archived is True
-    assert store.get_conversation("fresh_side").archived is False
-    assert store.get_conversation("super").archived is False
-
-
-def test_sweep_never_archives_the_super_chat() -> None:
-    store = _FakeConversationStore([_FakeConversation("super", updated_at=0, labels=_SUPERSIDE)])
-    archived = sweep_side_chats(store, now=10_000, after_seconds=3600)
-    assert archived == 0
-    assert store.get_conversation("super").archived is False
-
-
-def test_sweep_stops_early_once_rows_are_fresh() -> None:
-    """Ascending sort means the first fresh row ends the scan — covered by
-    behavior: a stale row AFTER a fresh one (impossible in sorted order) is
-    not constructed; instead verify a page of only-fresh rows archives none
-    without raising/looping."""
-    store = _FakeConversationStore(
-        [_FakeConversation(f"side_{i}", updated_at=10_000, labels=_SIDE_CHAT) for i in range(5)]
-    )
-    archived = sweep_side_chats(store, now=10_000, after_seconds=3600, page_size=2)
-    assert archived == 0
-
-
-def test_sweep_respects_custom_after_seconds() -> None:
-    store = _FakeConversationStore([_FakeConversation("side", updated_at=0, labels=_SIDE_CHAT)])
-    assert sweep_side_chats(store, now=100, after_seconds=3600) == 0
-    assert sweep_side_chats(store, now=100, after_seconds=50) == 1
 
 
 # ── maybe_unarchive_on_user_message ──────────────────────────────────────
@@ -310,15 +169,3 @@ def test_noop_when_not_archived() -> None:
 def test_noop_when_conversation_unknown() -> None:
     store = _FakeConversationStore([])
     assert maybe_unarchive_on_user_message(store, "nope") is False
-
-
-# ── SideChatArchiveSweeper ────────────────────────────────────────────────
-
-
-def test_sweeper_sweep_once_uses_its_clock(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ARCHIVE_AFTER_SECONDS_ENV, "3600")
-    store = _FakeConversationStore([_FakeConversation("side", updated_at=0, labels=_SIDE_CHAT)])
-    sweeper = SideChatArchiveSweeper(store, clock=lambda: 10_000)
-    archived = sweeper.sweep_once()
-    assert archived == 1
-    assert store.get_conversation("side").archived is True

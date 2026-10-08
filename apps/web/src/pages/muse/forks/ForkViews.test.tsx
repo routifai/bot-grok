@@ -54,10 +54,12 @@ vi.mock("../conversation/MessageView", () => ({
 }));
 vi.mock("../conversation/MessageHoverActions", () => ({ MessageHoverActions: () => null }));
 
+import { AllForks } from "./AllForks";
 import { ForkAsk } from "./ForkAsk";
 import type { ForkWire } from "./ForkOverlay";
 import { ForkThread } from "./ForkThread";
 import { ForkUnderMessage } from "./ForkUnderMessage";
+import type { ForkRow } from "./forkModel";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -368,7 +370,11 @@ it("the thread view of an added fork offers no second add, only a side chat and 
   expect(host.textContent).toContain("Added to Conversation");
 });
 
-function renderThread(target: ComponentProps<typeof ForkThread>["target"], forkWire = wire()) {
+function renderThread(
+  target: ComponentProps<typeof ForkThread>["target"],
+  forkWire = wire(),
+  extra: Partial<ComponentProps<typeof ForkThread>> = {},
+) {
   render(
     <ForkThread
       bot={{ id: "bot-1", name: "Nova", color: "sky" }}
@@ -382,6 +388,7 @@ function renderThread(target: ComponentProps<typeof ForkThread>["target"], forkW
       onOpenSideChat={vi.fn()}
       onAdded={vi.fn()}
       onArchived={vi.fn()}
+      {...extra}
     />,
   );
 }
@@ -414,4 +421,82 @@ it("the thread view's sibling pills leave archived forks out", async () => {
   await flush();
   expect(buttonNamed("Show the math")).toBeDefined();
   expect(buttonNamed("Old test fork")).toBeUndefined();
+});
+
+it("an archived fork's thread view offers Restore, not Archive, and restoring calls the wire", async () => {
+  const forkWire = wire({ unarchive: vi.fn(async () => ({ ok: true as const })) });
+  const onRestored = vi.fn();
+  renderThread(
+    {
+      chat: { ...openChat, archived: true },
+      anchor: message({ forks: [fork({ state: "archived" })] }),
+    },
+    forkWire,
+    { onRestored },
+  );
+  await flush();
+  expect(buttonNamed("Archive")).toBeUndefined();
+  await act(async () => buttonNamed("Restore")?.click());
+  expect(forkWire.unarchive).toHaveBeenCalledWith({ botId: "bot-1", chatId: "fork-a" });
+  expect(onRestored).toHaveBeenCalledTimes(1);
+});
+
+it("an open fork's thread view has no Restore", async () => {
+  renderThread(
+    { chat: { ...openChat, archived: false }, anchor: message({ forks: [fork()] }) },
+    wire({ unarchive: vi.fn() }),
+  );
+  await flush();
+  expect(buttonNamed("Restore")).toBeUndefined();
+  expect(buttonNamed("Archive")).toBeDefined();
+});
+
+function forkRow(overrides: Partial<ForkRow> = {}): ForkRow {
+  return {
+    chat: {
+      id: "fork-a",
+      title: "Which four banks?",
+      start: "withContext",
+      summary: null,
+      archived: false,
+      live: false,
+      unread: false,
+      updatedAt: "2026-10-07T09:40:00.000Z",
+    },
+    chatId: "fork-a",
+    title: "Which four banks?",
+    status: "open",
+    tone: 1,
+    anchorItemId: "m1",
+    anchorText: null,
+    replies: 1,
+    project: null,
+    unread: false,
+    updatedAt: "2026-10-07T09:40:00.000Z",
+    ...overrides,
+  };
+}
+
+it("All forks restores an archived fork from its row without opening it", async () => {
+  const onOpen = vi.fn();
+  const onRestore = vi.fn(async () => undefined);
+  const archived = forkRow({ chatId: "old", title: "Old test fork", status: "archived" });
+  render(
+    <AllForks
+      rows={[forkRow(), archived]}
+      filter="all"
+      onFilter={vi.fn()}
+      onOpen={onOpen}
+      onRestore={onRestore}
+      now={new Date("2026-10-07T10:00:00.000Z")}
+    />,
+  );
+  const restoreButtons = [...host.querySelectorAll("button")].filter(
+    (button) => button.textContent === "Restore",
+  );
+  // Only the archived row has one.
+  expect(restoreButtons).toHaveLength(1);
+  await act(async () => restoreButtons[0]?.click());
+  expect(onRestore).toHaveBeenCalledWith(archived);
+  expect(onOpen).not.toHaveBeenCalled();
 });

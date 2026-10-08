@@ -112,6 +112,15 @@ export function useForkView({
     });
   }, [scrollRef]);
 
+  /** The open fork was restored: its thread view shows it as an open, writable fork. */
+  const markRestored = useCallback((chatId: string) => {
+    setThread((current) =>
+      current?.chat.id === chatId
+        ? { ...current, chat: { ...current.chat, archived: false } }
+        : current,
+    );
+  }, []);
+
   const startAsk = useCallback((anchor: ThreadMessage, chatId: string | null = null) => {
     setAsk({ anchor, chatId });
   }, []);
@@ -168,6 +177,7 @@ export function useForkView({
     openFork,
     openRow,
     closeThread,
+    markRestored,
     startAsk,
     created,
     showForks,

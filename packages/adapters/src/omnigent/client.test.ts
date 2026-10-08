@@ -6,6 +6,7 @@ import {
   archiveOmnigentSession,
   createOmnigentSideChat,
   forgetOmnigentMemoryClaim,
+  getOmnigentArchiving,
   getOmnigentComputer,
   getOmnigentMemoryProfile,
   getOmnigentMuse,
@@ -21,12 +22,14 @@ import {
   openOmnigentComputerScreen,
   patchOmnigentMemoryClaim,
   postOmnigentMessage,
+  putOmnigentArchiving,
   putOmnigentDailyNote,
   putOmnigentMuseAgent,
   putOmnigentProactivity,
   releaseOmnigentComputer,
   streamOmnigentFamily,
   streamOmnigentSession,
+  unarchiveOmnigentSession,
 } from "./client.js";
 
 const CONFIG = { baseUrl: "http://omnigent.test", proxySecret: "proxy-secret", tenant: "space-1" };
@@ -146,6 +149,24 @@ describe("omnigent client", () => {
     const [, init] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
     expect(init.method).toBe("PUT");
     expect(JSON.parse(init.body as string)).toEqual({ proactivity: "high" });
+  });
+
+  it("reads and writes the side chat auto-archive days on /v1/me/archiving", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ side_chat_auto_archive_days: 7, default_days: 30 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getOmnigentArchiving(CONFIG, "e@x.test")).resolves.toEqual({
+      side_chat_auto_archive_days: 7,
+      default_days: 30,
+    });
+    await putOmnigentArchiving(CONFIG, "e@x.test", { side_chat_auto_archive_days: "default" });
+
+    const [url, init] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/v1/me/archiving");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ side_chat_auto_archive_days: "default" });
   });
 
   it("getOmnigentSession requests a cheap snapshot and returns host_id", async () => {
@@ -372,20 +393,24 @@ describe("createOmnigentSideChat error handling (docs/super-chat/WIRING.md revie
           state: "added",
         }),
       )
-      .mockResolvedValueOnce(jsonResponse({ id: "f 1", archived: true }));
+      .mockResolvedValueOnce(jsonResponse({ id: "f 1", archived: true }))
+      .mockResolvedValueOnce(jsonResponse({ id: "f 1", archived: false }));
     vi.stubGlobal("fetch", fetchMock);
 
     const added = await addOmnigentForkToConversation(CONFIG, "p@x.test", "f 1");
     expect(added.summary).toBe("Bars by segment");
     await archiveOmnigentSession(CONFIG, "p@x.test", "f 1");
+    await unarchiveOmnigentSession(CONFIG, "p@x.test", "f 1");
 
     const calls = fetchMock.mock.calls as unknown as [URL, RequestInit][];
     expect(calls.map(([url, init]) => `${init.method} ${url.pathname}`)).toEqual([
       "POST /v1/sessions/f%201/add_to_conversation",
       "PATCH /v1/sessions/f%201",
+      "PATCH /v1/sessions/f%201",
     ]);
     expect(JSON.parse(calls[0]![1].body as string)).toEqual({});
     expect(JSON.parse(calls[1]![1].body as string)).toEqual({ archived: true });
+    expect(JSON.parse(calls[2]![1].body as string)).toEqual({ archived: false });
   });
 
   it("computer calls hit the session-scoped routes with identity/proxy headers", async () => {

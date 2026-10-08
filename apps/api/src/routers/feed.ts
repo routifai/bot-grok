@@ -8,6 +8,7 @@ import {
   engineRemoveTopic,
 } from "../engine-feed.js";
 import { engineAcceptIdea, engineDismissIdea, engineListIdeas } from "../engine-ideas.js";
+import { getMuseArchiving, updateMuseArchiving } from "../muse-archiving.js";
 import { listAsks } from "../muse-asks.js";
 import { followTopic, listFeedPosts, listTopics, removeTopic } from "../muse-feed.js";
 import { listIdeas } from "../muse-ideas.js";
@@ -87,6 +88,12 @@ export function feedRouter(c: RouterContext) {
       ),
       updateSettings: museOnly.muse.updateSettings.handler(({ context, input }) =>
         updateMuseSettings(deps, context.actor, input),
+      ),
+      archiving: museOnly.muse.archiving.handler(({ context, input }) =>
+        getMuseArchiving(deps, context.actor, input.botId),
+      ),
+      updateArchiving: museOnly.muse.updateArchiving.handler(({ context, input }) =>
+        updateMuseArchiving(deps, context.actor, input),
       ),
     },
   };

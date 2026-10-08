@@ -33,6 +33,10 @@ export const chatsContract = {
     archive: oc
       .input(z.object({ botId: Id, chatId: Id }))
       .output(z.object({ ok: z.literal(true) })),
+    /** Restores an archived Side Chat or Fork: writable again and listed with the open ones. */
+    unarchive: oc
+      .input(z.object({ botId: Id, chatId: Id }))
+      .output(z.object({ ok: z.literal(true) })),
     /** The summary a new Side Chat would start with, for the "Knows our conversation" switch. */
     summaryPreview: oc.input(z.object({ botId: Id })).output(z.object({ summary: z.string() })),
     /** The Conversation (no `chatId`), one of its Side Chats, or a Helper, as typed blocks.

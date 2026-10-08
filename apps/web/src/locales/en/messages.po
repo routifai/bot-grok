@@ -293,6 +293,15 @@ msgstr "Advanced"
 msgid "Advanced..."
 msgstr "Advanced..."
 
+msgid "After a day"
+msgstr "After a day"
+
+msgid "After a month"
+msgstr "After a month"
+
+msgid "After a week"
+msgstr "After a week"
+
 msgid "Agent computer"
 msgstr "Agent computer"
 
@@ -386,6 +395,9 @@ msgstr "Approve this server to let your agent use its tools."
 
 msgid "Archive"
 msgstr "Archive"
+
+msgid "Archive side chats"
+msgstr "Archive side chats"
 
 msgid "archived"
 msgstr "archived"
@@ -1501,6 +1513,9 @@ msgstr "Expand {0}"
 msgid "Expand sidebar"
 msgstr "Expand sidebar"
 
+msgid "Expired"
+msgstr "Expired"
+
 msgid "Explore"
 msgstr "Explore"
 
@@ -2178,6 +2193,9 @@ msgstr "Needs a restart"
 msgid "Needs you"
 msgstr "Needs you"
 
+msgid "Never"
+msgstr "Never"
+
 msgid "New"
 msgstr "New"
 
@@ -2829,6 +2847,9 @@ msgstr "Resetting…"
 
 msgid "Restart to update"
 msgstr "Restart to update"
+
+msgid "Restore"
+msgstr "Restore"
 
 msgid "Restore the last saved workspace. Unsaved work on the computer is lost."
 msgstr "Restore the last saved workspace. Unsaved work on the computer is lost."

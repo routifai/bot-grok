@@ -1,7 +1,14 @@
 import { oc } from "@orpc/contract";
 import * as z from "zod";
 import { Id } from "../ids.js";
-import { FeedSchema, FollowedTopicSchema, IdeaSchema, MuseSettingsSchema } from "../muse.js";
+import {
+  ArchivingSchema,
+  ArchivingUpdateSchema,
+  FeedSchema,
+  FollowedTopicSchema,
+  IdeaSchema,
+  MuseSettingsSchema,
+} from "../muse.js";
 
 export const feedContract = {
   feed: {
@@ -28,6 +35,10 @@ export const feedContract = {
     updateSettings: oc
       .input(MuseSettingsSchema.partial().safeExtend({ botId: Id }))
       .output(MuseSettingsSchema),
+    archiving: oc.input(z.object({ botId: Id })).output(ArchivingSchema),
+    updateArchiving: oc
+      .input(ArchivingUpdateSchema.safeExtend({ botId: Id }))
+      .output(ArchivingSchema),
   },
   // The Activity panel (CONTEXT.md "Activity", "Activity Feed"; docs/super-chat/README.md):
   // everything the Muse did, newest first, by day. Scoped to the bot's Super Chat family (the

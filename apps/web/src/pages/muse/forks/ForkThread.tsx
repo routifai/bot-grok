@@ -9,6 +9,7 @@ import {
   ReplyCardThreadProvider,
 } from "../../../components/cards/context";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
+import { RestoreButton } from "../chrome/RestoreButton";
 import {
   SendFailureNote,
   type SideChatBot,
@@ -77,6 +78,7 @@ export function ForkThread({
   onOpenSideChat,
   onAdded,
   onArchived,
+  onRestored,
   onReplied,
   onMissingAnchor,
 }: {
@@ -94,6 +96,8 @@ export function ForkThread({
   /** Its summary went back under the anchor (the anchor's id, when known). */
   onAdded: (anchorItemId: string | null) => void;
   onArchived: () => void;
+  /** An archived fork was restored: shown as an open fork again, writable. */
+  onRestored?: () => void;
   onReplied?: () => void;
   /** The anchor is a Conversation message that is not loaded yet: page back to it. */
   onMissingAnchor?: (anchorItemId: string) => void;
@@ -351,6 +355,14 @@ export function ForkThread({
                 {busy === "archive" ? <Spinner className="size-3.5" /> : null}
                 <Trans>Archive</Trans>
               </Button>
+            ) : wire.unarchive ? (
+              <RestoreButton
+                className="bg-card"
+                onRestore={async () => {
+                  await wire.unarchive?.({ botId: bot.id, chatId: chat.id });
+                  onRestored?.();
+                }}
+              />
             ) : null}
             {actionFailed ? (
               <span role="alert" className="text-[12.5px] text-muted-foreground">

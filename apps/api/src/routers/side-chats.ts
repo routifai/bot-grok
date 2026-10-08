@@ -10,6 +10,7 @@ import {
   resetConversation,
   sendToChat,
   summaryPreview,
+  unarchiveChat,
   watchFamily,
 } from "../chats.js";
 
@@ -35,6 +36,9 @@ export function sideChatsRouter(c: RouterContext) {
       ),
       archive: museOnly.chats.archive.handler(({ context, input }) =>
         archiveChat(deps, context.actor, input),
+      ),
+      unarchive: museOnly.chats.unarchive.handler(({ context, input }) =>
+        unarchiveChat(deps, context.actor, input),
       ),
       summaryPreview: museOnly.chats.summaryPreview.handler(({ context, input }) =>
         summaryPreview(deps, context.actor, input),

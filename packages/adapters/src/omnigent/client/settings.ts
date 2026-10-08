@@ -50,3 +50,38 @@ export async function putOmnigentTimezone(
 ): Promise<void> {
   await putOmnigentProactivity(config, email, { timezone });
 }
+
+/** The person's effective side chat auto-archive setting (`null` is never) and the deployment
+ * default, in days. */
+export interface OmnigentArchiving {
+  side_chat_auto_archive_days: 1 | 7 | 30 | null;
+  default_days: number;
+}
+
+/** `GET /v1/me/archiving`. */
+export async function getOmnigentArchiving(
+  config: OmnigentClientConfig,
+  email: string,
+): Promise<OmnigentArchiving> {
+  const response = await fetch(new URL("/v1/me/archiving", config.baseUrl), {
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "get archiving", config.secrets);
+  return (await response.json()) as OmnigentArchiving;
+}
+
+/** `PUT /v1/me/archiving` — `null` is an explicit never, `"default"` forgets the choice; the
+ * engine refuses anything but `null`, 1, 7, 30 or `"default"`. */
+export async function putOmnigentArchiving(
+  config: OmnigentClientConfig,
+  email: string,
+  archiving: { side_chat_auto_archive_days: 1 | 7 | 30 | null | "default" },
+): Promise<OmnigentArchiving> {
+  const response = await fetch(new URL("/v1/me/archiving", config.baseUrl), {
+    method: "PUT",
+    headers: omnigentHeaders(config, email),
+    body: JSON.stringify(archiving),
+  });
+  await throwOnError(response, "set archiving", config.secrets);
+  return (await response.json()) as OmnigentArchiving;
+}

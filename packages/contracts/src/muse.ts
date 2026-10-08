@@ -300,6 +300,21 @@ export const DEFAULT_MUSE_SETTINGS: MuseSettings = {
   quietHours: "22:00-08:00",
 };
 
+/** Side chats archive themselves after this many days idle; `null` is never. */
+export const SIDE_CHAT_ARCHIVE_DAYS = [1, 7, 30] as const;
+const ArchiveDaysSchema = z.union([z.literal(1), z.literal(7), z.literal(30)]);
+/** The person's effective setting (`null` is never) and what applies if they never choose. */
+export const ArchivingSchema = z.object({
+  sideChatAutoArchiveDays: ArchiveDaysSchema.nullable(),
+  defaultDays: z.number().int().positive(),
+});
+export type Archiving = z.infer<typeof ArchivingSchema>;
+/** `"default"` forgets the choice, so the deployment default applies again. */
+export const ArchivingUpdateSchema = z.object({
+  sideChatAutoArchiveDays: ArchiveDaysSchema.nullable().or(z.literal("default")),
+});
+export type ArchivingUpdate = z.infer<typeof ArchivingUpdateSchema>;
+
 /** Default identity color of a new Muse (sky). */
 export const DEFAULT_MUSE_COLOR = "#0090FF";
 

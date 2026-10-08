@@ -237,8 +237,13 @@ export function ShellPage() {
       send: (input) => rpc.chats.send(input),
       markRead: (input) => rpc.chats.markRead(input),
       project: (input) => rpc.chats.project(input),
+      unarchive: (input) =>
+        rpc.chats.unarchive(input).then((result) => {
+          chatList.refresh();
+          return result;
+        }),
     }),
-    [chatList.createSide],
+    [chatList.createSide, chatList.refresh],
   );
   const refreshChatList = chatList.refresh;
   const forkWire = useMemo<ForkWire>(
@@ -898,6 +903,11 @@ export function ShellPage() {
                 onReplied={chatList.refresh}
                 onClose={() => setActiveChat(null)}
                 onOpenProject={openProjectFiles}
+                onRestored={() =>
+                  setActiveChat((current) =>
+                    current && current !== "draft" ? { ...current, archived: false } : current,
+                  )
+                }
                 focusMessageId={
                   activeChat !== "draft" && chatFocus?.chatId === activeChat.id
                     ? chatFocus.messageId
@@ -1057,6 +1067,14 @@ export function ShellPage() {
                     filter={forks.filter}
                     onFilter={forks.setFilter}
                     onOpen={forks.openRow}
+                    onRestore={
+                      active
+                        ? async (row) => {
+                            await forkWire.unarchive?.({ botId: active.id, chatId: row.chatId });
+                            readTranscript();
+                          }
+                        : undefined
+                    }
                   />
                 ) : shownStart ? (
                   <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
@@ -1240,6 +1258,10 @@ export function ShellPage() {
                     if (anchorItemId) forks.jump(anchorItemId);
                   }}
                   onArchived={forks.closeThread}
+                  onRestored={() => {
+                    if (forks.thread) forks.markRestored(forks.thread.chat.id);
+                    readTranscript();
+                  }}
                   onReplied={chatList.refresh}
                   onMissingAnchor={forks.revealAnchor}
                 />

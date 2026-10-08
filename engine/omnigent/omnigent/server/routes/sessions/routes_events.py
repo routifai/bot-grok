@@ -887,14 +887,17 @@ def register_events_routes(
                 pass
             else:
                 created_by = body_created_by
-        # An archived Side Chat that gets a new user message is being
-        # resumed on purpose — unarchive it rather than silently accepting
-        # input into a hidden chat (rollover/SUPERSIDE-CHAT-PLAN.md S4).
-        # Never fires for the Super Chat or a Sub-agent (no side-chat label).
-        if body.type == "message" and conv.archived and SIDE_CHAT_LABEL_KEY in conv.labels:
-            await asyncio.to_thread(
-                conversation_store.update_conversation, session_id, archived=False
-            )
+        # An archived Side Chat that gets a new user message is being resumed on
+        # purpose: unarchive it (maybe_unarchive_on_user_message holds the rule) and
+        # tell its family, so lists show it again.
+        if body.type == "message" and conv.archived:
+            from omnigent.superchat.family.signals import notify_session_changed
+            from omnigent.superchat.side_chats.chats import maybe_unarchive_on_user_message
+
+            if await asyncio.to_thread(
+                maybe_unarchive_on_user_message, conversation_store, session_id
+            ):
+                await notify_session_changed(conversation_store, session_id)
         # Standing proactive runs (Study) are provisioned lazily on
         # the Super Chat's next user message, so existing chats get them too.
         if (

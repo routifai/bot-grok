@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingState } from "../../../components/ai/primitives";
 import { ReplyCardSendProvider } from "../../../components/cards/context";
 import { type ChatProject, ProjectChip, useChatProject } from "./ProjectChip";
+import { RestoreButton } from "./RestoreButton";
 
 /** The Side Chat session's wire: what it needs from `chats.*`, kept as an explicit shape
  * (not the `rpc` client) so the dev fixture page can supply fakes instead. */
@@ -42,6 +43,8 @@ export type SideChatWire = {
   markRead?: (input: { botId: string; chatId: string }) => Promise<unknown>;
   /** The Project the chat has open; fixtures may leave it out. */
   project?: (input: { botId: string; chatId: string }) => Promise<{ project: ChatProject | null }>;
+  /** Restores an archived chat; without it an archived chat shows no Restore. */
+  unarchive?: (input: { botId: string; chatId: string }) => Promise<unknown>;
 };
 
 /** The context summary a person can read: markdown, capped in height, scrolls past it. */
@@ -93,6 +96,7 @@ export function SideChatSession({
   onReplied,
   onClose,
   onOpenProject,
+  onRestored,
   focusMessageId,
 }: {
   bot: SideChatBot;
@@ -107,6 +111,8 @@ export function SideChatSession({
   onClose: () => void;
   /** Show a Project's folder (the "Working in" chip). */
   onOpenProject?: (project: ChatProject) => void;
+  /** The archived chat was restored: the caller shows it as an open chat (not archived). */
+  onRestored?: () => void;
   /** A search hit: scroll to this message once the chat has loaded. */
   focusMessageId?: string;
 }) {
@@ -142,6 +148,7 @@ export function SideChatSession({
       onReplied={onReplied}
       onClose={onClose}
       onOpenProject={onOpenProject}
+      onRestored={onRestored}
     />
   );
 }
@@ -601,6 +608,7 @@ function ExistingSideChat({
   onReplied,
   onClose,
   onOpenProject,
+  onRestored,
 }: {
   bot: SideChatBot;
   chat: ChatSummary;
@@ -613,6 +621,7 @@ function ExistingSideChat({
   onReplied?: () => void;
   onClose: () => void;
   onOpenProject?: (project: ChatProject) => void;
+  onRestored?: () => void;
 }) {
   const { t } = useLingui();
   const {
@@ -627,6 +636,7 @@ function ExistingSideChat({
     send,
   } = useSideChatThread({ bot, chat, wire, firstText, firstFailed, onReplied });
   const loadProject = wire.project;
+  const unarchive = wire.unarchive;
   const project = useChatProject(
     loadProject ? () => loadProject({ botId: bot.id, chatId: chat.id }) : undefined,
     chat.id,
@@ -662,6 +672,13 @@ function ExistingSideChat({
                 <span className="text-[12px] text-muted-foreground">
                   <Trans>Archived</Trans>
                 </span>
+              ) : null}
+              {chat.archived && unarchive ? (
+                <RestoreButton
+                  onRestore={() =>
+                    unarchive({ botId: bot.id, chatId: chat.id }).then(() => onRestored?.())
+                  }
+                />
               ) : null}
               {project && onOpenProject ? (
                 <ProjectChip project={project} onOpen={onOpenProject} />

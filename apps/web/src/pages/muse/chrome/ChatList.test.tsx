@@ -52,6 +52,7 @@ vi.mock("@aiden/ui-web", () => ({
     <div data-testid="tooltip-content">{children}</div>
   ),
   Button: (props: ComponentProps<"button">) => <button {...props} />,
+  Spinner: () => <span data-testid="spinner" />,
   Popover: ({ children }: { children: ReactNode }) => children,
   PopoverTrigger: ({ children, ...props }: ComponentProps<"button">) => (
     <button type="button" {...props}>
@@ -401,6 +402,65 @@ it("an archived Side Chat opens read-only: no composer, its messages still show"
   expect(host.textContent).toContain("Tighten the pricing headline.");
   expect(host.querySelector("textarea")).toBeNull();
   expect(host.querySelector("form")).toBeNull();
+});
+
+it("an archived Side Chat offers Restore; restoring makes it writable again", async () => {
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn(),
+    createSide: vi.fn(),
+    transcript: vi
+      .fn()
+      .mockResolvedValue({ threadId: "side-old", messages: [], olderCursor: null }),
+    send: vi.fn(),
+    unarchive: vi.fn().mockResolvedValue({ ok: true }),
+  };
+  function Harness() {
+    const [archived, setArchived] = useState(true);
+    return (
+      <SideChatSession
+        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        view={fakeView}
+        chat={chat({ id: "side-old", title: "Old pricing copy", archived })}
+        wire={wire}
+        onCreated={() => undefined}
+        onClose={() => undefined}
+        onRestored={() => setArchived(false)}
+      />
+    );
+  }
+  const host = await mount(<Harness />);
+  await act(async () => {});
+  expect(host.querySelector("textarea")).toBeNull();
+  const restore = [...host.querySelectorAll("button")].find((b) => b.textContent === "Restore");
+  expect(restore).toBeDefined();
+  await act(async () => {
+    restore?.click();
+  });
+  expect(wire.unarchive).toHaveBeenCalledWith({ botId: "bot-1", chatId: "side-old" });
+  expect(host.textContent).not.toContain("Restore");
+  expect(host.querySelector("textarea")).not.toBeNull();
+});
+
+it("an open Side Chat has no Restore", async () => {
+  const wire: SideChatWire = {
+    summaryPreview: vi.fn(),
+    createSide: vi.fn(),
+    transcript: vi.fn().mockResolvedValue({ threadId: "side-1", messages: [], olderCursor: null }),
+    send: vi.fn(),
+    unarchive: vi.fn(),
+  };
+  const host = await mount(
+    <SideChatSession
+      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      view={fakeView}
+      chat={chat({ id: "side-1", archived: false })}
+      wire={wire}
+      onCreated={() => undefined}
+      onClose={() => undefined}
+    />,
+  );
+  await act(async () => {});
+  expect(host.textContent).not.toContain("Restore");
 });
 
 it("a failed Side Chat send is retried once, then shows a calm note with a Retry that resends", async () => {

@@ -574,6 +574,19 @@ class ConversationStore(ABC):
         """
         ...
 
+    def find_label_holders_all_workspaces(
+        self, key: str, value: str, limit: int = 10_000
+    ) -> list[tuple[int, str]]:
+        """``(workspace_id, conversation_id)`` of every conversation labelled ``key=value``.
+
+        For background jobs that run outside any request's workspace. The default covers only
+        the current workspace; the SQL store reads every workspace in one indexed query.
+        """
+        from omnigent.db.db_models import current_workspace_id
+
+        workspace = current_workspace_id()
+        return [(workspace, cid) for cid in self.find_conversation_ids_by_label(key, value, limit)]
+
     @abstractmethod
     def get_runner_ids(self, conversation_ids: list[str]) -> dict[str, str | None]:
         """

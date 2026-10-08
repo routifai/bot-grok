@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   addOmnigentForkToConversation,
   archiveOmnigentSession,
+  unarchiveOmnigentSession,
   createOmnigentSideChat,
   getOmnigentContextSummary,
   getOmnigentWorkingProject,
@@ -18,6 +19,7 @@ const {
 } = vi.hoisted(() => ({
   addOmnigentForkToConversation: vi.fn(),
   archiveOmnigentSession: vi.fn(),
+  unarchiveOmnigentSession: vi.fn(),
   createOmnigentSideChat: vi.fn(),
   getOmnigentContextSummary: vi.fn(),
   getOmnigentWorkingProject: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
     ...actual,
     addOmnigentForkToConversation,
     archiveOmnigentSession,
+    unarchiveOmnigentSession,
     createOmnigentSideChat,
     getOmnigentContextSummary,
     getOmnigentWorkingProject,
@@ -60,6 +63,7 @@ const { OmnigentApiError } = await import("@aiden/adapters");
 const {
   addForkToConversation,
   archiveChat,
+  unarchiveChat,
   createFork,
   createSideChat,
   getChatProject,
@@ -283,6 +287,23 @@ describe("forks", () => {
       await archiveChat(depsFor(), actor, { botId: "bot-1", chatId: "conv_fork" }, ENV),
     ).toEqual({ ok: true });
     expect(archiveOmnigentSession).toHaveBeenCalledWith(BOUND, "person@example.test", "conv_fork");
+
+    expect(
+      await unarchiveChat(depsFor(), actor, { botId: "bot-1", chatId: "conv_fork" }, ENV),
+    ).toEqual({ ok: true });
+    expect(unarchiveOmnigentSession).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_fork",
+    );
+
+    resolveChatOwnership.mockResolvedValue({ ...OWNED, kind: "helper" });
+    unarchiveOmnigentSession.mockClear();
+    await expect(
+      unarchiveChat(depsFor(), actor, { botId: "bot-1", chatId: "helper_1" }, ENV),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(unarchiveOmnigentSession).not.toHaveBeenCalled();
+    resolveChatOwnership.mockResolvedValue(OWNED);
 
     resolveChatOwnership.mockResolvedValue({ ...OWNED, kind: "helper" });
     await expect(

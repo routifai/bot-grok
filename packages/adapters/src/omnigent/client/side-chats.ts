@@ -193,13 +193,32 @@ export async function archiveOmnigentSession(
   email: string,
   sessionId: string,
 ): Promise<void> {
+  await setOmnigentSessionArchived(config, email, sessionId, true);
+}
+
+/** `PATCH /v1/sessions/{id}` with `archived: false` — restores an archived Side Chat or Fork, so
+ * it is writable and listed with the open ones again. */
+export async function unarchiveOmnigentSession(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+): Promise<void> {
+  await setOmnigentSessionArchived(config, email, sessionId, false);
+}
+
+async function setOmnigentSessionArchived(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  archived: boolean,
+): Promise<void> {
   const response = await fetch(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}`, config.baseUrl),
     {
       method: "PATCH",
       headers: omnigentHeaders(config, email),
-      body: JSON.stringify({ archived: true }),
+      body: JSON.stringify({ archived }),
     },
   );
-  await throwOnError(response, "archive session", config.secrets);
+  await throwOnError(response, archived ? "archive session" : "unarchive session", config.secrets);
 }

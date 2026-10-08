@@ -27,6 +27,7 @@ import {
   resolveChatOwnership,
   sideChatStartToWire,
   streamOmnigentFamily,
+  unarchiveOmnigentSession,
 } from "@aiden/adapters";
 import {
   type Actor,
@@ -247,6 +248,20 @@ export async function archiveChat(
   const email = await actorEmail(deps, actor);
   await requireOwnSideChat(deps, actor, client, email, input.botId, input.chatId);
   await onSuperChat(archiveOmnigentSession(client, email, input.chatId));
+  return { ok: true as const };
+}
+
+/** `chats.unarchive`: restores an archived Side Chat or Fork. */
+export async function unarchiveChat(
+  deps: ChatsDeps,
+  actor: Actor,
+  input: { botId: string; chatId: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ ok: true }> {
+  const client = requireClient(env, actor);
+  const email = await actorEmail(deps, actor);
+  await requireOwnSideChat(deps, actor, client, email, input.botId, input.chatId);
+  await onSuperChat(unarchiveOmnigentSession(client, email, input.chatId));
   return { ok: true as const };
 }
 

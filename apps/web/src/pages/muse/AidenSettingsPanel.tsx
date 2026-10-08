@@ -9,6 +9,7 @@ import { AvatarStudioPopover } from "../shell/avatar-studio-popover";
 import { ApprovalsSettings } from "./ApprovalsSettings";
 import { resetFirstRun } from "./intro";
 import { ProactivitySettings } from "./ProactivitySettings";
+import { SideChatArchiving } from "./SideChatArchiving";
 import { MUSE_INSET_GROUP } from "./ui";
 import { VaultSettings } from "./VaultSettings";
 
@@ -91,6 +92,8 @@ export function AidenSettingsPanel({
       </div>
 
       <ProactivitySettings botId={bot.id} />
+
+      <SideChatArchiving botId={bot.id} />
 
       <ApprovalsSettings botId={bot.id} />
 
