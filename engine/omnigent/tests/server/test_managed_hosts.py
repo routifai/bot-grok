@@ -5280,7 +5280,7 @@ async def test_recreated_sandbox_records_and_publishes_workspace_reset_notice(
         host_store=SimpleNamespace(),
         host_registry=None,
         tunnel_registry=None,
-        relaunch_host=SimpleNamespace(host_id="host_1"),
+        relaunch_host=SimpleNamespace(host_id="host_1", sandbox_provider="modal"),
     )
 
     assert tracker.get("conv_1") is None
@@ -5290,6 +5290,47 @@ async def test_recreated_sandbox_records_and_publishes_workspace_reset_notice(
     assert visible.data.level == "info"
     assert surfaced == [visible]
     assert published[-1] == ("conv_1", "ready", None)
+
+
+async def test_recreated_sandbox_that_keeps_its_files_records_no_reset_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider whose workspace survives a recreate (the Computer's home is on durable
+    disk) lost nothing, so the session gets no "files are gone" notice."""
+    from omnigent.server.routes._sessions import orchestration
+
+    appended: list[object] = []
+
+    class _ConversationStore:
+        def set_host_id(self, session_id: str, host_id: str, workspace: str) -> object:
+            return SimpleNamespace(id=session_id, host_id=host_id, workspace=workspace)
+
+        def append(self, session_id: str, items: list[object]) -> list[object]:
+            appended.extend(items)
+            return items
+
+    monkeypatch.setattr(
+        orchestration, "_publish_sandbox_status", lambda session_id, stage, detail=None: None
+    )
+    monkeypatch.setattr(
+        orchestration, "_publish_external_conversation_item", lambda session_id, item: None
+    )
+    tracker = ManagedLaunchTracker()
+    tracker.begin("conv_1")
+
+    await orchestration._bind_and_launch_managed_runner(
+        session_id="conv_1",
+        managed=ManagedHostLaunch(host_id="host_1", workspace="/home/aiden/workspace"),
+        sandbox_config=SimpleNamespace(configs=()),
+        tracker=tracker,
+        conversation_store=_ConversationStore(),
+        host_store=SimpleNamespace(),
+        host_registry=None,
+        tunnel_registry=None,
+        relaunch_host=SimpleNamespace(host_id="host_1", sandbox_provider="computer"),
+    )
+
+    assert appended == []
 
 
 async def test_concurrent_relaunch_messages_kick_a_single_launch(

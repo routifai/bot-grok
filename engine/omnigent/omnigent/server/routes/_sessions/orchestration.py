@@ -3783,7 +3783,9 @@ async def _bind_and_launch_managed_runner(
             session_id, "failed", "session was deleted while its sandbox was provisioning"
         )
         return
-    if relaunch_host is not None:
+    if relaunch_host is not None and not _workspace_survives_recreate(
+        relaunch_host.sandbox_provider
+    ):
         await _note_workspace_reset_on_recreate(session_id, conversation_store)
     # Host bound; what remains is launching the runner and waiting
     # for its tunnel.
@@ -4314,6 +4316,17 @@ _WORKSPACE_RESET_NOTICE = (
     "created. Local files that were not committed and pushed are gone. If the "
     "session started from a repository, that repository has been cloned again."
 )
+
+
+def _workspace_survives_recreate(provider: str | None) -> bool:
+    """Whether sandboxes of *provider* keep a session's files across a recreate.
+
+    :param provider: The provider recorded on the host being relaunched, e.g. ``"computer"``.
+    """
+    from omnigent.onboarding.sandboxes.registry import get_provider_metadata
+
+    metadata = get_provider_metadata(provider) if provider else None
+    return metadata is not None and metadata.workspace_survives_recreate
 
 
 async def _note_workspace_reset_on_recreate(

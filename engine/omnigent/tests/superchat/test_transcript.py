@@ -185,7 +185,7 @@ def test_artifact_save_becomes_a_file_block_and_secret_request_a_secure_entry() 
         ("server_error", "provider_unavailable"),
         ("context_length_exceeded", "context_too_long"),
         ("budget_exhausted", "insufficient_credit"),
-        ("managed_sandbox_workspace_reset", "sandbox_unavailable"),
+        ("managed_sandbox_workspace_reset", "workspace_reset"),
         ("timeout", "timeout"),
         ("insufficient_credit", "insufficient_credit"),
     ],

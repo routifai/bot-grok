@@ -58,12 +58,17 @@ class SandboxProviderMetadata:
         provider-specific ``sandbox.<name>`` config block.
     :param managed_token_ttl_s: Optional default managed launch-token
         lifetime in seconds.
+    :param workspace_survives_recreate: Whether a sandbox recreated for the
+        same session finds the files the old one left (e.g. a home directory
+        mounted from durable storage). When ``True`` a recreate is not a
+        workspace reset, so the session gets no "files are gone" notice.
     """
 
     name: str
     launcher_class: str
     config_model: type[object] | None = None
     managed_token_ttl_s: int | None = None
+    workspace_survives_recreate: bool = False
 
 
 @dataclass(frozen=True)
@@ -205,6 +210,8 @@ def _builtin_contribution() -> SandboxProviderContribution:
                 name="computer",
                 launcher_class="omnigent.onboarding.sandboxes.computer:ComputerSandboxLauncher",
                 managed_token_ttl_s=7 * 24 * 3600,
+                # The Computer's home is a per-owner directory on the supervisor's disk.
+                workspace_survives_recreate=True,
             ),
         },
     )

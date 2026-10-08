@@ -27,6 +27,9 @@ CONTEXT_TOO_LONG = "context_too_long"  # the conversation no longer fits the mod
 PROVIDER_UNAVAILABLE = "provider_unavailable"  # provider 5xx, unreachable, or dropped connection
 TIMEOUT = "timeout"  # the turn or the provider call took too long
 SANDBOX_UNAVAILABLE = "sandbox_unavailable"  # the computer/sandbox the turn runs in is gone
+# Not a failure (stored at ``level: info``): the sandbox was replaced by a fresh one and files
+# it held that were not saved elsewhere are gone. The chat goes on.
+WORKSPACE_RESET = "workspace_reset"
 INTERNAL = "internal"  # anything else: our bug or an unclassified failure
 
 PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
@@ -39,6 +42,7 @@ PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
         PROVIDER_UNAVAILABLE,
         TIMEOUT,
         SANDBOX_UNAVAILABLE,
+        WORKSPACE_RESET,
         INTERNAL,
     }
 )
@@ -129,7 +133,7 @@ _LEGACY: dict[str, str] = {
     "budget_exhausted": INSUFFICIENT_CREDIT,
     "runner_disconnected": SANDBOX_UNAVAILABLE,
     "runner_unavailable": SANDBOX_UNAVAILABLE,
-    "managed_sandbox_workspace_reset": SANDBOX_UNAVAILABLE,
+    "managed_sandbox_workspace_reset": WORKSPACE_RESET,
     **_BY_ERROR_TYPE,
 }
 
