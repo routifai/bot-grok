@@ -173,16 +173,17 @@ const novaLight = {
 } as const;
 
 const novaDark = {
-  ground: "#101218",
-  "ground-wash": "#0B0D12",
-  panel: "rgba(24, 27, 34, 0.88)",
-  solid: "#191C23",
-  line: "#272B35",
+  // Deeper ground with a visible blue glow, so the lifted panels read as separate surfaces.
+  ground: "#0A0B0F",
+  "ground-wash": "#172038",
+  panel: "rgba(26, 29, 38, 0.84)",
+  solid: "#1C1F28",
+  line: "#2B303C",
   ink: "#ECEEF3",
-  "ink-2": "#A3A9B6",
-  "ink-3": "#6A7080",
-  bubble: "#232731",
-  selection: "#222734",
+  "ink-2": "#A7ADBA",
+  "ink-3": "#6E7485",
+  bubble: "#272B36",
+  selection: "#272D3B",
   "fork-1": "#4B8DFF",
   "fork-2": "#A786FF",
   "fork-3": "#F29A57",
