@@ -283,6 +283,7 @@ async def test_side_chat_seed_is_left_out_unless_asked(
         "root_id": root.id,
         "parent_id": root.id,
         "seed_item_id": own["lineage"]["seed_item_id"],
+        "anchor_item_id": None,
     }
     assert own["lineage"]["seed_item_id"]
     everything = (await client.get(url, params={"include_seed": "true"})).json()

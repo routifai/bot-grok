@@ -310,6 +310,35 @@ class BackgroundSessionTitleCoordinator:
 
         task.add_done_callback(_discard)
 
+    async def write_line(
+        self, *, conversation: Conversation, prompt: str, instructions: str
+    ) -> str | None:
+        """One model-written line for *prompt*, awaited now instead of scheduled.
+
+        The same economy-model call as Activity titles, run on *conversation*'s runner and
+        bounded by the coordinator's timeout.
+
+        :returns: The cleaned line, or ``None`` when the harness has no title model, no
+            runner answers, or the reply is unusable. Never raises.
+        """
+        if not _background_session_title_harness_supported(conversation.harness_override):
+            return None
+        request = BackgroundTitleRequest(
+            session_id=conversation.id,
+            prompt=prompt,
+            agent_id=conversation.agent_id,
+            harness_override=conversation.harness_override,
+            model_override=conversation.model_override,
+            sub_agent_name=conversation.sub_agent_name,
+            additional_instructions=instructions,
+        )
+        try:
+            async with self._generation_slots:
+                return await self._generate_title(request)
+        except Exception:  # noqa: BLE001 - the caller falls back to a deterministic line
+            _logger.info("line generation failed session=%s", conversation.id, exc_info=True)
+            return None
+
     async def _run_activity_title(
         self,
         *,

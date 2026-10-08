@@ -16,6 +16,7 @@ from omnigent.stores import ConversationStore
 from omnigent.stores.conversation_store import side_chat_parent_id
 from omnigent.superchat.feature import is_helper, is_super_chat
 from omnigent.superchat.projects.card import project_slug_from_workspace
+from omnigent.superchat.side_chats.forks import fork_anchor_id, fork_parent_id
 
 _MAX_HELPER_HOPS = 8
 
@@ -74,8 +75,10 @@ def session_lineage(
     """Where a session sits: ``kind`` (``super`` / ``side`` / ``helper`` / ``None``), its root.
 
     :param helper_root: A Helper's already-read root, to skip reading it again.
-    :returns: ``{"kind", "root_id", "parent_id", "seed_item_id"}``; ``seed_item_id`` is the
-        checkpoint a with-context Side Chat starts after.
+    :returns: ``{"kind", "root_id", "parent_id", "seed_item_id", "anchor_item_id"}``;
+        ``seed_item_id`` is the checkpoint a with-context Side Chat starts after. A Fork's
+        ``anchor_item_id`` is the message it started from, and its ``parent_id`` the chat
+        holding it (a fork of a fork's parent is that fork; its root is still the Super Chat).
     """
     labels = conversation.labels
     lineage: dict[str, Any] = {
@@ -83,6 +86,7 @@ def session_lineage(
         "root_id": None,
         "parent_id": None,
         "seed_item_id": None,
+        "anchor_item_id": None,
     }
     if conversation.kind == "sub_agent" or is_helper(labels):
         root = helper_root or _helper_root(conv_store, conversation) or conversation
@@ -95,8 +99,9 @@ def session_lineage(
         lineage.update(
             kind="side",
             root_id=parent,
-            parent_id=parent,
+            parent_id=fork_parent_id(labels) or parent,
             seed_item_id=_cached_seed_item_id(conv_store, conversation),
+            anchor_item_id=fork_anchor_id(labels),
         )
     elif is_super_chat(labels):
         lineage.update(kind="super", root_id=conversation.id)

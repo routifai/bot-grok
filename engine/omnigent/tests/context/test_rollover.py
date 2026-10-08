@@ -933,6 +933,33 @@ async def test_side_chat_seed_with_no_reply_yet_still_excludes_the_trailing_requ
 
 
 @pytest.mark.asyncio
+async def test_fork_seed_ends_at_its_anchor_even_a_question() -> None:
+    """A Fork (ADR 0010) knows the parent up to and including its anchor, nothing later."""
+    items = _turn(1) + _turn(2) + _turn(3)
+
+    data = await build_side_chat_seed(
+        items,
+        keep_tokens=100_000,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient("SUMMARY"),
+        anchor_item_id="u2",
+    )
+
+    assert data.last_item_id == "u2"  # a chosen question is kept, unlike the mid-turn trim
+    assert data.compacted_messages is not None
+    kept = {m.get("id") for m in data.compacted_messages}
+    assert "u2" in kept and not kept & {"a2", "u3", "a3"}
+    with pytest.raises(ValueError, match="fork anchor"):
+        await build_side_chat_seed(
+            items,
+            keep_tokens=100_000,
+            model="gpt-4o",
+            llm_client=_ReturnsTextClient("S"),
+            anchor_item_id="missing",
+        )
+
+
+@pytest.mark.asyncio
 async def test_side_chat_seed_with_only_one_unanswered_message_keeps_it() -> None:
     """Truncating before the lone trailing user message would leave nothing
     to seed from — keep it rather than seed from an empty record."""

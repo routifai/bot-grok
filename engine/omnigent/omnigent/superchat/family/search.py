@@ -31,7 +31,8 @@ def family_chats(conv_store: ConversationStore, session_id: str) -> list[Convers
     return [conversation] if conversation is not None else []
 
 
-def _shown_text(item: ConversationItem) -> str | None:
+def shown_text(item: ConversationItem) -> str | None:
+    """The text a transcript shows for *item*; ``None`` for hidden context and notices."""
     data = item.data
     if not isinstance(data, MessageData) or data.is_meta:
         return None
@@ -46,7 +47,7 @@ def _shown_text(item: ConversationItem) -> str | None:
     return text
 
 
-def _own_items(
+def own_items(
     conv_store: ConversationStore, chat: Conversation, hits: list[ConversationItem]
 ) -> list[ConversationItem]:
     """*hits* minus the with-context Side Chat's copied parent record (everything before its seed).
@@ -92,8 +93,8 @@ def search_family(
     for chat in chats:
         # Over-fetch: hidden items and copies are dropped after ranking.
         hits = conv_store.search(query, conversation_id=chat.id, limit=limit * 3)
-        for hit in _own_items(conv_store, chat, hits):
-            text = _shown_text(hit)
+        for hit in own_items(conv_store, chat, hits):
+            text = shown_text(hit)
             if text is None:
                 continue
             assert isinstance(hit.data, MessageData)

@@ -198,6 +198,12 @@ class ErrorCode:
         tenant than the caller's (HTTP 409).
     :cvar NOT_A_SUPER_CHAT: The session is not a Super Chat root (a side
         chat, Helper or plain session) (HTTP 422).
+    :cvar FORK_ANCHOR_INVALID: A fork's anchor is not a visible user or
+        assistant message of the chat it is opened from (HTTP 422).
+    :cvar FORK_TOO_DEEP: A fork was asked of a fork of a fork; forks nest one
+        level only (HTTP 422).
+    :cvar NOT_A_FORK: The session is not a fork (a side chat with an anchor)
+        (HTTP 422).
     :cvar UNAUTHORIZED: No valid authentication credentials (HTTP 401).
     :cvar FORBIDDEN: Authenticated but insufficient permissions (HTTP 403).
     :cvar RUNNER_CAPABILITY_MISMATCH: The selected runner cannot
@@ -260,6 +266,9 @@ class ErrorCode:
     MUSE_ALREADY_SET = "muse_already_set"
     MUSE_TENANT_MISMATCH = "muse_tenant_mismatch"
     NOT_A_SUPER_CHAT = "not_a_super_chat"
+    FORK_ANCHOR_INVALID = "fork_anchor_invalid"
+    FORK_TOO_DEEP = "fork_too_deep"
+    NOT_A_FORK = "not_a_fork"
 
 
 # Single source of truth for error code → HTTP status.
@@ -305,6 +314,9 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.MUSE_ALREADY_SET: 409,
     ErrorCode.MUSE_TENANT_MISMATCH: 409,
     ErrorCode.NOT_A_SUPER_CHAT: 422,
+    ErrorCode.FORK_ANCHOR_INVALID: 422,
+    ErrorCode.FORK_TOO_DEEP: 422,
+    ErrorCode.NOT_A_FORK: 422,
 }
 
 
@@ -347,6 +359,9 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     ErrorCode.MUSE_ALREADY_SET: ErrorCategory.USER,
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorCategory.USER,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorCategory.USER,
+    ErrorCode.FORK_ANCHOR_INVALID: ErrorCategory.USER,
+    ErrorCode.FORK_TOO_DEEP: ErrorCategory.USER,
+    ErrorCode.NOT_A_FORK: ErrorCategory.USER,
 }
 
 
@@ -394,6 +409,9 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.MUSE_ALREADY_SET: ErrorImpact.BENIGN,
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorImpact.BENIGN,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorImpact.BENIGN,
+    ErrorCode.FORK_ANCHOR_INVALID: ErrorImpact.BENIGN,
+    ErrorCode.FORK_TOO_DEEP: ErrorImpact.BENIGN,
+    ErrorCode.NOT_A_FORK: ErrorImpact.BENIGN,
 }
 
 
@@ -436,6 +454,9 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     ErrorCode.MUSE_ALREADY_SET: ErrorPhase.REQUEST,
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorPhase.REQUEST,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorPhase.REQUEST,
+    ErrorCode.FORK_ANCHOR_INVALID: ErrorPhase.REQUEST,
+    ErrorCode.FORK_TOO_DEEP: ErrorPhase.REQUEST,
+    ErrorCode.NOT_A_FORK: ErrorPhase.REQUEST,
 }
 
 

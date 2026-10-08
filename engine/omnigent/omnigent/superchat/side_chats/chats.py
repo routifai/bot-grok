@@ -23,6 +23,7 @@ from omnigent.context.labels import (
     SUPERSIDE_CHAT_MODE_VALUE,
     is_superside_chat,
 )
+from omnigent.entities import ConversationItem
 from omnigent.stores.conversation_store import (
     SIDE_CHAT_LABEL_KEY,
     SIDE_CHAT_START_LABEL_KEY,
@@ -70,17 +71,25 @@ def refuse_side_chat_open(
     return None
 
 
-def build_side_chat_fork_body(title: str | None) -> dict[str, object]:
+def build_side_chat_fork_body(
+    title: str | None, *, anchor: ConversationItem | None = None
+) -> dict[str, object]:
     """``POST /v1/sessions/{super_chat_id}/fork`` body for ``with_context``.
 
     ``side_chat: true`` makes the server stamp :data:`SIDE_CHAT_LABEL_KEY`,
     keep the rollover-mode labels, and — since the source is a rollover
     session — seed the fork from the parent's checkpoint instead of its full
     transcript (``routes_core.fork_session`` / ``_seed_rollover_side_chat``).
+    A Fork's *anchor* ends the seed at that item and stops the copy at the
+    end of its turn, so nothing later than that turn reaches the new chat.
     """
     body: dict[str, object] = {"side_chat": True}
     if title:
         body["title"] = title
+    if anchor is not None:
+        body["side_chat_anchor_item_id"] = anchor.id
+        if anchor.response_id:
+            body["up_to_response_id"] = anchor.response_id
     return body
 
 

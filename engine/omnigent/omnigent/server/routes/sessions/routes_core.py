@@ -2997,14 +2997,17 @@ def register_core_routes(
             request=request,
         )
 
-    async def _seed_rollover_side_chat(new_conv_id: str, source_id: str) -> None:
+    async def _seed_rollover_side_chat(
+        new_conv_id: str, source_id: str, anchor_item_id: str | None = None
+    ) -> None:
         """
         Append the fork's seed checkpoint: parent summary + recent tail.
 
         A rollover side chat must not inherit the parent's full transcript.
         Reuses the parent's latest compaction summary when one exists
         (folding in only what happened since); builds one now, over the
-        whole record, when the parent never rolled over yet.
+        whole record, when the parent never rolled over yet. With
+        *anchor_item_id* (a Fork, ADR 0010) the record ends at that item.
         """
         from omnigent.context.rollover import (
             build_side_chat_seed,
@@ -3064,6 +3067,7 @@ def register_core_routes(
             connection=connection,
             runner_client=runner_client,
             conversation_id=source_id,
+            anchor_item_id=anchor_item_id,
         )
         await asyncio.to_thread(
             conversation_store.append,
@@ -3596,7 +3600,9 @@ def register_core_routes(
             # resume rebuilders restart there. Best-effort: a failure here
             # just leaves the full copy in place, never breaks the fork.
             try:
-                await _seed_rollover_side_chat(new_conv.id, source_id)
+                await _seed_rollover_side_chat(
+                    new_conv.id, source_id, body.side_chat_anchor_item_id
+                )
             except Exception:
                 _logger.warning(
                     "rollover side-chat seed failed for fork %s of %s; "

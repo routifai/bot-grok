@@ -1,4 +1,5 @@
-"""``POST /sessions/{id}/side_chats``: open a Side Chat from its Super Chat.
+"""``POST /sessions/{id}/side_chats``: open a Side Chat (or a Fork) from its Super Chat, and
+``POST /sessions/{id}/add_to_conversation``: add a Fork's summary back under its anchor.
 
 The one implementation behind both the web app's "+ New side chat" and the
 model-facing ``side_chat_open`` tool (``omnigent.superchat.side_chats.
@@ -17,6 +18,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Request
 
+from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
+from omnigent.entities import Conversation
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_EDIT, AuthProvider
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
@@ -24,19 +27,36 @@ from omnigent.server.routes._auth_helpers import (
     require_access_and_level as _require_access_and_level,
 )
 from omnigent.server.routes._errors import session_not_found as _session_not_found
-from omnigent.server.schemas import SideChatOpenRequest, SideChatOpenResponse
+from omnigent.server.routes._sessions.common import get_server_runner_router
+from omnigent.server.routes._sessions.helpers import _forward_session_change_to_runner
+from omnigent.server.schemas import ForkAddRequest, SideChatOpenRequest, SideChatOpenResponse
 from omnigent.stores import ConversationStore
 from omnigent.stores.conversation_store import (
     SIDE_CHAT_PARENT_LABEL_KEY,
     SIDE_CHAT_START_LABEL_KEY,
+    side_chat_parent_id,
 )
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.family.signals import notify_chats_changed
+from omnigent.superchat.activity.titles import tidy_request_title
+from omnigent.superchat.family.signals import notify_chats_changed, notify_message_done
 from omnigent.superchat.side_chats.chats import (
     SIDE_CHAT_START_WITH_CONTEXT,
     build_side_chat_blank_create_body,
     build_side_chat_fork_body,
     refuse_side_chat_open,
+)
+from omnigent.superchat.side_chats.forks import (
+    FORK_ADDED_LABEL_KEYS,
+    FORK_ANCHOR_LABEL_KEY,
+    FORK_PARENT_LABEL_KEY,
+    FORK_SUMMARY_INSTRUCTIONS,
+    STATE_ADDED,
+    STATE_ARCHIVED,
+    check_fork_open,
+    fork_anchor_id,
+    fork_parent_id,
+    store_added_summary,
+    summary_prompt,
 )
 
 _logger = logging.getLogger(__name__)
@@ -106,14 +126,21 @@ def register_side_chats_routes(
         and — when ``first_message`` is given — sent that as its first
         user message.
 
-        :param session_id: The Super Chat to branch the Side Chat from.
+        With ``anchor_item_id`` it opens a Fork (ADR 0010): *session_id* may
+        then also be a fork of the Super Chat (once), the seed ends at the
+        anchor, and the anchor and its chat are stamped on the new Side Chat
+        (``omnigent/superchat/side_chats/forks.py``).
+
+        :param session_id: The Super Chat to branch the Side Chat from (or,
+            for a fork, the chat holding the anchor).
         :param body: ``start`` (required), optional ``title`` /
-            ``first_message``.
-        :returns: ``{conversation_id, title, start}``.
+            ``first_message`` / ``anchor_item_id``.
+        :returns: ``{conversation_id, title, start, anchor_item_id, parent_id}``.
         :raises OmnigentError: 404 if *session_id* does not exist; 403 if
-            it is a Side Chat or a Sub-agent, or isn't in superside-chat
-            mode; whatever the fork/create/message step raises on
-            failure.
+            it is a Side Chat (an anchorless one, for a fork) or a Sub-agent,
+            or isn't in superside-chat mode; 422 ``fork_too_deep`` /
+            ``fork_anchor_invalid`` for a fork; whatever the
+            fork/create/message step raises on failure.
         """
         user_id = _get_user_id(request, auth_provider)
         access = await _require_access_and_level(
@@ -125,20 +152,30 @@ def register_side_chats_routes(
             if caller is None:
                 raise _session_not_found()
 
-        refusal = refuse_side_chat_open(
-            labels=caller.labels,
-            kind=caller.kind,
-            parent_session_id=caller.parent_conversation_id,
-        )
-        if refusal is not None:
-            raise OmnigentError(refusal, code=ErrorCode.FORBIDDEN)
+        anchor = None
+        if body.anchor_item_id is not None:
+            if body.start != SIDE_CHAT_START_WITH_CONTEXT:
+                raise OmnigentError("A fork starts with_context", code=ErrorCode.INVALID_INPUT)
+            anchor = await asyncio.to_thread(
+                check_fork_open, conversation_store, caller, body.anchor_item_id
+            )
+        else:
+            refusal = refuse_side_chat_open(
+                labels=caller.labels,
+                kind=caller.kind,
+                parent_session_id=caller.parent_conversation_id,
+            )
+            if refusal is not None:
+                raise OmnigentError(refusal, code=ErrorCode.FORBIDDEN)
+        # A fork of a fork still belongs to the Super Chat's family.
+        root_id = side_chat_parent_id(caller.labels) or session_id
 
         if body.start == SIDE_CHAT_START_WITH_CONTEXT:
             create_resp = await _internal_call(
                 request,
                 "POST",
                 f"/sessions/{session_id}/fork",
-                build_side_chat_fork_body(body.title),
+                build_side_chat_fork_body(body.title, anchor=anchor),
             )
         else:
             agent_id = caller.agent_id
@@ -165,12 +202,14 @@ def register_side_chats_routes(
         new_conv = create_resp.json()
         new_id = new_conv["id"]
 
-        await asyncio.to_thread(
-            conversation_store.set_labels,
-            new_id,
-            {SIDE_CHAT_START_LABEL_KEY: body.start, SIDE_CHAT_PARENT_LABEL_KEY: session_id},
-        )
-        notify_chats_changed(session_id)
+        labels = {SIDE_CHAT_START_LABEL_KEY: body.start, SIDE_CHAT_PARENT_LABEL_KEY: root_id}
+        if anchor is not None:
+            labels |= {FORK_ANCHOR_LABEL_KEY: anchor.id, FORK_PARENT_LABEL_KEY: session_id}
+        await asyncio.to_thread(conversation_store.set_labels, new_id, labels)
+        # A fork of a fork copies its parent's labels: not its "added to the Conversation" state.
+        for key in FORK_ADDED_LABEL_KEYS & caller.labels.keys():
+            await asyncio.to_thread(conversation_store.delete_label, new_id, key)
+        notify_chats_changed(root_id)
 
         host_id = caller.host_id
         workspace = caller.workspace
@@ -204,7 +243,100 @@ def register_side_chats_routes(
             start=body.start,
             first_message_error=first_message_error,
             first_message_error_code=first_message_error_code,
+            anchor_item_id=anchor.id if anchor is not None else None,
+            parent_id=session_id if anchor is not None else None,
         )
+
+    @router.post("/sessions/{session_id}/add_to_conversation", response_model=None)
+    async def add_fork_to_conversation(
+        request: Request,
+        session_id: str,
+        body: ForkAddRequest | None = None,
+    ) -> dict[str, Any]:
+        """
+        Add a fork's one-line summary back under its anchor (ADR 0010).
+
+        Stores the summary on the fork (its state becomes ``added``; the transcript draws a
+        ``fork_summary`` block under the anchor) and appends a system notice to the chat
+        holding the anchor, so the Muse reads it. Asking again with the same summary changes
+        nothing; a new summary replaces it.
+
+        :param session_id: The fork.
+        :param body: Optional ``summary``; without one the engine writes it from the fork.
+        :returns: ``{"fork_id", "session_id", "anchor_item_id", "item_id", "title",
+            "summary", "state"}``: ``session_id`` is the chat holding the anchor, ``item_id``
+            the notice the Muse reads.
+        :raises OmnigentError: 404 if the fork does not exist; 403 without EDIT on the fork
+            and its parent chat; 422 ``not_a_fork`` for any other chat; 400 when no summary
+            was given and the fork has nothing to summarise yet.
+        """
+        user_id = _get_user_id(request, auth_provider)
+        access = await _require_access_and_level(
+            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
+        )
+        fork = access.conversation or await asyncio.to_thread(
+            conversation_store.get_conversation, session_id
+        )
+        if fork is None:
+            raise _session_not_found()
+        parent_id = fork_parent_id(fork.labels)
+        if parent_id is None:
+            raise OmnigentError("This chat is not a fork", code=ErrorCode.NOT_A_FORK)
+        parent_access = await _require_access_and_level(
+            user_id, parent_id, LEVEL_EDIT, permission_store, conversation_store
+        )
+        parent = parent_access.conversation or await asyncio.to_thread(
+            conversation_store.get_conversation, parent_id
+        )
+        if parent is None:
+            raise _session_not_found()
+
+        summary = " ".join((body.summary if body and body.summary else "").split())
+        if not summary:
+            summary = await _write_summary(request, conversation_store, fork)
+        notice, changed = await asyncio.to_thread(
+            store_added_summary, conversation_store, fork, summary, created_by=user_id
+        )
+        if changed and notice is not None:
+            root_id = side_chat_parent_id(fork.labels) or parent_id
+            notify_chats_changed(root_id)
+            notify_message_done(parent_id, notice.id)
+            if parent.live_status not in _MID_TURN_LIVE_STATUSES:
+                # Drop the runner's warm history so the next turn reloads it with the notice;
+                # mid-turn, the notice is read at the next cold start instead.
+                await _forward_session_change_to_runner(
+                    parent_id, get_server_runner_router(), {"type": "context_reset"}
+                )
+        return {
+            "fork_id": fork.id,
+            "session_id": parent_id,
+            "anchor_item_id": fork_anchor_id(fork.labels),
+            "item_id": notice.id if notice is not None else None,
+            "title": fork.title,
+            "summary": summary,
+            "state": STATE_ARCHIVED if fork.archived else STATE_ADDED,
+        }
+
+
+async def _write_summary(
+    request: Request, conversation_store: ConversationStore, fork: Conversation
+) -> str:
+    """A one-line summary of *fork*: model-written when its runner answers, else its gist."""
+    prompt, fallback = await asyncio.to_thread(summary_prompt, conversation_store, fork)
+    if not prompt:
+        raise OmnigentError("The fork has nothing to add yet", code=ErrorCode.INVALID_INPUT)
+    coordinator = getattr(request.app.state, "background_title_coordinator", None)
+    line = (
+        await coordinator.write_line(
+            conversation=fork, prompt=prompt, instructions=FORK_SUMMARY_INSTRUCTIONS
+        )
+        if coordinator is not None
+        else None
+    )
+    summary = line or fallback or tidy_request_title(prompt.split("\n", 1)[0].partition(": ")[2])
+    if not summary:
+        raise OmnigentError("The fork has nothing to add yet", code=ErrorCode.INVALID_INPUT)
+    return summary
 
 
 #: Statuses worth one more try: a runner still starting, a conflict, a server blip.

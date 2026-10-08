@@ -245,6 +245,7 @@ async def test_session_read_carries_kind_root_and_project(
         "root_id": muse_id,
         "parent_id": None,
         "seed_item_id": None,
+        "anchor_item_id": None,
         "project": None,
     }
     agent_id = muse["agent_id"]
@@ -262,6 +263,7 @@ async def test_session_read_carries_kind_root_and_project(
         "root_id": muse_id,
         "parent_id": muse_id,
         "seed_item_id": None,
+        "anchor_item_id": None,
         "project": {"slug": "q3-deck", "name": "Q3 board deck"},
     }
     helper = store.create_conversation(

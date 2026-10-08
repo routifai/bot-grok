@@ -605,6 +605,36 @@ def _side_chat_framed(seed: CompactionData) -> CompactionData:
     )
 
 
+def _without_opening_request(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """*items* up to the parent's last finished reply.
+
+    A Side Chat opened mid-turn must not inherit (and act on) the request that is opening it.
+    With no reply at all yet, it stops before the last user message too, unless that message
+    is all there is (keep it rather than seed from nothing).
+    """
+    last_reply_index = next(
+        (
+            i
+            for i in range(len(items) - 1, -1, -1)
+            if items[i].get("type") == "message" and items[i].get("role") == "assistant"
+        ),
+        None,
+    )
+    if last_reply_index is not None:
+        return items[: last_reply_index + 1]
+    last_user_index = next(
+        (
+            i
+            for i in range(len(items) - 1, -1, -1)
+            if items[i].get("type") == "message" and items[i].get("role") == "user"
+        ),
+        None,
+    )
+    if last_user_index is not None and last_user_index > 0:
+        return items[:last_user_index]
+    return items
+
+
 async def _side_chat_checkpoint(
     items: list[dict[str, Any]],
     *,
@@ -614,6 +644,7 @@ async def _side_chat_checkpoint(
     connection: dict[str, str] | None = None,
     runner_client: Any | None = None,
     conversation_id: str | None = None,
+    anchor_item_id: str | None = None,
 ) -> CompactionData:
     """
     Build the seed compaction item for a rollover side chat, Muse-style.
@@ -636,9 +667,12 @@ async def _side_chat_checkpoint(
     :param conversation_id: The PARENT session's id (the summarization call
         runs against the parent's runner binding, not the not-yet-created
         fork's).
+    :param anchor_item_id: A Fork's anchor (ADR 0010): the record is cut right after this
+        item, so the seed knows the parent only up to and including it. The anchor was
+        chosen on purpose, so the mid-turn trim below does not apply.
     :returns: A :class:`CompactionData` seed, ready to post as the fork's
         own ``compaction`` item.
-    :raises ValueError: If *items* is empty.
+    :raises ValueError: If *items* is empty, or *anchor_item_id* is not in it.
     """
     # Raw session items include lifecycle entries the model never saw; keep the
     # parent's checkpoints, which the seed builds on.
@@ -649,37 +683,19 @@ async def _side_chat_checkpoint(
     ]
     if not items:
         raise ValueError("build_side_chat_seed requires a non-empty parent record")
+    if anchor_item_id is not None:
+        anchor_index = next(
+            (i for i, item in enumerate(items) if item.get("id") == anchor_item_id), None
+        )
+        if anchor_index is None:
+            raise ValueError(f"fork anchor {anchor_item_id!r} is not in the parent record")
+        items = items[: anchor_index + 1]
     # A reset forgot everything before it: seed from the reset onwards only.
     reset_index = next((i for i in range(len(items) - 1, -1, -1) if is_reset_item(items[i])), None)
     if reset_index is not None:
         items = items[reset_index:]
-    # Stop at the parent's last finished reply: a Side Chat opened mid-turn
-    # must not inherit (and act on) the request that is opening it.
-    last_reply_index = next(
-        (
-            i
-            for i in range(len(items) - 1, -1, -1)
-            if items[i].get("type") == "message" and items[i].get("role") == "assistant"
-        ),
-        None,
-    )
-    if last_reply_index is not None:
-        items = items[: last_reply_index + 1]
-    else:
-        # No assistant reply at all yet: still must not inherit the request
-        # that's opening this fork — stop before the last USER message too
-        # (unless that message is all there is, in which case there is
-        # nothing left to seed from; keep it rather than seed from nothing).
-        last_user_index = next(
-            (
-                i
-                for i in range(len(items) - 1, -1, -1)
-                if items[i].get("type") == "message" and items[i].get("role") == "user"
-            ),
-            None,
-        )
-        if last_user_index is not None and last_user_index > 0:
-            items = items[:last_user_index]
+    if anchor_item_id is None:
+        items = _without_opening_request(items)
 
     last_compaction_index = next(
         (i for i in range(len(items) - 1, -1, -1) if items[i].get("type") == "compaction"),
@@ -730,6 +746,7 @@ async def build_side_chat_seed(
     connection: dict[str, str] | None = None,
     runner_client: Any | None = None,
     conversation_id: str | None = None,
+    anchor_item_id: str | None = None,
 ) -> CompactionData:
     """:func:`_side_chat_checkpoint` with the side chat's own framing header.
 
@@ -745,6 +762,7 @@ async def build_side_chat_seed(
             connection=connection,
             runner_client=runner_client,
             conversation_id=conversation_id,
+            anchor_item_id=anchor_item_id,
         )
     )
 
@@ -826,8 +844,13 @@ def side_chat_seed_checkpoint(
 
 
 def _chat_summary(
-    conv_store: ConversationStore, conversation: Conversation, preview: str | None
+    conv_store: ConversationStore,
+    conversation: Conversation,
+    preview: str | None,
+    fork_count: int = 0,
 ) -> dict[str, Any]:
+    from omnigent.superchat.side_chats.forks import fork_anchor_id
+
     seed_summary, seed_item_id = side_chat_seed_checkpoint(conv_store, conversation)
     return {
         "id": conversation.id,
@@ -844,6 +867,9 @@ def _chat_summary(
         "summary_body": person_facing_summary(seed_summary),
         "seed_item_id": seed_item_id,
         "live": conversation.live_status in _MID_TURN_LIVE_STATUSES,
+        # A Fork's anchor (ADR 0010), and how many forks hang off this chat's messages.
+        "anchor_item_id": fork_anchor_id(conversation.labels),
+        "fork_count": fork_count,
     }
 
 
@@ -870,10 +896,12 @@ def list_related_chats(
     :param limit: Maximum chats to return.
     :returns: ``[{"id", "title", "created_at", "updated_at",
         "last_message_preview", "archived", "start", "summary", "summary_body", "seed_item_id",
-        "live"},
+        "live", "anchor_item_id", "fork_count"},
         ...]``, newest-updated child first, parent last; ``[]`` when
         *conversation_id* does not exist.
     """
+    from omnigent.superchat.side_chats.forks import fork_counts, list_forks
+
     caller = conv_store.get_conversation(conversation_id)
     if caller is None:
         return []
@@ -927,11 +955,15 @@ def list_related_chats(
     related = related[:limit]
     ids = [conversation.id for conversation in related]
     previews_by_id = conv_store.list_latest_message_items_for_conversations(ids, 10)
+    # The Super Chat's own children are all its forks; from a Side Chat, read the family's.
+    family_root = side_chat_parent_id(caller.labels)
+    counts = fork_counts(list_forks(conv_store, family_root) if family_root else children.values())
     return [
         _chat_summary(
             conv_store,
             conversation,
             _related_chat_preview(previews_by_id.get(conversation.id, [])),
+            counts.get(conversation.id, 0),
         )
         for conversation in related
     ]

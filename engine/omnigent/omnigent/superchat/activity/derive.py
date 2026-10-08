@@ -240,7 +240,7 @@ _STRUCTURED_TEXT = re.compile(r"\s*(?:```|[{\[])")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
 
 
-def _one_line_summary(text: str | None) -> str | None:
+def one_line_summary(text: str | None) -> str | None:
     """The first sentence of ``text`` as plain words, at most :data:`_SUMMARY_MAX_CHARS`."""
     if not text or _STRUCTURED_TEXT.match(text):
         return None
@@ -394,7 +394,7 @@ def _status_summary(
     if status == STATUS_IN_PROGRESS:
         return None
     if status == STATUS_DONE:
-        return stored_summary or _one_line_summary(_last_assistant_text(group))
+        return stored_summary or one_line_summary(_last_assistant_text(group))
     return outcome
 
 
@@ -632,8 +632,9 @@ def resolve_super_chat_id(conv_store: ConversationStore, session_id: str) -> str
     """Resolve ``session_id`` to its Super Chat id.
 
     A Super Chat resolves to itself; a Side Chat resolves to the Super
-    Chat it was forked from (one level only — Side Chats never fork from
-    another Side Chat, per ``rollover/CONTEXT.md``).
+    Chat it was forked from. One read: a fork of a fork (ADR 0010) also
+    carries the Super Chat as its Side Chat parent, and keeps the fork it
+    came from in its own label.
 
     :param conv_store: Store to query.
     :param session_id: A Super Chat or Side Chat conversation id.
