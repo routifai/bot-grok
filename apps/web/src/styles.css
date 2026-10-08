@@ -12,18 +12,33 @@
 /* Muse edition type and elevation (docs/muse/DESIGN.md). */
 @theme {
   --font-display: "Instrument Serif", ui-serif, Georgia, serif;
-  --font-welcome: "Newsreader Variable", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
   --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 32px -12px rgb(0 0 0 / 0.14);
 }
 
+/* Signed-out welcome: the app's own type, and a soft pulse on the "working" dot. */
+[data-aiden-surface="welcome"] {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Instrument Sans Variable", "Geist Variable",
+    ui-sans-serif, system-ui, sans-serif;
+}
+.welcome-orb {
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--welcome-orb-hi) 0,
+    var(--welcome-orb-mid) 35%,
+    var(--welcome-orb-deep) 70%,
+    var(--welcome-orb-lo) 100%
+  );
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--welcome-orb-mid) 25%, transparent);
+}
 @keyframes welcomePulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--welcome-glow) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--welcome-me) 45%, transparent);
   }
   70%,
   100% {
-    box-shadow: 0 0 0 10px transparent;
+    box-shadow: 0 0 0 9px transparent;
   }
 }
 

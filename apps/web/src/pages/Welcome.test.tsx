@@ -18,8 +18,6 @@ let host: HTMLDivElement;
 beforeEach(() => {
   host = document.createElement("div");
   document.body.append(host);
-  HTMLCanvasElement.prototype.getContext = (() =>
-    null) as typeof HTMLCanvasElement.prototype.getContext;
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: query.includes("reduce"),
     media: query,
@@ -60,28 +58,69 @@ async function render() {
 it("shows the headline and links the CTAs to sign-up and sign-in", async () => {
   await render();
   expect(host.querySelector("h1")?.textContent).toContain("Hand it off.");
+  expect(host.querySelector("h1")?.textContent).toContain("Nova's already on it.");
   const hrefs = (label: string) =>
     [...host.querySelectorAll("a")]
       .filter((a) => a.textContent === label)
       .map((a) => a.getAttribute("href"));
   expect(hrefs("Get started")).toEqual(["/sign-up", "/sign-up", "/sign-up"]);
-  expect(hrefs("I have an account")).toEqual(["/sign-in", "/sign-in"]);
+  expect(hrefs("I have an account")).toEqual(["/sign-in"]);
   expect(hrefs("Sign in")).toEqual(["/sign-in"]);
 });
 
-it("has a film with a poster and a captions track, not preloaded", async () => {
+it("tells the week in six beats, all visible under reduced motion", async () => {
   await render();
-  const video = host.querySelector("video");
-  expect(video?.getAttribute("poster")).toContain("welcome/nova-film-poster.jpg");
-  expect(video?.getAttribute("preload")).toBe("none");
-  expect(video?.querySelector("track")?.getAttribute("kind")).toBe("captions");
-  expect(host.querySelector('button[aria-label="Play the film"]')).not.toBeNull();
+  const beats = [...host.querySelectorAll("[data-day]")];
+  expect(beats).toHaveLength(6);
+  expect(beats.every((b) => b.getAttribute("data-in") === "true")).toBe(true);
+  const text = host.textContent ?? "";
+  for (const part of [
+    "Prep me for Thursday's review with Northwind",
+    "Take over",
+    "you were in meetings",
+    "Northwind Q3 Review",
+    "a side question",
+    "Every Monday",
+    "Saved: weekly renewals report",
+    "From three weeks ago",
+    "Send the follow-up to Maya?",
+    "Sent",
+  ]) {
+    expect(text).toContain(part);
+  }
 });
 
-it("shows the finished conversation under reduced motion", async () => {
+it("has the enterprise section with its eight items", async () => {
   await render();
-  const text = host.textContent ?? "";
-  expect(text).toContain("Plan me 5 days in Lisbon");
-  expect(text).toContain("Hold the two flights for 24 hours?");
-  expect(text).not.toContain("Comparing 6 flights");
+  const titles = [...host.querySelectorAll("li h3")].map((h) => h.textContent);
+  expect(titles).toEqual([
+    "Runs where you choose",
+    "Your model",
+    "Your harness",
+    "A computer you host",
+    "Memory per person",
+    "Secrets stay sealed",
+    "Approvals you set",
+    "Every step on record",
+  ]);
+  expect(host.textContent).toContain("Ready for your company.");
+});
+
+it("loads no video until the film button is pressed, then shows it in a dialog", async () => {
+  await render();
+  expect(document.querySelector("video")).toBeNull();
+  const button = [...host.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes("Watch the 47-second film"),
+  );
+  expect(button).toBeDefined();
+  await act(async () => {
+    button?.click();
+  });
+  const video = document.querySelector("video");
+  expect(video?.getAttribute("poster")).toContain("welcome/nova-film-poster.jpg");
+  expect(video?.getAttribute("preload")).toBe("none");
+  const track = video?.querySelector("track");
+  expect(track?.getAttribute("kind")).toBe("captions");
+  expect(track?.getAttribute("src")).toContain("nova-film.en.vtt");
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
 });

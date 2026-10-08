@@ -13,6 +13,9 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "\"Thanks for Thursday. The two risks we discussed are on page 1, with owners and dates.\""
+msgstr "\"Thanks for Thursday. The two risks we discussed are on page 1, with owners and dates.\""
+
 #. placeholder {0}: messages.length
 msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
@@ -156,49 +159,28 @@ msgstr "{workingBotName} is working"
 msgid "@{0}"
 msgstr "@{0}"
 
-msgid "<0>Ask on the side.</0> Fork any message into its own thread without losing your place."
-msgstr "<0>Ask on the side.</0> Fork any message into its own thread without losing your place."
-
-msgid "<0>It asks before it acts.</0> Paying, sending, booking: always your call."
-msgstr "<0>It asks before it acts.</0> Paying, sending, booking: always your call."
-
-msgid "<0>It starts before you do.</0> A short morning note, only when something changed."
-msgstr "<0>It starts before you do.</0> A short morning note, only when something changed."
-
-msgid "<0>Real work, start to finish.</0> On its own computer, every step visible."
-msgstr "<0>Real work, start to finish.</0> On its own computer, every step visible."
-
 msgid "2 of 5 · Next check-in Friday, 9:00"
 msgstr "2 of 5 · Next check-in Friday, 9:00"
 
-msgid "4 apartments under $2,100, all 5 minutes from the subway. Book viewings for Thursday evening?"
-msgstr "4 apartments under $2,100, all 5 minutes from the subway. Book viewings for Thursday evening?"
-
-msgid "4 replies"
-msgstr "4 replies"
-
-msgid "5 days"
-msgstr "5 days"
+msgid "4 pages · ready to share"
+msgstr "4 pages · ready to share"
 
 msgid "A bit of everything"
 msgstr "A bit of everything"
 
-msgid "A day with Nova."
-msgstr "A day with Nova."
+msgid "A computer you host"
+msgstr "A computer you host"
 
 #. placeholder {0}: goal.title
 msgid "A new plan for “{0}”"
 msgstr "A new plan for “{0}”"
 
-msgid "A Nova conversation: planning a weekend in Lisbon"
-msgstr "A Nova conversation: planning a weekend in Lisbon"
-
 #. placeholder {0}: goal.title
 msgid "A plan is ready for “{0}”"
 msgstr "A plan is ready for “{0}”"
 
-msgid "A real browser and files in the cloud. Watch it work, or take over whenever you like."
-msgstr "A real browser and files in the cloud. Watch it work, or take over whenever you like."
+msgid "a side question"
+msgstr "a side question"
 
 msgid "About groups"
 msgstr "About groups"
@@ -345,9 +327,6 @@ msgstr "Agent connections"
 msgid "Agents:"
 msgstr "Agents:"
 
-msgid "Alfama · Feira da Ladra · dinner at a tasca"
-msgstr "Alfama · Feira da Ladra · dinner at a tasca"
-
 msgid "All"
 msgstr "All"
 
@@ -424,6 +403,9 @@ msgstr "Approvals"
 msgid "Approvals choose which actions wait for your OK."
 msgstr "Approvals choose which actions wait for your OK."
 
+msgid "Approvals you set"
+msgstr "Approvals you set"
+
 msgid "Approve"
 msgstr "Approve"
 
@@ -494,12 +476,6 @@ msgstr "Ask me first"
 msgid "Ask me first before step {0}"
 msgstr "Ask me first before step {0}"
 
-msgid "Ask Nova"
-msgstr "Ask Nova"
-
-msgid "Ask once and get on with your day. Nova researches, compares, drafts and books on its own computer, and checks with you before anything it can't undo."
-msgstr "Ask once and get on with your day. Nova researches, compares, drafts and books on its own computer, and checks with you before anything it can't undo."
-
 msgid "Ask the server owner to configure this provider."
 msgstr "Ask the server owner to configure this provider."
 
@@ -563,12 +539,6 @@ msgstr "Bearer token"
 
 msgid "Blocked"
 msgstr "Blocked"
-
-msgid "Book them"
-msgstr "Book them"
-
-msgid "Booked Tasca do Chico, 8pm, back room. I added it to your calendar."
-msgstr "Booked Tasca do Chico, 8pm, back room. I added it to your calendar."
 
 msgid "Booting live desktop…"
 msgstr "Booting live desktop…"
@@ -690,9 +660,6 @@ msgstr "Check your email"
 msgid "Check-ins"
 msgstr "Check-ins"
 
-msgid "Checked 11 restaurants"
-msgstr "Checked 11 restaurants"
-
 msgid "Checked daily"
 msgstr "Checked daily"
 
@@ -701,9 +668,6 @@ msgstr "Checked hourly"
 
 msgid "Checked weekly"
 msgstr "Checked weekly"
-
-msgid "Checking May weather"
-msgstr "Checking May weather"
 
 msgid "Checking…"
 msgstr "Checking…"
@@ -716,6 +680,9 @@ msgstr "Choose a new password"
 
 msgid "Choose the Muse's color"
 msgstr "Choose the Muse's color"
+
+msgid "Choose what waits for a yes, and cap daily spending."
+msgstr "Choose what waits for a yes, and cap daily spending."
 
 msgid "Choose which connected model Nova uses."
 msgstr "Choose which connected model Nova uses."
@@ -799,9 +766,6 @@ msgstr "Command"
 msgid "Commitments"
 msgstr "Commitments"
 
-msgid "Comparing 6 flights"
-msgstr "Comparing 6 flights"
-
 msgid "Complete"
 msgstr "Complete"
 
@@ -862,6 +826,9 @@ msgstr "Connect MCP server “{name}”"
 
 msgid "Connect OAuth"
 msgstr "Connect OAuth"
+
+msgid "Connect the model provider your company approves."
+msgstr "Connect the model provider your company approves."
 
 msgid "Connect this provider to use it as your personal model."
 msgstr "Connect this provider to use it as your personal model."
@@ -1311,9 +1278,6 @@ msgstr "Dark"
 msgid "day"
 msgstr "day"
 
-msgid "Day 1"
-msgstr "Day 1"
-
 msgid "Day-to-day work"
 msgstr "Day-to-day work"
 
@@ -1448,9 +1412,6 @@ msgstr "Don’t have an account?"
 msgid "Done"
 msgstr "Done"
 
-msgid "Done. Flights on the 14th are $310 cheaper, so I built the plan around them. Alfama for two nights, then Príncipe Real."
-msgstr "Done. Flights on the 14th are $310 cheaper, so I built the plan around them. Alfama for two nights, then Príncipe Real."
-
 msgid "Download"
 msgstr "Download"
 
@@ -1483,6 +1444,9 @@ msgstr "Duplicate"
 
 msgid "e.g. Hivenet Agent, Presales, Timesheets bot"
 msgstr "e.g. Hivenet Agent, Presales, Timesheets bot"
+
+msgid "Each person gets an isolated computer, on your own infrastructure when you self-host."
+msgstr "Each person gets an isolated computer, on your own infrastructure when you self-host."
 
 msgid "Earlier"
 msgstr "Earlier"
@@ -1544,6 +1508,12 @@ msgstr "Every Monday"
 
 msgid "Every month"
 msgstr "Every month"
+
+msgid "Every step it took, in plain words."
+msgstr "Every step it took, in plain words."
+
+msgid "Every step on record"
+msgstr "Every step on record"
 
 msgid "Every week"
 msgstr "Every week"
@@ -1632,9 +1602,6 @@ msgstr "Filters"
 msgid "Find a memory"
 msgstr "Find a memory"
 
-msgid "Find a place for 6 on Friday, somewhere quiet."
-msgstr "Find a place for 6 on Friday, somewhere quiet."
-
 msgid "Find models"
 msgstr "Find models"
 
@@ -1697,6 +1664,12 @@ msgstr "Free"
 msgid "Fri 9:00"
 msgstr "Fri 9:00"
 
+msgid "FRI 9:30"
+msgstr "FRI 9:30"
+
+msgid "FRIDAY"
+msgstr "FRIDAY"
+
 msgid "From"
 msgstr "From"
 
@@ -1714,6 +1687,9 @@ msgstr "From a fork:"
 
 msgid "From Q3 portfolio review · 7:40"
 msgstr "From Q3 portfolio review · 7:40"
+
+msgid "From three weeks ago"
+msgstr "From three weeks ago"
 
 msgid "From your goal · {when}"
 msgstr "From your goal · {when}"
@@ -1736,17 +1712,11 @@ msgstr "Get started"
 msgid "Getting ready"
 msgstr "Getting ready"
 
-msgid "Gift for Mia"
-msgstr "Gift for Mia"
-
 msgid "Git event"
 msgstr "Git event"
 
 msgid "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
 msgstr "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
-
-msgid "Give it the first thing <0>on your list.</0>"
-msgstr "Give it the first thing <0>on your list.</0>"
 
 msgid "Goal options"
 msgstr "Goal options"
@@ -1775,8 +1745,8 @@ msgstr "Groups"
 msgid "Hand back to {museName}"
 msgstr "Hand back to {museName}"
 
-msgid "Hand it off.<0/><1>Nova's already on it.</1>"
-msgstr "Hand it off.<0/><1>Nova's already on it.</1>"
+msgid "Hand it off.<0/>Nova's already on it."
+msgstr "Hand it off.<0/>Nova's already on it."
 
 msgid "Hang up"
 msgstr "Hang up"
@@ -1798,6 +1768,9 @@ msgstr "Header value"
 
 msgid "Hear a sample"
 msgstr "Hear a sample"
+
+msgid "Here is one week of working with it."
+msgstr "Here is one week of working with it."
 
 msgid "Here's my plan"
 msgstr "Here's my plan"
@@ -1822,15 +1795,6 @@ msgstr "Hide password"
 
 msgid "High"
 msgstr "High"
-
-msgid "Hold the two flights for 24 hours?"
-msgstr "Hold the two flights for 24 hours?"
-
-msgid "Hold them"
-msgstr "Hold them"
-
-msgid "Hotel near the river?"
-msgstr "Hotel near the river?"
 
 msgid "hour"
 msgstr "hour"
@@ -1942,9 +1906,6 @@ msgstr "Interval amount"
 msgid "Interval unit"
 msgstr "Interval unit"
 
-msgid "Is clause 14 of this lease normal?"
-msgstr "Is clause 14 of this lease normal?"
-
 msgid "Isolated preview"
 msgstr "Isolated preview"
 
@@ -1960,14 +1921,8 @@ msgstr "It starts with a summary of this conversation."
 msgid "It won't be used anymore. This can't be undone."
 msgstr "It won't be used anymore. This can't be undone."
 
-msgid "It's stricter than usual: you'd pay for all repairs under $500. Worth asking to change."
-msgstr "It's stricter than usual: you'd pay for all repairs under $500. Worth asking to change."
-
 msgid "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 msgstr "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
-
-msgid "Its own computer"
-msgstr "Its own computer"
 
 msgid "Jump to latest"
 msgstr "Jump to latest"
@@ -2016,9 +1971,6 @@ msgstr "Later"
 msgid "Learned"
 msgstr "Learned"
 
-msgid "Lease, clause 14"
-msgstr "Lease, clause 14"
-
 msgid "Leave"
 msgstr "Leave"
 
@@ -2039,9 +1991,6 @@ msgstr "Linear issue"
 
 msgid "Link a chat app"
 msgstr "Link a chat app"
-
-msgid "Lisbon,"
-msgstr "Lisbon,"
 
 msgid "List view"
 msgstr "List view"
@@ -2142,6 +2091,9 @@ msgstr "Maximum images per request"
 msgid "Maximum output tokens"
 msgstr "Maximum output tokens"
 
+msgid "Maya likes the one-page summary first, so I put it on top, like last time."
+msgstr "Maya likes the one-page summary first, so I put it on top, like last time."
+
 msgid "MCP servers"
 msgstr "MCP servers"
 
@@ -2156,6 +2108,9 @@ msgstr "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
 
 msgid "Memory"
 msgstr "Memory"
+
+msgid "Memory per person"
+msgstr "Memory per person"
 
 msgid "Mentions"
 msgstr "Mentions"
@@ -2235,6 +2190,15 @@ msgstr "Models for the server owner’s default space."
 
 msgid "Models from server"
 msgstr "Models from server"
+
+msgid "MON 11:40"
+msgstr "MON 11:40"
+
+msgid "MON 9:02"
+msgstr "MON 9:02"
+
+msgid "MONDAY"
+msgstr "MONDAY"
 
 msgid "Monthly"
 msgstr "Monthly"
@@ -2431,6 +2395,12 @@ msgstr "None yet"
 msgid "Normal"
 msgstr "Normal"
 
+msgid "Northwind · Q3"
+msgstr "Northwind · Q3"
+
+msgid "Northwind Q3 Review"
+msgstr "Northwind Q3 Review"
+
 msgid "Not connected"
 msgstr "Not connected"
 
@@ -2485,8 +2455,17 @@ msgstr "Nova is working"
 msgid "Nova Report"
 msgstr "Nova Report"
 
+msgid "Nova runs on the agent harness you pick, like Claude or Pi, and keeps the same memory and tools."
+msgstr "Nova runs on the agent harness you pick, like Claude or Pi, and keeps the same memory and tools."
+
 msgid "Nova starts fresh. You can still show earlier messages."
 msgstr "Nova starts fresh. You can still show earlier messages."
+
+msgid "Nova, in 47 seconds"
+msgstr "Nova, in 47 seconds"
+
+msgid "Nova's computer"
+msgstr "Nova's computer"
 
 msgid "Now"
 msgstr "Now"
@@ -2523,6 +2502,12 @@ msgstr "on the 1st at {0}"
 msgid "On track"
 msgstr "On track"
 
+msgid "one conversation"
+msgstr "one conversation"
+
+msgid "One Nova conversation across a work week"
+msgstr "One Nova conversation across a work week"
+
 msgid "One yes before I send this"
 msgstr "One yes before I send this"
 
@@ -2532,9 +2517,6 @@ msgstr "Open"
 #. placeholder {0}: open.length
 msgid "Open · {0}"
 msgstr "Open · {0}"
-
-msgid "Open · 2"
-msgstr "Open · 2"
 
 #. placeholder {0}: artifact.name
 #. placeholder {0}: data.name
@@ -2593,9 +2575,6 @@ msgstr "Or connect an API key"
 msgid "Or paste an API key"
 msgstr "Or paste an API key"
 
-msgid "Ordered. Arrives Thursday."
-msgstr "Ordered. Arrives Thursday."
-
 msgid "Organic"
 msgstr "Organic"
 
@@ -2632,6 +2611,9 @@ msgstr "Password updated"
 msgid "Passwords do not match"
 msgstr "Passwords do not match"
 
+msgid "Passwords live in a vault. Nova fills them in; the model never sees them."
+msgstr "Passwords live in a vault. Nova fills them in; the model never sees them."
+
 msgid "Paste a replacement key"
 msgstr "Paste a replacement key"
 
@@ -2646,9 +2628,6 @@ msgstr "Pause"
 
 msgid "Paused"
 msgstr "Paused"
-
-msgid "Paying, sending, booking, publishing: you say yes first. Everything else, it just does."
-msgstr "Paying, sending, booking, publishing: you say yes first. Everything else, it just does."
 
 msgid "Pending"
 msgstr "Pending"
@@ -2668,14 +2647,8 @@ msgstr "Pin"
 msgid "Plan"
 msgstr "Plan"
 
-msgid "PLAN · PDF · 3 PAGES"
-msgstr "PLAN · PDF · 3 PAGES"
-
 msgid "Plan it"
 msgstr "Plan it"
-
-msgid "Plan me 5 days in Lisbon in May. Not too touristy, good food, under $1,800."
-msgstr "Plan me 5 days in Lisbon in May. Not too touristy, good food, under $1,800."
 
 msgid "Plan my week"
 msgstr "Plan my week"
@@ -2692,9 +2665,6 @@ msgstr "Plan week"
 msgid "Plans"
 msgstr "Plans"
 
-msgid "Play the film"
-msgstr "Play the film"
-
 msgid "Playing…"
 msgstr "Playing…"
 
@@ -2704,6 +2674,9 @@ msgstr "Please propose a plan for my goal \"{0}\"."
 
 msgid "POST to"
 msgstr "POST to"
+
+msgid "Prep me for Thursday's review with Northwind. Maya will be there."
+msgstr "Prep me for Thursday's review with Northwind. Maya will be there."
 
 #. placeholder {0}: props.name
 msgid "Preview {0}"
@@ -2748,6 +2721,9 @@ msgstr "Pull holdings and returns for 12 clients"
 msgid "Pull request"
 msgstr "Pull request"
 
+msgid "pulling Q3 numbers · reading last month's notes"
+msgstr "pulling Q3 numbers · reading last month's notes"
+
 msgid "Q3 client portfolio review"
 msgstr "Q3 client portfolio review"
 
@@ -2766,9 +2742,6 @@ msgstr "Quiet hours start"
 msgid "Quote"
 msgstr "Quote"
 
-msgid "Rain after 3pm, so I moved your run to 7am. Mia's birthday is Saturday; I found three gifts she'd like."
-msgstr "Rain after 3pm, so I moved your run to 7am. Mia's birthday is Saturday; I found three gifts she'd like."
-
 msgid "React"
 msgstr "React"
 
@@ -2784,11 +2757,11 @@ msgstr "Read replies aloud"
 msgid "read-only"
 msgstr "read-only"
 
-msgid "Reading 14 hotel reviews"
-msgstr "Reading 14 hotel reviews"
-
 msgid "Ready"
 msgstr "Ready"
+
+msgid "Ready for your company."
+msgstr "Ready for your company."
 
 msgid "Reasoning effort"
 msgstr "Reasoning effort"
@@ -2854,9 +2827,6 @@ msgstr "Release computer"
 
 msgid "Release interrupted computer?"
 msgstr "Release interrupted computer?"
-
-msgid "Remembers what matters"
-msgstr "Remembers what matters"
 
 msgid "Remove"
 msgstr "Remove"
@@ -2990,6 +2960,9 @@ msgstr "Retry screen"
 msgid "Return to Nova"
 msgstr "Return to Nova"
 
+msgid "Revenue +8%"
+msgstr "Revenue +8%"
+
 msgid "Review"
 msgstr "Review"
 
@@ -3035,6 +3008,12 @@ msgstr "Running…"
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
 
+msgid "Runs where you choose"
+msgstr "Runs where you choose"
+
+msgid "Same conversation.<0/>All week."
+msgstr "Same conversation.<0/>All week."
+
 msgid "Save"
 msgstr "Save"
 
@@ -3065,6 +3044,9 @@ msgstr "Saved to Library"
 msgid "Saved, but list refresh failed"
 msgstr "Saved, but list refresh failed"
 
+msgid "Saved: weekly renewals report · Mondays 8:00"
+msgstr "Saved: weekly renewals report · Mondays 8:00"
+
 msgid "Saved."
 msgstr "Saved."
 
@@ -3088,6 +3070,9 @@ msgstr "Say yes or no, or answer in a sentence."
 
 msgid "Screen"
 msgstr "Screen"
+
+msgid "SCROLL THROUGH THE WEEK"
+msgstr "SCROLL THROUGH THE WEEK"
 
 msgid "Search"
 msgstr "Search"
@@ -3129,6 +3114,9 @@ msgstr "Search your Library…"
 msgid "Searching…"
 msgstr "Searching…"
 
+msgid "Secrets stay sealed"
+msgstr "Secrets stay sealed"
+
 msgid "Sections"
 msgstr "Sections"
 
@@ -3153,8 +3141,14 @@ msgstr "Send it"
 msgid "Send reset link"
 msgstr "Send reset link"
 
+msgid "Send the follow-up to Maya?"
+msgstr "Send the follow-up to Maya?"
+
 msgid "Sending…"
 msgstr "Sending…"
+
+msgid "Sent"
+msgstr "Sent"
 
 msgid "Sentry alert"
 msgstr "Sentry alert"
@@ -3393,6 +3387,9 @@ msgstr "Switching…"
 msgid "System"
 msgstr "System"
 
+msgid "Take over"
+msgstr "Take over"
+
 msgid "Take over anytime."
 msgstr "Take over anytime."
 
@@ -3401,9 +3398,6 @@ msgstr "Talking points are ready for 5 of 12 clients. Two drifted more than 8% f
 
 msgid "Talking points are ready for all 12 clients"
 msgstr "Talking points are ready for all 12 clients"
-
-msgid "TAP 14 May, 2 seats, $642 total. Free to cancel until tomorrow 6pm."
-msgstr "TAP 14 May, 2 seats, $642 total. Free to cancel until tomorrow 6pm."
 
 msgid "Tap the face to change the color"
 msgstr "Tap the face to change the color"
@@ -3441,6 +3435,12 @@ msgstr "Test run"
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
+msgid "The brief is ready. Two open risks are on page 1."
+msgstr "The brief is ready. Two open risks are on page 1."
+
+msgid "the brief stays as it is"
+msgstr "the brief stays as it is"
+
 msgid "The key is stored encrypted and only used for voice."
 msgstr "The key is stored encrypted and only used for voice."
 
@@ -3455,9 +3455,6 @@ msgstr "The model refused my key."
 
 msgid "The Muse stops working on this Goal."
 msgstr "The Muse stops working on this Goal."
-
-msgid "The second one. Get it here by Friday."
-msgstr "The second one. Get it here by Friday."
 
 msgid "Thinking"
 msgstr "Thinking"
@@ -3521,6 +3518,12 @@ msgstr "This week"
 msgid "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
 msgstr "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
 
+msgid "THU 8:15"
+msgstr "THU 8:15"
+
+msgid "THURSDAY"
+msgstr "THURSDAY"
+
 msgid "Time of day"
 msgstr "Time of day"
 
@@ -3569,6 +3572,15 @@ msgstr "Try again"
 
 msgid "Try one"
 msgstr "Try one"
+
+msgid "TUE 16:20"
+msgstr "TUE 16:20"
+
+msgid "TUESDAY"
+msgstr "TUESDAY"
+
+msgid "Two of their teams paused for a system migration. Both came back in September."
+msgstr "Two of their teams paused for a system migration. Both came back in September."
 
 msgid "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
 msgstr "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
@@ -3713,14 +3725,20 @@ msgstr "Waiting…"
 msgid "Watch {0} work"
 msgstr "Watch {0} work"
 
-msgid "Watch the film."
-msgstr "Watch the film."
+msgid "Watch the 47-second film"
+msgstr "Watch the 47-second film"
 
 msgid "Watching you work…"
 msgstr "Watching you work…"
 
 msgid "Webhook"
 msgstr "Webhook"
+
+msgid "WED 10:05"
+msgstr "WED 10:05"
+
+msgid "WEDNESDAY"
+msgstr "WEDNESDAY"
 
 msgid "Weekdays"
 msgstr "Weekdays"
@@ -3749,6 +3767,9 @@ msgstr "What I finished while you were away, and what's new on the topics you fo
 msgid "What I've done"
 msgstr "What I've done"
 
+msgid "What Nova remembers belongs to that person. They can read, edit or clear it."
+msgstr "What Nova remembers belongs to that person. They can read, edit or clear it."
+
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
 
@@ -3776,6 +3797,9 @@ msgstr "When to run"
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
 
+msgid "Why did their usage drop in August?"
+msgstr "Why did their usage drop in August?"
+
 msgid "With context"
 msgstr "With context"
 
@@ -3801,9 +3825,6 @@ msgstr "Working on its own"
 msgid "Working…"
 msgstr "Working…"
 
-msgid "Writing a 5-day plan"
-msgstr "Writing a 5-day plan"
-
 msgid "Writing the draft…"
 msgstr "Writing the draft…"
 
@@ -3825,11 +3846,17 @@ msgstr "You can close this tab if it does not redirect automatically."
 msgid "You can close this window."
 msgstr "You can close this window."
 
+msgid "You exported the renewals by hand again. Want me to do it every Monday?"
+msgstr "You exported the renewals by hand again. Want me to do it every Monday?"
+
 msgid "You have control"
 msgstr "You have control"
 
 msgid "You said, {when}"
 msgstr "You said, {when}"
+
+msgid "you were in meetings · Nova worked 2h 38m"
+msgstr "you were in meetings · Nova worked 2h 38m"
 
 msgid "You're all caught up"
 msgstr "You're all caught up"
@@ -3837,17 +3864,26 @@ msgstr "You're all caught up"
 msgid "You're all caught up."
 msgstr "You're all caught up."
 
+msgid "Your cloud or your own servers. Self-host with Docker."
+msgstr "Your cloud or your own servers. Self-host with Docker."
+
 msgid "Your computer · Your model · Your say"
 msgstr "Your computer · Your model · Your say"
+
+msgid "YOUR DATA"
+msgstr "YOUR DATA"
 
 msgid "Your email address"
 msgstr "Your email address"
 
+msgid "Your harness"
+msgstr "Your harness"
+
+msgid "Your model"
+msgstr "Your model"
+
 msgid "Your name"
 msgstr "Your name"
 
-msgid "Your preferences and plans, in a memory you can read, edit and clear at any time."
-msgstr "Your preferences and plans, in a memory you can read, edit and clear at any time."
-
-msgid "Your say, always"
-msgstr "Your say, always"
+msgid "YOUR STACK"
+msgstr "YOUR STACK"

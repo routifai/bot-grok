@@ -169,48 +169,60 @@ export type ColorTokens = {
   "media-green-glow"?: string;
   /** Muse only: a Feed media tile's glow. */
   "media-green-deep"?: string;
-  /** Signed-out welcome page (dark only): the page. */
-  "welcome-night"?: string;
-  /** Signed-out welcome page (dark only): the window. */
-  "welcome-win"?: string;
-  /** Signed-out welcome page (dark only): a raised card. */
-  "welcome-win-2"?: string;
-  /** Signed-out welcome page (dark only): a message bubble. */
-  "welcome-bubble"?: string;
-  /** Signed-out welcome page (dark only): a hairline. */
-  "welcome-hair"?: string;
-  /** Signed-out welcome page (dark only): a stronger hairline. */
-  "welcome-hair-2"?: string;
-  /** Signed-out welcome page (dark only): text. */
-  "welcome-ink"?: string;
-  /** Signed-out welcome page (dark only): secondary text. */
-  "welcome-ink-2"?: string;
-  /** Signed-out welcome page (dark only): tertiary text. */
-  "welcome-ink-3"?: string;
-  /** Signed-out welcome page (dark only): the orb glow. */
-  "welcome-glow"?: string;
-  /** Signed-out welcome page (dark only): the glow highlight. */
-  "welcome-glow-hi"?: string;
-  /** Signed-out welcome page (dark only): the glow shadow. */
-  "welcome-glow-lo"?: string;
-  /** Signed-out welcome page (dark only): the italic accent. */
-  "welcome-lilac"?: string;
-  /** Signed-out welcome page (dark only): a fork color. */
-  "welcome-rose"?: string;
-  /** Signed-out welcome page (dark only): a fork color. */
-  "welcome-sky"?: string;
-  /** Signed-out welcome page (dark only): the user bubble. */
-  "welcome-me"?: string;
-  /** Signed-out welcome page (dark only): the ask icon. */
-  "welcome-amber"?: string;
-  /** Signed-out welcome page (dark only): the file card gradient start. */
-  "welcome-file-from"?: string;
-  /** Signed-out welcome page (dark only): the file page. */
+  /** Signed-out welcome page (light in both themes): the page. */
+  "welcome-bg"?: string;
+  /** Signed-out welcome page (light in both themes): the conversation card. */
   "welcome-paper"?: string;
-  /** Signed-out welcome page (dark only): the file page text. */
-  "welcome-paper-ink"?: string;
-  /** Signed-out welcome page (dark only): the file page muted text. */
-  "welcome-paper-mute"?: string;
+  /** Signed-out welcome page (light in both themes): text. */
+  "welcome-ink"?: string;
+  /** Signed-out welcome page (light in both themes): secondary text. */
+  "welcome-ink-2"?: string;
+  /** Signed-out welcome page (light in both themes): tertiary text. */
+  "welcome-ink-3"?: string;
+  /** Signed-out welcome page (light in both themes): a hairline. */
+  "welcome-line"?: string;
+  /** Signed-out welcome page (light in both themes): the user bubble and accent. */
+  "welcome-me"?: string;
+  /** Signed-out welcome page (light in both themes): Nova's bubble. */
+  "welcome-bubble"?: string;
+  /** Signed-out welcome page (light in both themes): the side-question fork. */
+  "welcome-rose"?: string;
+  /** Signed-out welcome page (light in both themes): the sent mark. */
+  "welcome-ok"?: string;
+  /** Signed-out welcome page (light in both themes): the ask icon. */
+  "welcome-amber"?: string;
+  /** Signed-out welcome page (light in both themes): the ask icon glyph. */
+  "welcome-amber-ink"?: string;
+  /** Signed-out welcome page (light in both themes): Nova's computer window. */
+  "welcome-pc"?: string;
+  /** Signed-out welcome page (light in both themes): its text. */
+  "welcome-pc-ink"?: string;
+  /** Signed-out welcome page (light in both themes): its muted text. */
+  "welcome-pc-mute"?: string;
+  /** Signed-out welcome page (light in both themes): its inner page. */
+  "welcome-pc-win"?: string;
+  /** Signed-out welcome page (light in both themes): its inner page text. */
+  "welcome-pc-win-ink"?: string;
+  /** Signed-out welcome page (light in both themes): its inner page muted text. */
+  "welcome-pc-win-mute"?: string;
+  /** Signed-out welcome page (light in both themes): its chart bars. */
+  "welcome-pc-bar"?: string;
+  /** Signed-out welcome page (light in both themes): its live dot. */
+  "welcome-live"?: string;
+  /** Signed-out welcome page (light in both themes): a chip. */
+  "welcome-chip"?: string;
+  /** Signed-out welcome page (light in both themes): a chip border. */
+  "welcome-chip-line"?: string;
+  /** Signed-out welcome page (light in both themes): a chip text. */
+  "welcome-chip-ink"?: string;
+  /** Signed-out welcome page (light in both themes): the orb highlight. */
+  "welcome-orb-hi"?: string;
+  /** Signed-out welcome page (light in both themes): the orb body. */
+  "welcome-orb-mid"?: string;
+  /** Signed-out welcome page (light in both themes): the orb shade. */
+  "welcome-orb-deep"?: string;
+  /** Signed-out welcome page (light in both themes): the orb edge. */
+  "welcome-orb-lo"?: string;
 };
 
 export const darkTokens = {
@@ -334,28 +346,34 @@ const tiles = {
   "media-pink-deep": "#4B0B22",
   "media-green-glow": "#1F8F4A",
   "media-green-deep": "#0B3A1F",
-  // The signed-out welcome page is dark in both themes.
-  "welcome-night": "#07070C",
-  "welcome-win": "#101018",
-  "welcome-win-2": "#171722",
-  "welcome-bubble": "#1F1F2C",
-  "welcome-hair": "rgba(214, 214, 255, 0.09)",
-  "welcome-hair-2": "rgba(214, 214, 255, 0.16)",
-  "welcome-ink": "#EEEDF7",
-  "welcome-ink-2": "#A6A5BB",
-  "welcome-ink-3": "#71708A",
-  "welcome-glow": "#8B93FF",
-  "welcome-glow-hi": "#C9CEFF",
-  "welcome-glow-lo": "#3B2A8F",
-  "welcome-lilac": "#CFD2FF",
-  "welcome-rose": "#FF7AB6",
-  "welcome-sky": "#5FB4FF",
+  // The signed-out welcome page is intentionally light in both themes.
+  "welcome-bg": "#F6F6F8",
+  "welcome-paper": "#FFFFFF",
+  "welcome-ink": "#111118",
+  "welcome-ink-2": "#55556A",
+  "welcome-ink-3": "#8A8A9C",
+  "welcome-line": "#E4E4EC",
   "welcome-me": "#3F6DFF",
-  "welcome-amber": "#FFB547",
-  "welcome-file-from": "#16193A",
-  "welcome-paper": "#F4F3F8",
-  "welcome-paper-ink": "#222222",
-  "welcome-paper-mute": "#777777",
+  "welcome-bubble": "#ECECF2",
+  "welcome-rose": "#E2558F",
+  "welcome-ok": "#1F9D63",
+  "welcome-amber": "#F2A33A",
+  "welcome-amber-ink": "#1A1200",
+  "welcome-pc": "#0F1020",
+  "welcome-pc-ink": "#ECEBF6",
+  "welcome-pc-mute": "#B9B8CC",
+  "welcome-pc-win": "#F3F3F8",
+  "welcome-pc-win-ink": "#1A1A26",
+  "welcome-pc-win-mute": "#8A8A98",
+  "welcome-pc-bar": "#C9D0FF",
+  "welcome-live": "#57D39A",
+  "welcome-chip": "#F2F3FF",
+  "welcome-chip-line": "#D9DCFF",
+  "welcome-chip-ink": "#3B3F8F",
+  "welcome-orb-hi": "#C9D2FF",
+  "welcome-orb-mid": "#6B7CFF",
+  "welcome-orb-deep": "#4B2FB0",
+  "welcome-orb-lo": "#141433",
 } as const;
 
 const novaLight = {

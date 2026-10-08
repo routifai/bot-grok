@@ -1,56 +1,70 @@
-import { Trans, useLingui } from "@lingui/react/macro";
-import { Play } from "lucide-react";
-import { useRef, useState } from "react";
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+} from "@aiden/ui-web";
+import { Trans } from "@lingui/react/macro";
+import { useState } from "react";
 
-const asset = (name: string) => `${import.meta.env.BASE_URL}welcome/${name}`;
-
-export function Film() {
-  const { t } = useLingui();
-  const video = useRef<HTMLVideoElement>(null);
-  const [started, setStarted] = useState(false);
-
+/**
+ * The 47-second film: nothing video-related is in the page until the button is pressed. The
+ * dialog unmounts its content on close, which stops playback.
+ */
+export function FilmButton() {
+  const [open, setOpen] = useState(false);
   return (
-    <section className="pt-[72px] pb-6" aria-labelledby="welcome-film">
-      <h2
-        id="welcome-film"
-        className="mb-9 text-center font-welcome text-[clamp(34px,4.4vw,56px)] font-light leading-[1.02] tracking-[-0.02em] text-balance"
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button
+        variant="link"
+        type="button"
+        onClick={() => setOpen(true)}
+        className="h-auto p-0 text-[15px] font-normal text-welcome-ink-2 underline underline-offset-4 hover:text-welcome-ink"
       >
-        <Trans>Watch the film.</Trans>
-      </h2>
-      <div className="relative mx-auto aspect-video max-w-[1000px] overflow-hidden rounded-[28px] border border-welcome-hair-2 bg-welcome-win shadow-[0_40px_120px_rgba(0,0,0,0.6)]">
+        <Trans>Watch the 47-second film</Trans>
+      </Button>
+      <DialogPortal>
+        <DialogOverlay className="bg-black/90" />
+      </DialogPortal>
+      <DialogContent
+        showCloseButton={false}
+        className="w-[min(1100px,92vw)] max-w-[min(1100px,92vw)] gap-0 overflow-hidden bg-black p-0 ring-0 sm:max-w-[min(1100px,92vw)]"
+      >
+        <DialogTitle className="sr-only">
+          <Trans>Nova, in 47 seconds</Trans>
+        </DialogTitle>
         <video
-          ref={video}
-          className="size-full object-cover"
-          preload="none"
+          controls
+          autoPlay
           playsInline
-          controls={started}
-          poster={asset("nova-film-poster.jpg")}
-          src={asset("nova-film.mp4")}
+          preload="none"
+          poster="/welcome/nova-film-poster.jpg"
+          className="block w-full bg-black"
         >
+          <source src="/welcome/nova-film.mp4" type="video/mp4" />
           <track
             kind="captions"
             srcLang="en"
             label="English"
-            src={asset("nova-film.en.vtt")}
+            src="/welcome/nova-film.en.vtt"
             default
           />
         </video>
-        {!started && (
-          <button
-            type="button"
-            aria-label={t`Play the film`}
-            onClick={() => {
-              setStarted(true);
-              void video.current?.play();
-            }}
-            className="group absolute inset-0 grid place-items-center outline-none"
-          >
-            <span className="grid size-20 place-items-center rounded-full bg-welcome-ink text-welcome-night shadow-[0_8px_40px_rgba(0,0,0,0.5)] transition-transform group-hover:scale-105 group-focus-visible:ring-2 group-focus-visible:ring-welcome-glow group-focus-visible:ring-offset-4 group-focus-visible:ring-offset-welcome-night motion-reduce:transition-none">
-              <Play className="size-8 translate-x-0.5 fill-current" aria-hidden="true" />
-            </span>
-          </button>
-        )}
-      </div>
-    </section>
+        <DialogClose
+          render={
+            <Button
+              variant="outline"
+              size="sm"
+              className="absolute top-3 right-3 rounded-full border-welcome-paper/25 bg-welcome-paper/15 text-welcome-paper hover:bg-welcome-paper/25"
+            />
+          }
+        >
+          <Trans>Close</Trans>
+        </DialogClose>
+      </DialogContent>
+    </Dialog>
   );
 }
