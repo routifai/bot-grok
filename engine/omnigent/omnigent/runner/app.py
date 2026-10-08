@@ -11513,6 +11513,12 @@ def create_runner_app(
             await _cancel_inprocess_turn(conversation_id)
             return Response(status_code=204)
 
+        if body_type == "context_reset":
+            # The server stored a reset checkpoint (``POST /sessions/{id}/reset``): drop the
+            # cached history and warm client so the next turn cold-starts from it.
+            await _drop_superside_chat_warm_client(conversation_id)
+            return Response(status_code=204)
+
         if body_type == "workspace_change":
             # The server stored a new working directory; drop every cached copy so the next
             # tool call re-reads it (tools resolve it per call via ``_session_runtime_cwd``).

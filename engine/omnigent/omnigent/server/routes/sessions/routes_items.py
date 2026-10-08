@@ -11,8 +11,10 @@ from fastapi import (
     Request,
 )
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict
 
 from omnigent.entities import CompactionData
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
 from omnigent.server._elicitation_registry import (
     _harness_elicitation_owners,
@@ -31,6 +33,7 @@ from omnigent.server.background_session_titles import (
     background_session_titles_enabled,
 )
 from omnigent.server.permissions import check_session_access
+from omnigent.server.redaction import session_redactor
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
 )
@@ -103,6 +106,15 @@ async def _caller_readable_ids(
     return await asyncio.to_thread(_check_all)
 
 
+class MarkReadRequest(BaseModel):
+    """Body of ``POST /v1/sessions/{id}/read``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Read up to this item (its ``created_at``); omitted means "everything, now".
+    item_id: str | None = None
+
+
 def register_items_routes(
     router: APIRouter,
     *,
@@ -162,7 +174,8 @@ def register_items_routes(
             before=before,
             order=order,
         )
-        data = [m.to_api_dict() for m in page.data]
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
+        data = [redactor.deep(m.to_api_dict()) for m in page.data]
         return PaginatedList(
             data=data,
             first_id=page.first_id,
@@ -187,17 +200,22 @@ def register_items_routes(
         session_id: str,
         query: str = Query(min_length=1),
         limit: int = Query(default=10, ge=1, le=20),
+        scope: str = Query(default="session", pattern="^(session|family)$"),
     ) -> PaginatedList:
         """
-        Full-text search over one session's own conversation items.
+        Full-text search over one session's own conversation items, or its family's messages.
 
         :param session_id: Session/conversation identifier,
             e.g. ``"conv_abc123"``.
         :param query: The search query string.
         :param limit: Maximum number of results (1-20, default 10).
-        :returns: A :class:`PaginatedList` of matching item dicts,
-            ranked by relevance (``first_id``/``last_id``/``has_more``
-            unset — search results are not cursor-paginated).
+        :param scope: ``session`` (default): this session's items, ranked by relevance.
+            ``family``: the messages of its Conversation and Side Chats (no Helpers, no copied
+            Side Chat context), newest first, each ``{"session_id", "message_id", "role",
+            "created_at", "text", "item"}``; only chats the caller may read.
+        :returns: A :class:`PaginatedList` of matching item dicts
+            (``first_id``/``last_id``/``has_more`` unset — search results are not
+            cursor-paginated).
         :raises OmnigentError: 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)
@@ -208,13 +226,29 @@ def register_items_routes(
             conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
             if conv is None:
                 raise _session_not_found()
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
+        if scope == "family":
+            from omnigent.superchat.family.search import family_chats, search_family
+
+            chats = await asyncio.to_thread(family_chats, conversation_store, session_id)
+            allowed_ids = await _caller_readable_ids(
+                user_id, [chat.id for chat in chats], permission_store, conversation_store
+            )
+            hits = await asyncio.to_thread(
+                search_family,
+                conversation_store,
+                [chat for chat in chats if chat.id in allowed_ids],
+                query,
+                limit=limit,
+            )
+            return PaginatedList(data=[redactor.deep(hit) for hit in hits])
         items = await asyncio.to_thread(
             conversation_store.search,
             query,
             conversation_id=session_id,
             limit=limit,
         )
-        return PaginatedList(data=[m.to_api_dict() for m in items])
+        return PaginatedList(data=[redactor.deep(m.to_api_dict()) for m in items])
 
     # ── GET /sessions/{session_id}/related_chats ──────────────────
     # Side chats related to session_id for ``session_history``'s
@@ -241,7 +275,8 @@ def register_items_routes(
             e.g. ``"conv_abc123"``.
         :returns: A :class:`PaginatedList` of chat summary dicts
             (``id``, ``title``, ``created_at``, ``updated_at``,
-            ``last_message_preview``); not cursor-paginated.
+            ``last_message_preview``, ``live``, …) plus the caller's ``unread`` and
+            ``last_read_at`` (epoch seconds or ``None``); not cursor-paginated.
         :raises OmnigentError: 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)
@@ -259,7 +294,54 @@ def register_items_routes(
             user_id, [chat["id"] for chat in chats], permission_store, conversation_store
         )
         chats = [chat for chat in chats if chat["id"] in allowed_ids]
-        return PaginatedList(data=chats)
+        from omnigent.superchat.family.unread import unread_by_chat
+
+        unread = await asyncio.to_thread(unread_by_chat, conversation_store, user_id, chats)
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
+        return PaginatedList(
+            data=[redactor.deep({**chat, **unread[chat["id"]]}) for chat in chats]
+        )
+
+    # ── POST /sessions/{session_id}/read ──────────────────────────
+    # Server-side "the caller read this chat": moves the caller's read-state
+    # baseline (the one ``related_chats``' ``unread`` and the session list use).
+
+    @router.post("/sessions/{session_id}/read", response_model=None)
+    async def mark_session_read(
+        request: Request,
+        session_id: str,
+        body: MarkReadRequest | None = None,
+    ) -> dict[str, Any]:
+        """
+        Mark a chat read for the caller, up to ``item_id`` or up to now.
+
+        :param session_id: Any session the caller can READ.
+        :param body: Optional ``{"item_id"}``; the baseline never moves back.
+        :returns: ``{"session_id", "unread": false, "last_read_at"}``.
+        :raises OmnigentError: 403 without READ; 404 if the session or ``item_id`` is unknown.
+        """
+        user_id = _get_user_id(request, auth_provider)
+        access = await _require_access_and_level(
+            user_id, session_id, LEVEL_READ, permission_store, conversation_store
+        )
+        if access.conversation is None:
+            conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+            if conv is None:
+                raise _session_not_found()
+        from omnigent.superchat.family.signals import notify_session_changed
+        from omnigent.superchat.family.unread import mark_read
+
+        read_at = await asyncio.to_thread(
+            mark_read,
+            conversation_store,
+            user_id,
+            session_id,
+            body.item_id if body is not None else None,
+        )
+        if read_at is None:
+            raise OmnigentError("Item not found", code=ErrorCode.NOT_FOUND)
+        await notify_session_changed(conversation_store, session_id)
+        return {"session_id": session_id, "unread": False, "last_read_at": read_at}
 
     # ── GET /sessions/{session_id}/context_summary ────────────────
     # "Knows our conversation" hover (docs/super-chat/WIRING.md): the
@@ -297,14 +379,20 @@ def register_items_routes(
             order="desc",
             type="compaction",
         )
-        if not page.data or not isinstance(page.data[0].data, CompactionData):
-            return SessionContextSummaryResponse(summary=None, created_at=None)
-        from omnigent.context.rollover import person_facing_summary
+        from omnigent.context.rollover import RESET_RESPONSE_PREFIX, person_facing_summary
 
+        if (
+            not page.data
+            or not isinstance(page.data[0].data, CompactionData)
+            or page.data[0].response_id.startswith(RESET_RESPONSE_PREFIX)
+        ):
+            # Never rolled over, or cleared since: nothing is carried over.
+            return SessionContextSummaryResponse(summary=None, created_at=None)
         item = page.data[0]
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
         return SessionContextSummaryResponse(
-            summary=item.data.summary,
-            summary_body=person_facing_summary(item.data.summary),
+            summary=redactor.text(item.data.summary),
+            summary_body=redactor.deep(person_facing_summary(item.data.summary)),
             created_at=item.created_at,
         )
 
@@ -392,8 +480,9 @@ def register_items_routes(
             session_id,
             conversation_store,
         )
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
         return PaginatedList(
-            data=data,
+            data=[redactor.deep(child.model_dump(mode="json")) for child in data],
             first_id=page.first_id,
             last_id=page.last_id,
             has_more=page.has_more,
@@ -467,7 +556,10 @@ def register_items_routes(
             schedule_missing_titles(
                 conversation_store, background_title_coordinator, missing_titles, title_chats
             )
-        return PaginatedList(data=[activity_to_dict(activity, tz) for activity in activities])
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
+        return PaginatedList(
+            data=[redactor.deep(activity_to_dict(activity, tz)) for activity in activities]
+        )
 
     # ── GET /sessions/{session_id}/activities/stream ─────────────
     # Live "the feed changed" signal for the same family (no content: the
@@ -554,4 +646,5 @@ def register_items_routes(
         )
         if activity.chat_id not in allowed_ids:
             raise _session_not_found()
-        return activity_to_dict(activity, tz)
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
+        return redactor.deep(activity_to_dict(activity, tz))

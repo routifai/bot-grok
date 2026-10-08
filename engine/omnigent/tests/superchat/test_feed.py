@@ -142,3 +142,14 @@ def test_feed_posts_and_nothing_new(env) -> None:
     rest = client.get("/v1/me/feed", params={"limit": 5, "before": one["next_cursor"]}).json()
     assert [p["run_id"] for p in rest["data"]] == [older]
     assert rest["has_more"] is False
+
+
+def test_feed_and_topics_are_redacted(env, monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "tok-feed-0123456789"
+    monkeypatch.setenv("FEED_SERVICE_TOKEN", secret)
+    store, convs, client = env
+    topic = _task(store, f"Watch {secret}", agent_type="worker", kind="followed_topic")
+    _run(store, convs, topic, [_msg("1", "assistant", f"Found {secret} in a repo.")], 300)
+    for path in ("/v1/me/feed", "/v1/me/topics"):
+        raw = client.get(path).text
+        assert secret not in raw and "[redacted]" in raw

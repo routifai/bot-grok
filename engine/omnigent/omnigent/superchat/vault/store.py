@@ -2,8 +2,10 @@
 
 Passwords are sealed with AES-256-GCM under a server key from ``OMNIGENT_VAULT_KEY`` (base64 of
 32 random bytes); the secret's id and owner are bound in as associated data. With no valid key
-the vault fails closed: nothing is saved and nothing is revealed. Plaintext never leaves
-:meth:`VaultStore.reveal`, which only the runner's fill path calls, and it is never logged.
+the vault fails closed: nothing is saved and nothing is revealed. Plaintext leaves the store
+only through :meth:`VaultStore.reveal` (the runner's fill path) and
+:meth:`VaultStore.secret_values` (in-process, for redacting what clients read); it is never
+logged.
 """
 
 from __future__ import annotations
@@ -263,7 +265,9 @@ class VaultStore:
             _audit(session, user_id, row, "create", None)
             return _entry(row)
 
-        return run_write_transaction(self._session_immediate, "vault_save", write)
+        entry = run_write_transaction(self._session_immediate, "vault_save", write)
+        _forget_redaction_values(user_id)
+        return entry
 
     def entries(self, *, user_id: str | None) -> list[VaultEntry]:
         """The owner's logins, metadata only, newest first."""
@@ -299,7 +303,37 @@ class VaultStore:
             )
             return True
 
-        return run_write_transaction(self._session_immediate, "vault_delete", write)
+        deleted = run_write_transaction(self._session_immediate, "vault_delete", write)
+        if deleted:
+            _forget_redaction_values(user_id)
+        return deleted
+
+    def secret_values(self, *, user_id: str | None) -> list[str]:
+        """The owner's saved passwords, decrypted, for in-process redaction only.
+
+        Never audited (nothing is filled) and never returned by a route. Empty when the vault
+        is off; a row that cannot be decrypted is skipped.
+        """
+        try:
+            _key()
+        except VaultUnavailableError:
+            return []
+        with self._session("vault_secret_values") as session:
+            rows = session.execute(
+                select(SqlVaultSecret.id, SqlVaultSecret.ciphertext).where(
+                    SqlVaultSecret.workspace_id == current_workspace_id(),
+                    SqlVaultSecret.user_id == user_id
+                    if user_id is not None
+                    else SqlVaultSecret.user_id.is_(None),
+                )
+            ).all()
+        values: list[str] = []
+        for secret_id, ciphertext in rows:
+            try:
+                values.append(unseal(ciphertext, user_id=user_id, secret_id=secret_id))
+            except VaultUnavailableError:
+                continue
+        return values
 
     def site_of(self, name: str, *, user_id: str | None) -> str | None:
         """The saved origin of a login by name, or ``None`` (no decryption)."""
@@ -371,6 +405,13 @@ class VaultStore:
                 else SqlVaultSecret.user_id.is_(None),
             )
         ).scalar_one_or_none()
+
+
+def _forget_redaction_values(user_id: str | None) -> None:
+    """Drop the redactor's cached copy of this owner's values (they just changed)."""
+    from omnigent.server.redaction import invalidate_vault
+
+    invalidate_vault(user_id)
 
 
 def _request(row: SqlVaultRequest) -> VaultRequest:

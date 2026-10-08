@@ -1,7 +1,7 @@
 """Transcript: a session's items projected into typed chat blocks (``GET .../transcript``).
 
-Layout: ``blocks`` (the pure projection), ``routes`` (the route, paging, seed cut, lineage),
-this module (registration).
+Layout: ``blocks`` (the pure projection), ``routes`` (the route, paging, seed and reset cuts,
+lineage), ``reset`` (``POST .../reset``: clear a Super Chat), this module (registration).
 """
 
 from __future__ import annotations
@@ -17,15 +17,17 @@ if TYPE_CHECKING:
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from fastapi import APIRouter
 
+    from omnigent.superchat.transcript.reset import register_reset_routes
     from omnigent.superchat.transcript.routes import register_transcript_routes
 
     router = APIRouter()
-    register_transcript_routes(
-        router,
-        conversation_store=deps.conversation_store,
-        auth_provider=deps.auth_provider,
-        permission_store=deps.permission_store,
-    )
+    for register in (register_transcript_routes, register_reset_routes):
+        register(
+            router,
+            conversation_store=deps.conversation_store,
+            auth_provider=deps.auth_provider,
+            permission_store=deps.permission_store,
+        )
     app.include_router(router, prefix="/v1", tags=["transcript"])
 
 

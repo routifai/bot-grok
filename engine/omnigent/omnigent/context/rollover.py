@@ -99,6 +99,41 @@ SIDE_CHAT_SEED_HEADER = (
 )
 
 
+# A reset (``POST /sessions/{id}/reset``) is a checkpoint with no summary: the person cleared
+# the conversation. Stored as a ``compaction`` item whose ``response_id`` starts with
+# RESET_RESPONSE_PREFIX; the marker keeps it a checkpoint for :func:`is_checkpoint_text`.
+RESET_RESPONSE_PREFIX = "reset_"
+RESET_HEADER = (
+    f"{CHECKPOINT_MARKER} "
+    "The person cleared this conversation. Earlier turns are not part of your context: start "
+    "fresh and do not bring them up unless the person asks. Memory, standing instructions, "
+    "files, side chats and goals are unchanged."
+)
+RESET_ACK = "Understood. Starting fresh."
+
+
+def is_reset_item(item: Mapping[str, Any]) -> bool:
+    """:returns: Whether a flat item dict is a reset checkpoint."""
+    response_id = item.get("response_id")
+    return (
+        item.get("type") == "compaction"
+        and isinstance(response_id, str)
+        and response_id.startswith(RESET_RESPONSE_PREFIX)
+    )
+
+
+def build_reset_item(last_item_id: str, *, model: str | None) -> CompactionData:
+    """The checkpoint a reset stores: no summary, only the reset framing."""
+    messages = _summary_exchange(RESET_ACK, RESET_HEADER)
+    return CompactionData(
+        summary=RESET_HEADER,
+        last_item_id=last_item_id,
+        model=model,
+        token_count=len(RESET_HEADER + RESET_ACK) // 4,
+        compacted_messages=messages,
+    )
+
+
 def is_checkpoint_text(text: str) -> bool:
     """:returns: Whether *text* opens a rollover or side-chat seed checkpoint."""
     return text.startswith(CHECKPOINT_MARKER)
@@ -106,6 +141,7 @@ def is_checkpoint_text(text: str) -> bool:
 
 # Seeds stored before the side-chat header carried the marker start with it bare.
 _SEED_HEADERS = (
+    RESET_HEADER,
     SIDE_CHAT_SEED_HEADER,
     SIDE_CHAT_SEED_HEADER.removeprefix(f"{CHECKPOINT_MARKER} "),
     CHECKPOINT_HEADER,
@@ -613,6 +649,10 @@ async def _side_chat_checkpoint(
     ]
     if not items:
         raise ValueError("build_side_chat_seed requires a non-empty parent record")
+    # A reset forgot everything before it: seed from the reset onwards only.
+    reset_index = next((i for i in range(len(items) - 1, -1, -1) if is_reset_item(items[i])), None)
+    if reset_index is not None:
+        items = items[reset_index:]
     # Stop at the parent's last finished reply: a Side Chat opened mid-turn
     # must not inherit (and act on) the request that is opening it.
     last_reply_index = next(

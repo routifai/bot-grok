@@ -2796,13 +2796,17 @@ class SideChatOpenResponse(BaseModel):
         server derived.
     :param start: Echoes the request's ``start``.
     :param first_message_error: Set when the Side Chat was created but its
-        ``first_message`` could not be delivered; the caller may resend it.
+        ``first_message`` could not be delivered, after the server's own bounded retry;
+        the caller may resend it.
+    :param first_message_error_code: The failure's code: the events route's error code
+        (e.g. ``runner_unavailable``, ``invalid_input``) or ``transport_error``.
     """
 
     conversation_id: str
     title: str | None = None
     start: Literal["with_context", "blank"]
     first_message_error: str | None = None
+    first_message_error_code: str | None = None
 
 
 class ReadStatePutRequest(BaseModel):

@@ -190,32 +190,96 @@ def register_side_chats_routes(
                 )
 
         first_message_error: str | None = None
+        first_message_error_code: str | None = None
         if body.first_message:
-            msg_resp = await _internal_call(
-                request,
-                "POST",
-                f"/sessions/{new_id}/events",
-                {
-                    "type": "message",
-                    "data": {
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": body.first_message}],
-                    },
-                },
-            )
             # The Side Chat already exists; report the failed message instead of
             # erroring, so the caller doesn't retry into a duplicate chat.
-            if msg_resp.status_code >= 400:
-                _logger.warning(
-                    "side_chat_open: first message not delivered to %s (%s)",
-                    new_id,
-                    msg_resp.status_code,
-                )
-                first_message_error = f"first message not delivered ({msg_resp.status_code})"
+            first_message_error, first_message_error_code = await _deliver_first_message(
+                request, conversation_store, new_id, body.first_message
+            )
 
         return SideChatOpenResponse(
             conversation_id=new_id,
             title=new_conv.get("title"),
             start=body.start,
             first_message_error=first_message_error,
+            first_message_error_code=first_message_error_code,
         )
+
+
+#: Statuses worth one more try: a runner still starting, a conflict, a server blip.
+_RETRYABLE_STATUSES = frozenset({409, 429, 500, 502, 503, 504})
+#: Wait before the one retry (patched to 0 in tests).
+FIRST_MESSAGE_RETRY_DELAY_S = 1.5
+#: Newest items checked for an already-stored first message before retrying.
+_STORED_CHECK_ITEMS = 20
+
+
+def _error_code(resp: httpx.Response) -> str | None:
+    try:
+        error = resp.json().get("error")
+    except ValueError:
+        return None
+    code = error.get("code") if isinstance(error, dict) else None
+    return code if isinstance(code, str) else None
+
+
+def _first_message_stored(conv_store: ConversationStore, chat_id: str, text: str) -> bool:
+    """Whether the chat already holds *text* as a user message of its own (after its seed)."""
+    from omnigent.superchat.transcript.blocks import item_text
+
+    page = conv_store.list_items(chat_id, limit=_STORED_CHECK_ITEMS, order="desc")
+    for item in page.data:
+        flat = item.to_api_dict()
+        if flat.get("type") == "compaction":
+            return False  # reached the seed: everything older is copied context
+        if (
+            flat.get("type") == "message"
+            and flat.get("role") == "user"
+            and item_text(flat) == text.strip()
+        ):
+            return True
+    return False
+
+
+async def _deliver_first_message(
+    request: Request, conv_store: ConversationStore, chat_id: str, text: str
+) -> tuple[str | None, str | None]:
+    """Post the first message, retrying once after a retryable failure.
+
+    The events route stores a message before forwarding it, so a failed forward can leave it
+    stored: the retry is skipped then (it would post it twice) and the failure is reported.
+
+    :returns: ``(None, None)`` when delivered, else ``(error, code)``.
+    """
+    status: int | None = None
+    code: str | None = None
+    for attempt in range(2):
+        try:
+            resp = await _internal_call(
+                request,
+                "POST",
+                f"/sessions/{chat_id}/events",
+                {
+                    "type": "message",
+                    "data": {"role": "user", "content": [{"type": "input_text", "text": text}]},
+                },
+            )
+        except httpx.HTTPError:
+            status, code = None, "transport_error"
+        except Exception:  # noqa: BLE001 — the in-process route raised; the chat exists anyway
+            _logger.warning("side_chat_open: first message raised for %s", chat_id, exc_info=True)
+            status, code = None, "internal_error"
+        else:
+            if resp.status_code < 400:
+                return None, None
+            status, code = resp.status_code, _error_code(resp)
+        if attempt or (status is not None and status not in _RETRYABLE_STATUSES):
+            break
+        if await asyncio.to_thread(_first_message_stored, conv_store, chat_id, text):
+            break
+        await asyncio.sleep(FIRST_MESSAGE_RETRY_DELAY_S)
+    _logger.warning(
+        "side_chat_open: first message not delivered to %s (%s, %s)", chat_id, status, code
+    )
+    return f"first message not delivered ({status or code})", code or "internal_error"

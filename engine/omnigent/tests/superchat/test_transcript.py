@@ -326,3 +326,117 @@ async def test_store_items_project_end_to_end_with_error_code_and_helper_status(
     helper_view = (await client.get(f"/v1/sessions/{helper.id}/transcript")).json()
     assert helper_view["lineage"]["kind"] == "helper"
     assert helper_view["lineage"]["root_id"] == root.id
+
+
+# ── reset, live flag, redaction ──────────────────────────────────────────
+
+
+@pytest.fixture()
+async def reset_client(conversation_store: SqlAlchemyConversationStore) -> httpx.AsyncClient:
+    from omnigent.superchat.transcript.reset import register_reset_routes
+
+    app = FastAPI()
+    router = APIRouter()
+    register_transcript_routes(router, conversation_store=conversation_store)
+    register_reset_routes(router, conversation_store=conversation_store)
+    app.include_router(router, prefix="/v1")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+        yield http
+
+
+def _texts(body: dict[str, Any]) -> list[str]:
+    return [m["blocks"][0]["text"] for m in body["data"]]
+
+
+async def test_reset_starts_the_transcript_after_it_and_pages_the_history_on_request(
+    reset_client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
+) -> None:
+    from omnigent.context.rollover import RESET_HEADER, split_at_latest_compaction
+
+    root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
+    conversation_store.append(root.id, [_say("user", "old q"), _say("assistant", "old a")])
+    url = f"/v1/sessions/{root.id}/transcript"
+    assert (await reset_client.get(url)).json()["reset"] is None
+
+    reset = (await reset_client.post(f"/v1/sessions/{root.id}/reset")).json()
+    assert reset["reset_item_id"] and reset["session_id"] == root.id
+    # Idempotent while nothing happened since.
+    again = (await reset_client.post(f"/v1/sessions/{root.id}/reset")).json()
+    assert again["reset_item_id"] == reset["reset_item_id"]
+    conversation_store.append(root.id, [_say("user", "new q"), _say("assistant", "new a")])
+
+    body = (await reset_client.get(url)).json()
+    assert _texts(body) == ["new q", "new a"]
+    assert body["has_more"] is False and body["older_cursor"] is None
+    assert body["reset"] == {"item_id": reset["reset_item_id"], "created_at": reset["created_at"]}
+    assert (await reset_client.get(url, params={"limit": 1})).json()["has_more"] is True
+
+    history = (await reset_client.get(url, params={"before_reset": "true"})).json()
+    assert _texts(history) == ["old q", "old a"]
+
+    # The model's context after the reset: the reset framing, then only the new turns.
+    items = [i.to_api_dict() for i in conversation_store.list_items(root.id, limit=50).data]
+    after, checkpoint = split_at_latest_compaction(items)
+    assert checkpoint is not None and checkpoint["summary"] == RESET_HEADER
+    assert [i["content"][0]["text"] for i in after] == ["new q", "new a"]
+    assert checkpoint["compacted_messages"][0]["content"][0]["text"] == RESET_HEADER
+
+
+async def test_reset_is_refused_mid_turn_and_outside_a_super_chat(
+    reset_client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
+) -> None:
+    root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
+    conversation_store.append(root.id, [_say("user", "q")])
+    conversation_store.set_session_live_status(root.id, "running")
+    with pytest.raises(OmnigentError, match="turn is running"):
+        await reset_client.post(f"/v1/sessions/{root.id}/reset")
+    side = conversation_store.create_conversation(
+        kind="default",
+        title="Side",
+        labels={**_MODE, SIDE_CHAT_LABEL_KEY: "true", "omnigent.side_chat.parent_id": root.id},
+    )
+    plain = conversation_store.create_conversation(kind="default", title="P")
+    for other in (side, plain):
+        with pytest.raises(OmnigentError, match="Only a Super Chat"):
+            await reset_client.post(f"/v1/sessions/{other.id}/reset")
+
+
+async def test_before_reset_is_empty_without_a_reset_and_live_follows_the_turn(
+    reset_client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
+) -> None:
+    root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
+    conversation_store.append(root.id, [_say("user", "q")])
+    url = f"/v1/sessions/{root.id}/transcript"
+    empty = (await reset_client.get(url, params={"before_reset": "true"})).json()
+    assert empty["data"] == [] and empty["has_more"] is False
+    assert (await reset_client.get(url)).json()["live"] is False
+    conversation_store.set_session_live_status(root.id, "running")
+    assert (await reset_client.get(url)).json()["live"] is True
+
+
+async def test_transcript_redacts_deployment_secrets(
+    reset_client: httpx.AsyncClient,
+    conversation_store: SqlAlchemyConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "sk-test-0123456789abcdef"
+    monkeypatch.setenv("ACME_API_KEY", secret)
+    root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
+    card = {**_CARD, "fallback": f"key {secret}", "data": {"k": secret}}
+    conversation_store.append(
+        root.id,
+        [
+            _say("assistant", f"your key is {secret}"),
+            _new(
+                "function_call",
+                FunctionCallData(agent="brain", name="render_card", arguments="{}", call_id="k"),
+            ),
+            _new(
+                "function_call_output",
+                FunctionCallOutputData(call_id="k", output=json.dumps(card)),
+            ),
+        ],
+    )
+    raw = (await reset_client.get(f"/v1/sessions/{root.id}/transcript")).text
+    assert secret not in raw and "[redacted]" in raw

@@ -6,6 +6,8 @@ Events carry ids only; the client refetches what changed:
   (``item_id`` is the store id; published where the message is persisted);
 * ``turn.done {chat_id, status}``: a turn in a family chat ended (completed, failed,
   incomplete or cancelled); a failed turn's error item is stored before this is sent;
+* ``chat.reset {chat_id, item_id}``: the chat was cleared (``POST .../reset``); its transcript
+  now starts after ``item_id``;
 * ``chats.changed {root_id}``: a Side Chat was opened, renamed or archived, or a Helper started;
 * ``activities.changed {root_id}``: the Activity Feed may have changed;
 * ``session.heartbeat``: sent after ~15s of quiet.
@@ -76,7 +78,7 @@ async def watch_family(
 
     def tee(chat_id: str) -> AsyncIterator[dict]:
         async def events() -> AsyncIterator[dict]:
-            # message.done comes from the persist seam (stored ids), not from this stream.
+            # message.done and chat.reset come from their persist seams, not from this stream.
             stop = listen_message_done(chat_id, out)
             try:
                 async for event in subscribe(chat_id):

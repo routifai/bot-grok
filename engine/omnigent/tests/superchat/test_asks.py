@@ -144,3 +144,27 @@ def test_errors(client: TestClient, stores) -> None:
     assert code(f"proposal:{objective_id}:{proposal_id}", "maybe") == ErrorCode.INVALID_INPUT
     assert code(f"proposal:{uuid.uuid4().hex}:{proposal_id}", "accept") == ErrorCode.NOT_FOUND
     assert code("approval:missing", "bogus") == ErrorCode.INVALID_INPUT
+
+
+def test_ask_subjects_are_redacted(
+    client: TestClient, stores, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "pw-asks-0123456789"
+    monkeypatch.setenv("BILLING_PASSWORD", secret)
+    objectives, approvals = stores
+    approvals.put_pending(
+        "elic-2",
+        _SESSION,
+        user_id="local",
+        category="send",
+        target="",
+        summary=f"Send {secret} to Bob",
+        amount_usd=None,
+        event="{}",
+    )
+    objective_id = _objective(objectives, plan=False)
+    objectives.set_open_proposal(
+        uuid.uuid4().hex, objective_id, reason=f"use {secret}", plan=[{"id": None, "title": "a"}]
+    )
+    raw = client.get("/v1/me/asks").text
+    assert secret not in raw and raw.count("[redacted]") >= 2

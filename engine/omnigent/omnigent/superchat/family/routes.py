@@ -35,8 +35,8 @@ def register_family_routes(
         Subscribe to the events of a Super Chat, its Side Chats and its Helpers.
 
         :param session_id: The Super Chat (or one of its Side Chats, resolved to its Super Chat).
-        :returns: SSE frames: ``message.done``, ``chats.changed``, ``activities.changed``,
-            ``session.heartbeat``. Ids only; the client refetches.
+        :returns: SSE frames: ``message.done``, ``turn.done``, ``chat.reset``, ``chats.changed``,
+            ``activities.changed``, ``session.heartbeat``. Ids only; the client refetches.
         :raises OmnigentError: 403 without READ on ``session_id``; 404 if it is not a
             Super Chat family.
         """

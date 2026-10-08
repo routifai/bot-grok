@@ -66,3 +66,8 @@ def listen_message_done(chat_id: str, queue: asyncio.Queue[dict]) -> Callable[[]
 def notify_message_done(chat_id: str, item_id: str) -> None:
     """An assistant message was stored in *chat_id* under the store-assigned *item_id*."""
     _notify(f"msg:{chat_id}", {"type": "message.done", "chat_id": chat_id, "item_id": item_id})
+
+
+def notify_chat_reset(chat_id: str, item_id: str) -> None:
+    """*chat_id* was cleared (``POST .../reset``); *item_id* is its reset checkpoint."""
+    _notify(f"msg:{chat_id}", {"type": "chat.reset", "chat_id": chat_id, "item_id": item_id})

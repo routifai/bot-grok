@@ -1,7 +1,8 @@
 """``/v1/me/asks``: the decisions waiting on the person, and how to answer them.
 
 * ``GET /me/asks`` -> ``{"data": [ask]}``, newest first: pending approvals, open plan proposals
-  and blocked tasks of the caller's active Goals (see :mod:`omnigent.superchat.inbox.asks`).
+  and blocked tasks of the caller's active Goals (see :mod:`omnigent.superchat.inbox.asks`),
+  redacted of the secrets the engine knows (:mod:`omnigent.server.redaction`).
 * ``POST /me/asks/{id}/answer`` ``{choice, note?}`` -> ``{"ok": true}``. Dispatches to the
   approval answer function and the objective store, the same code the underlying routes run;
   ownership is checked exactly as they do.
@@ -20,6 +21,7 @@ from omnigent.entities import Objective
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.routing import RunnerRouter
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.redaction import request_redactor
 from omnigent.server.routes._auth_helpers import require_user
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
 from omnigent.stores.objective_store import ObjectiveStore, ProposalNotOpenError
@@ -95,7 +97,7 @@ def create_asks_router(
                 if objective.user_id == owner_id and objective.status == "active":
                     asks += objective_asks(objective)
         asks.sort(key=lambda ask: (ask["created_at"] or 0, ask["id"]), reverse=True)
-        return {"data": asks}
+        return request_redactor(request, user_id).deep({"data": asks})
 
     @router.post("/me/asks/{ask_id}/answer")
     async def answer_ask(request: Request, ask_id: str, body: AskAnswer) -> dict[str, bool]:

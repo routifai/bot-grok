@@ -5,6 +5,7 @@
   "has_more", "next_cursor"}``, newest first: the finished runs of those topics. Runs that found
   nothing (``nothing_new``) are left out unless ``include_nothing_new=true``.
 
+Both are redacted of the secrets the engine knows (:mod:`omnigent.server.redaction`).
 ``before`` is the opaque ``next_cursor`` of the page before. Each topic contributes at most its
 :data:`RUNS_PER_TOPIC` newest runs, so the feed is a recent window, not an archive.
 """
@@ -20,6 +21,7 @@ from omnigent.db.account_authority import account_generation, current_account_us
 from omnigent.entities import ScheduledTask
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.redaction import request_redactor
 from omnigent.server.routes._auth_helpers import require_user
 from omnigent.stores import ConversationStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
@@ -66,7 +68,8 @@ def create_feed_router(
     async def list_topics(request: Request) -> dict[str, Any]:
         """The topics the Muse follows for the caller."""
         tasks = await asyncio.to_thread(_topics, request)
-        return {"data": [topic_to_response(task) for task in tasks]}
+        redactor = request_redactor(request, require_user(request, auth_provider))
+        return redactor.deep({"data": [topic_to_response(task) for task in tasks]})
 
     @router.get("/me/feed")
     async def list_feed(
@@ -118,6 +121,7 @@ def create_feed_router(
                 break
             posts.append(post)
         next_cursor = f"{posts[-1]['created_at']}:{posts[-1]['run_id']}" if has_more else None
-        return {"data": posts, "has_more": has_more, "next_cursor": next_cursor}
+        redactor = request_redactor(request, require_user(request, auth_provider))
+        return redactor.deep({"data": posts, "has_more": has_more, "next_cursor": next_cursor})
 
     return router
