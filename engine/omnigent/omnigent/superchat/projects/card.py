@@ -17,6 +17,8 @@ CARD_FILE = "PROJECT.md"
 #: How much of a card is read to find its front matter (it is a handful of lines).
 _HEAD_BYTES = 4096
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+#: A working directory inside a Project: ``.../workspace/projects/<slug>`` (or a folder under it).
+_PROJECT_DIR_RE = re.compile(r"/workspace/projects/([a-z0-9][a-z0-9_-]{0,63})(?:/|$)")
 _FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
 
 
@@ -33,6 +35,12 @@ def projects_root() -> Path:
 def is_slug(value: object) -> bool:
     """True for a folder name a Project may have (lowercase, digits, ``-`` and ``_``)."""
     return isinstance(value, str) and _SLUG_RE.fullmatch(value) is not None
+
+
+def project_slug_from_workspace(workspace: str | None) -> str | None:
+    """The Project a working directory is in (or under), or ``None`` at the workspace root."""
+    match = _PROJECT_DIR_RE.search(workspace or "")
+    return match.group(1) if match else None
 
 
 @dataclass(frozen=True)

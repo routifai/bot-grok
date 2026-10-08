@@ -23,6 +23,12 @@ selected via the ``OMNIGENT_AUTH_PROVIDER`` env var:
   ``accounts`` provider is the OSS-CUJ-v2 default — first-user-is-admin
   with invite-only signup; see ``designs/oss-cuj/04-implementation-plan.md``.
 
+Alongside ``header`` or ``oidc``, a deployment may also accept bearer JWTs
+from an external IdP (``OMNIGENT_JWT_JWKS_URL`` and friends; see
+:mod:`omnigent.server.jwt_bearer`), tried only when the active source found
+no user. :meth:`AuthProvider.get_tenant` exposes the caller's tenant (a JWT
+claim, or ``OMNIGENT_AUTH_TENANT_HEADER`` in header mode).
+
 Cookie validation is identical across OIDC and accounts modes —
 both share :class:`AccountsConfig`/:class:`OIDCConfig`-shaped cookie
 parameters. The provider is instantiated once at server startup
@@ -132,6 +138,11 @@ _AUTH_HEADER_STRIP_PREFIX_ENV = "OMNIGENT_AUTH_HEADER_STRIP_PREFIX"
 # the proxy) can no longer forge identity. Unset (the default) keeps the
 # prior trust-the-header behavior. See :func:`resolve_auth_header_secret`.
 _AUTH_HEADER_SECRET_ENV = "OMNIGENT_AUTH_HEADER_SECRET"
+
+# Optional header naming the caller's tenant in header-auth mode, trusted exactly like the
+# identity header (honored only when that header is). Unset (the default) reads no tenant.
+_AUTH_TENANT_HEADER_ENV = "OMNIGENT_AUTH_TENANT_HEADER"
+_MAX_TENANT_CHARS = 256
 
 # Header a trusted proxy sets alongside the identity header, proving the
 # request actually came through it rather than directly from a client that
@@ -360,6 +371,14 @@ def resolve_auth_header_secret() -> str | None:
     return os.environ.get(_AUTH_HEADER_SECRET_ENV, "").strip() or None
 
 
+def resolve_auth_tenant_header() -> str | None:
+    """The header naming the caller's tenant in header mode (``OMNIGENT_AUTH_TENANT_HEADER``).
+
+    :returns: The header name, or ``None`` when unset.
+    """
+    return os.environ.get(_AUTH_TENANT_HEADER_ENV, "").strip() or None
+
+
 def _auth_enabled() -> bool:
     """Whether multi-user auth is opted in via the enable switch.
 
@@ -429,6 +448,14 @@ class AuthProvider(ABC):
     def get_user_id(self, request: HTTPConnection) -> str | None:
         """Return the authenticated user ID, or ``None``."""
         ...
+
+    def get_tenant(self, request: HTTPConnection) -> str | None:  # noqa: ARG002
+        """Return the tenant the authenticated identity belongs to, or ``None``.
+
+        Routes that scope per-user resources (e.g. ``/v1/me/muse``) key them by
+        ``(user, tenant)``. Default: no tenant.
+        """
+        return None
 
     def mint_runner_token(
         self,
@@ -514,6 +541,12 @@ class UnifiedAuthProvider(AuthProvider):
         at construction, falling back to no secret required (see
         :func:`resolve_auth_header_secret`). Only consulted in header mode.
         Tests pass an explicit secret.
+    :param jwt_bearer: Optional verifier for external IdP bearer JWTs, tried only
+        when the active source found no user (see :mod:`omnigent.server.jwt_bearer`).
+        Not supported in accounts mode.
+    :param tenant_header: Header naming the tenant in header mode, honored only
+        alongside an honored identity header. ``None`` (the default) resolves
+        from ``OMNIGENT_AUTH_TENANT_HEADER``.
     """
 
     def __init__(
@@ -525,7 +558,14 @@ class UnifiedAuthProvider(AuthProvider):
         header_name: str | None = None,
         header_strip_prefix: str | None = None,
         header_secret: str | None = None,
+        jwt_bearer: JwtBearerVerifier | None = None,
+        tenant_header: str | None = None,
     ) -> None:
+        if jwt_bearer is not None and source == "accounts":
+            raise RuntimeError(
+                "Bearer JWTs from an external IdP are not supported in accounts mode; "
+                "use header or oidc mode"
+            )
         self._source = source
         self._oidc_config = oidc_config
         self._accounts_config = accounts_config
@@ -540,6 +580,10 @@ class UnifiedAuthProvider(AuthProvider):
         )
         self._header_secret = (
             header_secret if header_secret is not None else resolve_auth_header_secret()
+        )
+        self._jwt_bearer = jwt_bearer
+        self._tenant_header = (
+            tenant_header if tenant_header is not None else resolve_auth_tenant_header()
         )
         self._cookie_cache: dict[str, tuple[str, float]] = {}
         # Set by create_app when a device-grant store is wired. Returns
@@ -631,8 +675,44 @@ class UnifiedAuthProvider(AuthProvider):
                 bind_account_authority(identity.user_id, identity.generation)
             return identity.user_id
         if self._source in ("oidc", "accounts"):
-            return self._check_cookie(request)
+            user_id = self._check_cookie(request)
+            if user_id is None:
+                bearer = self._check_bearer_jwt(request)
+                user_id = bearer.user_id if bearer is not None else None
+            return user_id
         return self._check_header(request)
+
+    def get_tenant(self, request: HTTPConnection) -> str | None:
+        """The tenant of the identity :meth:`get_user_id` resolves, or ``None``.
+
+        Header mode reads the configured tenant header alongside an honored
+        identity header; a verified external bearer JWT carries its tenant claim.
+        """
+        if self._source == "header":
+            if self._honored_header_identity(request) is not None:
+                return self._header_tenant(request)
+            if self._check_runner_bearer(request) is not None:
+                return None
+        elif self._jwt_bearer is None or self._check_cookie(request) is not None:
+            return None
+        bearer = self._check_bearer_jwt(request)
+        return bearer.tenant if bearer is not None else None
+
+    def _header_tenant(self, request: HTTPConnection) -> str | None:
+        if self._tenant_header is None:
+            return None
+        value = (request.headers.get(self._tenant_header) or "").strip()
+        return value if value and len(value) <= _MAX_TENANT_CHARS else None
+
+    def _check_bearer_jwt(self, request: HTTPConnection) -> BearerIdentity | None:
+        """Verify an external IdP ``Authorization: Bearer`` JWT, when configured."""
+        if self._jwt_bearer is None:
+            return None
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return None
+        token = auth_header[7:].strip()
+        return self._jwt_bearer.verify(token) if token else None
 
     def mint_runner_token(
         self, user_id: str, ttl_seconds: int, runner_id: str | None = None
@@ -902,17 +982,29 @@ class UnifiedAuthProvider(AuthProvider):
         if email and self._header_secret is not None and not self._proxy_secret_ok(request):
             email = None
         if email:
-            if self._header_strip_prefix:
-                email = email.removeprefix(self._header_strip_prefix)
-            if not email or email in _RESERVED_USERS:
-                return None
-            return email
+            return self._honored_header_identity(request)
         runner_owner = self._check_runner_bearer(request)
         if runner_owner is not None:
             return runner_owner
+        bearer = self._check_bearer_jwt(request)
+        if bearer is not None:
+            return bearer.user_id
         if self._local_single_user:
             return RESERVED_USER_LOCAL
         return None
+
+    def _honored_header_identity(self, request: HTTPConnection) -> str | None:
+        """The identity header's user when it is honored (proxy secret, prefix, reserved names)."""
+        email = request.headers.get(self._header_name)
+        if not email:
+            return None
+        if self._header_secret is not None and not self._proxy_secret_ok(request):
+            return None
+        if self._header_strip_prefix:
+            email = email.removeprefix(self._header_strip_prefix)
+        if not email or email in _RESERVED_USERS:
+            return None
+        return email
 
     def _proxy_secret_ok(self, request: HTTPConnection) -> bool:
         """Whether the request carries the configured proxy secret.
@@ -1061,10 +1153,13 @@ def create_auth_provider() -> AuthProvider:
 
         accounts_config = AccountsConfig.from_env()
 
+    from omnigent.server.jwt_bearer import create_jwt_bearer_verifier
+
     return UnifiedAuthProvider(
         source=source,
         oidc_config=oidc_config,
         accounts_config=accounts_config,
+        jwt_bearer=create_jwt_bearer_verifier(),
     )
 
 
@@ -1075,4 +1170,5 @@ if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send
 
     from omnigent.server.accounts_config import AccountsConfig
+    from omnigent.server.jwt_bearer import BearerIdentity, JwtBearerVerifier
     from omnigent.server.oidc import OIDCConfig

@@ -4149,6 +4149,10 @@ def create_app(
         # Only wired when a base path is configured: a root deployment pays
         # no per-request cost.
         app.add_middleware(BasePathMiddleware, base_path=resolved_base_path)
+    # Outermost, so a cross-origin preflight is answered before any other layer.
+    from omnigent.server.cors import install_cors
+
+    install_cors(app)
 
     return app
 

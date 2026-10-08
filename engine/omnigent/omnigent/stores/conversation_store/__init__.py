@@ -550,6 +550,19 @@ class ConversationStore(ABC):
         ...
 
     @abstractmethod
+    def find_conversation_ids_by_label(self, key: str, value: str, limit: int = 20) -> list[str]:
+        """Ids of the conversations whose label ``key`` equals ``value``, newest first.
+
+        Served by the ``(workspace_id, key, value)`` label index.
+
+        :param key: Label key, e.g. ``"omnigent.superchat.muse.key"``.
+        :param value: Exact label value.
+        :param limit: Most ids returned.
+        :returns: Conversation ids ordered by ``created_at`` descending.
+        """
+        ...
+
+    @abstractmethod
     def get_runner_ids(self, conversation_ids: list[str]) -> dict[str, str | None]:
         """
         Return ``conversation_id -> runner_id`` for a batch of sessions.

@@ -352,6 +352,7 @@ from omnigent.server.schemas import (
     SessionModelEvent,
     SessionResponse,
     SessionStatusEvent,
+    SessionSuperchat,
     SessionUsageEvent,
 )
 from omnigent.spec.types import (
@@ -9722,6 +9723,7 @@ async def _create_session_from_existing_agent(
     artifact_store: ArtifactStore | None = None,
     background_title_coordinator: BackgroundSessionTitleCoordinator | None = None,
     project_store: ProjectStore | None = None,
+    conversation_id: str | None = None,
 ) -> tuple[SessionResponse, Conversation]:
     """
     Create a session bound to an already-registered agent.
@@ -9751,6 +9753,8 @@ async def _create_session_from_existing_agent(
         ``file_id`` references in ``initial_items`` before forwarding
         to the runner.
     :param artifact_store: Optional binary content store for the same.
+    :param conversation_id: Server-chosen session id (never client input), so a
+        server-side creator can rely on the primary key for idempotency.
     :returns: The newly created session snapshot and its conversation row.
     :raises OmnigentError: 404 if no agent matches ``body.agent_id``;
         403/404 if ``parent_session_id`` or session-scoped ``agent_id``
@@ -10314,6 +10318,7 @@ async def _create_session_from_existing_agent(
             conv = conversation_store.create_conversation(
                 agent_id=agent.id,
                 title=body.title,
+                conversation_id=conversation_id,
                 parent_conversation_id=body.parent_session_id,
                 runner_id=inherited_runner_id,
                 kind="sub_agent" if body.parent_session_id else "default",
@@ -11921,6 +11926,10 @@ async def _get_session_snapshot(
     response.inference_configured = inference_configured
     response.inference_error = inference_error
     response.usage_included = include_usage
+    from omnigent.superchat.lineage import session_superchat
+
+    superchat = await asyncio.to_thread(session_superchat, conv_store, conv)
+    response.superchat = SessionSuperchat.model_validate(superchat) if superchat else None
     return response
 
 

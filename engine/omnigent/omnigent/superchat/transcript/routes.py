@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 
-from omnigent.context.rollover import side_chat_seed_checkpoint
 from omnigent.entities import Conversation
 from omnigent.server.auth import LEVEL_READ, AuthProvider
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
@@ -16,49 +15,13 @@ from omnigent.server.routes._auth_helpers import (
 )
 from omnigent.server.routes._errors import session_not_found as _session_not_found
 from omnigent.stores import ConversationStore
-from omnigent.stores.conversation_store import side_chat_parent_id
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.activity.derive import resolve_super_chat_id, sub_agent_status
-from omnigent.superchat.feature import is_helper, is_super_chat
+from omnigent.superchat.activity.derive import sub_agent_status
+from omnigent.superchat.lineage import session_lineage
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
 
-_MAX_HELPER_HOPS = 8
 #: Items a page asks for when one call is not enough to find a tool call's output.
 _LOOKAHEAD_ITEMS = 100
-
-
-def session_lineage(conv_store: ConversationStore, conversation: Conversation) -> dict[str, Any]:
-    """Where a session sits: ``kind`` (``super`` / ``side`` / ``helper`` / ``None``), its root.
-
-    :returns: ``{"kind", "root_id", "parent_id", "seed_item_id"}``; ``seed_item_id`` is the
-        checkpoint a with-context Side Chat starts after.
-    """
-    labels = conversation.labels
-    lineage: dict[str, Any] = {
-        "kind": None,
-        "root_id": None,
-        "parent_id": None,
-        "seed_item_id": None,
-    }
-    if conversation.kind == "sub_agent" or is_helper(labels):
-        root = conversation
-        for _ in range(_MAX_HELPER_HOPS):
-            if root.kind != "sub_agent" or not root.parent_conversation_id:
-                break
-            root = conv_store.get_conversation(root.parent_conversation_id) or root
-            if root.kind != "sub_agent":
-                break
-        lineage.update(
-            kind="helper",
-            root_id=resolve_super_chat_id(conv_store, root.id),
-            parent_id=conversation.parent_conversation_id,
-        )
-    elif (parent := side_chat_parent_id(labels)) is not None:
-        _, seed_item_id = side_chat_seed_checkpoint(conv_store, conversation)
-        lineage.update(kind="side", root_id=parent, parent_id=parent, seed_item_id=seed_item_id)
-    elif is_super_chat(labels):
-        lineage.update(kind="super", root_id=conversation.id)
-    return lineage
 
 
 def read_transcript(

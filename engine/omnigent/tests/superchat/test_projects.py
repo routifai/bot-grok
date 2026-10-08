@@ -229,7 +229,12 @@ async def test_open_project_sets_the_workspace_and_returns_a_receipt(home: Path)
     folder = _card(home, "q3-deck", "---\nname: Q3 board deck\n---\n")
     server = _Server()
     out = json.loads(await handle_open_project(_ctx(server), {"slug": "q3-deck"}))
-    assert server.calls == [("/v1/sessions/conv_1/workspace", {"workspace": str(folder)})]
+    assert server.calls == [
+        (
+            "/v1/sessions/conv_1/workspace",
+            {"workspace": str(folder), "project_name": "Q3 board deck"},
+        )
+    ]
     assert out == {"opened": "q3-deck", "name": "Q3 board deck", "path": str(folder)}
 
 
@@ -391,3 +396,22 @@ async def test_project_list_reaches_the_prompt_of_claude_sdk_and_pi(home: Path) 
             assert "- taxes: Taxes. About taxes" in flatten(
                 ClaudeSDKExecutor._build_prompt(messages, resume_session=resume)
             )
+
+
+@pytest.mark.parametrize(
+    ("workspace", "slug"),
+    [
+        ("/home/aiden/workspace/projects/q3-deck", "q3-deck"),
+        ("/home/aiden/workspace/projects/q3-deck/drafts", "q3-deck"),
+        ("/home/aiden/workspace", None),
+        ("/home/aiden/workspace/projects", None),
+        ("/home/aiden/workspace/projects/UP", None),
+        (None, None),
+    ],
+)
+def test_project_slug_is_read_from_the_working_directory(
+    workspace: str | None, slug: str | None
+) -> None:
+    from omnigent.superchat.projects.card import project_slug_from_workspace
+
+    assert project_slug_from_workspace(workspace) == slug

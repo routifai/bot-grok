@@ -1349,6 +1349,28 @@ class SqlAlchemyConversationStore(ConversationStore):
             for row in meta_rows
         }
 
+    def find_conversation_ids_by_label(self, key: str, value: str, limit: int = 20) -> list[str]:
+        """See :meth:`ConversationStore.find_conversation_ids_by_label`."""
+        workspace = current_workspace_id()
+        stmt = (
+            select(SqlConversation.id)
+            .join(
+                SqlConversationLabel,
+                (SqlConversationLabel.workspace_id == SqlConversation.workspace_id)
+                & (SqlConversationLabel.conversation_id == SqlConversation.id),
+            )
+            .where(
+                SqlConversationLabel.workspace_id == workspace,
+                SqlConversationLabel.key == key,
+                SqlConversationLabel.value == value,
+                SqlConversation.workspace_id == workspace,
+            )
+            .order_by(SqlConversation.created_at.desc(), SqlConversation.id.desc())
+            .limit(limit)
+        )
+        with self._conv_session("find_conversation_ids_by_label") as session:
+            return [str(row) for row in session.execute(stmt).scalars().all()]
+
     def get_conversations(self, conversation_ids: list[str]) -> dict[str, Conversation]:
         """
         Bulk variant of :meth:`get_conversation` — one ``SELECT ... WHERE

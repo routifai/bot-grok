@@ -188,6 +188,16 @@ class ErrorCode:
         re-address it: reissue WITHOUT the key and reach the host via the
         default route. Distinct from ``RUNNER_UNAVAILABLE`` (no runner
         bound anywhere), which no re-addressing can fix.
+    :cvar HELPER_READ_ONLY: A user message was posted to a Super Chat
+        Helper, which only its parent chat may brief (HTTP 403).
+    :cvar SUPERCHAT_NOT_CONFIGURED: The server has no default agent for a
+        caller's Super Chat, so it cannot create one (HTTP 503).
+    :cvar MUSE_ALREADY_SET: The caller already has a different Super Chat in
+        this tenant, so another cannot be adopted (HTTP 409).
+    :cvar MUSE_TENANT_MISMATCH: The session to adopt belongs to another
+        tenant than the caller's (HTTP 409).
+    :cvar NOT_A_SUPER_CHAT: The session is not a Super Chat root (a side
+        chat, Helper or plain session) (HTTP 422).
     :cvar UNAUTHORIZED: No valid authentication credentials (HTTP 401).
     :cvar FORBIDDEN: Authenticated but insufficient permissions (HTTP 403).
     :cvar RUNNER_CAPABILITY_MISMATCH: The selected runner cannot
@@ -245,6 +255,11 @@ class ErrorCode:
     SESSION_AGENT_MISSING = "session_agent_missing"
     UPSTREAM_CANCELLED = "upstream_cancelled"
     STALE_CURSOR = "stale_cursor"
+    HELPER_READ_ONLY = "helper_read_only"
+    SUPERCHAT_NOT_CONFIGURED = "superchat_not_configured"
+    MUSE_ALREADY_SET = "muse_already_set"
+    MUSE_TENANT_MISMATCH = "muse_tenant_mismatch"
+    NOT_A_SUPER_CHAT = "not_a_super_chat"
 
 
 # Single source of truth for error code → HTTP status.
@@ -285,6 +300,11 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     # succeed — the fix is to restart the enumeration without the cursor. The
     # distinct code is what a paging client keys that restart off.
     ErrorCode.STALE_CURSOR: 400,
+    ErrorCode.HELPER_READ_ONLY: 403,
+    ErrorCode.SUPERCHAT_NOT_CONFIGURED: 503,
+    ErrorCode.MUSE_ALREADY_SET: 409,
+    ErrorCode.MUSE_TENANT_MISMATCH: 409,
+    ErrorCode.NOT_A_SUPER_CHAT: 422,
 }
 
 
@@ -322,6 +342,11 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     # A stale reference: the cursor row was deleted (often by the same user
     # in another client) between two page fetches.
     ErrorCode.STALE_CURSOR: ErrorCategory.USER,
+    ErrorCode.HELPER_READ_ONLY: ErrorCategory.USER,
+    ErrorCode.SUPERCHAT_NOT_CONFIGURED: ErrorCategory.CONFIG,
+    ErrorCode.MUSE_ALREADY_SET: ErrorCategory.USER,
+    ErrorCode.MUSE_TENANT_MISMATCH: ErrorCategory.USER,
+    ErrorCode.NOT_A_SUPER_CHAT: ErrorCategory.USER,
 }
 
 
@@ -364,6 +389,11 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.ALREADY_EXISTS: ErrorImpact.BENIGN,
     ErrorCode.CONFLICT: ErrorImpact.BENIGN,
     ErrorCode.STALE_CURSOR: ErrorImpact.BENIGN,
+    ErrorCode.HELPER_READ_ONLY: ErrorImpact.BENIGN,
+    ErrorCode.SUPERCHAT_NOT_CONFIGURED: ErrorImpact.BLOCKING,
+    ErrorCode.MUSE_ALREADY_SET: ErrorImpact.BENIGN,
+    ErrorCode.MUSE_TENANT_MISMATCH: ErrorImpact.BENIGN,
+    ErrorCode.NOT_A_SUPER_CHAT: ErrorImpact.BENIGN,
 }
 
 
@@ -401,6 +431,11 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     # Context-driven: a backing call can be cancelled while serving any stage.
     ErrorCode.UPSTREAM_CANCELLED: ErrorPhase.UNKNOWN,
     ErrorCode.STALE_CURSOR: ErrorPhase.REQUEST,
+    ErrorCode.HELPER_READ_ONLY: ErrorPhase.REQUEST,
+    ErrorCode.SUPERCHAT_NOT_CONFIGURED: ErrorPhase.REQUEST,
+    ErrorCode.MUSE_ALREADY_SET: ErrorPhase.REQUEST,
+    ErrorCode.MUSE_TENANT_MISMATCH: ErrorPhase.REQUEST,
+    ErrorCode.NOT_A_SUPER_CHAT: ErrorPhase.REQUEST,
 }
 
 

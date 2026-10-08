@@ -72,7 +72,9 @@ from omnigent.server.auth import (
     LEVEL_EDIT,
     LEVEL_OWNER,
     LEVEL_READ,
+    RESERVED_USER_LOCAL,
     AuthProvider,
+    local_single_user_enabled,
 )
 from omnigent.server.background_session_titles import (
     BackgroundSessionTitleCoordinator,
@@ -267,6 +269,7 @@ from omnigent.stores.conversation_store import (
 from omnigent.stores.file_store import FileStore
 from omnigent.stores.host_store import host_is_live
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.superchat.lineage import is_super_chat_helper
 from omnigent.superchat.proactive.hook import schedule_proactive_provisioning
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
@@ -592,6 +595,32 @@ def register_events_routes(
         runner_id = getattr(conv, "runner_id", None)
         return isinstance(runner_id, str) and token_bound_runner_id(token) == runner_id
 
+    async def _require_helper_writer(
+        request: Request | _RunnerEventContext, user_id: str | None, conv: Any
+    ) -> None:
+        """Refuse a message to a Super Chat Helper unless the engine itself sends it.
+
+        A Helper is briefed and woken only by its parent chat's runner (or the server's
+        own scheduled fires, which do not come through this route).
+        """
+        if conv.kind != "sub_agent" or _has_runner_created_by_authority(request, conv):
+            return
+        if user_id == RESERVED_USER_LOCAL and local_single_user_enabled():
+            # A loopback runner without a binding token; the only user is the local one.
+            return
+        token = (request.headers.get(RUNNER_TUNNEL_TOKEN_HEADER) or "").strip()
+        if token and conv.parent_conversation_id:
+            parent = await asyncio.to_thread(
+                conversation_store.get_conversation, conv.parent_conversation_id
+            )
+            if parent is not None and parent.runner_id == token_bound_runner_id(token):
+                return
+        if await asyncio.to_thread(is_super_chat_helper, conversation_store, conv):
+            raise OmnigentError(
+                "Helpers are read-only: message the chat that started it instead",
+                code=ErrorCode.HELPER_READ_ONLY,
+            )
+
     async def _authorized_conversation(
         request: Request | _RunnerEventContext, session_id: str
     ) -> tuple[str | None, Any]:
@@ -824,6 +853,8 @@ def register_events_routes(
         :raises OmnigentError: 404 if no session exists.
         """
         user_id, conv = await _authorized_conversation(request, session_id)
+        if body.type == "message":
+            await _require_helper_writer(request, user_id, conv)
         if in_flight is not None:
             # Marked only after authorization, so an unauthorized caller
             # cannot flip a session to "running" even transiently.

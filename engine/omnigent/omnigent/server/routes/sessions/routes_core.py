@@ -7,7 +7,8 @@ import contextlib
 import json
 import secrets
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -198,6 +199,7 @@ from omnigent.server.schemas import (
     ResetSessionModelOverrideRequest,
     ResetSessionModelOverrideResponse,
     SessionAgentChangedEvent,
+    SessionCreateInput,
     SessionCreateRequest,
     SessionForkRequest,
     SessionLabelsResponse,
@@ -338,6 +340,20 @@ async def _reset_runner_and_clear_todos_after_switch(
             facade.session_stream.publish(session_id, event.model_dump())
 
 
+@dataclass(frozen=True)
+class CoreSessionOps:
+    """The session create and switch-agent paths, shared with other server routes.
+
+    :param create_json_session: ``(request, user_id, body, *, conversation_id=None)`` — the
+        whole JSON ``POST /v1/sessions`` path after body validation.
+    :param switch_agent: ``(request, session_id, agent_id, background_tasks)`` — the whole
+        ``POST /v1/sessions/{id}/switch-agent`` path, trust checks included.
+    """
+
+    create_json_session: Callable[..., Awaitable[SessionResponse]]
+    switch_agent: Callable[..., Awaitable[SessionResponse]]
+
+
 def register_core_routes(
     router: APIRouter,
     *,
@@ -356,8 +372,11 @@ def register_core_routes(
     host_registry: HostRegistry | None = None,
     project_store: ProjectStore | None = None,
     background_title_coordinator: BackgroundSessionTitleCoordinator | None = None,
-) -> None:
-    """Register the core session routes on router."""
+) -> CoreSessionOps:
+    """Register the core session routes on router.
+
+    :returns: The create and switch-agent paths, for server-side routes that reuse them.
+    """
 
     async def _schedule_managed_launch(
         request: Request,
@@ -722,7 +741,22 @@ def register_core_routes(
             # on this route 500'd as internal_error. The human-readable
             # message survives in each entry's `msg`.
             raise HTTPException(status_code=422, detail=exc.errors(include_context=False)) from exc
+        return await create_json_session(request, user_id, body)
 
+    async def create_json_session(
+        request: Request,
+        user_id: str | None,
+        body: SessionCreateInput,
+        *,
+        conversation_id: str | None = None,
+    ) -> SessionResponse:
+        """
+        Create a session from a validated JSON body: the row, runner notice, owner grant,
+        and host launch. Shared by ``POST /v1/sessions`` and server-side creators.
+
+        :param conversation_id: A server-chosen id, so a creator can rely on the primary key
+            to stay idempotent; a clash raises ``ConversationAlreadyExistsError``.
+        """
         creation_metadata(parent_session_id=body.parent_session_id, host_type=body.host_type)
         resp, conv = await _create_session_from_existing_agent(
             conversation_store,
@@ -738,6 +772,7 @@ def register_core_routes(
             artifact_store=artifact_store,
             background_title_coordinator=background_title_coordinator,
             project_store=project_store,
+            conversation_id=conversation_id,
         )
         # Notify the runner about the new session so it can resolve
         # the spec and cache sub_agent_name before the first turn.
@@ -3731,6 +3766,15 @@ def register_core_routes(
             has no agent binding, or the target bundle can't be loaded;
             409 if a turn is currently running.
         """
+        return await switch_agent(request, session_id, body.agent_id, background_tasks)
+
+    async def switch_agent(
+        request: Request,
+        session_id: str,
+        agent_id: str,
+        background_tasks: BackgroundTasks,
+    ) -> SessionResponse:
+        """Switch *session_id* to the built-in *agent_id* (see ``switch_session_agent``)."""
         user_id = _get_user_id(request, auth_provider)
         access = await _require_access_and_level(
             user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
@@ -3780,10 +3824,10 @@ def register_core_routes(
         # Only built-in agents (``session_id IS NULL``) are bindable: a
         # session-scoped agent belongs to one conversation (possibly another
         # user's) and must never be cloned across sessions.
-        target_agent = await asyncio.to_thread(agent_store.get, body.agent_id)
+        target_agent = await asyncio.to_thread(agent_store.get, agent_id)
         if target_agent is None or target_agent.session_id is not None:
             raise OmnigentError(
-                f"Agent not found or not bindable: {body.agent_id!r}",
+                f"Agent not found or not bindable: {agent_id!r}",
                 code=ErrorCode.NOT_FOUND,
             )
 
@@ -3813,7 +3857,7 @@ def register_core_routes(
         except Exception as exc:
             # Surface any bundle-load failure as a 400 before mutating state.
             raise OmnigentError(
-                f"Target agent bundle could not be loaded: {body.agent_id!r}",
+                f"Target agent bundle could not be loaded: {agent_id!r}",
                 code=ErrorCode.INVALID_INPUT,
             ) from exc
 
@@ -3949,3 +3993,5 @@ def register_core_routes(
             last_task_error=None,
             agent_name=target_agent.name,
         )
+
+    return CoreSessionOps(create_json_session=create_json_session, switch_agent=switch_agent)

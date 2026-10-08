@@ -892,9 +892,10 @@ def create_sessions_router(
     from omnigent.server.routes.sessions.routes_resources import register_resources_routes
     from omnigent.server.routes.sessions.routes_workspace import register_workspace_routes
     from omnigent.superchat.computer.routes import register_computer_routes
+    from omnigent.superchat.muse import register_muse_routes
     from omnigent.superchat.side_chats.routes import register_side_chats_routes
 
-    register_core_routes(
+    core_ops = register_core_routes(
         router,
         conversation_store=conversation_store,
         agent_store=agent_store,
@@ -911,6 +912,14 @@ def create_sessions_router(
         host_registry=host_registry,
         project_store=project_store,
         background_title_coordinator=background_title_coordinator,
+    )
+
+    register_muse_routes(
+        router,
+        ops=core_ops,
+        conversation_store=conversation_store,
+        agent_store=agent_store,
+        auth_provider=auth_provider,
     )
 
     register_hooks_routes(

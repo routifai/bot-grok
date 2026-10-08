@@ -79,6 +79,32 @@ async def test_put_stores_workspace_then_tells_the_runner(
     assert snapshot.json()["workspace"] == _PROJECT
 
 
+async def test_put_records_the_project_name_and_clears_it_on_leaving(
+    client: httpx.AsyncClient,
+    store: SqlAlchemyConversationStore,
+    accept_workspace: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opened Project's card name is kept as a label; leaving the Project drops it."""
+    session_id = await _host_session(client, store)
+    monkeypatch.setattr(
+        routes_workspace, "_forward_session_change_to_runner", AsyncMock(return_value=None)
+    )
+
+    opened = await client.put(
+        f"/v1/sessions/{session_id}/workspace",
+        json={"workspace": _PROJECT, "project_name": "  Q3   board deck "},
+    )
+    assert opened.status_code == 200, opened.text
+    conv = store.get_conversation(session_id)
+    assert conv is not None and conv.labels["omnigent.project.name"] == "Q3 board deck"
+
+    left = await client.put(f"/v1/sessions/{session_id}/workspace", json={"workspace": _ROOT})
+    assert left.status_code == 200, left.text
+    conv = store.get_conversation(session_id)
+    assert conv is not None and "omnigent.project.name" not in conv.labels
+
+
 async def test_put_requires_the_owner(
     client: httpx.AsyncClient,
     store: SqlAlchemyConversationStore,

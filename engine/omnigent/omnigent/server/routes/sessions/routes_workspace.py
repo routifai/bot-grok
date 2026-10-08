@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.routing import RunnerRouter
@@ -31,6 +31,8 @@ from omnigent.server.routes._sessions.helpers import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.superchat.lineage import PROJECT_NAME_LABEL_KEY
+from omnigent.superchat.projects.card import project_slug_from_workspace
 
 
 class SetSessionWorkspaceRequest(BaseModel):
@@ -38,9 +40,12 @@ class SetSessionWorkspaceRequest(BaseModel):
 
     :param workspace: Absolute path on the session's host, e.g.
         ``"/home/aiden/workspace/projects/q3-deck"``.
+    :param project_name: The opened Project's card name, recorded so the session snapshot can
+        name the Project without reading the card off the host. Ignored outside a Project.
     """
 
     workspace: str
+    project_name: str | None = Field(default=None, max_length=200)
 
 
 class SessionWorkspaceResponse(BaseModel):
@@ -92,6 +97,17 @@ def register_workspace_routes(
         await asyncio.to_thread(
             conversation_store.set_host_id, session_id, conv.host_id, canonical
         )
+        project_name = " ".join((body.project_name or "").split())
+        if project_slug_from_workspace(canonical) and project_name:
+            await asyncio.to_thread(
+                conversation_store.set_labels,
+                session_id,
+                {PROJECT_NAME_LABEL_KEY: project_name},
+            )
+        elif PROJECT_NAME_LABEL_KEY in conv.labels:
+            await asyncio.to_thread(
+                conversation_store.delete_label, session_id, PROJECT_NAME_LABEL_KEY
+            )
         forwarded = await _forward_session_change_to_runner(
             session_id, runner_router, {"type": "workspace_change"}
         )

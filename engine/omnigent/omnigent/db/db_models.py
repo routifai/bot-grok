@@ -1118,6 +1118,11 @@ class SqlConversationLabel(ConversationBase):
     value: Mapped[str] = mapped_column(String(LABEL_VALUE_MAX_LEN))
     updated_at: Mapped[int] = mapped_column(Integer)
 
+    __table_args__ = (
+        # Finds the sessions carrying one label value (e.g. a caller's Super Chat).
+        Index("ix_conversation_labels_key_value", "workspace_id", "key", "value"),
+    )
+
 
 class SqlComment(OmnigentBase):
     """SQLAlchemy model for the ``comments`` table.

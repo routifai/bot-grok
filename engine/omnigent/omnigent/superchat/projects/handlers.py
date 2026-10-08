@@ -28,13 +28,18 @@ def _refusal_detail(resp: httpx.Response) -> str:
     return str(detail or resp.text)[:300]
 
 
-async def _set_workspace(ctx: HandlerCtx, path: str) -> str | None:
+async def _set_workspace(
+    ctx: HandlerCtx, path: str, project_name: str | None = None
+) -> str | None:
     """Ask the server to move the session's working directory; an error message on failure."""
     assert ctx.server_client is not None
+    body: dict[str, Any] = {"workspace": path}
+    if project_name:
+        body["project_name"] = project_name
     try:
         resp = await ctx.server_client.put(
             f"/v1/sessions/{ctx.conversation_id}/workspace",
-            json={"workspace": path},
+            json=body,
             timeout=30.0,
         )
     except httpx.HTTPError as exc:
@@ -65,8 +70,9 @@ async def handle_open_project(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     folder = projects_root() / slug
     if not (folder / CARD_FILE).is_file():
         return error(f"open_project: no Project '{slug}' (it has no {CARD_FILE})")
-    failure = await _set_workspace(ctx, str(folder))
+    card = read_card(slug)
+    name = card.name if card else slug
+    failure = await _set_workspace(ctx, str(folder), name)
     if failure:
         return error(failure)
-    card = read_card(slug)
-    return json.dumps({"opened": slug, "name": card.name if card else slug, "path": str(folder)})
+    return json.dumps({"opened": slug, "name": name, "path": str(folder)})

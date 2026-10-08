@@ -125,6 +125,11 @@ _DEPRECATED_LABEL_COMPUTER_OWNER: str = "nova.bot"
 _DEPRECATED_LABEL_TENANT: str = "nova.space"
 
 
+def tenant_from_labels(labels: Mapping[str, str]) -> str | None:
+    """The tenant a session's labels place its computer in (deprecated label as fallback)."""
+    return labels.get(LABEL_TENANT) or labels.get(_DEPRECATED_LABEL_TENANT) or None
+
+
 def _env_with_fallback(name: str, deprecated_name: str) -> str:
     """Read *name*, falling back to the deprecated *deprecated_name* (warns once per use)."""
     value = os.environ.get(name)

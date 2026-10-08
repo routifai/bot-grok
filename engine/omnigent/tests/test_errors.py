@@ -85,6 +85,11 @@ def test_omnigent_error_with_harness_violation_code_returns_500() -> None:
         (ErrorCode.HARNESS_PROTOCOL_VIOLATION, 500),
         (ErrorCode.UPSTREAM_CANCELLED, 499),
         (ErrorCode.STALE_CURSOR, 400),
+        (ErrorCode.HELPER_READ_ONLY, 403),
+        (ErrorCode.SUPERCHAT_NOT_CONFIGURED, 503),
+        (ErrorCode.MUSE_ALREADY_SET, 409),
+        (ErrorCode.MUSE_TENANT_MISMATCH, 409),
+        (ErrorCode.NOT_A_SUPER_CHAT, 422),
     ],
 )
 def test_all_error_codes_have_http_status_mapping(code: str, expected_status: int) -> None:
