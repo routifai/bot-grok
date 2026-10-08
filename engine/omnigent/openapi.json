@@ -48,6 +48,22 @@
         "title": "AddCommentRequest",
         "type": "object"
       },
+      "AdoptMuseRequest": {
+        "description": "Body of `POST /v1/me/muse/adopt`: an existing Super Chat the caller owns.",
+        "properties": {
+          "session_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "AdoptMuseRequest",
+        "type": "object"
+      },
       "AgentObject": {
         "description": "API representation of a registered agent.",
         "properties": {
@@ -168,6 +184,35 @@
           "created_at"
         ],
         "title": "AgentObject",
+        "type": "object"
+      },
+      "AskAnswer": {
+        "additionalProperties": false,
+        "description": "Body of `POST /v1/me/asks/{id}/answer`.",
+        "properties": {
+          "choice": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Choice",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "choice"
+        ],
+        "title": "AskAnswer",
         "type": "object"
       },
       "AutomaticSessionRenameRequest": {
@@ -2524,6 +2569,27 @@
         "title": "FailedResponseObject",
         "type": "object"
       },
+      "ForkAddRequest": {
+        "additionalProperties": false,
+        "description": "Request body for `POST /v1/sessions/{fork_id}/add_to_conversation`.",
+        "properties": {
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The one line to add under the fork's anchor. `None` lets the engine write it from the fork.",
+            "title": "Summary"
+          }
+        },
+        "title": "ForkAddRequest",
+        "type": "object"
+      },
       "FunctionCallData": {
         "description": "Data for a function_call item.\n\n**Parameters**\n\n- `agent` \u2014 Agent name. Serialized as `\"model\"` in JSON.",
         "properties": {
@@ -3199,6 +3265,25 @@
         "title": "MCPServerSummary",
         "type": "object"
       },
+      "MarkReadRequest": {
+        "additionalProperties": false,
+        "description": "Body of `POST /v1/sessions/{id}/read`.",
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          }
+        },
+        "title": "MarkReadRequest",
+        "type": "object"
+      },
       "McpServerStartup": {
         "description": "One MCP server's startup state within a `session.mcp_startup` event.",
         "properties": {
@@ -3335,6 +3420,12 @@
             "title": "Is Meta",
             "type": "boolean"
           },
+          "is_system_notice": {
+            "default": false,
+            "description": "`True` for a user-role message the runtime wrote itself, e.g. a sub-agent wake notice or a timer firing, as opposed to words a person typed. Defaults to `False` and is omitted from serialized payloads in that case. Read it through `is_system_notice`.",
+            "title": "Is System Notice",
+            "type": "boolean"
+          },
           "model": {
             "anyOf": [
               {
@@ -3458,6 +3549,33 @@
           }
         },
         "title": "ModelUsage",
+        "type": "object"
+      },
+      "MuseResponse": {
+        "description": "The caller's Super Chat.",
+        "properties": {
+          "agent": {
+            "description": "The agent it runs on, e.g. `\"superchat\"`.",
+            "title": "Agent",
+            "type": "string"
+          },
+          "created": {
+            "description": "`True` when this call created it.",
+            "title": "Created",
+            "type": "boolean"
+          },
+          "session_id": {
+            "description": "Its session id.",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "agent",
+          "created"
+        ],
+        "title": "MuseResponse",
         "type": "object"
       },
       "NativeModelOption": {
@@ -5385,6 +5503,50 @@
         "title": "SessionCollaborationModeEvent",
         "type": "object"
       },
+      "SessionContextSummaryResponse": {
+        "description": "Response body for `GET /v1/sessions/{id}/context_summary`.\n\nThe \"Knows our conversation\" hover: the session's latest rollover\ncheckpoint, if it has one.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unix epoch seconds that checkpoint was written, or `None` to match a `None` summary.",
+            "title": "Created At"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest `compaction` item's summary text, or `None` when the session has never rolled over.",
+            "title": "Summary"
+          },
+          "summary_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`summary` as the person should read it, without the model-facing framing header; `None` when there is nothing to show.",
+            "title": "Summary Body"
+          }
+        },
+        "title": "SessionContextSummaryResponse",
+        "type": "object"
+      },
       "SessionCreatedEvent": {
         "description": "A child (sub-agent) session was spawned from this session.\n\nEmitted by `omnigent/tools/builtins/spawn.py:_spawn_one`\nonto the **parent** session's conversation stream after the\nchild conversation row is created and the child task has been\nstarted. Per the session-rearchitecture spec \u00a73 (\"Event types\nand direction\") and \u00a77 (\"Flow: client interacts with\nsub-agent\"), this lets clients watching the parent session's\nSSE subscribe directly to the child's stream without polling\nhistory for the tunneled `function_call` item.\n\nThe wire shape is FLAT (not enveloped):\n`{\"type\": \"session.created\", \"conversation_id\": <parent>, \"child_session_id\": <child>, \"agent_id\": <agent or None>, \"parent_session_id\": <parent>, \"sequence_number\": null}`.\n\nThe existing tunneled `function_call` ConversationItem\n(carried inside `OutputItemDoneEvent`) is retained\nfor compatibility \u2014 clients that don't yet implement the\n\"subscribe to child stream\" pattern can keep rendering sub-\nagent calls from the parent's persistent history.",
         "properties": {
@@ -5524,6 +5686,17 @@
             "default": false,
             "title": "Side Chat",
             "type": "boolean"
+          },
+          "side_chat_anchor_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side Chat Anchor Item Id"
           },
           "terminal_launch_args": {
             "anyOf": [
@@ -6374,6 +6547,25 @@
         "title": "SessionPresenceEvent",
         "type": "object"
       },
+      "SessionProject": {
+        "description": "The Project a session has open: its folder `slug` and card `name`.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "title": "SessionProject",
+        "type": "object"
+      },
       "SessionProjectSummary": {
         "description": "One entry of `GET /v1/sessions/projects` \u2014 a sidebar project folder.\n\nDual-read union of first-class projects and legacy `omni_project`\nlabel-projects, keyed by name.",
         "properties": {
@@ -7088,6 +7280,16 @@
             "description": "Per-session subagent-routing switch, two-state: `\"on\"` routes subagent spawns, and `\"off\"` or `None` (unset) both leave them unrouted \u2014 the in-session \"Subagent routing\" row renders either as \"Default\". `None` on a row created before this became explicit inherits nothing. Stamped `\"on\"` at create for Smart Routing sessions; also set via `PATCH /v1/sessions/{id}`.",
             "title": "Subagent Routing Override"
           },
+          "superchat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionSuperchat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "terminal_launch_args": {
             "anyOf": [
               {
@@ -7375,6 +7577,89 @@
           "status"
         ],
         "title": "SessionStatusEvent",
+        "type": "object"
+      },
+      "SessionSuperchat": {
+        "description": "Where a session sits in a Super Chat family.",
+        "properties": {
+          "anchor_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A Fork's anchor: the message it started from (ADR 0010).",
+            "title": "Anchor Item Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "super",
+                  "side",
+                  "helper"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`\"super\"`, `\"side\"`, `\"helper\"`, or `None`.",
+            "title": "Kind"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A Side Chat's Super Chat (a Fork's: the chat holding its anchor, which for a fork of a fork is that fork), or a Helper's direct parent.",
+            "title": "Parent Id"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionProject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Project the session has open, or `None`."
+          },
+          "root_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The family's Super Chat.",
+            "title": "Root Id"
+          },
+          "seed_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item a with-context Side Chat's own messages start after.",
+            "title": "Seed Item Id"
+          }
+        },
+        "title": "SessionSuperchat",
         "type": "object"
       },
       "SessionSupersededEvent": {
@@ -7806,6 +8091,20 @@
         "title": "SessionUsageEvent",
         "type": "object"
       },
+      "SessionWorkspaceResponse": {
+        "description": "The canonical workspace now stored on the session.",
+        "properties": {
+          "workspace": {
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "title": "SessionWorkspaceResponse",
+        "type": "object"
+      },
       "SetCodexGoalRequest": {
         "additionalProperties": false,
         "description": "Request body for `PUT /v1/sessions/{id}/codex_goal`.",
@@ -7854,6 +8153,50 @@
         "title": "SetCodexGoalRequest",
         "type": "object"
       },
+      "SetMuseAgentRequest": {
+        "description": "Body of `PUT /v1/me/muse`: the built-in agent the Super Chat should run on.",
+        "properties": {
+          "agent": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Agent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent"
+        ],
+        "title": "SetMuseAgentRequest",
+        "type": "object"
+      },
+      "SetSessionWorkspaceRequest": {
+        "description": "Body of `PUT /v1/sessions/{id}/workspace`.",
+        "properties": {
+          "project_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The opened Project's card name, recorded so the session snapshot can name the Project without reading the card off the host. Ignored outside a Project.",
+            "title": "Project Name"
+          },
+          "workspace": {
+            "description": "Absolute path on the session's host, e.g. `\"/home/aiden/workspace/projects/q3-deck\"`.",
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "title": "SetSessionWorkspaceRequest",
+        "type": "object"
+      },
       "SetSharingRequest": {
         "description": "Body for `PUT /v1/sharing`.\n\nEvery field is optional so an admin can update each setting\nindependently; at least one must be present.",
         "properties": {
@@ -7892,6 +8235,148 @@
           }
         },
         "title": "SetSharingRequest",
+        "type": "object"
+      },
+      "SideChatOpenRequest": {
+        "additionalProperties": false,
+        "description": "Request body for `POST /v1/sessions/{id}/side_chats`.\n\nOpens a Side Chat branched from a superside-chat Super Chat \u2014 the same\noperation the model-facing `side_chat_open` tool performs (see\n`omnigent/superchat/side_chats/chats.py`). Refused unless the target session is\nitself the Super Chat (never a Side Chat, never a Sub-agent).",
+        "properties": {
+          "anchor_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opens a Fork (ADR 0010): a visible user or assistant message of the chat this is posted to (the Super Chat, or a fork of it). The fork knows that chat only up to and including this message. Requires `start: \"with_context\"`.",
+            "title": "Anchor Item Id"
+          },
+          "first_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional first user message, posted to the new Side Chat once it exists.",
+            "title": "First Message"
+          },
+          "start": {
+            "description": "`\"with_context\"` forks the Super Chat with a seeded checkpoint summary; `\"blank\"` creates a fresh top-level session carrying only the discovery labels.",
+            "enum": [
+              "with_context",
+              "blank"
+            ],
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional title for the new Side Chat. `None` lets the server derive one (`\"Fork of <source_title>\"` for `\"with_context\"`; unset for `\"blank\"`).",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "start"
+        ],
+        "title": "SideChatOpenRequest",
+        "type": "object"
+      },
+      "SideChatOpenResponse": {
+        "description": "Response body for `POST /v1/sessions/{id}/side_chats`.",
+        "properties": {
+          "anchor_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A Fork's anchor (echoes the request), else `None`.",
+            "title": "Anchor Item Id"
+          },
+          "conversation_id": {
+            "description": "The new Side Chat's session id.",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "first_message_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the Side Chat was created but its `first_message` could not be delivered, after the server's own bounded retry; the caller may resend it.",
+            "title": "First Message Error"
+          },
+          "first_message_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The failure's code: the events route's error code (e.g. `runner_unavailable`, `invalid_input`) or `transport_error`.",
+            "title": "First Message Error Code"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A Fork's parent: the chat holding its anchor (the Super Chat, or the fork it was forked from), else `None`.",
+            "title": "Parent Id"
+          },
+          "start": {
+            "description": "Echoes the request's `start`.",
+            "enum": [
+              "with_context",
+              "blank"
+            ],
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its actual title \u2014 the caller's own, or the one the server derived.",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "start"
+        ],
+        "title": "SideChatOpenResponse",
         "type": "object"
       },
       "SkillSummary": {
@@ -9269,6 +9754,30 @@
         "summary": "Branding Logo"
       }
     },
+    "/v1/cards/schemas": {
+      "get": {
+        "description": "Every `render_card` kind with the JSON schema of its `data`.",
+        "operationId": "card_schemas_v1_cards_schemas_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Card Schemas V1 Cards Schemas Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Card Schemas",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
     "/v1/extensions": {
       "get": {
         "description": "List extensions installed and enabled when the server started.\n\nV1 treats operator installation as enablement. Installing, removing, or\nupgrading a package requires a server restart to refresh this snapshot.",
@@ -10390,6 +10899,191 @@
         "summary": "Me",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/v1/me/asks": {
+      "get": {
+        "description": "Everything waiting on the caller, newest first.",
+        "operationId": "list_asks_v1_me_asks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Asks V1 Me Asks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Asks",
+        "tags": [
+          "asks"
+        ]
+      }
+    },
+    "/v1/me/asks/{ask_id}/answer": {
+      "post": {
+        "description": "Answer one ask with one of its choice ids.",
+        "operationId": "answer_ask_v1_me_asks__ask_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ask_id",
+            "required": true,
+            "schema": {
+              "title": "Ask Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskAnswer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Answer Ask V1 Me Asks  Ask Id  Answer Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Ask",
+        "tags": [
+          "asks"
+        ]
+      }
+    },
+    "/v1/me/muse": {
+      "get": {
+        "description": "The caller's Super Chat for the current tenant: adopted, else made here, else new.\n\n**Returns:** `{\"session_id\", \"agent\", \"created\"}`.\n\n**Raises**\n\n- `OmnigentError` \u2014 401 without a user; 503 `superchat_not_configured` when none exists and the server has no default agent; 404 if that agent is missing.",
+        "operationId": "get_my_muse_v1_me_muse_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get My Muse",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "put": {
+        "description": "Run the caller's Super Chat on the built-in agent `body.agent` (creating it if\nmissing). Same trust checks as `POST /v1/sessions/{id}/switch-agent`; a no-op when\nit already runs that agent.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 for an unknown or non-built-in agent; 409 while a turn runs.",
+        "operationId": "set_my_muse_agent_v1_me_muse_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMuseAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set My Muse Agent",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v1/me/muse/adopt": {
+      "post": {
+        "description": "Claim an existing Super Chat the caller owns as their Super Chat for this tenant.\n\nLabels it with the Muse marker, its key and (when absent) the tenant; every other\nlabel, including the ones placing its computer, is left as is. Adopting the same\nsession again is a no-op.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 unless the caller owns the session; 422 `not_a_super_chat` for a side chat, Helper or plain session; 409 `muse_already_set` when another Super Chat is already theirs here; 409 `muse_tenant_mismatch` when the session sits in another tenant.",
+        "operationId": "adopt_my_muse_v1_me_muse_adopt_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptMuseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MuseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adopt My Muse",
+        "tags": [
+          "sessions"
         ]
       }
     },
@@ -11584,6 +12278,267 @@
         ]
       }
     },
+    "/v1/sessions/{session_id}/activities": {
+      "get": {
+        "description": "List the Activity Feed for `session_id`'s Super Chat family.\n\n**Returns:** A `PaginatedList` of Activity summary dicts (no per-step detail \u2014 see `GET .../activities/{activity_id}`), each carrying a `date` field for day-grouping. Empty when `session_id` isn't a `superside-chat` session.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 if the caller lacks READ on `session_id`; 404 if no session exists there.",
+        "operationId": "list_session_activities_v1_sessions__session_id__activities_get",
+        "parameters": [
+          {
+            "description": "A Super Chat or Side Chat session id.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum Activities to return, newest-first (1-100).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only Activities started strictly before this epoch timestamp.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tz"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Session Activities",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/activities/stream": {
+      "get": {
+        "description": "Subscribe to `activities.changed` signals for `session_id`'s family.\n\n**Returns:** An SSE stream of `activities.changed` / heartbeat frames.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 if the caller lacks READ on `session_id`; 404 if no session exists there or it is not a Super Chat family.",
+        "operationId": "stream_session_activity_changes_v1_sessions__session_id__activities_stream_get",
+        "parameters": [
+          {
+            "description": "A Super Chat or Side Chat session id.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Session Activity Changes",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/activities/{activity_id}": {
+      "get": {
+        "description": "Return one Activity with full step detail.\n\n**Returns:** The Activity dict, steps including each call's arguments/output (capped).\n\n**Raises**\n\n- `OmnigentError` \u2014 403 if the caller lacks READ on `session_id`; 404 if no session exists there, the session isn't a `superside-chat` session, or `activity_id` doesn't resolve within its family.",
+        "operationId": "get_session_activity_v1_sessions__session_id__activities__activity_id__get",
+        "parameters": [
+          {
+            "description": "A Super Chat or Side Chat session id.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "An id previously returned by `GET .../activities`.",
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tz"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Activity",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/add_to_conversation": {
+      "post": {
+        "description": "Add a fork's one-line summary back under its anchor (ADR 0010).\n\nStores the summary on the fork (its state becomes `added`; the transcript draws a\n`fork_summary` block under the anchor) and appends a system notice to the chat\nholding the anchor, so the Muse reads it. Asking again with the same summary changes\nnothing; a new summary replaces it.\n\n**Parameters**\n\n- `body` \u2014 Optional `summary`; without one the engine writes it from the fork.\n\n**Returns:** `{\"fork_id\", \"session_id\", \"anchor_item_id\", \"item_id\", \"title\", \"summary\", \"state\"}`: `session_id` is the chat holding the anchor, `item_id` the notice the Muse reads.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if the fork does not exist; 403 without EDIT on the fork and its parent chat; 422 `not_a_fork` for any other chat; 400 when no summary was given and the fork has nothing to summarise yet.",
+        "operationId": "add_fork_to_conversation_v1_sessions__session_id__add_to_conversation_post",
+        "parameters": [
+          {
+            "description": "The fork.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ForkAddRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Fork To Conversation",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
     "/v1/sessions/{session_id}/agent": {
       "get": {
         "description": "Return the `AgentObject` for the session's bound agent.\n\nReplaces the standalone `GET /api/agents/{id}` endpoint by\nresolving the agent through the session's `agent_id` foreign\nkey. The caller only needs to know the session id.\n\n**Returns:** The bound agent's `AgentObject`.\n\n**Raises**\n\n- `OmnigentError` \u2014 If the session or agent is not found.",
@@ -12665,6 +13620,92 @@
         ]
       }
     },
+    "/v1/sessions/{session_id}/context_summary": {
+      "get": {
+        "description": "The session's latest rollover checkpoint summary, or `None`.\n\n**Returns:** `{\"summary\", \"summary_body\", \"created_at\"}`, all `None` when the session has never rolled over.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
+        "operationId": "get_context_summary_v1_sessions__session_id__context_summary_get",
+        "parameters": [
+          {
+            "description": "Session/conversation identifier, e.g. `\"conv_abc123\"`.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionContextSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Context Summary",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/family/stream": {
+      "get": {
+        "description": "Subscribe to the events of a Super Chat, its Side Chats and its Helpers.\n\n**Returns:** SSE frames: `message.done`, `turn.done`, `chat.reset`, `chats.changed`, `activities.changed`, `session.heartbeat`. Ids only; the client refetches.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ on `session_id`; 404 if it is not a Super Chat family.",
+        "operationId": "stream_family_v1_sessions__session_id__family_stream_get",
+        "parameters": [
+          {
+            "description": "The Super Chat (or one of its Side Chats, resolved to its Super Chat).",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Family",
+        "tags": [
+          "family"
+        ]
+      }
+    },
     "/v1/sessions/{session_id}/items": {
       "get": {
         "description": "List items in a session with cursor-based pagination.\n\nDelegates to the conversation items store \u2014 session_id is\nthe conversation_id. Same pagination contract as\n`GET /v1/conversations/{id}/items`.\n\n**Returns:** A `PaginatedList` of conversation items.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
@@ -12780,7 +13821,7 @@
     },
     "/v1/sessions/{session_id}/items/search": {
       "get": {
-        "description": "Full-text search over one session's own conversation items.\n\n**Returns:** A `PaginatedList` of matching item dicts, ranked by relevance (`first_id`/`last_id`/`has_more` unset \u2014 search results are not cursor-paginated).\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
+        "description": "Full-text search over one session's own conversation items, or its family's messages.\n\n**Returns:** A `PaginatedList` of matching item dicts (`first_id`/`last_id`/`has_more` unset \u2014 search results are not cursor-paginated).\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
         "operationId": "search_session_items_v1_sessions__session_id__items_search_get",
         "parameters": [
           {
@@ -12815,6 +13856,18 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "`session` (default): this session's items, ranked by relevance. `family`: the messages of its Conversation and Side Chats (no Helpers, no copied Side Chat context), newest first, each `{\"session_id\", \"message_id\", \"role\", \"created_at\", \"text\", \"item\"}`; only chats the caller may read.",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "session",
+              "pattern": "^(session|family)$",
+              "title": "Scope",
+              "type": "string"
             }
           }
         ],
@@ -13473,6 +14526,65 @@
         ]
       }
     },
+    "/v1/sessions/{session_id}/read": {
+      "post": {
+        "description": "Mark a chat read for the caller, up to `item_id` or up to now.\n\n**Parameters**\n\n- `body` \u2014 Optional `{\"item_id\"}`; the baseline never moves back.\n\n**Returns:** `{\"session_id\", \"unread\": false, \"last_read_at\"}`.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if the session or `item_id` is unknown.",
+        "operationId": "mark_session_read_v1_sessions__session_id__read_post",
+        "parameters": [
+          {
+            "description": "Any session the caller can READ.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MarkReadRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Session Read",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
     "/v1/sessions/{session_id}/read-state": {
       "put": {
         "description": "Set the calling user's read-state for one session.\n\nRequires `LEVEL_READ` on the session in multi-user mode \u2014 you can\nonly track read-state for sessions you can see. Stores the values\nverbatim (the client enforces the baseline's monotonicity and the\nunread semantics); the server does not interpret them against\nsession status. Returns `204` \u2014 the client already has the\noptimistic state and re-reads the authoritative value on the next\n`GET /v1/sessions` poll.\n\n**Parameters**\n\n- `body` \u2014 The validated `ReadStatePutRequest`.\n\n**Returns:** An empty `204 No Content` response.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 if the caller lacks read access.",
@@ -13517,6 +14629,92 @@
         "summary": "Put Read State",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/related_chats": {
+      "get": {
+        "description": "List the side chats related to one session.\n\n**Returns:** A `PaginatedList` of chat summary dicts (`id`, `title`, `created_at`, `updated_at`, `last_message_preview`, `live`, \u2026) plus the caller's `unread` and `last_read_at` (epoch seconds or `None`); not cursor-paginated.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
+        "operationId": "list_related_chats_route_v1_sessions__session_id__related_chats_get",
+        "parameters": [
+          {
+            "description": "Session/conversation identifier, e.g. `\"conv_abc123\"`.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Related Chats Route",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/reset": {
+      "post": {
+        "description": "Clear a Super Chat: the Muse starts a fresh context, everything else stays.\n\n**Returns:** `{\"session_id\", \"reset_item_id\", \"created_at\"}`.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 unless the caller owns it or it is not a Super Chat; 404 if it does not exist; 409 while a turn is running.",
+        "operationId": "reset_session_v1_sessions__session_id__reset_post",
+        "parameters": [
+          {
+            "description": "The Super Chat (the Conversation; not a Side Chat or a Helper).",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Session",
+        "tags": [
+          "transcript"
         ]
       }
     },
@@ -15231,6 +16429,60 @@
         ]
       }
     },
+    "/v1/sessions/{session_id}/side_chats": {
+      "post": {
+        "description": "Open a Side Chat branched from a Super Chat.\n\nDoes exactly what the `side_chat_open` tool does today: refuses\nunless *session_id* is itself a superside-chat Super Chat (never a\nSide Chat, never a Sub-agent \u2014 `refuse_side_chat_open`);\n`start: \"with_context\"` forks it with a seeded checkpoint\n(`POST /sessions/{id}/fork`, `side_chat: true`); `\"blank\"`\ncreates a fresh top-level session carrying the discovery labels\n(`POST /sessions`). Either way the new Side Chat is stamped with\nhow it started, bound to the Super Chat's host (best-effort, as\n`POST /hosts/{host_id}/runners` already is for an unbound fork),\nand \u2014 when `first_message` is given \u2014 sent that as its first\nuser message.\n\nWith `anchor_item_id` it opens a Fork (ADR 0010): *session_id* may\nthen also be a fork of the Super Chat (once), the seed ends at the\nanchor, and the anchor and its chat are stamped on the new Side Chat\n(`omnigent/superchat/side_chats/forks.py`).\n\n**Parameters**\n\n- `body` \u2014 `start` (required), optional `title` / `first_message` / `anchor_item_id`.\n\n**Returns:** `{conversation_id, title, start, anchor_item_id, parent_id}`.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if *session_id* does not exist; 403 if it is a Side Chat (an anchorless one, for a fork) or a Sub-agent, or isn't in superside-chat mode; 422 `fork_too_deep` / `fork_anchor_invalid` for a fork; whatever the fork/create/message step raises on failure.",
+        "operationId": "open_side_chat_v1_sessions__session_id__side_chats_post",
+        "parameters": [
+          {
+            "description": "The Super Chat to branch the Side Chat from (or, for a fork, the chat holding the anchor).",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SideChatOpenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SideChatOpenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Side Chat",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
     "/v1/sessions/{session_id}/sign-in-link": {
       "get": {
         "description": "Return the sign-in link the session's terminal is waiting on right now.\n\nAsked by the error card at click time, so the user opens the live\nprompt rather than a link saved earlier that its launcher process has\nsince abandoned.\n\n**Returns:** The runner's `{\"pending\", \"url\", \"code\", \"terminal_id\"}` payload.",
@@ -15380,6 +16632,153 @@
           }
         },
         "summary": "Switch Session Agent",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/transcript": {
+      "get": {
+        "description": "A session's transcript as typed blocks (`text`, `card`, `helper`, `file`,\n`secure_entry`, `error`).\n\n**Returns:** `{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}`: `reset` is `{\"item_id\", \"created_at\"}` of the latest reset or `None`; `live` is whether a turn is in flight. Each message has `forks` (`[]` when none: `{session_id, title, replies, live, unread, state, summary, created_at}`) and an added fork's `fork_summary` block.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if no session exists.",
+        "operationId": "get_session_transcript_v1_sessions__session_id__transcript_get",
+        "parameters": [
+          {
+            "description": "Any session the caller can READ (same gate as `.../items`).",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Items per page, newest page first.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Cursor: the `older_cursor` of the page after this one.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "description": "Also return a with-context Side Chat's copied context.",
+            "in": "query",
+            "name": "include_seed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Seed",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Page the history before the latest reset instead (empty when the session was never reset).",
+            "in": "query",
+            "name": "before_reset",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Before Reset",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Transcript",
+        "tags": [
+          "transcript"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/workspace": {
+      "put": {
+        "description": "Move the session's working directory (owner only, inside the agent boundary).",
+        "operationId": "set_session_workspace_v1_sessions__session_id__workspace_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSessionWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWorkspaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Session Workspace",
         "tags": [
           "sessions"
         ]
