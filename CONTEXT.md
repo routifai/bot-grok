@@ -53,11 +53,11 @@ A side chat started from one message of the Conversation (its anchor). It knows 
 _Avoid_: branch, thread, reply
 
 **Archived**:
-A side chat with no messages for a month: hidden from the main list under an Archived fold, still readable by the person and the Muse, and back in the list when the person writes in it. Never deleted.
+A side chat (or fork) hidden from the main list under an Archived fold, by hand or after a stretch with no messages: a month by default, or what the person chose (a day, a week, a month, or never). Still readable by the person and the Muse, restorable, and back in the list when the person writes in it. Never deleted.
 _Avoid_: closed, deleted, discarded
 
 **Activity**:
-One piece of multi-step work the Muse did — a Conversation or side chat turn that used tools, or a Helper's whole task — with a title, an outcome, a status (in progress, done, failed, cancelled) and plain-language steps. Listed in the Activity panel. Not the same as a Goal log, which is the history of one Goal.
+One piece of real work the Muse did — a Conversation or side chat turn that did work (several steps, a search, a page read, a file or browser action, or more than a minute of work; a single quick tool call is not one), or a Helper's whole task — with a title, an outcome, a status (in progress, done, failed, cancelled) and plain-language steps. Listed in the Activity panel. Not the same as a Goal log, which is the history of one Goal.
 _Avoid_: run, job, event
 
 **Goal log**:

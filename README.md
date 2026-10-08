@@ -14,6 +14,14 @@ Under the hood, a vendored [Omnigent](https://github.com/omnigent-ai/omnigent) e
 (`engine/omnigent`) runs the model loop. Nova never shows Omnigent to the person. The code name
 is `aiden` (packages are `@aiden/*`).
 
+## Concepts
+
+One person has one **Muse**, with one **Conversation** (the Super Chat) and one **Computer**. Around
+the Conversation sit **Side chats**, **Forks** (a side chat started from one message), **Helpers**
+(background workers) and **Memory**. The engine owns all of it; any website can use it. How each
+piece works, with the engine routes: [docs/super-chat/README.md](./docs/super-chat/README.md).
+Glossary: [CONTEXT.md](./CONTEXT.md).
+
 ## Features
 
 - **Conversation and side chats.** One long-running chat that never fills up, plus full-size side

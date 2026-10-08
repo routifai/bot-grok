@@ -19,10 +19,11 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 
 - Nova calls Omnigent as the person (`X-Forwarded-Email` + proxy secret, matching the
   engine's `OMNIGENT_AUTH_HEADER_SECRET`).
-- One **Super Chat** per bot: the existing `OmnigentSession` row
-  (`botId → omnigentSessionId`). It is created with the label
-  `omnigent.context.mode=superside-chat`; an older session without it is
-  replaced on the next turn (the label is fixed at creation).
+- One **Super Chat** per person and space, decided by the engine
+  (`GET /v1/me/muse`, ADR 0009): Nova's `OmnigentSession` row
+  (`botId → omnigentSessionId`) only mirrors what the engine answers, and is
+  refreshed from it on each turn. A Conversation Nova started before that is
+  claimed once with `POST /v1/me/muse/adopt`.
 - Any other session id the app receives (`chatId`) must be a Side Chat of
   that Super Chat (`related_chats`) or a Helper below it (its
   `parent_session_id` chain reaches the Super Chat). Anything else is
