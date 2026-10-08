@@ -1,7 +1,7 @@
 {
   "name": "Nova",
   "short_name": "Nova",
-  "description": "Your team of always-on agents.",
+  "description": "Your assistant, already on it.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#050506",
