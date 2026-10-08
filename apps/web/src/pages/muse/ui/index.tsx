@@ -1,6 +1,7 @@
 import type { IllustrationKey } from "@aiden/contracts";
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { BotAvatar, cn } from "@aiden/ui-web";
+import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { illustrationUrl } from "../../../lib/illustrations";
 
@@ -21,6 +22,9 @@ export const MUSE_INSET_GROUP =
 export const MUSE_TYPE = {
   /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
   chromeTitle: "text-[17px] font-semibold tracking-[-0.01em] text-foreground",
+  /** The empty Conversation's greeting: a calm start-page headline, balanced over two lines. */
+  heroTitle:
+    "text-[28px] font-semibold leading-[1.15] tracking-[-0.02em] text-balance text-foreground",
   /** A big in-content heading for a screen that reads like its own page (Ideas). */
   pageTitle: "text-[34px] font-bold leading-[1.1] tracking-[-0.025em] text-foreground",
   /** A one-line page subtitle under `pageTitle`, in the Muse's own voice. */
@@ -282,6 +286,44 @@ export function Chip({
   );
 }
 
+/** A suggestion that starts a Conversation: its text, and a small icon when it has one. */
+export type Suggestion = string | { text: string; icon?: LucideIcon };
+
+/**
+ * A row of quiet suggestion chips (a small icon, then the prompt) that start a Conversation.
+ * Shared by `EmptyState` and the empty Conversation's start page.
+ */
+export function SuggestionChips({
+  suggestions,
+  onSuggestion,
+  className,
+}: {
+  suggestions: readonly Suggestion[];
+  onSuggestion: (text: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-wrap justify-center gap-2", className)}>
+      {suggestions.map((suggestion) => {
+        const { text, icon: Icon } =
+          typeof suggestion === "string" ? { text: suggestion, icon: undefined } : suggestion;
+        return (
+          <Chip
+            key={text}
+            onClick={() => onSuggestion(text)}
+            className="h-9 gap-2 border-line px-3.5 text-[13.5px] text-ink-2 hover:border-ink-3/40 hover:bg-solid hover:text-foreground"
+          >
+            {Icon ? (
+              <Icon size={15} strokeWidth={1.75} aria-hidden="true" className="text-ink-3" />
+            ) : null}
+            {text}
+          </Chip>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * Label/value rows, e.g. the To / Subject / Body of an email waiting for approval: a
  * compact two-column grid in a subtle muted panel, labels muted in normal case (not mono,
@@ -389,14 +431,8 @@ export function EmptyState({
           </p>
         ) : null}
       </div>
-      {rich ? (
-        <div className="flex flex-wrap justify-center gap-2 pt-1">
-          {suggestions?.map((text) => (
-            <Chip key={text} onClick={() => onSuggestion?.(text)}>
-              {text}
-            </Chip>
-          ))}
-        </div>
+      {rich && suggestions && onSuggestion ? (
+        <SuggestionChips suggestions={suggestions} onSuggestion={onSuggestion} className="pt-1" />
       ) : null}
     </div>
   );

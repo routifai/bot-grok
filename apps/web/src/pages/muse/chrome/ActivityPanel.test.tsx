@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { ActivityPanel } from "./ActivityPanel";
+import { ACTIVITY_LOADING_GRACE_MS, ActivityPanel } from "./ActivityPanel";
 import { activity, helper, step } from "./activityTestKit";
 
 vi.mock("@lingui/react/macro", () => {
@@ -85,10 +85,9 @@ it("nests a Helper's parts under it instead of listing them again, and keeps it 
     }),
   ]);
   const rows = [...container.querySelectorAll("[data-testid=activity-row]")];
-  expect(rows.map((row) => row.querySelector("span span")?.textContent)).toEqual([
-    "Plan the trip",
-    "Find flights",
-  ]);
+  expect(
+    rows.map((row) => row.querySelector("[data-testid=activity-line-title]")?.textContent),
+  ).toEqual(["Plan the trip", "Find flights"]);
   expect(container.querySelector("[data-testid=activity-working]")).not.toBeNull();
   expect(container.querySelectorAll("[data-testid=activity-row]")).toHaveLength(2);
 });
@@ -99,4 +98,48 @@ it("lists settled work by day with no working section", async () => {
   expect(container.querySelector("[data-testid=activity-row]")?.getAttribute("data-status")).toBe(
     "done",
   );
+});
+
+async function mountLoading() {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mounted.push(() => act(() => root.unmount()));
+  await act(async () => {
+    root.render(
+      <ActivityPanel
+        botId="bot-1"
+        wire={{ get: async () => ({}) as never, helperMessages: async () => ({}) as never }}
+        state={{ status: "loading" }}
+        loadEarlier={async () => undefined}
+        loadingEarlier={false}
+      />,
+    );
+  });
+  return container;
+}
+
+it("shows the skeleton while the feed loads, then settles on the empty line instead of hanging", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const container = await mountLoading();
+    expect(container.querySelector("[data-testid=panel-skeleton]")).not.toBeNull();
+    await act(async () => vi.advanceTimersByTime(ACTIVITY_LOADING_GRACE_MS));
+    expect(container.querySelector("[data-testid=panel-skeleton]")).toBeNull();
+    expect(container.querySelector("[data-testid=activity-empty]")).not.toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("skips the skeleton while the page is hidden, since the feed is paused", async () => {
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  try {
+    const container = await mountLoading();
+    expect(container.querySelector("[data-testid=panel-skeleton]")).toBeNull();
+    expect(container.querySelector("[data-testid=activity-empty]")).not.toBeNull();
+  } finally {
+    visibility.mockRestore();
+  }
 });

@@ -592,10 +592,10 @@ export const Composer = memo(function Composer({
       <div
         data-testid="composer-bar"
         className={cn(
-          "flex items-center gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-colors focus-within:border-ring",
+          "flex gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-[border-color,box-shadow] duration-150 focus-within:border-ring",
           museMode
-            ? "min-h-[52px] gap-2.5 rounded-[26px] border-line bg-solid py-[7px] pe-2 ps-2.5"
-            : "rounded-full",
+            ? "min-h-[52px] items-end gap-2 rounded-[26px] border-line bg-solid py-[7px] pe-2 ps-2 shadow-float focus-within:border-ink-3"
+            : "items-center rounded-full",
         )}
       >
         {onAttachmentPick ? (
@@ -616,14 +616,21 @@ export const Composer = memo(function Composer({
               onClick={() => fileInputRef?.current?.click()}
               className={cn(
                 "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                museMode ? "border-0 bg-transparent" : "border border-border bg-muted",
+                museMode
+                  ? "size-9 border-0 bg-transparent text-ink-3"
+                  : "border border-border bg-muted",
               )}
             >
               <Plus size={16} strokeWidth={2} />
             </Button>
           </>
         ) : null}
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5">
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 flex-wrap items-end gap-1.5",
+            museMode && "self-center py-1",
+          )}
+        >
           {selectedSkill ? (
             <span
               data-testid="skill-chip"
@@ -738,8 +745,10 @@ export const Composer = memo(function Composer({
             dir="auto"
             rows={1}
             className={cn(
-              "max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40",
-              museMode ? "text-[15px] placeholder:text-ink-3" : "text-[15.5px]",
+              "min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40",
+              museMode
+                ? "max-h-[168px] text-[15px] placeholder:text-ink-3"
+                : "max-h-32 text-[15.5px]",
             )}
           />
         </div>
@@ -751,13 +760,18 @@ export const Composer = memo(function Composer({
             title={t`Voice`}
             disabled={disabled}
             onClick={onVoice}
-            className="size-8 shrink-0 rounded-full text-foreground/75"
+            className={cn(
+              "size-8 shrink-0 rounded-full",
+              museMode
+                ? "size-9 text-ink-3 hover:bg-accent hover:text-foreground"
+                : "text-foreground/75",
+            )}
           >
             <Mic size={16} strokeWidth={1.8} />
           </Button>
         ) : null}
         {running ? (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
             <Button
               size="icon"
               aria-label={t`Send`}

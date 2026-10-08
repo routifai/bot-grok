@@ -13,9 +13,22 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#. placeholder {0}: messages.length
+msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
+msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
+
+#. placeholder {0}: mark.count
+#. placeholder {0}: under.total
+msgid "{0, plural, one {# fork} other {# forks}}"
+msgstr "{0, plural, one {# fork} other {# forks}}"
+
 #. placeholder {0}: group.entries.length
 msgid "{0, plural, one {# model} other {# models}}"
 msgstr "{0, plural, one {# model} other {# models}}"
+
+#. placeholder {0}: row.replies
+msgid "{0, plural, one {# reply} other {# replies}}"
+msgstr "{0, plural, one {# reply} other {# replies}}"
 
 #. placeholder {0}: file.name
 msgid "{0} (max {ATTACHMENT_MAX_COUNT} attachments)"
@@ -48,6 +61,14 @@ msgstr "{0} KB"
 #. placeholder {0}: format(size / (1024 * 1024))
 msgid "{0} MB"
 msgstr "{0} MB"
+
+#. placeholder {0}: open.length - MAX_OPEN_FORKS
+msgid "{0} more open"
+msgstr "{0} more open"
+
+#. placeholder {0}: under.open
+msgid "{0} open"
+msgstr "{0} open"
 
 #. placeholder {0}: sender.name
 msgid "{0} rollup hours"
@@ -82,6 +103,9 @@ msgstr "{activeCount} active · {waiting} need you"
 
 msgid "{botName}’s computer"
 msgstr "{botName}’s computer"
+
+msgid "{count, plural, one {# reply} other {# replies}}"
+msgstr "{count, plural, one {# reply} other {# replies}}"
 
 msgid "{days}d ago"
 msgstr "{days}d ago"
@@ -241,6 +265,9 @@ msgstr "Add server URL"
 msgid "Add step"
 msgstr "Add step"
 
+msgid "Add to Conversation"
+msgstr "Add to Conversation"
+
 msgid "Add to routine"
 msgstr "Add to routine"
 
@@ -252,6 +279,9 @@ msgstr "Add trigger"
 
 msgid "Added"
 msgstr "Added"
+
+msgid "Added to Conversation"
+msgstr "Added to Conversation"
 
 msgid "Adding…"
 msgstr "Adding…"
@@ -373,6 +403,9 @@ msgstr "Artifact"
 
 msgid "Artifacts"
 msgstr "Artifacts"
+
+msgid "Ask about this message"
+msgstr "Ask about this message"
 
 #. placeholder {0}: rule.matchValue
 msgid "Ask before {0}"
@@ -570,6 +603,9 @@ msgstr "Channels"
 
 msgid "Chart failed to render: {error}"
 msgstr "Chart failed to render: {error}"
+
+msgid "Chat"
+msgstr "Chat"
 
 msgid "Chat apps"
 msgstr "Chat apps"
@@ -1504,6 +1540,9 @@ msgstr "Filter by date"
 msgid "Filter files"
 msgstr "Filter files"
 
+msgid "Filter forks"
+msgstr "Filter forks"
+
 msgid "Filters"
 msgstr "Filters"
 
@@ -1554,6 +1593,12 @@ msgstr "Forget"
 msgid "Forgot password?"
 msgstr "Forgot password?"
 
+msgid "Fork"
+msgstr "Fork"
+
+msgid "Forks"
+msgstr "Forks"
+
 msgid "Free"
 msgstr "Free"
 
@@ -1563,9 +1608,17 @@ msgstr "Fri 9:00"
 msgid "From"
 msgstr "From"
 
+#. placeholder {0}: fork.anchorText
+#. placeholder {0}: row.anchorText
+msgid "from “{0}”"
+msgstr "from “{0}”"
+
 #. placeholder {0}: formatRelativeTime(ask.createdAt)
 msgid "From {sourceLabel} · {0}"
 msgstr "From {sourceLabel} · {0}"
+
+msgid "From a fork:"
+msgstr "From a fork:"
 
 msgid "From Q3 portfolio review · 7:40"
 msgstr "From Q3 portfolio review · 7:40"
@@ -1666,6 +1719,9 @@ msgstr "Hi, I'm Nova."
 
 msgid "Hi, this is how I'll sound when I read replies out loud."
 msgstr "Hi, this is how I'll sound when I read replies out loud."
+
+msgid "Hide"
+msgstr "Hide"
 
 msgid "Hide context panel"
 msgstr "Hide context panel"
@@ -2131,6 +2187,9 @@ msgstr "New"
 msgid "New bot"
 msgstr "New bot"
 
+msgid "New fork from this message"
+msgstr "New fork from this message"
+
 msgid "New open-work item"
 msgstr "New open-work item"
 
@@ -2178,6 +2237,9 @@ msgstr "No exceptions. Actions run automatically."
 
 msgid "No files yet."
 msgstr "No files yet."
+
+msgid "No forks match."
+msgstr "No forks match."
 
 msgid "No group chats yet."
 msgstr "No group chats yet."
@@ -2308,6 +2370,9 @@ msgstr "Nova prepares your meetings, researches, drafts and follows up in the ba
 msgid "Nova starts fresh. You can still show earlier messages."
 msgstr "Nova starts fresh. You can still show earlier messages."
 
+msgid "Now"
+msgstr "Now"
+
 #. placeholder {0}: selected.label
 msgid "Now using {0}."
 msgstr "Now using {0}."
@@ -2343,6 +2408,10 @@ msgstr "One yes before I send this"
 msgid "Open"
 msgstr "Open"
 
+#. placeholder {0}: open.length
+msgid "Open · {0}"
+msgstr "Open · {0}"
+
 #. placeholder {0}: artifact.name
 #. placeholder {0}: data.name
 #. placeholder {0}: props.name
@@ -2351,6 +2420,9 @@ msgstr "Open {0}"
 
 msgid "Open {name} in new tab"
 msgstr "Open {name} in new tab"
+
+msgid "Open as side chat"
+msgstr "Open as side chat"
 
 msgid "Open goal"
 msgstr "Open goal"
@@ -2702,6 +2774,10 @@ msgstr "Reply"
 msgid "Reply cancelled"
 msgstr "Reply cancelled"
 
+#. placeholder {0}: chat.title
+msgid "Reply in “{0}”"
+msgstr "Reply in “{0}”"
+
 #. placeholder {0}: replyNameRef.current
 msgid "Replying to {0}"
 msgstr "Replying to {0}"
@@ -2862,6 +2938,10 @@ msgstr "Screen"
 msgid "Search"
 msgstr "Search"
 
+#. placeholder {0}: counts.all
+msgid "Search {0} forks"
+msgstr "Search {0} forks"
+
 msgid "Search apps"
 msgstr "Search apps"
 
@@ -2873,6 +2953,9 @@ msgstr "Search bots and switch conversations"
 
 msgid "Search by domain"
 msgstr "Search by domain"
+
+msgid "Search forks"
+msgstr "Search forks"
 
 msgid "Search integrations.sh"
 msgstr "Search integrations.sh"
@@ -2951,6 +3034,9 @@ msgstr "Setup help"
 
 msgid "Shared chat with 2-6 bots. They all reply in the same thread."
 msgstr "Shared chat with 2-6 bots. They all reply in the same thread."
+
+msgid "Show"
+msgstr "Show"
 
 msgid "Show computer"
 msgstr "Show computer"
@@ -3449,6 +3535,9 @@ msgstr "Version {0}"
 msgid "Version {0} (latest)"
 msgstr "Version {0} (latest)"
 
+msgid "View"
+msgstr "View"
+
 msgid "View all"
 msgstr "View all"
 
@@ -3542,6 +3631,10 @@ msgstr "With context"
 
 msgid "Working"
 msgstr "Working"
+
+#. placeholder {0}: working.length
+msgid "Working · {0}"
+msgstr "Working · {0}"
 
 msgid "Working in {name}"
 msgstr "Working in {name}"

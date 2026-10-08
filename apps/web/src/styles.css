@@ -180,3 +180,73 @@ body,
     transition-duration: 0.01ms;
   }
 }
+
+/* Muse replies (MessageView.tsx `muse-reply`): one reading rhythm for Nova's markdown.
+   Headings stay at the body size and lean on weight; lists breathe; code sits on the
+   bubble surface in Geist Mono. */
+.muse-reply .rk-chat-markdown p,
+.muse-reply .rk-chat-markdown ul,
+.muse-reply .rk-chat-markdown ol,
+.muse-reply .rk-chat-markdown blockquote,
+.muse-reply .rk-chat-markdown table,
+.muse-reply .rk-chat-markdown-pre-wrap {
+  margin: 0.75em 0;
+}
+.muse-reply .rk-chat-markdown h1,
+.muse-reply .rk-chat-markdown h2,
+.muse-reply .rk-chat-markdown h3,
+.muse-reply .rk-chat-markdown h4,
+.muse-reply .rk-chat-markdown h5,
+.muse-reply .rk-chat-markdown h6 {
+  margin: 1.35em 0 0.4em;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+}
+.muse-reply .rk-chat-markdown ul,
+.muse-reply .rk-chat-markdown ol {
+  padding-left: 1.35em;
+}
+.muse-reply .rk-chat-markdown li + li {
+  margin-top: 0.4em;
+}
+.muse-reply .rk-chat-markdown li::marker {
+  color: var(--ink-3);
+}
+.muse-reply .rk-chat-markdown ol > li::marker {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.muse-reply .rk-chat-markdown strong {
+  font-weight: 600;
+}
+.muse-reply .rk-chat-markdown blockquote {
+  border-left: 2px solid var(--line);
+  padding-left: 14px;
+  color: var(--ink-2);
+}
+.muse-reply .rk-chat-markdown hr {
+  margin: 1.25em 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.muse-reply .rk-chat-markdown code {
+  border: 0;
+  border-radius: 6px;
+  background: var(--bubble);
+  padding: 0.12em 0.36em;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.muse-reply .rk-chat-markdown pre {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bubble);
+  padding: 12px 14px;
+}
+.muse-reply .rk-chat-markdown pre code {
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}

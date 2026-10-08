@@ -49,7 +49,11 @@ import { HostComputerPrompt } from "./HostComputerPrompt";
 import { ApprovalCards } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader } from "./muse/chrome/ConversationHeader";
-import { EmptyConversation } from "./muse/chrome/EmptyConversation";
+import { conversationLayout } from "./muse/chrome/conversationLayout";
+import {
+  EmptyConversationLead,
+  EmptyConversationSuggestions,
+} from "./muse/chrome/EmptyConversation";
 import { MuseSidebar } from "./muse/chrome/MuseSidebar";
 import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
@@ -71,6 +75,7 @@ import { sideChatView } from "./muse/conversation/sideChatView";
 import { Transcript } from "./muse/conversation/Transcript";
 import { useChatArtifacts } from "./muse/conversation/useChatArtifacts";
 import { useComposerSend } from "./muse/conversation/useComposerSend";
+import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
 import { useThreadState } from "./muse/conversation/useThreadState";
 import { useThreadSync } from "./muse/conversation/useThreadSync";
@@ -456,7 +461,19 @@ export function ShellPage() {
     () => userVisibleMessages(conversationMessages, { includePeerReceipts: true }),
     [conversationMessages],
   );
-  // What voice (auto-speak, calls) reads the reply from.
+  // An empty Conversation is a start page: the greeting, the composer centered under it, and
+  // a few suggestions; the composer glides down to its dock once the first message lands.
+  const startPage =
+    !forksView &&
+    conversationLayout({
+      museMode,
+      hasMuse: Boolean(active) && !inGroup,
+      loaded: museTranscript.messages !== null,
+      messageCount: transcriptMessages.length,
+      running: transcriptRunning,
+    }) === "start";
+  const composerDock = useRef<HTMLDivElement>(null);
+  useDockTransition(composerDock, startPage);
   const conversationSnapshot = useMemo(
     () => (activeSnapshot ? { ...activeSnapshot, messages: conversationMessages } : null),
     [activeSnapshot, conversationMessages],
@@ -1007,18 +1024,8 @@ export function ShellPage() {
                     onFilter={forks.setFilter}
                     onOpen={forks.openRow}
                   />
-                ) : museMode &&
-                  active &&
-                  museTranscript.messages !== null &&
-                  transcriptMessages.length === 0 &&
-                  !transcriptRunning ? (
-                  <EmptyConversation
-                    botName={active.name}
-                    personName={bootstrapMe?.name ?? ""}
-                    avatarColor={active.color}
-                    onSend={(text) => void sendMessage(text)}
-                    onTryIt={setComposerSeed}
-                  />
+                ) : startPage ? (
+                  <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
                 ) : (
                   <Transcript
                     key={activeSnapshot?.threadId}
@@ -1097,7 +1104,7 @@ export function ShellPage() {
                 ) : null}
                 {active || activeGroup ? (
                   // Kept mounted under the Forks list so a half-written message survives.
-                  <div className="contents" hidden={forksView || undefined}>
+                  <div ref={composerDock} hidden={forksView || undefined}>
                     <Composer
                       key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
                       museMode={museMode}
@@ -1158,6 +1165,9 @@ export function ShellPage() {
                       }}
                     />
                   </div>
+                ) : null}
+                {startPage ? (
+                  <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
                 ) : null}
               </div>
               {museMode && active && forks.ask ? (

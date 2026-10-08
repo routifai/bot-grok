@@ -1,31 +1,12 @@
 import type { Ask, Goal } from "@aiden/contracts";
 import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { nextCronDateAcross } from "@aiden/core";
-import { cn, Tooltip, TooltipContent, TooltipTrigger } from "@aiden/ui-web";
+import { cn } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import type { LucideIcon } from "lucide-react";
-import {
-  Bell,
-  BookmarkPlus,
-  Clock,
-  Fingerprint,
-  HelpCircle,
-  List,
-  ScrollText,
-  ShieldCheck,
-  Sparkles,
-  Target,
-} from "lucide-react";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { Bell, BookmarkPlus, Clock, HelpCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MuseRailView } from "../../../components/AppRail";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { rpc } from "../../../lib/rpc";
@@ -424,66 +405,50 @@ function WaitingRow({ ask, onOpenWaiting }: { ask: Ask; onOpenWaiting: () => voi
 
 type PanelTab = "activity" | "memory" | "context";
 
-const PANEL_TABS: { id: PanelTab; icon: LucideIcon; label: () => string }[] = [
-  { id: "activity", icon: List, label: () => t`Activity` },
-  { id: "memory", icon: Fingerprint, label: () => t`Memory` },
+const PANEL_TABS: { id: PanelTab; label: () => string }[] = [
+  { id: "activity", label: () => t`Activity` },
+  { id: "memory", label: () => t`Memory` },
   // Asks, in-progress Goals, and upcoming Check-ins — already working, so it keeps a tab
-  // here rather than losing its spot. A permissions tab (shield icon) and a scheduled-work
-  // tab (clock icon) belong here too, once there's something real behind them.
-  { id: "context", icon: ScrollText, label: () => t`Context` },
+  // here rather than losing its spot.
+  { id: "context", label: () => t`Context` },
 ];
 
-/** The segmented icon tab bar: one rounded pill track, the selected segment raised on a
- * plain chip, a thin divider only between two segments that are both unselected. */
+/** A small segmented control with text labels: one quiet track, the selected segment
+ * raised on a solid chip. */
 function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTab) => void }) {
   return (
     <div
       role="tablist"
       aria-label={t`Panel sections`}
-      className="inline-flex items-center gap-0.5 self-center rounded-full bg-selection p-[3px]"
+      className="grid grid-cols-3 gap-0.5 rounded-[10px] bg-selection p-[3px]"
     >
-      {PANEL_TABS.map((item, index) => {
-        const previous = PANEL_TABS[index - 1];
-        const showDivider = index > 0 && previous && previous.id !== tab && item.id !== tab;
-        const label = item.label();
-        const Icon = item.icon;
-        return (
-          <Fragment key={item.id}>
-            {showDivider ? <span aria-hidden="true" className="h-4 w-px shrink-0 bg-line" /> : null}
-            <Tooltip>
-              <TooltipTrigger
-                type="button"
-                role="tab"
-                aria-selected={tab === item.id}
-                aria-label={label}
-                data-testid={`context-panel-tab-${item.id}`}
-                onClick={() => onChange(item.id)}
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                  tab === item.id
-                    ? "bg-solid text-foreground shadow-xs"
-                    : "text-ink-2 hover:text-foreground",
-                )}
-              >
-                <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-[12.5px]">
-                {label}
-              </TooltipContent>
-            </Tooltip>
-          </Fragment>
-        );
-      })}
+      {PANEL_TABS.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === item.id}
+          data-testid={`context-panel-tab-${item.id}`}
+          onClick={() => onChange(item.id)}
+          className={cn(
+            "h-7 rounded-[8px] text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+            tab === item.id
+              ? "bg-solid text-foreground shadow-xs"
+              : "text-ink-2 hover:text-foreground",
+          )}
+        >
+          {item.label()}
+        </button>
+      ))}
     </div>
   );
 }
 
-/** The panel's one Agent Identity header (docs/muse/DESIGN.md "The Muse"): the Muse's own
- * face, its name, and a Connection Status line (the sidebar no longer repeats it,
- * MuseSidebar.tsx). This panel is hidden below `xl`, when the person collapses it, or
- * while a side panel (computer/settings) is open, so it isn't always the one place —
- * `ConversationHeader.tsx`'s compact identity covers exactly those cases, so the Muse's
- * identity still shows once, whichever of the two is visible. */
+/** The panel's one compact identity line: the Muse's name and a small Connection Status pill
+ * (the sidebar no longer repeats it, MuseSidebar.tsx). This panel is hidden below `xl`, when
+ * the person collapses it, or while a side panel (computer/settings) is open, so it isn't
+ * always the one place — `ConversationHeader.tsx`'s compact identity covers exactly those
+ * cases, so the Muse's identity still shows once, whichever of the two is visible. */
 function IdentityHeader({
   museName,
   connection,
@@ -493,17 +458,17 @@ function IdentityHeader({
 }) {
   const { t: tt } = useLingui();
   return (
-    <div className="flex flex-col items-center gap-2 pt-1 text-center">
+    <div className="flex min-w-0 items-center justify-between gap-3">
       <span
         data-testid="context-panel-muse-name"
-        className="text-[15px] font-semibold text-foreground"
+        className="min-w-0 truncate text-[15px] font-semibold text-foreground"
         dir="auto"
       >
         {museName}
       </span>
       <span
         data-testid="context-panel-connection"
-        className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground"
+        className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-[12px] font-medium text-ink-2"
       >
         <span
           aria-hidden="true"
@@ -511,7 +476,7 @@ function IdentityHeader({
             "size-1.5 rounded-full",
             connection === "connected"
               ? "bg-success"
-              : "animate-pulse bg-muted-foreground/50 motion-reduce:animate-none",
+              : "animate-pulse bg-ink-3 motion-reduce:animate-none",
           )}
         />
         {connection === "connected" ? tt`Connected` : tt`Connecting…`}
@@ -634,11 +599,11 @@ export function ContextPanel({
         !collapsed && "xl:flex",
       )}
     >
-      <div className="flex shrink-0 flex-col gap-4 px-5 pt-5">
+      <div className="flex shrink-0 flex-col gap-3.5 px-4 pt-4">
         <IdentityHeader museName={museName} connection={connection} />
         <PanelTabBar tab={tab} onChange={setTab} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rk-scroll px-5 pb-5">
+      <div className="min-h-0 flex-1 overflow-y-auto rk-scroll px-4 pb-4">
         {tab === "activity" ? (
           <ActivityPanel
             botId={botId}

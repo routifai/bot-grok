@@ -1,10 +1,9 @@
 import type { Activity } from "@aiden/contracts";
 import { presentActivityTitle } from "@aiden/core";
-import { Button, cn } from "@aiden/ui-web";
+import { Button } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
-import { useMemo, useState } from "react";
-import { Shimmer } from "../../../components/ai/primitives";
-import { ActivityIconTile } from "./ActivityIconTile";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityBranch, ActivityLine } from "./ActivityLine";
 import { ActivityRunDialog, type ActivityWire } from "./ActivityRunDialog";
 import {
   activityDurationMs,
@@ -21,16 +20,13 @@ import {
   latestStepTitle,
 } from "./activityTree";
 import { PanelRowSkeletonList } from "./PanelSkeleton";
-import { ACTIVITY_SOURCE_ICON } from "./toolIcons";
 import type { ActivitiesState } from "./useActivities";
 import { useNow } from "./useNow";
 
-/** One Activity: an icon tile for where it came from, a short task title, one calm line
- * under it, and a time. Working, the line is the live Step (shimmering) and the time is how
- * long it has been going; settled, the line is the outcome's gist and the time is the clock.
- * Status is the line's words and the tile's own motion/tint, not a separate mark — the app
- * stays monochrome here, only a failed run's tile takes the destructive token. A Helper's
- * parts nest beneath it as smaller rows of the same kind. */
+/** One Activity as the "Working" line (ActivityLine): a status dot, its title, and a mono
+ * figure on the right. Working, the line under the title is "Now · <live step>" and the figure
+ * is how long it has gone; settled, the line is the outcome's gist and the figure is the clock.
+ * A Helper's parts hang beneath it on a connector line. */
 function ActivityRow({
   node,
   depth = 0,
@@ -45,70 +41,36 @@ function ActivityRow({
   const { activity, children } = node;
   const { t, i18n } = useLingui();
   const live = isRunning(activity);
-  const failed = activity.status === "failed";
-  const line = activityLineText(activity, {
-    in_progress: t`Working`,
-    done: t`Done`,
-    failed: t`Didn't finish`,
-    cancelled: t`Cancelled`,
-  });
-  const liveLine = live ? (latestStepTitle(activity) ?? t`Starting`) : undefined;
   const duration = live ? activityDurationMs(activity, now) : null;
-  const Icon = ACTIVITY_SOURCE_ICON[activity.source];
-  const nested = depth > 0;
   return (
     <div className="flex flex-col">
-      <button
-        type="button"
+      <ActivityLine
+        status={activity.status}
+        title={presentActivityTitle(activity.title)}
+        meta={
+          live ? (
+            <span data-testid="activity-elapsed">
+              {duration === null ? "" : formatDuration(duration)}
+            </span>
+          ) : (
+            <time dateTime={activity.startedAt}>
+              {formatClockTime(activity.startedAt, i18n.locale)}
+            </time>
+          )
+        }
+        liveStep={live ? (latestStepTitle(activity) ?? t`Starting`) : undefined}
+        detail={activityLineText(activity, {
+          in_progress: t`Working`,
+          done: t`Done`,
+          failed: t`Didn't finish`,
+          cancelled: t`Cancelled`,
+        })}
+        nested={depth > 0}
         onClick={() => onOpen(activity.id)}
-        data-testid="activity-row"
-        data-status={activity.status}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring",
-          nested && "py-1.5",
-        )}
-      >
-        <ActivityIconTile Icon={Icon} live={live} failed={failed} size={nested ? "sm" : "md"} />
-        <span className="min-w-0 flex-1">
-          <span
-            className={cn(
-              "block min-w-0 truncate font-medium text-foreground",
-              nested ? "text-[13px]" : "text-[13.5px]",
-            )}
-            dir="auto"
-          >
-            {presentActivityTitle(activity.title)}
-          </span>
-          <span
-            className={cn(
-              "block min-w-0 truncate text-[12.5px]",
-              live ? "text-ink-2" : "text-ink-3",
-              failed && "text-foreground",
-            )}
-            aria-live={live ? "polite" : undefined}
-            dir="auto"
-          >
-            {liveLine ? <Shimmer>{liveLine}</Shimmer> : line}
-          </span>
-        </span>
-        {live ? (
-          <span
-            className="shrink-0 font-mono text-[11.5px] whitespace-nowrap text-ink-3 tabular-nums"
-            data-testid="activity-elapsed"
-          >
-            {duration === null ? "" : formatDuration(duration)}
-          </span>
-        ) : (
-          <time
-            className="shrink-0 font-mono text-[11.5px] whitespace-nowrap text-ink-3 tabular-nums"
-            dateTime={activity.startedAt}
-          >
-            {formatClockTime(activity.startedAt, i18n.locale)}
-          </time>
-        )}
-      </button>
+        testId="activity-row"
+      />
       {children.length > 0 ? (
-        <div className="ms-[22px] flex flex-col border-s border-line ps-1.5">
+        <ActivityBranch>
           {children.map((child) => (
             <ActivityRow
               key={child.activity.id}
@@ -118,7 +80,7 @@ function ActivityRow({
               onOpen={onOpen}
             />
           ))}
-        </div>
+        </ActivityBranch>
       ) : null}
     </div>
   );
@@ -126,15 +88,40 @@ function ActivityRow({
 
 const EMPTY_ACTIVITIES: Activity[] = [];
 
+/** A group's label ("Working now", "Today"): small, quiet, on the rows' text edge. */
+const GROUP_LABEL = "px-2 pb-0.5 text-[11.5px] font-semibold text-ink-3";
+
+/** How long the skeleton may stand in before the panel settles on its empty line instead. */
+export const ACTIVITY_LOADING_GRACE_MS = 4_000;
+
+/**
+ * True once a load has run past its grace period, or straight away while the page is hidden
+ * (the feed pauses then, so the read the skeleton waits on is not coming): either way the
+ * panel shows its calm empty line rather than a skeleton that never ends.
+ */
+function useLoadingOverdue(loading: boolean): boolean {
+  const [overdue, setOverdue] = useState(false);
+  useEffect(() => {
+    if (!loading) {
+      setOverdue(false);
+      return;
+    }
+    if (document.visibilityState === "hidden") {
+      setOverdue(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setOverdue(true), ACTIVITY_LOADING_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+  return overdue;
+}
+
 /** The same calm line, whichever of "truly nothing yet" or "this Muse has no
  * Conversation yet" (NOT_FOUND) it's for — both read the same to the person. */
 function EmptyActivities() {
   const { t } = useLingui();
   return (
-    <p
-      className="py-8 text-center text-[13.5px] text-muted-foreground"
-      data-testid="activity-empty"
-    >
+    <p className="py-2 text-[13px] text-ink-3" data-testid="activity-empty">
       {t`Nothing yet — once I do something, it shows up here.`}
     </p>
   );
@@ -183,12 +170,15 @@ export function ActivityPanel({
     };
   }, [activities, i18n.locale]);
   const now = useNow(working.length > 0);
+  const loadingOverdue = useLoadingOverdue(state.status === "loading");
 
   // Both read as "nothing to show yet" — a brand new Muse with no Conversation
   // (NOT_FOUND) looks the same here as a feature not wired up in this environment
   // (NOT_IMPLEMENTED); neither is an error.
   if (state.status === "unavailable") return <EmptyActivities />;
-  if (state.status === "loading") return <PanelRowSkeletonList count={4} />;
+  if (state.status === "loading") {
+    return loadingOverdue ? <EmptyActivities /> : <PanelRowSkeletonList count={4} />;
+  }
   if (state.status === "error") {
     return <p className="text-[13px] text-destructive">{t`Could not load Activity`}</p>;
   }
@@ -202,10 +192,10 @@ export function ActivityPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4" data-testid="activity-panel">
+    <div className="-mx-2 flex flex-col gap-5" data-testid="activity-panel">
       {working.length > 0 ? (
         <section className="flex flex-col gap-1" data-testid="activity-working">
-          <h3 className="px-1 text-[12px] font-semibold text-ink-3">{t`Working now`}</h3>
+          <h3 className={GROUP_LABEL}>{t`Working now`}</h3>
           <div className="flex flex-col gap-0.5">
             {working.map((node) => (
               <ActivityRow
@@ -220,7 +210,7 @@ export function ActivityPanel({
       ) : null}
       {groups.map((group) => (
         <section key={group.date} className="flex flex-col gap-1">
-          <h3 className="px-1 text-[12px] font-semibold text-ink-3">
+          <h3 className={GROUP_LABEL}>
             {group.label.kind === "today"
               ? t`Today`
               : group.label.kind === "yesterday"

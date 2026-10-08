@@ -200,7 +200,7 @@ it("keeps the plain row outside muse mode, without eagerly fetching a preview", 
   }
 });
 
-it("falls back to the plain row in muse mode for a non-previewable kind", async () => {
+it("gives a PDF the same muse card, with its type icon and no thumbnail fetch", async () => {
   const view = await renderCard({
     target: { botId: "bot-1" },
     artifactId: "artifact-3",
@@ -213,6 +213,8 @@ it("falls back to the plain row in muse mode for a non-previewable kind", async 
     expect(view.container.querySelector("iframe")).toBeNull();
     expect(api.getById).not.toHaveBeenCalled();
     expect(view.container.textContent).toContain("Q3 report.pdf");
+    expect(buttonsNamed(view.container, "Open Q3 report.pdf")).toHaveLength(1);
+    expect(buttonsNamed(view.container, "Download Q3 report.pdf")).toHaveLength(1);
   } finally {
     await view.cleanup();
   }

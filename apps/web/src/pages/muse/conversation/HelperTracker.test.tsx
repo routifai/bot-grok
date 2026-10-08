@@ -163,7 +163,8 @@ it("settles in place when the result lands: same row, now done, with its total t
   expect(after).toHaveLength(1);
   expect(after[0]).toBe(before);
   expect(after[0]?.getAttribute("data-status")).toBe("done");
-  expect(after[0]?.textContent).toContain("Researching Japan trip · 2 steps · 1m 20s");
+  expect(after[0]?.textContent).toContain("Researching Japan trip");
+  expect(after[0]?.textContent).toContain("2 steps · 1m 20s");
   expect(container.textContent).not.toContain("Wrote it up");
 });
 
@@ -190,11 +191,9 @@ it("nests the parts a Helper handed on beneath it as smaller rows", async () => 
   );
   const container = await mount();
   const rows = [...container.querySelectorAll("[data-testid=helper-tracker-row]")];
-  expect(rows.map((row) => row.textContent?.split(" · ")[0])).toEqual([
-    "Plan the trip",
-    "Find flights",
-    "Find hotels",
-  ]);
+  expect(
+    rows.map((row) => row.querySelector("[data-testid=activity-line-title]")?.textContent),
+  ).toEqual(["Plan the trip", "Find flights", "Find hotels"]);
 });
 
 it("opens that Helper's run page when its row is clicked, and a part's own when a part is", async () => {
@@ -217,7 +216,11 @@ it("shows a Helper that did not finish in plain words", async () => {
     fake.set(ready([helper("lead", { title: "Plan the trip", status: "failed", startedAt })])),
   );
   const container = await mount();
-  expect(container.textContent).toContain("Plan the trip · Didn't finish");
+  const row = container.querySelector("[data-testid=helper-tracker-row]");
+  expect(row?.querySelector("[data-testid=activity-line-title]")?.textContent).toBe(
+    "Plan the trip",
+  );
+  expect(row?.textContent).toContain("Didn't finish");
 });
 
 it("never shows an engine name: the Helper's own words come through the title presenter", async () => {

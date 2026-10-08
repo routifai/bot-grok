@@ -27,6 +27,9 @@ import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
 import { type MuseLiveRun, useMuseLiveState } from "../chrome/useMuseLiveState";
+import { FailureRun } from "./FailureNote";
+import type { TranscriptRow } from "./failureNotes";
+import { foldFailureRuns } from "./failureNotes";
 import { MessageHoverActions } from "./MessageHoverActions";
 import { MessageView } from "./MessageView";
 import { hasOpenMuseAsk } from "./messageText";
@@ -168,6 +171,14 @@ const TranscriptView = memo(function Transcript({
     [messages],
   );
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
+  // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
+  const transcriptRows = useMemo<TranscriptRow[]>(
+    () =>
+      museMode
+        ? foldFailureRuns(reactionView.visibleMessages)
+        : reactionView.visibleMessages.map((message) => ({ kind: "message", message })),
+    [museMode, reactionView.visibleMessages],
+  );
   const workingBotName = workingBots.length === 1 ? workingBots[0]?.name : undefined;
   const workingLabel =
     workingBotName != null && workingBotName !== ""
@@ -440,7 +451,16 @@ const TranscriptView = memo(function Transcript({
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
         ) : null}
-        {reactionView.visibleMessages.map((message) => {
+        {transcriptRows.map((row) => {
+          if (row.kind === "failures") {
+            const last = row.messages.at(-1) as ThreadMessage;
+            return (
+              <div key={row.messages[0]?.id} data-message-id={last.id}>
+                <FailureRun messages={row.messages} />
+              </div>
+            );
+          }
+          const { message } = row;
           if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
             return null;
           const peerReceipt = isPeerReceiptBlocks(message.blocks);

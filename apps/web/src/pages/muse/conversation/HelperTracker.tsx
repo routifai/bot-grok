@@ -1,10 +1,9 @@
 import type { Activity } from "@aiden/contracts";
 import { presentActivityTitle } from "@aiden/core";
-import { cn } from "@aiden/ui-web";
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Shimmer } from "../../../components/ai/primitives";
+import { ActivityBranch, ActivityLine } from "../chrome/ActivityLine";
 import { ActivityRunDialog } from "../chrome/ActivityRunDialog";
 import { activityDurationMs, formatDuration, isRunning } from "../chrome/activityGrouping";
 import {
@@ -15,7 +14,6 @@ import {
   latestStepTitle,
   stepCount,
 } from "../chrome/activityTree";
-import { RunStatusDot } from "../chrome/RunStatusDot";
 import { activityFeedFor, LIVE_ACTIVITY_WIRE } from "../chrome/useActivities";
 import { useNow } from "../chrome/useNow";
 
@@ -28,9 +26,9 @@ function findActivity(node: ActivityNode, id: string): Activity | undefined {
   return undefined;
 }
 
-/** One Helper (or one part of its task) as a single quiet line: a status dot, its title, and
- * "6 steps · 1m 20s" once it has them. While it works, its live Step shimmers underneath. Reads
- * the same Activity the panel row shows; opening it opens the same run page. */
+/** One Helper (or one part of its task) as the "Working" line (ActivityLine): a status dot, its
+ * title, its step count and time in mono, and "Now · <live step>" underneath while it works.
+ * Reads the same Activity the panel row shows; opening it opens the same run page. */
 function HelperLine({
   activity,
   fallbackTitle,
@@ -45,61 +43,32 @@ function HelperLine({
   onOpen?: () => void;
 }) {
   const { t } = useLingui();
-  const title = activity ? presentActivityTitle(activity.title) : fallbackTitle;
-  const live = activity ? isRunning(activity) : false;
-  const steps = activity ? stepCount(activity) : 0;
-  const duration = activity ? activityDurationMs(activity, now) : null;
-  const facts = [
+  if (!activity) return <ActivityLine title={fallbackTitle} nested={nested} />;
+  const steps = stepCount(activity);
+  const duration = activityDurationMs(activity, now);
+  const meta = [
     steps > 0 ? plural(steps, { one: "# step", other: "# steps" }) : null,
-    activity?.status === "failed" ? t`Didn't finish` : null,
-    activity?.status === "cancelled" ? t`Cancelled` : null,
     duration !== null ? formatDuration(duration) : null,
-  ].filter(Boolean);
-  const liveStep = live ? (latestStepTitle(activity as Activity) ?? t`Starting`) : undefined;
-  const body = (
-    <>
-      <span className="flex h-[1.4em] shrink-0 items-center">
-        {activity ? (
-          <RunStatusDot status={activity.status} />
-        ) : (
-          <span aria-hidden="true" className="size-1.5 rounded-full bg-muted-foreground/40" />
-        )}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate" dir="auto">
-          <span className={cn("font-medium text-foreground", nested && "font-normal")}>
-            {title}
-          </span>
-          {facts.length > 0 ? (
-            <span className="text-muted-foreground tabular-nums"> · {facts.join(" · ")}</span>
-          ) : null}
-        </span>
-        {liveStep ? (
-          <span className="block truncate text-[12.5px]" aria-live="polite" dir="auto">
-            <Shimmer>{liveStep}</Shimmer>
-          </span>
-        ) : null}
-      </span>
-    </>
-  );
-  const className = cn(
-    "flex w-full items-start gap-2.5 rounded-lg px-2 py-1 text-start text-[13.5px] leading-[1.4]",
-    nested && "text-[13px]",
-  );
-  if (!activity || !onOpen) return <div className={className}>{body}</div>;
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <button
-      type="button"
+    <ActivityLine
+      status={activity.status}
+      title={presentActivityTitle(activity.title)}
+      meta={meta || undefined}
+      liveStep={isRunning(activity) ? (latestStepTitle(activity) ?? t`Starting`) : undefined}
+      detail={
+        activity.status === "failed"
+          ? t`Didn't finish`
+          : activity.status === "cancelled"
+            ? t`Cancelled`
+            : undefined
+      }
+      nested={nested}
       onClick={onOpen}
-      data-testid="helper-tracker-row"
-      data-status={activity.status}
-      className={cn(
-        className,
-        "transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
-      )}
-    >
-      {body}
-    </button>
+      testId="helper-tracker-row"
+    />
   );
 }
 
@@ -124,11 +93,11 @@ function HelperTree({
         onOpen={() => onOpen(node.activity.id)}
       />
       {node.children.length > 0 ? (
-        <div className="ms-3.5 flex flex-col border-s border-border ps-1">
+        <ActivityBranch>
           {node.children.map((child) => (
             <HelperTree key={child.activity.id} node={child} nested now={now} onOpen={onOpen} />
           ))}
-        </div>
+        </ActivityBranch>
       ) : null}
     </div>
   );
@@ -168,7 +137,7 @@ export function HelperTracker({
 
   const open = node && openId ? findActivity(node, openId) : undefined;
   return (
-    <div className="flex w-[min(420px,90%)] flex-col" data-testid="helper-tracker">
+    <div className="-ms-2 flex w-[min(440px,100%)] flex-col" data-testid="helper-tracker">
       {node ? (
         <HelperTree node={node} nested={false} now={now} onOpen={setOpenId} />
       ) : (

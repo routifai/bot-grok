@@ -32,7 +32,7 @@ import { BranchIcon, LiveDot } from "../forks/forkParts";
 import type { ChatListState } from "./useChatList";
 import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
 
-const MAX_SIDEBAR_GOALS = 5;
+const MAX_SIDEBAR_GOALS = 3;
 const COLLAPSED_KEY = "muse:sidebar-collapsed";
 
 // One layout for both states: the width animates and labels fade, so every icon keeps
@@ -297,9 +297,9 @@ export function MuseSidebar({
           {activeGoals.length ? (
             <div
               aria-hidden={collapsed || undefined}
-              className="app-no-drag flex min-h-0 flex-col gap-0.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
+              className="app-no-drag flex min-h-0 flex-col transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
             >
-              <div className="ps-[19px] pb-1.5 text-[12px] font-semibold whitespace-nowrap text-ink-3">
+              <div className={cn(GROUP_LABEL, "ps-[19px]")}>
                 <Trans>Goals</Trans>
               </div>
               {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
@@ -312,20 +312,17 @@ export function MuseSidebar({
                     type="button"
                     tabIndex={collapsed ? -1 : undefined}
                     onClick={() => onNavigate("goals")}
-                    className="flex h-9 items-center gap-3 rounded-[10px] ps-[26px] pe-3 text-start text-[14px] whitespace-nowrap text-foreground/85 transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring"
+                    className={cn(
+                      TWIG_ROW,
+                      "gap-[18px] ps-[23px] pe-3 text-foreground/85 hover:bg-selection/70 hover:text-foreground",
+                    )}
                   >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "size-2 shrink-0 rounded-full",
-                        waiting ? "bg-warning" : "bg-muted-foreground/40",
-                      )}
-                    />
+                    <GoalProgress done={done} total={goal.tasks.length} waiting={waiting} />
                     <span className="min-w-0 flex-1 truncate" dir="auto">
                       {goal.title}
                     </span>
                     {goal.tasks.length > 0 ? (
-                      <span className="shrink-0 font-mono text-[12px] tabular-nums text-ink-3">
+                      <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-3">
                         {done}/{goal.tasks.length}
                       </span>
                     ) : null}
@@ -336,9 +333,10 @@ export function MuseSidebar({
           ) : null}
         </div>
 
-        <div className="app-no-drag flex shrink-0 flex-col gap-0.5">
+        <div className="app-no-drag flex shrink-0 flex-col">
           {mobile ? null : (
             <RailRow
+              quiet
               collapsed={collapsed}
               icon={collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
               label={collapsed ? t`Expand sidebar` : t`Collapse sidebar`}
@@ -346,6 +344,7 @@ export function MuseSidebar({
             />
           )}
           <RailRow
+            quiet
             collapsed={collapsed}
             icon={<Settings />}
             label={t`Settings`}
@@ -354,11 +353,11 @@ export function MuseSidebar({
           {personName ? (
             <div
               title={collapsed ? personName : undefined}
-              className={cn(ROW, "mt-1 ps-[17px] text-[15px] font-medium text-foreground")}
+              className={cn(ROW, "mt-1 h-9 ps-[20px] text-[14px] text-ink-2")}
             >
               <span
                 aria-hidden="true"
-                className="grid size-[26px] shrink-0 place-items-center rounded-full bg-foreground text-[12.5px] font-semibold text-background"
+                className="grid size-5 shrink-0 place-items-center rounded-full bg-selection text-[11px] font-semibold text-foreground"
               >
                 {personName.trim().charAt(0).toUpperCase()}
               </span>
@@ -394,8 +393,63 @@ export function MuseSidebar({
   );
 }
 
+// Rows under the Conversation (forks, Side Chats) and under Goals: 32px tall on the 4pt grid,
+// a 14px lead (icon or ring) on one left edge, the same hover and selected fills everywhere.
 const TWIG_ROW =
-  "flex h-[34px] w-full items-center gap-2 rounded-[10px] px-2.5 text-start text-[13.5px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
+  "flex h-8 w-full items-center gap-2 rounded-[10px] px-2 text-start text-[13.5px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
+const TWIG_HOVER = "hover:bg-selection/70 hover:text-foreground";
+const TWIG_SELECTED = "bg-selection font-medium text-foreground";
+/** A group's label in the sidebar ("Open · 2", "Added to Conversation", "Goals"). */
+const GROUP_LABEL = "px-2 pt-2 pb-1 text-[11.5px] font-semibold whitespace-nowrap text-ink-3";
+
+/** The quiet unread mark: a 6px dot, never heavy black. */
+function UnreadDot({ className }: { className?: string }) {
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className={cn("size-1.5 shrink-0 rounded-full bg-ink-2", className)}
+      />
+      <span className="sr-only">
+        <Trans>Unread</Trans>
+      </span>
+    </>
+  );
+}
+
+/** A Goal's progress as a tiny ring (done of total), or a plain dot when it has no plan yet.
+ * Waiting on the person, it takes the warning token. */
+function GoalProgress({ done, total, waiting }: { done: number; total: number; waiting: boolean }) {
+  if (total === 0) {
+    return (
+      <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center">
+        <span className={cn("size-1.5 rounded-full", waiting ? "bg-warning" : "bg-ink-3")} />
+      </span>
+    );
+  }
+  const radius = 5.5;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 14 14"
+      className={cn("size-3.5 shrink-0 -rotate-90", waiting ? "text-warning" : "text-ink-2")}
+    >
+      <circle cx="7" cy="7" r={radius} fill="none" strokeWidth="1.75" className="stroke-line" />
+      <circle
+        cx="7"
+        cy="7"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeDasharray={`${(done / total) * circumference} ${circumference}`}
+        className={done === 0 ? "opacity-0" : undefined}
+      />
+    </svg>
+  );
+}
 
 /**
  * The Side Chats, nested under the Conversation row they branch from (agreed behavior
@@ -437,7 +491,7 @@ export function ChatTree({
     <div
       data-testid="chat-tree"
       aria-hidden={collapsed || undefined}
-      className="app-no-drag relative ms-[26px] flex flex-col gap-0.5 border-s border-line py-0.5 ps-3.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
+      className="app-no-drag relative ms-[30px] flex flex-col border-s border-line py-1 ps-2.5 transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0"
     >
       {onOpenFork && onShowForks ? (
         <ForkGroups
@@ -458,30 +512,23 @@ export function ChatTree({
           className={cn(
             TWIG_ROW,
             activeChatId === chat.id
-              ? "bg-selection font-medium text-foreground"
-              : "text-foreground/85 hover:bg-selection",
+              ? TWIG_SELECTED
+              : cn(TWIG_HOVER, chat.unread ? "font-medium text-foreground" : "text-foreground/85"),
           )}
         >
+          <MessageCircle
+            size={14}
+            strokeWidth={1.75}
+            aria-hidden="true"
+            className="shrink-0 text-ink-3"
+          />
           <span className="min-w-0 flex-1 truncate" dir="auto">
             {chat.title}
           </span>
           {chat.live ? (
-            <>
-              <span
-                aria-hidden="true"
-                className="size-1.5 shrink-0 rounded-full animate-[rkPulse_2.4s_ease-in-out_infinite] bg-success"
-              />
-              <span className="sr-only">
-                <Trans>Nova is working</Trans>
-              </span>
-            </>
+            <LiveDot className="size-1.5" />
           ) : chat.unread && activeChatId !== chat.id ? (
-            <>
-              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-foreground" />
-              <span className="sr-only">
-                <Trans>Unread</Trans>
-              </span>
-            </>
+            <UnreadDot />
           ) : null}
         </button>
       ))}
@@ -492,11 +539,10 @@ export function ChatTree({
         aria-current={activeChatId === "draft" ? "page" : undefined}
         className={cn(
           TWIG_ROW,
-          "gap-2 text-muted-foreground hover:bg-selection hover:text-foreground",
-          activeChatId === "draft" && "bg-selection text-foreground",
+          activeChatId === "draft" ? TWIG_SELECTED : cn("text-ink-2", TWIG_HOVER),
         )}
       >
-        <Plus size={14} strokeWidth={1.75} className="shrink-0" />
+        <Plus size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
         <span className="truncate">
           <Trans>New side chat</Trans>
         </span>
@@ -508,16 +554,18 @@ export function ChatTree({
             tabIndex={collapsed ? -1 : undefined}
             onClick={() => setArchivedOpen((value) => !value)}
             aria-expanded={archivedOpen}
-            className={cn(TWIG_ROW, "gap-1.5 text-muted-foreground hover:bg-selection")}
+            className={cn(TWIG_ROW, "text-ink-2", TWIG_HOVER)}
           >
             <ChevronRight
-              size={13}
+              size={14}
+              strokeWidth={1.75}
+              aria-hidden="true"
               className={cn("shrink-0 transition-transform", archivedOpen && "rotate-90")}
             />
             <span className="truncate">
               <Trans>Archived</Trans>
             </span>
-            <span className="ms-auto shrink-0 font-mono text-[12px] tabular-nums text-ink-3">
+            <span className="ms-auto shrink-0 font-mono text-[11.5px] tabular-nums text-ink-3">
               {archived.length}
             </span>
           </button>
@@ -531,9 +579,8 @@ export function ChatTree({
                   aria-current={activeChatId === chat.id ? "page" : undefined}
                   className={cn(
                     TWIG_ROW,
-                    activeChatId === chat.id
-                      ? "bg-selection font-medium text-foreground"
-                      : "text-muted-foreground hover:bg-selection",
+                    "ps-[30px]",
+                    activeChatId === chat.id ? TWIG_SELECTED : cn("text-ink-2", TWIG_HOVER),
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate" dir="auto">
@@ -576,11 +623,7 @@ function ForkGroups({
   // Archived forks live in the All forks list, not in a second "Archived" fold here.
   if (!working.length && !open.length && !added) return null;
   const tab = collapsed ? -1 : undefined;
-  const heading = (label: string) => (
-    <div className="px-2.5 pt-2 pb-1 text-[11.5px] font-semibold whitespace-nowrap text-ink-3">
-      {label}
-    </div>
-  );
+  const heading = (label: string) => <div className={GROUP_LABEL}>{label}</div>;
   const row = (fork: ForkRow) => (
     <button
       key={fork.chatId}
@@ -589,8 +632,8 @@ function ForkGroups({
       onClick={() => onOpenFork(fork)}
       aria-current={activeForkId === fork.chatId ? "page" : undefined}
       className={cn(
-        "grid w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-[10px] px-2.5 py-1.5 text-start text-[13.5px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-        activeForkId === fork.chatId ? "bg-selection" : "hover:bg-selection",
+        "grid min-h-8 w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 rounded-[10px] px-2 py-1.5 text-start text-[13.5px] transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+        activeForkId === fork.chatId ? "bg-selection" : "hover:bg-selection/70",
       )}
     >
       <BranchIcon className={FORK_TONE_CLASS[fork.tone].text} />
@@ -598,37 +641,37 @@ function ForkGroups({
         {fork.title}
       </span>
       {fork.status === "live" ? (
-        <LiveDot tone={fork.tone} />
+        <LiveDot tone={fork.tone} className="size-1.5" />
       ) : fork.unread && activeForkId !== fork.chatId ? (
-        <>
-          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-foreground" />
-          <span className="sr-only">
-            <Trans>Unread</Trans>
-          </span>
-        </>
+        <UnreadDot className={FORK_TONE_CLASS[fork.tone].bg} />
       ) : (
         <span />
       )}
       {fork.anchorText ? (
-        <small className="col-start-2 col-end-4 truncate text-[11.5px] text-ink-3" dir="auto">
+        <small className="col-start-2 col-end-4 truncate text-[12px] text-ink-3" dir="auto">
           {t`from “${fork.anchorText}”`}
         </small>
       ) : null}
     </button>
   );
+  // A folded group reads as its label: same size and ink as "Open · N", a little brighter on
+  // hover since it opens the All forks list.
   const fold = (label: string, count: number, filter: ForkFilter) => (
     <button
       type="button"
       tabIndex={tab}
       onClick={() => onShowForks(filter)}
-      className={cn(TWIG_ROW, "h-8 justify-between text-[13px] text-ink-2 hover:bg-selection")}
+      className={cn(
+        GROUP_LABEL,
+        "flex w-full items-center justify-between rounded-[10px] pb-2 text-start transition-colors hover:text-ink-2 focus-visible:outline-2 focus-visible:outline-ring",
+      )}
     >
       <span className="truncate">{label}</span>
-      <span className="shrink-0 font-mono text-[12px] tabular-nums text-ink-3">{count}</span>
+      <span className="shrink-0 font-mono tabular-nums">{count}</span>
     </button>
   );
   return (
-    <div data-testid="fork-groups" className="flex flex-col gap-0.5 pb-1.5">
+    <div data-testid="fork-groups" className="flex flex-col pb-1">
       {working.length ? (
         <>
           {heading(t`Working · ${working.length}`)}
@@ -646,11 +689,14 @@ function ForkGroups({
               onClick={() => onShowForks("open")}
               className={cn(
                 TWIG_ROW,
-                "h-8 justify-between text-[13px] font-medium text-foreground hover:bg-selection",
+                "justify-between ps-[30px] text-[13px] text-ink-2",
+                TWIG_HOVER,
               )}
             >
               <span className="truncate">{t`${open.length - MAX_OPEN_FORKS} more open`}</span>
-              <span aria-hidden="true">→</span>
+              <span aria-hidden="true" className="text-ink-3">
+                →
+              </span>
             </button>
           ) : null}
         </>
@@ -666,6 +712,7 @@ function RailRow({
   meta,
   attention = false,
   current = false,
+  quiet = false,
   collapsed,
   onClick,
   onMouseEnter,
@@ -675,21 +722,32 @@ function RailRow({
   meta?: number;
   attention?: boolean;
   current?: boolean;
+  /** The footer's rows (Collapse, Settings): shorter, smaller, in the secondary ink. */
+  quiet?: boolean;
   collapsed: boolean;
   onClick: () => void;
   onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
 }) {
   const classes = cn(
     ROW,
-    "group/row relative text-[15px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-    current ? "bg-selection text-foreground" : "text-foreground/85 hover:text-foreground",
+    "group/row relative transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+    quiet
+      ? "h-9 text-[14px] text-ink-2 hover:bg-selection/70 hover:text-foreground"
+      : "text-[15px] font-medium",
+    !quiet &&
+      (current ? "bg-selection text-foreground" : "text-foreground/85 hover:text-foreground"),
   );
   const content = (
     <>
       <span
         className={cn(
           ICON_MOTION,
-          current ? "text-foreground" : "text-ink-2 group-hover/row:text-foreground",
+          quiet && "[&_svg]:size-[18px]",
+          current
+            ? "text-foreground"
+            : quiet
+              ? "text-ink-3 group-hover/row:text-foreground"
+              : "text-ink-2 group-hover/row:text-foreground",
         )}
       >
         {icon}

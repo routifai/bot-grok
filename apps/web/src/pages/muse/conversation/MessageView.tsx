@@ -22,6 +22,7 @@ import {
   McpApprovalCard,
 } from "../../shell/message-cards";
 import { FirstRunHint } from "../intro";
+import { FailureNote, useFailureNoteText } from "./FailureNote";
 import { HelperTracker } from "./HelperTracker";
 import { accessibleReplyExcerpt, previewMessageText } from "./messageText";
 import { FALLBACK_BOT_COLOR } from "./shared";
@@ -92,28 +93,7 @@ export const MessageView = memo(function MessageView({
   onOpenComputer: (botId?: string) => void;
 }) {
   const { t } = useLingui();
-  /** The engine sends a failure's code, never its wording: the copy is ours. */
-  const errorNote = (code: string) => {
-    switch (code) {
-      case "provider_unavailable":
-        return t`I lost the connection. Try again.`;
-      case "timeout":
-        return t`That took too long. Try again.`;
-      case "rate_limited":
-      case "overloaded":
-        return t`The model is busy. Try again in a moment.`;
-      case "insufficient_credit":
-        return t`The model account is out of credit.`;
-      case "auth_failed":
-        return t`The model refused my key.`;
-      case "context_too_long":
-        return t`This conversation is too long for the model.`;
-      case "sandbox_unavailable":
-        return t`My computer restarted. Try again.`;
-      default:
-        return t`Something went wrong on my side. Try again.`;
-    }
-  };
+  const errorNote = useFailureNoteText();
   const isNarration =
     message.role === "bot" &&
     message.blocks.length > 0 &&
@@ -189,7 +169,7 @@ export const MessageView = memo(function MessageView({
             className={cn(
               "max-w-full space-y-2.5",
               museMode
-                ? "text-[15.5px] leading-[1.6] text-foreground"
+                ? "muse-reply text-[15.5px] leading-[1.6] text-foreground"
                 : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
             )}
             dir="auto"
@@ -295,7 +275,7 @@ export const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[15.5px] leading-[1.6] text-foreground"
+                    ? "muse-reply text-[15.5px] leading-[1.6] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
@@ -459,15 +439,7 @@ export const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "error") {
-          return (
-            <p
-              key={i}
-              data-testid="message-error-note"
-              className="self-center py-1 text-center text-[12.5px] text-muted-foreground"
-            >
-              {errorNote(block.code)}
-            </p>
-          );
+          return <FailureNote key={i}>{errorNote(block.code)}</FailureNote>;
         }
         if (block.kind === "text" && message.role === "user") {
           return (
@@ -489,15 +461,7 @@ export const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text" && isEngineErrorText(block.text)) {
-          return (
-            <p
-              key={i}
-              data-testid="message-error-note"
-              className="self-center py-1 text-center text-[12.5px] text-muted-foreground"
-            >
-              {ENGINE_ERROR_NOTE}
-            </p>
-          );
+          return <FailureNote key={i}>{ENGINE_ERROR_NOTE}</FailureNote>;
         }
         if (block.kind === "text") {
           return (
@@ -507,7 +471,7 @@ export const MessageView = memo(function MessageView({
                 className={cn(
                   "max-w-full",
                   museMode
-                    ? "text-[15.5px] leading-[1.6] text-foreground"
+                    ? "muse-reply text-[15.5px] leading-[1.6] text-foreground"
                     : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
                 )}
                 dir="auto"
