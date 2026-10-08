@@ -87,7 +87,6 @@ ITEMS_SCAN_LIMIT_ENV = "OMNIGENT_ACTIVITY_ITEMS_SCAN_LIMIT"
 # current turn) — generous enough for ordinary use while keeping one
 # page-fetch's cost bounded.
 _ITEMS_SCAN_LIMIT = 1000
-_SIDE_CHATS_SCAN_LIMIT = 200
 
 
 def _resolve_items_scan_limit() -> int:
@@ -663,10 +662,7 @@ def list_chat_roots(conv_store: ConversationStore, super_chat_id: str) -> list[C
     if root is None or not is_superside_chat(root.labels):
         return []
     chats = [root]
-    side_chat_ids = [
-        chat["id"]
-        for chat in list_related_chats(conv_store, super_chat_id, limit=_SIDE_CHATS_SCAN_LIMIT)
-    ]
+    side_chat_ids = [chat["id"] for chat in list_related_chats(conv_store, super_chat_id)]
     if side_chat_ids:
         side_chats_by_id = conv_store.get_conversations(side_chat_ids)
         chats.extend(

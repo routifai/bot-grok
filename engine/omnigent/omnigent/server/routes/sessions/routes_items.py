@@ -276,7 +276,9 @@ def register_items_routes(
         :returns: A :class:`PaginatedList` of chat summary dicts
             (``id``, ``title``, ``created_at``, ``updated_at``,
             ``last_message_preview``, ``live``, …) plus the caller's ``unread`` and
-            ``last_read_at`` (epoch seconds or ``None``); not cursor-paginated.
+            ``last_read_at`` (epoch seconds or ``None``); not cursor-paginated. Returns up to
+            :data:`~omnigent.context.rollover.RELATED_CHATS_MAX` side chats / forks
+            (newest-updated first) plus the parent chat.
         :raises OmnigentError: 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)

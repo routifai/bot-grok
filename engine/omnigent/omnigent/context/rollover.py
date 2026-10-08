@@ -772,10 +772,15 @@ async def build_side_chat_seed(
 # Related chats: Muse-style chat.list for session_history's list_chats
 # ---------------------------------------------------------------------------
 
-_RELATED_CHATS_MAX = 20
-# Forks of one session that are NOT side chats are filtered out below, so
-# the raw fetch is capped higher than the returned limit.
-_RELATED_CHATS_FETCH_CAP = 50
+# Hard cap on the side chats / forks ``list_related_chats`` returns for one session. No
+# consumer pages this list (sidebar, forks list, transcript ``forks[]``, the membership check
+# and the activity scan all want the whole family), so it is high enough to be effectively
+# "all" for one person while keeping a single read bounded. The parent chat, when there is
+# one, comes on top of it.
+RELATED_CHATS_MAX = 200
+# Rows read per store page while collecting a session's children (links are paged through
+# with a cursor, so a non-side-chat fork never hides a side chat behind it).
+_RELATED_CHATS_PAGE = 100
 _RELATED_CHAT_PREVIEW_MAX_CHARS = 150
 
 
@@ -908,7 +913,7 @@ def list_related_chats(
     conv_store: ConversationStore,
     conversation_id: str,
     *,
-    limit: int = _RELATED_CHATS_MAX,
+    limit: int = RELATED_CHATS_MAX,
 ) -> list[dict[str, Any]]:
     """
     The side chats related to *conversation_id* — Muse's ``chat.list`` for
@@ -924,7 +929,8 @@ def list_related_chats(
 
     :param conv_store: Store to query.
     :param conversation_id: The calling (source) session id.
-    :param limit: Maximum chats to return.
+    :param limit: Maximum side chats forked from the session (newest-updated first); its
+        parent is returned in addition, so a long family never loses its way back up.
     :returns: ``[{"id", "title", "created_at", "updated_at",
         "last_message_preview", "archived", "start", "summary", "summary_body", "seed_item_id",
         "live", "anchor_item_id", "fork_count", "fork_state", "fork_summary", "fork_parent_id",
@@ -962,19 +968,28 @@ def list_related_chats(
     # Side Chats opened before SIDE_CHAT_PARENT_LABEL_KEY only carry the fork label.
     children: dict[str, Conversation] = {}
     for link in ({"side_chat_parent_id": conversation_id}, {"fork_source_id": conversation_id}):
-        page = conv_store.list_conversations(
-            limit=_RELATED_CHATS_FETCH_CAP,
-            kind="default",
-            order="desc",
-            sort_by="updated_at",
-            # Archived Side Chats stay readable; the ``archived`` flag lets a UI hide them.
-            include_archived=True,
-            **link,
-        )
-        children.update((child.id, child) for child in page.data)
-    for child in sorted(children.values(), key=lambda c: c.updated_at, reverse=True):
-        if SIDE_CHAT_LABEL_KEY in child.labels and same_owner(child.id):
-            related.append(child)
+        after: str | None = None
+        while True:
+            page = conv_store.list_conversations(
+                limit=_RELATED_CHATS_PAGE,
+                after=after,
+                kind="default",
+                order="desc",
+                sort_by="updated_at",
+                # Archived Side Chats stay readable; the ``archived`` flag lets a UI hide them.
+                include_archived=True,
+                **link,
+            )
+            children.update((child.id, child) for child in page.data)
+            if not page.has_more or not page.data or len(children) >= limit * 2:
+                break
+            after = page.data[-1].id
+    side_chats = [
+        child
+        for child in sorted(children.values(), key=lambda c: c.updated_at, reverse=True)
+        if SIDE_CHAT_LABEL_KEY in child.labels and same_owner(child.id)
+    ]
+    related.extend(side_chats[:limit])
 
     parent_id = side_chat_parent_id(caller.labels)
     if parent_id:
@@ -991,7 +1006,6 @@ def list_related_chats(
         if parent is not None and same_owner(parent.id):
             related.append(parent)
 
-    related = related[:limit]
     ids = [conversation.id for conversation in related]
     previews_by_id = conv_store.list_latest_message_items_for_conversations(ids, 10)
     # The Super Chat's own children are all its forks; from a Side Chat, read the family's.

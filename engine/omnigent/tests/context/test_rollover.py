@@ -836,6 +836,45 @@ def test_list_related_chats_finds_side_chats_by_parent_label_and_old_fork_label(
     assert [c["id"] for c in list_related_chats(conv_store, new.id)] == [parent.id]
 
 
+def test_list_related_chats_returns_every_side_chat_past_twenty_and_the_page_size(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A family of >20 (and >one store page of) Side Chats is returned whole, never cut at 20,
+    and non-Side-Chat forks do not hide any; ``limit`` caps the children but keeps the parent."""
+    from omnigent.context.rollover import RELATED_CHATS_MAX, list_related_chats
+    from omnigent.stores.conversation_store import (
+        FORK_SOURCE_LABEL_KEY,
+        SIDE_CHAT_LABEL_KEY,
+        SIDE_CHAT_PARENT_LABEL_KEY,
+    )
+    from omnigent.stores.conversation_store.sqlalchemy_store import (
+        SqlAlchemyConversationStore,
+    )
+
+    monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
+    conv_store = SqlAlchemyConversationStore(db_uri)
+    parent = conv_store.create_conversation()
+    side_ids = {
+        conv_store.create_conversation(
+            labels={SIDE_CHAT_PARENT_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
+        ).id
+        for _ in range(120)
+    }
+    for _ in range(3):  # a plain fork that is not a Side Chat
+        conv_store.create_conversation(labels={FORK_SOURCE_LABEL_KEY: parent.id})
+
+    assert RELATED_CHATS_MAX > 120
+    assert {c["id"] for c in list_related_chats(conv_store, parent.id)} == side_ids
+
+    capped = [c["id"] for c in list_related_chats(conv_store, parent.id, limit=30)]
+    assert len(capped) == 30 and set(capped) <= side_ids
+
+    # From a Side Chat of a long family the parent still comes back.
+    one = next(iter(side_ids))
+    assert list_related_chats(conv_store, one)[-1]["id"] == parent.id
+    assert [c["id"] for c in list_related_chats(conv_store, one, limit=0)] == [parent.id]
+
+
 def test_list_related_chats_scheduled_helper_sees_parent_but_plain_subagent_does_not(
     db_uri: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
