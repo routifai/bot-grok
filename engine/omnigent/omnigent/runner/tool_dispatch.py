@@ -5003,6 +5003,7 @@ _SCHEDULED_TASK_CREATE_FIELDS = (
     "agent_id",
     "parent_session_id",
     "agent_type",
+    "kind",
     "timezone",
     "model_override",
     "reasoning_effort",

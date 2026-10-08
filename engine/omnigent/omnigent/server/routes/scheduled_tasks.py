@@ -67,6 +67,8 @@ class CreateScheduledTaskRequest(BaseModel):
     # wakes the parent. ``agent_type`` is the sub-agent Type to run.
     parent_session_id: str | None = Field(default=None, min_length=1)
     agent_type: str | None = Field(default=None, min_length=1)
+    # Explicit product marker, e.g. ``followed_topic`` (see omnigent.superchat.feed).
+    kind: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,63}$")
     # ``None`` = the owner's preference timezone (``/v1/me/proactivity``), else UTC.
     timezone: str | None = None
     model_override: str | None = None
@@ -153,7 +155,7 @@ class UpdateScheduledTaskRequest(BaseModel):
         return self
 
 
-_PROACTIVITY_LEVELS = frozenset({"off", "low", "normal"})
+_PROACTIVITY_LEVELS = frozenset({"off", "low", "normal", "high"})
 _QUIET_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -183,7 +185,7 @@ def _validate_prefs_fields(
 ) -> None:
     """Validate the merged proactivity level and quiet hours."""
     if proactivity not in _PROACTIVITY_LEVELS:
-        raise ValueError("proactivity must be 'off', 'low' or 'normal'")
+        raise ValueError("proactivity must be 'off', 'low', 'normal' or 'high'")
     for value in (quiet_start, quiet_end):
         if value is not None and not _QUIET_TIME_RE.match(value):
             raise ValueError("quiet_start/quiet_end must be local 'HH:MM'")
@@ -240,6 +242,7 @@ def _to_response(
         "state": task.state,
         "parent_session_id": task.parent_session_id,
         "agent_type": task.agent_type,
+        "kind": task.kind,
         "last_run_at": task.last_run_at,
         "last_run_status": last_run_status,
         "last_run_conversation_id": task.last_run_conversation_id,
@@ -498,6 +501,7 @@ def create_scheduled_tasks_router(
             agent_id=agent_id,
             parent_session_id=body.parent_session_id,
             agent_type=body.agent_type,
+            kind=body.kind,
             timezone=timezone,
             model_override=model_override,
             reasoning_effort=reasoning_effort,

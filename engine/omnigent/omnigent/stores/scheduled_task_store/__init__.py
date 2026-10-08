@@ -58,6 +58,7 @@ class ScheduledTaskStore(ABC):
         state: str = "active",
         parent_session_id: str | None = None,
         agent_type: str | None = None,
+        kind: str | None = None,
     ) -> ScheduledTask:
         """
         Insert a new scheduled task.
@@ -85,6 +86,7 @@ class ScheduledTaskStore(ABC):
         :param parent_session_id: Bind each fire to this parent session as a
             sub-agent (Helper) child. ``None`` keeps the default fire.
         :param agent_type: Sub-agent Type the Helper runs as.
+        :param kind: Explicit product marker (e.g. ``"followed_topic"``), or ``None``.
         :returns: The newly created :class:`ScheduledTask`.
         :raises ValueError: If ``state`` is not a recognized value.
         """

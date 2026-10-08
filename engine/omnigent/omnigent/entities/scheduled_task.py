@@ -76,6 +76,8 @@ class ScheduledTask:
         Helper's result wakes the parent. ``None`` keeps the default fire.
     :param agent_type: Sub-agent Type the Helper runs as (a sub-agent of the
         parent's agent). Only used with ``parent_session_id``.
+    :param kind: Explicit product marker set at creation, e.g. ``"followed_topic"`` for a
+        topic the Muse follows for the person. ``None`` for unmarked tasks.
     """
 
     id: str
@@ -102,6 +104,7 @@ class ScheduledTask:
     account_generation: str | None = None
     parent_session_id: str | None = None
     agent_type: str | None = None
+    kind: str | None = None
 
 
 @dataclass

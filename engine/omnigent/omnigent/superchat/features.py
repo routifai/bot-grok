@@ -32,7 +32,9 @@ def _load() -> list[Feature]:
     from omnigent.superchat.cards import FEATURE as cards
     from omnigent.superchat.daily_notes import FEATURE as daily_notes
     from omnigent.superchat.family import FEATURE as family
+    from omnigent.superchat.feed import FEATURE as feed
     from omnigent.superchat.helpers import FEATURE as helpers
+    from omnigent.superchat.inbox import FEATURE as inbox
     from omnigent.superchat.memory_tools import FEATURE as memory_tools
     from omnigent.superchat.objectives import FEATURE as objectives
     from omnigent.superchat.projects import FEATURE as projects
@@ -59,6 +61,8 @@ def _load() -> list[Feature]:
         step_limit,
         transcript,
         family,
+        inbox,
+        feed,
     ]
 
 

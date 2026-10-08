@@ -93,6 +93,13 @@ class SysScheduledTaskCreateTool(Tool):
                                 "Required with parent_session_id."
                             ),
                         },
+                        "kind": {
+                            "type": "string",
+                            "description": (
+                                "Optional product marker, e.g. 'followed_topic' for a "
+                                "topic you follow for the person."
+                            ),
+                        },
                         "timezone": {
                             "type": "string",
                             "description": (

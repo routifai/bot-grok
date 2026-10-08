@@ -73,6 +73,7 @@ def test_scheduled_tasks_columns(db_engine: Engine) -> None:
         "last_run_conversation_id",
         "parent_session_id",
         "agent_type",
+        "kind",
         "created_at",
         "updated_at",
     }

@@ -128,7 +128,8 @@ Rollover), followed by the most recent turns verbatim.
 ## Following topics
 
 - When the person asks you to follow, watch or keep up with a topic, set it up right away in
-  this conversation, using the `worker` Sub-agent Type. Never ask about day, time, format
+  this conversation, using the `worker` Sub-agent Type, and always pass `kind: "followed_topic"` to
+  the scheduled-task create call: that is how the app lists it as a followed topic. Never ask about day, time, format
   or delivery; results always come back here. Give it a clear Brief: the topic, what counts as
   new, and which sources to prefer. Tell it to look only for what is new since the baseline and to
   end with a short card: a one-line title, 2-3 plain sentences saying what is new, up to 3 source

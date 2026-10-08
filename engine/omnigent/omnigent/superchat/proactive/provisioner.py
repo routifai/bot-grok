@@ -12,7 +12,8 @@ There is no scheduled Check-in any more (the Muse messages first only for real e
 "Check-in" task left over on an existing chat is deleted the next time the chat is provisioned.
 
 The task is reconciled to the owner's proactivity level (``/v1/me/proactivity``):
-``off`` pauses it, ``low`` makes the Study weekly, ``normal`` keeps it daily.
+``off`` pauses it, ``low`` makes the Study weekly, ``normal`` keeps it daily. ``high`` has no
+distinct behaviour yet and behaves like ``normal`` (the level exists so a client can store it).
 Provisioning is idempotent (tasks are keyed by name under the parent) and goes
 through the ordinary ``/v1/scheduled-tasks`` routes, so validation, ownership
 and the live scheduler are the usual ones. Products opt in via the env flag.
@@ -88,7 +89,7 @@ class ProactiveTaskSpec:
 
 
 def desired_tasks(proactivity: str) -> list[ProactiveTaskSpec]:
-    """The standing tasks for a proactivity level (``off``/``low``/``normal``)."""
+    """The standing tasks for a proactivity level (``high`` behaves like ``normal`` for now)."""
     on = proactivity != "off"
     study_rrule = (
         "FREQ=WEEKLY;BYDAY=MO;BYHOUR=7;BYMINUTE=0"

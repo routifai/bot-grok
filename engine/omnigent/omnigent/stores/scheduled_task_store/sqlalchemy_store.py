@@ -70,6 +70,7 @@ def _to_entity(row: SqlScheduledTask) -> ScheduledTask:
         updated_at=row.updated_at,
         parent_session_id=row.parent_session_id,
         agent_type=row.agent_type,
+        kind=row.kind,
     )
 
 
@@ -150,6 +151,7 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
         state: str = "active",
         parent_session_id: str | None = None,
         agent_type: str | None = None,
+        kind: str | None = None,
     ) -> ScheduledTask:
         """Insert a new scheduled task with a required recurring ``rrule``."""
         created_at = now_epoch()
@@ -178,6 +180,7 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
                 last_run_conversation_id=None,
                 parent_session_id=parent_session_id,
                 agent_type=agent_type,
+                kind=kind,
                 created_at=created_at,
                 updated_at=None,
             )

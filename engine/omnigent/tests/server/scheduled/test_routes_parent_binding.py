@@ -155,6 +155,28 @@ def test_proactivity_defaults_and_roundtrip(client: TestClient) -> None:
     assert client.get("/v1/me/proactivity").json() == body
 
 
+def test_proactivity_accepts_every_level(client: TestClient) -> None:
+    for level in ("off", "low", "normal", "high"):
+        assert client.put("/v1/me/proactivity", json={"proactivity": level}).status_code == 200
+        assert client.get("/v1/me/proactivity").json()["proactivity"] == level
+
+
+def test_followed_topic_kind_roundtrip(client: TestClient) -> None:
+    resp = client.post(
+        "/v1/scheduled-tasks",
+        json=_body(parent_session_id=_PARENT, agent_type="researcher", kind="followed_topic"),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["kind"] == "followed_topic"
+    assert client.get("/v1/scheduled-tasks").json()["scheduled_tasks"][0]["kind"] == (
+        "followed_topic"
+    )
+    plain = client.post(
+        "/v1/scheduled-tasks", json=_body(parent_session_id=_PARENT, agent_type="researcher")
+    )
+    assert plain.json()["kind"] is None
+
+
 @pytest.mark.parametrize(
     "bad",
     [

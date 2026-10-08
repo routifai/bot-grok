@@ -111,6 +111,69 @@ def pending_to_response(pending: PendingApproval, cap_usd: float) -> dict[str, A
     }
 
 
+async def answer_approval(
+    store: SqlAlchemyApprovalStore,
+    *,
+    owner: str,
+    user_id: str | None,
+    elicitation_id: str,
+    decision: Literal["once", "always", "deny"],
+    conversation_store: ConversationStore,
+    agent_store: AgentStore,
+    runner_router: RunnerRouter | None,
+    permission_store: PermissionStore | None,
+) -> None:
+    """Answer one waiting approval as *owner*: the single place the decision is applied.
+
+    Used by ``POST /me/approvals/{id}/answer`` and by the decisions inbox
+    (``POST /me/asks/{id}/answer``).
+
+    :raises OmnigentError: ``NOT_FOUND`` when the prompt is gone or not the owner's;
+        ``INVALID_INPUT`` for ``always`` on a prompt that cannot be allowed every time.
+    """
+    pending = await asyncio.to_thread(store.get_pending, elicitation_id)
+    if pending is None or (pending.user_id or LOCAL_OWNER) != owner:
+        raise OmnigentError("Approval not found", code=ErrorCode.NOT_FOUND)
+    access = await require_access_and_level(
+        user_id, pending.session_id, LEVEL_EDIT, permission_store, conversation_store
+    )
+    conv = access.conversation or await asyncio.to_thread(
+        conversation_store.get_conversation, pending.session_id
+    )
+    if conv is None:
+        raise OmnigentError("Approval not found", code=ErrorCode.NOT_FOUND)
+    info = _decoded(pending)
+    targets = [t for t in info.get("t", []) if isinstance(t, str)]
+    if decision == "always":
+        cap = await asyncio.to_thread(store.get_cap, owner)
+        if not targets or (pending.category == "spend" and cap <= 0):
+            raise OmnigentError("This can't be allowed every time", code=ErrorCode.INVALID_INPUT)
+        for target in targets:
+            await asyncio.to_thread(
+                store.create_rule,
+                owner,
+                category=pending.category,
+                target=target,
+                label=rule_label(pending.category, target),
+            )
+    if decision != "deny" and pending.category == "spend" and pending.amount_usd:
+        await asyncio.to_thread(store.add_spend, owner, _today(), pending.amount_usd)
+    data = {
+        "elicitation_id": elicitation_id,
+        "action": "decline" if decision == "deny" else "accept",
+    }
+    await _resolve_elicitation(pending.session_id, data, runner_router, conversation_store)
+    await _apply_pending_policy_ask_writes(
+        pending.session_id, conv, conversation_store, agent_store, data
+    )
+    await asyncio.to_thread(store.delete_pending, elicitation_id)
+
+
+def owner_of(user_id: str | None) -> str:
+    """The approval-store owner key for an authenticated user (``local`` when auth is off)."""
+    return LOCAL_OWNER if user_id in (None, RESERVED_USER_LOCAL) else str(user_id)
+
+
 def create_approvals_router(
     store: SqlAlchemyApprovalStore,
     *,
@@ -124,8 +187,7 @@ def create_approvals_router(
     router = APIRouter()
 
     def _owner(request: Request) -> str:
-        user_id = require_user(request, auth_provider)
-        return LOCAL_OWNER if user_id in (None, RESERVED_USER_LOCAL) else str(user_id)
+        return owner_of(require_user(request, auth_provider))
 
     @router.get("/me/approvals/pending")
     async def list_pending(request: Request) -> dict[str, Any]:
@@ -138,46 +200,17 @@ def create_approvals_router(
     @router.post("/me/approvals/{elicitation_id}/answer")
     async def answer(request: Request, elicitation_id: str, body: AnswerBody) -> dict[str, bool]:
         """Allow once, always allow (saving a rule), or deny a waiting approval."""
-        owner = _owner(request)
-        pending = await asyncio.to_thread(store.get_pending, elicitation_id)
-        if pending is None or (pending.user_id or LOCAL_OWNER) != owner:
-            raise OmnigentError("Approval not found", code=ErrorCode.NOT_FOUND)
-        user_id = require_user(request, auth_provider)
-        access = await require_access_and_level(
-            user_id, pending.session_id, LEVEL_EDIT, permission_store, conversation_store
+        await answer_approval(
+            store,
+            owner=_owner(request),
+            user_id=require_user(request, auth_provider),
+            elicitation_id=elicitation_id,
+            decision=body.decision,
+            conversation_store=conversation_store,
+            agent_store=agent_store,
+            runner_router=runner_router,
+            permission_store=permission_store,
         )
-        conv = access.conversation or await asyncio.to_thread(
-            conversation_store.get_conversation, pending.session_id
-        )
-        if conv is None:
-            raise OmnigentError("Approval not found", code=ErrorCode.NOT_FOUND)
-        info = _decoded(pending)
-        targets = [t for t in info.get("t", []) if isinstance(t, str)]
-        if body.decision == "always":
-            cap = await asyncio.to_thread(store.get_cap, owner)
-            if not targets or (pending.category == "spend" and cap <= 0):
-                raise OmnigentError(
-                    "This can't be allowed every time", code=ErrorCode.INVALID_INPUT
-                )
-            for target in targets:
-                await asyncio.to_thread(
-                    store.create_rule,
-                    owner,
-                    category=pending.category,
-                    target=target,
-                    label=rule_label(pending.category, target),
-                )
-        if body.decision != "deny" and pending.category == "spend" and pending.amount_usd:
-            await asyncio.to_thread(store.add_spend, owner, _today(), pending.amount_usd)
-        data = {
-            "elicitation_id": elicitation_id,
-            "action": "decline" if body.decision == "deny" else "accept",
-        }
-        await _resolve_elicitation(pending.session_id, data, runner_router, conversation_store)
-        await _apply_pending_policy_ask_writes(
-            pending.session_id, conv, conversation_store, agent_store, data
-        )
-        await asyncio.to_thread(store.delete_pending, elicitation_id)
         return {"ok": True}
 
     @router.get("/me/approval-rules")
