@@ -201,6 +201,29 @@ describe("All forks", () => {
     });
   });
 
+  it("reads state, snippet, replies and Project from the chat row when the engine sends them", () => {
+    const [row] = forkRows(
+      [
+        chat({
+          id: "far",
+          anchorItemId: "not-loaded",
+          forkState: "added",
+          anchorSnippet: "Draft 2 is ready…",
+          replies: 6,
+          project: { slug: "q3", name: "Q3 Pricing" },
+        }),
+      ],
+      [],
+    );
+    expect(row).toMatchObject({
+      status: "added",
+      tone: "done",
+      anchorText: "Draft 2 is ready…",
+      replies: 6,
+      project: { slug: "q3", name: "Q3 Pricing" },
+    });
+  });
+
   it("counts and filters by state, then searches the title and the anchor's text", () => {
     expect(forkCounts(rows)).toEqual({ all: 4, live: 1, open: 1, added: 1, archived: 1 });
     expect(filterForks(rows, { filter: "archived", query: "" }).map((row) => row.chatId)).toEqual([

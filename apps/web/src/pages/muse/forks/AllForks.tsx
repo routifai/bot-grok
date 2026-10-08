@@ -180,6 +180,11 @@ export function AllForks({
                     ) : null}
                   </span>
                   <span className="flex flex-col items-end gap-0.5 text-end font-mono text-[11.5px] whitespace-nowrap tabular-nums text-ink-3">
+                    {row.project ? (
+                      <span className="max-w-[160px] truncate font-sans text-[12px]" dir="auto">
+                        {row.project.name}
+                      </span>
+                    ) : null}
                     {row.replies !== null ? (
                       <span>{plural(row.replies, { one: "# reply", other: "# replies" })}</span>
                     ) : null}

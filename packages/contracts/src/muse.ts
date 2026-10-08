@@ -78,6 +78,15 @@ export const ChatSummarySchema = z.object({
   anchorItemId: z.string().nullable().optional(),
   /** How many forks hang off this chat's messages. */
   forkCount: z.number().int().nonnegative().optional(),
+  /** A Fork's own state, its added summary, the chat holding its anchor (the Conversation, or
+   * the fork it came from), the anchor's text (cut to ~120 characters) and its reply count. */
+  forkState: z.enum(["open", "added", "archived"]).nullable().optional(),
+  forkSummary: z.string().nullable().optional(),
+  forkParentId: z.string().nullable().optional(),
+  anchorSnippet: z.string().nullable().optional(),
+  replies: z.number().int().nonnegative().nullable().optional(),
+  /** The Project the chat has open (ADR 0008). */
+  project: z.object({ slug: z.string(), name: z.string() }).nullable().optional(),
   updatedAt: z.string(),
 });
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;

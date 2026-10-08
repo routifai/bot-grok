@@ -106,6 +106,15 @@ export interface OmnigentRelatedChat {
   anchor_item_id?: string | null;
   /** How many forks hang off this chat's messages. */
   fork_count?: number;
+  /** Forks only (null otherwise): state, added summary, the chat holding the anchor, the
+   * anchor's text (≤120 characters) and the reply count. */
+  fork_state?: "open" | "added" | "archived" | null;
+  fork_summary?: string | null;
+  fork_parent_id?: string | null;
+  anchor_snippet?: string | null;
+  replies?: number | null;
+  /** The Project the chat has open (ADR 0008). */
+  project?: { slug: string; name: string } | null;
 }
 
 /** `GET /v1/sessions/{superId}/related_chats` — the Super Chat's Side Chats (not cursor-

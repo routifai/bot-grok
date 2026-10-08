@@ -170,18 +170,19 @@ export type ForkRow = {
   status: ForkStatus;
   tone: ForkTone;
   anchorItemId: string;
-  /** The anchor message's text, when that message is loaded. */
+  /** The anchor message's text (the engine's snippet, else the loaded message's). */
   anchorText: string | null;
-  /** Its replies, when its anchor message is loaded. */
   replies: number | null;
+  /** The Project the fork has open. */
+  project: { slug: string; name: string } | null;
   unread: boolean;
   updatedAt: string;
 };
 
 /**
- * The Muse's forks: its Side Chats that have an anchor, with what the loaded Conversation knows
- * of each (added back or not, replies, the anchor's text). A fork whose anchor is not loaded
- * reads its state from the chat alone (archived, else open).
+ * The Muse's forks: its Side Chats that have an anchor. The chat list row carries each fork's
+ * state, anchor snippet, replies and Project; a row from before the engine sent those falls back
+ * to what the loaded Conversation knows (added back or not, replies, the anchor's text).
  */
 export function forkRows(
   chats: readonly ChatSummary[],
@@ -195,13 +196,15 @@ export function forkRows(
   for (const chat of chats) {
     if (!chat.anchorItemId) continue;
     const seen = known.get(chat.id);
-    const status: ForkStatus = chat.archived
-      ? "archived"
-      : seen?.fork.state === "added"
-        ? "added"
-        : chat.live
-          ? "live"
-          : "open";
+    const state = chat.forkState ?? (chat.archived ? "archived" : seen?.fork.state);
+    const status: ForkStatus =
+      state === "archived" || chat.archived
+        ? "archived"
+        : state === "added"
+          ? "added"
+          : chat.live
+            ? "live"
+            : "open";
     rows.push({
       chat,
       chatId: chat.id,
@@ -209,8 +212,9 @@ export function forkRows(
       status,
       tone: forkTone({ chatId: chat.id, status }),
       anchorItemId: chat.anchorItemId,
-      anchorText: seen ? messagePlainText(seen.anchor) : null,
-      replies: seen ? seen.fork.replies : null,
+      anchorText: chat.anchorSnippet || (seen ? messagePlainText(seen.anchor) : null),
+      replies: chat.replies ?? seen?.fork.replies ?? null,
+      project: chat.project ?? null,
       unread: Boolean(chat.unread),
       updatedAt: chat.updatedAt,
     });
