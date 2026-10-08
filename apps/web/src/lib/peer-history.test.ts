@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@aiden/contracts";
+import type { ThreadMessage } from "@nova/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPeerHistory } from "./peer-history";
 

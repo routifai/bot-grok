@@ -1,8 +1,8 @@
-import type { MessageReaction, ThreadMessage } from "@aiden/contracts";
-import { isPeerReceiptBlocks, isToolActivityBlock, projectMessageReactions } from "@aiden/core";
-import { cn, type GroupAvatarMember } from "@aiden/ui-web";
 import { i18n } from "@lingui/core";
 import { useLingui } from "@lingui/react/macro";
+import type { MessageReaction, ThreadMessage } from "@nova/contracts";
+import { isPeerReceiptBlocks, isToolActivityBlock, projectMessageReactions } from "@nova/core";
+import { cn, type GroupAvatarMember } from "@nova/ui-web";
 import { ArrowDown } from "lucide-react";
 import {
   type ComponentProps,

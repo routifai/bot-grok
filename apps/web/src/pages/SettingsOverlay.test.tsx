@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot } from "@aiden/contracts";
+import type { Bot } from "@nova/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,7 +15,7 @@ vi.mock("@lingui/react/macro", () => {
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
 
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
   Dialog: ({ children }: { children?: ReactNode }) => <>{children}</>,
@@ -50,7 +50,7 @@ vi.mock("@aiden/ui-web", () => ({
 
 // Every panel below is presentational chrome not under test here: this file only
 // exercises the nav (which sections exist, in which order, for which product mode)
-// and the wiring into the Aiden section. Each stub reports the props it cares about
+// and the wiring into the Nova section. Each stub reports the props it cares about
 // via data-testid so assertions can read them back.
 vi.mock("./AccountSettingsOverlay", () => ({
   GeneralSettingsPanels: ({ museMode }: { museMode?: boolean }) => (
@@ -70,18 +70,18 @@ vi.mock("./muse/settings/GeneralPanel", () => ({
   GeneralPanel: () => <div data-testid="general-panel" data-muse-mode="true" />,
 }));
 vi.mock("./muse/settings/VoicePanel", () => ({ VoicePanel: () => <div /> }));
-vi.mock("./muse/AidenSettingsPanel", () => ({
-  AidenSettingsPanel: ({
+vi.mock("./muse/NovaSettingsPanel", () => ({
+  NovaSettingsPanel: ({
     bot,
     onSave,
   }: {
     bot: Bot;
     onSave: (patch: { name?: string; color?: string }) => Promise<void>;
   }) => (
-    <div data-testid="aiden-panel" data-bot-name={bot.name}>
+    <div data-testid="nova-panel" data-bot-name={bot.name}>
       <button
         type="button"
-        data-testid="aiden-panel-save"
+        data-testid="nova-panel-save"
         onClick={() => void onSave({ name: "New name" })}
       >
         save
@@ -99,7 +99,7 @@ function bot(overrides: Partial<Bot> = {}): Bot {
   return {
     id: "bot-1",
     spaceId: "space-1",
-    name: "Aiden",
+    name: "Nova",
     title: "",
     description: "",
     instructions: "",
@@ -149,7 +149,7 @@ const baseProps = {
   onClose: () => undefined,
 };
 
-it("upstream mode: shows Avatars-capable General and Updates, no Aiden section", async () => {
+it("upstream mode: shows Avatars-capable General and Updates, no Nova section", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { container, root } = render();
   try {
@@ -181,9 +181,9 @@ it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse Gener
       ),
     );
     const ids = navIds(container);
-    expect(ids).toEqual(["aiden", "general", "voice"]);
+    expect(ids).toEqual(["nova", "general", "voice"]);
     expect(ids).not.toContain("updates");
-    expect(container.querySelector('[data-testid="settings-nav-aiden"]')?.textContent).toContain(
+    expect(container.querySelector('[data-testid="settings-nav-nova"]')?.textContent).toContain(
       "Nova",
     );
     expect(
@@ -196,7 +196,7 @@ it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse Gener
   }
 });
 
-it("muse mode: opening Aiden renders the panel wired to the Muse bot and its save callback", async () => {
+it("muse mode: opening Nova renders the panel wired to the Muse bot and its save callback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const onMuseBotSave = vi.fn().mockResolvedValue(undefined);
   const { container, root } = render();
@@ -212,13 +212,13 @@ it("muse mode: opening Aiden renders the panel wired to the Muse bot and its sav
       ),
     );
     const navButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="settings-nav-aiden"]',
+      '[data-testid="settings-nav-nova"]',
     );
     await act(async () => navButton?.click());
-    const panel = container.querySelector('[data-testid="aiden-panel"]');
+    const panel = container.querySelector('[data-testid="nova-panel"]');
     expect(panel?.getAttribute("data-bot-name")).toBe("Nova");
     const saveButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="aiden-panel-save"]',
+      '[data-testid="nova-panel-save"]',
     );
     await act(async () => saveButton?.click());
     expect(onMuseBotSave).toHaveBeenCalledWith({ name: "New name" });

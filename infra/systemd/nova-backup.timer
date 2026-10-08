@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the Aiden production backup nightly
+Description=Run the Nova production backup nightly
 
 [Timer]
 OnCalendar=*-*-* 02:15:00 UTC

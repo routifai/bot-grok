@@ -42,7 +42,7 @@ export function WelcomeFrame({
     <div
       ref={rootRef}
       className="relative isolate flex min-h-full flex-col bg-welcome-night text-welcome-night-ink antialiased [color-scheme:dark]"
-      data-aiden-surface="welcome"
+      data-nova-surface="welcome"
     >
       <Stars scrollRef={rootRef} />
       <Grain />

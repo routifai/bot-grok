@@ -10,7 +10,7 @@ import {
 
 test("needs-you computer card opens the computer", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `needs-you-${stamp}@aiden.test`, "password12", "Needs You");
+  await signup(page, `needs-you-${stamp}@nova.test`, "password12", "Needs You");
   await completeOnboarding(page);
 
   const botId = activeBotId(page);

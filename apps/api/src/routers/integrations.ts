@@ -4,10 +4,10 @@ import {
   prepareGraphqlInstall,
   sanitizeComposioError,
   verifyMcpInstall,
-} from "@aiden/adapters";
-import { IntegrationProviderIdSchema } from "@aiden/contracts";
-import { containsSecret } from "@aiden/core";
-import type { Prisma } from "@aiden/db";
+} from "@nova/adapters";
+import { IntegrationProviderIdSchema } from "@nova/contracts";
+import { containsSecret } from "@nova/core";
+import type { Prisma } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { searchIntegrationCatalog } from "../integration-catalog.js";
 import {

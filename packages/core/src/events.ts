@@ -1,4 +1,4 @@
-import type { MessageBlock, ThreadMessage } from "@aiden/contracts";
+import type { MessageBlock, ThreadMessage } from "@nova/contracts";
 import { cloudAgentBlockFromPayload } from "./cloud-agent.js";
 
 export function projectMessages(
@@ -169,7 +169,7 @@ export function isRunTerminalEvent(event: { type: string }): boolean {
   );
 }
 
-export const RESPONSE_STREAMING_STORAGE_KEY = "aiden.responseStreaming";
+export const RESPONSE_STREAMING_STORAGE_KEY = "nova.responseStreaming";
 export type ResponseStreamingPreference = "on" | "off";
 
 /** Missing and unknown values stay off; only an explicit "on" enables streaming. */

@@ -68,8 +68,8 @@ describe("resolveDockerBinary", () => {
     expect(resolveDockerBinary("darwin", { HOME: "/Users/me" }, () => false)).toBeNull();
   });
 
-  it("treats AIDEN_DOCKER_BINARY as the only candidate", () => {
-    const env = { AIDEN_DOCKER_BINARY: "/fake/docker", PATH: "/usr/bin" };
+  it("treats NOVA_DOCKER_BINARY as the only candidate", () => {
+    const env = { NOVA_DOCKER_BINARY: "/fake/docker", PATH: "/usr/bin" };
     expect(resolveDockerBinary("linux", env, (file) => file === "/fake/docker")).toBe(
       "/fake/docker",
     );
@@ -91,14 +91,14 @@ describe("dockerSpawnEnv", () => {
         LANG: "en_US.UTF-8",
       },
       "/Users/me/.orbstack/bin/docker",
-      { AIDEN_IMAGE_TAG: "v1.2.3" },
+      { NOVA_IMAGE_TAG: "v1.2.3" },
     );
     expect(env).toEqual({
       HOME: "/Users/me",
       PATH: "/Users/me/.orbstack/bin:/usr/bin:/bin",
       DOCKER_HOST: "unix:///Users/me/.orbstack/run/docker.sock",
       LANG: "en_US.UTF-8",
-      AIDEN_IMAGE_TAG: "v1.2.3",
+      NOVA_IMAGE_TAG: "v1.2.3",
     });
     expect(env).not.toHaveProperty("OPENROUTER_API_KEY");
     expect(env).not.toHaveProperty("POSTGRES_PASSWORD");

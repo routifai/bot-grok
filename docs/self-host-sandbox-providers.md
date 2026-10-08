@@ -20,7 +20,7 @@ and remote providers. This stack credential does not replace a remote provider's
 
 Compose starts a **sandbox supervisor** (from the app image) on the internal
 network (port `7091` in published-images). It creates sibling **computer**
-containers from `AIDEN_COMPUTER_IMAGE` + `AIDEN_COMPUTER_IMAGE_TAG`.
+containers from `NOVA_COMPUTER_IMAGE` + `NOVA_COMPUTER_IMAGE_TAG`.
 
 Requirements:
 

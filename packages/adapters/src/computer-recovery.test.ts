@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { AdapterContext, JobPublisher, SandboxProvider } from "@aiden/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
+import type { AdapterContext, JobPublisher, SandboxProvider } from "@nova/adapter-kit";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComputerBusyError, provisionComputer, replaceComputer } from "./computer-lifecycle.js";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
@@ -23,7 +23,7 @@ afterEach(async () => {
 });
 
 async function fixture(provider: "fake" | "desktop" = "fake") {
-  const root = await mkdtemp(path.join(tmpdir(), "aiden-recovery-"));
+  const root = await mkdtemp(path.join(tmpdir(), "nova-recovery-"));
   roots.push(root);
   const sandbox: SandboxProvider =
     provider === "desktop" ? new DesktopSandboxProvider({ root }) : new FakeSandboxProvider();

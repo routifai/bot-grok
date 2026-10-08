@@ -15,7 +15,7 @@ We will acknowledge your report and work on a fix. Please do not file a public i
 
 ## Scope
 
-This policy covers the Aiden self-hosted product in **this repository**.
+This policy covers the Nova self-hosted product in **this repository**.
 
 Out of scope:
 

@@ -13,16 +13,16 @@
 	lb_try_interval 250ms
 }
 
-http://{$AIDEN_HOST:app.example.com} {
+http://{$NOVA_HOST:app.example.com} {
 	import cloudflare_only
-	redir https://{$AIDEN_HOST:app.example.com}{uri} 308
+	redir https://{$NOVA_HOST:app.example.com}{uri} 308
 }
 
 :80 {
 	abort
 }
 
-{$AIDEN_HOST:app.example.com} {
+{$NOVA_HOST:app.example.com} {
 	import cloudflare_only
 	encode zstd gzip
 

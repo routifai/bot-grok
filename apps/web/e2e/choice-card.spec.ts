@@ -5,7 +5,7 @@ test("renders tappable choice buttons and submits the offered action id", async 
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `choice-card-${stamp}@aiden.test`, "password12", "Choice Card");
+  await signup(page, `choice-card-${stamp}@nova.test`, "password12", "Choice Card");
   await completeOnboarding(page);
 
   const botId = activeBotId(page);

@@ -1,12 +1,12 @@
-import { routineJobKey, routineWakeupJob, runContinueJob } from "@aiden/adapter-kit";
+import { routineJobKey, routineWakeupJob, runContinueJob } from "@nova/adapter-kit";
 import {
   expandSkillReferencesInPrompt,
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
-} from "@aiden/core";
-import { IsolationError } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/core";
+import { IsolationError } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 
 import type { RouterContext } from "./context.js";

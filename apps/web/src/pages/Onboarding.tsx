@@ -1,3 +1,4 @@
+import { Trans, useLingui } from "@lingui/react/macro";
 import {
   BOT_NAME_MAX_LENGTH,
   DEFAULT_MODEL_CONTEXT_WINDOW,
@@ -15,8 +16,8 @@ import {
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
   type ThinkingLevel,
-} from "@aiden/contracts";
-import { createModelProbe, initialModelProbeState } from "@aiden/core";
+} from "@nova/contracts";
+import { createModelProbe, initialModelProbeState } from "@nova/core";
 import {
   Button,
   cn,
@@ -27,8 +28,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
@@ -43,10 +43,10 @@ import {
   welcomeSubmitClass,
 } from "./welcome/WelcomeFrame";
 
-const CUSTOM_MODEL_OPTION = "__aiden_custom_model__";
+const CUSTOM_MODEL_OPTION = "__nova_custom_model__";
 const FIRST_BOT_NAME = "Chief";
 const FIRST_BOT_SPAWN_KEY = "onboarding:first";
-const FIRST_BOT_LOCK = "aiden:onboarding-first-bot";
+const FIRST_BOT_LOCK = "nova:onboarding-first-bot";
 /** The Muse identity/model steps that show progress dots; "intro" and "bot" don't. */
 const MUSE_ONBOARDING_STEPS = ["name", "museName", "model"] as const;
 

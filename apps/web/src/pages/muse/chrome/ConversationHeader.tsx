@@ -1,5 +1,5 @@
-import type { ThreadMessage } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
+import type { ThreadMessage } from "@nova/contracts";
 import type { ReactNode } from "react";
 import { NovaOrb, useOrbHome } from "../../../components/ai/orb";
 import { MuseLiveStatus } from "./MuseLiveStatus";

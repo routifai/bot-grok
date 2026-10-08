@@ -1,29 +1,46 @@
-// Injected into every page and frame of the Computer's Chromium by `aiden-recorder` while a
+// Injected into every page and frame of the Computer's Chromium by `nova-recorder` while a
 // person teaches a task. It reports what they do as semantic actions (never coordinates) through
-// the CDP binding `__aidenRecord`. Secret fields are redacted here, in the page: their value is
+// the CDP binding `__novaRecord`. Secret fields are redacted here, in the page: their value is
 // never read, so it cannot leave the browser.
 (() => {
-  const BINDING = "__aidenRecord";
-  if (window.__aidenRecInstalled) return;
-  Object.defineProperty(window, "__aidenRecInstalled", { value: true });
+  const BINDING = "__novaRecord";
+  if (window.__novaRecInstalled) return;
+  Object.defineProperty(window, "__novaRecInstalled", { value: true });
 
   const SECRET_HINT =
     /pass(word|code|wd)|\botp\b|one.?time|2fa|mfa|\bcvv\b|\bcvc\b|card.?num|\bssn\b|secret|token|\bpin\b/i;
-  const SECRET_AUTOCOMPLETE = /(^|\s)(one-time-code|current-password|new-password|cc-[a-z-]+)(\s|$)/;
+  const SECRET_AUTOCOMPLETE =
+    /(^|\s)(one-time-code|current-password|new-password|cc-[a-z-]+)(\s|$)/;
   const TEXT_INPUT_TYPES = new Set([
-    "", "text", "search", "email", "tel", "url", "number", "date", "datetime-local", "month",
-    "time", "week", "color", "password",
+    "",
+    "text",
+    "search",
+    "email",
+    "tel",
+    "url",
+    "number",
+    "date",
+    "datetime-local",
+    "month",
+    "time",
+    "week",
+    "color",
+    "password",
   ]);
   const BUTTON_INPUT_TYPES = new Set(["button", "submit", "reset", "image"]);
   const INTERACTIVE =
-    'a,button,input,select,textarea,summary,label,[role=button],[role=link],[role=menuitem],' +
-    '[role=tab],[role=checkbox],[role=radio],[role=option],[role=switch],[onclick],[tabindex]';
+    "a,button,input,select,textarea,summary,label,[role=button],[role=link],[role=menuitem]," +
+    "[role=tab],[role=checkbox],[role=radio],[role=option],[role=switch],[onclick],[tabindex]";
   const MAX_TEXT = 80;
   const MAX_VALUE = 300;
   const IDLE_FLUSH_MS = 1200;
   const DEDUPE_MS = 80;
 
-  const clip = (text, max) => String(text == null ? "" : text).replace(/\s+/g, " ").trim().slice(0, max);
+  const clip = (text, max) =>
+    String(text == null ? "" : text)
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, max);
 
   function isSecret(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -31,8 +48,9 @@
     const editable = tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
     if (!editable) return false;
     if ((el.getAttribute("type") || "").toLowerCase() === "password") return true;
-    if (SECRET_AUTOCOMPLETE.test((el.getAttribute("autocomplete") || "").toLowerCase())) return true;
-    if (el.closest("[data-secret],[data-aiden-secret],[data-sensitive]")) return true;
+    if (SECRET_AUTOCOMPLETE.test((el.getAttribute("autocomplete") || "").toLowerCase()))
+      return true;
+    if (el.closest("[data-secret],[data-nova-secret],[data-sensitive]")) return true;
     const hint = [el.name, el.id, el.getAttribute("aria-label"), el.getAttribute("placeholder")];
     return SECRET_HINT.test(hint.join(" "));
   }
@@ -63,7 +81,12 @@
   function labelsOf(el) {
     try {
       if (el.labels && el.labels.length) {
-        return clip(Array.from(el.labels).map((l) => l.innerText || l.textContent).join(" "), MAX_TEXT);
+        return clip(
+          Array.from(el.labels)
+            .map((l) => l.innerText || l.textContent)
+            .join(" "),
+          MAX_TEXT,
+        );
       }
     } catch (_e) {}
     return "";
@@ -110,9 +133,11 @@
     const attr = (name) => el.getAttribute(name);
     const esc = (v) => String(v).replace(/(["\\])/g, "\\$1");
     for (const name of ["data-testid", "data-test", "data-qa"]) {
-      if (attr(name) && unique(`[${name}="${esc(attr(name))}"]`)) return `[${name}="${esc(attr(name))}"]`;
+      if (attr(name) && unique(`[${name}="${esc(attr(name))}"]`))
+        return `[${name}="${esc(attr(name))}"]`;
     }
-    const stableId = el.id && !/\d{4,}|[0-9a-f]{8,}/i.test(el.id) && unique("#" + CSS.escape(el.id));
+    const stableId =
+      el.id && !/\d{4,}|[0-9a-f]{8,}/i.test(el.id) && unique("#" + CSS.escape(el.id));
     if (stableId) return "#" + CSS.escape(el.id);
     for (const name of ["name", "aria-label", "placeholder"]) {
       const sel = `${tag}[${name}="${esc(attr(name) || "")}"]`;
@@ -172,7 +197,7 @@
     return visiblePasswordField() || isSecret(document.activeElement);
   }
 
-  Object.defineProperty(window, "__aidenRecState", {
+  Object.defineProperty(window, "__novaRecState", {
     value: () => ({ noFrame: noFrame() }),
   });
 
@@ -226,7 +251,9 @@
   function isTextLike(el) {
     if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true;
     if (el.isContentEditable) return true;
-    return el.tagName === "INPUT" && TEXT_INPUT_TYPES.has((el.getAttribute("type") || "").toLowerCase());
+    return (
+      el.tagName === "INPUT" && TEXT_INPUT_TYPES.has((el.getAttribute("type") || "").toLowerCase())
+    );
   }
 
   const options = { capture: true, passive: true };
@@ -321,7 +348,10 @@
       send({
         kind: "submit",
         role: "form",
-        name: clip(form.getAttribute("aria-label") || form.getAttribute("name") || form.id, MAX_TEXT),
+        name: clip(
+          form.getAttribute("aria-label") || form.getAttribute("name") || form.id,
+          MAX_TEXT,
+        ),
         selector: selectorHint(form),
         tag: "form",
         frameUrl: location.href,

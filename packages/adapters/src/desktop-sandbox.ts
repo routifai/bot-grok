@@ -27,8 +27,8 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@aiden/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@aiden/core";
+} from "@nova/adapter-kit";
+import { boundedSandboxCommandTimeoutMs } from "@nova/core";
 import {
   applyPlaceholderAction,
   boundedComputerActions,
@@ -684,7 +684,7 @@ async function* walkDesktopWorkspace(home: string, directory: string): AsyncIter
 }
 
 function resolveExecuteCwd(requestCwd: string | undefined, home: string) {
-  if (!requestCwd || requestCwd === "/home/aiden" || requestCwd === "/home/user") return home;
+  if (!requestCwd || requestCwd === "/home/nova" || requestCwd === "/home/user") return home;
   return path.resolve(home, requestCwd);
 }
 

@@ -1,4 +1,4 @@
-import type { RunActivityRow } from "@aiden/contracts";
+import type { RunActivityRow } from "@nova/contracts";
 import { rpc } from "../lib/api";
 import { dateLocaleForUi, t } from "./i18n";
 

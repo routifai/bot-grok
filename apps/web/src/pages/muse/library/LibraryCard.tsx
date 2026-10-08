@@ -1,10 +1,10 @@
+import { Trans, useLingui } from "@lingui/react/macro";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { Download, Ellipsis, Maximize2 } from "lucide-react";
 import {
   ArtifactPreviewCard,

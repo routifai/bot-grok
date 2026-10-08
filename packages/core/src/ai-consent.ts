@@ -1,5 +1,5 @@
-import type { AiConsentStatus, AiDataUse, AiRecipient } from "@aiden/contracts";
-import { AI_CONSENT_REQUIRED } from "@aiden/contracts";
+import type { AiConsentStatus, AiDataUse, AiRecipient } from "@nova/contracts";
+import { AI_CONSENT_REQUIRED } from "@nova/contracts";
 
 /** A foreground check failed before the requested mutation was dispatched. */
 export class AiConsentBlocked extends Error {

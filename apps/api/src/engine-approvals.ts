@@ -8,9 +8,9 @@ import {
   listOmnigentApprovalRules,
   type OmnigentClientConfig,
   putOmnigentApprovalSettings,
-} from "@aiden/adapters";
-import type { Actor, ApprovalSpending, ApprovalStandingRule } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, ApprovalSpending, ApprovalStandingRule } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { onSuperChat } from "./omnigent-errors.js";
 

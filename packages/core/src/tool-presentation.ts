@@ -1,4 +1,4 @@
-import type { ActivityStep } from "@aiden/contracts";
+import type { ActivityStep } from "@nova/contracts";
 
 // One registry, one source of truth for how an Activity Step reads in the UI
 // (docs/super-chat/README.md "The Activity panel"; AGENTS.md "no hex, tokens only" applies to

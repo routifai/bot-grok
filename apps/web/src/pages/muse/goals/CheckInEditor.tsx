@@ -1,6 +1,6 @@
-import { type CronPreset, cronFromPreset, presetFromCron } from "@aiden/core";
-import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { type CronPreset, cronFromPreset, presetFromCron } from "@nova/core";
+import { Button } from "@nova/ui-web";
 import { useState } from "react";
 import { friendlyTimezone } from "../../../lib/local-timezone";
 import { RoutineSchedule } from "../../RoutineSchedule";

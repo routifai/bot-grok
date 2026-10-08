@@ -1,4 +1,4 @@
-import { userVisibleMessages } from "@aiden/core";
+import { userVisibleMessages } from "@nova/core";
 import { useMemo, useRef } from "react";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { ApprovalCards } from "../asks";

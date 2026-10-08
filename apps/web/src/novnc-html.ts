@@ -42,7 +42,7 @@ export function collectNovncHtml(incoming: Readable, maxBytes: number): Promise<
 }
 
 /** Message the embedded desktop posts to the app when its connection drops. */
-export const SCREEN_DISCONNECTED_MESSAGE = "aiden:screen-disconnected";
+export const SCREEN_DISCONNECTED_MESSAGE = "nova:screen-disconnected";
 
 const RFB_CREATED = /const rfb = new RFB\([^;]*\);/;
 

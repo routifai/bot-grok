@@ -1,5 +1,5 @@
 import { Duplex, PassThrough, Readable, Writable } from "node:stream";
-import { resolveSupervisorToken } from "@aiden/core";
+import { resolveSupervisorToken } from "@nova/core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({ exec: vi.fn(), inspect: vi.fn(), stdin: [] as string[] }));
@@ -19,7 +19,7 @@ beforeEach(() => {
   mock.stdin.length = 0;
   mock.inspect.mockResolvedValue({
     Config: {
-      Labels: { "aiden.managed": "true", "aiden.botId": "home", "aiden.spaceId": "space" },
+      Labels: { "nova.managed": "true", "nova.botId": "home", "nova.spaceId": "space" },
     },
   });
   mock.exec.mockImplementation(async (options: { Cmd: string[] }) => ({
@@ -28,7 +28,7 @@ beforeEach(() => {
       Duplex.from({
         readable: Readable.from([
           Buffer.from(
-            options.Cmd.includes("/usr/local/bin/aiden-page-browser")
+            options.Cmd.includes("/usr/local/bin/nova-page-browser")
               ? JSON.stringify({
                   ok: true,
                   url: "https://example.test",
@@ -56,10 +56,10 @@ async function snapshot(id: string, screen: string, lease: string, home = "home"
     headers: {
       authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
       "content-type": "application/json",
-      "x-aiden-bot-id": home,
-      "x-aiden-space-id": "space",
-      "x-aiden-screen-id": screen,
-      "x-aiden-screen-lease-id": lease,
+      "x-nova-bot-id": home,
+      "x-nova-space-id": "space",
+      "x-nova-screen-id": screen,
+      "x-nova-screen-lease-id": lease,
     },
     body: JSON.stringify({ command: "snapshot" }),
   });
@@ -75,10 +75,10 @@ it("resolves the owned display and refuses an older fence before running the hel
   expect(mock.exec.mock.calls.at(-1)?.[0]).toMatchObject({
     Env: [
       "DISPLAY=:2",
-      "AIDEN_CDP_PORT=9223",
-      "HOME=/home/aiden",
-      "AIDEN_BROWSER_WATCH_STDIN=1",
-      "AIDEN_BROWSER_ARGS_STDIN=1",
+      "NOVA_CDP_PORT=9223",
+      "HOME=/home/nova",
+      "NOVA_BROWSER_WATCH_STDIN=1",
+      "NOVA_BROWSER_ARGS_STDIN=1",
     ],
   });
   mock.exec.mockClear();
@@ -124,7 +124,7 @@ it("closes helper stdin when the request is cancelled", async () => {
   });
   const defaultExec = mock.exec.getMockImplementation()!;
   mock.exec.mockImplementation(async (options: { Cmd: string[]; AttachStdin?: boolean }) => {
-    if (!options.Cmd.includes("/usr/local/bin/aiden-page-browser")) return defaultExec(options);
+    if (!options.Cmd.includes("/usr/local/bin/nova-page-browser")) return defaultExec(options);
     expect(options.AttachStdin).toBe(true);
     return {
       start: async (options: { stdin: boolean }) => {
@@ -141,8 +141,8 @@ it("closes helper stdin when the request is cancelled", async () => {
     headers: {
       authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
       "content-type": "application/json",
-      "x-aiden-bot-id": "home",
-      "x-aiden-space-id": "space",
+      "x-nova-bot-id": "home",
+      "x-nova-space-id": "space",
     },
     body: JSON.stringify({ command: "act", actions: [{ kind: "click", ref: "test-ref" }] }),
   });
@@ -161,18 +161,18 @@ it("sends a saved-login fill only over stdin, never in the helper's arguments", 
     headers: {
       authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
       "content-type": "application/json",
-      "x-aiden-bot-id": "home",
-      "x-aiden-space-id": "space",
-      "x-aiden-screen-id": "first",
-      "x-aiden-screen-lease-id": "run:9",
+      "x-nova-bot-id": "home",
+      "x-nova-space-id": "space",
+      "x-nova-screen-id": "first",
+      "x-nova-screen-lease-id": "run:9",
     },
     body: JSON.stringify({ command: "act", actions }),
   });
   expect(await response.json()).toMatchObject({ ok: true });
   const helperCall = mock.exec.mock.calls.find(([options]) =>
-    options.Cmd.includes("/usr/local/bin/aiden-page-browser"),
+    options.Cmd.includes("/usr/local/bin/nova-page-browser"),
   )!;
   expect(JSON.stringify(helperCall[0].Cmd)).not.toContain("fake-password-1");
-  expect(helperCall[0].Env).toContain("AIDEN_BROWSER_ARGS_STDIN=1");
+  expect(helperCall[0].Env).toContain("NOVA_BROWSER_ARGS_STDIN=1");
   expect(mock.stdin.join("")).toBe(`${JSON.stringify({ command: "act", actions })}\n`);
 });

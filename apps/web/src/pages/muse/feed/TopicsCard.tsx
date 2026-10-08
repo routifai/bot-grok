@@ -1,6 +1,6 @@
-import type { FollowedTopic } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import type { FollowedTopic } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 

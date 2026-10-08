@@ -1,6 +1,6 @@
-import type { Bot, ComputerStatus, ThreadSnapshot } from "@aiden/contracts";
-import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { Bot, ComputerStatus, ThreadSnapshot } from "@nova/contracts";
+import { Button } from "@nova/ui-web";
 import { Settings, X } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { ComputerMaintenanceActions } from "../../../components/ComputerMaintenanceActions";

@@ -39,7 +39,7 @@ export function createServiceLogger(options: {
 }
 
 export const SERVICE_NAMES = {
-  api: "aiden-api",
-  worker: "aiden-worker",
-  supervisor: "aiden-sandbox-supervisor",
+  api: "nova-api",
+  worker: "nova-worker",
+  supervisor: "nova-sandbox-supervisor",
 } as const;

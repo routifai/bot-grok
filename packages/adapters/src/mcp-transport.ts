@@ -1,4 +1,3 @@
-import { isLocalMcpHost } from "@aiden/contracts";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -9,6 +8,7 @@ import {
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult, ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
+import { isLocalMcpHost } from "@nova/contracts";
 import { combineSignals } from "./connector-safety.js";
 import {
   createSafeRemoteFetch,
@@ -258,7 +258,7 @@ export class McpSession {
 
   private newClient(): Client {
     return new Client(
-      { name: this.clientOptions.name ?? "aiden", version: this.clientOptions.version ?? "0.1.0" },
+      { name: this.clientOptions.name ?? "nova", version: this.clientOptions.version ?? "0.1.0" },
       this.clientOptions.capabilities,
     );
   }

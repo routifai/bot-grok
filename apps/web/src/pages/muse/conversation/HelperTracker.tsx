@@ -1,7 +1,7 @@
-import type { Activity } from "@aiden/contracts";
-import { presentActivityTitle } from "@aiden/core";
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
+import type { Activity } from "@nova/contracts";
+import { presentActivityTitle } from "@nova/core";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ActivityBranch, ActivityLine } from "../chrome/ActivityLine";
 import { ActivityRunDialog } from "../chrome/ActivityRunDialog";

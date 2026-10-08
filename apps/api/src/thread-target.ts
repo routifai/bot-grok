@@ -1,5 +1,5 @@
-import { type JobPublisher, runContinueJob, type SandboxProvider } from "@aiden/adapter-kit";
-import { cancelComputerRunWork, screenLeaseIdForRun, toComputerRef } from "@aiden/adapters";
+import { type JobPublisher, runContinueJob, type SandboxProvider } from "@nova/adapter-kit";
+import { cancelComputerRunWork, screenLeaseIdForRun, toComputerRef } from "@nova/adapters";
 import {
   type Actor,
   GROUP_MEMBER_MIN,
@@ -9,7 +9,7 @@ import {
   type MessageReaction,
   type RunStatus,
   type ThreadSnapshot,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   isActive,
@@ -17,8 +17,8 @@ import {
   projectMessages,
   resolveGroupTargetBotIds,
   runFailureError,
-} from "@aiden/core";
-import { deriveMessageQuote } from "@aiden/core/message-quote";
+} from "@nova/core";
+import { deriveMessageQuote } from "@nova/core/message-quote";
 import {
   answerWaitingRunWithTextInTransaction,
   appendEventInTransaction,
@@ -32,8 +32,8 @@ import {
   type PrismaClient,
   type ThreadEvents,
   touchGroupUpdatedAt,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import {
   buildSendPrompt,

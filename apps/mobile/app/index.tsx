@@ -4,8 +4,8 @@ import {
   type SearchHit,
   type SpaceBot,
   type SpaceGroup,
-} from "@aiden/contracts";
-import { botColors } from "@aiden/ui-tokens";
+} from "@nova/contracts";
+import { botColors } from "@nova/ui-tokens";
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

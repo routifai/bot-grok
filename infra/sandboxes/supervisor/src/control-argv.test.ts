@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { browserProfilePathForScreen } from "@aiden/core/node/desktop-runtime";
+import { browserProfilePathForScreen } from "@nova/core/node/desktop-runtime";
 import { describe, expect, it } from "vitest";
 import { containerActionStep } from "./supervisor-logic.js";
 
@@ -55,7 +55,7 @@ describe.each([undefined, profile])(
         browserProfile &&
         (action.kind === "open" || (action.kind === "launch" && action.application === "chromium"))
       ) {
-        expect(step.argv[2]).toBe(`AIDEN_BROWSER_PROFILE=${browserProfile}`);
+        expect(step.argv[2]).toBe(`NOVA_BROWSER_PROFILE=${browserProfile}`);
       }
       expect(check(step.argv)).toEqual({ allowed: true, longLived: true });
     });
@@ -70,45 +70,33 @@ describe.each([undefined, profile])(
 
 describe("controller argv restrictions", () => {
   it.each([
-    ["env", `DISPLAY=${display}`, `AIDEN_BROWSER_PROFILE=${profile}`],
-    ["env", `DISPLAY=${display}`, "AIDEN_BROWSER_PROFILE=", "aiden-browser"],
-    ["env", `DISPLAY=${display}`, `AIDEN_BROWSER_PROFILE=${profile}a`, "aiden-browser"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}`],
+    ["env", `DISPLAY=${display}`, "NOVA_BROWSER_PROFILE=", "nova-browser"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}a`, "nova-browser"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile.toUpperCase()}`, "nova-browser"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}`, "xterm"],
     [
       "env",
       `DISPLAY=${display}`,
-      `AIDEN_BROWSER_PROFILE=${profile.toUpperCase()}`,
-      "aiden-browser",
-    ],
-    ["env", `DISPLAY=${display}`, `AIDEN_BROWSER_PROFILE=${profile}`, "xterm"],
-    [
-      "env",
-      `DISPLAY=${display}`,
-      `AIDEN_BROWSER_PROFILE=${profile}`,
+      `NOVA_BROWSER_PROFILE=${profile}`,
       "/usr/bin/xdg-open",
       "https://example.com",
     ],
-    ["env", `DISPLAY=${display}`, `AIDEN_BROWSER_PROFILE=${profile}`, "xdg-open"],
-    [
-      "env",
-      `DISPLAY=${display}`,
-      `AIDEN_BROWSER_PROFILE=${profile}`,
-      "aiden-browser",
-      "one",
-      "two",
-    ],
-    ["env", "DISPLAY=:8", `AIDEN_BROWSER_PROFILE=${profile}`, "aiden-browser"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}`, "xdg-open"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}`, "nova-browser", "one", "two"],
+    ["env", "DISPLAY=:8", `NOVA_BROWSER_PROFILE=${profile}`, "nova-browser"],
     ["env", "DISPLAY=:8", "xdg-open", "https://example.com"],
     ["env", `DISPLAY=${display}`, "LD_PRELOAD=/tmp/unsafe", "xdg-open", "https://example.com"],
-    ["env", `DISPLAY=${display}`, "AIDEN_BROWSER_PROFILE=/tmp/unsafe", "aiden-browser"],
-    ["env", `DISPLAY=${display}`, `AIDEN_BROWSER_PROFILE=${profile}/../other`, "aiden-browser"],
-    ["env", `DISPLAY=${display}`, `AIDEN_BROWSER_PROFILE=${profile}`, "sh", "-c", "true"],
-    ["env", `DISPLAY=${display}`, `AIDEN_BROWSER_PROFILE=${profile}`, "xdotool", "key", "Return"],
+    ["env", `DISPLAY=${display}`, "NOVA_BROWSER_PROFILE=/tmp/unsafe", "nova-browser"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}/../other`, "nova-browser"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}`, "sh", "-c", "true"],
+    ["env", `DISPLAY=${display}`, `NOVA_BROWSER_PROFILE=${profile}`, "xdotool", "key", "Return"],
     [
       "env",
       `DISPLAY=${display}`,
-      `AIDEN_BROWSER_PROFILE=${profile}`,
-      `AIDEN_BROWSER_PROFILE=${profile}`,
-      "aiden-browser",
+      `NOVA_BROWSER_PROFILE=${profile}`,
+      `NOVA_BROWSER_PROFILE=${profile}`,
+      "nova-browser",
     ],
   ])("rejects malformed or unauthorized argv %j", (...argv) => {
     expect(check(argv).allowed).toBe(false);

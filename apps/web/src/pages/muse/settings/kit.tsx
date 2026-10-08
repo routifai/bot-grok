@@ -1,4 +1,4 @@
-import { cn } from "@aiden/ui-web";
+import { cn } from "@nova/ui-web";
 import type { ReactNode } from "react";
 import { ChevronGlyph } from "../chrome/NovaGlyphs";
 import { NovaTile, type TileTone } from "../chrome/NovaTile";

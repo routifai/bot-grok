@@ -2,7 +2,7 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 // A stand-in for the static SVG Muse face, so this test covers Bloop's own wrapper only.
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   MuseAvatar: ({
     state,
     waitingCount,
@@ -13,7 +13,7 @@ vi.mock("@aiden/ui-web", () => ({
     faceHidden?: boolean;
   }) => (
     <div
-      className="aiden-muse-avatar"
+      className="nova-muse-avatar"
       data-muse-state={state}
       data-asks={waitingCount}
       data-hidden={String(!!faceHidden)}

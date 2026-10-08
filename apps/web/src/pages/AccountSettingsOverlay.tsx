@@ -1,6 +1,6 @@
-import type { AvatarStyle } from "@aiden/contracts";
-import { BotAvatar, Button, Field, FieldLabel, Input, Label, Switch, Toggle } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { AvatarStyle } from "@nova/contracts";
+import { BotAvatar, Button, Field, FieldLabel, Input, Label, Switch, Toggle } from "@nova/ui-web";
 import { ChevronDown } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -143,7 +143,7 @@ export function GeneralSettingsPanels({
         </section>
       ) : null}
 
-      {/* The Muse always wears its own face; its color is set from Settings > Aiden,
+      {/* The Muse always wears its own face; its color is set from Settings > Nova,
           which reuses this same avatar studio (docs/muse/DESIGN.md). */}
       {!museMode ? (
         <section className={cardClass} data-testid="avatar-style-select">

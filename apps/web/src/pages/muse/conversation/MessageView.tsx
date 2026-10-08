@@ -1,8 +1,8 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { ThreadMessage } from "@aiden/contracts";
-import { ENGINE_ERROR_NOTE, isEngineErrorText, isToolActivityBlock } from "@aiden/core";
-import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { ThreadMessage } from "@nova/contracts";
+import { ENGINE_ERROR_NOTE, isEngineErrorText, isToolActivityBlock } from "@nova/core";
+import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@nova/ui-web";
 import { memo, useMemo } from "react";
 import { ArtifactFileCard } from "../../../components/ArtifactFileCard";
 

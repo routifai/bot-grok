@@ -1,5 +1,5 @@
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@nova/ui-web";
 import { Download, Lock } from "lucide-react";
 import { downloadArtifactBytes } from "../../../lib/artifact-open";
 import { ArtifactPreview } from "../../Artifacts";

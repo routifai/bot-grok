@@ -1,8 +1,8 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { Ask } from "@aiden/contracts";
-import { cn, Input } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { Ask } from "@nova/contracts";
+import { cn, Input } from "@nova/ui-web";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";

@@ -1,4 +1,4 @@
-import { readBoundedResponseBytes } from "@aiden/core";
+import { readBoundedResponseBytes } from "@nova/core";
 import { selectedSpaceId, withSpaceHeaders } from "./rpc.js";
 
 export type DictationMode = "hold" | "endpoint";

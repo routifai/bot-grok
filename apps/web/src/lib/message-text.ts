@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@aiden/contracts";
+import type { ThreadMessage } from "@nova/contracts";
 import { messageProviderLabel } from "./messaging";
 
 /** Plain message text for clipboard copy — text/ask/progress only, no chrome. */

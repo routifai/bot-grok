@@ -1,4 +1,4 @@
-import { LiveMuseFaceProvider } from "@aiden/ui-web";
+import { LiveMuseFaceProvider } from "@nova/ui-web";
 import { StrictMode, useEffect, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";

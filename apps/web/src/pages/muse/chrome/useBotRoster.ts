@@ -1,4 +1,4 @@
-import type { Bot, Group, Me, Routine, ThreadSnapshot } from "@aiden/contracts";
+import type { Bot, Group, Me, Routine, ThreadSnapshot } from "@nova/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { takeInitialBootstrap } from "../../../lib/bootstrap";

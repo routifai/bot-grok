@@ -1,11 +1,11 @@
-import { messagingDeliverJob } from "@aiden/adapter-kit";
-import type { PrismaClient } from "@aiden/db";
+import { messagingDeliverJob } from "@nova/adapter-kit";
+import type { PrismaClient } from "@nova/db";
 import {
   createExternalConversationRepos,
   formatMessagingLinkCode,
   issueMessagingLinkCode,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 
 import type { RouterContext } from "./context.js";

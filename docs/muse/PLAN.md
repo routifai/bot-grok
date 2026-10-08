@@ -2,7 +2,7 @@
 
 # Muse edition — implementation plan
 
-Turn Aiden into a single proactive personal agent in the shape of established personal agents: one **Muse** per person that pursues **Goals** in the background, comes back with **Asks**, and keeps a **Feed**, **Ideas**, and a **Library**.
+Turn Nova into a single proactive personal agent in the shape of established personal agents: one **Muse** per person that pursues **Goals** in the background, comes back with **Asks**, and keeps a **Feed**, **Ideas**, and a **Library**.
 
 This plan is written for implementation agents (Claude Sonnet 5, model id `claude-sonnet-5`) working in parallel as a **backend** stream and a **frontend** stream. Each work package below is sized for one agent in one isolated worktree.
 
@@ -14,8 +14,8 @@ This plan is written for implementation agents (Claude Sonnet 5, model id `claud
 
 ## Ground rules
 
-- **Reuse before building.** For every piece, first use what Aiden already has, then port from an open-source reference agent (MIT, Python), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
-- **Our fork (ADR 0002).** Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner. This used to mean gating everything behind `AIDEN_PRODUCT_MODE=muse` and keeping the old multi-bot behaviour intact when the mode was off (package B0); that flag and the old mode it guarded have since been deleted outright (see B0 below), so there is no other mode left to preserve.
+- **Reuse before building.** For every piece, first use what Nova already has, then port from an open-source reference agent (MIT, Python), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
+- **Our fork (ADR 0002).** Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner. This used to mean gating everything behind `NOVA_PRODUCT_MODE=muse` and keeping the old multi-bot behaviour intact when the mode was off (package B0); that flag and the old mode it guarded have since been deleted outright (see B0 below), so there is no other mode left to preserve.
 - **Naming in code.** The glossary **Task** is `GoalTask` in code (the upstream `Task` model is an unrelated request record and keeps its name). Database tables use the upstream convention (`@@map("goal_tasks")`).
 - **the reference agent ports.** When copying prompt text or logic from the reference agent, keep a one-line comment at the top of the file: `// Adapted from the reference agent (MIT) — reference/<path>`.
 - **Out of scope for v1:** mobile screens (mobile keeps working with the Conversation only), spending limits, parallel Goal work, payments.
@@ -49,11 +49,11 @@ Migrations go in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql
 | 10 | Feed = open Asks pinned on top, then Posts (Goal reports and Followed-topic findings). |
 | 11 | Goal work follows the same approval rules as the Conversation. |
 | 12 | Web and Electron first. |
-| 13 | Onboarding: Aiden's steps + name and face; ends by asking for the first Goal. Face is the new Muse avatar, default color sky `#0090FF`. |
+| 13 | Onboarding: Nova's steps + name and face; ends by asking for the first Goal. Face is the new Muse avatar, default color sky `#0090FF`. |
 
 ## Map: what exists, what is ported, what is new
 
-| Need | Aiden already has (reuse) | the reference agent (port) | New |
+| Need | Nova already has (reuse) | the reference agent (port) | New |
 |---|---|---|---|
 | Waking without the person | Graphile jobs, `background-job-handlers.ts`, `job-reconciler.ts`, `routine.wakeup` | — | `goal.advance`, `goal.checkin` job handlers |
 | Check-in schedules | `Routine.crons` + `timezone`, `schedule-tools.ts`, `RoutineSchedule.tsx` | — | reuse the same cron shape on Goal |
@@ -67,7 +67,7 @@ Migrations go in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql
 | Push when an Ask opens | `notifications.registerPush`, VAPID web push | — | trigger on new Ask |
 | Library | `apps/web/src/pages/Artifacts.tsx`, `artifacts.*` RPCs | — | include Goal-log artifacts |
 | Feed / Ideas | — | feed + ideas behaviour in `reference/server/service.py` (`feed_posts`, ideas) | `Post`, `FollowedTopic`, `Idea` + daily jobs |
-| Avatar with states | `packages/ui-web/src/bot-avatar.tsx` (`BotAvatar`, `data-working`), avatar studio (color picker only) | idle / working / waiting state idea (`web/src/components/Avatar.tsx`) | Muse face (Aiden the lion, see DESIGN.md) replacing the Grok mascot shapes in muse mode + `waiting` state |
+| Avatar with states | `packages/ui-web/src/bot-avatar.tsx` (`BotAvatar`, `data-working`), avatar studio (color picker only) | idle / working / waiting state idea (`web/src/components/Avatar.tsx`) | Muse face (Nova the lion, see DESIGN.md) replacing the Grok mascot shapes in muse mode + `waiting` state |
 | Onboarding | `apps/web/src/pages/Onboarding.tsx`, `apps/api/src/onboarding.ts` | first-run order (your name → Muse name → face → model) | name + face step, first-Goal handoff |
 
 ## Work packages
@@ -77,7 +77,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 0 — Foundations
 
 **B0 · Product mode** — ✅ done, later removed
-- The `AIDEN_PRODUCT_MODE` flag (`resolveProductMode`/`isMuseMode` in `packages/core/src/product-mode.ts`, `productMode` on the API env and the `me`/`bootstrap` payload) let the old multi-bot mode coexist with Muse during the port. Once the port was verified, the old mode and the flag were deleted outright: Muse is now the only behaviour, unconditionally.
+- The `NOVA_PRODUCT_MODE` flag (`resolveProductMode`/`isMuseMode` in `packages/core/src/product-mode.ts`, `productMode` on the API env and the `me`/`bootstrap` payload) let the old multi-bot mode coexist with Muse during the port. Once the port was verified, the old mode and the flag were deleted outright: Muse is now the only behaviour, unconditionally.
 
 **B1 · Contracts (hand-off to frontend)** — ✅ done
 - Shapes in `packages/contracts/src/muse.ts`: `Goal`, `GoalTask`, `GoalProposal`, `Ask` (a view over a pending ask/choice block: `id` = message id, `runId`, `kind`, `goalId`, `goalTitle`, `text`, `detail`, `choices`, `input`), `Post`, `Feed` (asks + posts), `FollowedTopic`, `Idea`, `MuseSettings` (+ `DEFAULT_MUSE_SETTINGS`), `MuseState`, `DEFAULT_MUSE_COLOR`.
@@ -186,7 +186,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 6 — Face and first run
 
 **F8 · Muse face** — depends on B1
-- Add the Muse face to `packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn as Aiden, an original vinyl-toy lion (see DESIGN.md "The Muse"). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@aiden/ui-tokens`; no new hex in components except the identity color default (`DEFAULT_MUSE_COLOR`) defined once.
+- Add the Muse face to `packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn as Nova, an original vinyl-toy lion (see DESIGN.md "The Muse"). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@nova/ui-tokens`; no new hex in components except the identity color default (`DEFAULT_MUSE_COLOR`) defined once.
 
 **F9 · Onboarding** — depends on F8, B4
 - Extend `pages/Onboarding.tsx` (and `apps/api/src/onboarding.ts` if the server drives steps): your name → Muse name → color of the Muse face (sky default) → model → land in the Conversation, where the Muse's first message asks for the first Goal. When the person answers, the Muse calls `goals.create`, which posts the first plan as a Proposal (B4).

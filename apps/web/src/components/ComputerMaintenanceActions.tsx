@@ -1,4 +1,5 @@
-import type { ComputerStatus } from "@aiden/contracts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ComputerStatus } from "@nova/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,8 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { computerUpdates } from "../lib/computer-updates";

@@ -1,4 +1,4 @@
-import type { AdapterContext, ComputerRef } from "@aiden/adapter-kit";
+import type { AdapterContext, ComputerRef } from "@nova/adapter-kit";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
 
 /** Managed-provider protocol emulator backed by deterministic local state. */

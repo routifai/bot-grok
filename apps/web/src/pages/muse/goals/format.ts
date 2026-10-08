@@ -1,5 +1,5 @@
-import type { Goal, GoalTask } from "@aiden/contracts";
-import { formatCron } from "@aiden/core";
+import type { Goal, GoalTask } from "@nova/contracts";
+import { formatCron } from "@nova/core";
 
 /** Formats a Goal's due date ("YYYY-MM-DD") in the given locale, or null when unset. */
 export function formatDueDate(due: string | null, locale: string): string | null {

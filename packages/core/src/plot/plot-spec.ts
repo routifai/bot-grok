@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { MAX_CHART_DATA_ROWS } from "@aiden/contracts";
+import { MAX_CHART_DATA_ROWS } from "@nova/contracts";
 import * as Plot from "@observablehq/plot";
 import { autoType, csvParse, tsvParse } from "d3-dsv";
 

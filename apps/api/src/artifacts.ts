@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
-import type { ArtifactStore } from "@aiden/adapter-kit";
-import type { Actor } from "@aiden/contracts";
-import { ATTACHMENT_MAX_COUNT } from "@aiden/contracts";
+import type { ArtifactStore } from "@nova/adapter-kit";
+import type { Actor } from "@nova/contracts";
+import { ATTACHMENT_MAX_COUNT } from "@nova/contracts";
 import {
   AttachmentValidationError,
   decodeAttachmentBase64,
   messageBlockForArtifact,
   promptTextForAttachments,
   validateAttachmentMimeType,
-} from "@aiden/core";
-import type { PrismaClient } from "@aiden/db";
-import { IsolationError, Prisma, withResolvedArtifactVersion } from "@aiden/db";
+} from "@nova/core";
+import type { PrismaClient } from "@nova/db";
+import { IsolationError, Prisma, withResolvedArtifactVersion } from "@nova/db";
 
 function adapterContext(actor: Actor, botId: string, operationId: string) {
   return {

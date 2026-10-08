@@ -1,6 +1,6 @@
-import type { Artifact } from "@aiden/contracts";
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { Artifact } from "@nova/contracts";
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@nova/ui-web";
 import { Check, Download, Library, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../../lib/artifact-open";

@@ -1,6 +1,6 @@
 import type { PlaywrightScreenshot } from "./playwright-report-dashboard.js";
 
-export const PLAYWRIGHT_PR_SCREENSHOT_COMMENT_MARKER = "<!-- aiden-playwright-screenshots -->";
+export const PLAYWRIGHT_PR_SCREENSHOT_COMMENT_MARKER = "<!-- nova-playwright-screenshots -->";
 export const PLAYWRIGHT_PR_FEATURE_FRAME_LIMIT = 8;
 
 export type PlaywrightPrCommentScreenshot = Pick<

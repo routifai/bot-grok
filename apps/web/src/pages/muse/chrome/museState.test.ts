@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@aiden/contracts";
+import type { MessageBlock } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { activityVerb, currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 

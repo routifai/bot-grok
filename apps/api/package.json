@@ -1,5 +1,5 @@
 {
-  "name": "@aiden/api",
+  "name": "@nova/api",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -12,13 +12,13 @@
   "dependencies": {
     "@hono/node-server": "2.1.1",
     "@orpc/server": "1.15.0",
-    "@aiden/adapter-kit": "workspace:*",
-    "@aiden/adapters": "workspace:*",
-    "@aiden/auth": "workspace:*",
-    "@aiden/contracts": "workspace:*",
-    "@aiden/core": "workspace:*",
-    "@aiden/db": "workspace:*",
-    "@aiden/logging": "workspace:*",
+    "@nova/adapter-kit": "workspace:*",
+    "@nova/adapters": "workspace:*",
+    "@nova/auth": "workspace:*",
+    "@nova/contracts": "workspace:*",
+    "@nova/core": "workspace:*",
+    "@nova/db": "workspace:*",
+    "@nova/logging": "workspace:*",
     "hono": "4.13.7",
     "tsx": "4.23.13"
   },

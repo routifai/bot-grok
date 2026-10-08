@@ -486,7 +486,7 @@ describe("compatible connection updates", () => {
     });
   });
   it("revalidates inherited keys against the public-HTTPS policy", () => {
-    vi.stubEnv("AIDEN_OPENAI_COMPAT_ALLOW_PUBLIC", "1");
+    vi.stubEnv("NOVA_OPENAI_COMPAT_ALLOW_PUBLIC", "1");
     const baseUrl = "http://example.invalid/v1";
     const legacy = serializeModelSecret({ kind: "openai_compatible", baseUrl, apiKey: "fake-key" });
     expect(() => buildModelConnectPlaintext({ ...input, baseUrl }, legacy)).toThrow(/HTTPS/);

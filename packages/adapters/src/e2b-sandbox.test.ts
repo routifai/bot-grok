@@ -17,10 +17,10 @@ const context = {
 describe("E2B computer backend", () => {
   it("revokes an extra display's control without starting or waiting for its view", async () => {
     const command = vi.fn(async (value: string) => {
-      if (value.includes("AIDEN_SCREEN_INDEX=")) {
-        return { stdout: "AIDEN_SCREEN_INDEX=1\n", stderr: "", exitCode: 0 };
+      if (value.includes("NOVA_SCREEN_INDEX=")) {
+        return { stdout: "NOVA_SCREEN_INDEX=1\n", stderr: "", exitCode: 0 };
       }
-      if (value.includes("AIDEN_SCREEN_PASSWORD=") || value.includes("flock 8")) {
+      if (value.includes("NOVA_SCREEN_PASSWORD=") || value.includes("flock 8")) {
         throw new Error("extra view is unavailable");
       }
       return { stdout: "", stderr: "", exitCode: 0 };
@@ -50,7 +50,7 @@ describe("E2B computer backend", () => {
 
   it("reconnects concurrent primary viewers without using the SDK's global VNC lifecycle", async () => {
     const command = vi.fn(async (_value: string) => ({
-      stdout: "AIDEN_DESKTOP=0:savedkey\n",
+      stdout: "NOVA_DESKTOP=0:savedkey\n",
       stderr: "",
       exitCode: 0,
     }));
@@ -356,7 +356,7 @@ describe("E2B computer backend", () => {
       context,
     );
     expect(command).toHaveBeenLastCalledWith(
-      expect.stringContaining("/home/user/aiden-home/notes/readme.md"),
+      expect.stringContaining("/home/user/nova-home/notes/readme.md"),
       expect.anything(),
     );
   });
@@ -680,7 +680,7 @@ describe("sandbox-gone detection", () => {
   ];
   const alive = [
     new Error("bash: x11vnc: command not found"),
-    new Error("Path /home/user/aiden-home/notes.md not found"),
+    new Error("Path /home/user/nova-home/notes.md not found"),
     new Error("tar: /home/user/x: No such file or directory"),
     new TimeoutError(
       "canceled: This error is likely due to exceeding 'requestTimeoutMs'. You can pass the request timeout value as an option when making the request.",

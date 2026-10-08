@@ -1,8 +1,8 @@
-import type { MuseSettings, Proactivity } from "@aiden/contracts";
-import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@aiden/contracts";
-import { cn, Switch } from "@aiden/ui-web";
 import { i18n } from "@lingui/core";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { MuseSettings, Proactivity } from "@nova/contracts";
+import { DEFAULT_MUSE_SETTINGS, PROACTIVITY_LEVELS } from "@nova/contracts";
+import { cn, Switch } from "@nova/ui-web";
 import { useEffect, useId, useState } from "react";
 import { formatClockTime, friendlyTimezone } from "../../lib/local-timezone";
 import { rpc } from "../../lib/rpc";

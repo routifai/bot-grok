@@ -287,7 +287,7 @@ def test_open_project_is_offered_to_the_muse_not_to_helpers() -> None:
 # ── a Project as the working directory ─────────────────────────────────────
 
 REPO = Path(__file__).resolve().parents[4]
-WORKSPACE = "/home/aiden/workspace"
+WORKSPACE = "/home/nova/workspace"
 
 
 @pytest.mark.parametrize("name", ["nova-claude", "nova-pi"])
@@ -401,11 +401,11 @@ async def test_project_list_reaches_the_prompt_of_claude_sdk_and_pi(home: Path) 
 @pytest.mark.parametrize(
     ("workspace", "slug"),
     [
-        ("/home/aiden/workspace/projects/q3-deck", "q3-deck"),
-        ("/home/aiden/workspace/projects/q3-deck/drafts", "q3-deck"),
-        ("/home/aiden/workspace", None),
-        ("/home/aiden/workspace/projects", None),
-        ("/home/aiden/workspace/projects/UP", None),
+        ("/home/nova/workspace/projects/q3-deck", "q3-deck"),
+        ("/home/nova/workspace/projects/q3-deck/drafts", "q3-deck"),
+        ("/home/nova/workspace", None),
+        ("/home/nova/workspace/projects", None),
+        ("/home/nova/workspace/projects/UP", None),
         (None, None),
     ],
 )

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { FamilyEvent, ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
+import type { FamilyEvent, ThreadMessage, ThreadMessagePage } from "@nova/contracts";
 import { act, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

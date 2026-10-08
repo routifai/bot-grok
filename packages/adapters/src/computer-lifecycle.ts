@@ -5,15 +5,15 @@ import type {
   ComputerRef,
   JobPublisher,
   SandboxProvider,
-} from "@aiden/adapter-kit";
-import type { ComputerUpdate } from "@aiden/contracts";
-import { ACTIVE_RUN_STATUSES, parseScreenLeaseId, screenLeaseId } from "@aiden/core";
+} from "@nova/adapter-kit";
+import type { ComputerUpdate } from "@nova/contracts";
+import { ACTIVE_RUN_STATUSES, parseScreenLeaseId, screenLeaseId } from "@nova/core";
 import {
   expireComputerExecutionLeases,
   type PrismaClient,
   parseComputerMode,
   type ThreadEvents,
-} from "@aiden/db";
+} from "@nova/db";
 import {
   clearInactiveUserComputerControl,
   expireComputerControl,

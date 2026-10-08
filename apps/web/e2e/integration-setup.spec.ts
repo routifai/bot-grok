@@ -30,7 +30,7 @@ test("setup exposes all integration choices and saves only the selected provider
     saved.push(route.request().postDataJSON());
     return route.fulfill({ json: { json: { ok: true } } });
   });
-  await signup(page, `integration-setup-${Date.now()}@aiden.test`, "password12", "Setup Test");
+  await signup(page, `integration-setup-${Date.now()}@nova.test`, "password12", "Setup Test");
   await completeIdentitySteps(page);
   await expect(page.getByRole("heading", { name: "Server integrations" })).toBeVisible();
   for (const name of ["Direct MCP", "Composio", "Pipedream", "Executor"]) {
@@ -101,7 +101,7 @@ test("direct MCP connects a catalog result without asking for a URL and assigns 
     serverId = route.request().postDataJSON().json.serverId;
     return route.fulfill({ json: { json: { status: "already_connected" } } });
   });
-  await signup(page, `direct-mcp-setup-${Date.now()}@aiden.test`, "password12", "Direct MCP");
+  await signup(page, `direct-mcp-setup-${Date.now()}@nova.test`, "password12", "Direct MCP");
   await completeIdentitySteps(page);
   await page.getByRole("textbox", { name: "Search apps", exact: true }).fill("Notion");
   await page.getByRole("button", { name: "Search integrations.sh", exact: true }).click();
@@ -147,7 +147,7 @@ test("Executor reconnect saves a replacement token before authorization", async 
       },
     }),
   );
-  await signup(page, `executor-reconnect-${Date.now()}@aiden.test`, "password12", "Executor Test");
+  await signup(page, `executor-reconnect-${Date.now()}@nova.test`, "password12", "Executor Test");
   await completeIdentitySteps(page);
   await expect(page.getByRole("heading", { name: "Server integrations" })).toBeVisible();
   const server = await page.evaluate(async () => {
@@ -155,7 +155,7 @@ test("Executor reconnect saves a replacement token before authorization", async 
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-aiden-space-id": localStorage.getItem("aiden:space-id") ?? "",
+        "x-nova-space-id": localStorage.getItem("nova:space-id") ?? "",
       },
       body: JSON.stringify({
         json: {
@@ -213,7 +213,7 @@ test("remote members skip server setup and keep direct MCP connections", async (
       },
     }),
   );
-  await signup(page, `remote-member-${Date.now()}@aiden.test`, "password12", "Remote Member");
+  await signup(page, `remote-member-${Date.now()}@nova.test`, "password12", "Remote Member");
   await expect(page.getByRole("heading", { name: "Server integrations" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Create your first bot" })).toHaveCount(0);
   await captureScreenshot(page, testInfo, "remote-member-onboarding");
@@ -251,7 +251,7 @@ test("configured server owners manage providers from settings", async ({ page },
       },
     }),
   );
-  await signup(page, `configured-owner-${Date.now()}@aiden.test`, "password12", "Server Owner");
+  await signup(page, `configured-owner-${Date.now()}@nova.test`, "password12", "Server Owner");
   await expect(page.getByRole("heading", { name: "Server integrations" })).toBeHidden();
   await completeOnboarding(page);
   const settings = await openUserSettings(page);

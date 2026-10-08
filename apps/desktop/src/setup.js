@@ -1,5 +1,5 @@
 (() => {
-  const bridge = window.aidenSetup;
+  const bridge = window.novaSetup;
   document.documentElement.dataset.platform = bridge?.platform ?? "browser";
 
   const form = document.getElementById("setup");

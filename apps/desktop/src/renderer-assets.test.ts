@@ -8,7 +8,7 @@ import {
   isRendererAssetMiss,
 } from "./renderer-assets.js";
 
-const root = path.resolve("/tmp/aiden-renderer");
+const root = path.resolve("/tmp/nova-renderer");
 const origin = "https://app.example.com";
 
 describe("bundled desktop renderer", () => {

@@ -1,13 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
-import { hasActiveComputerControl } from "@aiden/adapters";
-import type { ScreenCapabilityScope } from "@aiden/core/node/screen-capability";
+import { hasActiveComputerControl } from "@nova/adapters";
+import type { ScreenCapabilityScope } from "@nova/core/node/screen-capability";
 import {
   ENGINE_COMPUTER_ID,
   openScreenCapability,
   SCREEN_TARGET_ENDPOINT,
   sealScreenCapability,
-} from "@aiden/core/node/screen-capability";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/core/node/screen-capability";
+import type { PrismaClient } from "@nova/db";
 import type { Hono } from "hono";
 import { requestBodyLimit } from "./request-body-limit.js";
 

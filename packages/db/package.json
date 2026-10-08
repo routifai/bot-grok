@@ -1,5 +1,5 @@
 {
-  "name": "@aiden/db",
+  "name": "@nova/db",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -18,12 +18,12 @@
     "test": "vitest run --root ../.. packages/db/src"
   },
   "dependencies": {
-    "@aiden/adapter-kit": "workspace:*",
+    "@nova/adapter-kit": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
-    "@aiden/contracts": "workspace:*",
-    "@aiden/core": "workspace:*",
-    "@aiden/logging": "workspace:*",
+    "@nova/contracts": "workspace:*",
+    "@nova/core": "workspace:*",
+    "@nova/logging": "workspace:*",
     "pg": "8.23.0",
     "dotenv": "17.4.2"
   },

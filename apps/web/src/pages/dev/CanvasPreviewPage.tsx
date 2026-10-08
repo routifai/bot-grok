@@ -1,4 +1,4 @@
-import { CanvasView } from "@aiden/ui-web";
+import { CanvasView } from "@nova/ui-web";
 import { useEffect } from "react";
 import { CREDIT_CARD_CANVAS_FIXTURE } from "./canvas-fixture";
 

@@ -3,7 +3,7 @@ import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
 
 test("a ?m= deep link jumps while the thread is streaming", async ({ page }) => {
   const stamp = Date.now();
-  await signup(page, `jump-${stamp}@aiden.test`, "password12", "Jump Tester");
+  await signup(page, `jump-${stamp}@nova.test`, "password12", "Jump Tester");
   await completeOnboarding(page);
 
   const botId = activeBotId(page);

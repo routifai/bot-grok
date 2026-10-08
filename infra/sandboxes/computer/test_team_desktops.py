@@ -88,7 +88,7 @@ def main():
     assert b"101 Switching Protocols" in response, response
     old_targets = [
         line.split(": ", 1)[1].strip().split(":", 1)[1]
-        for file in Path("/tmp/aiden/desktop-targets").glob("*")
+        for file in Path("/tmp/nova/desktop-targets").glob("*")
         for line in file.read_text().splitlines()
         if line.startswith(("view-a: ", "control-a: "))
     ]
@@ -101,7 +101,7 @@ def main():
     login.write_text("preserved-after-browser-restart")
     # Reopen the same bot after Chromium stops, before any checkpoint/release.
     key = profile.name.removeprefix("chromium-bot-")
-    pid = int(Path(f"/tmp/aiden/browser-pid-{key}").read_text())
+    pid = int(Path(f"/tmp/nova/browser-pid-{key}").read_text())
     os.kill(pid, 15)
     for _ in range(100):
         if not Path(f"/proc/{pid}/cmdline").exists():

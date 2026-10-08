@@ -1,4 +1,4 @@
-import type { Bot, ProductEvent } from "@aiden/contracts";
+import type { Bot, ProductEvent } from "@nova/contracts";
 import { useEffect, useRef } from "react";
 import { watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";

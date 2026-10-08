@@ -1,4 +1,4 @@
-import type { ReplyCardBlock, ThreadMessage } from "@aiden/contracts";
+import type { ReplyCardBlock, ThreadMessage } from "@nova/contracts";
 import { expect, it } from "vitest";
 import { replyCardKey, resolveReplyCards } from "./thread";
 

@@ -10,9 +10,9 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   saveOmnigentVaultEntry,
-} from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
 export interface VaultDeps {

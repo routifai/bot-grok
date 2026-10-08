@@ -231,7 +231,7 @@ this integration doesn't cover those yet.
 | `OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER` | Omnigent server process | `computer` launches each new Muse on its own Computer. |
 | `OMNIGENT_AUTH_TENANT_HEADER` | Omnigent server process | `X-Omnigent-Tenant`, the header Nova sends the space in. |
 | `OMNIGENT_CONTEXT_PROVIDER_SECRET` | `apps/api` | Bearer secret the context-provider route requires. **Unset 404s the route entirely** — set this to enable the endpoint. |
-| `OPENROUTER_API_KEY` / `AIDEN_LOCAL_MODELS_URL` | `apps/api` | Either makes the `pi` harness available in `engine.info`'s catalog (Pi routes through OpenRouter or a locally configured OpenAI-compatible server). |
+| `OPENROUTER_API_KEY` / `NOVA_LOCAL_MODELS_URL` | `apps/api` | Either makes the `pi` harness available in `engine.info`'s catalog (Pi routes through OpenRouter or a locally configured OpenAI-compatible server). |
 | `ANTHROPIC_API_KEY` | `apps/api` | Makes the `claude` harness (Claude Agent SDK) available in `engine.info`'s catalog. |
 | `OPENAI_API_KEY` | `apps/api` | Makes both the `openai` (OpenAI Agents SDK) and `codex` (OpenAI's coding agent) harnesses available in `engine.info`'s catalog. |
 | `NOVA_PI_MODEL` / `NOVA_CLAUDE_MODEL` / `NOVA_OPENAI_MODEL` / `NOVA_CODEX_MODEL` | Omnigent server process | Model id substituted into the matching generated bundle's `executor.config.model` (`${NOVA_PI_MODEL}`, etc.). Omnigent expands `${VAR}` server-side for built-in agents loaded via `OMNIGENT_BUILTIN_AGENT_DIRS`. Use a model id valid for that harness's configured provider, e.g. a Databricks/Anthropic Claude model id for `NOVA_CLAUDE_MODEL`. |

@@ -1,5 +1,6 @@
-import type { SkillDraft, TaughtSkill } from "@aiden/contracts";
-import { formatSkillRunPrompt } from "@aiden/core";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { SkillDraft, TaughtSkill } from "@nova/contracts";
+import { formatSkillRunPrompt } from "@nova/core";
 import {
   Button,
   Input,
@@ -11,8 +12,7 @@ import {
   SheetTitle,
   Switch,
   Textarea,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { ORPCError } from "@orpc/client";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";

@@ -1,5 +1,5 @@
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
-import { ACTIVE_RUN_STATUSES } from "@aiden/core";
+import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
+import { ACTIVE_RUN_STATUSES } from "@nova/core";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AvatarStyleProvider } from "./avatar-style.js";
@@ -140,7 +140,7 @@ describe("BotAvatar", () => {
     );
     expect(robot).not.toEqual(organic);
     expect(robot).toContain("grok-character-eyes");
-    expect(organic).toContain("aiden-organic-avatar");
+    expect(organic).toContain("nova-organic-avatar");
     expect(organic).not.toContain("grok-character-eyes");
   });
 
@@ -150,7 +150,7 @@ describe("BotAvatar", () => {
         <BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="maya" />
       </AvatarStyleProvider>,
     );
-    expect(html).toContain("aiden-organic-avatar");
+    expect(html).toContain("nova-organic-avatar");
     expect(html).not.toContain("grok-character-eyes");
   });
 
@@ -159,7 +159,7 @@ describe("BotAvatar", () => {
       <BotAvatar color="data:image/png;base64,abc" identity="maya" variant="organic" />,
     );
     expect(html).toContain("<img");
-    expect(html).not.toContain("aiden-organic-avatar");
+    expect(html).not.toContain("nova-organic-avatar");
   });
 
   it("keeps an encoded studio shape when the organic style is preferred", () => {
@@ -167,13 +167,13 @@ describe("BotAvatar", () => {
       <BotAvatar color={`${DEFAULT_GROK_BOT_COLOR}::shape_3`} identity="maya" variant="organic" />,
     );
     expect(html).toContain("grok-character-eyes");
-    expect(html).not.toContain("aiden-organic-avatar");
+    expect(html).not.toContain("nova-organic-avatar");
   });
 
   it("fills the organic body with the resolved palette hex when the custom color is invalid", () => {
     const fallback = resolvePersonaColorDef("maya", "#zzzzzz");
     const html = renderToString(<BotAvatar color="#zzzzzz" identity="maya" variant="organic" />);
-    expect(html).toContain("aiden-organic-avatar");
+    expect(html).toContain("nova-organic-avatar");
     expect(html).toContain(`fill="${fallback.hex}"`);
     expect(html).not.toContain("#zzzzzz");
   });
@@ -256,7 +256,7 @@ describe("Muse face", () => {
 
   it("leaves non-muse avatars unchanged when face is omitted", () => {
     const html = renderToString(<BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="maya" />);
-    expect(html).not.toContain("aiden-muse-avatar");
+    expect(html).not.toContain("nova-muse-avatar");
     expect(html).toContain("grok-character-eyes");
   });
 
@@ -266,22 +266,22 @@ describe("Muse face", () => {
     const working = renderToString(<BotAvatar color="#0090FF" face="muse" status="running" />);
     const waiting = renderToString(<BotAvatar color="#0090FF" face="muse" waitingCount={1} />);
 
-    expect(idle).toContain("aiden-muse-expression-idle");
-    expect(idle).toContain("aiden-muse-mouth-idle");
+    expect(idle).toContain("nova-muse-expression-idle");
+    expect(idle).toContain("nova-muse-mouth-idle");
 
-    expect(thinking).toContain("aiden-muse-expression-thinking");
-    expect(thinking).toContain("aiden-muse-mouth-thinking");
-    expect(thinking).toContain("aiden-muse-eyebrow-right");
+    expect(thinking).toContain("nova-muse-expression-thinking");
+    expect(thinking).toContain("nova-muse-mouth-thinking");
+    expect(thinking).toContain("nova-muse-eyebrow-right");
 
-    expect(working).toContain("aiden-muse-expression-working");
-    expect(working).toContain("aiden-muse-mouth-working");
-    expect(working).toContain("aiden-muse-squint");
+    expect(working).toContain("nova-muse-expression-working");
+    expect(working).toContain("nova-muse-mouth-working");
+    expect(working).toContain("nova-muse-squint");
 
-    expect(waiting).toContain("aiden-muse-expression-waiting");
-    expect(waiting).toContain("aiden-muse-mouth-waiting");
-    expect(waiting).toContain("aiden-muse-eyebrow-left");
-    expect(waiting).toContain("aiden-muse-eyebrow-right");
-    expect(waiting).toContain("aiden-muse-hand");
+    expect(waiting).toContain("nova-muse-expression-waiting");
+    expect(waiting).toContain("nova-muse-mouth-waiting");
+    expect(waiting).toContain("nova-muse-eyebrow-left");
+    expect(waiting).toContain("nova-muse-eyebrow-right");
+    expect(waiting).toContain("nova-muse-hand");
   });
 
   it("renders unique depth/shadow gradient ids per muse instance", () => {
@@ -302,7 +302,7 @@ describe("Muse face", () => {
 
   it("keeps the identity color on the body under the new depth overlay", () => {
     const html = renderToString(<BotAvatar color="#9333EA" face="muse" status="idle" />);
-    expect(html).toContain('class="aiden-muse-body" fill="#9333EA"');
+    expect(html).toContain('class="nova-muse-body" fill="#9333EA"');
   });
 });
 
@@ -319,7 +319,7 @@ describe("BotAvatar live Muse face", () => {
 
   it("draws the static Muse face when no live renderer is provided", () => {
     const html = renderToString(<BotAvatar color="#0090FF" face="muse" size={40} />);
-    expect(html).toContain("aiden-muse-avatar");
+    expect(html).toContain("nova-muse-avatar");
     expect(html).not.toContain("live-face");
   });
 
@@ -330,7 +330,7 @@ describe("BotAvatar live Muse face", () => {
           color="#0090FF"
           face="muse"
           size={40}
-          identity="aiden"
+          identity="nova"
           status="running"
           waitingCount={2}
         />
@@ -340,8 +340,8 @@ describe("BotAvatar live Muse face", () => {
     // An open Ask outranks an active run, exactly as in the static face.
     expect(html).toContain('data-state="waiting"');
     expect(html).toContain('data-asks="2"');
-    expect(html).toContain('data-id="aiden"');
-    expect(html).not.toContain("aiden-muse-avatar");
+    expect(html).toContain('data-id="nova"');
+    expect(html).not.toContain("nova-muse-avatar");
   });
 
   it("leaves non-Muse avatars alone even when a live renderer is provided", () => {

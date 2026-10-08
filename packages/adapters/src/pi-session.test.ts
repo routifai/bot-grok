@@ -6,7 +6,7 @@ import { piSessionBotRoot, removePiBotSessions } from "./pi-session.js";
 
 describe("legacy Pi session cleanup", () => {
   it("removes one bot's recorded sessions and leaves the others", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "aiden-pi-cleanup-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "nova-pi-cleanup-"));
     try {
       const sessionsRoot = path.join(root, "pi-sessions");
       const botRoot = piSessionBotRoot(sessionsRoot, "user-1", "bot-1");

@@ -21,14 +21,14 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
   Skeleton: (props: ComponentProps<"div">) => <div {...props} />,
   BotAvatar: () => <div data-testid="bot-avatar" />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
-import type { Idea } from "@aiden/contracts";
+import type { Idea } from "@nova/contracts";
 import { IdeasScreen } from "./IdeasScreen";
 
 function idea(overrides: Partial<Idea> = {}): Idea {

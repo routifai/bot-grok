@@ -1,6 +1,7 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { Artifact, ArtifactVersion, Bot } from "@aiden/contracts";
-import { isAttachmentImageMimeType } from "@aiden/contracts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { Artifact, ArtifactVersion, Bot } from "@nova/contracts";
+import { isAttachmentImageMimeType } from "@nova/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,8 +17,7 @@ import {
   NativeSelectOption,
   parseBotAvatar,
   resolvePersonaColorDef,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import {
   Download,
   Filter,
@@ -42,7 +42,7 @@ import { useObjectUrl } from "../lib/use-object-url";
 
 type ViewMode = "grid" | "list";
 type DateFilter = "all" | "today" | "week" | "month";
-const VIEW_MODE_STORAGE_KEY = "aiden:artifacts-view-mode";
+const VIEW_MODE_STORAGE_KEY = "nova:artifacts-view-mode";
 const LIST_PAGE_SIZE = 60;
 
 type ArtifactSummary = Artifact & { versionCount: number };

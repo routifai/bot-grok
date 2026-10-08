@@ -1,8 +1,8 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { ThreadMessage } from "@aiden/contracts";
-import { isToolActivityBlock } from "@aiden/core";
-import { cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { ThreadMessage } from "@nova/contracts";
+import { isToolActivityBlock } from "@nova/core";
+import { cn } from "@nova/ui-web";
 import { useEffect, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { formatLogTimestamp } from "./format";

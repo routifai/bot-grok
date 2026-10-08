@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { loadRootEnv } from "@aiden/core/node/load-root-env";
+import { loadRootEnv } from "@nova/core/node/load-root-env";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
 import { runProcess } from "./process.js";
@@ -75,8 +75,8 @@ async function main() {
     process.env.SIGNUP_ALLOWLIST = "";
     process.env.CI = "1";
 
-    execSync("pnpm --filter @aiden/db generate", { stdio: "inherit", env: process.env });
-    execSync("pnpm --filter @aiden/db exec prisma migrate deploy", {
+    execSync("pnpm --filter @nova/db generate", { stdio: "inherit", env: process.env });
+    execSync("pnpm --filter @nova/db exec prisma migrate deploy", {
       stdio: "inherit",
       env: process.env,
       cwd: path.resolve("packages/db"),
@@ -152,7 +152,7 @@ async function main() {
     const [
       { ComposioEmulator, EmailEmulator, PipedreamConnector, ThirdPartyConnectorEmulator },
       { createApp },
-    ] = await Promise.all([import("@aiden/adapters"), import("../../../../apps/api/src/app.ts")]);
+    ] = await Promise.all([import("@nova/adapters"), import("../../../../apps/api/src/app.ts")]);
     const { serve } = await import("@hono/node-server");
     const thirdParties = new ThirdPartyConnectorEmulator();
     const pipedream = new PipedreamConnector(
@@ -207,7 +207,7 @@ async function main() {
           "pnpm",
           [
             "--filter",
-            "@aiden/web",
+            "@nova/web",
             "exec",
             "playwright",
             "test",

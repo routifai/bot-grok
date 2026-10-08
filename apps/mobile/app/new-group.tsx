@@ -1,4 +1,4 @@
-import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN } from "@aiden/contracts";
+import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN } from "@nova/contracts";
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput } from "react-native";

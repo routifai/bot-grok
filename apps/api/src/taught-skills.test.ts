@@ -28,7 +28,7 @@ const engine = {
   deleteOmnigentTaughtSkill: vi.fn(async () => undefined),
   emitSkillDraftMessages: vi.fn(async () => undefined),
 };
-vi.mock("@aiden/adapters", () => engine);
+vi.mock("@nova/adapters", () => engine);
 
 const { assertTeachingSendAllowed, createTaughtSkillsService } = await import("./taught-skills.js");
 

@@ -1,4 +1,5 @@
-import type { Bot, BotSection } from "@aiden/contracts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { Bot, BotSection } from "@nova/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,8 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { Lock, Users } from "lucide-react";
 import { useId, useState } from "react";
 

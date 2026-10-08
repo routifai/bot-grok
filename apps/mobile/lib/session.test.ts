@@ -30,14 +30,14 @@ describe("mobile session storage", () => {
     await saveSessionToken("secret-token");
     await clearSessionToken();
 
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("aiden.session_token", "secret-token");
-    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("aiden.session_token");
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("nova.session_token", "secret-token");
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("nova.session_token");
   });
 
   it("overwrites the token when SecureStore delete fails", async () => {
     vi.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error("device locked"));
     await expect(clearSessionToken()).resolves.toBe(true);
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("aiden.session_token", "");
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("nova.session_token", "");
   });
 
   it("invalidates the in-memory session when SecureStore cannot clear the token", async () => {
@@ -57,8 +57,8 @@ describe("mobile session storage", () => {
     await expect(loadSessionToken()).resolves.toBe("");
 
     expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
-    expect(SecureStore.getItemAsync).toHaveBeenNthCalledWith(1, "aiden.session_token");
-    expect(SecureStore.getItemAsync).toHaveBeenNthCalledWith(2, "aiden.session_token");
+    expect(SecureStore.getItemAsync).toHaveBeenNthCalledWith(1, "nova.session_token");
+    expect(SecureStore.getItemAsync).toHaveBeenNthCalledWith(2, "nova.session_token");
   });
 
   it("restores the active session in memory when persistence is unavailable", async () => {

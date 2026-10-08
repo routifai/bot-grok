@@ -1,6 +1,6 @@
-import { LOCAL_SETTINGS_PAGE } from "@aiden/contracts";
-import { Button, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { LOCAL_SETTINGS_PAGE } from "@nova/contracts";
+import { Button, Skeleton } from "@nova/ui-web";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { LoadingState } from "./components/ai/primitives";
@@ -90,7 +90,7 @@ function SessionApp() {
     ) : (
       <div
         className="grid h-full place-items-center text-muted-foreground/80"
-        data-aiden-app-state="session-pending"
+        data-nova-app-state="session-pending"
       >
         <Trans>Loading…</Trans>
       </div>
@@ -99,7 +99,7 @@ function SessionApp() {
 
   const user = session.data?.user;
   return (
-    <div className="h-full" data-aiden-app-state="ready">
+    <div className="h-full" data-nova-app-state="ready">
       {/* Signed out, every page wears the night welcome surface, so the loading frame does too. */}
       <Suspense
         fallback={<div className={`h-full ${user ? "bg-background" : "bg-welcome-night"}`} />}
@@ -221,7 +221,7 @@ function ShellSkeleton() {
   return (
     <div
       className="flex h-full overflow-hidden bg-background"
-      data-aiden-app-state="session-pending"
+      data-nova-app-state="session-pending"
     >
       <aside className="hidden w-[316px] shrink-0 border-e border-sidebar-border bg-sidebar px-3.5 pt-16 md:block">
         <Skeleton className="h-10 rounded-xl" />

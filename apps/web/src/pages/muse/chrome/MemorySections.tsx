@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/react/macro";
 import {
   Checkbox,
   cn,
@@ -9,8 +10,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@aiden/ui-web";
-import { useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import {
   HelpCircle,
   MoreHorizontal,

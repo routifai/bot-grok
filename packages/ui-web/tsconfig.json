@@ -8,7 +8,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {
-      "@aiden/ui-web/*": ["./src/*"]
+      "@nova/ui-web/*": ["./src/*"]
     }
   },
   "include": ["src"]

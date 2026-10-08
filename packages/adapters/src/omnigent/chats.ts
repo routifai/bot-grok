@@ -4,7 +4,7 @@
 // resolve a bare chatId to the Super Chat (bot) it belongs to before ever trusting it. Every
 // Omnigent call is injected through ./client.js's typed functions, so ./chats.test.ts mocks
 // fetch the same way ./gateway.test.ts does — no network, no database.
-import type { ChatSummary, SideChatStart } from "@aiden/contracts";
+import type { ChatSummary, SideChatStart } from "@nova/contracts";
 import { isSessionNotFoundError } from "./client/core.js";
 import {
   getOmnigentSession,

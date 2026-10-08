@@ -1,6 +1,6 @@
-import type { ThreadMessage } from "@aiden/contracts";
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
+import type { ThreadMessage } from "@nova/contracts";
 import { CircleAlert, Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId, useState } from "react";

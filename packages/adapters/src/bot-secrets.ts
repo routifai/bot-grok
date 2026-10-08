@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
-import type { BotSecretDestination } from "@aiden/contracts";
+import type { BotSecretDestination } from "@nova/contracts";
 import {
   botSecretDestinationSchema,
   decodeLoginSecret,
   isPrivateNetworkHost,
   SecretHttpRequest,
-} from "@aiden/contracts";
-import type { Prisma, PrismaClient } from "@aiden/db";
+} from "@nova/contracts";
+import type { Prisma, PrismaClient } from "@nova/db";
 import { combineSignals, redactConnectorPayload } from "./connector-safety.js";
 import type { RemoteTransportDependencies } from "./remote-mcp.js";
 import { createPrivateNetworkFetch, createSafeRemoteFetch } from "./remote-mcp.js";
@@ -42,7 +42,7 @@ function credentialHeader(destination: BotSecretDestination, plaintext: string) 
 
 /** Owner escape enabling plain-HTTP origins on private LAN hosts (see #907). */
 export function allowPrivateHttpSecretOrigins(): boolean {
-  return process.env.AIDEN_SECRETS_ALLOW_PRIVATE_HTTP === "1";
+  return process.env.NOVA_SECRETS_ALLOW_PRIVATE_HTTP === "1";
 }
 
 export function normalizeSecretDestination(value: unknown): BotSecretDestination {

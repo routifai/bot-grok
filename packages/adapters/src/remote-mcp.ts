@@ -1,10 +1,10 @@
 import { lookup } from "node:dns/promises";
 import type { LookupFunction } from "node:net";
 import { isIP } from "node:net";
-import type { ConnectorTool } from "@aiden/adapter-kit";
-import { isCloudMetadataHost, isLocalMcpHost, isPrivateNetworkHost } from "@aiden/contracts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { ConnectorTool } from "@nova/adapter-kit";
+import { isCloudMetadataHost, isLocalMcpHost, isPrivateNetworkHost } from "@nova/contracts";
 import { Agent, fetch as undiciFetch } from "undici";
 import { combineSignals } from "./connector-safety.js";
 import {
@@ -115,7 +115,7 @@ async function withRemoteMcpClient<T>(
     },
     fetch: safeFetch,
   });
-  const client = new Client({ name: "aiden", version: "0.1.0" }, { capabilities: {} });
+  const client = new Client({ name: "nova", version: "0.1.0" }, { capabilities: {} });
   try {
     await client.connect(transport, { signal, timeout: MCP_TIMEOUT_MS });
     return await run(client, signal);

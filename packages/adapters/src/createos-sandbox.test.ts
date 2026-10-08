@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { ComputerRef, PortableFile, ProcessEvent } from "@aiden/adapter-kit";
+import type { ComputerRef, PortableFile, ProcessEvent } from "@nova/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
 import {
   CREATEOS_SCREEN_MAP_SCRIPT,
@@ -234,7 +234,7 @@ describe("CreateOSSandboxProvider", () => {
       { type: "exit", code: 0 },
     ]);
     const command = fixture.execs.at(-1)?.command ?? "";
-    expect(command).toContain("cd '/home/desktop/aiden-home/notes'");
+    expect(command).toContain("cd '/home/desktop/nova-home/notes'");
     expect(command).toContain("TEST_VALUE='works'");
   });
 
@@ -270,7 +270,7 @@ describe("CreateOSSandboxProvider", () => {
       const quiesceIndex = fixture.execs.findIndex(
         (exec) =>
           exec.command.includes("Browser.close") &&
-          exec.command.includes("/home/desktop/aiden-home/.browser-profiles/chromium"),
+          exec.command.includes("/home/desktop/nova-home/.browser-profiles/chromium"),
       );
       const listings = fixture.execs.flatMap((exec, index) =>
         exec.command.includes("os.listdir") ? [index] : [],
@@ -600,10 +600,10 @@ describe("CreateOSSandboxProvider", () => {
       if ((init?.method ?? "GET") === "POST" && url.pathname.endsWith("/exec")) {
         const command = (JSON.parse(String(init?.body)) as { args: string[] }).args[3] ?? "";
         if (command.includes("os.listdir")) {
-          const listing = command.includes("/.aiden")
+          const listing = command.includes("/.nova")
             ? JSON.stringify([{ name: "screens.json", kind: "file", size: 2 }])
             : JSON.stringify([
-                { name: ".aiden", kind: "dir", size: 0 },
+                { name: ".nova", kind: "dir", size: 0 },
                 { name: "notes.txt", kind: "file", size: 5 },
               ]);
           return jsonResponse({ result: { stdout: listing, exit_code: 0 } });

@@ -1,4 +1,5 @@
-import type { ReplyCardDataOf, ReplyCardKind } from "@aiden/contracts";
+import { useLingui } from "@lingui/react/macro";
+import type { ReplyCardDataOf, ReplyCardKind } from "@nova/contracts";
 import {
   Badge,
   Button,
@@ -11,8 +12,7 @@ import {
   Checkbox,
   cn,
   Skeleton,
-} from "@aiden/ui-web";
-import { useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import {
   ArrowDownRight,
   ArrowUpRight,

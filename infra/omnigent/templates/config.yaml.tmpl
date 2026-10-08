@@ -35,11 +35,11 @@ interaction:
 # sandbox, so no inner sandbox and no approval prompts.
 os_env:
   type: caller_process
-  cwd: /home/aiden/workspace
+  cwd: /home/nova/workspace
   sandbox:
     type: none
     # A session opened on a Project starts in its folder; file tools still reach the workspace.
-    write_paths: [/home/aiden/workspace]
+    write_paths: [/home/nova/workspace]
 
 tools:
   builtins:

@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@aiden/contracts";
+import type { MessageBlock } from "@nova/contracts";
 
 /** A fenced block becomes a mention of itself, with its language if known. */
 function describeCodeBlock(fence: string): string {

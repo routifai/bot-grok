@@ -1,6 +1,6 @@
 @import "tw-animate-css";
 @import "./shadcn.css";
-@import "@aiden/ui-tokens/css";
+@import "@nova/ui-tokens/css";
 
 @source "./**/*.{ts,tsx}";
 
@@ -188,7 +188,7 @@
   }
 }
 
-@keyframes aiden-avatar-spin {
+@keyframes nova-avatar-spin {
   0% {
     transform: rotate(0deg);
   }
@@ -197,141 +197,141 @@
   }
 }
 
-.aiden-bot-avatar-ring {
-  animation: aiden-avatar-spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+.nova-bot-avatar-ring {
+  animation: nova-avatar-spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   opacity: 0;
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.aiden-bot-avatar {
+.nova-bot-avatar {
   transition: box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.aiden-bot-avatar[data-working="true"] .aiden-bot-avatar-ring {
+.nova-bot-avatar[data-working="true"] .nova-bot-avatar-ring {
   opacity: 1;
 }
 
-.aiden-bot-avatar-eyes {
-  animation: var(--aiden-eye-animation-name) var(--aiden-eye-animation-duration)
-    var(--aiden-eye-animation-easing) var(--aiden-eye-animation-delay) infinite;
+.nova-bot-avatar-eyes {
+  animation: var(--nova-eye-animation-name) var(--nova-eye-animation-duration)
+    var(--nova-eye-animation-easing) var(--nova-eye-animation-delay) infinite;
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.aiden-bot-avatar-eyes-working {
+.nova-bot-avatar-eyes-working {
   opacity: 0;
 }
 
-.aiden-bot-avatar[data-working="true"] .aiden-bot-avatar-eyes-idle {
+.nova-bot-avatar[data-working="true"] .nova-bot-avatar-eyes-idle {
   opacity: 0;
 }
 
-.aiden-bot-avatar[data-working="true"] .aiden-bot-avatar-eyes-working {
+.nova-bot-avatar[data-working="true"] .nova-bot-avatar-eyes-working {
   opacity: 1;
 }
 
-.aiden-organic-avatar-body {
+.nova-organic-avatar-body {
   transform-origin: center;
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.aiden-organic-avatar-body-idle {
-  animation: aiden-organic-idle 5.6s ease-in-out infinite;
+.nova-organic-avatar-body-idle {
+  animation: nova-organic-idle 5.6s ease-in-out infinite;
 }
 
-.aiden-organic-avatar-body-working {
+.nova-organic-avatar-body-working {
   opacity: 0;
 }
 
-.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-body-idle {
+.nova-organic-avatar[data-working="true"] .nova-organic-avatar-body-idle {
   opacity: 0;
 }
 
-.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-body-working {
+.nova-organic-avatar[data-working="true"] .nova-organic-avatar-body-working {
   opacity: 1;
 }
 
-.aiden-organic-avatar-eyes {
+.nova-organic-avatar-eyes {
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.aiden-organic-avatar-eyes-working {
+.nova-organic-avatar-eyes-working {
   opacity: 0;
 }
 
-.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-eyes-idle {
+.nova-organic-avatar[data-working="true"] .nova-organic-avatar-eyes-idle {
   opacity: 0;
 }
 
-.aiden-organic-avatar[data-working="true"] .aiden-organic-avatar-eyes-working {
+.nova-organic-avatar[data-working="true"] .nova-organic-avatar-eyes-working {
   opacity: 1;
 }
 
-.aiden-organic-avatar[data-eye-pattern="0"] .aiden-organic-avatar-eyes-idle {
-  animation: aiden-eyes-idle-0 5.8s ease-in-out infinite;
+.nova-organic-avatar[data-eye-pattern="0"] .nova-organic-avatar-eyes-idle {
+  animation: nova-eyes-idle-0 5.8s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-eye-pattern="1"] .aiden-organic-avatar-eyes-idle {
-  animation: aiden-eyes-idle-1 6.4s ease-in-out -1.7s infinite;
+.nova-organic-avatar[data-eye-pattern="1"] .nova-organic-avatar-eyes-idle {
+  animation: nova-eyes-idle-1 6.4s ease-in-out -1.7s infinite;
 }
 
-.aiden-organic-avatar[data-eye-pattern="2"] .aiden-organic-avatar-eyes-idle {
-  animation: aiden-eyes-idle-2 5.2s ease-in-out -3.1s infinite;
+.nova-organic-avatar[data-eye-pattern="2"] .nova-organic-avatar-eyes-idle {
+  animation: nova-eyes-idle-2 5.2s ease-in-out -3.1s infinite;
 }
 
-.aiden-organic-avatar[data-eye-pattern="3"] .aiden-organic-avatar-eyes-idle {
-  animation: aiden-eyes-idle-3 6.8s ease-in-out -2.3s infinite;
+.nova-organic-avatar[data-eye-pattern="3"] .nova-organic-avatar-eyes-idle {
+  animation: nova-eyes-idle-3 6.8s ease-in-out -2.3s infinite;
 }
 
-.aiden-organic-avatar[data-eye-pattern="0"] .aiden-organic-avatar-eyes-working {
-  animation: aiden-organic-eyes-loop-0 6.6s ease-in-out infinite;
+.nova-organic-avatar[data-eye-pattern="0"] .nova-organic-avatar-eyes-working {
+  animation: nova-organic-eyes-loop-0 6.6s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-eye-pattern="1"] .aiden-organic-avatar-eyes-working {
-  animation: aiden-organic-eyes-loop-1 7.2s ease-in-out -1.4s infinite;
+.nova-organic-avatar[data-eye-pattern="1"] .nova-organic-avatar-eyes-working {
+  animation: nova-organic-eyes-loop-1 7.2s ease-in-out -1.4s infinite;
 }
 
-.aiden-organic-avatar[data-eye-pattern="2"] .aiden-organic-avatar-eyes-working {
-  animation: aiden-organic-eyes-loop-2 6.1s ease-in-out -3.2s infinite;
+.nova-organic-avatar[data-eye-pattern="2"] .nova-organic-avatar-eyes-working {
+  animation: nova-organic-eyes-loop-2 6.1s ease-in-out -3.2s infinite;
 }
 
-.aiden-organic-avatar[data-eye-pattern="3"] .aiden-organic-avatar-eyes-working {
-  animation: aiden-organic-eyes-loop-3 7.8s ease-in-out -2.1s infinite;
+.nova-organic-avatar[data-eye-pattern="3"] .nova-organic-avatar-eyes-working {
+  animation: nova-organic-eyes-loop-3 7.8s ease-in-out -2.1s infinite;
 }
 
-/* Durations mirror @aiden/core WORKING_AVATAR_DURATIONS_MS (avatar-motion). */
-.aiden-organic-avatar[data-shape-family="0"] .aiden-organic-avatar-body-working {
-  animation: aiden-organic-float 1.8s ease-in-out infinite;
+/* Durations mirror @nova/core WORKING_AVATAR_DURATIONS_MS (avatar-motion). */
+.nova-organic-avatar[data-shape-family="0"] .nova-organic-avatar-body-working {
+  animation: nova-organic-float 1.8s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-shape-family="1"] .aiden-organic-avatar-body-working {
-  animation: aiden-organic-stretch 1.35s ease-in-out infinite;
+.nova-organic-avatar[data-shape-family="1"] .nova-organic-avatar-body-working {
+  animation: nova-organic-stretch 1.35s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-shape-family="2"] .aiden-organic-avatar-body-working,
-.aiden-organic-avatar[data-shape-family="8"] .aiden-organic-avatar-body-working {
-  animation: aiden-organic-sway 1.6s ease-in-out infinite;
+.nova-organic-avatar[data-shape-family="2"] .nova-organic-avatar-body-working,
+.nova-organic-avatar[data-shape-family="8"] .nova-organic-avatar-body-working {
+  animation: nova-organic-sway 1.6s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-shape-family="3"] .aiden-organic-avatar-body-working,
-.aiden-organic-avatar[data-shape-family="4"] .aiden-organic-avatar-body-working {
-  animation: aiden-organic-turn 2.4s ease-in-out infinite;
+.nova-organic-avatar[data-shape-family="3"] .nova-organic-avatar-body-working,
+.nova-organic-avatar[data-shape-family="4"] .nova-organic-avatar-body-working {
+  animation: nova-organic-turn 2.4s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-shape-family="5"] .aiden-organic-avatar-body-working,
-.aiden-organic-avatar[data-shape-family="9"] .aiden-organic-avatar-body-working {
-  animation: aiden-organic-squash 1.35s ease-in-out infinite;
+.nova-organic-avatar[data-shape-family="5"] .nova-organic-avatar-body-working,
+.nova-organic-avatar[data-shape-family="9"] .nova-organic-avatar-body-working {
+  animation: nova-organic-squash 1.35s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-shape-family="6"] .aiden-organic-avatar-body-working {
-  animation: aiden-organic-pulse 1.1s ease-in-out infinite;
+.nova-organic-avatar[data-shape-family="6"] .nova-organic-avatar-body-working {
+  animation: nova-organic-pulse 1.1s ease-in-out infinite;
 }
 
-.aiden-organic-avatar[data-shape-family="7"] .aiden-organic-avatar-body-working {
+.nova-organic-avatar[data-shape-family="7"] .nova-organic-avatar-body-working {
   transform-origin: center 20%;
-  animation: aiden-organic-ring 1.35s ease-in-out infinite;
+  animation: nova-organic-ring 1.35s ease-in-out infinite;
 }
 
-@keyframes aiden-organic-float {
+@keyframes nova-organic-float {
   0%,
   100% {
     transform: translateY(2px) scaleX(1.02);
@@ -341,7 +341,7 @@
   }
 }
 
-@keyframes aiden-organic-idle {
+@keyframes nova-organic-idle {
   0%,
   100% {
     transform: translateY(1.2px) scale(1.012, 0.988);
@@ -351,7 +351,7 @@
   }
 }
 
-@keyframes aiden-organic-stretch {
+@keyframes nova-organic-stretch {
   0%,
   100% {
     transform: translateY(2px) scale(1.04, 0.96);
@@ -361,7 +361,7 @@
   }
 }
 
-@keyframes aiden-organic-sway {
+@keyframes nova-organic-sway {
   0%,
   100% {
     transform: rotate(-3deg) translateX(-1px);
@@ -371,7 +371,7 @@
   }
 }
 
-@keyframes aiden-organic-turn {
+@keyframes nova-organic-turn {
   0%,
   100% {
     transform: rotate(-4deg) scale(0.98);
@@ -381,7 +381,7 @@
   }
 }
 
-@keyframes aiden-organic-squash {
+@keyframes nova-organic-squash {
   0%,
   100% {
     transform: scale(1.04, 0.96);
@@ -391,7 +391,7 @@
   }
 }
 
-@keyframes aiden-organic-pulse {
+@keyframes nova-organic-pulse {
   0%,
   100% {
     transform: scale(0.96);
@@ -401,7 +401,7 @@
   }
 }
 
-@keyframes aiden-organic-ring {
+@keyframes nova-organic-ring {
   0%,
   100% {
     transform: rotate(-4deg);
@@ -414,7 +414,7 @@
   }
 }
 
-@keyframes aiden-organic-eyes-loop-0 {
+@keyframes nova-organic-eyes-loop-0 {
   0%,
   100% {
     transform: translate(-9%, 1%) scaleY(0.94);
@@ -442,7 +442,7 @@
   }
 }
 
-@keyframes aiden-organic-eyes-loop-1 {
+@keyframes nova-organic-eyes-loop-1 {
   0%,
   100% {
     transform: translate(0, -8%) scale(1.06);
@@ -467,7 +467,7 @@
   }
 }
 
-@keyframes aiden-organic-eyes-loop-2 {
+@keyframes nova-organic-eyes-loop-2 {
   0%,
   100% {
     transform: scale(0.9, 1.08);
@@ -492,7 +492,7 @@
   }
 }
 
-@keyframes aiden-organic-eyes-loop-3 {
+@keyframes nova-organic-eyes-loop-3 {
   0%,
   100% {
     transform: translateY(7%) scaleY(0.9);
@@ -517,7 +517,7 @@
   }
 }
 
-@keyframes aiden-eyes-idle-0 {
+@keyframes nova-eyes-idle-0 {
   0%,
   32%,
   100% {
@@ -545,7 +545,7 @@
   }
 }
 
-@keyframes aiden-eyes-idle-1 {
+@keyframes nova-eyes-idle-1 {
   0%,
   25%,
   100% {
@@ -573,7 +573,7 @@
   }
 }
 
-@keyframes aiden-eyes-idle-2 {
+@keyframes nova-eyes-idle-2 {
   0%,
   28%,
   100% {
@@ -601,7 +601,7 @@
   }
 }
 
-@keyframes aiden-eyes-idle-3 {
+@keyframes nova-eyes-idle-3 {
   0%,
   24%,
   100% {
@@ -629,7 +629,7 @@
   }
 }
 
-@keyframes aiden-eyes-working {
+@keyframes nova-eyes-working {
   0% {
     transform: translate(-4px, 0) scale(0.92, 0.95);
   }
@@ -651,99 +651,99 @@
    working busy bounce/squash + eye scan + spinning spark + a pulsing glow ring,
    waiting periodic nudge + wave + pulsing spark. State comes from data-muse-state
    (derived MuseState, never a free string). */
-.aiden-muse-all {
+.nova-muse-all {
   transform-box: fill-box;
   transform-origin: 50% 82%;
 }
 
-.aiden-muse-glow {
+.nova-muse-glow {
   opacity: 0;
   filter: blur(3px);
   transform-box: fill-box;
   transform-origin: 50% 50%;
 }
 
-.aiden-muse-pupils,
-.aiden-muse-spark,
-.aiden-muse-dot {
+.nova-muse-pupils,
+.nova-muse-spark,
+.nova-muse-dot {
   transform-box: fill-box;
   transform-origin: 50% 50%;
 }
 
-.aiden-muse-thought {
+.nova-muse-thought {
   opacity: 0;
   transition: opacity 200ms ease;
 }
 
 /* Rendered only for data-muse-state="waiting" (see bot-avatar.tsx), so it only needs its
    own wave animation, no cross-state visibility toggle. */
-.aiden-muse-hand {
+.nova-muse-hand {
   transform-box: fill-box;
   transform-origin: 15% 88%;
-  animation: aiden-muse-wave 0.6s ease-in-out infinite;
+  animation: nova-muse-wave 0.6s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="idle"] .aiden-muse-all {
-  animation: aiden-muse-breathe 4.2s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="idle"] .nova-muse-all {
+  animation: nova-muse-breathe 4.2s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="idle"] .aiden-muse-pupils {
-  animation: aiden-muse-blink 5.4s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="idle"] .nova-muse-pupils {
+  animation: nova-muse-blink 5.4s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="idle"] .aiden-muse-spark {
-  animation: aiden-muse-spark-float 3.6s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="idle"] .nova-muse-spark {
+  animation: nova-muse-spark-float 3.6s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-all {
-  animation: aiden-muse-breathe 2.4s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="thinking"] .nova-muse-all {
+  animation: nova-muse-breathe 2.4s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-pupils {
-  animation: aiden-muse-glance 2.6s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="thinking"] .nova-muse-pupils {
+  animation: nova-muse-glance 2.6s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-thought {
+.nova-muse-avatar[data-muse-state="thinking"] .nova-muse-thought {
   opacity: 1;
 }
 
-.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-dot {
-  animation: aiden-muse-dot 1.2s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="thinking"] .nova-muse-dot {
+  animation: nova-muse-dot 1.2s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-dot-2 {
+.nova-muse-avatar[data-muse-state="thinking"] .nova-muse-dot-2 {
   animation-delay: 0.15s;
 }
 
-.aiden-muse-avatar[data-muse-state="thinking"] .aiden-muse-dot-3 {
+.nova-muse-avatar[data-muse-state="thinking"] .nova-muse-dot-3 {
   animation-delay: 0.3s;
 }
 
-.aiden-muse-avatar[data-muse-state="working"] .aiden-muse-all {
-  animation: aiden-muse-busy 1.4s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="working"] .nova-muse-all {
+  animation: nova-muse-busy 1.4s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="working"] .aiden-muse-pupils {
-  animation: aiden-muse-scan 1.6s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="working"] .nova-muse-pupils {
+  animation: nova-muse-scan 1.6s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="working"] .aiden-muse-spark {
-  animation: aiden-muse-spin 1.1s linear infinite;
+.nova-muse-avatar[data-muse-state="working"] .nova-muse-spark {
+  animation: nova-muse-spin 1.1s linear infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="working"] .aiden-muse-glow {
-  animation: aiden-muse-glow-pulse 1.6s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="working"] .nova-muse-glow {
+  animation: nova-muse-glow-pulse 1.6s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="waiting"] .aiden-muse-all {
-  animation: aiden-muse-nudge 4s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="waiting"] .nova-muse-all {
+  animation: nova-muse-nudge 4s ease-in-out infinite;
 }
 
-.aiden-muse-avatar[data-muse-state="waiting"] .aiden-muse-spark {
-  animation: aiden-muse-spark-pulse 0.9s ease-in-out infinite;
+.nova-muse-avatar[data-muse-state="waiting"] .nova-muse-spark {
+  animation: nova-muse-spark-pulse 0.9s ease-in-out infinite;
 }
 
-@keyframes aiden-muse-breathe {
+@keyframes nova-muse-breathe {
   0%,
   100% {
     transform: translateY(0) scale(1, 1);
@@ -753,7 +753,7 @@
   }
 }
 
-@keyframes aiden-muse-blink {
+@keyframes nova-muse-blink {
   0%,
   90%,
   100% {
@@ -767,7 +767,7 @@
   }
 }
 
-@keyframes aiden-muse-spark-float {
+@keyframes nova-muse-spark-float {
   0%,
   100% {
     transform: translateY(0) rotate(-4deg);
@@ -777,7 +777,7 @@
   }
 }
 
-@keyframes aiden-muse-dot {
+@keyframes nova-muse-dot {
   0%,
   100% {
     transform: scale(0.6);
@@ -789,7 +789,7 @@
   }
 }
 
-@keyframes aiden-muse-glance {
+@keyframes nova-muse-glance {
   0%,
   100% {
     transform: translate(0, 0);
@@ -808,7 +808,7 @@
   }
 }
 
-@keyframes aiden-muse-busy {
+@keyframes nova-muse-busy {
   0%,
   100% {
     transform: rotate(-5deg) translate(-3px, 0) scale(1, 1);
@@ -824,7 +824,7 @@
   }
 }
 
-@keyframes aiden-muse-glow-pulse {
+@keyframes nova-muse-glow-pulse {
   0%,
   100% {
     opacity: 0.16;
@@ -836,7 +836,7 @@
   }
 }
 
-@keyframes aiden-muse-scan {
+@keyframes nova-muse-scan {
   0%,
   100% {
     transform: translateX(-5px);
@@ -846,7 +846,7 @@
   }
 }
 
-@keyframes aiden-muse-spin {
+@keyframes nova-muse-spin {
   0% {
     transform: rotate(0deg);
   }
@@ -857,7 +857,7 @@
 
 /* Mostly at rest — a brief bounce every few seconds is the "attention nudge",
    not a continuous hop. */
-@keyframes aiden-muse-nudge {
+@keyframes nova-muse-nudge {
   0%,
   80%,
   100% {
@@ -874,7 +874,7 @@
   }
 }
 
-@keyframes aiden-muse-spark-pulse {
+@keyframes nova-muse-spark-pulse {
   0%,
   100% {
     transform: scale(1);
@@ -886,7 +886,7 @@
   }
 }
 
-@keyframes aiden-muse-wave {
+@keyframes nova-muse-wave {
   0%,
   100% {
     transform: rotate(-8deg);
@@ -897,43 +897,43 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .aiden-bot-avatar-ring,
-  .aiden-bot-avatar-eyes {
+  .nova-bot-avatar-ring,
+  .nova-bot-avatar-eyes {
     animation: none;
     transition: none;
   }
 
-  .aiden-bot-avatar {
+  .nova-bot-avatar {
     transition: none;
   }
 
-  .aiden-bot-avatar-visor {
+  .nova-bot-avatar-visor {
     transition: none;
   }
 
-  .aiden-organic-avatar[data-shape-family] .aiden-organic-avatar-body {
+  .nova-organic-avatar[data-shape-family] .nova-organic-avatar-body {
     animation: none;
-    d: var(--aiden-organic-path);
+    d: var(--nova-organic-path);
     transition: none;
   }
 
-  .aiden-organic-avatar[data-eye-pattern] .aiden-organic-avatar-eyes {
+  .nova-organic-avatar[data-eye-pattern] .nova-organic-avatar-eyes {
     animation: none;
     transition: none;
   }
 
-  .aiden-muse-all,
-  .aiden-muse-pupils,
-  .aiden-muse-spark,
-  .aiden-muse-dot,
-  .aiden-muse-hand,
-  .aiden-muse-glow {
+  .nova-muse-all,
+  .nova-muse-pupils,
+  .nova-muse-spark,
+  .nova-muse-dot,
+  .nova-muse-hand,
+  .nova-muse-glow {
     animation: none;
   }
 
   /* State stays visible through color/copy, not motion: a steady glow tint
      instead of the pulsing ring. */
-  .aiden-muse-avatar[data-muse-state="working"] .aiden-muse-glow {
+  .nova-muse-avatar[data-muse-state="working"] .nova-muse-glow {
     opacity: 0.28;
   }
 }

@@ -34,8 +34,8 @@ describe("vite.config novnc proxy wiring", () => {
       plugins?: NamedPlugin[];
     };
     const plugins = config.plugins ?? [];
-    const novncPlugin = plugins.find((plugin) => plugin?.name === "aiden-novnc-proxy");
-    expect(novncPlugin, "expected a plugin named aiden-novnc-proxy").toBeTruthy();
+    const novncPlugin = plugins.find((plugin) => plugin?.name === "nova-novnc-proxy");
+    expect(novncPlugin, "expected a plugin named nova-novnc-proxy").toBeTruthy();
     expect(typeof novncPlugin?.configureServer).toBe("function");
     expect(typeof novncPlugin?.configurePreviewServer).toBe("function");
     // Both hooks must delegate to the same attachNovncProxy implementation (which performs
@@ -51,6 +51,8 @@ describe("vite.config novnc html rewrite", () => {
     // The rewrite gate must not depend on the upstream hostname...
     expect(source).toMatch(/function shouldRewriteNovncHtml\(headers: [^,)]*\)/);
     // ...and only the storage shim stays CreateOS-specific.
-    expect(source).toMatch(/injectScreenLifecycle\(\s*isCreateOSNovncHost\(target\.hostname\) \? injectNovncStorageShim\(html\) : html/);
+    expect(source).toMatch(
+      /injectScreenLifecycle\(\s*isCreateOSNovncHost\(target\.hostname\) \? injectNovncStorageShim\(html\) : html/,
+    );
   });
 });

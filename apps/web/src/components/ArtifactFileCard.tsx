@@ -1,5 +1,8 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import { isAttachmentImageMimeType } from "@aiden/contracts";
+import { i18n } from "@lingui/core";
+import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import { isAttachmentImageMimeType } from "@nova/contracts";
 import {
   Button,
   buttonVariants,
@@ -8,10 +11,7 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
-} from "@aiden/ui-web";
-import { i18n } from "@lingui/core";
-import { t } from "@lingui/core/macro";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { Code2, Download, ExternalLink, FileText, X } from "lucide-react";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";

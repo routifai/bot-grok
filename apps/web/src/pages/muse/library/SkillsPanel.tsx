@@ -1,4 +1,5 @@
-import type { AgentSkill, AgentSkillCatalogEntry, TaughtSkill } from "@aiden/contracts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { AgentSkill, AgentSkillCatalogEntry, TaughtSkill } from "@nova/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,8 +14,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SkillReviewSheet } from "../../../components/teach/SkillReviewSheet";

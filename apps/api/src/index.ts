@@ -1,11 +1,11 @@
 import type { Socket } from "node:net";
-import { loadRootEnv } from "@aiden/core/node/load-root-env";
+import { loadRootEnv } from "@nova/core/node/load-root-env";
 
 loadRootEnv();
 
-import { SERVICE_NAMES } from "@aiden/logging";
-import { createRootLogger } from "@aiden/logging/axiom";
 import { serve } from "@hono/node-server";
+import { SERVICE_NAMES } from "@nova/logging";
+import { createRootLogger } from "@nova/logging/axiom";
 import { createApp } from "./app.js";
 import { loadEnv } from "./env.js";
 

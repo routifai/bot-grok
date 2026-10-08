@@ -5320,7 +5320,7 @@ async def test_recreated_sandbox_that_keeps_its_files_records_no_reset_notice(
 
     await orchestration._bind_and_launch_managed_runner(
         session_id="conv_1",
-        managed=ManagedHostLaunch(host_id="host_1", workspace="/home/aiden/workspace"),
+        managed=ManagedHostLaunch(host_id="host_1", workspace="/home/nova/workspace"),
         sandbox_config=SimpleNamespace(configs=()),
         tracker=tracker,
         conversation_store=_ConversationStore(),

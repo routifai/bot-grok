@@ -1,4 +1,4 @@
-import type { MessagingSurface } from "@aiden/adapter-kit";
+import type { MessagingSurface } from "@nova/adapter-kit";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { MESSAGING_WEBHOOK_BASE_PATH, mountMessagingWebhookRoutes } from "./messaging-webhook.js";

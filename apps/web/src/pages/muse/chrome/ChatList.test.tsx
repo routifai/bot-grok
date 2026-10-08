@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ChatSummary, FamilyEvent } from "@aiden/contracts";
+import type { ChatSummary, FamilyEvent } from "@nova/contracts";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act, useState } from "react";
@@ -36,10 +36,10 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@aiden/chat-ui/web", () => ({
+vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   BotAvatar: () => null,
   Tooltip: ({ children }: { children: ReactNode }) => children,

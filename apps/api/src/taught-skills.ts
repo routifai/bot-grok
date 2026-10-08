@@ -2,8 +2,8 @@
 // does on the Computer, drafts the skill from the recording and stores it versioned on its server.
 // Nova only relays: it starts and stops the recording (with Take over), maps the engine's skill
 // onto the Review sheet's contract, and keeps the draft card in the thread. No Nova skill rows.
-import type { JobPublisher } from "@aiden/adapter-kit";
-import { runContinueJob } from "@aiden/adapter-kit";
+import type { JobPublisher } from "@nova/adapter-kit";
+import { runContinueJob } from "@nova/adapter-kit";
 import {
   deleteOmnigentTaughtSkill,
   emitSkillDraftMessages,
@@ -18,11 +18,11 @@ import {
   saveOmnigentTaughtSkill,
   startOmnigentRecording,
   stopOmnigentRecording,
-} from "@aiden/adapters";
-import type { Actor, MessageBlock, SkillDraft, TaughtSkill } from "@aiden/contracts";
-import { ACTIVE_RUN_STATUSES, buildPlaybookFromRecording, type SkillPlaybook } from "@aiden/core";
-import { ENGINE_COMPUTER_ID } from "@aiden/core/node/screen-capability";
-import { IsolationError, type PrismaClient, type ThreadEvents } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, MessageBlock, SkillDraft, TaughtSkill } from "@nova/contracts";
+import { ACTIVE_RUN_STATUSES, buildPlaybookFromRecording, type SkillPlaybook } from "@nova/core";
+import { ENGINE_COMPUTER_ID } from "@nova/core/node/screen-capability";
+import { IsolationError, type PrismaClient, type ThreadEvents } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import {
   engineComputerClient,

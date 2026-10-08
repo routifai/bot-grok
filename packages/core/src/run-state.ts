@@ -1,4 +1,4 @@
-import type { RunStatus } from "@aiden/contracts";
+import type { RunStatus } from "@nova/contracts";
 
 export const ACTIVE_RUN_STATUSES = [
   "queued",

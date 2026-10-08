@@ -1,4 +1,4 @@
-import type { MuseState } from "@aiden/contracts";
+import type { MuseState } from "@nova/contracts";
 
 /**
  * The Conversation header's only remaining bordered pill (docs/muse/DESIGN.md

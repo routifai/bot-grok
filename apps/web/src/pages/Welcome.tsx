@@ -15,7 +15,7 @@ export function WelcomePage() {
     <div
       ref={scrollRef}
       className="relative isolate h-full overflow-x-clip overflow-y-auto bg-welcome-night text-welcome-night-ink antialiased [color-scheme:dark]"
-      data-aiden-surface="welcome"
+      data-nova-surface="welcome"
     >
       <Stars scrollRef={scrollRef} />
       <Grain />

@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadRootEnv } from "@aiden/core/node/load-root-env";
+import { loadRootEnv } from "@nova/core/node/load-root-env";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 async function main() {
@@ -14,7 +14,7 @@ async function main() {
     );
   }
 
-  const dataDir = await mkdtemp(path.join(tmpdir(), "aiden-canary-"));
+  const dataDir = await mkdtemp(path.join(tmpdir(), "nova-canary-"));
   let postgres: StartedPostgreSqlContainer | undefined;
   try {
     if (runOpenRouter) postgres = await new PostgreSqlContainer("postgres:16-alpine").start();
@@ -39,8 +39,8 @@ async function main() {
       DATA_DIR: dataDir,
     };
     if (postgres) {
-      execSync("pnpm --filter @aiden/db generate", { stdio: "inherit", env });
-      execSync("pnpm --filter @aiden/db exec prisma migrate deploy", {
+      execSync("pnpm --filter @nova/db generate", { stdio: "inherit", env });
+      execSync("pnpm --filter @nova/db exec prisma migrate deploy", {
         stdio: "inherit",
         env,
         cwd: path.resolve("packages/db"),

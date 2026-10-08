@@ -1,5 +1,5 @@
-import type { ProductEvent } from "@aiden/contracts";
-import { plainTextFromMarkdown } from "@aiden/core";
+import type { ProductEvent } from "@nova/contracts";
+import { plainTextFromMarkdown } from "@nova/core";
 import { i18n } from "./i18n";
 
 export type BrowserNotificationPermission = "default" | "denied" | "granted";

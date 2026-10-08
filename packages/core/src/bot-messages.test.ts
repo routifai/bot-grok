@@ -1,4 +1,4 @@
-import { BOT_DESCRIPTION_MAX_LENGTH } from "@aiden/contracts";
+import { BOT_DESCRIPTION_MAX_LENGTH } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import {
   BOT_DIRECTORY_DESCRIPTIONS_MAX_LENGTH,

@@ -1,4 +1,5 @@
-import type { Me } from "@aiden/contracts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { Me } from "@nova/contracts";
 import {
   Button,
   Dialog,
@@ -6,8 +7,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { useEffect, useState } from "react";
 import { desktopBridge } from "../lib/desktop";
 import { rpc } from "../lib/rpc";

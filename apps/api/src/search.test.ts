@@ -1,5 +1,5 @@
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { querySpaceSearch } from "./search.js";
 

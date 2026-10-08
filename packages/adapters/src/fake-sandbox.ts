@@ -11,8 +11,8 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@aiden/adapter-kit";
-import { canReleaseScreenLease, canTakeScreenLease } from "@aiden/core";
+} from "@nova/adapter-kit";
+import { canReleaseScreenLease, canTakeScreenLease } from "@nova/core";
 import { ComputerScreenUnavailableError, screenSessionKey } from "./computer-screens.js";
 import {
   applyPlaceholderAction,

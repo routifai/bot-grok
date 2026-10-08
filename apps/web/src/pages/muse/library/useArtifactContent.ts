@@ -1,5 +1,5 @@
-import type { Artifact, ArtifactVersion } from "@aiden/contracts";
 import { t } from "@lingui/core/macro";
+import type { Artifact, ArtifactVersion } from "@nova/contracts";
 import { useEffect, useState } from "react";
 import { decodeArtifactBase64 } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";

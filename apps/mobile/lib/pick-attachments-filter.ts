@@ -2,7 +2,7 @@ import {
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_MAX_COUNT,
   type AttachmentMimeType,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 
 export type PickedAttachment = {
   id: string;

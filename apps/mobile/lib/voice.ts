@@ -1,4 +1,4 @@
-import { ensureAiDataConsent, readBoundedResponseBytes, toUtterances } from "@aiden/core";
+import { ensureAiDataConsent, readBoundedResponseBytes, toUtterances } from "@nova/core";
 import { File, Paths } from "expo-file-system";
 import type * as ExpoSpeech from "expo-speech";
 import { promptAiConsent } from "./ai-consent";
@@ -112,7 +112,7 @@ async function renderUtterance(
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "aiden://",
+          origin: "nova://",
           ...requestContext.headers,
         },
         body: JSON.stringify({ text, voiceId: opts.voiceId, botId: opts.botId }),
@@ -178,7 +178,7 @@ async function playWithNativeAudio(bytes: Uint8Array): Promise<void> {
     interruptionMode: "mixWithOthers",
     shouldPlayInBackground: false,
   });
-  const file = new File(Paths.cache, `aiden-voice-${Date.now()}.mp3`);
+  const file = new File(Paths.cache, `nova-voice-${Date.now()}.mp3`);
   file.create({ overwrite: true });
   file.write(bytesToBase64(bytes), { encoding: "base64" });
   const player = createAudioPlayer({ uri: file.uri });

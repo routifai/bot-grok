@@ -4,16 +4,16 @@ import type {
   ControlLeaseRef,
   JobPublisher,
   SandboxProvider,
-} from "@aiden/adapter-kit";
-import { computerControlExpireJobKey, skillTeachingExpireJobKey } from "@aiden/adapter-kit";
-import type { Actor, MessageBlock, TaughtSkill } from "@aiden/contracts";
+} from "@nova/adapter-kit";
+import { computerControlExpireJobKey, skillTeachingExpireJobKey } from "@nova/adapter-kit";
+import type { Actor, MessageBlock, TaughtSkill } from "@nova/contracts";
 import {
   buildPlaybookFromRecording,
   computerInputForDomKey,
   type SkillPlaybook,
   type TeachRecordingEvent,
   type TeachSnapshot,
-} from "@aiden/core";
+} from "@nova/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
@@ -21,7 +21,7 @@ import {
   type Prisma,
   type PrismaClient,
   type ThreadEvents,
-} from "@aiden/db";
+} from "@nova/db";
 import { scheduleComputerSleep } from "./computer-idle.js";
 import { toComputerRef } from "./computer-support.js";
 

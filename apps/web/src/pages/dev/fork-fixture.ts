@@ -1,4 +1,4 @@
-import type { ChatSummary, MessageFork, ThreadMessage } from "@aiden/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
 
 // Fixture data for /dev/forks (ForksPreviewPage.tsx): a Conversation with forks in every
 // state, in the bank-workplace flavor of ./side-chat-fixture.ts, without naming a real bank.

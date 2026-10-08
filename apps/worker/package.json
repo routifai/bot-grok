@@ -1,5 +1,5 @@
 {
-  "name": "@aiden/worker",
+  "name": "@nova/worker",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -10,11 +10,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@aiden/adapter-kit": "workspace:*",
-    "@aiden/adapters": "workspace:*",
-    "@aiden/core": "workspace:*",
-    "@aiden/db": "workspace:*",
-    "@aiden/logging": "workspace:*",
+    "@nova/adapter-kit": "workspace:*",
+    "@nova/adapters": "workspace:*",
+    "@nova/core": "workspace:*",
+    "@nova/db": "workspace:*",
+    "@nova/logging": "workspace:*",
     "tsx": "4.23.13"
   },
   "devDependencies": {

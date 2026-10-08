@@ -10,9 +10,9 @@ import {
   listOmnigentTopics,
   type OmnigentClientConfig,
   type OmnigentTopic,
-} from "@aiden/adapters";
-import type { Actor, FollowedTopic, Post } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, FollowedTopic, Post } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
 const WEEKLY = "FREQ=WEEKLY";

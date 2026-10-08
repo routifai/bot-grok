@@ -9,8 +9,8 @@ compose=(docker compose -f "$ROOT/infra/compose/docker-compose.yml")
 # from the environment, so its absence is not an error).
 if [[ -f "$ROOT/.env" ]]; then compose=(docker compose --env-file "$ROOT/.env" -f "$ROOT/infra/compose/docker-compose.yml"); fi
 mkdir -p "$OUT"
-"${compose[@]}" exec -T postgres pg_dump -U aiden aiden > "$OUT/aiden.sql"
-if [[ "${AIDEN_BACKUP_SKIP_HOMES:-0}" == "1" ]] || [[ ! -e "$ROOT/data" && ! -L "$ROOT/data" ]]; then
+"${compose[@]}" exec -T postgres pg_dump -U nova nova > "$OUT/nova.sql"
+if [[ "${NOVA_BACKUP_SKIP_HOMES:-0}" == "1" ]] || [[ ! -e "$ROOT/data" && ! -L "$ROOT/data" ]]; then
   tar -czf "$OUT/homes.tgz" --files-from /dev/null
 else
   [[ -d "$ROOT/data" ]] || { echo "data is not a directory" >&2; exit 1; }

@@ -1,7 +1,7 @@
-import { deletePushToken, savePushToken, toComputerRef } from "@aiden/adapters";
-import type { Actor, Me, SpaceNavigation } from "@aiden/contracts";
-import { validTimezoneOrUtc } from "@aiden/core";
-import type { PrismaClient } from "@aiden/db";
+import { deletePushToken, savePushToken, toComputerRef } from "@nova/adapters";
+import type { Actor, Me, SpaceNavigation } from "@nova/contracts";
+import { validTimezoneOrUtc } from "@nova/core";
+import type { PrismaClient } from "@nova/db";
 import {
   CannotDeleteDefaultSpaceError,
   CannotDeleteLastSpaceError,
@@ -21,8 +21,8 @@ import {
   SpaceLimitError,
   SpaceNotEmptyError,
   SpaceNotFoundError,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { aiConsentStatus, allowAiConsent } from "../ai-consent.js";
 import { withEngineComputer } from "../engine-computer.js";

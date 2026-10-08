@@ -1,4 +1,4 @@
-import { cn } from "@aiden/ui-web";
+import { cn } from "@nova/ui-web";
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import { useState } from "react";
 import { ArtifactPreviewThumbnail, type PreviewableArtifact } from "./ArtifactPreviewThumbnail";

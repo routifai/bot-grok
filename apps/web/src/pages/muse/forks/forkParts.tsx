@@ -1,6 +1,6 @@
-import { cn } from "@aiden/ui-web";
 import { i18n } from "@lingui/core";
 import { Trans } from "@lingui/react/macro";
+import { cn } from "@nova/ui-web";
 import type { ForkTone } from "./forkModel";
 import { FORK_TONE_CLASS } from "./forkModel";
 

@@ -1,5 +1,5 @@
-import { cn } from "@aiden/ui-web/lib/utils";
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
+import { cn } from "@nova/ui-web/lib/utils";
 
 function Switch({
   className,

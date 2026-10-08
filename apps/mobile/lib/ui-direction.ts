@@ -1,4 +1,4 @@
-import { textDirectionForLocale } from "@aiden/core";
+import { textDirectionForLocale } from "@nova/core";
 import { reloadAppAsync } from "expo";
 import { I18nManager, Platform } from "react-native";
 

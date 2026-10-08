@@ -7,7 +7,7 @@ import type {
   VoiceProvider,
   VoiceSynthesizeRequest,
   VoiceVerifyResult,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 import {
   readVoiceAudio,
   readVoiceJson,

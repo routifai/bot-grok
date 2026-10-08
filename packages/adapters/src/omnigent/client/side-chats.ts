@@ -1,4 +1,4 @@
-import { redactSecrets } from "@aiden/core";
+import { redactSecrets } from "@nova/core";
 import type { OmnigentClientConfig } from "./core.js";
 import { errorCodeFromBody, omnigentHeaders, throwOnError } from "./core.js";
 import type { OmnigentPaginatedList } from "./sessions.js";

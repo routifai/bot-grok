@@ -1,17 +1,17 @@
-import { runContinueJob } from "@aiden/adapter-kit";
-import type * as AidenAdaptersModule from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import { runContinueJob } from "@nova/adapter-kit";
+import type * as NovaAdaptersModule from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mocks only the skill creation so these tests exercise answerAsk's own routing (which apply
 // path a given Ask goes through).
-vi.mock("@aiden/adapters", async (importOriginal) => ({
-  ...(await importOriginal<typeof AidenAdaptersModule>()),
+vi.mock("@nova/adapters", async (importOriginal) => ({
+  ...(await importOriginal<typeof NovaAdaptersModule>()),
   skillCreateFromTool: vi.fn(),
 }));
 
-import { skillCreateFromTool } from "@aiden/adapters";
+import { skillCreateFromTool } from "@nova/adapters";
 import { answerAsk, countAsks, listAsks } from "./muse-asks.js";
 
 beforeEach(() => {
@@ -21,7 +21,7 @@ beforeEach(() => {
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@aiden.test",
+  email: "user@nova.test",
   isDeploymentOwner: true,
 };
 

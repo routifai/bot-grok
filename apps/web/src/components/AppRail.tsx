@@ -1,5 +1,5 @@
-import { BotAvatar } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { BotAvatar } from "@nova/ui-web";
 import { Bot, Code2, Lightbulb, MessageCircle, Rss, Settings, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 

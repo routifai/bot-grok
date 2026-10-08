@@ -10,9 +10,9 @@ import {
   listOmnigentArtifacts,
   type OmnigentArtifact,
   type OmnigentClientConfig,
-} from "@aiden/adapters";
-import type { Actor, Artifact, ArtifactVersion, ArtifactWithContent } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, Artifact, ArtifactVersion, ArtifactWithContent } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
 export interface EngineArtifactsDeps {

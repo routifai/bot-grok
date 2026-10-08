@@ -2,12 +2,12 @@
 
 This opt-in [Maestro](https://maestro.mobile.dev/) flow exercises sign-in, bot creation,
 thread messaging, and computer takeover/release on a real Android emulator or iOS simulator. It
-expects a running Aiden stack and deliberately stays out of ordinary pull-request CI.
+expects a running Nova stack and deliberately stays out of ordinary pull-request CI.
 
 ## Prerequisites
 
 1. Install the Maestro CLI and start an Android emulator or iOS simulator.
-2. Start Aiden's database, API, worker, and sandbox supervisor. The computer portion requires a
+2. Start Nova's database, API, worker, and sandbox supervisor. The computer portion requires a
    working sandbox provider (the normal local Docker provider is sufficient).
 3. Create a disposable test account through the mobile or web sign-up screen. Never use a
    production account or put credentials in this repository.
@@ -16,7 +16,7 @@ expects a running Aiden stack and deliberately stays out of ordinary pull-reques
    simulator. For example:
 
    ```sh
-   EXPO_PUBLIC_API_URL=http://10.0.2.2:3100 pnpm --filter @aiden/mobile android
+   EXPO_PUBLIC_API_URL=http://10.0.2.2:3100 pnpm --filter @nova/mobile android
    ```
 
 ## Run
@@ -24,11 +24,11 @@ expects a running Aiden stack and deliberately stays out of ordinary pull-reques
 Pass all fixture values at invocation time so credentials never land in source control:
 
 ```sh
-pnpm --filter @aiden/mobile test:e2e -- \
-  -e AIDEN_E2E_EMAIL=mobile-smoke@example.test \
-  -e AIDEN_E2E_PASSWORD='replace-with-the-disposable-password' \
-  -e AIDEN_E2E_BOT_NAME=MaestroSmoke-001 \
-  -e AIDEN_E2E_MESSAGE=mobile-smoke-message
+pnpm --filter @nova/mobile test:e2e -- \
+  -e NOVA_E2E_EMAIL=mobile-smoke@example.test \
+  -e NOVA_E2E_PASSWORD='replace-with-the-disposable-password' \
+  -e NOVA_E2E_BOT_NAME=MaestroSmoke-001 \
+  -e NOVA_E2E_MESSAGE=mobile-smoke-message
 ```
 
 Use a new bot name for each run if the backing database is persistent. `clearState` resets the app's

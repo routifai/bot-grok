@@ -10,9 +10,9 @@ import {
   WORKSPACE_FILE_MAX_BYTES,
   WorkspacePathError,
   workspaceMimeType,
-} from "@aiden/adapters";
-import type { Actor, Artifact } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, Artifact } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
 export interface EngineFilesDeps {

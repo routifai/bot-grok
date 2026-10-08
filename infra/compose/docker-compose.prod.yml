@@ -1,4 +1,4 @@
-name: aiden-prod
+name: nova-prod
 
 services:
   postgres:
@@ -9,15 +9,15 @@ services:
     pids_limit: 200
     mem_limit: 2g
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-aiden}
+      POSTGRES_USER: ${POSTGRES_USER:-nova}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-aiden}
+      POSTGRES_DB: ${POSTGRES_DB:-nova}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
       - data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aiden} -d ${POSTGRES_DB:-aiden}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova} -d ${POSTGRES_DB:-nova}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -28,8 +28,8 @@ services:
     #
     # The default tag is `local`, which no registry serves, so a fresh install builds from the
     # checkout via `up -d --build` instead of failing on a `pull` of an image that does not exist
-    # yet. Once a release is published, pin AIDEN_IMAGE_TAG to it and the pull path takes over.
-    image: ${AIDEN_IMAGE:-ghcr.io/elie222/rakazo/app}:${AIDEN_IMAGE_TAG:-local}
+    # yet. Once a release is published, pin NOVA_IMAGE_TAG to it and the pull path takes over.
+    image: ${NOVA_IMAGE:-ghcr.io/elie222/rakazo/app}:${NOVA_IMAGE_TAG:-local}
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
@@ -39,7 +39,7 @@ services:
     command:
       - bash
       - -lc
-      - pnpm --filter @aiden/db exec prisma migrate deploy && pnpm --filter @aiden/api start
+      - pnpm --filter @nova/db exec prisma migrate deploy && pnpm --filter @nova/api start
     init: true
     security_opt:
       - no-new-privileges:true
@@ -52,7 +52,7 @@ services:
     environment:
       NODE_ENV: production
       API_HOST: "0.0.0.0"
-      DATABASE_URL: postgres://${POSTGRES_USER:-aiden}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-aiden}
+      DATABASE_URL: postgres://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-nova}
       DATA_DIR: /data
       SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-e2b}
       # Omnigent chat engine connection; both set = chat runs on it (empty = built-in executor).
@@ -66,7 +66,7 @@ services:
       http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
       https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
       no_proxy: ${no_proxy:-${NO_PROXY:-}}
-      AIDEN_UPDATER_URL: http://updater:7092
+      NOVA_UPDATER_URL: http://updater:7092
     expose:
       - "3100"
     volumes:
@@ -89,14 +89,14 @@ services:
       retries: 20
 
   worker:
-    image: ${AIDEN_IMAGE:-ghcr.io/elie222/rakazo/app}:${AIDEN_IMAGE_TAG:-local}
+    image: ${NOVA_IMAGE:-ghcr.io/elie222/rakazo/app}:${NOVA_IMAGE_TAG:-local}
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
       args:
         GIT_SHA: ${GIT_SHA:-}
     restart: unless-stopped
-    command: ["pnpm", "--filter", "@aiden/worker", "start"]
+    command: ["pnpm", "--filter", "@nova/worker", "start"]
     init: true
     security_opt:
       - no-new-privileges:true
@@ -109,7 +109,7 @@ services:
     environment:
       BETTER_AUTH_SECRET: ""
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-aiden}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-aiden}
+      DATABASE_URL: postgres://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-nova}
       DATA_DIR: /data
       SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-e2b}
       # Omnigent chat engine connection; both set = chat runs on it (empty = built-in executor).
@@ -136,14 +136,14 @@ services:
         condition: service_healthy
 
   web:
-    image: ${AIDEN_IMAGE:-ghcr.io/elie222/rakazo/app}:${AIDEN_IMAGE_TAG:-local}
+    image: ${NOVA_IMAGE:-ghcr.io/elie222/rakazo/app}:${NOVA_IMAGE_TAG:-local}
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
       args:
         GIT_SHA: ${GIT_SHA:-}
     restart: unless-stopped
-    command: ["pnpm", "--filter", "@aiden/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
+    command: ["pnpm", "--filter", "@nova/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
     init: true
     security_opt:
       - no-new-privileges:true
@@ -154,7 +154,7 @@ services:
     environment:
       NODE_ENV: production
       API_PROXY_TARGET: http://api:3100
-      AIDEN_HOST: ${AIDEN_HOST:-app.example.com}
+      NOVA_HOST: ${NOVA_HOST:-app.example.com}
       SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET in .env}
     expose:
       - "5173"
@@ -175,7 +175,7 @@ services:
     profiles: [updater]
     # Pinned separately from the application image: the updater does not recreate itself, so moving
     # its own version is an operator action, not something an update can do underneath itself.
-    image: ${AIDEN_UPDATER_IMAGE:-ghcr.io/elie222/rakazo/updater}:${AIDEN_UPDATER_IMAGE_TAG:-local}
+    image: ${NOVA_UPDATER_IMAGE:-ghcr.io/elie222/rakazo/updater}:${NOVA_UPDATER_IMAGE_TAG:-local}
     build:
       context: ../..
       dockerfile: infra/updater/Dockerfile
@@ -192,21 +192,21 @@ services:
       NODE_ENV: production
       # Keep interpolation optional so deployments that do not enable this profile need no token.
       # resolveUpdaterConfig still refuses to start the sidecar without a dedicated secure value.
-      AIDEN_UPDATER_TOKEN: ${AIDEN_UPDATER_TOKEN:-}
-      AIDEN_UPDATER_HOST: "0.0.0.0"
-      AIDEN_UPDATER_PORT: "7092"
-      AIDEN_IMAGE: ${AIDEN_IMAGE:-ghcr.io/elie222/rakazo/app}
+      NOVA_UPDATER_TOKEN: ${NOVA_UPDATER_TOKEN:-}
+      NOVA_UPDATER_HOST: "0.0.0.0"
+      NOVA_UPDATER_PORT: "7092"
+      NOVA_IMAGE: ${NOVA_IMAGE:-ghcr.io/elie222/rakazo/app}
       # `-p` is available to Compose interpolation but is not injected into containers unless it is
       # declared here. The sidecar must target the project the operator actually started.
-      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-aiden-prod}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-nova-prod}
       # Must equal the host path it is mounted from, or every relative bind mount in this file would
-      # resolve somewhere else. /srv/aiden is the supported Linux production layout.
-      AIDEN_DEPLOY_DIR: ${AIDEN_DEPLOY_DIR:-/srv/aiden}
+      # resolve somewhere else. /srv/nova is the supported Linux production layout.
+      NOVA_DEPLOY_DIR: ${NOVA_DEPLOY_DIR:-/srv/nova}
       # A deployment that layers an overlay has to be reconciled with the same file list and the
       # same services the operator runs by hand, so these are read from the environment rather
       # than pinned to the base stack. Defaults reproduce the previous behaviour exactly.
-      AIDEN_COMPOSE_FILE: ${AIDEN_COMPOSE_FILE:-infra/compose/docker-compose.prod.yml}
-      AIDEN_UPDATE_SERVICES: ${AIDEN_UPDATE_SERVICES:-}
+      NOVA_COMPOSE_FILE: ${NOVA_COMPOSE_FILE:-infra/compose/docker-compose.prod.yml}
+      NOVA_UPDATE_SERVICES: ${NOVA_UPDATE_SERVICES:-}
       COMPOSE_PATH_SEPARATOR: ${COMPOSE_PATH_SEPARATOR:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-}
@@ -216,7 +216,7 @@ services:
       AXIOM_EDGE_URL: ${AXIOM_EDGE_URL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${AIDEN_DEPLOY_DIR:-/srv/aiden}:${AIDEN_DEPLOY_DIR:-/srv/aiden}
+      - ${NOVA_DEPLOY_DIR:-/srv/nova}:${NOVA_DEPLOY_DIR:-/srv/nova}
     networks:
       - control
     healthcheck:
@@ -242,7 +242,7 @@ services:
     pids_limit: 128
     mem_limit: 256m
     environment:
-      AIDEN_HOST: ${AIDEN_HOST:-app.example.com}
+      NOVA_HOST: ${NOVA_HOST:-app.example.com}
     ports:
       - "80:80"
       - "443:443"

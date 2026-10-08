@@ -1,5 +1,6 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { Goal } from "@aiden/contracts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { Goal } from "@nova/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,8 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { rpc } from "../../../lib/rpc";

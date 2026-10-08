@@ -1,11 +1,11 @@
-import type { Actor, FollowedTopic, Post } from "@aiden/contracts";
+import type { Actor, FollowedTopic, Post } from "@nova/contracts";
 import {
   createPostRepos,
   createRepos,
   createTopicRepos,
   IsolationError,
   type PrismaClient,
-} from "@aiden/db";
+} from "@nova/db";
 
 // B10 · Posts and Followed topics (docs/muse/PLAN.md). Real feed.list posts and
 // topics.list/follow/remove. Authorized the same way every other bot-scoped route is:

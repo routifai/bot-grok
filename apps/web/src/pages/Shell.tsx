@@ -1,3 +1,4 @@
+import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   Bot,
   ChatSummary,
@@ -8,13 +9,13 @@ import type {
   TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   buildComposerMentionOptions,
   isActive,
   latestAnswerableAskMessageId,
   userVisibleMessages,
-} from "@aiden/core";
+} from "@nova/core";
 import {
   AvatarStyleProvider,
   BotAvatar,
@@ -22,8 +23,7 @@ import {
   cn,
   GroupAvatar,
   type GroupAvatarMember,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { Menu, Monitor, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {

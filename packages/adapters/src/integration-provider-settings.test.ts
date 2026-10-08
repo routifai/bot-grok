@@ -1,5 +1,5 @@
-import type { AdapterContext, ManagedConnectorProvider } from "@aiden/adapter-kit";
-import type { PrismaClient } from "@aiden/db";
+import type { AdapterContext, ManagedConnectorProvider } from "@nova/adapter-kit";
+import type { PrismaClient } from "@nova/db";
 import { describe, expect, it, vi } from "vitest";
 import { IntegrationProviderSettings } from "./integration-provider-settings.js";
 import { EncryptedSecretStore } from "./secrets.js";

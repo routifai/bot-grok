@@ -1,4 +1,4 @@
-import type { Activity, ActivityStep, ThreadMessage } from "@aiden/contracts";
+import type { Activity, ActivityStep, ThreadMessage } from "@nova/contracts";
 
 // Fixture data for /dev/activity (ActivityPreviewPage.tsx): the Activity panel on in-memory
 // data, so the panel's grouping, live line, and run page can be reviewed without the

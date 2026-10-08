@@ -1,4 +1,4 @@
-import type { BackgroundJobHandlers } from "@aiden/adapter-kit";
+import type { BackgroundJobHandlers } from "@nova/adapter-kit";
 import { Pool } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GraphileJobPublisher, GraphileJobWorkerHost } from "./wakeup.js";

@@ -1,7 +1,7 @@
-import type { MessageFork, ThreadMessage } from "@aiden/contracts";
-import { cn, Popover, PopoverContent, PopoverTrigger } from "@aiden/ui-web";
 import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { MessageFork, ThreadMessage } from "@nova/contracts";
+import { cn, Popover, PopoverContent, PopoverTrigger } from "@nova/ui-web";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { FORK_TONE_CLASS, forkTone, forkUnder, messageForkStatus, shownForks } from "./forkModel";

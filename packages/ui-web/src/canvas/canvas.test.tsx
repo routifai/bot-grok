@@ -1,4 +1,4 @@
-import type { CanvasNode } from "@aiden/contracts";
+import type { CanvasNode } from "@nova/contracts";
 import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";

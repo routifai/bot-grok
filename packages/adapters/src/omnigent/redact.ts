@@ -4,8 +4,8 @@
 // here, built on the same `redactSecrets` primitive over `omnigentRedactionSecretsFromEnv`:
 // the Goal log (`redactThreadMessages`, objective runs) and `memory.profile`/claims/daily notes
 // (`redactMemoryProfile`), neither of which the engine redacts.
-import type { ThreadMessage } from "@aiden/contracts";
-import { redactSecrets } from "@aiden/core";
+import type { ThreadMessage } from "@nova/contracts";
+import { redactSecrets } from "@nova/core";
 import { redactReplyCard } from "./cards.js";
 
 function redactString(value: string, secrets: string[]): string {

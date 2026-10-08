@@ -1,4 +1,4 @@
-import type { Bot, ComputerStatus, Group, ProductEvent, ThreadSnapshot } from "@aiden/contracts";
+import type { Bot, ComputerStatus, Group, ProductEvent, ThreadSnapshot } from "@nova/contracts";
 import type { MutableRefObject } from "react";
 import {
   isComputerStatusEvent,

@@ -1,5 +1,5 @@
 {
-  "name": "@aiden/web",
+  "name": "@nova/web",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -14,11 +14,11 @@
     "intl:compile": "lingui compile"
   },
   "dependencies": {
-    "@aiden/chat-ui": "workspace:*",
-    "@aiden/contracts": "workspace:*",
-    "@aiden/core": "workspace:*",
-    "@aiden/ui-tokens": "workspace:*",
-    "@aiden/ui-web": "workspace:*",
+    "@nova/chat-ui": "workspace:*",
+    "@nova/contracts": "workspace:*",
+    "@nova/core": "workspace:*",
+    "@nova/ui-tokens": "workspace:*",
+    "@nova/ui-web": "workspace:*",
     "@fontsource-variable/geist-mono": "5.3.0",
     "@fontsource-variable/instrument-sans": "5.3.0",
     "@fontsource/instrument-serif": "5.3.0",

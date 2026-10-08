@@ -42,14 +42,14 @@ describe("passwordResetEmail", () => {
   it("keeps the reset URL in text and escapes user-controlled HTML", () => {
     const message = passwordResetEmail(
       { id: "user-1", email: "ada@example.test", name: '<Ada & "team">' },
-      "https://aiden.test/reset-password?token=secret&next=1",
+      "https://nova.test/reset-password?token=secret&next=1",
     );
 
     expect(message).toMatchObject({
       to: "ada@example.test",
-      subject: "Reset your Aiden password",
+      subject: "Reset your Nova password",
     });
-    expect(message.text).toContain("https://aiden.test/reset-password?token=secret&next=1");
+    expect(message.text).toContain("https://nova.test/reset-password?token=secret&next=1");
     expect(message.html).toContain("&lt;Ada &amp; &quot;team&quot;&gt;");
     expect(message.html).toContain("token=secret&amp;next=1");
     expect(message.html).not.toContain('<Ada & "team">');

@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ComputerRef, SandboxProvider } from "@aiden/adapter-kit";
-import type { PrismaClient } from "@aiden/db";
+import type { ComputerRef, SandboxProvider } from "@nova/adapter-kit";
+import type { PrismaClient } from "@nova/db";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
 import { DockerSandboxProvider } from "./docker-sandbox.js";
@@ -18,7 +18,7 @@ const ctx = {
 };
 
 describe("host-aware sandbox", () => {
-  const hostRoot = mkdtempSync(path.join(tmpdir(), "aiden-host-root-"));
+  const hostRoot = mkdtempSync(path.join(tmpdir(), "nova-host-root-"));
 
   afterAll(() => {
     rmSync(hostRoot, { recursive: true, force: true });
@@ -92,7 +92,7 @@ describe("host-aware sandbox", () => {
     let code = 1;
     for await (const event of desktop.execute(
       computer,
-      { argv: ["echo", "ok"], cwd: "/home/aiden" },
+      { argv: ["echo", "ok"], cwd: "/home/nova" },
       ctx,
     )) {
       if (event.type === "exit") code = event.code;

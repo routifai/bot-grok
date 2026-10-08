@@ -1,13 +1,13 @@
-import { runContinueJob, runJobKey } from "@aiden/adapter-kit";
-import { ACTIVE_RUN_STATUSES } from "@aiden/core";
+import { runContinueJob, runJobKey } from "@nova/adapter-kit";
+import { ACTIVE_RUN_STATUSES } from "@nova/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   IsolationError,
   lockOwnedGroup,
   touchGroupUpdatedAt,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { withEngineComputer } from "../engine-computer.js";
 import { assertTeachingSendAllowed } from "../taught-skills.js";

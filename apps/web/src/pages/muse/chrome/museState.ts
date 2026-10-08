@@ -1,9 +1,9 @@
-import type { MessageBlock, MuseState } from "@aiden/contracts";
-import { museAvatarState } from "@aiden/ui-web";
+import type { MessageBlock, MuseState } from "@nova/contracts";
+import { museAvatarState } from "@nova/ui-web";
 
 /**
  * The minimal shape of a live run needed to derive the Muse's face/pill state. Any
- * run record with a `status` (e.g. `@aiden/contracts` `Run`) satisfies this.
+ * run record with a `status` (e.g. `@nova/contracts` `Run`) satisfies this.
  */
 export interface MuseStateRun {
   status: string;

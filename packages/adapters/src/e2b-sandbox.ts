@@ -1,3 +1,4 @@
+import { type CommandResult, Sandbox, TimeoutError } from "@e2b/desktop";
 import type {
   AdapterContext,
   CommandRequest,
@@ -12,9 +13,8 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@aiden/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@aiden/core";
-import { type CommandResult, Sandbox, TimeoutError } from "@e2b/desktop";
+} from "@nova/adapter-kit";
+import { boundedSandboxCommandTimeoutMs } from "@nova/core";
 import { sandboxIdleMs } from "./computer-idle.js";
 import { normalizeWorkspacePath, shellQuote, workspacePath } from "./computer-support.js";
 import {
@@ -23,7 +23,7 @@ import {
 } from "./computer-workspace.js";
 import { LinuxDesktop, PREPARE_LINUX_DESKTOP } from "./linux-desktop.js";
 
-const E2B_WORKSPACE = "/home/user/aiden-home";
+const E2B_WORKSPACE = "/home/user/nova-home";
 const E2B_BROWSER_PROFILES = `${E2B_WORKSPACE}/.browser-profiles`;
 
 export interface E2BSandboxSdk {
@@ -36,7 +36,7 @@ export function e2bCreateOptions(botId: string, apiKey: string) {
   return {
     apiKey,
     timeoutMs: sandboxIdleMs(),
-    metadata: { botId, aiden: "computer" },
+    metadata: { botId, nova: "computer" },
     resolution: [1280, 800] as [number, number],
     lifecycle: { onTimeout: "pause" as const, autoResume: false },
   };
@@ -486,7 +486,7 @@ function e2bCwd(cwd: string | undefined): string {
     !cwd ||
     cwd === "." ||
     cwd === "/" ||
-    cwd === "/home/aiden" ||
+    cwd === "/home/nova" ||
     cwd === "/home/user" ||
     cwd === E2B_WORKSPACE
   ) {
@@ -494,8 +494,8 @@ function e2bCwd(cwd: string | undefined): string {
   }
   const relative = cwd.startsWith(`${E2B_WORKSPACE}/`)
     ? cwd.slice(E2B_WORKSPACE.length + 1)
-    : cwd.startsWith("/home/aiden/")
-      ? cwd.slice("/home/aiden/".length)
+    : cwd.startsWith("/home/nova/")
+      ? cwd.slice("/home/nova/".length)
       : cwd;
   return workspacePath(E2B_WORKSPACE, relative);
 }

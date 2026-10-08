@@ -1,4 +1,4 @@
-import type { ProductEvent } from "@aiden/contracts";
+import type { ProductEvent } from "@nova/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runThreadSubscription } from "./thread-subscription.js";
 

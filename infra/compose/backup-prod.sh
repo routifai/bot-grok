@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${AIDEN_DEPLOY_DIR:-/srv/aiden}"
-[[ "${PROJECT_DIR}" == /* ]] || { echo "AIDEN_DEPLOY_DIR must be an absolute path" >&2; exit 1; }
+PROJECT_DIR="${NOVA_DEPLOY_DIR:-/srv/nova}"
+[[ "${PROJECT_DIR}" == /* ]] || { echo "NOVA_DEPLOY_DIR must be an absolute path" >&2; exit 1; }
 COMPOSE_FILE="${PROJECT_DIR}/infra/compose/docker-compose.prod.yml"
 ENV_FILE="${PROJECT_DIR}/.env"
-BACKUP_ROOT="/var/backups/aiden"
+BACKUP_ROOT="/var/backups/nova"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SNAPSHOT_DIR="${BACKUP_ROOT}/${STAMP}"
 
@@ -15,7 +15,7 @@ compose=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
 
 "${compose[@]}" exec -T postgres sh -c \
   'pg_dump --format=custom --no-owner --no-privileges -U "$POSTGRES_USER" "$POSTGRES_DB"' \
-  > "${SNAPSHOT_DIR}/aiden.dump"
+  > "${SNAPSHOT_DIR}/nova.dump"
 
 # Archive the appdata volume from the host, not through `compose exec api`.
 #
@@ -49,10 +49,10 @@ if [[ "${rc}" -gt 1 ]]; then
 fi
 
 "${compose[@]}" exec -T postgres pg_restore --list \
-  < "${SNAPSHOT_DIR}/aiden.dump" >/dev/null
+  < "${SNAPSHOT_DIR}/nova.dump" >/dev/null
 tar -tzf "${SNAPSHOT_DIR}/appdata.tgz" >/dev/null
 
-sha256sum "${SNAPSHOT_DIR}/aiden.dump" "${SNAPSHOT_DIR}/appdata.tgz" \
+sha256sum "${SNAPSHOT_DIR}/nova.dump" "${SNAPSHOT_DIR}/appdata.tgz" \
   > "${SNAPSHOT_DIR}/SHA256SUMS"
 chmod 600 "${SNAPSHOT_DIR}"/*
 
@@ -60,4 +60,4 @@ chmod 600 "${SNAPSHOT_DIR}"/*
 # cleanup can never expand to an environment-controlled or broad path.
 find "${BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d -mtime +6 -exec rm -rf -- {} +
 
-echo "Verified Aiden backup written to ${SNAPSHOT_DIR}"
+echo "Verified Nova backup written to ${SNAPSHOT_DIR}"

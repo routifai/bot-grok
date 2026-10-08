@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import type { AidenDesktopOAuthCallback } from "@aiden/contracts";
+import type { NovaDesktopOAuthCallback } from "@nova/contracts";
 import { LOOPBACK_HOSTS } from "./oauth-callback.js";
 
 /** Native transport only: providers still own PKCE, token exchange and persistence. */
@@ -8,7 +8,7 @@ export async function openBrowserAuth(
   options: {
     signal: AbortSignal;
     openExternal: (url: string) => Promise<unknown>;
-    onCallback: (callback: AidenDesktopOAuthCallback) => void;
+    onCallback: (callback: NovaDesktopOAuthCallback) => void;
     onClose?: () => void;
   },
 ): Promise<void> {

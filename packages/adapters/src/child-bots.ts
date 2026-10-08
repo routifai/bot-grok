@@ -5,10 +5,10 @@ import type {
   ArtifactStore,
   JobPublisher,
   SandboxProvider,
-} from "@aiden/adapter-kit";
-import { routineJobKey, runContinueJob, runJobKey } from "@aiden/adapter-kit";
-import { type Actor, type Bot, type ComputerMode, GROUP_MEMBER_MIN } from "@aiden/contracts";
-import { ACTIVE_RUN_STATUSES } from "@aiden/core";
+} from "@nova/adapter-kit";
+import { routineJobKey, runContinueJob, runJobKey } from "@nova/adapter-kit";
+import { type Actor, type Bot, type ComputerMode, GROUP_MEMBER_MIN } from "@nova/contracts";
+import { ACTIVE_RUN_STATUSES } from "@nova/core";
 import {
   cancelRunsInTransaction,
   computerScopeKey,
@@ -18,8 +18,8 @@ import {
   type Prisma,
   type PrismaClient,
   withTransactionRetry,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { toComputerRef } from "./computer-support.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
 import { resolveAgentHomePath } from "./home.js";

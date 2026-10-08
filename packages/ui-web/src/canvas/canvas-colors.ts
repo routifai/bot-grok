@@ -1,4 +1,4 @@
-import { GROK_COLOR_LIST, resolvePersonaColorDef } from "@aiden/core";
+import { GROK_COLOR_LIST, resolvePersonaColorDef } from "@nova/core";
 
 /**
  * Nova Canvas reuses the app's existing identity-color set (the same hues bots use for

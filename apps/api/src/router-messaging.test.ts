@@ -1,5 +1,5 @@
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { RPCHandler } from "@orpc/server/fetch";
 import { describe, expect, it, vi } from "vitest";
 import { createRouter, type RouterDeps } from "./router.js";
@@ -265,12 +265,12 @@ function messagingDeps(
       providers: ["sendblue"],
       openSignup: false,
     },
-    dataDir: "/tmp/aiden-router-test",
+    dataDir: "/tmp/nova-router-test",
   } as unknown as RouterDeps;
   const actor = {
     spaceId: "ws-1",
     userId: "user-1",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: false,
   } satisfies Actor;
   return {

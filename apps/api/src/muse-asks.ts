@@ -1,20 +1,20 @@
-import { type JobPublisher, runContinueJob } from "@aiden/adapter-kit";
-import { type OmnigentClientConfig, skillCreateFromTool } from "@aiden/adapters";
+import { type JobPublisher, runContinueJob } from "@nova/adapter-kit";
+import { type OmnigentClientConfig, skillCreateFromTool } from "@nova/adapters";
 import {
   type Actor,
   type Ask,
   type AskKind,
   type MessageBlock,
   MessageBlock as MessageBlockSchema,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   appendEventInTransaction,
   createRepos,
   IsolationError,
   type PrismaClient,
   type ThreadEvents,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { engineAnswerAsk, engineListAsks, isEngineAskId } from "./engine-asks.js";
 

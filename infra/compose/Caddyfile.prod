@@ -3,7 +3,7 @@
 	lb_try_interval 250ms
 }
 
-{$AIDEN_HOST:app.example.com} {
+{$NOVA_HOST:app.example.com} {
 	encode zstd gzip
 
 	handle /health {

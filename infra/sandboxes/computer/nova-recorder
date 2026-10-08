@@ -2,16 +2,16 @@
 """Record what a person does in this computer's Chromium as semantic actions (stdlib only).
 
 Used by the engine's recording capability while someone teaches a task. A small daemon attaches
-to the Chromium already showing on DISPLAY over CDP, injects aiden-recorder.js into every page and
+to the Chromium already showing on DISPLAY over CDP, injects nova-recorder.js into every page and
 frame, and writes the reported actions plus a downscaled keyframe screenshot per action under
-/tmp/aiden/recordings/<id>/. The engine pulls the trace and the keyframes, then discards the
+/tmp/nova/recordings/<id>/. The engine pulls the trace and the keyframes, then discards the
 directory: nothing is kept in the computer.
 
-    aiden-recorder start <id>     start the daemon, print {"ok": true}
-    aiden-recorder pull <id>      print {"ok", "done", "actions", "keyframes"}
-    aiden-recorder frame <id> <k> print one keyframe as base64
-    aiden-recorder stop <id>      stop the daemon (keeps the files)
-    aiden-recorder discard <id>   delete the recording's files
+    nova-recorder start <id>     start the daemon, print {"ok": true}
+    nova-recorder pull <id>      print {"ok", "done", "actions", "keyframes"}
+    nova-recorder frame <id> <k> print one keyframe as base64
+    nova-recorder stop <id>      stop the daemon (keeps the files)
+    nova-recorder discard <id>   delete the recording's files
 
 Secret fields are redacted by the injected script (their value is never read). No keyframe is
 taken while a password field is visible or focused, or when the URL looks like a login page.
@@ -35,8 +35,8 @@ import time
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-ROOT = os.environ.get("AIDEN_RECORDINGS_DIR", "/tmp/aiden/recordings")
-BINDING = "__aidenRecord"
+ROOT = os.environ.get("NOVA_RECORDINGS_DIR", "/tmp/nova/recordings")
+BINDING = "__novaRecord"
 TTL_S = 60 * 60
 MAX_KEYFRAMES = 60
 KEYFRAME_WIDTH = 800
@@ -55,11 +55,11 @@ IGNORED_SCHEMES = ("about:", "chrome:", "chrome-error:", "devtools:", "data:", "
 
 
 def load_page_browser() -> Any:
-    """The sibling aiden-page-browser module: reuse its stdlib CDP client and port rules."""
+    """The sibling nova-page-browser module: reuse its stdlib CDP client and port rules."""
     here = os.path.dirname(os.path.realpath(__file__))
-    path = os.environ.get("AIDEN_PAGE_BROWSER") or os.path.join(here, "aiden-page-browser")
-    loader = importlib.machinery.SourceFileLoader("aiden_page_browser", path)
-    spec = importlib.util.spec_from_loader("aiden_page_browser", loader)
+    path = os.environ.get("NOVA_PAGE_BROWSER") or os.path.join(here, "nova-page-browser")
+    loader = importlib.machinery.SourceFileLoader("nova_page_browser", path)
+    spec = importlib.util.spec_from_loader("nova_page_browser", loader)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
@@ -69,15 +69,15 @@ def load_page_browser() -> Any:
 def inject_source() -> str:
     here = os.path.dirname(os.path.realpath(__file__))
     candidates = [
-        os.environ.get("AIDEN_RECORDER_JS", ""),
-        os.path.join(here, "aiden-recorder.js"),
-        "/usr/local/share/aiden/aiden-recorder.js",
+        os.environ.get("NOVA_RECORDER_JS", ""),
+        os.path.join(here, "nova-recorder.js"),
+        "/usr/local/share/nova/nova-recorder.js",
     ]
     for path in candidates:
         if path and os.path.exists(path):
             with open(path, encoding="utf-8") as handle:
                 return handle.read()
-    raise RuntimeError("aiden-recorder.js not found")
+    raise RuntimeError("nova-recorder.js not found")
 
 
 def rec_dir(rec_id: str) -> str:
@@ -201,7 +201,7 @@ class Recorder:
             guarded = client.call(
                 "Runtime.evaluate",
                 {
-                    "expression": "(window.__aidenRecState ? window.__aidenRecState().noFrame : false)",
+                    "expression": "(window.__novaRecState ? window.__novaRecState().noFrame : false)",
                     "returnByValue": True,
                 },
                 session_id=sid,
@@ -518,7 +518,7 @@ def cmd_discard(rec_id: str) -> dict[str, Any]:
 
 def main(argv: list[str]) -> int:
     if len(argv) < 3:
-        print(json.dumps({"ok": False, "error": "usage: aiden-recorder <command> <id>"}))
+        print(json.dumps({"ok": False, "error": "usage: nova-recorder <command> <id>"}))
         return 2
     command, rec_id = argv[1], argv[2]
     try:

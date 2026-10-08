@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 
-const LAST_BOT_KEY = "aiden.last_bot_id";
+const LAST_BOT_KEY = "nova.last_bot_id";
 
 export async function saveLastBotId(botId: string) {
   if (!botId.trim()) return;

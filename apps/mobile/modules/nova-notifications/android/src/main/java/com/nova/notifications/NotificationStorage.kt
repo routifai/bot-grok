@@ -1,4 +1,4 @@
-package com.aiden.notifications
+package com.nova.notifications
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
@@ -104,7 +104,7 @@ internal class NotificationStorage(context: Context) {
   }
 
   private companion object {
-    const val PREFERENCES = "com.aiden.notifications"
+    const val PREFERENCES = "com.nova.notifications"
     const val LIVE = "live_connection"
     const val MESSAGES = "messages"
     const val SCHEDULED = "scheduled_tasks"
@@ -112,7 +112,7 @@ internal class NotificationStorage(context: Context) {
     const val ENDPOINT = "endpoint"
     const val SPACE_ID = "space_id"
     const val TOKEN = "token"
-    const val KEY_ALIAS = "aiden.notifications.session"
+    const val KEY_ALIAS = "nova.notifications.session"
     const val TRANSFORMATION = "AES/GCM/NoPadding"
     const val IV_SIZE = 12
   }

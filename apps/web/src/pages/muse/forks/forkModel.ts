@@ -1,6 +1,6 @@
 // Forks (ADR 0010, CONTEXT.md "Fork"): the pure rules the fork UI draws from. Colors, the stub or
 // pill under a message, the gutter's dots, and the All forks list's rows, filters and groups.
-import type { ChatSummary, MessageFork, ThreadMessage } from "@aiden/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
 
 /** `fork-1`…`fork-6`, or `done` (grey) for a fork that was added back or archived. */
 export type ForkTone = 1 | 2 | 3 | 4 | 5 | 6 | "done";

@@ -1,8 +1,8 @@
 // Reply cards on the Omnigent side. The engine projects `render_card` calls into card blocks
 // (engine/omnigent/omnigent/superchat/transcript/); the only rule left here is that a card never
 // carries a secret.
-import type { MessageBlock, ReplyCardBlock } from "@aiden/contracts";
-import { redactSecrets } from "@aiden/core";
+import type { MessageBlock, ReplyCardBlock } from "@nova/contracts";
+import { redactSecrets } from "@nova/core";
 
 /** A card never carries a secret: one that does degrades to its redacted markdown fallback. */
 export function redactReplyCard(block: ReplyCardBlock, secrets: string[]): MessageBlock {

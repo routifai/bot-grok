@@ -1,7 +1,7 @@
-import type { ConnectorCatalogItem } from "@aiden/adapter-kit";
-import { sanitizeComposioError } from "@aiden/adapters";
-import { IsolationError } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+import type { ConnectorCatalogItem } from "@nova/adapter-kit";
+import { sanitizeComposioError } from "@nova/adapters";
+import { IsolationError } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { connectProcedures } from "./connections-connect.js";
 import {

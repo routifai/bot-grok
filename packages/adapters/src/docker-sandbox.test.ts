@@ -1,4 +1,4 @@
-import type { ProcessEvent } from "@aiden/adapter-kit";
+import type { ProcessEvent } from "@nova/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DockerSandboxProvider,
@@ -46,7 +46,7 @@ describe("Docker sandbox", () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
       argv: ["sleep", "10"],
-      cwd: "/home/aiden",
+      cwd: "/home/nova",
       timeoutMs: 75,
     });
     expect(events).toEqual([
@@ -55,8 +55,8 @@ describe("Docker sandbox", () => {
       { type: "exit", code: 124 },
     ]);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
-      "x-aiden-bot-id": "bot",
-      "x-aiden-screen-id": "bot",
+      "x-nova-bot-id": "bot",
+      "x-nova-screen-id": "bot",
     });
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
       "x-request-id": expect.any(String),
@@ -166,10 +166,10 @@ describe("Docker sandbox", () => {
         method: "DELETE",
         headers: expect.objectContaining({
           authorization: "Bearer test-token",
-          "x-aiden-bot-id": "home-bot",
-          "x-aiden-screen-id": "bot",
-          "x-aiden-screen-lease-id": "run-1:1",
-          "x-aiden-space-id": "workspace",
+          "x-nova-bot-id": "home-bot",
+          "x-nova-screen-id": "bot",
+          "x-nova-screen-lease-id": "run-1:1",
+          "x-nova-space-id": "workspace",
         }),
       }),
     );
@@ -316,7 +316,7 @@ describe("Docker sandbox", () => {
       "http://supervisor.test/computers/computer-1/screen",
       expect.objectContaining({
         method: "DELETE",
-        headers: expect.objectContaining({ "x-aiden-cancel-run-work": "1" }),
+        headers: expect.objectContaining({ "x-nova-cancel-run-work": "1" }),
       }),
     );
   });
@@ -343,8 +343,8 @@ describe("Docker page browser", () => {
         signal: context.signal,
         body: JSON.stringify({ command: "snapshot" }),
         headers: expect.objectContaining({
-          "x-aiden-bot-id": "team-home",
-          "x-aiden-screen-lease-id": "run-1:1",
+          "x-nova-bot-id": "team-home",
+          "x-nova-screen-lease-id": "run-1:1",
         }),
       }),
     );

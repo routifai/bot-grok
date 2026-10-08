@@ -13,11 +13,11 @@
   "iconLibrary": "lucide",
   "rtl": false,
   "aliases": {
-    "components": "@aiden/ui-web/components",
-    "utils": "@aiden/ui-web/lib/utils",
-    "ui": "@aiden/ui-web/components/ui",
-    "lib": "@aiden/ui-web/lib",
-    "hooks": "@aiden/ui-web/hooks"
+    "components": "@nova/ui-web/components",
+    "utils": "@nova/ui-web/lib/utils",
+    "ui": "@nova/ui-web/components/ui",
+    "lib": "@nova/ui-web/lib",
+    "hooks": "@nova/ui-web/hooks"
   },
   "menuColor": "default",
   "menuAccent": "subtle",

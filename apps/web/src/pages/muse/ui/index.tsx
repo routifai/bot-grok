@@ -1,5 +1,5 @@
-import type { IllustrationKey } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
+import type { IllustrationKey } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { illustrationUrl } from "../../../lib/illustrations";

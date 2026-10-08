@@ -1,6 +1,6 @@
-import type { ReplyCardDataOf } from "@aiden/contracts";
-import { Button, Input } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { ReplyCardDataOf } from "@nova/contracts";
+import { Button, Input } from "@nova/ui-web";
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";

@@ -1,5 +1,5 @@
-import type { GoalTaskStatus } from "@aiden/contracts";
 import { t } from "@lingui/core/macro";
+import type { GoalTaskStatus } from "@nova/contracts";
 
 /** A Task status's short label — used as the sr-only text next to its `PlanNode` marker. */
 export function goalTaskStatusLabel(status: GoalTaskStatus): string {

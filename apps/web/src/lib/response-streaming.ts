@@ -1,9 +1,9 @@
-import type { ResponseStreamingPreference } from "@aiden/core";
+import type { ResponseStreamingPreference } from "@nova/core";
 import {
   normalizeResponseStreamingPreference,
   RESPONSE_STREAMING_STORAGE_KEY,
   responseStreamingEnabled,
-} from "@aiden/core";
+} from "@nova/core";
 
 export type { ResponseStreamingPreference };
 

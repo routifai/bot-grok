@@ -1,4 +1,4 @@
-import type { ComputerAction, ComputerInput } from "@aiden/adapter-kit";
+import type { ComputerAction, ComputerInput } from "@nova/adapter-kit";
 import { clampRounded, shellQuote } from "./computer-support.js";
 export interface ExtraDisplayLayout {
   display: string;
@@ -6,14 +6,14 @@ export interface ExtraDisplayLayout {
 }
 
 export function observeExtraDisplayCommand(layout: ExtraDisplayLayout): string {
-  const imagePath = `/tmp/aiden/observe-${layout.displayNumber}.png`;
+  const imagePath = `/tmp/nova/observe-${layout.displayNumber}.png`;
   return [
-    `DISPLAY=${layout.display} xdotool getmouselocation --shell >/tmp/aiden/cursor-${layout.displayNumber}.txt || true`,
+    `DISPLAY=${layout.display} xdotool getmouselocation --shell >/tmp/nova/cursor-${layout.displayNumber}.txt || true`,
     `DISPLAY=${layout.display} scrot -o ${imagePath} 2>/dev/null || DISPLAY=${layout.display} import -window root ${imagePath}`,
     `test -s ${imagePath}`,
     `base64 -w0 ${imagePath} 2>/dev/null || base64 ${imagePath}`,
     `printf '\\nCURSOR '`,
-    `tr '\\n' ' ' </tmp/aiden/cursor-${layout.displayNumber}.txt 2>/dev/null || true`,
+    `tr '\\n' ' ' </tmp/nova/cursor-${layout.displayNumber}.txt 2>/dev/null || true`,
   ].join("; ");
 }
 

@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-// jsdom does not implement these; Shell (and the real @aiden/ui-web components
+// jsdom does not implement these; Shell (and the real @nova/ui-web components
 // it renders) use them unconditionally on mount.
 beforeEach(() => {
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -85,11 +85,11 @@ vi.mock("@lingui/react/macro", () => ({
   Trans: ({ children }: { children?: ReactNode }) => children,
 }));
 
-vi.mock("@aiden/chat-ui/web", () => ({
+vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@aiden/ui-web", () => {
+vi.mock("@nova/ui-web", () => {
   // Passes every prop straight onto a <div> (event handlers included) so
   // data-testid/aria-label/onClick still work for assertions and clicks even
   // though this isn't the real Base UI component.

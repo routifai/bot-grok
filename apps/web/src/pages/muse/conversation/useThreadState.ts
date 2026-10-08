@@ -1,5 +1,5 @@
-import type { ThreadSnapshot } from "@aiden/contracts";
-import { withLiveStreamingProgress } from "@aiden/core";
+import type { ThreadSnapshot } from "@nova/contracts";
+import { withLiveStreamingProgress } from "@nova/core";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   getResponseStreamingEnabled,

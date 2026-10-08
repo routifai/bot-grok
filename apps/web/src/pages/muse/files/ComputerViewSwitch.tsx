@@ -1,5 +1,5 @@
-import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { cn } from "@nova/ui-web";
 import type { ComputerView } from "./useComputerView";
 
 /** Screen | Files, a quiet segmented control for the Computer panel header. */

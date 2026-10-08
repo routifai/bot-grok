@@ -6,8 +6,8 @@ import type {
   ConnectorEvent,
   ConnectorTool,
   ManagedConnectorProvider,
-} from "@aiden/adapter-kit";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import { getLogger } from "@nova/logging";
 import { catalogToolPrefix } from "./approval-effect.js";
 import { collectPages, filterCatalog } from "./composio-connector.js";
 import {

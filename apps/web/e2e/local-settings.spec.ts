@@ -6,7 +6,7 @@ test("local settings open and save integrations without an app session", async (
 }, testInfo) => {
   await page.addInitScript(() => {
     let connected = false;
-    window.aidenDesktop = {
+    window.novaDesktop = {
       platform: "darwin",
       localSettings: {
         request: async (pathname: string, body: string) => {
@@ -58,7 +58,7 @@ test("local settings open and save integrations without an app session", async (
           return { status: 200, body: JSON.stringify({ json }) };
         },
       },
-    } as typeof window.aidenDesktop;
+    } as typeof window.novaDesktop;
   });
   await page.goto("/desktop-settings");
   await page.getByRole("button", { name: "Server integrations", exact: true }).click();

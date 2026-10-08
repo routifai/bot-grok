@@ -1,7 +1,7 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import { isAttachmentImageMimeType } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import { isAttachmentImageMimeType } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { File, FileText, Presentation, Table2 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { decodeArtifactBase64 } from "../../lib/artifact-open";

@@ -3,7 +3,7 @@ import { captureScreenshot, completeOnboarding, openUserSettings, signup } from 
 
 test("account settings appearance control switches to light mode", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `ui-appearance-${stamp}@aiden.test`, "password12", "Appearance QA");
+  await signup(page, `ui-appearance-${stamp}@nova.test`, "password12", "Appearance QA");
   await completeOnboarding(page, testInfo);
 
   const settings = await openUserSettings(page);

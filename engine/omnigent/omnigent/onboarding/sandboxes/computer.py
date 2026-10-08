@@ -34,7 +34,7 @@ container id, needed by every ``/computers/{id}/...`` call after ``provision``.
 Authentication, both directions:
 
 - Omnigent → Nova's supervisor: a static bearer (``OMNIGENT_COMPUTER_SUPERVISOR_TOKEN``) plus the
-  ``x-aiden-bot-id`` / ``x-aiden-space-id`` identity headers the supervisor cross-checks against
+  ``x-nova-bot-id`` / ``x-nova-space-id`` identity headers the supervisor cross-checks against
   the container it resolves — the same shared-secret posture
   ``packages/adapters/src/docker-sandbox.ts`` already uses from Nova's own API process
   (``resolveSupervisorToken`` / ``SANDBOX_SUPERVISOR_TOKEN``). Never a per-user secret: the
@@ -318,12 +318,12 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
     ) -> httpx.Response:
         headers = {
             "authorization": f"Bearer {self._supervisor_token}",
-            "x-aiden-bot-id": bot_id,
-            "x-aiden-space-id": space_id,
+            "x-nova-bot-id": bot_id,
+            "x-nova-space-id": space_id,
         }
         if screen:
             # One stable screen per Muse, so the viewer and the runner share one display.
-            headers["x-aiden-screen-id"] = bot_id
+            headers["x-nova-screen-id"] = bot_id
         kwargs.setdefault("timeout", _REQUEST_TIMEOUT_S)
         try:
             return self._client().request(method, path, headers=headers, **kwargs)

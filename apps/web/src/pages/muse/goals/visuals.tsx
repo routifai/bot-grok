@@ -1,5 +1,5 @@
-import type { GoalTaskStatus } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
+import type { GoalTaskStatus } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { Ban, Check, Minus } from "lucide-react";
 import type { ReactNode } from "react";
 import { goalTaskStatusLabel } from "./taskStatusLabel";

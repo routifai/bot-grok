@@ -6,13 +6,13 @@
 # exits so Railway restarts all three.
 set -uo pipefail
 
-pnpm --filter @aiden/db exec prisma migrate deploy || exit 1
+pnpm --filter @nova/db exec prisma migrate deploy || exit 1
 
-API_PORT=3100 pnpm --filter @aiden/api start &
+API_PORT=3100 pnpm --filter @nova/api start &
 api=$!
-pnpm --filter @aiden/worker start &
+pnpm --filter @nova/worker start &
 worker=$!
-API_PROXY_TARGET=http://127.0.0.1:3100 pnpm --filter @aiden/web preview --host 0.0.0.0 --port "${PORT:-5173}" &
+API_PROXY_TARGET=http://127.0.0.1:3100 pnpm --filter @nova/web preview --host 0.0.0.0 --port "${PORT:-5173}" &
 web=$!
 
 trap 'kill "$api" "$worker" "$web" 2>/dev/null' TERM INT

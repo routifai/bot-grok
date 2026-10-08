@@ -4,8 +4,8 @@ import type {
   ArtifactStore,
   JobPublisher,
   SandboxProvider,
-} from "@aiden/adapter-kit";
-import type { createRepos, PrismaClient } from "@aiden/db";
+} from "@nova/adapter-kit";
+import type { createRepos, PrismaClient } from "@nova/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   archiveBot,
@@ -102,7 +102,7 @@ describe("spawned bot creation", () => {
       title: "",
       threadId: "thread-2",
     });
-    const createReposSpy = vi.spyOn(await import("@aiden/db"), "createRepos").mockReturnValue({
+    const createReposSpy = vi.spyOn(await import("@nova/db"), "createRepos").mockReturnValue({
       createBot,
     } as unknown as ReturnType<typeof createRepos>);
 
@@ -472,7 +472,7 @@ describe("destroyBot", () => {
           sandbox: {} as SandboxProvider,
           home: {} as AgentHomeStore,
           jobs: { cancel: vi.fn() } as unknown as JobPublisher,
-          dataDir: "/tmp/aiden-destroy-bot-test",
+          dataDir: "/tmp/nova-destroy-bot-test",
         },
         {
           id: "bot-1",

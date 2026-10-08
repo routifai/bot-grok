@@ -24,8 +24,8 @@ describe("resolveDeploymentModel", () => {
   it("uses the operator's own OpenAI-compatible server when asked", () => {
     const local = {
       PI_DEFAULT_PROVIDER: "local",
-      AIDEN_LOCAL_MODELS: "gpt-4o, claude-sonnet",
-      AIDEN_LOCAL_MODELS_API_KEY: "sk-litellm",
+      NOVA_LOCAL_MODELS: "gpt-4o, claude-sonnet",
+      NOVA_LOCAL_MODELS_API_KEY: "sk-litellm",
     };
     expect(resolveDeploymentModel(local)).toEqual({
       provider: "local",
@@ -33,7 +33,7 @@ describe("resolveDeploymentModel", () => {
       key: "sk-litellm",
     });
     // A keyless server still counts as configured, so nobody is asked to connect a model.
-    const { AIDEN_LOCAL_MODELS_API_KEY: _key, ...keyless } = local;
+    const { NOVA_LOCAL_MODELS_API_KEY: _key, ...keyless } = local;
     expect(resolveDeploymentModel(keyless).key).toBe("local");
     // No model list means no local deployment model.
     expect(resolveDeploymentModel({ PI_DEFAULT_PROVIDER: "local" }).key).toBeUndefined();

@@ -99,7 +99,7 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
 /** Open the user Settings overlay, optionally switching to a sidebar section. */
 export async function openUserSettings(
   page: Page,
-  section?: "general" | "models" | "voice" | "usage" | "computer" | "updates" | "aiden",
+  section?: "general" | "models" | "voice" | "usage" | "computer" | "updates" | "nova",
 ) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByTestId("user-settings");

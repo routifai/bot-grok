@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@aiden/contracts";
+import type { ThreadMessage } from "@nova/contracts";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { type ResolvedReplyCard, replyCardKey, resolveReplyCards } from "./thread";
 

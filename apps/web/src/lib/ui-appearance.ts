@@ -5,7 +5,7 @@ import {
   resolveAppearance,
   resolveAppearancePreference,
   tokensForAppearance,
-} from "@aiden/ui-tokens";
+} from "@nova/ui-tokens";
 
 export type { AppearancePreference, ResolvedAppearance };
 

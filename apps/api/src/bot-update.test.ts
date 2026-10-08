@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@aiden/db", () => ({
+vi.mock("@nova/db", () => ({
   appendEventInTransaction: vi.fn(),
 }));
 

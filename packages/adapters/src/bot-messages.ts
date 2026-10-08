@@ -1,5 +1,5 @@
-import { type JobPublisher, runContinueJob } from "@aiden/adapter-kit";
-import type { BotMessageIntent, MessageBlock } from "@aiden/contracts";
+import { type JobPublisher, runContinueJob } from "@nova/adapter-kit";
+import type { BotMessageIntent, MessageBlock } from "@nova/contracts";
 import {
   BOT_MESSAGE_MAX_LENGTH,
   botMessageContext,
@@ -8,15 +8,15 @@ import {
   clampBotMessage,
   nextBotMessageHop,
   resolveBotAddress,
-} from "@aiden/core";
+} from "@nova/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   type PrismaClient,
   type ThreadEvents,
   withTransactionRetry,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 
 export interface BotMessageDeps {
   prisma: PrismaClient;

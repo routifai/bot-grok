@@ -2,12 +2,12 @@ import {
   COMPUTER_SCREEN_UNAVAILABLE,
   ComputerScreenUnavailableError,
   screenLeaseIdForRun,
-} from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
-import { REPLY_QUOTE_MAX_LENGTH } from "@aiden/contracts";
-import { openScreenCapability } from "@aiden/core/node/screen-capability";
-import type { PrismaClient } from "@aiden/db";
-import { createLogger, createTestSink, installLogger } from "@aiden/logging";
+} from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
+import { REPLY_QUOTE_MAX_LENGTH } from "@nova/contracts";
+import { openScreenCapability } from "@nova/core/node/screen-capability";
+import type { PrismaClient } from "@nova/db";
+import { createLogger, createTestSink, installLogger } from "@nova/logging";
 import { RPCHandler } from "@orpc/server/fetch";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRouter, type RouterDeps } from "./router.js";
@@ -19,7 +19,7 @@ describe("account preferences", () => {
       user: {
         update,
         findUniqueOrThrow: vi.fn().mockResolvedValue({
-          email: "user@aiden.test",
+          email: "user@nova.test",
           name: "Test User",
           avatarStyle,
           timezone: "UTC",
@@ -37,12 +37,12 @@ describe("account preferences", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
     } as unknown as RouterDeps;
     const actor = {
       spaceId: "workspace-1",
       userId: "user-1",
-      email: "user@aiden.test",
+      email: "user@nova.test",
       isDeploymentOwner: true,
     } satisfies Actor;
     return { update, deps, actor, handler: new RPCHandler(createRouter(deps)) };
@@ -177,7 +177,7 @@ describe("model setup gate", () => {
     const prisma = {
       user: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
-          email: "user@aiden.test",
+          email: "user@nova.test",
           name: "Test User",
           avatarStyle: "robot",
           timezone: "UTC",
@@ -205,12 +205,12 @@ describe("model setup gate", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
     } as unknown as RouterDeps;
     const actor = {
       spaceId: "workspace-1",
       userId: "user-1",
-      email: "user@aiden.test",
+      email: "user@nova.test",
       isDeploymentOwner: true,
     } satisfies Actor;
     return { actor, handler: new RPCHandler(createRouter(deps)) };
@@ -329,7 +329,7 @@ describe("thread answer delivery", () => {
     const answerRunInput = vi.fn().mockResolvedValue(true);
     const enqueue = vi.fn().mockRejectedValue(new Error("job broker unavailable"));
     const sink = createTestSink();
-    installLogger(createLogger({ service: "aiden-api", sinks: [sink] }));
+    installLogger(createLogger({ service: "nova-api", sinks: [sink] }));
     const prisma = {
       bot: {
         findFirst: vi.fn().mockResolvedValue({
@@ -350,12 +350,12 @@ describe("thread answer delivery", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
     } as unknown as RouterDeps;
     const actor = {
       spaceId: "workspace-1",
       userId: "user-1",
-      email: "user@aiden.test",
+      email: "user@nova.test",
       isDeploymentOwner: true,
     } satisfies Actor;
     const handler = new RPCHandler(createRouter(deps));
@@ -388,7 +388,7 @@ describe("thread answer delivery", () => {
     );
     expect(enqueue).toHaveBeenCalledOnce();
     expect(sink.events.some((event) => event.message === "thread answer enqueue")).toBe(true);
-    installLogger(createLogger({ service: "aiden-api", level: "off", sinks: [] }));
+    installLogger(createLogger({ service: "nova-api", level: "off", sinks: [] }));
   });
 });
 
@@ -413,12 +413,12 @@ describe("MCP server deletion", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
     } as unknown as RouterDeps;
     const actor = {
       spaceId: "workspace-1",
       userId: "user-1",
-      email: "user@aiden.test",
+      email: "user@nova.test",
       isDeploymentOwner: true,
     } satisfies Actor;
     const handler = new RPCHandler(createRouter(deps));
@@ -485,12 +485,12 @@ describe("connections.begin", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
     } as unknown as RouterDeps;
     const actor = {
       spaceId: "workspace-1",
       userId: "user-1",
-      email: "user@aiden.test",
+      email: "user@nova.test",
       isDeploymentOwner: true,
     } satisfies Actor;
     const handler = new RPCHandler(createRouter(deps));
@@ -592,12 +592,12 @@ describe("connections.complete", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
     } as unknown as RouterDeps;
     const actor = {
       spaceId: "workspace-1",
       userId: "user-1",
-      email: "user@aiden.test",
+      email: "user@nova.test",
       isDeploymentOwner: true,
     } satisfies Actor;
     const handler = new RPCHandler(createRouter(deps));
@@ -630,7 +630,7 @@ describe("computer screen url", () => {
   const actor = {
     spaceId: "workspace-1",
     userId: "user-1",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: true,
   } satisfies Actor;
   const computerRow = {
@@ -672,7 +672,7 @@ describe("computer screen url", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "e2b",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
     } as unknown as RouterDeps;
     const handler = new RPCHandler(createRouter(deps));
     const { response } = await handler.handle(
@@ -782,7 +782,7 @@ describe("integration setup authorization", () => {
             actor: {
               userId: "user",
               spaceId: "space",
-              email: "user@aiden.test",
+              email: "user@nova.test",
               isDeploymentOwner: owner,
             },
           },
@@ -817,7 +817,7 @@ describe("integration setup authorization", () => {
           actor: {
             userId: "member",
             spaceId: "space",
-            email: "member@aiden.test",
+            email: "member@nova.test",
             isDeploymentOwner: false,
           },
         },
@@ -861,7 +861,7 @@ describe("interrupted computer reservation release", () => {
             actor: {
               spaceId: "space-1",
               userId: "user-1",
-              email: "user@aiden.test",
+              email: "user@nova.test",
               isDeploymentOwner: owner,
             },
           },
@@ -909,7 +909,7 @@ describe("model credential persistence", () => {
   const actor = {
     spaceId: "workspace-1",
     userId: "user-1",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: true,
   } satisfies Actor;
 
@@ -1099,7 +1099,7 @@ describe("codex catalog auth", () => {
   const actor = {
     spaceId: "workspace-1",
     userId: "user-1",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: true,
   } satisfies Actor;
   const spark = "gpt-5.3-codex-spark";
@@ -1187,7 +1187,7 @@ describe("model set default auth", () => {
   const actor = {
     spaceId: "workspace-1",
     userId: "user-1",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: true,
   } satisfies Actor;
   const spark = "gpt-5.3-codex-spark";
@@ -1505,7 +1505,7 @@ describe("bot model auth on save", () => {
   const actor = {
     spaceId: "workspace-1",
     userId: "user-1",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: true,
   } satisfies Actor;
   const spark = "gpt-5.3-codex-spark";
@@ -1778,7 +1778,7 @@ describe("bot restore computer quota", () => {
             actor: {
               spaceId: "space-1",
               userId: "user-1",
-              email: "user@aiden.test",
+              email: "user@nova.test",
               isDeploymentOwner: true,
             },
           },
@@ -1892,14 +1892,14 @@ describe("groups.archive", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-router-test",
+      dataDir: "/tmp/nova-router-test",
       sandbox: { releaseScreen, execute },
       jobs: { cancel: vi.fn().mockResolvedValue(undefined) },
     } as unknown as RouterDeps;
     const actor = {
       spaceId: "workspace-1",
       userId: "user-1",
-      email: "user@aiden.test",
+      email: "user@nova.test",
       isDeploymentOwner: true,
     } satisfies Actor;
 

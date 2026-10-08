@@ -1,4 +1,4 @@
-import type { MessagingSurface } from "@aiden/adapter-kit";
+import type { MessagingSurface } from "@nova/adapter-kit";
 import type { Hono } from "hono";
 
 export const MESSAGING_WEBHOOK_BASE_PATH = "/api/v1/messaging/webhook";

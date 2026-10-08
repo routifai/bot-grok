@@ -58,14 +58,14 @@ describe("Pi model catalog", () => {
 
   it("adds a configured OpenRouter model that is newer than the static catalog", async () => {
     vi.stubEnv("PI_DEFAULT_PROVIDER", " openrouter ");
-    vi.stubEnv("PI_DEFAULT_MODEL", " aiden-test/unknown-future-model ");
+    vi.stubEnv("PI_DEFAULT_MODEL", " nova-test/unknown-future-model ");
     vi.resetModules();
 
     const { listPiCatalog: listConfiguredCatalog } = await import("./pi-models.js");
     expect(listConfiguredCatalog()[0]).toMatchObject({
       provider: "openrouter",
-      id: "aiden-test/unknown-future-model",
-      label: "aiden-test/unknown-future-model",
+      id: "nova-test/unknown-future-model",
+      label: "nova-test/unknown-future-model",
     });
   });
 

@@ -20,9 +20,9 @@ import {
   putOmnigentDailyNote,
   redactMemoryProfile,
   streamOmnigentActivityChanges,
-} from "@aiden/adapters";
-import type { Activity, ActivityChanged, ActivityPage, Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Activity, ActivityChanged, ActivityPage, Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { onSuperChat } from "./omnigent-errors.js";
 

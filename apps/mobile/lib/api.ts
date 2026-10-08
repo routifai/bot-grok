@@ -9,8 +9,8 @@ import type {
   ModelCredential,
   Space,
   SpaceNavigation,
-} from "@aiden/contracts";
-import type { ThreadHistory } from "@aiden/core";
+} from "@nova/contracts";
+import type { ThreadHistory } from "@nova/core";
 import {
   aiConsentTarget,
   aiDataUsesForProcedure,
@@ -27,7 +27,7 @@ import {
   takeLiveMessage,
   updateCloudAgentMessages,
   upsertMessageById,
-} from "@aiden/core";
+} from "@nova/core";
 import * as SecureStore from "expo-secure-store";
 import { promptAiConsent } from "./ai-consent";
 import type { EndpointResult } from "./endpoint";
@@ -43,9 +43,9 @@ import {
   tokenFromAuthResponse,
 } from "./session";
 
-const ENDPOINT_KEY = "aiden.api_base";
-const SPACE_KEY = "aiden.space_id";
-const SPACE_ROLLBACK_KEY = "aiden.space_rollback";
+const ENDPOINT_KEY = "nova.api_base";
+const SPACE_KEY = "nova.space_id";
+const SPACE_ROLLBACK_KEY = "nova.space_rollback";
 const RPC_TIMEOUT_MS = 8_000;
 export const MAX_MOBILE_AUTH_RESPONSE_BYTES = 256 * 1024;
 export const MAX_MOBILE_RPC_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -360,7 +360,7 @@ export async function authHeaders(
   const token = await loadSessionToken();
   return {
     ...(token ? { authorization: `Bearer ${token}` } : {}),
-    ...(spaceId ? { "x-aiden-space-id": spaceId } : {}),
+    ...(spaceId ? { "x-nova-space-id": spaceId } : {}),
   };
 }
 
@@ -386,7 +386,7 @@ async function authenticateWithEmail(
     `${currentApiBase()}/api/auth/${action}/email`,
     {
       method: "POST",
-      headers: { "content-type": "application/json", origin: "aiden://" },
+      headers: { "content-type": "application/json", origin: "nova://" },
       body: JSON.stringify(input),
     },
     {},
@@ -423,7 +423,7 @@ export type PasswordResetCapabilities = { passwordReset: boolean; resetUrl: stri
 export async function passwordResetCapabilities(): Promise<PasswordResetCapabilities> {
   const { response, body } = await fetchMobileJson<PasswordResetCapabilities>(
     `${currentApiBase()}/api/auth/capabilities`,
-    { headers: { origin: "aiden://" } },
+    { headers: { origin: "nova://" } },
     { passwordReset: false, resetUrl: null },
   );
   if (!response.ok) throw new Error("Could not load password recovery settings");
@@ -435,7 +435,7 @@ export async function requestPasswordReset(email: string, redirectTo: string): P
     `${currentApiBase()}/api/auth/request-password-reset`,
     {
       method: "POST",
-      headers: { "content-type": "application/json", origin: "aiden://" },
+      headers: { "content-type": "application/json", origin: "nova://" },
       body: JSON.stringify({ email, redirectTo }),
     },
     {},
@@ -450,7 +450,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
       method: "POST",
       headers: {
         "content-type": "application/json",
-        origin: "aiden://",
+        origin: "nova://",
         ...(await authHeaders()),
       },
       body: JSON.stringify({ currentPassword, newPassword, revokeOtherSessions: true }),
@@ -499,7 +499,7 @@ export async function signOut() {
     await withAbort(
       fetch(`${currentApiBase()}/api/auth/sign-out`, {
         method: "POST",
-        headers: { "content-type": "application/json", origin: "aiden://", ...headers },
+        headers: { "content-type": "application/json", origin: "nova://", ...headers },
         signal: controller.signal,
       }),
       controller.signal,
@@ -538,7 +538,7 @@ export async function deleteAccount(password: string) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        origin: "aiden://",
+        origin: "nova://",
         ...(await authHeaders()),
       },
       body: JSON.stringify({ password }),
@@ -596,7 +596,7 @@ export async function rpc<T>(
   // a 401 arriving after the user switched Spaces — including A → B → A —
   // belongs to a stale request and must not touch the current selection.
   const requestHeaders = consentContext?.headers ?? (await authHeaders());
-  const requestSpaceId = requestHeaders["x-aiden-space-id"];
+  const requestSpaceId = requestHeaders["x-nova-space-id"];
   try {
     let res: Response;
     try {
@@ -604,7 +604,7 @@ export async function rpc<T>(
         method: "POST",
         headers: {
           "content-type": "application/json",
-          origin: "aiden://",
+          origin: "nova://",
           ...requestHeaders,
         },
         body: JSON.stringify({ json: body }),
@@ -911,7 +911,7 @@ export async function subscribeThread(
     headers: {
       "content-type": "application/json",
       accept: "text/event-stream",
-      origin: "aiden://",
+      origin: "nova://",
       ...(await authHeaders()),
     },
     body: JSON.stringify({ json: { ...target, cursor } }),

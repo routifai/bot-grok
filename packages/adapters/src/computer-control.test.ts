@@ -1,6 +1,6 @@
-import type { BackgroundJob, JobPublisher, SandboxProvider } from "@aiden/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
-import { createLogger, createTestSink, installLogger } from "@aiden/logging";
+import type { BackgroundJob, JobPublisher, SandboxProvider } from "@nova/adapter-kit";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { createLogger, createTestSink, installLogger } from "@nova/logging";
 import { describe, expect, it, vi } from "vitest";
 import {
   clearInactiveUserComputerControl,
@@ -121,14 +121,14 @@ describe("computer control leases", () => {
     const enqueueError = new Error("job broker unavailable");
     const harness = controlHarness({ waitingRunId: "run-1", enqueueError });
     const sink = createTestSink();
-    installLogger(createLogger({ service: "aiden-worker", sinks: [sink] }));
+    installLogger(createLogger({ service: "nova-worker", sinks: [sink] }));
 
     await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(true);
 
     expect(sink.events.some((event) => event.message === "takeover continuation enqueue")).toBe(
       true,
     );
-    installLogger(createLogger({ service: "aiden-worker", level: "off", sinks: [] }));
+    installLogger(createLogger({ service: "nova-worker", level: "off", sinks: [] }));
   });
 
   it("keeps the denied lease retryable when provider revocation fails", async () => {
@@ -237,13 +237,13 @@ describe("computer control leases", () => {
       enqueueError: new Error("queue unavailable"),
     });
     const sink = createTestSink();
-    installLogger(createLogger({ service: "aiden-worker", sinks: [sink] }));
+    installLogger(createLogger({ service: "nova-worker", sinks: [sink] }));
     await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(
       false,
     );
     expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
     expect(sink.events.length).toBeGreaterThan(0);
-    installLogger(createLogger({ service: "aiden-worker", level: "off", sinks: [] }));
+    installLogger(createLogger({ service: "nova-worker", level: "off", sinks: [] }));
   });
 });
 

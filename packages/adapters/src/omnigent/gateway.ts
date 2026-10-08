@@ -9,9 +9,9 @@
 // `ThreadEvents.finalizeRun` so the thread, task, and run rows land in the same state a normal
 // turn would.
 
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
-import { STEERING_CONTINUATION_PROMPT } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { STEERING_CONTINUATION_PROMPT } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import {
   adoptOmnigentMuse,
   getOmnigentMuse,

@@ -19,19 +19,19 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: aiden
-          POSTGRES_PASSWORD: aiden
-          POSTGRES_DB: aiden
+          POSTGRES_USER: nova
+          POSTGRES_PASSWORD: nova
+          POSTGRES_DB: nova
         ports:
           - 5433:5432
         options: >-
-          --health-cmd "pg_isready -U aiden"
+          --health-cmd "pg_isready -U nova"
           --health-interval 3s
           --health-timeout 5s
           --health-retries 20
     env:
       CI: "1"
-      DATABASE_URL: postgres://aiden:aiden@127.0.0.1:5433/aiden
+      DATABASE_URL: postgres://nova:nova@127.0.0.1:5433/nova
       EXPO_PUBLIC_API_URL: http://10.0.2.2:3110
 
     steps:
@@ -99,7 +99,7 @@ jobs:
       - name: Generate Android project
         if: steps.screenshot-apk.outputs.cache-hit != 'true'
         run: |
-          pnpm --filter @aiden/mobile exec expo prebuild --platform android --no-install
+          pnpm --filter @nova/mobile exec expo prebuild --platform android --no-install
           sed -i 's/<application /<application android:usesCleartextTraffic="true" /' \
             apps/mobile/android/app/src/main/AndroidManifest.xml
           sed -i 's/MaxMetaspaceSize=512m/MaxMetaspaceSize=1g/' \

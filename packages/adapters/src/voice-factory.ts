@@ -1,4 +1,4 @@
-import type { VoiceProvider } from "@aiden/adapter-kit";
+import type { VoiceProvider } from "@nova/adapter-kit";
 import { CartesiaVoiceProvider } from "./cartesia-voice.js";
 import { ElevenLabsVoiceProvider } from "./elevenlabs-voice.js";
 import { FishAudioVoiceProvider } from "./fish-audio-voice.js";

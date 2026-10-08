@@ -1,4 +1,4 @@
-import { isSessionNotFoundError, OmnigentApiError, omnigentErrorCopy } from "@aiden/adapters";
+import { isSessionNotFoundError, OmnigentApiError, omnigentErrorCopy } from "@nova/adapters";
 import { ORPCError } from "@orpc/server";
 
 /** The RPC status an engine error code with client copy surfaces as. */

@@ -1,4 +1,4 @@
-import type { Post } from "@aiden/contracts";
+import type { Post } from "@nova/contracts";
 import { markdownToPlainText } from "../../../lib/markdown-plain-text";
 
 function startOfDay(date: Date): number {

@@ -7,13 +7,13 @@ import type {
   RealtimeFanout,
   SandboxProvider,
   TransactionalEmailProvider,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 import type {
   ComposioProvider,
   ConnectorRegistry,
   DestinationEmulator,
   RemoteConnectorDependencies,
-} from "@aiden/adapters";
+} from "@nova/adapters";
 import {
   applyMessagingOutboundStatus,
   ChatSdkMessagingSurface,
@@ -49,10 +49,10 @@ import {
   reconcileComputerUpdates,
   SmtpEmailProvider,
   sandboxProviderOptionsFromEnv,
-} from "@aiden/adapters";
-import { blockedAuthPaths, createAuth } from "@aiden/auth";
-import { signupAllowlistBootUpdate, signupPolicyFromEnv } from "@aiden/core";
-import type { Pool, PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import { blockedAuthPaths, createAuth } from "@nova/auth";
+import { signupAllowlistBootUpdate, signupPolicyFromEnv } from "@nova/core";
+import type { Pool, PrismaClient } from "@nova/db";
 import {
   createDb,
   createPool,
@@ -60,16 +60,16 @@ import {
   parsePositiveInteger,
   provisionMessagingIdentity,
   requireMembership,
-} from "@aiden/db";
-import type { Logger } from "@aiden/logging";
+} from "@nova/db";
+import type { Logger } from "@nova/logging";
 import {
   createServiceLogger,
   enrichLogContext,
   getLogger,
   installLogger,
   SERVICE_NAMES,
-} from "@aiden/logging";
-import { requestLogging } from "@aiden/logging/hono";
+} from "@nova/logging";
+import { requestLogging } from "@nova/logging/hono";
 import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
@@ -130,7 +130,7 @@ export async function createApp(
     ? { prisma: prismaOverride, pool: undefined }
     : createDb(env.databaseUrl, {
         poolMax: parsePositiveInteger(process.env.DB_POOL_MAX, 4),
-        applicationName: "aiden-api",
+        applicationName: "nova-api",
       });
   const { prisma } = created;
   const realtime =
@@ -193,7 +193,7 @@ export async function createApp(
   if (!inMemoryJobs && !created.pool) {
     ownedJobPool = createPool(env.databaseUrl, {
       poolMax: parsePositiveInteger(process.env.DB_POOL_MAX, 4),
-      applicationName: "aiden-api-jobs",
+      applicationName: "nova-api-jobs",
     });
   }
   const jobPool = created.pool ?? ownedJobPool;
@@ -302,7 +302,7 @@ export async function createApp(
     email,
     onEmailError: (error) => getLogger().error("transactional email delivery failed", error),
     extraOrigins: [
-      "aiden://",
+      "nova://",
       "exp://",
       "exp://*",
       "http://localhost:8081",
@@ -439,7 +439,7 @@ export async function createApp(
   mountLocalSettings(app, { token: env.desktopStackToken, prisma, rpc });
   app.use("/rpc/*", async (c, next) => {
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
-    const requestedSpaceId = c.req.header("x-aiden-space-id");
+    const requestedSpaceId = c.req.header("x-nova-space-id");
     const actor = session?.user
       ? await requireMembership(prisma, session.user.id, requestedSpaceId).catch(() => null)
       : null;
@@ -459,7 +459,7 @@ export async function createApp(
     const actor = await requireMembership(
       prisma,
       session.user.id,
-      c.req.header("x-aiden-space-id"),
+      c.req.header("x-nova-space-id"),
     ).catch(() => null);
     if (actor) enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     return actor;
@@ -594,7 +594,7 @@ export async function createApp(
 function isTrustedOrigin(origin: string, env: AppEnv) {
   if (!origin) return true;
   if (origin === env.webOrigin || origin === env.apiUrl || origin === env.authUrl) return true;
-  if (origin.startsWith("aiden://") || origin.startsWith("exp://")) return true;
+  if (origin.startsWith("nova://") || origin.startsWith("exp://")) return true;
   try {
     const host = new URL(origin).hostname;
     return isLoopbackHost(host);

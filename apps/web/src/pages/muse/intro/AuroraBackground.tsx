@@ -1,4 +1,4 @@
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
 import { useEffect, useRef } from "react";
 import type * as ThreeNamespace from "three";
 import { parseColor, supportsWebGL } from "../../../components/ai/webgl";

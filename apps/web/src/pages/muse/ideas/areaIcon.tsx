@@ -1,4 +1,4 @@
-import type { Idea, IllustrationKey } from "@aiden/contracts";
+import type { Idea, IllustrationKey } from "@nova/contracts";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,

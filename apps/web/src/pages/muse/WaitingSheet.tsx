@@ -1,6 +1,6 @@
-import type { Ask } from "@aiden/contracts";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import type { Ask } from "@nova/contracts";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@nova/ui-web";
 import { Check, Minus } from "lucide-react";
 import { useState } from "react";
 import { AskList, useAsks } from "./asks";

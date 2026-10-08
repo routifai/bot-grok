@@ -1,4 +1,4 @@
-import { RESPONSE_STREAMING_STORAGE_KEY } from "@aiden/core";
+import { RESPONSE_STREAMING_STORAGE_KEY } from "@nova/core";
 import { describe, expect, it } from "vitest";
 import {
   persistResponseStreamingPreference,

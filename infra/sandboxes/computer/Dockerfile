@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY infra/sandboxes/computer/xcapture.c .
-RUN cc -O3 -fPIC -shared -Wall -Wextra -Werror -o libaiden-xcapture.so xcapture.c \
+RUN cc -O3 -fPIC -shared -Wall -Wextra -Werror -o libnova-xcapture.so xcapture.c \
     -lX11 -lXext -lXdamage -lXfixes -lXtst -lpng
 
 # ── Omnigent runner builder ──────────────────────────────────────
@@ -90,39 +90,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     unzip \
   && rm -rf /var/lib/apt/lists/* \
-  && groupadd --gid 1000 aiden \
-  && useradd --uid 1000 --gid aiden --create-home --shell /bin/bash aiden \
-  && mkdir -p /etc/aiden/fluxbox \
+  && groupadd --gid 1000 nova \
+  && useradd --uid 1000 --gid nova --create-home --shell /bin/bash nova \
+  && mkdir -p /etc/nova/fluxbox \
   && printf '%s\n' '#!/bin/sh' 'exec xsetroot -solid "#111113" "$@"' > /usr/bin/fbsetbg \
   && chmod +x /usr/bin/fbsetbg \
   && ln -sfn /bin/true /usr/bin/xmessage
 ENV DISPLAY=:1
-ENV HOME=/home/aiden
-WORKDIR /home/aiden
+ENV HOME=/home/nova
+WORKDIR /home/nova
 # --chmod normalizes modes: a restrictive host umask (e.g. 077 on hardened hosts) would
 # otherwise leave these files unreadable to USER 1000 at runtime.
-COPY --chmod=755 infra/sandboxes/computer/start.sh /usr/local/bin/aiden-computer
-COPY --chmod=755 infra/sandboxes/computer/control.py /usr/local/bin/aiden-computer-control
-COPY --from=capture-builder /build/libaiden-xcapture.so /usr/local/lib/libaiden-xcapture.so
-COPY --chmod=755 infra/sandboxes/computer/aiden-browser /usr/local/bin/aiden-browser
-COPY --chmod=755 infra/sandboxes/computer/aiden-page-browser /usr/local/bin/aiden-page-browser
-COPY --chmod=755 infra/sandboxes/computer/aiden-recorder /usr/local/bin/aiden-recorder
-COPY --chmod=644 infra/sandboxes/computer/aiden-recorder.js /usr/local/share/aiden/aiden-recorder.js
-COPY --chmod=644 infra/sandboxes/computer/aiden-browser.desktop /usr/share/applications/aiden-browser.desktop
-COPY --chmod=644 infra/sandboxes/computer/fluxbox.init /etc/aiden/fluxbox/init
-COPY --chmod=644 infra/sandboxes/computer/fluxbox.apps /etc/aiden/fluxbox/apps
-COPY --chmod=644 infra/sandboxes/computer/fluxbox.menu /etc/aiden/fluxbox/menu
+COPY --chmod=755 infra/sandboxes/computer/start.sh /usr/local/bin/nova-computer
+COPY --chmod=755 infra/sandboxes/computer/control.py /usr/local/bin/nova-computer-control
+COPY --from=capture-builder /build/libnova-xcapture.so /usr/local/lib/libnova-xcapture.so
+COPY --chmod=755 infra/sandboxes/computer/nova-browser /usr/local/bin/nova-browser
+COPY --chmod=755 infra/sandboxes/computer/nova-page-browser /usr/local/bin/nova-page-browser
+COPY --chmod=755 infra/sandboxes/computer/nova-recorder /usr/local/bin/nova-recorder
+COPY --chmod=644 infra/sandboxes/computer/nova-recorder.js /usr/local/share/nova/nova-recorder.js
+COPY --chmod=644 infra/sandboxes/computer/nova-browser.desktop /usr/share/applications/nova-browser.desktop
+COPY --chmod=644 infra/sandboxes/computer/fluxbox.init /etc/nova/fluxbox/init
+COPY --chmod=644 infra/sandboxes/computer/fluxbox.apps /etc/nova/fluxbox/apps
+COPY --chmod=644 infra/sandboxes/computer/fluxbox.menu /etc/nova/fluxbox/menu
 COPY --chmod=644 infra/sandboxes/computer/embed.html /usr/share/novnc/embed.html
 COPY --chmod=644 infra/sandboxes/computer/clipboard-bridge.js /usr/share/novnc/clipboard-bridge.js
 COPY --chmod=644 infra/sandboxes/computer/mobile-keyboard.js /usr/share/novnc/mobile-keyboard.js
 # Login shells source this after Debian's /etc/profile resets PATH. The home
 # volume hides /etc/skel, so ~/.local/bin has to be restored from the image.
-COPY --chmod=644 infra/sandboxes/computer/aiden-local-bin.sh /etc/profile.d/aiden-local-bin.sh
+COPY --chmod=644 infra/sandboxes/computer/nova-local-bin.sh /etc/profile.d/nova-local-bin.sh
 
 # ── Omnigent runner + the Claude Code CLI ──────────────────────────
 # Lets the Nova "computer" sandbox launcher (docs/omnigent-spike.md,
 # engine/omnigent/omnigent/onboarding/sandboxes/computer.py) exec `omnigent host` in this image.
-# Installed OUTSIDE /home/aiden on purpose: that path is a per-Muse volume mount (empty on first
+# Installed OUTSIDE /home/nova on purpose: that path is a per-Muse volume mount (empty on first
 # run), so anything baked into the image's own copy of it would never actually be there at
 # runtime — see engine/omnigent/deploy/docker/Dockerfile's host target for the same pattern.
 #
@@ -158,10 +158,10 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # COPY --chmod=644 also gives the directory it creates mode 644 (no search bit), which left
 # the recorder's page script unreadable to USER 1000.
 RUN ldconfig \
-  && chmod 755 /usr/local/share/aiden \
-  && sed -i 's/\r$//' /usr/local/bin/aiden-computer /usr/local/bin/aiden-computer-control /usr/local/bin/aiden-browser /usr/local/bin/aiden-page-browser /usr/local/bin/aiden-recorder \
-    /etc/aiden/fluxbox/init /etc/aiden/fluxbox/apps /etc/aiden/fluxbox/menu \
-    /etc/profile.d/aiden-local-bin.sh
+  && chmod 755 /usr/local/share/nova \
+  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-recorder \
+    /etc/nova/fluxbox/init /etc/nova/fluxbox/apps /etc/nova/fluxbox/menu \
+    /etc/profile.d/nova-local-bin.sh
 EXPOSE 7070 6080 6081 6082 6083 6084 6085 6086 6087 6088 6089 6090 6091 6092 6093 6094 6095
 USER 1000:1000
-CMD ["/usr/local/bin/aiden-computer"]
+CMD ["/usr/local/bin/nova-computer"]

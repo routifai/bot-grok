@@ -3,7 +3,7 @@ import { captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
 
 test("composer / picker lists skills above actions", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `slash-skills-${stamp}@aiden.test`, "password12", "Slash Skills");
+  await signup(page, `slash-skills-${stamp}@nova.test`, "password12", "Slash Skills");
   await completeOnboarding(page);
   await page.goto("/app");
   await page.waitForURL(/\/app\/[^/]+$/);

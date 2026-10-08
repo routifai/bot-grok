@@ -1,5 +1,5 @@
-import type { SpaceBot, SpaceGroup } from "@aiden/contracts";
-import { groupBotsForSidebar, nestRosterByParent } from "@aiden/core";
+import type { SpaceBot, SpaceGroup } from "@nova/contracts";
+import { groupBotsForSidebar, nestRosterByParent } from "@nova/core";
 import {
   adoptDeletedSpaceFallback,
   type MobileBot,

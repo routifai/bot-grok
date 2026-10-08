@@ -1,4 +1,4 @@
-import type { TransactionalEmail, TransactionalEmailProvider } from "@aiden/adapter-kit";
+import type { TransactionalEmail, TransactionalEmailProvider } from "@nova/adapter-kit";
 import {
   allowlistedSignupAdmission,
   emailAllowed,
@@ -6,8 +6,8 @@ import {
   isMessagingEmail,
   parseAllowlist,
   signupPolicyFromEnv,
-} from "@aiden/core";
-import { bootstrapUserSpace, type PrismaClient } from "@aiden/db";
+} from "@nova/core";
+import { bootstrapUserSpace, type PrismaClient } from "@nova/db";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware } from "better-auth/api";
@@ -206,7 +206,7 @@ async function claimUnverifiedFirstAccount(prisma: PrismaClient, userId: string)
 
 export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   return betterAuth({
-    appName: "Aiden",
+    appName: "Nova",
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: buildTrustedOrigins(env),
@@ -416,9 +416,9 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
 export function verificationEmail(email: string, url: string): TransactionalEmail {
   return {
     to: email,
-    subject: "Verify your Aiden email",
-    text: `Verify your email, then return to Aiden to sign in:\n\n${url}\n\nThis link expires in one hour. If you did not register, ignore this email.`,
-    html: `<p><a href="${escapeHtml(url)}">Verify email</a>, then return to Aiden to sign in.</p><p>This link expires in one hour. If you did not register, ignore this email.</p>`,
+    subject: "Verify your Nova email",
+    text: `Verify your email, then return to Nova to sign in:\n\n${url}\n\nThis link expires in one hour. If you did not register, ignore this email.`,
+    html: `<p><a href="${escapeHtml(url)}">Verify email</a>, then return to Nova to sign in.</p><p>This link expires in one hour. If you did not register, ignore this email.</p>`,
   };
 }
 
@@ -431,16 +431,16 @@ export function passwordResetEmail(
   const safeUrl = escapeHtml(resetUrl);
   return {
     to: user.email,
-    subject: "Reset your Aiden password",
+    subject: "Reset your Nova password",
     text: [
       `Hi ${name},`,
       "",
-      "Reset your Aiden password using this link:",
+      "Reset your Nova password using this link:",
       resetUrl,
       "",
       "This link expires in one hour. If you did not request this, you can ignore this email.",
     ].join("\n"),
-    html: `<p>Hi ${safeName},</p><p>Reset your Aiden password:</p><p><a href="${safeUrl}">Reset password</a></p><p>This link expires in one hour. If you did not request this, you can ignore this email.</p>`,
+    html: `<p>Hi ${safeName},</p><p>Reset your Nova password:</p><p><a href="${safeUrl}">Reset password</a></p><p>This link expires in one hour. If you did not request this, you can ignore this email.</p>`,
   };
 }
 

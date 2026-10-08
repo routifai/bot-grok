@@ -1,5 +1,5 @@
-import type { ActivitySource } from "@aiden/contracts";
-import type { ToolIconKey } from "@aiden/core";
+import type { ActivitySource } from "@nova/contracts";
+import type { ToolIconKey } from "@nova/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,

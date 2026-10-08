@@ -1,4 +1,4 @@
-import type { TaughtSkill, ThreadSnapshot } from "@aiden/contracts";
+import type { TaughtSkill, ThreadSnapshot } from "@nova/contracts";
 import {
   type Dispatch,
   type MutableRefObject,

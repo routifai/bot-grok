@@ -1,5 +1,5 @@
-import type { Bot, Group } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
+import type { Bot, Group } from "@nova/contracts";
 import { ORPCError } from "@orpc/client";
 import { rpc } from "../../../lib/rpc";
 import { ClearConversationDialog } from "../../shell/dialogs";

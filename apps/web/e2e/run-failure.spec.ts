@@ -3,7 +3,7 @@ import { captureScreenshot, completeOnboarding, signup } from "./helpers";
 
 test("a failed run is visible once without returning after reload", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `run-failure-${stamp}@aiden.test`, "password12", "Run Failure");
+  await signup(page, `run-failure-${stamp}@nova.test`, "password12", "Run Failure");
   await completeOnboarding(page);
 
   // "fail this run" makes the scripted runtime throw, so the run fails the same way a

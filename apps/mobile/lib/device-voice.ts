@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 
-export const DEVICE_VOICE_KEY = "aiden.device-voice";
+export const DEVICE_VOICE_KEY = "nova.device-voice";
 
 export async function loadDeviceVoiceEnabled(): Promise<boolean> {
   return (await SecureStore.getItemAsync(DEVICE_VOICE_KEY)) === "1";

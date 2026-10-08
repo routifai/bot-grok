@@ -19,7 +19,7 @@ from tests.server.helpers import create_test_agent
 pytestmark = pytest.mark.asyncio
 
 _HOST = "3f866cafac81246fb60ae6ceb1a738da"
-_ROOT = "/home/aiden/workspace"
+_ROOT = "/home/nova/workspace"
 _PROJECT = f"{_ROOT}/projects/q3-deck"
 
 

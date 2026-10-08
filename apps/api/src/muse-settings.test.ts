@@ -1,5 +1,5 @@
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { RPCHandler } from "@orpc/server/fetch";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
@@ -8,7 +8,7 @@ import { createRouter, type RouterDeps } from "./router.js";
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@aiden.test",
+  email: "user@nova.test",
   isDeploymentOwner: true,
 };
 
@@ -32,7 +32,7 @@ function museSettingsDeps(botRow: BotRow | null) {
       screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
-    dataDir: "/tmp/aiden-muse-settings-test",
+    dataDir: "/tmp/nova-muse-settings-test",
   } as unknown as RouterDeps;
   return { findFirst, update, deps, handler: new RPCHandler(createRouter(deps)) };
 }
@@ -194,7 +194,7 @@ describe("Muse settings on the engine", () => {
     const update = vi.fn(async () => bot);
     const prisma = {
       bot: { findFirst: vi.fn(async () => bot), update },
-      user: { findUnique: vi.fn(async () => ({ email: "user@aiden.test" })) },
+      user: { findUnique: vi.fn(async () => ({ email: "user@nova.test" })) },
     } as unknown as PrismaClient;
     return { deps: { prisma }, update };
   }

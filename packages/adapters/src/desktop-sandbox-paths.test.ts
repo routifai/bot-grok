@@ -4,25 +4,25 @@ import { isAllowedDesktopPath, normalizeDesktopWorkspacePath } from "./desktop-s
 
 describe("desktop sandbox path rules", () => {
   it("compares Windows roots case-insensitively without accepting siblings or other drives", () => {
-    const roots = ["C:\\Users\\Owner\\Aiden\\bot"];
+    const roots = ["C:\\Users\\Owner\\Nova\\bot"];
 
-    expect(isAllowedDesktopPath("c:\\users\\owner\\aiden\\BOT\\notes.txt", roots, path.win32)).toBe(
+    expect(isAllowedDesktopPath("c:\\users\\owner\\nova\\BOT\\notes.txt", roots, path.win32)).toBe(
       true,
     );
     expect(
-      isAllowedDesktopPath("C:\\Users\\Owner\\Aiden\\bot-other\\notes.txt", roots, path.win32),
+      isAllowedDesktopPath("C:\\Users\\Owner\\Nova\\bot-other\\notes.txt", roots, path.win32),
     ).toBe(false);
     expect(isAllowedDesktopPath("D:\\notes.txt", roots, path.win32)).toBe(false);
   });
 
   it("handles explicitly allowed UNC roots without accepting sibling shares", () => {
-    const roots = ["\\\\server\\share\\aiden\\bot"];
+    const roots = ["\\\\server\\share\\nova\\bot"];
 
+    expect(isAllowedDesktopPath("\\\\SERVER\\share\\nova\\BOT\\notes.txt", roots, path.win32)).toBe(
+      true,
+    );
     expect(
-      isAllowedDesktopPath("\\\\SERVER\\share\\aiden\\BOT\\notes.txt", roots, path.win32),
-    ).toBe(true);
-    expect(
-      isAllowedDesktopPath("\\\\server\\share-other\\aiden\\bot\\notes.txt", roots, path.win32),
+      isAllowedDesktopPath("\\\\server\\share-other\\nova\\bot\\notes.txt", roots, path.win32),
     ).toBe(false);
   });
 

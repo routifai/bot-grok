@@ -1,8 +1,8 @@
 const OAUTH_POPUP_NAMES = new Set([
-  "aiden-app-connect",
-  "aiden-mcp-oauth",
-  "aiden-model-oauth",
-  "aiden-plugin-connect",
+  "nova-app-connect",
+  "nova-mcp-oauth",
+  "nova-model-oauth",
+  "nova-plugin-connect",
 ]);
 
 export function shouldOpenInAppPopup(

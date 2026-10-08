@@ -872,7 +872,7 @@ model Idea {
   /// 1-3 sentence explanation of concretely what the Muse would do. Nullable so rows
   /// from before this field existed keep parsing.
   detail       String?
-  /// Bundled 3D illustration key for this Idea's row (see @aiden/contracts
+  /// Bundled 3D illustration key for this Idea's row (see @nova/contracts
   /// IllustrationKeySchema). Nullable: older rows and unrecognized model output fall
   /// back to an area-keyed default on the client.
   illustration String?

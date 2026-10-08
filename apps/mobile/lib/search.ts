@@ -1,4 +1,4 @@
-import type { SearchHit } from "@aiden/contracts";
+import type { SearchHit } from "@nova/contracts";
 import { rpc } from "./api";
 
 export async function querySpaceSearch(q: string): Promise<SearchHit[]> {

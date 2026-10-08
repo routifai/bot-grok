@@ -1,10 +1,10 @@
 /**
  * Re-export shared choreography for Reanimated worklets.
- * Source of truth: `@aiden/core` (`avatar-motion.ts`), mirrored by web CSS.
+ * Source of truth: `@nova/core` (`avatar-motion.ts`), mirrored by web CSS.
  */
 export {
   WORKING_AVATAR_DURATIONS_MS,
   type WorkingAvatarFrame,
   workingAvatarDuration,
   workingAvatarFrame,
-} from "@aiden/core";
+} from "@nova/core";

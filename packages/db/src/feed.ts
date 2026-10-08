@@ -1,4 +1,4 @@
-import type { FollowedTopic, Post, PostKind } from "@aiden/contracts";
+import type { FollowedTopic, Post, PostKind } from "@nova/contracts";
 import type { PrismaClient } from "./client.js";
 
 // Repository for Post / FollowedTopic (CONTEXT.md "Feed", "Post", "Followed topic";

@@ -1,5 +1,5 @@
-import type { Bot, ThreadMessage, ThreadSnapshot, VoiceStatus } from "@aiden/contracts";
-import { speechFromBlocks } from "@aiden/core";
+import type { Bot, ThreadMessage, ThreadSnapshot, VoiceStatus } from "@nova/contracts";
+import { speechFromBlocks } from "@nova/core";
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { speaker } from "../../../lib/tts";

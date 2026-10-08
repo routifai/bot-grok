@@ -1,6 +1,6 @@
-import type { AdapterContext } from "@aiden/adapter-kit";
-import type { Actor, Me } from "@aiden/contracts";
-import { findDefaultModelCredential } from "@aiden/db";
+import type { AdapterContext } from "@nova/adapter-kit";
+import type { Actor, Me } from "@nova/contracts";
+import { findDefaultModelCredential } from "@nova/db";
 
 import type { RouterDeps } from "./context.js";
 

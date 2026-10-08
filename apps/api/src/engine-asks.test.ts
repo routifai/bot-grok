@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@aiden/db";
+import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { engineAnswerAsk, engineListAsks, isEngineAskId } from "./engine-asks.js";
 

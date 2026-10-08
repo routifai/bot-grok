@@ -1,4 +1,4 @@
-import type { IntegrationCatalogResult, IntegrationCatalogSurface } from "@aiden/contracts";
+import type { IntegrationCatalogResult, IntegrationCatalogSurface } from "@nova/contracts";
 
 const RESPONSE_LIMIT = 1_000_000;
 const SEARCH_LIMIT = 8;

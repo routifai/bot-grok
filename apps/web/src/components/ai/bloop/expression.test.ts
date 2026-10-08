@@ -1,4 +1,4 @@
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { bloopPalette, NEUTRAL_POSE, poseFor, shade } from "./expression";
 

@@ -1,7 +1,7 @@
-import type { JobPublisher, MessagingInboundMessage } from "@aiden/adapter-kit";
-import { messagingDeliverJob, runContinueJob } from "@aiden/adapter-kit";
-import type { MessageBlock } from "@aiden/contracts";
-import { parseMessagingCommand, sanitizeMessagingLabel } from "@aiden/core";
+import type { JobPublisher, MessagingInboundMessage } from "@nova/adapter-kit";
+import { messagingDeliverJob, runContinueJob } from "@nova/adapter-kit";
+import type { MessageBlock } from "@nova/contracts";
+import { parseMessagingCommand, sanitizeMessagingLabel } from "@nova/core";
 import type {
   MessagingIdentityRequest,
   Prisma,
@@ -9,13 +9,9 @@ import type {
   ProvisionedMessagingIdentity,
   SignupPolicyEnv,
   ThreadEvents,
-} from "@aiden/db";
-import {
-  createThreadMessage,
-  normalizeMessagingLinkCode,
-  redeemMessagingLinkCode,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { createThreadMessage, normalizeMessagingLinkCode, redeemMessagingLinkCode } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import {
   deliverWebhookEvent,
   formatUntrustedDeliveryPayload,
@@ -471,7 +467,7 @@ async function handleChannelEvent(
           idempotencyKey: `intro:${channel.id}`,
           kind: "intro",
           threadId: channel.threadId,
-          body: "Hi. This line hosts Aiden personal agents. Some people in this group haven't messaged it yet; send any message to this line first if you want your own agent here.",
+          body: "Hi. This line hosts Nova personal agents. Some people in this group haven't messaged it yet; send any message to this line first if you want your own agent here.",
         },
       ],
       skipDuplicates: true,
@@ -562,7 +558,7 @@ async function inviteMember(
         idempotencyKey: `invite:${channel.id}:${identity.id}`,
         kind: "dm",
         identityId: identity.id,
-        body: `"${name}" was linked to your Aiden agent. Reply YES to let your agent join the conversation there, or NO to stay out.`,
+        body: `"${name}" was linked to your Nova agent. Reply YES to let your agent join the conversation there, or NO to stay out.`,
       },
     ],
     skipDuplicates: true,

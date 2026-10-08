@@ -2,14 +2,14 @@
 
 # Computer runtime
 
-Aiden keeps the agent runtime and the computer runtime separate:
+Nova keeps the agent runtime and the computer runtime separate:
 
 ```text
 chat/API -> Omnigent engine -> runner in the Computer -> SandboxProvider -> Docker / E2B / Daytona / Box
                                                    |-> Docker
                                                    |-> desktop/fake
 
-SandboxProvider workspace <-> AgentHomeStore <-> Aiden-owned DATA_DIR
+SandboxProvider workspace <-> AgentHomeStore <-> Nova-owned DATA_DIR
 ```
 
 The engine runs the model loop in a runner inside the Computer. Screen operation requires a model that can accept image tool results and reason about screenshots.
@@ -51,15 +51,15 @@ The database stores the provider kind and opaque `providerRef`. That reference i
 
 ## Box backend
 
-The Box adapter uses ASCII's official TypeScript SDK for lifecycle, command, and file operations. It creates and resumes boxes with `noEnv: true`, as required when a third party supplies the API key, and keeps a two-hour TTL refreshed while the computer is active. The shared runtime creates each bot's display and noVNC transports, exposed through protected Box port hosting. Aiden's encrypted screen capability proxy binds the view/control policy and keeps the provider credentials out of browser-visible URLs. Observations and actions target the assigned bot display.
+The Box adapter uses ASCII's official TypeScript SDK for lifecycle, command, and file operations. It creates and resumes boxes with `noEnv: true`, as required when a third party supplies the API key, and keeps a two-hour TTL refreshed while the computer is active. The shared runtime creates each bot's display and noVNC transports, exposed through protected Box port hosting. Nova's encrypted screen capability proxy binds the view/control policy and keeps the provider credentials out of browser-visible URLs. Observations and actions target the assigned bot display.
 
 Box stop archives the machine and resume reconnects the same opaque box id. Each bot’s Chrome profile lives under the portable workspace and is included in checkpoint/export. The Box emulator uses the same multi-screen contract as the other managed-provider emulators.
 
 ## Persistence
 
-The portable computer workspace is the durable boundary. E2B uses `/home/user/aiden-home`; Docker and local providers expose the equivalent home. Browser profiles are rooted under `.browser-profiles` in that workspace on E2B. Aiden checkpoints transferred workspaces into `AgentHomeStore` at run completion or failure, before explicit stop, and before idle suspension. Docker mounts the Aiden-owned home directly and only advances its revision marker at those boundaries. New or replacement machines import the latest stored workspace before use.
+The portable computer workspace is the durable boundary. E2B uses `/home/user/nova-home`; Docker and local providers expose the equivalent home. Browser profiles are rooted under `.browser-profiles` in that workspace on E2B. Nova checkpoints transferred workspaces into `AgentHomeStore` at run completion or failure, before explicit stop, and before idle suspension. Docker mounts the Nova-owned home directly and only advances its revision marker at those boundaries. New or replacement machines import the latest stored workspace before use.
 
-`LocalAgentHomeStore` currently keeps the latest workspace under `DATA_DIR/homes/<computer-home-key>` and checkpoint metadata separately under `DATA_DIR/home-revisions`. Replacements are staged before the current copy is swapped, and checkpoints are serialized per computer. This implementation is latest-only rather than an immutable revision archive. Production deployments must put `DATA_DIR` on a Aiden-owned persistent volume, encrypt that volume at rest, and include it in off-host backups. The storage interface is deliberately independent of E2B so an object-store-backed implementation can replace the local volume without changing agent tools or sandbox providers.
+`LocalAgentHomeStore` currently keeps the latest workspace under `DATA_DIR/homes/<computer-home-key>` and checkpoint metadata separately under `DATA_DIR/home-revisions`. Replacements are staged before the current copy is swapped, and checkpoints are serialized per computer. This implementation is latest-only rather than an immutable revision archive. Production deployments must put `DATA_DIR` on a Nova-owned persistent volume, encrypt that volume at rest, and include it in off-host backups. The storage interface is deliberately independent of E2B so an object-store-backed implementation can replace the local volume without changing agent tools or sandbox providers.
 
 Before exporting a remote workspace, remote backends quiesce desktop browsers so profile databases and login state are copied consistently. Run checkpoints defer while another bot holds an execution or user-control lease; the last finishing run or idle job saves the shared workspace. Idle shutdown claims the computer before exporting, preventing a new bot from starting during the snapshot. They exclude only transient cache/lock files inside `.browser-profiles`; similarly named project files remain durable.
 
@@ -71,7 +71,7 @@ Offline tests cover provider conformance, workspace checkpoint/restore, provider
 
 ### Docker desktop lifecycle regression
 
-Build the computer image, then run `VERIFY_DOCKER_TEAM_SCREENS=1 pnpm exec vitest run infra/sandboxes/supervisor/src/team-desktops.docker.test.ts`. Set `AIDEN_COMPUTER_IMAGE` to select a prebuilt image. The test uses an isolated Docker container with networking disabled and fake browser state; it verifies parallel Chrome desktops visiting local fixture sites, independent cookies, profile persistence after release, transport teardown, and rejection of old view/control tokens after slot reuse. It runs both Docker supervision and the command path used by remote providers. Default unit tests exercise profile persistence, allocation, and lease fencing offline without Docker.
+Build the computer image, then run `VERIFY_DOCKER_TEAM_SCREENS=1 pnpm exec vitest run infra/sandboxes/supervisor/src/team-desktops.docker.test.ts`. Set `NOVA_COMPUTER_IMAGE` to select a prebuilt image. The test uses an isolated Docker container with networking disabled and fake browser state; it verifies parallel Chrome desktops visiting local fixture sites, independent cookies, profile persistence after release, transport teardown, and rejection of old view/control tokens after slot reuse. It runs both Docker supervision and the command path used by remote providers. Default unit tests exercise profile persistence, allocation, and lease fencing offline without Docker.
 
 ## Computer maintenance
 

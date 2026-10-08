@@ -1,4 +1,5 @@
-import type { AgentSkillCatalogEntry, ThreadMessage } from "@aiden/contracts";
+import { useLingui } from "@lingui/react/macro";
+import type { AgentSkillCatalogEntry, ThreadMessage } from "@nova/contracts";
 import {
   type ComposerMention,
   clampMentionHighlightIndex,
@@ -8,9 +9,8 @@ import {
   type SlashActionId,
   serializeComposerPrompt,
   truncateSlashDescription,
-} from "@aiden/core";
-import { Button, cn } from "@aiden/ui-web";
-import { useLingui } from "@lingui/react/macro";
+} from "@nova/core";
+import { Button, cn } from "@nova/ui-web";
 import { ArrowUp, Box, Mic, Paperclip, Plus, Settings, Square, X } from "lucide-react";
 import {
   type ClipboardEvent,

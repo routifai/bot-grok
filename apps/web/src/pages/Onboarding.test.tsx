@@ -41,7 +41,7 @@ vi.mock("@lingui/react/macro", () => {
     parts.reduce((acc, part, i) => acc + part + (i < values.length ? String(values[i]) : ""), "");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
-vi.mock("@aiden/ui-web", () => {
+vi.mock("@nova/ui-web", () => {
   const Container = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
@@ -56,7 +56,7 @@ vi.mock("@aiden/ui-web", () => {
   };
 });
 
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
 import { OnboardingPage } from "./Onboarding";
 
 function baseMe(overrides: Partial<Record<string, unknown>> = {}) {

@@ -1,4 +1,4 @@
-import type { Actor } from "@aiden/contracts";
+import type { Actor } from "@nova/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
 import { createRepos } from "./repos.js";

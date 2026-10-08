@@ -1,9 +1,9 @@
-import type * as db from "@aiden/db";
+import type * as db from "@nova/db";
 import { describe, expect, it, vi } from "vitest";
 import { chooseFocus, markAppConnected, promptFocus } from "./onboarding.js";
 
 const posted = vi.hoisted(() => [] as Array<{ blocks: unknown[] }>);
-vi.mock("@aiden/db", async (original) => ({
+vi.mock("@nova/db", async (original) => ({
   ...(await original<typeof db>()),
   createThreadMessageInTransaction: vi.fn(async (_tx, input) => {
     posted.push(input);
@@ -31,7 +31,7 @@ function fixture(catalog: unknown[]) {
   const actor = {
     userId: "user",
     spaceId: "space",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: true,
   };
   return { deps, actor, tx };
@@ -55,7 +55,7 @@ function promptFixture() {
   const actor = {
     userId: "user",
     spaceId: "space",
-    email: "user@aiden.test",
+    email: "user@nova.test",
     isDeploymentOwner: true,
   };
   return { deps, actor, tx };

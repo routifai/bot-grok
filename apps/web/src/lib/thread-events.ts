@@ -6,7 +6,7 @@ import type {
   ThreadMessage,
   ThreadMessagePage,
   ThreadSnapshot,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   isActive,
   isRunTerminalEvent,
@@ -19,7 +19,7 @@ import {
   takeLiveMessage,
   updateCloudAgentMessages,
   upsertMessageById,
-} from "@aiden/core";
+} from "@nova/core";
 
 const runTriggers = new Set<Run["trigger"]>([
   "user",

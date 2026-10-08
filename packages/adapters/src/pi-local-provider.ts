@@ -13,13 +13,13 @@ import { declaredVisionModelIds, inputModalities } from "./model-modalities.js";
  * Pi's built-in catalog only ships hosted providers, so a model running on the
  * operator's own machine has no catalog entry to select. This registers one
  * from environment configuration. Servers that need a key (a LiteLLM proxy, for
- * example) get `AIDEN_LOCAL_MODELS_API_KEY`; keyless ones get a placeholder, because
+ * example) get `NOVA_LOCAL_MODELS_API_KEY`; keyless ones get a placeholder, because
  * Models treats a provider with no resolvable auth as unconfigured and hides its models.
  */
 export const LOCAL_PROVIDER_ID = "local";
 
 /** Model ids the local server serves with vision, declared by the operator. */
-export const LOCAL_VISION_MODELS_ENV = "AIDEN_LOCAL_VISION_MODELS";
+export const LOCAL_VISION_MODELS_ENV = "NOVA_LOCAL_VISION_MODELS";
 
 export function localVisionModelIds(): ReadonlySet<string> {
   return declaredVisionModelIds(LOCAL_VISION_MODELS_ENV);
@@ -30,15 +30,15 @@ const DEFAULT_CONTEXT_WINDOW = 32_768;
 const DEFAULT_MAX_TOKENS = 4_096;
 
 export function localBaseUrl(): string {
-  const value = process.env.AIDEN_LOCAL_MODELS_URL?.trim() || DEFAULT_BASE_URL;
+  const value = process.env.NOVA_LOCAL_MODELS_URL?.trim() || DEFAULT_BASE_URL;
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error("AIDEN_LOCAL_MODELS_URL must be an absolute HTTP(S) URL");
+    throw new Error("NOVA_LOCAL_MODELS_URL must be an absolute HTTP(S) URL");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("AIDEN_LOCAL_MODELS_URL must be an absolute HTTP(S) URL");
+    throw new Error("NOVA_LOCAL_MODELS_URL must be an absolute HTTP(S) URL");
   }
   return value;
 }
@@ -62,7 +62,7 @@ function tokenLimit(name: string, fallback: number): number {
 
 /** Comma-separated model ids exactly as the local server names them. */
 function localModelIds(): string[] {
-  return (process.env.AIDEN_LOCAL_MODELS ?? "")
+  return (process.env.NOVA_LOCAL_MODELS ?? "")
     .split(",")
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
@@ -80,8 +80,8 @@ function localModel(id: string): Model<"openai-completions"> {
     input: inputModalities(localVisionModelIds().has(id)),
     // Runs on the operator's own hardware, so there is nothing to bill.
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: tokenLimit("AIDEN_LOCAL_CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW),
-    maxTokens: tokenLimit("AIDEN_LOCAL_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+    contextWindow: tokenLimit("NOVA_LOCAL_CONTEXT_WINDOW", DEFAULT_CONTEXT_WINDOW),
+    maxTokens: tokenLimit("NOVA_LOCAL_MAX_TOKENS", DEFAULT_MAX_TOKENS),
   };
 }
 
@@ -98,7 +98,7 @@ export function localProvider(): Provider | undefined {
         name: "Local model server",
         resolve: async () => ({
           auth: {
-            apiKey: process.env.AIDEN_LOCAL_MODELS_API_KEY?.trim() || "local",
+            apiKey: process.env.NOVA_LOCAL_MODELS_API_KEY?.trim() || "local",
             baseUrl: localBaseUrl(),
           },
           source: "local model server",

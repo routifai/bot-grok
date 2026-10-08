@@ -1,7 +1,7 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { ChatSummary, ThreadMessage } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
 import { Trans } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { ChatSummary, ThreadMessage } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { ArrowLeft } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { copyableMessageText } from "../../../lib/message-text";

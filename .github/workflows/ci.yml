@@ -28,9 +28,9 @@ jobs:
       - run: pnpm lint
       - name: Translation catalogs are up to date
         run: |
-          pnpm --filter @aiden/web intl:extract
+          pnpm --filter @nova/web intl:extract
           git diff --exit-code -- apps/web/src/locales || {
-            echo "::error::Run 'pnpm --filter @aiden/web intl:extract' and commit the catalogs."
+            echo "::error::Run 'pnpm --filter @nova/web intl:extract' and commit the catalogs."
             exit 1
           }
 
@@ -49,7 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
         env:
-          DATABASE_URL: postgres://aiden:aiden@127.0.0.1:5433/aiden
+          DATABASE_URL: postgres://nova:nova@127.0.0.1:5433/nova
       - run: pnpm check
 
   build:
@@ -68,11 +68,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
         env:
-          DATABASE_URL: postgres://aiden:aiden@127.0.0.1:5433/aiden
+          DATABASE_URL: postgres://nova:nova@127.0.0.1:5433/nova
           BETTER_AUTH_SECRET: ci-build-auth-secret-at-least-32-characters
           ENCRYPTION_KEY: ci-build-encryption-key-at-least-32-characters
       - name: Electron smoke
-        run: xvfb-run --auto-servernum pnpm --filter @aiden/desktop exec playwright test --config e2e/playwright.config.ts
+        run: xvfb-run --auto-servernum pnpm --filter @nova/desktop exec playwright test --config e2e/playwright.config.ts
       - name: Upload desktop setup screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -96,7 +96,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
         env:
-          DATABASE_URL: postgres://aiden:aiden@127.0.0.1:5433/aiden
+          DATABASE_URL: postgres://nova:nova@127.0.0.1:5433/nova
       - run: pnpm test
 
   test-integration:
@@ -228,7 +228,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           if [[ -z "$EXPO_TOKEN" ]]; then
-            echo "Add an EXPO_TOKEN repository secret with access to the inbox-zero/aiden Expo project." >&2
+            echo "Add an EXPO_TOKEN repository secret with access to the inbox-zero/nova Expo project." >&2
             exit 1
           fi
 
@@ -251,7 +251,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify mobile project
         if: steps.ota.outputs.publish == 'true'
-        run: pnpm --filter @aiden/mobile check
+        run: pnpm --filter @nova/mobile check
       - name: Publish production update
         if: steps.ota.outputs.publish == 'true'
         working-directory: apps/mobile
@@ -294,10 +294,10 @@ jobs:
           test -n "$SSH_PRIVATE_KEY"
           test -n "$SSH_KNOWN_HOSTS"
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/aiden-production"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/nova-production"
           printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/aiden-production" "$HOME/.ssh/known_hosts"
-          ssh-keygen -y -f "$HOME/.ssh/aiden-production" >/dev/null
+          chmod 600 "$HOME/.ssh/nova-production" "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -f "$HOME/.ssh/nova-production" >/dev/null
 
       - name: Deploy successful main revision
         env:
@@ -307,7 +307,7 @@ jobs:
           test -n "$SSH_HOST"
           test -n "$SSH_USER"
           ssh -F /dev/null \
-            -i "$HOME/.ssh/aiden-production" \
+            -i "$HOME/.ssh/nova-production" \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o IdentitiesOnly=yes \

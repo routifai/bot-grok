@@ -1,7 +1,7 @@
-import type { SandboxProvider } from "@aiden/adapter-kit";
-import type { Actor, MessageBlock } from "@aiden/contracts";
-import type * as MessageQuoteModule from "@aiden/core/message-quote";
-import type { PrismaClient } from "@aiden/db";
+import type { SandboxProvider } from "@nova/adapter-kit";
+import type { Actor, MessageBlock } from "@nova/contracts";
+import type * as MessageQuoteModule from "@nova/core/message-quote";
+import type { PrismaClient } from "@nova/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   cancelSupersededQueuedRuns,
@@ -15,7 +15,7 @@ import {
 
 // Passthrough mock: every hint derives for real except the sentinel that
 // exercises the "derivation must never cost the send" path.
-vi.mock("@aiden/core/message-quote", async (importOriginal) => {
+vi.mock("@nova/core/message-quote", async (importOriginal) => {
   const actual = await importOriginal<typeof MessageQuoteModule>();
   return {
     ...actual,
@@ -2927,14 +2927,14 @@ describe("stopThreadRuns", () => {
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ providerRef: "computer-team" }),
       expect.objectContaining({
-        argv: expect.arrayContaining(["aiden-cancel-run-work", "computer-db-team", "run-a"]),
+        argv: expect.arrayContaining(["nova-cancel-run-work", "computer-db-team", "run-a"]),
       }),
       expect.objectContaining({ cancelRunWork: true, runId: "run-a", botId: "bot-a" }),
     );
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ providerRef: "computer-team" }),
       expect.objectContaining({
-        argv: expect.arrayContaining(["aiden-cancel-run-work", "computer-db-team", "run-b"]),
+        argv: expect.arrayContaining(["nova-cancel-run-work", "computer-db-team", "run-b"]),
       }),
       expect.objectContaining({ cancelRunWork: true, runId: "run-b", botId: "bot-b" }),
     );
@@ -3051,14 +3051,14 @@ describe("stopThreadRuns", () => {
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ providerRef: "computer-a" }),
       expect.objectContaining({
-        argv: expect.arrayContaining(["aiden-cancel-run-work", "computer-db-a", "run-a"]),
+        argv: expect.arrayContaining(["nova-cancel-run-work", "computer-db-a", "run-a"]),
       }),
       expect.objectContaining({ cancelRunWork: true, runId: "run-a", botId: "bot-a" }),
     );
     expect(execute).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        argv: expect.arrayContaining(["aiden-cancel-run-work", "computer-db-a", "run-b"]),
+        argv: expect.arrayContaining(["nova-cancel-run-work", "computer-db-a", "run-b"]),
       }),
       expect.anything(),
     );

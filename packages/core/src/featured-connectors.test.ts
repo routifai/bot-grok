@@ -1,4 +1,4 @@
-import type { ConnectionCatalogItem } from "@aiden/contracts";
+import type { ConnectionCatalogItem } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import {
   buildFeaturedConnectorTiles,

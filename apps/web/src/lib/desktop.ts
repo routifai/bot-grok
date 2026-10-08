@@ -1,19 +1,19 @@
-import type { AidenDesktop, AidenDesktopOAuthCallback } from "@aiden/contracts";
+import type { NovaDesktop, NovaDesktopOAuthCallback } from "@nova/contracts";
 
-export type { AidenDesktop, AidenDesktopOAuthCallback } from "@aiden/contracts";
+export type { NovaDesktop, NovaDesktopOAuthCallback } from "@nova/contracts";
 
 declare global {
   interface Window {
-    aidenDesktop?: AidenDesktop;
+    novaDesktop?: NovaDesktop;
   }
 }
 
-export function desktopBridge(): AidenDesktop | undefined {
-  return typeof window === "undefined" ? undefined : window.aidenDesktop;
+export function desktopBridge(): NovaDesktop | undefined {
+  return typeof window === "undefined" ? undefined : window.novaDesktop;
 }
 
 /** The compact `code#state` form the manual paste flow already accepts. */
-export function desktopOAuthCode(callback: AidenDesktopOAuthCallback) {
+export function desktopOAuthCode(callback: NovaDesktopOAuthCallback) {
   return callback.state === undefined ? callback.code : `${callback.code}#${callback.state}`;
 }
 
@@ -51,7 +51,7 @@ export function onDesktopOAuthCallback(
   });
 }
 
-export function windowChromeKind(desktop?: AidenDesktop): "spacer" | "darwin" | "controls" {
+export function windowChromeKind(desktop?: NovaDesktop): "spacer" | "darwin" | "controls" {
   if (!desktop) return "spacer";
   if (desktop.platform === "darwin") return "darwin";
   return "controls";

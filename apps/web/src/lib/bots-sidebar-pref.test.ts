@@ -8,7 +8,7 @@ import {
 describe("bots sidebar collapse preference", () => {
   it("builds a per-user storage key", () => {
     expect(botsSidebarCollapsedStorageKey(null)).toBeNull();
-    expect(botsSidebarCollapsedStorageKey("user-1")).toBe("aiden:bots-sidebar-collapsed:user-1");
+    expect(botsSidebarCollapsedStorageKey("user-1")).toBe("nova:bots-sidebar-collapsed:user-1");
   });
 
   it("reads and writes collapsed state", () => {

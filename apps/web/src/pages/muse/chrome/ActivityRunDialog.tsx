@@ -1,8 +1,8 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { Activity, ActivityStep, ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
-import { presentActivityTitle, presentStep } from "@aiden/core";
-import { Button, cn, Dialog, DialogContent } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { Activity, ActivityStep, ThreadMessage, ThreadMessagePage } from "@nova/contracts";
+import { presentActivityTitle, presentStep } from "@nova/core";
+import { Button, cn, Dialog, DialogContent } from "@nova/ui-web";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIconTile } from "./ActivityIconTile";

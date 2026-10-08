@@ -1,6 +1,6 @@
-import type { GoalTask, GoalTaskStatus } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
 import { Trans } from "@lingui/react/macro";
+import type { GoalTask, GoalTaskStatus } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { Ban, Check, Minus } from "lucide-react";
 import { goalTaskStatusLabel } from "./taskStatusLabel";
 

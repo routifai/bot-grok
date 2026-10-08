@@ -1,4 +1,4 @@
-import type { Ask } from "@aiden/contracts";
+import type { Ask } from "@nova/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 

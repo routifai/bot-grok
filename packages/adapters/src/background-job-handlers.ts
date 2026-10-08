@@ -4,10 +4,10 @@ import type {
   JobPublisher,
   MessagingSurface,
   SandboxProvider,
-} from "@aiden/adapter-kit";
-import { messagingDeliverJob } from "@aiden/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import { messagingDeliverJob } from "@nova/adapter-kit";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { expireComputerControl } from "./computer-control.js";
 import { scheduleComputerSleep, sleepComputerIfIdle } from "./computer-idle.js";
 import { performComputerUpdate } from "./computer-update.js";

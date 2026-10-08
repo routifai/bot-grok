@@ -1,7 +1,7 @@
 import * as z from "zod";
 
 export const AI_DISCLOSURE_VERSION = "2026-09-14";
-export const AI_PRIVACY_URL = "https://aiden.example/privacy/";
+export const AI_PRIVACY_URL = "https://nova.example/privacy/";
 export const AiDataUseSchema = z.enum(["model", "voice"]);
 export type AiDataUse = z.infer<typeof AiDataUseSchema>;
 export const AI_DATA_DISCLOSURES: Record<AiDataUse, string> = {

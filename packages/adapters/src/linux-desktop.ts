@@ -7,7 +7,7 @@ import type {
   ComputerRef,
   ScreenRequest,
   ScreenSession,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 import {
   BROWSER_APPLICATIONS,
   browserLauncherPath,
@@ -20,7 +20,7 @@ import {
   screenPorts,
   shellQuote,
   stopAllDesktopBrowsersCommand,
-} from "@aiden/core/node/desktop-runtime";
+} from "@nova/core/node/desktop-runtime";
 import { ComputerScreenUnavailableError, screenSessionKey } from "./computer-screens.js";
 import {
   boundedComputerActions,
@@ -65,7 +65,7 @@ export class LinuxDesktop {
       managedDesktopCommand(key, context.screenLeaseId, env, randomUUID()),
       context,
     );
-    const match = output.match(/AIDEN_DESKTOP=(\d+):([a-zA-Z0-9_-]+)/);
+    const match = output.match(/NOVA_DESKTOP=(\d+):([a-zA-Z0-9_-]+)/);
     if (!match) throw new ComputerScreenUnavailableError();
     const index = Number(match[1]);
     const ports = screenPorts(index, env);
@@ -203,7 +203,7 @@ function browserActionCommand(
         ? (action.uri ?? "about:blank")
         : undefined;
   if (browser !== undefined) {
-    return `nohup ${browserLauncherPath(layout.displayNumber)} ${shellQuote(browser)} </dev/null >/tmp/aiden/browser-open-${layout.displayNumber}.log 2>&1 &`;
+    return `nohup ${browserLauncherPath(layout.displayNumber)} ${shellQuote(browser)} </dev/null >/tmp/nova/browser-open-${layout.displayNumber}.log 2>&1 &`;
   }
   const workspace = env.workspaceDir;
   return `cd ${shellQuote(workspace)}\n${extraDisplayActionCommand(layout, action.kind === "open" ? { ...action, path: workspacePath(workspace, action.path) } : action)}`;

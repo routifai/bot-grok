@@ -1,4 +1,4 @@
-import type { ChatSummary, MessageFork, ThreadMessage } from "@aiden/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import {
   filterForks,

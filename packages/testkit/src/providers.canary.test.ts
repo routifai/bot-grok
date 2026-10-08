@@ -1,5 +1,5 @@
-import { BoxSandboxProvider, CreateOSSandboxProvider, E2BSandboxProvider } from "@aiden/adapters";
-import { loadRootEnv } from "@aiden/core/node/load-root-env";
+import { BoxSandboxProvider, CreateOSSandboxProvider, E2BSandboxProvider } from "@nova/adapters";
+import { loadRootEnv } from "@nova/core/node/load-root-env";
 import { describe, expect, it } from "vitest";
 
 if (process.env.VERIFY_PROVIDERS) loadRootEnv();
@@ -23,7 +23,7 @@ describeE2b("live E2B canary", () => {
       signal: new AbortController().signal,
     };
     const computer = await sandbox.provision(
-      { botId: "canary", homePath: "/home/user/aiden-home" },
+      { botId: "canary", homePath: "/home/user/nova-home" },
       ctx,
     );
     try {
@@ -53,7 +53,7 @@ describeBox("live Box canary", () => {
       userId: "box-canary",
       signal: new AbortController().signal,
     };
-    const request = { botId: "box-canary", homePath: "/home/user/aiden-home" };
+    const request = { botId: "box-canary", homePath: "/home/user/nova-home" };
     let computer = await sandbox.provision(request, ctx);
     try {
       await sandbox.prepare(computer, ctx);
@@ -101,7 +101,7 @@ describeCreateos("live CreateOS canary", () => {
       userId: "createos-canary",
       signal: new AbortController().signal,
     };
-    const request = { botId: "createos-canary", homePath: "/home/desktop/aiden-home" };
+    const request = { botId: "createos-canary", homePath: "/home/desktop/nova-home" };
     let computer = await sandbox.provision(request, ctx);
     try {
       await sandbox.prepare(computer, ctx);

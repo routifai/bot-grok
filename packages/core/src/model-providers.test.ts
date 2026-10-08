@@ -1,4 +1,4 @@
-import type { ModelCatalogEntry } from "@aiden/contracts";
+import type { ModelCatalogEntry } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { featuredModelProviders, selectedProviderOutsideSearchResults } from "./model-providers.js";
 

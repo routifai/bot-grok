@@ -8,7 +8,7 @@ import type {
   VoiceSynthesizeRequest,
   VoiceTranscribeRequest,
   VoiceVerifyResult,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 import {
   readVoiceAudio,
   readVoiceJson,
@@ -49,7 +49,7 @@ export class FishAudioVoiceProvider implements VoiceProvider {
     });
   }
 
-  /** Return user-owned then bounded public Fish Audio voices as Aiden choices. */
+  /** Return user-owned then bounded public Fish Audio voices as Nova choices. */
   async listVoices(apiKey: string, context: AdapterContext): Promise<VoiceInfo[]> {
     const signal = voiceDeadline(context.signal, LIST_VOICES_DEADLINE_MS);
     const listContext = { ...context, signal };
@@ -65,7 +65,7 @@ export class FishAudioVoiceProvider implements VoiceProvider {
     });
   }
 
-  /** Synthesize one Aiden utterance as bounded MP3 audio. */
+  /** Synthesize one Nova utterance as bounded MP3 audio. */
   async synthesize(request: VoiceSynthesizeRequest, context: AdapterContext): Promise<SpeechClip> {
     const signal = voiceDeadline(request.signal ?? context.signal, 60_000);
     const res = await fetch(`${API}/v1/tts`, {

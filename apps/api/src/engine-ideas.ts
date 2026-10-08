@@ -8,9 +8,9 @@ import {
   type OmnigentClientConfig,
   type OmnigentSuggestion,
   patchOmnigentSuggestion,
-} from "@aiden/adapters";
-import type { Actor, Idea } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, Idea } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
 /** Grouping label every engine Idea carries (the UI shows one plain list). */

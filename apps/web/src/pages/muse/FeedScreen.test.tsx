@@ -28,10 +28,10 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@aiden/chat-ui/web", () => ({
+vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   BotAvatar: () => <div data-testid="bot-avatar" />,
   Button: ({
     render,
@@ -54,7 +54,7 @@ vi.mock("@aiden/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
-import type { Ask, FollowedTopic, Post } from "@aiden/contracts";
+import type { Ask, FollowedTopic, Post } from "@nova/contracts";
 import { FeedScreen } from "./FeedScreen";
 
 function ask(overrides: Partial<Ask> = {}): Ask {

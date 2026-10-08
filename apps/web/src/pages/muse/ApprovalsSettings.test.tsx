@@ -19,7 +19,7 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   Button: (props: ComponentProps<"button">) => <button {...props} />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));

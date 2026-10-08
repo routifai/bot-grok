@@ -5,7 +5,7 @@ import type {
   AutoReviewProvider,
   AutoReviewRequest,
   AutoReviewResult,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 
 const DEFAULT_RESULT: AutoReviewResult = {
   decision: "pass",

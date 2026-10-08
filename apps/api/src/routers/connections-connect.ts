@@ -1,6 +1,6 @@
-import { pickReusableConnection, sanitizeComposioError } from "@aiden/adapters";
-import { IsolationError } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+import { pickReusableConnection, sanitizeComposioError } from "@nova/adapters";
+import { IsolationError } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { concreteKeepAccountIds, lockProviderConnectionScope } from "./connections-support.js";
 import type { RouterContext } from "./context.js";

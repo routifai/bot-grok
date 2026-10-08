@@ -1,11 +1,11 @@
-import type { ReplyCardDataOf } from "@aiden/contracts";
+import { useLingui } from "@lingui/react/macro";
+import type { ReplyCardDataOf } from "@nova/contracts";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@aiden/ui-web";
-import { useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { Download, ExternalLink, MoreHorizontal } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import type { ArtifactKind } from "../../lib/artifact-kind";

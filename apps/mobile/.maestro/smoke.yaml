@@ -1,21 +1,21 @@
-appId: com.aiden.app
-name: Aiden mobile smoke
+appId: com.nova.app
+name: Nova mobile smoke
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: "Sign in to Aiden"
+- assertVisible: "Sign in to Nova"
 - assertVisible: "Sign up"
 - tapOn: "Sign up"
-- assertVisible: "Sign up for Aiden"
+- assertVisible: "Sign up for Nova"
 - assertVisible: "Name"
 - tapOn: "Sign in"
-- assertVisible: "Sign in to Aiden"
+- assertVisible: "Sign in to Nova"
 - tapOn: "Email"
-- inputText: ${AIDEN_E2E_EMAIL}
+- inputText: ${NOVA_E2E_EMAIL}
 - tapOn: "Password"
-- inputText: ${AIDEN_E2E_PASSWORD}
-- tapOn: "Sign in to Aiden"
+- inputText: ${NOVA_E2E_PASSWORD}
+- tapOn: "Sign in to Nova"
 - tapOn: "Sign in"
 
 - extendedWaitUntil:
@@ -24,7 +24,7 @@ name: Aiden mobile smoke
 - tapOn: "New bot"
 - assertVisible: "Name this bot"
 - tapOn: "Name this bot"
-- inputText: ${AIDEN_E2E_BOT_NAME}
+- inputText: ${NOVA_E2E_BOT_NAME}
 - hideKeyboard
 - tapOn: "Create"
 
@@ -32,9 +32,9 @@ name: Aiden mobile smoke
     visible: "Message…"
     timeout: 30000
 - tapOn: "Message…"
-- inputText: ${AIDEN_E2E_MESSAGE}
+- inputText: ${NOVA_E2E_MESSAGE}
 - pressKey: Enter
-- assertVisible: ${AIDEN_E2E_MESSAGE}
+- assertVisible: ${NOVA_E2E_MESSAGE}
 
 - tapOn: "Bot actions"
 - tapOn: "Open computer"

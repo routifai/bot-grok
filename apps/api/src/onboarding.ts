@@ -1,6 +1,6 @@
-import type { ConnectorRegistry } from "@aiden/adapters";
-import type { Actor, MessageBlock } from "@aiden/contracts";
-import { featuredConnectorProvidersMatch } from "@aiden/core";
+import type { ConnectorRegistry } from "@nova/adapters";
+import type { Actor, MessageBlock } from "@nova/contracts";
+import { featuredConnectorProvidersMatch } from "@nova/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
@@ -8,7 +8,7 @@ import {
   type Prisma,
   type PrismaClient,
   type ThreadEvents,
-} from "@aiden/db";
+} from "@nova/db";
 
 /**
  * First-run conversational onboarding. The web app's first-run welcome introduces
@@ -143,7 +143,7 @@ function messageHasPendingChoice(blocks: MessageBlock[]): boolean {
 }
 
 /**
- * The Muse edition posts nothing here: the first-run welcome introduces Aiden and how to
+ * The Muse edition posts nothing here: the first-run welcome introduces Nova and how to
  * work together, and the conversation stays empty until the person speaks. Still validates
  * bot ownership so a bad botId keeps throwing IsolationError as before.
  */

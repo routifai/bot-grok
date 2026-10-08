@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-command Docker setup for Aiden (build-from-source). Idempotent: safe to re-run.
+# One-command Docker setup for Nova (build-from-source). Idempotent: safe to re-run.
 # See docs/SETUP.md for the full walkthrough and troubleshooting.
 set -euo pipefail
 
@@ -82,16 +82,16 @@ next_free_port() {
 }
 stack_running() { docker ps --format '{{.Names}}' | grep -qx "$1"; }
 
-web_port="$(env_get AIDEN_WEB_PORT)"; web_port="${web_port:-5173}"
-if ! stack_running aiden-web-1 && port_in_use "$web_port"; then
+web_port="$(env_get NOVA_WEB_PORT)"; web_port="${web_port:-5173}"
+if ! stack_running nova-web-1 && port_in_use "$web_port"; then
   web_port="$(next_free_port "$web_port")"
-  env_set AIDEN_WEB_PORT "$web_port"
+  env_set NOVA_WEB_PORT "$web_port"
   log "Port in use; the web app will use port $web_port."
 fi
-api_port="$(env_get AIDEN_API_PORT)"; api_port="${api_port:-3100}"
-if ! stack_running aiden-api-1 && port_in_use "$api_port"; then
+api_port="$(env_get NOVA_API_PORT)"; api_port="${api_port:-3100}"
+if ! stack_running nova-api-1 && port_in_use "$api_port"; then
   api_port="$(next_free_port "$api_port")"
-  env_set AIDEN_API_PORT "$api_port"
+  env_set NOVA_API_PORT "$api_port"
   log "Port in use; the API will use port $api_port."
 fi
 for key in BETTER_AUTH_URL WEB_ORIGIN API_URL; do
@@ -102,7 +102,7 @@ for key in BETTER_AUTH_URL WEB_ORIGIN API_URL; do
 done
 
 # --- 4. Docker socket for the sandbox supervisor --------------------------------------------
-# The supervisor mounts the Docker socket to start per-Aiden computers. Mount paths resolve inside
+# The supervisor mounts the Docker socket to start per-Nova computers. Mount paths resolve inside
 # the Docker VM, where both Docker Desktop and colima expose /var/run/docker.sock, so the compose
 # default is right for them. DOCKER_SOCKET_PATH in .env is only an override for unusual setups
 # (e.g. rootless Docker on Linux); never the Mac-side path such as ~/.colima/default/docker.sock.
@@ -115,7 +115,7 @@ fi
 
 # --- 5. Model provider key (optional) --------------------------------------------------------
 
-if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" && -z "$(env_get AIDEN_LOCAL_MODELS)" ]]; then
+if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" && -z "$(env_get NOVA_LOCAL_MODELS)" ]]; then
   if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
     env_set OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
     log "Using OPENROUTER_API_KEY from the environment."
@@ -125,7 +125,7 @@ if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" &&
   elif [[ -t 0 && -t 1 && "${CI:-}" != "true" ]]; then
     echo
     echo "Connect a model for every account on this deployment (optional)."
-    echo "Skip this and connect a model per-account instead from the Aiden UI after sign-up"
+    echo "Skip this and connect a model per-account instead from the Nova UI after sign-up"
     echo "(onboarding, or Settings -> Models) — nothing here is required for that path."
     read -r -s -p "OpenRouter API key (leave blank to skip): " key_input
     echo
@@ -136,7 +136,7 @@ if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" &&
       log "No deployment-wide model key set. Connect one per-account in the UI after sign-up."
     fi
   else
-    log "No deployment-wide model key set (non-interactive run). Connect one per-account in the UI after sign-up, or set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / AIDEN_LOCAL_MODELS (see docs/SETUP.md) and re-run."
+    log "No deployment-wide model key set (non-interactive run). Connect one per-account in the UI after sign-up, or set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / NOVA_LOCAL_MODELS (see docs/SETUP.md) and re-run."
   fi
 else
   log "Model key already configured in .env."
@@ -144,22 +144,22 @@ fi
 
 # --- 6. Build the computer image -------------------------------------------------------------
 
-log "Building the computer image (aiden/computer:local) — first build takes a few minutes..."
+log "Building the computer image (nova/computer:local) — first build takes a few minutes..."
 # Root context (not infra/sandboxes/computer) so the image can vendor engine/omnigent — see
 # infra/sandboxes/computer/Dockerfile's omnigent-builder stage.
-docker build -t aiden/computer:local -f "$ROOT/infra/sandboxes/computer/Dockerfile" "$ROOT"
+docker build -t nova/computer:local -f "$ROOT/infra/sandboxes/computer/Dockerfile" "$ROOT"
 
 # --- 7. Build and start the stack ------------------------------------------------------------
 
 log "Building api, worker, web, and the sandbox supervisor from source..."
 "${compose[@]}" build
-log "Starting Aiden..."
+log "Starting Nova..."
 "${compose[@]}" up -d --wait --wait-timeout 300
 
 # --- 8. Wait for health and report -------------------------------------------------------------
 
-api_port="$(env_get AIDEN_API_PORT)"; api_port="${api_port:-3100}"
-web_port="$(env_get AIDEN_WEB_PORT)"; web_port="${web_port:-5173}"
+api_port="$(env_get NOVA_API_PORT)"; api_port="${api_port:-3100}"
+web_port="$(env_get NOVA_WEB_PORT)"; web_port="${web_port:-5173}"
 if curl -fsS "http://127.0.0.1:${api_port}/health" >/dev/null 2>&1; then
   log "API is healthy."
 else
@@ -167,7 +167,7 @@ else
 fi
 
 echo
-log "Aiden is running: http://127.0.0.1:${web_port}"
+log "Nova is running: http://127.0.0.1:${web_port}"
 echo "    The first account you register becomes the deployment owner."
 echo "    Stop it:  ./scripts/stop.sh"
 echo "    Reset it: ./scripts/reset.sh (deletes all data)"

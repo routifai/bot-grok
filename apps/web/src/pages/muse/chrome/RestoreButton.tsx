@@ -1,5 +1,5 @@
-import { Button, Spinner } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { Button, Spinner } from "@nova/ui-web";
 import { useState } from "react";
 
 /**

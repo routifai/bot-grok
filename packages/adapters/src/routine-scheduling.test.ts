@@ -1,4 +1,4 @@
-import type { BackgroundJob, JobPublisher } from "@aiden/adapter-kit";
+import type { BackgroundJob, JobPublisher } from "@nova/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
 import { deferFutureRoutine } from "./routine-scheduling.js";
 

@@ -3,7 +3,7 @@ import * as z from "zod";
 /**
  * Nova Canvas: a closed component catalog for the `show_canvas` agent tool (rendered by
  * apps/web instead of markdown tables, ad-hoc HTML, or a failing chart spec). The tree shape
- * here is the strict source of truth; `@aiden/core`'s canvas repair coerces whatever loose
+ * here is the strict source of truth; `@nova/core`'s canvas repair coerces whatever loose
  * JSON a model sends into this shape (or produces one corrected-example error) before a
  * block ever reaches this schema, so validation here can stay simple and exact.
  */

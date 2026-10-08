@@ -1,12 +1,12 @@
-import type { AgentRunRequest } from "@aiden/adapter-kit";
-import type { Actor } from "@aiden/contracts";
-import { usableModelId } from "@aiden/contracts";
+import type { AgentRunRequest } from "@nova/adapter-kit";
+import type { Actor } from "@nova/contracts";
+import { usableModelId } from "@nova/contracts";
 import {
   chooseModelCredential,
   type findDefaultModelCredential,
   findModelCredential,
   type PrismaClient,
-} from "@aiden/db";
+} from "@nova/db";
 import type { ModelCredentialAuthKind } from "./pi-catalog-availability.js";
 import {
   catalogModelAvailableForAuth,

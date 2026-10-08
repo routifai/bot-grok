@@ -1,4 +1,4 @@
-import type { ComputerMode, ComputerStatus as ContractComputerStatus } from "@aiden/contracts";
+import type { ComputerMode, ComputerStatus as ContractComputerStatus } from "@nova/contracts";
 import { t } from "./i18n";
 
 export const COMPUTER_HEARTBEAT_MS = 60_000;

@@ -1,5 +1,5 @@
-import type { Activity } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
+import type { Activity } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 
 /** The run page's status dot: breathing (in progress), a quiet muted dot (done /
  * cancelled), or — the one allowed color — the destructive token on the dot alone when

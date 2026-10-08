@@ -1,6 +1,6 @@
-import type { JobPublisher, JobWorkerHost } from "@aiden/adapter-kit";
-import { ComposioConnector, IntegrationProviderSettings } from "@aiden/adapters";
-import { loadRootEnv } from "@aiden/core/node/load-root-env";
+import type { JobPublisher, JobWorkerHost } from "@nova/adapter-kit";
+import { ComposioConnector, IntegrationProviderSettings } from "@nova/adapters";
+import { loadRootEnv } from "@nova/core/node/load-root-env";
 
 loadRootEnv();
 
@@ -35,16 +35,16 @@ import {
   resolveDeploymentModel,
   resolveSandboxProvider,
   sandboxProviderOptionsFromEnv,
-} from "@aiden/adapters";
-import { resolveEncryptionKey, resolveSupervisorToken } from "@aiden/core";
+} from "@nova/adapters";
+import { resolveEncryptionKey, resolveSupervisorToken } from "@nova/core";
 import {
   createDb,
   createThreadEvents,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
-} from "@aiden/db";
-import { SERVICE_NAMES } from "@aiden/logging";
-import { createRootLogger } from "@aiden/logging/axiom";
+} from "@nova/db";
+import { SERVICE_NAMES } from "@nova/logging";
+import { createRootLogger } from "@nova/logging/axiom";
 
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
@@ -58,7 +58,7 @@ async function main() {
   // larger max just competes for Postgres max_connections (53300).
   const { prisma, pool } = createDb(databaseUrl, {
     poolMax: parsePositiveInteger(process.env.DB_POOL_MAX, 8),
-    applicationName: "aiden-worker",
+    applicationName: "nova-worker",
   });
   const realtime = new PostgresRealtimeFanout({
     connectionString: process.env.REALTIME_DATABASE_URL ?? databaseUrl,

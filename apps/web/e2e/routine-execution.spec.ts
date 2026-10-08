@@ -1,4 +1,4 @@
-import type { Routine } from "@aiden/contracts";
+import type { Routine } from "@nova/contracts";
 import { expect, test } from "@playwright/test";
 import { activeBotId, captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
 
@@ -14,7 +14,7 @@ test("Slack message trigger uses the mounted messaging provider and persists", a
     }),
   );
   const stamp = Date.now();
-  await signup(page, `routine-slack-${stamp}@aiden.test`, "password12", "Slack Routine");
+  await signup(page, `routine-slack-${stamp}@nova.test`, "password12", "Slack Routine");
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
@@ -53,7 +53,7 @@ test("GitHub event trigger exposes signed delivery settings and persists", async
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `routine-github-${stamp}@aiden.test`, "password12", "GitHub Routine");
+  await signup(page, `routine-github-${stamp}@nova.test`, "password12", "GitHub Routine");
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
@@ -89,7 +89,7 @@ test("GitHub event trigger exposes signed delivery settings and persists", async
 
 test("routine test-run completes and survives reload", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `routine-${stamp}@aiden.test`, "password12", "Routine");
+  await signup(page, `routine-${stamp}@nova.test`, "password12", "Routine");
   await completeOnboarding(page);
 
   await page.getByTitle("Agent computer").click();

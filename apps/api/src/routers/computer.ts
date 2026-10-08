@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { computerControlExpireJobKey } from "@aiden/adapter-kit";
-import type { ComputerExecutionLease } from "@aiden/adapters";
+import { computerControlExpireJobKey } from "@nova/adapter-kit";
+import type { ComputerExecutionLease } from "@nova/adapters";
 import {
   acquireComputerExecutionLease,
   ComputerBusyError,
@@ -13,9 +13,9 @@ import {
   scheduleComputerSleep,
   screenLeaseIdForRun,
   toComputerRef,
-} from "@aiden/adapters";
-import { ACTIVE_RUN_STATUSES } from "@aiden/core";
-import { IsolationError } from "@aiden/db";
+} from "@nova/adapters";
+import { ACTIVE_RUN_STATUSES } from "@nova/core";
+import { IsolationError } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { engineComputerClient, engineComputerStatus } from "../engine-computer.js";
 import { computerControlProcedures } from "./computer-control.js";

@@ -1,4 +1,4 @@
-import type { ReplyCardBlock } from "@aiden/contracts";
+import type { ReplyCardBlock } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { redactReplyCard } from "./cards.js";
 

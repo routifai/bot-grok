@@ -66,7 +66,7 @@ it("shows the headline and links the CTAs to sign-up and sign-in", async () => {
   expect(hrefs("Get started")).toEqual(["/sign-up", "/sign-up", "/sign-up"]);
   expect(hrefs("I have an account")).toEqual(["/sign-in"]);
   expect(hrefs("Sign in")).toEqual(["/sign-in"]);
-  expect(host.firstElementChild?.getAttribute("data-aiden-surface")).toBe("welcome");
+  expect(host.firstElementChild?.getAttribute("data-nova-surface")).toBe("welcome");
 });
 
 it("lights the whole statement under reduced motion", async () => {

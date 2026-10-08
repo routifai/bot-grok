@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@aiden/contracts";
-import { isToolActivityBlock } from "@aiden/core";
+import type { MessageBlock } from "@nova/contracts";
+import { isToolActivityBlock } from "@nova/core";
 
 export function isCenteredAgentEvent(blocks: readonly MessageBlock[]): boolean {
   return blocks.some(

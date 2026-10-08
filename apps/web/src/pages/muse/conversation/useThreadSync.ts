@@ -5,13 +5,13 @@ import type {
   TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   isRunTerminalEvent,
   runThreadSubscription,
   searchHitThreadTarget,
   userVisibleMessages,
-} from "@aiden/core";
+} from "@nova/core";
 import {
   type Dispatch,
   type MutableRefObject,

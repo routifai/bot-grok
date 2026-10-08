@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@aiden/contracts";
+import type { ThreadMessage } from "@nova/contracts";
 import { useMemo } from "react";
 import { deriveNovaWork, type NovaWork } from "./novaWork";
 import { useActivities } from "./useActivities";

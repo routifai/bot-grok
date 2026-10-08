@@ -10,8 +10,8 @@ import type {
   ProcessEvent,
   SandboxProvider,
   ScreenRequest,
-} from "@aiden/adapter-kit";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapter-kit";
+import type { PrismaClient } from "@nova/db";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
 import { createSandboxProvider, type SandboxProviderOptions } from "./sandbox-factory.js";
 

@@ -17,7 +17,7 @@ import {
   patchOmnigentObjective,
   patchOmnigentScheduledTask,
   redactThreadMessages,
-} from "@aiden/adapters";
+} from "@nova/adapters";
 import type {
   Actor,
   Goal,
@@ -26,8 +26,8 @@ import type {
   GoalTask,
   ThreadMessage,
   ThreadMessagePage,
-} from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { cronFromRrule, rruleFromCron } from "./goal-cadence.js";
 

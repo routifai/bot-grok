@@ -12,7 +12,7 @@ and comes back when it needs you. It runs on web, desktop (Electron) and mobile 
 
 Under the hood, a vendored [Omnigent](https://github.com/omnigent-ai/omnigent) engine
 (`engine/omnigent`) runs the model loop. Nova never shows Omnigent to the person. The code name
-is `aiden` (packages are `@aiden/*`).
+is `nova` (packages are `@nova/*`).
 
 ## Concepts
 

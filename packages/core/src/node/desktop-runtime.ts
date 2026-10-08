@@ -11,7 +11,7 @@ export const BROWSER_APPLICATIONS = new Set([
   "firefox",
   "google-chrome",
   "google-chrome-stable",
-  "aiden-browser",
+  "nova-browser",
 ]);
 export interface DesktopEnvironment {
   homeDir: string;
@@ -22,9 +22,9 @@ export interface DesktopEnvironment {
   portStart?: number;
 }
 export const DEFAULT_DESKTOP_ENV: DesktopEnvironment = {
-  homeDir: "/home/aiden",
-  workspaceDir: "/home/aiden",
-  browserProfilesDir: "/home/aiden/.browser-profiles",
+  homeDir: "/home/nova",
+  workspaceDir: "/home/nova",
+  browserProfilesDir: "/home/nova/.browser-profiles",
   displayStart: 1,
   preservePrimaryDisplay: true,
 };
@@ -87,7 +87,7 @@ export function browserProfilePathForScreen(screenId: string, env = DEFAULT_DESK
 }
 
 function browserPidPathForScreen(screenId: string) {
-  return `/tmp/aiden/browser-pid-${browserKeyForScreen(screenId)}`;
+  return `/tmp/nova/browser-pid-${browserKeyForScreen(screenId)}`;
 }
 
 function browserRunningFunction(profile: string, pidFile: string) {
@@ -152,7 +152,7 @@ function browserRunningFunction(profile: string, pidFile: string) {
 }
 
 export function browserLauncherPath(displayNumber: number | string) {
-  return `/tmp/aiden/browser-launch-${displayNumber}`;
+  return `/tmp/nova/browser-launch-${displayNumber}`;
 }
 
 function browserLauncherCommand(
@@ -168,7 +168,7 @@ function browserLauncherCommand(
       ? // biome-ignore lint/suspicious/noTemplateCurlyInString: generated shell parameter expansion
         ['desktop_display="${0##*-}"', "desktop_debug=$((9221 + desktop_display))"]
       : []),
-    "browser=$(command -v aiden-browser || command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)",
+    "browser=$(command -v nova-browser || command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)",
     `export DISPLAY=${layout.display} HOME=${shellQuote(env.homeDir)}`,
     `exec "$browser" --no-sandbox --test-type --no-first-run --no-default-browser-check --disable-dev-shm-usage --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=${layout.debugPort} --user-data-dir=${shellQuote(browserProfilePathForScreen(screenId, env))} "$@"`,
   ].join("\n");
@@ -254,14 +254,14 @@ export function stopBrowserProfileCommand(profile: string, pidFile: string) {
 }
 
 function stopProfileDirectoriesCommand(profileList: string) {
-  const placeholder = "AIDEN_INTERNAL_PROFILE";
+  const placeholder = "NOVA_INTERNAL_PROFILE";
   const stop = stopBrowserProfileCommand(placeholder, '"$pid_file"')
     .replaceAll(shellQuote(`--user-data-dir=${placeholder}`), '"--user-data-dir=$profile"')
     .replaceAll(shellQuote(placeholder), '"$profile"');
   return [
     "set -eu",
     "failed=0",
-    "mkdir -p /tmp/aiden",
+    "mkdir -p /tmp/nova",
     `for profile in ${profileList}; do`,
     '  [ -d "$profile" ] || continue',
     '  case "$profile" in',
@@ -269,7 +269,7 @@ function stopProfileDirectoriesCommand(profileList: string) {
     "    */chromium-bot-*) hash=${profile##*chromium-bot-} ;;",
     '    *) hash=$(basename -- "$profile") ;;',
     "  esac",
-    '  pid_file="/tmp/aiden/browser-pid-$hash"',
+    '  pid_file="/tmp/nova/browser-pid-$hash"',
     `  bash -eu -c ${shellQuote(`profile=$1; pid_file=$2;\n${stop}`)} desktop "$profile" "$pid_file" || failed=1`,
     "done",
     '[ "$failed" -eq 0 ] || exit 1',
@@ -315,7 +315,7 @@ export function resetDesktopRuntimeCommand(env = DEFAULT_DESKTOP_ENV) {
     "sleep 0.1",
     `pkill -KILL -f ${shellQuote(gatewayPattern)} || true`,
     stopAllDesktopBrowsersCommand(env),
-    "for marker in /tmp/aiden/browser-profile-*; do",
+    "for marker in /tmp/nova/browser-profile-*; do",
     '  [ -f "$marker" ] || continue',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: generated shell parameter expansion
     "  display=${marker##*-}",
@@ -326,19 +326,19 @@ export function resetDesktopRuntimeCommand(env = DEFAULT_DESKTOP_ENV) {
     "done",
     // Retire the default image's legacy primary VNC process too.
     "pkill -f '^([^ ]*/)?x11vnc .* -rfbport 5900( |$)' || true",
-    `rm -f ${TARGETS}/view-* ${TARGETS}/control-* /tmp/aiden/browser-pid-* /tmp/aiden/browser-profile-* /tmp/aiden/browser-launch-*`,
+    `rm -f ${TARGETS}/view-* ${TARGETS}/control-* /tmp/nova/browser-pid-* /tmp/nova/browser-profile-* /tmp/nova/browser-launch-*`,
   ].join("\n");
 }
 
-const TARGETS = "/tmp/aiden/desktop-targets";
+const TARGETS = "/tmp/nova/desktop-targets";
 
 // Keep fixed mapping files present: TokenFile may be reading the directory concurrently.
 function revokeTargetCommand(kind: "view" | "control", display: number | string) {
-  return `mkdir -p ${TARGETS}; : >/tmp/aiden/${kind}-target-next-${display}; mv /tmp/aiden/${kind}-target-next-${display} ${TARGETS}/${kind}-${display}`;
+  return `mkdir -p ${TARGETS}; : >/tmp/nova/${kind}-target-next-${display}; mv /tmp/nova/${kind}-target-next-${display} ${TARGETS}/${kind}-${display}`;
 }
 
 function stopVncCommand(kind: "view" | "control", layout: ReturnType<typeof commandLayout>) {
-  const socketPrefix = `/tmp/aiden/sockets/${kind}-${layout.displayNumber}-`;
+  const socketPrefix = `/tmp/nova/sockets/${kind}-${layout.displayNumber}-`;
   const pattern = quoteLayout(`^([^ ]*/)?x11vnc .* -unixsock ${socketPrefix}[^ ]+( |$)`);
   return [
     `pkill -f ${pattern} || true`,
@@ -360,13 +360,13 @@ function gatewayCommand(port: string) {
     proxyEnvironmentCommand(),
     `mkdir -p ${TARGETS}`,
     // This lock only covers gateway startup; desktop startup remains independent.
-    `exec 10>/tmp/aiden/gateway-${port}.lock; flock -w 120 10`,
+    `exec 10>/tmp/nova/gateway-${port}.lock; flock -w 120 10`,
     `if ! pgrep -f ${gatewayPattern} >/dev/null || ! (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1; then`,
     // Older images boot a single-screen gateway on this port. Retire it under the startup lock.
     `  pkill -f ${portPattern} || true`,
     `  for i in $(seq 1 20); do if ! (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1; then break; fi; sleep 0.1; done`,
     `  if (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1; then echo 'screen gateway port is busy' >&2; exit 1; fi`,
-    `  nohup "$proxy" --heartbeat=30 --web="$web" --token-plugin=TokenFile --token-source=${TARGETS} 0.0.0.0:${port} 8>&- 9>&- 10>&- </dev/null >/tmp/aiden/gateway-${port}.log 2>&1 &`,
+    `  nohup "$proxy" --heartbeat=30 --web="$web" --token-plugin=TokenFile --token-source=${TARGETS} 0.0.0.0:${port} 8>&- 9>&- 10>&- </dev/null >/tmp/nova/gateway-${port}.log 2>&1 &`,
     "fi",
     `for i in $(seq 1 50); do (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1 && break; sleep 0.1; done`,
     `flock -u 10; exec 10>&-`,
@@ -400,7 +400,7 @@ function renderStopScreenTransportsCommand(index: number | undefined, env = DEFA
     revokeTargetCommand("control", layout.displayNumber),
     stopVncCommand("view", layout),
     stopVncCommand("control", layout),
-    `rm -f /tmp/aiden/control-token-${layout.displayNumber}`,
+    `rm -f /tmp/nova/control-token-${layout.displayNumber}`,
   ].join("\n");
 }
 
@@ -416,7 +416,7 @@ function renderStopExtraScreenCommand(
     // Stop every client before touching browser state or recycling the display.
     renderStopScreenTransportsCommand(index, env),
     stopBrowserCommand(screenId, env),
-    `rm -f /tmp/aiden/browser-profile-${layout.displayNumber} ${browserLauncherPath(layout.displayNumber)}`,
+    `rm -f /tmp/nova/browser-profile-${layout.displayNumber} ${browserLauncherPath(layout.displayNumber)}`,
     ...(index === 0 && env.preservePrimaryDisplay
       ? []
       : [
@@ -453,7 +453,7 @@ function renderEnsureScreenCommand(
 ) {
   const layout = commandLayout(index, env);
   const fluxHome = `/tmp/fluxbox-home-${layout.displayNumber}`;
-  const log = `/tmp/aiden/screen-${layout.displayNumber}`;
+  const log = `/tmp/nova/screen-${layout.displayNumber}`;
   const profile = browserProfilePathForScreen(screenId, env);
   const pidFile = browserPidPathForScreen(screenId);
   const setupDisplay =
@@ -463,30 +463,30 @@ function renderEnsureScreenCommand(
         ]
       : [
           `if ! xdpyinfo -display ${layout.display} >/dev/null 2>&1; then`,
-          `  mkdir -p /tmp/aiden ${fluxHome}/.fluxbox /tmp/.X11-unix`,
+          `  mkdir -p /tmp/nova ${fluxHome}/.fluxbox /tmp/.X11-unix`,
           `  rm -f /tmp/.X${layout.displayNumber}-lock /tmp/.X11-unix/X${layout.displayNumber}`,
           `  nohup Xvfb ${layout.display} -screen 0 1280x800x24 -ac +extension RANDR +render -noreset -nolisten tcp 8>&- 9>&- </dev/null >${log}-xvfb.log 2>&1 &`,
           `  for i in $(seq 1 100); do xdpyinfo -display ${layout.display} >/dev/null 2>&1 && break; sleep 0.1; done`,
           `  xdpyinfo -display ${layout.display} >/dev/null 2>&1 || exit 1`,
-          `  if [ -f /etc/aiden/fluxbox/init ]; then cp /etc/aiden/fluxbox/init ${fluxHome}/.fluxbox/init; else printf "session.screen0.toolbar.visible: false\\n" >${fluxHome}/.fluxbox/init; fi`,
-          `  cp /etc/aiden/fluxbox/apps ${fluxHome}/.fluxbox/apps 2>/dev/null || true`,
+          `  if [ -f /etc/nova/fluxbox/init ]; then cp /etc/nova/fluxbox/init ${fluxHome}/.fluxbox/init; else printf "session.screen0.toolbar.visible: false\\n" >${fluxHome}/.fluxbox/init; fi`,
+          `  cp /etc/nova/fluxbox/apps ${fluxHome}/.fluxbox/apps 2>/dev/null || true`,
           `  printf '[begin] (Desktop)\\n[exec] (Browser) {%s}\\n[end]\\n' ${browserLauncherPath(layout.displayNumber)} >${fluxHome}/.fluxbox/menu`,
           `  printf '\\nsession.menuFile: %s\\n' ${fluxHome}/.fluxbox/menu >>${fluxHome}/.fluxbox/init`,
           `  HOME=${shellQuote(env.homeDir)} CHROME_USER_DATA_DIR=${shellQuote(profile)} BROWSER=${browserLauncherPath(layout.displayNumber)} DISPLAY=${layout.display} nohup fluxbox -rc ${fluxHome}/.fluxbox/init 8>&- 9>&- </dev/null >${log}-fluxbox.log 2>&1 &`,
           "fi",
         ];
   const targetFile = `${TARGETS}/view-${layout.displayNumber}`;
-  const socket = `/tmp/aiden/sockets/view-${layout.displayNumber}-\${desktop_view_token}`;
+  const socket = `/tmp/nova/sockets/view-${layout.displayNumber}-\${desktop_view_token}`;
   const setupView = [
-    `mkdir -p ${TARGETS} /tmp/aiden/sockets`,
+    `mkdir -p ${TARGETS} /tmp/nova/sockets`,
     `if [ ! -S ${socket} ] || ! pgrep -f ${quoteLayout(`^([^ ]*/)?x11vnc .* -unixsock ${socket}( |$)`)} >/dev/null; then`,
     stopVncCommand("view", layout),
     `  nohup x11vnc -display ${layout.display} -forever -shared -viewonly -nopw -rfbport 0 -unixsock ${socket} -xkb -ncache 0 8>&- 9>&- </dev/null >${log}-x11vnc.log 2>&1 &`,
     "fi",
     `for i in $(seq 1 50); do [ -S ${socket} ] && break; sleep 0.1; done`,
     `[ -S ${socket} ] || exit 1`,
-    `printf '%s: unix_socket:%s\\n' "$desktop_view_token" ${socket} >/tmp/aiden/view-target-next-${layout.displayNumber}`,
-    `mv /tmp/aiden/view-target-next-${layout.displayNumber} ${targetFile}`,
+    `printf '%s: unix_socket:%s\\n' "$desktop_view_token" ${socket} >/tmp/nova/view-target-next-${layout.displayNumber}`,
+    `mv /tmp/nova/view-target-next-${layout.displayNumber} ${targetFile}`,
     gatewayCommand(layout.viewPort),
   ];
   return [
@@ -495,14 +495,14 @@ function renderEnsureScreenCommand(
     `desktop_view_token=${shellQuote(viewToken)}`,
     '[[ "$desktop_view_token" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || exit 75',
     proxyEnvironmentCommand(),
-    `mkdir -p /tmp/aiden`,
+    `mkdir -p /tmp/nova`,
     `printf %s ${shellQuote(browserLauncherCommand(index, screenId, env))} >${browserLauncherPath(layout.displayNumber)}`,
     `chmod 700 ${browserLauncherPath(layout.displayNumber)}`,
     ...setupDisplay,
     `xdpyinfo -display ${layout.display} >/dev/null 2>&1 || exit 1`,
-    `mkdir -p /tmp/aiden ${shellQuote(path.posix.dirname(profile))}`,
+    `mkdir -p /tmp/nova ${shellQuote(path.posix.dirname(profile))}`,
     ...browserRunningFunction(profile, pidFile),
-    `printf %s ${shellQuote(profile)} >/tmp/aiden/browser-profile-${layout.displayNumber}`,
+    `printf %s ${shellQuote(profile)} >/tmp/nova/browser-profile-${layout.displayNumber}`,
     "if ! browser_running; then",
     prepareBrowserProfileCommand(screenId, env),
     `  rm -f ${shellQuote(profile)}/SingletonLock ${shellQuote(profile)}/SingletonCookie ${shellQuote(profile)}/SingletonSocket`,
@@ -521,7 +521,7 @@ export function interactiveScreenCommand(
   controlToken?: string,
   layout: ReturnType<typeof commandLayout> = screenPorts(0),
 ) {
-  const tokenFile = `/tmp/aiden/control-token-${layout.displayNumber}`;
+  const tokenFile = `/tmp/nova/control-token-${layout.displayNumber}`;
   const targetFile = `${TARGETS}/control-${layout.displayNumber}`;
   const stopProcesses = [
     revokeTargetCommand("control", layout.displayNumber),
@@ -533,28 +533,28 @@ export function interactiveScreenCommand(
     return [
       `if [ -f ${tokenFile} ] && [ "$(cat ${tokenFile})" = ${shellQuote(controlToken)} ]; then`,
       stopProcesses,
-      "printf 'AIDEN_CONTROL_RELEASED\\n'",
+      "printf 'NOVA_CONTROL_RELEASED\\n'",
       "fi",
     ].join("\n");
   }
   if (!controlToken) throw new Error("interactive screen requires a control token");
-  const socket = `/tmp/aiden/sockets/control-${layout.displayNumber}-${browserKeyForScreen(controlToken)}`;
+  const socket = `/tmp/nova/sockets/control-${layout.displayNumber}-${browserKeyForScreen(controlToken)}`;
   return [
     `[ -f ${tokenFile} ] && [ "$(cat ${tokenFile})" = ${shellQuote(controlToken)} ] && [ -S ${socket} ] && pgrep -f ${quoteLayout(`^([^ ]*/)?x11vnc .* -unixsock ${socket}( |$)`)} >/dev/null && (echo >/dev/tcp/127.0.0.1/${layout.controlPort}) >/dev/null 2>&1 && exit 0 || true`,
     stopProcesses,
-    `mkdir -p ${TARGETS} /tmp/aiden/sockets`,
+    `mkdir -p ${TARGETS} /tmp/nova/sockets`,
     `printf %s ${shellQuote(controlToken)} >${tokenFile}`,
-    `nohup x11vnc -display ${layout.display} -forever -shared -nopw -rfbport 0 -unixsock ${socket} -xkb -ncache 0 8>&- 9>&- </dev/null >/tmp/aiden/x11vnc-control-${layout.displayNumber}.log 2>&1 &`,
+    `nohup x11vnc -display ${layout.display} -forever -shared -nopw -rfbport 0 -unixsock ${socket} -xkb -ncache 0 8>&- 9>&- </dev/null >/tmp/nova/x11vnc-control-${layout.displayNumber}.log 2>&1 &`,
     `for i in $(seq 1 50); do [ -S ${socket} ] && break; sleep 0.1; done`,
     `[ -S ${socket} ] || exit 1`,
-    `printf '%s: unix_socket:%s\\n' ${shellQuote(controlToken)} ${socket} >/tmp/aiden/control-target-next-${layout.displayNumber}`,
-    `mv /tmp/aiden/control-target-next-${layout.displayNumber} ${targetFile}`,
+    `printf '%s: unix_socket:%s\\n' ${shellQuote(controlToken)} ${socket} >/tmp/nova/control-target-next-${layout.displayNumber}`,
+    `mv /tmp/nova/control-target-next-${layout.displayNumber} ${targetFile}`,
     gatewayCommand(layout.controlPort),
   ].join("\n");
 }
 
-const REGISTRY = "/tmp/aiden/desktop-assignments";
-const TOKEN_PLACEHOLDER = "AIDEN_INTERNAL_VIEW_TOKEN";
+const REGISTRY = "/tmp/nova/desktop-assignments";
+const TOKEN_PLACEHOLDER = "NOVA_INTERNAL_VIEW_TOKEN";
 
 function registryLockCommand(screenId: string) {
   return [
@@ -605,7 +605,7 @@ for slot in pathlib.Path(sys.argv[1]).glob("*.slot"):
         with slot.open() as source: used.add(int(source.readline()))
     except ValueError: pass
 # A damaged assignment must not make a live display available to another bot.
-for marker in pathlib.Path("/tmp/aiden").glob("browser-profile-*"):
+for marker in pathlib.Path("/tmp/nova").glob("browser-profile-*"):
     display = marker.name.rsplit("-", 1)[-1]
     if display.isascii() and display.isdigit(): used.add(int(display) - ${env.displayStart})
 index = 0
@@ -622,7 +622,7 @@ print(index)
     'mv "$slot.next" "$slot"',
     "flock -u 9; exec 9>&-",
     `bash -eu -c ${shellQuote(renderEnsureScreenCommand(undefined, screenId, TOKEN_PLACEHOLDER, env).replace(shellQuote(TOKEN_PLACEHOLDER), '"$2"'))} desktop "$index" "$view_token"`,
-    'printf "AIDEN_DESKTOP=%s:%s\\n" "$index" "$view_token"',
+    'printf "NOVA_DESKTOP=%s:%s\\n" "$index" "$view_token"',
   ].join("\n");
 }
 
@@ -641,7 +641,7 @@ export function releaseDesktopCommand(
     `bash -eu -c ${shellQuote(renderStopExtraScreenCommand(undefined, screenId, env))} desktop "$index"`,
     'exec 9>"$dir/.lock"; flock -w 120 9',
     'rm -f "$slot"',
-    'printf "AIDEN_DESKTOP_RELEASED=%s\\n" "$index"',
+    'printf "NOVA_DESKTOP_RELEASED=%s\\n" "$index"',
   ].join("\n");
 }
 

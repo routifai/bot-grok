@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 HERE = Path(__file__).parent
-loader = importlib.machinery.SourceFileLoader("recorder", str(HERE / "aiden-recorder"))
+loader = importlib.machinery.SourceFileLoader("recorder", str(HERE / "nova-recorder"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 rec = importlib.util.module_from_spec(spec)
 loader.exec_module(rec)
@@ -90,7 +90,7 @@ class RecorderTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, REC_ID)))
 
     def test_injected_script_reports_through_the_binding(self):
-        source = (HERE / "aiden-recorder.js").read_text()
+        source = (HERE / "nova-recorder.js").read_text()
         self.assertIn(rec.BINDING, source)
         self.assertIn("password", source)
         json.dumps(source)

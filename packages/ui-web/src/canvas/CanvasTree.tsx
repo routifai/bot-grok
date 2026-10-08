@@ -1,4 +1,4 @@
-import type { CanvasNode } from "@aiden/contracts";
+import type { CanvasNode } from "@nova/contracts";
 import { CanvasChart } from "./CanvasChart.js";
 import {
   CanvasBadge,

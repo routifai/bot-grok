@@ -25,7 +25,7 @@ const TabsContext = createContext<{ value: string; onValueChange: (value: string
   null,
 );
 
-vi.mock("@aiden/ui-web", () => {
+vi.mock("@nova/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
   );

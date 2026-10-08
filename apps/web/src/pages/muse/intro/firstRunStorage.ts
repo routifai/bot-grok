@@ -4,7 +4,7 @@
 // pattern as `../../../lib/bots-sidebar-pref.ts` — one JSON array of seen keys per user,
 // wrapped in try/catch so a blocked or full store never breaks the app.
 
-const STORAGE_PREFIX = "aiden:first-run:";
+const STORAGE_PREFIX = "nova:first-run:";
 
 function storageKey(userId: string | null | undefined): string | null {
   if (!userId) return null;
@@ -49,7 +49,7 @@ export function markFirstRunSeen(userId: string | null | undefined, flagKey: str
   writeSeenKeys(userId, seen);
 }
 
-/** "Replay the intro" (Settings, Aiden section): clears every first-run flag for this person. */
+/** "Replay the intro" (Settings, Nova section): clears every first-run flag for this person. */
 export function resetFirstRun(userId: string | null | undefined): void {
   const key = storageKey(userId);
   if (!key) return;

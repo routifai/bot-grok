@@ -1,6 +1,6 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { GoalProposal, GoalTask } from "@aiden/contracts";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { GoalProposal, GoalTask } from "@nova/contracts";
 import { useState } from "react";
 import { SparkGlyph } from "../chrome/NovaGlyphs";
 import { NovaTile } from "../chrome/NovaTile";

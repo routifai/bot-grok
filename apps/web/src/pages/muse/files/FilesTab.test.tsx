@@ -18,7 +18,7 @@ vi.mock("@orpc/client", () => ({
     code = "SERVICE_UNAVAILABLE";
   },
 }));
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   Input: (props: ComponentProps<"input">) => <input {...props} />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));

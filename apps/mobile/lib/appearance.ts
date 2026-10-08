@@ -5,7 +5,7 @@ import {
   resolveAppearance,
   tokensForAppearance,
   UI_APPEARANCE_STORAGE_KEY,
-} from "@aiden/ui-tokens";
+} from "@nova/ui-tokens";
 import * as SecureStore from "expo-secure-store";
 import { Appearance, type ColorSchemeName } from "react-native";
 

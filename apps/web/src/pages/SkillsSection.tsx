@@ -1,6 +1,6 @@
-import type { AgentSkill, AgentSkillCatalogEntry } from "@aiden/contracts";
-import { Button, Skeleton, Textarea } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { AgentSkill, AgentSkillCatalogEntry } from "@nova/contracts";
+import { Button, Skeleton, Textarea } from "@nova/ui-web";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../lib/rpc";
 

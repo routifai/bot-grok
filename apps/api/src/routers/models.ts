@@ -13,9 +13,9 @@ import {
   serializeModelSecret,
   UNAVAILABLE_MODEL_FOR_AUTH_MESSAGE,
   validateModelAuthAvailability,
-} from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
-import { OPENAI_COMPATIBLE_PROVIDER_ID, usableModelId } from "@aiden/contracts";
+} from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
+import { OPENAI_COMPATIBLE_PROVIDER_ID, usableModelId } from "@nova/contracts";
 import {
   defaultModelCredentialCandidates,
   deleteUnreferencedCredentialSecret,
@@ -26,7 +26,7 @@ import {
   Prisma,
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
-} from "@aiden/db";
+} from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { withSerializableRetry } from "../serializable-retry.js";
 import {

@@ -1,10 +1,10 @@
 import path from "node:path";
-import type { AidenDesktop } from "@aiden/contracts";
+import type { NovaDesktop } from "@nova/contracts";
 import { _electron as electron, expect, test } from "@playwright/test";
 
 const fixture = `<!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><title>Aiden desktop smoke</title></head>
+  <head><meta charset="utf-8"><title>Nova desktop smoke</title></head>
   <body><main>Desktop fixture ready</main></body>
 </html>`;
 
@@ -14,17 +14,17 @@ test("launches with a narrow preload bridge and an isolated renderer", async () 
     cwd: path.resolve(import.meta.dirname, ".."),
     env: {
       ...process.env,
-      AIDEN_WEB_URL: `data:text/html;charset=utf-8,${encodeURIComponent(fixture)}`,
+      NOVA_WEB_URL: `data:text/html;charset=utf-8,${encodeURIComponent(fixture)}`,
     },
   });
 
   try {
     const page = await app.firstWindow();
     await expect(page.getByText("Desktop fixture ready")).toBeVisible();
-    await expect(page).toHaveTitle("Aiden desktop smoke");
+    await expect(page).toHaveTitle("Nova desktop smoke");
 
     const renderer = await page.evaluate(async () => {
-      const desktop = (window as typeof window & { aidenDesktop?: AidenDesktop }).aidenDesktop;
+      const desktop = (window as typeof window & { novaDesktop?: NovaDesktop }).novaDesktop;
 
       return {
         bridgeKeys: desktop ? Object.keys(desktop).sort() : [],

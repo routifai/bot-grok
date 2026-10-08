@@ -5,7 +5,7 @@ test.describe.configure({ mode: "serial" });
 
 test("agent-attached files appear as downloadable cards", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `artifact-card-${stamp}@aiden.test`, "password12", "Artifact Card");
+  await signup(page, `artifact-card-${stamp}@nova.test`, "password12", "Artifact Card");
   await completeOnboarding(page);
 
   const composer = page.getByPlaceholder(/Message/);
@@ -28,7 +28,7 @@ test("agent-attached Markdown opens a rendered preview and can be downloaded", a
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `markdown-preview-${stamp}@aiden.test`, "password12", "Markdown Preview");
+  await signup(page, `markdown-preview-${stamp}@nova.test`, "password12", "Markdown Preview");
   await completeOnboarding(page);
 
   const composer = page.getByPlaceholder(/Message/);

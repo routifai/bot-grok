@@ -15,9 +15,9 @@ describe("resolveAutoReviewChecker", () => {
   it("prefers explicit env overrides", () => {
     expect(
       resolveAutoReviewChecker({
-        AIDEN_AUTO_REVIEW_PROVIDER: "openrouter",
-        AIDEN_AUTO_REVIEW_MODEL: "cheap/fast",
-        AIDEN_LOCAL_MODELS: "local-a",
+        NOVA_AUTO_REVIEW_PROVIDER: "openrouter",
+        NOVA_AUTO_REVIEW_MODEL: "cheap/fast",
+        NOVA_LOCAL_MODELS: "local-a",
         PI_DEFAULT_MODEL: "other",
       }),
     ).toEqual({ provider: "openrouter", model: "cheap/fast" });
@@ -26,7 +26,7 @@ describe("resolveAutoReviewChecker", () => {
   it("prefers local models when configured", () => {
     expect(
       resolveAutoReviewChecker({
-        AIDEN_LOCAL_MODELS: " llama-local , other ",
+        NOVA_LOCAL_MODELS: " llama-local , other ",
         PI_DEFAULT_PROVIDER: "openrouter",
         PI_DEFAULT_MODEL: "deepseek/deepseek-v4-flash-0731",
       }),
@@ -45,7 +45,7 @@ describe("resolveAutoReviewChecker", () => {
   it("selects Jev when the provider is jev and a TypeSafe key is present", () => {
     expect(
       resolveAutoReviewChecker({
-        AIDEN_AUTO_REVIEW_PROVIDER: "jev",
+        NOVA_AUTO_REVIEW_PROVIDER: "jev",
         TYPESAFE_API_KEY: "ts-key",
         PI_DEFAULT_PROVIDER: "openrouter",
         PI_DEFAULT_MODEL: "cheap/fast",
@@ -53,8 +53,8 @@ describe("resolveAutoReviewChecker", () => {
     ).toEqual({ provider: "jev", model: "jev-latest" });
     expect(
       resolveAutoReviewChecker({
-        AIDEN_AUTO_REVIEW_PROVIDER: "jev",
-        AIDEN_AUTO_REVIEW_MODEL: "jev-custom",
+        NOVA_AUTO_REVIEW_PROVIDER: "jev",
+        NOVA_AUTO_REVIEW_MODEL: "jev-custom",
         TYPESAFE_API_KEY: "ts-key",
       }),
     ).toEqual({ provider: "jev", model: "jev-custom" });
@@ -63,7 +63,7 @@ describe("resolveAutoReviewChecker", () => {
   it("falls back to the LLM checker when Jev is selected without a key", () => {
     expect(
       resolveAutoReviewChecker({
-        AIDEN_AUTO_REVIEW_PROVIDER: "jev",
+        NOVA_AUTO_REVIEW_PROVIDER: "jev",
         PI_DEFAULT_PROVIDER: "openrouter",
         PI_DEFAULT_MODEL: "cheap/fast",
       }),
@@ -73,21 +73,21 @@ describe("resolveAutoReviewChecker", () => {
 
 describe("resolveAutoReviewProviderKind", () => {
   it("uses Jev only when a TypeSafe key is present", () => {
-    expect(resolveAutoReviewProviderKind({ AIDEN_AUTO_REVIEW_PROVIDER: "jev" })).toBe("llm");
+    expect(resolveAutoReviewProviderKind({ NOVA_AUTO_REVIEW_PROVIDER: "jev" })).toBe("llm");
     expect(
       resolveAutoReviewProviderKind({
-        AIDEN_AUTO_REVIEW_PROVIDER: "jev",
+        NOVA_AUTO_REVIEW_PROVIDER: "jev",
         TYPESAFE_API_KEY: "ts-key",
       }),
     ).toBe("jev");
-    expect(resolveAutoReviewProviderKind({ AIDEN_AUTO_REVIEW_PROVIDER: "openrouter" })).toBe("llm");
+    expect(resolveAutoReviewProviderKind({ NOVA_AUTO_REVIEW_PROVIDER: "openrouter" })).toBe("llm");
     expect(
       resolveAutoReviewProviderKind({
-        AIDEN_AUTO_REVIEW_PROVIDER: "scripted",
+        NOVA_AUTO_REVIEW_PROVIDER: "scripted",
         AGENT_RUNTIME: "scripted",
       }),
     ).toBe("scripted");
-    expect(resolveAutoReviewProviderKind({ AIDEN_AUTO_REVIEW_PROVIDER: "scripted" })).toBe("llm");
+    expect(resolveAutoReviewProviderKind({ NOVA_AUTO_REVIEW_PROVIDER: "scripted" })).toBe("llm");
   });
 });
 
@@ -109,7 +109,7 @@ describe("isAutoReviewCheckerConfigured", () => {
     ).toBe(true);
     expect(
       isAutoReviewCheckerConfigured({
-        env: { AIDEN_LOCAL_MODELS: "local-1" },
+        env: { NOVA_LOCAL_MODELS: "local-1" },
       }),
     ).toBe(true);
     expect(
@@ -120,13 +120,13 @@ describe("isAutoReviewCheckerConfigured", () => {
     ).toBe(true);
     expect(
       isAutoReviewCheckerConfigured({
-        env: { AIDEN_AUTO_REVIEW_PROVIDER: "jev", TYPESAFE_API_KEY: "ts-key" },
+        env: { NOVA_AUTO_REVIEW_PROVIDER: "jev", TYPESAFE_API_KEY: "ts-key" },
       }),
     ).toBe(true);
     expect(
       isAutoReviewCheckerConfigured({
         env: {
-          AIDEN_AUTO_REVIEW_PROVIDER: "jev",
+          NOVA_AUTO_REVIEW_PROVIDER: "jev",
           PI_DEFAULT_PROVIDER: "openrouter",
           PI_DEFAULT_MODEL: "x",
         },
@@ -134,12 +134,12 @@ describe("isAutoReviewCheckerConfigured", () => {
     ).toBe(false);
     expect(
       isAutoReviewCheckerConfigured({
-        env: { AIDEN_AUTO_REVIEW_PROVIDER: "scripted", AGENT_RUNTIME: "scripted" },
+        env: { NOVA_AUTO_REVIEW_PROVIDER: "scripted", AGENT_RUNTIME: "scripted" },
       }),
     ).toBe(true);
     expect(
       isAutoReviewCheckerConfigured({
-        env: { AIDEN_AUTO_REVIEW_PROVIDER: "scripted" },
+        env: { NOVA_AUTO_REVIEW_PROVIDER: "scripted" },
       }),
     ).toBe(false);
   });
@@ -148,25 +148,25 @@ describe("isAutoReviewCheckerConfigured", () => {
 describe("deploymentAutoReviewDefault", () => {
   it("defaults off", () => {
     expect(deploymentAutoReviewDefault({})).toBe(false);
-    expect(deploymentAutoReviewDefault({ AIDEN_AUTO_REVIEW: "1" })).toBe(true);
-    expect(deploymentAutoReviewDefault({ AIDEN_AUTO_REVIEW: "true" })).toBe(true);
+    expect(deploymentAutoReviewDefault({ NOVA_AUTO_REVIEW: "1" })).toBe(true);
+    expect(deploymentAutoReviewDefault({ NOVA_AUTO_REVIEW: "true" })).toBe(true);
   });
 });
 
 describe("autoReviewTimeoutMs", () => {
   it("defaults to 1500 and clamps bad values", () => {
     expect(autoReviewTimeoutMs({})).toBe(1_500);
-    expect(autoReviewTimeoutMs({ AIDEN_AUTO_REVIEW_TIMEOUT_MS: "2000" })).toBe(2_000);
-    expect(autoReviewTimeoutMs({ AIDEN_AUTO_REVIEW_TIMEOUT_MS: "nope" })).toBe(1_500);
+    expect(autoReviewTimeoutMs({ NOVA_AUTO_REVIEW_TIMEOUT_MS: "2000" })).toBe(2_000);
+    expect(autoReviewTimeoutMs({ NOVA_AUTO_REVIEW_TIMEOUT_MS: "nope" })).toBe(1_500);
   });
 });
 
 describe("autoReviewMinConfidence", () => {
   it("defaults to 0.5 and clamps out of range", () => {
     expect(autoReviewMinConfidence({})).toBe(0.5);
-    expect(autoReviewMinConfidence({ AIDEN_AUTO_REVIEW_MIN_CONFIDENCE: "0.8" })).toBe(0.8);
-    expect(autoReviewMinConfidence({ AIDEN_AUTO_REVIEW_MIN_CONFIDENCE: "2" })).toBe(0.5);
-    expect(autoReviewMinConfidence({ AIDEN_AUTO_REVIEW_MIN_CONFIDENCE: "nope" })).toBe(0.5);
+    expect(autoReviewMinConfidence({ NOVA_AUTO_REVIEW_MIN_CONFIDENCE: "0.8" })).toBe(0.8);
+    expect(autoReviewMinConfidence({ NOVA_AUTO_REVIEW_MIN_CONFIDENCE: "2" })).toBe(0.5);
+    expect(autoReviewMinConfidence({ NOVA_AUTO_REVIEW_MIN_CONFIDENCE: "nope" })).toBe(0.5);
   });
 });
 

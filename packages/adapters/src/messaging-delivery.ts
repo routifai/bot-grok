@@ -3,13 +3,13 @@ import type {
   JobPublisher,
   MessagingOutboundStatus,
   MessagingSurface,
-} from "@aiden/adapter-kit";
-import { messagingDeliverJob, runContinueJob } from "@aiden/adapter-kit";
-import type { MessageBlock } from "@aiden/contracts";
-import { botMessageHopExhausted, nextBotMessageHop } from "@aiden/core";
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
-import { appendEventInTransaction, createThreadMessageInTransaction } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import { messagingDeliverJob, runContinueJob } from "@nova/adapter-kit";
+import type { MessageBlock } from "@nova/contracts";
+import { botMessageHopExhausted, nextBotMessageHop } from "@nova/core";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { appendEventInTransaction, createThreadMessageInTransaction } from "@nova/db";
+import { getLogger } from "@nova/logging";
 
 /**
  * Margin under vendor consecutive-outbound caps (sendblue enforces one hard):

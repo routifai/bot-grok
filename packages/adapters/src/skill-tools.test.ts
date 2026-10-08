@@ -1,4 +1,4 @@
-import { buildSkillMd, formatSkillsCatalogInstruction, parseSkillMd } from "@aiden/core";
+import { buildSkillMd, formatSkillsCatalogInstruction, parseSkillMd } from "@nova/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_AGENT_SKILLS } from "./builtin-skills.js";
 import {

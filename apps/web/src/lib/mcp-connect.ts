@@ -1,6 +1,6 @@
 import { rpc } from "./rpc";
 
-export const MCP_OAUTH_CHANNEL = "aiden-mcp-oauth";
+export const MCP_OAUTH_CHANNEL = "nova-mcp-oauth";
 const MCP_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
 export type McpOauthResult =

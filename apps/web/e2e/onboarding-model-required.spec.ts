@@ -21,7 +21,7 @@ test("onboarding requires a model when the deployment has none", async ({ page }
   });
 
   const stamp = Date.now();
-  await signup(page, `model-required-${stamp}@aiden.test`, "password12", `Model required ${stamp}`);
+  await signup(page, `model-required-${stamp}@nova.test`, "password12", `Model required ${stamp}`);
   await completeIdentitySteps(page);
   await expect(page.getByRole("heading", { name: MODEL_STEP_HEADING })).toBeVisible({
     timeout: 20_000,
@@ -49,7 +49,7 @@ for (const unavailable of ["empty", "failed"] as const) {
       unavailable === "failed" ? route.abort() : route.fulfill({ json: { json: [] } }),
     );
     const stamp = Date.now();
-    await signup(page, `catalog-${unavailable}-${stamp}@aiden.test`, "password12", "Model setup");
+    await signup(page, `catalog-${unavailable}-${stamp}@nova.test`, "password12", "Model setup");
     await completeIdentitySteps(page);
     await expect(page.getByRole("heading", { name: MODEL_STEP_HEADING })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();

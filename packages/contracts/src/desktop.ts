@@ -23,7 +23,7 @@ export interface DesktopUpdateState {
   checkedAt: string | null;
 }
 
-export interface AidenDesktopUpdate {
+export interface NovaDesktopUpdate {
   state: () => Promise<DesktopUpdateState>;
   check: () => Promise<DesktopUpdateState>;
   download: () => Promise<DesktopUpdateState>;
@@ -31,12 +31,12 @@ export interface AidenDesktopUpdate {
   install: () => Promise<DesktopUpdateState>;
 }
 
-export interface AidenDesktopOAuthCallback {
+export interface NovaDesktopOAuthCallback {
   code: string;
   state?: string;
 }
 
-export interface AidenDesktop {
+export interface NovaDesktop {
   /** Only the isolated local settings window is authorized to call this bridge. */
   localSettings?: {
     request: (pathname: string, body: string) => Promise<{ status: number; body: string }>;
@@ -48,7 +48,7 @@ export interface AidenDesktop {
     toggleMaximize: () => Promise<void>;
     state: () => Promise<{ minimized: boolean; maximized: boolean; fullScreen: boolean }>;
   };
-  update: AidenDesktopUpdate;
+  update: NovaDesktopUpdate;
   oauth: {
     /**
      * Open system-browser auth. A redirect_uri must be HTTP loopback with state;
@@ -60,12 +60,12 @@ export interface AidenDesktop {
      * Authorization codes captured from the system browser or a legacy popup.
      * Returns an unsubscribe function.
      */
-    onCallback: (listener: (callback: AidenDesktopOAuthCallback) => void) => () => void;
+    onCallback: (listener: (callback: NovaDesktopOAuthCallback) => void) => () => void;
   };
 }
 
 /**
- * How the desktop app was pointed at a Aiden server during first-run setup.
+ * How the desktop app was pointed at a Nova server during first-run setup.
  * `new` is the Docker Compose stack this app installs and runs on the same computer.
  */
 export type DesktopInstanceMode = "new" | "existing";
@@ -129,9 +129,9 @@ export type DesktopSetupLink = "docker-desktop" | "orbstack" | "docker-engine";
 
 /**
  * Bridge exposed only to the first-run setup window. The app window keeps the
- * narrower `aidenDesktop` bridge so a connected server can never re-point the app.
+ * narrower `novaDesktop` bridge so a connected server can never re-point the app.
  */
-export interface AidenSetup {
+export interface NovaSetup {
   /** Used only to reserve space for native window controls in the local setup UI. */
   platform: string;
   state: () => Promise<DesktopSetupState>;

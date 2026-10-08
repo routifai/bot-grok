@@ -1,5 +1,5 @@
-import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { cn } from "@nova/ui-web";
 import { TextQuote } from "lucide-react";
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

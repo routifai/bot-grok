@@ -271,7 +271,7 @@ else:
             },
           },
         );
-        expect(comment).toContain("<!-- aiden-playwright-screenshots -->");
+        expect(comment).toContain("<!-- nova-playwright-screenshots -->");
         expect(existsSync(path.join(published, "prs/42/index.html"))).toBe(true);
       }
       expect(existsSync(env.ATTACK_MARKER)).toBe(false);

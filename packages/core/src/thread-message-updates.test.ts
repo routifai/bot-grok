@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@aiden/contracts";
+import type { MessageBlock } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { takeLiveMessage, updateCloudAgentMessages } from "./thread-message-updates.js";
 

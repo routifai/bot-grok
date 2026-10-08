@@ -1,10 +1,11 @@
+import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   Bot,
   ExternalConversation,
   MessagingAgentConnection,
   MessagingChannelMembership,
   MessagingStatus,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   Button,
   Dialog,
@@ -13,8 +14,7 @@ import {
   DialogTitle,
   NativeSelect,
   NativeSelectOption,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 

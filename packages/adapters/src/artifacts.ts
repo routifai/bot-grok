@@ -8,7 +8,7 @@ import type {
   ArtifactStore,
   NotificationMessage,
   NotificationProvider,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 
 const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 

@@ -1,6 +1,6 @@
-# Contributing to Aiden
+# Contributing to Nova
 
-Thanks for helping improve Aiden. Keep changes focused and testable.
+Thanks for helping improve Nova. Keep changes focused and testable.
 
 ## Run locally
 
@@ -25,9 +25,9 @@ CI runs `pnpm lint`, `pnpm check`, production builds (including Electron preload
 
 The web and Electron-hosted UI use Lingui catalogs. To add a locale, register it in
 `apps/web/lingui.config.ts`, `apps/web/src/lib/ui-locale.ts`, and
-`apps/web/src/lib/i18n.ts`, then run `pnpm --filter @aiden/web intl:extract`, fill the new
+`apps/web/src/lib/i18n.ts`, then run `pnpm --filter @nova/web intl:extract`, fill the new
 `apps/web/src/locales/<locale>/messages.po` catalog, and validate it with
-`pnpm --filter @aiden/web intl:compile`. Keep message IDs, placeholders, JSX markers, and
+`pnpm --filter @nova/web intl:compile`. Keep message IDs, placeholders, JSX markers, and
 ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files.
 
 Expo mobile has its own catalog and locale registry. Add the locale to

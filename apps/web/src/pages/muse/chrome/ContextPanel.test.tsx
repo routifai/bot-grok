@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import type { Ask, Goal } from "@aiden/contracts";
-import type * as UiWeb from "@aiden/ui-web";
+import type { Ask, Goal } from "@nova/contracts";
+import type * as UiWeb from "@nova/ui-web";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
@@ -41,7 +41,7 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@aiden/ui-web", async (importOriginal) => ({
+vi.mock("@nova/ui-web", async (importOriginal) => ({
   ...(await importOriginal<typeof UiWeb>()),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   BotAvatar: ({ face }: { face?: string }) => (
@@ -351,7 +351,7 @@ it("shows the Muse's name once, in the identity header, and Connected once a pol
   api.asks.list.mockResolvedValue([]);
   api.goals.list.mockResolvedValue([]);
   api.activities.list.mockResolvedValue(activitiesPage());
-  const page = await renderPanel({ museName: "Aiden" });
+  const page = await renderPanel({ museName: "Nova" });
   try {
     await act(async () => {
       await vi.waitFor(() => {
@@ -362,7 +362,7 @@ it("shows the Muse's name once, in the identity header, and Connected once a pol
     });
     expect(
       page.container.querySelector("[data-testid='context-panel-muse-name']")?.textContent,
-    ).toBe("Aiden");
+    ).toBe("Nova");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

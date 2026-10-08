@@ -1,5 +1,5 @@
-import { Button, cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { Button, cn } from "@nova/ui-web";
 import type { ReactNode } from "react";
 import { useFirstRun } from "./useFirstRun";
 

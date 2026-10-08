@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Token-auth desktop control for the Aiden supervisor."""
+"""Token-auth desktop control for the Nova supervisor."""
 
 import base64
 import ctypes
@@ -12,13 +12,13 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-TOKEN = os.environ.get("AIDEN_COMPUTER_CONTROL_TOKEN", "")
+TOKEN = os.environ.get("NOVA_COMPUTER_CONTROL_TOKEN", "")
 MAX_BODY_BYTES = 256 * 1024
 MAX_ARGV = 32
 MAX_ARG_LEN = 16_384
 KNOWN_LAUNCH = frozenset(
     {
-        "aiden-browser",
+        "nova-browser",
         "xterm",
     }
 )
@@ -43,28 +43,28 @@ class NativeCapture:
     """Persistent MIT-SHM frame source with native lossless PNG encoding."""
 
     def __init__(self, display):
-        library = ctypes.CDLL("/usr/local/lib/libaiden-xcapture.so")
-        library.aiden_xcapture_open.argtypes = [ctypes.c_char_p]
-        library.aiden_xcapture_open.restype = ctypes.c_void_p
-        library.aiden_xcapture_png.argtypes = [
+        library = ctypes.CDLL("/usr/local/lib/libnova-xcapture.so")
+        library.nova_xcapture_open.argtypes = [ctypes.c_char_p]
+        library.nova_xcapture_open.restype = ctypes.c_void_p
+        library.nova_xcapture_png.argtypes = [
             ctypes.c_void_p,
             ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),
             ctypes.POINTER(ctypes.c_size_t),
             ctypes.POINTER(ctypes.c_int),
             ctypes.POINTER(ctypes.c_int),
         ]
-        library.aiden_xcapture_png.restype = ctypes.c_int
-        library.aiden_xcapture_damage.argtypes = [
+        library.nova_xcapture_png.restype = ctypes.c_int
+        library.nova_xcapture_damage.argtypes = [
             ctypes.c_void_p,
             ctypes.POINTER(ctypes.c_int),
             ctypes.POINTER(ctypes.c_int),
             ctypes.POINTER(ctypes.c_int),
             ctypes.POINTER(ctypes.c_int),
         ]
-        library.aiden_xcapture_damage.restype = ctypes.c_int
-        library.aiden_xinput_argv.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)]
-        library.aiden_xinput_argv.restype = ctypes.c_int
-        context = library.aiden_xcapture_open(display.encode("utf-8"))
+        library.nova_xcapture_damage.restype = ctypes.c_int
+        library.nova_xinput_argv.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)]
+        library.nova_xinput_argv.restype = ctypes.c_int
+        context = library.nova_xcapture_open(display.encode("utf-8"))
         if not context:
             raise RuntimeError("MIT-SHM capture is unavailable")
         self.library = library
@@ -74,12 +74,12 @@ class NativeCapture:
         png = ctypes.POINTER(ctypes.c_ubyte)()
         png_size = ctypes.c_size_t()
         width, height = ctypes.c_int(), ctypes.c_int()
-        if self.library.aiden_xcapture_png(
+        if self.library.nova_xcapture_png(
             self.context, ctypes.byref(png), ctypes.byref(png_size), ctypes.byref(width), ctypes.byref(height)
         ):
             raise RuntimeError("MIT-SHM screen capture failed")
         damage = (ctypes.c_int(), ctypes.c_int(), ctypes.c_int(), ctypes.c_int())
-        changed = self.library.aiden_xcapture_damage(
+        changed = self.library.nova_xcapture_damage(
             self.context, *(ctypes.byref(value) for value in damage)
         )
         return (
@@ -92,7 +92,7 @@ class NativeCapture:
 
     def act(self, argv):
         encoded = (ctypes.c_char_p * len(argv))(*(value.encode("utf-8") for value in argv))
-        return self.library.aiden_xinput_argv(self.context, len(argv), encoded)
+        return self.library.nova_xinput_argv(self.context, len(argv), encoded)
 
 
 def native_capture(display):
@@ -163,7 +163,7 @@ def describe_argv(argv):
 
 def control_command_index(argv):
     """Locate the executable after the optional supervisor-owned browser profile."""
-    return 3 if len(argv) > 2 and argv[2].startswith("AIDEN_BROWSER_PROFILE=") else 2
+    return 3 if len(argv) > 2 and argv[2].startswith("NOVA_BROWSER_PROFILE=") else 2
 
 
 def allowed_control_argv(argv, display):
@@ -179,10 +179,10 @@ def allowed_control_argv(argv, display):
         return False
     command = argv[index]
     if index == 3:
-        profile = argv[2].removeprefix("AIDEN_BROWSER_PROFILE=")
-        if not re.fullmatch(r"/home/aiden/\.browser-profiles/chromium-bot-[a-f0-9]{32}", profile):
+        profile = argv[2].removeprefix("NOVA_BROWSER_PROFILE=")
+        if not re.fullmatch(r"/home/nova/\.browser-profiles/chromium-bot-[a-f0-9]{32}", profile):
             return False
-        if command not in ("xdg-open", "aiden-browser"):
+        if command not in ("xdg-open", "nova-browser"):
             return False
     if command == "xdotool":
         return allowed_xdotool_argv(argv)

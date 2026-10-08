@@ -1,6 +1,6 @@
-import type { ThreadMessage } from "@aiden/contracts";
-import { plainTextFromMarkdown } from "@aiden/core";
 import { t } from "@lingui/core/macro";
+import type { ThreadMessage } from "@nova/contracts";
+import { plainTextFromMarkdown } from "@nova/core";
 
 export function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks

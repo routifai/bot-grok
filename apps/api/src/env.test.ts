@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadEnv } from "./env.js";
 
 const base = {
-  DATABASE_URL: "postgres://aiden:aiden@127.0.0.1:5433/aiden",
+  DATABASE_URL: "postgres://nova:nova@127.0.0.1:5433/nova",
   NODE_ENV: "test",
 };
 
@@ -162,7 +162,7 @@ describe("loadEnv", () => {
   it("exposes a deployed git revision when GIT_SHA is set", () => {
     expect(loadEnv(base).gitSha).toBeUndefined();
     expect(loadEnv({ ...base, GIT_SHA: "  3c6e209  " }).gitSha).toBe("3c6e209");
-    expect(loadEnv({ ...base, AIDEN_GIT_SHA: "abc1234" }).gitSha).toBe("abc1234");
+    expect(loadEnv({ ...base, NOVA_GIT_SHA: "abc1234" }).gitSha).toBe("abc1234");
   });
 
   it("loads SMTP configuration and keeps the email emulator out of production", () => {
@@ -170,12 +170,12 @@ describe("loadEnv", () => {
       loadEnv({
         ...base,
         SMTP_URL: " smtps://user:secret@smtp.example.test:465 ",
-        EMAIL_FROM: " Aiden <no-reply@example.test> ",
+        EMAIL_FROM: " Nova <no-reply@example.test> ",
         EMAIL_EMULATOR: "true",
       }),
     ).toMatchObject({
       smtpUrl: "smtps://user:secret@smtp.example.test:465",
-      emailFrom: "Aiden <no-reply@example.test>",
+      emailFrom: "Nova <no-reply@example.test>",
       emailEmulator: true,
     });
     expect(

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot, Me } from "@aiden/contracts";
+import type { Bot, Me } from "@nova/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -24,7 +24,7 @@ vi.mock("@lingui/core/macro", () => ({ t: (parts: TemplateStringsArray) => parts
 vi.mock("./avatar-studio-popover", () => ({ AvatarStudioPopover: () => <div /> }));
 vi.mock("../ScratchpadSection", () => ({ ScratchpadSection: () => <div /> }));
 vi.mock("../SkillsSection", () => ({ SkillsSection: () => <div /> }));
-vi.mock("@aiden/ui-web", () => {
+vi.mock("@nova/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
   );
@@ -100,7 +100,7 @@ function render() {
   return { container, root };
 }
 
-it("never renders a proactivity control (it now lives in Settings > Aiden)", async () => {
+it("never renders a proactivity control (it now lives in Settings > Nova)", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.me.mockResolvedValue(me());
   const { container, root } = render();

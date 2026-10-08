@@ -6,7 +6,7 @@ test("settings: Nova, General, Model, Memory and Voice, one size, iOS rows", asy
 }, testInfo) => {
   const stamp = Date.now();
   const userName = `Settings shell ${stamp}`;
-  await signup(page, `settings-shell-${stamp}@aiden.test`, "password12", userName);
+  await signup(page, `settings-shell-${stamp}@nova.test`, "password12", userName);
   await completeOnboarding(page);
 
   const settings = await openUserSettings(page);
@@ -27,7 +27,7 @@ test("settings: Nova, General, Model, Memory and Voice, one size, iOS rows", asy
   await streamReplies.click();
   await expect(streamReplies).toBeChecked();
   await expect
-    .poll(() => page.evaluate(() => window.localStorage.getItem("aiden.responseStreaming")))
+    .poll(() => page.evaluate(() => window.localStorage.getItem("nova.responseStreaming")))
     .toBe("on");
   await expect(settings.getByRole("button", { name: "Log out", exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "settings-general");

@@ -1,4 +1,4 @@
-import { hasValidBearerToken } from "@aiden/core";
+import { hasValidBearerToken } from "@nova/core";
 import type { Hono } from "hono";
 import { mountGithubWebhookRoute } from "./github-webhook.js";
 import { readBoundedBody } from "./http-body.js";

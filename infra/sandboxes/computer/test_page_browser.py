@@ -9,7 +9,7 @@ import sys
 import unittest
 from unittest.mock import Mock, patch
 
-loader = importlib.machinery.SourceFileLoader("page_browser", str(Path(__file__).with_name("aiden-page-browser")))
+loader = importlib.machinery.SourceFileLoader("page_browser", str(Path(__file__).with_name("nova-page-browser")))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 helper = importlib.util.module_from_spec(spec)
 loader.exec_module(helper)
@@ -17,8 +17,8 @@ loader.exec_module(helper)
 
 class PageBrowserTest(unittest.TestCase):
     def test_closed_stdin_cancels_helper_without_a_browser(self):
-        with subprocess.Popen([sys.executable, str(Path(__file__).with_name("aiden-page-browser")), "snapshot", "{}"],
-                              env={**os.environ, "AIDEN_BROWSER_WATCH_STDIN": "1", "AIDEN_CDP_PORT": "0"},
+        with subprocess.Popen([sys.executable, str(Path(__file__).with_name("nova-page-browser")), "snapshot", "{}"],
+                              env={**os.environ, "NOVA_BROWSER_WATCH_STDIN": "1", "NOVA_CDP_PORT": "0"},
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
             process.stdin.close()
             self.assertEqual(process.wait(timeout=3), 130)
@@ -79,7 +79,7 @@ class PageBrowserTest(unittest.TestCase):
             ])
         self.assertEqual(
             evaluate.call_args_list[1].args[2],
-            'window.__aidenPageBrowser.fill("e1", "fake-password", "https://login.example.test")',
+            'window.__novaPageBrowser.fill("e1", "fake-password", "https://login.example.test")',
         )
 
     def test_rejects_origin_outside_fill_before_any_action(self):

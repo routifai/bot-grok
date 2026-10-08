@@ -1,11 +1,11 @@
-import type { AvatarStyle } from "@aiden/contracts";
+import type { AvatarStyle } from "@nova/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   avatarIdentitySeed,
   organicAvatarPath,
   SHIPPED_BOT_AVATAR_CENTER,
   SHIPPED_BOT_AVATAR_VIEWBOX,
-} from "@aiden/core";
+} from "@nova/core";
 import { memo, useEffect } from "react";
 import { Image, View } from "react-native";
 import Animated, {

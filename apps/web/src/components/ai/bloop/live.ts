@@ -1,4 +1,4 @@
-import type { MuseState } from "@aiden/contracts";
+import type { MuseState } from "@nova/contracts";
 import type * as ThreeNamespace from "three";
 import { readCssColor, supportsWebGL } from "../webgl";
 import { type BloopPropTextures, type BloopTheme, buildPropTextures } from "./props";

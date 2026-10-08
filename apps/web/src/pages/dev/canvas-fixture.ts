@@ -1,4 +1,4 @@
-import type { CanvasNode } from "@aiden/contracts";
+import type { CanvasNode } from "@nova/contracts";
 
 /**
  * Dev-only proof fixture for Nova Canvas (see AGENTS task: the Canadian credit-card

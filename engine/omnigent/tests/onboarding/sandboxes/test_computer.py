@@ -49,7 +49,7 @@ class FakeSupervisor:
         self.computers_status = computers_status
         self.computers_body = computers_body or {
             "id": CONTAINER_ID,
-            "image": "aiden-computer:latest",
+            "image": "nova-computer:latest",
             "resumed": True,
         }
         self.exec_status = exec_status
@@ -191,16 +191,16 @@ def test_prepare_fails_loud_without_resolved_identity() -> None:
 def test_launcher_reads_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(SUPERVISOR_URL_ENV_VAR, "http://from-env.test")
     monkeypatch.setenv(SUPERVISOR_TOKEN_ENV_VAR, "env-token")
-    monkeypatch.setenv(HOME_ROOT_ENV_VAR, "/data/aiden")
+    monkeypatch.setenv(HOME_ROOT_ENV_VAR, "/data/nova")
     launcher = ComputerSandboxLauncher()
     assert launcher._supervisor_url == "http://from-env.test"
     assert launcher._supervisor_token == "env-token"
-    assert launcher._home_root == "/data/aiden"
+    assert launcher._home_root == "/data/nova"
 
 
 def test_provision_ensures_the_computer_and_returns_an_encoded_sandbox_id() -> None:
     supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor, home_root="/data/aiden")
+    launcher = make_launcher(supervisor, home_root="/data/nova")
     launcher.prepare_for_launch(labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID})
     launcher.prepare()
 
@@ -212,14 +212,14 @@ def test_provision_ensures_the_computer_and_returns_an_encoded_sandbox_id() -> N
     assert request.method == "POST"
     assert request.url.path == "/computers"
     assert request.headers["authorization"] == "Bearer shared-secret"
-    assert request.headers["x-aiden-bot-id"] == BOT_ID
-    assert request.headers["x-aiden-space-id"] == SPACE_ID
+    assert request.headers["x-nova-bot-id"] == BOT_ID
+    assert request.headers["x-nova-space-id"] == SPACE_ID
     import json
 
     body = json.loads(request.content)
     assert body == {
         "botId": BOT_ID,
-        "homePath": "/data/aiden/homes/bot_abc123",
+        "homePath": "/data/nova/homes/bot_abc123",
         "spaceId": SPACE_ID,
     }
 
@@ -259,8 +259,8 @@ def test_run_execs_the_command_through_the_supervisor() -> None:
     assert result.stdout == "hello\n"
     request = supervisor.requests[-1]
     assert request.url.path == f"/computers/{CONTAINER_ID}/exec"
-    assert request.headers["x-aiden-bot-id"] == BOT_ID
-    assert request.headers["x-aiden-space-id"] == SPACE_ID
+    assert request.headers["x-nova-bot-id"] == BOT_ID
+    assert request.headers["x-nova-space-id"] == SPACE_ID
     import json
 
     body = json.loads(request.content)
@@ -421,8 +421,8 @@ def test_run_re_resolves_a_stale_container_id_and_retries() -> None:
         f"/computers/{NEW_CONTAINER_ID}/exec",
     ]
     ensure = requests[1]
-    assert ensure.headers["x-aiden-bot-id"] == BOT_ID
-    assert ensure.headers["x-aiden-space-id"] == SPACE_ID
+    assert ensure.headers["x-nova-bot-id"] == BOT_ID
+    assert ensure.headers["x-nova-space-id"] == SPACE_ID
 
 
 def test_is_running_re_resolves_a_stale_container_id() -> None:
@@ -436,7 +436,7 @@ def test_screen_url_sends_the_stable_screen_id_and_view_mode() -> None:
     assert launcher.screen_url(SANDBOX_ID, interactive=False) == "http://v/?t=1"
     screen = requests[-1]
     assert screen.url.path == f"/computers/{NEW_CONTAINER_ID}/screen-mode"
-    assert screen.headers["x-aiden-screen-id"] == BOT_ID
+    assert screen.headers["x-nova-screen-id"] == BOT_ID
     assert json.loads(screen.content) == {"interactive": False, "revokeControl": False}
 
 

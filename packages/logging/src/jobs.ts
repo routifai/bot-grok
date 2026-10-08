@@ -5,7 +5,7 @@ import { getLogger } from "./logger.js";
 import type { JobCorrelation, LogBindings } from "./types.js";
 import { JOB_CORRELATION_VERSION } from "./types.js";
 
-const CORRELATION_FIELD = "__aidenLog";
+const CORRELATION_FIELD = "__novaLog";
 
 interface JobCorrelationMeta {
   v: typeof JOB_CORRELATION_VERSION;

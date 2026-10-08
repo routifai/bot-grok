@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -uo pipefail
 export DISPLAY="${DISPLAY:-:1}"
-export HOME="${HOME:-/home/aiden}"
+export HOME="${HOME:-/home/nova}"
 AGENT_HOME="$HOME"
-mkdir -p "$AGENT_HOME" "$AGENT_HOME/.local/bin" "$AGENT_HOME/.config" /tmp/aiden /tmp/.X11-unix /tmp/fluxbox-home
+mkdir -p "$AGENT_HOME" "$AGENT_HOME/.local/bin" "$AGENT_HOME/.config" /tmp/nova /tmp/.X11-unix /tmp/fluxbox-home
 # The workspace layout delegated work lands in (docs/adr/0007): what the person should see, Goal
 # folders are created per Goal, what they hand over, and the browser's downloads.
 mkdir -p "$AGENT_HOME/workspace/your_files" "$AGENT_HOME/workspace/goals" \
   "$AGENT_HOME/workspace/user/media_library" "$AGENT_HOME/workspace/Downloads"
-# Login shells re-apply ~/.local/bin from /etc/profile.d/aiden-local-bin.sh.
+# Login shells re-apply ~/.local/bin from /etc/profile.d/nova-local-bin.sh.
 export PATH="$AGENT_HOME/.local/bin:/usr/local/bin:$PATH"
 export NPM_CONFIG_PREFIX="$AGENT_HOME/.local"
 export PIP_USER=1
@@ -32,13 +32,13 @@ shutdown() {
 }
 trap shutdown TERM INT
 
-if [[ -n "${AIDEN_COMPUTER_CONTROL_TOKEN:-}" ]]; then
-  /usr/local/bin/aiden-computer-control >/tmp/aiden/control.log 2>&1 &
+if [[ -n "${NOVA_COMPUTER_CONTROL_TOKEN:-}" ]]; then
+  /usr/local/bin/nova-computer-control >/tmp/nova/control.log 2>&1 &
 fi
 
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 
-Xvfb :1 -screen 0 1280x800x24 -ac +extension RANDR +render -noreset >/tmp/aiden/xvfb.log 2>&1 &
+Xvfb :1 -screen 0 1280x800x24 -ac +extension RANDR +render -noreset >/tmp/nova/xvfb.log 2>&1 &
 XVFB_PID=$!
 
 ready=0
@@ -51,7 +51,7 @@ for _ in $(seq 1 100); do
 done
 if [[ "$ready" -ne 1 ]]; then
   echo "Xvfb failed to start" >&2
-  cat /tmp/aiden/xvfb.log >&2 || true
+  cat /tmp/nova/xvfb.log >&2 || true
   exit 1
 fi
 
@@ -61,35 +61,35 @@ fi
 
 xsetroot -solid "#111113" >/dev/null 2>&1 || true
 mkdir -p /tmp/fluxbox-home/.fluxbox
-cp /etc/aiden/fluxbox/init /tmp/fluxbox-home/.fluxbox/init
-cp /etc/aiden/fluxbox/apps /tmp/fluxbox-home/.fluxbox/apps 2>/dev/null || true
-cp /etc/aiden/fluxbox/menu /tmp/fluxbox-home/.fluxbox/menu 2>/dev/null || true
+cp /etc/nova/fluxbox/init /tmp/fluxbox-home/.fluxbox/init
+cp /etc/nova/fluxbox/apps /tmp/fluxbox-home/.fluxbox/apps 2>/dev/null || true
+cp /etc/nova/fluxbox/menu /tmp/fluxbox-home/.fluxbox/menu 2>/dev/null || true
 cat > /tmp/fluxbox-home/.fluxbox/startup <<'EOF'
 #!/bin/sh
 xsetroot -solid "#111113"
 exec fluxbox -rc /tmp/fluxbox-home/.fluxbox/init
 EOF
 chmod +x /tmp/fluxbox-home/.fluxbox/startup
-HOME=/tmp/fluxbox-home /tmp/fluxbox-home/.fluxbox/startup >/tmp/aiden/fluxbox.log 2>&1 &
+HOME=/tmp/fluxbox-home /tmp/fluxbox-home/.fluxbox/startup >/tmp/nova/fluxbox.log 2>&1 &
 
 register_browser_handler() {
   local mime="$1"
-  if ! xdg-mime default aiden-browser.desktop "$mime" >/dev/null 2>&1 \
-    || [[ "$(xdg-mime query default "$mime" 2>/dev/null || true)" != "aiden-browser.desktop" ]]; then
-    echo "failed to register aiden-browser for $mime" >&2
+  if ! xdg-mime default nova-browser.desktop "$mime" >/dev/null 2>&1 \
+    || [[ "$(xdg-mime query default "$mime" 2>/dev/null || true)" != "nova-browser.desktop" ]]; then
+    echo "failed to register nova-browser for $mime" >&2
     exit 1
   fi
 }
 register_browser_handler x-scheme-handler/http
 register_browser_handler x-scheme-handler/https
 register_browser_handler text/html
-if ! xdg-settings set default-web-browser aiden-browser.desktop >/dev/null 2>&1 \
-  || [[ "$(xdg-settings get default-web-browser 2>/dev/null || true)" != "aiden-browser.desktop" ]]; then
-  echo "failed to set default web browser to aiden-browser" >&2
+if ! xdg-settings set default-web-browser nova-browser.desktop >/dev/null 2>&1 \
+  || [[ "$(xdg-settings get default-web-browser 2>/dev/null || true)" != "nova-browser.desktop" ]]; then
+  echo "failed to set default web browser to nova-browser" >&2
   exit 1
 fi
 
-x11vnc -display :1 -forever -shared -viewonly -nopw -listen 127.0.0.1 -rfbport 5900 -xkb -ncache 0 >/tmp/aiden/x11vnc.log 2>&1 &
+x11vnc -display :1 -forever -shared -viewonly -nopw -listen 127.0.0.1 -rfbport 5900 -xkb -ncache 0 >/tmp/nova/x11vnc.log 2>&1 &
 
 NOVNC_ROOT=/usr/share/novnc
 if [[ ! -d "$NOVNC_ROOT" ]]; then
@@ -108,7 +108,7 @@ if [[ ! -f "$NOVNC_ROOT/mobile-keyboard.js" ]]; then
   echo "noVNC mobile-keyboard.js is missing from the computer image" >&2
   exit 1
 fi
-websockify --heartbeat=30 --web="$NOVNC_ROOT" --token-plugin=TokenFile --token-source=/tmp/aiden/view-target-1 0.0.0.0:6080 >/tmp/aiden/novnc.log 2>&1 &
+websockify --heartbeat=30 --web="$NOVNC_ROOT" --token-plugin=TokenFile --token-source=/tmp/nova/view-target-1 0.0.0.0:6080 >/tmp/nova/novnc.log 2>&1 &
 
 wait "$XVFB_PID"
 echo "Xvfb exited" >&2

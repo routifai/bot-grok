@@ -47,9 +47,9 @@ def test_navigate_and_snapshot_map_to_helper(monkeypatch: pytest.MonkeyPatch) ->
     backend, calls = _backend(monkeypatch, [{"ok": True, "url": "u"}, SNAPSHOT])
     nav = json.loads(asyncio.run(backend.execute("navigate", {"url": "https://x.test"})))
     assert nav["ok"] is True
-    assert calls[0] == ["aiden-page-browser", "navigate", '{"url": "https://x.test"}']
+    assert calls[0] == ["nova-page-browser", "navigate", '{"url": "https://x.test"}']
     snap = json.loads(asyncio.run(backend.execute("snapshot", {})))
-    assert calls[1][:2] == ["aiden-page-browser", "snapshot"]
+    assert calls[1][:2] == ["nova-page-browser", "snapshot"]
     assert "[ref=1]" in snap["tree"] and "[ebbb]" not in snap["tree"]
 
 

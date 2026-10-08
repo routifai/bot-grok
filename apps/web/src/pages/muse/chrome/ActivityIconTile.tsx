@@ -1,4 +1,4 @@
-import { cn } from "@aiden/ui-web";
+import { cn } from "@nova/ui-web";
 import type { LucideIcon } from "lucide-react";
 
 /** The rounded muted tile an Activity's source icon sits in. A live run's icon breathes

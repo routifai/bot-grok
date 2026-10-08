@@ -1,5 +1,5 @@
-import type { Activity } from "@aiden/contracts";
-import { presentStep } from "@aiden/core";
+import type { Activity } from "@nova/contracts";
+import { presentStep } from "@nova/core";
 import { isRunning } from "./activityGrouping";
 
 // Helpers nest: a Helper that hands part of its task to others (CONTEXT.md "Helper") lists those

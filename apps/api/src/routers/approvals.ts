@@ -2,8 +2,8 @@ import {
   deploymentAutoReviewDefault,
   isAutoReviewCheckerConfigured,
   resolveAutoReviewChecker,
-} from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
+} from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "../agent-secrets.js";
 import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "../engine-approvals.js";
 import { engineComputerClient } from "../engine-computer.js";

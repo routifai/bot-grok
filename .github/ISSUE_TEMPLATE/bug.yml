@@ -1,5 +1,5 @@
 name: Bug report
-description: Something is broken in Aiden
+description: Something is broken in Nova
 title: "[Bug]: "
 labels:
   - bug
@@ -55,7 +55,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Aiden version or commit
+      label: Nova version or commit
       placeholder: v0.1.0 or abc1234
     validations:
       required: true

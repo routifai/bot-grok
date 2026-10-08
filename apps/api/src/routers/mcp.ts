@@ -1,6 +1,6 @@
-import { assertSafeRemoteUrl, buildMcpCredentialBlob } from "@aiden/adapters";
-import type { Actor, McpServer } from "@aiden/contracts";
-import { IsolationError, type Prisma } from "@aiden/db";
+import { assertSafeRemoteUrl, buildMcpCredentialBlob } from "@nova/adapters";
+import type { Actor, McpServer } from "@nova/contracts";
+import { IsolationError, type Prisma } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { buildMcpUpdateMaterial } from "../mcp-material.js";
 import type { RouterContext, RouterDeps } from "./context.js";

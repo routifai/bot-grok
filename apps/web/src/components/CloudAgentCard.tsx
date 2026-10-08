@@ -1,8 +1,8 @@
-import type { MessageBlock } from "@aiden/contracts";
-import { cloudAgentHttpsUrl } from "@aiden/core";
-import { Badge } from "@aiden/ui-web/components/ui/badge";
-import { Card, CardContent } from "@aiden/ui-web/components/ui/card";
 import { Trans } from "@lingui/react/macro";
+import type { MessageBlock } from "@nova/contracts";
+import { cloudAgentHttpsUrl } from "@nova/core";
+import { Badge } from "@nova/ui-web/components/ui/badge";
+import { Card, CardContent } from "@nova/ui-web/components/ui/card";
 
 export function CloudAgentCard({
   block,

@@ -1,7 +1,7 @@
-import type { Bot } from "@aiden/contracts";
-import { BOT_NAME_MAX_LENGTH } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { Bot } from "@nova/contracts";
+import { BOT_NAME_MAX_LENGTH } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { authClient } from "../../lib/auth";
@@ -19,7 +19,7 @@ import { VaultSettings } from "./VaultSettings";
  * face, no shape or upload), and how proactively it works on Goals. Everything here
  * saves through the same bot-update path bot-panel uses, so there is one source of truth.
  */
-export function AidenSettingsPanel({
+export function NovaSettingsPanel({
   bot,
   onSave,
 }: {
@@ -51,7 +51,7 @@ export function AidenSettingsPanel({
   }
 
   return (
-    <div data-testid="aiden-settings" className="flex flex-col gap-8 pb-4">
+    <div data-testid="nova-settings" className="flex flex-col gap-8 pb-4">
       <div className={cn(MUSE_INSET_GROUP, "flex flex-col items-center px-6 pt-7 pb-5")}>
         <AvatarStudioPopover
           value={color}

@@ -1,4 +1,4 @@
-import { textDirectionForLocale } from "@aiden/core";
+import { textDirectionForLocale } from "@nova/core";
 import { resolveUiLocale } from "./ui-locale";
 
 export function applyUiDirection(locale: string = resolveUiLocale()) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { SandboxProvider } from "@aiden/adapter-kit";
-import { computerControlExpireJobKey } from "@aiden/adapter-kit";
+import type { SandboxProvider } from "@nova/adapter-kit";
+import { computerControlExpireJobKey } from "@nova/adapter-kit";
 import {
   applyTeachingDesktopInput,
   clearInactiveUserComputerControl,
@@ -16,9 +16,9 @@ import {
   takeoverLeaseMs,
   toComputerRef,
   touchRunningComputer,
-} from "@aiden/adapters";
-import { IsolationError, parseComputerMode } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapters";
+import { IsolationError, parseComputerMode } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { executionBlocksUserTakeover } from "../computer-status.js";
 import {

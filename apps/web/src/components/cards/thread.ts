@@ -1,4 +1,4 @@
-import type { ReplyCardBlock, ThreadMessage } from "@aiden/contracts";
+import type { ReplyCardBlock, ThreadMessage } from "@nova/contracts";
 
 /** What one card block in the transcript should draw. */
 export type ResolvedReplyCard = {

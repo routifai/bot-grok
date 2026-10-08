@@ -1,4 +1,4 @@
-import type { Ask } from "@aiden/contracts";
+import type { Ask } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { askDecision } from "./askDecision";
 

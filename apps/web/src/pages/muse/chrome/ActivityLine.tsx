@@ -1,6 +1,6 @@
-import type { Activity, ActivitySource } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import type { Activity, ActivitySource } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { CircleAlert, CircleSlash } from "lucide-react";
 import type { ReactNode } from "react";
 import { ChevronGlyph } from "./NovaGlyphs";

@@ -39,14 +39,14 @@ OPENROUTER_API_KEY=sk-or-...          # or ANTHROPIC_API_KEY=sk-ant-...
 
 ```bash
 PI_DEFAULT_PROVIDER=local
-AIDEN_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # server on this laptop
-AIDEN_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
-AIDEN_LOCAL_MODELS_API_KEY=sk-...                             # only if the server needs a key
-AIDEN_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
+NOVA_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # server on this laptop
+NOVA_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
+NOVA_LOCAL_MODELS_API_KEY=sk-...                             # only if the server needs a key
+NOVA_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
 ```
 
 - Use `host.docker.internal`, not `localhost`: inside Docker, `localhost` is the container itself.
-- List image-capable models in `AIDEN_LOCAL_VISION_MODELS` so Nova can see its computer's screen.
+- List image-capable models in `NOVA_LOCAL_VISION_MODELS` so Nova can see its computer's screen.
 
 Everything else in `.env` (passwords, secrets) is generated for you in the next step.
 
@@ -59,8 +59,8 @@ Everything else in `.env` (passwords, secrets) is generated for you in the next 
 The first run builds everything (a few minutes). It ends with the address to open, usually
 **http://127.0.0.1:5173**. If that port is taken, it picks the next free one and tells you.
 
-When it's running, `docker ps` shows five containers: `aiden-postgres-1`, `aiden-api-1`,
-`aiden-worker-1`, `aiden-web-1`, `aiden-supervisor-1`. An `aiden-bot-…` container appears the first
+When it's running, `docker ps` shows five containers: `nova-postgres-1`, `nova-api-1`,
+`nova-worker-1`, `nova-web-1`, `nova-supervisor-1`. An `nova-bot-…` container appears the first
 time Nova uses its computer.
 
 ## 5. First time in the app

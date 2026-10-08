@@ -1,4 +1,4 @@
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OmnigentApiError } from "./client.js";
 import { failRunUnsupportedOnOmnigent, runTurnOnOmnigent } from "./gateway.js";

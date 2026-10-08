@@ -1,6 +1,6 @@
-import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@aiden/core";
-import { Button, Input, Label } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@nova/core";
+import { Button, Input, Label } from "@nova/ui-web";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";

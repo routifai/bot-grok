@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   BotAvatar: () => <div data-testid="bot-avatar" />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));

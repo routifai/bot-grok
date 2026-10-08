@@ -9,7 +9,7 @@ import {
   type MuseSettings,
   PROACTIVITY_LEVELS,
   type Proactivity,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 
 /** The Bot columns `MuseSettings` is stored in (apps/api/src/muse-settings.ts, B7). */
 export interface MuseSettingsRow {

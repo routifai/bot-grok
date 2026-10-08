@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { runJobKey } from "@aiden/adapter-kit";
+import { runJobKey } from "@nova/adapter-kit";
 import {
   archiveBot,
   cancelComputerRunWork,
@@ -12,10 +12,10 @@ import {
   scriptedCatalogEntry,
   toComputerRef,
   validateStoredModelAuth,
-} from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
-import { OPENAI_COMPATIBLE_PROVIDER_ID } from "@aiden/contracts";
-import { ACTIVE_RUN_STATUSES } from "@aiden/core";
+} from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
+import { OPENAI_COMPATIBLE_PROVIDER_ID } from "@nova/contracts";
+import { ACTIVE_RUN_STATUSES } from "@nova/core";
 import {
   BotSectionNameConflictError,
   ComputerLimitError,
@@ -23,8 +23,8 @@ import {
   IsolationError,
   restoreBotUnderComputerQuota,
   SpaceDeletionInProgressError,
-} from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { botProfileLabelsChanged, commitBotUpdate } from "../bot-update.js";
 import { loadMessagePage } from "../thread-message-pages.js";

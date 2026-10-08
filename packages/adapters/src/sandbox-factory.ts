@@ -1,4 +1,4 @@
-import type { SandboxProvider } from "@aiden/adapter-kit";
+import type { SandboxProvider } from "@nova/adapter-kit";
 import { BoxSandboxEmulator } from "./box-emulator.js";
 import { BoxSandboxProvider } from "./box-sandbox.js";
 import { CreateOSSandboxProvider } from "./createos-sandbox.js";

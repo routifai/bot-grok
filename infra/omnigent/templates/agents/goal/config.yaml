@@ -19,11 +19,11 @@ executor:
 # sandbox, so no inner sandbox and no approval prompts.
 os_env:
   type: caller_process
-  cwd: /home/aiden/workspace
+  cwd: /home/nova/workspace
   sandbox:
     type: none
     # A session opened on a Project starts in its folder; file tools still reach the workspace.
-    write_paths: [/home/aiden/workspace]
+    write_paths: [/home/nova/workspace]
 
 # One Goal run at a time per person is already enforced by the proactive-run gating; this
 # caps Goal Helpers on top of the default concurrency cap across all Sub-agent Types.

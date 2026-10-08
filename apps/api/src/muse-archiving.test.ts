@@ -1,12 +1,12 @@
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMuseArchiving, updateMuseArchiving } from "./muse-archiving.js";
 
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@aiden.test",
+  email: "user@nova.test",
   isDeploymentOwner: true,
 };
 const ENV = { OMNIGENT_URL: "http://engine.test", OMNIGENT_PROXY_SECRET: "s" };
@@ -15,7 +15,7 @@ function depsFor(bot: { id: string } | null) {
   const findFirst = vi.fn(async () => bot);
   const prisma = {
     bot: { findFirst },
-    user: { findUnique: vi.fn(async () => ({ email: "user@aiden.test" })) },
+    user: { findUnique: vi.fn(async () => ({ email: "user@nova.test" })) },
   } as unknown as PrismaClient;
   return { deps: { prisma }, findFirst };
 }

@@ -4,10 +4,10 @@ import type {
   ConnectorEvent,
   ConnectorProvider,
   ConnectorTool,
-} from "@aiden/adapter-kit";
-import { isLocalMcpHost } from "@aiden/contracts";
-import type { McpServer, PrismaClient, ThreadEvents } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import { isLocalMcpHost } from "@nova/contracts";
+import type { McpServer, PrismaClient, ThreadEvents } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { catalogToolPrefix } from "./approval-effect.js";
 import { redactConnectorPayload, sanitizeConnectorError } from "./connector-safety.js";
 import {
@@ -329,7 +329,7 @@ export class McpConnector implements ConnectorProvider {
     server: McpServer,
     context: AdapterContext,
   ): Promise<{ session: McpSession; material: OAuthMaterial }> {
-    const session = new McpSession({ name: `aiden-${server.slug}` });
+    const session = new McpSession({ name: `nova-${server.slug}` });
     // Hoisted so a throw after the secret is decoded can still hand the material out.
     let material: OAuthMaterial | undefined;
     try {

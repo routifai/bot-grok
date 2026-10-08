@@ -1,23 +1,23 @@
-# Self-hosting Aiden
+# Self-hosting Nova
 
 The signed-in product is a long-running API, a Graphile Worker, Postgres, and a computer provider (Docker supervisor, E2B, Daytona, CreateOS, or Box). It is not a static site. The marketing site in `apps/www` can be hosted separately.
 
 ## Local (source checkout)
 
-Same as the README quick start: `.env` from `.env.example`, Postgres via Compose, `pnpm sandbox:build`, `pnpm dev`, then [http://127.0.0.1:5173](http://127.0.0.1:5173) (or `http://localhost:5173` — both loopback hosts are trusted). Electron: `pnpm --filter @aiden/desktop dev` while that stack is up, choosing **Existing instance** with that address. The desktop app's **This computer** option instead installs and runs the published images itself with Docker Compose (see [Published images](#published-images-no-checkout)), using port 45173 by default so it can run alongside `pnpm dev`. If that port is occupied, the app selects and remembers another loopback port. The managed API gets a Docker-assigned loopback port; all desktop traffic uses the web origin.
+Same as the README quick start: `.env` from `.env.example`, Postgres via Compose, `pnpm sandbox:build`, `pnpm dev`, then [http://127.0.0.1:5173](http://127.0.0.1:5173) (or `http://localhost:5173` — both loopback hosts are trusted). Electron: `pnpm --filter @nova/desktop dev` while that stack is up, choosing **Existing instance** with that address. The desktop app's **This computer** option instead installs and runs the published images itself with Docker Compose (see [Published images](#published-images-no-checkout)), using port 45173 by default so it can run alongside `pnpm dev`. If that port is occupied, the app selects and remembers another loopback port. The managed API gets a Docker-assigned loopback port; all desktop traffic uses the web origin.
 
-For source development in WSL, keep the checkout and `data` directory in the Linux filesystem (for example, `~/aiden`), and run `pnpm dev` as your normal user. The host-run supervisor matches bot container UID/GID to that user. If Docker Desktop container IPs are unreachable, set `SANDBOX_CONTROL_VIA_LOOPBACK=true` in `.env`; this publishes the token-protected control service on a random loopback port. Leave this unset for the Compose-hosted supervisor.
+For source development in WSL, keep the checkout and `data` directory in the Linux filesystem (for example, `~/nova`), and run `pnpm dev` as your normal user. The host-run supervisor matches bot container UID/GID to that user. If Docker Desktop container IPs are unreachable, set `SANDBOX_CONTROL_VIA_LOOPBACK=true` in `.env`; this publishes the token-protected control service on a random loopback port. Leave this unset for the Compose-hosted supervisor.
 
 Compose bot homes mount only their own subdirectory of the application volume using Docker volume semantics. Docker's internal volume paths are never used as host bind mounts.
 
 ## Published images (no checkout)
 
-Pull Postgres and the published `ghcr.io/<your-namespace>/aiden/app` image into any empty folder.
+Pull Postgres and the published `ghcr.io/<your-namespace>/nova/app` image into any empty folder.
 No clone or image build. Requires Docker Engine 26+ (API 1.45+ for bot home volume subpaths), the
 Compose plugin, curl, and OpenSSL.
 
 ```bash
-mkdir -p aiden && cd aiden &&
+mkdir -p nova && cd nova &&
 curl -fsSLO <raw-url-of-install-images.sh-in-your-repository> &&
 bash install-images.sh
 ```
@@ -37,7 +37,7 @@ Compose stack requires `SANDBOX_SUPERVISOR_TOKEN` for every provider; leave it e
 
 Optional: set `OPENROUTER_API_KEY` or connect a model in the UI after signup.
 Auto Review uses that LLM checker by default. To use TypeSafe Jev instead, set
-`AIDEN_AUTO_REVIEW_PROVIDER=jev` and `TYPESAFE_API_KEY`. Core still runs with neither.
+`NOVA_AUTO_REVIEW_PROVIDER=jev` and `TYPESAFE_API_KEY`. Core still runs with neither.
 
 The example defaults to `edge` (main builds). Every publish is multi-arch (`amd64` + `arm64`), so
 arm64 hosts need no special tag. Do not assume `latest` is present until a stable release exists.
@@ -49,7 +49,7 @@ that HTTPS URL.
 Images Compose binds web to loopback (`127.0.0.1:5173`). Terminate TLS on the host and proxy
 there. Vite preview same-origin-proxies `/api` and `/rpc`, so do not expose `:3100`. Set
 `BETTER_AUTH_URL`, `WEB_ORIGIN`, and `API_URL` to that same HTTPS origin, and set
-`AIDEN_HOST` to its hostname (for example, `app.example.com`).
+`NOVA_HOST` to its hostname (for example, `app.example.com`).
 
 ```Caddyfile
 app.example.com {
@@ -75,9 +75,9 @@ Docker computer topology:
 
 | Variable | Default | Accepts |
 | --- | --- | --- |
-| `AIDEN_COMPUTER_MEMORY` | `2g` | `2g`, `1536m`, a byte count. Minimum `6m`, Docker's own floor. Also caps swap, so the ceiling holds. |
-| `AIDEN_COMPUTER_CPUS` | `2` | Whole or fractional cores, e.g. `1.5` |
-| `AIDEN_COMPUTER_PIDS_LIMIT` | `2048` | A positive integer |
+| `NOVA_COMPUTER_MEMORY` | `2g` | `2g`, `1536m`, a byte count. Minimum `6m`, Docker's own floor. Also caps swap, so the ceiling holds. |
+| `NOVA_COMPUTER_CPUS` | `2` | Whole or fractional cores, e.g. `1.5` |
+| `NOVA_COMPUTER_PIDS_LIMIT` | `2048` | A positive integer |
 
 Set any of them to `0`, `none` or `unlimited` to remove that ceiling. A malformed value fails the
 supervisor at startup naming the variable, rather than surfacing later as a failed bot.
@@ -92,7 +92,7 @@ supervisor at startup naming the variable, rather than surfacing later as a fail
 
 On Windows, if an older clone with `core.autocrlf=true` leaves the computer pane hung on boot (`bash\r` in sandbox logs): from a clean worktree, set `git config core.autocrlf false`, run `git add --renormalize . && git checkout -- .`, then rebuild with `pnpm sandbox:build`.
 
-Compose runs Postgres, the sandbox supervisor (Docker socket), API, worker, and a Vite preview of the web app. Bot computers are sibling containers (`aiden/computer:local`) on separate per-bot networks; only the supervisor and screen proxy join each one. The API process does not get an unrestricted Docker socket; the supervisor owns the lifecycle.
+Compose runs Postgres, the sandbox supervisor (Docker socket), API, worker, and a Vite preview of the web app. Bot computers are sibling containers (`nova/computer:local`) on separate per-bot networks; only the supervisor and screen proxy join each one. The API process does not get an unrestricted Docker socket; the supervisor owns the lifecycle.
 
 Postgres stays on the Compose network only (not published on the host), matching the images
 compose. Credentials come from `.env` (`POSTGRES_PASSWORD` is required). Prefer a URI-safe value
@@ -139,20 +139,20 @@ Keep an installation without email on a trusted local network.
 ### Verification and password recovery email
 
 Password changes for signed-in users require no email configuration. Forgotten-password recovery
-appears on sign-in only when a transactional email provider is available. Aiden uses a
+appears on sign-in only when a transactional email provider is available. Nova uses a
 provider-neutral contract and ships an SMTP adapter, so Amazon SES, Resend, and self-hosted SMTP
 servers use the same configuration:
 
 ```env
 SMTP_URL=smtps://smtp-user:replace-with-password@smtp.example.com:465
-EMAIL_FROM=Aiden <no-reply@example.com>
+EMAIL_FROM=Nova <no-reply@example.com>
 ```
 
 For Resend, use `smtp.resend.com`, username `resend`, and an API key as the password. For Amazon
 SES, use the regional SMTP endpoint and SES SMTP credentials; these are different from ordinary AWS
 access keys. Verify the sender/domain with the provider before testing delivery. Keep credentials in
 `.env`, never in tracked files. `smtps://` uses implicit TLS; `smtp://` is also supported but requires
-STARTTLS. Aiden rejects configuration that disables TLS or certificate verification.
+STARTTLS. Nova rejects configuration that disables TLS or certificate verification.
 
 Local source development can use the offline email emulator instead. It captures email without
 contacting a provider:
@@ -173,7 +173,7 @@ or `off` (default `info`). Production defaults to `LOG_FORMAT=json`; development
 unless you set `json` or `pretty`.
 
 Axiom is optional. Set both `AXIOM_TOKEN` and `AXIOM_DATASET` for ingest to one shared dataset.
-Services set `service.name` (`aiden-api`, `aiden-worker`, `aiden-sandbox-supervisor`). A partial
+Services set `service.name` (`nova-api`, `nova-worker`, `nova-sandbox-supervisor`). A partial
 Axiom config logs a one-time warning and stays off. `AXIOM_EDGE` is a regional hostname;
 `AXIOM_EDGE_URL` must be https and wins when both are set.
 
@@ -199,15 +199,15 @@ To use an operator-controlled OpenAI-compatible server such as Ollama, LM Studio
 MLX, list its model IDs and an endpoint that both the API and worker processes can reach:
 
 ```env
-AIDEN_LOCAL_MODELS=qwen3:4b,llama3.1:8b,qwen3-vl
-AIDEN_LOCAL_MODELS_URL=http://127.0.0.1:11434/v1
-AIDEN_LOCAL_CONTEXT_WINDOW=32768
-AIDEN_LOCAL_MAX_TOKENS=4096
+NOVA_LOCAL_MODELS=qwen3:4b,llama3.1:8b,qwen3-vl
+NOVA_LOCAL_MODELS_URL=http://127.0.0.1:11434/v1
+NOVA_LOCAL_CONTEXT_WINDOW=32768
+NOVA_LOCAL_MAX_TOKENS=4096
 # Optional: model ids on this endpoint that accept images (screenshot computer tools).
-AIDEN_LOCAL_VISION_MODELS=qwen3-vl
+NOVA_LOCAL_VISION_MODELS=qwen3-vl
 ```
 
-The loopback default is suitable when running Aiden from a source checkout. From containers,
+The loopback default is suitable when running Nova from a source checkout. From containers,
 prefer a stable LAN RFC1918 address (not Compose service DNS alone). On Docker Desktop,
 `host.docker.internal` also works.
 On Docker Desktop, a bot computer shell can often reach services bound to host `127.0.0.1`
@@ -215,17 +215,17 @@ through that same hostname. Do not run sensitive unauthenticated services on loo
 bots run, or firewall / block that path. Linux does not get `host.docker.internal` the same
 way by default.
 Only configure an endpoint you control: prompts, attachments, and tool results sent to that model
-leave Aiden through this URL. Leave `AIDEN_LOCAL_MODELS` blank to disable the provider.
+leave Nova through this URL. Leave `NOVA_LOCAL_MODELS` blank to disable the provider.
 
 Each user can also connect their own OpenAI-compatible endpoint from **Connect a model** /
 **Settings → Models** on web and mobile. Choose **OpenAI-compatible**, enter the server base URL
 (for example `http://127.0.0.1:8000/v1`), the exact model id, and an optional API key.
-Public hosts and ordinary hostnames need `AIDEN_OPENAI_COMPAT_ALLOW_PUBLIC=1` and HTTPS.
+Public hosts and ordinary hostnames need `NOVA_OPENAI_COMPAT_ALLOW_PUBLIC=1` and HTTPS.
 Literal private IP, loopback, and `host.docker.internal` targets do not. If that endpoint's model
 accepts images, enable **Supports images** under **Advanced** when connecting so attachments and
 screenshot computer tools stay available. Existing connections default to disabled. For centrally
 managed endpoints, the deployment-wide fallback remains
-`AIDEN_OPENAI_COMPATIBLE_VISION_MODELS=gpt4o-vision,llava`.
+`NOVA_OPENAI_COMPATIBLE_VISION_MODELS=gpt4o-vision,llava`.
 
 Remote MCP defaults to public HTTPS. The deployment owner can attach a server on the same LAN
 or Docker network. Set `MCP_ALLOW_PRIVATE_ENDPOINT=true` on the API and worker to allow it for
@@ -237,7 +237,7 @@ Existing connections default to disabled. Reconnect former Qwen-list or deployme
 via **Settings → Models** and turn it on; the old environment list is no longer read.
 
 Enabled connections default to medium thinking. Web and desktop expose **Thinking** in a bot's
-advanced settings; mobile inherits the same backend policy. Aiden sends standard
+advanced settings; mobile inherits the same backend policy. Nova sends standard
 `reasoning_effort` (`minimal`, `low`, `medium`, `high`, or `none` when off); the server owns
 model-specific translation. Leave **Supports thinking** off when the server lacks standard effort
 support. Existing token limits still apply; effort is not a separate reasoning-token budget.
@@ -256,18 +256,18 @@ The Electron desktop app is a client of the same API. Docker and E2B still apply
 - **Docker** is the quick-start default for published images and for a source checkout / full local
   Compose stack. Workspace bots share a persistent Team Computer by default; Private computers are
   optional. Keep the supervisor private, as the included Compose files do.
-- **E2B** runs bot computers away from the Aiden host and is a good choice for public or multi-user
-  production deployments. Aiden checkpoints the portable workspace and browser-profile directory to
+- **E2B** runs bot computers away from the Nova host and is a good choice for public or multi-user
+  production deployments. Nova checkpoints the portable workspace and browser-profile directory to
   `DATA_DIR`; the E2B disk is a runtime cache, not the durable source of truth.
 - **Daytona** provides the same remote-computer contract through Daytona sandboxes. Configure
   `DAYTONA_API_KEY` and optionally `DAYTONA_API_URL` / `DAYTONA_TARGET` / `DAYTONA_SNAPSHOT`.
 - **CreateOS** provides the same remote-computer contract through CreateOS desktop sandboxes.
   Configure `CREATEOS_SANDBOX_API_KEY` and optionally `CREATEOS_SANDBOX_BASE_URL`,
-  `CREATEOS_SANDBOX_SHAPE`, or `CREATEOS_SANDBOX_ROOTFS`. Aiden defaults to
+  `CREATEOS_SANDBOX_SHAPE`, or `CREATEOS_SANDBOX_ROOTFS`. Nova defaults to
   `https://api.sb.createos.sh`, `s-2vcpu-2gb`, and `desktop:1`.
 - **Box by ASCII** provides a managed Linux desktop through `BOX_API_KEY` and optionally
-  `BOX_API_URL`. Aiden always creates or resumes boxes with `noEnv: true`, keeps the portable
-  workspace under `/home/user/aiden-home`, and refreshes a two-hour TTL. Box uses the shared Linux
+  `BOX_API_URL`. Nova always creates or resumes boxes with `noEnv: true`, keeps the portable
+  workspace under `/home/user/nova-home`, and refreshes a two-hour TTL. Box uses the shared Linux
   desktop runtime and protected port routes for concurrent bot desktops. Each bot has its own
   persistent Chrome profile; logins are not shared between bots.
 - **Desktop provider** / **This Mac** runs commands on the API/worker host. Docker stays the default.
@@ -318,15 +318,15 @@ container logs, default no-new-privileges, and the kernel NAT path instead of Do
 2. Clone the repository on the VM and create a root `.env` with production-only values. At minimum set
    `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `SCREEN_PROXY_SECRET`,
    `OPENROUTER_API_KEY`, the API key for your selected sandbox provider,
-   `AIDEN_HOST`, and the three public origins. Set `AIDEN_DEPLOY_DIR` when the checkout is not at
-   the supported Linux default, `/srv/aiden`. Use URL-safe random values for database credentials.
+   `NOVA_HOST`, and the three public origins. Set `NOVA_DEPLOY_DIR` when the checkout is not at
+   the supported Linux default, `/srv/nova`. Use URL-safe random values for database credentials.
 3. Keep registration allowlisted while the service is private:
 
 ```env
 NODE_ENV=production
-AIDEN_HOST=app.example.com
+NOVA_HOST=app.example.com
 # Optional operator-owned override, for example the Cloudflare allowlist file:
-# CADDYFILE_PATH=/etc/aiden/Caddyfile.prod
+# CADDYFILE_PATH=/etc/nova/Caddyfile.prod
 BETTER_AUTH_URL=https://app.example.com
 WEB_ORIGIN=https://app.example.com
 API_URL=https://app.example.com
@@ -336,10 +336,10 @@ SIGNUP_ALLOWLIST=owner@example.com,reviewer@example.com
 SANDBOX_PROVIDER=e2b
 WAKEUP_DRIVER=graphile
 DATA_DIR=/data
-# Absolute path of this checkout as the Docker daemon sees it. /srv/aiden is the Linux default;
+# Absolute path of this checkout as the Docker daemon sees it. /srv/nova is the Linux default;
 # set this explicitly for every other layout (for example Docker Desktop's VM-mounted paths).
-AIDEN_DEPLOY_DIR=/srv/aiden
-AIDEN_IMAGE_TAG=local
+NOVA_DEPLOY_DIR=/srv/nova
+NOVA_IMAGE_TAG=local
 ```
 
 4. Build the images from your checkout and start the stack, then verify its public health endpoint:
@@ -352,7 +352,7 @@ docker compose --env-file .env -f infra/compose/docker-compose.prod.yml \
 curl --fail https://app.example.com/health
 ```
 
-**Build, do not pull, for a first deployment.** `AIDEN_IMAGE_TAG` ships as `local`, a tag no
+**Build, do not pull, for a first deployment.** `NOVA_IMAGE_TAG` ships as `local`, a tag no
 registry serves, so the commands above build `api`, `worker`, and `web` from the checkout you just
 cloned.
 
@@ -362,7 +362,7 @@ you switch to a release tag you should leave `GIT_SHA` unset — a value in `.en
 the image already knows.
 
 Once a release has been published you can switch this host to prebuilt images by setting
-`AIDEN_IMAGE_TAG` to that release tag and running `pull` followed by `up -d --wait --pull never`.
+`NOVA_IMAGE_TAG` to that release tag and running `pull` followed by `up -d --wait --pull never`.
 See [Published images and tags](#published-images-and-tags) for the tag contract.
 
 The root `.env` is excluded from both Git and the Docker build context. The database, application data,
@@ -374,13 +374,13 @@ base-image security updates; changing only the visible major tag does not change
 a digest is present.
 
 For the single-VM production layout, install `infra/compose/backup-prod.sh` as
-`/usr/local/sbin/aiden-backup` and enable the supplied `aiden-backup.timer`. It creates a verified
-Postgres custom-format dump plus an application-data archive under `/var/backups/aiden`, with mode
+`/usr/local/sbin/nova-backup` and enable the supplied `nova-backup.timer`. It creates a verified
+Postgres custom-format dump plus an application-data archive under `/var/backups/nova`, with mode
 `0600` and seven-day rotation. These local snapshots help with operator mistakes but are not a
 substitute for an encrypted off-host backup or provider snapshot.
 
-The scheduled backup uses `/srv/aiden` by default. For another deployment directory, set
-`AIDEN_DEPLOY_DIR=/absolute/path/to/checkout` in a root-owned `/etc/aiden/backup.env`
+The scheduled backup uses `/srv/nova` by default. For another deployment directory, set
+`NOVA_DEPLOY_DIR=/absolute/path/to/checkout` in a root-owned `/etc/nova/backup.env`
 (mode `0600`). The service reads this optional file on each run; the script uses the selected
 checkout's `.env` and production Compose file. If the stack was started with a custom `-p`,
 set the same `COMPOSE_PROJECT_NAME` in that file. For a manual run, export these variables instead.
@@ -389,11 +389,11 @@ then run `systemctl daemon-reload`.
 
 ## Restore
 
-For backups created by `scripts/backup.sh`, use an empty `aiden` database in the development
+For backups created by `scripts/backup.sh`, use an empty `nova` database in the development
 Compose stack, with application services stopped. The SQL import runs in one transaction and
 stops on the first error, including conflicts with existing tables. Files are restored and
 application services started only after the import succeeds. This script does not consume the
-production snapshot's custom-format `aiden.dump` or `appdata.tgz`.
+production snapshot's custom-format `nova.dump` or `appdata.tgz`.
 
 ```bash
 ./scripts/restore.sh backups/<stamp>
@@ -421,10 +421,10 @@ GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/do
 `up --wait` does not report success until the new API is healthy and the worker and web containers
 are running. The API's start command runs `prisma migrate deploy` before it serves, so migration
 failure keeps health red. A failed CLI recreate does not auto-roll back; recover with the previous
-`AIDEN_IMAGE_TAG` (or rebuild `local`) and `up -d --wait --pull never`.
+`NOVA_IMAGE_TAG` (or rebuild `local`) and `up -d --wait --pull never`.
 
 Source checkouts (not Compose) still upgrade the old way: pull, rebuild with
-`GIT_SHA=$(git rev-parse HEAD)`, run `pnpm --filter @aiden/db migrate`, then restart API and worker.
+`GIT_SHA=$(git rev-parse HEAD)`, run `pnpm --filter @nova/db migrate`, then restart API and worker.
 Product contracts stay compatible across cloud and self-hosted.
 
 ### Space privacy-boundary migration
@@ -463,15 +463,15 @@ this repository that is:
 
 | Image | Contents |
 | --- | --- |
-| `ghcr.io/<your-namespace>/aiden/app` | api, worker, web, and sandbox supervisor — one image, multiple commands |
-| `ghcr.io/<your-namespace>/aiden/computer` | Linux desktop used as each bot computer |
+| `ghcr.io/<your-namespace>/nova/app` | api, worker, web, and sandbox supervisor — one image, multiple commands |
+| `ghcr.io/<your-namespace>/nova/computer` | Linux desktop used as each bot computer |
 
 `infra/compose/docker-compose.images.yml` is the no-checkout path for those app and computer tags
 plus Postgres. The supervisor runs from the app image on the internal network only (not a separate
 published supervisor image, and no host port). Production Compose (`docker-compose.prod.yml`) can
-also pull the same app tags once `AIDEN_IMAGE_TAG` is set to a published value.
+also pull the same app tags once `NOVA_IMAGE_TAG` is set to a published value.
 
-If you publish your own images, set `AIDEN_IMAGE` to your namespace — your CI cannot publish into
+If you publish your own images, set `NOVA_IMAGE` to your namespace — your CI cannot publish into
 someone else's.
 
 | Tag | Published on | Moves? |
@@ -495,7 +495,7 @@ repositories) and merge the digests into one manifest. QEMU emulation (`docker/s
 rather than minutes for the `computer` image.
 
 Rollback never contacts the registry: redeploy the previous tag from the local Docker cache with
-`AIDEN_IMAGE_TAG`, so a later tag move cannot change rollback content. Do not prune the previous
+`NOVA_IMAGE_TAG`, so a later tag move cannot change rollback content. Do not prune the previous
 application image until the next update has been accepted.
 
 To populate the registry the first time, run the workflow manually (`workflow_dispatch`) or push a

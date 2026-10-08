@@ -15,9 +15,9 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@aiden/adapter-kit";
-import { boundedSandboxCommandTimeoutMs, resolveSupervisorToken } from "@aiden/core";
-import { outgoingCorrelationHeaders } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import { boundedSandboxCommandTimeoutMs, resolveSupervisorToken } from "@nova/core";
+import { outgoingCorrelationHeaders } from "@nova/logging";
 import {
   boundedComputerActions,
   clampRounded,
@@ -131,12 +131,12 @@ export class DockerSandboxProvider implements SandboxProvider {
   private headers(context: AdapterContext, botId?: string) {
     return {
       authorization: `Bearer ${this.supervisorToken}`,
-      "x-aiden-space-id": context.spaceId,
+      "x-nova-space-id": context.spaceId,
       ...outgoingCorrelationHeaders(),
-      ...(botId ? { "x-aiden-bot-id": botId } : {}),
-      ...(context.botId ? { "x-aiden-screen-id": context.botId } : {}),
-      ...(context.screenLeaseId ? { "x-aiden-screen-lease-id": context.screenLeaseId } : {}),
-      ...(context.cancelRunWork ? { "x-aiden-cancel-run-work": "1" } : {}),
+      ...(botId ? { "x-nova-bot-id": botId } : {}),
+      ...(context.botId ? { "x-nova-screen-id": context.botId } : {}),
+      ...(context.screenLeaseId ? { "x-nova-screen-lease-id": context.screenLeaseId } : {}),
+      ...(context.cancelRunWork ? { "x-nova-cancel-run-work": "1" } : {}),
     };
   }
 
@@ -551,9 +551,9 @@ function requestDeadline(timeoutMs: number, message: string) {
 }
 
 function dockerCwd(cwd: string | undefined) {
-  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/aiden") return "/home/aiden";
-  const relative = cwd.startsWith("/home/aiden/")
-    ? cwd.slice("/home/aiden/".length)
+  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/nova") return "/home/nova";
+  const relative = cwd.startsWith("/home/nova/")
+    ? cwd.slice("/home/nova/".length)
     : normalizeWorkspacePath(cwd);
-  return path.posix.join("/home/aiden", relative);
+  return path.posix.join("/home/nova", relative);
 }

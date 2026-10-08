@@ -1,4 +1,4 @@
-import type { ChatSummary, MessageFork, ThreadMessage } from "@aiden/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
 import { type RefObject, useCallback, useMemo, useState } from "react";
 import type { ChatListState } from "../chrome/useChatList";
 import { type ForkThreadTarget, forkTarget } from "./ForkThread";

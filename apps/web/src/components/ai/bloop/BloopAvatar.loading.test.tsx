@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 // A browser with WebGL: the 3D face is loading, so the old flat face must stay hidden.
 vi.mock("../webgl", () => ({ supportsWebGL: () => true, readCssColor: () => [0, 0, 0] }));
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   MuseAvatar: ({ faceHidden, waitingCount }: { faceHidden?: boolean; waitingCount: number }) => (
     <div data-hidden={String(!!faceHidden)} data-asks={waitingCount} />
   ),

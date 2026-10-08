@@ -1,6 +1,6 @@
-import type { Bot, ComputerStatus, TaughtSkill } from "@aiden/contracts";
-import { BotAvatar, Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { Bot, ComputerStatus, TaughtSkill } from "@nova/contracts";
+import { BotAvatar, Button } from "@nova/ui-web";
 import { Monitor, X } from "lucide-react";
 import { ComputerMaintenanceActions } from "../../../components/ComputerMaintenanceActions";
 import { TeachCaptureOverlay } from "../../../components/teach/TeachCaptureOverlay";

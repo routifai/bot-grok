@@ -3,8 +3,8 @@ import type {
   ArtifactStore,
   JobPublisher,
   SandboxProvider,
-} from "@aiden/adapter-kit";
-import { runContinueJob } from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
+import { runContinueJob } from "@nova/adapter-kit";
 import type {
   ComposioProvider,
   ConnectorRegistry,
@@ -12,14 +12,14 @@ import type {
   IntegrationProviderSettings,
   PiOAuthLogins,
   RemoteConnectorDependencies,
-} from "@aiden/adapters";
-import { McpOAuthBroker } from "@aiden/adapters";
-import type { Auth } from "@aiden/auth";
-import type { Actor } from "@aiden/contracts";
-import { appContract } from "@aiden/contracts";
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
-import { createGroupRepos, createRepos, IsolationError } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapters";
+import { McpOAuthBroker } from "@nova/adapters";
+import type { Auth } from "@nova/auth";
+import type { Actor } from "@nova/contracts";
+import { appContract } from "@nova/contracts";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { createGroupRepos, createRepos, IsolationError } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { implement, ORPCError } from "@orpc/server";
 import { createAgentSkillsService } from "../agent-skills.js";
 import type { EngineArtifactsDeps } from "../engine-artifacts.js";

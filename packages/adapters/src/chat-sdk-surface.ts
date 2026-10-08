@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createMemoryState } from "@chat-adapter/state-memory";
 import type {
   AdapterContext,
   AdapterDescriptor,
@@ -10,8 +11,7 @@ import type {
   MessagingSendRequest,
   MessagingSendResult,
   MessagingSurface,
-} from "@aiden/adapter-kit";
-import { createMemoryState } from "@chat-adapter/state-memory";
+} from "@nova/adapter-kit";
 import type { Adapter, Message, Thread } from "chat";
 import { Chat } from "chat";
 
@@ -69,7 +69,7 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
     if (platforms.length === 0) throw new Error("ChatSdkMessagingSurface needs >=1 platform");
     for (const platform of platforms) this.byProvider.set(platform.provider, platform);
     this.chat = new Chat({
-      userName: options.userName ?? "aiden",
+      userName: options.userName ?? "nova",
       adapters: Object.fromEntries(platforms.map((p) => [p.provider, p.adapter])),
       state: createMemoryState(),
       // The SDK default ("drop") takes a per-conversation lock and discards

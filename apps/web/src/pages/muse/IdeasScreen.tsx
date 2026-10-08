@@ -1,6 +1,6 @@
-import type { Idea } from "@aiden/contracts";
-import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { Idea } from "@nova/contracts";
+import { cn, Skeleton } from "@nova/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { IdeasGlyph } from "./chrome/NovaGlyphs";

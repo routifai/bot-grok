@@ -1,4 +1,4 @@
-import type { DesktopUpdateState } from "@aiden/contracts";
+import type { DesktopUpdateState } from "@nova/contracts";
 
 /** Long enough that a cold launch is never competing with the update feed for bandwidth. */
 export const LAUNCH_CHECK_DELAY_MS = 8_000;

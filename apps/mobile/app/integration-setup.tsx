@@ -1,4 +1,4 @@
-import type { IntegrationSetupState } from "@aiden/contracts";
+import type { IntegrationSetupState } from "@nova/contracts";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {

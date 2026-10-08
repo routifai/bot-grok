@@ -1,4 +1,4 @@
-import type { AdapterContext } from "@aiden/adapter-kit";
+import type { AdapterContext } from "@nova/adapter-kit";
 import {
   createVoiceProvider,
   type EncryptedSecretStore,
@@ -8,9 +8,9 @@ import {
   MAX_TRANSCRIBE_BYTES,
   NoVoiceConfigured,
   voiceCatalogEntry,
-} from "@aiden/adapters";
-import type { Actor, VoiceCredential, VoiceStatus } from "@aiden/contracts";
-import { toUtterances } from "@aiden/core";
+} from "@nova/adapters";
+import type { Actor, VoiceCredential, VoiceStatus } from "@nova/contracts";
+import { toUtterances } from "@nova/core";
 import {
   deleteUnreferencedCredentialSecret,
   findDefaultVoiceCredential,
@@ -20,7 +20,7 @@ import {
   Prisma,
   type PrismaClient,
   selectSpaceVoicePreference,
-} from "@aiden/db";
+} from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import type { Context, Hono } from "hono";
 import { readBoundedBody } from "./http-body.js";

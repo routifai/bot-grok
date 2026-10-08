@@ -1,4 +1,4 @@
-import { cn } from "@aiden/ui-web";
+import { cn } from "@nova/ui-web";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supportsWebGL } from "../webgl";
 import type { OrbState } from "./orbState";

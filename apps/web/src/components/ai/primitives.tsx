@@ -1,4 +1,4 @@
-import { cn } from "@aiden/ui-web";
+import { cn } from "@nova/ui-web";
 import { useEffect, useState } from "react";
 import "./beautiful-ui.css";
 

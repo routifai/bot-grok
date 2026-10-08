@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ThreadMessage } from "@aiden/contracts";
+import type { ThreadMessage } from "@nova/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -21,7 +21,7 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 vi.mock("@lingui/core/macro", () => ({ t: () => "" }));
-vi.mock("@aiden/chat-ui/web", () => ({ ChatMarkdown: () => null }));
+vi.mock("@nova/chat-ui/web", () => ({ ChatMarkdown: () => null }));
 vi.mock("../../../components/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
 vi.mock("../../../components/AskCard", () => ({ AskCard: () => null }));
 vi.mock("../../../components/ai/CollaborationMarker", () => ({ CollaborationMarker: () => null }));
@@ -38,7 +38,7 @@ vi.mock("../../shell/message-cards", () => ({
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
 vi.mock("./HelperTracker", () => ({ HelperTracker: () => null }));
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   BotAvatar: () => null,
   Button: () => null,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),

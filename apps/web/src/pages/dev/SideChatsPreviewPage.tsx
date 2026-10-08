@@ -1,4 +1,4 @@
-import type { ChatSummary, ThreadMessage } from "@aiden/contracts";
+import type { ChatSummary, ThreadMessage } from "@nova/contracts";
 import { useMemo, useRef, useState } from "react";
 import type { MuseRailView } from "../../components/AppRail";
 import { MuseSidebar } from "../muse/chrome/MuseSidebar";

@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@aiden/contracts";
+import type { ThreadMessage } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { userVisibleMessages } from "./message-visibility.js";
 

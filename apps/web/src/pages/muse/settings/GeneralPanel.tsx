@@ -1,5 +1,5 @@
-import { Button, Input, Switch } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { Button, Input, Switch } from "@nova/ui-web";
 import { KeyRound, Link2, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useId, useState } from "react";
 import { useNavigate } from "react-router-dom";

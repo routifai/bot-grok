@@ -1,4 +1,4 @@
-import type { AdapterContext, SandboxProvider } from "@aiden/adapter-kit";
+import type { AdapterContext, SandboxProvider } from "@nova/adapter-kit";
 
 export async function provisionPrepared(
   provider: SandboxProvider,

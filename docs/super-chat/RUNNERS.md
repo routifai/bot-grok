@@ -67,8 +67,8 @@ global ids do not apply: set `OMNIGENT_HELPER_MODEL_FAST_PI` / `OMNIGENT_HELPER_
 
 `OMNIGENT_BROWSER_BACKEND=local` (set in the Omnigent server's own environment,
 and named in `runner_env` above) makes the `browser_*` tools drive the
-Chromium on the Computer's own screen (via `aiden-browser` /
-`aiden-page-browser`, `engine/omnigent/omnigent/tools/browser_backend.py`)
+Chromium on the Computer's own screen (via `nova-browser` /
+`nova-page-browser`, `engine/omnigent/omnigent/tools/browser_backend.py`)
 instead of relaying to the desktop app. Unset, the default desktop backend
 applies, so a Computer without this variable has no working browser tools.
 
@@ -149,7 +149,7 @@ only relays.
 In order, each depending on the one before:
 
 1. **Postgres** — the engine server's store.
-2. **Build the computer image** — `docker build -t aiden/computer:local -f infra/sandboxes/computer/Dockerfile .` (repo root context; also `pnpm sandbox:build`). The supervisor does **not** auto-build this image — if it's missing, `POST /computers` fails with this exact command in the error.
+2. **Build the computer image** — `docker build -t nova/computer:local -f infra/sandboxes/computer/Dockerfile .` (repo root context; also `pnpm sandbox:build`). The supervisor does **not** auto-build this image — if it's missing, `POST /computers` fails with this exact command in the error.
 3. **Nova's sandbox supervisor** (`infra/sandboxes/supervisor`) — needs the Docker socket.
 4. **The Omnigent server**, configured with the `sandbox:` block above and the required env from the previous section. Install the engine with the `memory` extra (`uv sync --extra memory ...`); without it the memory routes are not mounted and the Muse's memory tools fail with "not configured". On macOS the memory stack also needs `KMP_DUPLICATE_LIB_OK=TRUE` in the server's environment.
 5. **Nova's own `apps/api`, `apps/worker`, `apps/web`** — talk to the Omnigent server through the gateway.

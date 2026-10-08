@@ -1,5 +1,5 @@
-import { AttachmentValidationError } from "@aiden/core";
-import { IsolationError } from "@aiden/db";
+import { AttachmentValidationError } from "@nova/core";
+import { IsolationError } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import {
   ArtifactListCursorError,

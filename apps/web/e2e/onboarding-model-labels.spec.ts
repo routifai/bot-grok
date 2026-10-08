@@ -21,7 +21,7 @@ test("onboarding uses compact model selects without misleading latest labels", a
   });
 
   const stamp = Date.now();
-  await signup(page, `model-labels-${stamp}@aiden.test`, "password12", `Model labels ${stamp}`);
+  await signup(page, `model-labels-${stamp}@nova.test`, "password12", `Model labels ${stamp}`);
   await completeIdentitySteps(page);
   await expect(
     page.getByRole("heading", { name: "Last thing — connect the brain I'll think with." }),

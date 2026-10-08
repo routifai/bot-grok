@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@aiden/contracts";
+import type { ThreadMessage } from "@nova/contracts";
 
 /** A Muse reply that is only a failure note (the engine's `error` block): no words of its own.
  * An info notice (`level: info`) is not a failure, so it never folds into a failure run. */

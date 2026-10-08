@@ -4,9 +4,9 @@ import {
   type JobPublisher,
   runContinueJob,
   type SandboxProvider,
-} from "@aiden/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { toComputerRef } from "./computer-support.js";
 
 export const DEFAULT_TAKEOVER_LEASE_MS = 15 * 60 * 1000;

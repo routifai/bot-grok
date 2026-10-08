@@ -5,7 +5,7 @@ export async function signupToConversation(page: Page, name = "Sam") {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await page.goto("/sign-up");
   await page.getByPlaceholder("Your name").fill(name);
-  await page.getByPlaceholder("Your email address").fill(`muse-${stamp}@aiden.test`);
+  await page.getByPlaceholder("Your email address").fill(`muse-${stamp}@nova.test`);
   await page.getByPlaceholder("Password").fill("password12");
   await page.getByRole("button", { name: "Create account" }).click();
   await page.getByRole("button", { name: "Let's get started" }).click();

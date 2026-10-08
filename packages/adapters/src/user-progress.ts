@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@aiden/contracts";
-import { isToolActivityBlock } from "@aiden/core";
+import type { MessageBlock } from "@nova/contracts";
+import { isToolActivityBlock } from "@nova/core";
 
 /** Keep mid-turn progress beats short; prefer a few high-signal updates. */
 export const USER_PROGRESS_MESSAGE_MAX_LENGTH = 500;

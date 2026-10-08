@@ -1,4 +1,4 @@
-import type { MuseState } from "@aiden/contracts";
+import type { MuseState } from "@nova/contracts";
 
 /** What an orb shows: calm, or brighter and faster while Nova works. */
 export type OrbState = "idle" | "working";

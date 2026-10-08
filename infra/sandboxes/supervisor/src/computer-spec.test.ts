@@ -68,22 +68,22 @@ describe("graphical computer spec", () => {
 
   it("creates a VNC desktop, not an alpine sleep fallback", () => {
     const options = containerCreateOptions({
-      name: "aiden-bot-abc",
+      name: "nova-bot-abc",
       image: COMPUTER_IMAGE,
       botId: "abc",
       spaceId: "ws",
-      homePath: "/var/aiden/homes/abc",
-      networkMode: "aiden_default",
+      homePath: "/var/nova/homes/abc",
+      networkMode: "nova_default",
     });
-    expect(options.Image).toBe("aiden/computer:local");
+    expect(options.Image).toBe("nova/computer:local");
     expect(options.Image).not.toMatch(/alpine/);
     expect(options).not.toHaveProperty("Entrypoint");
     expect(JSON.stringify(options)).not.toMatch(/sleep/);
-    expect(options.HostConfig.Binds).toEqual(["/var/aiden/homes/abc:/home/aiden"]);
+    expect(options.HostConfig.Binds).toEqual(["/var/nova/homes/abc:/home/nova"]);
     expect(options.Env).toContain(
-      "PATH=/home/aiden/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "PATH=/home/nova/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     );
-    expect(options.Env).toContain("NPM_CONFIG_PREFIX=/home/aiden/.local");
+    expect(options.Env).toContain("NPM_CONFIG_PREFIX=/home/nova/.local");
     expect(options.Env?.join("\n")).not.toMatch(/AXIOM_|LOG_LEVEL|LOG_FORMAT/);
     expect(options.ExposedPorts).toEqual({ "6080/tcp": {} });
     // Browser debugging stays inside the computer trust boundary.
@@ -105,7 +105,7 @@ describe("graphical computer spec", () => {
     expect(options.HostConfig.SecurityOpt).toEqual(["no-new-privileges:true"]);
     expect(options.HostConfig.PidsLimit).toBe(2048);
     expect(options.HostConfig.ReadonlyPaths).toContain("/usr/share/novnc");
-    expect(options.HostConfig.NetworkMode).toBe("aiden_default");
+    expect(options.HostConfig.NetworkMode).toBe("nova_default");
   });
 
   it("still publishes host ports when NetworkMode is a per-bot isolated network", () => {
@@ -115,10 +115,10 @@ describe("graphical computer spec", () => {
       image: COMPUTER_IMAGE,
       botId: "bot_isolation",
       spaceId: "ws",
-      homePath: "/var/aiden/homes/bot_isolation",
+      homePath: "/var/nova/homes/bot_isolation",
       networkMode,
     });
-    expect(networkMode).toMatch(/^aiden-computer-bot_isolation-[0-9a-f]{32}$/);
+    expect(networkMode).toMatch(/^nova-computer-bot_isolation-[0-9a-f]{32}$/);
     expect(options.HostConfig.NetworkMode).toBe(networkMode);
     expect(options.HostConfig.PortBindings["6080/tcp"]).toEqual([
       { HostIp: "127.0.0.1", HostPort: "0" },
@@ -134,7 +134,7 @@ describe("graphical computer spec", () => {
   it("lists prior network name variants for cleanup", () => {
     const names = computerNetworkNamesForCleanup("bot_1");
     expect(names[0]).toBe(computerNetworkNameFor("bot_1"));
-    expect(names).toContain("aiden-computer-bot_1");
+    expect(names).toContain("nova-computer-bot_1");
     expect(names.some((name) => /-[0-9a-f]{8}$/.test(name))).toBe(true);
     expect(names.some((name) => /-[0-9a-f]{32}$/.test(name))).toBe(true);
   });
@@ -150,31 +150,31 @@ describe("graphical computer spec", () => {
     const root = path.resolve(import.meta.dirname, "../../computer");
     const dockerfile = readFileSync(path.join(root, "Dockerfile"), "utf8");
     const start = readFileSync(path.join(root, "start.sh"), "utf8");
-    const browser = readFileSync(path.join(root, "aiden-browser"), "utf8");
-    const desktop = readFileSync(path.join(root, "aiden-browser.desktop"), "utf8");
+    const browser = readFileSync(path.join(root, "nova-browser"), "utf8");
+    const desktop = readFileSync(path.join(root, "nova-browser.desktop"), "utf8");
     expect(dockerfile).toMatch(/chromium/);
-    expect(dockerfile).toMatch(/aiden-browser\.desktop/);
+    expect(dockerfile).toMatch(/nova-browser\.desktop/);
     expect(dockerfile).toMatch(/control.py/);
     expect(dockerfile).toMatch(/USER 1000:1000/);
-    expect(start).toMatch(/aiden-computer-control/);
-    expect(start).toMatch(/aiden-browser/);
+    expect(start).toMatch(/nova-computer-control/);
+    expect(start).toMatch(/nova-browser/);
     expect(start).not.toMatch(/browser\.log/);
-    expect(start).toMatch(/xdg-mime default aiden-browser\.desktop/);
+    expect(start).toMatch(/xdg-mime default nova-browser\.desktop/);
     expect(start).toMatch(/register_browser_handler x-scheme-handler\/http/);
     expect(start).toMatch(/register_browser_handler x-scheme-handler\/https/);
     expect(start).toMatch(/register_browser_handler text\/html/);
     expect(start).toMatch(/xdg-mime query default/);
-    expect(start).toMatch(/failed to register aiden-browser/);
+    expect(start).toMatch(/failed to register nova-browser/);
     expect(start).toMatch(/failed to set default web browser/);
-    expect(start).toMatch(/xdg-settings set default-web-browser aiden-browser\.desktop/);
-    expect(start).not.toMatch(/xdg-mime default aiden-browser\.desktop .*\|\| true/);
+    expect(start).toMatch(/xdg-settings set default-web-browser nova-browser\.desktop/);
+    expect(start).not.toMatch(/xdg-mime default nova-browser\.desktop .*\|\| true/);
     expect(start).toMatch(/x11vnc .* -viewonly /);
     expect(browser).toMatch(/\.browser-profiles\/chromium/);
     expect(browser).toMatch(/chromium-screen-\$DISPLAY_NUM/);
     expect(browser).toMatch(/USER_DATA_DIR_SET/);
-    expect(browser).toMatch(/AIDEN_BROWSER_PROFILE/);
-    expect(desktop).toMatch(/Exec=\/usr\/local\/bin\/aiden-browser %U/);
-    expect(dockerfile).toMatch(/aiden-page-browser/);
+    expect(browser).toMatch(/NOVA_BROWSER_PROFILE/);
+    expect(desktop).toMatch(/Exec=\/usr\/local\/bin\/nova-browser %U/);
+    expect(dockerfile).toMatch(/nova-page-browser/);
     expect(browser).toMatch(/remote-debugging-port/);
     expect(desktop).toMatch(/x-scheme-handler\/http/);
     expect(desktop).toMatch(/x-scheme-handler\/https/);
@@ -185,23 +185,23 @@ describe("graphical computer spec", () => {
     "selects a display-specific browser profile and preserves explicit profiles",
     () => {
       const root = path.resolve(import.meta.dirname, "../../computer");
-      const temp = mkdtempSync(path.join(tmpdir(), "aiden-browser-wrapper-"));
+      const temp = mkdtempSync(path.join(tmpdir(), "nova-browser-wrapper-"));
       const bin = path.join(temp, "bin");
       const capture = path.join(temp, "args");
       const home = path.join(temp, "home");
       const chromium = path.join(bin, "chromium");
       mkdirSync(bin);
-      writeFileSync(chromium, '#!/bin/sh\nprintf "%s\\n" "$@" > "$AIDEN_TEST_ARGS"\n');
+      writeFileSync(chromium, '#!/bin/sh\nprintf "%s\\n" "$@" > "$NOVA_TEST_ARGS"\n');
       chmodSync(chromium, 0o755);
 
       const run = (display: string, args: string[] = []) => {
-        const result = spawnSync("sh", [path.join(root, "aiden-browser"), ...args], {
+        const result = spawnSync("sh", [path.join(root, "nova-browser"), ...args], {
           env: {
             ...process.env,
             DISPLAY: display,
             HOME: home,
             PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
-            AIDEN_TEST_ARGS: capture,
+            NOVA_TEST_ARGS: capture,
           },
           encoding: "utf8",
         });
@@ -241,13 +241,13 @@ describe("graphical computer spec", () => {
     "clears crashed state from Chromium preferences and Local State",
     () => {
       const root = path.resolve(import.meta.dirname, "../../computer");
-      const temp = mkdtempSync(path.join(tmpdir(), "aiden-browser-crash-"));
+      const temp = mkdtempSync(path.join(tmpdir(), "nova-browser-crash-"));
       const bin = path.join(temp, "bin");
       const home = path.join(temp, "home");
       const chromium = path.join(bin, "chromium");
       const capture = path.join(temp, "args");
       mkdirSync(bin);
-      writeFileSync(chromium, '#!/bin/sh\nprintf "%s\\n" "$@" > "$AIDEN_TEST_ARGS"\n');
+      writeFileSync(chromium, '#!/bin/sh\nprintf "%s\\n" "$@" > "$NOVA_TEST_ARGS"\n');
       chmodSync(chromium, 0o755);
 
       const profile = path.join(home, ".browser-profiles/chromium");
@@ -262,13 +262,13 @@ describe("graphical computer spec", () => {
       writeFileSync(localStatePath, '{\n  "profile": {\n    "exited_cleanly": false\n  }\n}\n');
 
       try {
-        const result = spawnSync("bash", [path.join(root, "aiden-browser")], {
+        const result = spawnSync("bash", [path.join(root, "nova-browser")], {
           env: {
             ...process.env,
             DISPLAY: ":1",
             HOME: home,
             PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
-            AIDEN_TEST_ARGS: capture,
+            NOVA_TEST_ARGS: capture,
           },
           encoding: "utf8",
         });
@@ -298,13 +298,13 @@ describe("graphical computer spec", () => {
         });
         const liveLock = path.join(profile, "SingletonLock");
         const launch = () =>
-          spawnSync("bash", [path.join(root, "aiden-browser")], {
+          spawnSync("bash", [path.join(root, "nova-browser")], {
             env: {
               ...process.env,
               DISPLAY: ":1",
               HOME: home,
               PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
-              AIDEN_TEST_ARGS: capture,
+              NOVA_TEST_ARGS: capture,
             },
             encoding: "utf8",
           });
@@ -392,13 +392,13 @@ describe("graphical computer spec", () => {
                 }
                 const spacedLock = path.join(spacedProfile, "SingletonLock");
                 symlinkSync(`testhost-${joined.pid}`, spacedLock);
-                const kept = spawnSync("bash", [path.join(root, "aiden-browser")], {
+                const kept = spawnSync("bash", [path.join(root, "nova-browser")], {
                   env: {
                     ...process.env,
                     DISPLAY: ":1",
                     HOME: spacedHome,
                     PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
-                    AIDEN_TEST_ARGS: capture,
+                    NOVA_TEST_ARGS: capture,
                   },
                   encoding: "utf8",
                 });
@@ -450,7 +450,7 @@ describe("graphical computer spec", () => {
   );
 
   it("keeps container names stable so a bot can resume", () => {
-    expect(containerNameFor("bot_1")).toBe("aiden-bot-bot_1");
+    expect(containerNameFor("bot_1")).toBe("nova-bot-bot_1");
     expect(containerNameFor("bot_1")).toBe(containerNameFor("bot_1"));
   });
 
@@ -503,7 +503,7 @@ describe("graphical computer spec", () => {
   });
 
   it("uses the container IP only for the internal screen network topology", () => {
-    const networkMode = "aiden_default";
+    const networkMode = "nova_default";
     expect(
       resolveScreenPublishTarget({
         screenNetwork: "internal",
@@ -516,8 +516,8 @@ describe("graphical computer spec", () => {
     expect(
       resolveScreenPublishTarget({
         screenNetwork: "isolated",
-        networkMode: "aiden-computer-bot-1",
-        networks: { "aiden-computer-bot-1": { IPAddress: "172.20.0.4" } },
+        networkMode: "nova-computer-bot-1",
+        networks: { "nova-computer-bot-1": { IPAddress: "172.20.0.4" } },
         hostPort: "49152",
         containerPort: "6080",
       }),
@@ -526,11 +526,11 @@ describe("graphical computer spec", () => {
 
   it("does not publish computer control port 7070 on the host", () => {
     const options = containerCreateOptions({
-      name: "aiden-bot-ctrl",
+      name: "nova-bot-ctrl",
       image: COMPUTER_IMAGE,
       botId: "ctrl",
       spaceId: "ws",
-      homePath: "/var/aiden/homes/ctrl",
+      homePath: "/var/nova/homes/ctrl",
     });
     expect(options.HostConfig.PortBindings["7070/tcp"]).toBeUndefined();
     expect(options.ExposedPorts["7070/tcp"]).toBeUndefined();
@@ -539,11 +539,11 @@ describe("graphical computer spec", () => {
 
   it("publishes the control port to loopback only when explicitly opted in", () => {
     const options = containerCreateOptions({
-      name: "aiden-bot-ctrl",
+      name: "nova-bot-ctrl",
       image: COMPUTER_IMAGE,
       botId: "ctrl",
       spaceId: "ws",
-      homePath: "/var/aiden/homes/ctrl",
+      homePath: "/var/nova/homes/ctrl",
       publishControlPort: true,
     });
     expect(options.ExposedPorts["7070/tcp"]).toEqual({});
@@ -553,7 +553,7 @@ describe("graphical computer spec", () => {
   });
 
   it("resolves computer control through the container network IP, never a host mapping", () => {
-    const networkMode = "aiden_default";
+    const networkMode = "nova_default";
     expect(
       resolveComputerControlEndpoint({
         token: "secret",
@@ -585,7 +585,7 @@ describe("graphical computer spec", () => {
   });
 
   it("resolves computer control through a published loopback port when provided", () => {
-    const networkMode = "aiden_default";
+    const networkMode = "nova_default";
     expect(
       resolveComputerControlEndpoint({
         token: "secret",
@@ -659,7 +659,7 @@ describe("graphical computer spec", () => {
   );
 
   it("does not fall back to the container IP when a published control port is required", () => {
-    const networkMode = "aiden_default";
+    const networkMode = "nova_default";
     expect(
       resolveComputerControlEndpoint({
         token: "secret",
@@ -700,11 +700,11 @@ describe("graphical computer spec", () => {
           "assert allow(['env', 'DISPLAY=:1', 'xdotool', 'click', '--repeat', '3', '4'], ':1')",
           "assert allow(['env', 'DISPLAY=:1', 'xdotool', 'type', '--clearmodifiers', '--', 'hi'], ':1')",
           "assert allow(['env', 'DISPLAY=:2', 'xdg-open', 'https://example.com'], ':2')",
-          "assert allow(['env', 'DISPLAY=:1', 'aiden-browser'], ':1')",
-          "assert allow(['env', 'DISPLAY=:2', 'aiden-browser', 'https://example.com'], ':2')",
+          "assert allow(['env', 'DISPLAY=:1', 'nova-browser'], ':1')",
+          "assert allow(['env', 'DISPLAY=:2', 'nova-browser', 'https://example.com'], ':2')",
           "assert allow(['env', 'DISPLAY=:1', 'xterm'], ':1')",
-          "assert long_lived(['env', 'DISPLAY=:1', 'aiden-browser'])",
-          "assert long_lived(['env', 'DISPLAY=:1', 'aiden-browser', 'https://example.com'])",
+          "assert long_lived(['env', 'DISPLAY=:1', 'nova-browser'])",
+          "assert long_lived(['env', 'DISPLAY=:1', 'nova-browser', 'https://example.com'])",
           "assert long_lived(['env', 'DISPLAY=:1', 'xterm'])",
           "assert long_lived(['env', 'DISPLAY=:1', 'xdg-open', 'https://example.com'])",
           "assert not long_lived(['env', 'DISPLAY=:1', 'xdotool', 'key', '--clearmodifiers', 'a'])",
@@ -779,11 +779,7 @@ describe("graphical computer spec", () => {
 });
 
 describe("computer resource limits", () => {
-  const KEYS = [
-    "AIDEN_COMPUTER_MEMORY",
-    "AIDEN_COMPUTER_CPUS",
-    "AIDEN_COMPUTER_PIDS_LIMIT",
-  ] as const;
+  const KEYS = ["NOVA_COMPUTER_MEMORY", "NOVA_COMPUTER_CPUS", "NOVA_COMPUTER_PIDS_LIMIT"] as const;
   const saved = new Map<string, string | undefined>();
 
   beforeEach(() => {
@@ -801,11 +797,11 @@ describe("computer resource limits", () => {
   });
 
   const createInput = {
-    name: "aiden-bot-x",
-    image: "aiden/computer:local",
+    name: "nova-bot-x",
+    image: "nova/computer:local",
     botId: "bot-x",
     spaceId: "ws",
-    homePath: "/var/aiden/homes/bot-x",
+    homePath: "/var/nova/homes/bot-x",
   };
 
   it("caps memory and cpu by default and keeps #343's pids ceiling", () => {
@@ -818,9 +814,9 @@ describe("computer resource limits", () => {
 
   it("falls back to the defaults when a variable is blank", () => {
     // .env.example ships these keys blank; a blank value must read as "unset".
-    process.env.AIDEN_COMPUTER_MEMORY = "";
-    process.env.AIDEN_COMPUTER_CPUS = "  ";
-    process.env.AIDEN_COMPUTER_PIDS_LIMIT = "";
+    process.env.NOVA_COMPUTER_MEMORY = "";
+    process.env.NOVA_COMPUTER_CPUS = "  ";
+    process.env.NOVA_COMPUTER_PIDS_LIMIT = "";
     const { HostConfig } = containerCreateOptions(createInput);
     expect(HostConfig.Memory).toBe(2 * 1024 ** 3);
     expect(HostConfig.NanoCpus).toBe(2e9);
@@ -828,21 +824,21 @@ describe("computer resource limits", () => {
   });
 
   it("pins MemorySwap to Memory so the ceiling cannot be swapped past", () => {
-    process.env.AIDEN_COMPUTER_MEMORY = "1536m";
+    process.env.NOVA_COMPUTER_MEMORY = "1536m";
     const { HostConfig } = containerCreateOptions(createInput);
     expect(HostConfig.Memory).toBe(1536 * 1024 ** 2);
     expect(HostConfig.MemorySwap).toBe(1536 * 1024 ** 2);
   });
 
   it("accepts fractional CPUs", () => {
-    process.env.AIDEN_COMPUTER_CPUS = "1.5";
+    process.env.NOVA_COMPUTER_CPUS = "1.5";
     expect(containerCreateOptions(createInput).HostConfig.NanoCpus).toBe(1_500_000_000);
   });
 
   it("lets an operator opt out explicitly", () => {
-    process.env.AIDEN_COMPUTER_MEMORY = "unlimited";
-    process.env.AIDEN_COMPUTER_CPUS = "0";
-    process.env.AIDEN_COMPUTER_PIDS_LIMIT = "none";
+    process.env.NOVA_COMPUTER_MEMORY = "unlimited";
+    process.env.NOVA_COMPUTER_CPUS = "0";
+    process.env.NOVA_COMPUTER_PIDS_LIMIT = "none";
     const { HostConfig } = containerCreateOptions(createInput);
     expect(HostConfig.Memory).toBe(0);
     expect(HostConfig.NanoCpus).toBe(0);
@@ -850,44 +846,44 @@ describe("computer resource limits", () => {
   });
 
   it("rejects a malformed size instead of silently falling back", () => {
-    process.env.AIDEN_COMPUTER_MEMORY = "2 gigs";
-    expect(() => containerCreateOptions(createInput)).toThrow(/AIDEN_COMPUTER_MEMORY/);
+    process.env.NOVA_COMPUTER_MEMORY = "2 gigs";
+    expect(() => containerCreateOptions(createInput)).toThrow(/NOVA_COMPUTER_MEMORY/);
   });
 
   it("rejects a negative cpu count", () => {
-    process.env.AIDEN_COMPUTER_CPUS = "-1";
-    expect(() => containerCreateOptions(createInput)).toThrow(/AIDEN_COMPUTER_CPUS/);
+    process.env.NOVA_COMPUTER_CPUS = "-1";
+    expect(() => containerCreateOptions(createInput)).toThrow(/NOVA_COMPUTER_CPUS/);
   });
 
   it("rejects a pids limit that is not a positive integer", () => {
-    process.env.AIDEN_COMPUTER_PIDS_LIMIT = "12.5";
-    expect(() => containerCreateOptions(createInput)).toThrow(/AIDEN_COMPUTER_PIDS_LIMIT/);
+    process.env.NOVA_COMPUTER_PIDS_LIMIT = "12.5";
+    expect(() => containerCreateOptions(createInput)).toThrow(/NOVA_COMPUTER_PIDS_LIMIT/);
   });
 
   it("rejects a memory limit below Docker's 6 MiB minimum", () => {
     // The daemon refuses these at container creation, so accepting them here would turn a typo
     // into a 500 on the first bot rather than a startup failure naming the variable.
     for (const value of ["1", "1m", "5m", "5242880"]) {
-      process.env.AIDEN_COMPUTER_MEMORY = value;
-      expect(() => containerCreateOptions(createInput)).toThrow(/AIDEN_COMPUTER_MEMORY/);
+      process.env.NOVA_COMPUTER_MEMORY = value;
+      expect(() => containerCreateOptions(createInput)).toThrow(/NOVA_COMPUTER_MEMORY/);
     }
-    process.env.AIDEN_COMPUTER_MEMORY = "6m";
+    process.env.NOVA_COMPUTER_MEMORY = "6m";
     expect(containerCreateOptions(createInput).HostConfig.Memory).toBe(6 * 1024 ** 2);
   });
 
   it("rejects a CPU count that would floor to Docker's unlimited", () => {
     // Math.floor(1e-10 * 1e9) is 0, and 0 NanoCpus means uncapped. An accepted value must never
     // turn a ceiling into no ceiling.
-    process.env.AIDEN_COMPUTER_CPUS = "0.0000000001";
-    expect(() => containerCreateOptions(createInput)).toThrow(/AIDEN_COMPUTER_CPUS/);
+    process.env.NOVA_COMPUTER_CPUS = "0.0000000001";
+    expect(() => containerCreateOptions(createInput)).toThrow(/NOVA_COMPUTER_CPUS/);
   });
 
   it("rejects a CPU count that leaves the safe-integer NanoCpus range", () => {
     // 1e300 is finite, but Math.floor(1e300 * 1e9) is Infinity. 1e7 CPUs yields a non-safe
     // integer. Both must fail closed rather than reach HostConfig.NanoCpus.
     for (const value of ["1e300", "10000000"]) {
-      process.env.AIDEN_COMPUTER_CPUS = value;
-      expect(() => containerCreateOptions(createInput)).toThrow(/AIDEN_COMPUTER_CPUS/);
+      process.env.NOVA_COMPUTER_CPUS = value;
+      expect(() => containerCreateOptions(createInput)).toThrow(/NOVA_COMPUTER_CPUS/);
     }
   });
 
@@ -921,7 +917,7 @@ describe("computer home storage", () => {
       {
         Type: "volume",
         Source: "example_appdata",
-        Target: "/home/aiden",
+        Target: "/home/nova",
         VolumeOptions: { NoCopy: true, Subpath: "homes/bot" },
       },
     ]);

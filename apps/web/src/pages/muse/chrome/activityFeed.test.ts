@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ActivityChanged, ActivityPage } from "@aiden/contracts";
+import type { ActivityChanged, ActivityPage } from "@nova/contracts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ActivityFeed, type ActivityFeedDeps } from "./activityFeed";
 import { ACTIVITY_POLL_ACTIVE_MS, ACTIVITY_POLL_IDLE_MS } from "./activityGrouping";

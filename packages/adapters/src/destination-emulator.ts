@@ -5,7 +5,7 @@ import type {
   ConnectorEvent,
   ConnectorProvider,
   ConnectorTool,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 
 export interface DestinationRecord {
   id: string;

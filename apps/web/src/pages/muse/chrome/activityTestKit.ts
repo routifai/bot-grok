@@ -1,4 +1,4 @@
-import type { Activity, ActivityStep } from "@aiden/contracts";
+import type { Activity, ActivityStep } from "@nova/contracts";
 
 /** Test fixtures for the Activity feed (a done turn by default; override what a case needs). */
 export function activity(overrides: Partial<Activity> = {}): Activity {

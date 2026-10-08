@@ -32,7 +32,7 @@ def _json(body: dict) -> RemoteCommandResult:
 
 
 def test_start_failure_surfaces_the_helper_error() -> None:
-    box = FakeSandbox({"aiden-recorder start": _json({"ok": False, "error": "no browser"})})
+    box = FakeSandbox({"nova-recorder start": _json({"ok": False, "error": "no browser"})})
     with pytest.raises(click.ClickException, match="no browser"):
         box.start_recording("sb", REC)
 
@@ -49,8 +49,8 @@ def test_stop_returns_trace_with_only_available_keyframes_then_discards() -> Non
     }
     box = FakeSandbox(
         {
-            "aiden-recorder pull": _json(pulled),
-            f"aiden-recorder frame {REC} k1": RemoteCommandResult(
+            "nova-recorder pull": _json(pulled),
+            f"nova-recorder frame {REC} k1": RemoteCommandResult(
                 0, base64.b64encode(b"jpeg").decode() + "\n", ""
             ),
         }
@@ -58,15 +58,15 @@ def test_stop_returns_trace_with_only_available_keyframes_then_discards() -> Non
     trace = box.stop_recording("sb", REC)
     assert trace.keyframes == {"k1": b"jpeg"}
     assert [a.get("keyframe") for a in trace.actions] == ["k1", None, None]
-    assert box.commands[0].startswith("aiden-recorder stop")
-    assert box.commands[-1] == f"aiden-recorder discard {REC}"
+    assert box.commands[0].startswith("nova-recorder stop")
+    assert box.commands[-1] == f"nova-recorder discard {REC}"
 
 
 def test_stop_discards_even_when_the_trace_cannot_be_read() -> None:
-    box = FakeSandbox({"aiden-recorder pull": _json({"ok": False, "error": "gone"})})
+    box = FakeSandbox({"nova-recorder pull": _json({"ok": False, "error": "gone"})})
     with pytest.raises(click.ClickException):
         box.stop_recording("sb", REC)
-    assert box.commands[-1] == f"aiden-recorder discard {REC}"
+    assert box.commands[-1] == f"nova-recorder discard {REC}"
 
 
 def test_rejects_ids_that_could_inject_shell() -> None:

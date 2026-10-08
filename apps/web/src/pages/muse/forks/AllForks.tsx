@@ -1,6 +1,6 @@
-import { cn } from "@aiden/ui-web";
 import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { cn } from "@nova/ui-web";
 import { MessageCircle, Search } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { RestoreButton } from "../chrome/RestoreButton";

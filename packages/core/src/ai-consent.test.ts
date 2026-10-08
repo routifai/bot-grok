@@ -1,5 +1,5 @@
-import type { AiConsentStatus } from "@aiden/contracts";
-import { AI_DISCLOSURE_VERSION } from "@aiden/contracts";
+import type { AiConsentStatus } from "@nova/contracts";
+import { AI_DISCLOSURE_VERSION } from "@nova/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { AiConsentBlocked, aiDataUsesForProcedure, ensureAiDataConsent } from "./ai-consent.js";
 

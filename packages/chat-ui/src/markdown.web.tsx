@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import type { HastNode } from "./table-utils";
 import "./markdown.web.css";
 import "./markdown-table.css";
-import { droppedTableHtmlText } from "@aiden/contracts";
+import { droppedTableHtmlText } from "@nova/contracts";
 import { CheckIcon, CopyIcon } from "./icons";
 import { type ChatMarkdownProps, closeUnterminatedFence, sanitizeMarkdownUrl } from "./markdown";
 import { MarkdownTable, MarkdownTableSourceContext } from "./markdown-table";

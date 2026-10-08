@@ -1,5 +1,5 @@
-import type { SlashActionId } from "@aiden/core";
 import { t } from "@lingui/core/macro";
+import type { SlashActionId } from "@nova/core";
 
 export function slashActionLabel(id: SlashActionId) {
   switch (id) {

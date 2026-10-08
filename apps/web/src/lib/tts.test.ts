@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 function stubSelectedSpace(id: string) {
-  const store = new Map<string, string>([["aiden:space-id", id]]);
+  const store = new Map<string, string>([["nova:space-id", id]]);
   const localStorage = {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => {
@@ -20,7 +20,7 @@ function stubSelectedSpace(id: string) {
   };
   vi.stubGlobal("window", { localStorage });
   vi.stubGlobal("localStorage", localStorage);
-  return (next: string) => store.set("aiden:space-id", next);
+  return (next: string) => store.set("nova:space-id", next);
 }
 
 describe("Speaker", () => {
@@ -94,7 +94,7 @@ describe("Speaker", () => {
       expect.objectContaining({ credentials: "include" }),
     );
     const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
-    expect(headers.get("x-aiden-space-id")).toBe("space-support");
+    expect(headers.get("x-nova-space-id")).toBe("space-support");
     expect(headers.get("content-type")).toBe("application/json");
     expect(prepare.mock.calls[0]?.[3]).toBe("space-support");
   });

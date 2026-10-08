@@ -1,5 +1,5 @@
-import { openScreenCapability } from "@aiden/core/node/screen-capability";
-import type { PrismaClient } from "@aiden/db";
+import { openScreenCapability } from "@nova/core/node/screen-capability";
+import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   engineComputerRelease,

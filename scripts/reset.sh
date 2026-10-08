@@ -19,7 +19,7 @@ done
 
 if [[ "$assume_yes" -ne 1 ]]; then
   echo "This deletes the Postgres database and all bot computer data for this stack."
-  echo "That includes every account, conversation, and file created in this local Aiden."
+  echo "That includes every account, conversation, and file created in this local Nova."
   read -r -p "Type 'delete' to continue: " confirm
   if [[ "$confirm" != "delete" ]]; then
     echo "Cancelled. Nothing was deleted."
@@ -31,4 +31,4 @@ fi
 if [[ -d "$ROOT/data" ]]; then
   rm -rf "$ROOT/data"
 fi
-echo "Aiden's containers, volumes, and ./data are gone. Run ./scripts/setup.sh to start fresh."
+echo "Nova's containers, volumes, and ./data are gone. Run ./scripts/setup.sh to start fresh."

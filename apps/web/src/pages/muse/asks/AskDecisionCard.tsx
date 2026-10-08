@@ -1,6 +1,6 @@
-import type { Ask } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import type { Ask } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { NovaTile } from "../chrome/NovaTile";

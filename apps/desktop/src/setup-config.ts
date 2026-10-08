@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
-import type { DesktopSetup, DesktopStackProbeResponse } from "@aiden/contracts";
+import type { DesktopSetup, DesktopStackProbeResponse } from "@nova/contracts";
 
 /** Managed desktop origin; development keeps its usual web/API ports. */
 export const DEFAULT_LOCAL_WEB_URL = "http://127.0.0.1:45173";
@@ -15,9 +15,9 @@ export type StartupTarget =
 const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
 
 /**
- * Accepts what a person would actually type ("localhost:5173", "aiden.example.com")
+ * Accepts what a person would actually type ("localhost:5173", "nova.example.com")
  * and returns a canonical http(s) origin, or null when the input can never
- * securely address a Aiden server.
+ * securely address a Nova server.
  */
 export function normalizeServerUrl(input: string): string | null {
   const trimmed = input.trim();
@@ -42,7 +42,7 @@ export function normalizeServerUrl(input: string): string | null {
   // Public login cookies and API traffic must never cross a cleartext connection.
   if (url.protocol === "http:" && !isLocalNetworkHost(url.hostname)) return null;
 
-  // Aiden serves its renderer, RPC, and auth routes from one origin. Keeping a
+  // Nova serves its renderer, RPC, and auth routes from one origin. Keeping a
   // user-supplied path would make the setup probe and the loaded app disagree.
   return url.origin;
 }
@@ -102,7 +102,7 @@ export function serializeSetup(setup: DesktopSetup): string {
 
 /**
  * Decides between the first-run setup window and the app window. An explicit
- * `AIDEN_WEB_URL` still wins over saved configuration so test and performance
+ * `NOVA_WEB_URL` still wins over saved configuration so test and performance
  * harnesses can point the shell anywhere without touching a user's real setup.
  */
 export function resolveStartupTarget(input: {
@@ -152,13 +152,13 @@ export function servesBundledRenderer(targetUrl: string): boolean {
   }
 }
 
-/** Each Aiden origin gets its own persistent cookie and storage partition. */
+/** Each Nova origin gets its own persistent cookie and storage partition. */
 export function sessionPartitionForServerUrl(targetUrl: string): string | null {
   try {
     const url = new URL(targetUrl);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     const digest = createHash("sha256").update(url.origin).digest("hex").slice(0, 24);
-    return `persist:aiden-${digest}`;
+    return `persist:nova-${digest}`;
   } catch {
     return null;
   }
@@ -170,7 +170,7 @@ export function safeExternalUrl(targetUrl: string): string | null {
   return new URL(targetUrl).toString();
 }
 
-export function isAidenHealth(value: unknown): boolean {
+export function isNovaHealth(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const json = (value as { json?: unknown }).json;
   return (
@@ -259,7 +259,7 @@ export function isLoopbackHost(hostname: string) {
 
 /**
  * Link-local addresses (IPv4 169.254/16, IPv6 fe80::/10) often host cloud
- * metadata endpoints. Cleartext HTTP to them is never a legitimate Aiden
+ * metadata endpoints. Cleartext HTTP to them is never a legitimate Nova
  * deploy target, so they stay out of the private-network HTTP allowlist.
  */
 function isLinkLocalHost(hostname: string) {

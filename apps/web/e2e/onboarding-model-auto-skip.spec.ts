@@ -30,7 +30,7 @@ test("onboarding skips model connect when a default model is already available",
   const stamp = Date.now();
   await signup(
     page,
-    `model-auto-skip-${stamp}@aiden.test`,
+    `model-auto-skip-${stamp}@nova.test`,
     "password12",
     `Model auto skip ${stamp}`,
   );

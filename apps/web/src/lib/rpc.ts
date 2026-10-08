@@ -1,11 +1,11 @@
-import type { AppContract } from "@aiden/contracts";
-import { LOCAL_SETTINGS_PAGE, LOCAL_SETTINGS_RPC } from "@aiden/contracts";
+import type { AppContract } from "@nova/contracts";
+import { LOCAL_SETTINGS_PAGE, LOCAL_SETTINGS_RPC } from "@nova/contracts";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
 import { desktopBridge } from "./desktop";
 
-const SPACE_STORAGE_KEY = "aiden:space-id";
+const SPACE_STORAGE_KEY = "nova:space-id";
 
 type RpcClientContext = { spaceId?: string | null };
 
@@ -40,14 +40,14 @@ export function clearSpaceSelection(): void {
   }
 }
 
-/** Adds `x-aiden-space-id` when a space is selected. */
+/** Adds `x-nova-space-id` when a space is selected. */
 export function withSpaceHeaders(
   init?: HeadersInit,
   spaceId: string | null = selectedSpaceId(),
 ): Headers {
   const headers = new Headers(init);
-  if (spaceId) headers.set("x-aiden-space-id", spaceId);
-  else headers.delete("x-aiden-space-id");
+  if (spaceId) headers.set("x-nova-space-id", spaceId);
+  else headers.delete("x-nova-space-id");
   return headers;
 }
 

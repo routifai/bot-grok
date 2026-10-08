@@ -1,5 +1,5 @@
 {
-  "name": "@aiden/chat-ui",
+  "name": "@nova/chat-ui",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -12,9 +12,9 @@
     "test": "vitest run --root ../.. packages/chat-ui/src"
   },
   "dependencies": {
-    "@aiden/contracts": "workspace:*",
-    "@aiden/ui-tokens": "workspace:*",
-    "@aiden/ui-web": "workspace:*",
+    "@nova/contracts": "workspace:*",
+    "@nova/ui-tokens": "workspace:*",
+    "@nova/ui-web": "workspace:*",
     "@ronradtke/react-native-markdown-display": "9.0.3",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1"

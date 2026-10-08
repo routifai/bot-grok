@@ -1,6 +1,6 @@
-import type { BotSecretDestination } from "@aiden/contracts";
-import { encodeLoginSecret } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { BotSecretDestination } from "@nova/contracts";
+import { encodeLoginSecret } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeSecretDestination,
@@ -176,7 +176,7 @@ describe("authenticated secret requests", () => {
   });
 
   it("delivers plain-HTTP private destination requests directly when the owner opts in", async () => {
-    vi.stubEnv("AIDEN_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    vi.stubEnv("NOVA_SECRETS_ALLOW_PRIVATE_HTTP", "1");
     const encrypted = await secretStore.put(
       secret,
       { ...scope, operationId: "test", traceId: "test", signal: new AbortController().signal },
@@ -220,7 +220,7 @@ describe("authenticated secret requests", () => {
   });
 
   it("refuses an opted-in private destination that resolves publicly", async () => {
-    vi.stubEnv("AIDEN_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    vi.stubEnv("NOVA_SECRETS_ALLOW_PRIVATE_HTTP", "1");
     const encrypted = await secretStore.put(
       secret,
       { ...scope, operationId: "test", traceId: "test", signal: new AbortController().signal },
@@ -266,7 +266,7 @@ describe("normalizeSecretDestination", () => {
   });
 
   it("accepts plain-HTTP private origins when the owner opts in", () => {
-    vi.stubEnv("AIDEN_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    vi.stubEnv("NOVA_SECRETS_ALLOW_PRIVATE_HTTP", "1");
     expect(normalizeSecretDestination(lanDestination)).toMatchObject({
       name: "hive_api_token",
       origin: "http://192.168.2.10:8080",
@@ -274,7 +274,7 @@ describe("normalizeSecretDestination", () => {
   });
 
   it("still rejects public HTTP origins when the owner opts in", () => {
-    vi.stubEnv("AIDEN_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    vi.stubEnv("NOVA_SECRETS_ALLOW_PRIVATE_HTTP", "1");
     expect(() =>
       normalizeSecretDestination({ ...lanDestination, origin: "http://api.example.test" }),
     ).toThrow();
@@ -346,7 +346,7 @@ describe("saved website logins", () => {
   });
 
   it("refuses to fill a login saved on plain HTTP, including a private LAN origin", async () => {
-    vi.stubEnv("AIDEN_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    vi.stubEnv("NOVA_SECRETS_ALLOW_PRIVATE_HTTP", "1");
     const { prisma } = await loginFixture(
       "fake-user@example.test",
       login.auth,

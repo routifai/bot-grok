@@ -1,11 +1,12 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
 import type {
   ChatSummary,
   FamilyEvent,
   SideChatStart,
   ThreadMessage,
   ThreadMessagePage,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   Button,
   Popover,
@@ -15,8 +16,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { ChevronRight, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";

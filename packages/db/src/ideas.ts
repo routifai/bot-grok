@@ -1,4 +1,4 @@
-import type { Idea, IllustrationKey } from "@aiden/contracts";
+import type { Idea, IllustrationKey } from "@nova/contracts";
 import type { PrismaClient } from "./client.js";
 
 // Repository for Idea (CONTEXT.md "Idea"; docs/muse/PLAN.md B11). Ideas are always

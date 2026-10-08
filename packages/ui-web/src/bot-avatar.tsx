@@ -1,6 +1,6 @@
-import type { MuseState } from "@aiden/contracts";
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
-import type { GrokColorDef } from "@aiden/core";
+import type { MuseState } from "@nova/contracts";
+import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
+import type { GrokColorDef } from "@nova/core";
 import {
   ACTIVE_RUN_STATUSES,
   avatarIdentitySeed,
@@ -15,8 +15,8 @@ import {
   SHIPPED_BOT_AVATAR_VIEWBOX,
   shippedBotAvatarShapePath,
   shippedHash,
-} from "@aiden/core";
-import { tokens } from "@aiden/ui-tokens";
+} from "@nova/core";
+import { tokens } from "@nova/ui-tokens";
 import type { CSSProperties } from "react";
 import { memo, useId, useMemo, useSyncExternalStore } from "react";
 import type { AvatarStyle } from "./avatar-style.js";
@@ -154,7 +154,7 @@ export const BotAvatar = memo(function BotAvatar({
     return (
       <div
         className={cn(
-          "aiden-bot-avatar relative overflow-hidden rounded-full flex items-center justify-center select-none bg-secondary shrink-0 border border-border",
+          "nova-bot-avatar relative overflow-hidden rounded-full flex items-center justify-center select-none bg-secondary shrink-0 border border-border",
           className,
         )}
         data-working={isWorking}
@@ -168,7 +168,7 @@ export const BotAvatar = memo(function BotAvatar({
       >
         {isWorking ? (
           <svg
-            className="aiden-bot-avatar-ring absolute pointer-events-none"
+            className="nova-bot-avatar-ring absolute pointer-events-none"
             style={{
               inset: -4,
               width: size + 8,
@@ -232,7 +232,7 @@ export const BotAvatar = memo(function BotAvatar({
   return (
     <div
       className={cn(
-        "aiden-bot-avatar grok-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
+        "nova-bot-avatar grok-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
         className,
       )}
       style={{
@@ -242,7 +242,7 @@ export const BotAvatar = memo(function BotAvatar({
       data-working={isWorking}
     >
       <svg
-        className="aiden-bot-avatar-ring absolute pointer-events-none"
+        className="nova-bot-avatar-ring absolute pointer-events-none"
         style={{
           inset: -4,
           width: size + 8,
@@ -333,7 +333,7 @@ function OrganicAvatar({
     <svg
       viewBox="-60 -60 120 120"
       aria-hidden="true"
-      className={cn("aiden-organic-avatar overflow-visible select-none", className)}
+      className={cn("nova-organic-avatar overflow-visible select-none", className)}
       data-working={isWorking}
       data-shape-family={seed % 10}
       data-eye-pattern={seed % 4}
@@ -346,12 +346,12 @@ function OrganicAvatar({
       {(["idle", "working"] as const).map((mode) => (
         <path
           key={mode}
-          className={`aiden-organic-avatar-body aiden-organic-avatar-body-${mode}`}
+          className={`nova-organic-avatar-body nova-organic-avatar-body-${mode}`}
           d={shapeA}
           fill={color}
           style={
             {
-              "--aiden-organic-path": `path("${shapeA}")`,
+              "--nova-organic-path": `path("${shapeA}")`,
               filter:
                 mode === "working"
                   ? `drop-shadow(0 0 ${Math.round(size * 0.16)}px ${color})`
@@ -373,7 +373,7 @@ function OrganicAvatar({
         {(["idle", "working"] as const).map((mode) => (
           <g
             key={mode}
-            className={`aiden-organic-avatar-eyes aiden-organic-avatar-eyes-${mode}`}
+            className={`nova-organic-avatar-eyes nova-organic-avatar-eyes-${mode}`}
             fill={tokens.background}
           >
             <rect x="-14" y="-12" width="7" height="24" rx="3.5" />
@@ -437,7 +437,7 @@ export function MuseAvatar({
   return (
     <div
       className={cn(
-        "aiden-muse-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
+        "nova-muse-avatar-container relative inline-flex items-center justify-center shrink-0 select-none",
         className,
       )}
       style={{ width: size, height: size }}
@@ -449,7 +449,7 @@ export function MuseAvatar({
         aria-hidden="true"
         data-muse-state={state}
         className={cn(
-          "aiden-muse-avatar overflow-visible transition-opacity duration-300 motion-reduce:transition-none",
+          "nova-muse-avatar overflow-visible transition-opacity duration-300 motion-reduce:transition-none",
           faceHidden && "opacity-0",
         )}
       >
@@ -468,7 +468,7 @@ export function MuseAvatar({
         </defs>
         <ellipse cx={60} cy={112} rx={32} ry={6} fill={`url(#${gradId}-shadow)`} />
         <circle
-          className="aiden-muse-glow"
+          className="nova-muse-glow"
           cx={60}
           cy={66}
           r={46}
@@ -477,16 +477,16 @@ export function MuseAvatar({
           strokeWidth={7}
           pointerEvents="none"
         />
-        <g className="aiden-muse-all">
-          <path className="aiden-muse-body" fill={color} d={MUSE_BODY_PATH} />
+        <g className="nova-muse-all">
+          <path className="nova-muse-body" fill={color} d={MUSE_BODY_PATH} />
           <path
-            className="aiden-muse-depth"
+            className="nova-muse-depth"
             fill={`url(#${gradId}-depth)`}
             d={MUSE_BODY_PATH}
             pointerEvents="none"
           />
           <path
-            className="aiden-muse-rim"
+            className="nova-muse-rim"
             d="M28 38Q60 14 96 40"
             fill="none"
             stroke={MUSE_FACE_SHINE}
@@ -503,14 +503,14 @@ export function MuseAvatar({
             ry={8}
             transform="rotate(-24 42 42)"
           />
-          <g className="aiden-muse-eyes">
-            <g className="aiden-muse-pupils">
+          <g className="nova-muse-eyes">
+            <g className="nova-muse-pupils">
               <ellipse fill={MUSE_FACE_INK} cx={46} cy={66} rx={5.5} ry={7.5} />
               <ellipse fill={MUSE_FACE_INK} cx={74} cy={66} rx={5.5} ry={7.5} />
               <circle fill={MUSE_FACE_SHINE} cx={48} cy={63} r={1.8} />
               <circle fill={MUSE_FACE_SHINE} cx={76} cy={63} r={1.8} />
               {isWorking ? (
-                <g className="aiden-muse-squint" fill={color}>
+                <g className="nova-muse-squint" fill={color}>
                   <ellipse cx={46} cy={61.5} rx={6.2} ry={3.4} />
                   <ellipse cx={74} cy={61.5} rx={6.2} ry={3.4} />
                 </g>
@@ -518,7 +518,7 @@ export function MuseAvatar({
             </g>
             {isThinking ? (
               <path
-                className="aiden-muse-eyebrow aiden-muse-eyebrow-right"
+                className="nova-muse-eyebrow nova-muse-eyebrow-right"
                 d="M69 55Q76 49 83 54"
                 stroke={MUSE_FACE_INK}
                 strokeWidth={3}
@@ -529,7 +529,7 @@ export function MuseAvatar({
             {isWaiting ? (
               <>
                 <path
-                  className="aiden-muse-eyebrow aiden-muse-eyebrow-left"
+                  className="nova-muse-eyebrow nova-muse-eyebrow-left"
                   d="M38 53Q46 46 54 52"
                   stroke={MUSE_FACE_INK}
                   strokeWidth={3}
@@ -537,7 +537,7 @@ export function MuseAvatar({
                   fill="none"
                 />
                 <path
-                  className="aiden-muse-eyebrow aiden-muse-eyebrow-right"
+                  className="nova-muse-eyebrow nova-muse-eyebrow-right"
                   d="M66 52Q74 46 82 53"
                   stroke={MUSE_FACE_INK}
                   strokeWidth={3}
@@ -549,10 +549,10 @@ export function MuseAvatar({
           </g>
           <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={36} cy={80} rx={7} ry={4} />
           <ellipse fill={MUSE_FACE_CHEEK} opacity={0.5} cx={84} cy={80} rx={7} ry={4} />
-          <g className={cn("aiden-muse-expression", `aiden-muse-expression-${state}`)}>
+          <g className={cn("nova-muse-expression", `nova-muse-expression-${state}`)}>
             {state === "waiting" ? (
               <ellipse
-                className="aiden-muse-mouth aiden-muse-mouth-waiting"
+                className="nova-muse-mouth nova-muse-mouth-waiting"
                 fill={MUSE_FACE_INK}
                 cx={60}
                 cy={85}
@@ -561,7 +561,7 @@ export function MuseAvatar({
               />
             ) : (
               <path
-                className={`aiden-muse-mouth aiden-muse-mouth-${state}`}
+                className={`nova-muse-mouth nova-muse-mouth-${state}`}
                 d={MUSE_MOUTH_PATHS[state]}
                 stroke={MUSE_FACE_INK}
                 strokeWidth={3}
@@ -570,7 +570,7 @@ export function MuseAvatar({
               />
             )}
             {isWaiting ? (
-              <g className="aiden-muse-hand">
+              <g className="nova-muse-hand">
                 <path
                   d="M100 66Q112 60 110 50"
                   stroke={MUSE_FACE_INK}
@@ -579,7 +579,7 @@ export function MuseAvatar({
                   fill="none"
                 />
                 <circle
-                  className="aiden-muse-hand-palm"
+                  className="nova-muse-hand-palm"
                   fill={color}
                   stroke={MUSE_FACE_INK}
                   strokeWidth={2}
@@ -590,12 +590,12 @@ export function MuseAvatar({
               </g>
             ) : null}
           </g>
-          <path className="aiden-muse-spark" fill={MUSE_FACE_SPARK} d={MUSE_SPARK_PATH} />
+          <path className="nova-muse-spark" fill={MUSE_FACE_SPARK} d={MUSE_SPARK_PATH} />
         </g>
-        <g className="aiden-muse-thought" fill={color}>
-          <circle className="aiden-muse-dot" cx={92} cy={22} r={5} />
-          <circle className="aiden-muse-dot aiden-muse-dot-2" cx={104} cy={12} r={5} />
-          <circle className="aiden-muse-dot aiden-muse-dot-3" cx={116} cy={2} r={5} />
+        <g className="nova-muse-thought" fill={color}>
+          <circle className="nova-muse-dot" cx={92} cy={22} r={5} />
+          <circle className="nova-muse-dot nova-muse-dot-2" cx={104} cy={12} r={5} />
+          <circle className="nova-muse-dot nova-muse-dot-3" cx={116} cy={2} r={5} />
         </g>
       </svg>
       {showBadge ? (

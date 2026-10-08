@@ -1,7 +1,7 @@
-import { computerSupportsUpdate } from "@aiden/adapters";
-import type { ComputerStatus } from "@aiden/contracts";
-import { ACTIVE_RUN_STATUSES, computerScreenSize } from "@aiden/core";
-import type { PrismaClient } from "@aiden/db";
+import { computerSupportsUpdate } from "@nova/adapters";
+import type { ComputerStatus } from "@nova/contracts";
+import { ACTIVE_RUN_STATUSES, computerScreenSize } from "@nova/core";
+import type { PrismaClient } from "@nova/db";
 
 /** Mirrors computer.takeover: an execution lease blocks user control unless a takeover is pending. */
 export function executionBlocksUserTakeover(input: {

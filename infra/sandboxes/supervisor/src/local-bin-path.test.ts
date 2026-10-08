@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const computerRoot = fileURLToPath(new URL("../../computer/", import.meta.url));
-const localBinSnippet = path.join(computerRoot, "aiden-local-bin.sh");
+const localBinSnippet = path.join(computerRoot, "nova-local-bin.sh");
 
 // Debian /etc/profile replaces PATH, then sources /etc/profile.d/*.sh. Bash login
 // shells (`bash -lc`) do that before any home profile. Reproduce that order in a
@@ -19,7 +19,7 @@ const LOGIN_SHELL_STARTUP = [
   '  PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"',
   "fi",
   "export PATH",
-  '. "$AIDEN_LOCAL_BIN_SNIPPET"',
+  '. "$NOVA_LOCAL_BIN_SNIPPET"',
   'if [ -f "$HOME/.bash_profile" ]; then',
   '  . "$HOME/.bash_profile"',
   'elif [ -f "$HOME/.bash_login" ]; then',
@@ -109,16 +109,16 @@ describe("agent shell PATH after Debian login startup", () => {
 
   it("installs the snippet where Debian login shells source it", () => {
     const dockerfile = readFileSync(path.join(computerRoot, "Dockerfile"), "utf8");
-    const copy = "COPY --chmod=644 aiden-local-bin.sh /etc/profile.d/aiden-local-bin.sh";
+    const copy = "COPY --chmod=644 nova-local-bin.sh /etc/profile.d/nova-local-bin.sh";
     const copyAt = dockerfile.indexOf(copy);
     const userAt = dockerfile.indexOf("USER 1000:1000");
     expect(copyAt).toBeGreaterThan(-1);
     expect(userAt).toBeGreaterThan(copyAt);
-    expect(dockerfile).toContain("/etc/profile.d/aiden-local-bin.sh");
+    expect(dockerfile).toContain("/etc/profile.d/nova-local-bin.sh");
   });
 
   function createHome(): string {
-    const home = mkdtempSync(path.join(tmpdir(), "aiden-local-bin-"));
+    const home = mkdtempSync(path.join(tmpdir(), "nova-local-bin-"));
     homes.push(home);
     return home;
   }
@@ -142,10 +142,10 @@ function loginShell(
     encoding: "utf8",
     env: {
       HOME: home,
-      LOGNAME: "aiden",
+      LOGNAME: "nova",
       PATH: `${home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-      USER: "aiden",
-      AIDEN_LOCAL_BIN_SNIPPET: localBinSnippet,
+      USER: "nova",
+      NOVA_LOCAL_BIN_SNIPPET: localBinSnippet,
     },
   });
   return { stdout: stdout.trim() };

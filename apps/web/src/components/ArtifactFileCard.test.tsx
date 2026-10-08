@@ -33,10 +33,10 @@ vi.mock("@lingui/react/macro", () => {
     parts.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ""}`, "");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
-vi.mock("@aiden/chat-ui/web", () => ({
+vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@aiden/ui-web", () => {
+vi.mock("@nova/ui-web", () => {
   const cn = (...args: unknown[]) => args.filter(Boolean).join(" ");
   const Passthrough = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>

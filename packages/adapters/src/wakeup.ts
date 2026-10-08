@@ -4,9 +4,9 @@ import {
   dispatchBackgroundJob,
   type JobPublisher,
   type JobWorkerHost,
-} from "@aiden/adapter-kit";
-import { isTooManyDatabaseConnections } from "@aiden/db";
-import { runCorrelatedJob, unwrapJobPayload, wrapJobPayload } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import { isTooManyDatabaseConnections } from "@nova/db";
+import { runCorrelatedJob, unwrapJobPayload, wrapJobPayload } from "@nova/logging";
 import { makeWorkerUtils, type Runner, run, type WorkerUtils } from "graphile-worker";
 import type { Pool } from "pg";
 

@@ -1,4 +1,4 @@
-import { Button } from "@aiden/ui-web";
+import { Button } from "@nova/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type DemoBot,

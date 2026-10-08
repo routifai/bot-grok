@@ -1,4 +1,4 @@
-import type { SearchHit } from "@aiden/contracts";
+import type { SearchHit } from "@nova/contracts";
 
 export function mobileSearchDestination(hit: SearchHit):
   | {

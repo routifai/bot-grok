@@ -5,7 +5,7 @@ import {
   isAllowedAttachmentMimeType,
   isAttachmentImageMimeType,
   type MessageBlock,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 
 export class AttachmentValidationError extends Error {
   constructor(message: string) {

@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@aiden/ui-web/styles.css";
+@import "@nova/ui-web/styles.css";
 @import "@fontsource-variable/geist/wght.css";
 @import "@fontsource-variable/geist-mono/wght.css";
 @import "@fontsource-variable/instrument-sans/wght.css";
@@ -17,7 +17,7 @@
 }
 
 /* Signed-out welcome: the app's own type, and a soft pulse on the "working" dot. */
-[data-aiden-surface="welcome"] {
+[data-nova-surface="welcome"] {
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Instrument Sans Variable", "Geist Variable",
     ui-sans-serif, system-ui, sans-serif;

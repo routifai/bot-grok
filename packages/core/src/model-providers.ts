@@ -1,4 +1,4 @@
-import type { ModelCatalogEntry } from "@aiden/contracts";
+import type { ModelCatalogEntry } from "@nova/contracts";
 
 export const POPULAR_MODEL_PROVIDER_IDS = [
   "openrouter",

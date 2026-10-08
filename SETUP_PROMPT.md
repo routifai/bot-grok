@@ -1,11 +1,11 @@
-# Set up Aiden with a coding agent
+# Set up Nova with a coding agent
 
 Copy one of the prompts below into a coding agent.
 
 For this fork specifically, the simplest path is `./scripts/setup.sh` from a checkout — see
 [docs/SETUP.md](./docs/SETUP.md). It builds every service from source, so it always reflects this
-fork's own code. The "Published images" prompt below pulls whatever `AIDEN_IMAGE` /
-`AIDEN_COMPUTER_IMAGE` resolve to; unset, those default to this repository's own upstream project,
+fork's own code. The "Published images" prompt below pulls whatever `NOVA_IMAGE` /
+`NOVA_COMPUTER_IMAGE` resolve to; unset, those default to this repository's own upstream project,
 not this fork — replace the download and repository URLs below with this fork's own before using
 that prompt here.
 
@@ -14,7 +14,7 @@ that prompt here.
 Prefer this when the user wants a running web UI with Docker only (no Node/pnpm clone).
 
 ```text
-Set up Aiden from published GHCR images and leave the web UI running.
+Set up Nova from published GHCR images and leave the web UI running.
 
 Work like a careful onboarding engineer: perform the setup yourself, explain only decisions or blockers, and verify the product through the UI.
 
@@ -27,10 +27,10 @@ Safety rules:
 
 Before making changes, ask me these concise questions:
 
-1. Which directory should contain the Aiden folder (or use the current directory)?
+1. Which directory should contain the Nova folder (or use the current directory)?
 2. How should models be connected?
    - Add a deployment-wide `OPENROUTER_API_KEY` to `.env`.
-   - Connect during Aiden onboarding with a provider API key or with ChatGPT Plus/Pro, GitHub Copilot, or SuperGrok / X Premium.
+   - Connect during Nova onboarding with a provider API key or with ChatGPT Plus/Pro, GitHub Copilot, or SuperGrok / X Premium.
    - Defer model setup and verify infrastructure only. Make clear that bots cannot answer until a model is connected.
 3. Do I want remote computers instead of local Docker? If yes, choose E2B (`E2B_API_KEY`), Daytona (`DAYTONA_API_KEY`), or Box (`BOX_API_KEY`) and set `SANDBOX_PROVIDER` accordingly. If no, keep the default `SANDBOX_PROVIDER=docker` (local computers via the in-stack supervisor).
 
@@ -46,12 +46,12 @@ Setup:
 1. Create the directory if needed and enter it.
 2. Download and inspect this installer (do not clone the repository):
    <raw-url-of-install-images.sh-in-your-repository>
-   If that host is unreachable, use a mirror URL (e.g. set `AIDEN_INSTALLER_URL` to
-   `https://example.com/mirror/aiden/infra/compose/install-images.sh` and curl that instead).
+   If that host is unreachable, use a mirror URL (e.g. set `NOVA_INSTALLER_URL` to
+   `https://example.com/mirror/nova/infra/compose/install-images.sh` and curl that instead).
 3. Run `bash install-images.sh --prepare-only`. It downloads the Compose and environment example
    files, then creates `.env` with all required random secrets when one does not already exist.
-   Optional: set `AIDEN_DOWNLOAD_BASE` to a generic mirror of `infra/compose`, and/or use
-   `--local` / `AIDEN_DOWNLOAD_SKIP_EXISTING=1` when Compose files are already present locally.
+   Optional: set `NOVA_DOWNLOAD_BASE` to a generic mirror of `infra/compose`, and/or use
+   `--local` / `NOVA_DOWNLOAD_SKIP_EXISTING=1` when Compose files are already present locally.
    See docs/self-host.md (Restricted networks / mirror downloads).
 4. Preserve existing values. Keep `SANDBOX_PROVIDER=docker` unless I chose a remote computer
    provider, and add only the provider or model keys I selected.
@@ -75,7 +75,7 @@ When finished, report the directory path, effective Docker/Compose versions, con
 Use this for development, Docker sandboxes on the host, or Electron.
 
 ```text
-Set up Aiden locally and leave it running in a usable state.
+Set up Nova locally and leave it running in a usable state.
 
 Repository: <your repository's clone URL>
 
@@ -91,10 +91,10 @@ Safety rules:
 
 Before making changes, ask me these concise questions:
 
-1. Should you clone into the current directory, or what parent directory should contain `aiden`? If you are already inside a Aiden checkout, offer to use it without recloning.
+1. Should you clone into the current directory, or what parent directory should contain `nova`? If you are already inside a Nova checkout, offer to use it without recloning.
 2. How should models be connected?
    - Add a deployment-wide `OPENROUTER_API_KEY` to `.env`.
-   - Connect during Aiden onboarding with a provider API key or with ChatGPT Plus/Pro, GitHub Copilot, or SuperGrok / X Premium.
+   - Connect during Nova onboarding with a provider API key or with ChatGPT Plus/Pro, GitHub Copilot, or SuperGrok / X Premium.
    - Defer model setup and verify infrastructure only. Make clear that bots cannot answer until a model is connected.
 3. Do I want a managed app catalog? If yes, choose Composio (`COMPOSIO_API_KEY`) or Pipedream Connect (`PIPEDREAM_CLIENT_ID`, `PIPEDREAM_CLIENT_SECRET`, and `PIPEDREAM_PROJECT_ID`); otherwise leave them empty. Explain that this is optional and that users can still add Treg, HTTPS MCP, or OpenAPI sources in the app.
 4. Set up the web app only (recommended), or also launch the Electron desktop shell after the web stack works?
@@ -144,7 +144,7 @@ Verification:
 - Open the Agent computer pane and confirm the Docker computer reaches `running` and renders its desktop.
 - Open Integrations. If neither managed catalog was configured, confirm the view still offers Treg, HTTPS MCP, and OpenAPI sources. If one was configured, verify its app catalog loads without exposing any key or client secret.
 - Run `pnpm test` and `pnpm check`. Report failures with the relevant output; do not claim success if either fails.
-- If I requested Electron, leave the web stack running and then launch `pnpm --filter @aiden/desktop dev`. Verify the shell loads the same app. Let me make the Docker-versus-This-Mac choice because This Mac grants bots access under my OS account.
+- If I requested Electron, leave the web stack running and then launch `pnpm --filter @nova/desktop dev`. Verify the shell loads the same app. Let me make the Docker-versus-This-Mac choice because This Mac grants bots access under my OS account.
 
 When finished, report:
 

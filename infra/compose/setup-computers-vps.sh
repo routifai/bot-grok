@@ -99,9 +99,9 @@ cpus="$(as_deploy nproc)"
 {
   echo "COMPUTERS_HOST=${COMPUTERS_HOST}"
   echo "SANDBOX_SUPERVISOR_TOKEN=${SANDBOX_SUPERVISOR_TOKEN}"
-  echo "AIDEN_COMPUTER_MEMORY=${AIDEN_COMPUTER_MEMORY:-2g}"
-  echo "AIDEN_COMPUTER_CPUS=${AIDEN_COMPUTER_CPUS:-${cpus}}"
-  echo "AIDEN_COMPUTER_PIDS_LIMIT=${AIDEN_COMPUTER_PIDS_LIMIT:-2048}"
+  echo "NOVA_COMPUTER_MEMORY=${NOVA_COMPUTER_MEMORY:-2g}"
+  echo "NOVA_COMPUTER_CPUS=${NOVA_COMPUTER_CPUS:-${cpus}}"
+  echo "NOVA_COMPUTER_PIDS_LIMIT=${NOVA_COMPUTER_PIDS_LIMIT:-2048}"
 } | as_deploy 'umask 077; cat >~/nova/.env.computers; echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >>~/nova/.env.computers'
 
 step "5/6 Build and start (the Computer image takes a while the first time)"

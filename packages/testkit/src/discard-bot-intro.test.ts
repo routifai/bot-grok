@@ -48,7 +48,7 @@ describe("discardBotIntroRun", () => {
       expect.objectContaining({
         headers: expect.objectContaining({
           cookie: "session",
-          "x-aiden-space-id": "space-support",
+          "x-nova-space-id": "space-support",
         }),
         body: JSON.stringify({ json: { botId: "bot-1" } }),
       }),

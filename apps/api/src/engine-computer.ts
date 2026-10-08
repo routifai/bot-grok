@@ -8,10 +8,10 @@ import {
   omnigentClientFor,
   openOmnigentComputerScreen,
   releaseOmnigentComputer,
-} from "@aiden/adapters";
-import type { Actor, ComputerStatus } from "@aiden/contracts";
-import { ENGINE_COMPUTER_ID, SCREEN_PROXY_TTL_MS } from "@aiden/core/node/screen-capability";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, ComputerStatus } from "@nova/contracts";
+import { ENGINE_COMPUTER_ID, SCREEN_PROXY_TTL_MS } from "@nova/core/node/screen-capability";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { toComputerStatus } from "./computer-status.js";
 import { addScreenProxyCapability } from "./screen-proxy.js";

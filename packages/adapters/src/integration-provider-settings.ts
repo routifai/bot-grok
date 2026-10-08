@@ -1,11 +1,11 @@
-import type { AdapterContext, ConnectorCall, ManagedConnectorProvider } from "@aiden/adapter-kit";
+import type { AdapterContext, ConnectorCall, ManagedConnectorProvider } from "@nova/adapter-kit";
 import {
   type IntegrationProviderConfig,
   IntegrationProviderConfigSchema,
   type IntegrationProviderId,
   IntegrationProviderIdSchema,
-} from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ComposioConnector } from "./composio-connector.js";
 import { PipedreamConnector } from "./pipedream-connector.js";
 import type { EncryptedSecretStore } from "./secrets.js";

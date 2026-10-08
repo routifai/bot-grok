@@ -1,4 +1,6 @@
-import type { Routine } from "@aiden/contracts";
+import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { Routine } from "@nova/contracts";
 import {
   type CronFreq,
   type CronPreset,
@@ -7,7 +9,7 @@ import {
   formatCron,
   isOneShotRoutineCrons,
   presetFromCron,
-} from "@aiden/core";
+} from "@nova/core";
 import {
   Button,
   DropdownMenu,
@@ -19,9 +21,7 @@ import {
   DropdownMenuTrigger,
   Input,
   Textarea,
-} from "@aiden/ui-web";
-import { t } from "@lingui/core/macro";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { ChevronLeft, Clock, GitBranch, Globe, MessageSquare, Pause, Plus, X } from "lucide-react";
 import { useId } from "react";
 import { RoutineSchedule } from "./RoutineSchedule";

@@ -3,7 +3,7 @@ import type {
   ConnectorCall,
   ConnectorEvent,
   ConnectorTool,
-} from "@aiden/adapter-kit";
+} from "@nova/adapter-kit";
 import {
   type ComposioCatalogItem,
   type ComposioProvider,
@@ -194,11 +194,11 @@ function seedMailbox(): Mailbox {
       {
         messageId: "18c5f5d1a2b3c4d5",
         threadId: "18c5f5d1a2b3c4d5",
-        subject: "Welcome to Aiden",
-        sender: "hello@aiden.test",
+        subject: "Welcome to Nova",
+        sender: "hello@nova.test",
         to: "me@example.test",
         snippet: "Your inbox is ready for agent workflows.",
-        messageText: "Your inbox is ready for agent workflows.\n\n— Aiden",
+        messageText: "Your inbox is ready for agent workflows.\n\n— Nova",
         labelIds: ["INBOX", "UNREAD"],
         internalDate: String(base),
       },

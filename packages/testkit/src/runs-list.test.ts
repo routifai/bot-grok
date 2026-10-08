@@ -1,8 +1,8 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { RunActivityRow } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { RunActivityRow } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sessionCookieHeader } from "./index.js";
 
@@ -20,7 +20,7 @@ describeRunsList("runs.list activity tracker", () => {
   let prisma: PrismaClient;
   let stop: () => Promise<void>;
   const stamp = Date.now();
-  const dataDir = mkdtempSync(path.join(tmpdir(), "aiden-runs-list-"));
+  const dataDir = mkdtempSync(path.join(tmpdir(), "nova-runs-list-"));
 
   beforeAll(async () => {
     const { createApp } = await import("../../../apps/api/src/app.ts");
@@ -40,7 +40,7 @@ describeRunsList("runs.list activity tracker", () => {
   });
 
   it("lists active runs from two bots and keeps completed runs under recent", async () => {
-    const cookie = await signup(app, `runs-${stamp}@aiden.test`, "Runs User");
+    const cookie = await signup(app, `runs-${stamp}@nova.test`, "Runs User");
     const alpha = await rpc<{ id: string }>(app, cookie, "bots/create", {
       name: "Alpha",
       title: "Alpha",
@@ -78,7 +78,7 @@ describeRunsList("runs.list activity tracker", () => {
   });
 
   it("never returns runs from another workspace", async () => {
-    const ownerCookie = await signup(app, `runs-owner-${stamp}@aiden.test`, "Owner");
+    const ownerCookie = await signup(app, `runs-owner-${stamp}@nova.test`, "Owner");
     const ownerBot = await rpc<{ id: string }>(app, ownerCookie, "bots/create", {
       name: "OwnerBot",
       title: "OwnerBot",
@@ -88,7 +88,7 @@ describeRunsList("runs.list activity tracker", () => {
     });
     await seedRun(prisma, ownerBot.id, "running", "owner active run");
 
-    const intruderCookie = await signup(app, `runs-intruder-${stamp}@aiden.test`, "Intruder");
+    const intruderCookie = await signup(app, `runs-intruder-${stamp}@nova.test`, "Intruder");
     const active = await rpc<{ runs: RunActivityRow[] }>(app, intruderCookie, "runs/list", {
       filter: "active",
     });
@@ -96,7 +96,7 @@ describeRunsList("runs.list activity tracker", () => {
   });
 
   it("excludes archived bots from recent before applying the limit", async () => {
-    const cookie = await signup(app, `runs-archived-${stamp}@aiden.test`, "Archive User");
+    const cookie = await signup(app, `runs-archived-${stamp}@nova.test`, "Archive User");
     const archivedBot = await rpc<{ id: string }>(app, cookie, "bots/create", {
       name: "Archived",
       title: "Archived",
@@ -133,7 +133,7 @@ describeRunsList("runs.list activity tracker", () => {
   });
 
   it("returns group runs with groupId for navigation", async () => {
-    const cookie = await signup(app, `runs-group-${stamp}@aiden.test`, "Group User");
+    const cookie = await signup(app, `runs-group-${stamp}@nova.test`, "Group User");
     const botA = await rpc<{ id: string }>(app, cookie, "bots/create", {
       name: "Worker",
       title: "Worker",

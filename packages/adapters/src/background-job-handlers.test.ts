@@ -3,9 +3,9 @@ import type {
   JobPublisher,
   MessagingSurface,
   SandboxProvider,
-} from "@aiden/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
-import { createLogger, createTestSink, installLogger } from "@aiden/logging";
+} from "@nova/adapter-kit";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { createLogger, createTestSink, installLogger } from "@nova/logging";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBackgroundJobHandlers } from "./background-job-handlers.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
@@ -54,7 +54,7 @@ describe("createBackgroundJobHandlers", () => {
       }),
     } as unknown as JobPublisher;
     const sink = createTestSink();
-    installLogger(createLogger({ service: "aiden-worker", sinks: [sink] }));
+    installLogger(createLogger({ service: "nova-worker", sinks: [sink] }));
     const handlers = handlersFor({
       jobs,
       messaging: {} as unknown as MessagingSurface,
@@ -75,7 +75,7 @@ describe("createBackgroundJobHandlers", () => {
     expect(sink.events.some((event) => event.message === "messaging.deliver enqueue error")).toBe(
       true,
     );
-    installLogger(createLogger({ service: "aiden-worker", level: "off", sinks: [] }));
+    installLogger(createLogger({ service: "nova-worker", level: "off", sinks: [] }));
   });
 
   it("runs every turn on the engine and never falls back to a Pi executor", async () => {

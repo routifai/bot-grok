@@ -1,4 +1,4 @@
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { describe, expect, it } from "vitest";
 import { omnigentClientConfigFromEnv, omnigentGatewayDepsFromEnv } from "./env.js";
 

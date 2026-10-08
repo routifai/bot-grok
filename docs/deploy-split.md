@@ -69,7 +69,7 @@ and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_H
 
 1. In the OVHcloud control panel order a VPS, location **Beauharnois (Canada)**,
    image **Ubuntu** (24.04 or newer), and add your SSH public key. Note the public IPv4 address.
-   Pick a size that fits `friends x AIDEN_COMPUTER_MEMORY` plus about 3 GB.
+   Pick a size that fits `friends x NOVA_COMPUTER_MEMORY` plus about 3 GB.
 2. DNS: at your domain registrar add an **A record** `computers.<your-domain>` pointing at that IP.
 3. First login. OVH creates a default user (shown in the order mail, often `ubuntu`); then create
    the deploy user the hardening script expects:
@@ -107,7 +107,7 @@ and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_H
    cp .env.computers.example .env.computers
    sed -i "s/^SANDBOX_SUPERVISOR_TOKEN=.*/SANDBOX_SUPERVISOR_TOKEN=$(openssl rand -hex 32)/" .env.computers
    sed -i "s/^DOCKER_GID=.*/DOCKER_GID=$(stat -c %g /var/run/docker.sock)/" .env.computers
-   nano .env.computers      # set COMPUTERS_HOST; adjust AIDEN_COMPUTER_* if needed
+   nano .env.computers      # set COMPUTERS_HOST; adjust NOVA_COMPUTER_* if needed
    grep SANDBOX_SUPERVISOR_TOKEN .env.computers   # copy this value for Railway
    sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build
    ```
@@ -212,7 +212,7 @@ proxied by the web server inside the container, so nothing in front buffers or c
 
 1. Open the nova-app URL, register (owner), and send a message to your Muse.
 2. First message creates the Computer on the VPS; allow a minute. On the VPS:
-   `sudo docker ps` shows an `aiden-bot-...` container.
+   `sudo docker ps` shows an `nova-bot-...` container.
 3. Logs: Railway, service, Deployments, View logs. VPS:
    `sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml logs -f supervisor`.
    Logs rotate (10 MB x 3 per service).

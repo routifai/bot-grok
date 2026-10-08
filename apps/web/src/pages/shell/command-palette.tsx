@@ -1,4 +1,6 @@
-import type { Bot } from "@aiden/contracts";
+import { t } from "@lingui/core/macro";
+import { Trans } from "@lingui/react/macro";
+import type { Bot } from "@nova/contracts";
 import {
   Badge,
   BotAvatar,
@@ -11,9 +13,7 @@ import {
   CommandList,
   CommandShortcut,
   Kbd,
-} from "@aiden/ui-web";
-import { t } from "@lingui/core/macro";
-import { Trans } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { useEffect, useMemo, useState } from "react";
 
 function isApplePlatform() {

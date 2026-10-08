@@ -1,4 +1,4 @@
-import { ATTACHMENT_ALLOWED_MIME_TYPES } from "@aiden/contracts";
+import { ATTACHMENT_ALLOWED_MIME_TYPES } from "@nova/contracts";
 
 /** Identity colour for bots the roster no longer knows about. */
 export const FALLBACK_BOT_COLOR = "#85858A";

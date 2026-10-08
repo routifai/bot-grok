@@ -1,10 +1,10 @@
 import type { IncomingHttpHeaders } from "node:http";
-import type { ScreenProxyTarget } from "@aiden/core/node/screen-capability";
+import type { ScreenProxyTarget } from "@nova/core/node/screen-capability";
 import {
   isScreenProxyTarget,
   SCREEN_RECHECK_MS,
   SCREEN_TARGET_ENDPOINT,
-} from "@aiden/core/node/screen-capability";
+} from "@nova/core/node/screen-capability";
 
 const SENSITIVE_FORWARD_HEADERS = new Set([
   "authorization",

@@ -1,10 +1,10 @@
 /** Shared logic for the agent-facing add_mcp_server tool. Pure and unit-tested;
  * the executor wires the parsed result into Prisma + the secret store. */
 
-import { McpRemoteEndpointSchema, type McpTransport, McpTransportSchema } from "@aiden/contracts";
-import { deriveMcpSlug } from "@aiden/core";
+import { McpRemoteEndpointSchema, type McpTransport, McpTransportSchema } from "@nova/contracts";
+import { deriveMcpSlug } from "@nova/core";
 
-export { deriveMcpSlug } from "@aiden/core";
+export { deriveMcpSlug } from "@nova/core";
 
 const MAX_ENV_ENTRIES = 32;
 const MAX_ARGS = 64;

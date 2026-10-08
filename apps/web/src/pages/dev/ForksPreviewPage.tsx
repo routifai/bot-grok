@@ -1,5 +1,5 @@
-import type { ChatSummary, ThreadMessage } from "@aiden/contracts";
-import { cn } from "@aiden/ui-web";
+import type { ChatSummary, ThreadMessage } from "@nova/contracts";
+import { cn } from "@nova/ui-web";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { MuseSidebar } from "../muse/chrome/MuseSidebar";

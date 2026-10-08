@@ -2,7 +2,7 @@
 // apps/api and apps/worker so the connection env vars behave identically in whichever process
 // runs "run.continue" jobs. The single switch is the connection itself: OMNIGENT_URL +
 // OMNIGENT_PROXY_SECRET.
-import type { PrismaClient, ThreadEvents } from "@aiden/db";
+import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { resolveDeploymentModel } from "../deployment-model.js";
 import type { OmnigentConnection } from "./client.js";
 import type { OmnigentGatewayDeps } from "./gateway.js";

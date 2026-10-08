@@ -1,6 +1,6 @@
-import type { IntegrationCatalogResult, IntegrationSetupState } from "@aiden/contracts";
-import { Button, Input } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { IntegrationCatalogResult, IntegrationSetupState } from "@nova/contracts";
+import { Button, Input } from "@nova/ui-web";
 import { Check } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { newClientId } from "../../lib/client-id";

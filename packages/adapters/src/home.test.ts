@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const root = await mkdtemp(path.join(tmpdir(), "aiden-home-"));
+  const root = await mkdtemp(path.join(tmpdir(), "nova-home-"));
   dirs.push(root);
   const store = new LocalAgentHomeStore(root);
   const home = store.pathFor("bot-1");

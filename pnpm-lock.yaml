@@ -41,25 +41,25 @@ importers:
 
   apps/api:
     dependencies:
-      '@aiden/adapter-kit':
+      '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../../packages/adapter-kit
-      '@aiden/adapters':
+      '@nova/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters
-      '@aiden/auth':
+      '@nova/auth':
         specifier: workspace:*
         version: link:../../packages/auth
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@aiden/db':
+      '@nova/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@aiden/logging':
+      '@nova/logging':
         specifier: workspace:*
         version: link:../../packages/logging
       '@hono/node-server':
@@ -84,14 +84,14 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9
     devDependencies:
-      '@aiden/ui-tokens':
+      '@nova/ui-tokens':
         specifier: workspace:*
         version: link:../../packages/ui-tokens
       '@playwright/test':
@@ -112,16 +112,16 @@ importers:
 
   apps/mobile:
     dependencies:
-      '@aiden/chat-ui':
+      '@nova/chat-ui':
         specifier: workspace:*
         version: link:../../packages/chat-ui
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@aiden/ui-tokens':
+      '@nova/ui-tokens':
         specifier: workspace:*
         version: link:../../packages/ui-tokens
       '@expo/metro-runtime':
@@ -254,19 +254,19 @@ importers:
 
   apps/web:
     dependencies:
-      '@aiden/chat-ui':
+      '@nova/chat-ui':
         specifier: workspace:*
         version: link:../../packages/chat-ui
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@aiden/ui-tokens':
+      '@nova/ui-tokens':
         specifier: workspace:*
         version: link:../../packages/ui-tokens
-      '@aiden/ui-web':
+      '@nova/ui-web':
         specifier: workspace:*
         version: link:../../packages/ui-web
       '@fontsource-variable/geist-mono':
@@ -372,19 +372,19 @@ importers:
 
   apps/worker:
     dependencies:
-      '@aiden/adapter-kit':
+      '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../../packages/adapter-kit
-      '@aiden/adapters':
+      '@nova/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@aiden/db':
+      '@nova/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@aiden/logging':
+      '@nova/logging':
         specifier: workspace:*
         version: link:../../packages/logging
       tsx:
@@ -400,10 +400,10 @@ importers:
 
   apps/www:
     dependencies:
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@aiden/ui-web':
+      '@nova/ui-web':
         specifier: workspace:*
         version: link:../../packages/ui-web
       '@astrojs/react':
@@ -455,10 +455,10 @@ importers:
 
   infra/sandboxes/supervisor:
     dependencies:
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../../../packages/core
-      '@aiden/logging':
+      '@nova/logging':
         specifier: workspace:*
         version: link:../../../packages/logging
       '@hono/node-server':
@@ -489,7 +489,7 @@ importers:
 
   packages/adapter-kit:
     dependencies:
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../contracts
       zod:
@@ -505,19 +505,19 @@ importers:
 
   packages/adapters:
     dependencies:
-      '@aiden/adapter-kit':
+      '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@aiden/db':
+      '@nova/db':
         specifier: workspace:*
         version: link:../db
-      '@aiden/logging':
+      '@nova/logging':
         specifier: workspace:*
         version: link:../logging
       '@asciidev/box-sdk':
@@ -599,13 +599,13 @@ importers:
 
   packages/auth:
     dependencies:
-      '@aiden/adapter-kit':
+      '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@aiden/db':
+      '@nova/db':
         specifier: workspace:*
         version: link:../db
       better-auth:
@@ -621,13 +621,13 @@ importers:
 
   packages/chat-ui:
     dependencies:
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@aiden/ui-tokens':
+      '@nova/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
-      '@aiden/ui-web':
+      '@nova/ui-web':
         specifier: workspace:*
         version: link:../ui-web
       '@ronradtke/react-native-markdown-display':
@@ -683,7 +683,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../contracts
       '@observablehq/plot':
@@ -729,16 +729,16 @@ importers:
 
   packages/db:
     dependencies:
-      '@aiden/adapter-kit':
+      '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@aiden/logging':
+      '@nova/logging':
         specifier: workspace:*
         version: link:../logging
       '@prisma/adapter-pg':
@@ -785,19 +785,19 @@ importers:
 
   packages/testkit:
     dependencies:
-      '@aiden/adapter-kit':
+      '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-      '@aiden/adapters':
+      '@nova/adapters':
         specifier: workspace:*
         version: link:../adapters
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@aiden/db':
+      '@nova/db':
         specifier: workspace:*
         version: link:../db
       '@hono/node-server':
@@ -834,13 +834,13 @@ importers:
 
   packages/ui-web:
     dependencies:
-      '@aiden/contracts':
+      '@nova/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@aiden/core':
+      '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@aiden/ui-tokens':
+      '@nova/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
       '@base-ui/react':

@@ -1,4 +1,4 @@
-import type { Routine } from "@aiden/contracts";
+import type { Routine } from "@nova/contracts";
 import { expect, type Page, test } from "@playwright/test";
 import { activeBotId, captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
 
@@ -20,7 +20,7 @@ async function saveAndReturn(page: Page, procedure: "routines/create" | "routine
 
 test("routine active switch keeps its thumb inside the track", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `routine-toggle-${stamp}@aiden.test`, "password12", "Routine Toggle");
+  await signup(page, `routine-toggle-${stamp}@nova.test`, "password12", "Routine Toggle");
   await completeOnboarding(page);
   await page.getByTitle("Agent computer").click();
   await page.getByRole("button", { name: "Create Routine" }).click();
@@ -64,7 +64,7 @@ test("routine editing updates in place, preserves timezone, and deletion persist
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `routine-crud-${stamp}@aiden.test`, "password12", "Routine CRUD");
+  await signup(page, `routine-crud-${stamp}@nova.test`, "password12", "Routine CRUD");
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
@@ -130,7 +130,7 @@ test("routine editing updates in place, preserves timezone, and deletion persist
 
 test("invalid advanced cron is rejected without creating a routine", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `routine-invalid-${stamp}@aiden.test`, "password12", "Invalid Routine");
+  await signup(page, `routine-invalid-${stamp}@nova.test`, "password12", "Invalid Routine");
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
@@ -151,7 +151,7 @@ test("a successful routine create is not reported as failed when refresh fails",
   page,
 }) => {
   const stamp = Date.now();
-  await signup(page, `routine-refresh-${stamp}@aiden.test`, "password12", "Routine Refresh");
+  await signup(page, `routine-refresh-${stamp}@nova.test`, "password12", "Routine Refresh");
   await completeOnboarding(page);
   const botId = activeBotId(page);
 

@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@aiden/contracts";
+import type { MessageBlock } from "@nova/contracts";
 
 /** Instruction-stack note for bots whose owner has a messaging identity. */
 export function messagingDmSurfaceNote(): string {

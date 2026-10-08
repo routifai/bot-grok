@@ -1,4 +1,4 @@
-import { abortableDelay } from "@aiden/core";
+import { abortableDelay } from "@nova/core";
 
 /** Delay before the setup focus card for a non-first bot. */
 export const FOCUS_PROMPT_DELAY_MS = 10_000;

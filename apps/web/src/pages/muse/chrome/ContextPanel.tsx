@@ -1,8 +1,8 @@
-import type { Ask, Goal } from "@aiden/contracts";
-import { nextCronDateAcross } from "@aiden/core";
-import { cn } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
+import type { Ask, Goal } from "@nova/contracts";
+import { nextCronDateAcross } from "@nova/core";
+import { cn } from "@nova/ui-web";
 import { Bell, BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MuseRailView } from "../../../components/AppRail";

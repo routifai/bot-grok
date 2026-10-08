@@ -12,7 +12,7 @@ import {
   releaseDesktopCommand,
   screenPorts,
   stopAllDesktopBrowsersCommand,
-} from "@aiden/core/node/desktop-runtime";
+} from "@nova/core/node/desktop-runtime";
 import { expect, it } from "vitest";
 import {
   browserProfilePathForScreen,
@@ -26,8 +26,8 @@ import {
 it.skipIf(process.env.VERIFY_DOCKER_TEAM_SCREENS !== "1").each([false, true])(
   "isolates live desktops, persists profiles, and revokes recycled capabilities (managed=%s)",
   (managed) => {
-    const name = `aiden-team-screens-test-${randomUUID()}`;
-    const directory = mkdtempSync(path.join(tmpdir(), "aiden-team-screens-"));
+    const name = `nova-team-screens-test-${randomUUID()}`;
+    const directory = mkdtempSync(path.join(tmpdir(), "nova-team-screens-"));
     const docker = (...args: string[]) =>
       execFileSync("docker", args, { encoding: "utf8", timeout: 150_000 });
     try {
@@ -42,7 +42,7 @@ it.skipIf(process.env.VERIFY_DOCKER_TEAM_SCREENS !== "1").each([false, true])(
       const commands: Record<string, string> = {
         reset: resetManagedScreensCommand(),
         seed: managed
-          ? `python3 -c 'from pathlib import Path; d=Path("/tmp/aiden/desktop-assignments"); [(d / ("fixture-%s.slot" % i)).write_text(str(i) + "\\n") for i in range(1, 99)]'`
+          ? `python3 -c 'from pathlib import Path; d=Path("/tmp/nova/desktop-assignments"); [(d / ("fixture-%s.slot" % i)).write_text(str(i) + "\\n") for i in range(1, 99)]'`
           : "true",
         closeall: stopAllDesktopBrowsersCommand(env),
         viewPort: screenPorts(0, env).viewPort,
@@ -77,7 +77,7 @@ it.skipIf(process.env.VERIFY_DOCKER_TEAM_SCREENS !== "1").each([false, true])(
         "--network",
         "none",
         "--shm-size=512m",
-        process.env.AIDEN_COMPUTER_IMAGE ?? "aiden/computer:local",
+        process.env.NOVA_COMPUTER_IMAGE ?? "nova/computer:local",
       );
       docker("cp", commandFile, `${name}:/tmp/team-desktops-commands.json`);
       docker(

@@ -1,5 +1,5 @@
 import { createCipheriv, createHash } from "node:crypto";
-import type { AdapterContext, MessagingInboundEvent } from "@aiden/adapter-kit";
+import type { AdapterContext, MessagingInboundEvent } from "@nova/adapter-kit";
 import type * as LarkAdapterModule from "chat-adapter-lark";
 import type { HttpInstance } from "chat-adapter-lark";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -74,7 +74,7 @@ function message(chatType = "p2p", sender = "ou-test") {
 }
 
 function webhook(body: unknown, headers: Record<string, string> = {}) {
-  return new Request("https://aiden.test/api/v1/messaging/webhook/lark", {
+  return new Request("https://nova.test/api/v1/messaging/webhook/lark", {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),

@@ -1,4 +1,4 @@
-import type { AvatarStyle } from "@aiden/contracts";
+import type { AvatarStyle } from "@nova/contracts";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import {

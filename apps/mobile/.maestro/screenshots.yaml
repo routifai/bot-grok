@@ -1,5 +1,5 @@
-appId: com.aiden.app
-name: Aiden mobile screenshots
+appId: com.nova.app
+name: Nova mobile screenshots
 tags:
   - screenshots
 ---
@@ -10,7 +10,7 @@ tags:
 
 # A cold API 34 emulator can show a launcher ANR over the healthy app.
 - extendedWaitUntil:
-    visible: "Sign up for Aiden|Pixel Launcher isn't responding"
+    visible: "Sign up for Nova|Pixel Launcher isn't responding"
     timeout: 30000
 - runFlow:
     when:
@@ -18,11 +18,11 @@ tags:
     commands:
       - tapOn: "Close app"
 - extendedWaitUntil:
-    visible: "Sign up for Aiden"
+    visible: "Sign up for Nova"
     timeout: 30000
 - takeScreenshot: "02-sign-up"
 - tapOn: "Sign in"
-- assertVisible: "Sign in to Aiden"
+- assertVisible: "Sign in to Nova"
 - takeScreenshot: "01-sign-in"
 
 - tapOn: "Use a custom server"
@@ -31,9 +31,9 @@ tags:
 - tapOn: "Cancel"
 
 - tapOn: "Email"
-- inputText: ${AIDEN_SCREENSHOT_EMAIL}
+- inputText: ${NOVA_SCREENSHOT_EMAIL}
 - tapOn: "Password"
-- inputText: ${AIDEN_SCREENSHOT_PASSWORD}
+- inputText: ${NOVA_SCREENSHOT_PASSWORD}
 - hideKeyboard
 - tapOn: "Sign in"
 - tapOn:
@@ -59,19 +59,19 @@ tags:
     timeout: 10000
 - takeScreenshot: "06-search-results"
 
-- openLink: "aiden:///new"
+- openLink: "nova:///new"
 - assertVisible: "Name this bot"
 - takeScreenshot: "07-new-bot"
 
-- openLink: "aiden:///new-group"
+- openLink: "nova:///new-group"
 - assertVisible: "Name this group"
 - takeScreenshot: "08-new-group"
 
-- openLink: "aiden:///new-space"
+- openLink: "nova:///new-space"
 - assertVisible: "Customer support"
 - takeScreenshot: "09-new-space"
 
-- openLink: "aiden:///account"
+- openLink: "nova:///account"
 - extendedWaitUntil:
     visible: "Change password"
     timeout: 10000
@@ -81,7 +81,7 @@ tags:
 - takeScreenshot: "10b-change-password"
 - back
 
-- openLink: "aiden:///models"
+- openLink: "nova:///models"
 - extendedWaitUntil:
     visible: "Active model"
     timeout: 10000
@@ -95,13 +95,13 @@ tags:
     direction: DOWN
 - takeScreenshot: "11b-all-providers"
 
-- openLink: "aiden:///voice"
+- openLink: "nova:///voice"
 - extendedWaitUntil:
     visible: "Scripted"
     timeout: 10000
 - takeScreenshot: "12-voice"
 
-- openLink: "aiden:///integrations"
+- openLink: "nova:///integrations"
 - extendedWaitUntil:
     visible: "Search apps"
     timeout: 10000
@@ -111,7 +111,7 @@ tags:
 - assertVisible: "Add MCP server"
 - takeScreenshot: "14-integrations-advanced"
 
-- openLink: "aiden:///thread?botId=${AIDEN_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "nova:///thread?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: "The fixture workspace is ready."
     timeout: 10000
@@ -142,7 +142,7 @@ tags:
 - takeScreenshot: "16-bot-actions"
 - back
 
-- openLink: "aiden:///bot-settings?botId=${AIDEN_SCREENSHOT_BOT_ID}"
+- openLink: "nova:///bot-settings?botId=${NOVA_SCREENSHOT_BOT_ID}"
 - extendedWaitUntil:
     visible: "Researcher"
     timeout: 10000
@@ -153,13 +153,13 @@ tags:
 - assertVisible: "Space default.*"
 - takeScreenshot: "17-bot-settings"
 
-- openLink: "aiden:///computer?botId=${AIDEN_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "nova:///computer?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: "Take control"
     timeout: 10000
 - takeScreenshot: "18-computer"
 
-- openLink: "aiden:///group-thread?groupId=${AIDEN_SCREENSHOT_GROUP_ID}&name=Launch%20team"
+- openLink: "nova:///group-thread?groupId=${NOVA_SCREENSHOT_GROUP_ID}&name=Launch%20team"
 - extendedWaitUntil:
     visible: "The fixture launch plan is ready."
     timeout: 10000
@@ -173,57 +173,57 @@ tags:
 - assertVisible: "More"
 - back
 
-- openLink: "aiden:///group-settings?groupId=${AIDEN_SCREENSHOT_GROUP_ID}"
+- openLink: "nova:///group-settings?groupId=${NOVA_SCREENSHOT_GROUP_ID}"
 - extendedWaitUntil:
     visible: "Delete group"
     timeout: 10000
 - takeScreenshot: "20-group-settings"
 
-- openLink: "aiden:///routine?botId=${AIDEN_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${AIDEN_SCREENSHOT_ROUTINE_ID}"
+- openLink: "nova:///routine?botId=${NOVA_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${NOVA_SCREENSHOT_ROUTINE_ID}"
 - extendedWaitUntil:
     visible: "Weekly fixture review"
     timeout: 10000
 - takeScreenshot: "21-routine"
 
 # Verify saved appearance changes on already-mounted screens and modal routes.
-- openLink: "aiden:///account"
+- openLink: "nova:///account"
 - extendedWaitUntil:
     visible: "Dark"
     timeout: 10000
 - tapOn: "Dark"
 - takeScreenshot: "22-account-dark"
 
-- openLink: "aiden:///new"
+- openLink: "nova:///new"
 - assertVisible: "Name this bot"
 - takeScreenshot: "23-new-bot-dark"
 
-- openLink: "aiden:///new-group"
+- openLink: "nova:///new-group"
 - assertVisible: "Name this group"
 - takeScreenshot: "24-new-group-dark"
 
-- openLink: "aiden:///new-space"
+- openLink: "nova:///new-space"
 - assertVisible: "Customer support"
 - takeScreenshot: "25-new-space-dark"
 
-- openLink: "aiden:///thread?botId=${AIDEN_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "nova:///thread?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: "The fixture workspace is ready."
     timeout: 10000
 - takeScreenshot: "26-thread-dark"
 
-- openLink: "aiden:///group-thread?groupId=${AIDEN_SCREENSHOT_GROUP_ID}&name=Launch%20team"
+- openLink: "nova:///group-thread?groupId=${NOVA_SCREENSHOT_GROUP_ID}&name=Launch%20team"
 - extendedWaitUntil:
     visible: "The fixture launch plan is ready."
     timeout: 10000
 - takeScreenshot: "27-group-thread-dark"
 
-- openLink: "aiden:///group-settings?groupId=${AIDEN_SCREENSHOT_GROUP_ID}"
+- openLink: "nova:///group-settings?groupId=${NOVA_SCREENSHOT_GROUP_ID}"
 - assertVisible: "Delete group"
 - takeScreenshot: "28-group-settings-dark"
 
-- openLink: "aiden:///account"
+- openLink: "nova:///account"
 - tapOn: "Light"
-- openLink: "aiden:///thread?botId=${AIDEN_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "nova:///thread?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
 - assertVisible: "The fixture workspace is ready."
 - takeScreenshot: "29-thread-light-restored"
 

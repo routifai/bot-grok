@@ -7,7 +7,7 @@
 
   <application>
     <service
-      android:name=".AidenNotificationService"
+      android:name=".NovaNotificationService"
       android:exported="false"
       android:foregroundServiceType="remoteMessaging" />
   </application>

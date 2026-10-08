@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { shouldOpenInAppPopup } from "./window-open.js";
 
-const appOrigin = "https://aiden.example.com";
+const appOrigin = "https://nova.example.com";
 
 describe("desktop child windows", () => {
   it("keeps same-origin app routes in Electron", () => {
@@ -14,7 +14,7 @@ describe("desktop child windows", () => {
     ).toBe(false);
   });
 
-  it.each(["aiden-model-oauth", "aiden-mcp-oauth", "aiden-app-connect", "aiden-plugin-connect"])(
+  it.each(["nova-model-oauth", "nova-mcp-oauth", "nova-app-connect", "nova-plugin-connect"])(
     "keeps the intentional %s flow in an Electron popup",
     (frameName) => {
       expect(
@@ -24,9 +24,9 @@ describe("desktop child windows", () => {
   );
 
   it("rejects malformed URLs and non-HTTPS third-party targets", () => {
-    expect(shouldOpenInAppPopup(appOrigin, "not a url", "aiden-model-oauth")).toBe(false);
-    expect(
-      shouldOpenInAppPopup(appOrigin, "http://provider.example.com", "aiden-model-oauth"),
-    ).toBe(false);
+    expect(shouldOpenInAppPopup(appOrigin, "not a url", "nova-model-oauth")).toBe(false);
+    expect(shouldOpenInAppPopup(appOrigin, "http://provider.example.com", "nova-model-oauth")).toBe(
+      false,
+    );
   });
 });

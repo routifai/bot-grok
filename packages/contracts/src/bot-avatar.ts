@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-/** Matches the eight shipped mascot shapes in `@aiden/core`. */
+/** Matches the eight shipped mascot shapes in `@nova/core`. */
 export const BOT_AVATAR_SHAPE_COUNT = 8;
 
 /**

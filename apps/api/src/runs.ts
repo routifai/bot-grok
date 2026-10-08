@@ -1,6 +1,6 @@
-import { type Actor, MessageBlock, type RunActivityRow } from "@aiden/contracts";
-import { ACTIVE_RUN_STATUSES, botMessageContext } from "@aiden/core";
-import type { PrismaClient } from "@aiden/db";
+import { type Actor, MessageBlock, type RunActivityRow } from "@nova/contracts";
+import { ACTIVE_RUN_STATUSES, botMessageContext } from "@nova/core";
+import type { PrismaClient } from "@nova/db";
 
 const RECENT_LIMIT = 20;
 const TERMINAL_STATUSES = ["completed", "failed", "cancelled"] as const;

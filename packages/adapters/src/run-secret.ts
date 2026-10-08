@@ -1,6 +1,6 @@
-import type { AdapterContext, ManagedConnectorProvider } from "@aiden/adapter-kit";
-import { SecretAskPurpose } from "@aiden/contracts";
-import type { PrismaClient, RunSecretWriter } from "@aiden/db";
+import type { AdapterContext, ManagedConnectorProvider } from "@nova/adapter-kit";
+import { SecretAskPurpose } from "@nova/contracts";
+import type { PrismaClient, RunSecretWriter } from "@nova/db";
 import { type ApprovalPausedToolResult, resolveDuplicateEffectGate } from "./approval-effect.js";
 import { storeBotSecret } from "./bot-secrets.js";
 import type { EncryptedSecretStore } from "./secrets.js";

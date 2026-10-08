@@ -1,5 +1,5 @@
-import type { Ask } from "@aiden/contracts";
 import { t } from "@lingui/core/macro";
+import type { Ask } from "@nova/contracts";
 import { AskList } from "../asks";
 import { Section } from "../ui";
 

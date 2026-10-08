@@ -22,7 +22,7 @@ export function I18nBootstrap({ children }: { children: ReactNode }) {
     return (
       <div
         className="grid h-full place-items-center text-muted-foreground/80"
-        data-aiden-app-state="i18n-pending"
+        data-nova-app-state="i18n-pending"
       />
     );
   }

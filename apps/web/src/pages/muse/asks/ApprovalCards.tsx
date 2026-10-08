@@ -1,4 +1,4 @@
-import type { Ask } from "@aiden/contracts";
+import type { Ask } from "@nova/contracts";
 import { Check, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { AskItem } from "./AskItem";

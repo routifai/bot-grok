@@ -1,4 +1,4 @@
-import { redactSecrets } from "@aiden/core";
+import { redactSecrets } from "@nova/core";
 
 export function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal {
   return AbortSignal.any(signals.filter((signal): signal is AbortSignal => Boolean(signal)));

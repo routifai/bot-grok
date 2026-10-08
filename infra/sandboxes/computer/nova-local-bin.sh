@@ -4,11 +4,11 @@
 # shows up there. Restore the sandbox home bin for every login shell, including
 # the agent shell (`bash -lc`).
 if [ -n "${HOME:-}" ]; then
-  aiden_local_bin="${HOME}/.local/bin"
+  nova_local_bin="${HOME}/.local/bin"
   case ":${PATH:-}:" in
-    *":${aiden_local_bin}:"*) ;;
-    *) PATH="${aiden_local_bin}${PATH:+:$PATH}" ;;
+    *":${nova_local_bin}:"*) ;;
+    *) PATH="${nova_local_bin}${PATH:+:$PATH}" ;;
   esac
   export PATH
-  unset aiden_local_bin
+  unset nova_local_bin
 fi

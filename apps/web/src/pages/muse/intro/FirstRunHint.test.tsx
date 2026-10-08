@@ -60,7 +60,7 @@ it("shows the hint once, over the wrapped content, and hides it for good on Got 
 
   await act(async () => {
     root.render(
-      <FirstRunHint hintKey="goals-section" text="Everything Aiden is working toward.">
+      <FirstRunHint hintKey="goals-section" text="Everything Nova is working toward.">
         <button type="button">Goals</button>
       </FirstRunHint>,
     );
@@ -69,7 +69,7 @@ it("shows the hint once, over the wrapped content, and hides it for good on Got 
   expect(container.querySelector("button")?.textContent).toBe("Goals");
   const callout = container.querySelector('[data-testid="first-run-hint-goals-section"]');
   expect(callout).not.toBeNull();
-  expect(callout?.textContent).toContain("Everything Aiden is working toward.");
+  expect(callout?.textContent).toContain("Everything Nova is working toward.");
 
   await act(async () => {
     container
@@ -77,13 +77,13 @@ it("shows the hint once, over the wrapped content, and hides it for good on Got 
       ?.click();
   });
   expect(container.querySelector('[data-testid="first-run-hint-goals-section"]')).toBeNull();
-  expect(localStorage.getItem("aiden:first-run:user-1")).toBe('["goals-section"]');
+  expect(localStorage.getItem("nova:first-run:user-1")).toBe('["goals-section"]');
 
   await act(async () => root.unmount());
   const root2 = createRoot(container);
   await act(async () => {
     root2.render(
-      <FirstRunHint hintKey="goals-section" text="Everything Aiden is working toward.">
+      <FirstRunHint hintKey="goals-section" text="Everything Nova is working toward.">
         <button type="button">Goals</button>
       </FirstRunHint>,
     );
@@ -99,7 +99,7 @@ it("stays hidden while inactive, without marking itself seen", async () => {
 
   await act(async () => {
     root.render(
-      <FirstRunHint hintKey="feed-section" text="Everything Aiden has to show you." active={false}>
+      <FirstRunHint hintKey="feed-section" text="Everything Nova has to show you." active={false}>
         <span>Feed</span>
       </FirstRunHint>,
     );
@@ -110,7 +110,7 @@ it("stays hidden while inactive, without marking itself seen", async () => {
   root = createRoot(container);
   await act(async () => {
     root.render(
-      <FirstRunHint hintKey="feed-section" text="Everything Aiden has to show you." active>
+      <FirstRunHint hintKey="feed-section" text="Everything Nova has to show you." active>
         <span>Feed</span>
       </FirstRunHint>,
     );

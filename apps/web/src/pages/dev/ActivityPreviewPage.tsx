@@ -1,4 +1,4 @@
-import type { Activity, ThreadMessagePage } from "@aiden/contracts";
+import type { Activity, ThreadMessagePage } from "@nova/contracts";
 import { useMemo, useState } from "react";
 import type { ActivityWire } from "../muse/chrome/ActivityRunDialog";
 import { ContextPanel } from "../muse/chrome/ContextPanel";

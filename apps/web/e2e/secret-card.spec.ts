@@ -5,7 +5,7 @@ test("renders masked secret card and saves without putting the value in chat", a
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `secret-card-${stamp}@aiden.test`, "password12", "Secret Card");
+  await signup(page, `secret-card-${stamp}@nova.test`, "password12", "Secret Card");
   await completeOnboarding(page);
 
   const botId = activeBotId(page);

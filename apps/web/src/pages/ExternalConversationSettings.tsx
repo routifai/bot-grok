@@ -1,12 +1,12 @@
+import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   AutomatedSenderPolicies,
   AutomatedSenderPolicyMode,
   Bot,
   ExternalConversation,
   ExternalConversationPolicy,
-} from "@aiden/contracts";
-import { Button } from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/contracts";
+import { Button } from "@nova/ui-web";
 import { RotateCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { SuccessPop } from "../components/ai/primitives";

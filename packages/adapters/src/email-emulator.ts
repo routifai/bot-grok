@@ -1,4 +1,4 @@
-import type { TransactionalEmail, TransactionalEmailProvider } from "@aiden/adapter-kit";
+import type { TransactionalEmail, TransactionalEmailProvider } from "@nova/adapter-kit";
 
 /** Deterministic, offline transactional-email emulator for tests and local development. */
 export class EmailEmulator implements TransactionalEmailProvider {

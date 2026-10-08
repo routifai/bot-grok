@@ -10,4 +10,4 @@ if [[ -f "$ROOT/.env" ]]; then
 fi
 
 "${compose[@]}" stop
-echo "Aiden stopped. Data is untouched — run ./scripts/setup.sh to start it again."
+echo "Nova stopped. Data is untouched — run ./scripts/setup.sh to start it again."

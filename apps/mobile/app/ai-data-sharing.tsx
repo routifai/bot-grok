@@ -1,5 +1,5 @@
-import type { AiConsentStatus } from "@aiden/contracts";
-import { AI_DATA_DISCLOSURES, AI_PRIVACY_URL } from "@aiden/contracts";
+import type { AiConsentStatus } from "@nova/contracts";
+import { AI_DATA_DISCLOSURES, AI_PRIVACY_URL } from "@nova/contracts";
 import { useEffect, useState } from "react";
 import { Alert, Button, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { promptAiConsent } from "../lib/ai-consent";

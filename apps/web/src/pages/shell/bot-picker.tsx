@@ -1,4 +1,5 @@
-import type { Bot } from "@aiden/contracts";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { Bot } from "@nova/contracts";
 import {
   BotAvatar,
   Command,
@@ -7,8 +8,7 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-} from "@aiden/ui-web";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { Info, Lock, Plus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 

@@ -9,9 +9,9 @@ import {
   OmnigentApiError,
   type OmnigentAsk,
   type OmnigentClientConfig,
-} from "@aiden/adapters";
-import type { Actor, Ask } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, Ask } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
 export interface EngineAsksDeps {

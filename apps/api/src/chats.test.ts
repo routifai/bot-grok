@@ -1,5 +1,5 @@
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -38,8 +38,8 @@ const {
 // Real mapping/error classes (OmnigentSideChatError, mapSideChatCreateToSummary, ...) stay
 // real so `instanceof` checks and the actual mapping shape are exercised; only the
 // network-touching client calls and the env-gating function are faked.
-vi.mock("@aiden/adapters", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@aiden/adapters")>();
+vi.mock("@nova/adapters", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@nova/adapters")>();
   return {
     ...actual,
     addOmnigentForkToConversation,
@@ -58,8 +58,8 @@ vi.mock("@aiden/adapters", async (importOriginal) => {
   };
 });
 
-const { OmnigentSideChatError } = await import("@aiden/adapters");
-const { OmnigentApiError } = await import("@aiden/adapters");
+const { OmnigentSideChatError } = await import("@nova/adapters");
+const { OmnigentApiError } = await import("@nova/adapters");
 const {
   addForkToConversation,
   archiveChat,

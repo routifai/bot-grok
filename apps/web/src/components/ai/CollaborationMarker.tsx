@@ -1,4 +1,4 @@
-import { BotAvatar, GroupAvatar, type GroupAvatarMember } from "@aiden/ui-web";
+import { BotAvatar, GroupAvatar, type GroupAvatarMember } from "@nova/ui-web";
 import { LoadingState } from "./primitives";
 
 /** Lightweight peer event shown without exposing the exchanged message body. */

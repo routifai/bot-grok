@@ -1,4 +1,4 @@
-import type { IntegrationSetupState } from "@aiden/contracts";
+import type { IntegrationSetupState } from "@nova/contracts";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -166,9 +166,9 @@ export default function SignIn() {
                 {resetSent
                   ? t("Check your email")
                   : mode === "in"
-                    ? t("Sign in to Aiden")
+                    ? t("Sign in to Nova")
                     : mode === "up"
-                      ? t("Sign up for Aiden")
+                      ? t("Sign up for Nova")
                       : t("Reset your password")}
               </Text>
               {resetSent ? (
@@ -457,7 +457,7 @@ function ServerSheet({
           <Text
             style={{ color: tokens.mutedForeground, marginTop: 28, fontSize: 15, lineHeight: 22 }}
           >
-            {t("Enter your Aiden server address.")}
+            {t("Enter your Nova server address.")}
           </Text>
           <TextInput
             autoCapitalize="none"

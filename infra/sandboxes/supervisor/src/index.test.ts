@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
-import { resolveSupervisorToken } from "@aiden/core";
+import { resolveSupervisorToken } from "@nova/core";
 import { describe, expect, it } from "vitest";
 import {
   MAX_SUPERVISOR_FILE_REQUEST_BYTES,
@@ -221,8 +221,8 @@ describe("sandbox supervisor HTTP boundary", () => {
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        "x-aiden-bot-id": "other-bot",
-        "x-aiden-space-id": "workspace",
+        "x-nova-bot-id": "other-bot",
+        "x-nova-space-id": "workspace",
       },
       body: JSON.stringify({
         botId: "bot",
@@ -259,11 +259,11 @@ describe("sandbox supervisor input containment", () => {
 
   it("accepts the legacy workspace label without weakening container identity", () => {
     expect(
-      hasComputerIdentity({ "aiden.botId": "bot", "aiden.workspaceId": "space" }, "bot", "space"),
+      hasComputerIdentity({ "nova.botId": "bot", "nova.workspaceId": "space" }, "bot", "space"),
     ).toBe(true);
     expect(
       hasComputerIdentity(
-        { "aiden.botId": "bot", "aiden.workspaceId": "other-space" },
+        { "nova.botId": "bot", "nova.workspaceId": "other-space" },
         "bot",
         "space",
       ),
@@ -271,9 +271,9 @@ describe("sandbox supervisor input containment", () => {
     expect(
       hasComputerIdentity(
         {
-          "aiden.botId": "bot",
-          "aiden.spaceId": "space",
-          "aiden.workspaceId": "other-space",
+          "nova.botId": "bot",
+          "nova.spaceId": "space",
+          "nova.workspaceId": "other-space",
         },
         "bot",
         "space",
@@ -294,7 +294,7 @@ describe("sandbox supervisor input containment", () => {
       expect(
         containerActionStep({ kind: "launch", application, uri: "https://example.com" }, ":2"),
       ).toEqual({
-        argv: ["env", "DISPLAY=:2", "aiden-browser", "https://example.com"],
+        argv: ["env", "DISPLAY=:2", "nova-browser", "https://example.com"],
       });
     }
     expect(containerActionStep({ kind: "launch", application: "xterm" }, ":3")).toEqual({
@@ -310,7 +310,7 @@ describe("sandbox supervisor input containment", () => {
       expect(
         containerActionStep({ kind: "launch", application, uri: "https://example.com" }, ":2"),
       ).toEqual({
-        argv: ["env", "DISPLAY=:2", "aiden-browser", "https://example.com"],
+        argv: ["env", "DISPLAY=:2", "nova-browser", "https://example.com"],
       });
     }
     expect(containerActionStep({ kind: "launch", application: "XTerm" }, ":3")).toEqual({
@@ -326,8 +326,8 @@ describe("sandbox supervisor input containment", () => {
         argv: [
           "env",
           "DISPLAY=:2",
-          `AIDEN_BROWSER_PROFILE=${profile}`,
-          "aiden-browser",
+          `NOVA_BROWSER_PROFILE=${profile}`,
+          "nova-browser",
           "https://example.com",
         ],
       },
@@ -339,7 +339,7 @@ describe("sandbox supervisor input containment", () => {
         argv: [
           "env",
           "DISPLAY=:2",
-          `AIDEN_BROWSER_PROFILE=${profile}`,
+          `NOVA_BROWSER_PROFILE=${profile}`,
           "xdg-open",
           "https://example.com",
         ],
@@ -499,7 +499,7 @@ describe("sandbox supervisor input containment", () => {
     expect(interactiveScreenCommand(true, "lease-new")).toMatch(/6080/);
     expect(interactiveScreenCommand(true, "lease-new")).not.toContain("sockets/view-1-");
     expect(interactiveScreenCommand(false, "lease-old")).toContain("= 'lease-old'");
-    expect(interactiveScreenCommand(false, "lease-old")).toContain("AIDEN_CONTROL_RELEASED");
+    expect(interactiveScreenCommand(false, "lease-old")).toContain("NOVA_CONTROL_RELEASED");
   });
 
   it("assigns distinct screen indexes per Team bot and starts extra displays", () => {
@@ -560,8 +560,8 @@ describe("sandbox supervisor input containment", () => {
   it("resets stale managed screens without killing unrelated container jobs", () => {
     const command = resetManagedScreensCommand();
     expect(command).toContain("chromium-bot-*");
-    expect(command).toContain("for marker in /tmp/aiden/browser-profile-*");
-    expect(command).toContain("/tmp/aiden/browser-pid-*");
+    expect(command).toContain("for marker in /tmp/nova/browser-profile-*");
+    expect(command).toContain("/tmp/nova/browser-pid-*");
     expect(command).not.toContain("pkill -9 -1");
   });
 
@@ -574,12 +574,12 @@ describe("sandbox supervisor input containment", () => {
     expect(command).toContain(writer);
     expect(ensureScreenCommand(3, "writer", "view-token")).toContain(writer);
     expect(ensureScreenCommand(0, "researcher", "view-token")).toContain(researcher);
-    expect(command).not.toContain("/home/aiden/.browser-profiles/chromium/.");
-    expect(command).not.toContain(".aiden-base-generation");
+    expect(command).not.toContain("/home/nova/.browser-profiles/chromium/.");
+    expect(command).not.toContain(".nova-base-generation");
     expect(command).toContain("browser-pid-");
     expect(command).toContain("tr '\\0' '\\n' <\"/proc/$1/cmdline\"");
     expect(browserProfilePathForScreen("../../writer")).toMatch(
-      /^\/home\/aiden\/\.browser-profiles\/chromium-bot-[0-9a-f]+$/,
+      /^\/home\/nova\/\.browser-profiles\/chromium-bot-[0-9a-f]+$/,
     );
   });
 
@@ -696,7 +696,7 @@ describe("sandbox supervisor input containment", () => {
     expect(primary).not.toContain("websockify");
     expect(primary).toContain("sockets/view-1-");
     expect(primary).toContain("sockets/control-1-");
-    expect(primary).toContain("rm -f /tmp/aiden/control-token-1");
+    expect(primary).toContain("rm -f /tmp/nova/control-token-1");
     expect(primary).toContain("transport failed to stop");
 
     const extra = stopExtraScreenCommand(1, "researcher");

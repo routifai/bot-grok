@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Ask } from "@aiden/contracts";
+import type { Ask } from "@nova/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -25,10 +25,10 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@aiden/chat-ui/web", () => ({
+vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   Sheet: ({ open, children }: { open: boolean; children?: ReactNode }) =>
     open ? <div>{children}</div> : null,
   SheetContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,

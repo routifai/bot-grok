@@ -4,11 +4,11 @@ test("bot avatar ring stays still when reduced motion is enabled", async ({ page
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/e2e/fixtures/avatar-motion.html");
 
-  const avatar = page.locator(".aiden-bot-avatar");
+  const avatar = page.locator(".nova-bot-avatar");
   await expect(avatar).toBeVisible();
   await expect(avatar).toHaveAttribute("data-working", "true");
 
-  const ring = avatar.locator(".aiden-bot-avatar-ring");
+  const ring = avatar.locator(".nova-bot-avatar-ring");
   await expect(ring).toBeVisible();
   const snapshot = () =>
     ring.evaluate((el: SVGElement) => ({

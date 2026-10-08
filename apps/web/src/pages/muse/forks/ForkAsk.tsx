@@ -1,6 +1,6 @@
-import { type ChatSummary, FORK_TOO_DEEP, type ThreadMessage } from "@aiden/contracts";
-import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { type ChatSummary, FORK_TOO_DEEP, type ThreadMessage } from "@nova/contracts";
+import { Button } from "@nova/ui-web";
 import { useRef, useState } from "react";
 import { type SendFailure, SendFailureNote } from "../chrome/SideChatSession";
 import { ForkComposer } from "./ForkComposer";

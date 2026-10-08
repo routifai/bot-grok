@@ -37,10 +37,10 @@ describe("Android mobile platform contract", () => {
   it("requests live-update promotion and exposes its Android settings", () => {
     const nativeRoot = resolve(
       mobileRoot,
-      "modules/aiden-notifications/android/src/main/java/com/aiden/notifications",
+      "modules/nova-notifications/android/src/main/java/com/nova/notifications",
     );
-    const service = readFileSync(resolve(nativeRoot, "AidenNotificationService.kt"), "utf8");
-    const module = readFileSync(resolve(nativeRoot, "AidenNotificationsModule.kt"), "utf8");
+    const service = readFileSync(resolve(nativeRoot, "NovaNotificationService.kt"), "utf8");
+    const module = readFileSync(resolve(nativeRoot, "NovaNotificationsModule.kt"), "utf8");
     const allowlist = readFileSync(resolve(nativeRoot, "EndpointAllowlist.kt"), "utf8");
     const live = readFileSync(resolve(mobileRoot, "lib/live-notifications.ts"), "utf8");
     const thread = readFileSync(resolve(mobileRoot, "app/thread.tsx"), "utf8");
@@ -54,7 +54,7 @@ describe("Android mobile platform contract", () => {
     expect(service).toContain("if (!isAllowedNotificationEndpoint(endpoint)) throw IOException");
     expect(module).toContain("android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS");
     expect(module).not.toContain("settings.copy(liveConnection = false)");
-    expect(module).toContain("AidenNotificationService.clearSession(context)");
+    expect(module).toContain("NovaNotificationService.clearSession(context)");
     expect(module).toContain("isAllowedNotificationEndpoint(endpoint)");
     expect(module).toContain("storage.spaceId = spaceId");
     expect(allowlist).toContain("isAllowedNotificationEndpoint");
@@ -64,7 +64,7 @@ describe("Android mobile platform contract", () => {
     expect(live).toMatch(
       /export async function resumeLiveNotifications[\s\S]*normalizeApiBase\(endpoint\)[\s\S]*nativeNotifications\.resume\(parsed\.url/,
     );
-    expect(service).toContain('connection.setRequestProperty("x-aiden-space-id", spaceId)');
+    expect(service).toContain('connection.setRequestProperty("x-nova-space-id", spaceId)');
     expect(service).toContain("storage.spaceId.isBlank()");
     expect(service).toContain("private fun prepareHistorySpace(");
     expect(service).toContain("knownCompleted.clear()");
@@ -98,9 +98,9 @@ describe("Android mobile platform contract", () => {
       "fun clearSession(context: Context) {\n      synchronized(sessionLock)",
     );
     expect(service).not.toContain("private fun postCompletion(");
-    expect(service).toContain('"aiden://group-thread?groupId=');
+    expect(service).toContain('"nova://group-thread?groupId=');
     expect(service).toMatch(/&spaceId=\$\{Uri\.encode\(run\.spaceId\)\}/);
-    expect(service).toContain('putString("aiden.spaceId", run.spaceId)');
+    expect(service).toContain('putString("nova.spaceId", run.spaceId)');
     expect(thread).toContain("export default function ThreadRoute()");
     expect(thread).toContain("selectSpace(requestedSpaceId)");
     expect(thread).toContain("routeMatchesSelectedSpace) return <Thread />");
@@ -114,7 +114,7 @@ describe("Android mobile platform contract", () => {
     const service = readFileSync(
       resolve(
         mobileRoot,
-        "modules/aiden-notifications/android/src/main/java/com/aiden/notifications/AidenNotificationService.kt",
+        "modules/nova-notifications/android/src/main/java/com/nova/notifications/NovaNotificationService.kt",
       ),
       "utf8",
     );
@@ -127,7 +127,7 @@ describe("Android mobile platform contract", () => {
     expect(service).toMatch(
       /private fun showLive\(active: List<RunRecord>[\s\S]*val primary = active\.first\(\)/,
     );
-    expect(service).toContain('putString("aiden.botId", run.botId)');
+    expect(service).toContain('putString("nova.botId", run.botId)');
     expect(service).toMatch(/if \(working\.isEmpty\(\)\) \{[\s\S]*stop\(\)[\s\S]*return[\s\S]*\}/);
   });
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ChatSummary, MessageFork, ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage, ThreadMessagePage } from "@nova/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -25,10 +25,10 @@ vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({ t: template, i18n: { locale: "en" } }),
   Trans: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("@aiden/chat-ui/web", () => ({
+vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   Button: (props: ComponentProps<"button">) => <button {...props} />,
   Spinner: () => <span data-testid="spinner" />,

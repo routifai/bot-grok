@@ -1,4 +1,4 @@
-import type { ModelOAuthBegin, ThinkingLevel } from "@aiden/contracts";
+import type { ModelOAuthBegin, ThinkingLevel } from "@nova/contracts";
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
@@ -10,8 +10,8 @@ import {
   parseModelContextWindow,
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
-} from "@aiden/contracts";
-import { createModelProbe, featuredModelProviders, initialModelProbeState } from "@aiden/core";
+} from "@nova/contracts";
+import { createModelProbe, featuredModelProviders, initialModelProbeState } from "@nova/core";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -979,7 +979,7 @@ export default function Models() {
             {selected.auth === "oauth" && !subscriptionSignIn ? (
               <Text style={styles.secondary}>
                 {t(
-                  "This subscription sign-in is not available in Aiden yet. Use a deployment credential or choose another provider.",
+                  "This subscription sign-in is not available in Nova yet. Use a deployment credential or choose another provider.",
                 )}
               </Text>
             ) : null}

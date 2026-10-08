@@ -1,12 +1,12 @@
-import { resolveDeploymentModel, resolveSandboxProvider } from "@aiden/adapters";
+import { resolveDeploymentModel, resolveSandboxProvider } from "@nova/adapters";
 import {
   resolveAuthSecret,
   resolveEncryptionKey,
   resolveScreenProxySecret,
   resolveSupervisorToken,
-} from "@aiden/core";
+} from "@nova/core";
 
-export { resolveSandboxProvider } from "@aiden/adapters";
+export { resolveSandboxProvider } from "@nova/adapters";
 
 export interface AppEnv {
   nodeEnv: string;
@@ -85,7 +85,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     nodeEnv: source.NODE_ENV ?? "",
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
-    desktopStackToken: optional(source.AIDEN_DESKTOP_STACK_TOKEN),
+    desktopStackToken: optional(source.NOVA_DESKTOP_STACK_TOKEN),
     authSecret,
     authUrl: source.BETTER_AUTH_URL ?? source.WEB_ORIGIN ?? "http://127.0.0.1:5173",
     webOrigin: source.WEB_ORIGIN ?? "http://127.0.0.1:5173",
@@ -148,7 +148,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
       .filter(Boolean),
     mcpAllowPrivateEndpoint: source.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
     port: Number(source.API_PORT ?? 3100),
-    gitSha: optional(source.GIT_SHA) ?? optional(source.AIDEN_GIT_SHA),
+    gitSha: optional(source.GIT_SHA) ?? optional(source.NOVA_GIT_SHA),
   };
 }
 

@@ -1,7 +1,7 @@
-import type { Activity } from "@aiden/contracts";
-import { presentActivityTitle } from "@aiden/core";
-import { Button } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import type { Activity } from "@nova/contracts";
+import { presentActivityTitle } from "@nova/core";
+import { Button } from "@nova/ui-web";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityBranch, ActivityLine } from "./ActivityLine";
 import { ActivityRunDialog, type ActivityWire } from "./ActivityRunDialog";

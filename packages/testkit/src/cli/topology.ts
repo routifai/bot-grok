@@ -1,14 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import path from "node:path";
-import type { RunsListOutput, ThreadSnapshot } from "@aiden/contracts";
-import { isTerminal } from "@aiden/core";
+import type { RunsListOutput, ThreadSnapshot } from "@nova/contracts";
+import { isTerminal } from "@nova/core";
 import { computerNetworkNameFor } from "../../../../infra/sandboxes/supervisor/src/computer-spec.js";
 
 const composeFile = path.resolve("infra/compose/docker-compose.topology.yml");
 const keep = process.argv.includes("--keep");
 const skipBuild = process.argv.includes("--skip-build");
-const project = `aiden-topology-${process.pid}-${Date.now().toString(36)}`;
+const project = `nova-topology-${process.pid}-${Date.now().toString(36)}`;
 
 async function main() {
   docker(["info", "--format", "{{.ServerVersion}}"]);
@@ -17,8 +17,8 @@ async function main() {
   const env = {
     ...process.env,
     TOPOLOGY_API_PORT: String(port),
-    TOPOLOGY_APP_IMAGE: process.env.TOPOLOGY_APP_IMAGE ?? "aiden/app:topology",
-    TOPOLOGY_COMPUTER_IMAGE: process.env.TOPOLOGY_COMPUTER_IMAGE ?? "aiden/computer:topology",
+    TOPOLOGY_APP_IMAGE: process.env.TOPOLOGY_APP_IMAGE ?? "nova/app:topology",
+    TOPOLOGY_COMPUTER_IMAGE: process.env.TOPOLOGY_COMPUTER_IMAGE ?? "nova/computer:topology",
   };
   const compose = (args: string[], capture = false) =>
     command(
@@ -146,7 +146,7 @@ async function signup(baseUrl: string) {
     method: "POST",
     headers: { "content-type": "application/json", origin: baseUrl },
     body: JSON.stringify({
-      email: `topology-${Date.now()}@aiden.test`,
+      email: `topology-${Date.now()}@nova.test`,
       password: "password12",
       name: "Topology",
     }),
@@ -225,8 +225,8 @@ async function waitForWorker(
   while (Date.now() - started < timeoutMs) {
     const logs = compose(["logs", "--no-color", "--tail", "100", "worker"], true);
     // apps/worker logs readiness via the structured logger (packages/logging) as
-    // {"timestamp":...,"level":"info","message":"worker ready","service.name":"aiden-worker"},
-    // not the old plain "aiden worker ready" console.log line -- match the JSON field directly
+    // {"timestamp":...,"level":"info","message":"worker ready","service.name":"nova-worker"},
+    // not the old plain "nova worker ready" console.log line -- match the JSON field directly
     // rather than a substring that depends on the sink's exact key order.
     if (logs.includes('"message":"worker ready"')) return;
     await delay(500);
@@ -285,7 +285,7 @@ function assertComputerNetworkIsolation(
     "inspect",
     computerId,
     "--format",
-    '{{index .Config.Labels "aiden.managed"}}',
+    '{{index .Config.Labels "nova.managed"}}',
   ]).trim();
   if (managed !== "true") throw new Error("isolated peer is not a managed computer");
   const [spec] = JSON.parse(docker(["inspect", computerId])) as Array<{
@@ -334,9 +334,9 @@ function removeManagedComputers(
           "postgres",
           "psql",
           "-U",
-          "aiden",
+          "nova",
           "-d",
-          "aiden",
+          "nova",
           "-Atc",
           'SELECT "homeKey" FROM computers',
         ],
@@ -356,7 +356,7 @@ function removeManagedComputers(
         "--filter",
         `network=${networkName}`,
         "--filter",
-        "label=aiden.managed=true",
+        "label=nova.managed=true",
       ])
         .split("\n")
         .map((id) => id.trim())

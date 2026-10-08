@@ -1,12 +1,12 @@
-import type { Bot, ThreadMessage, ThreadSnapshot } from "@aiden/contracts";
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type MessageReaction } from "@aiden/contracts";
+import { useLingui } from "@lingui/react/macro";
+import type { Bot, ThreadMessage, ThreadSnapshot } from "@nova/contracts";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type MessageReaction } from "@nova/contracts";
 import {
   attachmentsForThread,
   type ComposerMention,
   inferAttachmentMimeType,
   resolveComposerSendPlan,
-} from "@aiden/core";
-import { useLingui } from "@lingui/react/macro";
+} from "@nova/core";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { requestBrowserNotificationPermission } from "../../../lib/browser-notifications";

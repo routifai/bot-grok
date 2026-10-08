@@ -1,5 +1,5 @@
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { RPCHandler } from "@orpc/server/fetch";
 import { describe, expect, it, vi } from "vitest";
 import { assertMuseSingleBotAllowed, createRouter, type RouterDeps } from "./router.js";
@@ -37,7 +37,7 @@ describe("assertMuseSingleBotAllowed", () => {
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@aiden.test",
+  email: "user@nova.test",
   isDeploymentOwner: true,
 };
 
@@ -102,7 +102,7 @@ function routerDeps(
       screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
-    dataDir: "/tmp/aiden-bots-muse-guard-test",
+    dataDir: "/tmp/nova-bots-muse-guard-test",
   } as unknown as RouterDeps;
   return { deps, findFirst, transaction, handler: new RPCHandler(createRouter(deps)) };
 }
@@ -194,7 +194,7 @@ describe("bots.restore — muse single-Muse guard", () => {
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
-      dataDir: "/tmp/aiden-bots-muse-guard-test",
+      dataDir: "/tmp/nova-bots-muse-guard-test",
     } as unknown as RouterDeps;
     return { handler: new RPCHandler(createRouter(deps)), update };
   }

@@ -1,4 +1,4 @@
-import type { Activity, ActivityChanged, ActivityPage } from "@aiden/contracts";
+import type { Activity, ActivityChanged, ActivityPage } from "@nova/contracts";
 import { activitiesPollIntervalMs, mergeNewestPage } from "./activityGrouping";
 
 /** The Activity feed's wire: a Muse's Activity Feed, or why it can't be shown. */

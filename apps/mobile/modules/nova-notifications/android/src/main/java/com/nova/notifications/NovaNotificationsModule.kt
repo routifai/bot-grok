@@ -1,4 +1,4 @@
-package com.aiden.notifications
+package com.nova.notifications
 
 import android.app.NotificationManager
 import android.content.Intent
@@ -7,9 +7,9 @@ import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
-class AidenNotificationsModule : Module() {
+class NovaNotificationsModule : Module() {
   override fun definition() = ModuleDefinition {
-    Name("AidenNotifications")
+    Name("NovaNotifications")
 
     AsyncFunction("getSettings") {
       NotificationStorage(context()).settings.toMap()
@@ -26,23 +26,23 @@ class AidenNotificationsModule : Module() {
       storage.spaceId = spaceId
       storage.settings = NotificationSettings.fromMap(value)
       if (storage.settings.liveConnection && endpoint.isNotBlank() && token.isNotBlank()) {
-        AidenNotificationService.start(context)
+        NovaNotificationService.start(context)
       } else {
-        AidenNotificationService.stop(context)
+        NovaNotificationService.stop(context)
       }
     }
 
     AsyncFunction("resume") { endpoint: String, token: String, spaceId: String ->
       val context = context()
       if (endpoint.isNotBlank() && !isAllowedNotificationEndpoint(endpoint)) {
-        AidenNotificationService.stop(context)
+        NovaNotificationService.stop(context)
       } else {
         val storage = NotificationStorage(context)
         storage.endpoint = endpoint
         storage.token = token
         storage.spaceId = spaceId
         if (storage.settings.liveConnection && endpoint.isNotBlank() && token.isNotBlank()) {
-          AidenNotificationService.start(context)
+          NovaNotificationService.start(context)
         }
       }
     }
@@ -50,17 +50,17 @@ class AidenNotificationsModule : Module() {
     AsyncFunction("stop") { clearSession: Boolean ->
       val context = context()
       if (clearSession) {
-        AidenNotificationService.clearSession(context)
+        NovaNotificationService.clearSession(context)
         val storage = NotificationStorage(context)
         storage.token = ""
         storage.spaceId = ""
       } else {
-        AidenNotificationService.stop(context)
+        NovaNotificationService.stop(context)
       }
     }
 
     AsyncFunction("setOpenThread") { botId: String?, threadId: String? ->
-      AidenNotificationService.setOpenThread(context(), botId, threadId)
+      NovaNotificationService.setOpenThread(context(), botId, threadId)
     }
 
     AsyncFunction("openSettings") {

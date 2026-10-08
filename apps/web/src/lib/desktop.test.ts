@@ -3,15 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  type AidenDesktop,
-  type AidenDesktopOAuthCallback,
   desktopOAuthCode,
+  type NovaDesktop,
+  type NovaDesktopOAuthCallback,
   oauthStateOf,
   onDesktopOAuthCallback,
   windowChromeKind,
 } from "./desktop.js";
 
-function desktop(platform: string): AidenDesktop {
+function desktop(platform: string): NovaDesktop {
   const updateState = {
     phase: "unsupported" as const,
     currentVersion: "0.1.0",
@@ -85,20 +85,20 @@ describe("attempt correlation", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   function bridgeEmitting() {
-    let emit: (callback: AidenDesktopOAuthCallback) => void = () => undefined;
+    let emit: (callback: NovaDesktopOAuthCallback) => void = () => undefined;
     const unsubscribe = vi.fn();
     vi.stubGlobal("window", {
-      aidenDesktop: {
+      novaDesktop: {
         ...desktop("linux"),
         oauth: {
-          onCallback: (listener: (callback: AidenDesktopOAuthCallback) => void) => {
+          onCallback: (listener: (callback: NovaDesktopOAuthCallback) => void) => {
             emit = listener;
             return unsubscribe;
           },
         },
       },
     });
-    return { emit: (c: AidenDesktopOAuthCallback) => emit(c), unsubscribe };
+    return { emit: (c: NovaDesktopOAuthCallback) => emit(c), unsubscribe };
   }
 
   it("reads the attempt state out of the authorize URL", () => {

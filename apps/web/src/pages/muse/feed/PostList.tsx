@@ -1,7 +1,7 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
-import type { Post } from "@aiden/contracts";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@nova/chat-ui/web";
+import type { Post } from "@nova/contracts";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@nova/ui-web";
 import { Globe } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";

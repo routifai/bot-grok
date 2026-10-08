@@ -1,13 +1,13 @@
+import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import {
   CRON_FREQS,
   type CronFreq,
   type CronPreset,
   type CronUnit,
   cronFromPreset,
-} from "@aiden/core";
-import { Input, NativeSelect, NativeSelectOption } from "@aiden/ui-web";
-import { t } from "@lingui/core/macro";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/core";
+import { Input, NativeSelect, NativeSelectOption } from "@nova/ui-web";
 import { Clock, Edit2 } from "lucide-react";
 import { useState } from "react";
 

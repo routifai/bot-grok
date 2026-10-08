@@ -36,7 +36,7 @@ describe("loopback OAuth callbacks", () => {
 
   it("ignores non-http schemes and unparseable targets", () => {
     expect(oauthCallbackFrom("file:///callback?code=ac_123")).toBeUndefined();
-    expect(oauthCallbackFrom("aiden://localhost/callback?code=ac_123")).toBeUndefined();
+    expect(oauthCallbackFrom("nova://localhost/callback?code=ac_123")).toBeUndefined();
     expect(oauthCallbackFrom("not a url")).toBeUndefined();
   });
 

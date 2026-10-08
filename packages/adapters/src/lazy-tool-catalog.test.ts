@@ -1,4 +1,4 @@
-import type { ConnectorTool } from "@aiden/adapter-kit";
+import type { ConnectorTool } from "@nova/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
 import {
   assertConnectorToolArgs,

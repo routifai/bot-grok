@@ -32,10 +32,10 @@ def display_num() -> int:
 
 
 def cdp_port() -> int:
-    override = os.environ.get("AIDEN_CDP_PORT")
+    override = os.environ.get("NOVA_CDP_PORT")
     if override:
         return int(override)
-    # aiden-browser uses 9221 + display number (:1 -> 9222).
+    # nova-browser uses 9221 + display number (:1 -> 9222).
     return 9221 + display_num()
 
 
@@ -69,7 +69,7 @@ def ensure_browser(port: int) -> None:
         return
     except RuntimeError:
         pass
-    launcher = f"/tmp/aiden/browser-launch-{display_num()}"
+    launcher = f"/tmp/nova/browser-launch-{display_num()}"
     if not os.access(launcher, os.X_OK):
         wait_for_cdp(port)
         return
@@ -94,7 +94,7 @@ def discover_ws_url(port: int) -> str:
     return ws
 
 
-WORLD_NAME = "aiden-page-browser"
+WORLD_NAME = "nova-page-browser"
 
 
 class CdpClient:
@@ -366,7 +366,7 @@ def ensure_world(client: CdpClient, session_id: str) -> None:
 
 EVAL_HELPERS = r"""
 (() => {
-  if (window.__aidenPageBrowser) return true;
+  if (window.__novaPageBrowser) return true;
   const refMap = new Map();
   // Fields holding a saved login: snapshots never report their values, whatever their type.
   const loginFilled = new WeakSet();
@@ -438,7 +438,7 @@ EVAL_HELPERS = r"""
       })
       .join("\n");
   }
-  window.__aidenPageBrowser = {
+  window.__novaPageBrowser = {
     snapshot() {
       refMap.clear();
       const elements = [];
@@ -590,7 +590,7 @@ def navigate(client: CdpClient, session_id: str, url: str) -> dict[str, Any]:
 
 def snapshot(client: CdpClient, session_id: str) -> dict[str, Any]:
     ensure_helpers(client, session_id)
-    data = eval_json(client, session_id, "window.__aidenPageBrowser.snapshot()")
+    data = eval_json(client, session_id, "window.__novaPageBrowser.snapshot()")
     if not isinstance(data, dict):
         raise RuntimeError("snapshot returned non-object")
     return {"ok": True, **data}
@@ -617,7 +617,7 @@ def act(client: CdpClient, session_id: str, actions: list[dict[str, Any]]) -> di
         for step in actions:
             kind, ref = step["kind"], step["ref"]
             # Preflight catches stale refs before a mutation is dispatched.
-            if not eval_json(client, session_id, f"Boolean(window.__aidenPageBrowser.resolve({json.dumps(ref)}))"):
+            if not eval_json(client, session_id, f"Boolean(window.__novaPageBrowser.resolve({json.dumps(ref)}))"):
                 raise RuntimeError("Stale element ref. Take a fresh snapshot.")
             arguments = json.dumps(ref)
             if kind != "click":
@@ -625,7 +625,7 @@ def act(client: CdpClient, session_id: str, actions: list[dict[str, Any]]) -> di
             if step.get("origin"):
                 arguments += ", " + json.dumps(step["origin"])
             uncertain = True
-            data = eval_json(client, session_id, f"window.__aidenPageBrowser.{kind}({arguments})")
+            data = eval_json(client, session_id, f"window.__novaPageBrowser.{kind}({arguments})")
             if not isinstance(data, dict):
                 raise RuntimeError("Action response unavailable")
             completed += 1
@@ -659,16 +659,16 @@ def read_stdin_line() -> str:
 
 def run(argv: list[str]) -> int:
     stdin_args = (
-        read_stdin_line() if os.environ.get("AIDEN_BROWSER_ARGS_STDIN") == "1" else None
+        read_stdin_line() if os.environ.get("NOVA_BROWSER_ARGS_STDIN") == "1" else None
     )
-    if os.environ.get("AIDEN_BROWSER_WATCH_STDIN") == "1":
+    if os.environ.get("NOVA_BROWSER_WATCH_STDIN") == "1":
         threading.Thread(target=exit_when_stdin_closes, daemon=True).start()
     if len(argv) < 2:
         print(
             json.dumps(
                 {
                     "ok": False,
-                    "error": "usage: aiden-page-browser <command> [json-args]",
+                    "error": "usage: nova-page-browser <command> [json-args]",
                     "fallback": "computer_act",
                 }
             )

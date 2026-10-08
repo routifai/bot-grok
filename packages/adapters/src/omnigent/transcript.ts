@@ -9,7 +9,7 @@ import type {
   ReplyCardBlock,
   ThreadMessage,
   ThreadMessagePage,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import type {
   OmnigentTranscriptBlock,
   OmnigentTranscriptFork,

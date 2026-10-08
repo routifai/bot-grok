@@ -1,4 +1,4 @@
-import type { MuseState } from "@aiden/contracts";
+import type { MuseState } from "@nova/contracts";
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
 
 export interface LiveMuseFaceProps {

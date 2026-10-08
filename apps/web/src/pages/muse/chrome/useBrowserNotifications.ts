@@ -1,4 +1,4 @@
-import type { Bot, ProductEvent } from "@aiden/contracts";
+import type { Bot, ProductEvent } from "@nova/contracts";
 import { type MutableRefObject, useCallback, useRef } from "react";
 import {
   deliverBrowserNotification as deliverNativeBrowserNotification,

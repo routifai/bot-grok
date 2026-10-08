@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { signupPolicyFromEnv } from "@aiden/core";
+import { signupPolicyFromEnv } from "@nova/core";
 import type { PrismaClient } from "./client.js";
 
 export interface SignupPolicyEnv {

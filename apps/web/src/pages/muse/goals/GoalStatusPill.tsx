@@ -1,5 +1,5 @@
-import type { Goal } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
+import type { Goal } from "@nova/contracts";
 import { StatusPill } from "../ui";
 import { type GoalDisplayStatus, goalDisplayStatus } from "./format";
 

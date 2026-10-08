@@ -1,4 +1,4 @@
-import type { SearchHit } from "@aiden/contracts";
+import type { SearchHit } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { mobileSearchDestination } from "./search-destination.js";
 

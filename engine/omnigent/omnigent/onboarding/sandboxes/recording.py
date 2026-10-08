@@ -7,7 +7,7 @@ plus a downscaled keyframe screenshot per action. The provider pulls the trace a
 and deletes them from the sandbox on stop, so nothing is kept there.
 
 Providers opt in by mixing in :class:`RecordingMixin` and setting ``recording=True`` in their
-capabilities; the helper command is ``aiden-recorder`` (``infra/sandboxes/computer``).
+capabilities; the helper command is ``nova-recorder`` (``infra/sandboxes/computer``).
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-RECORDER_COMMAND = "aiden-recorder"
+RECORDER_COMMAND = "nova-recorder"
 _RECORDING_ID_RE = re.compile(r"^[a-f0-9]{8,64}$")
 _KEYFRAME_RE = re.compile(r"^k\d{1,4}$")
 # Keyframes are pulled one command each; a recording never holds more than the helper's cap.

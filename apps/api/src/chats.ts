@@ -28,7 +28,7 @@ import {
   sideChatStartToWire,
   streamOmnigentFamily,
   unarchiveOmnigentSession,
-} from "@aiden/adapters";
+} from "@nova/adapters";
 import {
   type Actor,
   type ChatSummary,
@@ -37,8 +37,8 @@ import {
   FORK_TOO_DEEP,
   type SideChatStart,
   type ThreadMessagePage,
-} from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { syncEngineTimezone } from "./engine-timezone.js";
 import { onSuperChat } from "./omnigent-errors.js";

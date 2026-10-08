@@ -1,5 +1,5 @@
-import { Button } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import { Button } from "@nova/ui-web";
 import { Download, ExternalLink, Lock, X } from "lucide-react";
 import { useEffect } from "react";
 import { downloadArtifactBytes } from "../lib/artifact-open";

@@ -1,17 +1,18 @@
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import type {
   CapabilityInstall,
   Connection,
   ConnectionCatalogItem,
   IntegrationCatalogResult,
   IntegrationCatalogSurface,
-} from "@aiden/contracts";
+} from "@nova/contracts";
 import {
   abortableDelay,
   buildFeaturedConnectorTiles,
   CONNECTION_CATALOG_PAGE_SIZE,
   filterConnectionCatalogItems,
   humanizeToolName,
-} from "@aiden/core";
+} from "@nova/core";
 import {
   Button,
   Card,
@@ -26,8 +27,7 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-} from "@aiden/ui-web";
-import { Plural, Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { ChevronDown, ChevronLeft, ChevronUp, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
@@ -229,7 +229,7 @@ export function PluginsOverlay({
         displayName: nextAccountLabel(item.name, existing.length),
       });
       if (started.authorizationUrl)
-        window.open(started.authorizationUrl, "aiden-plugin-connect", "noopener,noreferrer");
+        window.open(started.authorizationUrl, "nova-plugin-connect", "noopener,noreferrer");
       if (item.noAuth && !started.authorizationUrl) {
         if (controller.signal.aborted) return;
         setItemConnected(item, true);

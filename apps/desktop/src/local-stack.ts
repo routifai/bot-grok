@@ -1,7 +1,7 @@
 import { copyFile, lstat, mkdir, readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
-import type { DesktopLocalStackState } from "@aiden/contracts";
+import type { DesktopLocalStackState } from "@nova/contracts";
 import {
   classifyDockerFailure,
   composeSupportsWaitTimeout,
@@ -14,7 +14,7 @@ import {
 import { readPrivateFile, writePrivateFile } from "./setup-store.js";
 
 export const STACK_DIR_NAME = "stack";
-export const STACK_PROJECT_NAME = "aiden-desktop";
+export const STACK_PROJECT_NAME = "nova-desktop";
 export const STACK_COMPOSE_FILE = "docker-compose.images.yml";
 export const STACK_ENV_TEMPLATE = ".env.images.example";
 export const STACK_ENV_FILE = ".env";
@@ -97,7 +97,7 @@ const GENERATED_SECRETS: Record<string, number> = {
   SCREEN_PROXY_SECRET: 32,
   SANDBOX_SUPERVISOR_TOKEN: 32,
 };
-const LAUNCH_SUPPLIED = ["AIDEN_IMAGE_TAG", "AIDEN_COMPUTER_IMAGE_TAG"];
+const LAUNCH_SUPPLIED = ["NOVA_IMAGE_TAG", "NOVA_COMPUTER_IMAGE_TAG"];
 
 /**
  * Port of install-images.sh `create_env`: fills the empty secret lines with random
@@ -540,14 +540,14 @@ export class LocalStackController {
     return this.deps.run(binary, args, {
       cwd: this.deps.stackDir,
       env: dockerSpawnEnv(this.deps.platform, this.deps.env, binary, {
-        AIDEN_IMAGE_TAG: this.deps.imageTag,
-        AIDEN_COMPUTER_IMAGE_TAG: this.deps.imageTag,
+        NOVA_IMAGE_TAG: this.deps.imageTag,
+        NOVA_COMPUTER_IMAGE_TAG: this.deps.imageTag,
         ...(this.currentStackToken === null
           ? {}
-          : { AIDEN_DESKTOP_STACK_TOKEN: this.currentStackToken }),
-        AIDEN_WEB_PORT: new URL(this.currentWebUrl).port || "80",
+          : { NOVA_DESKTOP_STACK_TOKEN: this.currentStackToken }),
+        NOVA_WEB_PORT: new URL(this.currentWebUrl).port || "80",
         // Only web needs a stable host address. Docker allocates the API host port.
-        AIDEN_API_PORT: "0",
+        NOVA_API_PORT: "0",
         BETTER_AUTH_URL: this.currentWebUrl,
         WEB_ORIGIN: this.currentWebUrl,
         API_URL: this.currentWebUrl,

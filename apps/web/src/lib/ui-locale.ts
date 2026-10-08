@@ -1,9 +1,9 @@
-/** Aiden ships in English only. */
+/** Nova ships in English only. */
 export const UI_LOCALES = ["en"] as const;
 
 export type UiLocale = (typeof UI_LOCALES)[number];
 
-export const UI_LOCALE_STORAGE_KEY = "aiden.uiLocale";
+export const UI_LOCALE_STORAGE_KEY = "nova.uiLocale";
 
 export const UI_LOCALE_LABELS: Record<UiLocale, string> = {
   en: "English",

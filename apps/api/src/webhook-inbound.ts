@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import type { JobPublisher } from "@aiden/adapter-kit";
-import { runContinueJob } from "@aiden/adapter-kit";
-import type { EncryptedSecretStore } from "@aiden/adapters";
-import type { PrismaClient } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+import type { JobPublisher } from "@nova/adapter-kit";
+import { runContinueJob } from "@nova/adapter-kit";
+import type { EncryptedSecretStore } from "@nova/adapters";
+import type { PrismaClient } from "@nova/db";
+import { getLogger } from "@nova/logging";
 
 export const WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 export const WEBHOOK_SECRET_KIND = "webhook";

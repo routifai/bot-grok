@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@aiden/db";
+import type { PrismaClient } from "@nova/db";
 
 export const SCRATCHPAD_STATUSES = ["open", "parked", "done"] as const;
 export type ScratchpadStatus = (typeof SCRATCHPAD_STATUSES)[number];

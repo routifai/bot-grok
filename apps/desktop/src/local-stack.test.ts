@@ -30,7 +30,7 @@ const fakeHex = (bytes: number) => "ab".repeat(bytes);
 
 describe("stack locations", () => {
   it("keeps the compose project under user data", () => {
-    expect(stackDir("/data/aiden")).toBe(path.join("/data/aiden", "stack"));
+    expect(stackDir("/data/nova")).toBe(path.join("/data/nova", "stack"));
   });
 
   it("reads resources from the bundle when packaged and from the repo otherwise", () => {
@@ -53,7 +53,7 @@ describe("resolveImageTag", () => {
     expect(resolveImageTag({ version: "0.2.0-beta.1", packaged: true })).toBe("edge");
   });
 
-  it("lets AIDEN_IMAGE_TAG override everything", () => {
+  it("lets NOVA_IMAGE_TAG override everything", () => {
     expect(resolveImageTag({ version: "0.2.0", packaged: true, override: " v9.9.9 " })).toBe(
       "v9.9.9",
     );
@@ -76,10 +76,10 @@ describe("renderStackEnv", () => {
     ]) {
       expect(lines).toContain(`${name}=${"ab".repeat(32)}`);
     }
-    expect(lines.some((line) => line.startsWith("AIDEN_IMAGE_TAG="))).toBe(false);
-    expect(lines.some((line) => line.startsWith("AIDEN_COMPUTER_IMAGE_TAG="))).toBe(false);
+    expect(lines.some((line) => line.startsWith("NOVA_IMAGE_TAG="))).toBe(false);
+    expect(lines.some((line) => line.startsWith("NOVA_COMPUTER_IMAGE_TAG="))).toBe(false);
     // Everything else, including the image names and empty optional keys, stays verbatim.
-    expect(lines).toContain("AIDEN_IMAGE=ghcr.io/elie222/rakazo/app");
+    expect(lines).toContain("NOVA_IMAGE=ghcr.io/elie222/rakazo/app");
     expect(lines).toContain("SANDBOX_PROVIDER=docker");
     expect(lines).toContain("OPENROUTER_API_KEY=");
     expect(rendered.endsWith("\n")).toBe(template.endsWith("\n"));
@@ -95,7 +95,7 @@ describe("renderStackEnv", () => {
 describe("ensureStackEnv", () => {
   let dir: string;
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "aiden-stack-env-"));
+    dir = await mkdtemp(path.join(tmpdir(), "nova-stack-env-"));
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -133,7 +133,7 @@ describe("ensureStackEnv", () => {
 describe("stack identity", () => {
   let dir: string;
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "aiden-stack-token-"));
+    dir = await mkdtemp(path.join(tmpdir(), "nova-stack-token-"));
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -297,7 +297,7 @@ const ok: Script = (args) => {
   if (args[0] === "info") return { stdout: "27.1.1\n" };
   const subcommand = args[7];
   if (subcommand === "pull") return { lines: ["app Pulled", "computer Pulled"] };
-  if (subcommand === "up") return { lines: ["Container aiden-web-1 Started"] };
+  if (subcommand === "up") return { lines: ["Container nova-web-1 Started"] };
   return {};
 };
 
@@ -307,7 +307,7 @@ describe("LocalStackController", () => {
   let phases: string[];
 
   beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), "aiden-stack-"));
+    root = await mkdtemp(path.join(tmpdir(), "nova-stack-"));
     calls = [];
     phases = [];
   });
@@ -369,11 +369,7 @@ describe("LocalStackController", () => {
 
     const state = await stack.start();
     expect(state).toMatchObject({ phase: "ready", message: null, imageTag: "v1.2.3" });
-    expect(state.output).toEqual([
-      "app Pulled",
-      "computer Pulled",
-      "Container aiden-web-1 Started",
-    ]);
+    expect(state.output).toEqual(["app Pulled", "computer Pulled", "Container nova-web-1 Started"]);
     expect(phases).toEqual([
       "checking-docker",
       "checking-docker",
@@ -402,21 +398,21 @@ describe("LocalStackController", () => {
       expect(call.binary).toBe("/usr/bin/docker");
       expect(call.cwd).toBe(stackPath);
       expect(call.env).toMatchObject({
-        AIDEN_IMAGE_TAG: "v1.2.3",
-        AIDEN_COMPUTER_IMAGE_TAG: "v1.2.3",
+        NOVA_IMAGE_TAG: "v1.2.3",
+        NOVA_COMPUTER_IMAGE_TAG: "v1.2.3",
         COMPOSE_PROGRESS: "plain",
         HOME: "/home/me",
       });
       expect(call.env).not.toHaveProperty("OPENROUTER_API_KEY");
     }
-    expect(calls.at(-1)?.env.AIDEN_DESKTOP_STACK_TOKEN).toBe("ab".repeat(32));
+    expect(calls.at(-1)?.env.NOVA_DESKTOP_STACK_TOKEN).toBe("ab".repeat(32));
 
     await expect(readFile(path.join(stackPath, STACK_COMPOSE_FILE), "utf8")).resolves.toBe(
       await readFile(path.join(COMPOSE_DIR, STACK_COMPOSE_FILE), "utf8"),
     );
     const env = await readFile(path.join(stackPath, STACK_ENV_FILE), "utf8");
     expect(env).toContain(`POSTGRES_PASSWORD=${"ab".repeat(16)}`);
-    expect(env).not.toContain("AIDEN_IMAGE_TAG=");
+    expect(env).not.toContain("NOVA_IMAGE_TAG=");
     if (process.platform !== "win32") {
       expect((await stat(path.join(stackPath, STACK_ENV_FILE))).mode & 0o777).toBe(0o600);
       expect((await stat(stackPath)).mode & 0o777).toBe(0o700);
@@ -426,12 +422,12 @@ describe("LocalStackController", () => {
   it("keeps lifecycle commands off the standalone project despite environment overrides", async () => {
     const dir = path.join(root, "stack");
     await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, STACK_ENV_FILE), "COMPOSE_PROJECT_NAME=aiden\n");
-    const stack = controller({ env: { COMPOSE_PROJECT_NAME: "aiden" } }, (args) =>
+    await writeFile(path.join(dir, STACK_ENV_FILE), "COMPOSE_PROJECT_NAME=nova\n");
+    const stack = controller({ env: { COMPOSE_PROJECT_NAME: "nova" } }, (args) =>
       args[7] === "up" ? { code: 1, stderr: "port is already allocated" } : ok(args),
     );
     expect((await stack.start()).phase).toBe("failed");
-    // A fresh process must stop the same desktop project without discovering or adopting aiden.
+    // A fresh process must stop the same desktop project without discovering or adopting nova.
     expect((await controller().stop()).phase).toBe("idle");
     const commands = calls.filter(
       (call) => call.args[0] === "compose" && call.args[1] !== "version",
@@ -445,7 +441,7 @@ describe("LocalStackController", () => {
       "stop",
     ]);
     for (const call of commands) {
-      expect(call.args.slice(5, 7)).toEqual(["--project-name", "aiden-desktop"]);
+      expect(call.args.slice(5, 7)).toEqual(["--project-name", "nova-desktop"]);
       expect(call.env).not.toHaveProperty("COMPOSE_PROJECT_NAME");
     }
   });
@@ -590,10 +586,10 @@ describe("LocalStackController", () => {
     expect(stack.webUrl()).toBe("http://127.0.0.1:45174");
     expect(calls.filter((call) => call.args[7] === "pull")).toHaveLength(1);
     expect(
-      calls.filter((call) => call.args[7] === "up").map((call) => call.env.AIDEN_WEB_PORT),
+      calls.filter((call) => call.args[7] === "up").map((call) => call.env.NOVA_WEB_PORT),
     ).toEqual(["5173", "45174"]);
     expect(calls.at(-1)?.env).toMatchObject({
-      AIDEN_API_PORT: "0",
+      NOVA_API_PORT: "0",
       WEB_ORIGIN: stack.webUrl(),
       BETTER_AUTH_URL: stack.webUrl(),
       API_URL: stack.webUrl(),
@@ -646,7 +642,7 @@ describe("LocalStackController", () => {
           return {
             code: 1,
             [stream]:
-              "failed to create network aiden-desktop_data: Error response from daemon: all predefined address pools have been fully subnetted",
+              "failed to create network nova-desktop_data: Error response from daemon: all predefined address pools have been fully subnetted",
           };
         }
         return ok(args);

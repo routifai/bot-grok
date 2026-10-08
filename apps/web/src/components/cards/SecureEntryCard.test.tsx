@@ -16,7 +16,7 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children?: unknown }) => <>{children}</>,
   };
 });
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   Card: ({ children }: { children?: unknown }) => <div>{children as never}</div>,
   CardAction: ({ children }: { children?: unknown }) => <div>{children as never}</div>,

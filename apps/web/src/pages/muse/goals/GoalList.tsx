@@ -1,6 +1,6 @@
-import type { Goal } from "@aiden/contracts";
-import { cn, Skeleton } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { Goal } from "@nova/contracts";
+import { cn, Skeleton } from "@nova/ui-web";
 import { useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { GoalsGlyph, SparkGlyph } from "../chrome/NovaGlyphs";

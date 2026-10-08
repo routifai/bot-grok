@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@aiden/db";
+import type { PrismaClient } from "@nova/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   type BotMessageDeps,

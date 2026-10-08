@@ -1,4 +1,4 @@
-import type { AgentSkillCatalogEntry } from "@aiden/contracts";
+import type { AgentSkillCatalogEntry } from "@nova/contracts";
 import { useCallback, useEffect, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 

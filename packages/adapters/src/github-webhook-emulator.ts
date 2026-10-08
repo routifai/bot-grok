@@ -33,7 +33,7 @@ export class GithubWebhookEmulator {
       typeof input.payload === "string"
         ? input.payload
         : JSON.stringify(input.payload ?? { zen: "emulated", hook_id: 1 });
-    const origin = input.origin ?? "https://aiden.test";
+    const origin = input.origin ?? "https://nova.test";
     const secret = input.secret ?? this.signingSecret;
     return new Request(`${origin}/api/v1/bots/${input.botId}/github`, {
       method: "POST",

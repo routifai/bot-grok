@@ -1,11 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
-import type { Actor } from "@aiden/contracts";
+import type { Actor } from "@nova/contracts";
 import {
   isLocalSettingsProcedure,
   LOCAL_SETTINGS_RPC,
   LOCAL_SETTINGS_TOKEN_HEADER,
-} from "@aiden/contracts";
-import { type PrismaClient, requireMembership } from "@aiden/db";
+} from "@nova/contracts";
+import { type PrismaClient, requireMembership } from "@nova/db";
 import type { RPCHandler } from "@orpc/server/fetch";
 import type { Hono } from "hono";
 

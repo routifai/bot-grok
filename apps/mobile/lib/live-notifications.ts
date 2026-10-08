@@ -35,7 +35,7 @@ type NativeNotifications = {
 };
 
 const nativeNotifications =
-  Platform.OS === "android" ? requireNativeModule<NativeNotifications>("AidenNotifications") : null;
+  Platform.OS === "android" ? requireNativeModule<NativeNotifications>("NovaNotifications") : null;
 
 export type NotificationThreadTarget = { botId?: string; threadId?: string };
 
@@ -47,10 +47,10 @@ export function notificationTargetsThread(
   target: NotificationThreadTarget | null,
 ): boolean {
   if (!data || !target) return false;
-  const dataThreadId = data.threadId ?? data["aiden.threadId"];
+  const dataThreadId = data.threadId ?? data["nova.threadId"];
   if (target.threadId && dataThreadId) return dataThreadId === target.threadId;
   return Boolean(
-    target.botId && (data.botId === target.botId || data["aiden.botId"] === target.botId),
+    target.botId && (data.botId === target.botId || data["nova.botId"] === target.botId),
   );
 }
 

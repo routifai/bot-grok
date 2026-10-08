@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import type { AdapterContext, AgentHomeStore, PortableFile } from "@aiden/adapter-kit";
+import type { AdapterContext, AgentHomeStore, PortableFile } from "@nova/adapter-kit";
 import { fileHandlePath } from "./file-handle-path.js";
 
 export class LocalAgentHomeStore implements AgentHomeStore {

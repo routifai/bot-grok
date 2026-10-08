@@ -1,6 +1,6 @@
-import type { Archiving } from "@aiden/contracts";
-import { SIDE_CHAT_ARCHIVE_DAYS } from "@aiden/contracts";
 import { useLingui } from "@lingui/react/macro";
+import type { Archiving } from "@nova/contracts";
+import { SIDE_CHAT_ARCHIVE_DAYS } from "@nova/contracts";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { MUSE_INSET_GROUP } from "./ui";

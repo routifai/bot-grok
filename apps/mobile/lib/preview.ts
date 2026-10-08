@@ -1,4 +1,4 @@
-import { plainTextFromMarkdown } from "@aiden/core";
+import { plainTextFromMarkdown } from "@nova/core";
 
 const MAX_PREVIEW_WORDS = 12;
 

@@ -1,4 +1,4 @@
-import { ChatMarkdown } from "@aiden/chat-ui/web";
+import { ChatMarkdown } from "@nova/chat-ui/web";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 

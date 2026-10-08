@@ -3,11 +3,11 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'com.aiden.notifications'
+group = 'com.nova.notifications'
 version = '0.1.0'
 
 android {
-  namespace 'com.aiden.notifications'
+  namespace 'com.nova.notifications'
   defaultConfig {
     versionName '0.1.0'
   }

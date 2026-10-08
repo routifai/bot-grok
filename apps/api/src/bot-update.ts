@@ -1,5 +1,5 @@
-import { appendEventInTransaction, type Prisma, type PrismaClient } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+import { appendEventInTransaction, type Prisma, type PrismaClient } from "@nova/db";
+import { getLogger } from "@nova/logging";
 
 type AppendEvent = typeof appendEventInTransaction;
 

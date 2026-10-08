@@ -1,5 +1,5 @@
-import type { ComposerMention } from "@aiden/core";
-import { BotAvatar } from "@aiden/ui-web";
+import type { ComposerMention } from "@nova/core";
+import { BotAvatar } from "@nova/ui-web";
 import { Clock, Puzzle } from "lucide-react";
 import { FALLBACK_BOT_COLOR } from "./shared";
 

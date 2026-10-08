@@ -3,10 +3,10 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   searchOmnigentFamily,
-} from "@aiden/adapters";
-import type { Actor, MessageBlock, SearchHit } from "@aiden/contracts";
-import { extractLinksFromText, matchesSearchQuery, snippetAroundMatch } from "@aiden/core";
-import { Prisma, type PrismaClient } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, MessageBlock, SearchHit } from "@nova/contracts";
+import { extractLinksFromText, matchesSearchQuery, snippetAroundMatch } from "@nova/core";
+import { Prisma, type PrismaClient } from "@nova/db";
 
 const SEARCH_LIMIT = 25;
 /** Cap name matches so content hits (messages/files/links/routines) keep most of the budget. */

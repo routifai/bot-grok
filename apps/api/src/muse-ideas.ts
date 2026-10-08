@@ -1,5 +1,5 @@
-import type { Actor, Idea } from "@aiden/contracts";
-import { createIdeaRepos, createRepos, type PrismaClient } from "@aiden/db";
+import type { Actor, Idea } from "@nova/contracts";
+import { createIdeaRepos, createRepos, type PrismaClient } from "@nova/db";
 
 // B11 · Ideas (docs/muse/PLAN.md). Engine-backed Muses read their Ideas from the engine
 // (engine-ideas.ts); this reads the stored batch the Pi-era refresh left behind. Authorizes

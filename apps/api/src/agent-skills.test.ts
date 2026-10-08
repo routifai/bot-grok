@@ -1,13 +1,13 @@
-import type { Actor } from "@aiden/contracts";
-import { buildSkillMd } from "@aiden/core";
-import type { PrismaClient } from "@aiden/db";
+import type { Actor } from "@nova/contracts";
+import { buildSkillMd } from "@nova/core";
+import type { PrismaClient } from "@nova/db";
 import { describe, expect, it, vi } from "vitest";
 import { createAgentSkillsService } from "./agent-skills.js";
 
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@aiden.test",
+  email: "user@nova.test",
   isDeploymentOwner: true,
 };
 

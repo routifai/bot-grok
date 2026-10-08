@@ -1,4 +1,4 @@
-import type { ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
+import type { ThreadMessage, ThreadMessagePage } from "@nova/contracts";
 
 const epochSeconds = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 

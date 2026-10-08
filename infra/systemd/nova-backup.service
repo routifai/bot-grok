@@ -1,12 +1,12 @@
 [Unit]
-Description=Create and verify a Aiden production backup
+Description=Create and verify a Nova production backup
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
-EnvironmentFile=-/etc/aiden/backup.env
-ExecStart=/usr/local/sbin/aiden-backup
+EnvironmentFile=-/etc/nova/backup.env
+ExecStart=/usr/local/sbin/nova-backup
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

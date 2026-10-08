@@ -1,5 +1,5 @@
-import { BUILTIN_AGENT_SKILLS } from "@aiden/adapters";
-import type { Actor, AgentSkill, AgentSkillSource } from "@aiden/contracts";
+import { BUILTIN_AGENT_SKILLS } from "@nova/adapters";
+import type { Actor, AgentSkill, AgentSkillSource } from "@nova/contracts";
 import {
   buildSkillMd,
   findSkillByName,
@@ -7,8 +7,8 @@ import {
   mergeBuiltinSkills,
   parseSkillMd,
   type SkillSource,
-} from "@aiden/core";
-import { IsolationError, type PrismaClient } from "@aiden/db";
+} from "@nova/core";
+import { IsolationError, type PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
 type AgentSkillRow = {

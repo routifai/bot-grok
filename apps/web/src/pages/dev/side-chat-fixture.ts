@@ -1,7 +1,7 @@
-import type { ChatSummary, ReplyCardBlock, ThreadMessage } from "@aiden/contracts";
+import type { ChatSummary, ReplyCardBlock, ThreadMessage } from "@nova/contracts";
 
 // Fixture data for /dev/side-chats (SideChatsPreviewPage.tsx). A bank-workplace flavor,
-// matching the Muse's own profile (museBotProfile in @aiden/contracts), without naming a
+// matching the Muse's own profile (museBotProfile in @nova/contracts), without naming a
 // real bank.
 
 export const DEV_BOT_ID = "dev-muse";

@@ -1,4 +1,4 @@
-package com.aiden.notifications
+package com.nova.notifications
 
 import java.net.URI
 

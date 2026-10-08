@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AdapterContext } from "@aiden/adapter-kit";
-import type { ComputerExecutionLease } from "@aiden/adapters";
+import type { AdapterContext } from "@nova/adapter-kit";
+import type { ComputerExecutionLease } from "@nova/adapters";
 import {
   acquireComputerExecutionLease,
   ComputerBusyError,
@@ -12,10 +12,10 @@ import {
   replaceComputer,
   scheduleComputerSleep,
   screenLeaseIdForRun,
-} from "@aiden/adapters";
-import type { Actor, ComputerStatus } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
-import { createRepos, IsolationError } from "@aiden/db";
+} from "@nova/adapters";
+import type { Actor, ComputerStatus } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
+import { createRepos, IsolationError } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import { resolveBusyBotName, toComputerStatus } from "../computer-status.js";
 import type { RouterDeps } from "./context.js";

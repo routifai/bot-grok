@@ -93,7 +93,7 @@ describe("desktop session permissions", () => {
     expect(policy.check("notifications", { embeddingOrigin: url }, null)).toBe(false);
   });
 
-  it.each(["aiden-model-oauth", "aiden-mcp-oauth", "aiden-app-connect", "aiden-plugin-connect"])(
+  it.each(["nova-model-oauth", "nova-mcp-oauth", "nova-app-connect", "nova-plugin-connect"])(
     "allows %s navigation without granting permissions to its popup",
     (name) => {
       const policy = policyFixture();

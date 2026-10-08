@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { readBoundedResponseBytes } from "@aiden/core";
+import { readBoundedResponseBytes } from "@nova/core";
 import { Agent } from "undici";
 import {
   createAddressCheckedLookup,
@@ -109,7 +109,7 @@ export async function fetchSafeWebText(
       resolve,
       dispatcher,
       maxBytes,
-      userAgent: options.userAgent ?? "Aiden/0.1",
+      userAgent: options.userAgent ?? "Nova/0.1",
       headers: options.headers,
       signal,
       redirectsRemaining: MAX_REDIRECTS,

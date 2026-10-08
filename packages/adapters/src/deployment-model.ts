@@ -13,14 +13,14 @@ export function resolveDeploymentModel(env: NodeJS.ProcessEnv = process.env) {
   // vendor's, which a ternary on one provider would not give.
   // `local` is the operator's own OpenAI-compatible server (LiteLLM, vLLM, Ollama): its key
   // is optional, so a configured model list alone counts as a deployment model.
-  const localModels = (env.AIDEN_LOCAL_MODELS ?? "")
+  const localModels = (env.NOVA_LOCAL_MODELS ?? "")
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
   const keys: Record<string, string | undefined> = {
     openrouter: env.OPENROUTER_API_KEY,
     anthropic: env.ANTHROPIC_API_KEY,
-    local: env.AIDEN_LOCAL_MODELS_API_KEY?.trim() || (localModels.length > 0 ? "local" : undefined),
+    local: env.NOVA_LOCAL_MODELS_API_KEY?.trim() || (localModels.length > 0 ? "local" : undefined),
   };
   const models: Record<string, string> = {
     openrouter: DEFAULT_OPENROUTER_MODEL_ID,

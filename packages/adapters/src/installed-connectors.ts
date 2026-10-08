@@ -4,8 +4,8 @@ import type {
   ConnectorEvent,
   ConnectorProvider,
   ConnectorTool,
-} from "@aiden/adapter-kit";
-import type { PrismaClient } from "@aiden/db";
+} from "@nova/adapter-kit";
+import type { PrismaClient } from "@nova/db";
 import { z } from "zod";
 import {
   AuthSchema,

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { MessageFork, ThreadMessage } from "@aiden/contracts";
+import type { MessageFork, ThreadMessage } from "@nova/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

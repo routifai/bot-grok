@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@aiden/contracts";
-import { isToolActivityBlock } from "@aiden/core";
+import type { MessageBlock } from "@nova/contracts";
+import { isToolActivityBlock } from "@nova/core";
 import { describe, expect, it } from "vitest";
 import {
   botMessageOutcomeFromMidTurn,

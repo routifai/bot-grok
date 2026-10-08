@@ -1,7 +1,7 @@
-import type { MessageFork, ThreadMessage } from "@aiden/contracts";
-import { userVisibleMessages } from "@aiden/core";
-import { Button, cn, Spinner } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { MessageFork, ThreadMessage } from "@nova/contracts";
+import { userVisibleMessages } from "@nova/core";
+import { Button, cn, Spinner } from "@nova/ui-web";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ReplyCardBotProvider,

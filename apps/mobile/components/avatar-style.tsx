@@ -1,4 +1,4 @@
-import type { AvatarStyle, Me } from "@aiden/contracts";
+import type { AvatarStyle, Me } from "@nova/contracts";
 import { usePathname } from "expo-router";
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { rpc } from "../lib/api";

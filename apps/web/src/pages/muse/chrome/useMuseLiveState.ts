@@ -1,4 +1,4 @@
-import type { MuseState, Run, ThreadMessage } from "@aiden/contracts";
+import type { MuseState, Run, ThreadMessage } from "@nova/contracts";
 import { useAsks } from "../asks";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 

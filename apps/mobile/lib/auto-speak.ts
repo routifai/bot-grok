@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@aiden/contracts";
-import { speechFromBlocks } from "@aiden/core";
+import type { MessageBlock } from "@nova/contracts";
+import { speechFromBlocks } from "@nova/core";
 
 const IN_PROGRESS_RUN_STATUSES = new Set(["running", "queued", "leased"]);
 

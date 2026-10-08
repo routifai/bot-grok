@@ -1,4 +1,4 @@
-import { buildSkillMd } from "@aiden/core";
+import { buildSkillMd } from "@nova/core";
 
 /**
  * Built-in Agent Skills (SKILL.md recipes) available to every user.

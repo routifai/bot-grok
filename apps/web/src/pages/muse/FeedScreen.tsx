@@ -1,5 +1,5 @@
-import type { Ask, FollowedTopic } from "@aiden/contracts";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { Ask, FollowedTopic } from "@nova/contracts";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { useAsks } from "./asks";

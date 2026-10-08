@@ -1,4 +1,4 @@
-import { selectedAskActionLabel } from "@aiden/core";
+import { selectedAskActionLabel } from "@nova/core";
 import { describe, expect, it } from "vitest";
 
 describe("selectedAskActionLabel", () => {

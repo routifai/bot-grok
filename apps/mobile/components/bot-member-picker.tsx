@@ -1,4 +1,4 @@
-import { GROUP_MEMBER_MAX } from "@aiden/contracts";
+import { GROUP_MEMBER_MAX } from "@nova/contracts";
 import { StyleSheet, Switch, Text, View } from "react-native";
 import type { MobileBot } from "../lib/api";
 import { useMobileTokens } from "../lib/native";

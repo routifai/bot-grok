@@ -1,7 +1,7 @@
-import { runJobKey } from "@aiden/adapter-kit";
-import type { RunStatus } from "@aiden/contracts";
-import { isActive } from "@aiden/core";
-import type { PrismaClient } from "@aiden/db";
+import { runJobKey } from "@nova/adapter-kit";
+import type { RunStatus } from "@nova/contracts";
+import { isActive } from "@nova/core";
+import type { PrismaClient } from "@nova/db";
 
 type App = { request: (input: string, init?: RequestInit) => Promise<Response> };
 
@@ -89,7 +89,7 @@ async function rpc(
       "content-type": "application/json",
       cookie,
       origin: "http://127.0.0.1:5173",
-      ...(spaceId ? { "x-aiden-space-id": spaceId } : {}),
+      ...(spaceId ? { "x-nova-space-id": spaceId } : {}),
     },
     body: JSON.stringify({ json: body }),
   });

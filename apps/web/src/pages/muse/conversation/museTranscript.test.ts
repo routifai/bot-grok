@@ -1,4 +1,4 @@
-import type { ThreadMessage, ThreadMessagePage } from "@aiden/contracts";
+import type { ThreadMessage, ThreadMessagePage } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import {
   conversationMessages,

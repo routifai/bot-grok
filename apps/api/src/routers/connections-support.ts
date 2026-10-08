@@ -1,6 +1,6 @@
-import { planLiveConnectionSync } from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
-import type { Prisma, PrismaClient } from "@aiden/db";
+import { planLiveConnectionSync } from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
+import type { Prisma, PrismaClient } from "@nova/db";
 
 export async function reconcilePendingConnections(
   prisma: PrismaClient,

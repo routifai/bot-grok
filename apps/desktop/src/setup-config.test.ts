@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_LOCAL_WEB_URL,
   desktopStackImageTag,
-  isAidenHealth,
+  isNovaHealth,
   managedLocalOpenUrl,
   maySendDesktopStackToken,
   normalizeServerUrl,
@@ -23,13 +23,13 @@ describe("server address normalization", () => {
     expect(normalizeServerUrl("127.0.0.1:5173")).toBe("http://127.0.0.1:5173");
     expect(normalizeServerUrl("localhost:5173")).toBe("http://localhost:5173");
     expect(normalizeServerUrl("192.168.1.20:3100")).toBe("http://192.168.1.20:3100");
-    expect(normalizeServerUrl("aiden.example.com")).toBe("https://aiden.example.com");
+    expect(normalizeServerUrl("nova.example.com")).toBe("https://nova.example.com");
   });
 
   it("keeps an explicit secure scheme and port but stores only the origin", () => {
-    expect(normalizeServerUrl("https://aiden.example.com")).toBe("https://aiden.example.com");
-    expect(normalizeServerUrl("https://aiden.example.com:8443/team")).toBe(
-      "https://aiden.example.com:8443",
+    expect(normalizeServerUrl("https://nova.example.com")).toBe("https://nova.example.com");
+    expect(normalizeServerUrl("https://nova.example.com:8443/team")).toBe(
+      "https://nova.example.com:8443",
     );
   });
 
@@ -42,7 +42,7 @@ describe("server address normalization", () => {
   });
 
   it("rejects cleartext public servers but permits private-network development", () => {
-    expect(normalizeServerUrl("http://aiden.example.com")).toBeNull();
+    expect(normalizeServerUrl("http://nova.example.com")).toBeNull();
     expect(normalizeServerUrl("http://10.0.0.8:3100")).toBe("http://10.0.0.8:3100");
     expect(normalizeServerUrl("http://[fd00::1]:3100")).toBe("http://[fd00::1]:3100");
   });
@@ -51,19 +51,19 @@ describe("server address normalization", () => {
     expect(normalizeServerUrl("http://169.254.169.254")).toBeNull();
     expect(normalizeServerUrl("http://169.254.1.1:80")).toBeNull();
     expect(normalizeServerUrl("http://[fe80::1]:3100")).toBeNull();
-    // HTTPS to link-local still normalizes; the health probe must match Aiden.
+    // HTTPS to link-local still normalizes; the health probe must match Nova.
     expect(normalizeServerUrl("https://169.254.169.254")).toBe("https://169.254.169.254");
   });
 
   it.each(["", "   ", "not a url", "ftp://example.com", "file:///etc/passwd", "http://"])(
-    "rejects an address that cannot reach a Aiden server (%s)",
+    "rejects an address that cannot reach a Nova server (%s)",
     (value) => {
       expect(normalizeServerUrl(value)).toBeNull();
     },
   );
 
   it("rejects embedded credentials rather than writing them to disk", () => {
-    expect(normalizeServerUrl("https://user:secret@aiden.example.com")).toBeNull();
+    expect(normalizeServerUrl("https://user:secret@nova.example.com")).toBeNull();
   });
 });
 
@@ -80,23 +80,23 @@ describe("managed local open URL", () => {
   it("rejects a different loopback origin even when both are local", () => {
     expect(managedLocalOpenUrl("http://127.0.0.1:5199", DEFAULT_LOCAL_WEB_URL)).toBeNull();
     expect(managedLocalOpenUrl("http://localhost:5173", DEFAULT_LOCAL_WEB_URL)).toBeNull();
-    expect(managedLocalOpenUrl("https://aiden.example.com", DEFAULT_LOCAL_WEB_URL)).toBeNull();
+    expect(managedLocalOpenUrl("https://nova.example.com", DEFAULT_LOCAL_WEB_URL)).toBeNull();
   });
 });
 
 describe("desktop stack token transport", () => {
   it("allows HTTPS and loopback HTTP only", () => {
-    expect(maySendDesktopStackToken("https://aiden.example.com")).toBe(true);
+    expect(maySendDesktopStackToken("https://nova.example.com")).toBe(true);
     expect(maySendDesktopStackToken("http://127.0.0.1:5173")).toBe(true);
     expect(maySendDesktopStackToken("http://localhost:5173")).toBe(true);
     expect(maySendDesktopStackToken("http://10.0.0.8:5173")).toBe(false);
-    expect(maySendDesktopStackToken("http://aiden.local:5173")).toBe(false);
+    expect(maySendDesktopStackToken("http://nova.local:5173")).toBe(false);
   });
 });
 
 describe("saved setup", () => {
   it("round-trips through the on-disk format", () => {
-    const setup = { mode: "existing", serverUrl: "https://aiden.example.com" } as const;
+    const setup = { mode: "existing", serverUrl: "https://nova.example.com" } as const;
     expect(parseStoredSetup(serializeSetup(setup))).toEqual(setup);
   });
 
@@ -132,7 +132,7 @@ describe("saved setup", () => {
 });
 
 describe("startup target", () => {
-  const saved = { mode: "existing", serverUrl: "https://aiden.example.com" } as const;
+  const saved = { mode: "existing", serverUrl: "https://nova.example.com" } as const;
 
   it("runs setup on a first launch", () => {
     expect(resolveStartupTarget({})).toEqual({ kind: "setup" });
@@ -141,12 +141,12 @@ describe("startup target", () => {
   it("opens the saved instance on later launches", () => {
     expect(resolveStartupTarget({ saved })).toEqual({
       kind: "app",
-      url: "https://aiden.example.com",
+      url: "https://nova.example.com",
       source: "saved",
     });
   });
 
-  it("lets AIDEN_WEB_URL point the shell anywhere without touching saved setup", () => {
+  it("lets NOVA_WEB_URL point the shell anywhere without touching saved setup", () => {
     expect(resolveStartupTarget({ envUrl: "http://127.0.0.1:4321", saved })).toEqual({
       kind: "app",
       url: "http://127.0.0.1:4321",
@@ -154,7 +154,7 @@ describe("startup target", () => {
     });
   });
 
-  it("ignores an empty AIDEN_WEB_URL", () => {
+  it("ignores an empty NOVA_WEB_URL", () => {
     expect(resolveStartupTarget({ envUrl: "   ", saved }).kind).toBe("app");
     expect(resolveStartupTarget({ envUrl: "   ", saved })).toMatchObject({ source: "saved" });
   });
@@ -178,7 +178,7 @@ describe("startup target", () => {
 describe("bundled renderer eligibility", () => {
   it("stands in for http(s) origins only", () => {
     expect(servesBundledRenderer(DEFAULT_LOCAL_WEB_URL)).toBe(true);
-    expect(servesBundledRenderer("https://aiden.example.com")).toBe(true);
+    expect(servesBundledRenderer("https://nova.example.com")).toBe(true);
     expect(servesBundledRenderer("data:text/html,<p>fixture</p>")).toBe(false);
     expect(servesBundledRenderer("nonsense")).toBe(false);
   });
@@ -189,7 +189,7 @@ describe("remote-content isolation", () => {
     const first = sessionPartitionForServerUrl("https://one.example.com/path");
     expect(first).toBe(sessionPartitionForServerUrl("https://one.example.com/other"));
     expect(first).not.toBe(sessionPartitionForServerUrl("https://one.example.com:8443"));
-    expect(first).toMatch(/^persist:aiden-[a-f0-9]{24}$/);
+    expect(first).toMatch(/^persist:nova-[a-f0-9]{24}$/);
     expect(first).not.toContain("one.example.com");
     expect(sessionPartitionForServerUrl("data:text/html,fixture")).toBeNull();
   });
@@ -201,11 +201,11 @@ describe("remote-content isolation", () => {
   });
 });
 
-describe("Aiden health response", () => {
+describe("Nova health response", () => {
   it("requires the public RPC health contract", () => {
-    expect(isAidenHealth({ json: { ok: true, version: "0.1.0" } })).toBe(true);
-    expect(isAidenHealth({ json: { ok: true } })).toBe(false);
-    expect(isAidenHealth({ ok: true, version: "0.1.0" })).toBe(false);
+    expect(isNovaHealth({ json: { ok: true, version: "0.1.0" } })).toBe(true);
+    expect(isNovaHealth({ json: { ok: true } })).toBe(false);
+    expect(isNovaHealth({ ok: true, version: "0.1.0" })).toBe(false);
   });
 });
 

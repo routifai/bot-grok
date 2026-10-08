@@ -1,4 +1,4 @@
-import { cn } from "@aiden/ui-web";
+import { cn } from "@nova/ui-web";
 import { FileText, Image as ImageIcon, LayoutTemplate, Presentation } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import type { ArtifactKind } from "../lib/artifact-kind";

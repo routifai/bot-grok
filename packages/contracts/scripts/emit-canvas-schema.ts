@@ -8,7 +8,7 @@ import { CanvasNodeSchema } from "../src/canvas.js";
  * Nova Canvas's component catalog (packages/contracts/src/canvas.ts) is the single source
  * of truth; the Omnigent (Python) `show_canvas` tool reuses this generated JSON Schema as
  * its own inputSchema instead of hand-duplicating the catalog. Run via `pnpm --filter
- * @aiden/contracts run emit-canvas-schema`; re-run after any catalog change.
+ * @nova/contracts run emit-canvas-schema`; re-run after any catalog change.
  */
 const schema = z.toJSONSchema(CanvasNodeSchema, { target: "draft-7", io: "input" });
 

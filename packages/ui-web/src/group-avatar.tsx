@@ -25,7 +25,7 @@ export const GroupAvatar = memo(function GroupAvatar({
     return (
       <div
         className={cn(
-          "aiden-group-avatar relative flex items-center justify-center rounded-full border border-border bg-muted text-muted-foreground",
+          "nova-group-avatar relative flex items-center justify-center rounded-full border border-border bg-muted text-muted-foreground",
           className,
         )}
         style={{ width: size, height: size, flex: "none" }}
@@ -57,7 +57,7 @@ export const GroupAvatar = memo(function GroupAvatar({
         identity={firstMember.botId ?? firstMember.name}
         size={size}
         status={firstMember.status}
-        className={cn("aiden-group-avatar", className)}
+        className={cn("nova-group-avatar", className)}
       />
     );
   }
@@ -78,7 +78,7 @@ export const GroupAvatar = memo(function GroupAvatar({
 
   return (
     <div
-      className={cn("aiden-group-avatar relative rounded-full select-none", className)}
+      className={cn("nova-group-avatar relative rounded-full select-none", className)}
       style={{ width: size, height: size, flex: "none" }}
     >
       {visibleMembers.map((member, index) => (

@@ -34,7 +34,7 @@ describe("BoxSandboxProvider", () => {
         createBoxRequest: {
           ttlSeconds: 7200,
           noEnv: true,
-          env: { AIDEN_BOT_ID: "bot-a", AIDEN_SANDBOX: "computer" },
+          env: { NOVA_BOT_ID: "bot-a", NOVA_SANDBOX: "computer" },
         },
       },
       { signal: context.signal },
@@ -43,7 +43,7 @@ describe("BoxSandboxProvider", () => {
     await provider.prepare(computer, context);
     expect(
       fixture.command.mock.calls.some(([request]) =>
-        request.commandRequest.command.includes("aiden-home/.browser-profiles"),
+        request.commandRequest.command.includes("nova-home/.browser-profiles"),
       ),
     ).toBe(true);
 
@@ -62,7 +62,7 @@ describe("BoxSandboxProvider", () => {
     const executeRequest = fixture.command.mock.calls.find(([request]) =>
       request.commandRequest.command.includes("TEST_VALUE=works"),
     )?.[0];
-    expect(executeRequest?.commandRequest.cwd).toBe("aiden-home/notes");
+    expect(executeRequest?.commandRequest.cwd).toBe("nova-home/notes");
 
     await provider.writeFile(
       computer,
@@ -145,7 +145,7 @@ describe("BoxSandboxProvider", () => {
       const [request, init] = fetchMock.mock.calls[0]!;
       const url = new URL(String(request));
       expect(url.pathname).toBe("/api/box/v1/boxes/bx_testbox2/artifacts");
-      expect(url.searchParams.get("path")).toBe(`/home/user/aiden-home/${filePath}`);
+      expect(url.searchParams.get("path")).toBe(`/home/user/nova-home/${filePath}`);
       expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test-key");
       expect(init?.signal).toBe(context.signal);
     } finally {
@@ -156,7 +156,7 @@ describe("BoxSandboxProvider", () => {
   it("exports browser profile files over 5 MiB without losing their bytes", async () => {
     const fixture = boxFixture();
     const content = Buffer.alloc(6 * 1024 * 1024, 0xab);
-    fixture.files.set("/home/user/aiden-home/.browser-profiles/chrome/Default/History", content);
+    fixture.files.set("/home/user/nova-home/.browser-profiles/chrome/Default/History", content);
     const provider = new BoxSandboxProvider({ apiKey: "test-key" }, fixture.client);
     const computer = await provider.provision({ botId: "bot-a", homePath: "/unused" }, context);
     const exported = [];
@@ -168,7 +168,7 @@ describe("BoxSandboxProvider", () => {
     expect(fixture.artifactRaw).toHaveBeenCalledWith(
       {
         boxId: computer.id,
-        path: "/home/user/aiden-home/.browser-profiles/chrome/Default/History",
+        path: "/home/user/nova-home/.browser-profiles/chrome/Default/History",
       },
       { signal: context.signal },
     );
@@ -202,7 +202,7 @@ describe("BoxSandboxProvider", () => {
 
   it("accepts empty files and files exactly at the download limit", async () => {
     const fixture = boxFixture();
-    fixture.files.set("/home/user/aiden-home/exact.bin", Uint8Array.from([0, 255]));
+    fixture.files.set("/home/user/nova-home/exact.bin", Uint8Array.from([0, 255]));
     const provider = new BoxSandboxProvider({ apiKey: "test-key" }, fixture.client);
     const computer = await provider.provision({ botId: "bot-a", homePath: "/unused" }, context);
 
@@ -382,19 +382,19 @@ function boxFixture(options: { state?: string } = {}) {
         return finished({ stdout: `https://box-test-${port}.on.ascii.dev?_token=secret` });
       }
       if (command.includes("TEST_VALUE=works")) return finished({ stdout: "hello\n" });
-      if (command.includes("find ") && command.includes("aiden-home/bin")) {
-        const target = "/home/user/aiden-home/bin/tool";
+      if (command.includes("find ") && command.includes("nova-home/bin")) {
+        const target = "/home/user/nova-home/bin/tool";
         return finished({
           stdout: `${Buffer.from(target).toString("base64")}\tfile\t3\t1\n`,
         });
       }
       if (
         command.includes("find ") &&
-        command.includes("aiden-home") &&
+        command.includes("nova-home") &&
         command.includes("-type f")
       ) {
         const stdout = [...files.entries()]
-          .filter(([filePath]) => filePath.startsWith("/home/user/aiden-home/"))
+          .filter(([filePath]) => filePath.startsWith("/home/user/nova-home/"))
           .map(([filePath, content]) => {
             const executable = filePath.endsWith("/bin/tool") ? "1" : "0";
             return `${Buffer.from(filePath).toString("base64")}\tfile\t${content.byteLength}\t${executable}\n`;
@@ -434,7 +434,7 @@ function boxFixture(options: { state?: string } = {}) {
       },
     ),
     artifactRaw: vi.fn(async ({ path }: { path: string }) => {
-      const content = path.startsWith("/tmp/aiden-observe-")
+      const content = path.startsWith("/tmp/nova-observe-")
         ? Uint8Array.from([1, 2, 3])
         : (files.get(path) ?? new Uint8Array());
       return { raw: new Response(Buffer.from(content)) };

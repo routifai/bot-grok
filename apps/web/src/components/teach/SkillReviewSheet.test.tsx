@@ -25,7 +25,7 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("../ai/primitives", () => ({
   Shimmer: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("@aiden/ui-web", () => {
+vi.mock("@nova/ui-web", () => {
   const Box = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     Sheet: Box,

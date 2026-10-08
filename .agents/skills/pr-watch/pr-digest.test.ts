@@ -139,7 +139,7 @@ describe("pr-digest", () => {
     [
       "github-actions[bot]",
       "Bot",
-      "<!-- aiden-playwright-screenshots -->\n### Playwright screenshots\n",
+      "<!-- nova-playwright-screenshots -->\n### Playwright screenshots\n",
       0,
     ],
     ["reviewer", "User", "<h3>Greptile Summary</h3>", 11],

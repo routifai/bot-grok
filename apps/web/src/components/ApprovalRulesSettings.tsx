@@ -1,7 +1,7 @@
-import type { ActionApprovalRule, ActionAutoReviewSettings } from "@aiden/contracts";
-import { Button, Label, Switch } from "@aiden/ui-web";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { ActionApprovalRule, ActionAutoReviewSettings } from "@nova/contracts";
+import { Button, Label, Switch } from "@nova/ui-web";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../lib/rpc";
 

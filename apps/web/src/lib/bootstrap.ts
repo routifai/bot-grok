@@ -1,14 +1,11 @@
-import type { AppBootstrap } from "@aiden/contracts";
+import type { AppBootstrap } from "@nova/contracts";
 import { initialBootstrapTarget } from "./bootstrap-target";
 import { markOnce } from "./performance";
 import { rpc } from "./rpc";
 
 let primedBootstrap: { botId?: string; promise: Promise<AppBootstrap> } | null = null;
 
-const initialTarget = initialBootstrapTarget(
-  window.location.pathname,
-  Boolean(window.aidenDesktop),
-);
+const initialTarget = initialBootstrapTarget(window.location.pathname, Boolean(window.novaDesktop));
 if (initialTarget) {
   const { botId } = initialTarget;
   const promise = requestBootstrap(botId);

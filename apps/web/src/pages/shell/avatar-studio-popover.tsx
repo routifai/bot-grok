@@ -1,4 +1,6 @@
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
+import { t } from "@lingui/core/macro";
+import { Trans } from "@lingui/react/macro";
+import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
 import {
   BotAvatar,
   Dialog,
@@ -9,9 +11,7 @@ import {
   DialogTitle,
   GROK_BOT_COLORS,
   parseBotAvatar,
-} from "@aiden/ui-web";
-import { t } from "@lingui/core/macro";
-import { Trans } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
 

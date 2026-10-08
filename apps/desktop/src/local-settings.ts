@@ -1,7 +1,7 @@
 import {
   isLocalSettingsProcedure,
   LOCAL_SETTINGS_TOKEN_HEADER,
-} from "@aiden/contracts/local-settings";
+} from "@nova/contracts/local-settings";
 import { isLoopbackHost } from "./setup-config.js";
 
 /** Only a fixed local target and known settings procedures can receive host authority. */

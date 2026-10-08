@@ -1,4 +1,4 @@
-import type { Activity } from "@aiden/contracts";
+import type { Activity } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import { deriveNovaWork } from "./novaWork";
 

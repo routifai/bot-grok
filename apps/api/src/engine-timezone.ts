@@ -5,10 +5,10 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   putOmnigentTimezone,
-} from "@aiden/adapters";
-import type { Actor } from "@aiden/contracts";
-import type { PrismaClient } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapters";
+import type { Actor } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
+import { getLogger } from "@nova/logging";
 
 export async function syncEngineTimezone(
   prisma: Pick<PrismaClient, "user">,

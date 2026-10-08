@@ -1,4 +1,6 @@
-import type { ChatSummary, Goal, ThreadMessage } from "@aiden/contracts";
+import { plural } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ChatSummary, Goal, ThreadMessage } from "@nova/contracts";
 import {
   cn,
   Sheet,
@@ -8,9 +10,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@aiden/ui-web";
-import { plural } from "@lingui/core/macro";
-import { Trans, useLingui } from "@lingui/react/macro";
+} from "@nova/ui-web";
 import { ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, useEffect, useRef, useState } from "react";

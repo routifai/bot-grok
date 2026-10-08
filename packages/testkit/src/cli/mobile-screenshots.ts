@@ -3,14 +3,14 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { serve } from "@hono/node-server";
 import {
   ComposioEmulator,
   EmailEmulator,
   PipedreamConnector,
   ThirdPartyConnectorEmulator,
-} from "@aiden/adapters";
-import { createThreadMessage, type PrismaClient } from "@aiden/db";
-import { serve } from "@hono/node-server";
+} from "@nova/adapters";
+import { createThreadMessage, type PrismaClient } from "@nova/db";
 import { sessionCookieHeader } from "../index.js";
 import { runProcess } from "./process.js";
 
@@ -38,7 +38,7 @@ async function main() {
   await mkdir(REPORT_DIR, { recursive: true });
   await mkdir(DATA_DIR, { recursive: true });
 
-  execFileSync("pnpm", ["--filter", "@aiden/db", "exec", "prisma", "migrate", "deploy"], {
+  execFileSync("pnpm", ["--filter", "@nova/db", "exec", "prisma", "migrate", "deploy"], {
     cwd: path.join(ROOT, "packages", "db"),
     env: process.env,
     stdio: "inherit",
@@ -95,19 +95,19 @@ async function main() {
           "--output",
           path.join(REPORT_DIR, `${flow}.html`),
           "-e",
-          `AIDEN_SCREENSHOT_EMAIL=${EMAIL}`,
+          `NOVA_SCREENSHOT_EMAIL=${EMAIL}`,
           "-e",
-          `AIDEN_SCREENSHOT_PASSWORD=${PASSWORD}`,
+          `NOVA_SCREENSHOT_PASSWORD=${PASSWORD}`,
           "-e",
-          `AIDEN_SCREENSHOT_BOT_ID=${fixture.botId}`,
+          `NOVA_SCREENSHOT_BOT_ID=${fixture.botId}`,
           "-e",
-          `AIDEN_SCREENSHOT_GROUP_ID=${fixture.groupId}`,
+          `NOVA_SCREENSHOT_GROUP_ID=${fixture.groupId}`,
           "-e",
-          `AIDEN_SCREENSHOT_ROUTINE_ID=${fixture.routineId}`,
+          `NOVA_SCREENSHOT_ROUTINE_ID=${fixture.routineId}`,
           "-e",
-          `AIDEN_NOTIFICATION_VIDEO=${path.join(REPORT_DIR, "notification-demo")}`,
+          `NOVA_NOTIFICATION_VIDEO=${path.join(REPORT_DIR, "notification-demo")}`,
           "-e",
-          `AIDEN_EXPAND_NOTIFICATIONS_URL=${EXPAND_NOTIFICATIONS_URL}`,
+          `NOVA_EXPAND_NOTIFICATIONS_URL=${EXPAND_NOTIFICATIONS_URL}`,
           path.join(FLOW_DIR, `${flow}.yaml`),
         ],
         process.env,

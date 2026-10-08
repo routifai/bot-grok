@@ -1,5 +1,5 @@
-import { ENGINE_COMPUTER_ID, SCREEN_TARGET_ENDPOINT } from "@aiden/core/node/screen-capability";
-import type { PrismaClient } from "@aiden/db";
+import { ENGINE_COMPUTER_ID, SCREEN_TARGET_ENDPOINT } from "@nova/core/node/screen-capability";
+import type { PrismaClient } from "@nova/db";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { addScreenProxyCapability, mountScreenTarget } from "./screen-proxy.js";

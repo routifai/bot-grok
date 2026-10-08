@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot } from "@aiden/contracts";
+import type { Bot } from "@nova/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -25,7 +25,7 @@ vi.mock("@lingui/react/macro", () => {
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
 
-vi.mock("@aiden/ui-web", () => ({
+vi.mock("@nova/ui-web", () => ({
   cn: (...parts: unknown[]) => parts.filter(Boolean).join(" "),
   Input: (props: ComponentProps<"input">) => <input {...props} />,
   Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
@@ -94,13 +94,13 @@ vi.mock("../shell/avatar-studio-popover", () => ({
   ),
 }));
 
-import { AidenSettingsPanel } from "./AidenSettingsPanel";
+import { NovaSettingsPanel } from "./NovaSettingsPanel";
 
 function bot(overrides: Partial<Bot> = {}): Bot {
   return {
     id: "bot-1",
     spaceId: "space-1",
-    name: "Aiden",
+    name: "Nova",
     title: "",
     description: "",
     instructions: "",
@@ -149,14 +149,14 @@ it("saves the name on blur when it changed", async () => {
   const onSave = vi.fn().mockResolvedValue(undefined);
   const { container, root } = render();
   try {
-    await act(async () => root.render(<AidenSettingsPanel bot={bot()} onSave={onSave} />));
+    await act(async () => root.render(<NovaSettingsPanel bot={bot()} onSave={onSave} />));
     const input = container.querySelector<HTMLInputElement>("input");
-    expect(input?.value).toBe("Aiden");
-    await act(async () => setInputValue(input!, "Nova"));
+    expect(input?.value).toBe("Nova");
+    await act(async () => setInputValue(input!, "Atlas"));
     await act(async () => {
       input!.dispatchEvent(new Event("focusout", { bubbles: true }));
     });
-    expect(onSave).toHaveBeenCalledWith({ name: "Nova" });
+    expect(onSave).toHaveBeenCalledWith({ name: "Atlas" });
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -170,7 +170,7 @@ it("saves the color chosen from the reused avatar studio", async () => {
   const onSave = vi.fn().mockResolvedValue(undefined);
   const { container, root } = render();
   try {
-    await act(async () => root.render(<AidenSettingsPanel bot={bot()} onSave={onSave} />));
+    await act(async () => root.render(<NovaSettingsPanel bot={bot()} onSave={onSave} />));
     const avatarButton = container.querySelector<HTMLButtonElement>(
       '[data-testid="avatar-studio-stub"]',
     );
@@ -188,7 +188,7 @@ it("wires the reused ProactivitySettings to the bot's id", async () => {
   museApi.settings.mockResolvedValue({ proactivity: "high", quietHours: "22:00-08:00" });
   const { container, root } = render();
   try {
-    await act(async () => root.render(<AidenSettingsPanel bot={bot()} onSave={vi.fn()} />));
+    await act(async () => root.render(<NovaSettingsPanel bot={bot()} onSave={vi.fn()} />));
     await act(async () => undefined);
     expect(museApi.settings).toHaveBeenCalledWith({ botId: "bot-1" });
     expect(container.querySelector('[data-testid="proactivity-settings"]')).not.toBeNull();

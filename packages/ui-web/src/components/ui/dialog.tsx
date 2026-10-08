@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@aiden/ui-web/components/ui/button";
-import { cn } from "@aiden/ui-web/lib/utils";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { Button } from "@nova/ui-web/components/ui/button";
+import { cn } from "@nova/ui-web/lib/utils";
 import { XIcon } from "lucide-react";
 import type * as React from "react";
 

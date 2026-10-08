@@ -31,7 +31,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  const email = `auth-lifecycle-${stamp}@aiden.test`;
+  const email = `auth-lifecycle-${stamp}@nova.test`;
   const password = "password12";
   const userName = "Auth Lifecycle";
 
@@ -60,7 +60,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await logOutButton.click();
   await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
   await page.goto("/");
-  await expect(page.locator('[data-aiden-surface="welcome"]')).toBeVisible();
+  await expect(page.locator('[data-nova-surface="welcome"]')).toBeVisible();
   await expect(page.getByText(/Your AI, already on it\./)).toBeVisible();
   await page.getByRole("button", { name: /Meet Nova/ }).click();
   await expect(page).toHaveURL(/\/sign-up$/);
@@ -128,7 +128,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
 
 test("changes and recovers an email password", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  const email = `password-recovery-${stamp}@aiden.test`;
+  const email = `password-recovery-${stamp}@nova.test`;
   const originalPassword = "password12";
   const changedPassword = "changed-password12";
   const resetPassword = "reset-password12";

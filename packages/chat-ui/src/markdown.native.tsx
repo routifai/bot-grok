@@ -1,4 +1,4 @@
-import { type ColorTokens, darkTokens, type ResolvedAppearance } from "@aiden/ui-tokens";
+import { type ColorTokens, darkTokens, type ResolvedAppearance } from "@nova/ui-tokens";
 import Markdown, {
   createMarkdownIt,
   MarkdownStream,

@@ -5,11 +5,11 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   putOmnigentProactivity,
-} from "@aiden/adapters";
-import type { Actor, MuseSettings } from "@aiden/contracts";
-import { resolveMuseSettings } from "@aiden/core";
-import { IsolationError, type PrismaClient } from "@aiden/db";
-import { getLogger } from "@aiden/logging";
+} from "@nova/adapters";
+import type { Actor, MuseSettings } from "@nova/contracts";
+import { resolveMuseSettings } from "@nova/core";
+import { IsolationError, type PrismaClient } from "@nova/db";
+import { getLogger } from "@nova/logging";
 
 // muse.settings / muse.updateSettings (packages/contracts/src/rpc.ts, docs/muse/PLAN.md B7).
 //

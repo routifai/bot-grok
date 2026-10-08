@@ -1,5 +1,5 @@
-import { isAttachmentImageMimeType } from "@aiden/contracts";
 import { t } from "@lingui/core/macro";
+import { isAttachmentImageMimeType } from "@nova/contracts";
 import type { LucideIcon } from "lucide-react";
 import { File, FileText, Image as ImageIcon, LayoutTemplate, Presentation } from "lucide-react";
 

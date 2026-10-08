@@ -3,8 +3,8 @@
 // (engine/omnigent/omnigent/superchat/activity.py) to Nova's camelCase contract
 // (packages/contracts/src/activity.ts). Pure: no network/database here, so ./activities.test.ts
 // exercises it directly.
-import type { Activity, ActivityStep } from "@aiden/contracts";
-import { isEngineErrorText } from "@aiden/core";
+import type { Activity, ActivityStep } from "@nova/contracts";
+import { isEngineErrorText } from "@nova/core";
 import type { OmnigentActivity, OmnigentActivityStep } from "./client.js";
 
 function epochSecondsToIso(epochSeconds: number): string {

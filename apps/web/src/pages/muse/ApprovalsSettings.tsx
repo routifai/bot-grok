@@ -1,6 +1,6 @@
-import type { ApprovalSpending, ApprovalStandingRule } from "@aiden/contracts";
-import { Button } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { ApprovalSpending, ApprovalStandingRule } from "@nova/contracts";
+import { Button } from "@nova/ui-web";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { MUSE_INSET_GROUP } from "./ui";

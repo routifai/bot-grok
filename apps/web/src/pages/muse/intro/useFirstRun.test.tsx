@@ -68,7 +68,7 @@ it("starts unseen and persists across a remount", async () => {
     container?.querySelector("button")?.click();
   });
   expect(container.querySelector("[data-testid='seen']")?.textContent).toBe("seen");
-  expect(localStorage.getItem("aiden:first-run:user-1")).toBe('["welcome"]');
+  expect(localStorage.getItem("nova:first-run:user-1")).toBe('["welcome"]');
 
   await act(async () => root.unmount());
   root = createRoot(container);

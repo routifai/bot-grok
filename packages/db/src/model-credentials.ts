@@ -1,4 +1,4 @@
-import { usableModelId } from "@aiden/contracts";
+import { usableModelId } from "@nova/contracts";
 import type { PrismaClient } from "./client.js";
 
 export const newestCredentialOrder = [

@@ -1,6 +1,6 @@
-import type { AvatarStyle, Bot } from "@aiden/contracts";
-import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@aiden/ui-web";
 import { useLingui } from "@lingui/react/macro";
+import type { AvatarStyle, Bot } from "@nova/contracts";
+import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@nova/ui-web";
 import {
   CloudDownload,
   Cpu,
@@ -20,14 +20,14 @@ import {
   UsageSettingsPanel,
 } from "./AccountSettingsOverlay";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
-import { AidenSettingsPanel } from "./muse/AidenSettingsPanel";
 import { NovaTile, type TileTone } from "./muse/chrome/NovaTile";
+import { NovaSettingsPanel } from "./muse/NovaSettingsPanel";
 import { GeneralPanel } from "./muse/settings/GeneralPanel";
 import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
 export type SettingsSection =
-  | "aiden"
+  | "nova"
   | "general"
   | "models"
   | "voice"
@@ -37,7 +37,7 @@ export type SettingsSection =
 
 /** Nova's Settings sidebar: one colored tile per section, Mac style. */
 const SETTINGS_TONE: Partial<Record<SettingsSection, TileTone>> = {
-  aiden: "blue",
+  nova: "blue",
   general: "gray",
   voice: "red",
   computer: "blue",
@@ -81,9 +81,9 @@ export function SettingsOverlay({
   onOpenMessaging?: () => void;
   onClose: () => void;
   onVoiceStatusMaybeChanged?: () => void | Promise<void>;
-  /** In Muse mode: gates Avatars/Updates off and adds the Aiden section (docs/muse/DESIGN.md). */
+  /** In Muse mode: gates Avatars/Updates off and adds the Nova section (docs/muse/DESIGN.md). */
   museMode?: boolean;
-  /** The person's one Muse bot; required to render the Aiden section. */
+  /** The person's one Muse bot; required to render the Nova section. */
   museBot?: Bot | null;
   onMuseBotSave?: (patch: { name?: string; color?: string }) => Promise<void>;
 }) {
@@ -113,7 +113,7 @@ export function SettingsOverlay({
 
   const navItems: NavItem[] = [
     ...(museMode
-      ? [{ id: "aiden" as const, label: museBot?.name || t`Nova`, icon: UserRound }]
+      ? [{ id: "nova" as const, label: museBot?.name || t`Nova`, icon: UserRound }]
       : []),
     { id: "general", label: t`General`, icon: Settings },
     // The Muse's engine and model are the server's business; only the classic app picks one.
@@ -255,8 +255,8 @@ export function SettingsOverlay({
                   : "rk-scroll overflow-y-auto overscroll-contain px-6 pb-6 pt-5 sm:px-8 sm:pb-8"
               }`}
             >
-              {section === "aiden" && museMode && museBot && onMuseBotSave ? (
-                <AidenSettingsPanel bot={museBot} onSave={onMuseBotSave} />
+              {section === "nova" && museMode && museBot && onMuseBotSave ? (
+                <NovaSettingsPanel bot={museBot} onSave={onMuseBotSave} />
               ) : null}
               {section === "general" && museMode ? (
                 <GeneralPanel name={name} email={email} isDeploymentOwner={isDeploymentOwner} />

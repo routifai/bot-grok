@@ -1,4 +1,4 @@
-import type { ConnectionCatalogItem } from "@aiden/contracts";
+import type { ConnectionCatalogItem } from "@nova/contracts";
 
 export const FEATURED_CONNECTOR_IDS = [
   "gmail",

@@ -1,4 +1,4 @@
-import type { Activity, MuseState } from "@aiden/contracts";
+import type { Activity, MuseState } from "@nova/contracts";
 import type { OrbState } from "../../../components/ai/orb/orbState";
 import { orbStateFor } from "../../../components/ai/orb/orbState";
 import { buildActivityForest, isNodeRunning } from "./activityTree";

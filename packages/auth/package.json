@@ -1,5 +1,5 @@
 {
-  "name": "@aiden/auth",
+  "name": "@nova/auth",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -15,9 +15,9 @@
     "test": "vitest run --root ../.. packages/auth/src"
   },
   "dependencies": {
-    "@aiden/adapter-kit": "workspace:*",
-    "@aiden/core": "workspace:*",
-    "@aiden/db": "workspace:*",
+    "@nova/adapter-kit": "workspace:*",
+    "@nova/core": "workspace:*",
+    "@nova/db": "workspace:*",
     "better-auth": "1.7.4"
   },
   "devDependencies": {
