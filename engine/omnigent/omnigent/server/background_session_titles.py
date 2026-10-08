@@ -10,10 +10,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from omnigent.entities.conversation import (
     DEFAULT_GENERATED_TITLE_MAX_CHARS,
     USER_SESSION_TITLE_MAX_CHARS,
 )
+from omnigent.errors import OmnigentError
 from omnigent.harness_aliases import canonicalize_harness
 from omnigent.harness_plugins import background_title_generators
 from omnigent.runner.background_titles.service import FOLLOW_USER_LANGUAGE_TITLE_INSTRUCTION
@@ -30,6 +33,17 @@ BACKGROUND_SESSION_TITLES_HEADER = "x-omnigent-background-session-titles"
 
 #: How long a failed Activity title waits before the next attempt.
 _ACTIVITY_TITLE_RETRY_SECONDS = 600.0
+
+
+#: Waits before each retry of a session title the runner was not ready for (about 75 s in all).
+_SESSION_TITLE_RETRY_DELAYS_SECONDS: tuple[float, ...] = (5.0, 20.0, 50.0)
+
+#: HTTP statuses that mean "the runner is not ready", not "the model said no".
+_TRANSIENT_RUNNER_STATUSES = frozenset({502, 503, 504})
+
+
+class BackgroundTitleNotReady(Exception):
+    """The runner could not be asked (or could not answer) yet; trying later may work."""
 
 
 def background_session_titles_enabled(headers: Mapping[str, str]) -> bool:
@@ -95,9 +109,12 @@ class RunnerBackgroundTitleGenerator:
         self._timeout_seconds = timeout_seconds
 
     async def __call__(self, request: BackgroundTitleRequest) -> str | None:
-        routed = self._runner_router.client_for_existing_conversation(request.session_id)
+        try:
+            routed = self._runner_router.client_for_existing_conversation(request.session_id)
+        except OmnigentError as exc:
+            raise BackgroundTitleNotReady(f"runner_offline: {exc}") from exc
         if routed is None:
-            return None
+            raise BackgroundTitleNotReady("runner_not_routed")
         body = {
             "prompt": request.prompt,
             "agent_id": request.agent_id,
@@ -111,13 +128,23 @@ class RunnerBackgroundTitleGenerator:
             if custom
             else FOLLOW_USER_LANGUAGE_TITLE_INSTRUCTION
         )
-        response = await routed.client.post(
-            f"/v1/sessions/{request.session_id}/background-title",
-            json=body,
-            timeout=self._timeout_seconds,
-        )
-        response.raise_for_status()
+        try:
+            response = await routed.client.post(
+                f"/v1/sessions/{request.session_id}/background-title",
+                json=body,
+                timeout=self._timeout_seconds,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in _TRANSIENT_RUNNER_STATUSES:
+                raise BackgroundTitleNotReady(f"runner_http_{exc.response.status_code}") from exc
+            raise
+        except httpx.TransportError as exc:
+            raise BackgroundTitleNotReady(f"runner_unreachable: {type(exc).__name__}") from exc
         payload: Any = response.json()
+        if isinstance(payload, dict) and payload.get("status") == "unsupported":
+            # A cold runner spec cache answers "unsupported" until the session spec is known.
+            raise BackgroundTitleNotReady("runner_unsupported")
         if not isinstance(payload, dict) or payload.get("status") != "generated":
             return None
         title = payload.get("title")
@@ -136,6 +163,7 @@ class BackgroundSessionTitleCoordinator:
         seed_wait_seconds: float = 15.0,
         max_concurrency: int = 4,
         additional_instructions: str | None = None,
+        retry_delays_seconds: tuple[float, ...] = _SESSION_TITLE_RETRY_DELAYS_SECONDS,
     ) -> None:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be at least 1")
@@ -144,6 +172,7 @@ class BackgroundSessionTitleCoordinator:
         self._timeout_seconds = timeout_seconds
         self._seed_wait_seconds = seed_wait_seconds
         self._additional_instructions = additional_instructions
+        self._retry_delays_seconds = retry_delays_seconds
         self._generation_slots = asyncio.Semaphore(max_concurrency)
         self._pending: set[asyncio.Task[None]] = set()
         self._scheduled_session_ids: set[str] = set()
@@ -172,11 +201,18 @@ class BackgroundSessionTitleCoordinator:
             )
             return None
 
-    async def _generate_title(self, request: BackgroundTitleRequest) -> str | None:
-        generated = await asyncio.wait_for(
-            self._generator(request),
-            timeout=self._timeout_seconds,
-        )
+    async def _generate_title(
+        self, request: BackgroundTitleRequest, *, raise_not_ready: bool = False
+    ) -> str | None:
+        try:
+            generated = await asyncio.wait_for(
+                self._generator(request),
+                timeout=self._timeout_seconds,
+            )
+        except BackgroundTitleNotReady:
+            if raise_not_ready:
+                raise
+            return None
         has_custom_instructions = bool(
             request.additional_instructions and request.additional_instructions.strip()
         )
@@ -388,21 +424,50 @@ class BackgroundSessionTitleCoordinator:
     ) -> None:
         started = time.perf_counter()
         try:
-            async with self._generation_slots:
-                seed_ready = await self._wait_for_seed(
-                    session_id=request.session_id,
-                    expected_seed_title=expected_seed_title,
-                )
-                if not seed_ready:
+            attempt = 0
+            while True:
+                async with self._generation_slots:
+                    seed_ready = await self._wait_for_seed(
+                        session_id=request.session_id,
+                        expected_seed_title=expected_seed_title,
+                    )
+                    if not seed_ready:
+                        _logger.info(
+                            "background session title skipped session=%s "
+                            "reason=seed_unavailable elapsed_ms=%.1f",
+                            request.session_id,
+                            (time.perf_counter() - started) * 1000,
+                            extra={"session_id": request.session_id},
+                        )
+                        return
+                    try:
+                        title = await self._generate_title(request, raise_not_ready=True)
+                        break
+                    except BackgroundTitleNotReady as exc:
+                        reason = str(exc)
+                if attempt >= len(self._retry_delays_seconds):
                     _logger.info(
                         "background session title skipped session=%s "
-                        "reason=seed_unavailable elapsed_ms=%.1f",
+                        "reason=runner_not_ready (%s) attempts=%d elapsed_ms=%.1f",
                         request.session_id,
+                        reason,
+                        attempt + 1,
                         (time.perf_counter() - started) * 1000,
                         extra={"session_id": request.session_id},
                     )
                     return
-                title = await self._generate_title(request)
+                delay = self._retry_delays_seconds[attempt]
+                attempt += 1
+                _logger.info(
+                    "background session title retry session=%s reason=%s attempt=%d delay_s=%.1f",
+                    request.session_id,
+                    reason,
+                    attempt,
+                    delay,
+                    extra={"session_id": request.session_id},
+                )
+                # Sleep outside the generation slot so waiting never blocks other titles.
+                await asyncio.sleep(delay)
             if title is None:
                 _logger.info(
                     "background session title skipped session=%s "

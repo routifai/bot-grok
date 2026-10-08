@@ -700,3 +700,144 @@ async def test_seed_polling_is_bounded_by_generation_slots(db_uri: str) -> None:
 
     release.set()
     await coordinator.wait_for_idle()
+
+
+async def test_title_retries_when_runner_not_routed_yet(db_uri: str) -> None:
+    from omnigent.server.background_session_titles import BackgroundTitleNotReady
+
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = _seed_session(store, "Investigate authentication timeout")
+    calls = 0
+
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise BackgroundTitleNotReady("runner_not_routed")
+        return "Debug authentication timeout"
+
+    coordinator = BackgroundSessionTitleCoordinator(
+        store, generator, retry_delays_seconds=(0.0, 0.0, 0.0)
+    )
+    coordinator.schedule(
+        session_id=session_id,
+        prompt="please investigate the authentication timeout",
+        expected_seed_title="Investigate authentication timeout",
+    )
+    await coordinator.wait_for_idle()
+
+    assert calls == 3
+    assert store.get_conversation(session_id).title == "Debug authentication timeout"
+
+
+async def test_title_retries_are_bounded(db_uri: str) -> None:
+    from omnigent.server.background_session_titles import BackgroundTitleNotReady
+
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = _seed_session(store, "Investigate authentication timeout")
+    calls = 0
+
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        nonlocal calls
+        calls += 1
+        raise BackgroundTitleNotReady("runner_http_503")
+
+    coordinator = BackgroundSessionTitleCoordinator(
+        store, generator, retry_delays_seconds=(0.0, 0.0)
+    )
+    coordinator.schedule(
+        session_id=session_id,
+        prompt="p",
+        expected_seed_title="Investigate authentication timeout",
+    )
+    await coordinator.wait_for_idle()
+
+    assert calls == 3
+    assert store.get_conversation(session_id).title == "Investigate authentication timeout"
+
+
+async def test_unusable_model_answer_is_not_retried(db_uri: str) -> None:
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = _seed_session(store, "Investigate authentication timeout")
+    calls = 0
+
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        nonlocal calls
+        calls += 1
+        return "x"
+
+    coordinator = BackgroundSessionTitleCoordinator(
+        store, generator, retry_delays_seconds=(0.0, 0.0)
+    )
+    coordinator.schedule(
+        session_id=session_id,
+        prompt="p",
+        expected_seed_title="Investigate authentication timeout",
+    )
+    await coordinator.wait_for_idle()
+
+    assert calls == 1
+    assert store.get_conversation(session_id).title == "Investigate authentication timeout"
+
+
+async def test_rename_during_retry_wait_is_not_overwritten(db_uri: str) -> None:
+    from omnigent.server.background_session_titles import BackgroundTitleNotReady
+
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = _seed_session(store, "Investigate authentication timeout")
+    calls = 0
+
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            store.update_conversation(session_id, title="My manual title")
+            raise BackgroundTitleNotReady("runner_not_routed")
+        return "Debug authentication timeout"
+
+    coordinator = BackgroundSessionTitleCoordinator(store, generator, retry_delays_seconds=(0.0,))
+    coordinator.schedule(
+        session_id=session_id,
+        prompt="p",
+        expected_seed_title="Investigate authentication timeout",
+    )
+    await coordinator.wait_for_idle()
+
+    assert calls == 1
+    assert store.get_conversation(session_id).title == "My manual title"
+
+
+async def test_runner_generator_marks_unrouted_and_503_as_not_ready() -> None:
+    import httpx
+
+    from omnigent.server.background_session_titles import BackgroundTitleNotReady
+
+    class _NoRoute:
+        def client_for_existing_conversation(self, _sid: str) -> None:
+            return None
+
+    request = BackgroundTitleRequest(session_id="s", prompt="p")
+    with pytest.raises(BackgroundTitleNotReady):
+        await RunnerBackgroundTitleGenerator(_NoRoute())(request)  # type: ignore[arg-type]
+
+    class _Resp:
+        status_code = 503
+
+        def raise_for_status(self) -> None:
+            raise httpx.HTTPStatusError(
+                "x", request=httpx.Request("POST", "http://r"), response=httpx.Response(503)
+            )
+
+    class _Client:
+        async def post(self, *_a: object, **_k: object) -> _Resp:
+            return _Resp()
+
+    class _Routed:
+        client = _Client()
+
+    class _Router:
+        def client_for_existing_conversation(self, _sid: str) -> _Routed:
+            return _Routed()
+
+    with pytest.raises(BackgroundTitleNotReady):
+        await RunnerBackgroundTitleGenerator(_Router())(request)  # type: ignore[arg-type]
