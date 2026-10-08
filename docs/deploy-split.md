@@ -51,10 +51,24 @@ openssl rand -hex 32   # run once per secret listed in the table in section 4
 openssl rand -base64 32   # only for OMNIGENT_VAULT_KEY
 ```
 
-## 1. Computers VPS (OVH, Beauharnois, Ubuntu 24.04)
+## 1. Computers VPS (OVH, Beauharnois, Ubuntu)
 
-1. In the OVHcloud control panel order a VPS (the VPS-4 plan), location **Beauharnois (Canada)**,
-   image **Ubuntu 24.04**, and add your SSH public key. Note the public IPv4 address.
+**Quick path.** Order the VPS with your SSH key (step 1 below), then from your machine run:
+
+```bash
+SANDBOX_SUPERVISOR_TOKEN=<the engine's OMNIGENT_COMPUTER_SUPERVISOR_TOKEN> \
+  infra/compose/setup-computers-vps.sh <vps-ip> ubuntu
+```
+
+It creates the key-only `deploy` user, adds swap on small VMs, installs Docker, ships
+`git archive HEAD`, applies `harden-host.sh`, writes `.env.computers`, builds and starts the stack,
+and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_HOST` defaults to
+`<ip-with-dashes>.sslip.io`. Set the printed URL as the engine's
+`OMNIGENT_COMPUTER_SUPERVISOR_URL`. The manual steps below do the same by hand.
+
+
+1. In the OVHcloud control panel order a VPS, location **Beauharnois (Canada)**,
+   image **Ubuntu** (24.04 or newer), and add your SSH public key. Note the public IPv4 address.
    Pick a size that fits `friends x AIDEN_COMPUTER_MEMORY` plus about 3 GB.
 2. DNS: at your domain registrar add an **A record** `computers.<your-domain>` pointing at that IP.
 3. First login. OVH creates a default user (shown in the order mail, often `ubuntu`); then create
