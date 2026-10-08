@@ -570,11 +570,11 @@ function ForkGroups({
   onShowForks: (filter: ForkFilter) => void;
 }) {
   const { t } = useLingui();
-  if (!forks.length) return null;
   const working = forks.filter((fork) => fork.status === "live");
   const open = forks.filter((fork) => fork.status === "open");
   const added = forks.filter((fork) => fork.status === "added").length;
-  const archived = forks.filter((fork) => fork.status === "archived").length;
+  // Archived forks live in the All forks list, not in a second "Archived" fold here.
+  if (!working.length && !open.length && !added) return null;
   const tab = collapsed ? -1 : undefined;
   const heading = (label: string) => (
     <div className="px-2.5 pt-2 pb-1 text-[11.5px] font-semibold whitespace-nowrap text-ink-3">
@@ -656,7 +656,6 @@ function ForkGroups({
         </>
       ) : null}
       {added ? fold(t`Added to Conversation`, added, "added") : null}
-      {archived ? fold(t`Archived`, archived, "archived") : null}
     </div>
   );
 }
