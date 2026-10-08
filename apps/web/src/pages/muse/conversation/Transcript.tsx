@@ -427,7 +427,7 @@ const TranscriptView = memo(function Transcript({
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
           museMode &&
-            "mx-auto w-full max-w-[748px] gap-[22px] overflow-x-hidden pt-5 [overflow-wrap:anywhere] md:px-6 md:pt-[26px] md:pb-6",
+            "mx-auto w-full max-w-[748px] gap-[22px] overflow-x-hidden pt-8 [overflow-wrap:anywhere] md:px-6 md:pt-9 md:pb-6",
         )}
       >
         {leading}

@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
-/** Hover-capable pointers only: touch keeps the rail beside the bubble. */
+/** Hover-capable pointers only: touch keeps the rail beside the bubble. The `after:` strip is
+ * an invisible bridge over the gap under the toolbar, so moving up from the bubble keeps it. */
 const ABOVE =
-  "[@media(hover:hover)_and_(pointer:fine)]:top-auto [@media(hover:hover)_and_(pointer:fine)]:bottom-full [@media(hover:hover)_and_(pointer:fine)]:mb-1 [@media(hover:hover)_and_(pointer:fine)]:translate-y-0 [@media(hover:hover)_and_(pointer:fine)]:rounded-full [@media(hover:hover)_and_(pointer:fine)]:border [@media(hover:hover)_and_(pointer:fine)]:border-line [@media(hover:hover)_and_(pointer:fine)]:bg-card [@media(hover:hover)_and_(pointer:fine)]:px-1 [@media(hover:hover)_and_(pointer:fine)]:shadow-float";
+  "[@media(hover:hover)_and_(pointer:fine)]:top-auto [@media(hover:hover)_and_(pointer:fine)]:bottom-full [@media(hover:hover)_and_(pointer:fine)]:mb-1 [@media(hover:hover)_and_(pointer:fine)]:translate-y-0 [@media(hover:hover)_and_(pointer:fine)]:rounded-full [@media(hover:hover)_and_(pointer:fine)]:border [@media(hover:hover)_and_(pointer:fine)]:border-line [@media(hover:hover)_and_(pointer:fine)]:bg-card [@media(hover:hover)_and_(pointer:fine)]:px-1 [@media(hover:hover)_and_(pointer:fine)]:shadow-float [@media(hover:hover)_and_(pointer:fine)]:after:absolute [@media(hover:hover)_and_(pointer:fine)]:after:inset-x-0 [@media(hover:hover)_and_(pointer:fine)]:after:top-full [@media(hover:hover)_and_(pointer:fine)]:after:h-2 [@media(hover:hover)_and_(pointer:fine)]:after:content-['']";
 const ABOVE_END =
   "[@media(hover:hover)_and_(pointer:fine)]:start-0 [@media(hover:hover)_and_(pointer:fine)]:ms-0";
 const ABOVE_START =
