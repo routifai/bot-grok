@@ -33,7 +33,7 @@ from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
 from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
-from omnigent.superchat.muse import MUSE_LABEL_KEY, muse_session_id
+from omnigent.superchat.muse import MUSE_KEY_LABEL_KEY, MUSE_LABEL_KEY, muse_session_id
 from tests.server.conftest import ControllableMockClient
 from tests.server.helpers import build_agent_bundle
 
@@ -418,6 +418,30 @@ async def test_adopt_makes_an_existing_super_chat_the_one_get_returns(
     launcher = ComputerSandboxLauncher(supervisor_url="http://sup.test", supervisor_token="t")
     launcher.prepare_for_launch(labels=conv.labels)
     assert (launcher._bot_id, launcher._space_id) == ("computer-key-1", "space-1")
+
+
+async def test_get_ignores_a_side_chat_that_copied_the_muse_labels(
+    client: httpx.AsyncClient, stores: dict[str, Any]
+) -> None:
+    """Forks made before forks dropped the Muse labels still carry them; GET must
+    keep returning the Conversation, never the newer side chat."""
+    muse = (await client.get("/v1/me/muse", headers=ALICE_SPACE_1)).json()["session_id"]
+    conv_store = stores["conversation"]
+    labels = dict(conv_store.get_conversation(muse).labels)
+    side = await client.post(
+        "/v1/sessions",
+        json={"agent_id": "a" * 32, "labels": {**_MODE, "omnigent.side_chat": "1"}},
+        headers=ALICE,
+    )
+    assert side.status_code == 201, side.text
+    side_id = side.json()["id"]
+    conv_store.set_labels(
+        side_id,
+        {MUSE_LABEL_KEY: "true", MUSE_KEY_LABEL_KEY: labels[MUSE_KEY_LABEL_KEY]},
+    )
+
+    found = (await client.get("/v1/me/muse", headers=ALICE_SPACE_1)).json()
+    assert found["session_id"] == muse
 
 
 async def test_adopt_someone_elses_session_is_not_found(client: httpx.AsyncClient) -> None:

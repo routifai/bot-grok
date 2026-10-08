@@ -128,6 +128,8 @@ def register_muse_routes(
             if (
                 conv is not None
                 and conv.labels.get(MUSE_LABEL_KEY) == "true"
+                # Side chats and forks made before their copies dropped these labels.
+                and SIDE_CHAT_LABEL_KEY not in conv.labels
                 and _owns(user_id, session_id)
             ):
                 return conv

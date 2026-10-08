@@ -5360,6 +5360,33 @@ def test_instance_scoped_label_keys_match_harness_constants() -> None:
     assert CODEX_NATIVE_BRIDGE_ID_LABEL_KEY in _INSTANCE_SCOPED_LABEL_KEYS
 
 
+def test_fork_drops_muse_labels(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    """A fork is never the person's Muse: copying its marker and key would let
+    the Muse lookup (newest first) return the fork as the Conversation."""
+    from omnigent.superchat.muse import MUSE_KEY_LABEL_KEY, MUSE_LABEL_KEY
+
+    source = conversation_store.create_conversation()
+    conversation_store.set_labels(
+        source.id, {MUSE_LABEL_KEY: "true", MUSE_KEY_LABEL_KEY: "k" * 32, "kept": "yes"}
+    )
+
+    fork = conversation_store.fork_conversation(source.id)
+
+    assert fork.labels["kept"] == "yes"
+    assert MUSE_LABEL_KEY not in fork.labels
+    assert MUSE_KEY_LABEL_KEY not in fork.labels
+
+
+def test_fork_only_dropped_label_keys_match_muse_constants() -> None:
+    """The store's literals for the Muse labels match the superchat constants."""
+    from omnigent.stores.conversation_store import _FORK_ONLY_DROPPED_LABEL_KEYS
+    from omnigent.superchat.muse import MUSE_KEY_LABEL_KEY, MUSE_LABEL_KEY
+
+    assert {MUSE_LABEL_KEY, MUSE_KEY_LABEL_KEY} <= _FORK_ONLY_DROPPED_LABEL_KEYS
+
+
 def test_fork_only_dropped_label_keys_match_sandbox_repo_constant() -> None:
     """
     The store's fork-only denylist matches the server's sandbox-repo key.

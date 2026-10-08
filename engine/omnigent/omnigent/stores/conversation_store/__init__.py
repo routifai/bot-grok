@@ -237,10 +237,19 @@ _INSTANCE_SCOPED_LABEL_KEYS = frozenset(
 # ``MANAGED_REPO_LABEL_KEY``; a store test cross-checks it so a rename there
 # fails loudly here.
 _SANDBOX_REPO_LABEL_KEY = "omnigent.sandbox.repo"
-_FORK_ONLY_DROPPED_LABEL_KEYS = IMPORT_PROVENANCE_LABEL_KEYS | {
-    ARCHIVED_AT_LABEL_KEY,
-    _SANDBOX_REPO_LABEL_KEY,
-}
+# A person's Muse is one session: its marker and ``(user, tenant)`` key must never
+# ride along onto a fork or side chat, or the Muse lookup (newest first) would
+# return the fork as the person's Conversation. The literals mirror
+# ``omnigent.superchat.muse.MUSE_LABEL_KEY`` / ``MUSE_KEY_LABEL_KEY``.
+_MUSE_LABEL_KEYS = frozenset({"omnigent.superchat.muse", "omnigent.superchat.muse.key"})
+_FORK_ONLY_DROPPED_LABEL_KEYS = (
+    IMPORT_PROVENANCE_LABEL_KEYS
+    | {
+        ARCHIVED_AT_LABEL_KEY,
+        _SANDBOX_REPO_LABEL_KEY,
+    }
+    | _MUSE_LABEL_KEYS
+)
 
 
 @dataclass(frozen=True)
