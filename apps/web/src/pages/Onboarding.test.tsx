@@ -44,7 +44,6 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("@aiden/ui-web", () => {
   const Container = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
-    BotAvatar: () => <span data-testid="bot-avatar" />,
     Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
     cn: (...parts: unknown[]) => parts.filter(Boolean).join(" "),
     Input: (props: ComponentProps<"input">) => <input {...props} />,
@@ -118,7 +117,7 @@ function setInputValue(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-it("walks intro -> name -> Muse name -> color (sky preselected) -> model, in order", async () => {
+it("walks intro -> name -> Muse name -> model, in order", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.me.mockResolvedValue(baseMe({ needsModel: true }));
   const page = await renderOnboarding();
@@ -165,21 +164,7 @@ it("walks intro -> name -> Muse name -> color (sky preselected) -> model, in ord
       findButton(page.container, "Continue").click();
     });
 
-    // Step 3: color, sky preselected.
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Pick my color.");
-      });
-    });
-    const preselected = page.container.querySelector(
-      `button[aria-label="Color ${DEFAULT_MUSE_COLOR}"]`,
-    );
-    expect(preselected?.getAttribute("aria-pressed")).toBe("true");
-    await act(async () => {
-      findButton(page.container, "Continue").click();
-    });
-
-    // Step 4: model, warm copy.
+    // Step 3: model, warm copy.
     await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.textContent).toContain(
@@ -225,14 +210,6 @@ it("creates exactly one bot with the chosen name and color", async () => {
     });
     await act(async () => {
       setInputValue(nameInput(page.container), "Nova");
-    });
-    await act(async () => {
-      findButton(page.container, "Continue").click();
-    });
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Pick my color.");
-      });
     });
     await act(async () => {
       findButton(page.container, "Continue").click();

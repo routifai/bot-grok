@@ -16,9 +16,8 @@ import {
   parseModelMaxTokens,
   type ThinkingLevel,
 } from "@aiden/contracts";
-import { createModelProbe, GROK_BOT_COLORS, initialModelProbeState } from "@aiden/core";
+import { createModelProbe, initialModelProbeState } from "@aiden/core";
 import {
-  BotAvatar,
   Button,
   cn,
   Input,
@@ -37,17 +36,19 @@ import { authClient } from "../lib/auth";
 import type { ModelCatalogEntry } from "../lib/model-auth";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
-import { AuroraBackground } from "./muse/intro/AuroraBackground";
+import {
+  WelcomeFrame,
+  welcomeFieldClass,
+  welcomeHeadingClass,
+  welcomeSubmitClass,
+} from "./welcome/WelcomeFrame";
 
 const CUSTOM_MODEL_OPTION = "__aiden_custom_model__";
 const FIRST_BOT_NAME = "Chief";
 const FIRST_BOT_SPAWN_KEY = "onboarding:first";
 const FIRST_BOT_LOCK = "aiden:onboarding-first-bot";
-/** A small set of colors for the Muse's identity, sky first (the default). */
-const MUSE_COLOR_OPTIONS = [...new Set([DEFAULT_MUSE_COLOR, ...GROK_BOT_COLORS])].slice(0, 6);
-
 /** The Muse identity/model steps that show progress dots; "intro" and "bot" don't. */
-const MUSE_ONBOARDING_STEPS = ["name", "museName", "color", "model"] as const;
+const MUSE_ONBOARDING_STEPS = ["name", "museName", "model"] as const;
 
 /** Progress dots for the Muse onboarding steps (docs/muse/DESIGN.md "Onboarding"). */
 function StepDots({ step }: { step: (typeof MUSE_ONBOARDING_STEPS)[number] }) {
@@ -59,7 +60,7 @@ function StepDots({ step }: { step: (typeof MUSE_ONBOARDING_STEPS)[number] }) {
           key={candidate}
           className={cn(
             "h-1.5 w-1.5 rounded-full transition-colors",
-            i <= index ? "bg-foreground" : "bg-border",
+            i <= index ? "bg-welcome-ink" : "bg-welcome-line",
           )}
         />
       ))}
@@ -143,15 +144,14 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const fieldId = useId();
   const [step, setStep] = useState<
-    "loading" | "intro" | "name" | "museName" | "color" | "model" | "integrations" | "bot"
+    "loading" | "intro" | "name" | "museName" | "model" | "integrations" | "bot"
   >("loading");
-  /** What to show once the name → Muse name → color steps are done. */
+  /** What to show once the name → Muse name steps are done. */
   const [postIdentityStep, setPostIdentityStep] = useState<"model" | "integrations" | "bot">(
     "model",
   );
   const [personName, setPersonName] = useState("");
   const [museName, setMuseName] = useState(DEFAULT_MUSE_NAME);
-  const [museColor, setMuseColor] = useState(DEFAULT_MUSE_COLOR);
   const [integrationSetup, setIntegrationSetup] = useState<IntegrationSetupState | null>(null);
   const needsIntegrationSetup = integrationSetup?.needsSetup ?? false;
   const [integrationServers, setIntegrationServers] = useState<string[]>([]);
@@ -413,10 +413,6 @@ export function OnboardingPage() {
   function saveMuseName() {
     if (!museName.trim()) return;
     setError(null);
-    setStep("color");
-  }
-
-  function saveMuseColor() {
     setStep(postIdentityStep);
   }
 
@@ -427,7 +423,7 @@ export function OnboardingPage() {
     try {
       const bot = await ensureFirstBot({
         name: museName.trim() || DEFAULT_MUSE_NAME,
-        color: museColor,
+        color: DEFAULT_MUSE_COLOR,
         ...museBotProfile(museName.trim() || DEFAULT_MUSE_NAME, personName),
       });
       for (const serverId of integrationServers) {
@@ -455,40 +451,39 @@ export function OnboardingPage() {
   }, [step]);
 
   return (
-    <div className="relative isolate flex min-h-screen items-center justify-center px-6 py-16">
-      <AuroraBackground />
-      <div className="mx-auto w-full max-w-[440px]">
+    <WelcomeFrame width="w-[440px]">
+      <div className="w-full">
         {step === "loading" ? (
-          <p className="text-muted-foreground">
+          <p className="text-welcome-ink-2">
             <Trans>Loading…</Trans>
           </p>
         ) : null}
         {step === "intro" ? (
           <div className="flex flex-col items-center text-center">
-            <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse-intro" face="muse" size={120} />
-            <h1 className="mt-7 font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+            <span aria-hidden="true" className="welcome-orb size-14 rounded-full" />
+            <h1 className={`mt-7 ${welcomeHeadingClass}`}>
               <Trans>
                 Hi, I'm Nova — <em className="italic">already on it.</em>
               </Trans>
             </h1>
-            <p className="mt-3 text-[15px] text-muted-foreground">
+            <p className="mt-3 text-[15px] text-welcome-ink-2">
               <Trans>
                 I'll plan, research, draft and follow up in the background, and always ask before
                 anything I can't undo.
               </Trans>
             </p>
-            <Button className="mt-8 h-12 w-full text-[15px]" onClick={() => setStep("name")}>
+            <Button className={`${welcomeSubmitClass} mt-8`} onClick={() => setStep("name")}>
               <Trans>Let's get started</Trans>
             </Button>
           </div>
         ) : null}
         {step === "name" ? (
           <div>
-            <h1 className="font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+            <h1 className={`${welcomeHeadingClass}`}>
               <Trans>First, what should I call you?</Trans>
             </h1>
             <Input
-              className="mt-8 h-14 rounded-xl text-[16px]"
+              className={`${welcomeFieldClass} mt-8`}
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
               onKeyDown={(e) => {
@@ -502,7 +497,7 @@ export function OnboardingPage() {
             {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
             <div className="mt-6">
               <Button
-                className="h-12 w-full text-[15px]"
+                className={welcomeSubmitClass}
                 disabled={!personName.trim()}
                 onClick={() => void saveName()}
               >
@@ -514,11 +509,11 @@ export function OnboardingPage() {
         ) : null}
         {step === "museName" ? (
           <div>
-            <h1 className="font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
+            <h1 className={`${welcomeHeadingClass}`}>
               <Trans>And what would you like to call me?</Trans>
             </h1>
             <Input
-              className="mt-8 h-14 rounded-xl text-[16px]"
+              className={`${welcomeFieldClass} mt-8`}
               value={museName}
               onChange={(e) => setMuseName(e.target.value)}
               onKeyDown={(e) => {
@@ -532,7 +527,7 @@ export function OnboardingPage() {
             {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
             <div className="mt-6">
               <Button
-                className="h-12 w-full text-[15px]"
+                className={welcomeSubmitClass}
                 disabled={!museName.trim()}
                 onClick={saveMuseName}
               >
@@ -542,49 +537,13 @@ export function OnboardingPage() {
             <StepDots step="museName" />
           </div>
         ) : null}
-        {step === "color" ? (
-          <div>
-            <h1 className="text-center font-display text-[40px] leading-[1.05] tracking-[-0.01em] text-foreground">
-              <Trans>Pick my color.</Trans>
-            </h1>
-            <div className="mt-8 flex justify-center">
-              <BotAvatar color={museColor} identity={museName} face="muse" size={120} />
-            </div>
-            <div className="mt-8 grid grid-cols-6 place-items-center gap-2">
-              {MUSE_COLOR_OPTIONS.map((color) => {
-                const selected = museColor.toLowerCase() === color.toLowerCase();
-                return (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setMuseColor(color)}
-                    aria-label={t`Color ${color}`}
-                    aria-pressed={selected}
-                    className={`size-8 rounded-full border transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring ${
-                      selected
-                        ? "scale-105 border-transparent ring-2 ring-foreground ring-offset-2 ring-offset-background"
-                        : "border-border"
-                    }`}
-                    style={{ backgroundColor: color }}
-                  />
-                );
-              })}
-            </div>
-            <div className="mt-6">
-              <Button className="h-12 w-full text-[15px]" onClick={saveMuseColor}>
-                <Trans>Continue</Trans>
-              </Button>
-            </div>
-            <StepDots step="color" />
-          </div>
-        ) : null}
         {step === "model" ? (
           <div>
-            <h1 className="text-[32px] font-medium text-foreground">
+            <h1 className={welcomeHeadingClass}>
               <Trans>Last thing — connect the brain I'll think with.</Trans>
             </h1>
             <StepDots step="model" />
-            <div className="mt-8 block text-sm font-medium text-foreground">
+            <div className="mt-8 block text-sm font-medium text-welcome-ink">
               <span>
                 <Trans>Provider</Trans>
               </span>
@@ -596,7 +555,10 @@ export function OnboardingPage() {
                 }}
                 items={providerItems}
               >
-                <SelectTrigger aria-label={t`Provider`} className="mt-2 w-full">
+                <SelectTrigger
+                  aria-label={t`Provider`}
+                  className="mt-2 h-12 w-full rounded-xl border-welcome-line bg-welcome-paper text-welcome-ink"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -608,7 +570,7 @@ export function OnboardingPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="mt-6 block text-sm text-foreground">
+            <div className="mt-6 block text-sm text-welcome-ink">
               {isOpenAiCompatible ? (
                 <>
                   <label htmlFor={`${fieldId}-base-url`} className="block font-medium">
@@ -620,12 +582,13 @@ export function OnboardingPage() {
                       aria-label={t`OpenAI-compatible server URL`}
                       placeholder="http://127.0.0.1:8000/v1"
                       autoComplete="off"
-                      className="mt-2"
+                      className={welcomeFieldClass}
                     />
                   </label>
                   <div className="mt-3">
                     <Button
                       variant="outline"
+                      className="rounded-full border-welcome-line bg-transparent text-welcome-ink"
                       disabled={probing || !baseUrl.trim()}
                       onClick={() => void probeServerModels()}
                     >
@@ -652,7 +615,10 @@ export function OnboardingPage() {
                         }}
                         items={probeModelItems}
                       >
-                        <SelectTrigger aria-label={t`Models from server`} className="mt-2 w-full">
+                        <SelectTrigger
+                          aria-label={t`Models from server`}
+                          className="mt-2 h-12 w-full rounded-xl border-welcome-line bg-welcome-paper text-welcome-ink"
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -675,14 +641,14 @@ export function OnboardingPage() {
                         }}
                         aria-label={t`Model id`}
                         placeholder="exact-model-id"
-                        className="mt-2"
+                        className={welcomeFieldClass}
                       />
                     )}
                     {probeModels.length && manualModelId ? (
                       <Button
                         variant="link"
                         size="xs"
-                        className="mt-2 px-0 text-muted-foreground"
+                        className="mt-2 px-0 text-welcome-ink-2"
                         onClick={() => {
                           setManualModelId(false);
                           setModelId(probeModels[0] ?? "");
@@ -743,7 +709,10 @@ export function OnboardingPage() {
                     }}
                     items={modelItems}
                   >
-                    <SelectTrigger aria-label={t`Model`} className="mt-2 w-full">
+                    <SelectTrigger
+                      aria-label={t`Model`}
+                      className="mt-2 h-12 w-full rounded-xl border-welcome-line bg-welcome-paper text-welcome-ink"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -760,17 +729,17 @@ export function OnboardingPage() {
             {subscriptionSignIn ? (
               <div className="mt-4">
                 {oauth ? (
-                  <div className="rounded-lg border border-border px-3.5 py-3">
+                  <div className="rounded-lg border border-welcome-line px-3.5 py-3">
                     {oauth.mode === "auth-url" ? (
                       <>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-welcome-ink-2">
                           <Trans>
                             Finish signing in at{" "}
                             <a
                               href={oauth.verificationUri}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-foreground underline"
+                              className="text-welcome-ink underline"
                             >
                               {new URL(oauth.verificationUri).hostname}
                             </a>
@@ -787,42 +756,47 @@ export function OnboardingPage() {
                             placeholder="http://localhost:53692/callback?code=…"
                           />
                           <Button
+                            className="rounded-full bg-welcome-ink text-welcome-paper hover:bg-welcome-ink/90"
                             disabled={!pasteCode.trim()}
                             onClick={() => void submitOAuthCode()}
                           >
                             <Trans>Submit</Trans>
                           </Button>
                         </div>
-                        <p className="mt-2 text-sm text-muted-foreground">
+                        <p className="mt-2 text-sm text-welcome-ink-2">
                           <Trans>Waiting for sign-in…</Trans>
                         </p>
                       </>
                     ) : (
                       <>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-welcome-ink-2">
                           <Trans>
                             Enter this code at{" "}
                             <a
                               href={oauth.verificationUri}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-foreground underline"
+                              className="text-welcome-ink underline"
                             >
                               {oauth.verificationUri.replace(/^https:\/\//, "")}
                             </a>
                           </Trans>
                         </p>
-                        <p className="mt-2 font-mono text-[22px] tracking-[0.2em] text-foreground">
+                        <p className="mt-2 font-mono text-[22px] tracking-[0.2em] text-welcome-ink">
                           {oauth.userCode}
                         </p>
-                        <p className="mt-2 text-sm text-muted-foreground">
+                        <p className="mt-2 text-sm text-welcome-ink-2">
                           <Trans>Waiting for sign-in…</Trans>
                         </p>
                       </>
                     )}
                   </div>
                 ) : (
-                  <Button disabled={oauthPending} onClick={() => beginSelectedSubscriptionSignIn()}>
+                  <Button
+                    className={`${welcomeSubmitClass} mt-0`}
+                    disabled={oauthPending}
+                    onClick={() => beginSelectedSubscriptionSignIn()}
+                  >
                     {oauthPending ? <Trans>Starting…</Trans> : signInLabel}
                   </Button>
                 )}
@@ -830,7 +804,7 @@ export function OnboardingPage() {
             ) : null}
             {acceptsKey ? (
               isOpenAiCompatible ? (
-                <details className="mt-4 text-sm text-muted-foreground">
+                <details className="mt-4 text-sm text-welcome-ink-2">
                   <summary className="w-fit cursor-pointer select-none">
                     <Trans>API key</Trans>
                   </summary>
@@ -841,13 +815,13 @@ export function OnboardingPage() {
                     placeholder={t`Optional`}
                     type="password"
                     autoComplete="new-password"
-                    className="mt-2"
+                    className={welcomeFieldClass}
                   />
                 </details>
               ) : (
                 <label
                   htmlFor={`${fieldId}-api-key`}
-                  className="mt-4 block text-sm font-medium text-foreground"
+                  className="mt-4 block text-sm font-medium text-welcome-ink"
                 >
                   {subscriptionSignIn ? <Trans>Or paste an API key</Trans> : <Trans>API key</Trans>}
                   <Input
@@ -857,15 +831,19 @@ export function OnboardingPage() {
                     placeholder="sk-…"
                     type="password"
                     autoComplete="new-password"
-                    className="mt-2"
+                    className={welcomeFieldClass}
                   />
                 </label>
               )
             ) : null}
             {notice ? <p className="mt-3 text-sm text-success">{notice}</p> : null}
             {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-            <div className="mt-6 flex gap-3">
-              <Button disabled={!canSaveModel} onClick={() => void saveModel()}>
+            <div className="mt-6 flex w-full gap-3">
+              <Button
+                className={`${welcomeSubmitClass} mt-0`}
+                disabled={!canSaveModel}
+                onClick={() => void saveModel()}
+              >
                 <Trans>Continue</Trans>
               </Button>
             </div>
@@ -886,18 +864,18 @@ export function OnboardingPage() {
             {error ? (
               <div>
                 <p className="text-sm text-destructive">{error}</p>
-                <Button className="mt-4" onClick={() => void createFirstBot()}>
+                <Button className={welcomeSubmitClass} onClick={() => void createFirstBot()}>
                   <Trans>Try again</Trans>
                 </Button>
               </div>
             ) : (
-              <p className="text-muted-foreground">
+              <p className="text-welcome-ink-2">
                 <Trans>Opening chat…</Trans>
               </p>
             )}
           </div>
         ) : null}
       </div>
-    </div>
+    </WelcomeFrame>
   );
 }

@@ -2680,9 +2680,6 @@ msgstr "People"
 msgid "Personal credential"
 msgstr "Personal credential"
 
-msgid "Pick my color."
-msgstr "Pick my color."
-
 msgid "Pin"
 msgstr "Pin"
 

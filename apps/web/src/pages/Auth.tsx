@@ -1,19 +1,18 @@
-import { DEFAULT_MUSE_COLOR } from "@aiden/contracts";
 import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@aiden/core";
-import { BotAvatar, Button, Input, Label } from "@aiden/ui-web";
+import { Button, Input, Label } from "@aiden/ui-web";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../lib/auth";
 import { clearSpaceSelection } from "../lib/rpc";
-import { AuroraBackground } from "./muse/intro/AuroraBackground";
+import { WelcomeFrame, welcomeFieldClass, welcomeSubmitClass } from "./welcome/WelcomeFrame";
 
 type AuthMode = "in" | "up" | "forgot";
 type PasswordResetCapabilities = { passwordReset: boolean; resetUrl: string | null };
 
-const fieldClass = "mt-2 h-12 rounded-xl px-4 text-base md:text-base";
-const submitClass = "mt-3 h-12 w-full rounded-xl text-base";
+const fieldClass = welcomeFieldClass;
+const submitClass = welcomeSubmitClass;
 const AUTH_CAPABILITIES_TIMEOUT_MS = 8_000;
 const MAX_AUTH_CAPABILITIES_RESPONSE_BYTES = 64 * 1024;
 
@@ -123,10 +122,13 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   }
 
   return (
-    <AuthFrame onSubmit={submit} title={title}>
+    <WelcomeFrame onSubmit={submit} title={title}>
       {sent ? (
         <div className="w-full text-center">
-          <Link to="/sign-in" className="font-medium text-foreground">
+          <Link
+            to="/sign-in"
+            className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+          >
             <Trans>Back to sign in</Trans>
           </Link>
         </div>
@@ -134,7 +136,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         <>
           {mode === "up" ? (
             <div className="mb-4 w-full">
-              <Label htmlFor="name" className="text-muted-foreground">
+              <Label htmlFor="name" className="text-welcome-ink-2">
                 <Trans>Name</Trans>
               </Label>
               <Input
@@ -149,7 +151,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
             </div>
           ) : null}
           <div className="w-full">
-            <Label htmlFor="email" className="text-muted-foreground">
+            <Label htmlFor="email" className="text-welcome-ink-2">
               <Trans>Email</Trans>
             </Label>
             <Input
@@ -166,7 +168,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
           </div>
           {mode !== "forgot" ? (
             <div className="mt-4 w-full">
-              <Label htmlFor={passwordFieldId} className="text-muted-foreground">
+              <Label htmlFor={passwordFieldId} className="text-welcome-ink-2">
                 <Trans>Password</Trans>
               </Label>
               <div className="relative">
@@ -189,14 +191,17 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                   onClick={() => setShowPassword((shown) => !shown)}
                   aria-label={showPassword ? t`Hide password` : t`Show password`}
                   aria-pressed={showPassword}
-                  className="absolute inset-y-0 right-2 my-auto text-muted-foreground"
+                  className="absolute inset-y-0 right-2 my-auto text-welcome-ink-3 hover:bg-transparent hover:text-welcome-ink"
                 >
                   {showPassword ? <EyeOff /> : <Eye />}
                 </Button>
               </div>
               {mode === "in" && reset?.passwordReset ? (
                 <div className="mt-2 text-right text-sm">
-                  <Link to="/forgot-password" className="font-medium text-foreground">
+                  <Link
+                    to="/forgot-password"
+                    className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+                  >
                     <Trans>Forgot password?</Trans>
                   </Link>
                 </div>
@@ -219,30 +224,39 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               <Trans>Create account</Trans>
             )}
           </Button>
-          <p className="mt-8 text-muted-foreground">
+          <p className="mt-7 text-sm text-welcome-ink-2">
             {mode === "in" ? (
               <>
                 <Trans>Don’t have an account?</Trans>{" "}
-                <Link to="/sign-up" className="font-medium text-foreground">
+                <Link
+                  to="/sign-up"
+                  className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+                >
                   <Trans>Sign up</Trans>
                 </Link>
               </>
             ) : mode === "up" ? (
               <>
                 <Trans>Already have an account?</Trans>{" "}
-                <Link to="/sign-in" className="font-medium text-foreground">
+                <Link
+                  to="/sign-in"
+                  className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+                >
                   <Trans>Sign in</Trans>
                 </Link>
               </>
             ) : (
-              <Link to="/sign-in" className="font-medium text-foreground">
+              <Link
+                to="/sign-in"
+                className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+              >
                 <Trans>Back to sign in</Trans>
               </Link>
             )}
           </p>
         </>
       )}
-    </AuthFrame>
+    </WelcomeFrame>
   );
 }
 
@@ -282,7 +296,7 @@ export function PasswordResetPage() {
   }
 
   return (
-    <AuthFrame onSubmit={submit} title={<Trans>Choose a new password</Trans>}>
+    <WelcomeFrame onSubmit={submit} title={<Trans>Choose a new password</Trans>}>
       {complete ? (
         <div role="status" className="w-full text-center">
           <p className="text-lg">
@@ -325,34 +339,7 @@ export function PasswordResetPage() {
           </Link>
         </>
       )}
-    </AuthFrame>
-  );
-}
-
-function AuthFrame({
-  title,
-  onSubmit,
-  children,
-}: {
-  title: React.ReactNode;
-  onSubmit: (event: React.FormEvent) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    // `isolate` keeps the aurora (negative z-index) above the page background.
-    <div className="relative isolate flex min-h-full items-center justify-center px-6 py-16 text-foreground">
-      <AuroraBackground />
-      <form onSubmit={onSubmit} className="flex w-[460px] max-w-full flex-col items-center">
-        <BotAvatar color={DEFAULT_MUSE_COLOR} identity="muse" face="muse" size={88} />
-        <h1
-          aria-live="polite"
-          className="mb-9 mt-6 text-center font-display text-[44px] leading-[1.05] tracking-[-0.01em]"
-        >
-          {title}
-        </h1>
-        {children}
-      </form>
-    </div>
+    </WelcomeFrame>
   );
 }
 
@@ -371,7 +358,7 @@ function PasswordField({
 }) {
   return (
     <div className={`w-full ${className}`}>
-      <Label htmlFor={id} className="text-muted-foreground">
+      <Label htmlFor={id} className="text-welcome-ink-2">
         {label}
       </Label>
       <Input

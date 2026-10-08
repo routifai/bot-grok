@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "bash infra/railway/start-nova.sh",
-    "healthcheckPath": "/health",
+    "healthcheckPath": "/",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
