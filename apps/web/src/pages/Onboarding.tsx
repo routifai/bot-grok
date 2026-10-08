@@ -60,7 +60,7 @@ function StepDots({ step }: { step: (typeof MUSE_ONBOARDING_STEPS)[number] }) {
           key={candidate}
           className={cn(
             "h-1.5 w-1.5 rounded-full transition-colors",
-            i <= index ? "bg-welcome-ink" : "bg-welcome-line",
+            i <= index ? "bg-welcome-night-ink" : "bg-welcome-night-line/16",
           )}
         />
       ))}
@@ -454,7 +454,7 @@ export function OnboardingPage() {
     <WelcomeFrame width="w-[440px]">
       <div className="w-full">
         {step === "loading" ? (
-          <p className="text-welcome-ink-2">
+          <p className="text-welcome-night-ink-2">
             <Trans>Loading…</Trans>
           </p>
         ) : null}
@@ -466,7 +466,7 @@ export function OnboardingPage() {
                 Hi, I'm Nova — <em className="italic">already on it.</em>
               </Trans>
             </h1>
-            <p className="mt-3 text-[15px] text-welcome-ink-2">
+            <p className="mt-3 text-[15px] text-welcome-night-ink-2">
               <Trans>
                 I'll plan, research, draft and follow up in the background, and always ask before
                 anything I can't undo.
@@ -543,7 +543,7 @@ export function OnboardingPage() {
               <Trans>Last thing — connect the brain I'll think with.</Trans>
             </h1>
             <StepDots step="model" />
-            <div className="mt-8 block text-sm font-medium text-welcome-ink">
+            <div className="mt-8 block text-sm font-medium text-welcome-night-ink">
               <span>
                 <Trans>Provider</Trans>
               </span>
@@ -557,7 +557,7 @@ export function OnboardingPage() {
               >
                 <SelectTrigger
                   aria-label={t`Provider`}
-                  className="mt-2 h-12 w-full rounded-xl border-welcome-line bg-welcome-paper text-welcome-ink"
+                  className="mt-2 h-12 w-full rounded-xl border-welcome-night-line/16 bg-welcome-night-bubble text-welcome-night-ink"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -570,7 +570,7 @@ export function OnboardingPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="mt-6 block text-sm text-welcome-ink">
+            <div className="mt-6 block text-sm text-welcome-night-ink">
               {isOpenAiCompatible ? (
                 <>
                   <label htmlFor={`${fieldId}-base-url`} className="block font-medium">
@@ -588,7 +588,7 @@ export function OnboardingPage() {
                   <div className="mt-3">
                     <Button
                       variant="outline"
-                      className="rounded-full border-welcome-line bg-transparent text-welcome-ink"
+                      className="rounded-full border-welcome-night-line/16 bg-transparent text-welcome-night-ink"
                       disabled={probing || !baseUrl.trim()}
                       onClick={() => void probeServerModels()}
                     >
@@ -617,7 +617,7 @@ export function OnboardingPage() {
                       >
                         <SelectTrigger
                           aria-label={t`Models from server`}
-                          className="mt-2 h-12 w-full rounded-xl border-welcome-line bg-welcome-paper text-welcome-ink"
+                          className="mt-2 h-12 w-full rounded-xl border-welcome-night-line/16 bg-welcome-night-bubble text-welcome-night-ink"
                         >
                           <SelectValue />
                         </SelectTrigger>
@@ -648,7 +648,7 @@ export function OnboardingPage() {
                       <Button
                         variant="link"
                         size="xs"
-                        className="mt-2 px-0 text-welcome-ink-2"
+                        className="mt-2 px-0 text-welcome-night-ink-2"
                         onClick={() => {
                           setManualModelId(false);
                           setModelId(probeModels[0] ?? "");
@@ -711,7 +711,7 @@ export function OnboardingPage() {
                   >
                     <SelectTrigger
                       aria-label={t`Model`}
-                      className="mt-2 h-12 w-full rounded-xl border-welcome-line bg-welcome-paper text-welcome-ink"
+                      className="mt-2 h-12 w-full rounded-xl border-welcome-night-line/16 bg-welcome-night-bubble text-welcome-night-ink"
                     >
                       <SelectValue />
                     </SelectTrigger>
@@ -729,17 +729,17 @@ export function OnboardingPage() {
             {subscriptionSignIn ? (
               <div className="mt-4">
                 {oauth ? (
-                  <div className="rounded-lg border border-welcome-line px-3.5 py-3">
+                  <div className="rounded-lg border border-welcome-night-line/16 px-3.5 py-3">
                     {oauth.mode === "auth-url" ? (
                       <>
-                        <p className="text-sm text-welcome-ink-2">
+                        <p className="text-sm text-welcome-night-ink-2">
                           <Trans>
                             Finish signing in at{" "}
                             <a
                               href={oauth.verificationUri}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-welcome-ink underline"
+                              className="text-welcome-night-ink underline"
                             >
                               {new URL(oauth.verificationUri).hostname}
                             </a>
@@ -750,42 +750,43 @@ export function OnboardingPage() {
                           <Input
                             value={pasteCode}
                             onChange={(e) => setPasteCode(e.target.value)}
+                            className={`${welcomeFieldClass} mt-0`}
                             aria-label={t`Authorization code or callback URL`}
                             autoComplete="off"
                             spellCheck={false}
                             placeholder="http://localhost:53692/callback?code=…"
                           />
                           <Button
-                            className="rounded-full bg-welcome-ink text-welcome-paper hover:bg-welcome-ink/90"
+                            className="rounded-full bg-welcome-night-ink text-welcome-night hover:bg-welcome-paper"
                             disabled={!pasteCode.trim()}
                             onClick={() => void submitOAuthCode()}
                           >
                             <Trans>Submit</Trans>
                           </Button>
                         </div>
-                        <p className="mt-2 text-sm text-welcome-ink-2">
+                        <p className="mt-2 text-sm text-welcome-night-ink-2">
                           <Trans>Waiting for sign-in…</Trans>
                         </p>
                       </>
                     ) : (
                       <>
-                        <p className="text-sm text-welcome-ink-2">
+                        <p className="text-sm text-welcome-night-ink-2">
                           <Trans>
                             Enter this code at{" "}
                             <a
                               href={oauth.verificationUri}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-welcome-ink underline"
+                              className="text-welcome-night-ink underline"
                             >
                               {oauth.verificationUri.replace(/^https:\/\//, "")}
                             </a>
                           </Trans>
                         </p>
-                        <p className="mt-2 font-mono text-[22px] tracking-[0.2em] text-welcome-ink">
+                        <p className="mt-2 font-mono text-[22px] tracking-[0.2em] text-welcome-night-ink">
                           {oauth.userCode}
                         </p>
-                        <p className="mt-2 text-sm text-welcome-ink-2">
+                        <p className="mt-2 text-sm text-welcome-night-ink-2">
                           <Trans>Waiting for sign-in…</Trans>
                         </p>
                       </>
@@ -804,7 +805,7 @@ export function OnboardingPage() {
             ) : null}
             {acceptsKey ? (
               isOpenAiCompatible ? (
-                <details className="mt-4 text-sm text-welcome-ink-2">
+                <details className="mt-4 text-sm text-welcome-night-ink-2">
                   <summary className="w-fit cursor-pointer select-none">
                     <Trans>API key</Trans>
                   </summary>
@@ -821,7 +822,7 @@ export function OnboardingPage() {
               ) : (
                 <label
                   htmlFor={`${fieldId}-api-key`}
-                  className="mt-4 block text-sm font-medium text-welcome-ink"
+                  className="mt-4 block text-sm font-medium text-welcome-night-ink"
                 >
                   {subscriptionSignIn ? <Trans>Or paste an API key</Trans> : <Trans>API key</Trans>}
                   <Input
@@ -869,7 +870,7 @@ export function OnboardingPage() {
                 </Button>
               </div>
             ) : (
-              <p className="text-welcome-ink-2">
+              <p className="text-welcome-night-ink-2">
                 <Trans>Opening chat…</Trans>
               </p>
             )}

@@ -127,7 +127,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         <div className="w-full text-center">
           <Link
             to="/sign-in"
-            className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+            className="font-medium text-welcome-night-ink underline-offset-4 hover:underline"
           >
             <Trans>Back to sign in</Trans>
           </Link>
@@ -136,7 +136,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         <>
           {mode === "up" ? (
             <div className="mb-4 w-full">
-              <Label htmlFor="name" className="text-welcome-ink-2">
+              <Label htmlFor="name" className="text-welcome-night-ink-2">
                 <Trans>Name</Trans>
               </Label>
               <Input
@@ -151,7 +151,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
             </div>
           ) : null}
           <div className="w-full">
-            <Label htmlFor="email" className="text-welcome-ink-2">
+            <Label htmlFor="email" className="text-welcome-night-ink-2">
               <Trans>Email</Trans>
             </Label>
             <Input
@@ -168,7 +168,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
           </div>
           {mode !== "forgot" ? (
             <div className="mt-4 w-full">
-              <Label htmlFor={passwordFieldId} className="text-welcome-ink-2">
+              <Label htmlFor={passwordFieldId} className="text-welcome-night-ink-2">
                 <Trans>Password</Trans>
               </Label>
               <div className="relative">
@@ -191,7 +191,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                   onClick={() => setShowPassword((shown) => !shown)}
                   aria-label={showPassword ? t`Hide password` : t`Show password`}
                   aria-pressed={showPassword}
-                  className="absolute inset-y-0 right-2 my-auto text-welcome-ink-3 hover:bg-transparent hover:text-welcome-ink"
+                  className="absolute inset-y-0 right-2 my-auto text-welcome-night-ink-3 hover:bg-transparent hover:text-welcome-night-ink"
                 >
                   {showPassword ? <EyeOff /> : <Eye />}
                 </Button>
@@ -200,7 +200,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                 <div className="mt-2 text-right text-sm">
                   <Link
                     to="/forgot-password"
-                    className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+                    className="font-medium text-welcome-night-ink underline-offset-4 hover:underline"
                   >
                     <Trans>Forgot password?</Trans>
                   </Link>
@@ -224,13 +224,13 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               <Trans>Create account</Trans>
             )}
           </Button>
-          <p className="mt-7 text-sm text-welcome-ink-2">
+          <p className="mt-7 text-sm text-welcome-night-ink-2">
             {mode === "in" ? (
               <>
                 <Trans>Don’t have an account?</Trans>{" "}
                 <Link
                   to="/sign-up"
-                  className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+                  className="font-medium text-welcome-night-ink underline-offset-4 hover:underline"
                 >
                   <Trans>Sign up</Trans>
                 </Link>
@@ -240,7 +240,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                 <Trans>Already have an account?</Trans>{" "}
                 <Link
                   to="/sign-in"
-                  className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+                  className="font-medium text-welcome-night-ink underline-offset-4 hover:underline"
                 >
                   <Trans>Sign in</Trans>
                 </Link>
@@ -248,7 +248,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
             ) : (
               <Link
                 to="/sign-in"
-                className="font-medium text-welcome-ink underline-offset-4 hover:underline"
+                className="font-medium text-welcome-night-ink underline-offset-4 hover:underline"
               >
                 <Trans>Back to sign in</Trans>
               </Link>
@@ -358,7 +358,7 @@ function PasswordField({
 }) {
   return (
     <div className={`w-full ${className}`}>
-      <Label htmlFor={id} className="text-welcome-ink-2">
+      <Label htmlFor={id} className="text-welcome-night-ink-2">
         {label}
       </Label>
       <Input

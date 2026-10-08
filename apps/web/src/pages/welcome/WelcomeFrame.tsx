@@ -1,15 +1,20 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
+import { NovaMark } from "./Brand";
+import { GUTTER } from "./Cta";
+import { Grain } from "./Grain";
+import { Stars } from "./Stars";
 
-/** Shared field/button looks for pages that wear the signed-out welcome surface. */
+/** Shared field/button looks for pages that wear the signed-out welcome surface (night). */
 export const welcomeFieldClass =
-  "mt-2 h-12 rounded-xl border-welcome-line bg-welcome-paper px-4 text-base text-welcome-ink placeholder:text-welcome-ink-3 focus-visible:border-welcome-me focus-visible:ring-welcome-me/25 md:text-base dark:bg-welcome-paper";
+  "mt-2 h-12 rounded-xl border-welcome-night-line/16 bg-welcome-night-bubble px-4 text-base text-welcome-night-ink placeholder:text-welcome-night-ink-3 focus-visible:border-welcome-night-glow focus-visible:ring-welcome-night-glow/30 md:text-base dark:border-welcome-night-line/16 dark:bg-welcome-night-bubble";
 export const welcomeSubmitClass =
-  "mt-4 h-12 w-full rounded-full bg-welcome-ink text-[15px] font-semibold text-welcome-paper hover:bg-welcome-ink/90 focus-visible:ring-welcome-me/60";
+  "mt-4 h-12 w-full rounded-full bg-welcome-night-ink text-[15px] font-semibold text-welcome-night hover:bg-welcome-paper focus-visible:ring-welcome-night-glow/60";
 
 export const welcomeHeadingClass =
-  "text-center text-[clamp(34px,5vw,44px)] font-normal leading-[1.02] tracking-[-0.035em] text-balance";
+  "welcome-display text-center text-[clamp(34px,5vw,44px)] font-normal leading-[1.02] tracking-[-0.035em] text-balance text-welcome-night-ink";
 
-/** Same light surface as the signed-out welcome page (`welcome-*` tokens), whatever the theme. */
+/** Same night surface as the signed-out welcome page (`welcome-*` tokens), whatever the theme. */
 export function WelcomeFrame({
   title,
   onSubmit,
@@ -31,22 +36,25 @@ export function WelcomeFrame({
       {children}
     </>
   );
+  const rootRef = useRef<HTMLDivElement>(null);
   const bodyClass = `flex ${width} max-w-full flex-col items-center`;
   return (
     <div
-      className="flex min-h-full flex-col bg-welcome-bg text-welcome-ink antialiased"
+      ref={rootRef}
+      className="relative isolate flex min-h-full flex-col bg-welcome-night text-welcome-night-ink antialiased [color-scheme:dark]"
       data-aiden-surface="welcome"
     >
-      <header className="mx-auto flex w-full max-w-[1120px] items-center px-[clamp(16px,4vw,40px)] py-[22px]">
+      <Stars scrollRef={rootRef} />
+      <Grain />
+      <header className={`relative z-1 flex w-full items-center py-[22px] ${GUTTER}`}>
         <Link
           to="/"
-          className="flex items-center gap-[9px] rounded-md text-xl font-semibold tracking-[-0.02em] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-welcome-me"
+          className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-welcome-night-glow"
         >
-          <span aria-hidden="true" className="welcome-orb size-[18px] rounded-full" />
-          nova
+          <NovaMark />
         </Link>
       </header>
-      <main className="flex flex-1 items-center justify-center px-4 pb-[12vh]">
+      <main className="relative z-1 flex flex-1 items-center justify-center px-4 pb-[12vh]">
         {onSubmit ? (
           <form onSubmit={onSubmit} className={bodyClass}>
             {body}

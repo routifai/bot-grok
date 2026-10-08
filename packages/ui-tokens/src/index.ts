@@ -234,6 +234,78 @@ export type ColorTokens = {
   "welcome-rec"?: string;
   /** Signed-out welcome page (light in both themes): the recording dot. */
   "welcome-rec-dot"?: string;
+  /** Signed-out welcome page (same in both themes): the night page. */
+  "welcome-night"?: string;
+  /** Signed-out welcome page (same in both themes): text on night. */
+  "welcome-night-ink"?: string;
+  /** Signed-out welcome page (same in both themes): secondary text on night. */
+  "welcome-night-ink-2"?: string;
+  /** Signed-out welcome page (same in both themes): tertiary text on night. */
+  "welcome-night-ink-3"?: string;
+  /** Signed-out welcome page (same in both themes): the hero sub line. */
+  "welcome-night-sub"?: string;
+  /** Signed-out welcome page (same in both themes): a demo card's body copy. */
+  "welcome-night-body"?: string;
+  /** Signed-out welcome page (same in both themes): the accent glow. */
+  "welcome-night-glow"?: string;
+  /** Signed-out welcome page (same in both themes): an eyebrow on a demo card. */
+  "welcome-night-glow-ink"?: string;
+  /** Signed-out welcome page (same in both themes): a chip's text on a demo card. */
+  "welcome-night-glow-ink-2"?: string;
+  /** Signed-out welcome page (same in both themes): the mark orb highlight. */
+  "welcome-night-orb-hi"?: string;
+  /** Signed-out welcome page (same in both themes): the mark orb shade. */
+  "welcome-night-orb-lo"?: string;
+  /** Signed-out welcome page (same in both themes): the fork and the cursor. */
+  "welcome-night-rose"?: string;
+  /** Signed-out welcome page (same in both themes): the ask icon on night. */
+  "welcome-night-amber"?: string;
+  /** Signed-out welcome page (same in both themes): Nova's bubble on a demo card. */
+  "welcome-night-bubble"?: string;
+  /** Signed-out welcome page (same in both themes): a panel on a demo card. */
+  "welcome-night-panel"?: string;
+  /** Signed-out welcome page (same in both themes): a quiet button on a demo card. */
+  "welcome-night-key"?: string;
+  /** Signed-out welcome page (same in both themes): a switch that is off. */
+  "welcome-night-switch"?: string;
+  /** Signed-out welcome page (same in both themes): the film's Sound and Close pills. */
+  "welcome-night-pill"?: string;
+  /** Signed-out welcome page (same in both themes): the computer's status bar. */
+  "welcome-night-bar"?: string;
+  /** Signed-out welcome page (same in both themes): the recording label on night. */
+  "welcome-night-rec-ink"?: string;
+  /** Signed-out welcome page (same in both themes): a star in the field. */
+  "welcome-night-star"?: string;
+  /** Signed-out welcome page (same in both themes): a hairline on night. */
+  "welcome-night-line"?: string;
+  /** Signed-out welcome page (same in both themes): the computer's desktop, lit corner. */
+  "welcome-screen-hi"?: string;
+  /** Signed-out welcome page (same in both themes): the computer's desktop, middle. */
+  "welcome-screen-mid"?: string;
+  /** Signed-out welcome page (same in both themes): the computer's desktop, far corner. */
+  "welcome-screen-lo"?: string;
+  /** Signed-out welcome page (same in both themes): the light sheet under the night. */
+  "welcome-sheet"?: string;
+  /** Signed-out welcome page (same in both themes): a hairline on the sheet. */
+  "welcome-sheet-line"?: string;
+  /** Signed-out welcome page (same in both themes): a button border on the sheet. */
+  "welcome-sheet-line-2"?: string;
+  /** Signed-out welcome page (same in both themes): secondary text on the sheet. */
+  "welcome-sheet-ink-2"?: string;
+  /** Signed-out welcome page (same in both themes): muted text on a light surface. */
+  "welcome-mute"?: string;
+  /** Signed-out welcome page (same in both themes): the created document. */
+  "welcome-doc"?: string;
+  /** Signed-out welcome page (same in both themes): the created document's text. */
+  "welcome-doc-ink"?: string;
+  /** Signed-out welcome page (same in both themes): a window dot in the computer's browser. */
+  "welcome-app-dot"?: string;
+  /** Signed-out welcome page (same in both themes): an input border in the computer's browser. */
+  "welcome-app-line"?: string;
+  /** Signed-out welcome page (same in both themes): a row border in the computer's browser. */
+  "welcome-app-line-2"?: string;
+  /** Signed-out welcome page (same in both themes): a placeholder in the computer's browser. */
+  "welcome-app-hint"?: string;
 };
 
 export const darkTokens = {
@@ -390,6 +462,43 @@ const tiles = {
   "welcome-panel": "#F4F4F7",
   "welcome-rec": "#C2335E",
   "welcome-rec-dot": "#FF4D6D",
+  // The night hero, the statement and the demo cards (dark in both themes), and the sheet.
+  "welcome-night": "#07070C",
+  "welcome-night-ink": "#EEEDF7",
+  "welcome-night-ink-2": "#A6A5BB",
+  "welcome-night-ink-3": "#8584A0",
+  "welcome-night-sub": "#C9C8DC",
+  "welcome-night-body": "#C4C3D6",
+  "welcome-night-glow": "#8B93FF",
+  "welcome-night-glow-ink": "#C9CCFF",
+  "welcome-night-glow-ink-2": "#D6D8FF",
+  "welcome-night-orb-hi": "#C9CEFF",
+  "welcome-night-orb-lo": "#3B2A8F",
+  "welcome-night-rose": "#FF7AB6",
+  "welcome-night-amber": "#FFB547",
+  "welcome-night-bubble": "#1E1F33",
+  "welcome-night-panel": "#17182B",
+  "welcome-night-key": "#23243A",
+  "welcome-night-switch": "#3A3B55",
+  "welcome-night-pill": "#14141E",
+  "welcome-night-bar": "#0A0A14",
+  "welcome-night-rec-ink": "#FFB3C7",
+  "welcome-night-star": "#DCE0FF",
+  "welcome-night-line": "#D6D6FF",
+  "welcome-screen-hi": "#3A2F86",
+  "welcome-screen-mid": "#141634",
+  "welcome-screen-lo": "#0A0B16",
+  "welcome-sheet": "#F4F4F7",
+  "welcome-sheet-line": "#DCDCE6",
+  "welcome-sheet-line-2": "#C9C9D6",
+  "welcome-sheet-ink-2": "#333333",
+  "welcome-mute": "#6A6A7A",
+  "welcome-doc": "#F5F4FA",
+  "welcome-doc-ink": "#1B1B28",
+  "welcome-app-dot": "#C4C4D0",
+  "welcome-app-line": "#D6D6E2",
+  "welcome-app-line-2": "#E6E6EE",
+  "welcome-app-hint": "#9A9AA8",
 } as const;
 
 const novaLight = {

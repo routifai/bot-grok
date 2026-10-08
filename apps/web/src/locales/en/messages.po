@@ -13,8 +13,8 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-msgid "\"Thanks for Thursday. The two risks we discussed are on page 1, with owners and dates.\""
-msgstr "\"Thanks for Thursday. The two risks we discussed are on page 1, with owners and dates.\""
+msgid "\"Hi Maya, the one-page brief for Thursday is attached. The two open points are on top.\""
+msgstr "\"Hi Maya, the one-page brief for Thursday is attached. The two open points are on top.\""
 
 #. placeholder {0}: messages.length
 msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
@@ -159,17 +159,20 @@ msgstr "{workingBotName} is working"
 msgid "@{0}"
 msgstr "@{0}"
 
+msgid "✓ Sent · 9:42 AM"
+msgstr "✓ Sent · 9:42 AM"
+
 msgid "2 of 5 · Next check-in Friday, 9:00"
 msgstr "2 of 5 · Next check-in Friday, 9:00"
 
-msgid "4 pages · ready to share"
-msgstr "4 pages · ready to share"
+msgid "3 replies"
+msgstr "3 replies"
+
+msgid "3 WEEKS AGO"
+msgstr "3 WEEKS AGO"
 
 msgid "A bit of everything"
 msgstr "A bit of everything"
-
-msgid "A computer you host"
-msgstr "A computer you host"
 
 #. placeholder {0}: goal.title
 msgid "A new plan for “{0}”"
@@ -178,6 +181,9 @@ msgstr "A new plan for “{0}”"
 #. placeholder {0}: goal.title
 msgid "A plan is ready for “{0}”"
 msgstr "A plan is ready for “{0}”"
+
+msgid "A real computer in the cloud. Watch it work, or take over any time."
+msgstr "A real computer in the cloud. Watch it work, or take over any time."
 
 msgid "About groups"
 msgstr "About groups"
@@ -400,9 +406,6 @@ msgstr "Approvals"
 msgid "Approvals choose which actions wait for your OK."
 msgstr "Approvals choose which actions wait for your OK."
 
-msgid "Approvals you set"
-msgstr "Approvals you set"
-
 msgid "Approve"
 msgstr "Approve"
 
@@ -432,6 +435,9 @@ msgstr "Artifact"
 
 msgid "Artifacts"
 msgstr "Artifacts"
+
+msgid "Ask"
+msgstr "Ask"
 
 msgid "Ask {activeName}"
 msgstr "Ask {activeName}"
@@ -473,8 +479,14 @@ msgstr "Ask me first"
 msgid "Ask me first before step {0}"
 msgstr "Ask me first before step {0}"
 
+msgid "Ask once and get on with your day."
+msgstr "Ask once and get on with your day."
+
 msgid "Ask the server owner to configure this provider."
 msgstr "Ask the server owner to configure this provider."
+
+msgid "ASKS FIRST"
+msgstr "ASKS FIRST"
 
 msgid "Asleep"
 msgstr "Asleep"
@@ -572,14 +584,14 @@ msgstr "Bots act without asking by default. Add an exception only when you want 
 msgid "Bots are working"
 msgstr "Bots are working"
 
+msgid "Branch"
+msgstr "Branch"
+
 msgid "Browse MCP servers"
 msgstr "Browse MCP servers"
 
 msgid "Built-in skills can't be edited."
 msgstr "Built-in skills can't be edited."
-
-msgid "Calendar · Thu 2:00"
-msgstr "Calendar · Thu 2:00"
 
 msgid "Call"
 msgstr "Call"
@@ -633,9 +645,6 @@ msgstr "Changing…"
 msgid "Channels"
 msgstr "Channels"
 
-msgid "Chart · revenue by quarter"
-msgstr "Chart · revenue by quarter"
-
 msgid "Chart failed to render: {error}"
 msgstr "Chart failed to render: {error}"
 
@@ -683,9 +692,6 @@ msgstr "Choose a new password"
 
 msgid "Choose the Muse's color"
 msgstr "Choose the Muse's color"
-
-msgid "Choose what waits for a yes, and cap daily spending."
-msgstr "Choose what waits for a yes, and cap daily spending."
 
 msgid "Choose which connected model Nova uses."
 msgstr "Choose which connected model Nova uses."
@@ -829,9 +835,6 @@ msgstr "Connect MCP server “{name}”"
 
 msgid "Connect OAuth"
 msgstr "Connect OAuth"
-
-msgid "Connect the model provider your company approves."
-msgstr "Connect the model provider your company approves."
 
 msgid "Connect this provider to use it as your personal model."
 msgstr "Connect this provider to use it as your personal model."
@@ -1257,9 +1260,6 @@ msgstr "credential saved"
 msgid "Credentials are encrypted and never sent to the model."
 msgstr "Credentials are encrypted and never sent to the model."
 
-msgid "CRM · Q3 numbers"
-msgstr "CRM · Q3 numbers"
-
 msgid "Cron"
 msgstr "Cron"
 
@@ -1373,6 +1373,9 @@ msgstr "Didn't finish"
 msgid "Didn’t send. Try again"
 msgstr "Didn’t send. Try again"
 
+msgid "Dig into one detail on the side. The main thread stays where it was."
+msgstr "Dig into one detail on the side. The main thread stays where it was."
+
 msgid "Direct MCP"
 msgstr "Direct MCP"
 
@@ -1418,9 +1421,6 @@ msgstr "Don’t have an account?"
 msgid "Done"
 msgstr "Done"
 
-msgid "Done. It's a line chart now, with the target marked. Saved as v2."
-msgstr "Done. It's a line chart now, with the target marked. Saved as v2."
-
 msgid "Download"
 msgstr "Download"
 
@@ -1441,9 +1441,6 @@ msgstr "Downloading…"
 msgid "Draft"
 msgstr "Draft"
 
-msgid "Draft a pricing proposal for Northwind's second team."
-msgstr "Draft a pricing proposal for Northwind's second team."
-
 msgid "Draft talking points per client"
 msgstr "Draft talking points per client"
 
@@ -1456,9 +1453,6 @@ msgstr "Duplicate"
 
 msgid "e.g. Hivenet Agent, Presales, Timesheets bot"
 msgstr "e.g. Hivenet Agent, Presales, Timesheets bot"
-
-msgid "Each person gets an isolated computer, on your own infrastructure when you self-host."
-msgstr "Each person gets an isolated computer, on your own infrastructure when you self-host."
 
 msgid "Earlier"
 msgstr "Earlier"
@@ -1484,11 +1478,8 @@ msgstr "Edited by you"
 msgid "Email"
 msgstr "Email"
 
-msgid "Email · 4 threads"
-msgstr "Email · 4 threads"
-
-msgid "Email it to Maya"
-msgstr "Email it to Maya"
+msgid "Email the file to Maya"
+msgstr "Email the file to Maya"
 
 msgid "Engage when... Ignore..."
 msgstr "Engage when... Ignore..."
@@ -1526,12 +1517,6 @@ msgstr "Every Monday"
 
 msgid "Every month"
 msgstr "Every month"
-
-msgid "Every step it took, in plain words."
-msgstr "Every step it took, in plain words."
-
-msgid "Every step on record"
-msgstr "Every step on record"
 
 msgid "Every week"
 msgstr "Every week"
@@ -1571,11 +1556,11 @@ msgstr "Explore"
 msgid "Export"
 msgstr "Export"
 
+msgid "Export renewals"
+msgstr "Export renewals"
+
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
-
-msgid "Export to a sheet"
-msgstr "Export to a sheet"
 
 msgid "External conversation"
 msgstr "External conversation"
@@ -1616,9 +1601,6 @@ msgstr "Filter files"
 
 msgid "Filter forks"
 msgstr "Filter forks"
-
-msgid "Filter renewals in the next 30 days"
-msgstr "Filter renewals in the next 30 days"
 
 msgid "Filters"
 msgstr "Filters"
@@ -1679,9 +1661,6 @@ msgstr "Forgot password?"
 msgid "Fork"
 msgstr "Fork"
 
-msgid "forked from this message"
-msgstr "forked from this message"
-
 msgid "Forks"
 msgstr "Forks"
 
@@ -1690,12 +1669,6 @@ msgstr "Free"
 
 msgid "Fri 9:00"
 msgstr "Fri 9:00"
-
-msgid "FRI 9:30"
-msgstr "FRI 9:30"
-
-msgid "FRIDAY"
-msgstr "FRIDAY"
 
 msgid "From"
 msgstr "From"
@@ -1741,6 +1714,9 @@ msgstr "Git event"
 
 msgid "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
 msgstr "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
+
+msgid "Give it the first thing on your list."
+msgstr "Give it the first thing on your list."
 
 msgid "Goal options"
 msgstr "Goal options"
@@ -1793,11 +1769,8 @@ msgstr "Header value"
 msgid "Hear a sample"
 msgstr "Hear a sample"
 
-msgid "Here is one week of working with it."
-msgstr "Here is one week of working with it."
-
-msgid "Here's a draft, using the discount we agreed on in May."
-msgstr "Here's a draft, using the discount we agreed on in May."
+msgid "Here's a one-page brief for Maya. The two open points from last month are at the top."
+msgstr "Here's a one-page brief for Maya. The two open points from last month are at the top."
 
 msgid "Here's my plan"
 msgstr "Here's my plan"
@@ -1823,8 +1796,8 @@ msgstr "Hide password"
 msgid "High"
 msgstr "High"
 
-msgid "Hiring plan"
-msgstr "Hiring plan"
+msgid "Highlights — Northwind expanded to two teams; Acme signed for two years."
+msgstr "Highlights — Northwind expanded to two teams; Acme signed for two years."
 
 msgid "hour"
 msgstr "hour"
@@ -1954,6 +1927,9 @@ msgstr "It won't be used anymore. This can't be undone."
 msgid "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 msgstr "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 
+msgid "ITS OWN COMPUTER"
+msgstr "ITS OWN COMPUTER"
+
 msgid "Jump to latest"
 msgstr "Jump to latest"
 
@@ -1997,6 +1973,9 @@ msgstr "Last thing — connect the brain I'll think with."
 
 msgid "Later"
 msgstr "Later"
+
+msgid "Learn"
+msgstr "Learn"
 
 msgid "Learned"
 msgstr "Learned"
@@ -2088,9 +2067,6 @@ msgstr "Made for you"
 msgid "Make sure nothing is still running on this computer."
 msgstr "Make sure nothing is still running on this computer."
 
-msgid "Make this a line chart and show the target."
-msgstr "Make this a line chart and show the target."
-
 msgid "Manage MCP servers"
 msgstr "Manage MCP servers"
 
@@ -2124,6 +2100,9 @@ msgstr "Maximum images per request"
 msgid "Maximum output tokens"
 msgstr "Maximum output tokens"
 
+msgid "Maya likes a one-page summary before any client call."
+msgstr "Maya likes a one-page summary before any client call."
+
 msgid "MCP servers"
 msgstr "MCP servers"
 
@@ -2138,9 +2117,6 @@ msgstr "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
 
 msgid "Memory"
 msgstr "Memory"
-
-msgid "Memory per person"
-msgstr "Memory per person"
 
 msgid "Mentions"
 msgstr "Mentions"
@@ -2220,21 +2196,6 @@ msgstr "Models for the server owner’s default space."
 
 msgid "Models from server"
 msgstr "Models from server"
-
-msgid "MON 11:40"
-msgstr "MON 11:40"
-
-msgid "MON 14:00"
-msgstr "MON 14:00"
-
-msgid "MON 9:02"
-msgstr "MON 9:02"
-
-msgid "MON 9:10"
-msgstr "MON 9:10"
-
-msgid "MONDAY"
-msgstr "MONDAY"
 
 msgid "Monthly"
 msgstr "Monthly"
@@ -2320,8 +2281,14 @@ msgstr "New side chat"
 msgid "New skill"
 msgstr "New skill"
 
+msgid "NEW SKILL"
+msgstr "NEW SKILL"
+
 msgid "New space"
 msgstr "New space"
+
+msgid "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
+msgstr "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 
 msgid "Next:"
 msgstr "Next:"
@@ -2431,12 +2398,6 @@ msgstr "None yet"
 msgid "Normal"
 msgstr "Normal"
 
-msgid "Northwind · one page"
-msgstr "Northwind · one page"
-
-msgid "Northwind Q3 Review"
-msgstr "Northwind Q3 Review"
-
 msgid "Not connected"
 msgstr "Not connected"
 
@@ -2491,20 +2452,11 @@ msgstr "Nova is working"
 msgid "Nova Report"
 msgstr "Nova Report"
 
-msgid "Nova runs on the agent harness you pick, like Claude or Pi, and keeps the same memory and tools."
-msgstr "Nova runs on the agent harness you pick, like Claude or Pi, and keeps the same memory and tools."
-
 msgid "Nova starts fresh. You can still show earlier messages."
 msgstr "Nova starts fresh. You can still show earlier messages."
 
-msgid "Nova, in 47 seconds"
-msgstr "Nova, in 47 seconds"
-
 msgid "Nova's computer · Live"
 msgstr "Nova's computer · Live"
-
-msgid "Nova's computer: a browser open on the Northwind account in a CRM"
-msgstr "Nova's computer: a browser open on the Northwind account in a CRM"
 
 msgid "Now"
 msgstr "Now"
@@ -2541,11 +2493,14 @@ msgstr "on the 1st at {0}"
 msgid "On track"
 msgstr "On track"
 
-msgid "one conversation"
-msgstr "one conversation"
+msgid "ONE CONVERSATION"
+msgstr "ONE CONVERSATION"
 
-msgid "One Nova conversation across a work week"
-msgstr "One Nova conversation across a work week"
+msgid "One conversation that never ends. It remembers, works on its own computer, and asks before anything it can't undo."
+msgstr "One conversation that never ends. It remembers, works on its own computer, and asks before anything it can't undo."
+
+msgid "One thread that never resets. It keeps what matters about your work."
+msgstr "One thread that never resets. It keeps what matters about your work."
 
 msgid "One yes before I send this"
 msgstr "One yes before I send this"
@@ -2653,9 +2608,6 @@ msgstr "Password updated"
 msgid "Passwords do not match"
 msgstr "Passwords do not match"
 
-msgid "Passwords live in a vault. Nova fills them in; the model never sees them."
-msgstr "Passwords live in a vault. Nova fills them in; the model never sees them."
-
 msgid "Paste a replacement key"
 msgstr "Paste a replacement key"
 
@@ -2714,8 +2666,8 @@ msgstr "Please propose a plan for my goal \"{0}\"."
 msgid "POST to"
 msgstr "POST to"
 
-msgid "Prep me for Thursday's review with Northwind. Maya will be there."
-msgstr "Prep me for Thursday's review with Northwind. Maya will be there."
+msgid "Prep me for Thursday's call with Northwind."
+msgstr "Prep me for Thursday's call with Northwind."
 
 #. placeholder {0}: props.name
 msgid "Preview {0}"
@@ -2726,9 +2678,6 @@ msgstr "Preview isn't available for this file type — download it to view it."
 
 msgid "Preview isn't available for this file type."
 msgstr "Preview isn't available for this file type."
-
-msgid "Pricing proposal"
-msgstr "Pricing proposal"
 
 msgid "Private"
 msgstr "Private"
@@ -2763,11 +2712,11 @@ msgstr "Pull holdings and returns for 12 clients"
 msgid "Pull request"
 msgstr "Pull request"
 
-msgid "Q3 at a glance"
-msgstr "Q3 at a glance"
-
 msgid "Q3 client portfolio review"
 msgstr "Q3 client portfolio review"
+
+msgid "Q3 Client Review"
+msgstr "Q3 Client Review"
 
 msgid "Questions"
 msgstr "Questions"
@@ -2799,14 +2748,11 @@ msgstr "Read replies aloud"
 msgid "read-only"
 msgstr "read-only"
 
-msgid "reading the threads · pulling Q3 · checking the news"
-msgstr "reading the threads · pulling Q3 · checking the news"
-
 msgid "Ready"
 msgstr "Ready"
 
-msgid "Ready for your company."
-msgstr "Ready for your company."
+msgid "REAL FILES"
+msgstr "REAL FILES"
 
 msgid "Reasoning effort"
 msgstr "Reasoning effort"
@@ -2876,8 +2822,11 @@ msgstr "Release computer"
 msgid "Release interrupted computer?"
 msgstr "Release interrupted computer?"
 
-msgid "Remembered from July"
-msgstr "Remembered from July"
+msgid "Remember"
+msgstr "Remember"
+
+msgid "Remembered: one page for Maya first"
+msgstr "Remembered: one page for Maya first"
 
 msgid "Remove"
 msgstr "Remove"
@@ -2925,6 +2874,12 @@ msgstr "Removing…"
 msgid "Rename section"
 msgstr "Rename section"
 
+msgid "Renewal · 14 days"
+msgstr "Renewal · 14 days"
+
+msgid "renewals.csv saved to Files"
+msgstr "renewals.csv saved to Files"
+
 msgid "Reopen"
 msgstr "Reopen"
 
@@ -2956,6 +2911,12 @@ msgstr "Replying to {replyName}"
 
 msgid "Replying to {replyName}: “{replyQuote}”"
 msgstr "Replying to {replyName}: “{replyQuote}”"
+
+msgid "REPORT · PDF · CREATED NOW"
+msgstr "REPORT · PDF · CREATED NOW"
+
+msgid "Reports, briefs and decks, ready to open, edit and share."
+msgstr "Reports, briefs and decks, ready to open, edit and share."
 
 msgid "Research"
 msgstr "Research"
@@ -3011,14 +2972,14 @@ msgstr "Retry screen"
 msgid "Return to Nova"
 msgstr "Return to Nova"
 
-msgid "Revenue is up 8%. Usage dipped in August, then recovered."
-msgstr "Revenue is up 8%. Usage dipped in August, then recovered."
-
 msgid "Review"
 msgstr "Review"
 
 msgid "Revoke"
 msgstr "Revoke"
+
+msgid "Risks — August churn from two paused accounts, both now renewed."
+msgstr "Risks — August churn from two paused accounts, both now renewed."
 
 msgid "Robot"
 msgstr "Robot"
@@ -3056,14 +3017,11 @@ msgstr "Running · Stop"
 msgid "Running…"
 msgstr "Running…"
 
+msgid "Runs every Monday · 8:00"
+msgstr "Runs every Monday · 8:00"
+
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
-
-msgid "Runs where you choose"
-msgstr "Runs where you choose"
-
-msgid "Same conversation.<0/>All week."
-msgstr "Same conversation.<0/>All week."
 
 msgid "Save"
 msgstr "Save"
@@ -3088,9 +3046,6 @@ msgstr "Saved {0} · not used yet"
 #. placeholder {1}: day(entry.lastUsedAt)
 msgid "Saved {0} · used {1}"
 msgstr "Saved {0} · used {1}"
-
-msgid "Saved skill: weekly renewals report · Mondays 8:00"
-msgstr "Saved skill: weekly renewals report · Mondays 8:00"
 
 msgid "Saved to Library"
 msgstr "Saved to Library"
@@ -3122,8 +3077,8 @@ msgstr "Say yes or no, or answer in a sentence."
 msgid "Screen"
 msgstr "Screen"
 
-msgid "SCROLL THROUGH THE WEEK"
-msgstr "SCROLL THROUGH THE WEEK"
+msgid "SCROLL"
+msgstr "SCROLL"
 
 msgid "Search"
 msgstr "Search"
@@ -3131,6 +3086,9 @@ msgstr "Search"
 #. placeholder {0}: counts.all
 msgid "Search {0} forks"
 msgstr "Search {0} forks"
+
+msgid "Search accounts"
+msgstr "Search accounts"
 
 msgid "Search apps"
 msgstr "Search apps"
@@ -3156,6 +3114,9 @@ msgstr "Search models"
 msgid "Search providers"
 msgstr "Search providers"
 
+msgid "Search the account"
+msgstr "Search the account"
+
 msgid "Search your Library"
 msgstr "Search your Library"
 
@@ -3165,11 +3126,11 @@ msgstr "Search your Library…"
 msgid "Searching…"
 msgstr "Searching…"
 
-msgid "Secrets stay sealed"
-msgstr "Secrets stay sealed"
-
 msgid "Sections"
 msgstr "Sections"
+
+msgid "See it work."
+msgstr "See it work."
 
 msgid "See summary"
 msgstr "See summary"
@@ -3195,11 +3156,11 @@ msgstr "Send reset link"
 msgid "Send the follow-up to Maya?"
 msgstr "Send the follow-up to Maya?"
 
+msgid "Sending, paying, publishing: you say yes first. Everything else, it just does."
+msgstr "Sending, paying, publishing: you say yes first. Everything else, it just does."
+
 msgid "Sending…"
 msgstr "Sending…"
-
-msgid "Sent"
-msgstr "Sent"
 
 msgid "Sentry alert"
 msgstr "Sentry alert"
@@ -3249,6 +3210,9 @@ msgstr "Show earlier messages"
 msgid "Show hidden files"
 msgstr "Show hidden files"
 
+msgid "Show it a task once. From then on, it does it for you."
+msgstr "Show it a task once. From then on, it does it for you."
+
 msgid "Show list"
 msgstr "Show list"
 
@@ -3269,6 +3233,9 @@ msgstr "Side chat"
 
 msgid "Side chats"
 msgstr "Side chats"
+
+msgid "SIDE CHATS & FORKS"
+msgstr "SIDE CHATS & FORKS"
 
 msgid "Sign in"
 msgstr "Sign in"
@@ -3291,6 +3258,9 @@ msgstr "Skill instructions"
 
 msgid "Skills"
 msgstr "Skills"
+
+msgid "SKILLS"
+msgstr "SKILLS"
 
 msgid "Skip"
 msgstr "Skip"
@@ -3316,6 +3286,12 @@ msgstr "Something went wrong on my side. Try again."
 
 msgid "Something went wrong."
 msgstr "Something went wrong."
+
+msgid "Sound off"
+msgstr "Sound off"
+
+msgid "Sound on"
+msgstr "Sound on"
 
 msgid "Source"
 msgstr "Source"
@@ -3423,6 +3399,9 @@ msgstr "subagent"
 msgid "Submit"
 msgstr "Submit"
 
+msgid "Summary — Revenue up 8% quarter on quarter, led by three renewals."
+msgstr "Summary — Revenue up 8% quarter on quarter, led by three renewals."
+
 msgid "Supports images"
 msgstr "Supports images"
 
@@ -3486,9 +3465,6 @@ msgstr "Test run"
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
-msgid "The brief is ready. In July you said Legal reviews any renewal over $40k, so I added Dana from Legal to Thursday."
-msgstr "The brief is ready. In July you said Legal reviews any renewal over $40k, so I added Dana from Legal to Thursday."
-
 msgid "The key is stored encrypted and only used for voice."
 msgstr "The key is stored encrypted and only used for voice."
 
@@ -3503,6 +3479,9 @@ msgstr "The model refused my key."
 
 msgid "The Muse stops working on this Goal."
 msgstr "The Muse stops working on this Goal."
+
+msgid "The Q3 report draft is ready. Revenue is up 8%, churn ticked up in August."
+msgstr "The Q3 report draft is ready. Revenue is up 8%, churn ticked up in August."
 
 msgid "Thinking"
 msgstr "Thinking"
@@ -3566,12 +3545,6 @@ msgstr "This week"
 msgid "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
 msgstr "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
 
-msgid "THU 13:45"
-msgstr "THU 13:45"
-
-msgid "THURSDAY"
-msgstr "THURSDAY"
-
 msgid "Time of day"
 msgstr "Time of day"
 
@@ -3591,6 +3564,9 @@ msgstr "To:"
 msgid "Today"
 msgstr "Today"
 
+msgid "TODAY"
+msgstr "TODAY"
+
 msgid "Today {time}"
 msgstr "Today {time}"
 
@@ -3605,9 +3581,6 @@ msgstr "Tool sources"
 
 msgid "Tools"
 msgstr "Tools"
-
-msgid "Top: the two open risks"
-msgstr "Top: the two open risks"
 
 msgid "Topics I follow for you"
 msgstr "Topics I follow for you"
@@ -3624,17 +3597,8 @@ msgstr "Try again"
 msgid "Try one"
 msgstr "Try one"
 
-msgid "TUE 10:15"
-msgstr "TUE 10:15"
-
-msgid "TUE 16:30"
-msgstr "TUE 16:30"
-
-msgid "TUESDAY"
-msgstr "TUESDAY"
-
-msgid "Two of their teams paused for a system migration. Both were back in September."
-msgstr "Two of their teams paused for a system migration. Both were back in September."
+msgid "Two large accounts paused in August. Both renewed in September."
+msgstr "Two large accounts paused in August. Both renewed in September."
 
 msgid "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
 msgstr "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
@@ -3779,26 +3743,20 @@ msgstr "Waiting…"
 msgid "Watch {0} work"
 msgstr "Watch {0} work"
 
-msgid "Watch the 47-second film"
-msgstr "Watch the 47-second film"
+msgid "Watch the film"
+msgstr "Watch the film"
 
 msgid "Watching you work…"
 msgstr "Watching you work…"
 
-msgid "Web · 6 pages"
-msgstr "Web · 6 pages"
-
 msgid "Webhook"
 msgstr "Webhook"
 
-msgid "WED 10:05"
-msgstr "WED 10:05"
-
-msgid "WEDNESDAY"
-msgstr "WEDNESDAY"
-
 msgid "Weekdays"
 msgstr "Weekdays"
+
+msgid "Weekly renewal report"
+msgstr "Weekly renewal report"
 
 msgid "Welcome back."
 msgstr "Welcome back."
@@ -3818,14 +3776,17 @@ msgstr "What do you want to get done?"
 msgid "What do you want to look at?"
 msgstr "What do you want to look at?"
 
+msgid "What drove it?"
+msgstr "What drove it?"
+
 msgid "What I finished while you were away, and what's new on the topics you follow."
 msgstr "What I finished while you were away, and what's new on the topics you follow."
 
 msgid "What I've done"
 msgstr "What I've done"
 
-msgid "What Nova remembers belongs to that person. They can read, edit or clear it."
-msgstr "What Nova remembers belongs to that person. They can read, edit or clear it."
+msgid "What Nova is"
+msgstr "What Nova is"
 
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
@@ -3854,11 +3815,14 @@ msgstr "When to run"
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
 
-msgid "Why did usage dip in August?"
-msgstr "Why did usage dip in August?"
+msgid "Why did churn rise in August?"
+msgstr "Why did churn rise in August?"
 
 msgid "With context"
 msgstr "With context"
+
+msgid "Work"
+msgstr "Work"
 
 msgid "Working"
 msgstr "Working"
@@ -3903,17 +3867,11 @@ msgstr "You can close this tab if it does not redirect automatically."
 msgid "You can close this window."
 msgstr "You can close this window."
 
-msgid "You exported the renewals by hand again. Show me once, and I'll do it every Monday."
-msgstr "You exported the renewals by hand again. Show me once, and I'll do it every Monday."
-
 msgid "You have control"
 msgstr "You have control"
 
 msgid "You said, {when}"
 msgstr "You said, {when}"
-
-msgid "you were in meetings · Nova worked 2h 38m"
-msgstr "you were in meetings · Nova worked 2h 38m"
 
 msgid "You're all caught up"
 msgstr "You're all caught up"
@@ -3921,29 +3879,11 @@ msgstr "You're all caught up"
 msgid "You're all caught up."
 msgstr "You're all caught up."
 
-msgid "Your cloud or your own servers. Self-host with Docker."
-msgstr "Your cloud or your own servers. Self-host with Docker."
-
 msgid "Your computer · Your model · Your say"
 msgstr "Your computer · Your model · Your say"
-
-msgid "YOUR DATA"
-msgstr "YOUR DATA"
 
 msgid "Your email address"
 msgstr "Your email address"
 
-msgid "Your harness"
-msgstr "Your harness"
-
-msgid "Your model"
-msgstr "Your model"
-
 msgid "Your name"
 msgstr "Your name"
-
-msgid "Your Northwind review starts in 15 minutes. Here's the one-pager Maya likes to see first."
-msgstr "Your Northwind review starts in 15 minutes. Here's the one-pager Maya likes to see first."
-
-msgid "YOUR STACK"
-msgstr "YOUR STACK"

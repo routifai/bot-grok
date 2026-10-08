@@ -66,81 +66,41 @@ it("shows the headline and links the CTAs to sign-up and sign-in", async () => {
   expect(hrefs("Get started")).toEqual(["/sign-up", "/sign-up", "/sign-up"]);
   expect(hrefs("I have an account")).toEqual(["/sign-in"]);
   expect(hrefs("Sign in")).toEqual(["/sign-in"]);
+  expect(host.firstElementChild?.getAttribute("data-aiden-surface")).toBe("welcome");
 });
 
-it("tells the week in nine beats, all visible under reduced motion", async () => {
+it("lights the whole statement under reduced motion", async () => {
   await render();
-  const beats = [...host.querySelectorAll("[data-day]")];
-  expect(beats).toHaveLength(9);
-  expect(beats.every((b) => b.getAttribute("data-in") === "true")).toBe(true);
-  const text = host.textContent ?? "";
-  for (const part of [
-    "Prep me for Thursday's review with Northwind",
-    "Email · 4 threads",
-    "Take over",
-    "you were in meetings",
-    "Remembered from July",
-    "Saved as v2",
-    "forked from this message",
-    "Knows our conversation",
-    "Saved skill",
-    "starts in 15 minutes",
-    "Send the follow-up to Maya?",
-    "Sent",
-  ]) {
-    expect(text).toContain(part);
-  }
-  const shot = host.querySelector("img");
-  expect(shot?.getAttribute("alt")).toBe(
-    "Nova's computer: a browser open on the Northwind account in a CRM",
-  );
-  expect(shot?.getAttribute("width")).toBe("1280");
-  expect(shot?.getAttribute("loading")).toBe("lazy");
+  const words = [...host.querySelectorAll("section[aria-label] p span span")];
+  expect(words.length).toBeGreaterThan(10);
+  expect(words.every((w) => w.className.endsWith("text-welcome-night-ink"))).toBe(true);
 });
 
-it("reveals the first beat at once, without scrolling, and the rest on arrival", async () => {
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: false,
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
+it("has the six demo cards, and plays the front one", async () => {
   await render();
-  const beats = [...host.querySelectorAll("[data-day]")];
-  expect(beats.map((b) => b.getAttribute("data-in"))).toEqual(["true", ...Array(8).fill("false")]);
+  const titles = [...host.querySelectorAll("section h3")].map((h) => h.textContent);
+  expect(titles).toEqual(["Remember", "Branch", "Work", "Learn", "Create", "Ask"]);
+  expect(host.textContent).toContain("See it work.");
+  // Reduced motion shows the front card finished at once.
+  expect(host.textContent).toContain("Maya likes a one-page summary");
 });
 
-it("has the enterprise section with its eight items", async () => {
+it("plays the film in place, with captions, and closes it again", async () => {
   await render();
-  const titles = [...host.querySelectorAll("li h3")].map((h) => h.textContent);
-  expect(titles).toEqual([
-    "Runs where you choose",
-    "Your model",
-    "Your harness",
-    "A computer you host",
-    "Memory per person",
-    "Secrets stay sealed",
-    "Approvals you set",
-    "Every step on record",
-  ]);
-  expect(host.textContent).toContain("Ready for your company.");
-});
-
-it("loads no video until the film button is pressed, then shows it in a dialog", async () => {
-  await render();
-  expect(document.querySelector("video")).toBeNull();
+  const video = host.querySelector("video");
+  expect(video?.getAttribute("src")).toBe("/welcome/hero-loop.mp4");
+  expect(video?.querySelector("track")?.getAttribute("src")).toContain("nova-film.en.vtt");
   const button = [...host.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Watch the 47-second film"),
+    b.textContent?.includes("Watch the film"),
   );
-  expect(button).toBeDefined();
+  expect(button?.textContent).toContain("0:47");
   await act(async () => {
     button?.click();
   });
-  const video = document.querySelector("video");
-  expect(video?.getAttribute("poster")).toContain("welcome/nova-film-poster.jpg");
-  expect(video?.getAttribute("preload")).toBe("none");
-  const track = video?.querySelector("track");
-  expect(track?.getAttribute("kind")).toBe("captions");
-  expect(track?.getAttribute("src")).toContain("nova-film.en.vtt");
-  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(host.querySelector("video")?.getAttribute("src")).toBe("/welcome/nova-film.mp4");
+  const close = [...host.querySelectorAll("button")].find((b) => b.textContent === "Close");
+  await act(async () => {
+    close?.click();
+  });
+  expect(host.querySelector("video")?.getAttribute("src")).toBe("/welcome/hero-loop.mp4");
 });
