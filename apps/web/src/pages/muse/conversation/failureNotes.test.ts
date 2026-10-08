@@ -35,6 +35,16 @@ describe("isFailureNote", () => {
       ),
     ).toBe(false);
   });
+
+  it("is never an info notice: something that happened is not a failed reply", () => {
+    const notice = message("bot", [{ kind: "error", code: "workspace_reset", level: "info" }]);
+    expect(isFailureNote(notice)).toBe(false);
+    expect(shape(foldFailureRuns([failure(), notice, failure()]))).toEqual([
+      expect.any(String),
+      notice.id,
+      expect.any(String),
+    ]);
+  });
 });
 
 describe("foldFailureRuns", () => {

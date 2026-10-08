@@ -79,10 +79,6 @@ msgstr "{0} rollup hours"
 msgid "{0} runs · {1} tokens"
 msgstr "{0} runs · {1} tokens"
 
-#. placeholder {0}: steps.length
-msgid "{0} steps planned"
-msgstr "{0} steps planned"
-
 #. placeholder {0}: bot.name
 msgid "{0} will still respond to direct mentions."
 msgstr "{0} will still respond to direct mentions."
@@ -110,17 +106,11 @@ msgstr "{count, plural, one {# reply} other {# replies}}"
 msgid "{days}d ago"
 msgstr "{days}d ago"
 
-msgid "{done} of {total}"
-msgstr "{done} of {total}"
-
 msgid "{done} of {total} done"
 msgstr "{done} of {total} done"
 
 msgid "{done} of {total} Tasks done"
 msgstr "{done} of {total} Tasks done"
-
-msgid "{hidden} more"
-msgstr "{hidden} more"
 
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
@@ -152,6 +142,9 @@ msgstr "{steps, plural, one {# step} other {# steps}}"
 msgid "{toolCount, plural, one {# tool} other {# tools}}"
 msgstr "{toolCount, plural, one {# tool} other {# tools}}"
 
+msgid "{working, plural, one {Working on # thing} other {Working on # things}}"
+msgstr "{working, plural, one {Working on # thing} other {Working on # things}}"
+
 msgid "{workingBotName} is working"
 msgstr "{workingBotName} is working"
 
@@ -164,6 +157,14 @@ msgstr "2 of 5 · Next check-in Friday, 9:00"
 
 msgid "A bit of everything"
 msgstr "A bit of everything"
+
+#. placeholder {0}: goal.title
+msgid "A new plan for “{0}”"
+msgstr "A new plan for “{0}”"
+
+#. placeholder {0}: goal.title
+msgid "A plan is ready for “{0}”"
+msgstr "A plan is ready for “{0}”"
 
 msgid "About groups"
 msgstr "About groups"
@@ -403,6 +404,9 @@ msgstr "Artifact"
 
 msgid "Artifacts"
 msgstr "Artifacts"
+
+msgid "Ask {activeName}"
+msgstr "Ask {activeName}"
 
 msgid "Ask about this message"
 msgstr "Ask about this message"
@@ -1249,6 +1253,9 @@ msgstr "days"
 msgid "Days"
 msgstr "Days"
 
+msgid "Decided"
+msgstr "Decided"
+
 msgid "Decisions"
 msgstr "Decisions"
 
@@ -1477,6 +1484,9 @@ msgstr "Every month"
 msgid "Every week"
 msgstr "Every week"
 
+msgid "Everything I made for you."
+msgstr "Everything I made for you."
+
 msgid "Example"
 msgstr "Example"
 
@@ -1499,6 +1509,9 @@ msgstr "Expand {0}"
 
 msgid "Expand sidebar"
 msgstr "Expand sidebar"
+
+msgid "Explore"
+msgstr "Explore"
 
 msgid "Export"
 msgstr "Export"
@@ -1530,6 +1543,9 @@ msgstr "Failed."
 
 msgid "Feed"
 msgstr "Feed"
+
+msgid "File"
+msgstr "File"
 
 msgid "Files"
 msgstr "Files"
@@ -1571,6 +1587,9 @@ msgstr "Finishing MCP connection…"
 
 msgid "First, what should I call you?"
 msgstr "First, what should I call you?"
+
+msgid "First: {firstStep}"
+msgstr "First: {firstStep}"
 
 msgid "Flag drift from each target mix"
 msgstr "Flag drift from each target mix"
@@ -1623,9 +1642,8 @@ msgstr "From a fork:"
 msgid "From Q3 portfolio review · 7:40"
 msgstr "From Q3 portfolio review · 7:40"
 
-#. placeholder {0}: formatRelativeTime(post.createdAt)
-msgid "From your goal · {0}"
-msgstr "From your goal · {0}"
+msgid "From your goal · {when}"
+msgstr "From your goal · {when}"
 
 msgid "Fullscreen"
 msgstr "Fullscreen"
@@ -1756,6 +1774,9 @@ msgstr "How to tell step {0} worked"
 
 msgid "I already have an account"
 msgstr "I already have an account"
+
+msgid "I ask before doing anything I can't undo."
+msgstr "I ask before doing anything I can't undo."
 
 msgid "I check on your Goals about every hour."
 msgstr "I check on your Goals about every hour."
@@ -1894,6 +1915,9 @@ msgstr "Keep memories"
 
 msgid "key"
 msgstr "key"
+
+msgid "Kind"
+msgstr "Kind"
 
 msgid "Knows our conversation"
 msgstr "Knows our conversation"
@@ -2067,9 +2091,6 @@ msgstr "Message"
 msgid "Message {activeName}"
 msgstr "Message {activeName}"
 
-msgid "Message {activeName}…"
-msgstr "Message {activeName}…"
-
 msgid "Message composer"
 msgstr "Message composer"
 
@@ -2159,6 +2180,9 @@ msgstr "Muse name"
 msgid "My computer restarted. Try again."
 msgstr "My computer restarted. Try again."
 
+msgid "My computer was replaced, so files I hadn't saved elsewhere are gone."
+msgstr "My computer was replaced, so files I hadn't saved elsewhere are gone."
+
 msgid "Name"
 msgstr "Name"
 
@@ -2190,6 +2214,9 @@ msgstr "New bot"
 msgid "New fork from this message"
 msgstr "New fork from this message"
 
+msgid "New goal"
+msgstr "New goal"
+
 msgid "New open-work item"
 msgstr "New open-work item"
 
@@ -2207,6 +2234,9 @@ msgstr "New skill"
 
 msgid "New space"
 msgstr "New space"
+
+msgid "Next:"
+msgstr "Next:"
 
 msgid "No agent connections yet."
 msgstr "No agent connections yet."
@@ -2367,6 +2397,9 @@ msgstr "Nova is working"
 msgid "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
 msgstr "Nova prepares your meetings, researches, drafts and follows up in the background — and always asks before anything it can't undo."
 
+msgid "Nova Report"
+msgstr "Nova Report"
+
 msgid "Nova starts fresh. You can still show earlier messages."
 msgstr "Nova starts fresh. You can still show earlier messages."
 
@@ -2388,6 +2421,9 @@ msgstr "OAuth connection failed"
 
 msgid "OAuth expired"
 msgstr "OAuth expired"
+
+msgid "of {total}"
+msgstr "of {total}"
 
 msgid "Off"
 msgstr "Off"
@@ -2423,9 +2459,6 @@ msgstr "Open {name} in new tab"
 
 msgid "Open as side chat"
 msgstr "Open as side chat"
-
-msgid "Open goal"
-msgstr "Open goal"
 
 msgid "Open in full window"
 msgstr "Open in full window"
@@ -2553,6 +2586,9 @@ msgstr "Plan to review"
 msgid "Plan waiting for you"
 msgstr "Plan waiting for you"
 
+msgid "Plan week"
+msgstr "Plan week"
+
 msgid "Plans"
 msgstr "Plans"
 
@@ -2639,11 +2675,17 @@ msgstr "React"
 msgid "Reactions"
 msgstr "Reactions"
 
+msgid "Read"
+msgstr "Read"
+
 msgid "Read replies aloud"
 msgstr "Read replies aloud"
 
 msgid "read-only"
 msgstr "read-only"
+
+msgid "Ready"
+msgstr "Ready"
 
 msgid "Reasoning effort"
 msgstr "Reasoning effort"
@@ -2788,8 +2830,14 @@ msgstr "Replying to {replyName}"
 msgid "Replying to {replyName}: “{replyQuote}”"
 msgstr "Replying to {replyName}: “{replyQuote}”"
 
+msgid "Research"
+msgstr "Research"
+
 msgid "Research & writing"
 msgstr "Research & writing"
+
+msgid "Research something for me"
+msgstr "Research something for me"
 
 msgid "Reset"
 msgstr "Reset"
@@ -3068,6 +3116,9 @@ msgstr "Show settings"
 msgid "Side chat"
 msgstr "Side chat"
 
+msgid "Side chats"
+msgstr "Side chats"
+
 msgid "Sign in"
 msgstr "Sign in"
 
@@ -3166,6 +3217,9 @@ msgstr "Start this Goal"
 
 msgid "Start this plan"
 msgstr "Start this plan"
+
+msgid "Start with"
+msgstr "Start with"
 
 msgid "Starting"
 msgstr "Starting"

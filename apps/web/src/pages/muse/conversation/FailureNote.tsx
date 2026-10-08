@@ -1,7 +1,7 @@
 import type { ThreadMessage } from "@aiden/contracts";
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
 
@@ -31,10 +31,36 @@ export function useFailureNoteText(): (code: string) => string {
   };
 }
 
+/** An info notice's copy (the engine's `error` item at `level: info`): something that happened,
+ * not a failed reply, so it never says "Try again". `null` for a code with nothing to tell. */
+export function useInfoNoteText(): (code: string) => string | null {
+  const { t } = useLingui();
+  return (code) => {
+    switch (code) {
+      case "workspace_reset":
+        return t`My computer was replaced, so files I hadn't saved elsewhere are gone.`;
+      default:
+        return null;
+    }
+  };
+}
+
 const ROW = "flex min-h-7 items-center gap-1.5 text-[12.5px] leading-[1.4] text-ink-3";
 
 function FailureIcon() {
   return <CircleAlert size={13} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />;
+}
+
+/** An info notice as the same quiet row, with an info mark instead of the alert. */
+export function InfoNote({ children }: { children: ReactNode }) {
+  return (
+    <div className={ROW}>
+      <Info size={13} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+      <p data-testid="message-info-note" className="min-w-0">
+        {children}
+      </p>
+    </div>
+  );
 }
 
 /** One failed reply as a quiet inline row on Nova's side: a small mark and the note. */

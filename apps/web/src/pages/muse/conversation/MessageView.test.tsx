@@ -6,6 +6,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
+vi.mock("react-dom/client", async (orig) =>
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
+);
+
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, "");
@@ -41,13 +47,13 @@ vi.mock("@aiden/ui-web", () => ({
 
 import { MessageView } from "./MessageView";
 
-async function render(code: string) {
+async function render(code: string, level?: "info") {
   const message: ThreadMessage = {
     id: "i1",
     threadId: "s1",
     seq: 0,
     role: "bot",
-    blocks: [{ kind: "error", code }],
+    blocks: [{ kind: "error", code, ...(level ? { level } : {}) }],
     createdAt: "2026-10-01T10:00:00.000Z",
   };
   const host = document.createElement("div");
@@ -75,7 +81,10 @@ async function render(code: string) {
       />,
     );
   });
-  return host.querySelector('[data-testid="message-error-note"]')?.textContent;
+  return (
+    host.querySelector('[data-testid="message-error-note"]') ??
+    host.querySelector('[data-testid="message-info-note"]')
+  )?.textContent;
 }
 
 it("shows a known error code as its own short copy", async () => {
@@ -87,4 +96,11 @@ it("falls back to a generic line for a code it has no copy for, never the code i
   expect(await render("some_new_provider_code")).toBe(
     "Something went wrong on my side. Try again.",
   );
+});
+
+it("shows an info notice as what happened, never as a failure to retry", async () => {
+  expect(await render("workspace_reset", "info")).toBe(
+    "My computer was replaced, so files I hadn't saved elsewhere are gone.",
+  );
+  expect(await render("some_new_notice", "info")).toBeUndefined();
 });

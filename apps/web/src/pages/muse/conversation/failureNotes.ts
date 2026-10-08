@@ -1,11 +1,12 @@
 import type { ThreadMessage } from "@aiden/contracts";
 
-/** A Muse reply that is only a failure note (the engine's `error` block): no words of its own. */
+/** A Muse reply that is only a failure note (the engine's `error` block): no words of its own.
+ * An info notice (`level: info`) is not a failure, so it never folds into a failure run. */
 export function isFailureNote(message: ThreadMessage): boolean {
   return (
     message.role === "bot" &&
     message.blocks.length > 0 &&
-    message.blocks.every((block) => block.kind === "error")
+    message.blocks.every((block) => block.kind === "error" && block.level !== "info")
   );
 }
 
