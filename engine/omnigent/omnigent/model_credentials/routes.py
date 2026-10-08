@@ -89,11 +89,11 @@ def create_model_credential_router(
         except KeyRejectedError as exc:
             raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from None
         except ProbeUnavailableError as exc:
-            raise OmnigentError(str(exc), code=ErrorCode.RUNNER_UNAVAILABLE) from None
+            raise OmnigentError(str(exc), code=ErrorCode.MODEL_PROVIDER_UNREACHABLE) from None
         try:
             meta = await asyncio.to_thread(store.put, owner, body.provider, api_key)
         except VaultUnavailableError as exc:
-            raise OmnigentError(str(exc), code=ErrorCode.FORBIDDEN) from None
+            raise OmnigentError(str(exc), code=ErrorCode.SUPERCHAT_NOT_CONFIGURED) from None
         except CredentialInputError as exc:
             raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from None
         return meta_to_response(meta)

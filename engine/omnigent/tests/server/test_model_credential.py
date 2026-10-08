@@ -89,7 +89,7 @@ def test_fails_closed_without_vault_key(uri: str, monkeypatch: pytest.MonkeyPatc
     probe = _Probe()
     client = _app(uri, probe)
     r = client.put("/v1/me/model-credential", json={"provider": "anthropic", "api_key": KEY})
-    assert r.status_code == 403
+    assert r.status_code == 503
     assert KEY not in r.text
     assert client.get("/v1/me/model-credential").status_code == 404
 
@@ -130,7 +130,7 @@ def test_rejected_key_is_not_stored(uri: str, status: int) -> None:
 def test_network_error_is_distinct(uri: str) -> None:
     client = _app(uri, _Probe(error=httpx.ConnectError(f"boom {KEY}")))
     r = client.put("/v1/me/model-credential", json={"provider": "anthropic", "api_key": KEY})
-    assert r.status_code == 503
+    assert r.status_code == 502
     assert "Could not reach Anthropic" in r.text and KEY not in r.text
     assert client.get("/v1/me/model-credential").status_code == 404
 
