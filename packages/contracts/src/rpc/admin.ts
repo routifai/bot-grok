@@ -101,6 +101,8 @@ export const PendingSignupSchema = z.object({
   userId: Id,
   email: z.string(),
   name: z.string(),
+  /** False when the mailbox was never proved (no email provider, or not yet verified). */
+  emailVerified: z.boolean(),
   createdAt: z.string(),
 });
 export type PendingSignup = z.infer<typeof PendingSignupSchema>;

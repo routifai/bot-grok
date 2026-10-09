@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   admitSignup,
   emailAllowed,
+  emailDomainOf,
   parseAllowlist,
   parseDomains,
   parseSignupMode,
@@ -91,21 +92,31 @@ describe("admitSignup", () => {
     expect(admitSignup(domain, "a@corp.test.evil.test").ok).toBe(false);
   });
 
-  it("approval queues everyone except the first account, which must exist to approve", () => {
-    const approval = policy({ mode: "approval" });
-    expect(admitSignup(approval, "a@x.test")).toEqual({ ok: true, status: "pending" });
-    expect(admitSignup(approval, "a@x.test", { firstAccount: true })).toEqual({
+  it("approval queues everyone; the owner seat is claimed elsewhere, never by being first", () => {
+    expect(admitSignup(policy({ mode: "approval" }), "a@x.test")).toEqual({
       ok: true,
-      status: "active",
+      status: "pending",
     });
   });
 
-  it("open admits anyone as active, and every mode but closed needs email delivery", () => {
+  it("reads the domain after the last @", () => {
+    expect(emailDomainOf('"a@corp.test"@evil.test')).toBe("evil.test");
+    expect(
+      admitSignup(policy({ mode: "domain", domains: ["corp.test"] }), '"a@corp.test"@evil.test').ok,
+    ).toBe(false);
+    expect(emailAllowed('"x@corp.test"@evil.test', ["@corp.test"])).toBe(false);
+    expect(emailDomainOf("nobody")).toBe("");
+  });
+
+  it("open admits anyone as active; only the self-serve modes need email delivery", () => {
     expect(admitSignup(policy({ mode: "open" }), "a@x.test")).toEqual({
       ok: true,
       status: "active",
     });
     expect(signupNeedsEmailDelivery("closed")).toBe(false);
-    expect(signupNeedsEmailDelivery("open")).toBe(true);
+    expect(signupNeedsEmailDelivery("approval")).toBe(false);
+    for (const mode of ["invite", "domain", "open"] as const) {
+      expect(signupNeedsEmailDelivery(mode)).toBe(true);
+    }
   });
 });

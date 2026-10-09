@@ -30,10 +30,17 @@ export function parseDomains(raw: string | readonly string[] | undefined): strin
   ];
 }
 
+/** The domain after the last `@`, lower-cased; empty when there is none. */
+export function emailDomainOf(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  return at < 0 ? "" : normalized.slice(at + 1);
+}
+
 /** Does the address match an exact entry or an `@domain` entry? An empty list matches nothing. */
 export function emailAllowed(email: string, allowlist: string[]): boolean {
   const normalized = email.trim().toLowerCase();
-  const domain = normalized.split("@")[1];
+  const domain = emailDomainOf(normalized);
   return allowlist.some((entry) => {
     if (entry.startsWith("@")) return domain === entry.slice(1);
     return normalized === entry;
@@ -41,8 +48,8 @@ export function emailAllowed(email: string, allowlist: string[]): boolean {
 }
 
 export function emailDomainAllowed(email: string, domains: string[]): boolean {
-  const domain = email.trim().toLowerCase().split("@")[1];
-  return Boolean(domain) && domains.includes(domain!);
+  const domain = emailDomainOf(email);
+  return domain !== "" && domains.includes(domain);
 }
 
 /** Internal messaging users have no mailbox and cannot authenticate by email. */
@@ -105,14 +112,11 @@ export type SignupAdmission =
   | { ok: false; message: string };
 
 /**
- * Whether an address may create an account, and in what state. In `approval` mode the very first
- * account of a deployment (no owner yet) is active so someone exists to approve the rest.
+ * Whether an address may create an account, and in what state. `approval` always creates a
+ * pending account: the owner seat is claimed separately (see the auth session hook), never by
+ * being first through this door.
  */
-export function admitSignup(
-  policy: SignupPolicy,
-  email: string,
-  options: { firstAccount?: boolean } = {},
-): SignupAdmission {
+export function admitSignup(policy: SignupPolicy, email: string): SignupAdmission {
   switch (policy.mode) {
     case "closed":
       return { ok: false, message: "Registration is closed" };
@@ -125,13 +129,16 @@ export function admitSignup(
         ? { ok: true, status: "active" }
         : { ok: false, message: "Email is not allowed to register" };
     case "approval":
-      return { ok: true, status: options.firstAccount ? "active" : "pending" };
+      return { ok: true, status: "pending" };
     case "open":
       return { ok: true, status: "active" };
   }
 }
 
-/** Modes that let strangers create accounts need a way to prove the mailbox. */
+/**
+ * Modes that let people in on their own need a way to prove the mailbox. `approval` does not: an
+ * admin vets every account, so a deployment can run it before it has a mail domain.
+ */
 export function signupNeedsEmailDelivery(mode: SignupMode): boolean {
-  return mode !== "closed";
+  return mode !== "closed" && mode !== "approval";
 }

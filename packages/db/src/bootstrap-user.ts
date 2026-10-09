@@ -92,6 +92,7 @@ export async function bootstrapUserSpace(
       id: "default",
       ownerUserId: claimDeploymentOwner ? user.id : null,
       signupMode: policy.mode,
+      signupsEnabled: policy.mode !== "closed",
       signupAllowlist: policy.invites.join(","),
       signupDomains: policy.domains.join(","),
       signupPolicyInitialized: true,

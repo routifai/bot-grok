@@ -275,9 +275,21 @@ enum UserStatus {
   suspended
 }
 
+/// Shared counters for the auth rate limiter and the per-address send/verify caps.
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rate_limit")
+}
+
 model DeploymentSettings {
   id                              String     @id @default("default")
   ownerUserId                     String?
+  /// Deprecated, kept one release so an old replica can still read it during a rolling deploy.
+  signupsEnabled                  Boolean    @default(true)
   signupMode                      SignupMode @default(open)
   /// Invite list for `invite` mode: comma-separated emails (or @domain entries).
   signupAllowlist                 String     @default("")
