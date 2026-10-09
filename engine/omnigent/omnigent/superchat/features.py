@@ -83,6 +83,11 @@ FEATURE_HANDLERS: dict[str, Handler] = {
     name: handler for feature in FEATURES for name, handler in feature.handlers.items()
 }
 
+#: Handlers only the engine's relays call; the runner's granted-tool gate lets them through.
+FEATURE_RELAY_OPS: frozenset[str] = frozenset(
+    name for feature in FEATURES for name in feature.relay_ops
+)
+
 
 def notify_result(ctx: HandlerCtx, output: str) -> None:
     """Tell every feature that listens (``Feature.on_result``) what a handler just returned."""

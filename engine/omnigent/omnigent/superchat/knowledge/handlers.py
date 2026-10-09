@@ -12,7 +12,7 @@ import base64
 import json
 from typing import Any
 
-from omnigent.runner.knowledge.indexer import DEFAULT_K, MAX_K
+from omnigent.runner.knowledge.indexer import DEFAULT_K, MAX_K, AmbiguousFile
 from omnigent.runner.knowledge.runtime import KnowledgeRuntime, configure, get_runtime
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
 from omnigent.superchat._handler_http import HEX_ID_RE, error
@@ -83,14 +83,22 @@ def _search(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
 
 
 def _read_page(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
-    file_id, path, page = args.get("file_id"), args.get("path"), _page_number(args.get("page"))
-    if not (isinstance(file_id, str) and HEX_ID_RE.match(file_id)) and not (
-        isinstance(path, str) and path
-    ):
-        return error("files_read_page requires a file_id (from files_search) or a path")
+    file_id, page = args.get("file_id"), _page_number(args.get("page"))
+    # ``path`` takes a workspace path or a plain file name; a ``file_id`` that is no id is one too.
+    path = next(
+        (v for v in (args.get("path"), args.get("file_name"), args.get("file")) if v), None
+    )
+    if isinstance(file_id, str) and not HEX_ID_RE.match(file_id):
+        path, file_id = path or file_id, None
+    if not file_id and not (isinstance(path, str) and path.strip()):
+        return error("files_read_page requires the file's name or path (or a file_id)")
     if page is None:
         return error("files_read_page requires a page number from 1")
-    row = runtime.indexer.resolve(file_id if isinstance(file_id, str) else None, path)
+    try:
+        row = runtime.indexer.resolve(file_id, path if isinstance(path, str) else None)
+    except AmbiguousFile as exc:
+        listed = ", ".join(exc.candidates)
+        return error(f"More than one file matches '{exc.ref}': {listed}. Pass the full path.")
     if row is None:
         return error("That file isn't in your search index (yet)")
     found = runtime.indexer.page(row, page)

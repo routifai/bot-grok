@@ -188,3 +188,59 @@ def test_changed_embedding_model_drops_old_vectors(tmp_path: Path) -> None:
     run_all(indexer)
     assert indexer.db.vector_tag() == "openrouter:other-model:64"
     assert indexer.search("car")["results"]
+
+
+AURORA = make_pdf(
+    [
+        [("Search check", 20), ("This document is used to check that file search works.", 11)],
+        [("Team", 20), ("The team meets for the weekly review and the planning of the year.", 11)],
+        [
+            ("Project Aurora", 20),
+            ("Project Aurora: the approved budget is 4.7 million dollars,", 11),
+            ("delivery planned for March 2027.", 11),
+        ],
+        [("Appendix", 20), ("Notes on the file and the page layout, and the cite style.", 11)],
+    ]
+)
+
+
+def _first_page(tmp_path: Path, query: str) -> tuple[int, dict]:
+    indexer, ws = build_indexer(tmp_path, FakeEmbedder(reason="no_connection"))
+    _put(ws, "your_files/uploads/search-check.pdf", AURORA)
+    indexer.scan()
+    run_all(indexer)
+    found = indexer.search(query)
+    assert found["mode"] == "keyword" and found["results"]
+    return found["results"][0]["page"], found
+
+
+def test_natural_language_query_finds_the_page_without_vectors(tmp_path: Path) -> None:
+    page, _ = _first_page(
+        tmp_path,
+        "use files_search on my files to find the approved budget for Project Aurora, "
+        "and cite the file and page",
+    )
+    assert page == 3
+
+
+def test_more_natural_questions_rank_the_right_page(tmp_path: Path) -> None:
+    for query, expected in [
+        ("What is the budget of Aurora?", 3),
+        ("when is delivery planned?", 3),
+        ("how much money, in dollars, was approved", 3),
+        ("budgets", 3),  # prefix of a longer word
+        ("weekly team review", 2),
+    ]:
+        page, _ = _first_page(tmp_path / str(abs(hash(query))), query)
+        assert page == expected, query
+
+
+def test_query_syntax_is_never_executed(tmp_path: Path) -> None:
+    for query in [
+        'budget" OR *',
+        "NEAR(budget aurora)",
+        "budget AND NOT",
+        "-budget ^aurora:",
+        "a:b*",
+    ]:
+        _first_page(tmp_path / str(abs(hash(query))), query + " aurora")

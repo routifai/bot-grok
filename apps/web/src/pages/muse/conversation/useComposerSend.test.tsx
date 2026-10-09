@@ -151,29 +151,65 @@ it("shows upload progress while files are written", async () => {
   expect(latest.uploadStatus).toBeNull();
 });
 
-it("keeps the files and says the Computer is starting; a retry does not upload twice", async () => {
-  await mount();
-  await pickFiles(["a.pdf", "aaa", "application/pdf"], ["b.pdf", "bbb", "application/pdf"]);
-  api.files.uploadAttachment
-    .mockResolvedValueOnce({ path: "p/a.pdf", name: "a.pdf", mimeType: "application/pdf", size: 3 })
-    .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }));
-  await act(async () => latest.sendMessage("hi"));
-  expect(latest.sendError).toBe("Your Computer is starting. Try again in a moment.");
-  expect(latest.pendingAttachments).toHaveLength(2);
-  expect(api.threads.send).not.toHaveBeenCalled();
+it("waits for a starting Computer, then uploads; nothing is uploaded twice", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    await pickFiles(["a.pdf", "aaa", "application/pdf"], ["b.pdf", "bbb", "application/pdf"]);
+    api.files.uploadAttachment
+      .mockResolvedValueOnce({
+        path: "p/a.pdf",
+        name: "a.pdf",
+        mimeType: "application/pdf",
+        size: 3,
+      })
+      .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }))
+      .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }))
+      .mockResolvedValueOnce({
+        path: "p/b.pdf",
+        name: "b.pdf",
+        mimeType: "application/pdf",
+        size: 3,
+      });
+    let sending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      sending = latest.sendMessage("hi");
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(latest.uploadStatus).toBe("Starting your Computer…");
+    expect(latest.sendError).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+      await sending;
+    });
+    const names = api.files.uploadAttachment.mock.calls.map((call) => call[0].name);
+    expect(names).toEqual(["a.pdf", "b.pdf", "b.pdf", "b.pdf"]);
+    expect(
+      api.threads.send.mock.calls[0]?.[0].attachments.map((a: { path: string }) => a.path),
+    ).toEqual(["p/a.pdf", "p/b.pdf"]);
+    expect(latest.sendError).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
-  api.files.uploadAttachment.mockImplementation(async (input: { name: string }) => ({
-    path: `p/${input.name}`,
-    name: input.name,
-    mimeType: "application/pdf",
-    size: 3,
-  }));
-  await act(async () => latest.sendMessage("hi"));
-  // a.pdf once, b.pdf failed once then uploaded on retry.
-  const names = api.files.uploadAttachment.mock.calls.map((call) => call[0].name);
-  expect(names).toEqual(["a.pdf", "b.pdf", "b.pdf"]);
-  expect(
-    api.threads.send.mock.calls[0]?.[0].attachments.map((a: { path: string }) => a.path),
-  ).toEqual(["p/a.pdf", "p/b.pdf"]);
-  expect(latest.sendError).toBeNull();
+it("keeps the files and fails calmly when the Computer never starts", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+    api.files.uploadAttachment.mockRejectedValue(
+      new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }),
+    );
+    await act(async () => {
+      const sending = latest.sendMessage("hi");
+      await vi.advanceTimersByTimeAsync(125_000);
+      await sending;
+    });
+    expect(latest.sendError).toBe("Your Computer is starting. Try again in a moment.");
+    expect(latest.pendingAttachments).toHaveLength(1);
+    expect(api.threads.send).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });

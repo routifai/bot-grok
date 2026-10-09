@@ -27,6 +27,7 @@ import type { useCreateBot } from "../chrome/useCreateBot";
 import { markFirstRunSeen } from "../intro";
 import { quotedMessageText } from "./museTranscript";
 import { type PendingAttachment, readFileAsBase64 } from "./shared";
+import { uploadWhenComputerReady } from "./uploadWhenComputerReady";
 import type { useThreadState } from "./useThreadState";
 import type { useThreadSync } from "./useThreadSync";
 
@@ -299,12 +300,19 @@ export function useComposerSend({
             if (!stored) {
               setUploadStatus(t`Uploading ${uploaded + 1} of ${attachments.length}`);
               const contentBase64 = await readFileAsBase64(pending.file);
-              stored = await rpc.files.uploadAttachment({
-                botId: botTarget!,
-                name: pending.file.name,
-                mimeType,
-                contentBase64,
-              });
+              const progress = t`Uploading ${uploaded + 1} of ${attachments.length}`;
+              stored = await uploadWhenComputerReady(
+                () =>
+                  rpc.files.uploadAttachment({
+                    botId: botTarget!,
+                    name: pending.file.name,
+                    mimeType,
+                    contentBase64,
+                  }),
+                isComputerStarting,
+                () => setUploadStatus(t`Starting your Computer…`),
+              );
+              setUploadStatus(progress);
               uploadedRef.current.set(pending.id, stored);
             }
             uploaded += 1;
