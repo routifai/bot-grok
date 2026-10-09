@@ -43,6 +43,9 @@ export interface PrepareChartOptions {
   animate?: boolean;
   /** Prefix for SVG ids (gradients), unique per chart on a page. */
   idPrefix?: string;
+  /** Series (and pie slice) colors in order, for series without their own; defaults to the
+   * chart palette from `--chart-1`. */
+  palette?: readonly string[];
 }
 
 export interface PreparedChart {
@@ -114,6 +117,17 @@ function estimateMaxLabelWidth(
   return Math.max(maxCharCount * CHAR_WIDTH_PX + TICK_PADDING_PX, MIN_TICK_WIDTH_PX);
 }
 
+/** The color at `index` of a palette (cycling), or the default chart color without one. */
+export function paletteColor(
+  palette: readonly string[] | undefined,
+  key: string,
+  index: number,
+): string {
+  return palette?.length
+    ? (palette[index % palette.length] as string)
+    : defaultColorFor(key, index);
+}
+
 /** Turns a saved spec and its data into a Recharts element plus the legend a static render needs. */
 export function prepareChart(
   spec: ChartSpec,
@@ -128,7 +142,7 @@ export function prepareChart(
   const xAxisKey = resolveDataKey(rows, spec.x_axis_key ?? undefined);
   const series = spec.series.map((s) => ({ ...s, data_key: resolveDataKey(rows, s.data_key) }));
   const colorFor = (key: string, index: number) =>
-    series.find((s) => s.data_key === key)?.color || defaultColorFor(key, index);
+    series.find((s) => s.data_key === key)?.color || paletteColor(options.palette, key, index);
 
   const isPie = chartType === "pie" || chartType === "donut";
   const xValues = rows.map((row) => row[xAxisKey]);

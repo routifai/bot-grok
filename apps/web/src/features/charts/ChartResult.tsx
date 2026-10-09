@@ -52,7 +52,7 @@ const SINGLE_HEIGHT = 300;
 const GRID_HEIGHT = 260;
 const EXPANDED_HEIGHT = 460;
 
-const FRAME = "min-w-0 rounded-2xl border border-border bg-card text-card-foreground";
+export const FRAME = "min-w-0 rounded-2xl border border-border bg-card text-card-foreground";
 
 /**
  * The documents of several charts, loaded together so the set lays out once, not chart by chart.
@@ -206,16 +206,28 @@ function ChartSkeleton({ chart, height }: { chart: ChartRef; height: number }) {
 }
 
 /**
- * A chart that did not load: its name, then Retry when the request failed, or Open (the panel's
- * own view of the file) when the file is not a chart.
+ * A chart or dashboard that did not load: its name, then Retry when the request failed, or Open
+ * (the panel's own view of the file) when the file is not readable as one.
  */
-function UnreadableChart({ chart, onRetry }: { chart: ChartRef; onRetry?: () => void }) {
+export function ChartLoadProblem({
+  artifactId,
+  name,
+  messageId,
+  onRetry,
+  unavailable,
+}: {
+  artifactId: string;
+  name: string;
+  messageId?: string;
+  onRetry?: () => void;
+  /** What to say when the file is not readable ("Chart unavailable"). */
+  unavailable: string;
+}) {
   const { t } = useLingui();
   const panel = useArtifactPanel();
-  const name = chart.title ?? chart.name.replace(/\.chart\.json$/i, "");
   return (
     <div
-      data-message-id={chart.messageId}
+      data-message-id={messageId}
       data-chart-state={onRetry ? "error" : "failed"}
       className={cn(FRAME, "flex items-center gap-3 px-4 py-3 text-[13.5px]")}
     >
@@ -228,19 +240,30 @@ function UnreadableChart({ chart, onRetry }: { chart: ChartRef; onRetry?: () => 
       <span className="min-w-0 flex-1 truncate" dir="auto">
         {name}
       </span>
-      <span className="text-muted-foreground">
-        {onRetry ? t`Couldn't load` : t`Chart unavailable`}
-      </span>
+      <span className="text-muted-foreground">{onRetry ? t`Couldn't load` : unavailable}</span>
       {onRetry ? (
         <Button variant="outline" size="sm" onClick={onRetry}>
           {t`Retry`}
         </Button>
       ) : panel ? (
-        <Button variant="outline" size="sm" onClick={() => panel.open(chart.artifactId)}>
+        <Button variant="outline" size="sm" onClick={() => panel.open(artifactId)}>
           {t`Open`}
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function UnreadableChart({ chart, onRetry }: { chart: ChartRef; onRetry?: () => void }) {
+  const { t } = useLingui();
+  return (
+    <ChartLoadProblem
+      artifactId={chart.artifactId}
+      name={chart.title ?? chart.name.replace(/\.chart\.json$/i, "")}
+      messageId={chart.messageId}
+      onRetry={onRetry}
+      unavailable={t`Chart unavailable`}
+    />
   );
 }
 

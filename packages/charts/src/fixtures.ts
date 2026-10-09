@@ -1,3 +1,5 @@
+import type { DashboardDocument } from "./dashboard.js";
+import type { ChartDocument } from "./document.js";
 import type { ChartRow } from "./prepare.js";
 import type { ChartSpec } from "./spec.js";
 
@@ -286,3 +288,148 @@ export const CHART_FIXTURES: ChartFixture[] = [
     data: RADAR,
   },
 ];
+
+const YEAR = [
+  "2026-01-01",
+  "2026-02-01",
+  "2026-03-01",
+  "2026-04-01",
+  "2026-05-01",
+  "2026-06-01",
+  "2026-07-01",
+  "2026-08-01",
+  "2026-09-01",
+  "2026-10-01",
+  "2026-11-01",
+  "2026-12-01",
+];
+const YEAR_REVENUE = [
+  1_209_400, 1_297_100, 1_358_300, 1_386_900, 1_411_000, 1_360_500, 1_351_400, 1_258_800, 1_274_900,
+  1_287_700, 1_262_100, 1_396_400,
+];
+const YEAR_MARGIN = [27.6, 29.4, 26.1, 27.0, 28.1, 24.9, 27.7, 26.1, 25.3, 29.8, 26.5, 28.6];
+const year: ChartRow[] = YEAR.map((month, i) => ({
+  month,
+  revenue: YEAR_REVENUE[i],
+  margin_pct: YEAR_MARGIN[i],
+}));
+const regionTotals: ChartRow[] = [
+  { region: "North America", revenue: 6_805_400 },
+  { region: "Europe", revenue: 5_016_600 },
+  { region: "Asia Pacific", revenue: 4_334_500 },
+];
+const PCT = { d3_format: ".1f", suffix: "%" };
+const USD_SHORT = { d3_format: ".3s", prefix: "$" };
+
+function sampleDocument(file: string, spec: ChartSpec, data: ChartRow[]): ChartDocument {
+  return {
+    version: 1,
+    spec,
+    source: {
+      file,
+      path: `chart_data/${file}`,
+      columns: Object.keys(data[0] ?? {}),
+      rows: data.length,
+      truncated: false,
+    },
+    data,
+  };
+}
+
+/** A sample dashboard (the dev route and the dashboard tests): KPI tiles, a wide trend, three. */
+export const DASHBOARD_FIXTURE: DashboardDocument = {
+  version: 1,
+  title: "Sales 2026",
+  kpis: [
+    sampleDocument(
+      "kpi.csv",
+      {
+        chart_type: "kpi_card",
+        title: "Total revenue",
+        series: [{ data_key: "revenue", value_format: { d3_format: ",.0f", prefix: "$" } }],
+      },
+      [{ revenue: 16_156_500 }],
+    ),
+    sampleDocument(
+      "monthly.csv",
+      {
+        chart_type: "kpi_card",
+        title: "December revenue",
+        x_axis_key: "month",
+        comparison_mode: "percentage",
+        series: [{ data_key: "revenue", value_format: { d3_format: ",.3s", prefix: "$" } }],
+      },
+      year.slice(-2),
+    ),
+    sampleDocument(
+      "kpi.csv",
+      {
+        chart_type: "kpi_card",
+        title: "Average margin",
+        series: [{ data_key: "margin_pct", value_format: PCT }],
+      },
+      [{ margin_pct: 27.3 }],
+    ),
+  ],
+  charts: [
+    {
+      ...sampleDocument(
+        "monthly.csv",
+        {
+          chart_type: "line",
+          title: "Revenue by month",
+          x_axis_key: "month",
+          x_axis_type: "date",
+          series: [{ data_key: "revenue", label: "Revenue", value_format: USD_SHORT }],
+        },
+        year,
+      ),
+      wide: true,
+    },
+    sampleDocument(
+      "region.csv",
+      {
+        chart_type: "bar",
+        title: "Revenue by region",
+        x_axis_key: "region",
+        x_axis_type: "category",
+        series: [{ data_key: "revenue", label: "Revenue", value_format: USD_SHORT }],
+      },
+      regionTotals,
+    ),
+    sampleDocument(
+      "region.csv",
+      {
+        chart_type: "donut",
+        title: "Region share of revenue",
+        x_axis_key: "region",
+        x_axis_type: "category",
+        series: [{ data_key: "revenue", label: "Revenue", value_format: USD_SHORT }],
+      },
+      regionTotals,
+    ),
+    {
+      ...sampleDocument(
+        "monthly.csv",
+        {
+          chart_type: "mixed",
+          title: "Revenue against margin",
+          x_axis_key: "month",
+          x_axis_type: "date",
+          series: [
+            { data_key: "revenue", label: "Revenue", value_format: USD_SHORT, series_type: "bar" },
+            {
+              data_key: "margin_pct",
+              label: "Margin",
+              value_format: PCT,
+              series_type: "line",
+              y_axis: "right",
+            },
+          ],
+        },
+        year,
+      ),
+      wide: true,
+    },
+  ],
+};

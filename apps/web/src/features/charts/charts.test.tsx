@@ -2,7 +2,7 @@
 
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
-import { CHART_FIXTURES, type ChartDocument } from "@nova/charts";
+import { CHART_FIXTURES, type ChartDocument, DASHBOARD_FIXTURE } from "@nova/charts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -13,10 +13,12 @@ vi.mock("../../lib/artifact-open", () => ({
   decodeArtifactBase64: (base64: string) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
 }));
 
+import { ArtifactPanelProvider } from "../../components/cards/context";
 import { ChartInlinePreview } from "./ChartArtifact";
 import { ChartGallery, chartOfMessage } from "./ChartResult";
 import { ChartThumbnail } from "./ChartThumbnail";
 import { ChartView } from "./ChartView";
+import { DashboardResult } from "./DashboardView";
 import { chartsExtension } from "./extension";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -252,4 +254,59 @@ it("draws chart files as charts wherever a file card would show", () => {
   const args = { artifactId: "a", version: 1, data: {} };
   expect(chartsExtension.result?.({ ...args, name: "a.chart.json" })).not.toBeNull();
   expect(chartsExtension.result?.({ ...args, name: "a.pdf" })).toBeNull();
+});
+
+const settle = () =>
+  act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+it("draws a dashboard as one card: title, KPI row, interactive charts, Open to the panel", async () => {
+  api.getById.mockResolvedValue({ contentBase64: btoa(JSON.stringify(DASHBOARD_FIXTURE)) });
+  const panel = { openId: null, open: vi.fn(), close: vi.fn() };
+  render(
+    <ArtifactPanelProvider value={panel as never}>
+      <DashboardResult artifactId="dash-1" name="sales-2026.dashboard.json" version={1} />
+    </ArtifactPanelProvider>,
+  );
+  expect(host.querySelector('[aria-busy="true"]')).not.toBeNull();
+  await settle();
+  const card = host.querySelector('[data-dashboard="dash-1"]');
+  expect(card?.querySelector("h3")?.textContent).toBe("Sales 2026");
+  expect(card?.querySelectorAll('[data-chart="kpi_card"]').length).toBe(3);
+  expect(card?.textContent).toContain("$16,156,500");
+  for (const chart of DASHBOARD_FIXTURE.charts)
+    expect(card?.textContent).toContain(chart.spec.title);
+  // Each chart keeps its provenance.
+  expect(card?.textContent).toContain("Source: region.csv");
+  const open = [...host.querySelectorAll("button")].find((b) => b.textContent === "Open");
+  act(() => open?.click());
+  expect(panel.open).toHaveBeenCalledWith("dash-1", "Sales 2026");
+});
+
+it("shows a dashboard that could not load as an error with Retry", async () => {
+  api.getById.mockRejectedValueOnce(new Error("Failed to fetch"));
+  render(<DashboardResult artifactId="dash-2" name="q3.dashboard.json" version={1} />);
+  await settle();
+  expect(host.querySelector('[data-chart-state="error"]')?.textContent).toContain("q3");
+  api.getById.mockResolvedValueOnce({ contentBase64: btoa(JSON.stringify(DASHBOARD_FIXTURE)) });
+  const retry = [...host.querySelectorAll("button")].find((b) => b.textContent === "Retry");
+  await act(async () => {
+    retry?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(host.querySelector('[data-dashboard="dash-2"]')).not.toBeNull();
+});
+
+it("claims dashboards: the chat card, the panel and the Library", () => {
+  const args = { artifactId: "d", version: 1, data: {} };
+  expect(chartsExtension.result?.({ ...args, name: "d.dashboard.json" })).not.toBeNull();
+  expect(chartsExtension.card?.({ name: "d.dashboard.json" } as never)).toEqual({
+    meta: "Dashboard",
+  });
+  expect(
+    chartsExtension.thumbnail?.({ id: "d", name: "d.dashboard.json", version: 1 } as never),
+  ).not.toBeNull();
 });
