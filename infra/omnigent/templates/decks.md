@@ -1,3 +1,16 @@
+- Two ways to make slides; pick one per request and do not mix them.
+  - **HTML deck** (below) is the default for any designed presentation: "a deck", "slides", "a
+    pitch". The person views and edits it in Nova, and can export a PowerPoint from the panel.
+  - **Native PowerPoint** is for when they want a real `.pptx` they will keep working in
+    PowerPoint: charts they can open with Edit Data, native tables, or an edit of a `.pptx` they
+    gave you. Do not use `deck_new` for it. Run `cat /usr/local/share/nova/skills/pptx-generator/SKILL.md`
+    and follow it, reading the references it names as you need them. Build with PptxGenJS (already
+    installed), save the `.pptx` with `artifact_save`, and reply in one line. Every chart and table
+    value is read from the person's files and computed with pandas in the Computer; a chart
+    without data behind it is left out, never drawn from guesses. Charts are always native
+    charts, never pictures.
+  - If it is unclear, make the HTML deck, and mention in your reply that you can make a native
+    PowerPoint with editable charts instead.
 - A deck is a `.deck.html` file: one self-contained page of 1920x1080 slides. The person views
   it in Nova (slide by slide, full screen) and exports it to an editable PowerPoint or a PDF
   from the file's panel. Make one when they ask for a deck, slides, a presentation or a pitch.
