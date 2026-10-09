@@ -30,6 +30,7 @@ from omnigent.db.utils import (
     run_write_transaction,
 )
 from omnigent.stores.artifact_store import ArtifactStore
+from omnigent.superchat.artifacts.events import emit_created, emit_deleted
 
 _BLOB_PREFIX = "muse-artifacts"
 _CREATE_ATTEMPTS = 5
@@ -279,14 +280,21 @@ class SqlAlchemyArtifactStore:
         try:
             for attempt in range(_CREATE_ATTEMPTS):
                 try:
-                    return run_write_transaction(self._session_immediate, "insert_artifact", write)
+                    saved = run_write_transaction(
+                        self._session_immediate, "insert_artifact", write
+                    )
+                    break
                 except IntegrityError:
                     if attempt == _CREATE_ATTEMPTS - 1:
                         raise
-            raise AssertionError("unreachable")  # pragma: no cover
+            else:  # pragma: no cover
+                raise AssertionError("unreachable")
         except Exception:
             blobs.delete(key)
             raise
+        siblings = [v.id for v in self.versions(saved) if v.id != saved.id]
+        emit_created(saved, data, siblings)
+        return saved
 
     def newest(self, item: Artifact) -> Artifact | None:
         """The newest version of ``item``'s group."""
@@ -596,4 +604,5 @@ class SqlAlchemyArtifactStore:
         blobs = self._blob_store()
         for version in group:
             blobs.delete(version.blob_key)
+        emit_deleted(group)
         return len(group)

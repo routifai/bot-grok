@@ -64,6 +64,10 @@ dependencies = [
     "keyring>=24,<26",
     # Decode and validate public branding assets before serving them.
     "pillow>=12.2,<13",
+    # PDF text layer + page rendering for the knowledge (file search) capability
+    # (omnigent/superchat/knowledge/pdf.py). Apache-2.0 / BSD-3 bindings to PDFium (BSD-3);
+    # bundled wheels, no system poppler/ghostscript. Pinned: page text and renders feed the index.
+    "pypdfium2==5.0.0",
     # Round-trip (comment/format-preserving) TOML editing of the user's
     # ~/.codex/config.toml when removing a Databricks provider
     # (omnigent/onboarding/ucode_cleanup.py). stdlib tomllib is read-only.
@@ -349,6 +353,8 @@ lint = [
 ]
 test = [
     "pytest>=7.0",
+    # Builds the tiny PDF fixtures of the knowledge tests (BSD-3-Clause; test-only).
+    "reportlab>=4,<5",
     # PEP 517 frontend used by the standalone-package artifact checks.
     "build>=1.2",
     # These clients are optional product capabilities, but their tests import

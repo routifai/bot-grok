@@ -8,6 +8,8 @@ out. The rules a client would otherwise copy:
   ``secure_entry`` / ``file`` messages of their own (a call whose output says it failed shows
   nothing; a card still running is ``pending``);
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
+* the pages a ``files_search`` call found become one ``passages`` card (citation chips) under the
+  next assistant message;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
   through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set.
@@ -29,6 +31,9 @@ from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
 ARTIFACT_SAVE_TOOL_NAME = "artifact_save"
+FILES_SEARCH_TOOL_NAME = "files_search"
+#: Most pages shown as citation chips under one answer.
+_MAX_CITATIONS = 6
 
 Item = Mapping[str, Any]
 
@@ -149,6 +154,46 @@ def _file_block(output: str | None) -> dict[str, Any] | None:
     return block
 
 
+def _citations(output: str | None) -> list[dict[str, Any]]:
+    """The distinct file pages a ``files_search`` result found, best first."""
+    result = _object(output)
+    if not result or result.get("type") != "file_search":
+        return []
+    found: list[dict[str, Any]] = []
+    for hit in result.get("results") if isinstance(result.get("results"), list) else []:
+        if not isinstance(hit, dict):
+            continue
+        artifact_id, name, page = hit.get("artifact_id"), hit.get("file_name"), hit.get("page")
+        if not (isinstance(artifact_id, str) and isinstance(name, str) and isinstance(page, int)):
+            continue
+        found.append(
+            {
+                "artifactId": artifact_id,
+                "name": name,
+                "page": page,
+                **({"hasThumbnail": True} if hit.get("thumbnail_url") else {}),
+            }
+        )
+    return found
+
+
+def _citation_block(items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """One ``card`` block of citation chips for the pages searched this turn."""
+    unique = list({(i["artifactId"], i["page"]): i for i in items}.values())[:_MAX_CITATIONS]
+    if not unique:
+        return None
+    label = ", ".join(f"{i['name']} p. {i['page']}" for i in unique)
+    return {
+        "type": "card",
+        "card_id": None,
+        "card": {
+            "card": "passages",
+            "data": {"items": unique},
+            "fallback": f"Sources: {label}",
+        },
+    }
+
+
 def _helper_block(
     call_id: str, output: str | None, statuses: Mapping[str, str]
 ) -> dict[str, Any] | None:
@@ -205,6 +250,7 @@ def project_items(
     outputs = tool_outputs_by_call_id(items)
     messages: list[dict[str, Any]] = []
     helpers: list[dict[str, Any]] = []
+    cited: list[dict[str, Any]] = []
     seen_calls: set[str] = set()
     for item in items:
         kind = item.get("type")
@@ -220,6 +266,9 @@ def project_items(
                 helper = _helper_block(call_id, output, statuses)
                 if helper:
                     helpers.append(helper)
+                continue
+            if _is_call(item, FILES_SEARCH_TOOL_NAME):
+                cited.extend(_citations(output))
                 continue
             if _is_call(item, CARD_TOOL_NAME):
                 block = _card_block(item, output)
@@ -248,8 +297,15 @@ def project_items(
             ):
                 continue
             blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
+            if role == "user":
+                cited = []
             if role == "assistant" and helpers:
                 blocks.extend(helpers)
                 helpers = []
+            if role == "assistant" and cited:
+                citations = _citation_block(cited)
+                if citations:
+                    blocks.append(citations)
+                cited = []
             messages.append(_message(item, role, blocks))
     return messages
