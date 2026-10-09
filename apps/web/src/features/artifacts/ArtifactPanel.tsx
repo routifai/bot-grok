@@ -2,12 +2,12 @@ import { useLingui } from "@lingui/react/macro";
 import { Button, cn } from "@nova/ui-web";
 import { Download, ExternalLink, Lock, Maximize2, Minimize2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { downloadArtifactBytes } from "../lib/artifact-open";
-import { useArtifactPanelParts } from "../lib/artifact-registry";
-import { useObjectUrl } from "../lib/use-object-url";
-import { ArtifactPreview } from "../pages/Artifacts";
-import { useArtifactContent } from "../pages/muse/library/useArtifactContent";
-import { formatSize } from "./cards/catalog";
+import { formatSize } from "../../components/cards/catalog";
+import { downloadArtifactBytes } from "../../lib/artifact-open";
+import { useObjectUrl } from "../../lib/use-object-url";
+import { ArtifactPreview } from "./Artifacts";
+import { useArtifactContent } from "./library/useArtifactContent";
+import { useArtifactPanelParts } from "./registry";
 
 const EMPTY_BYTES = new Uint8Array(0);
 

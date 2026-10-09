@@ -1,4 +1,4 @@
-import type { ArtifactExtension } from "../../lib/artifact-registry";
+import type { ArtifactExtension } from "../artifacts";
 import { SheetView } from "./SheetView";
 import { SHEET_MIME_TYPES } from "./sheet-model";
 

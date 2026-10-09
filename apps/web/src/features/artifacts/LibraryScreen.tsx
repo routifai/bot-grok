@@ -10,17 +10,13 @@ import {
   AlertDialogTitle,
 } from "@nova/ui-web";
 import { Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { ArtifactKind } from "../../lib/artifact-kind";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
-import { LibraryGlyph } from "./chrome/NovaGlyphs";
-import { NovaTile } from "./chrome/NovaTile";
-import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
-import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
-import { SkillsPanel } from "./library/SkillsPanel";
-import type { ArtifactSummary } from "./library/types";
+import { LibraryGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
 import {
   EmptyState,
   MuseScreen,
@@ -28,7 +24,10 @@ import {
   ScreenHeader,
   ScreenHero,
   SegmentedControl,
-} from "./ui";
+} from "../../pages/muse/ui";
+import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
+import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
+import type { ArtifactSummary } from "./library/types";
 
 /** A facet's count, quiet beside its label. */
 function Count({ n }: { n: number }) {
@@ -54,9 +53,12 @@ const LIBRARY_SUGGESTIONS = [
 export function LibraryScreen({
   botId,
   onSendIdea,
+  skills,
 }: {
   botId: string;
   botName?: string;
+  /** The Skills tab's content, filled by the shell (skills is its own capability); no tab without it. */
+  skills?: ReactNode;
   /** Starts a Conversation with a suggestion from the empty state. */
   onSendIdea?: (text: string) => void;
 }) {
@@ -187,16 +189,18 @@ export function LibraryScreen({
                   />
                 </label>
               ) : null}
-              <SegmentedControl
-                label={t`Library view`}
-                value={view}
-                onChange={setView}
-                className="w-[200px]"
-                options={[
-                  { value: "made", label: t`Made for you` },
-                  { value: "skills", label: t`Skills` },
-                ]}
-              />
+              {skills ? (
+                <SegmentedControl
+                  label={t`Library view`}
+                  value={view}
+                  onChange={setView}
+                  className="w-[200px]"
+                  options={[
+                    { value: "made", label: t`Made for you` },
+                    { value: "skills", label: t`Skills` },
+                  ]}
+                />
+              ) : null}
             </>
           }
         />
@@ -252,8 +256,8 @@ export function LibraryScreen({
             ) : undefined
           }
         />
-        {view === "skills" ? (
-          <SkillsPanel botId={botId} />
+        {view === "skills" && skills ? (
+          skills
         ) : (
           <>
             {total > 0 ? (

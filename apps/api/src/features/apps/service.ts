@@ -7,7 +7,7 @@ import {
 } from "@nova/adapters";
 import type { Actor, ArtifactPublish, ArtifactPublishAudience } from "@nova/contracts";
 import { ORPCError } from "@orpc/server";
-import { type EngineArtifactsDeps, emailOf, notFound, toPublish } from "../../engine-artifacts.js";
+import { type EngineArtifactsDeps, emailOf, notFound, toPublish } from "../artifacts/index.js";
 
 /** Only the owner's own file is ever found: the engine 404s another owner's artifact. */
 export async function enginePublishArtifact(

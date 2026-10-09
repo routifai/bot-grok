@@ -15,14 +15,18 @@ import {
 import { Code2, Download, ExternalLink, FileText, X } from "lucide-react";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import { artifactKind, kindLabel } from "../lib/artifact-kind";
-import type { ArtifactTarget } from "../lib/artifact-open";
-import { downloadArtifact, downloadArtifactBytes, fetchArtifactBytes } from "../lib/artifact-open";
-import { useObjectUrl } from "../lib/use-object-url";
+import { MEDIA_ACTION, MediaArt, MediaFrame, MediaTile } from "../../components/MediaTile";
+import { PdfViewer } from "../../components/PdfViewer";
+import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
+import { artifactKind, kindLabel } from "../../lib/artifact-kind";
+import type { ArtifactTarget } from "../../lib/artifact-open";
+import {
+  downloadArtifact,
+  downloadArtifactBytes,
+  fetchArtifactBytes,
+} from "../../lib/artifact-open";
+import { useObjectUrl } from "../../lib/use-object-url";
 import { ArtifactPreviewThumbnail, hasLivePreview } from "./ArtifactPreviewThumbnail";
-import { MEDIA_ACTION, MediaArt, MediaFrame, MediaTile } from "./MediaTile";
-import { PdfViewer } from "./PdfViewer";
-import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 
 type ArtifactFileCardProps = {
   target: ArtifactTarget;

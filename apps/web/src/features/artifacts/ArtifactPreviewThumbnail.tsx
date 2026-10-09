@@ -1,10 +1,10 @@
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { artifactKind, KIND_ICON } from "../lib/artifact-kind";
-import { decodeArtifactBase64 } from "../lib/artifact-open";
-import { rpc } from "../lib/rpc";
-import { useObjectUrl } from "../lib/use-object-url";
-import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
+import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
+import { artifactKind, KIND_ICON } from "../../lib/artifact-kind";
+import { decodeArtifactBase64 } from "../../lib/artifact-open";
+import { rpc } from "../../lib/rpc";
+import { useObjectUrl } from "../../lib/use-object-url";
 
 // A real preview is only cheap for images and small pages, so cap both the mime
 // types and the byte size that get one; everything else keeps its type icon.

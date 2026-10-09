@@ -27,7 +27,7 @@ vi.mock("@nova/ui-web", () => {
     DropdownMenuTrigger: Passthrough,
   };
 });
-vi.mock("../../components/ArtifactPreviewCard", () => ({
+vi.mock("../artifacts/ArtifactPreviewCard", () => ({
   glassActionClassName: "",
   GlassAction: Object.assign(() => null, {}),
   ArtifactPreviewCard: ({ meta, badge }: { meta: ReactNode; badge: ReactNode }) => (
@@ -38,8 +38,8 @@ vi.mock("../../components/ArtifactPreviewCard", () => ({
   ),
 }));
 
-import { ArtifactRegistryProvider } from "../../lib/artifact-registry";
-import { LibraryCard } from "../../pages/muse/library/LibraryCard";
+import { ArtifactRegistryProvider } from "../artifacts";
+import { LibraryCard } from "../artifacts/library/LibraryCard";
 import { appsExtension } from "./extension";
 
 const base = {

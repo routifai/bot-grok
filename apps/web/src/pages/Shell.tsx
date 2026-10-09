@@ -43,10 +43,12 @@ import {
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
 import { appsExtension } from "../features/apps";
+import { LibraryScreen } from "../features/artifacts/LibraryScreen";
+import { ArtifactRegistryProvider } from "../features/artifacts/registry";
+import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
 import { ConversationModelPicker } from "../features/models";
 import { sheetsExtension } from "../features/sheets";
 import type { ArtifactTarget } from "../lib/artifact-open";
-import { ArtifactRegistryProvider } from "../lib/artifact-registry";
 import { authClient } from "../lib/auth";
 import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
@@ -83,7 +85,6 @@ import { conversationMessages as layerConversation } from "./muse/conversation/m
 import { FALLBACK_BOT_COLOR } from "./muse/conversation/shared";
 import { sideChatView } from "./muse/conversation/sideChatView";
 import { Transcript } from "./muse/conversation/Transcript";
-import { useChatArtifacts } from "./muse/conversation/useChatArtifacts";
 import { useComposerSend } from "./muse/conversation/useComposerSend";
 import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
@@ -104,7 +105,7 @@ import { ForkThread, type ForkThreadTarget } from "./muse/forks/ForkThread";
 import { forkChatSummary, useForkView } from "./muse/forks/useForkView";
 import { GoalsScreen } from "./muse/GoalsScreen";
 import { IdeasScreen } from "./muse/IdeasScreen";
-import { LibraryScreen } from "./muse/LibraryScreen";
+import { SkillsPanel } from "./muse/library/SkillsPanel";
 import { RoutineList } from "./muse/routines/RoutineList";
 import { RoutinePanel } from "./muse/routines/RoutinePanel";
 import { useRoutineEditor } from "./muse/routines/useRoutineEditor";
@@ -930,7 +931,12 @@ export function ShellPage() {
                 onOpenConversation={() => setMuseView("conversation")}
               />
             ) : (
-              <LibraryScreen botId={active.id} botName={active.name} onSendIdea={handleSendIdea} />
+              <LibraryScreen
+                botId={active.id}
+                botName={active.name}
+                onSendIdea={handleSendIdea}
+                skills={<SkillsPanel botId={active.id} />}
+              />
             )}
           </div>
         ) : (

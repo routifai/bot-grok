@@ -33,6 +33,7 @@ infra/sandboxes/supervisor/dist
 .vercel
 .cache
 artifacts
+!apps/*/src/features/artifacts
 backups
 test-report
 verify-report

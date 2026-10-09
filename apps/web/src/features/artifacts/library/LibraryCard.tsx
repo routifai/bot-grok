@@ -7,14 +7,10 @@ import {
 } from "@nova/ui-web";
 import { Download, Ellipsis, Maximize2 } from "lucide-react";
 import { Fragment } from "react";
-import {
-  ArtifactPreviewCard,
-  GlassAction,
-  glassActionClassName,
-} from "../../../components/ArtifactPreviewCard";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";
-import { useArtifactCardParts } from "../../../lib/artifact-registry";
 import { formatRelativeTime } from "../../../lib/relative-time";
+import { ArtifactPreviewCard, GlassAction, glassActionClassName } from "../ArtifactPreviewCard";
+import { useArtifactCardParts } from "../registry";
 import { LibraryArt } from "./LibraryArt";
 import type { ArtifactSummary } from "./types";
 

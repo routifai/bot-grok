@@ -16,10 +16,10 @@ type LayerName = "engine" | "api" | "adapters" | "contracts" | "web";
 /** Capabilities already in capability layout, per layer. Add a name here as it moves. */
 const CAPABILITIES: Record<LayerName, readonly string[]> = {
   engine: ["admin", "apps", "artifacts", "models", "sheets"],
-  api: ["admin", "apps", "models", "sheets"],
-  adapters: ["apps", "models", "sheets"],
-  contracts: ["admin", "apps", "models", "sheets"],
-  web: ["admin", "apps", "models", "sheets"],
+  api: ["admin", "apps", "artifacts", "models", "sheets"],
+  adapters: ["apps", "artifacts", "models", "sheets"],
+  contracts: ["admin", "apps", "artifacts", "models", "sheets"],
+  web: ["admin", "apps", "artifacts", "models", "sheets"],
 };
 
 /** `capability -> capabilities it may import`, through their public entry point only. */
@@ -35,13 +35,21 @@ const BASES: Record<string, readonly string[]> = {
  * <capability>"`. Remove an entry when the edge is gone; never add one without a reason.
  */
 const BASELINE: readonly string[] = [
-  // `ArtifactSchema.publish` embeds the apps publication shape; goes away when the artifact
-  // schemas move into `rpc/artifacts.ts` and reach it as a base.
-  "contracts:domain.ts -> apps",
   // The bootstrap payload says whether the person still needs a model; that is the models
   // capability's answer (engine key/budget status). Goes away when bootstrap assembles per-
   // capability contributions instead of reaching into each one.
   "api:routers/shared.ts -> models",
+  // The transcript draws a saved file (message block, reply card) with the artifacts file card;
+  // goes away when the conversation and cards move into their folders and take a block extension
+  // point. The Computer panel's file preview reuses the artifact preview; goes away with computer.
+  "web:components/cards/ReplyCard.tsx -> artifacts",
+  "web:pages/muse/conversation/MessageView.test.tsx -> artifacts",
+  "web:pages/muse/conversation/MessageView.tsx -> artifacts",
+  "web:pages/muse/files/FilePreviewDialog.tsx -> artifacts",
+  // Tests of the apps extension mount the artifact host (ArtifactPanel, LibraryCard) and stub its
+  // preview/thumbnail modules by path; they test the seam from the host side.
+  "web:features/apps/LibraryCardPublished.test.tsx -> artifacts",
+  "web:features/apps/PublishApp.test.tsx -> artifacts",
   // The sheet "ask about this selection" chip lives in the composer and the message view; it
   // needs a composer/message extension point, which comes when those move into their folders.
   "web:pages/muse/conversation/Composer.tsx -> sheets",
@@ -125,7 +133,7 @@ const LAYERS: readonly Layer[] = [
   fileLayout("contracts", "packages/contracts/src", "rpc", [/^rpc\.ts$/, /^index\.ts$/]),
   featuresLayout("web", "apps/web/src", [
     /^App\.tsx$/,
-    /^pages\/Shell\.tsx$/,
+    /^pages\/Shell(\.test)?\.tsx$/,
     /^pages\/SettingsOverlay(\.test)?\.tsx$/,
     /^pages\/muse\/NovaSettingsPanel\.tsx$/,
     /^pages\/muse\/chrome\/ContextPanel\.tsx$/,

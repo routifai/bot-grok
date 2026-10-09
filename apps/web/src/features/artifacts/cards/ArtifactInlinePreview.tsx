@@ -4,12 +4,12 @@ import { isAttachmentImageMimeType } from "@nova/contracts";
 import { cn } from "@nova/ui-web";
 import { File, FileText, Presentation, Table2 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
-import { decodeArtifactBase64 } from "../../lib/artifact-open";
-import { rpc } from "../../lib/rpc";
-import { useObjectUrl } from "../../lib/use-object-url";
+import { formatSize } from "../../../components/cards/catalog";
+import { SandboxedHtmlViewer } from "../../../components/SandboxedHtmlViewer";
+import { decodeArtifactBase64 } from "../../../lib/artifact-open";
+import { rpc } from "../../../lib/rpc";
+import { useObjectUrl } from "../../../lib/use-object-url";
 import { documentHeading } from "../ArtifactPreviewThumbnail";
-import { SandboxedHtmlViewer } from "../SandboxedHtmlViewer";
-import { formatSize } from "./catalog";
 
 const bytesCache = new Map<string, { mimeType: string; bytes: Uint8Array }>();
 const HTML_VIEWPORT_WIDTH = 1280;

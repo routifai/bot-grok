@@ -1,7 +1,7 @@
 import { oc } from "@orpc/contract";
 import * as z from "zod";
-import { ArtifactSchema } from "../domain.js";
 import { Id } from "../ids.js";
+import { ArtifactSchema } from "./artifacts.js";
 
 /** One cell of a CSV / XLSX artifact; `v` is null for a formula with no cached value. */
 export const TableCellSchema = z.object({

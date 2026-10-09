@@ -10,8 +10,8 @@ const api = vi.hoisted(() => ({
   getById: vi.fn(),
   listVersions: vi.fn(),
 }));
-vi.mock("../lib/rpc", () => ({ rpc: { artifacts: api } }));
-vi.mock("../pages/Artifacts", () => ({
+vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api } }));
+vi.mock("./Artifacts", () => ({
   ArtifactPreview: ({ bytes }: { bytes: Uint8Array }) => (
     <div data-testid="body">{new TextDecoder().decode(bytes)}</div>
   ),
@@ -28,9 +28,9 @@ vi.mock("@lingui/core/macro", () => ({
     (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
 
+import { ArtifactPanelProvider, ReplyCardThreadProvider } from "../../components/cards/context";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { ArtifactFileCard } from "./cards/ArtifactFileCard";
-import { ArtifactPanelProvider, ReplyCardThreadProvider } from "./cards/context";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 

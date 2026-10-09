@@ -40,7 +40,7 @@ import {
   buildUserMessageBlocks,
   resolveGroupSendAttachments,
   resolveSendAttachments,
-} from "./artifacts.js";
+} from "./attachments.js";
 import { resolveBusyBotName, toComputerStatus } from "./computer-status.js";
 import { withSerializableRetry } from "./serializable-retry.js";
 import { loadMessagePage } from "./thread-message-pages.js";

@@ -3,7 +3,6 @@ import { BotAvatarValueSchema } from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
 import { Id, RunStatus, SandboxKind } from "./ids.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
-import { ArtifactPublishSchema } from "./rpc/apps.js";
 
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
 export type ComputerMode = z.infer<typeof ComputerModeSchema>;
@@ -741,41 +740,6 @@ export const BotMcpServerSchema = z.object({
   updatedAt: z.string(),
 });
 export type BotMcpServer = z.infer<typeof BotMcpServerSchema>;
-
-export const ArtifactSchema = z.object({
-  id: Id,
-  botId: Id.nullable(),
-  groupId: Id.nullable(),
-  runId: Id.nullable(),
-  name: z.string(),
-  description: z.string().nullable(),
-  mimeType: z.string(),
-  size: z.number().int(),
-  version: z.number().int(),
-  createdAt: z.string(),
-  /** Set when the file is published as an app. */
-  publish: ArtifactPublishSchema.nullish(),
-});
-
-export type Artifact = z.infer<typeof ArtifactSchema>;
-
-export const ArtifactVersionSchema = z.object({
-  id: Id,
-  version: z.number().int(),
-  name: z.string(),
-  createdAt: z.string(),
-  /** "manual" when the person edited it by hand. */
-  origin: z.string().optional(),
-  parentVersionId: Id.nullable().optional(),
-  editSummary: z.string().nullable().optional(),
-});
-
-export type ArtifactVersion = z.infer<typeof ArtifactVersionSchema>;
-
-export const ArtifactWithContentSchema = ArtifactSchema.extend({
-  contentBase64: z.string(),
-});
-export type ArtifactWithContent = z.infer<typeof ArtifactWithContentSchema>;
 
 export const UsageRecordSchema = z.object({
   id: Id,

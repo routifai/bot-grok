@@ -5,7 +5,7 @@ import {
   engineListArtifactVersions,
   engineListSpaceArtifacts,
   engineRemoveArtifact,
-} from "./engine-artifacts.js";
+} from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",

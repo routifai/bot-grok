@@ -1,16 +1,17 @@
 import { engineAdminRouter } from "./features/admin/router.js";
 import { appsRouter } from "./features/apps/router.js";
+import { artifactsRouter } from "./features/artifacts/router.js";
 import { engineModelsRouter } from "./features/models/router.js";
 import { sheetsRouter } from "./features/sheets/router.js";
 import { accountRouter } from "./routers/account.js";
 import { approvalsRouter } from "./routers/approvals.js";
-import { artifactsRouter } from "./routers/artifacts.js";
 import { botsRouter } from "./routers/bots.js";
 import { computerRouter } from "./routers/computer.js";
 import { connectionsRouter } from "./routers/connections.js";
 import type { RouterDeps } from "./routers/context.js";
 import { createRouterContext } from "./routers/context.js";
 import { feedRouter } from "./routers/feed.js";
+import { filesRouter } from "./routers/files.js";
 import { goalsRouter } from "./routers/goals.js";
 import { integrationsRouter } from "./routers/integrations.js";
 import { mcpRouter } from "./routers/mcp.js";
@@ -38,6 +39,7 @@ export function createRouter(deps: RouterDeps) {
     ...engineModelsRouter(c),
     ...connectionsRouter(c),
     ...feedRouter(c),
+    ...filesRouter(c),
     ...goalsRouter(c),
     ...integrationsRouter(c),
     ...mcpRouter(c),
