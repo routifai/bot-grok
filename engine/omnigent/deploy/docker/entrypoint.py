@@ -395,6 +395,17 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
     policy_store = SqlAlchemyPolicyStore(database_url)
     scheduled_task_store = SqlAlchemyScheduledTaskStore(database_url)
     project_store = SqlAlchemyProjectStore(database_url)
+    from omnigent.stores.objective_store.sqlalchemy_store import SqlAlchemyObjectiveStore
+
+    objective_store = SqlAlchemyObjectiveStore(database_url)
+    # Long-term memory, as `omnigent server` wires it: None without the `memory` extra (the
+    # memory_* tools then report it as not configured); the upkeep table needs no extra.
+    from omnigent.memory import build_memory_service, build_memory_upkeep_store
+
+    memory_service = build_memory_service(database_url, artifact_dir / "memory_index")
+    memory_upkeep_store = (
+        build_memory_upkeep_store(database_url) if memory_service is not None else None
+    )
     # Fail startup loud on a malformed `sandbox:` section (an operator
     # typo should not surface as a runtime 502 on the first managed
     # session); the startup catch-all below logs it.
@@ -499,6 +510,9 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
         host_store=host_store,
         scheduled_task_store=scheduled_task_store,
         project_store=project_store,
+        objective_store=objective_store,
+        memory_service=memory_service,
+        memory_upkeep_store=memory_upkeep_store,
         auth_provider=auth_provider,
         account_store=account_store,
         # Non-secret auth settings from the config file (admins are the
