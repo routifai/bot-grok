@@ -308,3 +308,29 @@ def test_route_errors(store, route_client) -> None:
     assert bad.status_code == 400 and bad.json()["error"] == "Chromium crashed"
     holder["runner"] = _Runner({"error": {"code": -32000, "message": "No runner"}})
     assert client.post(url, json={"format": "pdf"}, headers=H).json()["error"] == "No runner"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt", ["pptx", "pdf"])
+async def test_handler_exports_a_kit_deck_with_the_real_helper(
+    store, server, monkeypatch, fmt: str
+) -> None:
+    """The whole path with nothing faked but the server: kit deck -> Chromium -> new artifact."""
+    from tests.superchat.decks.test_export_fidelity import HELPER, _chromium_available
+
+    if not HELPER.is_file() or not _chromium_available():
+        pytest.skip("Chromium or the helper is missing")
+    from omnigent.superchat.decks import kit
+
+    monkeypatch.setenv(HELPER_ENV, str(HELPER))
+    html = kit.build_deck(
+        "blue-professional", "Q3 review", (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
+    )
+    deck = store.create(
+        user_id="alice", parent_session_id=_CHAT, name="q3.deck.html", title="Q3 review",
+        kind="html", mime=KIND_MIME["html"], data=html.encode(), source_path=None,
+    )  # fmt: skip
+    out = json.loads(await handle_deck_tool(_ctx(server), {"artifact_id": deck.id, "format": fmt}))
+    assert out["type"] == "artifact" and out["name"] == f"q3.{fmt}" and out["size"] > 10_000
+    data = store.read(store.get(out["id"], user_id="alice"))
+    assert data.startswith(b"%PDF" if fmt == "pdf" else b"PK")

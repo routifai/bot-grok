@@ -27,8 +27,8 @@ HELPER_TIMEOUT_S = 180.0
 _FORMAT_LABEL = {"pptx": "PowerPoint", "pdf": "PDF"}
 
 
-async def _run_helper(fmt: str, html: Path, out: Path) -> dict[str, Any] | str:
-    """Run the helper; its parsed last-line JSON, or a human error sentence."""
+async def run_helper(fmt: str, html: Path, out: Path | None = None) -> dict[str, Any] | str:
+    """Run the helper (``pptx``/``pdf`` write ``out``, ``lint`` measures): JSON, or a sentence."""
     helper = os.environ.get(HELPER_ENV) or "nova-deck-export"
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -37,8 +37,7 @@ async def _run_helper(fmt: str, html: Path, out: Path) -> dict[str, Any] | str:
             fmt,
             "--html",
             str(html),
-            "--out",
-            str(out),
+            *(["--out", str(out)] if out is not None else []),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -67,12 +66,21 @@ async def _run_helper(fmt: str, html: Path, out: Path) -> dict[str, Any] | str:
 
 async def handle_deck_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     """
-    Export a saved deck and save the result as a new artifact.
+    Run one deck tool: ``deck_new`` / ``deck_check`` author a deck, ``deck_export`` exports it.
 
     :param ctx: The call context.
-    :param args: Parsed tool arguments (``artifact_id``, ``format``).
-    :returns: Tool output JSON string (``{"type": "artifact", ...}`` on success).
+    :param args: Parsed tool arguments.
+    :returns: Tool output JSON string (``{"type": "artifact", ...}`` for an export).
     """
+    if ctx.tool_name in ("deck_new", "deck_check"):
+        from omnigent.superchat.decks.authoring import handle_authoring_tool
+
+        return await handle_authoring_tool(ctx.tool_name, args)
+    return await _export(ctx, args)
+
+
+async def _export(ctx: HandlerCtx, args: dict[str, Any]) -> str:
+    """Export a saved deck and save the result as a new artifact (``deck_export``)."""
     caller = await resolve_caller(ctx)
     if isinstance(caller, str):
         return caller
@@ -103,7 +111,7 @@ async def handle_deck_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             src = Path(tmp) / "deck.html"
             out = Path(tmp) / f"deck.{fmt}"
             src.write_bytes(html)
-            result = await _run_helper(fmt, src, out)
+            result = await run_helper(fmt, src, out)
             if isinstance(result, str):
                 return error(result)
             produced = Path(str(result.get("path") or out))

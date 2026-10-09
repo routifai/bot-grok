@@ -1,4 +1,4 @@
-"""Registration of the decks primitive (``deck_export`` tool, export REST route)."""
+"""Registration of the decks primitive: authoring and export tools plus the export route."""
 
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ if TYPE_CHECKING:
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
     """Offered to the Super Chat and to Helpers alike (a Helper saves under its parent)."""
-    from omnigent.superchat.decks.tools import DeckExportTool
+    from omnigent.superchat.decks.tools import DeckCheckTool, DeckExportTool, DeckNewTool
 
     if not is_superside_chat(labels):
         return []
-    return [DeckExportTool()]
+    return [DeckNewTool(), DeckCheckTool(), DeckExportTool()]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
