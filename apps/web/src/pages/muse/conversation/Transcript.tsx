@@ -35,6 +35,7 @@ import { MessageHoverActions } from "./MessageHoverActions";
 import { MessageView } from "./MessageView";
 import { hasOpenMuseAsk } from "./messageText";
 import { QuoteSelectionButton } from "./QuoteSelectionButton";
+import { foldGroupRuns, useTranscriptGroup } from "./transcriptGroups";
 import { WorkingRow } from "./WorkingRow";
 
 /** The transcript, with its reply cards resolved across the whole thread (in-place updates,
@@ -180,12 +181,17 @@ const TranscriptView = memo(function Transcript({
   );
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
   // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
+  // Charts in a row (a dashboard reply) read as one set across the column.
+  const group = useTranscriptGroup();
   const transcriptRows = useMemo<TranscriptRow[]>(
     () =>
-      museMode
-        ? foldFailureRuns(reactionView.visibleMessages)
-        : reactionView.visibleMessages.map((message) => ({ kind: "message", message })),
-    [museMode, reactionView.visibleMessages],
+      foldGroupRuns(
+        museMode
+          ? foldFailureRuns(reactionView.visibleMessages)
+          : reactionView.visibleMessages.map((message) => ({ kind: "message", message })),
+        group,
+      ),
+    [museMode, reactionView.visibleMessages, group],
   );
   const workingBotName = workingBots.length === 1 ? workingBots[0]?.name : undefined;
   const workingLabel =
@@ -460,6 +466,13 @@ const TranscriptView = memo(function Transcript({
           </button>
         ) : null}
         {transcriptRows.map((row) => {
+          if (row.kind === "group") {
+            return (
+              <div key={row.messages[0]?.id} className="w-full min-w-0 py-1">
+                {group?.render(row.messages)}
+              </div>
+            );
+          }
           if (row.kind === "failures") {
             const last = row.messages.at(-1) as ThreadMessage;
             return (

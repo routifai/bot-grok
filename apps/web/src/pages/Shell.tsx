@@ -47,7 +47,7 @@ import { appsExtension } from "../features/apps";
 import { LibraryScreen } from "../features/artifacts/LibraryScreen";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
-import { chartsExtension } from "../features/charts";
+import { ChartGallery, chartsExtension, isChartMessage } from "../features/charts";
 import { ComputerOverlay } from "../features/computer/ComputerOverlay";
 import { ComputerPreview } from "../features/computer/ComputerPreview";
 import { ComputerUpdateProgress } from "../features/computer/ComputerUpdateProgress";
@@ -111,6 +111,10 @@ import { Composer } from "./muse/conversation/Composer";
 import { conversationMessages as layerConversation } from "./muse/conversation/museTranscript";
 import { FALLBACK_BOT_COLOR } from "./muse/conversation/shared";
 import { Transcript } from "./muse/conversation/Transcript";
+import {
+  type TranscriptGroup,
+  TranscriptGroupProvider,
+} from "./muse/conversation/transcriptGroups";
 import { useComposerSend } from "./muse/conversation/useComposerSend";
 import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
@@ -185,6 +189,12 @@ const ARTIFACT_EXTENSIONS = [
   chartsExtension,
   knowledgeExtension,
 ];
+
+/** The charts the Muse showed in a row (a dashboard reply) draw as one set: KPIs, then a grid. */
+const CHART_RUNS: TranscriptGroup = {
+  joins: isChartMessage,
+  render: (messages) => <ChartGallery messages={messages} />,
+};
 
 export function ShellPage() {
   const { t } = useLingui();
@@ -1514,26 +1524,28 @@ export function ShellPage() {
     <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>
       <ArtifactPanelProvider value={chatArtifacts.api}>
         <ArtifactRegistryProvider value={ARTIFACT_EXTENSIONS}>
-          {museMode ? (
-            // The window ground around Nova's rounded content window.
-            <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
-              {active ? (
-                <OrbHomeProvider home={orbHome}>
-                  <NovaPresence
-                    botId={active.id}
-                    runs={currentRuns}
-                    messages={activeSnapshot?.messages}
-                  >
-                    {shell}
-                  </NovaPresence>
-                </OrbHomeProvider>
-              ) : (
-                shell
-              )}
-            </div>
-          ) : (
-            shell
-          )}
+          <TranscriptGroupProvider value={CHART_RUNS}>
+            {museMode ? (
+              // The window ground around Nova's rounded content window.
+              <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
+                {active ? (
+                  <OrbHomeProvider home={orbHome}>
+                    <NovaPresence
+                      botId={active.id}
+                      runs={currentRuns}
+                      messages={activeSnapshot?.messages}
+                    >
+                      {shell}
+                    </NovaPresence>
+                  </OrbHomeProvider>
+                ) : (
+                  shell
+                )}
+              </div>
+            ) : (
+              shell
+            )}
+          </TranscriptGroupProvider>
         </ArtifactRegistryProvider>
       </ArtifactPanelProvider>
     </AvatarStyleProvider>
