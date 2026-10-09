@@ -393,6 +393,8 @@ export function useComposerSend({
         } else if (botTarget && activeBotId.current === botTarget) {
           setSendError(failure);
         }
+        // Nothing was sent: the composer puts the person's words back.
+        return false;
       } finally {
         setUploadStatus(null);
         setSending(false);

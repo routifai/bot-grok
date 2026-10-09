@@ -131,7 +131,7 @@ it("shows upload progress while files are written", async () => {
           });
       }),
   );
-  let sending: Promise<void> = Promise.resolve();
+  let sending: Promise<unknown> = Promise.resolve();
   await act(async () => {
     sending = latest.sendMessage("");
   });
@@ -171,7 +171,7 @@ it("waits for a starting Computer, then uploads; nothing is uploaded twice", asy
         mimeType: "application/pdf",
         size: 3,
       });
-    let sending: Promise<void> = Promise.resolve();
+    let sending: Promise<unknown> = Promise.resolve();
     await act(async () => {
       sending = latest.sendMessage("hi");
       await vi.advanceTimersByTimeAsync(100);
@@ -188,6 +188,8 @@ it("waits for a starting Computer, then uploads; nothing is uploaded twice", asy
       api.threads.send.mock.calls[0]?.[0].attachments.map((a: { path: string }) => a.path),
     ).toEqual(["p/a.pdf", "p/b.pdf"]);
     expect(latest.sendError).toBeNull();
+    expect(api.threads.send).toHaveBeenCalledTimes(1);
+    expect(latest.pendingAttachments).toHaveLength(0);
   } finally {
     vi.useRealTimers();
   }
@@ -204,7 +206,7 @@ it("keeps the files and fails calmly when the Computer never starts", async () =
     await act(async () => {
       const sending = latest.sendMessage("hi");
       await vi.advanceTimersByTimeAsync(125_000);
-      await sending;
+      expect(await sending).toBe(false);
     });
     expect(latest.sendError).toBe("Your Computer is starting. Try again in a moment.");
     expect(latest.pendingAttachments).toHaveLength(1);
