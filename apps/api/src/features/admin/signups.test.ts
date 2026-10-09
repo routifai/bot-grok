@@ -294,6 +294,17 @@ describe("signup administration", () => {
     expect(users[0]!.engineQuarantinePaused).toBe(false);
   });
 
+  it("restore resumes the engine before activating: a refusal leaves the person pending and retryable", async () => {
+    const { deps, users } = fixture();
+    vi.mocked(setEngineAccountSuspended).mockRejectedValueOnce(new Error("engine refused"));
+    await expect(restoreSignup(deps, owner, "u1", {} as never)).rejects.toThrow(/engine refused/);
+    expect(users[0]).toMatchObject({ status: "pending", engineQuarantinePaused: true });
+    expect(restoreQuarantinedSpaces).not.toHaveBeenCalled();
+    await restoreSignup(deps, owner, "u1", {} as never); // the retry succeeds
+    expect(users[0]).toMatchObject({ status: "active", engineQuarantinePaused: false });
+    expect(restoreQuarantinedSpaces).toHaveBeenCalledTimes(1);
+  });
+
   it("discard resets the engine account after the purge, and not if the purge was partial", async () => {
     const { deps } = fixture();
     await discardSignup(deps, owner, "u1", {} as never);

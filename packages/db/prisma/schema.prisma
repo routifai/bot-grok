@@ -110,19 +110,21 @@ model Verification {
 }
 
 model Organization {
-  id                    String       @id
-  name                  String
-  slug                  String
-  logo                  String?
-  createdAt             DateTime
-  metadata              String?
-  members               Member[]
-  invitations           Invitation[]
-  spaces                Space[]
+  id                       String       @id
+  name                     String
+  slug                     String
+  logo                     String?
+  createdAt                DateTime
+  metadata                 String?
+  members                  Member[]
+  invitations              Invitation[]
+  spaces                   Space[]
   /// Set when a mailbox was proved on an account that had used this space unverified: the space is
   /// detached from everyone and kept for an admin to restore or discard, then purged after a TTL.
-  quarantinedFromUserId String?
-  quarantinedAt         DateTime?
+  quarantinedFromUserId    String?
+  quarantinedAt            DateTime?
+  /// Set while a purge works on this organization, so a restore cannot take it half-way.
+  quarantinePurgeStartedAt DateTime?
 
   @@unique([slug])
   @@index([quarantinedAt])

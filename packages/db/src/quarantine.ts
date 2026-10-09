@@ -114,7 +114,12 @@ export async function restoreQuarantinedSpaces(
   for (const organization of organizations) {
     const done = await prisma.$transaction(async (tx) => {
       const claimed = await tx.organization.updateMany({
-        where: { id: organization.id, quarantinedFromUserId: userId, quarantinedAt: { not: null } },
+        where: {
+          id: organization.id,
+          quarantinedFromUserId: userId,
+          quarantinedAt: { not: null },
+          quarantinePurgeStartedAt: null,
+        },
         data: { quarantinedFromUserId: null, quarantinedAt: null },
       });
       if (claimed.count !== 1) return false;
@@ -152,20 +157,40 @@ export async function restoreQuarantinedSpaces(
   return restored;
 }
 
+/** A purge that began longer ago than this is presumed dead and may be taken again. */
+const PURGE_CLAIM_STALE_MS = 15 * 60 * 1000;
+
 /**
- * Take a quarantined organization for purging: after this, a restore finds nothing to restore.
- * False only when it is no longer quarantined (a restore got there first). A purge that crashed
- * after claiming is simply taken again by the next sweep.
+ * Mark a quarantined organization as being purged, so a restore can no longer take it. The
+ * former owner stays recorded: a retried discard still finds the space. False when it is no
+ * longer quarantined (a restore got there first) or another purge is working on it. A claim older
+ * than 15 minutes is presumed dead and taken again.
  */
 export async function claimQuarantinedForPurge(
   prisma: PrismaClient,
   organizationId: string,
+  now = new Date(),
 ): Promise<boolean> {
   const claimed = await prisma.organization.updateMany({
-    where: { id: organizationId, quarantinedAt: { not: null } },
-    data: { quarantinedFromUserId: null },
+    where: {
+      id: organizationId,
+      quarantinedAt: { not: null },
+      OR: [
+        { quarantinePurgeStartedAt: null },
+        { quarantinePurgeStartedAt: { lt: new Date(now.getTime() - PURGE_CLAIM_STALE_MS) } },
+      ],
+    },
+    data: { quarantinePurgeStartedAt: now },
   });
   return claimed.count === 1;
+}
+
+/** A purge failed: let a retry (or a restore) take the organization again at once. */
+export async function releasePurgeClaim(prisma: PrismaClient, organizationId: string) {
+  await prisma.organization.updateMany({
+    where: { id: organizationId, quarantinedAt: { not: null } },
+    data: { quarantinePurgeStartedAt: null },
+  });
 }
 
 /** Quarantined organizations past their TTL (or all of one person's, when `userId` is given). */

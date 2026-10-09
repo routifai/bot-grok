@@ -231,6 +231,13 @@ export async function restoreSignup(
     select: { id: true },
   });
   if (!waiting) throw new ORPCError("NOT_FOUND", { message: "Not waiting for approval" });
+  // Resume the engine account first: if the engine refuses, the person stays pending with the
+  // flag set and the space still kept, and the restore can simply be retried.
+  const kept = await quarantinedOrganizationsToPurge(deps.prisma, { userId });
+  if (kept.length === 0) {
+    throw new ORPCError("NOT_FOUND", { message: "No previous space is kept" });
+  }
+  await settleEngineAccount(deps, engine, userId, "resume");
   if ((await restoreQuarantinedSpaces(deps.prisma, userId)) === 0) {
     throw new ORPCError("NOT_FOUND", { message: "No previous space is kept" });
   }
@@ -238,7 +245,6 @@ export async function restoreSignup(
     where: { id: userId, status: "pending" },
     data: { status: "active" },
   });
-  await settleEngineAccount(deps, engine, userId, "resume");
   return { ok: true as const };
 }
 

@@ -3,6 +3,7 @@ import {
   claimQuarantinedForPurge,
   createDb,
   quarantineUserSpaces,
+  releasePurgeClaim,
   restoreQuarantinedSpaces,
 } from "@nova/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -168,8 +169,12 @@ describePostgres("quarantine of a used space (PostgreSQL, fake sandbox)", () => 
       select: { id: true, spaces: { select: { id: true } } },
     });
     // The purge claims first: a restore then finds nothing, and the space is not re-attached.
+    // The claim keeps who the space belonged to, so a retried discard still finds it.
     expect(await claimQuarantinedForPurge(prisma, org!.id)).toBe(true);
+    expect(await claimQuarantinedForPurge(prisma, org!.id)).toBe(false); // one purge at a time
+    expect(await prisma.organization.count({ where: { quarantinedFromUserId: a.id } })).toBe(1);
     expect(await restoreQuarantinedSpaces(prisma, a.id)).toBe(0);
+    await releasePurgeClaim(prisma, org!.id); // a failed purge lets go
     expect(await prisma.spaceMember.count({ where: { userId: a.id } })).toBe(0);
     await purgeQuarantinedOrganizations({ prisma, sandbox }, [org!]);
     expect(await prisma.organization.count({ where: { id: org!.id } })).toBe(0);

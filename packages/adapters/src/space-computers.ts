@@ -7,6 +7,7 @@ import {
   purgeStaleEmailQuota,
   QUARANTINE_TTL_MS,
   quarantinedOrganizationsToPurge,
+  releasePurgeClaim,
 } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { toComputerRef } from "./computer-support.js";
@@ -113,8 +114,8 @@ export async function purgeQuarantinedOrganizations(
 ): Promise<string[]> {
   const removed: string[] = [];
   for (const organization of organizations) {
+    if (!(await claimQuarantinedForPurge(deps.prisma, organization.id))) continue;
     try {
-      if (!(await claimQuarantinedForPurge(deps.prisma, organization.id))) continue;
       await destroySpaceComputers(
         deps,
         organization.spaces.map((space) => space.id),
@@ -126,6 +127,7 @@ export async function purgeQuarantinedOrganizations(
       getLogger().error("could not purge a quarantined space; it will be retried", error, {
         "identity.organization": organization.id,
       });
+      await releasePurgeClaim(deps.prisma, organization.id).catch(() => undefined);
     }
   }
   return removed;
