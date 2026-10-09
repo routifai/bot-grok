@@ -1,2 +1,2 @@
 // The decks capability's public entry point.
-export { engineExportDeck } from "./service.js";
+export { engineEditDeck, engineExportDeck } from "./service.js";

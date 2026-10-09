@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { engineExportDeck } from "./service.js";
+import { engineEditDeck, engineExportDeck } from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",
@@ -77,5 +77,44 @@ describe("engine deck export", () => {
     await expect(
       engineExportDeck(deps, client, actor, { artifactId: "a1", format: "pdf" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("engine deck edit", () => {
+  const patches = [{ kind: "set-text" as const, id: "title", text: "B" }];
+  it("patches and returns the new manual version", async () => {
+    const fetchMock = vi.fn(async (url: URL, init?: RequestInit) => {
+      expect(url.pathname).toBe("/v1/artifacts/a1/edit");
+      expect(init?.method).toBe("PATCH");
+      return json({ ...row, id: "a3", version: 2 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const created = await engineEditDeck(deps, client, actor, {
+      artifactId: "a1",
+      baseVersion: 1,
+      patches,
+    });
+    expect(created).toMatchObject({ id: "a3" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      base_version: 1,
+      patches,
+    });
+  });
+
+  it("maps a 409 to CONFLICT with the engine's words", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        json(
+          {
+            error: { code: "conflict", message: "Can't apply that edit exactly: ask Nova instead" },
+          },
+          409,
+        ),
+      ),
+    );
+    await expect(
+      engineEditDeck(deps, client, actor, { artifactId: "a1", baseVersion: 1, patches }),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ask Nova") });
   });
 });
