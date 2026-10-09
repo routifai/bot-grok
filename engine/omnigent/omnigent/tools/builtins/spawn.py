@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from omnigent.context.attachments import strip_legacy_attachment_context
 from omnigent.entities import (
     Conversation,
     ConversationItem,
@@ -1095,11 +1096,14 @@ def _project_activity_item(
                 text_parts.append(text)
         elif isinstance(block, str):
             text_parts.append(block)
+    body = "\n".join(text_parts)
+    if role == "user":
+        body = strip_legacy_attachment_context(body)  # document text is not the person's words
     return {
         "role": role,
         "type": "text",
         "content": _truncate(
-            "\n".join(text_parts),
+            body,
             max_chars=max_chars,
             offset_chars=offset_chars,
         ),

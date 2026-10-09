@@ -401,6 +401,71 @@ def test_stopping_the_service_ends_the_wait_for_an_ingest(tmp_path: Path) -> Non
         waiter = threading.Thread(target=lambda: (indexer._yield_to_ingest(), done.set()))
         waiter.start()
         assert not done.wait(0.2)
-        indexer.stop_event.set()
+        indexer.shutdown()
         assert done.wait(3)
     waiter.join()
+
+
+def test_an_ingest_slips_in_between_the_text_pass_and_the_embedding_pass(tmp_path: Path) -> None:
+    indexer, ws = build_indexer(tmp_path)
+    _put(ws, "your_files/bulk.txt", "bulk words\n")
+    indexer.scan()
+    row = indexer.db.file_by_path("your_files/bulk.txt")
+    background = threading.Thread(target=lambda: indexer.process(row, background=True))
+    with indexer._ingest_priority():  # an attachment is waiting for its turn
+        background.start()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if indexer.db.file_by_path("your_files/bulk.txt").state == "text_ready":
+                break
+            time.sleep(0.02)
+        time.sleep(0.2)
+        # the text is read, the embedding pass is held back for the waiting ingest
+        assert indexer.db.file_by_path("your_files/bulk.txt").state == "text_ready"
+        assert indexer._work.acquire(blocking=False)  # and the work lock is free for it
+        indexer._work.release()
+    background.join(5)
+    assert indexer.db.file_by_path("your_files/bulk.txt").state == STATE_READY
+
+
+def test_a_failed_file_is_not_queued_again_by_a_restart(tmp_path: Path) -> None:
+    indexer, ws = build_indexer(tmp_path)
+    _put(ws, f"{UPLOADS}/t.csv", CSV)
+    indexer.scan()
+    row = indexer.db.file_by_path(f"{UPLOADS}/t.csv")
+    indexer.db.update_file(row.file_id, state="failed", parser_version=1, last_error="boom")
+    again = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
+    assert again.db.file_by_path(f"{UPLOADS}/t.csv").state == "failed"
+
+
+def test_long_names_are_cut_and_the_shared_strings_part_is_capped(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from omnigent.runner.knowledge import tabular
+
+    def build(book) -> None:
+        book.active.append(["x" * 5000, "ok"])
+        book.active.append(["a", "b"])
+
+    path = _book(tmp_path, build)
+    (sheet,) = profile_table("xlsx", path).sheets
+    assert len(sheet.column_names[0]) == tabular.MAX_NAME_CHARS and sheet.column_names[1] == "ok"
+    # a workbook whose shared-strings part is too big is refused before it is opened
+    import zipfile
+
+    big = tmp_path / "strings.xlsx"
+    with zipfile.ZipFile(big, "w") as archive:
+        archive.writestr("xl/sharedStrings.xml", "s" * 500)
+    monkeypatch.setattr(tabular, "MAX_SHARED_STRINGS_BYTES", 100)
+    with pytest.raises(ValueError, match="too much text"):
+        profile_table("xlsx", big)
+
+
+def test_the_csv_field_limit_is_raised_only_while_a_file_is_read(tmp_path: Path) -> None:
+    import csv
+
+    before = csv.field_size_limit()
+    path = _file(tmp_path, "w.csv", "a,b\n" + "y" * 200_000 + ",1\n")
+    (sheet,) = profile_table("csv", path, name="w.csv").sheets
+    assert sheet.rows == 1
+    assert csv.field_size_limit() == before

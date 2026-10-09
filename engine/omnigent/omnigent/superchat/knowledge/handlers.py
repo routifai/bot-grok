@@ -28,13 +28,17 @@ SEARCH_RESULT_TYPE = "file_search"
 _SEARCH_MODES = {"files_search": "keyword", "files_vsearch": "vector", "files_query": "hybrid"}
 
 
-def _runtime(ctx: HandlerCtx) -> KnowledgeRuntime:
-    client = ctx.server_client
-    if client is not None:
-        configure(str(client.base_url))
+def runtime_for(server_client: Any) -> KnowledgeRuntime:
+    """The Computer's index service, started, pointed at the engine for the model proxy."""
+    if server_client is not None:
+        configure(str(server_client.base_url))
     runtime = get_runtime()
     runtime.start()
     return runtime
+
+
+def _runtime(ctx: HandlerCtx) -> KnowledgeRuntime:
+    return runtime_for(ctx.server_client)
 
 
 async def handle_knowledge_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:

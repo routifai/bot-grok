@@ -27,10 +27,10 @@ Wording stays with the client: nothing here is copy.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping
 from typing import Any
 
+from omnigent.context.attachments import strip_legacy_attachment_context
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.superchat.artifact_kinds import KIND_MIME
@@ -85,9 +85,6 @@ def tool_outputs_by_call_id(items: list[Item]) -> dict[str, str]:
     }
 
 
-_LEGACY_CONTEXT = re.compile(r"<attachment_context>.*?</attachment_context>\n?", re.DOTALL)
-
-
 def item_text(item: Item) -> str:
     """The text of a message item's ``input_text`` / ``output_text`` parts, joined and trimmed.
 
@@ -103,9 +100,7 @@ def item_text(item: Item) -> str:
         and isinstance(block.get("text"), str)
     ]
     text = "\n\n".join(parts).strip()
-    if item.get("role") == "user" and "<attachment_context>" in text:
-        text = re.sub(r"\n{3,}", "\n\n", _LEGACY_CONTEXT.sub("", text)).strip()
-    return text
+    return strip_legacy_attachment_context(text) if item.get("role") == "user" else text
 
 
 def _card_payload(payload: Mapping[str, Any]) -> dict[str, Any] | None:

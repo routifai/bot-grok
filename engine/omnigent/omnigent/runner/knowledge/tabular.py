@@ -56,8 +56,14 @@ MAX_ZIP_ENTRIES = 5000
 MAX_FORMULA_ROWS = HEADER_SEARCH_ROWS + TYPE_SAMPLE_ROWS
 FORMULA_TYPE = "formula (not computed)"
 
-# A cell can be huge (a pasted document); the default 128 KB limit would fail the whole file.
-csv.field_size_limit(16 * 1024 * 1024)
+#: Longest field a CSV may hold (a cell can be a pasted document; the default 128 KB would fail
+#: the whole file). Raised only while a file is being read, then put back.
+CSV_FIELD_LIMIT = 16 * 1024 * 1024
+#: Longest sheet or column name kept (a header cell can hold a paragraph).
+MAX_NAME_CHARS = 120
+#: Largest single unpacked part of a workbook that openpyxl loads whole (shared strings); the
+#: sheets themselves are streamed.
+MAX_SHARED_STRINGS_BYTES = 64 * 1024 * 1024
 
 _INTEGER = re.compile(r"^[+-]?\d+$")
 _THOUSANDS = re.compile(r"^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$")
@@ -116,6 +122,12 @@ class TableProfile:
 
 
 # ---------------------------------------------------------------------------- cells and types
+
+
+def _name(value: object, fallback: str) -> str:
+    """A sheet or column name: its text, cut to :data:`MAX_NAME_CHARS`, or *fallback*."""
+    text = _text(value).replace("\n", " ")
+    return (text if len(text) <= MAX_NAME_CHARS else text[: MAX_NAME_CHARS - 1] + "…") or fallback
 
 
 def _text(value: object) -> str:
@@ -219,7 +231,7 @@ def _profile_rows(
     while count and not _text(header[count]):
         count -= 1  # trailing empty header cells are not columns
     width = count + 1 if header else 0
-    names = [_text(header[i]) or f"column {i + 1}" for i in range(min(width, MAX_COLUMN_NAMES))]
+    names = [_name(header[i], f"column {i + 1}") for i in range(min(width, MAX_COLUMN_NAMES))]
     typed = min(len(names), MAX_TYPED_COLUMNS)
     seen: list[set[str]] = [set() for _ in range(typed)]
     preview: list[list[str]] = []
@@ -291,9 +303,13 @@ def _csv_rows(path: Path) -> Iterator[list[object]]:
             )
         except csv.Error:
             dialect = csv.excel
-        for row in csv.reader(text, dialect):
-            if any(c.strip() for c in row):
-                yield [c.lstrip("﻿") if i == 0 else c for i, c in enumerate(row)]
+        previous = csv.field_size_limit(CSV_FIELD_LIMIT)
+        try:
+            for row in csv.reader(text, dialect):
+                if any(c.strip() for c in row):
+                    yield [c.lstrip("\ufeff") if i == 0 else c for i, c in enumerate(row)]
+        finally:
+            csv.field_size_limit(previous)
 
 
 # ---------------------------------------------------------------------------- XLSX
@@ -308,6 +324,11 @@ def _check_unpacked_size(path: Path) -> None:
         raise ValueError("not a readable workbook") from None
     if len(infos) > MAX_ZIP_ENTRIES or sum(i.file_size for i in infos) > MAX_UNPACKED_BYTES:
         raise ValueError("This workbook is too large to read")
+    if any(
+        i.filename.endswith("sharedStrings.xml") and i.file_size > MAX_SHARED_STRINGS_BYTES
+        for i in infos
+    ):
+        raise ValueError("This workbook has too much text to read")
 
 
 def _formula_pass(path: Path, sheet: str, profile: SheetProfile, header_at: int) -> SheetProfile:
@@ -343,11 +364,11 @@ def _formula_pass(path: Path, sheet: str, profile: SheetProfile, header_at: int)
     for i in range(width):
         cell = rows[header_at][i] if i < len(rows[header_at]) else None
         if i >= len(names):
-            names.append(_text(cell) or f"column {i + 1}")
+            names.append(_name(cell, f"column {i + 1}"))
             types.append("empty")
             changed = True
         elif names[i].startswith("column ") and isinstance(cell, str) and cell.strip():
-            names[i] = cell.strip()
+            names[i] = _name(cell, names[i])
             changed = True
         formula = any(i < len(r) and isinstance(r[i], str) and r[i].startswith("=") for r in body)
         if formula and types[i] == "empty":
@@ -376,12 +397,12 @@ def _xlsx_profile(path: Path) -> TableProfile:
         raise ValueError(f"not a readable workbook ({type(exc).__name__})") from None
     sheets: list[SheetProfile] = []
     try:
-        names = list(book.sheetnames)
+        names = [_name(n, "Sheet") for n in book.sheetnames]
         positions: list[int] = []
         for sheet in book.worksheets[:MAX_SHEETS]:
             rows = (list(r) for r in sheet.iter_rows(values_only=True) if any(_text(c) for c in r))
             dimension = sheet.max_row if isinstance(sheet.max_row, int) else None
-            profile, at = _profile_rows(sheet.title, rows, dimension=dimension)
+            profile, at = _profile_rows(_name(sheet.title, "Sheet"), rows, dimension=dimension)
             sheets.append(profile)
             positions.append(at)
     finally:

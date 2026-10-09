@@ -9395,45 +9395,17 @@ def create_runner_app(
     ) -> _JsonObject:
         """Prepend the Super Chat per-turn blocks (Memory Profile, Projects, local time).
 
-        *message* is this turn's own user message: the files it refers to are read in the
-        Computer and their framed text goes in front of it (closest to it), for the harness only.
+        *message* is this turn's own user message; features build blocks from its text
+        (``Feature.message_prefix``) that go in front of it, for the harness only.
 
         Called only for ``superside-chat`` turns; the blocks come from the one
         ``superchat.prompt_prefix`` hook, fetched fresh each turn (the SDK's system prompt is
         frozen per warm client, so a per-message block is the seam that still reaches it).
         """
         workspace = await _session_runtime_cwd(conv_id)
-        blocks = await turn_prefix_blocks(server_client, conv_id, workspace)
-        blocks = [*await _attachment_blocks(message, conv_id), *blocks]
+        texts = _message_texts(message.get("content")) if message else []
+        blocks = await turn_prefix_blocks(server_client, conv_id, workspace, texts)
         return _prepend_turn_blocks(body, blocks, conv_id)
-
-    async def _attachment_blocks(message: _JsonObject | None, conv_id: str) -> list[str]:
-        """The framed text of the files *message* attaches (never stored, never raises)."""
-        if not message:
-            return []
-        try:
-            from omnigent.runner.knowledge.runtime import configure, get_runtime
-            from omnigent.superchat.knowledge.attachment_context import (
-                attachment_context_blocks,
-                references,
-            )
-
-            texts = _message_texts(message.get("content"))
-            if not references(texts):
-                return []
-            if server_client is not None:
-                configure(str(server_client.base_url))
-            runtime = get_runtime()
-            runtime.start()
-            return await attachment_context_blocks(runtime.indexer, texts)
-        except Exception:  # noqa: BLE001 - a file that cannot be read must not fail the turn
-            _logger.warning(
-                "attachment context failed for %s",
-                conv_id,
-                exc_info=True,
-                extra={"session_id": conv_id},
-            )
-            return []
 
     def _discard_comment_relay(session_id: str, relay: ClaudeNativeToolRelay) -> None:
         """Unbind and close *relay*, unless another path already replaced it.
@@ -14170,6 +14142,18 @@ def create_runner_app(
         method: str = body.get("method") or ""
         params: _JsonObject = body.get("params") or {}
 
+        from omnigent.superchat.feature import RELAY_MARK
+
+        scope = getattr(request, "scope", None)  # absent on the retained-operation re-entry below
+        if (
+            RELAY_MARK in body
+            and scope is not None
+            and (scope.get("client") or (None,))[0] != "tunnel"
+        ):
+            # The relay mark is the server's: only a call that came through the server tunnel may
+            # carry it. Anything else (a direct connection) has it stripped.
+            body = {k: v for k, v in body.items() if k != RELAY_MARK}
+
         raw_operation = body.get("_omnigent_operation")
         if method == "tools/call" and raw_operation is not None:
             operation = raw_operation if isinstance(raw_operation, dict) else {}
@@ -14273,7 +14257,6 @@ def create_runner_app(
             import json as _json
 
             from omnigent.runner.tool_dispatch import execute_tool
-            from omnigent.superchat.feature import RELAY_MARK
 
             tool_name = cast(str, params.get("name") or "")
             arguments = cast(_JsonObject, params.get("arguments") or {})

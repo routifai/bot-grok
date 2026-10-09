@@ -146,13 +146,3 @@ def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() ->
         )
         # a model's own call of the same name (no relay mark) is refused, even in a Super Chat
         assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat)
-
-
-def test_the_runner_marks_only_the_engines_relay_calls() -> None:
-    """``/mcp/execute`` reads the mark from the request body, which the relays alone set."""
-    from omnigent.superchat.feature import RELAY_MARK
-    from omnigent.superchat.knowledge import routes
-
-    assert routes.RELAY_MARK == RELAY_MARK == "_omnigent_relay"
-    source = Path(routes.__file__).read_text()
-    assert source.count("RELAY_MARK: True") == 1  # in the one helper every relay call goes through

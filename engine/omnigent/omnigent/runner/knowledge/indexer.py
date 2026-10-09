@@ -166,15 +166,27 @@ class Indexer:
         self.embedder = embedder
         self._thumbs = Path(home) / "thumbs"
         self._clock = clock
-        #: Set by the service to end a wait early when it is asked to stop.
+        #: Set by :meth:`shutdown` to end a wait early.
         self.stop_event = threading.Event()
+        #: Called when a pass left work for the background loop (the service wakes its thread).
+        self.on_pending: Callable[[], None] | None = None
         self._requeue_outdated()
 
     def _requeue_outdated(self) -> None:
-        """Send files read by an older reader of their kind back to be read again."""
+        """Send searchable files read by an older reader of their kind back to be read again.
+
+        Only ready files: a failed one stays failed (its reason is shown, the person retries) and
+        one still waiting is read by the current reader anyway.
+        """
         for row in self.db.files():
-            if row.parser_version < PARSER_VERSIONS.get(row.kind, 1):
+            if row.state == STATE_READY and row.parser_version < PARSER_VERSIONS.get(row.kind, 1):
                 self.db.update_file(row.file_id, state=STATE_QUEUED, attempts=0, last_error=None)
+
+    def shutdown(self) -> None:
+        """Wake every wait on an ingest so the service can stop at once."""
+        self.stop_event.set()
+        with self._ingest_cv:
+            self._ingest_cv.notify_all()
 
     # ------------------------------------------------------------------ the files area
 
@@ -311,7 +323,7 @@ class Indexer:
                 left = deadline - time.monotonic()
                 if left <= 0:
                     return
-                self._ingest_cv.wait(timeout=min(left, 1.0))
+                self._ingest_cv.wait(timeout=left)
 
     @contextlib.contextmanager
     def _ingest_priority(self) -> Iterator[None]:
@@ -335,14 +347,27 @@ class Indexer:
         if row is None:
             return False
         try:
-            self.process(row)
+            self.process(row, background=True)
         except Exception as exc:  # noqa: BLE001 - a bad file must not stop the indexer
             _logger.warning("indexing %s failed (%s)", row.path, type(exc).__name__)
             self._record_failure(row, exc)
         return True
 
-    def process(self, row: FileRow, *, retry: bool = True) -> None:
-        """Run the pass(es) a file is due. Raises on failure; the caller records it."""
+    def process(
+        self,
+        row: FileRow,
+        *,
+        retry: bool = True,
+        background: bool = False,
+        finish: bool = True,
+    ) -> None:
+        """Run the pass(es) a file is due. Raises on failure; the caller records it.
+
+        The text pass and the finishing pass (embeddings, thumbnails) each take the work lock on
+        their own, so an urgent ingest can slip in between them. *background* is the service
+        loop: it yields there to a waiting ingest. *finish* ``False`` stops after the text pass
+        (the file is keyword-searchable, the loop does the rest).
+        """
         with self._work:
             absolute = self.absolute(row.path)
             if not absolute.is_file():
@@ -352,13 +377,21 @@ class Indexer:
             if current is None:
                 return
             row = current
-            # A table is read as a stream and a PDF's thumbnails need the bytes; no other pass
-            # keeps them, so a big CSV never sits in memory.
-            data = None if row.kind in TABULAR_KINDS else read_bytes(absolute)
             if row.state == STATE_QUEUED:
+                # A table is read as a stream; no pass keeps the bytes of a CSV in memory.
+                data = None if row.kind in TABULAR_KINDS else read_bytes(absolute)
                 row = self._text_pass(row, absolute, data)
-            if row.state == STATE_TEXT_READY:
-                self._finish(row, data, retry=retry)
+        if row.state != STATE_TEXT_READY or not finish:
+            return
+        if background:
+            self._yield_to_ingest()
+        with self._work:
+            current = self.db.get_file(row.file_id)
+            if current is None or current.state != STATE_TEXT_READY:
+                return  # another pass finished it while this one stood aside
+            absolute = self.absolute(current.path)
+            data = read_bytes(absolute) if current.kind == "pdf" else None
+            self._finish(current, data, retry=retry)
 
     def _text_pass(self, row: FileRow, absolute: Path, data: bytes | None) -> FileRow:
         if row.kind in TABULAR_KINDS:
@@ -662,17 +695,24 @@ class Indexer:
             return None
 
     def ingest(
-        self, path: str | Path, *, inline: bool = False, within: str | None = None
+        self,
+        path: str | Path,
+        *,
+        inline: bool = False,
+        within: str | None = None,
+        finish: bool = True,
     ) -> dict[str, Any]:
-        """Read one file through every pass now and return what it came to.
+        """Read one file now and return what it came to.
 
-        The explicit operation an attachment goes through before its message is sent: convert to
-        Markdown, cut passages, embed (when the owner can), index. Idempotent: an unchanged,
-        already indexed file answers at once.
+        The explicit operation an attachment goes through: convert to Markdown, cut passages,
+        embed (when the owner can), index. Idempotent: an unchanged, already indexed file answers
+        at once, without waiting for the background indexer (a size and mtime check, no lock).
 
         :param inline: Also return the Markdown when it is short enough to travel with the message.
         :param within: Only read a file under this workspace folder (``your_files/uploads/``).
             The check is on the resolved path, so ``..`` and a symlink out of the folder fail it.
+        :param finish: ``False`` returns once the text is read (a turn needs the text, not the
+            embeddings); the background loop finishes the file.
         :raises ValueError: the file cannot be read as an indexable kind, or reading failed.
         :raises FileNotFoundError: there is no such file.
         """
@@ -684,7 +724,36 @@ class Indexer:
         absolute = self.absolute(relative)
         if not absolute.is_file():
             raise FileNotFoundError(relative)
-        with self._ingest_priority(), self._work:
+        row = self._current_unlocked(relative, absolute, finish)
+        if row is None:
+            with self._ingest_priority():
+                row = self._ingest_locked(relative, absolute, finish)
+        if row is None or row.state not in (STATE_READY, STATE_TEXT_READY):
+            raise ValueError((row.last_error if row else None) or "The file could not be read")
+        if row.state != STATE_READY and self.on_pending is not None:
+            self.on_pending()
+        return self._ingest_answer(row, inline)
+
+    def _current_unlocked(self, relative: str, absolute: Path, finish: bool) -> FileRow | None:
+        """The row when the file is already read and unchanged on disk; no lock is taken."""
+        row = self.db.file_by_path(relative)
+        if row is None:
+            return None
+        ready = STATE_READY if finish else None
+        if row.state != STATE_READY and not (ready is None and row.state == STATE_TEXT_READY):
+            return None
+        try:
+            stat = absolute.stat()
+        except OSError:
+            return None
+        if stat.st_size != row.size or stat.st_mtime_ns != row.mtime_ns:
+            return None
+        if row.size > MAX_FILE_BYTES or self._markdown(row) is None:
+            return None
+        return row
+
+    def _ingest_locked(self, relative: str, absolute: Path, finish: bool) -> FileRow | None:
+        with self._work:
             self._sync(relative, absolute, self.db.file_by_path(relative), explicit=False)
             row = self.db.file_by_path(relative)
             assert row is not None
@@ -697,15 +766,15 @@ class Indexer:
                 self.db.update_file(row.file_id, state=STATE_QUEUED, attempts=0, last_error=None)
                 row = self.db.get_file(row.file_id)
                 assert row is not None
-            if row.state != STATE_READY:
-                try:
-                    self.process(row, retry=False)
-                except Exception as exc:  # noqa: BLE001 - reported to the caller below
-                    message = (str(exc) or type(exc).__name__)[:300]
-                    self.db.update_file(row.file_id, state=STATE_FAILED, last_error=message)
-            row = self.db.file_by_path(relative)
-        if row is None or row.state != STATE_READY:
-            raise ValueError((row.last_error if row else None) or "The file could not be read")
+        if row.state != STATE_READY:
+            try:
+                self.process(row, retry=False, finish=finish)
+            except Exception as exc:  # noqa: BLE001 - reported to the caller
+                message = (str(exc) or type(exc).__name__)[:300]
+                self.db.update_file(row.file_id, state=STATE_FAILED, last_error=message)
+        return self.db.file_by_path(relative)
+
+    def _ingest_answer(self, row: FileRow, inline: bool) -> dict[str, Any]:
         text = self._markdown(row) or ""
         out: dict[str, Any] = {
             "file_id": row.file_id,
