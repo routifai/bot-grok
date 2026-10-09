@@ -1356,6 +1356,9 @@ msgstr "Could not update computer"
 msgid "Could not update reaction"
 msgstr "Could not update reaction"
 
+msgid "Couldn't index"
+msgstr "Couldn't index"
+
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
 
@@ -2111,6 +2114,9 @@ msgstr "In progress"
 msgid "Inbox & email"
 msgstr "Inbox & email"
 
+msgid "Indexing…"
+msgstr "Indexing…"
+
 msgid "Instruction"
 msgstr "Instruction"
 
@@ -2825,6 +2831,11 @@ msgstr "Open · {0}"
 msgid "Open {0}"
 msgstr "Open {0}"
 
+#. placeholder {0}: item.name
+#. placeholder {1}: item.page
+msgid "Open {0}, page {1}"
+msgstr "Open {0}, page {1}"
+
 msgid "Open {name} in new tab"
 msgstr "Open {name} in new tab"
 
@@ -2902,6 +2913,10 @@ msgstr "Other model…"
 
 msgid "Outcome"
 msgstr "Outcome"
+
+#. placeholder {0}: item.page
+msgid "p. {0}"
+msgstr "p. {0}"
 
 msgid "Padding"
 msgstr "Padding"
@@ -3507,6 +3522,9 @@ msgstr "Search your Library"
 
 msgid "Search your Library…"
 msgstr "Search your Library…"
+
+msgid "Searchable"
+msgstr "Searchable"
 
 msgid "Searching…"
 msgstr "Searching…"

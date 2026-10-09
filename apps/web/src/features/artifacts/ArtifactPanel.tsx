@@ -20,10 +20,13 @@ const EMPTY_BYTES = new Uint8Array(0);
 export function ArtifactPanel({
   artifactId,
   title,
+  page,
   onClose,
 }: {
   artifactId: string;
   title?: string;
+  /** Open a PDF at this page (a citation chip). */
+  page?: number;
   onClose: () => void;
 }) {
   const { t } = useLingui();
@@ -180,6 +183,7 @@ export function ArtifactPanel({
               bytes={state.bytes}
               onEdited={state.adoptVersion}
               toolbarHost={toolbarHost}
+              page={page}
             />
             {state.artifact.mimeType === "text/html" ? (
               <Lock

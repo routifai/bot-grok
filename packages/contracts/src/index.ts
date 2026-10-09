@@ -26,6 +26,7 @@ export * from "./rpc/decks.js";
 export * from "./rpc/feed.js";
 export * from "./rpc/goals.js";
 export * from "./rpc/ideas.js";
+export * from "./rpc/knowledge.js";
 export * from "./rpc/models.js";
 export * from "./rpc/sheets.js";
 export * from "./rpc/side-chats.js";

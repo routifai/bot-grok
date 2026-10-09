@@ -960,16 +960,19 @@ export function ArtifactPreview({
   bytes,
   onEdited,
   toolbarHost,
+  page,
 }: {
   artifact: Artifact;
   bytes: Uint8Array;
+  /** Open a PDF at this page. */
+  page?: number;
   /** A new version was saved from the viewer (a sheet edit). */
   onEdited?: (artifactId: string) => void;
   /** Header slot for a sheet's Edit button and edited pill (see `SheetView`). */
   toolbarHost?: HTMLElement | null;
 }) {
   const extensions = useArtifactExtensions();
-  const fallback = <ArtifactPreviewBody artifact={artifact} bytes={bytes} />;
+  const fallback = <ArtifactPreviewBody artifact={artifact} bytes={bytes} page={page} />;
   for (const extension of extensions) {
     const view = extension.view?.({ artifact, bytes, onEdited, toolbarHost, fallback });
     if (view) return view;
@@ -977,7 +980,15 @@ export function ArtifactPreview({
   return fallback;
 }
 
-function ArtifactPreviewBody({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {
+function ArtifactPreviewBody({
+  artifact,
+  bytes,
+  page,
+}: {
+  artifact: Artifact;
+  bytes: Uint8Array;
+  page?: number;
+}) {
   if (artifact.mimeType === "text/html") {
     const html = new TextDecoder("utf-8").decode(bytes);
     return <SandboxedHtmlViewer html={html} title={artifact.name} />;
@@ -1001,7 +1012,7 @@ function ArtifactPreviewBody({ artifact, bytes }: { artifact: Artifact; bytes: U
     );
   }
   if (artifact.mimeType === "application/pdf") {
-    return <PdfViewer bytes={bytes} title={artifact.name} />;
+    return <PdfViewer bytes={bytes} title={artifact.name} page={page} />;
   }
   if (isAttachmentImageMimeType(artifact.mimeType)) {
     return <ImagePreview bytes={bytes} mimeType={artifact.mimeType} name={artifact.name} />;

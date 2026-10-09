@@ -59,6 +59,7 @@ import { decksExtension } from "../features/decks";
 import { FeedScreen } from "../features/feed";
 import { GoalsScreen } from "../features/goals";
 import { IdeasScreen } from "../features/ideas";
+import { knowledgeExtension } from "../features/knowledge";
 import { ConversationModelPicker } from "../features/models";
 import { sheetsExtension } from "../features/sheets";
 import { AllForks, ForkViewSwitch } from "../features/side-chats/AllForks";
@@ -176,7 +177,7 @@ function NovaPresence({
 const MUSE_CONTENT_PANE = "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
 
 /** What the capabilities built on artifacts add to the panel and the Library cards. */
-const ARTIFACT_EXTENSIONS = [appsExtension, sheetsExtension, decksExtension];
+const ARTIFACT_EXTENSIONS = [appsExtension, sheetsExtension, decksExtension, knowledgeExtension];
 
 export function ShellPage() {
   const { t } = useLingui();

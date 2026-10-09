@@ -5,7 +5,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("./ArtifactPanel", () => ({
-  ArtifactPanel: ({ artifactId }: { artifactId: string }) => <div data-panel>{artifactId}</div>,
+  ArtifactPanel: ({ artifactId, page }: { artifactId: string; page?: number }) => (
+    <div data-panel data-page={page}>
+      {artifactId}
+    </div>
+  ),
 }));
 
 import type { ArtifactPanelApi } from "../../components/cards/context";
@@ -52,4 +56,14 @@ it("closes when the chat changes (Conversation to a Side Chat)", async () => {
   expect(s.get().isOpen).toBe(true);
   s.rerender("bot:a:side-1");
   expect(s.get().isOpen).toBe(false);
+});
+
+it("opens at a page and moves to another page of the same file", async () => {
+  const s = setup("bot:a");
+  const shown = () => s.host.querySelector("[data-panel]")?.getAttribute("data-page");
+  await act(async () => s.get().api.open("art-1", "Report", 3));
+  await vi.waitFor(() => expect(shown()).toBe("3"));
+  await act(async () => s.get().api.open("art-1", "Report", 9));
+  expect(s.get().api.openId).toBe("art-1");
+  await vi.waitFor(() => expect(shown()).toBe("9"));
 });

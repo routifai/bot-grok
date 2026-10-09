@@ -130,3 +130,16 @@ it("shows an already answered ask locked on the chosen option", () => {
   expect(berlin?.getAttribute("aria-pressed")).toBe("true");
   expect(seoul?.disabled).toBe(true);
 });
+
+it("draws the pages a file search found as chips", () => {
+  const host = mount(
+    <ReplyCard
+      block={block({
+        card: "passages",
+        data: { items: [{ artifactId: "a".repeat(32), name: "finance.pdf", page: 2 }] },
+      })}
+    />,
+  );
+  expect(host.querySelector("[data-testid=passage-chips]")?.textContent).toContain("finance.pdf");
+  expect(host.querySelector("[data-md]")).toBeNull();
+});

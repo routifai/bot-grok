@@ -1,6 +1,7 @@
 import { ChatMarkdown } from "@nova/chat-ui/web";
 import { parseReplyCard, type ReplyCardBlock } from "@nova/contracts";
 import { ReplyArtifactFileCard } from "../../features/artifacts";
+import { PassageChips } from "../../features/knowledge";
 import { CardSkeleton, catalog } from "./catalog";
 import { useResolvedReplyCard } from "./context";
 import { SecureEntryCard } from "./SecureEntryCard";
@@ -42,6 +43,8 @@ export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: s
       ) : (
         <ReplyArtifactFileCard title={title} data={parsed.data} />
       );
+    case "passages":
+      return <PassageChips data={parsed.data} />;
     case "progress":
       return <catalog.progress title={title} data={parsed.data} />;
     case "secure_entry":

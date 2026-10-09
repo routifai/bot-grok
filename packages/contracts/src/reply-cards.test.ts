@@ -12,6 +12,7 @@ const valid = {
   person: { name: "Ada" },
   file: { name: "r.pdf", size: 10 },
   secure_entry: { requestId: "req-1", name: "Bank login", site: "bank.example" },
+  passages: { items: [{ artifactId: "a".repeat(32), name: "r.pdf", page: 2, hasThumbnail: true }] },
   progress: { label: "Import", value: 40, status: "running" },
 } as const;
 
