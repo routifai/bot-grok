@@ -32,8 +32,15 @@ export const AskSchema = z.object({
   input: z.enum(["text", "secret"]).nullable(),
   createdAt: z.string(),
   /** Set on an approval the engine is holding for the person: the Side Chat it belongs to,
-   * `null` for the Conversation (and its Helpers). */
-  approval: z.object({ chatId: Id.nullable() }).optional(),
+   * `null` for the Conversation (and its Helpers); the call's arguments, shown quoted; and
+   * the other policies' asks the same Approve covers. */
+  approval: z
+    .object({
+      chatId: Id.nullable(),
+      arguments: z.string().nullable().optional(),
+      alsoAsks: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 export type Ask = z.infer<typeof AskSchema>;
 

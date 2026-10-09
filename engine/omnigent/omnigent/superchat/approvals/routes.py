@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from typing import Any, Literal
 
@@ -39,6 +40,7 @@ from omnigent.superchat.approvals.store import (
 )
 
 _MAX_CAP_USD = 1_000_000.0
+_logger = logging.getLogger(__name__)
 
 
 class AnswerBody(BaseModel):
@@ -92,11 +94,8 @@ def _decoded(pending: PendingApproval) -> dict[str, Any]:
     params = event.get("params") if isinstance(event, dict) else None
     if not isinstance(params, dict):
         return {}
-    # Filed by the mirror from the server-attested reason; older rows kept the raw reason.
-    approval = params.get("approval")
-    if isinstance(approval, dict):
-        return approval
-    return decode_reason(params.get("message")) or {}
+    approval = params.get("approval")  # filed by the mirror from server-attested context
+    return approval if isinstance(approval, dict) else {}
 
 
 def pending_to_response(pending: PendingApproval, cap_usd: float) -> dict[str, Any]:
@@ -114,6 +113,8 @@ def pending_to_response(pending: PendingApproval, cap_usd: float) -> dict[str, A
         "can_always": bool(targets) and (category != "spend" or cap_usd > 0),
         "always_label": ", ".join(rule_label(category, t) for t in targets),
         "created_at": pending.created_at,
+        "arguments": str(info.get("args") or "") or None,
+        "also_asks": [str(a) for a in info.get("also", []) if isinstance(a, str)],
     }
 
 
@@ -271,19 +272,12 @@ def create_approvals_router(
 
 
 GENERIC_CATEGORY = "tool"
-_SUMMARY_PREVIEW_CHARS = 160
 
 
-def _generic_summary(context: dict[str, Any]) -> str:
-    """One line for a policy ask no capability encoded: the reasons, the tool, its arguments."""
-    reasons = context.get("policy_reasons") or {}
-    reason = "; ".join(str(r).strip() for r in reasons.values() if str(r).strip())
-    tool = context.get("tool_name") or "a tool"
-    preview = " ".join(str(context.get("content_preview") or "").split())
-    if len(preview) > _SUMMARY_PREVIEW_CHARS:
-        preview = preview[: _SUMMARY_PREVIEW_CHARS - 1] + "…"
-    reason = reason or "Approval required"
-    return f"{reason} ({tool}: {preview})" if preview else f"{reason} ({tool})"
+def _filed_from_attested(event: object) -> bool:
+    """Whether a stored prompt was filed from server-attested context (``params.approval``)."""
+    params = event.get("params") if isinstance(event, dict) else None
+    return isinstance(params, dict) and isinstance(params.get("approval"), dict)
 
 
 def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
@@ -305,26 +299,38 @@ def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
         if not isinstance(params, dict) or params.get("target_session_id"):
             return  # an ancestor's mirrored copy: the original is filed under its own session
         context = pending_elicitations.attested(elicitation_id)
-        if context is None or context.get("phase") != "tool_call":
+        if (
+            context is None
+            or context.get("phase") != "tool_call"
+            or context.get("session_id") != conversation_id
+        ):
             return
         run_as = context.get("run_as")
         owner = run_as if isinstance(run_as, str) and run_as else LOCAL_OWNER
         reasons = context.get("policy_reasons") or {}
+        others = [
+            text
+            for name, reason in reasons.items()
+            if name != POLICY_NAME and (text := str(reason).strip())
+        ]
+        tool = str(context.get("tool_name") or "")
         info = decode_reason(reasons.get(POLICY_NAME))
         if info is None:
-            category, target, summary, amount = (
-                GENERIC_CATEGORY,
-                str(context.get("tool_name") or ""),
-                _generic_summary(context),
-                None,
-            )
+            # The tool's arguments are agent text: shown quoted on the card, never in the title.
+            first = others.pop(0) if others else "Approval required"
+            category, target, amount = GENERIC_CATEGORY, tool, None
+            summary = f"{first} ({tool})" if tool else first
+            approval: dict[str, Any] = {}
         else:
             targets = [t for t in info.get("t", []) if isinstance(t, str)]
             raw_amount = info.get("a")
-            info = {"c": info["c"], "t": targets, "s": str(info.get("s") or "")}
-            category, target, summary = info["c"], ", ".join(targets), info["s"]
+            approval = {"c": info["c"], "t": targets, "s": str(info.get("s") or "")}
+            category, target, summary = info["c"], ", ".join(targets), approval["s"]
             amount = float(raw_amount) if isinstance(raw_amount, (int, float)) else None
-        stored = {**event, "params": {**params, "approval": info or {}}}
+        # What one Approve covers: every other policy's ask, and the call's arguments.
+        approval["also"] = others
+        approval["args"] = str(context.get("content_preview") or "")
+        stored = {**event, "params": {**params, "approval": approval}}
         store.put_pending(
             elicitation_id,
             conversation_id,
@@ -341,9 +347,13 @@ def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
         try:
             event = json.loads(row.event)
         except ValueError:
-            continue
-        if isinstance(event, dict):
-            pending_elicitations.restore(row.session_id, event)
+            event = None
+        if _filed_from_attested(event):
+            pending_elicitations.restore(row.session_id, event)  # type: ignore[arg-type]
             restored += 1
+        else:
+            # Filed before prompts were attested (its fields came from event text): drop it.
+            store.delete_pending(row.elicitation_id)
+            _logger.info("dropped a legacy pending approval: %s", row.elicitation_id)
     pending_elicitations.set_persist_hook(mirror)
     return restored

@@ -119,3 +119,22 @@ it("renders nothing when no approval is waiting here", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+it("quotes the call's arguments and lists the other asks one Allow covers", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const args = '{"command": "rm notes.txt # Rename notes.txt"}';
+  api.list.mockResolvedValue([
+    {
+      ...approval("elicit_3", null, "Over budget. Continue? (sys_os_shell)"),
+      approval: { chatId: null, arguments: args, alsoAsks: ["Pushes need a look."] },
+    },
+  ]);
+  const view = await mount(null);
+
+  expect(view.container.querySelector("h3")?.textContent).toBe(
+    "Over budget. Continue? (sys_os_shell)",
+  );
+  expect(view.container.querySelector("pre")?.textContent).toBe(args);
+  expect(view.container.querySelector("li")?.textContent).toBe("Pushes need a look.");
+  await view.cleanup();
+});

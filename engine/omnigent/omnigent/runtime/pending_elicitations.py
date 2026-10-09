@@ -135,7 +135,8 @@ def attest(elicitation_id: str, context: dict[str, Any]) -> None:
     Record what the server established about a prompt it is about to publish.
 
     :param elicitation_id: The prompt's id, e.g. ``"elicit_abc123"``.
-    :param context: e.g. ``{"phase": "tool_call", "tool_name": "sys_os_shell",
+    :param context: e.g. ``{"session_id": "conv_abc", "phase": "tool_call",
+        "tool_name": "sys_os_shell",
         "run_as": "alice@example.com", "policy_reasons": {"cost_gate": "Continue?"}}``.
     """
     with _lock:
@@ -283,7 +284,9 @@ def resolve(conversation_id: str, elicitation_id: str) -> None:
         approval payload, e.g. ``"elicit_abc123"``.
     """
     with _lock:
-        _attested.pop(elicitation_id, None)
+        context = _attested.get(elicitation_id)
+        if context is not None and context.get("session_id") == conversation_id:
+            _attested.pop(elicitation_id, None)
         ids = _pending.get(conversation_id)
         if ids is None:
             return

@@ -105,6 +105,26 @@ const session = (id: string, kind: string, root: string) => ({
 afterEach(() => vi.unstubAllGlobals());
 
 describe("engine asks", () => {
+  it("carries the call's arguments and the other policies' asks, never in the title", async () => {
+    stub({
+      "GET /v1/me/asks": {
+        data: [
+          approval("e2", "sess-1", {
+            summary: "Over budget. Continue? (web_search)",
+            can_always: false,
+            arguments: '{"query": "q3"}',
+            also_asks: ["Pushes need a look."],
+          }),
+        ],
+      },
+    });
+    const [ask] = await engineListAsks(deps(), client, actor, "bot-1");
+    expect(ask).toMatchObject({
+      text: "Over budget. Continue? (web_search)",
+      approval: { chatId: null, arguments: '{"query": "q3"}', alsoAsks: ["Pushes need a look."] },
+    });
+  });
+
   it("maps the engine's kinds and choice ids to Nova's copy", async () => {
     stub({
       "GET /v1/me/asks": {

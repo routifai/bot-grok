@@ -8594,6 +8594,7 @@ async def _register_policy_elicitation(
     pending_elicitations.attest(
         elicitation_id,
         {
+            "session_id": session_id,
             "phase": Phase.TOOL_CALL.value,
             "tool_name": tool_name,
             "run_as": (actor or {}).get("run_as"),

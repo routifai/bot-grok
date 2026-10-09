@@ -78,6 +78,10 @@ export type OmnigentAsk =
         summary: string;
         can_always: boolean;
         always_label: string | null;
+        /** The call's arguments (JSON text, up to 1024 characters): agent text, show quoted. */
+        arguments?: string | null;
+        /** Other policies' asks the same answer covers. */
+        also_asks?: string[];
         [key: string]: unknown;
       };
     })
