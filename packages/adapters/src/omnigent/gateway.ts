@@ -37,6 +37,26 @@ export class OmnigentTurnFailure extends Error {}
 
 export const ENGINE_INTERRUPTED_MESSAGE = "Nova was interrupted. Send your message again.";
 
+/** The Computer would not start (the engine's launch failed, or its runner never connected). The
+ * engine's own wording names logs and hosts, so the person gets this calm line instead. */
+export const COMPUTER_START_FAILED_MESSAGE =
+  "Couldn't start your Computer. Send your message again.";
+
+/** Whether a stream event says the Computer could not be started: a failed launch stage, or a
+ * failed session whose error code is `runner_unavailable` (also nested under `response.error`). */
+function isComputerStartFailure(event: { type: string; [key: string]: unknown }): boolean {
+  if (event.type === "session.sandbox_status") return event.stage === "failed";
+  const nested = (event.response as { error?: { code?: string } } | undefined)?.error;
+  const error = (event.error as { code?: string } | undefined) ?? nested;
+  if (event.type === "session.status") {
+    return event.status === "failed" && error?.code === "runner_unavailable";
+  }
+  if (event.type === "response.failed" || event.type === "response.error") {
+    return error?.code === "runner_unavailable";
+  }
+  return false;
+}
+
 /** Errors from the HTTP stack when the engine connection drops mid-turn (an engine restart or a
  * network blip): undici's "terminated"/"fetch failed" and the socket codes behind them. */
 const CONNECTION_DROP_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "EPIPE", "UND_ERR_SOCKET"]);
@@ -330,6 +350,13 @@ async function sendTurnAndAwaitCompletion(
   while (!step.done) {
     const event = step.value;
     if (event.type === "response.completed") return;
+    if (isComputerStartFailure(event)) {
+      getLogger().error("omnigent gateway: the Computer did not start", {
+        type: event.type,
+        error: event.error,
+      });
+      throw new OmnigentTurnFailure(COMPUTER_START_FAILED_MESSAGE);
+    }
     if (event.type === "response.failed" || event.type === "response.error") {
       // Omnigent nests the failure under response.error, like response.completed's output.
       const response = event.response as { error?: { message?: string } } | undefined;

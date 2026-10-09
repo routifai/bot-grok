@@ -76,13 +76,17 @@ async function state(target: EngineComputer) {
   return getOmnigentComputer(target.client, target.email, target.sessionId);
 }
 
+const LAUNCH_STAGES = new Set(["provisioning", "cloning", "starting", "connecting", "failed"]);
+
 export async function engineComputerStatus(
   deps: EngineComputerDeps,
   client: OmnigentClientConfig,
   actor: Actor,
   botId: string,
 ): Promise<ComputerStatus> {
-  const { available, in_control, ready } = await state(await resolve(deps, client, actor, botId));
+  const { available, in_control, ready, launch } = await state(
+    await resolve(deps, client, actor, botId),
+  );
   const status = toComputerStatus(botId, {
     kind: "docker",
     state: available ? "running" : "stopped",
@@ -91,7 +95,11 @@ export async function engineComputerStatus(
     controlBotId: in_control ? botId : null,
     homeRevision: "",
   });
-  return available && ready !== undefined ? { ...status, runnerReady: ready } : status;
+  const withReady = available && ready !== undefined ? { ...status, runnerReady: ready } : status;
+  const stage = launch?.stage;
+  return stage && stage !== "ready" && LAUNCH_STAGES.has(stage)
+    ? { ...withReady, launch: { stage: stage as NonNullable<ComputerStatus["launch"]>["stage"] } }
+    : withReady;
 }
 
 function relayed(deps: EngineComputerDeps, target: EngineComputer, url: string, held: boolean) {

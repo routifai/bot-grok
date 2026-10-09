@@ -3589,6 +3589,9 @@ msgstr "Starting"
 msgid "Starting the Computer…"
 msgstr "Starting the Computer…"
 
+msgid "Starting your Computer…"
+msgstr "Starting your Computer…"
+
 msgid "Starting…"
 msgstr "Starting…"
 

@@ -2,6 +2,7 @@ import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OmnigentApiError } from "./client.js";
 import {
+  COMPUTER_START_FAILED_MESSAGE,
   ENGINE_FAILED_MESSAGE,
   ENGINE_INTERRUPTED_MESSAGE,
   failRunUnsupportedOnOmnigent,
@@ -334,6 +335,35 @@ describe("runTurnOnOmnigent", () => {
     expect(result).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "failed", error: "boom" }),
+    );
+  });
+
+  it.each([
+    ["a failed launch stage", { type: "session.sandbox_status", stage: "failed", error: "x" }],
+    [
+      "a failed session with runner_unavailable",
+      {
+        type: "session.status",
+        status: "failed",
+        error: { code: "runner_unavailable", message: "managed host did not come online" },
+      },
+    ],
+    [
+      "a failed response with runner_unavailable",
+      {
+        type: "response.failed",
+        response: { error: { code: "runner_unavailable", message: "x" } },
+      },
+    ],
+  ])("ends the turn with a calm Computer note on %s", async (_name, event) => {
+    streamOmnigentSession.mockReturnValue(
+      eventsFrom([{ type: "session.sandbox_status", stage: "starting" }, event]),
+    );
+    const events = fakeEvents();
+    await runTurnOnOmnigent({ prisma: fakePrisma(), events, ...DEPS_BASE }, "run-1", "worker-1");
+
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "failed", error: COMPUTER_START_FAILED_MESSAGE }),
     );
   });
 

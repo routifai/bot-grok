@@ -55,6 +55,18 @@ describe("engine-owned computer", () => {
     expect(prisma.computer.update).not.toHaveBeenCalled();
   });
 
+  it("reports the launch stage while the Computer starts, and drops it once ready", async () => {
+    stubEngine(
+      { available: false, in_control: false, launch: { stage: "starting", error: null } },
+      { available: true, in_control: false, ready: true, launch: null },
+    );
+    const { deps: d } = deps();
+    expect((await engineComputerStatus(d, client, actor, "bot-1")).launch).toEqual({
+      stage: "starting",
+    });
+    expect((await engineComputerStatus(d, client, actor, "bot-1")).launch).toBeUndefined();
+  });
+
   it("is stopped without a Conversation yet and does not call the engine", async () => {
     const calls = stubEngine();
     const status = await engineComputerStatus(deps(null).deps, client, actor, "bot-1");

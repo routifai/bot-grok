@@ -6,6 +6,8 @@ export interface OmnigentComputerState {
   in_control: boolean;
   /** The session's runner is connected; absent on engines that predate it. */
   ready?: boolean;
+  /** The managed launch's progress while it is in flight or failed; `null` once it is up. */
+  launch?: { stage: string; error: string | null } | null;
 }
 
 export interface OmnigentComputerScreen {

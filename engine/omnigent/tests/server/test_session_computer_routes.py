@@ -88,13 +88,13 @@ async def _client(app: FastAPI) -> httpx.AsyncClient:
 async def test_status_reports_available_and_not_in_control() -> None:
     async with await _client(_app(StubLauncher())) as c:
         r = await c.get("/v1/sessions/conv_1/computer")
-    assert r.json() == {"available": True, "in_control": False, "ready": False}
+    assert r.json() == {"available": True, "in_control": False, "ready": False, "launch": None}
 
 
 async def test_status_unavailable_without_a_screen_capable_sandbox() -> None:
     async with await _client(_app(StubLauncher(screen=False))) as c:
         r = await c.get("/v1/sessions/conv_1/computer")
-    assert r.json() == {"available": False, "in_control": False, "ready": False}
+    assert r.json() == {"available": False, "in_control": False, "ready": False, "launch": None}
 
 
 async def test_take_over_then_release_round_trip() -> None:
@@ -162,3 +162,16 @@ async def test_status_ready_follows_the_runner_tunnel() -> None:
         assert (await c.get("/v1/sessions/conv_1/computer")).json()["ready"] is False
         live.add("runner_1")
         assert (await c.get("/v1/sessions/conv_1/computer")).json()["ready"] is True
+
+
+async def test_status_reports_the_launch_stage_while_the_computer_starts() -> None:
+    from omnigent.server.routes.sessions import _session_sandbox_status_cache
+    from omnigent.server.schemas import SandboxStatus
+
+    _session_sandbox_status_cache["conv_1"] = SandboxStatus(stage="starting")
+    try:
+        async with await _client(_app(StubLauncher(screen=False))) as c:
+            body = (await c.get("/v1/sessions/conv_1/computer")).json()
+    finally:
+        _session_sandbox_status_cache.pop("conv_1", None)
+    assert body["launch"] == {"stage": "starting", "error": None}

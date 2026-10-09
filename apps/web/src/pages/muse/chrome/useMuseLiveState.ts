@@ -1,6 +1,8 @@
+import { useLingui } from "@lingui/react/macro";
 import type { MuseState, Run, ThreadMessage } from "@nova/contracts";
 import { useAsks } from "../asks";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
+import { useComputerLaunch } from "./useComputerLaunch";
 
 export type MuseLiveRun = Pick<Run, "id" | "status">;
 
@@ -34,12 +36,19 @@ export function useMuseLiveState({
   runs: readonly MuseLiveRun[];
   messages: readonly ThreadMessage[] | undefined;
 }): MuseLiveState {
+  const { t } = useLingui();
   const { count: askCount } = useAsks(botId);
   const state = deriveMuseState(runs, askCount);
+  const busy = state === "thinking" || state === "working";
+  const launch = useComputerLaunch(botId, busy);
   const activeRun = activeRunFor(runs);
   const activityMessage = activeRun
     ? messages?.find((message) => message.id === `progress:${activeRun.id}`)
     : undefined;
-  const label = museActivityLabel(state, currentToolName(activityMessage?.blocks));
+  // While the Computer is starting nothing else is happening, so say that instead of "Thinking…".
+  const starting = busy && launch !== undefined && launch.stage !== "failed";
+  const label = starting
+    ? t`Starting your Computer…`
+    : museActivityLabel(state, currentToolName(activityMessage?.blocks));
   return { state, label, askCount };
 }

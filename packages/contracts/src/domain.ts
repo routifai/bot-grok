@@ -875,6 +875,11 @@ export const ComputerStatusSchema = z.object({
   screenAvailable: z.boolean(),
   /** The Conversation's runner is connected (Files and tools can reach it); absent when unknown. */
   runnerReady: z.boolean().optional(),
+  /** Where the Computer's start-up is, while the engine is launching it or it failed; absent
+   * once it is up. Drives "Starting your Computer…" and the failure note. */
+  launch: z
+    .object({ stage: z.enum(["provisioning", "cloning", "starting", "connecting", "failed"]) })
+    .optional(),
   screenWidth: z.number().int().positive(),
   screenHeight: z.number().int().positive(),
   homeRevision: z.string().nullable(),
