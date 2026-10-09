@@ -55,6 +55,12 @@ ENV VIRTUAL_ENV=/opt/venv \
 # install is self-contained bytes in /opt/venv — the final stage copies only that, no /build
 # .pth files pointing back into a directory it would otherwise have to carry too.
 RUN uv sync --frozen --no-editable --no-dev --index-url ${PYPI_INDEX_URL}
+# Data stack for the agent's shell: `python3` there is /usr/local/bin/python3 (this builder's
+# system interpreter, copied into the final stage whole with /usr/local/lib/python3.12), not the
+# /opt/venv one, so install into it.
+# All manylinux wheels: no compiler needed. Agg keeps matplotlib headless.
+RUN /usr/local/bin/python3 -m pip install --index-url ${PYPI_INDEX_URL} --no-cache-dir \
+    pandas==2.2.3 openpyxl==3.1.5 xlsxwriter==3.2.0 matplotlib==3.9.2 duckdb==1.1.3
 
 # Pure alias so the final stage can COPY node out of a version-pinned image without a build arg
 # inside a COPY --from (which cannot expand them).
@@ -101,6 +107,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && chmod +x /usr/bin/fbsetbg \
   && ln -sfn /bin/true /usr/bin/xmessage
 ENV DISPLAY=:1
+ENV MPLBACKEND=Agg
 ENV HOME=/home/nova
 WORKDIR /home/nova
 # --chmod normalizes modes: a restrictive host umask (e.g. 077 on hardened hosts) would
