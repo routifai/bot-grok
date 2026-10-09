@@ -298,6 +298,8 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         showCodeStep({ email: email.trim(), purpose: "verify" });
         return;
       }
+      // The setup token is a one-time operator secret: never leave it in the tab after a sign-in.
+      writeOwnerToken("");
       clearSpaceSelection();
       navigate(
         mode === "up"

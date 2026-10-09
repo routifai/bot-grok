@@ -65,13 +65,9 @@ export async function setUserSuspended(
   input: { userId: string; suspended: boolean },
 ): Promise<{ ok: true }> {
   const target = await adminActor(deps, client, actor);
-  await onModels(
-    setOmnigentUserSuspended(target.client, target.email, input.userId, input.suspended),
-  );
-  // One suspension: the engine stops model use, and Nova stops sign-in and space access. Engine
-  // users are identified by email, so match the Nova account by email, and refuse anything but
-  // exactly one match rather than guess. A waiting signup stays in the approval queue, so only
-  // active and suspended accounts toggle.
+  // Engine users are identified by email, so match the Nova account by email, and refuse
+  // anything but exactly one match rather than guess. Resolve it before touching the engine, so a
+  // refusal leaves both sides as they were.
   const matches = await deps.prisma.user.findMany({
     where: { email: { equals: input.userId, mode: "insensitive" } },
     select: { id: true },
@@ -79,6 +75,11 @@ export async function setUserSuspended(
   if (matches.length !== 1) {
     throw new ORPCError("NOT_FOUND", { message: "No single matching account" });
   }
+  await onModels(
+    setOmnigentUserSuspended(target.client, target.email, input.userId, input.suspended),
+  );
+  // One suspension: the engine stops model use, and Nova stops sign-in and space access. A
+  // waiting signup stays in the approval queue, so only active and suspended accounts toggle.
   await deps.prisma.user.updateMany({
     where: { id: matches[0]!.id, status: input.suspended ? "active" : "suspended" },
     data: { status: input.suspended ? "suspended" : "active" },

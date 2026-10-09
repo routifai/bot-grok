@@ -24,6 +24,11 @@ export function createBackgroundJobHandlers(deps: {
   jobs: JobPublisher;
   events: ThreadEvents;
   workerId: string;
+  /**
+   * May this person act now (active, and verified or allowed unverified). Defaults to a status
+   * check; composition roots pass the deployment's full rule.
+   */
+  userMayAct?: (userId: string) => Promise<boolean>;
   messaging?: MessagingSurface;
   /**
    * Omnigent chat engine (docs/omnigent-spike.md): every run.continue runs on it. Unset (no
@@ -55,9 +60,11 @@ export function createBackgroundJobHandlers(deps: {
 
   // Background work runs as a person, so it stops when that person is no longer active
   // (suspended, or still waiting for approval).
-  const isActive = async (userId: string) =>
-    (await deps.prisma.user.findUnique({ where: { id: userId }, select: { status: true } }))
-      ?.status === "active";
+  const isActive =
+    deps.userMayAct ??
+    (async (userId: string) =>
+      (await deps.prisma.user.findUnique({ where: { id: userId }, select: { status: true } }))
+        ?.status === "active");
 
   return {
     "run.continue": async (payload) => {

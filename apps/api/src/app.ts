@@ -68,6 +68,7 @@ import {
   parsePositiveInteger,
   provisionMessagingIdentity,
   requireMembership,
+  userMayAct,
 } from "@nova/db";
 import type { Logger } from "@nova/logging";
 import {
@@ -186,6 +187,7 @@ export async function createApp(
       ownerSetupToken: env.ownerSetupToken,
       hasEmail: Boolean(email),
       ownerExists: Boolean(existingSettings?.ownerUserId),
+      clientIpConfigured: env.trustedProxies.length > 0 || Boolean(env.clientIpHeader),
     },
     await resolveSignupPolicy(prisma, env),
   );
@@ -194,6 +196,13 @@ export async function createApp(
       "AUTH_ALLOW_UNVERIFIED_EMAIL is on: accounts are usable without proving their email. Local installs only.",
     );
   }
+  // One rule for "may this person act now", shared with the session lookup: active, and either
+  // the mailbox is proved or nothing can prove one and the deployment's rule lets them in.
+  const gateRule = {
+    hasEmailDelivery: Boolean(email),
+    devFlagAllowed: env.allowUnverifiedEmail && !isHostedDeployment(env),
+  };
+  const mayAct = (userId: string) => userMayAct(prisma, userId, gateRule);
   const environmentSignupPolicy = signupPolicyFromEnv(env);
   const deploymentSettings = await prisma.deploymentSettings.upsert({
     where: { id: "default" },
@@ -388,6 +397,7 @@ export async function createApp(
   const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
   const jobHandlers = createBackgroundJobHandlers({
+    userMayAct: mayAct,
     prisma,
     sandbox,
     home,
@@ -478,7 +488,7 @@ export async function createApp(
       signupMode: policy.mode,
       // The owner seat is claimed with the operator's setup token until someone holds it.
       ownerSetup:
-        Boolean(env.ownerSetupToken) && policy.mode === "approval" && !settings?.ownerUserId,
+        Boolean(env.ownerSetupToken) && policy.mode !== "closed" && !settings?.ownerUserId,
     });
   });
   if (localEmailEmulator && env.nodeEnv === "development") {
@@ -491,7 +501,7 @@ export async function createApp(
     );
   }
   mountApiRequestBodyLimits(app);
-  mountScreenTarget(app, prisma, env.screenProxySecret);
+  mountScreenTarget(app, prisma, env.screenProxySecret, mayAct);
   mountPublishedApps(app, {
     prisma,
     secret: env.authSecret,
@@ -499,7 +509,8 @@ export async function createApp(
     engine: () => engineComputerClient({ spaceId: "apps-gateway" }),
     viewer: async (c) => {
       const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
-      return session?.user ? { userId: session.user.id, email: session.user.email } : null;
+      if (!session?.user || !(await mayAct(session.user.id))) return null;
+      return { userId: session.user.id, email: session.user.email };
     },
     onError: (error) => logUnexpectedRpcError(error, ["apps"]),
   });
@@ -521,7 +532,7 @@ export async function createApp(
       enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     }
     const suspension = actor
-      ? endWhenInactive(prisma, actor.userId, c.req.raw.signal)
+      ? endWhenInactive(mayAct, actor.userId, c.req.raw.signal)
       : { signal: c.req.raw.signal, stop: () => undefined };
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
@@ -534,7 +545,7 @@ export async function createApp(
   });
   mountVoiceHttpRoutes(app, { prisma, secrets }, async (c) => {
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
-    if (!session?.user) return null;
+    if (!session?.user || !(await mayAct(session.user.id))) return null;
     const actor = await requireMembership(
       prisma,
       session.user.id,
@@ -551,6 +562,7 @@ export async function createApp(
   // Messaging webhooks only exist when the surface is enabled.
   if (messaging) {
     const inboundDeps = {
+      userMayAct: mayAct,
       prisma,
       events,
       jobs,
@@ -689,17 +701,16 @@ function isTrustedOrigin(origin: string, env: AppEnv) {
  * the account stops being active, so a suspended person's open streams end instead of running on.
  */
 function endWhenInactive(
-  prisma: PrismaClient,
+  mayAct: (userId: string) => Promise<boolean>,
   userId: string,
   requestSignal: AbortSignal,
   intervalMs = 15_000,
 ): { signal: AbortSignal; stop: () => void } {
   const controller = new AbortController();
   const timer = setInterval(() => {
-    void prisma.user
-      .findUnique({ where: { id: userId }, select: { status: true } })
-      .then((user) => {
-        if (user?.status !== "active") controller.abort();
+    void mayAct(userId)
+      .then((allowed) => {
+        if (!allowed) controller.abort();
       })
       .catch(() => undefined);
   }, intervalMs);

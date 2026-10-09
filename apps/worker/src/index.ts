@@ -36,12 +36,18 @@ import {
   resolveSandboxProvider,
   sandboxProviderOptionsFromEnv,
 } from "@nova/adapters";
-import { resolveEncryptionKey, resolveSupervisorToken } from "@nova/core";
+import {
+  emailDeliveryConfigured,
+  isHostedDeployment,
+  resolveEncryptionKey,
+  resolveSupervisorToken,
+} from "@nova/core";
 import {
   createDb,
   createThreadEvents,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
+  userMayAct,
 } from "@nova/db";
 import { SERVICE_NAMES } from "@nova/logging";
 import { createRootLogger } from "@nova/logging/axiom";
@@ -149,7 +155,19 @@ async function main() {
   // set of deployment secrets.
   const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
+  // The same "may this person act" rule the API applies to sessions: active, and verified or
+  // allowed unverified (no mail provider and approval mode, or the personal-install flag).
+  const gateRule = {
+    hasEmailDelivery: emailDeliveryConfigured(process.env),
+    devFlagAllowed:
+      process.env.AUTH_ALLOW_UNVERIFIED_EMAIL === "true" &&
+      !isHostedDeployment({
+        nodeEnv: process.env.NODE_ENV,
+        webOrigin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:5173",
+      }),
+  };
   const jobHandlers = createBackgroundJobHandlers({
+    userMayAct: (userId) => userMayAct(prisma, userId, gateRule),
     prisma,
     sandbox,
     home,

@@ -1,13 +1,18 @@
 // Who may join, and who is waiting. Deployment owner only; the owner check is the same one
 // `deployment.update` uses. Approval is the moment a pending account first gets a space.
-import { resolveSignupPolicy } from "@nova/auth";
+import {
+  prismaEmailQuota,
+  REJECTION_COOLDOWN_MS,
+  rejectionKey,
+  resolveSignupPolicy,
+} from "@nova/auth";
 import type { Actor, PendingSignup, SignupSettings } from "@nova/contracts";
 import { parseAllowlist, parseDomains, signupNeedsEmailDelivery } from "@nova/core";
 import { bootstrapUserSpace } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import type { RouterDeps } from "../../routers/context.js";
 
-type SignupsDeps = Pick<RouterDeps, "prisma" | "identity">;
+type SignupsDeps = Pick<RouterDeps, "prisma" | "identity" | "auth">;
 
 function assertOwner(actor: Actor): void {
   if (!actor.isDeploymentOwner) throw new ORPCError("FORBIDDEN");
@@ -105,7 +110,8 @@ export async function approveSignup(
 /**
  * Reject a waiting signup. A person who proved their mailbox is suspended, so the same address
  * cannot queue up again. An unproven address may be someone squatting on another person's
- * email, so that account is removed instead and the real owner can register.
+ * email, so that account is removed through Better Auth (sessions, accounts, user) and the real
+ * owner can register; the address then cools down for a day so it cannot be re-queued at once.
  */
 export async function rejectSignup(
   deps: SignupsDeps,
@@ -115,7 +121,7 @@ export async function rejectSignup(
   assertOwner(actor);
   const user = await deps.prisma.user.findFirst({
     where: { id: userId, status: "pending" },
-    select: { id: true, emailVerified: true },
+    select: { id: true, email: true, emailVerified: true },
   });
   if (!user) throw new ORPCError("NOT_FOUND", { message: "Not waiting for approval" });
   if (user.emailVerified) {
@@ -124,7 +130,8 @@ export async function rejectSignup(
       data: { status: "suspended" },
     });
   } else {
-    await deps.prisma.user.deleteMany({ where: { id: user.id, status: "pending" } });
+    await (await deps.auth.$context).internalAdapter.deleteUser(user.id);
+    await prismaEmailQuota(deps.prisma).fail(rejectionKey(user.email), REJECTION_COOLDOWN_MS);
   }
   return { ok: true as const };
 }

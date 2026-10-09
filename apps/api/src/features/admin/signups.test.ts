@@ -72,10 +72,29 @@ function fixture(identity?: { production: boolean; emailDelivery: boolean }) {
       ),
     },
   };
+  const quotaWrites: string[] = [];
+  Object.assign(prisma, {
+    $queryRaw: vi.fn(async (_strings: TemplateStringsArray, key: string) => {
+      quotaWrites.push(key);
+      return [{ count: 1 }];
+    }),
+  });
+  const deleteUser = vi.fn(async (id: string) => {
+    users.splice(
+      users.findIndex((user) => user.id === id),
+      1,
+    );
+  });
   return {
-    deps: { prisma: prisma as never, identity: identity && { ...identity, signupPolicy: {} } },
+    deps: {
+      prisma: prisma as never,
+      identity: identity && { ...identity, signupPolicy: {} },
+      auth: { $context: Promise.resolve({ internalAdapter: { deleteUser } }) } as never,
+    },
     settings,
     users,
+    deleteUser,
+    quotaWrites,
   };
 }
 
@@ -133,12 +152,16 @@ describe("signup administration", () => {
   });
 
   it("rejects a proven address by suspending it, and removes an unproven one", async () => {
-    const { deps, users } = fixture();
+    const { deps, users, deleteUser, quotaWrites } = fixture();
     await rejectSignup(deps, owner, "u1");
     expect(users[0]!.status).toBe("suspended");
+    expect(deleteUser).not.toHaveBeenCalled();
     expect((await rejection(rejectSignup(deps, owner, "u1"))).code).toBe("NOT_FOUND");
-    // u2 never proved its mailbox: it may be squatting on someone else's address.
+    // u2 never proved its mailbox: it may be squatting on someone else's address. It is removed
+    // through Better Auth and the address cools down so it cannot be re-queued at once.
     await rejectSignup(deps, owner, "u2");
+    expect(deleteUser).toHaveBeenCalledWith("u2");
+    expect(quotaWrites).toEqual(["rejected:b@corp.test"]);
     expect(users.map((user) => user.id)).toEqual(["u1", "u3"]);
     expect(bootstrapUserSpace).not.toHaveBeenCalled();
   });

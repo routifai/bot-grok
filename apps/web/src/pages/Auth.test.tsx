@@ -297,6 +297,17 @@ it("asks for the setup token while the owner seat is open, and sends it with the
   );
 });
 
+it("forgets the setup token from the tab once the sign-up succeeds", async () => {
+  serve({ ownerSetup: true, signupMode: "approval" });
+  client.signUp.email.mockResolvedValue({ data: { token: "t", user: {} }, error: null });
+  await render("up");
+  type("#email", "owner@corp.test");
+  type("#new-password", "correct-horse");
+  type("#owner-token", "operator-token");
+  await submit();
+  expect(sessionStorage.getItem("nova:auth-owner-token")).toBeNull();
+});
+
 it("does not show the setup token field once an owner exists", async () => {
   serve({ ownerSetup: false });
   await render("up");

@@ -41,6 +41,7 @@ function prismaFor(status: string) {
 
 function handlersFor(overrides: {
   status?: string;
+  userMayAct?: (userId: string) => Promise<boolean>;
   prisma?: unknown;
   jobs?: JobPublisher;
   messaging?: MessagingSurface;
@@ -55,6 +56,7 @@ function handlersFor(overrides: {
     jobs: overrides.jobs ?? ({ enqueue: vi.fn() } as unknown as JobPublisher),
     events: {} as unknown as ThreadEvents,
     workerId: "worker-1",
+    userMayAct: overrides.userMayAct,
     messaging: overrides.messaging,
     omnigent: overrides.omnigent,
   });
@@ -155,5 +157,19 @@ describe("createBackgroundJobHandlers", () => {
       await handlers["routine.wakeup"]({ routineId: "routine-1", scheduledFor: "2026-01-01" });
       expect(wakeRoutine).not.toHaveBeenCalled();
     }
+  });
+
+  it("uses the deployment's full rule when one is supplied", async () => {
+    const prisma = prismaFor("active");
+    const userMayAct = vi.fn(async () => false);
+    const handlers = handlersFor({
+      prisma,
+      userMayAct,
+      omnigent: {} as unknown as OmnigentGatewayDeps,
+    });
+    await handlers["run.continue"]({ runId: "run-1" });
+    expect(userMayAct).toHaveBeenCalledWith("user-1");
+    expect(runTurnOnOmnigent).not.toHaveBeenCalled();
+    expect(prisma.run.updateMany).toHaveBeenCalled();
   });
 });
