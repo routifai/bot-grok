@@ -29,6 +29,9 @@ FONTS_DIR = KIT_DIR / "fonts"
 CHARTS_DIR = KIT_DIR / "charts"
 CHARTJS_PATH = KIT_DIR / "vendor" / "chart.js" / "chart.umd.js"
 
+#: The restrained professional theme the Muse starts from unless the request calls for more.
+DEFAULT_THEME = "corporate-clean"
+PREVIEWS_DIR = KIT_DIR / "previews"
 SLOTS_OPEN = "<!-- nova:slides -->"
 SLOTS_CLOSE = "<!-- /nova:slides -->"
 _FONT_MIME = {".ttf": "font/ttf", ".otf": "font/otf", ".woff2": "font/woff2"}
@@ -73,12 +76,35 @@ def templates() -> dict[str, Template]:
     return found
 
 
-def template_summaries() -> list[dict[str, str]]:
-    """``[{id, name, description, best_for}]`` for the Muse to choose from."""
+def theme_dictionary() -> list[dict[str, str]]:
+    """The theme dictionary: ``[{id, name, mood, category, mode, best_for}]``, restrained first.
+
+    ``mood`` is the theme's one-line description. The order is stable: professional themes, then
+    editorial, bold and dark, each by id.
+    """
+    order = {"professional": 0, "editorial": 1, "bold": 2, "dark": 3}
+    ranked = sorted(templates().values(), key=lambda t: (order.get(t.category, 9), t.id))
     return [
-        {"id": t.id, "name": t.name, "description": t.description, "best_for": t.best_for}
-        for t in templates().values()
+        {
+            "id": t.id,
+            "name": t.name,
+            "mood": t.description,
+            "category": t.category,
+            "mode": t.mode,
+            "best_for": t.best_for,
+        }
+        for t in ranked
     ]
+
+
+def theme_gallery() -> list[dict[str, str]]:
+    """The dictionary for the picker: each entry plus its thumbnail as a ``data:`` URI."""
+    out = []
+    for entry in theme_dictionary():
+        path = PREVIEWS_DIR / f"{entry['id']}.webp"
+        data = base64.b64encode(path.read_bytes()).decode("ascii") if path.is_file() else ""
+        out.append({**entry, "preview": f"data:image/webp;base64,{data}" if data else ""})
+    return out
 
 
 @cache
@@ -192,6 +218,38 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+_ROOT_RE = re.compile(r"    :root \{.*?\n    \}", re.S)
+_STYLE_HEAD = " · layout vocabulary and theme */"
+_STYLE_RE = re.compile(
+    r"  <style>\n    /\* [^\n]*? · layout vocabulary and theme \*/.*?\n  </style>", re.S
+)
+_PLACEHOLDER_STYLE_RE = re.compile(
+    r"  <style>\n    /\* SLOT: per-deck styles.*?\n  </style>", re.S
+)
+_FONTS_RE = re.compile(r"  <style data-nova-fonts>.*?\n  </style>\n", re.S)
+_HEAD_NAME_RE = re.compile(r"/\* ([^\n]*?) · layout vocabulary and theme \*/")
+
+
+def _tokens_block(template: Template) -> str:
+    tokens = (template.directory / "tokens.css").read_text("utf-8").rstrip()
+    return "    :root {\n" + tokens + "\n    }"
+
+
+def _style_block(template: Template) -> str:
+    theme = (template.directory / "theme.css").read_text("utf-8").strip()
+    layouts = (KIT_DIR / "layouts.css").read_text("utf-8").strip()
+    head = f"  <style>\n    /* {template.name}{_STYLE_HEAD}"
+    return f"{head}\n{layouts}\n\n{theme}\n  </style>"
+
+
+def _fonts_block(template_id: str) -> str:
+    return (
+        "  <style data-nova-fonts>\n"
+        "/* Embedded fonts (Latin subset, SIL OFL 1.1): never read or edit this block. */\n"
+        f"{_font_faces_css(template_id)}\n  </style>\n"
+    )
+
+
 def build_deck(template_id: str, title: str, slides_html: str | None = None) -> str:
     """The complete deck document for ``template_id`` with ``slides_html`` (or a sample cover)."""
     template = templates().get(template_id)
@@ -199,25 +257,20 @@ def build_deck(template_id: str, title: str, slides_html: str | None = None) -> 
         raise KitError(f"Unknown template '{template_id}'. Use one of: {', '.join(templates())}")
     slides = (slides_html or (KIT_DIR / "slides.html").read_text("utf-8")).strip("\n")
     skeleton = (KIT_DIR / "skeleton.html").read_text("utf-8")
-    tokens = (template.directory / "tokens.css").read_text("utf-8").rstrip()
-    theme = (template.directory / "theme.css").read_text("utf-8").strip()
-    layouts = (KIT_DIR / "layouts.css").read_text("utf-8").strip()
 
     deck = skeleton.replace(
         "<title><!-- SLOT: deck title --></title>",
         f"<title>{html.escape(title.strip())}</title>",
         1,
     )
-    root = re.search(r"    :root \{.*?\n    \}", deck, re.S)
+    root = _ROOT_RE.search(deck)
     if root is None:
         raise KitError("skeleton: theme token block not found")
-    deck = deck[: root.start()] + "    :root {\n" + tokens + "\n    }" + deck[root.end() :]
-    styles = re.search(r"  <style>\n    /\* SLOT: per-deck styles.*?\n  </style>", deck, re.S)
+    deck = deck[: root.start()] + _tokens_block(template) + deck[root.end() :]
+    styles = _PLACEHOLDER_STYLE_RE.search(deck)
     if styles is None:
         raise KitError("skeleton: per-deck style block not found")
-    head = f"  <style>\n    /* {template.name} · layout vocabulary and theme */"
-    block = f"{head}\n{layouts}\n\n{theme}\n  </style>"
-    deck = deck[: styles.start()] + block + deck[styles.end() :]
+    deck = deck[: styles.start()] + _style_block(template) + deck[styles.end() :]
     region = re.search(
         r"      <!-- SLOT: slides.*?(?=    </div>\n  </div>\n\n  <!-- Framework chrome)",
         deck,
@@ -231,9 +284,34 @@ def build_deck(template_id: str, title: str, slides_html: str | None = None) -> 
         + deck[region.end() :]
     )
     deck = deck.replace("</head>", _chart_runtime() + "</head>", 1)
-    fonts = (
-        "  <style data-nova-fonts>\n"
-        "/* Embedded fonts (Latin subset, SIL OFL 1.1): never read or edit this block. */\n"
-        f"{_font_faces_css(template_id)}\n  </style>\n"
-    )
-    return deck.replace("</body>", fonts + "</body>", 1)
+    return deck.replace("</body>", _fonts_block(template_id) + "</body>", 1)
+
+
+def deck_theme_id(document: str) -> str | None:
+    """The id of the theme a built deck carries (from its style block), if it is one of ours."""
+    found = _HEAD_NAME_RE.search(document)
+    if found is None:
+        return None
+    return next((t.id for t in templates().values() if t.name == found.group(1)), None)
+
+
+def restyle_deck(document: str, template_id: str) -> str:
+    """The deck with its theme swapped: tokens, theme CSS and fonts; the slides are untouched.
+
+    :raises KitError: for an unknown theme, or a deck that was not built by the kit (its token,
+        style or font block cannot be found exactly), which is then restyled by asking the Muse.
+    """
+    template = templates().get(template_id)
+    if template is None:
+        raise KitError(f"Unknown theme '{template_id}'. Use one of: {', '.join(templates())}")
+    swaps = ((_ROOT_RE, _tokens_block(template)), (_STYLE_RE, _style_block(template)))
+    out = document
+    for pattern, block in swaps:
+        found = list(pattern.finditer(out))
+        if len(found) != 1:
+            raise KitError("this deck's theme can't be swapped exactly; ask Nova to restyle it")
+        out = out[: found[0].start()] + block + out[found[0].end() :]
+    fonts = list(_FONTS_RE.finditer(out))
+    if len(fonts) != 1:
+        raise KitError("this deck's theme can't be swapped exactly; ask Nova to restyle it")
+    return out[: fonts[0].start()] + _fonts_block(template_id) + out[fonts[0].end() :]

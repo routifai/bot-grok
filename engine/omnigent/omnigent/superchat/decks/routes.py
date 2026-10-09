@@ -1,4 +1,4 @@
-"""``POST /v1/decks/{artifact_id}/export``: the panel's Export buttons.
+"""``POST /v1/decks/{artifact_id}/export`` (Export buttons) and ``GET /v1/decks/themes``.
 
 Wakes the person's Computer the way a message does, then runs the ``deck_export`` tool on its
 runner (``/mcp/execute``) so the Chromium that renders the deck is the one in their Computer.
@@ -26,6 +26,7 @@ from omnigent.superchat.artifacts import (
     load_artifact,
     request_owner,
 )
+from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.names import is_deck_name
 from omnigent.superchat.family.signals import notify_message_done
 from omnigent.superchat.transcript.blocks import DELIVERED_ARTIFACT_RESOURCE, DELIVERED_EVENT
@@ -83,6 +84,12 @@ def create_decks_router(
         if client is None:
             raise unavailable
         return client
+
+    @router.get("/decks/themes")
+    async def deck_themes(request: Request) -> dict[str, Any]:
+        """The theme dictionary with thumbnails, for the deck panel's Theme picker."""
+        request_owner(request, auth_provider)
+        return {"themes": kit.theme_gallery(), "default": kit.DEFAULT_THEME}
 
     @router.post("/decks/{artifact_id}/export")
     async def export_deck(

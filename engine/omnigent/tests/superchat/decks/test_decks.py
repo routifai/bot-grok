@@ -380,3 +380,14 @@ async def test_handler_exports_a_kit_deck_with_the_real_helper(
     assert out["type"] == "artifact" and out["name"] == f"q3.{fmt}" and out["size"] > 10_000
     data = store.read(store.get(out["id"], user_id="alice"))
     assert data.startswith(b"%PDF" if fmt == "pdf" else b"PK")
+
+
+def test_theme_route_lists_the_gallery(route_client) -> None:
+    client, _ = route_client
+    resp = client.get("/v1/decks/themes", headers=H)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["default"] == "corporate-clean" and len(body["themes"]) == 18
+    first = body["themes"][0]
+    assert {"id", "name", "mood", "category", "mode", "preview"} <= set(first)
+    assert first["preview"].startswith("data:image/webp;base64,")

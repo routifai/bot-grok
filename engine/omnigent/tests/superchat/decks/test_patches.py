@@ -14,6 +14,7 @@ from omnigent.superchat.decks.patches import (
     SetFullSource,
     SetStyle,
     SetText,
+    SetTheme,
     apply_patches,
 )
 
@@ -230,3 +231,41 @@ def test_set_style_summary_uses_the_editor_s_before_values() -> None:
     )
     assert "font-size 64px→72px" in summary
     assert "before" not in out
+
+
+SAMPLE = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
+
+
+def _slides(document: str) -> str:
+    return document[document.index(kit.SLOTS_OPEN) : document.index(kit.SLOTS_CLOSE)]
+
+
+def test_set_theme_swaps_tokens_css_and_fonts_and_leaves_the_slides_alone() -> None:
+    deck = kit.build_deck("corporate-clean", "Q3", SAMPLE)
+    new, summary = run([SetTheme(kind="set-theme", theme="nord")], deck)
+    assert new == kit.build_deck("nord", "Q3", SAMPLE)
+    assert _slides(new) == _slides(deck)
+    assert kit.deck_theme_id(new) == "nord"
+    assert summary == "switched the theme to Nord (was Corporate Clean)"
+
+
+def test_set_theme_round_trips_and_keeps_hand_edits_to_slides() -> None:
+    deck = kit.build_deck("minimal-white", "Q3", SAMPLE)
+    edited, _ = run([SetText(kind="set-text", id="cover-title", text="Edited")], deck)
+    there, _ = run([SetTheme(kind="set-theme", theme="tokyo-night")], edited)
+    back, _ = run([SetTheme(kind="set-theme", theme="minimal-white")], there)
+    assert back == edited
+
+
+def test_set_theme_to_the_current_theme_changes_nothing() -> None:
+    deck = kit.build_deck("nord", "Q3", SAMPLE)
+    new, summary = run([SetTheme(kind="set-theme", theme="nord")], deck)
+    assert new == deck and summary == ""
+
+
+def test_set_theme_refuses_unknown_themes_and_decks_the_kit_did_not_build() -> None:
+    deck = kit.build_deck("nord", "Q3", SAMPLE)
+    with pytest.raises(InvalidPatch):
+        run([SetTheme(kind="set-theme", theme="nope")], deck)
+    with pytest.raises(AmbiguousEdit, match="ask Nova"):
+        run([SetTheme(kind="set-theme", theme="nord")], DOC)
