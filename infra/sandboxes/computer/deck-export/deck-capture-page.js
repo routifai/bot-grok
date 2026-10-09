@@ -836,6 +836,8 @@ export async function runDomToPptx(
     const importedFonts = await exposeImportedFontFaces();
     await document.fonts?.ready;
     if (phase !== "export-prepared") {
+      // Nova addition: Chart.js charts become native PowerPoint charts (never a canvas picture).
+      markNativeCharts(slideSelector);
       ensureExplicitSlideBackgrounds(slides);
       stabilizeLargeSingleLineText(slides);
       stabilizeAuthoredHeadingLines(slides);
@@ -2079,6 +2081,17 @@ export function lintDeck(options) {
         rasterEffects.push({ el, slide: index + 1, label, what: raster.join(", ") });
     }
   });
+  // Nova addition: a chart must be able to become a native PowerPoint chart.
+  for (const chartIssue of lintCharts(slideSelector)) {
+    issues.push({
+      slide: chartIssue.slide,
+      label: slides[chartIssue.slide - 1]?.getAttribute("data-screen-label") || "",
+      id: chartIssue.id,
+      severity: "error",
+      code: "chart-not-native",
+      message: chartIssue.message,
+    });
+  }
   for (const r of rasterEffects) {
     issues.push({
       slide: r.slide,
@@ -2088,6 +2101,810 @@ export function lintDeck(options) {
       code: "picture-layer",
       message: `${r.what} becomes a picture layer behind the text in PowerPoint (the text stays editable).`,
     });
+  }
+  return issues;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Native charts (Nova addition, not in Open Design).
+//
+// A deck chart is Chart.js on a <canvas> (the ported chart-*.html templates). At export each
+// Chart.js instance is read as it was configured (type, labels, datasets, colors, axes, legend,
+// number formats) and turned into the PptxGenJS chart spec that the vendored dom-to-pptx hook
+// (`<canvas data-pptx-chart>`, see vendor/dom-to-pptx/README.md) hands to `slide.addChart`. The
+// result is a real PowerPoint chart with an embedded workbook, never a picture of the canvas.
+// A chart with no PowerPoint equivalent throws a sentence the Muse can act on; `deck_check` shows it.
+// ---------------------------------------------------------------------------------------------
+
+const NATIVE_CHART_HINT =
+  "Use a bar, line, area, pie, doughnut, radar, scatter or bubble chart (or a bar with a line), or a table.";
+const COMBO_KINDS = ["bar", "line", "area"];
+
+function chartPlainFontFamily(family) {
+  const first = String(family || "")
+    .split(",")[0]
+    .trim()
+    .replace(/^["']|["']$/g, "");
+  return first || undefined;
+}
+
+// CSS color -> { hex: "RRGGBB", alpha: 0..1 }. Hex and rgb() are parsed directly; names and hsl()
+// go through a canvas, which normalises any CSS color the browser knows.
+export function parseChartColor(value, what) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(
+      `${what} must be a plain CSS color; a gradient or pattern has no native PowerPoint chart fill.`,
+    );
+  }
+  const v = value.trim();
+  const hex = /^#([0-9a-f]{3,8})$/i.exec(v);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3 || h.length === 4) {
+      h = Array.from(h)
+        .map((c) => c + c)
+        .join("");
+    }
+    if (h.length === 6) return { hex: h.toUpperCase(), alpha: 1 };
+    if (h.length === 8) {
+      return { hex: h.slice(0, 6).toUpperCase(), alpha: parseInt(h.slice(6), 16) / 255 };
+    }
+  }
+  const rgb =
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+)(%?))?\s*\)$/i.exec(v);
+  if (rgb) {
+    const channel = (n) =>
+      Math.max(0, Math.min(255, Math.round(Number(n))))
+        .toString(16)
+        .padStart(2, "0");
+    const alpha = rgb[4] === undefined ? 1 : rgb[5] ? Number(rgb[4]) / 100 : Number(rgb[4]);
+    return { hex: (channel(rgb[1]) + channel(rgb[2]) + channel(rgb[3])).toUpperCase(), alpha };
+  }
+  const context = document.createElement("canvas").getContext("2d");
+  const read = (sentinel) => {
+    context.fillStyle = sentinel;
+    context.fillStyle = v;
+    return context.fillStyle;
+  };
+  const a = read("#000000");
+  if (a !== read("#ffffff")) throw new Error(`${what} "${v}" is not a CSS color.`);
+  return parseChartColor(a, what);
+}
+
+// Blend a translucent color onto the surface behind the chart: PowerPoint grid lines and axis
+// text take a color but no alpha.
+function blendOnto(color, backdropHex) {
+  if (color.alpha >= 0.999) return color.hex;
+  const mix = (i) => {
+    const front = parseInt(color.hex.slice(i, i + 2), 16);
+    const back = parseInt(backdropHex.slice(i, i + 2), 16);
+    return Math.round(front * color.alpha + back * (1 - color.alpha))
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return (mix(0) + mix(2) + mix(4)).toUpperCase();
+}
+
+function surfaceBehind(canvas) {
+  for (let el = canvas; el; el = el.parentElement) {
+    const bg = getComputedStyle(el).backgroundColor;
+    if (!bg || bg === "transparent") continue;
+    const c = parseChartColor(bg, "background");
+    if (c.alpha > 0.5) return c.hex;
+  }
+  return "FFFFFF";
+}
+
+// Intl.NumberFormat options (what Chart.js' `ticks.format` takes) -> an Excel number format code.
+function excelNumberFormat(format) {
+  if (!format || typeof format !== "object") return undefined;
+  if (format.notation === "compact") {
+    throw new Error(
+      "A compact number format (notation: 'compact') has no PowerPoint number format.",
+    );
+  }
+  const digits =
+    format.minimumFractionDigits ??
+    format.maximumFractionDigits ??
+    (format.style === "currency" ? 2 : 0);
+  const zeros = digits > 0 ? `.${"0".repeat(digits)}` : "";
+  const base = (format.useGrouping === false ? "0" : "#,##0") + zeros;
+  if (format.style === "percent") return `${base}%`;
+  if (format.style === "currency") {
+    const symbols = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CHF: "CHF ", CAD: "$", AUD: "$" };
+    const symbol = symbols[format.currency] ?? `${format.currency} `;
+    return `"${symbol}"${base}`;
+  }
+  return base;
+}
+
+function numberOrNull(value, what) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
+    return Number(value);
+  }
+  throw new Error(`${what} holds a value that is not a number.`);
+}
+
+// What kind of PowerPoint series a dataset is. A filled line is an area chart.
+function datasetKind(chart, index, topType) {
+  const dataset = chart.data.datasets[index];
+  const type = dataset.type || topType;
+  if (type === "line" || type === "radar") {
+    const meta = chart.getDatasetMeta ? chart.getDatasetMeta(index) : null;
+    const fill = meta?.dataset?.options?.fill ?? dataset.fill;
+    const filled = fill !== undefined && fill !== null && fill !== false && fill !== "";
+    return type === "line" ? (filled ? "area" : "line") : "radar";
+  }
+  return type;
+}
+
+function elementColor(chart, index, point, field, what) {
+  const dataset = chart.data.datasets[index];
+  const meta = chart.getDatasetMeta ? chart.getDatasetMeta(index) : null;
+  let raw;
+  if (point === null) {
+    raw = meta?.dataset?.options?.[field] ?? dataset[field];
+  } else {
+    raw = meta?.data?.[point]?.options?.[field];
+    if (raw === undefined)
+      raw = Array.isArray(dataset[field]) ? dataset[field][point] : dataset[field];
+  }
+  if (Array.isArray(raw)) raw = raw[point ?? 0];
+  return parseChartColor(raw, what);
+}
+
+function scaleSettings(scale, backdrop, face) {
+  // Shared axis facts: label color, size and face, title, grid. `prefix` is cat or val.
+  const out = {};
+  if (!scale) return out;
+  const ticks = scale.ticks || {};
+  if (ticks.color)
+    out.labelColor = blendOnto(parseChartColor(ticks.color, "an axis label color"), backdrop);
+  if (ticks.font?.size) out.labelFontSize = ticks.font.size;
+  out.labelFontFace = face;
+  out.hidden = scale.display === false;
+  const grid = scale.grid || {};
+  if (grid.display === false) {
+    out.gridLine = { style: "none" };
+  } else if (grid.color && typeof grid.color === "string") {
+    out.gridLine = {
+      color: blendOnto(parseChartColor(grid.color, "a grid color"), backdrop),
+      size: grid.lineWidth && typeof grid.lineWidth === "number" ? grid.lineWidth : 1,
+      style: "solid",
+    };
+  }
+  const title = scale.title || {};
+  if (title.display && title.text) {
+    out.title = Array.isArray(title.text) ? title.text.join(" ") : String(title.text);
+    if (title.color)
+      out.titleColor = blendOnto(parseChartColor(title.color, "an axis title color"), backdrop);
+    if (title.font?.size) out.titleFontSize = title.font.size;
+  }
+  return out;
+}
+
+function applyAxis(target, prefix, settings, extra = {}) {
+  // prefix: "cat" | "val"
+  const set = (key, value) => {
+    if (value !== undefined) target[`${prefix}${key}`] = value;
+  };
+  if (settings.hidden) set("AxisHidden", true);
+  set("AxisLabelColor", settings.labelColor);
+  set("AxisLabelFontSize", settings.labelFontSize);
+  set("AxisLabelFontFace", settings.labelFontFace);
+  set("GridLine", settings.gridLine);
+  if (settings.title) {
+    target[`show${prefix === "cat" ? "Cat" : "Val"}AxisTitle`] = true;
+    set("AxisTitle", settings.title);
+    set("AxisTitleColor", settings.titleColor);
+    set("AxisTitleFontSize", settings.titleFontSize);
+    set("AxisTitleFontFace", settings.labelFontFace);
+  }
+  for (const [key, value] of Object.entries(extra)) {
+    if (value !== undefined) target[key] = value;
+  }
+}
+
+function valueScaleBounds(scale, values) {
+  const out = {};
+  if (!scale) return out;
+  const finite = values.filter((v) => typeof v === "number" && Number.isFinite(v));
+  const dataMin = finite.length ? Math.min(...finite) : 0;
+  const dataMax = finite.length ? Math.max(...finite) : 0;
+  let min = scale.min;
+  let max = scale.max;
+  if (min === undefined && typeof scale.suggestedMin === "number")
+    min = Math.min(scale.suggestedMin, dataMin);
+  if (max === undefined && typeof scale.suggestedMax === "number")
+    max = Math.max(scale.suggestedMax, dataMax);
+  if (min === undefined && scale.beginAtZero === true && dataMin >= 0) min = 0;
+  if (typeof min === "number") out.min = min;
+  if (typeof max === "number") out.max = max;
+  if (typeof scale.ticks?.stepSize === "number") out.majorUnit = scale.ticks.stepSize;
+  const format = excelNumberFormat(scale.ticks?.format);
+  if (format) out.format = format;
+  return out;
+}
+
+function symbolFor(style, radius) {
+  if (radius === 0) return "none";
+  const map = {
+    circle: "circle",
+    rect: "square",
+    rectRounded: "square",
+    triangle: "triangle",
+    rectRot: "diamond",
+    dash: "dash",
+    line: "dash",
+  };
+  if (style === undefined || style === false) return "circle";
+  if (!(style in map)) {
+    throw new Error(
+      `The point style "${style}" has no PowerPoint marker. Use circle, rect, triangle or rectRot.`,
+    );
+  }
+  return map[style];
+}
+
+// Everything the chart-level options carry: title, legend, font. Axes are added per chart family.
+function chartFrameOptions(chart, backdrop, face) {
+  const out = {};
+  const plugins = chart.options?.plugins || {};
+  const title = plugins.title || {};
+  if (title.display && title.text) {
+    out.showTitle = true;
+    out.title = Array.isArray(title.text) ? title.text.join(" ") : String(title.text);
+    if (title.color)
+      out.titleColor = blendOnto(parseChartColor(title.color, "the chart title color"), backdrop);
+    if (title.font?.size) out.titleFontSize = title.font.size;
+    out.titleFontFace = face;
+  } else {
+    out.showTitle = false;
+  }
+  const legend = plugins.legend || {};
+  if (legend.display === false) {
+    out.showLegend = false;
+  } else {
+    out.showLegend = true;
+    const positions = { top: "t", bottom: "b", left: "l", right: "r" };
+    out.legendPos = positions[legend.position || "top"] || "t";
+    const labels = legend.labels || {};
+    if (labels.color)
+      out.legendColor = blendOnto(parseChartColor(labels.color, "the legend color"), backdrop);
+    if (labels.font?.size) out.legendFontSize = labels.font.size;
+    out.legendFontFace = face;
+  }
+  return out;
+}
+
+// Chart.js instance -> { types: [{ type, data, options }], options }, the data-pptx-chart payload.
+export function chartJsToPptx(chart, canvas) {
+  const topType = chart.config?.type ?? chart.config?._config?.type;
+  const backdrop = surfaceBehind(canvas);
+  const defaultFace = chartPlainFontFamily(window.Chart?.defaults?.font?.family);
+  const resolvedFace = chartPlainFontFamily(chart.options?.font?.family);
+  const face =
+    resolvedFace && resolvedFace !== defaultFace
+      ? resolvedFace
+      : chartPlainFontFamily(getComputedStyle(canvas).fontFamily);
+  const datasetIndexes = chart.data.datasets
+    .map((_dataset, index) => index)
+    .filter((index) => !chart.data.datasets[index].hidden);
+  if (datasetIndexes.length === 0) throw new Error("The chart has no visible dataset.");
+  const kinds = datasetIndexes.map((index) => datasetKind(chart, index, topType));
+  const kindSet = Array.from(new Set(kinds));
+  const supported = ["bar", "line", "area", "pie", "doughnut", "radar", "scatter", "bubble"];
+  for (const kind of kindSet) {
+    if (!supported.includes(kind)) {
+      throw new Error(
+        `A ${kind} chart has no native PowerPoint equivalent (PowerPoint cannot draw it as a chart). ${NATIVE_CHART_HINT}`,
+      );
+    }
+  }
+  if (kindSet.length > 1 && !kindSet.every((kind) => COMBO_KINDS.includes(kind))) {
+    throw new Error(
+      `PowerPoint combines only bar, line and area datasets in one chart; ${kindSet.join(" with ")} cannot share a chart. ${NATIVE_CHART_HINT}`,
+    );
+  }
+  const frame = chartFrameOptions(chart, backdrop, face);
+  const labels = (chart.data.labels || []).map((label) =>
+    Array.isArray(label) ? label.join(" ") : String(label),
+  );
+  const kind = kindSet[0];
+  if (kindSet.length === 1 && (kind === "pie" || kind === "doughnut")) {
+    return pieSpec(chart, datasetIndexes, kind, labels, frame);
+  }
+  if (kindSet.length === 1 && (kind === "scatter" || kind === "bubble")) {
+    return xySpec(chart, datasetIndexes, kind, frame, backdrop, face);
+  }
+  if (kindSet.length === 1 && kind === "radar") {
+    return radarSpec(chart, datasetIndexes, labels, frame, backdrop, face);
+  }
+  return categorySpec(chart, datasetIndexes, kinds, labels, frame, backdrop, face);
+}
+
+function pieSpec(chart, indexes, kind, labels, frame) {
+  if (indexes.length > 1) {
+    throw new Error(
+      `A ${kind} chart has one series in PowerPoint; this one has ${indexes.length} datasets (rings). Use one dataset, or a bar chart.`,
+    );
+  }
+  const index = indexes[0];
+  const dataset = chart.data.datasets[index];
+  const values = dataset.data.map((value) => numberOrNull(value, `Dataset "${dataset.label}"`));
+  const circumference = chart.options?.circumference;
+  if (circumference !== undefined && circumference !== 360) {
+    throw new Error(
+      `A ${kind} chart with circumference ${circumference} (a gauge) has no native PowerPoint equivalent. ${NATIVE_CHART_HINT}`,
+    );
+  }
+  const options = {
+    ...frame,
+    chartColors: values.map((_v, point) => {
+      const color = elementColor(
+        chart,
+        index,
+        point,
+        "backgroundColor",
+        `Slice ${point + 1} of "${dataset.label}"`,
+      );
+      return color.hex;
+    }),
+    showPercent: false,
+    showValue: false,
+    showLabel: false,
+  };
+  const rotation = chart.options?.rotation;
+  if (typeof rotation === "number")
+    options.firstSliceAng = ((Math.round(rotation) % 360) + 360) % 360;
+  const borderWidth = elementBorderWidth(chart, index);
+  if (borderWidth > 0) {
+    options.dataBorder = {
+      pt: borderWidth,
+      color: elementColor(chart, index, 0, "borderColor", "the slice border color").hex,
+    };
+  }
+  if (kind === "doughnut") {
+    const cutout = chart.options?.cutout;
+    let hole = 50;
+    if (typeof cutout === "string" && cutout.endsWith("%")) hole = parseFloat(cutout);
+    else if (typeof cutout === "number" && chart.outerRadius)
+      hole = (cutout / chart.outerRadius) * 100;
+    options.holeSize = Math.max(10, Math.min(90, Math.round(hole)));
+  }
+  const seriesLabels = labels.length ? labels : values.map((_v, i) => `Item ${i + 1}`);
+  return {
+    types: [
+      {
+        type: kind,
+        data: [{ name: String(dataset.label ?? "Series 1"), labels: seriesLabels, values }],
+        options: {},
+      },
+    ],
+    options,
+  };
+}
+
+function elementBorderWidth(chart, index) {
+  const meta = chart.getDatasetMeta ? chart.getDatasetMeta(index) : null;
+  const fromElement = meta?.data?.[0]?.options?.borderWidth;
+  const raw = fromElement ?? chart.data.datasets[index].borderWidth;
+  return typeof raw === "number" ? raw : 0;
+}
+
+function radarSpec(chart, indexes, labels, frame, backdrop, face) {
+  const scale = chart.options?.scales?.r || {};
+  const series = indexes.map((index) => seriesFor(chart, index, labels));
+  const colors = indexes.map((index) =>
+    elementColor(
+      chart,
+      index,
+      null,
+      "borderColor",
+      `The border of "${chart.data.datasets[index].label}"`,
+    ),
+  );
+  const filled = indexes.some(
+    (index) => datasetKind(chart, index, "radar") === "radar" && radarFilled(chart, index),
+  );
+  const options = { ...frame, chartColors: colors.map((c) => c.hex) };
+  if (filled) {
+    const fills = indexes.map((index) =>
+      elementColor(chart, index, null, "backgroundColor", "a radar fill"),
+    );
+    options.radarStyle = "filled";
+    options.chartColors = fills.map((c) => c.hex);
+    options.chartColorsOpacity = Math.round(fills[0].alpha * 100);
+  } else {
+    const radius = chart.data.datasets[indexes[0]].pointRadius;
+    options.radarStyle = radius === 0 ? "standard" : "marker";
+  }
+  const bounds = valueScaleBounds(
+    scale,
+    series.flatMap((s) => s.values),
+  );
+  const grid = scaleSettings(scale, backdrop, face);
+  applyAxis(
+    options,
+    "val",
+    {
+      gridLine: grid.gridLine,
+      labelFontFace: face,
+      labelColor: grid.labelColor,
+      labelFontSize: grid.labelFontSize,
+      hidden: scale.ticks?.display === false,
+    },
+    {
+      valAxisMinVal: bounds.min,
+      valAxisMaxVal: bounds.max,
+      valAxisMajorUnit: bounds.majorUnit,
+      valAxisLabelFormatCode: bounds.format,
+    },
+  );
+  const pointLabels = scale.pointLabels || {};
+  if (pointLabels.color)
+    options.catAxisLabelColor = blendOnto(
+      parseChartColor(pointLabels.color, "the radar label color"),
+      backdrop,
+    );
+  if (pointLabels.font?.size) options.catAxisLabelFontSize = pointLabels.font.size;
+  options.catAxisLabelFontFace = face;
+  const borderWidth = elementBorderWidth(chart, indexes[0]);
+  if (borderWidth > 0) options.lineSize = borderWidth;
+  return { types: [{ type: "radar", data: series, options: {} }], options };
+}
+
+function radarFilled(chart, index) {
+  const meta = chart.getDatasetMeta ? chart.getDatasetMeta(index) : null;
+  const fill = meta?.dataset?.options?.fill ?? chart.data.datasets[index].fill;
+  return fill !== undefined && fill !== null && fill !== false && fill !== "";
+}
+
+function seriesFor(chart, index, labels) {
+  const dataset = chart.data.datasets[index];
+  const name = String(dataset.label ?? `Series ${index + 1}`);
+  const values = dataset.data.map((value) => {
+    if (value && typeof value === "object" && "y" in value)
+      return numberOrNull(value.y, `Dataset "${name}"`);
+    return numberOrNull(value, `Dataset "${name}"`);
+  });
+  return { name, labels: labels.length ? labels : values.map((_v, i) => String(i + 1)), values };
+}
+
+function xySpec(chart, indexes, kind, frame, backdrop, face) {
+  const scales = chart.options?.scales || {};
+  const points = indexes.map((index) => {
+    const dataset = chart.data.datasets[index];
+    const name = String(dataset.label ?? `Series ${index + 1}`);
+    return {
+      index,
+      name,
+      points: dataset.data.map((p) => {
+        if (!p || typeof p !== "object" || !("x" in p) || !("y" in p)) {
+          throw new Error(
+            `Dataset "${name}" needs {x, y${kind === "bubble" ? ", r" : ""}} points.`,
+          );
+        }
+        return {
+          x: numberOrNull(p.x, name),
+          y: numberOrNull(p.y, name),
+          r: kind === "bubble" ? numberOrNull(p.r, name) : undefined,
+        };
+      }),
+    };
+  });
+  // PowerPoint's scatter and bubble charts share one X column: series with the same x values use
+  // it directly; series with different x values are laid on the union of x values with gaps.
+  const sameX = points.every(
+    (s) =>
+      s.points.length === points[0].points.length &&
+      s.points.every((p, i) => p.x === points[0].points[i].x),
+  );
+  let xs;
+  const columns = points.map((s) => ({ name: s.name, values: [], sizes: [] }));
+  if (sameX) {
+    xs = points[0].points.map((p) => p.x);
+    points.forEach((s, i) => {
+      columns[i].values = s.points.map((p) => p.y);
+      columns[i].sizes = s.points.map((p) => p.r ?? 1);
+    });
+  } else {
+    xs = Array.from(new Set(points.flatMap((s) => s.points.map((p) => p.x)))).sort((a, b) => a - b);
+    points.forEach((s, i) => {
+      const byX = new Map();
+      for (const p of s.points) {
+        if (byX.has(p.x)) {
+          throw new Error(
+            `Dataset "${s.name}" repeats an x value. PowerPoint's ${kind} chart has one x column: give each series distinct x values, or the same x values in every series.`,
+          );
+        }
+        byX.set(p.x, p);
+      }
+      columns[i].values = xs.map((x) => byX.get(x)?.y ?? null);
+      columns[i].sizes = xs.map((x) => byX.get(x)?.r ?? 1);
+    });
+  }
+  const data = [
+    { name: "X-Axis", values: xs },
+    ...columns.map((c) => (kind === "bubble" ? c : { name: c.name, values: c.values })),
+  ];
+  const colors = points.map(
+    (s) => elementColor(chart, s.index, null, "backgroundColor", `The color of "${s.name}"`).hex,
+  );
+  const options = { ...frame, chartColors: colors };
+  if (kind === "bubble") {
+    options.chartColorsOpacity = Math.round(
+      elementColor(chart, points[0].index, null, "backgroundColor", "the bubble color").alpha * 100,
+    );
+  } else {
+    const showLine = chart.data.datasets[points[0].index].showLine === true;
+    options.lineSize = showLine ? elementBorderWidth(chart, points[0].index) || 2 : 0;
+    const radius =
+      chart.data.datasets[points[0].index].pointRadius ??
+      chart.options?.elements?.point?.radius ??
+      3;
+    options.lineDataSymbol = symbolFor(chart.data.datasets[points[0].index].pointStyle, radius);
+    options.lineDataSymbolSize = Math.max(2, radius * 2);
+  }
+  const xBounds = valueScaleBounds(scales.x, xs);
+  const yBounds = valueScaleBounds(
+    scales.y,
+    columns.flatMap((c) => c.values),
+  );
+  applyAxis(options, "cat", scaleSettings(scales.x, backdrop, face), {
+    catAxisMinVal: xBounds.min,
+    catAxisMaxVal: xBounds.max,
+    catAxisMajorUnit: xBounds.majorUnit,
+    catAxisLabelFormatCode: xBounds.format,
+  });
+  applyAxis(options, "val", scaleSettings(scales.y, backdrop, face), {
+    valAxisMinVal: yBounds.min,
+    valAxisMaxVal: yBounds.max,
+    valAxisMajorUnit: yBounds.majorUnit,
+    valAxisLabelFormatCode: yBounds.format,
+  });
+  return { types: [{ type: kind, data, options: {} }], options };
+}
+
+// bar / line / area, alone or combined, on one or two value axes.
+function categorySpec(chart, indexes, kinds, labels, frame, backdrop, face) {
+  const horizontal = chart.options?.indexAxis === "y";
+  const scales = chart.options?.scales || {};
+  const categoryScale = scales[horizontal ? "y" : "x"] || {};
+  const valueScaleId = (index) => {
+    const dataset = chart.data.datasets[index];
+    return (horizontal ? dataset.xAxisID : dataset.yAxisID) || (horizontal ? "x" : "y");
+  };
+  const axisIds = Array.from(new Set(indexes.map(valueScaleId)));
+  if (axisIds.length > 2) {
+    throw new Error(
+      "PowerPoint has a primary and a secondary value axis; this chart uses three or more.",
+    );
+  }
+  const groups = [];
+  indexes.forEach((index, position) => {
+    const kind = kinds[position];
+    const axis = axisIds.indexOf(valueScaleId(index));
+    let group = groups.find((g) => g.kind === kind && g.axis === axis);
+    if (!group) {
+      group = { kind, axis, indexes: [] };
+      groups.push(group);
+    }
+    group.indexes.push(index);
+  });
+  const stackedOn = (id) => Boolean(scales[id]?.stacked);
+  const categoryStacked = Boolean(categoryScale.stacked);
+  const types = groups.map((group) => {
+    const options = {};
+    const series = group.indexes.map((index) => seriesFor(chart, index, labels));
+    const stacked = categoryStacked && stackedOn(axisIds[group.axis]);
+    if (group.kind === "bar") {
+      options.barDir = horizontal ? "bar" : "col";
+      options.barGrouping = stacked ? "stacked" : "clustered";
+      const first = chart.data.datasets[group.indexes[0]];
+      const barPct = first.barPercentage ?? chart.options?.datasets?.bar?.barPercentage ?? 0.9;
+      const catPct =
+        first.categoryPercentage ?? chart.options?.datasets?.bar?.categoryPercentage ?? 0.8;
+      const n = stacked ? 1 : group.indexes.length;
+      options.barGapWidthPct = Math.max(
+        0,
+        Math.min(500, Math.round(n * (1 / (barPct * catPct) - 1) * 100)),
+      );
+      const perPoint =
+        group.indexes.length === 1 &&
+        Array.isArray(chart.data.datasets[group.indexes[0]].backgroundColor);
+      if (perPoint) {
+        options.chartColors = series[0].values.map(
+          (_v, point) =>
+            elementColor(chart, group.indexes[0], point, "backgroundColor", `Bar ${point + 1}`).hex,
+        );
+      } else {
+        options.chartColors = group.indexes.map((index) => {
+          if (Array.isArray(chart.data.datasets[index].backgroundColor)) {
+            throw new Error(
+              `Dataset "${chart.data.datasets[index].label}" colors each bar separately while sharing the chart with other datasets; PowerPoint colors a bar series with one color. Give each dataset one color.`,
+            );
+          }
+          return elementColor(
+            chart,
+            index,
+            null,
+            "backgroundColor",
+            `The color of "${chart.data.datasets[index].label}"`,
+          ).hex;
+        });
+      }
+    } else if (group.kind === "line") {
+      if (stacked) {
+        throw new Error(
+          "A stacked line chart has no native PowerPoint equivalent here. Use a stacked area or stacked bar chart.",
+        );
+      }
+      options.chartColors = group.indexes.map(
+        (index) =>
+          elementColor(
+            chart,
+            index,
+            null,
+            "borderColor",
+            `The line color of "${chart.data.datasets[index].label}"`,
+          ).hex,
+      );
+      const datasets = group.indexes.map((index) => chart.data.datasets[index]);
+      const width = Math.max(
+        ...group.indexes.map((index) => elementBorderWidth(chart, index) || 3),
+      );
+      options.lineSize = width;
+      const tension = datasets.some(
+        (d) => (d.tension ?? chart.options?.elements?.line?.tension ?? 0) > 0,
+      );
+      options.lineSmooth = tension;
+      const radius = datasets[0].pointRadius ?? chart.options?.elements?.point?.radius ?? 3;
+      options.lineDataSymbol = symbolFor(datasets[0].pointStyle, radius);
+      options.lineDataSymbolSize = Math.max(2, radius * 2);
+      options.lineDash = datasets.map((d) =>
+        Array.isArray(d.borderDash) && d.borderDash.length ? "dash" : "solid",
+      );
+    } else {
+      options.barGrouping = stacked ? "stacked" : "standard";
+      const fills = group.indexes.map((index) =>
+        elementColor(
+          chart,
+          index,
+          null,
+          "backgroundColor",
+          `The fill of "${chart.data.datasets[index].label}"`,
+        ),
+      );
+      options.chartColors = fills.map((c) => c.hex);
+      options.chartColorsOpacity = Math.round(fills[0].alpha * 100);
+    }
+    if (group.axis === 1) {
+      options.secondaryValAxis = true;
+      options.secondaryCatAxis = true;
+    }
+    return { type: group.kind, data: series, options };
+  });
+
+  const allValues = types.flatMap((t) => t.data.flatMap((s) => s.values));
+  const category = scaleSettings(categoryScale, backdrop, face);
+  const valueSettings = axisIds.map((id) => scaleSettings(scales[id], backdrop, face));
+  const boundsFor = (id, group) => {
+    const values = types
+      .filter((_t, i) => groups[i].axis === group)
+      .flatMap((t) => t.data.flatMap((s) => s.values));
+    return valueScaleBounds(scales[id], values);
+  };
+  const options = { ...frame };
+  const axisExtras = (bounds) => ({
+    valAxisMinVal: bounds.min,
+    valAxisMaxVal: bounds.max,
+    valAxisMajorUnit: bounds.majorUnit,
+    valAxisLabelFormatCode: bounds.format,
+  });
+  if (axisIds.length === 1) {
+    applyAxis(options, "cat", category);
+    applyAxis(options, "val", valueSettings[0], axisExtras(boundsFor(axisIds[0], 0)));
+  } else {
+    const catPrimary = {};
+    applyAxis(catPrimary, "cat", category);
+    const catSecondary = { catAxisHidden: true };
+    const valPrimary = {};
+    applyAxis(valPrimary, "val", valueSettings[0], axisExtras(boundsFor(axisIds[0], 0)));
+    const valSecondary = {};
+    applyAxis(valSecondary, "val", valueSettings[1], axisExtras(boundsFor(axisIds[1], 1)));
+    options.catAxes = [catPrimary, catSecondary];
+    options.valAxes = [valPrimary, valSecondary];
+  }
+  const barKinds = kinds.includes("bar");
+  if (horizontal && barKinds) {
+    // Chart.js lists categories top to bottom; PowerPoint draws the first one at the bottom.
+    options.catAxisOrientation = "maxMin";
+    options.valAxisLabelPos = "high";
+  }
+  if (allValues.some((v) => v === undefined)) throw new Error("The chart data is incomplete.");
+  return { types, options };
+}
+
+// The Chart.js instance behind a canvas, or a sentence saying why there is none.
+export function chartForCanvas(canvas) {
+  const registry = window.Chart;
+  const chart =
+    registry && typeof registry.getChart === "function" ? registry.getChart(canvas) : null;
+  if (!chart) {
+    throw new Error(
+      "A <canvas> that is not a Chart.js chart cannot become a native PowerPoint chart. Draw it as a Chart.js chart, a table, or HTML shapes.",
+    );
+  }
+  return chart;
+}
+
+export function nativeChartSpec(canvas) {
+  return chartJsToPptx(chartForCanvas(canvas), canvas);
+}
+
+function chartCanvases(slideSelector) {
+  const slides = Array.prototype.slice
+    .call(document.querySelectorAll(slideSelector))
+    .filter((el) => !el.closest(".mini-slide, .overview, .notes-overlay, .thumb"));
+  const found = [];
+  slides.forEach((slide, index) => {
+    slide.querySelectorAll("canvas").forEach((canvas) => found.push({ canvas, slide: index + 1 }));
+  });
+  return found;
+}
+
+// Export-time: put each chart's PptxGenJS spec on its canvas for dom-to-pptx. Throws a sentence
+// naming the slide when a chart cannot be native.
+export function markNativeCharts(slideSelector) {
+  let count = 0;
+  for (const { canvas, slide } of chartCanvases(slideSelector)) {
+    let spec;
+    try {
+      spec = nativeChartSpec(canvas);
+    } catch (error) {
+      throw new Error(`Slide ${slide}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    canvas.setAttribute("data-pptx-chart", JSON.stringify(spec));
+    count += 1;
+  }
+  return count;
+}
+
+// Re-layout every chart at the stage's final size (the PDF prints the canvases as painted).
+export function resizeCharts() {
+  const registry = window.Chart;
+  if (!registry || typeof registry.getChart !== "function") return 0;
+  let count = 0;
+  document.querySelectorAll("canvas").forEach((canvas) => {
+    const chart = registry.getChart(canvas);
+    if (chart) {
+      chart.resize();
+      chart.update("none");
+      count += 1;
+    }
+  });
+  return count;
+}
+
+// Lint: every canvas of the slide must be a Chart.js chart PowerPoint can draw natively.
+export function lintCharts(slideSelector) {
+  const issues = [];
+  for (const { canvas, slide } of chartCanvases(slideSelector)) {
+    try {
+      nativeChartSpec(canvas);
+    } catch (error) {
+      issues.push({
+        slide,
+        id:
+          canvas.getAttribute("data-nova-id") ||
+          canvas.closest("[data-nova-id]")?.getAttribute("data-nova-id") ||
+          "",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
   return issues;
 }

@@ -444,6 +444,9 @@ def export_pptx(browser: Chromium, out: Path) -> dict[str, Any]:
     # dom-to-pptx measures each element's live layout, so all slides must be laid out at once.
     browser.call_page("showAllSlides", sel)
     browser.next_frames()
+    # Charts drawn while their slide was hidden have no size yet: lay them out before measuring.
+    browser.call_page("resizeCharts")
+    browser.next_frames()
     embedded_fonts = expose_embedded_fonts(browser)
     imported = browser.call_page("collectImportedStylesheetUrls")
     overrides = embedded_fonts + fetch_google_font_stylesheets(imported or [])
@@ -475,6 +478,8 @@ def export_pdf(browser: Chromium, out: Path) -> dict[str, Any]:
         raise ExportError("no slide surfaces found in this deck", "NO_SLIDES")
     # Marks every slide active so the deck's own `.slide.active` styling applies to all of them.
     browser.call_page("unhideDeckSlidesForPrint")
+    # Chart.js canvases are laid out at the printed size and painted (animations are off in decks).
+    browser.call_page("resizeCharts")
     browser.evaluate(
         "(() => { const s = document.createElement('style'); s.setAttribute('data-nova-deck-pdf', '');"
         f" s.textContent = window.__novaDeck.DECK_PRINT_CSS; document.head.appendChild(s); return true; }})()"

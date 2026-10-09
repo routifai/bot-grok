@@ -25,6 +25,8 @@ from pathlib import Path
 
 KIT_DIR = Path(__file__).parent / "kit"
 TEMPLATES_DIR = KIT_DIR / "templates"
+CHARTS_DIR = KIT_DIR / "charts"
+CHARTJS_PATH = KIT_DIR / "vendor" / "chart.js" / "chart.umd.js"
 
 SLOTS_OPEN = "<!-- nova:slides -->"
 SLOTS_CLOSE = "<!-- /nova:slides -->"
@@ -91,9 +93,32 @@ def _font_faces_css(template_id: str) -> str:
     return "\n".join(rules)
 
 
+def chart_recipes() -> dict[str, str]:
+    """The chart slide recipes by name (``chart-bar`` ...): Open Design's templates, ported."""
+    return {path.stem: path.read_text("utf-8") for path in sorted(CHARTS_DIR.glob("chart-*.html"))}
+
+
 def menu() -> str:
-    """The layout menu: what each layout is for and its markup (returned by ``deck_new``)."""
-    return (KIT_DIR / "menu.md").read_text("utf-8")
+    """The layout menu and the chart recipes (what ``deck_new`` returns to the Muse)."""
+    recipes = "\n\n".join(
+        f"`{name}`:\n\n```html\n{text.strip()}\n```" for name, text in chart_recipes().items()
+    )
+    heading = "Chart recipes (Open Design's chart templates, ported):"
+    return (KIT_DIR / "menu.md").read_text("utf-8").rstrip() + f"\n\n{heading}\n\n{recipes}\n"
+
+
+@cache
+def _chart_runtime() -> str:
+    """Chart.js (vendored, MIT) and Nova's defaults for it, as the deck's inline head script."""
+    library = CHARTJS_PATH.read_text("utf-8")
+    bootstrap = (CHARTS_DIR / "bootstrap.js").read_text("utf-8")
+    return (
+        "  <script data-nova-chartjs>\n"
+        "/* Chart.js (MIT), vendored: never read or edit this block. */\n"
+        f"{library}\n"
+        "  </script>\n"
+        f"  <script data-nova-chartjs-defaults>\n{bootstrap}  </script>\n"
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -107,6 +132,10 @@ _EXTERNAL_RE = re.compile(
     re.I,
 )
 _FORBIDDEN_TAG_RE = re.compile(r"<\s*(script|iframe|object|embed|link|base|form|meta)\b", re.I)
+# The one script a slide may carry: the Chart.js call that draws a chart on its canvas.
+_CHART_SCRIPT_RE = re.compile(
+    r"<script\b(?=[^>]*\bdata-nova-chart(?:\s|=|>))[^>]*>(.*?)</script\s*>", re.I | re.S
+)
 _ID_FORMAT = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
@@ -124,11 +153,25 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
             errors.append('A slide has no data-screen-label (for example "02 Problem").')
         if "data-nova-id" not in tag:
             errors.append("A slide has no data-nova-id.")
-    if _FORBIDDEN_TAG_RE.search(slides_html):
+    plain = _CHART_SCRIPT_RE.sub("", slides_html)
+    if _FORBIDDEN_TAG_RE.search(plain):
         errors.append(
             "Slides may not contain <script>, <iframe>, <object>, <embed>, <link>, <base>, "
-            "<form> or <meta>."
+            "<form> or <meta> (the one exception is <script data-nova-chart>, a chart's data)."
         )
+    for script in _CHART_SCRIPT_RE.findall(slides_html):
+        if "new Chart(" not in script:
+            errors.append(
+                "A <script data-nova-chart> must create a Chart.js chart with new Chart(...)."
+            )
+        if re.search(
+            r"\b(fetch|XMLHttpRequest|import|eval|Function|WebSocket)\s*\(|\bdocument\.write",
+            script,
+        ):
+            errors.append(
+                "A <script data-nova-chart> may only configure its chart: the data goes in the "
+                "script, nothing is fetched or evaluated."
+            )
     if _EXTERNAL_RE.search(slides_html):
         errors.append(
             "Slides may not load anything from the web (images, fonts, @import): embed it or "
@@ -182,6 +225,7 @@ def build_deck(template_id: str, title: str, slides_html: str | None = None) -> 
         + f"      {SLOTS_OPEN}\n{slides}\n      {SLOTS_CLOSE}\n\n"
         + deck[region.end() :]
     )
+    deck = deck.replace("</head>", _chart_runtime() + "</head>", 1)
     fonts = (
         "  <style data-nova-fonts>\n"
         "/* Embedded fonts (Latin subset, SIL OFL 1.1): never read or edit this block. */\n"

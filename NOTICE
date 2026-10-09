@@ -30,6 +30,19 @@ MIT License, Copyright (c) 2025 Atharva Dharmendra Jagtap and dom-to-pptx contri
 browser bundle Open Design ships; its license is kept in
 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/LICENSE.
 
+Charts in HTML decks. The chart slide recipes (engine/omnigent/omnigent/superchat/decks/kit/charts)
+are the chart-bar, chart-line, chart-pie and chart-radar slides of Open Design's html-ppt
+design template (design-templates/html-ppt/templates/single-page, commit 802708f), MIT, Copyright
+(c) 2026 lewis (charts/LICENSE-html-ppt), plus the fixed-height chart container rule of its
+skills/data-report skill; each recipe carries its "Portions modified from" header. They draw with
+Chart.js 4.4.3 (MIT, Copyright (c) 2014-2024 Chart.js Contributors), vendored unchanged in
+engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js. The PowerPoint export reads each
+Chart.js chart and writes a native chart through a small patch to the vendored dom-to-pptx
+(infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/README.md). The native-object test helper
+(engine/omnigent/tests/superchat/decks/pptx_native.py) is ported from Open Design's humanize-ppt
+plugin (plugins/community/humanize-ppt/scripts/pptx_qa.py, commit 802708f), MIT, Copyright (c) 2026
+LearnPrompt.
+
 The deck templates (engine/omnigent/omnigent/superchat/decks/kit/templates) are rewritten from
 MIT-licensed Open Design design templates, each keeping its LICENSE file: Blue Professional and
 Editorial Tri-Tone from zarazhangrui/beautiful-html-templates (Copyright (c) 2026 Zara Zhang),
