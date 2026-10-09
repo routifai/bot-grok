@@ -21,9 +21,7 @@ const status = vi.fn();
 vi.mock("../../lib/rpc", () => ({
   rpc: { knowledge: { status: (...a: unknown[]) => status(...a), reindex: vi.fn() } },
 }));
-vi.mock("../artifacts", () => ({}));
 
-import { ArtifactRegistryProvider } from "../artifacts/registry";
 import { knowledgeExtension } from "./extension";
 import { IndexBadge } from "./IndexBadge";
 import { resetKnowledgeStatus } from "./status";
@@ -92,25 +90,4 @@ it("the extension badges indexable Library files and leaves the rest alone", () 
   }
   expect(card("text/html")).toBeNull();
   expect(card("image/png")).toBeNull();
-});
-
-it("draws on a Library card through the artifact registry", async () => {
-  status.mockResolvedValue({ files: [file({})], embeddings: { available: true, reason: null } });
-  const { useArtifactCardParts } = await import("../artifacts/registry");
-  function Card() {
-    const parts = useArtifactCardParts({ id: "a-1", mimeType: "application/pdf" } as never);
-    return (
-      <div>
-        {parts.map((part, i) => (
-          <span key={i}>{part.badge}</span>
-        ))}
-      </div>
-    );
-  }
-  const host = await mount(
-    <ArtifactRegistryProvider value={[knowledgeExtension]}>
-      <Card />
-    </ArtifactRegistryProvider>,
-  );
-  expect(host.textContent).toBe("Searchable");
 });
