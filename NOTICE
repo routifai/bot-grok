@@ -60,3 +60,20 @@ PptxGenJS 4.0.1 (MIT, Copyright (c) Brent Ely), react, react-dom, react-icons, s
 and markitdown for it, each under its own permissive license, and applies the upstream PptxGenJS
 fixes for gitbrent/PptxGenJS issue 1531 and pull requests 1537 and 1540
 (infra/sandboxes/computer/pptx/runtime/patches).
+
+Charts. The chart capability (packages/charts, engine/omnigent/omnigent/superchat/charts,
+apps/api/src/features/charts, apps/web/src/features/charts) contains portions modified from nao
+(https://github.com/getnao/nao, commit 5bde830), Copyright the nao authors, licensed under the Apache
+License 2.0 (see LICENSE); files under nao's `@license Enterprise` headers were not used. Each ported
+file carries a "Portions modified from getnao/nao <path>@5bde830, Apache-2.0; changes: ..." header:
+apps/shared/src/tools/display-chart.ts (the chart spec and its model-facing descriptions, ported to
+zod 4 in packages/charts/src/spec.ts and to pydantic in engine/.../charts/spec.py),
+apps/shared/src/chart-builder.tsx, chart-tooltip.tsx, chart-data-labels.tsx, chart-values.ts,
+chart-domain.ts, conditional-formatting.ts, color.ts, date.ts, chart-types.ts, chart-fonts.ts,
+chart-style.ts and class-names.ts (packages/charts/src), and apps/backend/src/components/generate-chart.tsx
+with utils/generate-chart.ts (the server-side SVG and PNG render, apps/api/src/features/charts/render.ts
+and packages/charts/src/prepare.tsx).
+
+The charts depend on recharts 2.15.4 (MIT), culori 4.0.2 (MIT), d3-format 3.1.0 (ISC) and, for the
+server-side PNG, @resvg/resvg-js 2.6.2 (Mozilla Public License 2.0, https://github.com/yisibl/resvg-js),
+used unmodified as a library; no MPL-licensed source file is copied into or modified by this repository.

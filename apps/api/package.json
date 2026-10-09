@@ -11,18 +11,25 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
-    "@orpc/server": "1.15.0",
     "@nova/adapter-kit": "workspace:*",
     "@nova/adapters": "workspace:*",
     "@nova/auth": "workspace:*",
+    "@nova/charts": "workspace:*",
     "@nova/contracts": "workspace:*",
     "@nova/core": "workspace:*",
     "@nova/db": "workspace:*",
     "@nova/logging": "workspace:*",
+    "@nova/ui-tokens": "workspace:*",
+    "@orpc/server": "1.15.0",
+    "@resvg/resvg-js": "2.6.2",
     "hono": "4.13.7",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "tsx": "4.23.13"
   },
   "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }
