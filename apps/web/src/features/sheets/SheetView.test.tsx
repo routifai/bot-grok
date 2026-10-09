@@ -312,7 +312,9 @@ it("sizes columns from the file's widths", async () => {
   const cols = [...view.querySelectorAll("colgroup col")].map(
     (c) => (c as HTMLElement).style.width,
   );
-  expect(cols).toEqual(["48px", "75px", "215px", "89px"]);
+  expect(cols).toEqual(["48px", "108px", "260px", "124px"]);
+  // A cell that may be clipped carries its full value as a tooltip.
+  expect(at(view, 2, 1).title).toBe("Mar 1, 2024");
 });
 
 it("keeps the number format on an edited cell and the date type on an undone date", async () => {

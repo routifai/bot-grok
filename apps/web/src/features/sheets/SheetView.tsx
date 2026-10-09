@@ -41,9 +41,51 @@ const GUTTER_W = 48;
 const COL_W = 140;
 const COL_MIN_W = 48;
 const COL_MAX_W = 520;
-/** A file's column width (characters, as Excel stores it) in pixels. */
-const columnPx = (chars: number | null | undefined): number =>
-  chars ? Math.max(COL_MIN_W, Math.min(COL_MAX_W, Math.round(chars * 7 + 5))) : COL_W;
+/** Cell padding (px-2.5 both sides) + the border + a little air. */
+const CELL_PAD = 32;
+/** The grid body font (text-[13px] in the page's sans). */
+const CELL_FONT_SIZE = 13;
+/** Average glyph width at the grid font when there is no canvas to measure with. */
+const FALLBACK_CHAR_PX = 7.6;
+const MEASURE_ROWS = 500;
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+/** Pixel width of `text` at the grid font, or null where there is no canvas (tests). */
+function measureText(text: string, weight: number): number | null {
+  if (measureCtx === undefined) {
+    try {
+      measureCtx = document.createElement("canvas").getContext("2d");
+    } catch {
+      measureCtx = null;
+    }
+  }
+  if (!measureCtx) return null;
+  const family = getComputedStyle(document.body).fontFamily || "sans-serif";
+  measureCtx.font = `${weight} ${CELL_FONT_SIZE}px ${family}`;
+  return measureCtx.measureText(text).width;
+}
+
+/** A column's width in pixels: wide enough for its longest value (the file's character width, or
+ * what the cells measure at the grid font, whichever is larger) plus padding, within the cap. */
+function columnPx(
+  chars: number | null | undefined,
+  texts: readonly string[],
+  bold: number,
+): number {
+  const fromChars = chars ? chars * FALLBACK_CHAR_PX : 0;
+  let widest = 0;
+  let measured = false;
+  texts.forEach((text, index) => {
+    const px = measureText(text, index < bold ? 600 : 400);
+    if (px !== null) {
+      measured = true;
+      widest = Math.max(widest, px);
+    }
+  });
+  const content = measured ? Math.max(widest, chars ? fromChars * 0.6 : 0) : fromChars;
+  if (!chars && !measured) return COL_W;
+  return Math.max(COL_MIN_W, Math.min(COL_MAX_W, Math.ceil(content + CELL_PAD)));
+}
 const OVERSCAN = 8;
 /** Used until the grid is measured (and where there is no layout, e.g. tests). */
 const FALLBACK_VIEW_H = 640;
@@ -172,11 +214,18 @@ export function SheetView({
   const colCount = Math.max(sheet?.rows[0]?.length ?? 0, 1);
   const rowCount = Math.max(sheet?.rows.length ?? 0, 1);
   const frozen = Math.min(sheet?.frozenRows ?? 0, rowCount);
-  // Column widths from the file (characters -> pixels), else the default.
+  // Column widths: each column fits its longest value (header row included) at the grid font.
   const colLeft = useMemo(() => {
     const lefts = [0];
+    const rows = sheet?.rows.slice(0, MEASURE_ROWS) ?? [];
     for (let c = 0; c < colCount; c += 1) {
-      lefts.push((lefts[c] as number) + columnPx(sheet?.colWidths?.[c]));
+      const texts = rows.map(
+        (_, r) => cellText(cellAt(sheet as NonNullable<typeof sheet>, r, c)).text,
+      );
+      lefts.push(
+        (lefts[c] as number) +
+          columnPx(sheet?.colWidths?.[c], texts, Math.min(sheet?.frozenRows ?? 0, rows.length)),
+      );
     }
     return lefts;
   }, [colCount, sheet]);
@@ -503,6 +552,7 @@ export function SheetView({
                 active ? "ring-2 ring-ring ring-inset" : "",
               ].join(" ")}
               style={isFrozen ? { top: HEAD_H + r * ROW_H } : undefined}
+              title={isEditing || !shown.text ? undefined : shown.text}
             >
               {isEditing ? (
                 <CellEditor
