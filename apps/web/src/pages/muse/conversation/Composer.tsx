@@ -172,7 +172,6 @@ export const Composer = memo(function Composer({
       frame = requestAnimationFrame(() => {
         const element = runErrorRef.current;
         if (!element || document.visibilityState !== "visible") return;
-        if (typeof document.elementFromPoint !== "function") return;
         const rect = element.getBoundingClientRect();
         const topElement = document.elementFromPoint(
           rect.left + rect.width / 2,

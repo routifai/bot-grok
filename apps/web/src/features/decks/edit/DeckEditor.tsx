@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button, cn } from "@nova/ui-web";
+import { Button } from "@nova/ui-web";
 import { Redo2, Undo2 } from "lucide-react";
 import {
   type MutableRefObject,
@@ -18,9 +18,6 @@ import { EditStage } from "./EditStage";
 import { targetLabel } from "./edit-model";
 import { EditNoticeBanner, StylePanel } from "./StylePanel";
 import { type DeckEditSource, type PostToFrame, useDeckEditor } from "./useDeckEditor";
-
-/** How long a selection waits before the stage gives the inspector its room. */
-const DOCK_DELAY_MS = 350;
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -122,18 +119,6 @@ export function DeckEditor({
   // Leaving edit mode takes its attachment with it.
   useEffect(() => () => setComposerAttachment(DECK_ASK_KIND, null), []);
 
-  const selected = editor.targets.length > 0;
-  // The inspector makes room for itself a moment after the selection settles, so the second click
-  // of a double-click (to type in the text) still lands on the element the first click chose.
-  const [docked, setDocked] = useState(false);
-  useEffect(() => {
-    if (!selected) {
-      setDocked(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setDocked(true), DOCK_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [selected]);
   return (
     <div className="relative flex min-w-0 flex-1">
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -191,24 +176,11 @@ export function DeckEditor({
               <Redo2 />
             </Button>
           </div>
-          {selected ? null : (
-            <p
-              data-testid="deck-edit-hint"
-              className="pointer-events-none absolute inset-y-0 end-4 hidden items-center text-[12px] text-muted-foreground md:flex"
-            >
-              {t`Click an element to edit it.`}
-            </p>
-          )}
         </div>
       </div>
-      {/* The inspector is docked beside the stage while something is selected: the stage fits the
-          width that is left, so nothing is ever covered. */}
-      <div
-        className={cn(
-          "shrink-0 overflow-hidden motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out",
-          docked ? "w-[300px]" : "w-0",
-        )}
-      >
+      {/* The inspector column is reserved for the whole edit session (empty state, then the
+          selection's controls), so the stage never reflows and nothing is ever covered. */}
+      <div className="shrink-0 overflow-hidden w-[300px]">
         <div className="flex h-full w-[300px] py-3 pe-3">
           <StylePanel
             targets={editor.targets}

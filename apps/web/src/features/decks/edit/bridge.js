@@ -246,7 +246,8 @@
         others.push(o.getBoundingClientRect());
       });
     }
-    var left = Math.max(0, rect.left);
+    // Keep clear of the slide rail's drawer, which opens over the stage's left edge.
+    var left = Math.max(96, rect.left);
     var right = Math.max(0, Math.min(rect.right - w, window.innerWidth - w));
     var spots = [
       { left: left, top: rect.top - h },

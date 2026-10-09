@@ -44,6 +44,7 @@ const flushers = new Map<string, () => Promise<Head>>();
 
 /** Says the saved `version` of a deck was an edit of the person's, so Undo can step back over it. */
 export function noteDeckVersionEdit(key: string, version: number): void {
+  if (!flushers.has(key)) return; // only a mounted editor keeps history; nothing piles up otherwise
   outsideEdits.set(key, (outsideEdits.get(key) ?? new Set()).add(version));
 }
 /** True once (and forgets) when `version` was noted by `noteDeckVersionEdit`. */
@@ -54,7 +55,9 @@ export function takeDeckVersionEdit(key: string, version: number): boolean {
 export function registerDeckFlush(key: string, flush: () => Promise<Head>): () => void {
   flushers.set(key, flush);
   return () => {
-    if (flushers.get(key) === flush) flushers.delete(key);
+    if (flushers.get(key) !== flush) return;
+    flushers.delete(key);
+    outsideEdits.delete(key);
   };
 }
 /** Saves what the editor still has staged for this deck; its newest saved version, or null when

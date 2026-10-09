@@ -49,7 +49,6 @@ export const resetDeckThemeCache = (): void => {
  */
 export function DeckThemePicker({
   deckKey,
-  html,
   artifact,
   onEdited,
   themesSource = defaultThemes,
@@ -57,7 +56,6 @@ export function DeckThemePicker({
   editSource = defaultEdit,
 }: {
   deckKey: string;
-  html: string;
   artifact: { id: string; version: number };
   onEdited?: (artifactId: string) => void;
   themesSource?: DeckThemesSource;
@@ -69,10 +67,13 @@ export function DeckThemePicker({
   const [failed, setFailed] = useState(false);
   /** The deck's theme: undefined while it is being read, null when it is hand-made. */
   const [current, setCurrent] = useState<string | null | undefined>(undefined);
+  const [readSettled, setReadSettled] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ html: string; name: string; version: number } | null>(null);
+  const [undo, setUndo] = useState<{ prev: string; name: string; version: number } | null>(null);
   const [stop, setStop] = useState(0);
+  const stopRef = useRef(0);
+  stopRef.current = stop;
   const root = useRef<HTMLDivElement>(null);
   const cards = useRef<(HTMLButtonElement | null)[]>([]);
   const focusedOnce = useRef(false);
@@ -106,8 +107,16 @@ export function DeckThemePicker({
   useEffect(() => {
     let live = true;
     themeSourceRef.current(artifact.id).then(
-      (id) => live && setCurrent(id),
-      () => live && setCurrent(undefined),
+      (id) => {
+        if (!live) return;
+        setCurrent(id);
+        setReadSettled(true);
+      },
+      () => {
+        if (!live) return;
+        setCurrent(undefined);
+        setReadSettled(true);
+      },
     );
     return () => {
       live = false;
@@ -144,7 +153,8 @@ export function DeckThemePicker({
 
   // Opening puts the keyboard on the current theme's card (else the first).
   useEffect(() => {
-    if (focusedOnce.current || order.length === 0 || current === undefined) return;
+    if (focusedOnce.current || order.length === 0 || (current === undefined && !readSettled))
+      return;
     focusedOnce.current = true;
     const at = Math.max(
       0,
@@ -152,18 +162,23 @@ export function DeckThemePicker({
     );
     setStop(at);
     cards.current[at]?.focus({ preventScroll: false });
-  }, [order, current]);
+  }, [order, current, readSettled]);
 
-  // The deck reloads in its frame after a switch and the frame takes the keyboard; bring it back
-  // to the gallery so Escape and the arrows keep working.
+  // The deck reloads in its frame after a switch and the frame takes the keyboard when it reports
+  // ready; bring it back to the gallery so Escape and the arrows keep working.
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (document.activeElement instanceof HTMLIFrameElement) {
-        cards.current[stop]?.focus({ preventScroll: true });
-      }
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [html]);
+    const onReady = (event: MessageEvent) => {
+      const type = (event.data as { type?: unknown } | null)?.type;
+      if (type !== "nova:deck-ready" && type !== "nova:edit-ready") return;
+      window.requestAnimationFrame(() => {
+        if (document.activeElement instanceof HTMLIFrameElement) {
+          cards.current[stopRef.current]?.focus({ preventScroll: true });
+        }
+      });
+    };
+    window.addEventListener("message", onReady);
+    return () => window.removeEventListener("message", onReady);
+  }, []);
 
   const categoryLabel: Record<(typeof CATEGORY_ORDER)[number], string> = {
     professional: t`Professional`,
@@ -203,10 +218,12 @@ export function DeckThemePicker({
   const pick = async (theme: DeckTheme) => {
     if (busy || theme.id === current || current === null) return;
     setBusy(theme.id);
-    const before = html;
+    const prev = current;
     await send([{ kind: "set-theme", theme: theme.id }], (created) => {
       setCurrent(theme.id);
-      setUndo({ html: before, name: theme.name, version: created.version });
+      // Undo is the switch back to the theme the deck was on: it carries nothing else, so it
+      // cannot drop an edit made since (a stored source could).
+      if (prev) setUndo({ prev, name: theme.name, version: created.version });
     });
     setBusy(null);
   };
@@ -214,7 +231,7 @@ export function DeckThemePicker({
   const revert = async () => {
     if (!undo || busy) return;
     setBusy("undo");
-    await send([{ kind: "set-full-source", source: undo.html }], () => {
+    await send([{ kind: "set-theme", theme: undo.prev }], () => {
       setCurrent(undefined);
       setUndo(null);
     });
@@ -314,24 +331,24 @@ export function DeckThemePicker({
                           type="button"
                           role="radio"
                           aria-checked={selected}
-                          aria-disabled={current === null || undefined}
+                          aria-disabled={current === null || busy !== null || undefined}
                           tabIndex={index === stop ? 0 : -1}
                           data-testid={`deck-theme-${theme.id}`}
-                          disabled={busy !== null}
                           onClick={() => void pick(theme)}
                           onFocus={() => setStop(index)}
                           onKeyDown={(event) => move(event, index)}
                           className={cn(
-                            "group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                            "group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            busy !== null && "opacity-60",
                             current === null && "opacity-60",
                           )}
                         >
                           <span
                             className={cn(
-                              "relative block aspect-video overflow-hidden rounded-lg bg-muted ring-1 ring-inset motion-safe:transition-shadow",
+                              "relative block aspect-video overflow-hidden rounded-lg bg-muted outline -outline-offset-1 motion-safe:transition-[outline-color]",
                               selected
-                                ? "ring-2 ring-foreground"
-                                : "ring-border group-hover:ring-foreground/40",
+                                ? "outline-2 -outline-offset-2 outline-foreground"
+                                : "outline-1 outline-border group-hover:outline-foreground/40",
                             )}
                           >
                             {theme.preview ? (

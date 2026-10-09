@@ -76,7 +76,7 @@ export function StylePanel(props: StylePanelProps) {
   };
   const isSlide = targets.length > 0 && targets.every((target) => target.kind === "slide");
   const hasText = targets.some((target) => target.kind === "text" || target.kind === "link");
-  if (!primary) return null;
+  if (!primary) return <EmptyInspector theme={props.theme} />;
   const title = targets.length > 1 ? t`${targets.length} elements` : targetLabel(primary, words);
 
   return (
@@ -128,6 +128,41 @@ export function StylePanel(props: StylePanelProps) {
         <AttributeSection key={primary.id} {...props} primary={primary} />
       ) : null}
       <AskSection {...props} />
+    </aside>
+  );
+}
+
+/** The inspector with nothing selected: what to do, and the deck's palette to see. The column is
+ * reserved for the whole edit session, so a selection never moves the stage. */
+function EmptyInspector({ theme }: { theme: DeckEditTheme | null }) {
+  const { t } = useLingui();
+  const swatches = COLOR_SWATCHES(theme);
+  return (
+    <aside
+      data-testid="deck-style-empty"
+      aria-label={t`Edit`}
+      className="flex max-h-full w-[288px] flex-col gap-4 overflow-y-auto rounded-2xl bg-popover px-4 py-4 text-popover-foreground ring-1 ring-border"
+    >
+      <p className="text-[12px] text-muted-foreground">{t`Click an element to edit it.`}</p>
+      {swatches.length ? (
+        <div>
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t`Palette`}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {swatches.map((swatch) => (
+              <span
+                key={swatch.name}
+                title={swatch.name.replace(/^--/, "")}
+                role="img"
+                aria-label={swatch.name.replace(/^--/, "")}
+                className="size-5 rounded-full ring-1 ring-border ring-inset"
+                style={{ background: swatch.value }}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }

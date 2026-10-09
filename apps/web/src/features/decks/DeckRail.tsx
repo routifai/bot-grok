@@ -60,7 +60,7 @@ export function DeckRail({
           "motion-safe:transition-[width,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-out",
           slim ? (open ? "w-[148px]" : "w-[60px]") : "w-[148px]",
           open &&
-            "rounded-e-2xl border-transparent bg-glass shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-[0.5px] ring-glass-line ring-inset backdrop-blur-[30px] backdrop-saturate-[1.8]",
+            "rounded-e-2xl border-transparent bg-popover shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-1 ring-border",
         )}
       >
         {slim ? (

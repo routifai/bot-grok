@@ -45,7 +45,6 @@ const THEMES: DeckTheme[] = [
     preview: "data:image/webp;base64,AA==",
   },
 ];
-const DECK = "<style>.a{}</style>";
 const KEY = "q3.deck.html";
 
 beforeEach(() => {
@@ -77,7 +76,7 @@ async function mount(
     return <span data-testid="open">{String(useDeckThemeOpen(KEY))}</span>;
   }
   const themes = async () => ({ themes: THEMES, defaultTheme: "corporate-clean" });
-  const render = (html: string, version: number, now: string | null = theme) =>
+  const render = (version: number, now: string | null = theme) =>
     act(async () =>
       root.render(
         <I18nProvider i18n={i18n}>
@@ -85,7 +84,6 @@ async function mount(
           <button type="button" data-deck-theme-button="" data-testid="header-button" />
           <DeckThemePicker
             deckKey={KEY}
-            html={html}
             artifact={{ id: `v${version}`, version }}
             onEdited={onEdited}
             themesSource={themes}
@@ -95,7 +93,7 @@ async function mount(
         </I18nProvider>,
       ),
     );
-  await render(DECK, 1);
+  await render(1);
   return { container, editSource, onEdited, render };
 }
 const card = (c: HTMLElement, id: string) =>
@@ -165,10 +163,10 @@ it("picking a theme sends one set-theme patch on the shown version, and Undo put
     patches: [{ kind: "set-theme", theme: "nord" }],
   });
   expect(onEdited).toHaveBeenCalledWith("v2");
-  // the editor's undo history owns that version
-  expect(takeDeckVersionEdit(KEY, 2)).toBe(true);
+  // no editor is mounted, so nothing is kept for its history
+  expect(takeDeckVersionEdit(KEY, 2)).toBe(false);
   // the panel adopts the new version; the engine says it is on Nord
-  await render("<style>.nord{}</style>", 2, "nord");
+  await render(2, "nord");
   expect(card(container, "nord").getAttribute("aria-checked")).toBe("true");
   expect(container.textContent).toContain("Switched to Nord");
   const undo = Array.from(container.querySelectorAll("button")).find(
@@ -178,8 +176,49 @@ it("picking a theme sends one set-theme patch on the shown version, and Undo put
   expect(editSource).toHaveBeenLastCalledWith({
     artifactId: "v2",
     baseVersion: 2,
-    patches: [{ kind: "set-full-source", source: DECK }],
+    patches: [{ kind: "set-theme", theme: "corporate-clean" }],
   });
+});
+
+it("hands a saved version to a mounted editor's undo history", async () => {
+  const { container } = await mount();
+  registerDeckFlush(KEY, async () => ({ id: "v1", version: 1 }));
+  await act(async () => card(container, "nord").click());
+  expect(takeDeckVersionEdit(KEY, 2)).toBe(true);
+});
+
+it("keeps the keyboard on the card while a pick saves", async () => {
+  let release: (value: { id: string; version: number }) => void = () => {};
+  const slow = vi.fn(() => new Promise<{ id: string; version: number }>((r) => (release = r)));
+  const { container } = await mount({ editSource: slow as never });
+  card(container, "nord").focus();
+  await act(async () => void card(container, "nord").click());
+  expect(document.activeElement).toBe(card(container, "nord"));
+  expect(card(container, "nord").getAttribute("aria-disabled")).toBe("true");
+  await act(async () => release({ id: "v2", version: 2 }));
+});
+
+it("moves the keyboard into the gallery even when the deck's theme can't be read", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
+  await act(async () =>
+    root.render(
+      <I18nProvider i18n={i18n}>
+        <DeckThemePicker
+          deckKey={KEY}
+          artifact={{ id: "v1", version: 1 }}
+          themesSource={async () => ({ themes: THEMES, defaultTheme: "corporate-clean" })}
+          themeSource={async () => {
+            throw new Error("down");
+          }}
+          editSource={vi.fn() as never}
+        />
+      </I18nProvider>,
+    ),
+  );
+  expect(document.activeElement).toBe(card(container, "corporate-clean"));
 });
 
 it("saves what the editor still has staged first and builds on its version", async () => {

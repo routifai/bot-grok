@@ -59,7 +59,7 @@ test("edit widens the panel and leaving it restores the width and the full rail"
   // No empty-state text and no inspector until something is selected.
   await expect(panel(page)).toHaveCount(0);
   await expect(page.getByText("Select an element")).toHaveCount(0);
-  await expect(page.getByTestId("deck-edit-hint")).toBeVisible();
+  await expect(page.getByTestId("deck-style-empty")).toContainText("Click an element to edit it.");
   await page.waitForTimeout(1500);
   await shot(page, "edit");
 
@@ -108,10 +108,9 @@ test("the inspector appears only on a selection and closes with Escape or its bu
   await page.mouse.click(title.x, title.y);
   await expect(panel(page)).toContainText("Slide 1 · Heading");
   await expect(panel(page)).toContainText("cover-title");
-  // It is docked beside the stage, which fits the width that is left: nothing is covered.
-  await expect
-    .poll(async () => (await frameBox(page))?.width ?? 0)
-    .toBeLessThan((stageBefore?.width ?? 0) - 200);
+  // The inspector column was reserved for the whole session: the stage did not reflow, and
+  // nothing sits under the inspector.
+  expect(await frameBox(page)).toEqual(stageBefore);
   const stageAfter = await frameBox(page);
   const inspector = await panel(page).boundingBox();
   expect((stageAfter?.x ?? 0) + (stageAfter?.width ?? 0)).toBeLessThanOrEqual(
@@ -121,7 +120,6 @@ test("the inspector appears only on a selection and closes with Escape or its bu
 
   await page.keyboard.press("Escape");
   await expect(panel(page)).toHaveCount(0);
-  await page.waitForTimeout(500); // the stage grows back before the next click
 
   await page.mouse.click(title.x, title.y);
   await expect(panel(page)).toBeVisible();

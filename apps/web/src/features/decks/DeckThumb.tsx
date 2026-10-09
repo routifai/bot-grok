@@ -88,8 +88,10 @@ export function DeckThumb({
       >
         <span
           className={cn(
-            "relative block overflow-hidden rounded-[5px] bg-muted ring-1 ring-inset",
-            active ? "ring-2 ring-foreground" : "ring-border group-hover:ring-foreground/40",
+            "relative block overflow-hidden rounded-[5px] bg-muted outline -outline-offset-1",
+            active
+              ? "outline-2 -outline-offset-2 outline-foreground"
+              : "outline-1 outline-border group-hover:outline-foreground/40",
           )}
           style={{ width, height: heightFor(width) }}
         >
