@@ -112,6 +112,11 @@ def resolve_upkeep_max_concurrency() -> int:
 
 
 # ── extraction / classification prompts (module constants, per plan) ────
+# Portions modified from getnao/nao
+# apps/backend/src/components/ai/memory-system-prompt.tsx@5bde830, Apache-2.0; changes: only the
+# rules are merged (default to extracting nothing, instructions need a permanence signal while
+# profile facts do not, a changed fact or revoked instruction supersedes the old claim); Nova's
+# kinds, verbatim-quote check and evidence scoring are unchanged.
 
 MEMORY_UPKEEP_EXTRACTION_PROMPT = """\
 You are extracting durable long-term memory claims about one user from a \
@@ -124,6 +129,16 @@ projects, decisions they made, and working-style signals visible in a \
 correction. Never extract one-time requests (e.g. "send this to Bob \
 today"), small talk, or secrets (passwords, tokens, API keys, account \
 numbers) — leave those out entirely.
+
+Default to extracting nothing: most transcripts hold no durable claim, and \
+when you doubt the user meant it to last, leave it out. Keep two bars apart. \
+A profile fact about the user (role, team, location, background) needs no \
+special wording. A standing instruction ("kind": "instruction") needs a clear \
+permanence signal in the user's own words — "always", "never", "from now on", \
+"every time", "in general", "don't ever", "remember that I" — otherwise it \
+only applies to that conversation (so "use Python" is not a claim, "always \
+use Python" is). Write an instruction as a directive ("Reply in French."), \
+not as "The user wants ...".
 
 Each candidate's "claim_text" must be one self-contained sentence, written \
 so it makes sense with no other context. Refer to the user as "The user"; \
@@ -152,8 +167,10 @@ Respond with a JSON object of this exact shape and nothing else:
 Use "same" when the candidate restates or paraphrases one of the listed \
 claims with the same meaning — set "claim_id" to that claim's id. Use \
 "contradicts" only when the candidate clearly conflicts with one specific \
-listed claim — set "claim_id" to that claim's id; never guess at a \
-contradiction the text doesn't name. Otherwise use "new" with "claim_id": \
+listed claim — set "claim_id" to that claim's id; this includes a changed fact \
+(new role, new employer) and an instruction the user revoked or replaced, so \
+the old claim is superseded rather than kept beside the new one. Never guess \
+at a contradiction the text doesn't name. Otherwise use "new" with "claim_id": \
 null. Output JSON only — no markdown, no commentary."""
 
 # ── secret / one-time guards (verify step) ───────────────────────────────

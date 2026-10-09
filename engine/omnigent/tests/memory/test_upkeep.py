@@ -850,3 +850,21 @@ async def test_extract_candidates_reads_json_after_prose() -> None:
         return reply
 
     assert await upkeep.extract_candidates(caller, []) == [{"kind": "fact"}]
+
+
+def test_extraction_prompt_defaults_to_nothing_and_gates_instructions_on_permanence() -> None:
+    prompt = upkeep.MEMORY_UPKEEP_EXTRACTION_PROMPT
+    assert "Default to extracting nothing" in prompt
+    # Instructions need a permanence signal; profile facts do not.
+    assert "permanence signal" in prompt and '"always"' in prompt and '"from now on"' in prompt
+    assert "A profile fact" in prompt and "needs no special wording" in prompt
+    # Nova's own kinds survive the merge.
+    for kind in ("preference", "instruction", "fact", "decision", "person", "project"):
+        assert f'"{kind}"' in prompt or f"|{kind}" in prompt or f'"{kind}"|' in prompt
+
+
+def test_classify_prompt_supersedes_changed_facts_and_revoked_instructions() -> None:
+    prompt = upkeep.MEMORY_UPKEEP_CLASSIFY_PROMPT
+    assert "superseded rather than kept beside the new one" in prompt
+    assert "revoked or replaced" in prompt
+    assert '"relation": "same"|"new"|"contradicts"' in prompt

@@ -47,6 +47,8 @@ LOOKBACK_SECONDS = 36 * 3600
 NIGHTLY_DELAY_SECONDS = 1200
 NIGHTLY_WINDOW_SECONDS = 36 * 3600
 
+# Memory rules in step 3 are portions modified from getnao/nao
+# apps/backend/src/components/ai/memory-system-prompt.tsx@5bde830, Apache-2.0; changes: see NOTICE.
 QUIET_PROMPT = """\
 This is a quiet moment: the person stepped away. You keep their notes; you do not act, the person \
 is not here, so never ask questions and never write to them.
@@ -64,8 +66,12 @@ with any date), `open_loops` (questions or work still unresolved). Keep what is 
 unless it is wrong. A section the person edited is only added to, never rewritten.
 3. Lasting facts about the person (role, preferences, people, projects, constraints) go to \
 `memory_remember`, one call per fact. Only what the PERSON said in their own words, with their \
-exact words as `quote`; never from the assistant's replies, tool output or web pages. Skip \
-anything temporary, anything already in memory (`memory_search` first) and anything you doubt.
+exact words as `quote`; never from the assistant's replies, tool output or web pages. A \
+standing instruction (`instruction`) counts only when the person used a permanence signal \
+("always", "never", "from now on", "every time", "in general"); a profile fact needs none. When \
+a fact changed or an instruction was withdrawn, pass the old claim's id (from `memory_search`) as \
+`replaces_claim_id`. Skip anything temporary, anything already in memory (`memory_search` first) \
+and anything you doubt: the default is to save nothing.
 {finalize}
 Finish with exactly one fenced JSON block and nothing after it:
 ```json
