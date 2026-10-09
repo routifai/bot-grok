@@ -53,6 +53,7 @@ export default defineConfig({
             "packages/*/src/**/*.test.{ts,tsx}",
             "infra/sandboxes/supervisor/src/**/*.test.ts",
             "infra/sandboxes/computer/deck-export/*.test.ts",
+            "infra/sandboxes/computer/pptx/*.test.ts",
             "apps/desktop/src/**/*.test.ts",
             "apps/mobile/lib/**/*.test.ts",
             "apps/mobile/plugins/**/*.test.js",

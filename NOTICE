@@ -36,3 +36,14 @@ Editorial Tri-Tone from zarazhangrui/beautiful-html-templates (Copyright (c) 202
 and Magazine Mono from op7418/guizang-ppt-skill (Copyright (c) 2026 op7418). Their fonts are
 Latin subsets of Space Grotesk, Inter, Bricolage Grotesque, Instrument Serif, JetBrains Mono and
 Newsreader, each under the SIL Open Font License 1.1 with its license text beside the font files.
+
+The native PowerPoint skill (infra/sandboxes/computer/pptx/skill/pptx-generator) is a port of the
+pptx-generator skill from MiniMax-AI/skills (https://github.com/MiniMax-AI/skills, commit
+60aaae52bb2af8162732751a4332f62a5fef518b, path skills/pptx-generator), Copyright (c) 2026 MiniMax,
+licensed under the MIT License; the license text is kept beside the skill in
+infra/sandboxes/computer/pptx/skill/pptx-generator/LICENSE. Each ported file carries a "Portions
+from MiniMax-AI/skills <path>@60aaae5, MIT; changes: ..." header. The Computer image installs
+PptxGenJS 4.0.1 (MIT, Copyright (c) Brent Ely), react, react-dom, react-icons, sharp, python-pptx
+and markitdown for it, each under its own permissive license, and applies the upstream PptxGenJS
+fixes for gitbrent/PptxGenJS issue 1531 and pull requests 1537 and 1540
+(infra/sandboxes/computer/pptx/runtime/patches).

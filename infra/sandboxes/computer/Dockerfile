@@ -61,10 +61,25 @@ RUN uv sync --frozen --no-editable --no-dev --index-url ${PYPI_INDEX_URL}
 # All manylinux wheels: no compiler needed. Agg keeps matplotlib headless.
 RUN /usr/local/bin/python3 -m pip install --index-url ${PYPI_INDEX_URL} --no-cache-dir \
     pandas==2.2.3 openpyxl==3.1.5 xlsxwriter==3.2.0 matplotlib==3.9.2 duckdb==1.1.3
+# pptx-generator skill (docs: pptx/skill/pptx-generator): python-pptx and markitdown (text
+# extraction for its QA step). markitdown pulls magika/onnxruntime wheels; all manylinux, no compiler.
+RUN /usr/local/bin/python3 -m pip install --index-url ${PYPI_INDEX_URL} --no-cache-dir \
+    python-pptx==1.0.2 "markitdown[pptx]==0.1.8"
 
 # Pure alias so the final stage can COPY node out of a version-pinned image without a build arg
 # inside a COPY --from (which cannot expand them).
 FROM node:${OMNIGENT_NODE_VERSION}-slim AS node-runtime
+
+# ── pptx-generator runtime ───────────────────────────────────────
+# PptxGenJS (pinned, with the upstream chart fixes #1531/#1537/#1540 applied from
+# pptx/runtime/patches), react-icons, sharp: what the Muse's native-PowerPoint skill requires.
+# install.sh is the same script the pipeline test runs. Containers cannot install at runtime, so
+# this is the only place these libraries come from. `patch` is not in node:slim.
+FROM node-runtime AS pptx-runtime-builder
+RUN apt-get update && apt-get install -y --no-install-recommends patch \
+  && rm -rf /var/lib/apt/lists/*
+COPY infra/sandboxes/computer/pptx/runtime/ /build/pptx-runtime/
+RUN sh /build/pptx-runtime/install.sh /opt/nova-pptx
 
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 # Dev tools let bots clone repos and fetch artifacts; containers run uid 1000
@@ -137,6 +152,9 @@ COPY --chmod=644 infra/sandboxes/computer/mobile-keyboard.js /usr/share/novnc/mo
 # Login shells source this after Debian's /etc/profile resets PATH. The home
 # volume hides /etc/skel, so ~/.local/bin has to be restored from the image.
 COPY --chmod=644 infra/sandboxes/computer/nova-local-bin.sh /etc/profile.d/nova-local-bin.sh
+# The Muse's native-PowerPoint skill (MiniMax-AI/skills pptx-generator, MIT, ported): SKILL.md and
+# references the prompt tells the Muse to read.
+COPY infra/sandboxes/computer/pptx/skill/pptx-generator/ /usr/local/share/nova/skills/pptx-generator/
 
 # ── Omnigent runner + the Claude Code CLI ──────────────────────────
 # Lets the Nova "computer" sandbox launcher (docs/omnigent-spike.md,
@@ -158,6 +176,9 @@ COPY --from=omnigent-builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=omnigent-builder /opt/venv /opt/venv
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+# Fixed prefix on NODE_PATH: `require('pptxgenjs')` works from any script the Muse writes.
+COPY --from=pptx-runtime-builder /opt/nova-pptx/node_modules /opt/nova-pptx/node_modules
+ENV NODE_PATH=/opt/nova-pptx/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
  # Claude Code CLI: the nova-claude harness's claude-agent-sdk shells out to this binary to run
@@ -178,6 +199,7 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # the recorder's page script unreadable to USER 1000.
 RUN ldconfig \
   && chmod 755 /usr/local/share/nova /usr/local/share/nova/deck-export \
+  && chmod -R a+rX /usr/local/share/nova/skills /opt/nova-pptx \
   && gzip -dc /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js.gz > /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
   && chmod 644 /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
   && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-deck-export /usr/local/bin/nova-recorder \
