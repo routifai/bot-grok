@@ -32,7 +32,15 @@ export const ReplyCardData = {
   ask: z.object({
     question: Text,
     options: z
-      .array(z.object({ id: Text, label: Text }))
+      .array(
+        z.object({
+          id: Text,
+          label: Text,
+          /** What the client draws on the option (a deck theme's thumbnail); unknown kinds
+           * render as a plain button. */
+          preview: z.object({ kind: Text, id: Text }).optional(),
+        }),
+      )
       .min(1)
       .max(8),
     allowFreeText: z.boolean().optional(),

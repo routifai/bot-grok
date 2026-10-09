@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import omnigent.superchat.decks  # noqa: F401  (registers the deck-theme preview kind)
 from omnigent.runner.tool_dispatch import should_dispatch_locally
 from omnigent.spec.types import AgentSpec
 from omnigent.superchat.cards.tools import (

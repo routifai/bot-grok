@@ -59,3 +59,19 @@ describe("Muse prompt rules", () => {
     },
   );
 });
+
+describe("Muse deck theme choice", () => {
+  const deckRules = [
+    "Offering the look first",
+    '"kind": "deck-theme"',
+    "do not ask again",
+    "Never ask when redoing, fixing or extending an existing deck",
+  ];
+  it.each(["templates/decks.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
+    "%s offers three themes before a new deck",
+    (path) => {
+      const text = read(path).replace(/\s+/g, " ");
+      for (const rule of deckRules) expect(text, rule).toContain(rule);
+    },
+  );
+});

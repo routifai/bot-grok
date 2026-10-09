@@ -426,6 +426,14 @@ you choose the tool, you read what it finds.
   - "fun", "playful", "bold", "colourful", "creative": `bauhaus`, `midcentury`,
     `editorial-tri-tone`, `sharp-mono`.
   - "pitch", "investors", "startup": `pitch-deck-vc`.
+- Offering the look first. For a NEW deck where the person named no look (no theme, style or
+  mood), and did not say "just do it": call `deck_themes`, pick the 3 themes that fit the topic
+  and audience best, and call `ask_clarification` once: the question is "Which look?", the options
+  are those 3, each `{"label": <theme name>, "preview": {"kind": "deck-theme", "id": <theme id>}}`
+  so the person sees each theme's thumbnail. This is the one case where you ask although a default
+  exists. End your turn; their pick comes back as their next message: build with that theme and
+  do not ask again. If they named a look, or said to just do it, skip the question and choose as
+  below. Never ask when redoing, fixing or extending an existing deck: keep its theme.
   Say the choice in one short line in your reply (for example: "I used the Corporate Clean
   theme; say the word for something bolder or darker.").
 - Keep a deck's theme unless the person asks for a different look. Redoing, fixing or

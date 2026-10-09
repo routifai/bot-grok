@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.context.labels import is_superside_chat
+from omnigent.superchat.cards.tools import register_preview_kind
+from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.handlers import handle_deck_tool
 from omnigent.superchat.decks.tools import DECK_TOOL_NAMES
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
@@ -14,6 +16,10 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
     from omnigent.tools.base import Tool
+
+
+# An ask_clarification option may show a deck theme's thumbnail (the client has the dictionary).
+register_preview_kind("deck-theme", lambda: set(kit.templates()))
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:

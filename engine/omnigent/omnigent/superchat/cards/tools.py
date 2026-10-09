@@ -348,15 +348,15 @@ def _clean_strings(
     return out, None
 
 
-def _deck_theme_ids() -> set[str]:
-    from omnigent.superchat.decks import kit
+#: What an option's ``preview`` may point at: ``kind`` -> the ids that exist. A capability adds
+#: its kind with :func:`register_preview_kind` (decks: ``deck-theme``); the client draws the
+#: preview from its own data. An unknown kind or id is refused.
+PREVIEW_KINDS: dict[str, Callable[[], set[str]]] = {}
 
-    return set(kit.templates())
 
-
-#: What an option's ``preview`` may point at: ``kind`` -> the ids that exist. The client draws
-#: the preview from its own data (a theme's thumbnail); an unknown kind or id is refused here.
-PREVIEW_KINDS: dict[str, Callable[[], set[str]]] = {"deck-theme": _deck_theme_ids}
+def register_preview_kind(kind: str, ids: Callable[[], set[str]]) -> None:
+    """Allow ``{"kind": kind, "id": <one of ids()>}`` as an ask option's preview."""
+    PREVIEW_KINDS[kind] = ids
 
 
 def _split_options(raw: Any) -> tuple[list[Any], list[Any], str | None]:

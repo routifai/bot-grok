@@ -3,16 +3,17 @@ import type { Artifact, DeckPatch, DeckTheme } from "@nova/contracts";
 import { Button, cn } from "@nova/ui-web";
 import { Check, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type DeckThemesSource, loadDeckThemes, resetDeckThemeCache } from "../../lib/deck-themes";
 import { rpc } from "../../lib/rpc";
 import { flushDeckEdits, noteDeckVersionEdit, setDeckThemeOpen } from "./deck-ui-state";
 import { isInexact, isStale } from "./edit/edit-model";
 import type { DeckEditSource } from "./edit/useDeckEditor";
 
-export type DeckThemesSource = () => Promise<{ themes: DeckTheme[]; defaultTheme: string }>;
+export type { DeckThemesSource };
 /** The id of the theme a saved deck is on, or null when it is hand-made. */
+export { resetDeckThemeCache };
 export type DeckThemeSource = (artifactId: string) => Promise<string | null>;
 
-const defaultThemes: DeckThemesSource = () => rpc.decks.themes({});
 const defaultCurrent: DeckThemeSource = async (artifactId) =>
   (await rpc.decks.theme({ artifactId })).theme;
 const defaultEdit: DeckEditSource = (input) => rpc.decks.edit(input);
@@ -22,20 +23,6 @@ const defaultEdit: DeckEditSource = (input) => rpc.decks.edit(input);
 export const THEME_BUTTON_ATTR = "data-deck-theme-button";
 
 const CATEGORY_ORDER = ["professional", "editorial", "bold", "dark"] as const;
-
-/** One fetch of the dictionary per page load: the thumbnails are a few hundred KB. */
-let cache: Promise<{ themes: DeckTheme[]; defaultTheme: string }> | null = null;
-function loadThemes(source: DeckThemesSource) {
-  cache ??= source().catch((error: unknown) => {
-    cache = null;
-    throw error;
-  });
-  return cache;
-}
-/** Test helper. */
-export const resetDeckThemeCache = (): void => {
-  cache = null;
-};
 
 /**
  * The deck panel's Theme gallery: every theme with its thumbnail, name and mood, the current one
@@ -51,7 +38,7 @@ export function DeckThemePicker({
   deckKey,
   artifact,
   onEdited,
-  themesSource = defaultThemes,
+  themesSource,
   themeSource = defaultCurrent,
   editSource = defaultEdit,
   frameRef,
@@ -97,7 +84,7 @@ export function DeckThemePicker({
 
   useEffect(() => {
     let live = true;
-    loadThemes(themesSource).then(
+    loadDeckThemes(themesSource).then(
       (found) => live && setThemes(found.themes),
       () => live && setFailed(true),
     );

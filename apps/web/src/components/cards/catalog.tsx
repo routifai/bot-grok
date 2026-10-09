@@ -25,6 +25,7 @@ import {
   Phone,
 } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
+import { useDeckThemes } from "../../lib/deck-themes";
 import { useReplyCardSend } from "./context";
 import { hostOf, mailtoHref, safeHttpUrl, telHref } from "./links";
 
@@ -227,38 +228,96 @@ function Ask({
   const pickedRef = useRef(false);
   const chosen = picked ?? answer?.trim() ?? null;
   const locked = chosen !== null || !send;
+  const pick = (label: string) => {
+    if (locked || pickedRef.current) return;
+    pickedRef.current = true;
+    setPicked(label);
+    send?.(label);
+  };
+  const themed = data.options.some((o) => o.preview?.kind === "deck-theme");
+  const themes = useDeckThemes(themed);
   return (
     <Frame title={title}>
       <p className="text-[14.5px] leading-snug font-medium" dir="auto">
         {data.question}
       </p>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-        {data.options.map((option) => {
-          const isChosen = chosen === option.label;
-          return (
-            <Button
-              key={option.id}
-              type="button"
-              variant={isChosen ? "default" : "outline"}
-              disabled={locked && !isChosen}
-              aria-pressed={locked ? isChosen : undefined}
-              onClick={() => {
-                if (locked || pickedRef.current) return;
-                pickedRef.current = true;
-                setPicked(option.label);
-                send?.(option.label);
-              }}
-              className={cn(
-                "h-9 justify-start gap-2 px-3 text-[13.5px] sm:justify-center",
-                isChosen && "disabled:opacity-100",
-              )}
-            >
-              {isChosen ? <Check aria-hidden="true" /> : null}
-              <span dir="auto">{option.label}</span>
-            </Button>
-          );
-        })}
-      </div>
+      {themed ? (
+        <div className="mt-3 grid grid-cols-3 gap-2" data-testid="ask-previews">
+          {data.options.map((option) => {
+            const isChosen = chosen === option.label;
+            const theme = themes?.find((t) => t.id === option.preview?.id);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                disabled={locked}
+                aria-pressed={locked ? isChosen : undefined}
+                onClick={() => pick(option.label)}
+                className={cn(
+                  "group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring enabled:cursor-pointer",
+                  locked && !isChosen && "opacity-50",
+                )}
+              >
+                <span
+                  className={cn(
+                    "relative block aspect-video overflow-hidden rounded-lg bg-muted outline -outline-offset-1",
+                    isChosen
+                      ? "outline-2 -outline-offset-2 outline-foreground"
+                      : "outline-1 outline-border group-enabled:group-hover:outline-foreground/40",
+                  )}
+                >
+                  {theme?.preview ? (
+                    <img
+                      src={theme.preview}
+                      alt=""
+                      draggable={false}
+                      className="size-full object-cover"
+                    />
+                  ) : null}
+                  {isChosen ? (
+                    <span className="absolute end-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background shadow">
+                      <Check size={12} aria-hidden="true" />
+                    </span>
+                  ) : null}
+                </span>
+                <span className="px-0.5">
+                  <span className="block truncate text-[12px] font-medium" dir="auto">
+                    {option.label}
+                  </span>
+                  {theme ? (
+                    <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                      {theme.mood}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          {data.options.map((option) => {
+            const isChosen = chosen === option.label;
+            return (
+              <Button
+                key={option.id}
+                type="button"
+                variant={isChosen ? "default" : "outline"}
+                disabled={locked && !isChosen}
+                aria-pressed={locked ? isChosen : undefined}
+                onClick={() => pick(option.label)}
+                className={cn(
+                  "h-9 justify-start gap-2 px-3 text-[13.5px] sm:justify-center",
+                  isChosen && "disabled:opacity-100",
+                )}
+              >
+                {isChosen ? <Check aria-hidden="true" /> : null}
+                <span dir="auto">{option.label}</span>
+              </Button>
+            );
+          })}
+        </div>
+      )}
     </Frame>
   );
 }
