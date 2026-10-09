@@ -1,7 +1,6 @@
 // The Muse's Computer workspace on the Omnigent side: the session filesystem routes
 // (`/v1/sessions/{id}/resources/environments/default/filesystem`) backed by the runner's os_env.
 // Read-only listing and file reads, with every path confined to the workspace before it is sent.
-import type { OmnigentArtifact } from "./artifacts.js";
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client.js";
 
 export interface OmnigentFileEntry {
@@ -158,22 +157,4 @@ export function looksBinary(bytes: Uint8Array): boolean {
   } catch {
     return true;
   }
-}
-
-/** `POST /v1/artifacts` — saves bytes as the next version of `name` in a Conversation. */
-export async function createOmnigentArtifact(
-  config: OmnigentClientConfig,
-  email: string,
-  input: { parentSessionId: string; name: string; bytes: Uint8Array },
-): Promise<OmnigentArtifact> {
-  const url = new URL("/v1/artifacts", config.baseUrl);
-  url.searchParams.set("parent_session_id", input.parentSessionId);
-  url.searchParams.set("name", input.name);
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { ...omnigentHeaders(config, email), "content-type": "application/octet-stream" },
-    body: input.bytes as unknown as BodyInit,
-  });
-  await throwOnError(response, "save artifact", config.secrets);
-  return (await response.json()) as OmnigentArtifact;
 }

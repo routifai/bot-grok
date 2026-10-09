@@ -144,7 +144,7 @@ function Stub() {
   return null;
 }
 
-vi.mock("../components/ArtifactFileCard", () => ({ ArtifactFileCard: Stub }));
+vi.mock("../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: Stub }));
 vi.mock("../components/AskCard", () => ({ AskCard: Stub }));
 vi.mock("../components/ai/CollaborationMarker", () => ({
   CollaborationMarker: Stub,

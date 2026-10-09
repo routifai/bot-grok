@@ -18,7 +18,7 @@ vi.mock("../../lib/rpc", () => ({
     apps: { publish: api.publish, unpublish: api.unpublish },
   },
 }));
-vi.mock("../../pages/Artifacts", () => ({
+vi.mock("../artifacts/Artifacts", () => ({
   ArtifactPreview: ({ bytes }: { bytes: Uint8Array }) => (
     <div data-testid="body">{new TextDecoder().decode(bytes)}</div>
   ),
@@ -35,8 +35,8 @@ vi.mock("@lingui/core/macro", () => ({
     (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
 
-import { ArtifactPanel } from "../../components/ArtifactPanel";
-import { ArtifactRegistryProvider } from "../../lib/artifact-registry";
+import { ArtifactRegistryProvider } from "../artifacts";
+import { ArtifactPanel } from "../artifacts/ArtifactPanel";
 import { appsExtension } from "./extension";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });

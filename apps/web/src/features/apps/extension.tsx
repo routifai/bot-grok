@@ -2,8 +2,8 @@ import { useLingui } from "@lingui/react/macro";
 import type { Artifact, ArtifactPublish, ArtifactPublishAudience } from "@nova/contracts";
 import { Button } from "@nova/ui-web";
 import { useEffect, useState } from "react";
-import type { ArtifactExtension, ArtifactPanelParts } from "../../lib/artifact-registry";
 import { rpc } from "../../lib/rpc";
+import type { ArtifactExtension, ArtifactPanelParts } from "../artifacts";
 import { PublishDialog, PublishedBar, PublishedPill, viewsText } from "./PublishApp";
 
 /** The artifact panel's publish controls: pill, Publish button, address bar and dialog. */

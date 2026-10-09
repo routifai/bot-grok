@@ -6,15 +6,17 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
 );
 
 const api = vi.hoisted(() => ({ getById: vi.fn() }));
-vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api } }));
+vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api } }));
 vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div data-testid="md">{children}</div>,
 }));
-vi.mock("../SandboxedHtmlViewer", () => ({
+vi.mock("../../../components/SandboxedHtmlViewer", () => ({
   SandboxedHtmlViewer: ({ html }: { html: string }) => (
     <iframe data-testid="html" srcDoc={html} title="p" />
   ),

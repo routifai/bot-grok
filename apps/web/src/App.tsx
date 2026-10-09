@@ -36,7 +36,7 @@ const WelcomePage = lazy(() =>
   import("./pages/Welcome").then((module) => ({ default: module.WelcomePage })),
 );
 const ArtifactsPage = lazy(() =>
-  import("./pages/Artifacts").then((module) => ({ default: module.ArtifactsPage })),
+  import("./features/artifacts/Artifacts").then((module) => ({ default: module.ArtifactsPage })),
 );
 
 export function App() {

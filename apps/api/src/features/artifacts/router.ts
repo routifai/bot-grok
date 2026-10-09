@@ -10,39 +10,20 @@ import {
   getSpaceArtifactById,
   listArtifactVersions,
   listSpaceArtifacts,
-} from "../artifacts.js";
+} from "../../attachments.js";
+import { engineComputerClient } from "../../engine-computer.js";
+import type { RouterContext } from "../../routers/context.js";
 import {
   engineGetArtifact,
   engineListArtifacts,
   engineListArtifactVersions,
   engineListSpaceArtifacts,
   engineRemoveArtifact,
-} from "../engine-artifacts.js";
-import { engineComputerClient } from "../engine-computer.js";
-import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "../engine-files.js";
-
-import type { RouterContext } from "./context.js";
+} from "./service.js";
 
 export function artifactsRouter(c: RouterContext) {
-  const { authed, repos, groupRepos, engineArtifactsDeps, engineFilesDeps, deps } = c;
+  const { authed, repos, groupRepos, engineArtifactsDeps, deps } = c;
   return {
-    files: {
-      list: authed.files.list.handler(async ({ context, input }) => {
-        const engine = engineComputerClient(context.actor);
-        if (!engine) return { entries: [] };
-        return engineListFiles(engineFilesDeps, engine, context.actor, input);
-      }),
-      read: authed.files.read.handler(async ({ context, input }) => {
-        const engine = engineComputerClient(context.actor);
-        if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
-        return engineReadFile(engineFilesDeps, engine, context.actor, input);
-      }),
-      saveToLibrary: authed.files.saveToLibrary.handler(async ({ context, input }) => {
-        const engine = engineComputerClient(context.actor);
-        if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
-        return engineSaveFileToLibrary(engineFilesDeps, engine, context.actor, input);
-      }),
-    },
     artifacts: {
       list: authed.artifacts.list.handler(async ({ context, input }) => {
         await repos.getBot(context.actor, input.botId);

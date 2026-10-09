@@ -25,7 +25,7 @@ vi.mock("@lingui/core/macro", () => ({
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, ""),
 }));
 vi.mock("@nova/chat-ui/web", () => ({ ChatMarkdown: () => null }));
-vi.mock("../../../components/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
+vi.mock("../../../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
 vi.mock("../../../components/AskCard", () => ({ AskCard: () => null }));
 vi.mock("../../../components/ai/CollaborationMarker", () => ({ CollaborationMarker: () => null }));
 vi.mock("../../../components/CloudAgentCard", () => ({ CloudAgentCard: () => null }));

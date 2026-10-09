@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import type { ArtifactPanelApi } from "../../../components/cards/context";
+import type { ArtifactPanelApi } from "../../components/cards/context";
 
 const ArtifactPanel = lazy(() =>
-  import("../../../components/ArtifactPanel").then((m) => ({ default: m.ArtifactPanel })),
+  import("./ArtifactPanel").then((m) => ({ default: m.ArtifactPanel })),
 );
 
 /** The artifact side panel every chat surface shares (the Conversation and Side Chats): which

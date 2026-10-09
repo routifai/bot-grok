@@ -9,7 +9,7 @@ import {
 } from "@nova/adapters";
 import type { Actor, Artifact, ArtifactTable, TableCellEdit } from "@nova/contracts";
 import { ORPCError } from "@orpc/server";
-import { type EngineArtifactsDeps, emailOf, notFound, toArtifact } from "../../engine-artifacts.js";
+import { type EngineArtifactsDeps, emailOf, notFound, toArtifact } from "../artifacts/index.js";
 
 /** A CSV / XLSX version as grids (the engine's `{v, f, t}` cells, camel-cased). */
 export async function engineGetTable(

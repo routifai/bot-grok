@@ -6,17 +6,19 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
 );
 
 const list = vi.fn();
-vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: { list: (a: unknown) => list(a) } } }));
+vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: { list: (a: unknown) => list(a) } } }));
 vi.mock("./ArtifactInlinePreview", () => ({
   ArtifactInlinePreview: ({ artifactId }: { artifactId: string }) => (
     <div data-preview={artifactId} />
   ),
 }));
-vi.mock("./catalog", () => ({
+vi.mock("../../../components/cards/catalog", () => ({
   Frame: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   formatSize: () => "1 KB",
   catalog: { file: () => <div data-plain-file /> },

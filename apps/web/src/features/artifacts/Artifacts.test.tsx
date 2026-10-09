@@ -7,19 +7,19 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
 const api = vi.hoisted(() => ({ listSpace: vi.fn() }));
-vi.mock("../lib/rpc", () => ({ rpc: { artifacts: api } }));
-vi.mock("../lib/bootstrap", () => ({
+vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api } }));
+vi.mock("../../lib/bootstrap", () => ({
   takeInitialBootstrap: vi.fn().mockResolvedValue({ bots: [] }),
 }));
-vi.mock("../lib/artifact-open", () => ({
+vi.mock("../../lib/artifact-open", () => ({
   decodeArtifactBase64: vi.fn(),
   downloadArtifactBytes: vi.fn(),
 }));
-vi.mock("../lib/relative-time", () => ({ formatRelativeTime: () => "just now" }));
+vi.mock("../../lib/relative-time", () => ({ formatRelativeTime: () => "just now" }));
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray) => parts.join("");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };

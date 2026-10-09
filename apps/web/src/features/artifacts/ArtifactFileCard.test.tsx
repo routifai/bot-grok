@@ -8,8 +8,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ getById: vi.fn() }));
-vi.mock("../lib/rpc", () => ({ rpc: { artifacts: api } }));
-vi.mock("../lib/artifact-open", () => ({
+vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api } }));
+vi.mock("../../lib/artifact-open", () => ({
   decodeArtifactBase64: (base64: string) => {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);

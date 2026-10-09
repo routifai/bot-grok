@@ -2,7 +2,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@nova/ui-web";
 import { Download, Lock } from "lucide-react";
 import { downloadArtifactBytes } from "../../../lib/artifact-open";
-import { ArtifactPreview } from "../../Artifacts";
+import { ArtifactPreview } from "../Artifacts";
 import { useArtifactContent } from "./useArtifactContent";
 
 /**

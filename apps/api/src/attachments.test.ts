@@ -2,7 +2,11 @@ import type { ArtifactStore } from "@nova/adapter-kit";
 import type { Actor } from "@nova/contracts";
 import type { PrismaClient } from "@nova/db";
 import { describe, expect, it, vi } from "vitest";
-import { ArtifactListCursorError, deleteArtifactFamily, listSpaceArtifacts } from "./artifacts.js";
+import {
+  ArtifactListCursorError,
+  deleteArtifactFamily,
+  listSpaceArtifacts,
+} from "./attachments.js";
 
 const actor: Actor = {
   userId: "user-1",

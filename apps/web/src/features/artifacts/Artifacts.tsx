@@ -30,16 +30,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AppRail } from "../components/AppRail";
-import { NovaOrb } from "../components/ai/orb";
-import { PdfViewer } from "../components/PdfViewer";
-import { SandboxedHtmlViewer } from "../components/SandboxedHtmlViewer";
-import { decodeArtifactBase64, downloadArtifactBytes } from "../lib/artifact-open";
-import { useArtifactExtensions } from "../lib/artifact-registry";
-import { takeInitialBootstrap } from "../lib/bootstrap";
-import { formatRelativeTime } from "../lib/relative-time";
-import { rpc } from "../lib/rpc";
-import { useObjectUrl } from "../lib/use-object-url";
+import { AppRail } from "../../components/AppRail";
+import { NovaOrb } from "../../components/ai/orb";
+import { PdfViewer } from "../../components/PdfViewer";
+import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
+import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
+import { takeInitialBootstrap } from "../../lib/bootstrap";
+import { formatRelativeTime } from "../../lib/relative-time";
+import { rpc } from "../../lib/rpc";
+import { useObjectUrl } from "../../lib/use-object-url";
+import { useArtifactExtensions } from "./registry";
 
 type ViewMode = "grid" | "list";
 type DateFilter = "all" | "today" | "week" | "month";

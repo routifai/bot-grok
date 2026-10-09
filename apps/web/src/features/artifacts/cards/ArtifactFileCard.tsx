@@ -8,18 +8,18 @@ import {
 } from "@nova/ui-web";
 import { Download, ExternalLink, MoreHorizontal } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
-import type { ArtifactKind } from "../../lib/artifact-kind";
-import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
-import { rpc } from "../../lib/rpc";
+import { catalog, formatSize } from "../../../components/cards/catalog";
+import { useArtifactPanel, useLatestSavedFile } from "../../../components/cards/context";
+import { MEDIA_ACTION, MediaFrame, MediaTile } from "../../../components/MediaTile";
+import type { ArtifactKind } from "../../../lib/artifact-kind";
+import { decodeArtifactBase64, downloadArtifactBytes } from "../../../lib/artifact-open";
+import { rpc } from "../../../lib/rpc";
 import { readableFileName } from "../ArtifactFileCard";
-import { MEDIA_ACTION, MediaFrame, MediaTile } from "../MediaTile";
 import { ArtifactInlinePreview } from "./ArtifactInlinePreview";
-import { catalog, formatSize } from "./catalog";
-import { useArtifactPanel, useLatestSavedFile } from "./context";
 
 // The expanded view pulls in the PDF and markdown viewers; load them only when opened.
 const ArtifactPreviewDialog = lazy(() =>
-  import("../../pages/muse/library/ArtifactPreviewDialog").then((m) => ({
+  import("../library/ArtifactPreviewDialog").then((m) => ({
     default: m.ArtifactPreviewDialog,
   })),
 );

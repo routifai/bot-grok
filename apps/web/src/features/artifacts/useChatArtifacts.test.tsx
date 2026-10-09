@@ -4,11 +4,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
-vi.mock("../../../components/ArtifactPanel", () => ({
+vi.mock("./ArtifactPanel", () => ({
   ArtifactPanel: ({ artifactId }: { artifactId: string }) => <div data-panel>{artifactId}</div>,
 }));
 
-import type { ArtifactPanelApi } from "../../../components/cards/context";
+import type { ArtifactPanelApi } from "../../components/cards/context";
 import { useChatArtifacts } from "./useChatArtifacts";
 
 type Surface = ReturnType<typeof useChatArtifacts>;
