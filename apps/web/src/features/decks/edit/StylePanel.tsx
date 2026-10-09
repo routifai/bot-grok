@@ -140,7 +140,7 @@ function EmptyInspector({ theme }: { theme: DeckEditTheme | null }) {
   return (
     <aside
       data-testid="deck-style-empty"
-      aria-label={t`Edit`}
+      aria-label={t`Style`}
       className="flex max-h-full w-[288px] flex-col gap-4 overflow-y-auto rounded-2xl bg-popover px-4 py-4 text-popover-foreground ring-1 ring-border"
     >
       <p className="text-[12px] text-muted-foreground">{t`Click an element to edit it.`}</p>

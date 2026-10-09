@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button } from "@nova/ui-web";
+import { Button, cn } from "@nova/ui-web";
 import { Redo2, Undo2 } from "lucide-react";
 import {
   type MutableRefObject,
@@ -13,6 +13,7 @@ import {
   setComposerAttachment,
   useComposerAttachAvailable,
 } from "../../../lib/composer-attachments";
+import { RAIL_OPEN_W, RAIL_SLIM_W } from "../DeckRail";
 import { buildDeckAsk, DECK_ASK_KIND } from "../deck-ask";
 import { EditStage } from "./EditStage";
 import { targetLabel } from "./edit-model";
@@ -119,8 +120,9 @@ export function DeckEditor({
   // Leaving edit mode takes its attachment with it.
   useEffect(() => () => setComposerAttachment(DECK_ASK_KIND, null), []);
 
+  const selected = editor.targets.length > 0;
   return (
-    <div className="relative flex min-w-0 flex-1">
+    <div className="@container relative flex min-w-0 flex-1">
       <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="relative min-h-0 flex-1">
           <EditStage
@@ -129,6 +131,7 @@ export function DeckEditor({
             reloadKey={editor.reloadKey}
             active={active}
             selectedIds={editor.selectedIds}
+            chipInset={RAIL_OPEN_W - RAIL_SLIM_W + 8}
             frameRef={frameRef}
             postRef={postRef}
             onMessage={editor.onFrameMessage}
@@ -178,10 +181,18 @@ export function DeckEditor({
           </div>
         </div>
       </div>
-      {/* The inspector column is reserved for the whole edit session (empty state, then the
-          selection's controls), so the stage never reflows and nothing is ever covered. */}
-      <div className="shrink-0 overflow-hidden w-[300px]">
-        <div className="flex h-full w-[300px] py-3 pe-3">
+      {/* From about 900px wide the inspector column is reserved for the whole edit session (empty
+          state, then the selection's controls), so the stage never reflows and nothing is ever
+          covered. Narrower, the stage keeps its width and the controls are a sheet over the
+          bottom edge, shown only while something is selected. */}
+      <div
+        className={cn(
+          "absolute inset-x-2 bottom-2 z-20 flex max-h-[60%] justify-end",
+          "@[900px]:static @[900px]:inset-auto @[900px]:block @[900px]:max-h-none @[900px]:w-[300px] @[900px]:shrink-0 @[900px]:overflow-hidden",
+          selected ? "" : "@max-[899px]:hidden",
+        )}
+      >
+        <div className="flex h-full max-h-full w-[288px] @[900px]:w-[300px] @[900px]:py-3 @[900px]:pe-3">
           <StylePanel
             targets={editor.targets}
             theme={editor.theme}

@@ -360,30 +360,20 @@ def test_a_legacy_block_edited_inside_in_a_way_that_cannot_be_kept_is_refused() 
         run([SetTheme(kind="set-theme", theme="tokyo-night")], edited)
 
 
-def test_an_edited_token_line_inside_the_markers_is_kept_after_them() -> None:
-    deck = kit.build_deck("nord", "Q3", SAMPLE)
-    edited = deck.replace("--accent: #88c0d0;", "--accent: #ff0000;", 1)
-    assert edited != deck
-    new, _ = run([SetTheme(kind="set-theme", theme="tokyo-night")], edited)
-    close = new.index("/* /nova:theme-tokens */")
-    assert "--accent: #ff0000;" in new[close : close + 120]
-    assert "--accent: #88c0d0;" not in new
-    # and a second switch keeps it, now as the deck's own override
-    again, _ = run([SetTheme(kind="set-theme", theme="corporate-clean")], new)
-    assert "--accent: #ff0000;" in again
-
-
-def test_css_edited_inside_the_markers_is_moved_after_them_or_refused_never_dropped() -> None:
-    deck = kit.build_deck("nord", "Q3", SAMPLE)
-    rule = ".mine-inside { color: red; }"
-    close = "    /* /nova:theme */"
-    whole = deck.replace(close, f"    {rule}\n{close}", 1)
-    new, _ = run([SetTheme(kind="set-theme", theme="tokyo-night")], whole)
-    assert new.index(rule) > new.index(close)
-    line = _fragment_line("nord")
-    broken = deck.replace(line, line.replace(":", ": 1px /* edited */ +", 1), 1)
-    with pytest.raises(AmbiguousEdit, match="ask Nova"):
-        run([SetTheme(kind="set-theme", theme="tokyo-night")], broken)
+def test_a_region_edited_between_its_markers_is_refused_and_the_deck_is_unchanged() -> None:
+    deck = kit.build_deck("blue-professional", "Q3", SAMPLE)
+    tokens = deck.replace("--accent: #1e2bfa;", "--accent: #ff0000;", 1)
+    # the round-3 repro: a multi-line rule written inside the theme region
+    rule = deck.replace(
+        "\n.kicker {", "\n.hero {\n  color: red;\n}\n.badge { color: blue; }\n.kicker {", 1
+    )
+    inside = deck.replace(
+        "    /* /nova:theme */", "    .mine { color: red; }\n    /* /nova:theme */", 1
+    )
+    for edited in (tokens, rule, inside):
+        assert edited != deck
+        with pytest.raises(AmbiguousEdit, match="ask Nova"):
+            run([SetTheme(kind="set-theme", theme="magazine-mono")], edited)
 
 
 def test_nested_or_repeated_markers_are_refused() -> None:
@@ -409,17 +399,15 @@ def test_a_marker_lookalike_in_a_slide_is_not_the_decks_theme() -> None:
     assert kit.deck_theme_id(fake) == "nord"
 
 
-def _old_kit(rev: str):
+def _old_kit(rev: str, tmp: str):
     """The kit as released at git ``rev``, imported from ``git archive`` (None without git)."""
     import importlib.util
     import subprocess
     import sys
-    import tempfile
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[5]
     base = "engine/omnigent/omnigent/superchat/decks"
-    tmp = tempfile.mkdtemp()
     done = subprocess.run(
         f"git archive {rev} {base} | tar -x -C {tmp}",
         shell=True,
@@ -438,8 +426,10 @@ def _old_kit(rev: str):
 
 
 @pytest.mark.parametrize("rev", ["d46b2965", "9a0bb8bc"])
-def test_decks_built_by_every_released_kit_can_switch_theme(rev: str) -> None:
-    old = _old_kit(rev)
+def test_decks_built_by_every_released_kit_can_switch_theme(
+    rev: str, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    old = _old_kit(rev, str(tmp_path_factory.mktemp(rev)))
     if old is None:
         pytest.skip(f"git history for {rev} is not available")
     fresh = _norm(kit.build_deck("nord", "Q3", SAMPLE).replace(kit._DECK_HINT + "\n", ""))

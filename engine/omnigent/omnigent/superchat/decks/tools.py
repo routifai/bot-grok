@@ -205,9 +205,9 @@ class DeckThemeSetTool(Tool):
             "fonts and leaves every slide's content alone, then re-checks the layout. Use it "
             "when the person asks for a different look; the deck keeps its file, so save it "
             "again with artifact_save. Custom CSS and token overrides the deck has outside the "
-            "theme markers (written after the closing marker) are kept; anything edited between "
-            "the markers is moved after it when that stays valid CSS, otherwise the call fails "
-            "and says so. Do not use it unless they asked for a new theme."
+            "theme markers (written after the closing marker) are kept. If something was edited "
+            "between the markers the call fails and says so, and the file is not changed. "
+            "Do not use it unless they asked for a new theme."
         )
 
     def get_schema(self) -> dict[str, Any]:

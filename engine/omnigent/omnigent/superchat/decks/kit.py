@@ -230,8 +230,8 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
 #
 # Each open marker carries a hash of the region's content (``sha=``). A region that still matches
 # its hash is the kit's and is replaced whole, whatever kit version wrote it. One that does not
-# match was edited inside: its extra lines are moved after the close marker, where they are the
-# deck's own, when they stay valid CSS there; otherwise the switch is refused (never dropped).
+# match was edited inside, and the switch is refused: nothing is dropped and the deck is not
+# changed (per-deck CSS belongs after the close marker).
 _TOKENS_OPEN = "      /* nova:theme-tokens id={id} sha={sha} */"
 _TOKENS_CLOSE = "      /* /nova:theme-tokens */"
 _CSS_OPEN = "    /* nova:theme id={id} sha={sha} \u00b7 {name} */"
@@ -362,68 +362,20 @@ def deck_theme_id(document: str) -> str | None:
 
 
 _INEXACT = "this deck's theme can't be swapped exactly; ask Nova to restyle it"
-_EDITED = (
-    "this deck's theme block was edited inside, in a way that can't be kept; "
-    "ask Nova to restyle it"
-)
+_EDITED = "this deck's theme block was edited between its markers; ask Nova to restyle it"
 
 
 def _only(
     pattern: re.Pattern[str], text: str, *, opens: str = "", closes: str = ""
 ) -> re.Match[str]:
-    """The one match; zero, several or (given the markers) nested or stray markers are refused."""
-    if (opens and text.count(opens) != 1) or (closes and text.count(closes) != 1):
+    """The one match; zero or several matches, or stray or nested markers in the head, refuse."""
+    scope = _head(text) if opens else text
+    if (opens and scope.count(opens) != 1) or (closes and scope.count(closes) != 1):
         raise KitError(_INEXACT)
     found = list(pattern.finditer(text))
     if len(found) != 1:
         raise KitError(_INEXACT)
     return found[0]
-
-
-def _extras(found: str, pristine: str) -> str:
-    """The lines of ``found`` that are not (the kit's) ``pristine`` lines, in order."""
-    spare: dict[str, int] = {}
-    for line in pristine.splitlines():
-        if line.strip():
-            spare[line.strip()] = spare.get(line.strip(), 0) + 1
-    kept = []
-    for line in found.splitlines():
-        key = line.strip()
-        if not key:
-            continue
-        if spare.get(key, 0) > 0:
-            spare[key] -= 1
-        else:
-            kept.append(line)
-    return "\n".join(kept)
-
-
-_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
-_DECL_RE = re.compile(r"^\s*--[a-zA-Z0-9_-]+\s*:[^;{}]*;\s*$")
-
-
-def _valid_tokens(extras: str) -> bool:
-    """Extra token lines are still whole ``--name: value;`` declarations (or comments)."""
-    return all(
-        not line.strip() or _DECL_RE.match(line)
-        for line in _COMMENT_RE.sub("", extras).splitlines()
-    )
-
-
-def _valid_css(extras: str) -> bool:
-    """Extra CSS is whole top-level rules: braces close, nothing bare sits between them."""
-    depth = 0
-    for char in _COMMENT_RE.sub("", extras):
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth < 0:
-                return False
-        elif char == ";" and depth == 0:
-            return False
-    stripped = _COMMENT_RE.sub("", extras).strip()
-    return depth == 0 and (not stripped or stripped.endswith("}"))
 
 
 @cache
@@ -432,12 +384,19 @@ def _legacy_kits() -> dict[str, list[dict[str, str]]]:
     return json.loads((KIT_DIR / "legacy.json").read_text("utf-8"))
 
 
+def _known_texts(kind: str) -> set[str]:
+    """Every theme text the kit ever wrote (``kind`` is "tokens" or "css"): now and released."""
+    now = _tokens_text if kind == "tokens" else _css_text
+    old = [c[kind] for texts in _legacy_kits().values() for c in texts]
+    return {now(t) for t in templates().values()} | set(old)
+
+
 def _adopt_markers(document: str, template: Template) -> str:
     """A deck saved before the markers existed, with the kit's regions marked and the rest kept.
 
     The block is recognised against every released kit text for its theme (the kit has changed
-    since); what the deck added around it is kept in place. A block edited inside keeps its extra
-    lines after the markers when they stay valid there, and is refused otherwise.
+    since); what the deck added around it stays in place. A block that is none of them was edited
+    inside, and is refused rather than rewritten.
     """
     candidates = [
         *_legacy_kits().get(template.id, []),
@@ -445,78 +404,43 @@ def _adopt_markers(document: str, template: Template) -> str:
     ]
     head = f"    /* {template.name} \u00b7 layout vocabulary and theme */\n"
     root = _only(_ROOT_RE, document)
-    block = root.group(0)
-    exact = max(
-        (c for c in candidates if c["tokens"] in block),
-        key=lambda c: len(c["tokens"]),
-        default=None,
+    tokens = max(
+        (c["tokens"] for c in candidates if c["tokens"] in root.group(0)), key=len, default=None
     )
-    if exact is not None:
-        block = block.replace(exact["tokens"], _tokens_region(template), 1)
-    else:
-        inner = block[len("    :root {\n") : -len("\n    }")]
-        best = min(candidates, key=lambda c: len(_extras(inner, c["tokens"])))
-        extras = _extras(inner, best["tokens"])
-        if not _valid_tokens(extras):
-            raise KitError(_EDITED)
-        block = (
-            "    :root {\n"
-            + _tokens_region(template)
-            + ("\n" + extras if extras else "")
-            + "\n    }"
-        )
-    document = document[: root.start()] + block + document[root.end() :]
+    if tokens is None:
+        raise KitError(_EDITED)
+    document = (
+        document[: root.start()]
+        + root.group(0).replace(tokens, _tokens_region(template), 1)
+        + document[root.end() :]
+    )
     style = _only(_LEGACY_STYLE_RE, document)
-    text = style.group(0)
-    exact = max(
-        (c for c in candidates if head + c["css"] in text),
-        key=lambda c: len(c["css"]),
-        default=None,
+    css = max(
+        (c["css"] for c in candidates if head + c["css"] in style.group(0)), key=len, default=None
     )
-    if exact is not None:
-        text = text.replace(head + exact["css"], _css_region(template), 1)
-    else:
-        inner = text[len("  <style>\n" + head) : -len("\n  </style>")]
-        best = min(candidates, key=lambda c: len(_extras(inner, c["css"])))
-        extras = _extras(inner, best["css"])
-        if not _valid_css(extras):
-            raise KitError(_EDITED)
-        text = (
-            f"  <style>\n{_css_region(template)}\n{extras}\n  </style>"
-            if extras
-            else (f"  <style>\n{_css_region(template)}\n  </style>")
-        )
-    return document[: style.start()] + text + document[style.end() :]
+    if css is None:
+        raise KitError(_EDITED)
+    block = style.group(0).replace(head + css, _css_region(template), 1)
+    return document[: style.start()] + block + document[style.end() :]
 
 
 def _refresh(
-    document: str,
-    pattern: re.Pattern[str],
-    new_region: str,
-    *,
-    opens: str,
-    closes: str,
-    pristine_for: dict[str, str],
-    valid: object,
+    document: str, pattern: re.Pattern[str], new_region: str, *, kind: str, opens: str, closes: str
 ) -> str:
-    """Replace one kit region by the new theme's; keep the deck's lines of an edited one."""
+    """Replace one kit region by the new theme's; a region edited between its markers refuses."""
     found = _only(pattern, document, opens=opens, closes=closes)
-    theme_id, sha, content = found.group(1), found.group(2), found.group(3)
-    intact = sha == _digest(content) if sha else content == pristine_for.get(theme_id)
-    extras = ""
+    sha, content = found.group(2), found.group(3)
+    intact = sha == _digest(content) if sha else content in _known_texts(kind)
     if not intact:
-        extras = _extras(content, pristine_for.get(theme_id, ""))
-        if not valid(extras):  # type: ignore[operator]
-            raise KitError(_EDITED)
-    tail = f"\n{extras}" if extras else ""
-    return document[: found.start()] + new_region + tail + document[found.end() :]
+        raise KitError(_EDITED)
+    return document[: found.start()] + new_region + document[found.end() :]
 
 
 def restyle_deck(document: str, template_id: str) -> str:
     """The deck with its theme swapped; the kit's regions and fonts change, all else stays.
 
-    :raises KitError: for an unknown theme, or a deck whose kit regions cannot be found exactly
-        or were edited in a way that cannot be kept; it is then restyled by asking the Muse.
+    :raises KitError: for an unknown theme, a deck whose kit regions cannot be found exactly, or
+        one edited between the markers; it is then restyled by asking the Muse.
     """
     template = templates().get(template_id)
     if template is None:
@@ -530,19 +454,17 @@ def restyle_deck(document: str, template_id: str) -> str:
         document,
         _TOKENS_RE,
         _tokens_region(template),
+        kind="tokens",
         opens="/* nova:theme-tokens id=",
         closes="/* /nova:theme-tokens */",
-        pristine_for={t.id: _tokens_text(t) for t in templates().values()},
-        valid=_valid_tokens,
     )
     out = _refresh(
         out,
         _CSS_RE,
         _css_region(template),
+        kind="css",
         opens="/* nova:theme id=",
         closes="/* /nova:theme */",
-        pristine_for={t.id: _css_text(t) for t in templates().values()},
-        valid=_valid_css,
     )
-    fonts = _only(_FONTS_RE, out, opens="<style data-nova-fonts>")
+    fonts = _only(_FONTS_RE, out)
     return out[: fonts.start()] + _fonts_block(template_id) + out[fonts.end() :]

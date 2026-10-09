@@ -248,6 +248,7 @@ export function DeckViewer({
       {themeOpen && artifact && !presenting ? (
         <DeckThemePicker
           deckKey={title}
+          frameRef={frame}
           artifact={artifact}
           onEdited={onEdited}
           themesSource={themesSource}

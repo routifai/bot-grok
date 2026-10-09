@@ -54,6 +54,7 @@ export function DeckThemePicker({
   themesSource = defaultThemes,
   themeSource = defaultCurrent,
   editSource = defaultEdit,
+  frameRef,
 }: {
   deckKey: string;
   artifact: { id: string; version: number };
@@ -61,6 +62,8 @@ export function DeckThemePicker({
   themesSource?: DeckThemesSource;
   themeSource?: DeckThemeSource;
   editSource?: DeckEditSource;
+  /** The deck's frame: only its ready message brings the keyboard back to the gallery. */
+  frameRef?: React.RefObject<HTMLIFrameElement | null>;
 }) {
   const { t } = useLingui();
   const [themes, setThemes] = useState<DeckTheme[] | null>(null);
@@ -168,6 +171,7 @@ export function DeckThemePicker({
   // ready; bring it back to the gallery so Escape and the arrows keep working.
   useEffect(() => {
     const onReady = (event: MessageEvent) => {
+      if (!frameRef?.current || event.source !== frameRef.current.contentWindow) return;
       const type = (event.data as { type?: unknown } | null)?.type;
       if (type !== "nova:deck-ready" && type !== "nova:edit-ready") return;
       window.requestAnimationFrame(() => {
@@ -178,7 +182,7 @@ export function DeckThemePicker({
     };
     window.addEventListener("message", onReady);
     return () => window.removeEventListener("message", onReady);
-  }, []);
+  }, [frameRef]);
 
   const categoryLabel: Record<(typeof CATEGORY_ORDER)[number], string> = {
     professional: t`Professional`,

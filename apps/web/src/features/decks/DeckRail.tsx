@@ -5,6 +5,10 @@ import { useState } from "react";
 import { DeckThumb } from "./DeckThumb";
 import type { DeckSlide } from "./deck-model";
 
+/** The slim strip and the opened drawer, in px (the drawer opens over the stage). */
+export const RAIL_SLIM_W = 60;
+export const RAIL_OPEN_W = 148;
+
 /**
  * The slide rail. In view mode it is a plain column of thumbnails. In edit mode it is a slim strip
  * of small thumbnails that takes almost no room; hovering it, focusing into it or pressing the

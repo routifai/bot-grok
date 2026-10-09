@@ -235,6 +235,7 @@
   }
   // Where the label chip goes: above the selection, else below it, at its left or right end, the
   // first spot that stays on screen and covers no other text of the slide.
+  var chipInset = 0;
   function chipSpot(rect, el) {
     var h = 26;
     var w = 230;
@@ -246,8 +247,9 @@
         others.push(o.getBoundingClientRect());
       });
     }
-    // Keep clear of the slide rail's drawer, which opens over the stage's left edge.
-    var left = Math.max(96, rect.left);
+    // Keep clear of the slide rail's drawer, which opens over the stage's left edge (the host
+    // says how far in).
+    var left = Math.max(chipInset, rect.left);
     var right = Math.max(0, Math.min(rect.right - w, window.innerWidth - w));
     var spots = [
       { left: left, top: rect.top - h },
@@ -567,6 +569,9 @@
       });
       repaint();
       postSelection();
+    } else if (d.type === "nova:edit-chip-inset" && typeof d.left === "number") {
+      chipInset = d.left >= 0 && d.left <= 400 ? d.left : 0;
+      repaint();
     } else if (d.type === "nova:edit-text-finish") {
       finishEdit(d.commit !== false);
     }
