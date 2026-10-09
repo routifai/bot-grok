@@ -6,6 +6,7 @@ import { computerRouter } from "./routers/computer.js";
 import { connectionsRouter } from "./routers/connections.js";
 import type { RouterDeps } from "./routers/context.js";
 import { createRouterContext } from "./routers/context.js";
+import { engineModelsRouter } from "./routers/engine-models.js";
 import { feedRouter } from "./routers/feed.js";
 import { goalsRouter } from "./routers/goals.js";
 import { integrationsRouter } from "./routers/integrations.js";
@@ -29,6 +30,7 @@ export function createRouter(deps: RouterDeps) {
     ...artifactsRouter(c),
     ...botsRouter(c),
     ...computerRouter(c),
+    ...engineModelsRouter(c),
     ...connectionsRouter(c),
     ...feedRouter(c),
     ...goalsRouter(c),

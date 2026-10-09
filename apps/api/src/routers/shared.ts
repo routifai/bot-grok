@@ -2,6 +2,8 @@ import type { AdapterContext } from "@nova/adapter-kit";
 import type { Actor, Me } from "@nova/contracts";
 import { findDefaultModelCredential } from "@nova/db";
 
+import { engineComputerClient } from "../engine-computer.js";
+import { engineModelsStatus } from "../engine-models.js";
 import type { RouterDeps } from "./context.js";
 
 export const THREAD_MESSAGE_PAGE_SIZE = 100;
@@ -42,7 +44,7 @@ export async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     name: user.name,
     spaceId: actor.spaceId,
     isDeploymentOwner: actor.isDeploymentOwner,
-    needsModel: setup.needsModel,
+    needsModel: await needsModelFor(deps, actor, setup.needsModel),
     defaultProvider:
       setup.credential?.provider ??
       setup.settings?.defaultModelProvider ??
@@ -57,16 +59,31 @@ export async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
   };
 }
 
+/** On the engine, whether the person can run a model is the engine's answer (their own key or
+ * the organization's); if it cannot be asked, nothing blocks the person. */
+async function needsModelFor(deps: RouterDeps, actor: Actor, fallback: boolean): Promise<boolean> {
+  const client = engineComputerClient(actor);
+  if (!client) return fallback;
+  try {
+    return !(await engineModelsStatus(deps, client, actor)).ready;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function modelSetup(deps: RouterDeps, actor: Actor) {
   const [credential, settings] = await Promise.all([
     findDefaultModelCredential(deps.prisma, actor),
     deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
   ]);
   const hasDeployment = Boolean(deps.env.deploymentModelKey);
+  // On the engine a missing key is the engine's refusal at the turn (`model_key_required`,
+  // which the Conversation turns into "Add your API key"), not a gate here.
+  const onEngine = engineComputerClient(actor) !== undefined;
   return {
     credential,
     settings,
-    needsModel: deps.env.agentRuntime !== "scripted" && !credential && !hasDeployment,
+    needsModel: !onEngine && deps.env.agentRuntime !== "scripted" && !credential && !hasDeployment,
   };
 }
 

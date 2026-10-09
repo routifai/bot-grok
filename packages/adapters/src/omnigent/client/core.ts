@@ -66,10 +66,23 @@ export function omnigentHeaders(
  * parses as the documented `{error: {code, message}}` shape. */
 export class OmnigentApiError extends Error {
   code: string | undefined;
-  constructor(message: string, code: string | undefined) {
+  /** The engine's own `error.message`, redacted. Only for the few validation errors whose text
+   * is written for the person (a key the provider rejected); never shown by default. */
+  detail: string | undefined;
+  constructor(message: string, code: string | undefined, detail?: string) {
     super(message);
     this.name = "OmnigentApiError";
     this.code = code;
+    this.detail = detail;
+  }
+}
+
+function errorMessageFromBody(raw: string): string | undefined {
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: unknown } };
+    return typeof parsed.error?.message === "string" ? parsed.error.message : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -102,7 +115,12 @@ export async function throwOnError(
     const raw = await response.text().catch(() => "");
     const code = errorCodeFromBody(raw);
     const body = secrets ? redactSecrets(raw, secrets).slice(0, 500) : "";
-    throw new OmnigentApiError(`omnigent ${what} failed (${response.status}): ${body}`, code);
+    const detail = secrets ? errorMessageFromBody(redactSecrets(raw, secrets)) : undefined;
+    throw new OmnigentApiError(
+      `omnigent ${what} failed (${response.status}): ${body}`,
+      code,
+      detail?.slice(0, 300),
+    );
   }
   return response;
 }
@@ -115,6 +133,11 @@ const ERROR_COPY: Record<string, string> = {
   muse_already_set: "You already have a Conversation here.",
   muse_tenant_mismatch: "This Conversation belongs to another space.",
   not_a_super_chat: "This chat can't be your Conversation.",
+  model_key_required: "Add your API key to continue.",
+  model_not_supported: "This model isn't available. Pick another.",
+  model_budget_exhausted: "You've reached your monthly model budget.",
+  model_provider_unreachable: "Couldn't reach the model provider. Try again.",
+  account_suspended: "Your account is paused. Contact your admin.",
 };
 
 /** Short client copy for an engine error, or `undefined` when its code has none. */
