@@ -17,6 +17,7 @@ import react from "@vitejs/plugin-react";
 import type { PreviewServer, ViteDevServer } from "vite";
 import { defineConfig, loadEnv } from "vite";
 import { resolveScreenProxySecret } from "../../packages/core/src/secrets-guard.ts";
+import { apiProxy } from "./src/api-proxy.js";
 import { collectNovncHtml, injectScreenLifecycle, MAX_NOVNC_HTML_BYTES } from "./src/novnc-html.js";
 import {
   checkNovncTarget,
@@ -351,10 +352,10 @@ export default defineConfig(({ mode }) => {
       port: webPort,
       strictPort: true,
       proxy: {
-        "/api": { target: api, changeOrigin: true },
-        "/rpc": { target: api, changeOrigin: true },
+        "/api": apiProxy(api),
+        "/rpc": apiProxy(api),
         // Published mini apps (`/apps/<slug>`); the API sets their sandbox headers.
-        "^/apps/": { target: api, changeOrigin: true },
+        "^/apps/": apiProxy(api),
       },
     },
     preview: {
@@ -362,10 +363,10 @@ export default defineConfig(({ mode }) => {
       port: Number(process.env.WEB_PORT ?? 5173),
       allowedHosts: [previewHost],
       proxy: {
-        "/api": { target: api, changeOrigin: true },
-        "/rpc": { target: api, changeOrigin: true },
+        "/api": apiProxy(api),
+        "/rpc": apiProxy(api),
         // Published mini apps (`/apps/<slug>`); the API sets their sandbox headers.
-        "^/apps/": { target: api, changeOrigin: true },
+        "^/apps/": apiProxy(api),
       },
     },
   };

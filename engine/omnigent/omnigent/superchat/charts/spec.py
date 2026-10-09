@@ -319,6 +319,98 @@ class DisplayChartInput(ChartSpec):
     )
 
 
+#: Most KPI tiles and charts one dashboard holds.
+MAX_DASHBOARD_KPIS = 6
+MAX_DASHBOARD_CHARTS = 12
+
+
+class DashboardKpi(BaseModel):
+    """One KPI tile: a headline number read from a result file."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, description="What the number is, e.g. 'Total revenue'.")
+    series: list[SeriesConfig] = Field(
+        min_length=1,
+        max_length=3,
+        description="The column(s) whose latest value is shown (usually one).",
+    )
+    x_axis_key: str | None = Field(
+        default=None,
+        description="Optional: the time column, when comparison_mode compares periods.",
+    )
+    comparison_mode: Literal["percentage", "variation", "absolute", "none"] | None = Field(
+        default=None,
+        description=(
+            "Shows a change pill comparing the latest value to the previous row. Requires 2+ "
+            "time-ordered rows (oldest -> newest)."
+        ),
+    )
+    source: ChartSource
+
+    def chart_fields(self) -> dict[str, Any]:
+        """The tile as a ``kpi_card`` chart spec (without its source)."""
+        return {"chart_type": "kpi_card", **self.model_dump(exclude={"source"}, exclude_none=True)}
+
+
+class DashboardChart(ChartSpec):
+    """One chart on a dashboard: the ``display_chart`` spec and its result file."""
+
+    source: ChartSource
+    wide: bool | None = Field(
+        default=None,
+        description=(
+            "Give this chart a whole row (e.g. the main trend over time). Leave unset for a "
+            "half-width chart beside another."
+        ),
+    )
+
+    def chart_fields(self) -> dict[str, Any]:
+        """The chart's spec (without its source and layout)."""
+        return self.model_dump(exclude={"source", "wide"})
+
+    @model_validator(mode="after")
+    def _not_a_kpi(self) -> DashboardChart:
+        if self.chart_type == "kpi_card":
+            raise ValueError("Put a kpi_card in `kpis`, not in `charts`")
+        return self
+
+
+class DisplayDashboardInput(BaseModel):
+    """The whole ``display_dashboard`` call: KPI tiles and charts shown together as one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, description="The dashboard's title, e.g. 'Sales 2026'.")
+    kpis: list[DashboardKpi] = Field(
+        default_factory=list,
+        max_length=MAX_DASHBOARD_KPIS,
+        description="Optional headline numbers shown as tiles in a row above the charts.",
+    )
+    charts: list[DashboardChart] = Field(
+        min_length=1,
+        max_length=MAX_DASHBOARD_CHARTS,
+        description=(
+            "The charts, in reading order: the most important first. Each reads its own result "
+            "file, like display_chart."
+        ),
+    )
+    layout: Literal["grid", "column"] | None = Field(
+        default=None,
+        description=(
+            'How the charts are arranged: "grid" (default, two per row where there is room) or '
+            '"column" (one per row, for a few wide time series).'
+        ),
+    )
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Optional short file name. Reuse the name of a dashboard you already displayed to "
+            "save a new version of it instead of a new dashboard."
+        ),
+    )
+
+
 def _simplify(node: Any, defs: dict[str, Any]) -> Any:
     """Inline ``$ref``s, drop ``title``s and fold ``anyOf: [X, null]`` into ``X``."""
     if isinstance(node, list):
@@ -345,9 +437,18 @@ def _simplify(node: Any, defs: dict[str, Any]) -> Any:
     return out
 
 
-def display_chart_parameters() -> dict[str, Any]:
-    """The tool's JSON schema: the pydantic model, with refs inlined for the provider."""
-    raw = DisplayChartInput.model_json_schema()
+def _parameters(model: type[BaseModel]) -> dict[str, Any]:
+    raw = model.model_json_schema()
     schema = _simplify(raw, raw.get("$defs", {}))
     schema["additionalProperties"] = False
     return schema  # type: ignore[no-any-return]
+
+
+def display_chart_parameters() -> dict[str, Any]:
+    """The tool's JSON schema: the pydantic model, with refs inlined for the provider."""
+    return _parameters(DisplayChartInput)
+
+
+def display_dashboard_parameters() -> dict[str, Any]:
+    """The ``display_dashboard`` JSON schema, refs inlined like ``display_chart``'s."""
+    return _parameters(DisplayDashboardInput)

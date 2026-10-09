@@ -6,11 +6,11 @@ import {
   ChartLegendContent,
   ChartTooltipContent,
   computeKpiComparison,
-  defaultColorFor,
   formatChartValue,
   isPercentStackedChartType,
   Legend,
   labelize,
+  paletteColor,
   prepareChart,
   ResponsiveContainer,
   resolveDataKey,
@@ -83,12 +83,16 @@ export function sourceCaption(source: ChartDocument["source"], dated: boolean): 
     : t`Source: ${source.file} (first ${source.rows} rows)`;
 }
 
-function configFor(document: Pick<ChartDocument, "spec" | "data">, categories: string[]) {
+function configFor(
+  document: Pick<ChartDocument, "spec" | "data">,
+  categories: string[],
+  palette?: readonly string[],
+) {
   const config: ChartConfig = {};
   document.spec.series.forEach((series, index) => {
     config[series.data_key] = {
       label: series.label ?? series.data_key,
-      color: series.color ?? defaultColorFor(series.data_key, index),
+      color: series.color ?? paletteColor(palette, series.data_key, index),
       isTotal: series.is_total,
       valueFormat: series.value_format,
     };
@@ -106,7 +110,7 @@ function configFor(document: Pick<ChartDocument, "spec" | "data">, categories: s
             <span className="ms-1.5 text-muted-foreground/70 tabular-nums">{share}</span>
           </>
         ),
-      color: defaultColorFor(category, index),
+      color: paletteColor(palette, category, index),
     };
   });
   return config;
@@ -128,19 +132,22 @@ function pieShares({ spec, data }: Pick<ChartDocument, "spec" | "data">): Map<st
 
 /**
  * A saved chart: its title, the interactive chart (hover tooltip, legend) in the Nova tokens, and
- * the source line. `height` is the plot's height in px, or `"fill"` to use the parent's.
+ * the source line. `height` is the plot's height in px, or `"fill"` to use the parent's;
+ * `palette` colors the series that have no color of their own.
  */
 export function ChartView({
   document,
   height = 320,
   showTitle = true,
   showSource = true,
+  palette,
   className,
 }: {
   document: Pick<ChartDocument, "spec" | "data" | "source">;
   height?: number | "fill";
   showTitle?: boolean;
   showSource?: boolean;
+  palette?: readonly string[];
   className?: string;
 }) {
   const { spec, data, source } = document;
@@ -183,6 +190,7 @@ export function ChartView({
       height: 320,
       renderTitle: false,
       idPrefix,
+      palette,
       margin: { top: 8, right: hasRight ? 8 : 16, bottom: 4, left: 0 },
       children:
         spec.chart_type === "kpi_card"
@@ -221,12 +229,12 @@ export function ChartView({
     formatLabel = prepared.formatLabel;
     const categories = prepared.legend.map((entry) => entry.label);
     return { prepared, categories };
-  }, [spec, data, idPrefix, width, hidden, toggle, toggleable]);
+  }, [spec, data, idPrefix, width, hidden, toggle, toggleable, palette]);
 
   const { prepared, categories } = plotted;
   const config = useMemo(
-    () => configFor({ spec, data }, isPieType(spec) ? categories : []),
-    [spec, data, categories],
+    () => configFor({ spec, data }, isPieType(spec) ? categories : [], palette),
+    [spec, data, categories, palette],
   );
   const caption = sourceCaption(source, spec.x_axis_type === "date");
 

@@ -1,4 +1,4 @@
-"""Registration of the charts primitive: the ``display_chart`` tool."""
+"""Registration of the charts primitive: the ``display_chart`` and ``display_dashboard`` tools."""
 
 from __future__ import annotations
 
@@ -6,8 +6,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.context.labels import is_superside_chat
-from omnigent.superchat.charts.handlers import handle_chart_tool
-from omnigent.superchat.charts.tools import CHART_TOOL_NAMES
+from omnigent.superchat.charts.handlers import handle_chart_tool, handle_dashboard_tool
 from omnigent.superchat.feature import Feature, ToolManagerCtx
 
 if TYPE_CHECKING:
@@ -16,15 +15,15 @@ if TYPE_CHECKING:
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
     """Offered to the Super Chat and to Helpers alike (a Helper saves under its parent)."""
-    from omnigent.superchat.charts.tools import DisplayChartTool
+    from omnigent.superchat.charts.tools import DisplayChartTool, DisplayDashboardTool
 
     if not is_superside_chat(labels):
         return []
-    return [DisplayChartTool()]
+    return [DisplayChartTool(), DisplayDashboardTool()]
 
 
 CHARTS_FEATURE = Feature(
     name="charts",
     tools=_tools,
-    handlers=dict.fromkeys(CHART_TOOL_NAMES, handle_chart_tool),
+    handlers={"display_chart": handle_chart_tool, "display_dashboard": handle_dashboard_tool},
 )

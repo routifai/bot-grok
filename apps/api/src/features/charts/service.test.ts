@@ -99,6 +99,16 @@ describe("engineChartThumbnail", () => {
     expect(render).not.toHaveBeenCalled();
   });
 
+  it("draws a dashboard as its first chart", async () => {
+    const first = { ...doc, spec: { ...doc.spec, title: "First" } };
+    const dashboard = { version: 1, title: "D", kpis: [], charts: [first, doc] };
+    adapters.meta.mockResolvedValue({ name: "d.dashboard.json", version: 1 });
+    adapters.content.mockResolvedValue(new TextEncoder().encode(JSON.stringify(dashboard)));
+    const render = vi.fn().mockResolvedValue(image);
+    await engineChartThumbnail(deps, client, actor, input("dash"), render);
+    expect(render.mock.calls[0]?.[0].document.spec.title).toBe("First");
+  });
+
   it("hands the renderer a thumbnail-sized document", async () => {
     const big = { ...doc, data: Array.from({ length: 5000 }, (_, i) => ({ k: String(i), v: i })) };
     adapters.content.mockResolvedValue(new TextEncoder().encode(JSON.stringify(big)));

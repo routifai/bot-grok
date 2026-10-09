@@ -5,7 +5,12 @@ import { Button, cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@no
 import { BarChart3, Maximize2, X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useArtifactPanel } from "../../components/cards/context";
-import { type ChartDocumentState, cachedChartDocument, loadChartDocument } from "./ChartArtifact";
+import {
+  type ChartDocumentState,
+  cachedChartDocument,
+  loadChartDocument,
+  settled,
+} from "./ChartArtifact";
 import { ChartView, KpiValues, sourceCaption } from "./ChartView";
 
 /** A chart the Muse showed (`display_chart`): the saved `*.chart.json` artifact a message holds. */
@@ -47,10 +52,15 @@ const SINGLE_HEIGHT = 300;
 const GRID_HEIGHT = 260;
 const EXPANDED_HEIGHT = 460;
 
-const FRAME = "min-w-0 rounded-2xl border border-border bg-card text-card-foreground";
+export const FRAME = "min-w-0 rounded-2xl border border-border bg-card text-card-foreground";
 
-/** The documents of several charts, loaded together so the set lays out once, not chart by chart. */
-function useChartDocuments(charts: readonly ChartRef[]): ChartDocumentState[] {
+/**
+ * The documents of several charts, loaded together so the set lays out once, not chart by chart.
+ * Every load settles (a failed or unanswered request is an error), so the set never waits forever;
+ * `retry` loads the ones that failed again.
+ */
+function useChartDocuments(charts: readonly ChartRef[]): [ChartDocumentState[], () => void] {
+  const [attempt, setAttempt] = useState(0);
   const key = charts.map((chart) => `${chart.artifactId}:${chart.version ?? ""}`).join(",");
   const initial = () =>
     charts.map((chart): ChartDocumentState => {
@@ -62,18 +72,13 @@ function useChartDocuments(charts: readonly ChartRef[]): ChartDocumentState[] {
     let cancelled = false;
     setStates(initial());
     void Promise.all(
-      charts.map((chart) =>
-        loadChartDocument(chart.artifactId, chart.version).then(
-          (doc): ChartDocumentState => (doc ? { status: "ready", doc } : { status: "failed" }),
-          (): ChartDocumentState => ({ status: "failed" }),
-        ),
-      ),
+      charts.map((chart) => settled(loadChartDocument(chart.artifactId, chart.version))),
     ).then((next) => !cancelled && setStates(next));
     return () => {
       cancelled = true;
     };
-  }, [key]);
-  return states;
+  }, [key, attempt]);
+  return [states, () => setAttempt((n) => n + 1)];
 }
 
 /** Opens a chart large: in the artifact panel when the page has one, else in a dialog. */
@@ -200,14 +205,30 @@ function ChartSkeleton({ chart, height }: { chart: ChartRef; height: number }) {
   );
 }
 
-/** A chart whose file is not a chart document: its name, and Open for the panel's own view. */
-function UnreadableChart({ chart }: { chart: ChartRef }) {
+/**
+ * A chart or dashboard that did not load: its name, then Retry when the request failed, or Open
+ * (the panel's own view of the file) when the file is not readable as one.
+ */
+export function ChartLoadProblem({
+  artifactId,
+  name,
+  messageId,
+  onRetry,
+  unavailable,
+}: {
+  artifactId: string;
+  name: string;
+  messageId?: string;
+  onRetry?: () => void;
+  /** What to say when the file is not readable ("Chart unavailable"). */
+  unavailable: string;
+}) {
   const { t } = useLingui();
   const panel = useArtifactPanel();
-  const name = chart.title ?? chart.name.replace(/\.chart\.json$/i, "");
   return (
     <div
-      data-message-id={chart.messageId}
+      data-message-id={messageId}
+      data-chart-state={onRetry ? "error" : "failed"}
       className={cn(FRAME, "flex items-center gap-3 px-4 py-3 text-[13.5px]")}
     >
       <BarChart3
@@ -219,13 +240,30 @@ function UnreadableChart({ chart }: { chart: ChartRef }) {
       <span className="min-w-0 flex-1 truncate" dir="auto">
         {name}
       </span>
-      <span className="text-muted-foreground">{t`Chart unavailable`}</span>
-      {panel ? (
-        <Button variant="outline" size="sm" onClick={() => panel.open(chart.artifactId)}>
+      <span className="text-muted-foreground">{onRetry ? t`Couldn't load` : unavailable}</span>
+      {onRetry ? (
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          {t`Retry`}
+        </Button>
+      ) : panel ? (
+        <Button variant="outline" size="sm" onClick={() => panel.open(artifactId)}>
           {t`Open`}
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function UnreadableChart({ chart, onRetry }: { chart: ChartRef; onRetry?: () => void }) {
+  const { t } = useLingui();
+  return (
+    <ChartLoadProblem
+      artifactId={chart.artifactId}
+      name={chart.title ?? chart.name.replace(/\.chart\.json$/i, "")}
+      messageId={chart.messageId}
+      onRetry={onRetry}
+      unavailable={t`Chart unavailable`}
+    />
   );
 }
 
@@ -239,7 +277,8 @@ const isKpi = (item: Item) =>
 function segmentsOf(items: Item[]): Segment[] {
   const segments: Segment[] = [];
   for (const item of items) {
-    const kind = item.state.status === "failed" ? "files" : isKpi(item) ? "kpis" : "charts";
+    const failed = item.state.status === "failed" || item.state.status === "error";
+    const kind = failed ? "files" : isKpi(item) ? "kpis" : "charts";
     const last = segments.at(-1);
     if (last?.kind === kind) last.items.push(item);
     else segments.push({ kind, items: [item] });
@@ -258,7 +297,7 @@ export function ChartGallery({ messages }: { messages: readonly ThreadMessage[] 
 }
 
 function ChartSet({ charts }: { charts: readonly ChartRef[] }) {
-  const states = useChartDocuments(charts);
+  const [states, retry] = useChartDocuments(charts);
   const items = charts.map((chart, index) => ({
     chart,
     state: states[index] ?? ({ status: "loading" } as const),
@@ -287,8 +326,12 @@ function ChartSet({ charts }: { charts: readonly ChartRef[] }) {
       {segmentsOf(items).map((segment) => {
         const first = segment.items[0]?.chart.messageId;
         if (segment.kind === "files") {
-          return segment.items.map(({ chart }) => (
-            <UnreadableChart key={chart.messageId} chart={chart} />
+          return segment.items.map(({ chart, state }) => (
+            <UnreadableChart
+              key={chart.messageId}
+              chart={chart}
+              onRetry={state.status === "error" ? retry : undefined}
+            />
           ));
         }
         if (segment.kind === "kpis") {

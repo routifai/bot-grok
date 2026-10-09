@@ -200,6 +200,17 @@ def test_display_chart_becomes_a_file_block() -> None:
     )
 
 
+def test_display_dashboard_becomes_one_file_block() -> None:
+    saved = {
+        "type": "artifact", "id": "art_d", "name": "sales.dashboard.json", "kind": "json",
+        "size": 900, "title": "Sales", "dashboard": {"kpis": 1, "charts": ["bar", "line"]},
+    }  # fmt: skip
+    [message] = project_items([_call("d1", "display_dashboard", "kd"), _out("do", "kd", saved)])
+    [block] = message["blocks"]
+    assert block["type"] == "file" and block["artifact_id"] == "art_d"
+    assert block["name"] == "sales.dashboard.json" and block["title"] == "Sales"
+
+
 def test_delivered_artifact_is_a_user_file_block_and_other_resources_show_nothing() -> None:
     saved = {"type": "artifact", "id": "art_3", "name": "q3.pdf", "kind": "pdf", "size": 7}
     event = {

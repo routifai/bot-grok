@@ -860,6 +860,9 @@ msgstr "Close chart"
 msgid "Close computer"
 msgstr "Close computer"
 
+msgid "Close dashboard"
+msgstr "Close dashboard"
+
 msgid "Close image preview"
 msgstr "Close image preview"
 
@@ -1411,6 +1414,9 @@ msgstr "Could not update reaction"
 msgid "Couldn't index"
 msgstr "Couldn't index"
 
+msgid "Couldn't load"
+msgstr "Couldn't load"
+
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
 
@@ -1517,6 +1523,12 @@ msgstr "Daily spending limit"
 
 msgid "Dark"
 msgstr "Dark"
+
+msgid "Dashboard"
+msgstr "Dashboard"
+
+msgid "Dashboard unavailable"
+msgstr "Dashboard unavailable"
 
 msgid "day"
 msgstr "day"
@@ -2931,7 +2943,7 @@ msgstr "Open · {0}"
 
 #. placeholder {0}: artifact.name
 #. placeholder {0}: data.name
-#. placeholder {0}: props.name
+#. placeholder {0}: doc.title
 msgid "Open {0}"
 msgstr "Open {0}"
 

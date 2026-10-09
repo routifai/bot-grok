@@ -6,64 +6,114 @@ import { decodeArtifactBase64 } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
 import { ChartView } from "./ChartView";
 
-const documents = new Map<string, ChartDocument>();
+/** A request for a chart's document that gets no answer in this long fails, so it can be retried. */
+const LOAD_TIMEOUT_MS = 20_000;
 
-export type ChartDocumentState =
-  | { status: "loading" }
-  | { status: "failed" }
-  | { status: "ready"; doc: ChartDocument };
+const documents = new Map<string, unknown>();
+const loading = new Map<string, Promise<unknown>>();
 
 /**
- * A chart artifact's document, fetched once per version and kept for the session; null when the
- * bytes are not a chart document.
+ * Loading an artifact document: "failed" when its bytes are not that kind of document, "error"
+ * when the request for them failed (offline, the API restarting): that one can be retried.
  */
-export function loadChartDocument(
+export type DocumentState<T> =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "error" }
+  | { status: "ready"; doc: T };
+export type ChartDocumentState = DocumentState<ChartDocument>;
+
+const cacheKey = (artifactId: string, version: number | undefined) =>
+  `${artifactId}:${version ?? ""}`;
+
+/**
+ * An artifact's document, fetched once per version and kept for the session; null when the bytes
+ * do not parse. Rejects when the request fails or gets no answer, and is fetched again next time.
+ */
+export function loadArtifactDocument<T>(
   artifactId: string,
   version: number | undefined,
+  parse: (bytes: Uint8Array) => T | null,
   bytes?: Uint8Array,
-): Promise<ChartDocument | null> {
-  const key = `${artifactId}:${version ?? ""}`;
-  const cached = documents.get(key);
-  if (cached) return Promise.resolve(cached);
-  const load = bytes
+): Promise<T | null> {
+  const key = cacheKey(artifactId, version);
+  if (documents.has(key)) return Promise.resolve(documents.get(key) as T);
+  const inflight = loading.get(key);
+  if (inflight) return inflight as Promise<T | null>;
+  const raw = bytes
     ? Promise.resolve(bytes)
     : rpc.artifacts
-        .getById({ artifactId })
+        .getById({ artifactId }, { signal: AbortSignal.timeout(LOAD_TIMEOUT_MS) })
         .then((artifact) => decodeArtifactBase64(artifact.contentBase64));
-  return load.then((raw) => {
-    const doc = parseChartDocument(raw);
-    if (doc) documents.set(key, doc);
-    return doc;
-  });
+  const load = raw
+    .then((content) => {
+      const doc = parse(content);
+      if (doc) documents.set(key, doc);
+      return doc;
+    })
+    .finally(() => loading.delete(key));
+  loading.set(key, load);
+  return load;
 }
 
 /** The document already loaded for this version, if any (renders without a loading frame). */
-export function cachedChartDocument(artifactId: string, version: number | undefined) {
-  return documents.get(`${artifactId}:${version ?? ""}`);
+export function cachedArtifactDocument<T>(artifactId: string, version: number | undefined) {
+  return documents.get(cacheKey(artifactId, version)) as T | undefined;
 }
 
-/** A chart artifact's document: from its bytes when the panel has them, else fetched once. */
+/** A chart artifact's document; see {@link loadArtifactDocument}. */
+export const loadChartDocument = (artifactId: string, version: number | undefined) =>
+  loadArtifactDocument(artifactId, version, parseChartDocument);
+
+export const cachedChartDocument = (artifactId: string, version: number | undefined) =>
+  cachedArtifactDocument<ChartDocument>(artifactId, version);
+
+/** The state a settled load leaves: ready, unreadable, or a request that failed. */
+export function settled<T>(load: Promise<T | null>): Promise<DocumentState<T>> {
+  return load.then(
+    (doc): DocumentState<T> => (doc ? { status: "ready", doc } : { status: "failed" }),
+    (): DocumentState<T> => ({ status: "error" }),
+  );
+}
+
+/**
+ * An artifact's document: from its bytes when the panel has them, else fetched once. `retry`
+ * fetches again after a failed request.
+ */
+export function useArtifactDocument<T>(
+  artifactId: string,
+  version: number | undefined,
+  parse: (bytes: Uint8Array) => T | null,
+  bytes?: Uint8Array,
+  enabled = true,
+): [DocumentState<T>, () => void] {
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<DocumentState<T>>(() => {
+    const cached = cachedArtifactDocument<T>(artifactId, version);
+    return cached ? { status: "ready", doc: cached } : { status: "loading" };
+  });
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    if (!cachedArtifactDocument(artifactId, version)) setState({ status: "loading" });
+    void settled(loadArtifactDocument(artifactId, version, parse, bytes)).then(
+      (next) => !cancelled && setState(next),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [artifactId, version, bytes, enabled, parse, attempt]);
+  return [state, () => setAttempt((n) => n + 1)];
+}
+
+/** A chart artifact's document; see {@link useArtifactDocument}. */
 export function useChartDocument(
   artifactId: string,
   version: number | undefined,
   bytes?: Uint8Array,
   enabled = true,
 ): ChartDocumentState {
-  const [state, setState] = useState<ChartDocumentState>(() => {
-    const cached = cachedChartDocument(artifactId, version);
-    return cached ? { status: "ready", doc: cached } : { status: "loading" };
-  });
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    loadChartDocument(artifactId, version, bytes)
-      .then((doc) => !cancelled && setState(doc ? { status: "ready", doc } : { status: "failed" }))
-      .catch(() => !cancelled && setState({ status: "failed" }));
-    return () => {
-      cancelled = true;
-    };
-  }, [artifactId, version, bytes, enabled]);
-  return state;
+  return useArtifactDocument(artifactId, version, parseChartDocument, bytes, enabled)[0];
 }
 
 /** The chart in the artifact panel: the whole chart, full width. */
@@ -79,7 +129,7 @@ export function ChartPanelView({
   fallback: React.ReactNode;
 }) {
   const state = useChartDocument(artifactId, version, bytes);
-  if (state.status === "failed") return <>{fallback}</>;
+  if (state.status === "failed" || state.status === "error") return <>{fallback}</>;
   if (state.status === "loading") return null;
   return (
     <div className="h-full overflow-auto p-5">

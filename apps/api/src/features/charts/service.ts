@@ -3,8 +3,13 @@ import {
   getOmnigentArtifact,
   type OmnigentClientConfig,
 } from "@nova/adapters";
-import { parseChartDocument } from "@nova/charts";
-import { type Actor, type ChartThumbnail, isChartArtifactName } from "@nova/contracts";
+import { parseChartDocument, parseDashboardDocument } from "@nova/charts";
+import {
+  type Actor,
+  type ChartThumbnail,
+  isChartArtifactName,
+  isDashboardArtifactName,
+} from "@nova/contracts";
 import { ORPCError } from "@orpc/server";
 import { type EngineArtifactsDeps, emailOf, notFound } from "../artifacts/index.js";
 import { ThumbnailCache } from "./cache.js";
@@ -27,7 +32,8 @@ export type ChartRenderer = (job: RenderJob) => Promise<RenderedChart>;
 const cache = new ThumbnailCache<ChartThumbnail>((thumbnail) => thumbnail.contentBase64.length);
 
 /**
- * A saved chart (`*.chart.json`) drawn as a PNG or SVG, for the Library card and the feed.
+ * A saved chart (`*.chart.json`, or a dashboard's first chart) drawn as a PNG or SVG, for the
+ * Library card and the feed.
  * Authorised by the artifact lookup, cached by (artifact, version, theme, size, format), cut down
  * to a thumbnail's worth of points and drawn off the event loop in a worker thread.
  */
@@ -40,7 +46,8 @@ export async function engineChartThumbnail(
 ): Promise<ChartThumbnail> {
   const email = await emailOf(deps, actor);
   const meta = await getOmnigentArtifact(client, email, input.artifactId).catch(notFound);
-  if (!isChartArtifactName(meta.name)) {
+  const dashboard = isDashboardArtifactName(meta.name);
+  if (!dashboard && !isChartArtifactName(meta.name)) {
     throw new ORPCError("BAD_REQUEST", { message: "That file is not a chart" });
   }
   const key = [
@@ -66,7 +73,10 @@ export async function engineChartThumbnail(
     input.artifactId,
     meta.version,
   ).catch(notFound);
-  const document = parseChartDocument(bytes);
+  // A dashboard's thumbnail is its first chart, the one it leads with.
+  const document = dashboard
+    ? (parseDashboardDocument(bytes)?.charts[0] ?? null)
+    : parseChartDocument(bytes);
   if (!document) throw new ORPCError("BAD_REQUEST", { message: "That chart file is unreadable" });
   try {
     const image = await render({
