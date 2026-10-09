@@ -52,12 +52,11 @@ export async function interruptOmnigentSession(
   await throwOnError(response, "interrupt session", config.secrets);
 }
 
-/** What the engine answers for a posted message: its stored id and how the session took it
- * (`turn`: started a turn; `steer`: offered to the running turn; `queued`: waiting behind it).
- * The session stream then settles it with `session.input.delivery` events carrying `itemId`. */
+/** What the engine answers for a posted message: its stored id, and the runner's number for the
+ * turn it started or joined (`session.status` edges carry the same number). */
 export interface OmnigentPostedMessage {
   itemId: string | undefined;
-  delivery: "turn" | "steer" | "queued" | undefined;
+  turn: number | undefined;
 }
 
 /** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and, optionally, images as `input_image` data URIs. */
@@ -88,13 +87,11 @@ export async function postOmnigentMessage(
   );
   await throwOnError(response, "post message event", config.secrets);
   const body = (await response.json().catch(() => undefined)) as
-    | { item_id?: unknown; delivery?: unknown }
+    | { item_id?: unknown; turn?: unknown }
     | undefined;
-  const delivery = body?.delivery;
   return {
     itemId: typeof body?.item_id === "string" ? body.item_id : undefined,
-    delivery:
-      delivery === "turn" || delivery === "steer" || delivery === "queued" ? delivery : undefined,
+    turn: typeof body?.turn === "number" ? body.turn : undefined,
   };
 }
 

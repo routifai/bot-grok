@@ -197,14 +197,14 @@ describe("omnigent client", () => {
     );
   });
 
-  it("postOmnigentMessage answers with the stored message's id and how the session took it", async () => {
+  it("postOmnigentMessage answers with the stored message's id and the turn it joined", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse({ queued: true, item_id: "msg_9", delivery: "steer" })),
+      vi.fn(async () => jsonResponse({ queued: true, item_id: "msg_9", turn: 4 })),
     );
     expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toEqual({
       itemId: "msg_9",
-      delivery: "steer",
+      turn: 4,
     });
     vi.stubGlobal(
       "fetch",
@@ -212,7 +212,7 @@ describe("omnigent client", () => {
     );
     expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toEqual({
       itemId: undefined,
-      delivery: undefined,
+      turn: undefined,
     });
   });
 

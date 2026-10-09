@@ -50,6 +50,11 @@ export class OmnigentTurnFailure extends Error {}
 
 export const ENGINE_INTERRUPTED_MESSAGE = "Nova was interrupted. Send your message again.";
 
+/** The engine stopped answering: no progress and no word on the turn. Honest about it, never a
+ * "couldn't start". */
+export const ENGINE_NO_ANSWER_MESSAGE =
+  "Nova stopped responding before it finished. Send your message again.";
+
 /** The Computer would not start (the engine's launch failed, or its runner never connected). The
  * engine's own wording names logs and hosts, so the person gets this calm line instead. */
 export const COMPUTER_START_FAILED_MESSAGE =
@@ -89,7 +94,13 @@ export function publicRunError(error: unknown): string {
   if (copy) return copy;
   if (error instanceof OmnigentTurnFailure) return error.message;
   if (isConnectionDrop(error)) return ENGINE_INTERRUPTED_MESSAGE;
+  if (isTimeout(error)) return ENGINE_NO_ANSWER_MESSAGE;
   return ENGINE_FAILED_MESSAGE;
+}
+
+/** A call that ran out of time (an aborted `fetch`, an `AbortSignal.timeout`). */
+function isTimeout(error: unknown): boolean {
+  return error instanceof Error && error.name === "TimeoutError";
 }
 
 export interface OmnigentGatewayDeps {
@@ -423,7 +434,7 @@ export async function readTurnImages(
 
 /** What `sendTurnAndAwaitCompletion` needs to hand the engine messages sent during the turn. */
 export interface SteeringFeed {
-  /** The run whose turn this is; its `run.cancelled` ends the wait. */
+  /** The run whose turn this is; its `run.cancelled` ends the wait (and stops the engine turn). */
   runId: string;
   /** The thread's events from the turn's start: each user message is a reason to claim. */
   signals(signal: AbortSignal): AsyncIterable<{ type: string; runId?: string; payload: unknown }>;
@@ -431,41 +442,21 @@ export interface SteeringFeed {
   claimedAtStart: string[];
   /** Claims the person's new messages for this run; `seenIds` are the ones already handed over. */
   claim(seenIds: string[]): Promise<Array<{ id: string; text: string }>>;
-  /** Called once a turn has read the messages with these steering ids. */
+  /** The engine holds these messages now (it persisted them): a continuation must not resend. */
   forwarded(ids: string[]): Promise<void>;
-  /** Called when no turn will read them: they wait, unclaimed, for the next run. */
+  /** The engine never got them: they wait, unclaimed, for the continuation. */
   release(ids: string[]): Promise<void>;
 }
 
 interface TurnOptions {
   config: OmnigentSuperChatConfig;
   steering?: SteeringFeed;
-  /** Called on each sign of progress (a turn starts, a message is settled). */
+  /** Called while the engine shows the turn is alive, to keep the run's lease. */
   progress?: () => Promise<void>;
 }
 
-/** How many times a dropped engine stream is reopened (an engine restart takes seconds). */
+/** How a dropped engine stream is retried before the run fails (an engine restart takes seconds). */
 const STREAM_REOPEN_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000, 15_000];
-
-/** How a message ended up, per the engine (`session.input.delivery`): `steer`, `turn` and
- * `cancelled` are final, `queued` is not. */
-const FINAL_DELIVERIES: ReadonlySet<string> = new Set(["steer", "turn", "cancelled"]);
-/** A turn the engine is running for one of these, or for a turn they wait behind. */
-const RUNNING_DELIVERIES: ReadonlySet<string> = new Set(["steer", "turn", "queued"]);
-/** Every way an engine turn ends. */
-const TURN_ENDS: ReadonlySet<string> = new Set([
-  "response.completed",
-  "response.cancelled",
-  "response.incomplete",
-]);
-
-/** The engine's account of a message sent to the session (`session.input.delivery`). */
-function deliveryOf(event: { type: string; [key: string]: unknown }) {
-  if (event.type !== "session.input.delivery") return undefined;
-  const data = event.data as { item_id?: unknown; delivered?: unknown } | undefined;
-  if (typeof data?.item_id !== "string" || typeof data.delivered !== "string") return undefined;
-  return { itemId: data.item_id, delivered: data.delivered };
-}
 
 /**
  * What the Computer read of the documents a turn refers to, for the model: each attached PDF,
@@ -505,22 +496,21 @@ export async function readTurnAttachmentContext(
 }
 
 /**
- * Posts the turn's message, then reads the live stream until the engine is done with every
- * message this run handed it, so the run tracks the turn (working row, stop, failure). The reply
- * itself is not kept here: the engine's transcript holds it (ADR 0009).
+ * Posts the turn's message, then follows the engine session until it is idle with nothing
+ * waiting, so the run tracks the turn (working row, stop, failure). The reply itself is not kept
+ * here: the engine's transcript holds it (ADR 0009).
  *
  * The stream is open before the post: the engine's first event (its ready heartbeat) comes once
  * this subscriber is registered, so no event of the turn can be missed.
  *
  * Messages the person sends while the turn runs are posted as they arrive (the thread's own
- * event signal wakes the loop). The engine reports each message exactly once as `steer` (read by
- * the running turn), `turn` (ran as a turn of its own) or `cancelled`, so the run ends when all
- * of its messages are settled and no turn is running: no timers or polling decide it. A
- * message's steering row is deleted once a turn read it, and released for the continuation when
- * none will.
+ * event signal wakes the loop). The engine owns them from there: its runner steers each into the
+ * running turn through the harness's own steer, or runs it right after, and reports `idle` only
+ * once nothing waits. Every post answers with the runner's number for the turn the message
+ * started or joined; the run ends at an `idle` edge for that turn or a later one.
  *
- * A dropped stream (an engine restart) is reopened; the engine's snapshot then says whether the
- * turn is still running, finished, or failed, so the run never waits blind for its deadline.
+ * No fixed deadline: a turn may work as long as the engine says it is. When nothing has happened
+ * for a while, the engine's snapshot is asked; a dropped stream is reopened and asked the same.
  */
 async function sendTurnAndAwaitCompletion(
   client: OmnigentClientConfig,
@@ -530,16 +520,6 @@ async function sendTurnAndAwaitCompletion(
   options: TurnOptions,
 ): Promise<"completed" | "cancelled"> {
   const stop = new AbortController();
-  // Each engine turn gets the full budget: a run spanning several turns is not cut short.
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  const startTurnClock = () => {
-    clearTimeout(deadline);
-    deadline = setTimeout(
-      () => stop.abort(new DOMException("The turn took too long", "TimeoutError")),
-      options.config.turnTimeoutMs,
-    );
-  };
-  startTurnClock();
   const inbox = new Inbox();
   let generation = 0;
   let streamStop: AbortController | undefined;
@@ -551,23 +531,14 @@ async function sendTurnAndAwaitCompletion(
     generation += 1;
     const gen = generation;
     const signal = AbortSignal.any([stop.signal, current.signal]);
-    void pump(
-      streamOmnigentSession(client, email, sessionId, signal),
-      inbox,
-      (event) => ({ kind: "event", event, gen }),
-      gen,
-    );
+    void pump(streamOmnigentSession(client, email, sessionId, signal), inbox, gen);
     return gen;
   };
   const signals = options.steering?.signals(stop.signal);
   if (signals) void pumpSignals(signals, inbox);
   try {
-    return await runTurn(
-      { client, email, sessionId, turnInput, inbox, options, startTurnClock, openStream },
-      stop.signal,
-    );
+    return await runTurn({ client, email, sessionId, turnInput, inbox, options, openStream });
   } finally {
-    clearTimeout(deadline);
     // Aborting ends the HTTP stream and the thread follow; both pumps then stop.
     stop.abort();
   }
@@ -580,9 +551,10 @@ type Inbound =
   | { kind: "signal"; event: ThreadSignal }
   | { kind: "end"; gen: number }
   | { kind: "error"; error: unknown; gen: number }
-  | { kind: "timeout" };
+  | { kind: "quiet" };
 
-/** One ordered queue for everything the turn reacts to: engine events and thread signals. */
+/** One ordered queue for everything the turn reacts to: engine events and thread signals. A
+ * wait with nothing arriving for `quietMs` yields `quiet`. */
 class Inbox {
   private readonly items: Inbound[] = [];
   private waiting: ((item: Inbound) => void) | undefined;
@@ -600,24 +572,30 @@ class Inbox {
     this.items.unshift(item);
   }
 
-  next(): Promise<Inbound> {
+  next(quietMs?: number): Promise<Inbound> {
     const item = this.items.shift();
     if (item) return Promise.resolve(item);
     return new Promise((resolve) => {
-      this.waiting = resolve;
+      const timer =
+        quietMs === undefined
+          ? undefined
+          : setTimeout(() => {
+              if (this.waiting === deliver) this.waiting = undefined;
+              resolve({ kind: "quiet" });
+            }, quietMs);
+      const deliver = (next: Inbound) => {
+        clearTimeout(timer);
+        resolve(next);
+      };
+      this.waiting = deliver;
     });
   }
 }
 
 /** Feeds an engine stream into the inbox; its end or failure is an item too. */
-async function pump(
-  source: AsyncIterable<EngineEvent>,
-  inbox: Inbox,
-  wrap: (value: EngineEvent) => Inbound,
-  gen: number,
-): Promise<void> {
+async function pump(source: AsyncIterable<EngineEvent>, inbox: Inbox, gen: number): Promise<void> {
   try {
-    for await (const value of source) inbox.push(wrap(value));
+    for await (const event of source) inbox.push({ kind: "event", event, gen });
     inbox.push({ kind: "end", gen });
   } catch (error) {
     inbox.push({ kind: "error", error, gen });
@@ -656,62 +634,38 @@ interface TurnContext {
   turnInput: string;
   inbox: Inbox;
   options: TurnOptions;
-  startTurnClock: () => void;
   openStream: () => number;
 }
 
-async function runTurn(ctx: TurnContext, aborted: AbortSignal): Promise<"completed" | "cancelled"> {
+/** The engine's own word on the session: `running`, `waiting` (on helpers or the person),
+ * `idle`, or `failed`. */
+type EngineState = "running" | "waiting" | "idle" | "failed";
+
+async function runTurn(ctx: TurnContext): Promise<"completed" | "cancelled"> {
   const { client, email, sessionId, inbox, options } = ctx;
   const steering = options.steering;
-  /** The engine's ids of the messages this run posted, and which are settled. */
-  const own = new Set<string>();
-  const settled = new Set<string>();
-  /** Steering rows behind each posted engine message, until a turn reads it or none will. */
-  const rowsOf = new Map<string, string[]>();
+  // Asked well within the run's lease, so a quiet but live turn always renews it in time.
+  const quietMs = Math.min(options.config.turnTimeoutMs, options.config.leaseDurationMs / 2);
   const seen: string[] = [...(steering?.claimedAtStart ?? [])];
   /** Signals that came before the stream was live: handled once it is. */
   const held: ThreadSignal[] = [];
-  let turnRunning = false;
-  /** Set once the stream was reopened: deliveries sent in the gap may have been missed. */
-  let missedEvents = false;
-  // The deadline aborts the stream; report it as such rather than as a dropped stream.
-  aborted.addEventListener("abort", () => inbox.push({ kind: "timeout" }), { once: true });
+  /** The latest turn a message of this run started or joined: its `idle` ends the run. */
+  let myTurn: number | undefined;
 
   const progress = () =>
     options.progress?.().catch((error) => {
       getLogger().error("omnigent gateway: could not renew the run lease", error);
     });
-  /** Runs a steering-row update; a database error is logged, never the turn's failure. */
-  const settleRows = async (update: (ids: string[]) => Promise<void>, ids: string[]) => {
-    if (!ids.length) return;
+  /** A steering-row update; a database error is logged, never the turn's failure. */
+  const updateRows = async (update: (ids: string[]) => Promise<void>, ids: string[]) => {
     try {
       await update(ids);
     } catch (error) {
       getLogger().error("omnigent gateway: could not update steering rows", error);
     }
   };
-  const settle = async (itemId: string, delivered: string) => {
-    settled.add(itemId);
-    const rows = rowsOf.get(itemId) ?? [];
-    rowsOf.delete(itemId);
-    if (!steering) return;
-    // Read by a turn: done. Cancelled: no turn read it, the continuation sends it.
-    await settleRows(delivered === "cancelled" ? steering.release : steering.forwarded, rows);
-  };
-  /** The run ends without these messages read: they go to the continuation. */
-  const releaseUnsettled = async () => {
-    if (!steering) return;
-    const rows = [...rowsOf.values()].flat();
-    rowsOf.clear();
-    await settleRows(steering.release, rows);
-  };
-  const track = (posted: OmnigentPostedMessage | undefined, rows: string[]) => {
-    if (!posted?.itemId) {
-      getLogger().error("omnigent gateway: the engine did not identify a posted message");
-      return;
-    }
-    own.add(posted.itemId);
-    if (rows.length) rowsOf.set(posted.itemId, rows);
+  const joined = (posted: OmnigentPostedMessage | undefined) => {
+    if (typeof posted?.turn === "number") myTurn = Math.max(myTurn ?? 0, posted.turn);
   };
 
   const forwardNewMessages = async () => {
@@ -719,20 +673,31 @@ async function runTurn(ctx: TurnContext, aborted: AbortSignal): Promise<"complet
     for (const message of await steering.claim([...seen])) {
       seen.push(message.id);
       try {
-        track(await postTurn(client, email, sessionId, message.text), [message.id]);
+        joined(await postTurn(client, email, sessionId, message.text));
       } catch (error) {
         // Not this run's to fail: the message waits, unclaimed, for the continuation.
         getLogger().error("omnigent gateway: a message sent during the turn was not posted", error);
-        await settleRows(steering.release, [message.id]);
+        await updateRows(steering.release, [message.id]);
+        continue;
       }
+      // Persisted by the engine, whose runner now owns it: never sent again from here.
+      await updateRows(steering.forwarded, [message.id]);
     }
+  };
+
+  /** The engine's snapshot of the session; `undefined` when it cannot be read. */
+  const engineState = async (): Promise<EngineState | undefined> => {
+    const snapshot = await getOmnigentSession(client, email, sessionId).catch(() => undefined);
+    const status = snapshot?.status;
+    if (status === "idle" || status === "failed" || status === "waiting") return status;
+    return status === undefined ? undefined : "running";
   };
 
   /** Waits for a (re)opened stream's ready heartbeat; thread signals meanwhile are held. */
   const awaitReady = async (gen: number): Promise<boolean> => {
     while (true) {
       const item = await inbox.next();
-      if (item.kind === "timeout") throw new OmnigentTurnFailure(CHAT_UNAVAILABLE_MESSAGE);
+      if (item.kind === "quiet") continue;
       if (item.kind === "signal") {
         held.push(item.event);
         continue;
@@ -744,14 +709,12 @@ async function runTurn(ctx: TurnContext, aborted: AbortSignal): Promise<"complet
     }
   };
 
-  /** The stream dropped: reopen it, then let the engine's snapshot say where the turn is. */
-  const recover = async (): Promise<"running" | "idle"> => {
+  /** The stream dropped: reopen it, then ask the engine where the session is. */
+  const reopen = async (): Promise<EngineState> => {
     for (const delay of STREAM_REOPEN_DELAYS_MS) {
       if (await awaitReady(ctx.openStream())) {
-        const snapshot = await getOmnigentSession(client, email, sessionId).catch(() => undefined);
-        if (!snapshot) continue;
-        if (snapshot.status === "failed") throw new OmnigentTurnFailure(ENGINE_INTERRUPTED_MESSAGE);
-        return snapshot.status === "running" || snapshot.status === "waiting" ? "running" : "idle";
+        const state = await engineState();
+        if (state) return state;
       }
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
@@ -759,12 +722,13 @@ async function runTurn(ctx: TurnContext, aborted: AbortSignal): Promise<"complet
     throw new OmnigentTurnFailure(ENGINE_INTERRUPTED_MESSAGE);
   };
 
-  /** No turn runs any more and some deliveries were missed: whatever this run handed the
-   * engine has been answered or is gone; what is unsettled goes to the continuation. */
-  const finishBlind = async (): Promise<"completed"> => {
-    for (const id of own) settled.add(id);
-    await releaseUnsettled();
-    return "completed";
+  /** What the engine's own word on the session means for the run. */
+  const settle = (state: EngineState): "completed" | undefined => {
+    if (state === "failed") throw new OmnigentTurnFailure(ENGINE_INTERRUPTED_MESSAGE);
+    if (state === "idle") return "completed";
+    // Still running, or waiting on helpers or on the person: keep following, keep the lease.
+    void progress();
+    return undefined;
   };
 
   const handleSignal = async (event: ThreadSignal): Promise<"cancelled" | undefined> => {
@@ -781,84 +745,63 @@ async function runTurn(ctx: TurnContext, aborted: AbortSignal): Promise<"complet
   };
 
   // The engine's first event is its ready heartbeat: post only once the stream is live.
-  // A stream that drops before it is live is reopened; nothing is posted until one is.
-  if (!(await awaitReady(ctx.openStream()))) await recover();
-  track(await postTurn(client, email, sessionId, ctx.turnInput), []);
+  if (!(await awaitReady(ctx.openStream()))) await reopen();
+  joined(await postTurn(client, email, sessionId, ctx.turnInput));
 
-  try {
-    while (true) {
-      const signal = held.shift();
-      if (signal) {
-        if ((await handleSignal(signal)) === "cancelled") return "cancelled";
-        continue;
-      }
-      const item = await inbox.next();
-      if (item.kind === "timeout") throw new OmnigentTurnFailure(CHAT_UNAVAILABLE_MESSAGE);
-      if (item.kind === "signal") {
-        if ((await handleSignal(item.event)) === "cancelled") return "cancelled";
-        continue;
-      }
-      if (item.kind === "end" || item.kind === "error") {
-        getLogger().error("omnigent gateway: the engine stream dropped; reopening it", {
-          error: item.kind === "error" ? item.error : undefined,
-        });
-        if ((await recover()) === "running") {
-          turnRunning = true;
-          missedEvents = true;
-          continue;
-        }
-        return finishBlind();
-      }
-      const { event } = item;
-      const delivery = deliveryOf(event);
-      if (delivery) {
-        // Only this run's messages count; others belong to another run or a Side Chat.
-        if (!own.has(delivery.itemId)) continue;
-        if (RUNNING_DELIVERIES.has(delivery.delivered)) turnRunning = true;
-        if (FINAL_DELIVERIES.has(delivery.delivered)) {
-          await settle(delivery.itemId, delivery.delivered);
-          void progress();
-        }
-      } else if (event.type === "response.created") {
-        turnRunning = true;
-        ctx.startTurnClock();
-        void progress();
-        continue;
-      } else if (TURN_ENDS.has(event.type)) {
-        turnRunning = false;
-        if (missedEvents && ![...own].every((id) => settled.has(id))) {
-          // A delivery may have gone by while the stream was down: ask the engine instead.
-          const snapshot = await getOmnigentSession(client, email, sessionId).catch(
-            () => undefined,
-          );
-          if (snapshot?.status !== "running" && snapshot?.status !== "waiting") {
-            return finishBlind();
-          }
-        }
-      } else if (isComputerStartFailure(event)) {
-        getLogger().error("omnigent gateway: the Computer did not start", {
-          type: event.type,
-          error: event.error,
-        });
-        throw new OmnigentTurnFailure(COMPUTER_START_FAILED_MESSAGE);
-      } else if (event.type === "response.failed" || event.type === "response.error") {
-        // Omnigent nests the failure under response.error, like response.completed's output.
-        const response = event.response as { error?: { message?: string } } | undefined;
-        const message =
-          response?.error?.message ||
-          (event.error as { message?: string } | undefined)?.message ||
-          "";
-        if (!message) getLogger().error("omnigent gateway: turn failed without a message");
-        throw new OmnigentTurnFailure(message || CHAT_UNAVAILABLE_MESSAGE);
-      } else {
-        continue;
-      }
-      if (!turnRunning && [...own].every((id) => settled.has(id))) return "completed";
+  while (true) {
+    const signal = held.shift();
+    if (signal) {
+      if ((await handleSignal(signal)) === "cancelled") return "cancelled";
+      continue;
     }
-  } catch (error) {
-    // Failed or timed out: no turn of this run will read what is still unsettled.
-    await releaseUnsettled();
-    throw error;
+    const item = await inbox.next(quietMs);
+    if (item.kind === "signal") {
+      if ((await handleSignal(item.event)) === "cancelled") return "cancelled";
+      continue;
+    }
+    if (item.kind === "quiet") {
+      // Nothing for a while (a long tool, a pending approval): ask the engine, never give up blind.
+      const state = await engineState();
+      if (state === undefined) throw new OmnigentTurnFailure(ENGINE_NO_ANSWER_MESSAGE);
+      if (settle(state) === "completed") return "completed";
+      continue;
+    }
+    if (item.kind === "end" || item.kind === "error") {
+      getLogger().error("omnigent gateway: the engine stream dropped; reopening it", {
+        error: item.kind === "error" ? String(item.error) : undefined,
+      });
+      if (settle(await reopen()) === "completed") return "completed";
+      continue;
+    }
+    const { event } = item;
+    if (event.type === "session.heartbeat") continue;
+    if (event.type === "session.status") {
+      const turn = typeof event.turn === "number" ? event.turn : undefined;
+      if (
+        event.status === "idle" &&
+        (myTurn === undefined || turn === undefined || turn >= myTurn)
+      ) {
+        return "completed";
+      }
+      if (event.status === "running" || event.status === "waiting") void progress();
+    }
+    if (isComputerStartFailure(event)) {
+      getLogger().error("omnigent gateway: the Computer did not start", {
+        type: event.type,
+        error: event.error,
+      });
+      throw new OmnigentTurnFailure(COMPUTER_START_FAILED_MESSAGE);
+    }
+    if (event.type === "response.failed" || event.type === "response.error") {
+      // Omnigent nests the failure under response.error, like response.completed's output.
+      const response = event.response as { error?: { message?: string } } | undefined;
+      const message =
+        response?.error?.message ||
+        (event.error as { message?: string } | undefined)?.message ||
+        "";
+      if (!message) getLogger().error("omnigent gateway: turn failed without a message");
+      throw new OmnigentTurnFailure(message || CHAT_UNAVAILABLE_MESSAGE);
+    }
   }
 }
 

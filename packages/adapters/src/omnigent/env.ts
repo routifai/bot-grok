@@ -14,8 +14,9 @@ import type { OmnigentGatewayDeps } from "./gateway.js";
  * (`OMNIGENT_SUPERCHAT_DEFAULT_AGENT`, ADR 0009), so none is named here.
  */
 export interface OmnigentSuperChatConfig {
-  /** Upper bound on how long one Super Chat turn may run before the gateway gives up and fails
-   * it (env `OMNIGENT_TURN_TIMEOUT_MS`). */
+  /** How long the gateway waits with no sign from the engine before it asks the engine where the
+   * turn is (env `OMNIGENT_TURN_TIMEOUT_MS`). Not a deadline: a turn the engine reports running
+   * or waiting is followed for as long as it lasts. */
   turnTimeoutMs: number;
   /** How long a claimed run's lease is held before another worker invocation may reclaim it
    * (env `OMNIGENT_LEASE_DURATION_MS`). */

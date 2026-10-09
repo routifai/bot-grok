@@ -5,6 +5,7 @@ import {
   COMPUTER_START_FAILED_MESSAGE,
   ENGINE_FAILED_MESSAGE,
   ENGINE_INTERRUPTED_MESSAGE,
+  ENGINE_NO_ANSWER_MESSAGE,
   failRunUnsupportedOnOmnigent,
   publicRunError,
   readTurnAttachmentContext,
@@ -59,10 +60,12 @@ const RUN = {
   taskId: "task-1",
 };
 
-/** An engine stream: the ready heartbeat, these events, then open (an engine never closes it). */
+/** An engine stream: the ready heartbeat, these events, the session's idle, then open (an engine
+ * never closes it). */
 async function* eventsFrom(events: Array<Record<string, unknown>>) {
   yield { type: "session.heartbeat" };
   for (const event of events) yield event;
+  yield { type: "session.status", status: "idle" };
   await new Promise(() => undefined);
 }
 
@@ -581,13 +584,14 @@ function liveStream() {
   };
 }
 
-const delivery = (itemId: string, delivered: string) => ({
-  type: "session.input.delivery",
-  data: { item_id: itemId, delivered },
+const status = (value: string, turn?: number) => ({
+  type: "session.status",
+  status: value,
+  ...(turn === undefined ? {} : { turn }),
 });
 
 const userMessage = { type: "thread.message.created", payload: { role: "user" } };
-const posted = (itemId: string, delivery = "steer") => ({ itemId, delivery });
+const posted = (itemId: string, turn = 1) => ({ itemId, turn });
 const flush = () => vi.advanceTimersByTimeAsync(0);
 
 describe("a message the person sends while the turn runs", () => {
@@ -623,7 +627,7 @@ describe("a message the person sends while the turn runs", () => {
     vi.mocked(events.claimSteering)
       .mockResolvedValueOnce(rows(options.firstClaim ?? []))
       .mockImplementation(async () => rows(batches.shift() ?? []));
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_1", "turn"));
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_1", 5));
     const done = runTurnOnOmnigent(
       { prisma, events, ...DEPS_BASE, ...(options.config ? { config: options.config } : {}) },
       "run-1",
@@ -632,8 +636,7 @@ describe("a message the person sends while the turn runs", () => {
     const start = async () => {
       stream.push({ type: "session.heartbeat" }); // the engine's ready signal
       await flush();
-      stream.push(delivery("msg_1", "turn"));
-      stream.push({ type: "response.created", response: { id: "resp_1" } });
+      stream.push(status("running", 5));
       await flush();
     };
     return { stream, thread, prisma, events, steeringMessage, done, start };
@@ -649,7 +652,7 @@ describe("a message the person sends while the turn runs", () => {
 
   it("holds a message sent before the stream is live until the turn itself is posted", async () => {
     const { stream, thread, done } = setup([[{ id: "s1", text: "and blue" }]]);
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2"));
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 5));
     thread.push(userMessage); // the thread signals first
     await flush();
     expect(postOmnigentMessage).not.toHaveBeenCalled();
@@ -657,9 +660,7 @@ describe("a message the person sends while the turn runs", () => {
     stream.push({ type: "session.heartbeat" });
     await flush();
     expect(postOmnigentMessage.mock.calls.map((call) => call[3])).toEqual(["hello", "and blue"]);
-    stream.push(delivery("msg_1", "turn"));
-    stream.push(delivery("msg_2", "steer"));
-    stream.push({ type: "response.completed", response: { output: [] } });
+    stream.push(status("idle", 5));
     expect(await done).toBe(true);
   });
 
@@ -674,16 +675,16 @@ describe("a message the person sends while the turn runs", () => {
     const claims = vi.mocked(events.claimSteering).mock.calls.map(([input]) => input.seenIds);
     expect(claims).toEqual([[], ["s0"]]);
     expect(postOmnigentMessage).toHaveBeenCalledTimes(1);
-    stream.push({ type: "response.completed", response: { output: [] } });
+    stream.push(status("idle", 5));
     expect(await done).toBe(true);
   });
 
-  it("is posted when the thread signals it, and its row goes once the turn read it", async () => {
+  it("hands a message to the engine once, which owns it from there", async () => {
     const { stream, thread, events, steeringMessage, done, start } = setup([
       [{ id: "s1", text: "just redo the deck again" }],
     ]);
     await start();
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2"));
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 5));
     thread.push(userMessage);
     await flush();
 
@@ -693,73 +694,31 @@ describe("a message the person sends while the turn runs", () => {
       "conv_1",
       "just redo the deck again",
     );
-    // Accepted is not read: the row stays until the engine says a turn took it.
-    expect(steeringMessage.deleteMany).not.toHaveBeenCalled();
-
-    stream.push(delivery("msg_2", "steer"));
-    await flush();
+    // Persisted by the engine: a continuation must never send it again.
     expect(steeringMessage.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["s1"] } } });
-    stream.push({ type: "response.completed", response: { output: [] } });
+    stream.push(status("idle", 5));
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "completed" }),
     );
   });
 
-  it("waits, with no timer, until a queued message's own turn has finished", async () => {
-    const { stream, thread, events, steeringMessage, done, start } = setup([
-      [{ id: "s1", text: "make it blue" }],
-    ]);
+  it("follows the turn a queued message runs as, ignoring an earlier turn's idle", async () => {
+    const { stream, thread, events, done, start } = setup([[{ id: "s1", text: "make it blue" }]]);
     await start();
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", "queued"));
+    // The runner will run it right after turn 5: its answer names turn 6 once it starts it.
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 6));
     thread.push(userMessage);
     await flush();
 
-    stream.push(delivery("msg_2", "queued"));
-    stream.push({ type: "response.completed", response: { output: [] } });
-    await vi.advanceTimersByTimeAsync(60_000);
+    stream.push(status("idle", 5)); // an older edge
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(events.finalizeRun).not.toHaveBeenCalled();
-    expect(steeringMessage.deleteMany).not.toHaveBeenCalled(); // queued is not read
 
-    stream.push(delivery("msg_2", "turn"));
-    stream.push({ type: "response.created", response: { id: "resp_2" } });
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(events.finalizeRun).not.toHaveBeenCalled();
-    expect(steeringMessage.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["s1"] } } });
-
-    stream.push({ type: "response.completed", response: { output: [] } });
+    stream.push(status("running", 6));
+    stream.push(status("idle", 6));
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledTimes(1);
-  });
-
-  it("releases a cancelled message for the continuation and ends when no turn runs", async () => {
-    const { stream, thread, steeringMessage, done, start } = setup([
-      [{ id: "s1", text: "also this" }],
-    ]);
-    await start();
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", "queued"));
-    thread.push(userMessage);
-    await flush();
-    stream.push({ type: "response.cancelled", response: { id: "resp_1" } });
-    await flush();
-    stream.push(delivery("msg_2", "cancelled"));
-    expect(await done).toBe(true);
-    expect(steeringMessage.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["s1"] } },
-      data: { claimedAt: null },
-    });
-    expect(steeringMessage.deleteMany).not.toHaveBeenCalled();
-  });
-
-  it("acts only on deliveries of its own messages", async () => {
-    const { stream, events, done, start } = setup([]);
-    await start();
-    stream.push(delivery("someone_elses", "queued"));
-    stream.push({ type: "response.completed", response: { output: [] } });
-    expect(await done).toBe(true);
-    expect(events.finalizeRun).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "completed" }),
-    );
   });
 
   it("keeps a message it could not post for the continuation and goes on with the turn", async () => {
@@ -775,7 +734,8 @@ describe("a message the person sends while the turn runs", () => {
       where: { id: { in: ["s1"] } },
       data: { claimedAt: null },
     });
-    stream.push({ type: "response.completed", response: { output: [] } });
+    expect(steeringMessage.deleteMany).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "completed" }),
@@ -785,12 +745,11 @@ describe("a message the person sends while the turn runs", () => {
   it("goes on when a steering row cannot be updated", async () => {
     const { stream, thread, steeringMessage, done, start } = setup([[{ id: "s1", text: "x" }]]);
     await start();
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2"));
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 5));
     steeringMessage.deleteMany.mockRejectedValueOnce(new Error("db down"));
     thread.push(userMessage);
     await flush();
-    stream.push(delivery("msg_2", "steer"));
-    stream.push({ type: "response.completed", response: { output: [] } });
+    stream.push(status("idle", 5));
     expect(await done).toBe(true);
   });
 
@@ -801,6 +760,53 @@ describe("a message the person sends while the turn runs", () => {
     expect(await done).toBe(true);
     expect(interruptOmnigentSession).toHaveBeenCalledWith(CLIENT, "person@example.test", "conv_1");
     expect(events.finalizeRun).not.toHaveBeenCalled();
+  });
+
+  it("follows a long quiet turn the engine says is running, renewing the lease", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { stream, prisma, events, done, start } = setup([], { config });
+    await start();
+    getOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    await vi.advanceTimersByTimeAsync(60_000); // a long tool: no events at all
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    expect(getOmnigentSession).toHaveBeenCalled();
+    expect(prisma.run.updateMany).toHaveBeenCalledWith({
+      where: { id: "run-1", status: "running", leaseOwner: "worker-1", leaseFence: 1 },
+      data: { leaseExpiresAt: expect.any(Date) },
+    });
+
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+    getOmnigentSession.mockReset();
+  });
+
+  it("waits, without failing, while the engine says it waits on the person", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { stream, events, done, start } = setup([], { config });
+    await start();
+    stream.push(status("waiting", 5));
+    getOmnigentSession.mockResolvedValue({ id: "conv_1", status: "waiting" });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    getOmnigentSession.mockReset();
+  });
+
+  it("fails with an honest line, never 'couldn't start', when the engine cannot be asked", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { events, done, start } = setup([], { config });
+    await start();
+    getOmnigentSession.mockRejectedValue(new Error("engine gone"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "failed", error: ENGINE_NO_ANSWER_MESSAGE }),
+    );
+    getOmnigentSession.mockReset();
   });
 
   it("reopens a dropped stream and follows the turn the engine is still running", async () => {
@@ -815,37 +821,26 @@ describe("a message the person sends while the turn runs", () => {
     await flush();
     expect(events.finalizeRun).not.toHaveBeenCalled();
 
-    reopened.push({ type: "response.completed", response: { output: [] } });
+    reopened.push(status("idle", 5));
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "completed" }),
     );
   });
 
-  it("ends the run, not the deadline, when the reopened engine runs no turn", async () => {
-    const { stream, thread, steeringMessage, events, done, start } = setup([
-      [{ id: "s1", text: "and blue" }],
-    ]);
+  it("ends the run, not at a deadline, when the reopened engine is idle", async () => {
+    const { stream, events, done, start } = setup([]);
     await start();
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", "queued"));
-    thread.push(userMessage);
-    await flush();
     const reopened = liveStream();
     streamOmnigentSession.mockReturnValueOnce(reopened);
     getOmnigentSession.mockResolvedValueOnce({ id: "conv_1", status: "idle" });
     stream.end();
     await flush();
     reopened.push({ type: "session.heartbeat" });
-
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "completed" }),
     );
-    // Never seen read: the continuation sends it.
-    expect(steeringMessage.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["s1"] } },
-      data: { claimedAt: null },
-    });
   });
 
   it("fails fast with a clear error when the engine does not come back", async () => {
@@ -857,41 +852,13 @@ describe("a message the person sends while the turn runs", () => {
       return gone;
     });
     stream.end();
-    await vi.advanceTimersByTimeAsync(40_000); // the reopen attempts, well before the deadline
+    await vi.advanceTimersByTimeAsync(40_000); // the reopen attempts
 
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "failed", error: ENGINE_INTERRUPTED_MESSAGE }),
     );
     streamOmnigentSession.mockReset();
-  });
-
-  it("gives every engine turn the full time budget and renews the run's lease", async () => {
-    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
-    const { stream, thread, prisma, events, done, start } = setup(
-      [[{ id: "s1", text: "and blue" }]],
-      { config },
-    );
-    await start();
-    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", "queued"));
-    thread.push(userMessage);
-    await flush();
-    stream.push(delivery("msg_2", "queued"));
-    await vi.advanceTimersByTimeAsync(8_000);
-    stream.push({ type: "response.completed", response: { output: [] } });
-    stream.push(delivery("msg_2", "turn"));
-    stream.push({ type: "response.created", response: { id: "resp_2" } });
-    await vi.advanceTimersByTimeAsync(8_000); // 16 s in all, 8 s into this turn
-    stream.push({ type: "response.completed", response: { output: [] } });
-
-    expect(await done).toBe(true);
-    expect(events.finalizeRun).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "completed" }),
-    );
-    expect(prisma.run.updateMany).toHaveBeenCalledWith({
-      where: { id: "run-1", status: "running", leaseOwner: "worker-1", leaseFence: 1 },
-      data: { leaseExpiresAt: expect.any(Date) },
-    });
   });
 });
 

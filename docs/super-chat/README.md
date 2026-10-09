@@ -196,41 +196,34 @@ returns a chat as **typed blocks**. It works for the Conversation, a Side Chat, 
 
 ### Messages sent while the Muse works (steering)
 
-A message that arrives while a turn runs is a steer, not a new turn. The engine offers it to the
-running turn when the harness can take it, so the model reads it at its next step; otherwise it waits
-and runs as the next turn. Nothing is decided by a timer: each step is a signal from the harness, the
-runner or the thread.
+A message that arrives while a turn runs is handed to the harness's own steer, so the model reads it
+at its next step; when it cannot be, it runs as the next turn. The runner alone owns the waiting
+messages, so nothing is lost and nothing is answered twice.
 
 | Harness | How a steer reaches the turn | Taken when | When it cannot |
 |---|---|---|---|
-| `claude-sdk` | Written to the live CLI's stdin at priority `next` (`inner/claude_sdk_executor.py`); the CLI attaches it at the next tool boundary, or runs it as its own next turn if it missed this one | The CLI echoes our uuid (`--replay-user-messages`); the stream reads on until it does or ends | No turn running, or the stream ended first: refused, queued |
-| `pi` | RPC `steer` while the agent loop runs | Pi emits it as a user `message_start`; at `agent_end`, `clear_queue` takes back what Pi never delivered | Refused, queued |
+| `claude-sdk` | Written to the live CLI's stdin at priority `next` (`inner/claude_sdk_executor.py`); the CLI attaches it at the next tool boundary, or runs it as its own next turn if it missed this one | The CLI echoes our uuid (`--replay-user-messages`); the stream reads on until it does or ends | Runs as the next turn |
+| `pi` | RPC `steer` while the agent loop runs | Pi emits it as a user `message_start`; at `agent_end`, `clear_queue` takes back what Pi never delivered | Runs as the next turn |
 | native terminals (`claude-native`, `pi-native`) | The terminal's own input queue; Nova does not use them | n/a | n/a |
 
 The runner keeps its copy of a message until the harness says the running turn took it
 (`injection.consumed`); anything refused, or never reported when the turn ends, runs as the next turn.
-Only plain text is steered; a message with an image or a file runs as a turn of its own, whole. A
-stop (`interrupt`) cancels the messages waiting behind the turn. A queued message lives only in the
-runner's memory: when a runner initializes the session it reports the messages it still holds
-(`held_item_ids`), and the server cancels any other one stored as `queued`, so none waits forever.
-
-`POST /v1/sessions/{id}/events` answers at once with `delivery` (`turn`, `steer` = offered to the running
-turn, or `queued`). Then every message gets exactly one final `session.input.delivery` on the session
-stream: `steer` (read by the running turn), `turn` (ran as its own turn, also for an idle session) or
-`cancelled` (dropped by a stop or a delete); `queued` may come before it. The family stream relays it as
-`message.delivery`, and the server stores it per message (`conversation_item_deliveries`), so the
-transcript's `delivered` (`steer` or `queued`) is the same on every replica and after a reload.
+Only plain text is steered; a message with an image or a file runs whole as a turn of its own. A stop
+or a delete cancels the messages waiting behind the turn. The session reports `idle` only once none
+waits, and its `session.status` edges carry the runner's turn number, which `POST /events` also answers
+(`turn`) for the turn a message started or joined. `session.input.delivery` events are display hints
+(`queued`, then `steer`, `turn` or `cancelled`); the transcript marks a message `delivered: "queued"`
+from the runner's live queue (`GET /v1/sessions/{id}/buffered` on the runner), with nothing stored.
 
 Nova's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
 the turn, and posts each message the person sends as the thread's own event signal (Postgres
-`LISTEN/NOTIFY`) announces it. The run ends when every message it posted is settled and no turn is
-running. A message's steering row is deleted once a turn read it (`steer` or `turn`) and released for
-the continuation when none will (`cancelled`, a failed post, a failed or timed-out run). A stop in Nova
-interrupts the engine's turn. A dropped engine stream is reopened; the engine's snapshot then says
-whether the turn still runs (the run follows it), is over (the run ends, releasing what was never seen
-read) or failed, and an engine that does not come back fails the run within about half a minute, not
-at the deadline. Each engine turn gets the full turn timeout, and the run's lease is renewed as turns
-start.
+`LISTEN/NOTIFY`) announces it; once the engine has it, its steering row is deleted (a failed post
+releases it for the continuation). The run ends at an `idle` edge for the latest turn its messages
+started or joined. There is no fixed deadline: after a quiet spell the worker asks the engine's
+snapshot, follows a turn that is running or waiting (on helpers or the person) and renews the run's
+lease, ends on `idle`, and fails with an honest line on `failed` or when the engine cannot be asked. A
+dropped stream is reopened and asked the same way; an engine that does not come back fails the run in
+about half a minute. A stop in Nova interrupts the engine's turn.
 
 For a Helper that is already working, the Muse uses `message_helper`, which posts with `if_running`: the
 Helper takes it into its running turn, or, if that turn has ended by then, refuses it (409
@@ -888,7 +881,7 @@ Nova's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
 
 | What | Setting | Default |
 |---|---|---|
-| Turn timeout | `OMNIGENT_TURN_TIMEOUT_MS` | 300000 (5 min) |
+| Quiet check (not a deadline) | `OMNIGENT_TURN_TIMEOUT_MS` | 300000 (5 min) |
 | Run lease duration | `OMNIGENT_LEASE_DURATION_MS` | 300000 (5 min) |
 | `chats.messages` page size | `OMNIGENT_CHATS_PAGE_SIZE` | 50 |
 
