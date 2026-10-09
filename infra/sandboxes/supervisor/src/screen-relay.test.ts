@@ -162,8 +162,8 @@ describe("screen relay", () => {
 
 describe("public screen URL", () => {
   it("normalizes the configured origin and ignores junk", () => {
-    expect(resolveScreenPublicUrl("https://54-39-21-138.sslip.io/")).toBe(
-      "https://54-39-21-138.sslip.io",
+    expect(resolveScreenPublicUrl("https://203-0-113-7.sslip.io/")).toBe(
+      "https://203-0-113-7.sslip.io",
     );
     expect(resolveScreenPublicUrl("")).toBeUndefined();
     expect(resolveScreenPublicUrl(undefined)).toBeUndefined();

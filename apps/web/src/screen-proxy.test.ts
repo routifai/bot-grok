@@ -18,7 +18,7 @@ describe("screen proxy", () => {
   it("accepts the https supervisor relay host the API sealed (split deployment)", async () => {
     const target = {
       protocol: "https:",
-      hostname: "54-39-21-138.sslip.io",
+      hostname: "203-0-113-7.sslip.io",
       port: 443,
       path: "/screens/abc123/websockify?token=view-token",
       interactive: false,

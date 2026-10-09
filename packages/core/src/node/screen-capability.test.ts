@@ -104,7 +104,7 @@ describe("sealed screen capabilities", () => {
   });
 
   it("routes a split-deployment supervisor relay (https, public host) to /screens/:id", () => {
-    const relay = new URL("https://54-39-21-138.sslip.io/screens/abc123/embed.html");
+    const relay = new URL("https://203-0-113-7.sslip.io/screens/abc123/embed.html");
     relay.searchParams.set("path", "websockify?token=view-token");
     const url = new URL(
       sealScreenCapability(relay.toString(), "fake-secret", "https://app.example", scope, 100),
@@ -114,7 +114,7 @@ describe("sealed screen capabilities", () => {
     const entry = openScreenCapability(url.pathname + url.search, "fake-secret", 101);
     expect(entry?.target).toMatchObject({
       protocol: "https:",
-      hostname: "54-39-21-138.sslip.io",
+      hostname: "203-0-113-7.sslip.io",
       port: 443,
     });
     expect(entry?.target.path.startsWith("/screens/abc123/embed.html?")).toBe(true);
