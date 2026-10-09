@@ -32,9 +32,11 @@ describe("Microsoft Entra tenancy", () => {
     expect(() => assertOidcConfig({ ...entra, allowedDomains: [] })).toThrow(/ALLOWED_DOMAINS/);
     expect(() => assertOidcConfig(entra)).not.toThrow();
     expect(() => checkOidcProfile(entra, { email: "a@corp.test", tid: TENANT, acct: 1 })).toThrow();
-    expect(() =>
-      checkOidcProfile(entra, { email: "a@corp.test", tid: TENANT, xms_edov: false }),
-    ).toThrow();
+    for (const edov of [false, "false", 0, "0", "maybe"]) {
+      expect(() =>
+        checkOidcProfile(entra, { email: "a@corp.test", tid: TENANT, xms_edov: edov }),
+      ).toThrow();
+    }
     expect(() => checkOidcProfile(entra, { email: "a@elsewhere.test", tid: TENANT })).toThrow();
     expect(
       checkOidcProfile(entra, { email: "a@corp.test", tid: TENANT, acct: 0, xms_edov: true }),

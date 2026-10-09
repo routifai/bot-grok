@@ -14,10 +14,15 @@ import {
   signupPolicyFromEnv,
   unverifiedAccessAllowed,
 } from "@nova/core";
-import { bootstrapUserSpace, eraseUserAttachments, type PrismaClient } from "@nova/db";
+import {
+  bootstrapUserSpace,
+  type PrismaClient,
+  personalOrganizations,
+  quarantineUserSpaces,
+} from "@nova/db";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware, getIP } from "better-auth/api";
+import { APIError, createAuthMiddleware, getIP, getSessionFromCtx } from "better-auth/api";
 import { bearer, emailOTP, organization } from "better-auth/plugins";
 import { type EmailQuota, prismaEmailQuota } from "./email-quota.js";
 import { codeEmail, OTP_EXPIRES_MINUTES, OTP_LENGTH, passwordResetEmail } from "./emails.js";
@@ -40,8 +45,17 @@ export interface AuthEnv extends SignupPolicyEnv {
   extraOrigins?: string[];
   email?: TransactionalEmailProvider;
   onEmailError?: (error: unknown) => void;
-  /** Destroys what an account owns outside the database (bots, Computers); used on delete and void. */
+  /** Destroys what an account owns outside the database (bots, Computers) before it is deleted. */
   beforeDeleteUser?: (userId: string) => Promise<void>;
+  /** Stops (never destroys) the Computers in a space about to be quarantined. */
+  beforeQuarantine?: (userId: string, spaceIds: string[]) => Promise<void>;
+  /** Runs after a space was quarantined: stop engine-side work, log it for the admin. */
+  afterQuarantine?: (info: {
+    userId: string;
+    email: string;
+    organizationIds: string[];
+    stopFailed: boolean;
+  }) => Promise<void>;
   /** A hosted `production` deployment disables the local-development escape hatch below. */
   nodeEnv?: string;
   /**
@@ -237,16 +251,20 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   /**
    * A mailbox is being proved for an account that was not verified before. Whatever was attached
    * to it until now came from someone who had not proved the address: their password and sessions
-   * go; and if the account had been used (it has a space), everything it owns goes too and it
-   * returns to `pending`, so an admin confirms the person who just proved the address. The
-   * deployment owner is exempt (their seat is bound to the operator's secret), and OIDC accounts
-   * are kept (the identity provider vouches for that address). Reset flows pass `keepCredential`
-   * for the password they have just set.
+   * go. If the account had been used (it has a space), the space is quarantined, not deleted: the
+   * Computers stop, everything that grants access or sends data out is stripped, the organization
+   * is detached and kept for an admin to restore or discard (purged after 30 days), and the
+   * account returns to `pending`. A legitimate person approved before email existed can be
+   * restored; a squatter's planted context never reaches a new space. The deployment owner is
+   * exempt (their seat is bound to the operator's secret). The OIDC account is kept: the identity
+   * provider vouches for that address. Better Auth's own code sign-in path deletes every account
+   * first, so there the SSO account is already gone; only SSO sign-in reaches here with it intact.
+   * Reset flows pass `keepCredential` for the password they have just set.
    */
   const proveMailbox = async (userId: string, options: { keepCredential?: boolean } = {}) => {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { emailVerified: true, status: true },
+      select: { emailVerified: true, status: true, email: true },
     });
     if (!user || user.emailVerified) return;
     const settings = await prisma.deploymentSettings.findUnique({
@@ -259,12 +277,26 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     await prisma.session.deleteMany({ where: { userId } });
     const used = (await prisma.spaceMember.findFirst({ where: { userId } })) !== null;
     if (used) {
-      await env.beforeDeleteUser?.(userId);
-      await eraseUserAttachments(prisma, userId);
+      const personal = await personalOrganizations(prisma, userId);
+      let stopFailed = false;
+      try {
+        await env.beforeQuarantine?.(
+          userId,
+          personal.flatMap((organization) => organization.spaceIds),
+        );
+      } catch {
+        // Signing in must not depend on the container provider being up; the failure is reported
+        // below and the spaces are detached either way.
+        stopFailed = true;
+      }
+      const { organizationIds } = await quarantineUserSpaces(prisma, userId);
       if (user.status === "active") {
         await prisma.user.update({ where: { id: userId }, data: { status: "pending" } });
       }
+      await env.afterQuarantine?.({ userId, email: user.email, organizationIds, stopFailed });
     }
+    // A session created while this ran must not survive it.
+    await prisma.session.deleteMany({ where: { userId } });
   };
   const linkingTrusted = Boolean(env.oidc && (env.oidc.allowedDomains?.length ?? 0) > 0);
   const clientNetwork = (ctx: { request?: Request; context: { options: never } }) =>
@@ -569,6 +601,24 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
           before: async (user) => {
             if (user.email && isMessagingEmail(user.email)) {
               throw new APIError("BAD_REQUEST", { message: "Email is not available" });
+            }
+          },
+        },
+      },
+      account: {
+        create: {
+          before: async (account, ctx) => {
+            if (account.providerId !== OIDC_PROVIDER_ID || !ctx) return;
+            const settings = await prisma.deploymentSettings.findUnique({
+              where: { id: "default" },
+              select: { ownerUserId: true },
+            });
+            if (settings?.ownerUserId !== account.userId) return;
+            // The owner's seat is bound to the operator's secret, not to an email address, so a
+            // provider sign-in never links to it implicitly. They link from inside their session.
+            const session = await getSessionFromCtx(ctx).catch(() => null);
+            if (session?.user.id !== account.userId) {
+              throw new APIError("FORBIDDEN", { message: "Link this sign-in from your account" });
             }
           },
         },

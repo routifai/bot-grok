@@ -1,5 +1,6 @@
+import { generateKeyPairSync, sign } from "node:crypto";
 import type { TransactionalEmail } from "@nova/adapter-kit";
-import { bootstrapUserSpace, eraseUserAttachments } from "@nova/db";
+import { bootstrapUserSpace, personalOrganizations, quarantineUserSpaces } from "@nova/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assertIdentityConfig,
@@ -20,7 +21,8 @@ vi.mock("better-auth/adapters/prisma", async () => {
 });
 vi.mock("@nova/db", () => ({
   bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })),
-  eraseUserAttachments: vi.fn(async () => undefined),
+  personalOrganizations: vi.fn(async () => [{ id: "org-1", spaceIds: ["space-1"] }]),
+  quarantineUserSpaces: vi.fn(async () => ({ organizationIds: ["org-1"], spaceIds: ["space-1"] })),
 }));
 
 type Mode = "closed" | "invite" | "domain" | "approval" | "open";
@@ -34,6 +36,7 @@ function fixture({
   allowUnverifiedEmail = false,
   ownerSetupToken,
   nodeEnv,
+  oidc,
   baseURL = "http://auth.example.test",
   webOrigin = "http://web.example.test",
   requestOrigin,
@@ -45,6 +48,7 @@ function fixture({
   allowUnverifiedEmail?: boolean;
   ownerSetupToken?: string;
   nodeEnv?: string;
+  oidc?: { issuer: string; clientId: string; clientSecret: string; allowedDomains?: string[] };
   baseURL?: string;
   webOrigin?: string;
   requestOrigin?: string;
@@ -106,7 +110,11 @@ function fixture({
     findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
       const found = data.user!.find((user) => user.id === where.id);
       return found
-        ? { emailVerified: found.emailVerified, status: found.status ?? "active" }
+        ? {
+            emailVerified: found.emailVerified,
+            status: found.status ?? "active",
+            email: found.email,
+          }
         : null;
     }),
     update: vi.fn(async ({ where, data: patch }: { where: { id: string }; data: object }) => {
@@ -154,7 +162,8 @@ function fixture({
       }),
     },
   });
-  const beforeDeleteUser = vi.fn(async () => undefined);
+  const beforeQuarantine = vi.fn(async () => undefined);
+  const afterQuarantine = vi.fn(async () => undefined);
   vi.mocked(bootstrapUserSpace).mockImplementation(async (_prisma, user) => {
     members.add(user.id);
     return { spaceId: "space-1" };
@@ -166,7 +175,9 @@ function fixture({
     allowUnverifiedEmail,
     ownerSetupToken,
     nodeEnv,
-    beforeDeleteUser,
+    oidc,
+    beforeQuarantine,
+    afterQuarantine,
     trustedProxies: undefined,
     rateLimit: false,
     emailQuota: memoryEmailQuota(),
@@ -243,7 +254,8 @@ function fixture({
     policy,
     messages,
     members,
-    beforeDeleteUser,
+    beforeQuarantine,
+    afterQuarantine,
   };
 }
 
@@ -777,7 +789,7 @@ const seedUnverified = (
 };
 
 describe("proving a mailbox after unverified use", () => {
-  it("erases what the earlier holder attached and returns the account to pending", async () => {
+  it("quarantines the space the earlier holder used and returns the account to pending", async () => {
     const f = fixture();
     const id = seedUnverified(f, "dave@example.test");
     f.members.add(id); // it got a space while nobody could prove the address
@@ -785,8 +797,15 @@ describe("proving a mailbox after unverified use", () => {
     const response = await f.codeSignIn("dave@example.test");
     expect(response.status).toBe(200);
     const { token } = (await response.json()) as { token: string };
-    expect(f.beforeDeleteUser).toHaveBeenCalledWith(id);
-    expect(eraseUserAttachments).toHaveBeenCalledWith(expect.anything(), id);
+    // Quarantined, not deleted: Computers stopped first, then the space detached and kept.
+    expect(f.beforeQuarantine).toHaveBeenCalledWith(id, ["space-1"]);
+    expect(quarantineUserSpaces).toHaveBeenCalledWith(expect.anything(), id);
+    expect(f.afterQuarantine).toHaveBeenCalledWith({
+      userId: id,
+      email: "dave@example.test",
+      organizationIds: ["org-1"],
+      stopFailed: false,
+    });
     expect(f.data.account).toHaveLength(0);
     expect(f.data.user![0]).toMatchObject({ emailVerified: true, status: "pending" });
     expect((await sessionFor(f, token))?.user).toMatchObject({ status: "pending" });
@@ -797,7 +816,7 @@ describe("proving a mailbox after unverified use", () => {
     seedUnverified(f, "dave@example.test");
     await f.sendSignInCode("dave@example.test");
     await f.codeSignIn("dave@example.test");
-    expect(eraseUserAttachments).not.toHaveBeenCalled();
+    expect(quarantineUserSpaces).not.toHaveBeenCalled();
     expect(f.data.user![0]).toMatchObject({ emailVerified: true, status: "active" });
     expect(f.data.account).toHaveLength(0);
   });
@@ -809,8 +828,8 @@ describe("proving a mailbox after unverified use", () => {
     f.policy.ownerUserId = id;
     await f.sendSignInCode("owner@example.test");
     await f.codeSignIn("owner@example.test");
-    expect(eraseUserAttachments).not.toHaveBeenCalled();
-    expect(f.beforeDeleteUser).not.toHaveBeenCalled();
+    expect(quarantineUserSpaces).not.toHaveBeenCalled();
+    expect(f.beforeQuarantine).not.toHaveBeenCalled();
     expect(f.data.user![0]).toMatchObject({ emailVerified: true, status: "active" });
   });
 });
@@ -1003,5 +1022,177 @@ describe("enumeration and background surfaces", () => {
     expect((await sessionFor(f, token))?.user).toMatchObject({ status: "pending" });
     const listed = await f.request("/organization/list", undefined, token);
     expect(listed.status).toBe(401);
+  });
+});
+
+describe("quarantine details", () => {
+  it("still quarantines when stopping a Computer fails, and says so", async () => {
+    const f = fixture();
+    const id = seedUnverified(f, "dave@example.test");
+    f.members.add(id);
+    f.beforeQuarantine.mockRejectedValueOnce(new Error("provider down"));
+    await f.sendSignInCode("dave@example.test");
+    expect((await f.codeSignIn("dave@example.test")).status).toBe(200);
+    expect(quarantineUserSpaces).toHaveBeenCalled();
+    expect(f.afterQuarantine).toHaveBeenCalledWith(expect.objectContaining({ stopFailed: true }));
+    expect(f.data.user![0]!.status).toBe("pending");
+  });
+
+  it("drops a session that was created while the void was running", async () => {
+    const f = fixture();
+    const id = seedUnverified(f, "dave@example.test");
+    f.members.add(id);
+    vi.mocked(quarantineUserSpaces).mockImplementationOnce(async () => {
+      f.data.session!.push({
+        id: "raced",
+        token: "raced-token",
+        userId: id,
+        expiresAt: new Date(Date.now() + 60_000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      return { organizationIds: ["org-1"], spaceIds: ["space-1"] };
+    });
+    await f.sendSignInCode("dave@example.test");
+    const { token } = (await (await f.codeSignIn("dave@example.test")).json()) as { token: string };
+    expect(f.data.session!.map((session) => session.token)).toEqual([token]);
+    expect(personalOrganizations).toHaveBeenCalled();
+  });
+});
+
+describe("SSO linking end to end (stubbed identity provider)", () => {
+  const ISSUER = "https://idp.example.test";
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = { ...publicKey.export({ format: "jwk" }), kid: "k1", alg: "RS256", use: "sig" };
+  const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+
+  function stubIdp(email: string, claims: Record<string, unknown> = {}) {
+    let nonce = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = new URL(String(input instanceof Request ? input.url : input));
+        const json = (body: unknown) =>
+          new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+        if (url.pathname.endsWith("/.well-known/openid-configuration")) {
+          return json({
+            issuer: ISSUER,
+            authorization_endpoint: `${ISSUER}/authorize`,
+            token_endpoint: `${ISSUER}/token`,
+            jwks_uri: `${ISSUER}/jwks`,
+            id_token_signing_alg_values_supported: ["RS256"],
+          });
+        }
+        if (url.pathname === "/jwks") return json({ keys: [jwk] });
+        if (url.pathname === "/token") {
+          const now = Math.floor(Date.now() / 1000);
+          const head = b64({ alg: "RS256", kid: "k1", typ: "JWT" });
+          const body = b64({
+            iss: ISSUER,
+            aud: "client-id",
+            sub: `idp-${email}`,
+            email,
+            email_verified: true,
+            name: "Person",
+            nonce,
+            iat: now,
+            exp: now + 300,
+            ...claims,
+          });
+          const signature = sign("RSA-SHA256", Buffer.from(`${head}.${body}`), privateKey).toString(
+            "base64url",
+          );
+          return json({
+            access_token: "at",
+            token_type: "Bearer",
+            expires_in: 300,
+            id_token: `${head}.${body}.${signature}`,
+          });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+    return (value: string) => {
+      nonce = value;
+    };
+  }
+
+  async function signInWithSso(
+    f: ReturnType<typeof fixture>,
+    setNonce: (nonce: string) => void,
+    cookie = "",
+  ) {
+    await f.auth.$context;
+    const start = await f.request(
+      "/sign-in/social",
+      { provider: "sso", callbackURL: "http://web.example.test/app" },
+      undefined,
+      cookie ? { cookie } : {},
+    );
+    const { url } = (await start.json()) as { url: string };
+    const authorize = new URL(url);
+    setNonce(authorize.searchParams.get("nonce") ?? "");
+    const stateCookies = start.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .concat(cookie ? [cookie] : [])
+      .join("; ");
+    return f.request(
+      `/callback/sso?code=c1&state=${authorize.searchParams.get("state")}`,
+      undefined,
+      undefined,
+      { cookie: stateCookies },
+    );
+  }
+
+  const oidc = {
+    issuer: ISSUER,
+    clientId: "client-id",
+    clientSecret: "s",
+    allowedDomains: ["example.test"],
+  };
+
+  it("links to an unverified, used row: keeps sso, drops the password, quarantines the space", async () => {
+    const f = fixture({ oidc });
+    const id = seedUnverified(f, "erin@example.test");
+    f.members.add(id);
+    f.data.account!.push({
+      id: "acc-attached",
+      userId: id,
+      accountId: "x",
+      providerId: "github",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const setNonce = stubIdp("erin@example.test");
+    const response = await signInWithSso(f, setNonce);
+    vi.unstubAllGlobals();
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).not.toMatch(/error/);
+    expect(f.data.account!.map((account) => account.providerId)).toEqual(["sso"]);
+    expect(f.data.user![0]).toMatchObject({ emailVerified: true, status: "pending" });
+    expect(quarantineUserSpaces).toHaveBeenCalledWith(expect.anything(), id);
+    expect(f.beforeQuarantine).toHaveBeenCalledWith(id, ["space-1"]);
+    expect(f.data.session).toHaveLength(1);
+  });
+
+  it("does not link at all when SSO is not pinned to company domains", async () => {
+    const f = fixture({ oidc: { ...oidc, allowedDomains: [] } });
+    seedUnverified(f, "erin@example.test");
+    const setNonce = stubIdp("erin@example.test");
+    const response = await signInWithSso(f, setNonce);
+    vi.unstubAllGlobals();
+    expect(f.data.account!.map((account) => account.providerId)).toEqual(["credential"]);
+    expect(response.headers.get("location") ?? "").toMatch(/error|account_not_linked/);
+  });
+
+  it("never links the deployment owner implicitly", async () => {
+    const f = fixture({ oidc });
+    const id = seedUnverified(f, "owner@example.test", { emailVerified: true });
+    f.policy.ownerUserId = id;
+    const setNonce = stubIdp("owner@example.test");
+    await signInWithSso(f, setNonce);
+    vi.unstubAllGlobals();
+    expect(f.data.account!.map((account) => account.providerId)).toEqual(["credential"]);
   });
 });

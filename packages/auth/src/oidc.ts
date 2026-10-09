@@ -99,7 +99,15 @@ export function checkOidcProfile(
     // we named, the organization itself administers the address.
     if (typeof profile.tid !== "string" || profile.tid.toLowerCase() !== tenant) throw deny();
     // Guests of the tenant (acct 1) and addresses Entra itself marks as unverified do not count.
-    if (profile.acct === 1 || profile.xms_edov === false) throw deny();
+    if (profile.acct === 1) throw deny();
+    // xms_edov says Entra itself verified the email's domain. It is an optional claim (enable it
+    // on the app registration); when the token carries it, it must be true.
+    if (
+      profile.xms_edov !== undefined &&
+      !["true", true, 1, "1"].includes(profile.xms_edov as never)
+    ) {
+      throw deny();
+    }
     emailVerified = true;
   } else {
     emailVerified = profile.email_verified === true;
