@@ -33,6 +33,7 @@ export * from "./components/ui/kbd.js";
 export * from "./components/ui/label.js";
 export * from "./components/ui/native-select.js";
 export * from "./components/ui/popover.js";
+export * from "./components/ui/radio-group.js";
 export * from "./components/ui/scroll-area.js";
 export * from "./components/ui/select.js";
 export * from "./components/ui/separator.js";

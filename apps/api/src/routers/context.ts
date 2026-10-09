@@ -20,7 +20,7 @@ import { appContract } from "@nova/contracts";
 import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { createGroupRepos, createRepos, IsolationError } from "@nova/db";
 import { getLogger } from "@nova/logging";
-import { implement, ORPCError } from "@orpc/server";
+import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
 import { createAgentSkillsService } from "../agent-skills.js";
 import type { EngineArtifactsDeps } from "../engine-artifacts.js";
 import type { EngineIdeasDeps } from "../engine-ideas.js";
@@ -66,7 +66,14 @@ function makeOs() {
 }
 export type RouterOs = ReturnType<typeof makeOs>;
 
-function makeAuthed(os: RouterOs) {
+// Spelled out: inferred, the contract's full type is too large for the declaration emitter (TS7056).
+type AuthedImplementer = ImplementerInternalWithMiddlewares<
+  typeof appContract,
+  { actor: Actor | null; signal?: AbortSignal },
+  { actor: Actor; signal?: AbortSignal }
+>;
+
+function makeAuthed(os: RouterOs): AuthedImplementer {
   return os.use(async ({ context, next }) => {
     if (!context.actor) throw new ORPCError("UNAUTHORIZED");
     return next({ context: { ...context, actor: context.actor } });

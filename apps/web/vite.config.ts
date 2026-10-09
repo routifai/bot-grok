@@ -330,7 +330,9 @@ export default defineConfig(({ mode }) => {
           if (!Number.isFinite(performanceAssetDelayMs) || performanceAssetDelayMs <= 0) return;
           server.middlewares.use((req, _res, next) => {
             const pathname = req.url?.split("?", 1)[0] ?? "/";
-            if (["/api", "/rpc", "/novnc"].some((prefix) => pathname.startsWith(prefix))) {
+            if (
+              ["/api", "/rpc", "/novnc", "/apps/"].some((prefix) => pathname.startsWith(prefix))
+            ) {
               next();
               return;
             }
@@ -351,6 +353,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": { target: api, changeOrigin: true },
         "/rpc": { target: api, changeOrigin: true },
+        // Published mini apps (`/apps/<slug>`); the API sets their sandbox headers.
+        "^/apps/": { target: api, changeOrigin: true },
       },
     },
     preview: {
@@ -360,6 +364,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": { target: api, changeOrigin: true },
         "/rpc": { target: api, changeOrigin: true },
+        // Published mini apps (`/apps/<slug>`); the API sets their sandbox headers.
+        "^/apps/": { target: api, changeOrigin: true },
       },
     },
   };

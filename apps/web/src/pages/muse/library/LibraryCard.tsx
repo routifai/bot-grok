@@ -11,6 +11,7 @@ import {
   GlassAction,
   glassActionClassName,
 } from "../../../components/ArtifactPreviewCard";
+import { viewsText } from "../../../components/PublishApp";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { LibraryArt } from "./LibraryArt";
@@ -29,13 +30,26 @@ export function LibraryCard({
 }) {
   const { t } = useLingui();
   const kind = artifactKind(artifact.mimeType);
+  const publish = artifact.publish;
+  const base = `${kindLabel(kind)} · ${formatRelativeTime(artifact.createdAt)}`;
 
   return (
     <ArtifactPreviewCard
       size="grid"
       artifact={artifact}
       title={artifact.name}
-      meta={`${kindLabel(kind)} · ${formatRelativeTime(artifact.createdAt)}`}
+      meta={publish ? `${base} · ${viewsText(publish.stats)}` : base}
+      badge={
+        publish ? (
+          <span
+            data-testid="library-card-published"
+            className="nova-glass-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium text-ink-2"
+          >
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
+            {t`Published`}
+          </span>
+        ) : null
+      }
       buttonLabel={t`Open ${artifact.name}`}
       onOpen={onOpen}
       testId="library-card"
