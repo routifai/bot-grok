@@ -1,7 +1,7 @@
 import { t } from "@lingui/core/macro";
 import type { Ask } from "@nova/contracts";
-import { AskList } from "../asks";
-import { Section } from "../ui";
+import { Section } from "../../pages/muse/ui";
+import { AskList } from ".";
 
 // Open Asks pinned on top of the Feed, under a "Needs you" heading. Same AskList as the
 // Waiting-on-you sheet, so an Ask looks and answers the same everywhere (CONTEXT.md:

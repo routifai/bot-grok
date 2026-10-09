@@ -3,10 +3,16 @@ import type { Idea } from "@nova/contracts";
 import { cn, Skeleton } from "@nova/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import { IdeasGlyph } from "./chrome/NovaGlyphs";
-import { NovaTile, type TileTone } from "./chrome/NovaTile";
-import { areaLabel, ideaIcon } from "./ideas/areaIcon";
-import { EmptyState, MuseScreen, MuseWideCenter, ScreenHeader, ScreenHero } from "./ui";
+import { IdeasGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile, type TileTone } from "../../pages/muse/chrome/NovaTile";
+import {
+  EmptyState,
+  MuseScreen,
+  MuseWideCenter,
+  ScreenHeader,
+  ScreenHero,
+} from "../../pages/muse/ui";
+import { areaLabel, ideaIcon } from "./areaIcon";
 
 /** Ideas kept in the order their area first appeared, not re-sorted alphabetically. */
 function groupByArea(ideas: Idea[]): { area: string; ideas: Idea[] }[] {

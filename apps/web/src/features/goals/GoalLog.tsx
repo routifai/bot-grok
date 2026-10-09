@@ -4,7 +4,7 @@ import type { ThreadMessage } from "@nova/contracts";
 import { isToolActivityBlock } from "@nova/core";
 import { cn } from "@nova/ui-web";
 import { useEffect, useState } from "react";
-import { rpc } from "../../../lib/rpc";
+import { rpc } from "../../lib/rpc";
 import { formatLogTimestamp } from "./format";
 
 /**

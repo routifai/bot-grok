@@ -11,7 +11,6 @@ vi.mock("react-dom/client", async (orig) =>
 
 const api = vi.hoisted(() => ({
   feed: { list: vi.fn() },
-  asks: { list: vi.fn(), answer: vi.fn() },
   topics: { list: vi.fn(), remove: vi.fn(), follow: vi.fn() },
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: api }));
@@ -54,23 +53,8 @@ vi.mock("@nova/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
-import type { Ask, FollowedTopic, Post } from "@nova/contracts";
+import type { FollowedTopic, Post } from "@nova/contracts";
 import { FeedScreen } from "./FeedScreen";
-
-function ask(overrides: Partial<Ask> = {}): Ask {
-  return {
-    id: "ask-1",
-    runId: "run-1",
-    kind: "question",
-    goalId: null,
-    goalTitle: null,
-    text: "Which evenings work?",
-    choices: [{ id: "mon", label: "Monday" }],
-    input: null,
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
 
 function post(overrides: Partial<Post> = {}): Post {
   return {
@@ -94,12 +78,15 @@ function topic(overrides: Partial<FollowedTopic> = {}): FollowedTopic {
   };
 }
 
-async function renderFeed(onSendIdea: (text: string) => void = vi.fn()) {
+async function renderFeed(
+  onSendIdea: (text: string) => void = vi.fn(),
+  slots: { asksSlot?: ReactNode; hasAsks?: boolean } = {},
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<FeedScreen botId="bot-1" onSendIdea={onSendIdea} />);
+    root.render(<FeedScreen botId="bot-1" onSendIdea={onSendIdea} {...slots} />);
   });
   return {
     container,
@@ -110,16 +97,17 @@ async function renderFeed(onSendIdea: (text: string) => void = vi.fn()) {
   };
 }
 
-it("renders pinned Asks above Posts", async () => {
+it("renders the Asks slot above Posts", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([ask({ text: "Which evenings work?" })]);
   api.feed.list.mockResolvedValue({
-    asks: [],
     posts: [post({ title: "Chose a course" })],
     nextCursor: null,
   });
   api.topics.list.mockResolvedValue([]);
-  const page = await renderFeed();
+  const page = await renderFeed(vi.fn(), {
+    asksSlot: <section>Which evenings work?</section>,
+    hasAsks: true,
+  });
   try {
     const askIndex = page.container.textContent?.indexOf("Which evenings work?") ?? -1;
     const postIndex = page.container.textContent?.indexOf("Chose a course") ?? -1;
@@ -131,47 +119,9 @@ it("renders pinned Asks above Posts", async () => {
   }
 });
 
-it("answering an Ask calls asks.answer and removes it", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  // The first load has the Ask; the refetch after answering doesn't.
-  api.asks.list
-    .mockResolvedValueOnce([
-      ask({ id: "ask-9", runId: "run-9", choices: [{ id: "mon", label: "Monday" }] }),
-    ])
-    .mockResolvedValue([]);
-  api.feed.list.mockResolvedValue({
-    asks: [],
-    posts: [],
-    nextCursor: null,
-  });
-  api.topics.list.mockResolvedValue([]);
-  api.asks.answer.mockResolvedValue({ ok: true });
-  const page = await renderFeed();
-  try {
-    const button = [...page.container.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent === "Monday",
-    );
-    expect(button).toBeTruthy();
-    await act(async () => {
-      button?.click();
-    });
-    expect(api.asks.answer).toHaveBeenCalledWith({
-      askId: "ask-9",
-      runId: "run-9",
-      answer: "mon",
-    });
-    expect(page.container.textContent).not.toContain("Which evenings work?");
-  } finally {
-    await page.cleanup();
-    vi.unstubAllGlobals();
-  }
-});
-
 it("shows a topic Post as a plain preview with domain sources, and opens the full text", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([]);
   api.feed.list.mockResolvedValue({
-    asks: [],
     posts: [
       post({
         kind: "topic",
@@ -208,8 +158,7 @@ it("shows a topic Post as a plain preview with domain sources, and opens the ful
 
 it("removing a topic calls topics.remove", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([]);
-  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
+  api.feed.list.mockResolvedValue({ posts: [], nextCursor: null });
   api.topics.list.mockResolvedValue([topic({ id: "topic-7", topic: "Moroccan design" })]);
   api.topics.remove.mockResolvedValue({ ok: true });
   const page = await renderFeed();
@@ -232,8 +181,7 @@ it("removing a topic calls topics.remove", async () => {
 
 it("on an empty Feed, a suggested topic is followed in one tap", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([]);
-  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
+  api.feed.list.mockResolvedValue({ posts: [], nextCursor: null });
   api.topics.list.mockResolvedValue([]);
   api.topics.follow.mockResolvedValue({
     id: "topic-9",
@@ -268,8 +216,7 @@ it("on an empty Feed, a suggested topic is followed in one tap", async () => {
 
 it("labels a followed topic with its own cadence", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([]);
-  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
+  api.feed.list.mockResolvedValue({ posts: [], nextCursor: null });
   api.topics.list.mockResolvedValue([
     topic({ id: "t-w", topic: "AI agent launches", cadence: "weekly" }),
     topic({ id: "t-d", topic: "Mortgage rates" }),
@@ -286,8 +233,7 @@ it("labels a followed topic with its own cadence", async () => {
 
 it("hides the example Feed once a topic is followed, and shows it only when truly empty", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([]);
-  api.feed.list.mockResolvedValue({ asks: [], posts: [], nextCursor: null });
+  api.feed.list.mockResolvedValue({ posts: [], nextCursor: null });
   api.topics.list.mockResolvedValue([topic({ id: "topic-1", topic: "Moroccan design" })]);
   const followed = await renderFeed();
   try {

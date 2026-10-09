@@ -2,9 +2,9 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type { Goal } from "@nova/contracts";
 import { cn, Skeleton } from "@nova/ui-web";
 import { useState } from "react";
-import { rpc } from "../../../lib/rpc";
-import { GoalsGlyph, SparkGlyph } from "../chrome/NovaGlyphs";
-import { NovaTile } from "../chrome/NovaTile";
+import { rpc } from "../../lib/rpc";
+import { GoalsGlyph, SparkGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
 import {
   ACCENT_BUTTON,
   MuseWideCenter,
@@ -12,7 +12,7 @@ import {
   QUIET_BUTTON,
   ScreenHero,
   Section,
-} from "../ui";
+} from "../../pages/muse/ui";
 import {
   dueMeta,
   type GoalDisplayStatus,

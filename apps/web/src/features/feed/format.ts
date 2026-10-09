@@ -1,5 +1,5 @@
 import type { Post } from "@nova/contracts";
-import { markdownToPlainText } from "../../../lib/markdown-plain-text";
+import { markdownToPlainText } from "../../lib/markdown-plain-text";
 
 function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();

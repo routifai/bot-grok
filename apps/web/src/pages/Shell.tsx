@@ -43,10 +43,14 @@ import {
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
 import { useNovaWork } from "../features/activity";
+import { ApprovalCards, FeedAsks, useAsks, WaitingSheet } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { LibraryScreen } from "../features/artifacts/LibraryScreen";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
+import { FeedScreen } from "../features/feed";
+import { GoalsScreen } from "../features/goals";
+import { IdeasScreen } from "../features/ideas";
 import { ConversationModelPicker } from "../features/models";
 import { sheetsExtension } from "../features/sheets";
 import type { ArtifactTarget } from "../lib/artifact-open";
@@ -57,7 +61,6 @@ import { rpc } from "../lib/rpc";
 import { activeThreadRuns } from "../lib/thread-events";
 import { memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
-import { ApprovalCards } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader, TOOLBAR_BUTTON } from "./muse/chrome/ConversationHeader";
 import { conversationLayout } from "./muse/chrome/conversationLayout";
@@ -70,7 +73,11 @@ import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
 import { type ChatProject, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
-import { SideChatSession, type SideChatWire } from "./muse/chrome/SideChatSession";
+import {
+  SideChatSession,
+  type SideChatView,
+  type SideChatWire,
+} from "./muse/chrome/SideChatSession";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
@@ -90,7 +97,6 @@ import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
 import { useThreadState } from "./muse/conversation/useThreadState";
 import { useThreadSync } from "./muse/conversation/useThreadSync";
-import { FeedScreen } from "./muse/FeedScreen";
 import { ComputerOverlay } from "./muse/files/ComputerOverlay";
 import { ComputerPreview } from "./muse/files/ComputerPreview";
 import { useComputer } from "./muse/files/useComputer";
@@ -103,8 +109,6 @@ import { ForkGutter } from "./muse/forks/ForkGutter";
 import type { ForkWire } from "./muse/forks/ForkOverlay";
 import { ForkThread, type ForkThreadTarget } from "./muse/forks/ForkThread";
 import { forkChatSummary, useForkView } from "./muse/forks/useForkView";
-import { GoalsScreen } from "./muse/GoalsScreen";
-import { IdeasScreen } from "./muse/IdeasScreen";
 import { SkillsPanel } from "./muse/library/SkillsPanel";
 import { RoutineList } from "./muse/routines/RoutineList";
 import { RoutinePanel } from "./muse/routines/RoutinePanel";
@@ -115,7 +119,6 @@ import { useShellSettings } from "./muse/settings/useShellSettings";
 import { useAgentSkills } from "./muse/skills/useAgentSkills";
 import { useTeaching } from "./muse/skills/useTeaching";
 import { useMuseNav } from "./muse/useMuseNav";
-import { WaitingSheet } from "./muse/WaitingSheet";
 import { draftFromRoutine } from "./RoutineEditor";
 import { CreateBotForm } from "./shell/bot-panel";
 import { DeleteItemDialog } from "./shell/dialogs";
@@ -129,6 +132,27 @@ const CallView = lazy(() => import("./CallView").then((module) => ({ default: mo
  * sit flat on the rounded content window; only the sidebar, the inspector and side panels
  * float as glass inside it. */
 /** Every orb brightens while Nova works (useNovaWork). */
+const sideChatViewWithApprovals: SideChatView = { ...sideChatView, Approvals: ApprovalCards };
+
+/** The Feed with the open Asks pinned on top: the feed capability takes them as a slot, the
+ * approvals capability supplies them (the same list the Waiting-on-you sheet shows). */
+function FeedWithAsks(props: { botId: string; onSendIdea: (text: string) => void }) {
+  const { asks, answer } = useAsks(props.botId);
+  return (
+    <FeedScreen
+      botId={props.botId}
+      onSendIdea={props.onSendIdea}
+      hasAsks={asks.length > 0}
+      asksSlot={
+        <FeedAsks
+          asks={asks}
+          onAnswer={(ask, value) => answer({ askId: ask.id, runId: ask.runId, answer: value })}
+        />
+      }
+    />
+  );
+}
+
 function NovaPresence({
   botId,
   runs,
@@ -898,7 +922,7 @@ export function ShellPage() {
               <SideChatSession
                 chat={activeChat}
                 bot={{ id: active.id, name: active.name, color: active.color }}
-                view={sideChatView}
+                view={sideChatViewWithApprovals}
                 wire={sideChatWire}
                 onCreated={setActiveChat}
                 onReplied={chatList.refresh}
@@ -923,7 +947,7 @@ export function ShellPage() {
             {museView === "goals" ? (
               <GoalsScreen botId={active.id} botName={active.name} onSendIdea={handleSendIdea} />
             ) : museView === "feed" ? (
-              <FeedScreen botId={active.id} onSendIdea={handleSendIdea} />
+              <FeedWithAsks botId={active.id} onSendIdea={handleSendIdea} />
             ) : museView === "ideas" ? (
               <IdeasScreen
                 botId={active.id}

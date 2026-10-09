@@ -2,11 +2,11 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { cn } from "@nova/ui-web";
 import { ArrowUp, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import type { IllustrationKey } from "../../../lib/illustrations";
-import { illustrationUrl } from "../../../lib/illustrations";
-import { GoalsGlyph, SparkGlyph } from "../chrome/NovaGlyphs";
-import { NovaTile } from "../chrome/NovaTile";
-import { MUSE_TYPE, MuseColumn } from "../ui";
+import type { IllustrationKey } from "../../lib/illustrations";
+import { illustrationUrl } from "../../lib/illustrations";
+import { GoalsGlyph, SparkGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { MUSE_TYPE, MuseColumn } from "../../pages/muse/ui";
 import { GoalRing, GoalStep } from "./visuals";
 
 // iOS-flavoured press feedback: a quick, springy scale on press.

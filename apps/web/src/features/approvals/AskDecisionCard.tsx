@@ -3,7 +3,7 @@ import type { Ask } from "@nova/contracts";
 import { cn } from "@nova/ui-web";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { NovaTile } from "../chrome/NovaTile";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
 import { askDecision } from "./askDecision";
 
 const KIND_ICON = {

@@ -1,25 +1,28 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Ask, FollowedTopic } from "@nova/contracts";
-import { useEffect, useRef, useState } from "react";
+import type { FollowedTopic } from "@nova/contracts";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import { useAsks } from "./asks";
-import { FeedGlyph } from "./chrome/NovaGlyphs";
-import { NovaTile } from "./chrome/NovaTile";
-import { CardSkeletonList } from "./feed/CardSkeleton";
-import { FeedAsks } from "./feed/FeedAsks";
-import { FeedPreview } from "./feed/FeedPreview";
-import { PostList } from "./feed/PostList";
-import { TopicsCard } from "./feed/TopicsCard";
-import { MuseScreen, MuseWideCenter, ScreenHeader, ScreenHero } from "./ui";
+import { FeedGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { MuseScreen, MuseWideCenter, ScreenHeader, ScreenHero } from "../../pages/muse/ui";
+import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
+import { FeedPreview } from "./FeedPreview";
+import { PostList } from "./PostList";
+import { TopicsCard } from "./TopicsCard";
 
-// The Muse's Feed (CONTEXT.md): open Asks pinned on top (from useAsks, shared with the
-// Waiting-on-you sheet), then Posts grouped Today / Earlier, then Followed topics as a
-// chip row. Ideas live in their own section now (F5), not here.
-export function FeedScreen(props: { botId: string; onSendIdea?: (text: string) => void }) {
-  const { botId } = props;
+// The Muse's Feed (CONTEXT.md): open Asks pinned on top, then Posts grouped Today / Earlier, then
+// Followed topics as a chip row. Ideas live in their own section now (F5), not here. The Asks
+// belong to the approvals capability: the shell passes them in as `asksSlot` (the same list the
+// Waiting-on-you sheet shows) and says through `hasAsks` whether there are any.
+export function FeedScreen(props: {
+  botId: string;
+  onSendIdea?: (text: string) => void;
+  asksSlot?: ReactNode;
+  hasAsks?: boolean;
+}) {
+  const { botId, asksSlot, hasAsks = false } = props;
   const { t } = useLingui();
 
-  const { asks, answer } = useAsks(botId);
   const [posts, setPosts] = useState<Awaited<ReturnType<typeof rpc.feed.list>>["posts"] | null>(
     null,
   );
@@ -76,10 +79,6 @@ export function FeedScreen(props: { botId: string; onSendIdea?: (text: string) =
     }
   }
 
-  async function handleAnswerAsk(ask: Ask, value: string) {
-    await answer({ askId: ask.id, runId: ask.runId, answer: value });
-  }
-
   async function handleFollowTopic(topic: string) {
     const followed = await rpc.topics.follow({ botId, topic });
     setTopics((current) => [...(current ?? []), followed]);
@@ -91,11 +90,7 @@ export function FeedScreen(props: { botId: string; onSendIdea?: (text: string) =
   }
 
   const empty =
-    posts !== null &&
-    posts.length === 0 &&
-    asks.length === 0 &&
-    topics !== null &&
-    topics.length === 0;
+    posts !== null && posts.length === 0 && !hasAsks && topics !== null && topics.length === 0;
 
   const topicsSection = (
     <section aria-labelledby="feed-topics" className="flex flex-col gap-2">
@@ -141,7 +136,7 @@ export function FeedScreen(props: { botId: string; onSendIdea?: (text: string) =
           </section>
         ) : (
           <>
-            <FeedAsks asks={asks} onAnswer={handleAnswerAsk} />
+            {asksSlot}
             {posts ? (
               <PostList
                 posts={posts}

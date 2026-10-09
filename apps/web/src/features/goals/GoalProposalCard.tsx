@@ -2,9 +2,9 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@nova/chat-ui/web";
 import type { GoalProposal, GoalTask } from "@nova/contracts";
 import { useState } from "react";
-import { SparkGlyph } from "../chrome/NovaGlyphs";
-import { NovaTile } from "../chrome/NovaTile";
-import { PRIMARY_BUTTON, QUIET_BUTTON } from "../ui";
+import { SparkGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
 
 type ProposalDiff = {
   next: { title: string; added: boolean }[];

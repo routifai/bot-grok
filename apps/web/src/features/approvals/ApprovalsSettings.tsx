@@ -3,7 +3,7 @@ import type { ApprovalSpending, ApprovalStandingRule } from "@nova/contracts";
 import { Button } from "@nova/ui-web";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import { MUSE_INSET_GROUP } from "./ui";
+import { MUSE_INSET_GROUP } from "../../pages/muse/ui";
 
 const ROW = "flex min-h-[52px] items-center justify-between gap-4 px-4";
 

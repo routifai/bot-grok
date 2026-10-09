@@ -3,7 +3,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type { ActionApprovalRule, ActionAutoReviewSettings } from "@nova/contracts";
 import { Button, Label, Switch } from "@nova/ui-web";
 import { useEffect, useId, useState } from "react";
-import { rpc } from "../lib/rpc";
+import { rpc } from "../../lib/rpc";
 
 function describeRule(rule: ActionApprovalRule): string {
   if (rule.effect === "require_approval") {

@@ -2,8 +2,8 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { type CronPreset, cronFromPreset, presetFromCron } from "@nova/core";
 import { Button } from "@nova/ui-web";
 import { useState } from "react";
-import { friendlyTimezone } from "../../../lib/local-timezone";
-import { RoutineSchedule } from "../../RoutineSchedule";
+import { friendlyTimezone } from "../../lib/local-timezone";
+import { RoutineSchedule } from "../../pages/RoutineSchedule";
 
 /**
  * The Check-in schedule editor for a Goal, reusing RoutineSchedule (same cron shape). A Goal

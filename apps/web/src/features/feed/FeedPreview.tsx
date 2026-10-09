@@ -1,7 +1,7 @@
 import { Trans } from "@lingui/react/macro";
-import { illustrationUrl } from "../../../lib/illustrations";
-import { SparkGlyph } from "../chrome/NovaGlyphs";
-import { NovaTile } from "../chrome/NovaTile";
+import { illustrationUrl } from "../../lib/illustrations";
+import { SparkGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
 
 const CARD = "nova-card p-4";
 

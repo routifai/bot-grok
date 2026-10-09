@@ -1,8 +1,13 @@
 import type { ChatSummary, ThreadMessage } from "@nova/contracts";
 import { useMemo, useRef, useState } from "react";
 import type { MuseRailView } from "../../components/AppRail";
+import { ApprovalCards } from "../../features/approvals";
 import { MuseSidebar } from "../muse/chrome/MuseSidebar";
-import { SideChatSession, type SideChatWire } from "../muse/chrome/SideChatSession";
+import {
+  SideChatSession,
+  type SideChatView,
+  type SideChatWire,
+} from "../muse/chrome/SideChatSession";
 import type { ChatListState } from "../muse/chrome/useChatList";
 import { sideChatView } from "../muse/conversation/sideChatView";
 import {
@@ -12,6 +17,8 @@ import {
   INITIAL_SIDE_CHATS,
   SIDE_CHAT_FIXTURE_MESSAGES,
 } from "./side-chat-fixture";
+
+const sideChatViewWithApprovals: SideChatView = { ...sideChatView, Approvals: ApprovalCards };
 
 function delay<T>(value: T, ms = 450): Promise<T> {
   return new Promise((resolve) => {
@@ -115,7 +122,7 @@ export function SideChatsPreviewPage() {
         {activeChat ? (
           <SideChatSession
             bot={{ id: DEV_BOT_ID, name: "Nova", color: "#6366f1" }}
-            view={sideChatView}
+            view={sideChatViewWithApprovals}
             chat={activeChat}
             wire={wire}
             onCreated={setActiveChat}

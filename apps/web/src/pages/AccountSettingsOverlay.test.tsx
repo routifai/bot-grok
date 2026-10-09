@@ -19,7 +19,7 @@ vi.mock("react-router-dom", () => ({
   Link: ({ children, ...props }: ComponentProps<"a">) => <a {...props}>{children}</a>,
 }));
 
-vi.mock("../components/ApprovalRulesSettings", () => ({
+vi.mock("../features/approvals", () => ({
   ApprovalRulesSettings: () => <div data-testid="approval-rules-stub" />,
 }));
 

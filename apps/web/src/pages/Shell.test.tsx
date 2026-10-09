@@ -145,7 +145,7 @@ function Stub() {
 }
 
 vi.mock("../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: Stub }));
-vi.mock("../components/AskCard", () => ({ AskCard: Stub }));
+vi.mock("../features/approvals/AskCard", () => ({ AskCard: Stub }));
 vi.mock("../components/ai/CollaborationMarker", () => ({
   CollaborationMarker: Stub,
   ActiveBotGlyph: Stub,
@@ -165,7 +165,7 @@ vi.mock("../components/teach/TeachRecordingChrome", () => ({
   TeachRecordingChrome: Stub,
   TeachStopButton: Stub,
 }));
-vi.mock("./muse/WaitingSheet", () => ({ WaitingSheet: Stub }));
+vi.mock("../features/approvals/WaitingSheet", () => ({ WaitingSheet: Stub }));
 vi.mock("./GroupPanel", () => ({
   GroupSettings: Stub,
   memberName: () => "",

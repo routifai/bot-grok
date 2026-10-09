@@ -5,9 +5,9 @@ import type { Ask } from "@nova/contracts";
 import { cn, Input } from "@nova/ui-web";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { formatRelativeTime } from "../../../lib/relative-time";
-import { NovaTile } from "../chrome/NovaTile";
-import { DetailRows, PRIMARY_BUTTON, QUIET_BUTTON } from "../ui";
+import { formatRelativeTime } from "../../lib/relative-time";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { DetailRows, PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
 import { askDecision } from "./askDecision";
 
 const KIND_ICON = {

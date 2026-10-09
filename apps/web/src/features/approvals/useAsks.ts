@@ -1,6 +1,6 @@
 import type { Ask } from "@nova/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { rpc } from "../../../lib/rpc";
+import { rpc } from "../../lib/rpc";
 
 // Asks change rarely and every answer refreshes them at once (notifyAsksChanged), so the
 // poll only catches Asks posted in the background; focus and visibility also refresh.

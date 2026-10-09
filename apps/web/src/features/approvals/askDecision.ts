@@ -1,5 +1,5 @@
 import type { Ask } from "@nova/contracts";
-import type { TileTone } from "../chrome/NovaTile";
+import type { TileTone } from "../../pages/muse/chrome/NovaTile";
 
 type Choice = Ask["choices"][number];
 

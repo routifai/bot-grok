@@ -3,11 +3,11 @@ import type { Ask } from "@nova/contracts";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@nova/ui-web";
 import { Check, Minus } from "lucide-react";
 import { useState } from "react";
-import { AskList, useAsks } from "./asks";
-import { WaitingGlyph } from "./chrome/NovaGlyphs";
-import { NovaTile } from "./chrome/NovaTile";
-import { CardSkeletonList } from "./feed/CardSkeleton";
-import { EmptyState, MUSE_INSET_GROUP, MUSE_LIST_ROW, MUSE_TYPE } from "./ui";
+import { WaitingGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { EmptyState, MUSE_INSET_GROUP, MUSE_LIST_ROW, MUSE_TYPE } from "../../pages/muse/ui";
+import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
+import { AskList, useAsks } from ".";
 
 /** An Ask answered from this sheet, kept for the "Decided" list while the app is open. */
 type Decided = { ask: Ask; label: string; primary: boolean; at: Date };

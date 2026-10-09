@@ -3,10 +3,10 @@ import type { Goal } from "@nova/contracts";
 import { DEFAULT_MUSE_NAME } from "@nova/contracts";
 import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import { GoalDetail } from "./goals/GoalDetail";
-import { GoalList, GoalListSkeleton } from "./goals/GoalList";
-import type { GoalStarter } from "./goals/GoalsIntro";
-import { MuseColumn, MuseScreen, ScreenHeader } from "./ui";
+import { MuseColumn, MuseScreen, ScreenHeader } from "../../pages/muse/ui";
+import { GoalDetail } from "./GoalDetail";
+import { GoalList, GoalListSkeleton } from "./GoalList";
+import type { GoalStarter } from "./GoalsIntro";
 
 const GOAL_STARTERS: readonly GoalStarter[] = [
   {

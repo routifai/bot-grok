@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Goal } from "@nova/contracts";
-import { StatusPill } from "../ui";
+import { StatusPill } from "../../pages/muse/ui";
 import { type GoalDisplayStatus, goalDisplayStatus } from "./format";
 
 const TONE: Record<GoalDisplayStatus, "neutral" | "live" | "attention" | "done"> = {

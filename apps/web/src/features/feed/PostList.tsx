@@ -4,8 +4,8 @@ import type { Post } from "@nova/contracts";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@nova/ui-web";
 import { Globe } from "lucide-react";
 import { useMemo, useState } from "react";
-import { formatRelativeTime } from "../../../lib/relative-time";
-import { MUSE_TYPE, QUIET_BUTTON, Section } from "../ui";
+import { formatRelativeTime } from "../../lib/relative-time";
+import { MUSE_TYPE, QUIET_BUTTON, Section } from "../../pages/muse/ui";
 import { groupPostsByRecency, postPreview } from "./format";
 
 type TileTone = "blue" | "warm" | "pink" | "green";

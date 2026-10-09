@@ -3,8 +3,8 @@ import { Button, Input, Switch } from "@nova/ui-web";
 import { KeyRound, Link2, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApprovalRulesSettings } from "../../../components/ApprovalRulesSettings";
 import { SuccessPop } from "../../../components/ai/primitives";
+import { ApprovalRulesSettings } from "../../../features/approvals";
 import { authClient } from "../../../lib/auth";
 import {
   getResponseStreamingPreference,

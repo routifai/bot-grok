@@ -18,9 +18,13 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
   engine: [
     "activity",
     "admin",
+    "approvals",
     "apps",
     "artifacts",
     "daily-notes",
+    "feed",
+    "goals",
+    "ideas",
     "memory",
     "models",
     "sheets",
@@ -29,21 +33,42 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
   api: [
     "activity",
     "admin",
+    "approvals",
     "apps",
     "artifacts",
     "daily-notes",
+    "feed",
+    "goals",
+    "ideas",
     "memory",
     "models",
     "sheets",
     "vault",
   ],
-  adapters: ["activity", "apps", "artifacts", "daily-notes", "memory", "models", "sheets", "vault"],
-  contracts: [
+  adapters: [
     "activity",
-    "admin",
+    "approvals",
     "apps",
     "artifacts",
     "daily-notes",
+    "feed",
+    "goals",
+    "ideas",
+    "memory",
+    "models",
+    "sheets",
+    "vault",
+  ],
+  contracts: [
+    "activity",
+    "admin",
+    "approvals",
+    "apps",
+    "artifacts",
+    "daily-notes",
+    "feed",
+    "goals",
+    "ideas",
     "memory",
     "models",
     "sheets",
@@ -52,9 +77,13 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
   web: [
     "activity",
     "admin",
+    "approvals",
     "apps",
     "artifacts",
     "daily-notes",
+    "feed",
+    "goals",
+    "ideas",
     "memory",
     "models",
     "sheets",
@@ -113,6 +142,22 @@ const BASELINE: readonly string[] = [
   // The sidebar's status line counts Nova's running work (useNovaWork: runs + Activity feed);
   // goes away when the sidebar moves into its folder or takes the count from the shell.
   "web:pages/muse/chrome/MuseSidebar.tsx -> activity",
+  // The transcript draws an ask block (and a skill offer) with the approvals AskCard; goes away
+  // when the conversation moves into its folder and takes a block extension point, like the
+  // artifact card above.
+  "web:pages/muse/conversation/MessageView.test.tsx -> approvals",
+  "web:pages/muse/conversation/MessageView.tsx -> approvals",
+  // Answering an inline ask from the composer calls asks.answer and tells the Asks list (the
+  // waiting sheet, the Feed) to refetch; goes away when the composer takes an "answered an ask"
+  // callback from the shell.
+  "web:pages/muse/conversation/useComposerSend.ts -> approvals",
+  // The Muse's live state (waiting face, sidebar badge) counts the open Asks (useAsks); goes away
+  // when the shell passes the count in instead of the state hook reaching into approvals.
+  "web:pages/muse/chrome/useMuseLiveState.test.tsx -> approvals",
+  "web:pages/muse/chrome/useMuseLiveState.ts -> approvals",
+  // The General settings panel lists the standing approval rules (ApprovalRulesSettings); goes
+  // away when the settings panels take their sections from the settings overlay.
+  "web:pages/muse/settings/GeneralPanel.tsx -> approvals",
 ];
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
@@ -193,6 +238,7 @@ const LAYERS: readonly Layer[] = [
     /^App\.tsx$/,
     /^pages\/Shell(\.test)?\.tsx$/,
     /^pages\/SettingsOverlay(\.test)?\.tsx$/,
+    /^pages\/AccountSettingsOverlay(\.test)?\.tsx$/,
     /^pages\/muse\/NovaSettingsPanel(\.test)?\.tsx$/,
     /^pages\/muse\/chrome\/ContextPanel\.tsx$/,
     /^pages\/dev\//,

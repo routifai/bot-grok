@@ -14,18 +14,18 @@ import {
   LIVE_ACTIVITY_WIRE,
   useActivities,
 } from "../../../features/activity";
+import { AskDecisionCard, useAsks } from "../../../features/approvals";
 import { DaysSection, type DaysWire } from "../../../features/daily-notes";
-import { MemoryTab, type MemoryWire } from "../../../features/memory";
-import { formatRelativeTime } from "../../../lib/relative-time";
-import { rpc } from "../../../lib/rpc";
-import { AskDecisionCard, useAsks } from "../asks";
 import {
   dueMeta,
   type GoalDisplayStatus,
   goalDisplayStatus,
   nextUnfinishedTask,
   taskCounts,
-} from "../goals/format";
+} from "../../../features/goals";
+import { MemoryTab, type MemoryWire } from "../../../features/memory";
+import { formatRelativeTime } from "../../../lib/relative-time";
+import { rpc } from "../../../lib/rpc";
 import { StatusPill } from "../ui";
 import {
   type ConnectionLatch,

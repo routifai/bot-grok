@@ -18,8 +18,8 @@ import {
 } from "@nova/ui-web";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
-import { rpc } from "../../../lib/rpc";
-import { MUSE_TYPE, MuseColumn, Section } from "../ui";
+import { rpc } from "../../lib/rpc";
+import { MUSE_TYPE, MuseColumn, Section } from "../../pages/muse/ui";
 import { CheckInEditor } from "./CheckInEditor";
 import { dueMeta, goalDisplayStatus, taskCounts } from "./format";
 import { GoalLog } from "./GoalLog";

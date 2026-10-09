@@ -1,7 +1,6 @@
 import { userVisibleMessages } from "@nova/core";
 import { useMemo, useRef } from "react";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
-import { ApprovalCards } from "../asks";
 import type { SideChatView } from "../chrome/SideChatSession";
 import type { MuseLiveRun } from "../chrome/useMuseLiveState";
 import { Composer } from "./Composer";
@@ -13,9 +12,9 @@ const NOT_LIVE_BOT = () => undefined;
 
 /** The Conversation's own Transcript and Composer for a Side Chat session
  * (SideChatSession.tsx): same bubbles, Muse face, markdown, working row and scrolling, minus
- * what a text-only Side Chat doesn't have (replies, attachments, voice, a computer). */
-export const sideChatView: SideChatView = {
-  Approvals: ApprovalCards,
+ * what a text-only Side Chat doesn't have (replies, attachments, voice, a computer). The
+ * waiting approvals (`Approvals`) come from the approvals capability; the shell adds them. */
+export const sideChatView: Omit<SideChatView, "Approvals"> = {
   Transcript: function SideChatTranscript({
     messages,
     running,
