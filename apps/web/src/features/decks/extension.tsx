@@ -6,6 +6,8 @@ import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from ".
 import { useDeckExport } from "./DeckExport";
 import { DeckHeaderActions } from "./DeckHeaderActions";
 import { DeckViewer } from "./DeckViewer";
+import { PptxPreview } from "./PptxPreview";
+import { isPptxArtifact } from "./pptx-normalize";
 
 /** The header of a deck: Edit, Present and one Download menu, plus Open in new tab in `⋯`
  * (Publish… joins it from the apps extension). Replaces the panel's default buttons. */
@@ -13,7 +15,8 @@ function useDecksPanel({ artifact, bytes, openUrl }: ArtifactPanelArgs): Artifac
   const deck: Artifact | undefined =
     artifact && isDeckArtifactName(artifact.name) ? artifact : undefined;
   const { state, run, cancel } = useDeckExport(deck?.id);
-  if (!deck) return {};
+  // A PowerPoint file keeps the panel's own Download and full-screen buttons; it only needs room.
+  if (!deck) return { wide: !!artifact && isPptxArtifact(artifact) };
   return {
     wide: true,
     hideDefaults: true,
@@ -35,11 +38,13 @@ function useDecksPanel({ artifact, bytes, openUrl }: ArtifactPanelArgs): Artifac
   };
 }
 
-/** Opens slide decks (HTML files named `*.deck.html`) in the deck viewer. */
+/** Opens slide decks (HTML files named `*.deck.html`) in the deck viewer, and PowerPoint files
+ * (`.pptx`, such as the Muse's native-chart decks) in a read-only preview. */
 export const decksExtension: ArtifactExtension = {
   usePanel: useDecksPanel,
   card: (artifact) => (isDeckArtifactName(artifact.name) ? { meta: t`Slide deck` } : null),
-  view: ({ artifact, bytes, onEdited }) => {
+  view: ({ artifact, bytes, onEdited, fallback }) => {
+    if (isPptxArtifact(artifact)) return <PptxPreview bytes={bytes} fallback={fallback} />;
     if (!isDeckArtifactName(artifact.name)) return null;
     const html = new TextDecoder("utf-8").decode(bytes);
     // Keyed by the file, not the version: a new version keeps the slide, the mode and the

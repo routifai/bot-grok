@@ -28,6 +28,7 @@ function createSlide(pres, theme) {
     y: 1.4,
     w: 9,
     colW: [3, 3, 3],
+    rowH: 0.45,
     fontFace: "Arial",
     fontSize: 16,
     border: { type: "solid", color: theme.light, pt: 1 },

@@ -222,3 +222,26 @@ it("can cancel a running export and never downloads its result", async () => {
   await act(async () => finish(file("launch.pptx", "application/x")));
   expect(download).not.toHaveBeenCalled();
 });
+
+const PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+it("previews PowerPoint files and only widens their panel", async () => {
+  const bytes = new Uint8Array([80, 75]);
+  const fallback = null;
+  const pptx = file("review.pptx", PPTX);
+  expect(decksExtension.view?.({ artifact: pptx, bytes, fallback })).not.toBeNull();
+  expect(
+    decksExtension.view?.({
+      artifact: file("review.pptx", "application/octet-stream"),
+      bytes,
+      fallback,
+    }),
+  ).not.toBeNull();
+  expect(
+    decksExtension.view?.({ artifact: file("notes.txt", "text/plain"), bytes, fallback }),
+  ).toBeNull();
+  expect(decksExtension.card(pptx)).toBeNull();
+  const c = await mount(pptx);
+  expect(buttons(c)).toEqual([]);
+  expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("false");
+});

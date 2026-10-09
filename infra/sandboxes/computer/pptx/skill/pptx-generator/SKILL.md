@@ -45,6 +45,8 @@ upstream text where they differ.
   an image, an SVG or shapes, and never paste a chart screenshot. Give every chart a title or a
   caption that names what it shows and its unit. Where the page-type guides below mention an SVG
   chart, use a native chart instead.
+- **Tables: always pass `rowH`** (one number, in inches, big enough for the text) next to `colW`,
+  so every row has an explicit height; Nova's preview clips a table to its frame otherwise.
 - **Text extraction.** Where this skill says `python -m markitdown`, run `python3 -m markitdown`.
 
 ## Quick Reference
