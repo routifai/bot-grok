@@ -5,11 +5,7 @@ import { useEffect, useRef } from "react";
  * visible or the window regains focus. Nothing runs while hidden or when `enabled` is false.
  * Overlapping runs are skipped, so a slow request never stacks up.
  */
-export function useVisiblePoll(
-  tick: () => Promise<unknown> | void,
-  intervalMs: number,
-  enabled = true,
-) {
+export function useVisiblePoll(tick: () => unknown, intervalMs: number, enabled = true) {
   const latest = useRef(tick);
   latest.current = tick;
   useEffect(() => {
