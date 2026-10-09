@@ -138,6 +138,27 @@ def test_search_wakes_the_computer_and_returns_passages(world: World) -> None:
     assert "type" not in found and "abs_path" not in found["results"][0]
 
 
+def test_ingest_wakes_the_computer_and_answers_when_the_file_is_searchable(world: World) -> None:
+    world.awake = False
+    path = world.runtime.indexer.workspace / "your_files/uploads/2026-10-09/r.pdf"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(PDF)
+    r = world.client.post(
+        f"{BASE}/ingest", json={"path": "your_files/uploads/2026-10-09/r.pdf", "inline": True}
+    )
+    assert r.status_code == 200 and world.awake
+    body = r.json()
+    assert body["pages"] == 1 and "Currency exposure" in body["markdown"]
+    assert world.runtime.indexer.db.file_by_path("your_files/uploads/2026-10-09/r.pdf").state == (
+        "ready"
+    )
+    assert (
+        world.client.post(f"{BASE}/ingest", json={"path": "your_files/none.pdf"}).status_code
+        >= 400
+    )
+    assert world.client.post(f"{BASE}/ingest", json={"path": "x", "extra": 1}).status_code == 422
+
+
 def test_search_when_the_computer_wont_start_is_a_calm_503(world: World) -> None:
     world.awake, world.wake_ok = False, False
     r = world.client.post(f"{BASE}/search", json={"query": "x"})

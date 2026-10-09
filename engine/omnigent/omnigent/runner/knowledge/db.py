@@ -510,11 +510,13 @@ class KnowledgeDb:
         limit: int,
         file_ids: Sequence[str] | None = None,
         query_vector: Sequence[float] | None = None,
+        keyword: bool = True,
     ) -> list[tuple[ChunkRow, float]]:
-        """Best passages, best first, with a score in ``[0, 1]``.
+        """Best passages, best first, with a score in ``[0, 1]`` (the top hit of a list is 1).
 
         With *query_vector* the BM25 and vector rankings are fused (reciprocal rank fusion);
-        without it BM25 alone ranks. *file_ids* restricts the search to those files.
+        without it BM25 alone ranks; ``keyword=False`` with a vector ranks by vector alone.
+        *file_ids* restricts the search to those files.
         """
         wanted = set(file_ids) if file_ids is not None else None
         if wanted is not None and not wanted:
@@ -522,7 +524,7 @@ class KnowledgeDb:
         candidates = max(limit * _CANDIDATE_FACTOR, _MIN_CANDIDATES)
         ranks: dict[int, float] = {}
         best = 0.0
-        lists: list[list[int]] = [self._bm25(query, candidates, wanted)]
+        lists: list[list[int]] = [self._bm25(query, candidates, wanted)] if keyword else []
         if query_vector is not None and self.vector_dims() == len(query_vector):
             lists.append(self._nearest(query_vector, candidates, wanted))
         for ids in lists:

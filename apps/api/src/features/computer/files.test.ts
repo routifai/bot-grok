@@ -2,6 +2,7 @@ import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   dedupeUploadName,
+  engineIngestAttachment,
   engineListFiles,
   engineReadFile,
   engineSaveFileToLibrary,
@@ -236,5 +237,52 @@ describe("engine attachment upload", () => {
     expect(safeUploadName("", "application/pdf")).toBe("file.pdf");
     expect(dedupeUploadName("a.pdf", new Set(["a.pdf"]))).toBe("a (2).pdf");
     expect(dedupeUploadName("noext", new Set(["noext", "noext (2)"]))).toBe("noext (3)");
+  });
+});
+
+describe("engine attachment ingest", () => {
+  const ingestPrisma = {
+    bot: { findFirst: vi.fn(async () => ({ id: "bot-1" })) },
+    user: { findUnique: vi.fn(async () => ({ email: "p@example.test" })) },
+  } as unknown as PrismaClient;
+  const ingestDeps = { prisma: ingestPrisma };
+  const path = "your_files/uploads/2026-10-09/report.pdf";
+  const stub = (handler: (url: URL, init?: RequestInit) => Response) => {
+    const fetchMock = vi.fn(async (url: URL, init?: RequestInit) =>
+      url.pathname === "/v1/me/muse"
+        ? json({ session_id: "muse-1", agent: "agent", created: false })
+        : handler(url, init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+
+  it("asks the engine to read the file and returns what it came to", async () => {
+    const fetchMock = stub(() =>
+      json({ file_id: "ab12", name: "report.pdf", pages: 3, chars: 900, markdown_path: "/m.md" }),
+    );
+    const out = await engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path });
+    expect(out).toEqual({ fileId: "ab12", name: "report.pdf", pages: 3, chars: 900 });
+    const [url, init] = fetchMock.mock.calls.at(-1) as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/v1/sessions/muse-1/knowledge/ingest");
+    expect(JSON.parse(String(init.body))).toEqual({ path, inline: false });
+  });
+
+  it("only reads uploads, and says calmly when the file can't be read", async () => {
+    const fetchMock = stub(() => json({ error: { message: "not a readable PDF" } }, 400));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path: "secrets/x.pdf" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: "Nova couldn't read this file." });
+  });
+
+  it("maps a starting Computer to the calm message", async () => {
+    stub(() => json({ error: { code: "runner_unavailable" } }, 503));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   });
 });
