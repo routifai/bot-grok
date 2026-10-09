@@ -34,6 +34,32 @@ from omnigent.superchat.transcript.reset import latest_reset_item
 _LOOKAHEAD_ITEMS = 100
 
 
+#: How long a transcript read waits on the runner for its live queue before showing none.
+_RUNNER_QUEUE_READ_TIMEOUT_S = 2.0
+
+
+async def _waiting_item_ids(request: Request, session_id: str) -> set[str]:
+    """The persisted user messages waiting in the session runner's buffer (empty if unknown).
+
+    Live state only: the runner owns its queue, so nothing about it is stored here.
+    """
+    from omnigent.server.routes._sessions.helpers import _get_runner_client
+
+    try:
+        client = await _get_runner_client(
+            session_id, getattr(request.app.state, "runner_router", None)
+        )
+        if client is None:
+            return set()
+        resp = await client.get(
+            f"/v1/sessions/{session_id}/buffered", timeout=_RUNNER_QUEUE_READ_TIMEOUT_S
+        )
+        ids = resp.json().get("item_ids") if resp.status_code == 200 else None
+    except Exception:  # noqa: BLE001 -- the note is optional; the transcript is not
+        return set()
+    return {i for i in ids if isinstance(i, str)} if isinstance(ids, list) else set()
+
+
 def read_transcript(
     conv_store: ConversationStore,
     conversation: Conversation,
@@ -91,14 +117,6 @@ def read_transcript(
         for helper_id, helper in conv_store.get_conversations(helper_ids).items():
             statuses[helper_id] = sub_agent_status(helper)
     messages = project_items(items, helper_statuses=statuses)
-    # A message sent during a turn says how it was taken: ``steer`` (read by that turn) or
-    # ``queued`` (waiting for the next). One that ran as its own turn reads as any other, and
-    # nothing waits behind a session that is not mid-turn (its runner settles the rest).
-    deliveries = conv_store.get_item_deliveries(conversation.id) if messages else {}
-    for message in messages:
-        state = deliveries.get(message["id"]) if message["role"] == "user" else None
-        if state == "steer" or (state == "queued" and live):
-            message["delivered"] = state
     can_fork = lineage["kind"] == "super" or lineage["anchor_item_id"] is not None
     grouped = forks_by_anchor(conv_store, conversation, viewer_id) if can_fork and messages else {}
     return _page(
@@ -162,8 +180,8 @@ def register_transcript_routes(
             ``reset`` is ``{"item_id", "created_at"}`` of the latest reset or ``None``; ``live``
             is whether a turn is in flight. Each message has ``forks`` (``[]`` when none:
             ``{session_id, title, replies, live, unread, state, summary, created_at}``) and an
-            added fork's ``fork_summary`` block. A user message sent while a turn ran has
-            ``delivered``: ``steer`` (read by the running turn) or ``queued`` (waits for the next).
+            added fork's ``fork_summary`` block. A user message still waiting behind the
+            running turn has ``delivered: "queued"`` (from the runner's live queue).
         :raises OmnigentError: 403 without READ; 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)
@@ -185,5 +203,11 @@ def register_transcript_routes(
             before_reset=before_reset,
             viewer_id=user_id,
         )
+        if page["live"]:
+            # A message waiting behind the running turn: the runner's live queue says which.
+            waiting = await _waiting_item_ids(request, conversation.id)
+            for message in page["data"]:
+                if message["role"] == "user" and message["id"] in waiting:
+                    message["delivered"] = "queued"
         redactor = await session_redactor(request, conversation_store, session_id, user_id)
         return redactor.deep(page)

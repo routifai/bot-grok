@@ -303,7 +303,6 @@ from omnigent.server.routes._sessions.helpers import (
     _query_host_runner_status,
     _read_state_entry,
     _record_daily_cost,
-    _record_input_delivery,
     _reject_reserved_cost_control_label_seed,
     _reject_server_reserved_label_seed,
     _relay_persist,
@@ -322,7 +321,6 @@ from omnigent.server.routes._sessions.helpers import (
     _session_status_from_cache,
     _session_status_with_child_rollup,
     _SessionEventDispatchResult,
-    _settle_lost_queued_messages,
     _signal_terminal_resolved_harness_elicitation,
     _spec_harness,
     _stop_session_via_runner,
@@ -4868,8 +4866,6 @@ async def _ensure_runner_session_initialized(
         # via the same warning path rather than silently forwarding into a
         # half-initialized runner.
         resp.raise_for_status()
-        if initializer is None:
-            await _settle_lost_queued_messages(session_id, resp, conversation_store)
     except (httpx.HTTPError, ConnectionError) as exc:
         _logger.warning(
             "Session-init handshake to runner failed for session %s; "
@@ -5895,25 +5891,24 @@ def _publish_routed_model(session_id: str, model: str) -> None:
 
 
 class _ForwardedItem(NamedTuple):
-    """A user item the runner took: its id and how the session took it.
+    """A user item the runner took.
 
     :param item_id: Store-assigned id of the persisted item.
-    :param delivery: The runner's answer: ``"turn"`` (started a turn), ``"steer"``
-        (offered to the running turn) or ``"queued"`` (waiting behind it); ``None`` when
-        the runner did not say.
+    :param turn: The runner's number for the turn the message started or joined; ``None``
+        when the runner did not say.
     """
 
     item_id: str
-    delivery: str | None
+    turn: int | None
 
 
-def _runner_delivery(response: httpx.Response) -> str | None:
-    """The ``delivery`` a runner's acceptance names, or ``None`` (fakes may expose no body)."""
+def _runner_turn(response: httpx.Response) -> int | None:
+    """The ``turn`` a runner's acceptance names, or ``None`` (fakes may expose no body)."""
     payload: object = None
     with contextlib.suppress(ValueError, AttributeError, TypeError):
         payload = response.json()
-    delivery = payload.get("delivery") if isinstance(payload, dict) else None
-    return delivery if delivery in ("turn", "steer", "queued") else None
+    turn = payload.get("turn") if isinstance(payload, dict) else None
+    return turn if isinstance(turn, int) and not isinstance(turn, bool) else None
 
 
 def _is_not_running_refusal(response: httpx.Response) -> bool:
@@ -6632,7 +6627,7 @@ async def _forward_event_to_runner(
             code=ErrorCode.RUNNER_UNAVAILABLE,
         ) from exc
 
-    return _ForwardedItem(persisted_items[0].id, _runner_delivery(_forward_resp))
+    return _ForwardedItem(persisted_items[0].id, _runner_turn(_forward_resp))
 
 
 async def _stamp_routing_decision_label(
@@ -7308,7 +7303,7 @@ async def _dispatch_session_event_to_runner_impl(
         persisted_item=persisted_item,
     )
     return _SessionEventDispatchResult(
-        item_id=forwarded.item_id, pending_id=None, delivery=forwarded.delivery
+        item_id=forwarded.item_id, pending_id=None, turn=forwarded.turn
     )
 
 
@@ -7872,6 +7867,12 @@ async def _relay_runner_stream_once(
                                     if isinstance(raw_blocked_on, str) and raw_blocked_on
                                     else None
                                 ),
+                                turn=(
+                                    event["turn"]
+                                    if isinstance(event.get("turn"), int)
+                                    and not isinstance(event.get("turn"), bool)
+                                    else None
+                                ),
                             )
                         if status == "running":
                             text_acc.clear()
@@ -8345,17 +8346,6 @@ async def _relay_runner_stream_once(
                                 reason=event.get("reason"),
                             )
                         continue
-                    if evt_type == "session.input.delivery":
-                        delivery = event.get("data")
-                        if isinstance(delivery, dict):
-                            # Stored before it is relayed: a client refetching on the event
-                            # reads the new state.
-                            await _record_input_delivery(
-                                session_id,
-                                delivery.get("item_id"),
-                                delivery.get("delivered"),
-                                conversation_store,
-                            )
                     session_stream.publish(session_id, event)
 
     except (httpx.HTTPError, ConnectionError) as exc:

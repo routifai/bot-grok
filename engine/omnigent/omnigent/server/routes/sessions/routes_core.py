@@ -2619,14 +2619,6 @@ def register_core_routes(
                             runner_init_resp.status_code < 400
                             and runner_inference_verified(conv, runner_init_resp)
                         )
-                        if parent_initialized:
-                            from omnigent.server.routes._sessions.helpers import (
-                                _settle_lost_queued_messages,
-                            )
-
-                            await _settle_lost_queued_messages(
-                                session_id, runner_init_resp, conversation_store
-                            )
                 if (
                     conv is not None
                     and conv.inference_snapshot is not None

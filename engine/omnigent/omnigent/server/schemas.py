@@ -3316,6 +3316,11 @@ class SessionStatusEvent(_SSEEventBase):
         ``None`` whenever the session is not parked. Unrelated to the
         ``waiting`` status above, which means the turn has ended and only
         background work remains.
+    :param turn: The runner's number for the turn this edge belongs to, e.g. ``42``. It
+        rises with every turn the runner starts; ``POST /events`` answers a message with the
+        number of the turn it started or joined, so a sender can tell that turn's ``idle``
+        from an earlier one's. ``idle`` is reported only once no message waits behind the
+        turn. ``None`` from a runner that does not number turns.
 
     Category: **transient** (SSE-only). Status is rederived on
     reconnect from the cached last-relayed turn lifecycle event
@@ -3330,6 +3335,7 @@ class SessionStatusEvent(_SSEEventBase):
     background_task_count: int | None = None
     background_tasks: list[BackgroundTaskInfo] | None = None
     blocked_on: str | None = None
+    turn: int | None = None
 
 
 class SessionUsageEvent(_SSEEventBase):
@@ -3794,10 +3800,9 @@ class SessionInputDeliveryPayload(BaseModel):
     Inner payload of a :class:`SessionInputDeliveryEvent`.
 
     :param item_id: The persisted user message this is about, e.g. ``"msg_abc"``.
-    :param delivered: How the session took the message: ``"queued"`` (held until the running
-        turn ends; may come first), then exactly one of ``"steer"`` (read by the running turn
-        at its next step), ``"turn"`` (started a turn of its own) or ``"cancelled"`` (dropped
-        by a stop or a delete before any turn read it).
+    :param delivered: ``"queued"`` (waiting behind the running turn), then ``"steer"``
+        (read by the running turn), ``"turn"`` (now running as a turn of its own) or
+        ``"cancelled"`` (dropped by a stop or a delete).
     """
 
     item_id: str
@@ -3806,13 +3811,12 @@ class SessionInputDeliveryPayload(BaseModel):
 
 class SessionInputDeliveryEvent(_SSEEventBase):
     """
-    How a message sent to the session was taken.
+    A message sent while a turn ran waits behind it, or left that wait.
 
     Wire shape uses the nested envelope: ``{"type": "session.input.delivery", "data":
-    {"item_id", "delivered"}}``. Every message gets exactly one terminal event (``steer``,
-    ``turn`` or ``cancelled``), a message to an idle session included (``turn``), so a client
-    can wait for its own messages without timers. Clients show a queued message as waiting
-    and a steered one as part of the ongoing work.
+    {"item_id", "delivered"}}``. A display hint: clients refetch and show a waiting message
+    as such (the transcript's ``delivered`` reads the runner's live queue). A message sent to
+    an idle session simply starts a turn and has none.
 
     :param type: Always ``"session.input.delivery"``.
     :param data: See :class:`SessionInputDeliveryPayload`.

@@ -38,10 +38,6 @@ class _Store:
             host_id="host_1",
         )
         self.appended: list[ConversationItem] = []
-        self.deliveries: list[tuple[str, str]] = []
-
-    def set_item_delivery(self, session_id: str, item_id: str, delivered: str) -> None:
-        self.deliveries.append((item_id, delivered))
 
     def get_conversation(self, session_id: str) -> Conversation:
         return self.conv
@@ -83,7 +79,7 @@ class _Harness:
         async def dispatch(*args: Any, **kwargs: Any) -> Any:
             self.order.append("dispatch")
             self.dispatched.append(kwargs.get("persisted_item"))
-            return SimpleNamespace(item_id="x", pending_id=None, delivery="turn")
+            return SimpleNamespace(item_id="x", pending_id=None, turn=1)
 
         async def runner(*_: Any, **__: Any) -> Any:
             return MagicMock()
@@ -152,12 +148,7 @@ async def test_post_acks_with_the_stored_item_while_the_wake_is_still_running(ha
     resp = await asyncio.wait_for(harness.send(), timeout=5)
 
     assert resp.status_code == 202
-    # Held until the runner is up: queued; the runner's own delivery events follow.
-    assert resp.json() == {
-        "queued": True,
-        "item_id": harness.store.appended[0].id,
-        "delivery": "queued",
-    }
+    assert resp.json() == {"queued": True, "item_id": harness.store.appended[0].id}
     assert len(harness.store.appended) == 1
     assert harness.dispatched == []  # the wake has not finished, nothing forwarded yet
 
@@ -183,8 +174,6 @@ async def test_a_failed_wake_fails_the_turn_and_keeps_the_message(harness):
     assert [(f.code, f.message) for f in harness.failures] == [
         (ErrorCode.RUNNER_UNAVAILABLE, "sandbox gone")
     ]
-    # No runner ever got it: settled as cancelled, so nobody waits on it.
-    assert harness.store.deliveries == [(harness.store.appended[0].id, "cancelled")]
     assert not orchestration_mod.session_has_deferred_dispatch(_SESSION_ID)
 
 

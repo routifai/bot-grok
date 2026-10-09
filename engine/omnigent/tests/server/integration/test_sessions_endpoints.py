@@ -12317,14 +12317,14 @@ def _fake_runner_answering(monkeypatch: pytest.MonkeyPatch, answer: httpx.Respon
     return fake_runner, forwarded
 
 
-async def test_message_answer_says_how_the_session_took_it(
+async def test_message_answer_names_the_turn_it_joined(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The POST answers with the runner's delivery, so a sender knows at once whether its
-    message started a turn, was offered to the running one, or waits behind it."""
+    """The POST answers with the runner's number for the turn the message started or joined,
+    so a sender can tell that turn's ``idle`` from an earlier one's."""
     fake_runner, _ = _fake_runner_answering(
-        monkeypatch, httpx.Response(202, json={"status": "buffered", "delivery": "steer"})
+        monkeypatch, httpx.Response(202, json={"status": "buffered", "turn": 7})
     )
     try:
         agent = await create_test_agent(client)
@@ -12337,7 +12337,7 @@ async def test_message_answer_says_how_the_session_took_it(
             },
         )
         assert resp.status_code == 202, resp.text
-        assert resp.json()["delivery"] == "steer"
+        assert resp.json()["turn"] == 7
         assert resp.json()["item_id"]
     finally:
         await fake_runner.aclose()

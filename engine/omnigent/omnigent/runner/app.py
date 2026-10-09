@@ -3446,8 +3446,6 @@ def create_runner_app(
     # ``if_running`` messages offered to a running turn, by injection id: (session, answer).
     # The answer is True once the turn takes or offers it for its next step, False if refused.
     _offer_answers: dict[str, tuple[str, asyncio.Future[bool]]] = {}
-    # Per session, the persisted user messages at the end of the last history load.
-    _trailing_user_item_ids: dict[str, list[str]] = {}
     _claude_prompt_waiters: dict[str, asyncio.Task[None]] = {}
     app.state.claude_prompt_waiters = _claude_prompt_waiters
     _author_attribution_sessions: set[str] = set()
@@ -5089,9 +5087,6 @@ def create_runner_app(
                 and session_id not in _active_turns
             ):
                 recovery_turn = "history_resume"
-                # The recovery turn answers every unanswered message at the end of history.
-                for _resumed in _trailing_user_item_ids.get(session_id, []):
-                    _publish_input_delivery(session_id, _resumed, "turn")
                 resumed_item_id = _last_server_item_id.get(session_id)
                 if last_type == "message" and last_role == "user" and resumed_item_id:
                     _recovery_resumed_item_ids[session_id] = resumed_item_id
@@ -5182,23 +5177,12 @@ def create_runner_app(
                 last_item_type=history[-1].get("type") if history else None,
             ),
         )
-        # The sent messages this runner still owes a turn: waiting behind the running one,
-        # or answered by the recovery turn just started. Any other message the server holds
-        # as waiting was lost with a previous runner (the server cancels it).
-        held_item_ids = [
-            body["persisted_item_id"]
-            for body in _session_message_buffers.get(session_id) or []
-            if isinstance(body.get("persisted_item_id"), str)
-        ]
-        if recovery_turn == "history_resume":
-            held_item_ids += _trailing_user_item_ids.get(session_id, [])
         return JSONResponse(
             status_code=201,
             content={
                 "id": session_id,
                 "agent_id": agent_id,
                 "status": status,
-                "held_item_ids": held_item_ids,
                 "created_at": int(_session_start_cache[session_id]),
                 "title": None,
                 "labels": {},
@@ -5380,6 +5364,23 @@ def create_runner_app(
             },
         )
 
+    @app.get("/v1/sessions/{session_id}/buffered")
+    async def get_buffered_messages(session_id: str) -> JSONResponse:
+        """The messages waiting behind the running turn (live state; nothing is persisted).
+
+        :returns: ``{"item_ids": [...]}``: the persisted user messages in the session's
+            buffer, oldest first.
+        """
+        return JSONResponse(
+            {
+                "item_ids": [
+                    body["persisted_item_id"]
+                    for body in _session_message_buffers.get(session_id) or []
+                    if isinstance(body.get("persisted_item_id"), str)
+                ]
+            }
+        )
+
     @app.delete("/v1/sessions/{session_id}")
     async def delete_session(session_id: str) -> JSONResponse:
         _cancel_claude_prompt_waiter(session_id)
@@ -5423,7 +5424,6 @@ def create_runner_app(
         _turn_bind_epoch.pop(session_id, None)
         _recovery_turn_ids.pop(session_id, None)
         _recovery_resumed_item_ids.pop(session_id, None)
-        _trailing_user_item_ids.pop(session_id, None)
         _desync_terminalized.pop(session_id, None)
         _desynced_sessions.discard(session_id)
         _required_terminal_exit_errors.pop(session_id, None)
@@ -5621,16 +5621,6 @@ def create_runner_app(
 
         if drop_item_id is not None:
             all_items = [it for it in all_items if it.get("id") != drop_item_id]
-        # The user messages no reply follows yet (a recovery turn answers them).
-        trailing: list[str] = []
-        for it in reversed(all_items):
-            data = it.get("data") if isinstance(it.get("data"), dict) else it
-            if it.get("type") != "message" or data.get("role") != "user":
-                break
-            if isinstance(it.get("id"), str):
-                trailing.append(it["id"])
-        _trailing_user_item_ids[session_id] = trailing[::-1]
-
         converted = _convert_raw_items_to_input(all_items)
         # Items are persisted pre-resolution, so reloaded history can still
         # carry raw file_id blocks (the runner has no file/artifact stores).
@@ -6305,6 +6295,10 @@ def create_runner_app(
         if status == "idle" and harness in {"codex-native", "antigravity-native"}:
             return
         event: _JsonObject = {"type": "session.status", "status": status}
+        turn = _turn_bind_epoch.get(conv_id)
+        if turn is not None:
+            # Lets a sender tell the end of the turn its message joined from an earlier one.
+            event["turn"] = turn
         if error is not None:
             event["error"] = error
         if response_id is not None:
@@ -6338,11 +6332,11 @@ def create_runner_app(
         _publish_event(conv_id, event)
 
     def _publish_input_delivery(conv_id: str, item_id: object, delivered: str) -> None:
-        """Tell clients how a message sent to the session was taken (``session.input.delivery``).
+        """Tell clients a message sent during a turn waits behind it or left that wait.
 
-        ``queued`` (waiting behind the running turn) may come first; every message then gets
-        exactly one of ``steer`` (read by the running turn), ``turn`` (ran as its own turn)
-        or ``cancelled`` (dropped by a stop or a delete before any turn read it).
+        A display hint (``session.input.delivery``): ``queued``, then ``steer`` (read by the
+        running turn), ``turn`` (now running as its own turn) or ``cancelled`` (dropped by a
+        stop or a delete).
         """
         if isinstance(item_id, str) and item_id:
             _publish_event(
@@ -8720,12 +8714,18 @@ def create_runner_app(
 
             pending_bridge_dir = await _pending_claude_prompt_bridge_dir(session_id)
             # A message meant only for the turn that ended never runs as a turn of its own.
-            for _only in [m for m in buf if m.get(_ONLY_RUNNING_TURN)]:
+            _only_running = [m for m in buf if m.get(_ONLY_RUNNING_TURN)]
+            for _only in _only_running:
                 _remove_buffered(session_id, _only.get("injection_id"))
                 _publish_input_delivery(session_id, _only.get("persisted_item_id"), "cancelled")
             # Stop/delete can clear the queue while the pane inspection is in flight.
             buf = _session_message_buffers.get(session_id)
             if not buf:
+                if _only_running:
+                    # The turn's end held back ``idle`` for these; nothing else waits now.
+                    _publish_turn_status(
+                        session_id, "waiting" if _has_live_child_helpers(session_id) else "idle"
+                    )
                 return
             if pending_bridge_dir is not None:
                 _start_claude_prompt_waiter(session_id, pending_bridge_dir)
@@ -11358,12 +11358,11 @@ def create_runner_app(
                         conversation_id,
                         extra={"session_id": conversation_id},
                     )
-                    _publish_input_delivery(conversation_id, _persisted_item_id, "turn")
                     return JSONResponse(
                         status_code=202,
                         content={
                             "status": "already_running",
-                            "delivery": "turn",
+                            "turn": _turn_bind_epoch.get(conversation_id),
                             "detail": "The recovery turn is already answering this message.",
                         },
                     )
@@ -11419,7 +11418,7 @@ def create_runner_app(
                             status_code=202,
                             content={
                                 "status": "buffered",
-                                "delivery": "queued",
+                                "turn": _turn_bind_epoch.get(conversation_id),
                                 "detail": "Message buffered; it runs after the active turn.",
                             },
                         )
@@ -11478,9 +11477,8 @@ def create_runner_app(
                         status_code=202,
                         content={
                             "status": "buffered",
-                            # ``steer``: offered to the running turn, which reports whether
-                            # it read it.
-                            "delivery": "steer" if _forwarded else "queued",
+                            # The message joins this turn: steered in, or run right after it.
+                            "turn": _turn_bind_epoch.get(conversation_id),
                             "detail": "Message buffered; active turn will process it.",
                         },
                     )
@@ -11515,7 +11513,6 @@ def create_runner_app(
                             status_code=202,
                             content={
                                 "status": "buffered",
-                                "delivery": "queued",
                                 "detail": "Message buffered until the pending prompt is resolved.",
                             },
                         )
@@ -11543,10 +11540,6 @@ def create_runner_app(
                     extra={"session_id": conversation_id},
                 )
 
-                # Ahead of the turn's own events, so a client sees its message start the turn.
-                _publish_input_delivery(
-                    conversation_id, message_body.get("persisted_item_id"), "turn"
-                )
                 _publish_turn_status(conversation_id, "running")
 
                 if stream:
@@ -11572,7 +11565,7 @@ def create_runner_app(
                     status_code=202,
                     content={
                         "status": "accepted",
-                        "delivery": "turn",
+                        "turn": _turn_bind_epoch.get(conversation_id),
                         "detail": "Turn started.",
                     },
                 )

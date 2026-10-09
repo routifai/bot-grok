@@ -516,34 +516,33 @@ async def test_transcript_redacts_deployment_secrets(
     assert secret not in raw and "[redacted]" in raw
 
 
-async def test_a_message_sent_during_a_turn_says_how_it_was_taken(
-    client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
+async def test_a_message_waiting_behind_the_running_turn_reads_as_queued(
+    client: httpx.AsyncClient,
+    conversation_store: SqlAlchemyConversationStore,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from omnigent.superchat.transcript import routes as transcript_routes
+
     root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
-    first, steered, queued, stopped = conversation_store.append(
-        root.id,
-        [_say("user", "redo"), _say("user", "again"), _say("user", "blue"), _say("user", "x")],
+    first, waiting = conversation_store.append(
+        root.id, [_say("user", "redo"), _say("user", "and blue")]
     )
-    conversation_store.set_item_delivery(root.id, first.id, "turn")
-    conversation_store.set_item_delivery(root.id, steered.id, "steer")
-    conversation_store.set_item_delivery(root.id, queued.id, "queued")
-    conversation_store.set_item_delivery(root.id, stopped.id, "cancelled")
+    asked: list[str] = []
+
+    async def runner_queue(request: object, session_id: str) -> set[str]:
+        asked.append(session_id)
+        return {waiting.id}
+
+    monkeypatch.setattr(transcript_routes, "_waiting_item_ids", runner_queue)
     url = f"/v1/sessions/{root.id}/transcript"
 
-    # Not mid-turn: nothing can be waiting behind a turn.
+    # Not mid-turn: nothing waits, and the runner is not asked.
     messages = {m["id"]: m for m in (await client.get(url)).json()["data"]}
-    assert "delivered" not in messages[queued.id]
-    assert messages[steered.id]["delivered"] == "steer"
+    assert "delivered" not in messages[waiting.id]
+    assert asked == []
 
+    # Mid-turn: the runner's live queue is the only source.
     conversation_store.set_session_live_status(root.id, "running")
     messages = {m["id"]: m for m in (await client.get(url)).json()["data"]}
+    assert messages[waiting.id]["delivered"] == "queued"
     assert "delivered" not in messages[first.id]
-    assert messages[steered.id]["delivered"] == "steer"
-    assert messages[queued.id]["delivered"] == "queued"
-    assert "delivered" not in messages[stopped.id]
-
-    # The stored state is the only source: once the queued message runs as its own turn,
-    # nothing is waiting, with no timer involved.
-    conversation_store.set_item_delivery(root.id, queued.id, "turn")
-    messages = {m["id"]: m for m in (await client.get(url)).json()["data"]}
-    assert "delivered" not in messages[queued.id]

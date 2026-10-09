@@ -201,7 +201,6 @@ from omnigent.server.routes._sessions.helpers import (
     _publish_policy_deny,
     _publish_session_superseded,
     _publish_status,
-    _record_input_delivery,
     _record_turn_failure,
     _remove_session_worktree_best_effort,
     _require_external_status_forward,
@@ -2215,14 +2214,9 @@ def register_events_routes(
                     failure,
                     failure_origin="runner_unavailable",
                 )
-                # After the failure, so a waiting client reads why: no turn will read it.
-                await _record_input_delivery(
-                    session_id, stored.id, "cancelled", conversation_store, publish=True
-                )
 
             schedule_deferred_message_dispatch(session_id, _wake_and_forward, _fail_turn)
-            # Held until the runner is up; the runner's own delivery events follow.
-            return {"queued": True, "item_id": stored.id, "delivery": "queued"}
+            return {"queued": True, "item_id": stored.id}
         # A Side Chat shares its parent's host: wake it once, bind, then relaunch below.
         conv = await _adopt_parent_host_for_side_chat(
             session_id=session_id,
@@ -2763,9 +2757,10 @@ def register_events_routes(
         response: dict[str, Any] = {"queued": True}
         if dispatch.item_id is not None:
             response["item_id"] = dispatch.item_id
-        if dispatch.delivery is not None:
-            # How the session took it; ``session.input.delivery`` events carry what follows.
-            response["delivery"] = dispatch.delivery
+        if dispatch.turn is not None:
+            # The runner's number for the turn the message started or joined: its
+            # ``session.status`` edges carry it, so a sender can tell that turn's end.
+            response["turn"] = dispatch.turn
         # Native-terminal web message: hand back the pending-input id. It
         # identifies the snapshot's replayed bubble on rebind and is the
         # cleared_pending_id the consume event carries to drop it. Clients

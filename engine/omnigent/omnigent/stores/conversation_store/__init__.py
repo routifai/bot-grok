@@ -1198,27 +1198,6 @@ class ConversationStore(ABC):
         ...
 
     @abstractmethod
-    def set_item_delivery(self, conversation_id: str, item_id: str, delivered: str) -> None:
-        """
-        Record how a user message sent to the session was taken (latest state wins).
-
-        :param conversation_id: The session, e.g. ``"conv_abc123"``.
-        :param item_id: The persisted user message, e.g. ``"msg_abc123"``.
-        :param delivered: ``"queued"``, ``"steer"``, ``"turn"`` or ``"cancelled"``.
-        """
-        ...
-
-    @abstractmethod
-    def get_item_deliveries(self, conversation_id: str) -> dict[str, str]:
-        """
-        How each user message sent to the session was taken.
-
-        :param conversation_id: The session, e.g. ``"conv_abc123"``.
-        :returns: ``{item id: delivered}`` for the messages that have a recorded state.
-        """
-        ...
-
-    @abstractmethod
     def list_projects(
         self,
         accessible_by: str | None = None,

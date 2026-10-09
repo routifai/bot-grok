@@ -1064,38 +1064,6 @@ class SqlConversationItem(ConversationBase):
     )
 
 
-class SqlConversationItemDelivery(ConversationBase):
-    """
-    SQLAlchemy model for the ``conversation_item_deliveries`` table.
-
-    How a user message sent to a session was taken, one row per message: ``queued`` while it
-    waits behind the running turn, then ``steer`` (read by that turn), ``turn`` (ran as its
-    own turn) or ``cancelled`` (dropped by a stop or delete). Kept beside
-    ``conversation_items`` because items are insert/delete-only. Deleted with the
-    conversation.
-
-    :param conversation_id: The session the message belongs to. Composite PK member.
-    :param item_id: The persisted user message item. Composite PK member.
-    :param delivered: ``"queued"``, ``"steer"``, ``"turn"`` or ``"cancelled"``.
-    :param updated_at: Unix epoch seconds of the last write.
-    """
-
-    __tablename__ = "conversation_item_deliveries"
-
-    # Tenant partition key: Databricks workspace id owning this row (0 = default). Part of the PK.
-    workspace_id: Mapped[int] = mapped_column(
-        BigInteger,
-        primary_key=True,
-        nullable=False,
-        server_default="0",
-        default=current_workspace_id,
-    )
-    conversation_id: Mapped[str] = mapped_column(Uuid16(), primary_key=True)
-    item_id: Mapped[str] = mapped_column(Uuid16(), primary_key=True)
-    delivered: Mapped[str] = mapped_column(String(16))
-    updated_at: Mapped[int] = mapped_column(Integer)
-
-
 # Width of the ``conversation_labels.value`` column. Exported so the store
 # (and the session-status error-label path) can clamp values to fit instead
 # of letting an over-length write raise ``DataError`` on PostgreSQL.

@@ -2150,29 +2150,6 @@ def _user_item(text: str) -> NewConversationItem:
     )
 
 
-@pytest.mark.asyncio
-async def test_item_deliveries_keep_the_latest_state_and_go_with_the_conversation(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    conv = conversation_store.create_conversation()
-    first, second = conversation_store.append(conv.id, [_user_item("a"), _user_item("b")])
-    assert conversation_store.get_item_deliveries(conv.id) == {}
-
-    conversation_store.set_item_delivery(conv.id, first.id, "steer")
-    conversation_store.set_item_delivery(conv.id, second.id, "queued")
-    conversation_store.set_item_delivery(conv.id, second.id, "turn")
-    assert conversation_store.get_item_deliveries(conv.id) == {
-        first.id: "steer",
-        second.id: "turn",
-    }
-    # A late "queued" never undoes a final state.
-    conversation_store.set_item_delivery(conv.id, second.id, "queued")
-    assert conversation_store.get_item_deliveries(conv.id)[second.id] == "turn"
-
-    assert await conversation_store.delete_conversation(conv.id) is True
-    assert conversation_store.get_item_deliveries(conv.id) == {}
-
-
 def test_delete_item_removes_only_that_item(
     conversation_store: SqlAlchemyConversationStore,
 ) -> None:

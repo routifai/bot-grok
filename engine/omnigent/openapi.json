@@ -5928,7 +5928,7 @@
         "type": "object"
       },
       "SessionInputDeliveryEvent": {
-        "description": "How a message sent to the session was taken.\n\nWire shape uses the nested envelope: `{\"type\": \"session.input.delivery\", \"data\": {\"item_id\", \"delivered\"}}`. Every message gets exactly one terminal event (`steer`,\n`turn` or `cancelled`), a message to an idle session included (`turn`), so a client\ncan wait for its own messages without timers. Clients show a queued message as waiting\nand a steered one as part of the ongoing work.",
+        "description": "A message sent while a turn ran waits behind it, or left that wait.\n\nWire shape uses the nested envelope: `{\"type\": \"session.input.delivery\", \"data\": {\"item_id\", \"delivered\"}}`. A display hint: clients refetch and show a waiting message\nas such (the transcript's `delivered` reads the runner's live queue). A message sent to\nan idle session simply starts a turn and has none.",
         "properties": {
           "data": {
             "$ref": "#/components/schemas/SessionInputDeliveryPayload",
@@ -5965,7 +5965,7 @@
         "description": "Inner payload of a `SessionInputDeliveryEvent`.",
         "properties": {
           "delivered": {
-            "description": "How the session took the message: `\"queued\"` (held until the running turn ends; may come first), then exactly one of `\"steer\"` (read by the running turn at its next step), `\"turn\"` (started a turn of its own) or `\"cancelled\"` (dropped by a stop or a delete before any turn read it).",
+            "description": "`\"queued\"` (waiting behind the running turn), then `\"steer\"` (read by the running turn), `\"turn\"` (now running as a turn of its own) or `\"cancelled\"` (dropped by a stop or a delete).",
             "enum": [
               "steer",
               "queued",
@@ -7571,7 +7571,7 @@
               }
             ],
             "default": null,
-            "description": "Short human phrase naming what a still-`running` session is parked on, e.g. `\"permission prompt\"` or `\"dialog open\"`. Set by terminal-backed integrations whose agent can block on a dialog the web UI does not mirror, so the client can say *why* nothing is moving instead of showing a bare spinner. `None` whenever the session is not parked. Unrelated to the `waiting` status above, which means the turn has ended and only background work remains. Category: **transient** (SSE-only). Status is rederived on reconnect from the cached last-relayed turn lifecycle event or by re-querying the runner; not persisted by the runtime.",
+            "description": "Short human phrase naming what a still-`running` session is parked on, e.g. `\"permission prompt\"` or `\"dialog open\"`. Set by terminal-backed integrations whose agent can block on a dialog the web UI does not mirror, so the client can say *why* nothing is moving instead of showing a bare spinner. `None` whenever the session is not parked. Unrelated to the `waiting` status above, which means the turn has ended and only background work remains.",
             "title": "Blocked On"
           },
           "conversation_id": {
@@ -7628,6 +7628,20 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "turn": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The runner's number for the turn this edge belongs to, e.g. `42`. It rises with every turn the runner starts; `POST /events` answers a message with the number of the turn it started or joined, so a sender can tell that turn's `idle` from an earlier one's. `idle` is reported only once no message waits behind the turn. `None` from a runner that does not number turns. Category: **transient** (SSE-only). Status is rederived on reconnect from the cached last-relayed turn lifecycle event or by re-querying the runner; not persisted by the runtime.",
+            "title": "Turn"
           },
           "type": {
             "const": "session.status",
@@ -16855,7 +16869,7 @@
     },
     "/v1/sessions/{session_id}/transcript": {
       "get": {
-        "description": "A session's transcript as typed blocks (`text`, `card`, `helper`, `file`,\n`secure_entry`, `error`).\n\n**Returns:** `{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}`: `reset` is `{\"item_id\", \"created_at\"}` of the latest reset or `None`; `live` is whether a turn is in flight. Each message has `forks` (`[]` when none: `{session_id, title, replies, live, unread, state, summary, created_at}`) and an added fork's `fork_summary` block. A user message sent while a turn ran has `delivered`: `steer` (read by the running turn) or `queued` (waits for the next).\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if no session exists.",
+        "description": "A session's transcript as typed blocks (`text`, `card`, `helper`, `file`,\n`secure_entry`, `error`).\n\n**Returns:** `{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}`: `reset` is `{\"item_id\", \"created_at\"}` of the latest reset or `None`; `live` is whether a turn is in flight. Each message has `forks` (`[]` when none: `{session_id, title, replies, live, unread, state, summary, created_at}`) and an added fork's `fork_summary` block. A user message still waiting behind the running turn has `delivered: \"queued\"` (from the runner's live queue).\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if no session exists.",
         "operationId": "get_session_transcript_v1_sessions__session_id__transcript_get",
         "parameters": [
           {

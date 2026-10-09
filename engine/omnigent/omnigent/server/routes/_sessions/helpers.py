@@ -266,8 +266,6 @@ from omnigent.server.schemas import (
     SessionGitOptions,
     SessionInputConsumedEvent,
     SessionInputConsumedPayload,
-    SessionInputDeliveryEvent,
-    SessionInputDeliveryPayload,
     SessionInterruptedEvent,
     SessionInterruptedPayload,
     SessionListItem,
@@ -1712,81 +1710,6 @@ def _publish_input_consumed(
         ),
     )
     session_stream.publish(session_id, event.model_dump())
-
-
-_DELIVERED_STATES = ("queued", "steer", "turn", "cancelled")
-
-
-async def _record_input_delivery(
-    session_id: str,
-    item_id: object,
-    delivered: object,
-    conversation_store: ConversationStore,
-    *,
-    publish: bool = False,
-) -> None:
-    """
-    Store how a message sent to *session_id* was taken; optionally tell clients too.
-
-    The runner reports each step on ``session.input.delivery`` (relayed as is); the server
-    publishes one itself only for a message the runner never received.
-
-    :param session_id: The session, e.g. ``"conv_abc123"``.
-    :param item_id: The persisted user message; anything but a non-empty string is ignored.
-    :param delivered: ``"queued"``, ``"steer"``, ``"turn"`` or ``"cancelled"``.
-    :param conversation_store: Where the state is kept (``conversation_item_deliveries``).
-    :param publish: Also publish the ``session.input.delivery`` event.
-    """
-    if not (isinstance(item_id, str) and item_id) or delivered not in _DELIVERED_STATES:
-        return
-    state = cast(Literal["queued", "steer", "turn", "cancelled"], delivered)
-    try:
-        await asyncio.to_thread(conversation_store.set_item_delivery, session_id, item_id, state)
-    except Exception:  # noqa: BLE001 -- a lost record must never stop the relay or a send
-        _logger.exception(
-            "Could not store the delivery of message %s in session %s", item_id, session_id
-        )
-    if publish:
-        event = SessionInputDeliveryEvent(
-            type="session.input.delivery",
-            data=SessionInputDeliveryPayload(item_id=item_id, delivered=state),
-        )
-        session_stream.publish(session_id, event.model_dump())
-
-
-async def _settle_lost_queued_messages(
-    session_id: str,
-    init_response: object,
-    conversation_store: ConversationStore,
-) -> None:
-    """
-    After a runner initialized *session_id*, cancel the waiting messages it no longer holds.
-
-    A ``queued`` message lives only in its runner's memory. The runner's session-init answer
-    lists the messages it still owes a turn (``held_item_ids``); any other message stored as
-    ``queued`` went with a previous runner process, so it gets its final ``cancelled`` here
-    and nobody waits on it. A runner that does not report the list changes nothing.
-
-    :param session_id: The initialized session, e.g. ``"conv_abc123"``.
-    :param init_response: The runner's ``POST /v1/sessions`` response.
-    :param conversation_store: Where deliveries are kept.
-    """
-    payload: object = None
-    with contextlib.suppress(ValueError, AttributeError, TypeError):
-        payload = init_response.json()  # type: ignore[attr-defined]
-    held = payload.get("held_item_ids") if isinstance(payload, dict) else None
-    if not isinstance(held, list):
-        return
-    try:
-        deliveries = await asyncio.to_thread(conversation_store.get_item_deliveries, session_id)
-    except Exception:  # noqa: BLE001 -- best effort; the next initialization settles them
-        _logger.exception("Could not read the deliveries of session %s", session_id)
-        return
-    for item_id, state in deliveries.items():
-        if state == "queued" and item_id not in held:
-            await _record_input_delivery(
-                session_id, item_id, "cancelled", conversation_store, publish=True
-            )
 
 
 # Wall-clock start of each session's in-flight compaction. A long compaction
@@ -4809,6 +4732,7 @@ def _publish_status(
     background_task_count: int | None = None,
     background_tasks: list[BackgroundTaskInfo] | None = None,
     blocked_on: str | None = None,
+    turn: int | None = None,
     persist_live_status: bool = True,
     scheduled_run_outcome: Literal["auto", "failed"] = "auto",
     failure_origin: str | None = None,
@@ -4969,8 +4893,11 @@ def _publish_status(
         background_task_count=background_task_count,
         background_tasks=background_tasks,
         blocked_on=blocked_on,
+        turn=turn,
     )
     payload = event.model_dump()
+    if turn is None:
+        payload.pop("turn", None)
     if response_id is None:
         payload.pop("response_id", None)
     if background_task_count is None:
@@ -7687,13 +7614,13 @@ class _SessionEventDispatchResult:
         ``"pending_a1b2c3"`` — surfaced to the sender so it can adopt
         the id and dedupe against the snapshot. ``None`` for non-native
         events (already persisted, so no separate pending entry).
-    :param delivery: How the session took the message, as the runner answered:
-        ``"turn"``, ``"steer"`` or ``"queued"``; ``None`` when it did not say.
+    :param turn: The runner's number for the turn the message started or joined (its
+        ``session.status`` edges carry the same number); ``None`` when it did not say.
     """
 
     item_id: str | None
     pending_id: str | None
-    delivery: str | None = None
+    turn: int | None = None
 
 
 def _extract_persistent_item_from_sse(
@@ -11735,7 +11662,6 @@ __all__ = [
     "_read_state_entry",
     "_read_upload_capped",
     "_record_daily_cost",
-    "_record_input_delivery",
     "_record_turn_failure",
     "_registered_runner_id",
     "_reject_reserved_cost_control_label_seed",
@@ -11768,7 +11694,6 @@ __all__ = [
     "_session_status_from_cache",
     "_session_status_with_child_rollup",
     "_set_read_state",
-    "_settle_lost_queued_messages",
     "_signal_harness_elicitation_resolved_by_id",
     "_signal_terminal_resolved_harness_elicitation",
     "_spec_config_flag_explicitly_disabled",

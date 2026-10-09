@@ -1,8 +1,9 @@
-"""How a message sent to a session is taken: as a turn, steered into the running one, or queued.
+"""A message sent to a session: a turn when idle, else the running turn's (steered in by the
+harness's own steer, or run right after it). The runner alone owns the waiting messages.
 
-The POST answers at once (``delivery``), and ``session.input.delivery`` events, keyed by the
-persisted message the server stamped on the forward, follow it: ``queued`` may come first, then
-exactly one of ``steer`` / ``turn`` / ``cancelled`` per message.
+The POST answers with the runner's ``turn`` number the message started or joined; the
+session's ``idle`` edge carries it and comes only once nothing waits. ``session.input.delivery``
+events are display hints for a message that waited.
 """
 
 from __future__ import annotations
@@ -34,6 +35,16 @@ def _message(text: str, item_id: str | None = None) -> dict[str, Any]:
     if item_id:
         body["persisted_item_id"] = item_id
     return body
+
+
+def _events(app: Any, queue: Any = None) -> list[dict[str, Any]]:
+    queue = queue or app.state.session_event_queues.get(SESSION)
+    events: list[dict[str, Any]] = []
+    while queue is not None and not queue.empty():
+        event = queue.get_nowait()
+        if event:
+            events.append(event)
+    return events
 
 
 def _deliveries(app: Any, queue: Any = None) -> list[tuple[str, str]]:
@@ -79,9 +90,7 @@ class _RefusingHarness(_HandshakeHarnessClient):
         return _Ctx()
 
 
-async def _send_during_a_turn(
-    app: Any, harness: Any, gate: asyncio.Event, expected_answer: str = "steer"
-) -> None:
+async def _send_during_a_turn(app: Any, harness: Any, gate: asyncio.Event) -> dict[str, Any]:
     async with _runner_client(app) as client:
         await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
         first = await client.post(f"/v1/sessions/{SESSION}/events", json=_message("redo", "i1"))
@@ -91,28 +100,37 @@ async def _send_during_a_turn(
             f"/v1/sessions/{SESSION}/events", json=_message("just redo the deck again", "i2")
         )
         assert second.json()["status"] == "buffered"
-        assert second.json()["delivery"] == expected_answer
+        # Joins the running turn: same number as the turn the first message started.
+        assert second.json()["turn"] == first.json()["turn"]
         gate.set()
         for _ in range(100):
             await asyncio.sleep(0.01)
             if len(harness.posted_bodies) >= 2:
                 break
         await asyncio.sleep(0.05)
+        return first.json()
+
+
+async def _gate_when_forwarded(harness: Any, gate: asyncio.Event) -> None:
+    """Let the turn go on once the runner has forwarded the injection to the harness."""
+    while not harness.patched_events:
+        await asyncio.sleep(0.005)
+    gate.set()
 
 
 @pytest.mark.asyncio
-async def test_a_message_the_harness_takes_into_the_turn_is_reported_as_steer() -> None:
+async def test_a_message_the_harness_takes_into_the_turn_is_steered_once() -> None:
     gate = asyncio.Event()
     app, _pm, harness = _build_handshake_app(gate)
 
     await _send_during_a_turn(app, harness, gate)
 
-    assert _deliveries(app) == [("i1", "turn"), ("i2", "steer")]
+    assert _deliveries(app) == [("i2", "steer")]
     assert len(harness.posted_bodies) == 1  # one turn, not two
 
 
 @pytest.mark.asyncio
-async def test_a_message_the_harness_refuses_is_queued_then_runs_as_the_next_turn() -> None:
+async def test_a_message_the_harness_refuses_runs_as_the_next_turn() -> None:
     gate = asyncio.Event()
     app, pm, _ = _build_handshake_app(gate)
     harness = _RefusingHarness(gate)
@@ -120,20 +138,39 @@ async def test_a_message_the_harness_refuses_is_queued_then_runs_as_the_next_tur
 
     await _send_during_a_turn(app, harness, gate)
 
-    assert _deliveries(app) == [("i1", "turn"), ("i2", "queued"), ("i2", "turn")]
+    assert _deliveries(app) == [("i2", "queued"), ("i2", "turn")]
     assert len(harness.posted_bodies) == 2
 
 
 @pytest.mark.asyncio
-async def test_a_message_to_an_idle_session_starts_a_turn_and_says_so() -> None:
+async def test_idle_comes_only_once_nothing_waits_and_names_the_last_turn() -> None:
+    gate = asyncio.Event()
+    app, pm, _ = _build_handshake_app(gate)
+    harness = _RefusingHarness(gate)
+    pm._client = harness  # type: ignore[attr-defined]
+
+    first = await _send_during_a_turn(app, harness, gate)
+
+    statuses = [
+        (e["status"], e.get("turn")) for e in _events(app) if e["type"] == "session.status"
+    ]
+    # No idle between the first turn and the queued one it ran right after.
+    assert [status for status, _ in statuses] == ["running", "running", "idle"]
+    assert statuses[-1][1] > first["turn"]  # the idle closes the later turn
+
+
+@pytest.mark.asyncio
+async def test_a_message_to_an_idle_session_starts_a_numbered_turn() -> None:
     gate = asyncio.Event()
     app, _pm, _harness = _build_handshake_app(gate)
     async with _runner_client(app) as client:
         await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
         answer = await client.post(f"/v1/sessions/{SESSION}/events", json=_message("hi", "i1"))
         gate.set()
-    assert (answer.status_code, answer.json()["delivery"]) == (202, "turn")
-    assert _deliveries(app) == [("i1", "turn")]
+        await asyncio.sleep(0.05)
+    assert (answer.status_code, answer.json()["status"]) == (202, "accepted")
+    running = next(e for e in _events(app) if e["type"] == "session.status")
+    assert running["turn"] == answer.json()["turn"]
 
 
 @pytest.mark.asyncio
@@ -146,14 +183,6 @@ async def test_a_message_only_for_a_running_turn_is_refused_by_an_idle_session()
         answer = await client.post(f"/v1/sessions/{SESSION}/events", json=body)
     assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
     assert harness.posted_bodies == []  # no turn was started for it
-    assert _deliveries(app) == []
-
-
-async def _gate_when_forwarded(harness: Any, gate: asyncio.Event) -> None:
-    """Let the turn go on once the runner has forwarded the injection to the harness."""
-    while not harness.patched_events:
-        await asyncio.sleep(0.005)
-    gate.set()
 
 
 @pytest.mark.asyncio
@@ -170,10 +199,10 @@ async def test_a_message_only_for_a_running_turn_steers_into_one() -> None:
         answer = await client.post(f"/v1/sessions/{SESSION}/events", json=body)
         await release
         await asyncio.sleep(0.1)
-    assert answer.json()["delivery"] == "steer"
+    assert answer.status_code == 202
     assert "if_running" not in harness.patched_events[-1]
     assert not any(k.startswith("_only") for k in harness.patched_events[-1])
-    assert _deliveries(app) == [("i1", "turn"), ("i2", "steer")]
+    assert _deliveries(app) == [("i2", "steer")]
 
 
 @pytest.mark.asyncio
@@ -194,8 +223,7 @@ async def test_a_message_only_for_a_running_turn_that_refuses_it_never_runs() ->
     assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
     assert len(harness.posted_bodies) == 1  # it did not become a turn of its own
     assert not app.state.session_message_buffers.get(SESSION)
-    # The sender was told; the server removes the item, so no delivery is reported for it.
-    assert _deliveries(app) == [("i1", "turn")]
+    assert _deliveries(app) == []  # the server removes the item; it never happened
 
 
 @pytest.mark.asyncio
@@ -216,7 +244,7 @@ async def test_a_message_only_for_a_running_turn_is_refused_when_it_cannot_be_of
         await asyncio.sleep(0.1)
     assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
     assert harness.patched_events == []
-    assert _deliveries(app) == [("i1", "turn")]
+    assert _deliveries(app) == []
 
 
 @pytest.mark.asyncio
@@ -234,14 +262,16 @@ async def test_a_message_with_an_image_is_not_steered_but_runs_whole_as_a_turn()
         answer = await client.post(
             f"/v1/sessions/{SESSION}/events", json={**_message("x", "i2"), "content": image}
         )
+        waiting = await client.get(f"/v1/sessions/{SESSION}/buffered")
         gate.set()
         for _ in range(100):
             await asyncio.sleep(0.01)
             if len(harness.posted_bodies) >= 2:
                 break
-    assert answer.json()["delivery"] == "queued"
+    assert answer.json()["status"] == "buffered"
+    assert waiting.json() == {"item_ids": ["i2"]}  # the live queue the transcript reads
     assert harness.patched_events == []  # never offered in part
-    assert _deliveries(app) == [("i1", "turn"), ("i2", "queued"), ("i2", "turn")]
+    assert _deliveries(app) == [("i2", "queued"), ("i2", "turn")]
 
 
 @pytest.mark.asyncio
@@ -275,22 +305,4 @@ async def test_deleting_the_session_cancels_the_messages_still_waiting() -> None
         await client.post(f"/v1/sessions/{SESSION}/events", json=_message("and this", "i2"))
         stream = app.state.session_event_queues[SESSION]  # closed and dropped by the delete
         await client.delete(f"/v1/sessions/{SESSION}")
-    assert _deliveries(app, stream) == [("i1", "turn"), ("i2", "cancelled")]
-
-
-@pytest.mark.asyncio
-async def test_session_init_reports_the_messages_the_runner_still_holds() -> None:
-    gate = asyncio.Event()
-    app, pm, _ = _build_handshake_app(gate)
-    harness = _RefusingHarness(gate)
-    pm._client = harness  # type: ignore[attr-defined]
-    async with _runner_client(app) as client:
-        first = await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
-        assert first.json()["held_item_ids"] == []
-        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
-        await asyncio.sleep(0.05)
-        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("and this", "i2"))
-        again = await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
-        gate.set()
-        await asyncio.sleep(0.1)
-    assert again.json()["held_item_ids"] == ["i2"]
+    assert _deliveries(app, stream) == [("i2", "cancelled")]
