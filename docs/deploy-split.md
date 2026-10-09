@@ -168,7 +168,7 @@ Names only below; never commit values.
 | `OMNIGENT_URL` | nova-app | Engine public URL, `https://<engine>.up.railway.app` |
 | `OMNIGENT_PROXY_SECRET` | nova-app | Same value as the engine's `OMNIGENT_AUTH_HEADER_SECRET` |
 | `ANTHROPIC_API_KEY` | nova-app | Your key (makes the Claude harness show as available) |
-| `SIGNUPS_ENABLED`, `SIGNUP_ALLOWLIST` | nova-app | `true`; comma-separated emails (see section 5) |
+| `SIGNUP_MODE`, `SIGNUP_ALLOWLIST`, `SIGNUP_DOMAINS` | nova-app | `invite`; comma-separated emails (see section 5) |
 | `SMTP_URL`, `EMAIL_FROM` | nova-app | From your mail provider (see section 5) |
 | `ENGINE_PUBLIC_URL` | omnigent-engine | Engine's own public URL (the runners dial it) |
 | `OMNIGENT_AUTH_HEADER_SECRET` | omnigent-engine | `openssl rand -hex 32`; equals nova-app `OMNIGENT_PROXY_SECRET` |
@@ -189,15 +189,18 @@ supervisor's data dir, which it does), proactive Study on.
 Signup is controlled by the Nova API, not by the engine:
 
 - The **first** account to register becomes the deployment owner.
-- `SIGNUP_ALLOWLIST` is a comma-separated list of exact emails or `@domain` entries. A non-empty
-  value is applied on **every** API start and replaces the stored list. Only listed people can
-  register. Leave `SIGNUPS_ENABLED=true` (it is only read the first time the API starts).
-- With a non-empty allowlist, **SMTP is required for every account after the first**; they
-  must verify their email. Without SMTP only the first account can register. Easiest: a free Resend
-  account, `SMTP_URL=smtps://resend:<api-key>@smtp.resend.com:465` and
-  `EMAIL_FROM="Nova <no-reply@<your-domain>>"` after verifying the domain with Resend.
-- Order: set the allowlist and SMTP **before the first start**, register yourself first, then add
-  friends by editing `SIGNUP_ALLOWLIST` on Railway (the service restarts and applies it).
+- `SIGNUP_MODE` (`closed`, `invite`, `domain`, `approval` or `open`) seeds the mode on the first
+  start; the owner changes it later in Settings > Organization > Signups. `SIGNUP_ALLOWLIST` is a
+  comma-separated list of exact emails or `@domain` entries for `invite` mode; a non-empty value is
+  applied on **every** API start and replaces the stored list. `SIGNUP_DOMAINS` seeds `domain` mode.
+- Email delivery is **required** for every mode except `closed`: new accounts prove their mailbox
+  with a six-digit code, and the API will not start in production without it. Easiest: a free
+  Resend account, `EMAIL_API_URL=https://api.resend.com/emails`, `EMAIL_API_KEY=<api-key>` and
+  `EMAIL_FROM="Nova <no-reply@<your-domain>>"` after verifying the domain with Resend (or SMTP:
+  `SMTP_URL=smtps://resend:<api-key>@smtp.resend.com:465`).
+- Order: set the mode and email **before the first start**, register yourself first (the first
+  account becomes the owner), then add friends in the Signups panel or by editing
+  `SIGNUP_ALLOWLIST` on Railway.
 - Not recommended: an empty allowlist leaves registration open to anyone who finds the URL, and
   they would spend your key.
 

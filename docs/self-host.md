@@ -123,18 +123,35 @@ WEB_ORIGIN=https://app.example.com
 API_URL=https://app.example.com
 ```
 
-Cookies and CORS follow those origins. `SIGNUPS_ENABLED` seeds whether registration is open
-when the API starts for the first time and is not reapplied on restart. A non-empty
-`SIGNUP_ALLOWLIST` is applied on every API start, replacing the allowlist stored for the deployment.
-Leave it empty to keep that stored list.
+Cookies and CORS follow those origins.
 
-With a nonempty signup allowlist and SMTP configured, users—including existing accounts—must
-verify their email to sign in. On a fresh instance with no SMTP, the first allowlisted account
-can register without verification. That signup does not prove mailbox ownership, so create the
-account before exposing the service. Further accounts still need SMTP.
+### Who can sign up
 
-For a public deployment, configure SMTP and an allowlist before the API's first start.
-Keep an installation without email on a trusted local network.
+`SIGNUP_MODE` seeds the signup mode on the API's first start. After that the deployment owner
+changes it in Settings > Organization > Signups, which is also where pending accounts are approved.
+
+| Mode | Who gets in |
+| --- | --- |
+| `closed` | Nobody new. |
+| `invite` | Emails (or `@domain` entries) in the invite list (`SIGNUP_ALLOWLIST` seeds it; a non-empty value is reapplied on every API start). |
+| `domain` | Addresses at the domains in `SIGNUP_DOMAINS`. |
+| `approval` | Anyone who proves their email; they wait with no space, Computer or model access until the owner approves. The first account is active so someone can approve. |
+| `open` | Anyone who proves their email. |
+
+Without `SIGNUP_MODE`, the older variables keep their meaning: `SIGNUPS_ENABLED=false` is `closed`
+and a non-empty `SIGNUP_ALLOWLIST` is `invite`.
+
+Every new account proves its mailbox with a six-digit code, so every mode except `closed` needs
+email delivery: `SMTP_URL`, or `EMAIL_API_URL` and `EMAIL_API_KEY` for a Resend-compatible HTTPS API,
+plus `EMAIL_FROM`. A hosted deployment (`NODE_ENV=production` on a non-loopback `WEB_ORIGIN`)
+refuses to start otherwise. For a personal install on this machine only,
+`AUTH_ALLOW_UNVERIFIED_EMAIL=true` skips mailbox proof when no provider is configured; a hosted
+deployment refuses to start with it set.
+
+Google and Microsoft sign-in appear once `AUTH_GOOGLE_CLIENT_ID` and `AUTH_GOOGLE_CLIENT_SECRET`
+(optionally `AUTH_GOOGLE_HOSTED_DOMAIN` to pin one Workspace domain) or `AUTH_MICROSOFT_CLIENT_ID`,
+`AUTH_MICROSOFT_CLIENT_SECRET` and `AUTH_MICROSOFT_TENANT_ID` are set. The signup mode applies to
+them like any other way in.
 
 ### Verification and password recovery email
 
@@ -511,7 +528,7 @@ shared filesystem; an object-storage adapter is not available yet.
 
 Use the same HTTPS origin for the web app, `/api`, and `/rpc`. Preserve the authenticated screen
 proxy routes. Choose a [computer provider](#choosing-a-computer-provider) appropriate to the
-service's trust boundary. `SIGNUPS_ENABLED` applies on the API's first start. A non-empty
+service's trust boundary. `SIGNUP_MODE` applies on the API's first start. A non-empty
 `SIGNUP_ALLOWLIST` applies on every API start.
 The optional marketing site in `apps/www` can be hosted separately.
 
