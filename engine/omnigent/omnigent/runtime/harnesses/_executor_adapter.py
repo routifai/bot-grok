@@ -49,6 +49,7 @@ from omnigent.server.schemas import (
     CreateResponseRequest,
     ElicitationRequestParams,
     InjectionConsumedEvent,
+    InjectionRefusedEvent,
     OutputItemDoneEvent,
     OutputTextDeltaEvent,
     ReasoningStartedEvent,
@@ -549,7 +550,9 @@ class ExecutorAdapter(HarnessApp):
         """Forward mid-turn steering injections into the in-flight executor session.
 
         Loops until cancelled by run_turn's finally. Best-effort — a failed or malformed
-        injection logs and continues rather than raising.
+        injection logs and continues rather than raising. The runner is told how each one
+        ended: ``injection.consumed`` when the executor took it into the running turn,
+        ``injection.refused`` when it could not (the runner then holds it for the next turn).
         """
         while True:
             try:
@@ -559,12 +562,21 @@ class ExecutorAdapter(HarnessApp):
             if injection is None:
                 # None signals a sentinel or protocol change; bail to avoid spinning.
                 return
+            injection_id = getattr(injection, "injection_id", None)
+
+            def _refused(injection_id: str | None = injection_id) -> None:
+                if injection_id:
+                    ctx.emit(
+                        InjectionRefusedEvent(type="injection.refused", injection_id=injection_id)
+                    )
+
             text = _extract_user_text(injection.input)
             if not text:
                 _logger.warning(
                     "skipping in-band injection with no text payload: %r",
                     injection.input,
                 )
+                _refused()
                 continue
             if ctx.cancelled.is_set():
                 return
@@ -574,6 +586,7 @@ class ExecutorAdapter(HarnessApp):
                 _logger.exception(
                     "inner executor.enqueue_session_message failed; in-band injection lost"
                 )
+                _refused()
                 continue
             if not accepted:
                 _logger.warning(
@@ -581,9 +594,9 @@ class ExecutorAdapter(HarnessApp):
                     "(supports_live_message_queue=False?); LLM will "
                     "not see the steered message until the next turn"
                 )
+                _refused()
                 continue
             # Echo injection_id so the runner drops the buffered copy and doesn't re-deliver it.
-            injection_id = getattr(injection, "injection_id", None)
             if injection_id:
                 ctx.emit(
                     InjectionConsumedEvent(

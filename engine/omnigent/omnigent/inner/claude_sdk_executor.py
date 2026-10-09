@@ -36,9 +36,10 @@ import pathlib
 import sys
 import tempfile
 import time
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any, NamedTuple, Protocol, TypeAlias, cast
 
@@ -707,6 +708,41 @@ async def _multimodal_message_iter(
     }
 
 
+async def _steer_message_iter(
+    text: str,
+    *,
+    session_id: str,
+    message_uuid: str,
+) -> AsyncIterator[_JsonObject]:
+    """Yield one user message for the CLI, to be taken up by the running turn.
+
+    ``priority: "next"`` is the CLI's own mid-turn delivery (the next tool boundary, not an
+    interrupt); ``uuid`` is echoed back by ``--replay-user-messages`` once it is taken up.
+    """
+    yield {
+        "type": "user",
+        "message": {"role": "user", "content": text},
+        "parent_tool_use_id": None,
+        "session_id": session_id,
+        "uuid": message_uuid,
+        "priority": "next",
+    }
+
+
+def _message_text(message: object) -> str:
+    """The plain text of an inner ``Message`` (string content or text blocks)."""
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            str(block["text"])
+            for block in content
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+        )
+    return ""
+
+
 # Diagnostic knob: when set (any truthy value), skip wrapping the CLI
 # via ``create_exec_launcher``. Used to isolate whether the silent
 # connect hang is sandbox-related vs. inside the binary itself.
@@ -862,6 +898,27 @@ class _ClaudeClientState:
     # Only populated (and acted on) for superside-chat — see
     # ``_get_or_create_client``'s ``rebuild_on_instructions_change``.
     instructions_hash: str | None = None
+
+
+@dataclass
+class _SteerWindow:
+    """Mid-turn messages pushed into one live Claude SDK turn.
+
+    ``open`` is true from the moment the turn's prompt is written until the turn's
+    stream has finished with nothing outstanding; :meth:`ClaudeSDKExecutor.
+    enqueue_session_message` only pushes while it is open, so a message can never be
+    written to a CLI whose answer nobody reads (the one-turn-behind desync of #3472).
+    ``pending`` holds the uuids of pushed messages the CLI has not echoed back yet.
+    """
+
+    open: bool = True
+    pending: set[str] = field(default_factory=set)
+
+
+#: How long the stream waits, after a turn's result, for the CLI to take up a pushed message
+#: that missed the turn (it then runs as the CLI's own next turn). Past it the live client is
+#: dropped so no orphan turn can answer the next message.
+_STEER_FOLLOWUP_TIMEOUT_S = 30.0
 
 
 def _composed_instructions_hash(system_prompt: object) -> str | None:
@@ -1758,6 +1815,8 @@ class ClaudeSDKExecutor(Executor):
         self._elicitation_handler: ElicitationHandler | None = None
         # Live Claude SDK clients keyed by Omnigent session id.
         self._clients: dict[str, _ClaudeClientState] = {}
+        # Per live turn: the window in which a mid-turn message may be pushed.
+        self._steer_windows: dict[str, _SteerWindow] = {}
         self._pending_framework_context: dict[str, str] = {}
         # Session keys whose Claude harness process crashed and must not be reused.
         self._crashed_sessions: dict[str, str] = {}
@@ -2118,14 +2177,96 @@ class ClaudeSDKExecutor(Executor):
 
     async def enqueue_session_message(
         self,
-        session_key: str,  # noqa: ARG002
-        content: str | Message,  # noqa: ARG002
+        session_key: str,
+        content: str | Message,
     ) -> bool:
-        # query() queues a NEW turn on the SDK's stdin; it does not inject
-        # into the turn already running. Returning False lets the adapter's
-        # buffer hold the message and re-deliver it as a continuation turn
-        # once the active turn ends, preserving in-order delivery.
-        return False
+        """Push a message into the turn that is running now (a steer).
+
+        The CLI is in streaming-input mode, so a user message written to its stdin while a
+        turn runs joins the CLI's command queue at priority ``next``: it is attached to the
+        running turn at the next tool boundary, and the model reads it before its next step.
+        A message that misses the turn (the model was already answering) runs as the CLI's
+        own next turn; :meth:`_receive_with_steers` keeps reading until it has, so the reply
+        belongs to this turn and no answer is left unread.
+
+        Returns ``False`` (the caller holds the message for the next turn) when no turn is
+        running or its stream has already finished.
+        """
+        window = self._steer_windows.get(session_key)
+        state = self._clients.get(session_key)
+        if window is None or not window.open or state is None:
+            return False
+        text = content if isinstance(content, str) else _message_text(content)
+        if not text:
+            return False
+        message_uuid = str(uuid.uuid4())
+        # Registered before the write so the stream cannot finish while the push is in flight.
+        window.pending.add(message_uuid)
+        try:
+            await state.client.query(
+                _steer_message_iter(text, session_id=session_key, message_uuid=message_uuid),
+                session_id=session_key,
+            )
+        except Exception as exc:  # noqa: BLE001 -- a failed push falls back to the queue
+            window.pending.discard(message_uuid)
+            logger.warning("Claude SDK steer push failed for session %s: %s", session_key, exc)
+            return False
+        return True
+
+    async def _receive_with_steers(
+        self,
+        sdk: _ClaudeSDK,
+        client: _ClaudeClient,
+        session_key: str,
+        window: _SteerWindow,
+    ) -> AsyncIterator[Any]:  # type: ignore[explicit-any]
+        """Yield the CLI's messages for a turn, through any steers pushed into it.
+
+        ``receive_response()`` stops at the first ``ResultMessage``. A steer that missed the
+        running turn is answered by a second turn of the CLI, so while a pushed message has
+        not been echoed back the stream reads on. The window closes in the same step in which
+        nothing is outstanding, so a later message is queued for the next turn instead of being
+        written to a CLI that nobody reads.
+        """
+        followup = False  # reading on after a result, for a pushed message that missed the turn
+        while True:
+            stream = client.receive_response()
+            saw_result = False
+            try:
+                while True:
+                    try:
+                        if followup:
+                            message = await asyncio.wait_for(
+                                anext(stream), timeout=_STEER_FOLLOWUP_TIMEOUT_S
+                            )
+                        else:
+                            message = await anext(stream)
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Claude SDK steer for session %s was never taken up; "
+                            "dropping the live client",
+                            session_key,
+                        )
+                        window.pending.clear()
+                        window.open = False
+                        await self._close_live_client(session_key)
+                        return
+                    followup = False
+                    if isinstance(message, sdk.UserMessage):
+                        window.pending.discard(getattr(message, "uuid", None) or "")
+                    if isinstance(message, sdk.ResultMessage):
+                        saw_result = True
+                    yield message
+            finally:
+                aclose = getattr(stream, _ACLOSE_ATTR, None)
+                if aclose is not None:
+                    await aclose()
+            if not saw_result or not window.pending:
+                window.open = False
+                return
+            followup = True
 
     @staticmethod
     async def _force_close_client(client: _ClaudeClient) -> None:
@@ -2210,9 +2351,10 @@ class ClaudeSDKExecutor(Executor):
         return True
 
     def supports_live_message_queue(self) -> bool:
-        # The SDK has no API to inject into an active turn; claiming this
-        # capability caused the one-turn-behind desync described in #3472.
-        return False
+        # A message written to the CLI's stdin mid-turn is taken up by the running turn
+        # (see ``enqueue_session_message``). The one-turn-behind desync of #3472 came from
+        # leaving the extra answer unread; ``_receive_with_steers`` reads it.
+        return True
 
     def supports_tool_boundary_interrupt(self) -> bool:
         return True
@@ -2735,7 +2877,10 @@ class ClaudeSDKExecutor(Executor):
             "include_hook_events": True,
             "skills": resolved.skills,
             "plugins": bundle_plugins,
-            "extra_args": {"no-session-persistence": None},
+            # ``replay-user-messages`` makes the CLI echo each user message it takes
+            # up (with the uuid we sent), which is how a mid-turn steer is seen to
+            # have been consumed -- see ``enqueue_session_message``.
+            "extra_args": {"no-session-persistence": None, "replay-user-messages": None},
             "max_buffer_size": 10 * 1024 * 1024,
             "disallowed_tools": list(_SDK_BUILTIN_SUBAGENT_TOOLS) if is_superside_chat else [],
         }
@@ -2833,6 +2978,7 @@ class ClaudeSDKExecutor(Executor):
         response_text = ""
         separate_next_text = False
         turn_usage: dict[str, Any] | None = None  # type: ignore[explicit-any]
+        prior_result_usage: dict[str, Any] | None = None  # type: ignore[explicit-any]
         # The concrete model the SDK reports on its assistant messages, e.g.
         # ``"claude-opus-4-8"``. Captured from the stream because the resolved
         # config ``model`` is ``None`` when the spec pins none and the gateway
@@ -3037,7 +3183,10 @@ class ClaudeSDKExecutor(Executor):
                 raise TimeoutError(
                     f"Claude SDK query start timed out after {int(_QUERY_START_TIMEOUT_SECONDS)}s"
                 ) from exc
-            message_stream = client.receive_response()
+            # Only now may a steer be pushed: the prompt is on the CLI's stdin ahead of it.
+            steer_window = _SteerWindow()
+            self._steer_windows[session_key] = steer_window
+            message_stream = self._receive_with_steers(sdk, client, session_key, steer_window)
             try:
                 while True:
                     next_task = asyncio.ensure_future(anext(message_stream))
@@ -3329,6 +3478,11 @@ class ClaudeSDKExecutor(Executor):
                                 # observed_model (config model is None when no model is pinned).
                                 "model": observed_model or model,
                             }
+                            if prior_result_usage is not None:
+                                # A steer the CLI answered as a second turn: bill both.
+                                for _key in ("input_tokens", "output_tokens", "total_tokens"):
+                                    turn_usage[_key] += prior_result_usage.get(_key, 0)
+                            prior_result_usage = turn_usage
 
                     elif isinstance(message, sdk.SystemMessage):
                         system_msg = cast(_SystemMessageObj, message)
@@ -3462,6 +3616,9 @@ class ClaudeSDKExecutor(Executor):
             return
         finally:
             self._pending_framework_context.pop(session_key, None)
+            closing = self._steer_windows.pop(session_key, None)
+            if closing is not None:
+                closing.open = False
         # A turn can end without ``ResultMessage`` usage — the CLI can close
         # the stream early, fail terminally (auth failure, rejected retries),
         # or be cut short before its final usage is reported. In all of those

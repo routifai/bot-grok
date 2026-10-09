@@ -488,6 +488,17 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     },
   },
 
+  message_helper: {
+    icon: "helper",
+    title: () => "Passed a note to background work",
+    snippet: (output) => {
+      const parsed = tryParseJson(output);
+      if (parsed === undefined) return null;
+      const error = errorMessage(parsed);
+      return error ? clip(error) : null;
+    },
+  },
+
   open_project: {
     icon: "generic",
     title: (args) => (args.slug === null ? "Left the project" : "Opened a project"),

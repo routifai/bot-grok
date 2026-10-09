@@ -502,6 +502,15 @@ export const MessageView = memo(function MessageView({
                   {body}
                 </div>
               ) : null}
+              {message.delivered === "queued" ? (
+                <span
+                  data-testid="message-queued-note"
+                  className="text-[12px] leading-4 text-muted-foreground"
+                  dir="auto"
+                >
+                  <Trans>Nova will see this after the current step</Trans>
+                </span>
+              ) : null}
             </div>
           );
         }

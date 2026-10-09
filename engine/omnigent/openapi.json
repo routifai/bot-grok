@@ -5040,6 +5040,7 @@
             "session.created": "#/components/schemas/SessionCreatedEvent",
             "session.heartbeat": "#/components/schemas/SessionHeartbeatEvent",
             "session.input.consumed": "#/components/schemas/SessionInputConsumedEvent",
+            "session.input.delivery": "#/components/schemas/SessionInputDeliveryEvent",
             "session.interrupted": "#/components/schemas/SessionInterruptedEvent",
             "session.mcp_startup": "#/components/schemas/SessionMcpStartupEvent",
             "session.model": "#/components/schemas/SessionModelEvent",
@@ -5109,6 +5110,9 @@
           },
           {
             "$ref": "#/components/schemas/SessionInputConsumedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/SessionInputDeliveryEvent"
           },
           {
             "$ref": "#/components/schemas/SessionInterruptedEvent"
@@ -5921,6 +5925,66 @@
           "data"
         ],
         "title": "SessionInputConsumedPayload",
+        "type": "object"
+      },
+      "SessionInputDeliveryEvent": {
+        "description": "A message sent while a turn was running was steered into it or queued behind it.\n\nWire shape uses the nested envelope: `{\"type\": \"session.input.delivery\", \"data\": {\"item_id\", \"delivered\"}}`. A message sent to an idle session has no such event (it\nsimply starts a turn). Clients show a queued message as waiting and a steered one as\npart of the ongoing work.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SessionInputDeliveryPayload",
+            "description": "See `SessionInputDeliveryPayload`."
+          },
+          "sequence_number": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sequence Number"
+          },
+          "type": {
+            "const": "session.input.delivery",
+            "description": "Always `\"session.input.delivery\"`.",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "data"
+        ],
+        "title": "SessionInputDeliveryEvent",
+        "type": "object"
+      },
+      "SessionInputDeliveryPayload": {
+        "description": "Inner payload of a `SessionInputDeliveryEvent`.",
+        "properties": {
+          "delivered": {
+            "description": "How the running session took the message: `\"steer\"` (into the turn that is running, read at its next step), `\"queued\"` (held until the turn ends) or `\"turn\"` (a queued message that has now started as its own turn).",
+            "enum": [
+              "steer",
+              "queued",
+              "turn"
+            ],
+            "title": "Delivered",
+            "type": "string"
+          },
+          "item_id": {
+            "description": "The persisted user message this is about, e.g. `\"msg_abc\"`.",
+            "title": "Item Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "delivered"
+        ],
+        "title": "SessionInputDeliveryPayload",
         "type": "object"
       },
       "SessionInterruptedEvent": {
@@ -9373,6 +9437,13 @@
             "title": "Cost Last 7D",
             "type": "number"
           },
+          "cost_month": {
+            "default": 0.0,
+            "description": "Spend since the first of the current UTC month.",
+            "format": "double",
+            "title": "Cost Month",
+            "type": "number"
+          },
           "cost_today": {
             "default": 0.0,
             "description": "Total spend on the current UTC day.",
@@ -9391,6 +9462,12 @@
             "const": "usage_report",
             "default": "usage_report",
             "title": "Object",
+            "type": "string"
+          },
+          "period_start": {
+            "default": "",
+            "description": "First day of the current UTC month, `\"YYYY-MM-DD\"`.",
+            "title": "Period Start",
             "type": "string"
           },
           "sessions": {
@@ -11084,6 +11161,124 @@
         "summary": "Adopt My Muse",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/v1/model/embeddings": {
+      "get": {
+        "description": "How the calling Computer's owner embeds (provider, model, size), or why they cannot.",
+        "operationId": "embedding_plan_v1_model_embeddings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Embedding Plan",
+        "tags": [
+          "hosts"
+        ]
+      }
+    },
+    "/v1/model/{provider}/{path}": {
+      "get": {
+        "description": "Forward a model call with the session owner's key; stream the answer back.",
+        "operationId": "model_proxy_v1_model__provider___path__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Model Proxy",
+        "tags": [
+          "hosts"
+        ]
+      },
+      "post": {
+        "description": "Forward a model call with the session owner's key; stream the answer back.",
+        "operationId": "model_proxy_v1_model__provider___path__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Model Proxy",
+        "tags": [
+          "hosts"
         ]
       }
     },
@@ -13666,7 +13861,7 @@
     },
     "/v1/sessions/{session_id}/family/stream": {
       "get": {
-        "description": "Subscribe to the events of a Super Chat, its Side Chats and its Helpers.\n\n**Returns:** SSE frames: `message.done`, `turn.done`, `chat.reset`, `chats.changed`, `activities.changed`, `session.heartbeat`. Ids only; the client refetches.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ on `session_id`; 404 if it is not a Super Chat family.",
+        "description": "Subscribe to the events of a Super Chat, its Side Chats and its Helpers.\n\n**Returns:** SSE frames: `message.done`, `message.delivery`, `turn.done`, `chat.reset`, `chats.changed`, `activities.changed`, `session.heartbeat`. Ids only; the client refetches.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ on `session_id`; 404 if it is not a Super Chat family.",
         "operationId": "stream_family_v1_sessions__session_id__family_stream_get",
         "parameters": [
           {
@@ -14634,7 +14829,7 @@
     },
     "/v1/sessions/{session_id}/related_chats": {
       "get": {
-        "description": "List the side chats related to one session.\n\n**Returns:** A `PaginatedList` of chat summary dicts (`id`, `title`, `created_at`, `updated_at`, `last_message_preview`, `live`, \u2026) plus the caller's `unread` and `last_read_at` (epoch seconds or `None`); not cursor-paginated.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
+        "description": "List the side chats related to one session.\n\n**Returns:** A `PaginatedList` of chat summary dicts (`id`, `title`, `created_at`, `updated_at`, `last_message_preview`, `live`, \u2026) plus the caller's `unread` and `last_read_at` (epoch seconds or `None`); not cursor-paginated. Returns up to `~omnigent.context.rollover.RELATED_CHATS_MAX` side chats / forks (newest-updated first) plus the parent chat.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
         "operationId": "list_related_chats_route_v1_sessions__session_id__related_chats_get",
         "parameters": [
           {
@@ -16639,7 +16834,7 @@
     },
     "/v1/sessions/{session_id}/transcript": {
       "get": {
-        "description": "A session's transcript as typed blocks (`text`, `card`, `helper`, `file`,\n`secure_entry`, `error`).\n\n**Returns:** `{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}`: `reset` is `{\"item_id\", \"created_at\"}` of the latest reset or `None`; `live` is whether a turn is in flight. Each message has `forks` (`[]` when none: `{session_id, title, replies, live, unread, state, summary, created_at}`) and an added fork's `fork_summary` block.\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if no session exists.",
+        "description": "A session's transcript as typed blocks (`text`, `card`, `helper`, `file`,\n`secure_entry`, `error`).\n\n**Returns:** `{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}`: `reset` is `{\"item_id\", \"created_at\"}` of the latest reset or `None`; `live` is whether a turn is in flight. Each message has `forks` (`[]` when none: `{session_id, title, replies, live, unread, state, summary, created_at}`) and an added fork's `fork_summary` block. A user message sent while a turn ran has `delivered`: `steer` (read by the running turn) or `queued` (waits for the next).\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if no session exists.",
         "operationId": "get_session_transcript_v1_sessions__session_id__transcript_get",
         "parameters": [
           {
@@ -17027,6 +17222,25 @@
       "get": {
         "description": "Aggregate the calling user's LLM spend across their sessions.\n\nrequire_user, not get_user_id: the aggregation scopes to the caller,\nso a request slipping through as `None` in multi-user mode would\nread another scope. Fail closed with 401 instead (`user_id` is\n`None` only when auth is disabled \u2014 the single-user / local case).",
         "operationId": "get_usage_v1_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "month",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -17037,6 +17251,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get Usage",
