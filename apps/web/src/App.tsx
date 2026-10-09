@@ -14,6 +14,7 @@ import {
 } from "./lib/session-gate";
 import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
+import { CardsPreviewPage } from "./pages/dev/CardsPreviewPage";
 import { DeckPreviewPage } from "./pages/dev/DeckPreviewPage";
 import { ForksPreviewPage } from "./pages/dev/ForksPreviewPage";
 import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
@@ -51,6 +52,13 @@ export function App() {
   // same reasoning as /dev/canvas: no session or backend chats wire needed.
   if (import.meta.env.DEV && window.location.pathname === "/dev/side-chats") {
     return <SideChatsPreviewPage />;
+  }
+  // Dev-only fixture routes for the clarification card and follow-up chips (CardsPreviewPage.tsx).
+  if (import.meta.env.DEV && window.location.pathname === "/dev/clarify") {
+    return <CardsPreviewPage scenario="clarify" />;
+  }
+  if (import.meta.env.DEV && window.location.pathname === "/dev/followups") {
+    return <CardsPreviewPage scenario="followups" />;
   }
   // Dev-only fixture route for the Activity panel (ActivityPreviewPage.tsx): same
   // reasoning — `activities.*` isn't served by the local dev API either.

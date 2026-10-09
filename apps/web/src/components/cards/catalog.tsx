@@ -260,6 +260,37 @@ function Ask({
   );
 }
 
+/** Quiet next-message chips under the latest answer; a click sends the text as the person's reply. */
+function FollowUps({ data }: Props<"follow_ups">) {
+  const { t } = useLingui();
+  const send = useReplyCardSend();
+  const [sent, setSent] = useState(false);
+  return (
+    <fieldset
+      data-testid="follow-ups"
+      className="m-0 flex min-w-0 max-w-full flex-wrap gap-1.5 border-0 p-0"
+    >
+      <legend className="sr-only">{t`Suggested follow-ups`}</legend>
+      {data.suggestions.map((text) => (
+        <button
+          key={text}
+          type="button"
+          disabled={!send || sent}
+          onClick={() => {
+            if (sent) return;
+            setSent(true);
+            send?.(text);
+          }}
+          className="max-w-full cursor-pointer rounded-full border border-border/70 px-3 py-1 text-start text-[13px] leading-snug text-muted-foreground transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-default disabled:opacity-60"
+          dir="auto"
+        >
+          {text}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
 function formatPrice(value: number, currency?: string): string {
   try {
     if (currency && /^[A-Za-z]{3}$/.test(currency)) {
@@ -502,6 +533,7 @@ export const catalog = {
   compare: Compare,
   plan: Plan,
   ask: Ask,
+  follow_ups: FollowUps,
   quote: Quote,
   chart: Chart,
   person: Person,

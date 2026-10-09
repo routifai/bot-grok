@@ -4,7 +4,8 @@ Pure: items in (the flat ``ConversationItem.to_api_dict()`` shape, oldest first)
 out. The rules a client would otherwise copy:
 
 * a message item is a ``text`` block; the runtime's own notices and hidden context are dropped;
-* ``render_card`` / ``vault_request_secret`` / ``artifact_save`` / ``deck_export`` calls become
+* ``render_card`` / ``ask_clarification`` / ``suggest_follow_ups`` / ``vault_request_secret`` /
+  ``artifact_save`` / ``deck_export`` calls become
   ``card`` / ``secure_entry`` / ``file`` messages of their own (a call whose output says it
   failed shows nothing; a card still running is ``pending``);
 * a delivered file (a ``resource_event`` whose ``resource_type`` is ``artifact``: something the
@@ -32,7 +33,11 @@ from typing import Any
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.superchat.artifact_kinds import KIND_MIME
-from omnigent.superchat.cards.tools import CARD_TOOL_NAME
+from omnigent.superchat.cards.tools import (
+    CARD_TOOL_NAME,
+    CLARIFICATION_TOOL_NAME,
+    FOLLOW_UPS_TOOL_NAME,
+)
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
@@ -316,6 +321,9 @@ def project_items(
                 continue
             if _is_call(item, CARD_TOOL_NAME):
                 block = _card_block(item, output)
+            elif _is_call(item, CLARIFICATION_TOOL_NAME) or _is_call(item, FOLLOW_UPS_TOOL_NAME):
+                # Instant tools: the card appears with its result, never as a skeleton.
+                block = _card_block(item, output) if output is not None else None
             elif _is_call(item, VAULT_REQUEST_TOOL_NAME):
                 block = _secure_entry_block(output)
             elif _is_call(item, ARTIFACT_SAVE_TOOL_NAME) or _is_call(item, DECK_EXPORT_TOOL_NAME):

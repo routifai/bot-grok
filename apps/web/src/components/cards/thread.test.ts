@@ -58,3 +58,34 @@ it("takes the person's next message as the answer", () => {
   const reply = message("user", { kind: "text", text: " Berlin " });
   expect(resolveReplyCards([ask, reply]).get(replyCardKey(ask.id, 0))?.answer).toBe("Berlin");
 });
+
+it("keeps follow-up chips on the final message only", () => {
+  const chips = (): ReplyCardBlock =>
+    card(undefined, { card: "follow_ups", data: { suggestions: ["Next"] } });
+  const first = message("bot", chips());
+  const second = message("bot", chips());
+  expect(resolveReplyCards([first, second]).get(replyCardKey(first.id, 0))?.block).toBeNull();
+  expect(resolveReplyCards([first, second]).get(replyCardKey(second.id, 0))?.block).not.toBeNull();
+  // A reply from the person after the chips retires them.
+  const reply = message("user", { kind: "text", text: "Next" });
+  expect(resolveReplyCards([second, reply]).get(replyCardKey(second.id, 0))?.block).toBeNull();
+});
+
+it("locks a clarification card on the person's next message", () => {
+  const ask = message(
+    "bot",
+    card("c1", {
+      card: "ask",
+      data: {
+        question: "Q?",
+        options: [
+          { id: "opt-1", label: "A" },
+          { id: "opt-2", label: "B" },
+        ],
+      },
+    }),
+  );
+  const pick = message("user", { kind: "text", text: "B" });
+  expect(resolveReplyCards([ask, pick]).get(replyCardKey(ask.id, 0))?.answer).toBe("B");
+  expect(resolveReplyCards([ask]).get(replyCardKey(ask.id, 0))?.answer).toBeUndefined();
+});

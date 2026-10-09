@@ -7,6 +7,16 @@ payload that clients render with their own component catalog; the required ``fal
 markdown rides along so the model's history (and any client without the catalog) has text.
 
 The runner dispatches this locally (``_execute_card_tool``); no server round-trip.
+
+Two thin sibling tools reuse the same card path so the person's reply always travels as an
+ordinary chat message (no new channel): ``ask_clarification`` builds an ``ask`` card (one-click
+options) and ``suggest_follow_ups`` builds a ``follow_ups`` card (quiet next-message chips).
+
+Portions modified from getnao/nao apps/shared/src/tools/clarification.ts and
+apps/shared/src/tools/suggest-follow-ups.ts@5bde830, Apache-2.0; changes: options are 2-5 required
+short distinct strings (nao allows none), results are Nova reply cards (``ask`` and ``follow_ups``)
+that the person's click answers as an ordinary chat message, and the Muse rules (ask only when
+genuinely ambiguous, suggest only natural next steps) are in the tool descriptions; see NOTICE.
 """
 
 from __future__ import annotations
@@ -285,3 +295,235 @@ class RenderCardTool(Tool):
         if not isinstance(args, dict):
             return json.dumps({"error": "arguments must be a JSON object"})
         return json.dumps(build_card(args), ensure_ascii=False)
+
+
+# ── ask_clarification / suggest_follow_ups ──────────────────────────────────────────────────
+
+CLARIFICATION_TOOL_NAME = "ask_clarification"
+FOLLOW_UPS_TOOL_NAME = "suggest_follow_ups"
+
+CLARIFICATION_MIN_OPTIONS = 2
+CLARIFICATION_MAX_OPTIONS = 5
+CLARIFICATION_OPTION_MAX_CHARS = 60
+FOLLOW_UPS_MAX = 3
+FOLLOW_UP_MAX_CHARS = 120
+
+#: Shape of the ``follow_ups`` card ``data`` (the client's ``ReplyCardData.follow_ups``).
+FOLLOW_UPS_DATA_SCHEMA: dict[str, Any] = _obj(
+    ["suggestions"], suggestions=_arr(_STR, max_items=FOLLOW_UPS_MAX)
+)
+
+
+def _clean_strings(
+    value: Any, *, path: str, min_items: int, max_items: int, max_chars: int
+) -> tuple[list[str], str | None]:
+    """Trimmed, distinct strings of *value*, or the first problem with it."""
+    if not isinstance(value, list):
+        return [], f"{path} must be an array of strings"
+    out: list[str] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, str):
+            return [], f"{path}[{i}] must be a string"
+        text = " ".join(item.split())
+        if not text:
+            return [], f"{path}[{i}] must not be empty"
+        if len(text) > max_chars:
+            return [], f"{path}[{i}] is over {max_chars} characters; shorten it"
+        if text.lower() in {seen.lower() for seen in out}:
+            return [], f"{path}[{i}] repeats another entry"
+        out.append(text)
+    if not min_items <= len(out) <= max_items:
+        return [], f"{path} needs {min_items}-{max_items} items"
+    return out, None
+
+
+def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
+    """
+    Validate ``ask_clarification`` arguments and build its ``ask`` card payload.
+
+    :param args: Parsed tool arguments: ``question`` and 2-5 short, distinct ``options``.
+    :returns: The same ``{"type": "card", "card": "ask", ...}`` payload ``render_card`` returns,
+        or ``{"error": "..."}`` so the model can retry.
+    """
+    question = args.get("question")
+    if not isinstance(question, str) or not question.strip():
+        return {"error": "question must be a non-empty string"}
+    question = " ".join(question.split())
+    options, err = _clean_strings(
+        args.get("options"),
+        path="options",
+        min_items=CLARIFICATION_MIN_OPTIONS,
+        max_items=CLARIFICATION_MAX_OPTIONS,
+        max_chars=CLARIFICATION_OPTION_MAX_CHARS,
+    )
+    if err is not None:
+        return {"error": err}
+    fallback = question + "\n\n" + "\n".join(f"- {option}" for option in options)
+    out = build_card(
+        {
+            "card": "ask",
+            "data": {
+                "question": question,
+                "options": [{"id": f"opt-{i}", "label": o} for i, o in enumerate(options, 1)],
+            },
+            "fallback": fallback,
+        }
+    )
+    if "error" not in out:
+        out["note"] = (
+            "Shown to the person with one button per option. End your turn now with no more "
+            "text; their pick arrives as their next message."
+        )
+    return out
+
+
+def build_follow_ups(args: dict[str, Any]) -> dict[str, Any]:
+    """
+    Validate ``suggest_follow_ups`` arguments and build its ``follow_ups`` card payload.
+
+    :param args: Parsed tool arguments: 1-3 short ``suggestions``.
+    :returns: ``{"type": "card", "card": "follow_ups", "data", "fallback", "note"}``, or
+        ``{"error": "..."}`` so the model can retry.
+    """
+    suggestions, err = _clean_strings(
+        args.get("suggestions"),
+        path="suggestions",
+        min_items=1,
+        max_items=FOLLOW_UPS_MAX,
+        max_chars=FOLLOW_UP_MAX_CHARS,
+    )
+    if err is not None:
+        return {"error": err}
+    return {
+        "type": "card",
+        "card": "follow_ups",
+        "data": {"suggestions": suggestions},
+        "fallback": "\n".join(f"- {s}" for s in suggestions),
+        "note": (
+            "Shown as quiet chips under your answer. End your turn now with no more text; "
+            "do not mention them."
+        ),
+    }
+
+
+class _CardSiblingTool(Tool):
+    """Shared plumbing of the two sibling tools: parse JSON, build, return JSON."""
+
+    _build: Any = None
+
+    def invoke(self, arguments: str, ctx: ToolContext) -> str:
+        """
+        Validate *arguments* and return the card payload as JSON.
+
+        :param arguments: JSON-encoded arguments from the LLM.
+        :param ctx: Unused.
+        :returns: JSON string: the card payload, or ``{"error": ...}``.
+        """
+        try:
+            args = json.loads(arguments)
+        except json.JSONDecodeError:
+            return json.dumps({"error": "arguments must be a JSON object"})
+        if not isinstance(args, dict):
+            return json.dumps({"error": "arguments must be a JSON object"})
+        return json.dumps(type(self)._build(args), ensure_ascii=False)
+
+
+class AskClarificationTool(_CardSiblingTool):
+    """Ask the person one clarifying question with 2-5 one-click options."""
+
+    _build = staticmethod(build_clarification)
+
+    @classmethod
+    def name(cls) -> str:
+        """:returns: The tool name."""
+        return CLARIFICATION_TOOL_NAME
+
+    @classmethod
+    def description(cls) -> str:
+        """:returns: Human-readable description of the tool."""
+        return (
+            "Ask the person one clarifying question as a card with 2-5 one-click options. Use "
+            "it only when the request is genuinely ambiguous, a wrong guess would waste real "
+            "work, and you can name the options clearly. If a sensible default exists, or the "
+            "answer is cheap to correct afterwards, do not ask: just proceed and say what you "
+            "assumed. One question per call, options short, distinct and mutually exclusive. "
+            "Their pick comes back as their next message; the card ends your reply."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        """:returns: The OpenAI-format tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "One short, specific question.",
+                        },
+                        "options": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": CLARIFICATION_MIN_OPTIONS,
+                            "maxItems": CLARIFICATION_MAX_OPTIONS,
+                            "description": (
+                                f"{CLARIFICATION_MIN_OPTIONS}-{CLARIFICATION_MAX_OPTIONS} "
+                                f"distinct answers, each under "
+                                f"{CLARIFICATION_OPTION_MAX_CHARS} characters."
+                            ),
+                        },
+                    },
+                    "required": ["question", "options"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+
+class SuggestFollowUpsTool(_CardSiblingTool):
+    """Offer 1-3 natural next messages as quiet chips under the answer."""
+
+    _build = staticmethod(build_follow_ups)
+
+    @classmethod
+    def name(cls) -> str:
+        """:returns: The tool name."""
+        return FOLLOW_UPS_TOOL_NAME
+
+    @classmethod
+    def description(cls) -> str:
+        """:returns: Human-readable description of the tool."""
+        return (
+            "Offer 1-3 short messages the person could send next, shown as chips under your "
+            "answer. Write your full answer first, then call this as your last step. Only when "
+            "there are natural next steps that follow from this answer; never generic filler "
+            '("Anything else?", "Tell me more"). Each is written as the person would say it, '
+            "under 120 characters. Never together with ask_clarification."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        """:returns: The OpenAI-format tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "suggestions": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 1,
+                            "maxItems": FOLLOW_UPS_MAX,
+                            "description": "1-3 next messages, in the person's voice.",
+                        }
+                    },
+                    "required": ["suggestions"],
+                    "additionalProperties": False,
+                },
+            },
+        }

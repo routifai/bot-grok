@@ -53,7 +53,7 @@ export function Transcript({
           : undefined
       }
     >
-      <ReplyCardThreadProvider messages={props.messages}>
+      <ReplyCardThreadProvider messages={props.messages} running={props.running}>
         <TranscriptView {...props} />
       </ReplyCardThreadProvider>
     </ReplyCardBotProvider>
