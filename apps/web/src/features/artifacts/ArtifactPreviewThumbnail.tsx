@@ -5,6 +5,7 @@ import { artifactKind, KIND_ICON } from "../../lib/artifact-kind";
 import { decodeArtifactBase64 } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
 import { useObjectUrl } from "../../lib/use-object-url";
+import { useArtifactExtensions } from "./registry";
 
 // A real preview is only cheap for images and small pages, so cap both the mime
 // types and the byte size that get one; everything else keeps its type icon.
@@ -168,10 +169,24 @@ export function ArtifactPreviewThumbnail({
   }, [bytes, kind, onHeading]);
 
   const Icon = KIND_ICON[kind];
+  const extensions = useArtifactExtensions();
+  const custom = extensions
+    .map(
+      (extension) =>
+        extension.thumbnail?.({
+          id: artifact.id,
+          name: artifact.name,
+          mimeType: artifact.mimeType,
+          version: artifact.version,
+        }) ?? null,
+    )
+    .find((node) => node !== null);
 
   return (
     <div ref={ref} className="grid h-full w-full place-items-center">
-      {bytes && kind === "image" ? (
+      {custom ? (
+        custom
+      ) : bytes && kind === "image" ? (
         <ImageThumbnail bytes={bytes} mimeType={artifact.mimeType} onReady={onReady} />
       ) : bytes && kind === "page" ? (
         <ScaledHtmlThumbnail bytes={bytes} title={artifact.name} onReady={onReady} />

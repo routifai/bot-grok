@@ -757,6 +757,9 @@ msgstr "Changing…"
 msgid "Channels"
 msgstr "Channels"
 
+msgid "Chart"
+msgstr "Chart"
+
 msgid "Chart failed to render: {error}"
 msgstr "Chart failed to render: {error}"
 
@@ -3726,6 +3729,15 @@ msgstr "Sound on"
 
 msgid "Source"
 msgstr "Source"
+
+#. placeholder {0}: source.file
+msgid "Source: {0}"
+msgstr "Source: {0}"
+
+#. placeholder {0}: source.file
+#. placeholder {1}: source.rows
+msgid "Source: {0} (first {1} rows)"
+msgstr "Source: {0} (first {1} rows)"
 
 msgid "Sources"
 msgstr "Sources"
