@@ -14,11 +14,15 @@ export const ATTACHMENT_IMAGE_MIME_TYPES = [
   "image/gif",
 ] as const;
 
+export const XLSX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
+
 export const ATTACHMENT_FILE_MIME_TYPES = [
   "application/pdf",
   "text/plain",
   "text/markdown",
   "text/csv",
+  XLSX_MIME_TYPE,
   "text/html",
   "application/json",
 ] as const;

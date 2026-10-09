@@ -405,6 +405,8 @@ export async function readTurnAttachmentContext(
         name: read.name,
         fileId: read.file_id,
         pages: read.pages,
+        path: ref.path,
+        ...(read.kind === "csv" || read.kind === "xlsx" ? { tabular: true } : {}),
         ...(read.markdown === undefined ? {} : { markdown: read.markdown }),
       });
     } catch (error) {

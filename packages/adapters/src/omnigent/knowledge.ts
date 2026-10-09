@@ -47,6 +47,8 @@ export interface OmnigentKnowledgeSearch {
   mode: "hybrid" | "keyword";
   keyword_only_reason: string | null;
   files_indexing: number;
+  /** Names of the files still being indexed (the answer may be missing them). */
+  files_indexing_names?: string[];
   results: OmnigentKnowledgePassage[];
 }
 
@@ -123,6 +125,8 @@ export interface OmnigentKnowledgeIngest {
   pages: number;
   pages_without_text: number;
   chars: number;
+  /** The file's kind (`pdf`, `txt`, `md`, `csv`, `xlsx`); a table's `markdown` is its manifest. */
+  kind?: string;
   /** Where the Markdown version lives in the Computer. */
   markdown_path: string;
   search: "hybrid" | "keyword";

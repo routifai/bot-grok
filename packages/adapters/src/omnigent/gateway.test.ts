@@ -633,11 +633,46 @@ describe("attached documents", () => {
     ].join("\n");
     const items = await readTurnAttachmentContext(CLIENT, "p@example.test", "sess-1", text);
     expect(items).toEqual([
-      { name: "report.pdf", fileId: "ab12", pages: 2, markdown: "<!-- page 1 -->\n\nHi" },
+      {
+        name: "report.pdf",
+        fileId: "ab12",
+        pages: 2,
+        path: "your_files/uploads/d/report.pdf",
+        markdown: "<!-- page 1 -->\n\nHi",
+      },
     ]);
     expect(ingestOmnigentKnowledge).toHaveBeenCalledTimes(1);
     expect(ingestOmnigentKnowledge).toHaveBeenCalledWith(CLIENT, "p@example.test", "sess-1", {
       path: "your_files/uploads/d/report.pdf",
+      inline: true,
+    });
+  });
+
+  it("reads a spreadsheet as a table manifest and tells the model to compute with code", async () => {
+    const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    ingestOmnigentKnowledge.mockResolvedValue(
+      read({
+        name: "budget.xlsx",
+        path: "your_files/uploads/d/budget.xlsx",
+        kind: "xlsx",
+        markdown: "Rows: 3. Columns: region (text)",
+      }),
+    );
+    const items = await readTurnAttachmentContext(
+      CLIENT,
+      "p@example.test",
+      "sess-1",
+      ref("your_files/uploads/d/budget.xlsx", xlsx),
+    );
+    expect(items).toEqual([
+      expect.objectContaining({
+        name: "budget.xlsx",
+        tabular: true,
+        path: "your_files/uploads/d/budget.xlsx",
+      }),
+    ]);
+    expect(ingestOmnigentKnowledge).toHaveBeenCalledWith(CLIENT, "p@example.test", "sess-1", {
+      path: "your_files/uploads/d/budget.xlsx",
       inline: true,
     });
   });

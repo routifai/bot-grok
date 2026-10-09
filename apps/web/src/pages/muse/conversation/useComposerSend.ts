@@ -39,6 +39,11 @@ function isComputerStarting(error: unknown): boolean {
   return /\(503\)|computer is starting/i.test(message);
 }
 
+/** The Computer is awake but did not finish reading the file in time (not "starting"). */
+function isReadTimeout(error: unknown): boolean {
+  return error instanceof ORPCError && error.code === "GATEWAY_TIMEOUT";
+}
+
 /** The composer's side of a conversation: attachments, replies, sending, stopping, answering
  * asks and reacting to messages. */
 export function useComposerSend({
@@ -210,13 +215,18 @@ export function useComposerSend({
                 contentBase64,
               }),
             isComputerStarting,
-            () => undefined,
+            () => setAttachmentState(attachment.id, "starting"),
           );
           uploadedRef.current.set(attachment.id, stored);
         }
         if (isIngestableAttachmentMimeType(mimeType)) {
+          const path = stored.path;
           setAttachmentState(attachment.id, "reading");
-          await rpc.files.ingestAttachment({ botId, path: stored.path });
+          await uploadWhenComputerReady(
+            () => rpc.files.ingestAttachment({ botId, path }),
+            isComputerStarting,
+            () => setAttachmentState(attachment.id, "starting"),
+          );
         }
         setAttachmentState(attachment.id, "ready");
       } catch (error) {
@@ -225,7 +235,9 @@ export function useComposerSend({
           "error",
           isComputerStarting(error)
             ? t`Your Computer is starting. Try again in a moment.`
-            : userFacingError(error, t`Couldn't read ${attachment.file.name}`),
+            : isReadTimeout(error)
+              ? t`Reading ${attachment.file.name} is taking too long. Try again in a moment.`
+              : userFacingError(error, t`Couldn't read ${attachment.file.name}`),
         );
       }
     },
@@ -261,7 +273,7 @@ export function useComposerSend({
           continue;
         }
         next.push({
-          id: `${file.name}-${file.size}-${file.lastModified}-${next.length}`,
+          id: newClientId(),
           threadKey,
           file,
           previewUrl: mimeType.startsWith("image/") ? URL.createObjectURL(file) : undefined,

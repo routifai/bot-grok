@@ -89,6 +89,7 @@ describe("engine knowledge", () => {
         mode: "hybrid",
         keyword_only_reason: null,
         files_indexing: 1,
+        files_indexing_names: ["new.pdf"],
         results: [
           {
             file_id: FILE,
@@ -126,6 +127,7 @@ describe("engine knowledge", () => {
     expect(url.pathname).toBe("/v1/sessions/sess-1/knowledge/search");
     expect(JSON.parse(String(init.body))).toEqual({ query: "currency", file_ids: [FILE], k: 4 });
     expect(found.filesIndexing).toBe(1);
+    expect(found.filesIndexingNames).toEqual(["new.pdf"]);
     expect(
       found.results.map((hit) => [hit.fileName, hit.fileId, hit.artifactId, hit.hasThumbnail]),
     ).toEqual([

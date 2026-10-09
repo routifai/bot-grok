@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Bot } from "@nova/contracts";
+import { ORPCError } from "@orpc/client";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -198,6 +199,20 @@ it("shows Reading on the chip and keeps Send disabled until the file is ready", 
   await settle();
   expect(chip.dataset.status).toBe("ready");
   expect(sendButton.disabled).toBe(false);
+});
+
+it("shows Starting your Computer on the chip while a sleeping Computer wakes", async () => {
+  api.files.ingestAttachment
+    .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }))
+    .mockImplementation(() => new Promise(() => undefined));
+  const { host } = await mountWithAttachmentAndText("hi");
+  const chip = host.querySelector('[data-testid="composer-attachment"]') as HTMLElement;
+  expect(chip.dataset.status).toBe("starting");
+  expect(chip.textContent).toContain("Starting your Computer…");
+  expect(chip.textContent).not.toContain("Uploading");
+  expect((host.querySelector('button[aria-label="Send"]') as HTMLButtonElement).disabled).toBe(
+    true,
+  );
 });
 
 it("shows a failure on the chip with Retry, and never loses the draft", async () => {

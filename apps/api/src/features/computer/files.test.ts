@@ -170,8 +170,8 @@ describe("engine attachment upload", () => {
   it("PUTs base64 under your_files/uploads/<date>/ and returns the path", async () => {
     const fetchMock = museOr((url, init) => {
       if (init?.method === "PUT") return json({ bytes_written: 8, path: "x", created: true });
-      expect(url.pathname).toBe(`${FS}/your_files/uploads/2026-10-09`);
-      return json({}, 404);
+      expect(url.pathname).toMatch(/\/your_files\/uploads(\/2026-10-09)?$/);
+      return json({ error: { code: "not_found" } }, 404);
     });
     const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
     expect(out).toEqual({
@@ -207,6 +207,68 @@ describe("engine attachment upload", () => {
     const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
     expect(out.path).toBe("your_files/uploads/2026-10-09/report (3).pdf");
     expect(out.name).toBe("report (3).pdf");
+  });
+
+  describe("re-attaching the same file", () => {
+    const entry = (dir: string, name: string, bytes: number, type = "file") => ({
+      name,
+      path: `${dir}/${name}`,
+      type,
+      bytes,
+      modified_at: 1,
+    });
+    const DAY = "your_files/uploads/2026-10-09";
+    const PREV = "your_files/uploads/2026-10-08";
+    const same = Buffer.from("%PDF-1.4");
+
+    function world(contents: Record<string, Buffer>) {
+      const puts: string[] = [];
+      museOr((url, init) => {
+        if (init?.method === "PUT") {
+          puts.push(decodeURIComponent(url.pathname));
+          return json({ bytes_written: 8 });
+        }
+        const path = decodeURIComponent(url.pathname.slice(FS.length + 1));
+        if (path === "your_files/uploads") {
+          return json({ data: [entry("your_files/uploads", "2026-10-08", 0, "directory")] });
+        }
+        if (path === DAY) return json({ data: [entry(DAY, "report.pdf", 8)] });
+        if (path === PREV) return json({ data: [entry(PREV, "report.pdf", 8)] });
+        const bytes = contents[path];
+        if (!bytes) return json({ error: { code: "not_found" } }, 404);
+        return json(
+          fileBody(bytes.toString("base64"), { path, encoding: "base64", bytes: bytes.length }),
+        );
+      });
+      return puts;
+    }
+
+    it("reuses the identical copy: nothing is written, the existing path comes back", async () => {
+      const puts = world({ [`${DAY}/report.pdf`]: same });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.path).toBe(`${DAY}/report.pdf`);
+      expect(puts).toEqual([]);
+    });
+
+    it("finds the copy in an earlier day's folder", async () => {
+      const puts = world({
+        [`${PREV}/report.pdf`]: same,
+        [`${DAY}/report.pdf`]: Buffer.from("other!!!"),
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.path).toBe(`${PREV}/report.pdf`);
+      expect(puts).toEqual([]);
+    });
+
+    it("same name with different bytes is stored as a numbered copy", async () => {
+      const puts = world({
+        [`${DAY}/report.pdf`]: Buffer.from("other!!!"),
+        [`${PREV}/report.pdf`]: Buffer.from("another!"),
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.path).toBe(`${DAY}/report (2).pdf`);
+      expect(puts).toEqual([`${FS}/${DAY}/report (2).pdf`]);
+    });
   });
 
   it("maps a 503 from the engine to the calm starting message", async () => {
@@ -269,7 +331,9 @@ describe("engine attachment ingest", () => {
   });
 
   it("only reads uploads, and says calmly when the file can't be read", async () => {
-    const fetchMock = stub(() => json({ error: { message: "not a readable PDF" } }, 400));
+    const fetchMock = stub(() =>
+      json({ error: { code: "invalid_input", message: "not a readable PDF" } }, 400),
+    );
     await expect(
       engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path: "secrets/x.pdf" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -284,5 +348,28 @@ describe("engine attachment ingest", () => {
     await expect(
       engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
     ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  });
+
+  it("maps by the engine's error code, not by words in its message", async () => {
+    // A 503 whose text mentions nothing recognisable is still "starting" because of its code ...
+    stub(() => json({ error: { code: "runner_unavailable", message: "no" } }, 503));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    // ... and a different 503 is not (no code match, so it is not shown as "starting").
+    stub(() => json({ error: { code: "internal_error", message: "(503) upstream" } }, 503));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.not.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  });
+
+  it("answers a slow read with its own message, never 'starting'", async () => {
+    stub(() => json({ error: { code: "knowledge_timeout", message: "slow" } }, 504));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.toMatchObject({
+      code: "GATEWAY_TIMEOUT",
+      message: "Reading this file is taking too long. Try again in a moment.",
+    });
   });
 });

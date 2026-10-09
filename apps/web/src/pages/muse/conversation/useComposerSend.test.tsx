@@ -243,3 +243,75 @@ it("sends an image without reading it", async () => {
   expect(statuses()).toEqual(["ready"]);
   expect(api.files.ingestAttachment).not.toHaveBeenCalled();
 });
+
+it("shows 'starting' on the chip while the Computer wakes, then carries on to reading", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.files.uploadAttachment
+      .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }))
+      .mockResolvedValueOnce({
+        path: "p/a.pdf",
+        name: "a.pdf",
+        mimeType: "application/pdf",
+        size: 3,
+      });
+    await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(statuses()).toEqual(["starting"]);
+    expect(await act(async () => latest.sendMessage("hi"))).toBe(false); // still holds Send
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(statuses()).toEqual(["ready"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("waits out a Computer that wakes during the read, not only during the upload", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.files.ingestAttachment
+      .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }))
+      .mockResolvedValueOnce({ fileId: "ab12", name: "a.pdf", pages: 1, chars: 3 });
+    await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(statuses()).toEqual(["starting"]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(statuses()).toEqual(["ready"]);
+    expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("says a slow read is slow, not that the Computer is starting", async () => {
+  await mount();
+  api.files.ingestAttachment.mockRejectedValueOnce(
+    new ORPCError("GATEWAY_TIMEOUT", { message: "slow" }),
+  );
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["error"]);
+  expect(latest.pendingAttachments[0]?.error).toBe(
+    "Reading a.pdf is taking too long. Try again in a moment.",
+  );
+});
+
+it("gives every picked attachment its own id, even for identical files picked together", async () => {
+  await mount();
+  await pickFiles(["a.pdf", "aaa", "application/pdf"], ["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  const ids = latest.pendingAttachments.map((a) => a.id);
+  expect(new Set(ids).size).toBe(2);
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  expect(new Set(latest.pendingAttachments.map((a) => a.id)).size).toBe(3);
+});
