@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { engineEditDeck, engineExportDeck } from "./service.js";
+import { engineDeckTheme, engineDeckThemes, engineEditDeck, engineExportDeck } from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",
@@ -116,5 +116,72 @@ describe("engine deck edit", () => {
     await expect(
       engineEditDeck(deps, client, actor, { artifactId: "a1", baseVersion: 1, patches }),
     ).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ask Nova") });
+  });
+});
+
+describe("engine deck themes", () => {
+  it("lists the dictionary in the web's shape", async () => {
+    const fetchMock = vi.fn(async (url: URL) => {
+      expect(url.pathname).toBe("/v1/decks/themes");
+      return json({
+        default: "corporate-clean",
+        themes: [
+          {
+            id: "corporate-clean",
+            name: "Corporate Clean",
+            mood: "White and navy.",
+            category: "professional",
+            mode: "light",
+            best_for: "board reports",
+            preview: "data:image/webp;base64,AA==",
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await engineDeckThemes(deps, client, actor)).toEqual({
+      defaultTheme: "corporate-clean",
+      themes: [
+        {
+          id: "corporate-clean",
+          name: "Corporate Clean",
+          mood: "White and navy.",
+          category: "professional",
+          mode: "light",
+          bestFor: "board reports",
+          preview: "data:image/webp;base64,AA==",
+        },
+      ],
+    });
+  });
+
+  it("sends a set-theme patch as an ordinary edit", async () => {
+    const patches = [{ kind: "set-theme" as const, theme: "nord" }];
+    const fetchMock = vi.fn(async () => json({ ...row, id: "a3", version: 2 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await engineEditDeck(deps, client, actor, { artifactId: "a1", baseVersion: 1, patches });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).patches).toEqual(patches);
+  });
+});
+
+describe("engine deck theme", () => {
+  it("reads the theme id, or null for a hand-made deck", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) => {
+        expect(url.pathname).toBe("/v1/decks/a1/theme");
+        return json({ theme: "nord" });
+      }),
+    );
+    expect(await engineDeckTheme(deps, client, actor, { artifactId: "a1" })).toEqual({
+      theme: "nord",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ theme: null })),
+    );
+    expect(await engineDeckTheme(deps, client, actor, { artifactId: "a1" })).toEqual({
+      theme: null,
+    });
   });
 });

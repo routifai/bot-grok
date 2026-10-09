@@ -8,7 +8,8 @@ told to ask Nova instead of getting a guess.
 
 Patch kinds (the wire shape, ``kind`` discriminates): ``set-text``, ``set-style``,
 ``set-attributes`` (``href`` on ``<a>``, ``alt`` on ``<img>``), ``remove-element``,
-``duplicate-element`` and ``set-full-source`` (undo / redo).
+``duplicate-element``, ``set-theme`` (swap the whole theme, slides untouched) and
+``set-full-source`` (undo / redo).
 
 Portions modified from nexu-io/open-design apps/web/src/edit-mode/source-patches.ts@802708f,
 Apache-2.0; changes: Python port on ``html.parser`` string spans instead of DOMParser
@@ -90,13 +91,25 @@ class DuplicateElement(BaseModel):
     id: str
 
 
+class SetTheme(BaseModel):
+    kind: Literal["set-theme"]
+    #: A theme id from the kit's dictionary (``kit.templates()``).
+    theme: str = Field(min_length=1, max_length=60)
+
+
 class SetFullSource(BaseModel):
     kind: Literal["set-full-source"]
     source: str = Field(max_length=MAX_ARTIFACT_BYTES)
 
 
 Patch = Annotated[
-    SetText | SetStyle | SetAttributes | RemoveElement | DuplicateElement | SetFullSource,
+    SetText
+    | SetStyle
+    | SetAttributes
+    | RemoveElement
+    | DuplicateElement
+    | SetTheme
+    | SetFullSource,
     Field(discriminator="kind"),
 ]
 
@@ -560,6 +573,23 @@ def _apply_duplicate(doc: _Doc, patch: DuplicateElement) -> tuple[str, str]:
     return new_src, f"{doc.where(node)}: duplicated"
 
 
+def _apply_set_theme(doc: _Doc, patch: SetTheme) -> tuple[str, str]:
+    from omnigent.superchat.decks import kit
+
+    template = kit.templates().get(patch.theme)
+    if template is None:
+        raise InvalidPatch(f"Unknown theme '{patch.theme}'")
+    before = kit.deck_theme_id(doc.source)
+    if before == patch.theme:
+        return doc.source, ""
+    try:
+        new = kit.restyle_deck(doc.source, patch.theme)
+    except kit.KitError as exc:
+        raise _ambiguous(str(exc)) from exc
+    was = kit.templates()[before].name if before else "a custom look"
+    return new, f"switched the theme to {template.name} (was {was})"
+
+
 _RISKY_RE = re.compile(r"<\s*(?:script|iframe|object|embed|form|base)\b", re.I)
 _EXTERNAL_RE = re.compile(
     r"""(?:\bsrc|\bhref|\bposter|\bsrcset|\baction)\s*=\s*["']\s*(?:https?:)?//|url\(\s*["']?\s*(?:https?:)?//|@import""",
@@ -589,6 +619,7 @@ _APPLY = {
     "set-attributes": _apply_set_attributes,
     "remove-element": _apply_remove,
     "duplicate-element": _apply_duplicate,
+    "set-theme": _apply_set_theme,
     "set-full-source": _apply_full_source,
 }
 
@@ -596,7 +627,13 @@ _APPLY = {
 def apply_patches(
     source: bytes,
     patches: list[
-        SetText | SetStyle | SetAttributes | RemoveElement | DuplicateElement | SetFullSource
+        SetText
+        | SetStyle
+        | SetAttributes
+        | RemoveElement
+        | DuplicateElement
+        | SetTheme
+        | SetFullSource
     ],
 ) -> tuple[bytes, str]:
     """Apply ``patches`` in order; return ``(new_bytes, summary)``.
@@ -613,7 +650,7 @@ def apply_patches(
     notes: list[str] = []
     for patch in patches:
         doc = _Doc.load(text)
-        if patch.kind != "set-full-source":
+        if patch.kind not in ("set-full-source", "set-theme"):
             target = doc.find(patch.id)
             ident = target.attr("data-nova-id")
             if ident is not None and ident.value_start is None:

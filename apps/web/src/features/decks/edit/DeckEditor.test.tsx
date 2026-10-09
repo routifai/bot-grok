@@ -154,8 +154,16 @@ it("shows the bridge and panel only in edit mode; view mode is unchanged", async
   expect(frames[frames.length - 1]?.getAttribute("srcdoc")).not.toContain("nova-edit-bridge");
 
   await act(async () => setDeckEditing(NAME, true));
-  expect(host.querySelector('[data-testid="deck-style-panel"]')).not.toBeNull();
+  // The inspector is there only while something is selected.
+  expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
+  expect(host.querySelector('[data-testid="deck-edit-toolbar"]')).not.toBeNull();
   expect(editFrame().el.getAttribute("srcdoc")).toContain("nova-edit-bridge");
+  const frame = editFrame();
+  await ready(frame);
+  await select(frame);
+  expect(host.querySelector('[data-testid="deck-style-panel"]')).not.toBeNull();
+  await fromFrame(frame, { type: "nova:edit-selection", targets: [] });
+  expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
 
   await act(async () => setDeckEditing(NAME, false));
   expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();

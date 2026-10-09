@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -169,9 +170,10 @@ describe("engine attachment upload", () => {
 
   it("PUTs base64 under your_files/uploads/<date>/ and returns the path", async () => {
     const fetchMock = museOr((url, init) => {
+      if (url.pathname.endsWith("/knowledge/find")) return json({ found: false });
       if (init?.method === "PUT") return json({ bytes_written: 8, path: "x", created: true });
-      expect(url.pathname).toBe(`${FS}/your_files/uploads/2026-10-09`);
-      return json({}, 404);
+      expect(url.pathname).toMatch(/\/your_files\/uploads(\/2026-10-09)?$/);
+      return json({ error: { code: "not_found" } }, 404);
     });
     const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
     expect(out).toEqual({
@@ -187,26 +189,180 @@ describe("engine attachment upload", () => {
       content: Buffer.from("%PDF-1.4").toString("base64"),
       encoding: "base64",
       create_parents: true,
+      if_exists: "fail",
     });
   });
 
-  it("de-duplicates against the day's folder", async () => {
-    museOr((_url, init) =>
-      init?.method === "PUT"
-        ? json({ bytes_written: 8 })
-        : json({
-            data: ["report.pdf", "report (2).pdf"].map((name) => ({
-              name,
-              path: `your_files/uploads/2026-10-09/${name}`,
-              type: "file",
-              bytes: 1,
-              modified_at: 1,
-            })),
-          }),
+  it("de-duplicates names against the day's folder", async () => {
+    museOr((url, init) =>
+      url.pathname.endsWith("/knowledge/find")
+        ? json({ found: false })
+        : init?.method === "PUT"
+          ? json({ bytes_written: 8 })
+          : json({
+              data: ["report.pdf", "report (2).pdf"].map((name) => ({
+                name,
+                path: `your_files/uploads/2026-10-09/${name}`,
+                type: "file",
+                bytes: 1,
+                modified_at: 1,
+              })),
+            }),
     );
     const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
     expect(out.path).toBe("your_files/uploads/2026-10-09/report (3).pdf");
     expect(out.name).toBe("report (3).pdf");
+  });
+
+  describe("re-attaching the same file", () => {
+    const DAY = "your_files/uploads/2026-10-09";
+    const sha = createHash("sha256").update("%PDF-1.4").digest("hex");
+
+    function world(found: Record<string, unknown>) {
+      const puts: string[] = [];
+      const finds: unknown[] = [];
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) {
+          finds.push(JSON.parse(String(init?.body)));
+          return json(found);
+        }
+        if (init?.method === "PUT") {
+          puts.push(decodeURIComponent(url.pathname));
+          return json({ bytes_written: 8 });
+        }
+        return json({ data: [] });
+      });
+      return { puts, finds };
+    }
+
+    it("asks the Computer once, by hash, and reuses the stored copy: nothing is written", async () => {
+      const { puts, finds } = world({
+        found: true,
+        file_id: "ab",
+        name: "report.pdf",
+        path: `${DAY}/report.pdf`,
+        pages: 1,
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out).toMatchObject({ path: `${DAY}/report.pdf`, name: "report.pdf", size: 8 });
+      expect(finds).toEqual([{ sha256: sha }]);
+      expect(puts).toEqual([]);
+    });
+
+    it("finds a copy from any earlier day: the answer does not depend on folders", async () => {
+      const { puts } = world({
+        found: true,
+        name: "report (2).pdf",
+        path: "your_files/uploads/2026-08-01/report (2).pdf",
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.path).toBe("your_files/uploads/2026-08-01/report (2).pdf");
+      expect(puts).toEqual([]);
+    });
+
+    it("stores the file when no copy has these bytes; a name clash still gets a number", async () => {
+      const puts: string[] = [];
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) return json({ found: false });
+        if (init?.method === "PUT") {
+          puts.push(decodeURIComponent(url.pathname));
+          return json({ bytes_written: 8 });
+        }
+        return json({
+          data: [
+            {
+              name: "report.pdf",
+              path: `${DAY}/report.pdf`,
+              type: "file",
+              bytes: 3,
+              modified_at: 1,
+            },
+          ],
+        });
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.path).toBe(`${DAY}/report (2).pdf`);
+      expect(puts).toEqual([`${FS}/${DAY}/report (2).pdf`]);
+    });
+  });
+
+  describe("names, images and races", () => {
+    const DAY = "your_files/uploads/2026-10-09";
+
+    it("keeps the name the person chose: a copy under another name is not reused", async () => {
+      const writes: string[] = [];
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) {
+          return json({ found: true, name: "report.pdf", path: `${DAY}/report.pdf` });
+        }
+        if (init?.method === "PUT") {
+          writes.push(decodeURIComponent(url.pathname));
+          return json({ bytes_written: 8 });
+        }
+        return json({ data: [] });
+      });
+      const out = await engineUploadAttachment(
+        upDeps,
+        client,
+        actor,
+        input({ name: "Q3-final.pdf" }),
+        day,
+      );
+      expect(out.name).toBe("Q3-final.pdf");
+      expect(writes).toEqual([`${FS}/${DAY}/Q3-final.pdf`]);
+    });
+
+    it("never hashes or looks up an image: it is not indexed", async () => {
+      const finds: string[] = [];
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) finds.push(url.pathname);
+        return init?.method === "PUT" ? json({ bytes_written: 3 }) : json({ data: [] });
+      });
+      const out = await engineUploadAttachment(
+        upDeps,
+        client,
+        actor,
+        input({ name: "pic.png", mimeType: "image/png" }),
+        day,
+      );
+      expect(out.path).toBe(`${DAY}/pic.png`);
+      expect(finds).toEqual([]);
+    });
+
+    it("picks the next name when another upload took the free one first", async () => {
+      const written: string[] = [];
+      let listed = 0;
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) return json({ found: false });
+        if (init?.method === "PUT") {
+          const path = decodeURIComponent(url.pathname);
+          if (path.endsWith("/report.pdf")) {
+            return json({ error: { code: "already_exists", message: "exists" } }, 409);
+          }
+          written.push(path);
+          return json({ bytes_written: 8 });
+        }
+        listed += 1;
+        // the folder listing is stale on the first look: the other upload is not in it yet
+        return json({
+          data:
+            listed === 1
+              ? []
+              : [
+                  {
+                    name: "report.pdf",
+                    path: `${DAY}/report.pdf`,
+                    type: "file",
+                    bytes: 8,
+                    modified_at: 1,
+                  },
+                ],
+        });
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.name).toBe("report (2).pdf");
+      expect(written).toEqual([`${FS}/${DAY}/report (2).pdf`]);
+    });
   });
 
   it("maps a 503 from the engine to the calm starting message", async () => {
@@ -265,11 +421,13 @@ describe("engine attachment ingest", () => {
     expect(out).toEqual({ fileId: "ab12", name: "report.pdf", pages: 3, chars: 900 });
     const [url, init] = fetchMock.mock.calls.at(-1) as unknown as [URL, RequestInit];
     expect(url.pathname).toBe("/v1/sessions/muse-1/knowledge/ingest");
-    expect(JSON.parse(String(init.body))).toEqual({ path, inline: false });
+    expect(JSON.parse(String(init.body))).toEqual({ path });
   });
 
   it("only reads uploads, and says calmly when the file can't be read", async () => {
-    const fetchMock = stub(() => json({ error: { message: "not a readable PDF" } }, 400));
+    const fetchMock = stub(() =>
+      json({ error: { code: "invalid_input", message: "not a readable PDF" } }, 400),
+    );
     await expect(
       engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path: "secrets/x.pdf" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -284,5 +442,28 @@ describe("engine attachment ingest", () => {
     await expect(
       engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
     ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  });
+
+  it("maps by the engine's error code, not by words in its message", async () => {
+    // A 503 whose text mentions nothing recognisable is still "starting" because of its code ...
+    stub(() => json({ error: { code: "runner_unavailable", message: "no" } }, 503));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    // ... and a different 503 is not (no code match, so it is not shown as "starting").
+    stub(() => json({ error: { code: "internal_error", message: "(503) upstream" } }, 503));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.not.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  });
+
+  it("answers a slow read with its own message, never 'starting'", async () => {
+    stub(() => json({ error: { code: "knowledge_timeout", message: "slow" } }, 504));
+    await expect(
+      engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
+    ).rejects.toMatchObject({
+      code: "GATEWAY_TIMEOUT",
+      message: "Reading this file is taking too long. Try again in a moment.",
+    });
   });
 });

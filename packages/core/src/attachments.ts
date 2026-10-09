@@ -5,6 +5,7 @@ import {
   isAllowedAttachmentMimeType,
   isAttachmentImageMimeType,
   type MessageBlock,
+  XLSX_MIME_TYPE,
 } from "@nova/contracts";
 
 export class AttachmentValidationError extends Error {
@@ -136,6 +137,7 @@ const EXTENSION_MIME_TYPES: Record<string, AttachmentMimeType> = {
   ".md": "text/markdown",
   ".markdown": "text/markdown",
   ".csv": "text/csv",
+  ".xlsx": XLSX_MIME_TYPE,
   ".html": "text/html",
   ".htm": "text/html",
   ".json": "application/json",
@@ -150,6 +152,7 @@ const MIME_TYPE_EXTENSIONS: Record<AttachmentMimeType, string> = {
   "text/plain": ".txt",
   "text/markdown": ".md",
   "text/csv": ".csv",
+  [XLSX_MIME_TYPE]: ".xlsx",
   "text/html": ".html",
   "application/json": ".json",
 };
@@ -219,13 +222,15 @@ export function attachmentReferenceLine(ref: WorkspaceAttachmentRef): string {
   return `${REFERENCE_PREFIX}${ref.path} (${ref.mimeType}, ${ref.size} bytes)`;
 }
 
-/** The attachment types the Computer reads into Markdown and indexes (`files_ingest`). Images
- * go to the model as images; the other allowed types stay a path line. */
+/** The attachment types the Computer reads (`files_ingest`): documents into Markdown and an
+ * index, spreadsheets into a schema manifest (never row text). Images go to the model as images;
+ * the other allowed types stay a path line. */
 const INGESTABLE_MIME_TYPES: readonly string[] = [
   "application/pdf",
   "text/plain",
   "text/markdown",
   "text/csv",
+  XLSX_MIME_TYPE,
 ];
 
 export function isIngestableAttachmentMimeType(mimeType: string): boolean {
@@ -236,9 +241,10 @@ const CONTEXT_OPEN = "<attachment_context>";
 const CONTEXT_CLOSE = "</attachment_context>";
 
 /** The leading reference lines of a message and the caption after them. Lines that do not match
- * the format end the scan, so ordinary text is never mistaken for an attachment. An
- * `<attachment_context>` block right after the lines (see `withAttachmentContext`) is skipped: it
- * is for the model, not for the person reading the message. */
+ * the format end the scan, so ordinary text is never mistaken for an attachment. A message stored
+ * by an older gateway has an `<attachment_context>` block right after the lines; it is skipped
+ * (it is document text for the model, not the person's words). Today the Computer builds that
+ * context at turn start and it is never stored, so a message is only the lines and the caption. */
 export function parseAttachmentReferences(text: string): {
   attachments: WorkspaceAttachmentRef[];
   caption: string;
@@ -257,52 +263,6 @@ export function parseAttachmentReferences(text: string): {
     if (close !== -1) index = close + 1;
   }
   return { attachments, caption: lines.slice(index).join("\n").trim() };
-}
-
-/** What reading an attached file came to (the Computer's `files_ingest`). */
-export interface IngestedAttachment {
-  name: string;
-  fileId: string;
-  pages: number;
-  /** The file's Markdown, page markers kept; present only when it is short enough to travel
-   * with the message. */
-  markdown?: string;
-}
-
-/** Marks that must not appear inside a file's text, or the block would end early. */
-function neutralise(markdown: string): string {
-  return markdown
-    .replaceAll(CONTEXT_CLOSE, "<\\/attachment_context>")
-    .replaceAll("</file>", "<\\/file>");
-}
-
-function quoteAttr(value: string): string {
-  return value.replaceAll('"', "'").replaceAll(/[\r\n]+/g, " ");
-}
-
-/** One attachment as the model reads it: its whole text when short, else a manifest line that
- * points at the search and read tools. */
-export function attachmentContextEntry(item: IngestedAttachment): string {
-  const pages = `${item.pages} page${item.pages === 1 ? "" : "s"}`;
-  if (item.markdown === undefined) {
-    return `indexed: ${item.name}, ${pages}, file_id ${item.fileId}; use files_query / files_get`;
-  }
-  return [
-    `<file name="${quoteAttr(item.name)}" pages="${item.pages}" file_id="${item.fileId}">`,
-    neutralise(item.markdown.trim()),
-    "</file>",
-  ].join("\n");
-}
-
-/** The turn text for the model: the message with each ingested attachment's text (or manifest
- * line) between the reference lines and the caption. The stored message keeps only the lines. */
-export function withAttachmentContext(text: string, items: readonly IngestedAttachment[]): string {
-  if (items.length === 0) return text;
-  const { attachments, caption } = parseAttachmentReferences(text);
-  if (attachments.length === 0) return text;
-  const lines = attachments.map(attachmentReferenceLine).join("\n");
-  const block = [CONTEXT_OPEN, ...items.map(attachmentContextEntry), CONTEXT_CLOSE].join("\n");
-  return [`${lines}\n${block}`, caption].filter(Boolean).join("\n\n");
 }
 
 /** The text a Muse turn carries for workspace attachments: one reference line each, a blank line,

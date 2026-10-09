@@ -306,3 +306,32 @@ async def test_deleting_the_session_cancels_the_messages_still_waiting() -> None
         stream = app.state.session_event_queues[SESSION]  # closed and dropped by the delete
         await client.delete(f"/v1/sessions/{SESSION}")
     assert _deliveries(app, stream) == [("i2", "cancelled")]
+
+
+@pytest.mark.asyncio
+async def test_a_message_attaching_a_file_runs_as_its_own_turn_not_merged() -> None:
+    """A file reference needs its turn-start context (the framed file text the Computer puts in
+    front of the turn's own message), so it is never steered and never merged with others."""
+    gate = asyncio.Event()
+    app, _pm, harness = _build_handshake_app(gate)
+    attached = (
+        "Attached file in your workspace: your_files/uploads/d/report.pdf "
+        "(application/pdf, 10 bytes)\n\nsummarise it"
+    )
+    async with _runner_client(app) as client:
+        await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
+        await asyncio.sleep(0.05)
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message(attached, "i2"))
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("and blue", "i3"))
+        gate.set()
+        for _ in range(200):
+            await asyncio.sleep(0.01)
+            if len(harness.posted_bodies) >= 3:
+                break
+    # i2 never reached the running turn; i3 was steered into it (plain text).
+    assert [e.get("persisted_item_id") for e in harness.patched_events] == ["i3"]
+    assert len(harness.posted_bodies) == 2  # the first turn, then i2 alone as its own
+    last_turn = harness.posted_bodies[-1]["content"][-1]
+    assert last_turn["content"][0]["text"] == attached  # whole, as its own turn's message
+    assert ("i2", "turn") in _deliveries(app)

@@ -30,6 +30,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from omnigent.context.attachments import strip_legacy_attachment_context
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.superchat.artifact_kinds import KIND_MIME
@@ -89,7 +90,11 @@ def tool_outputs_by_call_id(items: list[Item]) -> dict[str, str]:
 
 
 def item_text(item: Item) -> str:
-    """The text of a message item's ``input_text`` / ``output_text`` parts, joined and trimmed."""
+    """The text of a message item's ``input_text`` / ``output_text`` parts, joined and trimmed.
+
+    A user message stored by an older gateway carried the attached files' text in an
+    ``<attachment_context>`` block; that is document data, not the person's words, so it is cut.
+    """
     content = item.get("content")
     parts = [
         block["text"]
@@ -98,7 +103,8 @@ def item_text(item: Item) -> str:
         and block.get("type") in ("output_text", "input_text")
         and isinstance(block.get("text"), str)
     ]
-    return "\n\n".join(parts).strip()
+    text = "\n\n".join(parts).strip()
+    return strip_legacy_attachment_context(text) if item.get("role") == "user" else text
 
 
 def _card_payload(payload: Mapping[str, Any]) -> dict[str, Any] | None:

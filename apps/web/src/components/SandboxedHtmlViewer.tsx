@@ -4,8 +4,10 @@ const PREVIEW_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'";
 
 // frame-src about: allows srcdoc and rejects navigations the sandbox and inner CSP do not block.
+// The srcdoc preview inherits this policy on top of its own, so the shell must allow the same
+// embedded (data:) images and fonts, or a deck's embedded fonts are blocked.
 const SHELL_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src about:; child-src 'none'; form-action 'none'; base-uri 'none'";
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-src about:; child-src 'none'; form-action 'none'; base-uri 'none'";
 
 const PREVIEW_GUARD = `<script>
 document.addEventListener("click", (event) => {
@@ -27,10 +29,14 @@ function embedScriptString(value: string): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-function withPreviewDocument(html: string): string {
+// A thumbnail is only a picture: its document must not take the keyboard from the real one when
+// it finishes loading (a deck focuses itself so the arrow keys work).
+const NO_FOCUS = `<script>window.focus=function(){};HTMLElement.prototype.focus=function(){};</script>`;
+
+function withPreviewDocument(html: string, decorative: boolean): string {
   const meta = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
   const referrer = `<meta name="referrer" content="no-referrer">`;
-  return `${meta}${referrer}${PREVIEW_GUARD}${html}`;
+  return `${meta}${referrer}${PREVIEW_GUARD}${decorative ? NO_FOCUS : ""}${html}`;
 }
 
 // Opt-in relay for a document that talks to its host (a deck): the preview is nested one frame
@@ -58,12 +64,15 @@ export function SandboxedHtmlViewer({
   html,
   title,
   relay = false,
+  decorative = false,
   frameRef,
 }: {
   html: string;
   title: string;
   /** Pass `nova:` messages between the host and the document (decks). */
   relay?: boolean;
+  /** A picture of the document (a thumbnail): it may not take focus. */
+  decorative?: boolean;
   /** The outer frame, so the host can post to and recognise its window. */
   frameRef?: Ref<HTMLIFrameElement>;
 }) {
@@ -71,7 +80,7 @@ export function SandboxedHtmlViewer({
     <iframe
       ref={frameRef}
       title={title}
-      srcDoc={shellDocument(withPreviewDocument(html), relay)}
+      srcDoc={shellDocument(withPreviewDocument(html, decorative), relay)}
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       className="h-full w-full border-0 bg-white"

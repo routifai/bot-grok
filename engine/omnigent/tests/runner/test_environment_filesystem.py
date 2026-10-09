@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -241,6 +242,29 @@ async def test_write_file(
     assert body["created"] is True
     assert body["bytes_written"] == 11
     assert (workspace / "new.txt").read_text() == "new content"
+
+
+@pytest.mark.asyncio
+async def test_write_file_with_if_exists_fail_never_overwrites(
+    client: httpx.AsyncClient,
+    workspace: Path,
+) -> None:
+    """``if_exists: "fail"`` is an exclusive create: the second writer of a name gets 409."""
+    url = (
+        f"/v1/sessions/conv_test/resources/environments"
+        f"/{DEFAULT_ENVIRONMENT_ID}/filesystem/up/report.txt"
+    )
+    first, second = await asyncio.gather(
+        client.put(url, json={"content": "one", "encoding": "utf-8", "if_exists": "fail"}),
+        client.put(url, json={"content": "two", "encoding": "utf-8", "if_exists": "fail"}),
+    )
+    assert sorted([first.status_code, second.status_code]) == [200, 409]
+    winner = "one" if first.status_code == 200 else "two"
+    assert (workspace / "up" / "report.txt").read_text() == winner
+    # a plain PUT still replaces, as before
+    again = await client.put(url, json={"content": "three", "encoding": "utf-8"})
+    assert again.status_code == 200
+    assert (workspace / "up" / "report.txt").read_text() == "three"
 
 
 @pytest.mark.asyncio

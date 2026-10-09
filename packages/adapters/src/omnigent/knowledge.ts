@@ -47,6 +47,8 @@ export interface OmnigentKnowledgeSearch {
   mode: "hybrid" | "keyword";
   keyword_only_reason: string | null;
   files_indexing: number;
+  /** Names of the files still being indexed (the answer may be missing them). */
+  files_indexing_names?: string[];
   results: OmnigentKnowledgePassage[];
 }
 
@@ -123,11 +125,11 @@ export interface OmnigentKnowledgeIngest {
   pages: number;
   pages_without_text: number;
   chars: number;
+  /** The file's kind (`pdf`, `txt`, `md`, `csv`, `xlsx`); a table's `markdown` is its manifest. */
+  kind?: string;
   /** Where the Markdown version lives in the Computer. */
   markdown_path: string;
   search: "hybrid" | "keyword";
-  /** Only when asked for (`inline`) and short enough to travel with a message. */
-  markdown?: string;
 }
 
 /**
@@ -138,13 +140,41 @@ export async function ingestOmnigentKnowledge(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-  input: { path: string; inline?: boolean },
+  input: { path: string },
 ): Promise<OmnigentKnowledgeIngest> {
   const response = await fetch(knowledgeUrl(config, sessionId, "/ingest"), {
     method: "POST",
     headers: { ...omnigentHeaders(config, email), "content-type": "application/json" },
-    body: JSON.stringify({ path: input.path, inline: input.inline ?? false }),
+    body: JSON.stringify({ path: input.path }),
   });
   await throwOnError(response, "read file", config.secrets);
   return (await response.json()) as OmnigentKnowledgeIngest;
+}
+
+export interface OmnigentKnowledgeFound {
+  found: boolean;
+  file_id?: string;
+  name?: string;
+  path?: string;
+  pages?: number;
+}
+
+/**
+ * `POST .../knowledge/find` — the searchable upload that already holds exactly these bytes
+ * (SHA-256, hex), if the Computer has one. Wakes the Computer. A new attachment of a file that is
+ * already stored reuses it and its index entry.
+ */
+export async function findOmnigentKnowledge(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  input: { sha256: string },
+): Promise<OmnigentKnowledgeFound> {
+  const response = await fetch(knowledgeUrl(config, sessionId, "/find"), {
+    method: "POST",
+    headers: { ...omnigentHeaders(config, email), "content-type": "application/json" },
+    body: JSON.stringify({ sha256: input.sha256 }),
+  });
+  await throwOnError(response, "find file", config.secrets);
+  return (await response.json()) as OmnigentKnowledgeFound;
 }

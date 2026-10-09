@@ -2315,6 +2315,8 @@ def register_resources_routes(
             message = error.get("message", "filesystem operation failed")
             if status == 404:
                 raise OmnigentError(message, code=ErrorCode.NOT_FOUND)
+            if status == 409 and method == "PUT":
+                raise OmnigentError(message, code=ErrorCode.ALREADY_EXISTS)
             raise HTTPException(status_code=status, detail=message)
         if publish_invalidation:
             _publish_changed_files_invalidated(session_id, environment_id)

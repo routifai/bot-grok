@@ -106,16 +106,53 @@ export function isIsoDateLike(value: unknown): boolean {
   return typeof value === "string" && parseIsoInstant(value) !== null;
 }
 
-/** Shown instead of the default when a chart's dates all fall within this span. */
-const INTRADAY_SPAN_MS = 2 * 24 * 60 * 60 * 1000;
-const INTRADAY_DATE_FORMAT: DateFormatSettings = {
-  preset: "custom",
-  customFormat: "MMM D, HH:mm",
-};
+/** How far apart a chart's dates are: what one step on its axis means. */
+export type DateGranularity = "year" | "month" | "day" | "time";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function instantsOf(values: unknown[]): number[] {
+  const found = new Set<number>();
+  for (const value of values) {
+    const instant = typeof value === "string" ? parseIsoInstant(value) : null;
+    if (instant !== null) found.add(instant);
+  }
+  return [...found].sort((a, b) => a - b);
+}
+
+function isMidnight(instant: number): boolean {
+  return instant % DAY_MS === 0;
+}
 
 /**
- * The format for a chart's date values: the person's own when set, else the default, which shows
- * the time when the dates span under two days (the day alone would repeat on every tick).
+ * The step a chart's dates move by, from the values themselves: every date on the first of a
+ * month is monthly (the first of January only: yearly), dates at least a day apart are daily, and
+ * anything closer is intraday. Null when there are no dates.
+ */
+export function dateGranularity(values: unknown[]): DateGranularity | null {
+  const instants = instantsOf(values);
+  if (instants.length === 0) return null;
+  const dates = instants.map((instant) => new Date(instant));
+  if (instants.every(isMidnight) && dates.every((date) => date.getUTCDate() === 1)) {
+    return instants.length > 1 && dates.every((date) => date.getUTCMonth() === 0)
+      ? "year"
+      : "month";
+  }
+  let smallestGap = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < instants.length; i++) {
+    smallestGap = Math.min(smallestGap, (instants[i] as number) - (instants[i - 1] as number));
+  }
+  // One timestamp, or every gap a day or more: the time of day is noise.
+  if (instants.every(isMidnight) || smallestGap >= DAY_MS - 60 * 60 * 1000) return "day";
+  return "time";
+}
+
+const custom = (customFormat: string): DateFormatSettings => ({ preset: "custom", customFormat });
+
+/**
+ * The format for a chart's date ticks: the person's own when set, else the shortest one that
+ * names each step: "Jan" for months ("Jan 2026" once they span years), "Jan 3" for days ("Jan 3,
+ * 2026" across years), "09:30" within one day and "Jan 3, 09:30" across days.
  */
 export function dateFormatForValues(
   values: unknown[],
@@ -124,15 +161,48 @@ export function dateFormatForValues(
   if (settings) {
     return settings;
   }
-  const instants = values.flatMap((value) => {
-    const instant = typeof value === "string" ? parseIsoInstant(value) : null;
-    return instant === null ? [] : [instant];
-  });
-  if (instants.length === 0) {
+  const granularity = dateGranularity(values);
+  if (granularity === null) {
     return settings;
   }
-  const span = Math.max(...instants) - Math.min(...instants);
-  return span < INTRADAY_SPAN_MS ? INTRADAY_DATE_FORMAT : settings;
+  const instants = instantsOf(values);
+  const first = new Date(instants[0] as number);
+  const last = new Date(instants[instants.length - 1] as number);
+  const oneYear = first.getUTCFullYear() === last.getUTCFullYear();
+  const oneDay = first.toISOString().slice(0, 10) === last.toISOString().slice(0, 10);
+  switch (granularity) {
+    case "year":
+      return custom("YYYY");
+    case "month":
+      return custom(oneYear && instants.length > 1 ? "MMM" : "MMM YYYY");
+    case "day":
+      return custom(oneYear && instants.length > 1 ? "MMM D" : "MMM D, YYYY");
+    case "time":
+      return custom(oneDay ? "HH:mm" : "MMM D, HH:mm");
+  }
+}
+
+/**
+ * The format for one date read on its own (a tooltip): the person's own when set, else the full
+ * date at the chart's step ("Jan 2026", "Jan 3, 2026", "Jan 3, 2026, 09:30").
+ */
+export function fullDateFormatForValues(
+  values: unknown[],
+  settings?: DateFormatSettings | null,
+): DateFormatSettings | null | undefined {
+  if (settings) {
+    return settings;
+  }
+  switch (dateGranularity(values)) {
+    case "year":
+      return custom("YYYY");
+    case "month":
+      return custom("MMM YYYY");
+    case "time":
+      return custom("MMM D, YYYY, HH:mm");
+    default:
+      return settings;
+  }
 }
 
 /**

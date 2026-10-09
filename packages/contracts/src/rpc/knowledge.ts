@@ -72,6 +72,8 @@ export const knowledgeContract = {
           mode: z.enum(["hybrid", "keyword"]),
           keywordOnlyReason: z.string().nullable(),
           filesIndexing: z.number().int(),
+          /** Which files are still being indexed, so the answer can say what it may be missing. */
+          filesIndexingNames: z.array(z.string()),
           results: z.array(KnowledgePassageSchema),
         }),
       ),

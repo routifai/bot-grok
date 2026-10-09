@@ -17,7 +17,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from omnigent.runner.knowledge.limits import UPLOADS_PREFIX
 from omnigent.superchat.artifacts import ArtifactTool
+
+__all__ = ["UPLOADS_PREFIX"]
 
 #: Tools whose results are passages: the transcript turns their pages into citation chips.
 SEARCH_TOOL_NAMES = ("files_search", "files_vsearch", "files_query")
@@ -48,7 +51,8 @@ class FilesSearchTool(ArtifactTool):
     _NAME = "files_search"
     _DESC = (
         "Keyword search (BM25) inside the person's files (uploads, files you saved, Goal files: "
-        "PDF, text, Markdown, CSV, XLSX). Best for exact words: names, numbers, codes, terms you "
+        "PDF, text, Markdown; a CSV or XLSX is found by its file, sheet and column names, never "
+        "by its rows). Best for exact words: names, numbers, codes, terms you "
         "know the file uses. Returns the best passages with file name, path, file_id, page and a "
         "thumbnail_url. Cite the file and page of what you use."
     )

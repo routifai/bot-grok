@@ -1,13 +1,17 @@
 // `files.*` for the Computer panel's Files tab: browse the Muse's Conversation workspace on the
 // engine (engine session filesystem routes), preview one file, or save one to the Library.
+
+import { createHash } from "node:crypto";
 import {
   confineWorkspacePath,
   createOmnigentArtifact,
+  findOmnigentKnowledge,
   ingestOmnigentKnowledge,
   listOmnigentFiles,
   looksBinary,
   OmnigentApiError,
   type OmnigentClientConfig,
+  type OmnigentFileEntry,
   readOmnigentFile,
   WORKSPACE_FILE_MAX_BYTES,
   WorkspacePathError,
@@ -19,6 +23,7 @@ import {
   AttachmentValidationError,
   attachmentExtensionForMimeType,
   decodeAttachmentBase64,
+  isIngestableAttachmentMimeType,
   validateAttachmentMimeType,
   WORKSPACE_UPLOADS_PREFIX,
 } from "@nova/core";
@@ -50,16 +55,27 @@ async function target(
   return { email: user.email, sessionId };
 }
 
+/** The engine answered with this error code (`OmnigentApiError.code`, from the error body). */
+function hasEngineCode(error: unknown, ...codes: string[]): boolean {
+  return (
+    error instanceof OmnigentApiError && error.code !== undefined && codes.includes(error.code)
+  );
+}
+
+/** The Computer's runner is still (re)connecting; the panel shows "starting" and retries. */
+function isComputerStarting(error: unknown): boolean {
+  return hasEngineCode(error, "runner_unavailable", "runner_capability_mismatch");
+}
+
 /** Confinement errors are the caller's mistake; engine "not found" stays a 404. */
 function mapError(error: unknown): never {
   if (error instanceof WorkspacePathError) {
     throw new ORPCError("BAD_REQUEST", { message: error.message });
   }
-  if (error instanceof Error && /\(404\)/.test(error.message)) {
+  if (hasEngineCode(error, "not_found")) {
     throw new ORPCError("NOT_FOUND", { message: "File not found" });
   }
-  // The Computer's runner is still (re)connecting; the panel shows "starting" and retries.
-  if (error instanceof Error && /\(503\)/.test(error.message)) {
+  if (isComputerStarting(error)) {
     throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Starting the Computer" });
   }
   throw error;
@@ -156,6 +172,33 @@ export function safeUploadName(name: string, mimeType: string): string {
   return result;
 }
 
+async function listOrEmpty(
+  client: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  dir: string,
+): Promise<OmnigentFileEntry[]> {
+  // A folder that does not exist yet (404) simply has nothing in it.
+  return listOmnigentFiles(client, email, sessionId, dir).catch((error: unknown) => {
+    if (hasEngineCode(error, "not_found")) return [];
+    throw error;
+  });
+}
+
+/** How many times an upload picks a name again when another upload took it first. */
+const UPLOAD_NAME_ATTEMPTS = 5;
+
+/** Whether `name` is `base` or one of its numbered copies (`base (2).ext`). */
+export function isCopyOf(name: string, base: string): boolean {
+  const stemAndExt = (value: string): [string, string] => {
+    const dot = value.lastIndexOf(".");
+    return dot > 0 ? [value.slice(0, dot), value.slice(dot).toLowerCase()] : [value, ""];
+  };
+  const [stem, ext] = stemAndExt(base);
+  const [candidateStem, candidateExt] = stemAndExt(name);
+  return ext === candidateExt && candidateStem.replace(/ \(\d+\)$/, "") === stem;
+}
+
 /** `name.ext` -> `name (2).ext`, `name (3).ext`, ... until it is not in `taken`. */
 export function dedupeUploadName(name: string, taken: ReadonlySet<string>): string {
   if (!taken.has(name)) return name;
@@ -195,22 +238,39 @@ export async function engineUploadAttachment(
   const { email, sessionId } = await resolveMuseSession(deps, client, actor);
   const dir = `${WORKSPACE_UPLOADS_PREFIX}${now.toISOString().slice(0, 10)}`;
   try {
-    // A folder that does not exist yet (404) simply has nothing to collide with.
-    const existing = await listOmnigentFiles(client, email, sessionId, dir).catch(
-      (error: unknown) => {
-        if (error instanceof Error && /\(404\)/.test(error.message)) return [];
+    const chosen = safeUploadName(input.name, input.mimeType);
+    // The same file attached again reuses the stored copy and its index entry. Only a file the
+    // Computer indexes is looked up (an image never is), and only a copy that carries the name the
+    // person chose is reused, so the name they see is the name they picked.
+    if (isIngestableAttachmentMimeType(input.mimeType)) {
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      const duplicate = await findOmnigentKnowledge(client, email, sessionId, { sha256 });
+      if (duplicate.found && duplicate.path && duplicate.name && isCopyOf(duplicate.name, chosen)) {
+        return {
+          path: duplicate.path,
+          name: duplicate.name,
+          mimeType: input.mimeType,
+          size: bytes.byteLength,
+        };
+      }
+    }
+    // The name is picked from the folder and written with an exclusive create: two uploads that
+    // chose the same free name cannot overwrite each other, the loser picks the next number.
+    for (let attempt = 0; attempt < UPLOAD_NAME_ATTEMPTS; attempt += 1) {
+      const existing = await listOrEmpty(client, email, sessionId, dir);
+      const name = dedupeUploadName(chosen, new Set(existing.map((entry) => entry.name)));
+      const path = `${dir}/${name}`;
+      try {
+        await writeOmnigentFile(client, email, sessionId, path, bytes, { exclusive: true });
+      } catch (error) {
+        if (hasEngineCode(error, "already_exists")) continue;
         throw error;
-      },
-    );
-    const name = dedupeUploadName(
-      safeUploadName(input.name, input.mimeType),
-      new Set(existing.map((entry) => entry.name)),
-    );
-    const path = `${dir}/${name}`;
-    await writeOmnigentFile(client, email, sessionId, path, bytes);
-    return { path, name, mimeType: input.mimeType, size: bytes.byteLength };
+      }
+      return { path, name, mimeType: input.mimeType, size: bytes.byteLength };
+    }
+    throw new ORPCError("CONFLICT", { message: "Could not pick a free name for this file" });
   } catch (error) {
-    if (error instanceof Error && /\(503\)/.test(error.message)) {
+    if (isComputerStarting(error)) {
       throw new ORPCError("SERVICE_UNAVAILABLE", {
         message: "Your Computer is starting. Try again in a moment.",
       });
@@ -246,12 +306,18 @@ export async function engineIngestAttachment(
     const read = await ingestOmnigentKnowledge(client, email, sessionId, { path });
     return { fileId: read.file_id, name: read.name, pages: read.pages, chars: read.chars };
   } catch (error) {
-    if (error instanceof Error && /\(503\)/.test(error.message)) {
+    if (isComputerStarting(error)) {
       throw new ORPCError("SERVICE_UNAVAILABLE", {
         message: "Your Computer is starting. Try again in a moment.",
       });
     }
-    if (error instanceof OmnigentApiError && /\((400|404|422)\)/.test(error.message)) {
+    // The Computer is awake but the read did not finish in time: its own message, never "starting".
+    if (hasEngineCode(error, "knowledge_timeout")) {
+      throw new ORPCError("GATEWAY_TIMEOUT", {
+        message: "Reading this file is taking too long. Try again in a moment.",
+      });
+    }
+    if (hasEngineCode(error, "invalid_input", "not_found")) {
       throw new ORPCError("BAD_REQUEST", { message: "Nova couldn't read this file." });
     }
     return mapError(error);

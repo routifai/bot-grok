@@ -113,7 +113,9 @@ def test_models_get_the_qmd_style_tools(tmp_path: Path) -> None:
         "files_status",
     ]
     assert FEATURE.tools({}, None) == []  # type: ignore[arg-type]
-    assert {"files_ingest", "files_thumbnail", "files_reindex"} <= set(FEATURE.handlers)
+    assert {"files_ingest", "files_thumbnail", "files_reindex", "files_find"} <= set(
+        FEATURE.handlers
+    )
 
 
 def test_a_saved_artifact_is_followed_through_on_result(tmp_path: Path, monkeypatch) -> None:
@@ -136,6 +138,11 @@ def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() ->
 
     spec = AgentSpec(spec_version=1)
     chat = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
-    for name in ("files_ingest", "files_thumbnail", "files_reindex"):
-        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat) is None
-        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels={})
+    for name in ("files_ingest", "files_thumbnail", "files_reindex", "files_find"):
+        relay = {"labels": chat, "relay": True}
+        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", **relay) is None
+        assert tool_dispatch._ungranted_tool_reason(
+            name, spec, "claude-sdk", labels={}, relay=True
+        )
+        # a model's own call of the same name (no relay mark) is refused, even in a Super Chat
+        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat)

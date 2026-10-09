@@ -15,6 +15,7 @@ import type { ArtifactKind } from "../../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { readableFileName } from "../ArtifactFileCard";
+import { useArtifactExtensions } from "../registry";
 import { ArtifactInlinePreview } from "./ArtifactInlinePreview";
 
 // The expanded view pulls in the PDF and markdown viewers; load them only when opened.
@@ -37,6 +38,17 @@ export function ArtifactFileCard({
   title?: string;
   data: ReplyCardDataOf<"file">;
 }) {
+  // A capability may draw the result itself (a chart is a chart, never a JSON file card).
+  const extensions = useArtifactExtensions();
+  const artifactId = data.artifactId;
+  const custom = artifactId
+    ? extensions
+        .map((extension) =>
+          extension.result?.({ artifactId, name: data.name, version: data.version, data }),
+        )
+        .find((node) => node != null)
+    : null;
+  if (custom) return <>{custom}</>;
   return data.artifactId ? (
     <SavedFileCard title={title} data={data} />
   ) : (

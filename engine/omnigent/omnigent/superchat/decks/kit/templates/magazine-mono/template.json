@@ -3,8 +3,10 @@
   "name": "Magazine Mono",
   "description": "Ink on paper, one calm serif voice; monochrome and quiet.",
   "best_for": "narratives, research readouts, strategy and thought-leadership decks",
+  "category": "editorial",
+  "mode": "light",
   "upstream": "https://github.com/op7418/guizang-ppt-skill",
-  "license": "MIT (see LICENSE); fonts SIL OFL 1.1 (see fonts/OFL-*.txt)",
+  "license": "MIT (see LICENSE); fonts SIL OFL 1.1 (see ../../fonts/OFL-*.txt)",
   "fonts": [
     {
       "family": "Newsreader",

@@ -10,6 +10,7 @@ import {
 } from "../../components/cards/context";
 import { hiddenFollowUpMessageIds } from "../../components/cards/thread";
 import type { ArtifactTarget } from "../../lib/artifact-open";
+import { personText } from "../../lib/message-text";
 import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
 import { MessageHoverActions } from "../../pages/muse/conversation/MessageHoverActions";
 import { MessageView } from "../../pages/muse/conversation/MessageView";
@@ -446,7 +447,9 @@ function ThreadReply({
 }) {
   const user = message.role === "user";
   const text = user
-    ? message.blocks.flatMap((block) => (block.kind === "text" ? [block.text] : [])).join("\n\n")
+    ? message.blocks
+        .flatMap((block) => (block.kind === "text" ? [personText(block.text)] : []))
+        .join("\n\n")
     : "";
   return (
     <div

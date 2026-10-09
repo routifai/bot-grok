@@ -18,11 +18,17 @@ if TYPE_CHECKING:
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
     """Offered to the Super Chat and to Helpers alike (a Helper saves under its parent)."""
-    from omnigent.superchat.decks.tools import DeckCheckTool, DeckExportTool, DeckNewTool
+    from omnigent.superchat.decks.tools import (
+        DeckCheckTool,
+        DeckExportTool,
+        DeckNewTool,
+        DeckThemeSetTool,
+        DeckThemesTool,
+    )
 
     if not is_superside_chat(labels):
         return []
-    return [DeckNewTool(), DeckCheckTool(), DeckExportTool()]
+    return [DeckNewTool(), DeckCheckTool(), DeckThemesTool(), DeckThemeSetTool(), DeckExportTool()]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:

@@ -1,4 +1,4 @@
-"""``POST /v1/decks/{artifact_id}/export``: the panel's Export buttons.
+"""``POST /v1/decks/{artifact_id}/export`` (Export buttons) and ``GET /v1/decks/themes``.
 
 Wakes the person's Computer the way a message does, then runs the ``deck_export`` tool on its
 runner (``/mcp/execute``) so the Chromium that renders the deck is the one in their Computer.
@@ -26,6 +26,7 @@ from omnigent.superchat.artifacts import (
     load_artifact,
     request_owner,
 )
+from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.names import is_deck_name
 from omnigent.superchat.family.signals import notify_message_done
 from omnigent.superchat.transcript.blocks import DELIVERED_ARTIFACT_RESOURCE, DELIVERED_EVENT
@@ -83,6 +84,21 @@ def create_decks_router(
         if client is None:
             raise unavailable
         return client
+
+    @router.get("/decks/themes")
+    async def deck_themes(request: Request) -> dict[str, Any]:
+        """The theme dictionary with thumbnails, for the deck panel's Theme picker."""
+        request_owner(request, auth_provider)
+        return {"themes": kit.theme_gallery(), "default": kit.DEFAULT_THEME}
+
+    @router.get("/decks/{artifact_id}/theme")
+    async def deck_theme(request: Request, artifact_id: str) -> dict[str, Any]:
+        """The theme id a deck is on (``null`` when hand-made), for the picker's check mark."""
+        item = await load_artifact(store, request_owner(request, auth_provider), artifact_id)
+        if not is_deck_name(item.name):
+            raise OmnigentError("That file isn't a deck", code=ErrorCode.INVALID_INPUT)
+        data = await asyncio.to_thread(store.read, item)
+        return {"theme": kit.deck_theme_id(data.decode("utf-8", "replace"))}
 
     @router.post("/decks/{artifact_id}/export")
     async def export_deck(

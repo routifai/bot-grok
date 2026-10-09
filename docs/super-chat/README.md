@@ -208,7 +208,9 @@ messages, so nothing is lost and nothing is answered twice.
 
 The runner keeps its copy of a message until the harness says the running turn took it
 (`injection.consumed`); anything refused, or never reported when the turn ends, runs as the next turn.
-Only plain text is steered; a message with an image or a file runs whole as a turn of its own. A stop
+Only plain text is steered; a message with an image or an attached file (a reference line) runs whole
+as a turn of its own, one at a time, so the Computer's framed file text (`Feature.message_prefix`) is
+put in front of it like any turn's message. A stop
 or a delete cancels the messages waiting behind the turn. The session reports `idle` only once none
 waits, and its `session.status` edges carry the runner's turn number, which `POST /events` also answers
 (`turn`) for the turn a message started or joined. `session.input.delivery` events are display hints
@@ -224,6 +226,10 @@ snapshot, follows a turn that is running or waiting (on helpers or the person) a
 lease, ends on `idle`, and fails with an honest line on `failed` or when the engine cannot be asked. A
 dropped stream is reopened and asked the same way; an engine that does not come back fails the run in
 about half a minute. A stop in Nova interrupts the engine's turn.
+
+Known gap: if the stream drops and the reopened engine reads `idle` before its recovery turn has
+started (the turn the runner starts for a message left unanswered by a restart), the run ends there
+and Working stops early. The recovery turn still answers, and its reply lands in the transcript.
 
 For a Helper that is already working, the Muse uses `message_helper`, which posts with `if_running`: the
 Helper takes it into its running turn, or, if that turn has ended by then, refuses it (409

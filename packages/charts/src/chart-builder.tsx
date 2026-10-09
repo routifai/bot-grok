@@ -46,6 +46,7 @@ import {
   collectAxisValues,
   collectStackedAxisValues,
   computeNiceDomain,
+  evenTicks,
   resolveBarYAxisDomain,
   resolveYAxisDomain,
 } from "./chart-domain.js";
@@ -86,6 +87,14 @@ const AXIS_TICK = {
   fill: "var(--muted-foreground)",
 };
 const CATEGORY_XAXIS_HEIGHT = 56;
+/** Fill opacity of the bars in a mixed bar-and-line chart. */
+const COMBO_BAR_OPACITY = 0.3;
+/** Lines with at most this many points draw a dot on each. */
+const LINE_DOTS_MAX_POINTS = 24;
+const LINE_DOT = { r: 2.5, strokeWidth: 1.5, fill: "var(--background)" };
+const LINE_ACTIVE_DOT = { r: 4, strokeWidth: 2, stroke: "var(--background)" };
+/** Room for level (unrotated) category ticks. */
+const LEVEL_XAXIS_HEIGHT = 30;
 const X_AXIS_LABEL_HEIGHT = 22;
 
 /** Beyond this many slices, pie/donut charts bucket the smallest into a single "Other" slice. */
@@ -633,11 +642,18 @@ function renderValueYAxis(
   );
 }
 
-function formatValueYAxisTick(value: number, valueFormat?: displayChart.ValueFormat): string {
+/** A d3 SI format (`,.2s`): fine for one value, but its few digits make neighbouring axis ticks
+ * read the same ("$1.3M" twice), so the axis uses its own compact ticks instead. */
+const SI_FORMAT = /s$/;
+
+export function formatValueYAxisTick(
+  value: number,
+  valueFormat?: displayChart.ValueFormat,
+): string {
   if (!valueFormat) {
     return formatYAxisTick(value);
   }
-  if (valueFormat.d3_format) {
+  if (valueFormat.d3_format && !SI_FORMAT.test(valueFormat.d3_format.trim())) {
     return formatChartValue(value, valueFormat, { compact: true });
   }
   return attachValueAffixes(formatYAxisTick(value), valueFormat);
@@ -682,7 +698,11 @@ function renderCategoryXAxis({
       minTickGap={12}
       interval={compact ? (compactInterval ?? 0) : xAxisInterval}
       tickFormatter={tickFormatter}
-      height={CATEGORY_XAXIS_HEIGHT + labelFootroom + (xAxisLabel ? X_AXIS_LABEL_HEIGHT : 0)}
+      height={
+        (compact ? CATEGORY_XAXIS_HEIGHT : LEVEL_XAXIS_HEIGHT) +
+        labelFootroom +
+        (xAxisLabel ? X_AXIS_LABEL_HEIGHT : 0)
+      }
       label={xAxisLabelProps(xAxisLabel)}
       {...(compact ? { angle: -35, textAnchor: "end" as const } : {})}
     />
@@ -1283,6 +1303,7 @@ function buildAreaChart(props: ResolvedProps) {
           minTickGap={12}
           tickFormatter={(value: number) => formatValueYAxisTick(value, chartLevelFormat)}
           domain={resolveYAxisDomain(yAxisMin, yAxisMax, axisValues, zeroBaseline)}
+          ticks={evenTicks(resolveYAxisDomain(yAxisMin, yAxisMax, axisValues, zeroBaseline))}
           allowDataOverflow={yAxisMin !== undefined || yAxisMax !== undefined}
           label={axisLabel(yAxisLabel, "left")}
         />
@@ -1306,6 +1327,10 @@ function buildAreaChart(props: ResolvedProps) {
           dataKey={s.data_key}
           type="monotone"
           stroke={colorFor(s.data_key, i)}
+          strokeWidth={2}
+          // A short series marks each point, so a month reads as a value and not just a bend.
+          dot={data.length <= LINE_DOTS_MAX_POINTS ? LINE_DOT : false}
+          activeDot={LINE_ACTIVE_DOT}
           fill={filled ? `url(#${gradientIdFor(i)})` : "none"}
           stackId={isStacked ? "stack" : undefined}
           isAnimationActive={Boolean(props.animate)}
@@ -1363,8 +1388,14 @@ function buildComboChart(props: ResolvedProps) {
   const rightSeries = series.filter((s) => comboAxisSide(s) === "right");
   const leftFormat = getChartLevelValueFormat(leftSeries);
   const rightFormat = getChartLevelValueFormat(rightSeries);
-  const leftDomain = resolveComboAxisDomain(data, leftSeries, yAxisMin, yAxisMax);
-  const rightDomain = resolveComboAxisDomain(data, rightSeries, yAxisRightMin, yAxisRightMax);
+  const leftDomain = resolveComboAxisDomain(data, leftSeries, chartType, yAxisMin, yAxisMax);
+  const rightDomain = resolveComboAxisDomain(
+    data,
+    rightSeries,
+    chartType,
+    yAxisRightMin,
+    yAxisRightMax,
+  );
   const leftAxisWidth = computeComboAxisWidth(data, leftSeries, leftFormat, Boolean(yAxisLabel));
   const rightAxisWidth = computeComboAxisWidth(
     data,
@@ -1409,6 +1440,7 @@ function buildComboChart(props: ResolvedProps) {
           minTickGap={12}
           tickFormatter={(value: number) => formatValueYAxisTick(value, leftFormat)}
           domain={leftDomain}
+          ticks={evenTicks(leftDomain)}
           allowDataOverflow={yAxisMin !== undefined || yAxisMax !== undefined}
           label={axisLabel(yAxisLabel, "left")}
         />
@@ -1424,6 +1456,7 @@ function buildComboChart(props: ResolvedProps) {
           minTickGap={12}
           tickFormatter={(value: number) => formatValueYAxisTick(value, rightFormat)}
           domain={rightDomain}
+          ticks={evenTicks(rightDomain)}
           allowDataOverflow={yAxisRightMin !== undefined || yAxisRightMax !== undefined}
           label={axisLabel(yAxisRightLabel, "right")}
         />
@@ -1440,7 +1473,7 @@ function buildComboChart(props: ResolvedProps) {
       })}
       {children}
       {series.map((s, i) =>
-        renderComboSeries(s, i, chartType, colorFor, idPrefix, props.chartStyle),
+        renderComboSeries(s, i, chartType, colorFor, idPrefix, props.chartStyle, data.length),
       )}
       {dataLabelsLayer && <Customized component={dataLabelsLayer} />}
     </ComposedChart>
@@ -1450,6 +1483,7 @@ function buildComboChart(props: ResolvedProps) {
 function resolveComboAxisDomain(
   data: Record<string, unknown>[],
   axisSeries: displayChart.SeriesConfig[],
+  chartType: ChartType,
   explicitMin: number | undefined,
   explicitMax: number | undefined,
 ) {
@@ -1457,7 +1491,9 @@ function resolveComboAxisDomain(
     data,
     axisSeries.map((s) => s.data_key),
   );
-  return resolveYAxisDomain(explicitMin, explicitMax, values, true);
+  // Bars start at zero; an axis of lines only fits its values, so a margin line is not flattened.
+  const hasBars = axisSeries.some((s) => comboSeriesType(s, chartType) === "bar");
+  return resolveYAxisDomain(explicitMin, explicitMax, values, hasBars);
 }
 
 function computeComboAxisWidth(
@@ -1480,6 +1516,7 @@ function renderComboSeries(
   colorFor: (key: string, index: number) => string,
   idPrefix: string,
   chartStyle: ChartStyle,
+  pointCount: number,
 ) {
   const color = colorFor(series.data_key, index);
   const yAxisId = comboAxisSide(series);
@@ -1494,7 +1531,8 @@ function renderComboSeries(
         type="monotone"
         stroke={color}
         strokeWidth={2}
-        dot={false}
+        dot={pointCount <= LINE_DOTS_MAX_POINTS ? LINE_DOT : false}
+        activeDot={LINE_ACTIVE_DOT}
         isAnimationActive={false}
       />
     );
@@ -1518,6 +1556,8 @@ function renderComboSeries(
       yAxisId={yAxisId}
       dataKey={series.data_key}
       fill={color}
+      // Bars under a line are a backdrop: the line drawn over them must stay readable.
+      fillOpacity={COMBO_BAR_OPACITY}
       radius={uniformRadius(chartStyle.barRadius)}
       isAnimationActive={false}
     />
@@ -1597,6 +1637,7 @@ function buildScatterChart(props: ResolvedProps) {
         minTickGap={12}
         tickFormatter={(value: number) => formatValueYAxisTick(value, chartLevelFormat)}
         domain={resolveYAxisDomain(yAxisMin, yAxisMax, axisValues, false)}
+        ticks={evenTicks(resolveYAxisDomain(yAxisMin, yAxisMax, axisValues, false))}
         allowDataOverflow={yAxisMin !== undefined || yAxisMax !== undefined}
         label={axisLabel(yAxisLabel, "left")}
       />

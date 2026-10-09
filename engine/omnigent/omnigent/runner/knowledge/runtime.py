@@ -53,7 +53,8 @@ class KnowledgeRuntime:
         self.indexer = Indexer(home, workspace, embedder, reranker=reranker)
         self._idle = idle_seconds
         self._wake = threading.Event()
-        self._stop = threading.Event()
+        self._stop = self.indexer.stop_event
+        self.indexer.on_pending = self.kick
         self._thread: threading.Thread | None = None
         self.scanned = threading.Event()
 
@@ -69,7 +70,7 @@ class KnowledgeRuntime:
 
     def stop(self) -> None:
         """Ask the thread to end and wait for it."""
-        self._stop.set()
+        self.indexer.shutdown()
         self._wake.set()
         if self._thread is not None:
             self._thread.join(timeout=10)

@@ -1,9 +1,38 @@
 // @vitest-environment jsdom
 
-import type { Bot } from "@nova/contracts";
+import type { Bot, ComputerStatus } from "@nova/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+/** The Computer status stream the composer listens to, driven by the tests. */
+const computerBus = (() => {
+  const listeners = new Set<(status: ComputerStatus | null) => void>();
+  const computerRef = { current: null as ComputerStatus | null };
+  return {
+    store: {
+      computerRef,
+      commitComputer: (next: ComputerStatus | null) => {
+        computerRef.current = next;
+        for (const listener of listeners) listener(next);
+      },
+      onComputerChange: (listener: (status: ComputerStatus | null) => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    emit(status: Partial<ComputerStatus> | null) {
+      this.store.commitComputer(status as ComputerStatus | null);
+    },
+    reset() {
+      listeners.clear();
+      computerRef.current = null;
+    },
+  };
+})();
+const STARTING = { state: "booting", launch: { stage: "starting" } } as const;
 
 const api = vi.hoisted(() => ({
   files: { uploadAttachment: vi.fn(), ingestAttachment: vi.fn() },
@@ -69,7 +98,7 @@ function Wired() {
     },
     roster: { botsRef: { current: [] }, refreshBots: async () => undefined },
     flushPendingBrowserNotifications: () => undefined,
-    computerStore: { computerRef: { current: null }, commitComputer: () => undefined },
+    computerStore: computerBus.store,
     focusPrompt: { cancelFocusPrompt: () => undefined, focusPromptBotIdRef: { current: null } },
   } as never);
   return (
@@ -108,6 +137,7 @@ async function mountWithAttachmentAndText(text: string) {
 }
 
 beforeEach(() => {
+  computerBus.reset();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal(
     "URL",
@@ -198,6 +228,19 @@ it("shows Reading on the chip and keeps Send disabled until the file is ready", 
   await settle();
   expect(chip.dataset.status).toBe("ready");
   expect(sendButton.disabled).toBe(false);
+});
+
+it("shows Starting your Computer on the chip while the Computer wakes", async () => {
+  api.files.ingestAttachment.mockImplementation(() => new Promise(() => undefined));
+  computerBus.emit(STARTING);
+  const { host } = await mountWithAttachmentAndText("hi");
+  const chip = host.querySelector('[data-testid="composer-attachment"]') as HTMLElement;
+  expect(chip.dataset.status).toBe("starting");
+  expect(chip.textContent).toContain("Starting your Computer…");
+  expect(chip.textContent).not.toContain("Uploading");
+  expect((host.querySelector('button[aria-label="Send"]') as HTMLButtonElement).disabled).toBe(
+    true,
+  );
 });
 
 it("shows a failure on the chip with Retry, and never loses the draft", async () => {

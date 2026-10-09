@@ -60,6 +60,8 @@ tools:
     - files_status
     - deck_new
     - deck_check
+    - deck_themes
+    - deck_theme_set
 
 prompt: |
   You are a worker Helper started by another worker, for one part of a larger job. You were

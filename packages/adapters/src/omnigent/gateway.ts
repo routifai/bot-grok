@@ -9,13 +9,7 @@
 // `ThreadEvents.finalizeRun` so the thread, task, and run rows land in the same state a normal
 // turn would.
 
-import {
-  type IngestedAttachment,
-  isIngestableAttachmentMimeType,
-  parseAttachmentReferences,
-  WORKSPACE_UPLOADS_PREFIX,
-  withAttachmentContext,
-} from "@nova/core";
+import { parseAttachmentReferences, WORKSPACE_UPLOADS_PREFIX } from "@nova/core";
 import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { STEERING_CONTINUATION_PROMPT } from "@nova/db";
 import { getLogger } from "@nova/logging";
@@ -24,7 +18,6 @@ import {
   adoptOmnigentMuse,
   getOmnigentMuse,
   getOmnigentSession,
-  ingestOmnigentKnowledge,
   interruptOmnigentSession,
   OmnigentApiError,
   type OmnigentClientConfig,
@@ -459,43 +452,6 @@ interface TurnOptions {
 const STREAM_REOPEN_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000, 15_000];
 
 /**
- * What the Computer read of the documents a turn refers to, for the model: each attached PDF,
- * text, Markdown or CSV under `your_files/uploads/` is ingested (the composer already did it
- * before Send, so this answers at once) and comes back as its whole Markdown when short, else a
- * manifest line. Best effort: a file that cannot be read stays a path line.
- */
-export async function readTurnAttachmentContext(
-  client: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-  turnInput: string,
-): Promise<IngestedAttachment[]> {
-  const { attachments } = parseAttachmentReferences(turnInput);
-  const items: IngestedAttachment[] = [];
-  const seen = new Set<string>();
-  for (const ref of attachments) {
-    if (!isIngestableAttachmentMimeType(ref.mimeType) || seen.has(ref.path)) continue;
-    if (!ref.path.startsWith(WORKSPACE_UPLOADS_PREFIX)) continue;
-    seen.add(ref.path);
-    try {
-      const read = await ingestOmnigentKnowledge(client, email, sessionId, {
-        path: ref.path,
-        inline: true,
-      });
-      items.push({
-        name: read.name,
-        fileId: read.file_id,
-        pages: read.pages,
-        ...(read.markdown === undefined ? {} : { markdown: read.markdown }),
-      });
-    } catch (error) {
-      getLogger().error("omnigent gateway: could not read an attached file", error);
-    }
-  }
-  return items;
-}
-
-/**
  * Posts the turn's message, then follows the engine session until it is idle with nothing
  * waiting, so the run tracks the turn (working row, stop, failure). The reply itself is not kept
  * here: the engine's transcript holds it (ADR 0009).
@@ -618,10 +574,10 @@ async function postTurn(
   text: string,
 ): Promise<OmnigentPostedMessage> {
   const images = await readTurnImages(client, email, sessionId, text);
-  const sent = withAttachmentContext(
-    text,
-    await readTurnAttachmentContext(client, email, sessionId, text),
-  );
+  // The message goes as the person wrote it (their words and the attachment reference lines).
+  // The Computer reads the referenced files when the turn starts and puts their framed text in
+  // front of the message for the model only; it is never part of the stored message.
+  const sent = text;
   return images.length
     ? postOmnigentMessage(client, email, sessionId, sent, images)
     : postOmnigentMessage(client, email, sessionId, sent);

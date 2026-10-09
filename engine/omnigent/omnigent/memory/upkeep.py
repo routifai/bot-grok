@@ -18,6 +18,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from omnigent.context.attachments import strip_legacy_attachment_context
 from omnigent.context.labels import (
     SCHEDULED_FIRE_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
@@ -311,7 +312,9 @@ def _message_text(item: Any) -> str:
             text = block.get("text")
             if isinstance(text, str):
                 parts.append(text)
-    return " ".join(parts)
+    text = " ".join(parts)
+    # The person's evidence is their words, never document text an older gateway stored with them.
+    return strip_legacy_attachment_context(text) if _role_of(item) == "user" else text
 
 
 def _is_person_session(conv: Any) -> bool:

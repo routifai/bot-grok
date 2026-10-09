@@ -16,6 +16,7 @@ MIT upstream designs; fonts SIL OFL 1.1).
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import json
 import re
@@ -25,9 +26,13 @@ from pathlib import Path
 
 KIT_DIR = Path(__file__).parent / "kit"
 TEMPLATES_DIR = KIT_DIR / "templates"
+FONTS_DIR = KIT_DIR / "fonts"
 CHARTS_DIR = KIT_DIR / "charts"
 CHARTJS_PATH = KIT_DIR / "vendor" / "chart.js" / "chart.umd.js"
 
+#: The restrained professional theme the Muse starts from unless the request calls for more.
+DEFAULT_THEME = "corporate-clean"
+PREVIEWS_DIR = KIT_DIR / "previews"
 SLOTS_OPEN = "<!-- nova:slides -->"
 SLOTS_CLOSE = "<!-- /nova:slides -->"
 _FONT_MIME = {".ttf": "font/ttf", ".otf": "font/otf", ".woff2": "font/woff2"}
@@ -45,6 +50,8 @@ class Template:
     name: str
     description: str
     best_for: str
+    category: str
+    mode: str
     fonts: tuple[dict[str, object], ...]
 
     @property
@@ -63,17 +70,43 @@ def templates() -> dict[str, Template]:
             name=data["name"],
             description=data["description"],
             best_for=data["best_for"],
+            category=data["category"],
+            mode=data["mode"],
             fonts=tuple(data["fonts"]),
         )
     return found
 
 
-def template_summaries() -> list[dict[str, str]]:
-    """``[{id, name, description, best_for}]`` for the Muse to choose from."""
+def theme_dictionary() -> list[dict[str, str]]:
+    """The theme dictionary: ``[{id, name, mood, category, mode, best_for}]``, restrained first.
+
+    ``mood`` is the theme's one-line description. The order is stable: professional themes, then
+    editorial, bold and dark, each by id.
+    """
+    order = {"professional": 0, "editorial": 1, "bold": 2, "dark": 3}
+    ranked = sorted(templates().values(), key=lambda t: (order.get(t.category, 9), t.id))
     return [
-        {"id": t.id, "name": t.name, "description": t.description, "best_for": t.best_for}
-        for t in templates().values()
+        {
+            "id": t.id,
+            "name": t.name,
+            "mood": t.description,
+            "category": t.category,
+            "mode": t.mode,
+            "best_for": t.best_for,
+        }
+        for t in ranked
     ]
+
+
+@cache
+def theme_gallery() -> list[dict[str, str]]:
+    """The dictionary for the picker: each entry plus its thumbnail as a ``data:`` URI."""
+    out = []
+    for entry in theme_dictionary():
+        path = PREVIEWS_DIR / f"{entry['id']}.webp"
+        data = base64.b64encode(path.read_bytes()).decode("ascii") if path.is_file() else ""
+        out.append({**entry, "preview": f"data:image/webp;base64,{data}" if data else ""})
+    return out
 
 
 @cache
@@ -82,7 +115,7 @@ def _font_faces_css(template_id: str) -> str:
     template = templates()[template_id]
     rules = []
     for font in template.fonts:
-        path = template.directory / "fonts" / str(font["file"])
+        path = FONTS_DIR / str(font["file"])
         mime = _FONT_MIME.get(path.suffix.lower(), "font/ttf")
         data = base64.b64encode(path.read_bytes()).decode("ascii")
         rules.append(
@@ -187,6 +220,92 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+# A built deck separates what the kit owns from what is the deck's own. The kit owns two marked
+# regions (the theme's tokens inside the framework's ``:root``, and the layout vocabulary plus
+# theme CSS in the first per-deck ``<style>``) and the embedded-font block. Everything outside
+# the markers is the deck's: custom rules, custom tokens and overrides of a theme token (a later
+# ``:root { --accent: ... }`` after the markers). A theme switch rewrites only the kit's regions
+# and carries the rest over byte for byte, so a token override persists exactly because someone
+# wrote it outside the kit's regions: the kit never writes there.
+#
+# Each open marker carries a hash of the region's content (``sha=``). A region that still matches
+# its hash is the kit's and is replaced whole, whatever kit version wrote it. One that does not
+# match was edited inside, and the switch is refused: nothing is dropped and the deck is not
+# changed (per-deck CSS belongs after the close marker).
+_TOKENS_OPEN = "      /* nova:theme-tokens id={id} sha={sha} */"
+_TOKENS_CLOSE = "      /* /nova:theme-tokens */"
+_CSS_OPEN = "    /* nova:theme id={id} sha={sha} \u00b7 {name} */"
+_CSS_CLOSE = "    /* /nova:theme */"
+_DECK_HINT = (
+    "    /* Per-deck rules and token overrides (for example :root { --accent: ... }) go below,\n"
+    "       after the closing nova:theme marker; a theme switch keeps everything outside the\n"
+    "       markers. Do not edit between them. */"
+)
+_ROOT_RE = re.compile(r"    :root \{.*?\n    \}", re.S)
+_TOKENS_RE = re.compile(
+    r"      /\* nova:theme-tokens id=([a-z0-9-]+)(?: sha=([0-9a-f]{12}))? \*/\n"
+    r"(.*?)\n      /\* /nova:theme-tokens \*/",
+    re.S,
+)
+_CSS_RE = re.compile(
+    r"    /\* nova:theme id=([a-z0-9-]+)(?: sha=([0-9a-f]{12}))? \u00b7 [^\n]*?\*/\n"
+    r"(.*?)\n    /\* /nova:theme \*/",
+    re.S,
+)
+_THEME_ID_RE = re.compile(r"/\* nova:theme id=([a-z0-9-]+)[ *]")
+# Decks saved before the markers existed: one whole ``:root`` and one whole style block.
+_LEGACY_STYLE_RE = re.compile(
+    r"  <style>\n    /\* [^\n]*? \u00b7 layout vocabulary and theme \*/.*?\n  </style>", re.S
+)
+_LEGACY_NAME_RE = re.compile(r"/\* ([^\n]*?) \u00b7 layout vocabulary and theme \*/")
+_PLACEHOLDER_STYLE_RE = re.compile(
+    r"  <style>\n    /\* SLOT: per-deck styles.*?\n  </style>", re.S
+)
+_FONTS_RE = re.compile(r"  <style data-nova-fonts>.*?\n  </style>\n", re.S)
+
+
+def _digest(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+
+
+def _tokens_text(template: Template) -> str:
+    return (template.directory / "tokens.css").read_text("utf-8").rstrip()
+
+
+def _css_text(template: Template) -> str:
+    theme = (template.directory / "theme.css").read_text("utf-8").strip()
+    layouts = (KIT_DIR / "layouts.css").read_text("utf-8").strip()
+    return f"{layouts}\n\n{theme}"
+
+
+def _tokens_region(template: Template) -> str:
+    text = _tokens_text(template)
+    open_ = _TOKENS_OPEN.format(id=template.id, sha=_digest(text))
+    return f"{open_}\n{text}\n{_TOKENS_CLOSE}"
+
+
+def _css_region(template: Template) -> str:
+    text = _css_text(template)
+    open_ = _CSS_OPEN.format(id=template.id, sha=_digest(text), name=template.name)
+    return f"{open_}\n{text}\n{_CSS_CLOSE}"
+
+
+def _tokens_block(template: Template) -> str:
+    return "    :root {\n" + _tokens_region(template) + "\n    }"
+
+
+def _style_block(template: Template) -> str:
+    return f"  <style>\n{_css_region(template)}\n{_DECK_HINT}\n  </style>"
+
+
+def _fonts_block(template_id: str) -> str:
+    return (
+        "  <style data-nova-fonts>\n"
+        "/* Embedded fonts (Latin subset, SIL OFL 1.1): never read or edit this block. */\n"
+        f"{_font_faces_css(template_id)}\n  </style>\n"
+    )
+
+
 def build_deck(template_id: str, title: str, slides_html: str | None = None) -> str:
     """The complete deck document for ``template_id`` with ``slides_html`` (or a sample cover)."""
     template = templates().get(template_id)
@@ -194,25 +313,20 @@ def build_deck(template_id: str, title: str, slides_html: str | None = None) -> 
         raise KitError(f"Unknown template '{template_id}'. Use one of: {', '.join(templates())}")
     slides = (slides_html or (KIT_DIR / "slides.html").read_text("utf-8")).strip("\n")
     skeleton = (KIT_DIR / "skeleton.html").read_text("utf-8")
-    tokens = (template.directory / "tokens.css").read_text("utf-8").rstrip()
-    theme = (template.directory / "theme.css").read_text("utf-8").strip()
-    layouts = (KIT_DIR / "layouts.css").read_text("utf-8").strip()
 
     deck = skeleton.replace(
         "<title><!-- SLOT: deck title --></title>",
         f"<title>{html.escape(title.strip())}</title>",
         1,
     )
-    root = re.search(r"    :root \{.*?\n    \}", deck, re.S)
+    root = _ROOT_RE.search(deck)
     if root is None:
         raise KitError("skeleton: theme token block not found")
-    deck = deck[: root.start()] + "    :root {\n" + tokens + "\n    }" + deck[root.end() :]
-    styles = re.search(r"  <style>\n    /\* SLOT: per-deck styles.*?\n  </style>", deck, re.S)
+    deck = deck[: root.start()] + _tokens_block(template) + deck[root.end() :]
+    styles = _PLACEHOLDER_STYLE_RE.search(deck)
     if styles is None:
         raise KitError("skeleton: per-deck style block not found")
-    head = f"  <style>\n    /* {template.name} · layout vocabulary and theme */"
-    block = f"{head}\n{layouts}\n\n{theme}\n  </style>"
-    deck = deck[: styles.start()] + block + deck[styles.end() :]
+    deck = deck[: styles.start()] + _style_block(template) + deck[styles.end() :]
     region = re.search(
         r"      <!-- SLOT: slides.*?(?=    </div>\n  </div>\n\n  <!-- Framework chrome)",
         deck,
@@ -226,9 +340,131 @@ def build_deck(template_id: str, title: str, slides_html: str | None = None) -> 
         + deck[region.end() :]
     )
     deck = deck.replace("</head>", _chart_runtime() + "</head>", 1)
-    fonts = (
-        "  <style data-nova-fonts>\n"
-        "/* Embedded fonts (Latin subset, SIL OFL 1.1): never read or edit this block. */\n"
-        f"{_font_faces_css(template_id)}\n  </style>\n"
+    return deck.replace("</body>", _fonts_block(template_id) + "</body>", 1)
+
+
+def _head(document: str) -> str:
+    """The document up to ``</head>``: where the kit's markers live (slides cannot fake them)."""
+    end = document.find("</head>")
+    return document if end < 0 else document[:end]
+
+
+def deck_theme_id(document: str) -> str | None:
+    """The id of the theme a built deck carries (from its marker), if it is one of ours."""
+    head = _head(document)
+    found = _THEME_ID_RE.search(head)
+    if found is not None:
+        return found.group(1) if found.group(1) in templates() else None
+    legacy = _LEGACY_NAME_RE.search(head)
+    if legacy is None:
+        return None
+    return next((t.id for t in templates().values() if t.name == legacy.group(1)), None)
+
+
+_INEXACT = "this deck's theme can't be swapped exactly; ask Nova to restyle it"
+_EDITED = "this deck's theme block was edited between its markers; ask Nova to restyle it"
+
+
+def _only(
+    pattern: re.Pattern[str], text: str, *, opens: str = "", closes: str = ""
+) -> re.Match[str]:
+    """The one match; zero or several matches, or stray or nested markers in the head, refuse."""
+    scope = _head(text) if opens else text
+    if (opens and scope.count(opens) != 1) or (closes and scope.count(closes) != 1):
+        raise KitError(_INEXACT)
+    found = list(pattern.finditer(text))
+    if len(found) != 1:
+        raise KitError(_INEXACT)
+    return found[0]
+
+
+@cache
+def _legacy_kits() -> dict[str, list[dict[str, str]]]:
+    """The block texts every released kit wrote before the markers existed, by theme id."""
+    return json.loads((KIT_DIR / "legacy.json").read_text("utf-8"))
+
+
+def _known_texts(kind: str) -> set[str]:
+    """Every theme text the kit ever wrote (``kind`` is "tokens" or "css"): now and released."""
+    now = _tokens_text if kind == "tokens" else _css_text
+    old = [c[kind] for texts in _legacy_kits().values() for c in texts]
+    return {now(t) for t in templates().values()} | set(old)
+
+
+def _adopt_markers(document: str, template: Template) -> str:
+    """A deck saved before the markers existed, with the kit's regions marked and the rest kept.
+
+    The block is recognised against every released kit text for its theme (the kit has changed
+    since); what the deck added around it stays in place. A block that is none of them was edited
+    inside, and is refused rather than rewritten.
+    """
+    candidates = [
+        *_legacy_kits().get(template.id, []),
+        {"tokens": _tokens_text(template), "css": _css_text(template)},
+    ]
+    head = f"    /* {template.name} \u00b7 layout vocabulary and theme */\n"
+    root = _only(_ROOT_RE, document)
+    tokens = max(
+        (c["tokens"] for c in candidates if c["tokens"] in root.group(0)), key=len, default=None
     )
-    return deck.replace("</body>", fonts + "</body>", 1)
+    if tokens is None:
+        raise KitError(_EDITED)
+    document = (
+        document[: root.start()]
+        + root.group(0).replace(tokens, _tokens_region(template), 1)
+        + document[root.end() :]
+    )
+    style = _only(_LEGACY_STYLE_RE, document)
+    css = max(
+        (c["css"] for c in candidates if head + c["css"] in style.group(0)), key=len, default=None
+    )
+    if css is None:
+        raise KitError(_EDITED)
+    block = style.group(0).replace(head + css, _css_region(template), 1)
+    return document[: style.start()] + block + document[style.end() :]
+
+
+def _refresh(
+    document: str, pattern: re.Pattern[str], new_region: str, *, kind: str, opens: str, closes: str
+) -> str:
+    """Replace one kit region by the new theme's; a region edited between its markers refuses."""
+    found = _only(pattern, document, opens=opens, closes=closes)
+    sha, content = found.group(2), found.group(3)
+    intact = sha == _digest(content) if sha else content in _known_texts(kind)
+    if not intact:
+        raise KitError(_EDITED)
+    return document[: found.start()] + new_region + document[found.end() :]
+
+
+def restyle_deck(document: str, template_id: str) -> str:
+    """The deck with its theme swapped; the kit's regions and fonts change, all else stays.
+
+    :raises KitError: for an unknown theme, a deck whose kit regions cannot be found exactly, or
+        one edited between the markers; it is then restyled by asking the Muse.
+    """
+    template = templates().get(template_id)
+    if template is None:
+        raise KitError(f"Unknown theme '{template_id}'. Use one of: {', '.join(templates())}")
+    if _THEME_ID_RE.search(_head(document)) is None:
+        current = deck_theme_id(document)
+        if current is None:
+            raise KitError(_INEXACT)
+        document = _adopt_markers(document, templates()[current])
+    out = _refresh(
+        document,
+        _TOKENS_RE,
+        _tokens_region(template),
+        kind="tokens",
+        opens="/* nova:theme-tokens id=",
+        closes="/* /nova:theme-tokens */",
+    )
+    out = _refresh(
+        out,
+        _CSS_RE,
+        _css_region(template),
+        kind="css",
+        opens="/* nova:theme id=",
+        closes="/* /nova:theme */",
+    )
+    fonts = _only(_FONTS_RE, out)
+    return out[: fonts.start()] + _fonts_block(template_id) + out[fonts.end() :]
