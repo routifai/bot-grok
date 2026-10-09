@@ -41,7 +41,7 @@ from omnigent.runner.mcp_execution_registry import (
 )
 from omnigent.runner.mcp_manager import McpSchemasResult
 from omnigent.runner.tool_dispatch import MCP_PROXY_CALL_TIMEOUT_S
-from omnigent.spec.types import AgentSpec
+from omnigent.spec.types import DEFAULT_ASK_TIMEOUT, AgentSpec
 from omnigent.util.json_types import JsonObject as _JsonObject
 
 _logger = logging.getLogger(__name__)
@@ -64,6 +64,27 @@ def _response_json_object(response: httpx.Response) -> _JsonObject:
     if result is None:
         raise ValueError("MCP proxy response must be a JSON object")
     return result
+
+
+# Wait bound when the server's prompt names none: the default policy ``ask_timeout``.
+_DEFAULT_ASK_TIMEOUT_S = float(DEFAULT_ASK_TIMEOUT)
+
+
+def _ask_timeout_of(input_request: _JsonObject | None) -> float:
+    """
+    The seconds a park may wait for the prompt in *input_request*.
+
+    The server carries the deciding policy's ``ask_timeout`` in ``params``; a missing or
+    malformed value falls back to :data:`_DEFAULT_ASK_TIMEOUT_S` so a park is always finite.
+
+    :param input_request: One ``inputRequests`` entry, or ``None``.
+    :returns: A positive number of seconds, e.g. ``86400.0``.
+    """
+    params = _json_object(input_request.get("params")) if input_request else None
+    value = params.get("ask_timeout") if params else None
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    return _DEFAULT_ASK_TIMEOUT_S
 
 
 def _input_response(
@@ -470,11 +491,13 @@ class ProxyMcpManager:
                     if self._publish_event is not None
                     else (lambda _s, _e: None)
                 )
+                input_request = _json_object(input_requests.get(elicitation_id))
                 try:
                     verdict = await pending_approvals.wait_for_user_verdict(
                         elicitation_id=elicitation_id,
                         conversation_id=self._session_id,
                         publish_event=publisher,
+                        timeout_seconds=_ask_timeout_of(input_request),
                         retry_on_server_reconnect=True,
                     )
                 except pending_approvals.ServerReconnected:
@@ -484,6 +507,14 @@ class ProxyMcpManager:
                     request_id += 1
                     payload = _initial_payload()
                     continue
+                if verdict.unanswered is not None:
+                    # Nobody decided (timed out, or the turn ended): the tool did not run.
+                    return json.dumps(
+                        {
+                            "error": f"Approval not given ({verdict.unanswered}); "
+                            f"{tool_name} did not run."
+                        }
+                    )
 
                 request_id += 1
                 payload = {
@@ -496,9 +527,7 @@ class ProxyMcpManager:
                         MCP_OPERATION_ID_PARAM: operation_id,
                         "requestState": request_state,
                         "inputResponses": {
-                            elicitation_id: _input_response(
-                                verdict, _json_object(input_requests.get(elicitation_id))
-                            ),
+                            elicitation_id: _input_response(verdict, input_request),
                         },
                     },
                 }

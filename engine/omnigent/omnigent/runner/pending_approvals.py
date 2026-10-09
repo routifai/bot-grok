@@ -28,8 +28,11 @@ Lifecycle contract:
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+
+_logger = logging.getLogger(__name__)
 
 # Default wait budget for a UI verdict, in seconds. Held at one day
 # (86400s) — matching the deciding policy's default ``ask_timeout``: an ASK
@@ -65,10 +68,14 @@ class Verdict:
     :param content: The resolver's ``content`` map, or ``None`` when the
         verdict carried none (a bare approve/reject card, a decline, or a
         timeout).
+    :param unanswered: Why nobody decided, when nobody did: ``"timeout"`` or the
+        reason the park was cancelled (``"interrupted"``, ``"turn_ended"``). ``None``
+        for a human verdict.
     """
 
     approved: bool
     content: ElicitContent | None = None
+    unanswered: str | None = None
 
 
 # Module-global registry: elicitation_id → asyncio.Future[Verdict].
@@ -98,6 +105,40 @@ _server_reconnect_waiters: set[asyncio.Future[int]] = set()
 # steer the parked turn past the human gate). See the ingest guard in
 # ``omnigent/runner/app.py``.
 _session_pending: dict[str, int] = {}
+
+# Parks per session (``conversation_id`` -> elicitation ids) so a turn that ends,
+# is interrupted or loses its harness can release them (:func:`cancel_session`).
+_session_parks: dict[str, set[str]] = {}
+
+
+def cancel_session(conversation_id: str, reason: str) -> int:
+    """
+    End every approval park of *conversation_id* without a verdict.
+
+    Called when the turn that owns them is interrupted, swept or loses its harness: the
+    parked tool call returns "approval not given" instead of waiting for a person whose
+    answer could no longer reach the turn.
+
+    :param conversation_id: Session whose parks to end, e.g. ``"conv_abc123"``.
+    :param reason: Why, e.g. ``"interrupted"``; reported on the verdict and logged.
+    :returns: How many parks were ended.
+    """
+    ended = 0
+    for elicitation_id in tuple(_session_parks.get(conversation_id, ())):
+        fut = _pending.get(elicitation_id)
+        if fut is None or fut.done():
+            continue
+        fut.set_result(Verdict(approved=False, unanswered=reason))
+        ended += 1
+    if ended:
+        _logger.info(
+            "approval parks cancelled: session=%s count=%d reason=%s",
+            conversation_id,
+            ended,
+            reason,
+            extra={"session_id": conversation_id},
+        )
+    return ended
 
 
 def has_pending(conversation_id: str) -> bool:
@@ -285,7 +326,8 @@ async def wait_for_user_verdict(
         after a tunnel reconnect so the caller can recreate server-owned
         approval state.
     :returns: The user's :class:`Verdict`. Declines and timeouts
-        carry ``approved=False`` and no content.
+        carry ``approved=False`` and no content; a timeout or a cancelled
+        park also sets ``unanswered``.
     """
     effective_timeout = _DEFAULT_WAIT_SECONDS if timeout_seconds is None else timeout_seconds
     fut = register(
@@ -296,19 +338,40 @@ async def wait_for_user_verdict(
     # so ``has_pending`` reports it. Decremented in ``finally`` on every
     # exit path (verdict, timeout, cancellation) so the flag never leaks.
     _session_pending[conversation_id] = _session_pending.get(conversation_id, 0) + 1
+    _session_parks.setdefault(conversation_id, set()).add(elicitation_id)
+    _logger.info(
+        "approval park: session=%s elicitation_id=%s timeout_s=%.0f",
+        conversation_id,
+        elicitation_id,
+        effective_timeout,
+        extra={"session_id": conversation_id},
+    )
     answered = False
+    verdict = Verdict(approved=False, unanswered="cancelled")
     try:
         verdict = await asyncio.wait_for(fut, timeout=effective_timeout)
-        answered = True
+        answered = verdict.unanswered is None
     except asyncio.TimeoutError:
-        verdict = Verdict(approved=False)
+        verdict = Verdict(approved=False, unanswered="timeout")
     finally:
         cleanup(elicitation_id)
+        _parks = _session_parks.get(conversation_id)
+        if _parks is not None:
+            _parks.discard(elicitation_id)
+            if not _parks:
+                _session_parks.pop(conversation_id, None)
         _remaining = _session_pending.get(conversation_id, 0) - 1
         if _remaining > 0:
             _session_pending[conversation_id] = _remaining
         else:
             _session_pending.pop(conversation_id, None)
+        _logger.info(
+            "approval park ended: session=%s elicitation_id=%s outcome=%s",
+            conversation_id,
+            elicitation_id,
+            ("approved" if verdict.approved else "declined") if answered else verdict.unanswered,
+            extra={"session_id": conversation_id},
+        )
         # Signal the Omnigent server's pending-elicitations index that
         # this prompt is done. Idempotent on the happy path (the
         # AP-side dispatch already cleared the entry); on timeout
@@ -363,6 +426,7 @@ def reset_for_tests() -> None:
     _pending.clear()
     _retry_on_server_reconnect.clear()
     _session_pending.clear()
+    _session_parks.clear()
     for waiter in tuple(_server_reconnect_waiters):
         waiter.cancel()
     _server_reconnect_waiters.clear()

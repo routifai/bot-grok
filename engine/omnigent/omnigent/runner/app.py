@@ -5397,6 +5397,7 @@ def create_runner_app(
             with contextlib.suppress(asyncio.CancelledError):
                 await turn_task
         await mcp_execution_registry.cancel_session(session_id)
+        pending_approvals.cancel_session(session_id, "session_closed")
         _session_message_buffers.pop(session_id, None)
         _live_response_id.pop(session_id, None)
         # Clear all desync/turn state so a recreated same-id session starts clean.
@@ -8167,6 +8168,7 @@ def create_runner_app(
         _active_turns.pop(conv_id, None)
         _release_live_turn_markers(conv_id)
         _interrupted_sessions.discard(conv_id)
+        pending_approvals.cancel_session(conv_id, "turn_swept")
         return True
 
     def _on_proxy_stream_end(
@@ -8362,6 +8364,8 @@ def create_runner_app(
         # proxy_stream, so the runner owns no cancellable Task). Both a live Task
         # and the sentinel have a live harness turn parked on a future, so the
         # interrupt must be forwarded for either.
+        # An interrupted turn's approval prompts can no longer be answered into it.
+        pending_approvals.cancel_session(conv_id, "interrupted")
         if conv_id not in _active_turns:
             return
         target = _active_turns.get(conv_id)
@@ -10985,6 +10989,9 @@ def create_runner_app(
                             else:
                                 yield raw_sse_bytes
 
+                    # The harness stream ended, so no tool result can reach this turn: a
+                    # dispatch still parked on an approval would otherwise hold it open.
+                    pending_approvals.cancel_session(conv_id, "turn_ended")
                     if _dispatch_tasks:
                         await _asyncio.gather(*_dispatch_tasks, return_exceptions=True)
 
@@ -11059,6 +11066,8 @@ def create_runner_app(
                     }
                 _http_fail = _response_failed_payload(_error, source="harness")
                 _publish_event(conv_id, _http_fail)
+                # The harness is gone; a dispatch parked on an approval has no turn to return to.
+                pending_approvals.cancel_session(conv_id, "harness_lost")
                 _on_proxy_stream_end(conv_id, error=_error, owner_response_id=_response_id)
                 yield _response_failed_event(_error, source="harness")
 
@@ -11420,6 +11429,7 @@ def create_runner_app(
 
         if body_type == "interrupt":
             _cancel_claude_prompt_waiter(conversation_id)
+            pending_approvals.cancel_session(conversation_id, "interrupted")
             _harness = _session_harness_name(conversation_id)
             _interrupt_resp = await _native_interrupt_runner.interrupt(_harness, conversation_id)
             if _interrupt_resp is not None:
@@ -11571,6 +11581,7 @@ def create_runner_app(
 
         if body_type == "stop_session":
             _cancel_claude_prompt_waiter(conversation_id)
+            pending_approvals.cancel_session(conversation_id, "interrupted")
             _harness = _session_harness_name(conversation_id)
             _stop_resp = await _native_interrupt_runner.stop(_harness, conversation_id)
             if _stop_resp is not None:

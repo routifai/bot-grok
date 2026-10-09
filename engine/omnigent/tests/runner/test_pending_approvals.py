@@ -431,3 +431,42 @@ async def test_has_pending_counts_concurrent_parks() -> None:
     pending_approvals.resolve("elicit_multi_2", False)
     assert await t2 is False
     assert pending_approvals.has_pending("conv_multi") is False
+
+
+@pytest.mark.asyncio
+async def test_cancel_session_ends_only_that_sessions_parks() -> None:
+    """A turn that ends releases its own parks unanswered; other sessions keep waiting."""
+    published: list[tuple[str, dict[str, Any]]] = []
+
+    def park(conv: str, eid: str) -> asyncio.Task[pending_approvals.Verdict]:
+        return asyncio.create_task(
+            pending_approvals.wait_for_user_verdict(
+                elicitation_id=eid,
+                conversation_id=conv,
+                publish_event=lambda sid, event: published.append((sid, event)),
+                timeout_seconds=60,
+            )
+        )
+
+    mine, other = park("conv_a", "elicit_a"), park("conv_b", "elicit_b")
+    await asyncio.sleep(0)
+
+    assert pending_approvals.cancel_session("conv_a", "turn_ended") == 1
+    verdict = await mine
+    assert (verdict.approved, verdict.unanswered) == (False, "turn_ended")
+    assert not pending_approvals.has_pending("conv_a")
+    assert pending_approvals.has_pending("conv_b")
+    assert published == [
+        (
+            "conv_a",
+            {
+                "type": "response.elicitation_resolved",
+                "elicitation_id": "elicit_a",
+                "reason": "unanswered",
+            },
+        )
+    ]
+    assert pending_approvals.cancel_session("conv_a", "turn_ended") == 0
+
+    assert pending_approvals.resolve("elicit_b", approved=True)
+    assert (await other).unanswered is None
