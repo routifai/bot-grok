@@ -247,11 +247,15 @@ async def handle_message_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
         helper_id = running[0][0]
     elif helper_id not in {child for child, _ in running}:
         return _message_refusal("that Helper is not running; its result has arrived or will")
+    # The Helper decides as the message reaches it: idle by then, it refuses rather than
+    # starting a second task (the check above only picks which Helper).
     output = await host.send(helper_id, message.strip())
     try:
         handle = json.loads(output)
     except ValueError:
         handle = None
+    if isinstance(handle, dict) and handle.get("error") == "not_running":
+        return _message_refusal("that Helper is not running; its result has arrived or will")
     if not (isinstance(handle, dict) and isinstance(handle.get("task_id"), str)):
         reason = output.removeprefix("Error: ").removeprefix("sys_session_send ")
         return _message_refusal(reason)

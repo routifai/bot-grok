@@ -5349,7 +5349,7 @@ def create_runner_app(
     @app.delete("/v1/sessions/{session_id}")
     async def delete_session(session_id: str) -> JSONResponse:
         _cancel_claude_prompt_waiter(session_id)
-        _session_message_buffers.pop(session_id, None)
+        _drop_message_buffer(session_id)
         # Stop initialization before it can recreate resources during teardown.
         init_tasks = [
             task
@@ -5383,7 +5383,7 @@ def create_runner_app(
             with contextlib.suppress(asyncio.CancelledError):
                 await turn_task
         await mcp_execution_registry.cancel_session(session_id)
-        _session_message_buffers.pop(session_id, None)
+        _drop_message_buffer(session_id)
         _live_response_id.pop(session_id, None)
         # Clear all desync/turn state so a recreated same-id session starts clean.
         _turn_bind_epoch.pop(session_id, None)
@@ -6294,7 +6294,12 @@ def create_runner_app(
         _publish_event(conv_id, event)
 
     def _publish_input_delivery(conv_id: str, item_id: object, delivered: str) -> None:
-        """Tell clients how a message sent mid-turn was taken: steered, queued, or now a turn."""
+        """Tell clients how a message sent to the session was taken (``session.input.delivery``).
+
+        ``queued`` (waiting behind the running turn) may come first; every message then gets
+        exactly one of ``steer`` (read by the running turn), ``turn`` (ran as its own turn)
+        or ``cancelled`` (dropped by a stop or a delete before any turn read it).
+        """
         if isinstance(item_id, str) and item_id:
             _publish_event(
                 conv_id,
@@ -6303,6 +6308,11 @@ def create_runner_app(
                     "data": {"item_id": item_id, "delivered": delivered},
                 },
             )
+
+    def _drop_message_buffer(conv_id: str) -> None:
+        """Drop the messages waiting for *conv_id*'s next turn; each is reported ``cancelled``."""
+        for body in _session_message_buffers.pop(conv_id, None) or []:
+            _publish_input_delivery(conv_id, body.get("persisted_item_id"), "cancelled")
 
     def _is_native_harness(conv_id: str) -> bool:
         return is_native_harness(_session_harness_name(conv_id))
@@ -8570,7 +8580,7 @@ def create_runner_app(
         if waiter is not None or _session_harness_name(session_id) == "claude-native":
             # Cancel queued work even if the terminal control fails; restoring it
             # could restart work the user explicitly asked to stop.
-            _session_message_buffers.pop(session_id, None)
+            _drop_message_buffer(session_id)
         if waiter is not None:
             waiter.cancel()
 
@@ -11258,10 +11268,12 @@ def create_runner_app(
                         conversation_id,
                         extra={"session_id": conversation_id},
                     )
+                    _publish_input_delivery(conversation_id, _persisted_item_id, "turn")
                     return JSONResponse(
                         status_code=202,
                         content={
                             "status": "already_running",
+                            "delivery": "turn",
                             "detail": "The recovery turn is already answering this message.",
                         },
                     )
@@ -11273,6 +11285,15 @@ def create_runner_app(
                         server_client=server_client,
                     )
 
+                if message_body.pop("if_running", False) and conversation_id not in _active_turns:
+                    # Meant for the turn that is running; with none, it must not start one.
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "error": "not_running",
+                            "detail": "No turn is running to take this message.",
+                        },
+                    )
                 if conversation_id in _active_turns:
                     _native = _is_native_harness(conversation_id)
                     _awaiting_approval = pending_approvals.has_pending(conversation_id)
@@ -11295,6 +11316,8 @@ def create_runner_app(
                         conversation_id,
                         [],
                     ).append(message_body)
+                    # ``steer``: offered to the running turn, which reports whether it read it.
+                    _delivery = "steer" if _can_forward else "queued"
                     if not _can_forward:
                         # Nothing will read it before the turn ends.
                         _publish_input_delivery(
@@ -11317,6 +11340,7 @@ def create_runner_app(
                                     _response_body_preview(_injection_resp),
                                     extra={"session_id": conversation_id},
                                 )
+                                _delivery = "queued"
                                 _publish_input_delivery(
                                     conversation_id,
                                     message_body.get("persisted_item_id"),
@@ -11338,6 +11362,7 @@ def create_runner_app(
                                 exc_info=True,
                                 extra={"session_id": conversation_id},
                             )
+                            _delivery = "queued"
                             _publish_input_delivery(
                                 conversation_id, message_body.get("persisted_item_id"), "queued"
                             )
@@ -11345,6 +11370,7 @@ def create_runner_app(
                         status_code=202,
                         content={
                             "status": "buffered",
+                            "delivery": _delivery,
                             "detail": ("Message buffered; active turn will process it."),
                         },
                     )
@@ -11372,10 +11398,14 @@ def create_runner_app(
                             conversation_id,
                             extra={"session_id": conversation_id},
                         )
+                        _publish_input_delivery(
+                            conversation_id, message_body.get("persisted_item_id"), "queued"
+                        )
                         return JSONResponse(
                             status_code=202,
                             content={
                                 "status": "buffered",
+                                "delivery": "queued",
                                 "detail": "Message buffered until the pending prompt is resolved.",
                             },
                         )
@@ -11403,6 +11433,10 @@ def create_runner_app(
                     extra={"session_id": conversation_id},
                 )
 
+                # Ahead of the turn's own events, so a client sees its message start the turn.
+                _publish_input_delivery(
+                    conversation_id, message_body.get("persisted_item_id"), "turn"
+                )
                 _publish_turn_status(conversation_id, "running")
 
                 if stream:
@@ -11428,6 +11462,7 @@ def create_runner_app(
                     status_code=202,
                     content={
                         "status": "accepted",
+                        "delivery": "turn",
                         "detail": "Turn started.",
                     },
                 )

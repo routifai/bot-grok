@@ -82,9 +82,10 @@ class SubAgentHost:
         role in their ``params.helper_type``; Types without one keep their literal name.
     :param child_titles: Titles of the caller's existing child sessions.
     :param spawn: Starts one child through the generic sub-agent create path.
-    :param send: Posts a message to one of the caller's own children (``child id, text``): a
-        running child reads it at its next step, an idle one starts a new turn on it. Returns
-        the generic ``sys_session_send`` output.
+    :param send: Passes a message to one of the caller's own children whose turn is running
+        (``child id, text``); it reads it at its next step. The child itself refuses it when
+        no turn is running by the time it arrives (``{"error": "not_running"}``), so a send
+        never starts a second task. Returns the generic ``sys_session_send`` output.
     :param running: ``(child id, title)`` of the caller's children whose turn is running.
     """
 

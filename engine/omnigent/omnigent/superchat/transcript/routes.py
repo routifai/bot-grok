@@ -15,7 +15,6 @@ from fastapi import APIRouter, Query, Request
 
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.entities import Conversation
-from omnigent.runtime import input_delivery
 from omnigent.server.auth import LEVEL_READ, AuthProvider
 from omnigent.server.redaction import session_redactor
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
@@ -92,11 +91,13 @@ def read_transcript(
         for helper_id, helper in conv_store.get_conversations(helper_ids).items():
             statuses[helper_id] = sub_agent_status(helper)
     messages = project_items(items, helper_statuses=statuses)
-    # A message sent during a turn says how it was taken (``steer`` / ``queued``).
-    delivered = input_delivery.delivered_for(conversation.id, session_running=live)
+    # A message sent during a turn says how it was taken: ``steer`` (read by that turn) or
+    # ``queued`` (waiting for the next). One that ran as its own turn reads as any other.
+    deliveries = conv_store.get_item_deliveries(conversation.id) if messages else {}
     for message in messages:
-        if message["role"] == "user" and message["id"] in delivered:
-            message["delivered"] = delivered[message["id"]]
+        state = deliveries.get(message["id"]) if message["role"] == "user" else None
+        if state in ("steer", "queued"):
+            message["delivered"] = state
     can_fork = lineage["kind"] == "super" or lineage["anchor_item_id"] is not None
     grouped = forks_by_anchor(conv_store, conversation, viewer_id) if can_fork and messages else {}
     return _page(

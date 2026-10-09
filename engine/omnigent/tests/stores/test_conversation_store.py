@@ -2142,6 +2142,42 @@ async def test_delete_conversation_with_items(
     assert conversation_store.get_conversation(conv.id) is None
 
 
+def _user_item(text: str) -> NewConversationItem:
+    return NewConversationItem(
+        type="message",
+        response_id="resp_d",
+        data=MessageData(role="user", content=[{"type": "input_text", "text": text}]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_item_deliveries_keep_the_latest_state_and_go_with_the_conversation(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    conv = conversation_store.create_conversation()
+    first, second = conversation_store.append(conv.id, [_user_item("a"), _user_item("b")])
+    assert conversation_store.get_item_deliveries(conv.id) == {}
+
+    conversation_store.set_item_delivery(conv.id, first.id, "steer")
+    conversation_store.set_item_delivery(conv.id, second.id, "queued")
+    conversation_store.set_item_delivery(conv.id, second.id, "turn")
+    assert conversation_store.get_item_deliveries(conv.id) == {first.id: "steer", second.id: "turn"}
+
+    assert await conversation_store.delete_conversation(conv.id) is True
+    assert conversation_store.get_item_deliveries(conv.id) == {}
+
+
+def test_delete_item_removes_only_that_item(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    conv = conversation_store.create_conversation()
+    kept, refused = conversation_store.append(conv.id, [_user_item("keep"), _user_item("drop")])
+
+    assert conversation_store.delete_item(conv.id, refused.id) is True
+    assert [item.id for item in conversation_store.list_items(conv.id).data] == [kept.id]
+    assert conversation_store.delete_item(conv.id, refused.id) is False
+
+
 # ── List conversations pagination ────────────────────
 
 

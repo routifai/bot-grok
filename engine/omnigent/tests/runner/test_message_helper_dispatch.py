@@ -20,7 +20,9 @@ PARENT = "conv_muse"
 HELPER = "conv_helper_1"
 
 
-def _server(posts: list[dict[str, Any]], rows: list[dict[str, Any]]) -> httpx.MockTransport:
+def _server(
+    posts: list[dict[str, Any]], rows: list[dict[str, Any]], idle: bool = False
+) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if request.method == "GET" and path == f"/v1/sessions/{PARENT}":
@@ -39,13 +41,17 @@ def _server(posts: list[dict[str, Any]], rows: list[dict[str, Any]]) -> httpx.Mo
             )
         if request.method == "POST" and path == f"/v1/sessions/{HELPER}/events":
             posts.append(json.loads(request.content))
-            return httpx.Response(202, json={"queued": True})
+            if idle:  # the Helper's turn ended before the note reached it
+                return httpx.Response(409, json={"error": "not_running"})
+            return httpx.Response(202, json={"queued": True, "delivery": "steer"})
         return httpx.Response(404, json={"error": str(request.url)})
 
     return httpx.MockTransport(handler)
 
 
-async def _call(arguments: dict[str, Any], rows: list[dict[str, Any]]) -> tuple[str, list[Any]]:
+async def _call(
+    arguments: dict[str, Any], rows: list[dict[str, Any]], idle: bool = False
+) -> tuple[str, list[Any]]:
     from omnigent.runner import app as runner_app
     from omnigent.runner.tool_dispatch import execute_tool
 
@@ -54,7 +60,7 @@ async def _call(arguments: dict[str, Any], rows: list[dict[str, Any]]) -> tuple[
         parent_session_id=PARENT, child_session_id=HELPER, agent="worker", title="Deck"
     )
     entry.status = "running"
-    async with httpx.AsyncClient(transport=_server(posts, rows), base_url="http://s") as client:
+    async with httpx.AsyncClient(transport=_server(posts, rows, idle), base_url="http://s") as client:
         try:
             output = await execute_tool(
                 tool_name="message_helper",
@@ -80,6 +86,19 @@ async def test_the_message_is_posted_into_the_running_helper_without_a_new_one()
     assert json.loads(output)["sent"] is True
     assert len(posts) == 1  # one message to the Helper, no second task started
     assert posts[0]["data"]["content"][0]["text"] == "use the blue template"
+    assert posts[0]["if_running"] is True  # the Helper refuses it if its turn is over
+
+
+@pytest.mark.asyncio
+async def test_a_helper_whose_turn_ended_meanwhile_refuses_the_note() -> None:
+    rows = [{"id": HELPER, "title": "worker:Deck", "busy": True}]
+
+    output, posts = await _call({"message": "use the blue template"}, rows, idle=True)
+
+    assert len(posts) == 1
+    assert output == (
+        "Error: message_helper: that Helper is not running; its result has arrived or will"
+    )
 
 
 @pytest.mark.asyncio

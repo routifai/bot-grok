@@ -1345,6 +1345,9 @@ class SessionEventInput(BaseModel):
         tools are fixed at start time.
     :param created_by: Optional internal attribution actor for runner-
         originated events that are triggered by a prior human turn.
+    :param if_running: Only for a ``message``: deliver it into the turn
+        running now. With none running the session refuses it (409
+        ``not_running``) and keeps nothing, instead of starting a turn.
     """
 
     type: str
@@ -1355,6 +1358,7 @@ class SessionEventInput(BaseModel):
     model_override: str | None = None
     tools: list[dict[str, Any]] | None = None
     created_by: str | None = None
+    if_running: bool = False
 
     @field_validator("data")
     @classmethod
@@ -3789,23 +3793,25 @@ class SessionInputDeliveryPayload(BaseModel):
     Inner payload of a :class:`SessionInputDeliveryEvent`.
 
     :param item_id: The persisted user message this is about, e.g. ``"msg_abc"``.
-    :param delivered: How the running session took the message: ``"steer"`` (into the turn
-        that is running, read at its next step), ``"queued"`` (held until the turn ends) or
-        ``"turn"`` (a queued message that has now started as its own turn).
+    :param delivered: How the session took the message: ``"queued"`` (held until the running
+        turn ends; may come first), then exactly one of ``"steer"`` (read by the running turn
+        at its next step), ``"turn"`` (started a turn of its own) or ``"cancelled"`` (dropped
+        by a stop or a delete before any turn read it).
     """
 
     item_id: str
-    delivered: Literal["steer", "queued", "turn"]
+    delivered: Literal["steer", "queued", "turn", "cancelled"]
 
 
 class SessionInputDeliveryEvent(_SSEEventBase):
     """
-    A message sent while a turn was running was steered into it or queued behind it.
+    How a message sent to the session was taken.
 
     Wire shape uses the nested envelope: ``{"type": "session.input.delivery", "data":
-    {"item_id", "delivered"}}``. A message sent to an idle session has no such event (it
-    simply starts a turn). Clients show a queued message as waiting and a steered one as
-    part of the ongoing work.
+    {"item_id", "delivered"}}``. Every message gets exactly one terminal event (``steer``,
+    ``turn`` or ``cancelled``), a message to an idle session included (``turn``), so a client
+    can wait for its own messages without timers. Clients show a queued message as waiting
+    and a steered one as part of the ongoing work.
 
     :param type: Always ``"session.input.delivery"``.
     :param data: See :class:`SessionInputDeliveryPayload`.

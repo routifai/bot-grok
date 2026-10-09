@@ -1310,6 +1310,17 @@ def delete_fts_by_conversation(session: Session, conversation_id: str) -> None:
         )
 
 
+def delete_fts_by_item_id(session: Session, item_id: str) -> None:
+    """
+    Remove one item's FTS row (SQLite-family dialects only; a no-op elsewhere).
+
+    :param session: An active SQLAlchemy session.
+    :param item_id: The conversation item whose row to remove.
+    """
+    if session.bind and _supports_fts5(session.bind.dialect.name):
+        session.execute(text(f"DELETE FROM {_FTS_TABLE} WHERE item_id = :iid"), {"iid": item_id})
+
+
 def delete_fts_by_conversation_ids(session: Session, conv_ids: list[str]) -> None:
     """
     Remove all FTS rows for a list of conversations in a single query.

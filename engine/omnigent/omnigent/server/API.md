@@ -1300,7 +1300,7 @@ stream and surface queue/interrupt semantics.
 | `session.collaboration_mode` | `SessionCollaborationModeEvent` | `{type, conversation_id, mode: string}` |
 | `session.codex_approval_mode` | `SessionCodexApprovalModeEvent` | `{type, conversation_id, approval_mode: "ask-for-approval" \| "approve-for-me" \| "full-access" \| "read-only"}` |
 | `session.input.consumed` | `SessionInputConsumedEvent` | `{type, data: {queued_item_id, type, data, position}}` (nested envelope) |
-| `session.input.delivery` | `SessionInputDeliveryEvent` | `{type, data: {item_id, delivered: "steer" \| "queued" \| "turn"}}` — a message sent while a turn ran: `steer` is read by the running turn at its next step, `queued` waits for the next turn, `turn` is a queued one now running. A message sent to an idle session has none. |
+| `session.input.delivery` | `SessionInputDeliveryEvent` | `{type, data: {item_id, delivered: "queued" \| "steer" \| "turn" \| "cancelled"}}` — how a message sent to the session was taken. `queued` (waiting behind the running turn) may come first; then every message gets exactly one of `steer` (read by the running turn), `turn` (started its own turn, also for an idle session) or `cancelled` (dropped by a stop or delete). `POST /events` answers the first step at once as `delivery`. |
 | `session.interrupted` | `SessionInterruptedEvent` | `{type, data: {requested_at, queued_item_id?: null}}` (nested envelope) |
 | `session.created` | `SessionCreatedEvent` | `{type, conversation_id: <parent>, child_conversation_id, agent_id, ...}` — emitted on the PARENT session's stream when a sub-agent is spawned. |
 

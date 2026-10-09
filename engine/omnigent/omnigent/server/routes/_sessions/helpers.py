@@ -266,6 +266,8 @@ from omnigent.server.schemas import (
     SessionGitOptions,
     SessionInputConsumedEvent,
     SessionInputConsumedPayload,
+    SessionInputDeliveryEvent,
+    SessionInputDeliveryPayload,
     SessionInterruptedEvent,
     SessionInterruptedPayload,
     SessionListItem,
@@ -1710,6 +1712,41 @@ def _publish_input_consumed(
         ),
     )
     session_stream.publish(session_id, event.model_dump())
+
+
+_DELIVERED_STATES = ("queued", "steer", "turn", "cancelled")
+
+
+async def _record_input_delivery(
+    session_id: str,
+    item_id: object,
+    delivered: object,
+    conversation_store: ConversationStore,
+    *,
+    publish: bool = False,
+) -> None:
+    """
+    Store how a message sent to *session_id* was taken; optionally tell clients too.
+
+    The runner reports each step on ``session.input.delivery`` (relayed as is); the server
+    publishes one itself only for a message the runner never received.
+
+    :param session_id: The session, e.g. ``"conv_abc123"``.
+    :param item_id: The persisted user message; anything but a non-empty string is ignored.
+    :param delivered: ``"queued"``, ``"steer"``, ``"turn"`` or ``"cancelled"``.
+    :param conversation_store: Where the state is kept (``conversation_item_deliveries``).
+    :param publish: Also publish the ``session.input.delivery`` event.
+    """
+    if not (isinstance(item_id, str) and item_id) or delivered not in _DELIVERED_STATES:
+        return
+    state = cast(Literal["queued", "steer", "turn", "cancelled"], delivered)
+    await asyncio.to_thread(conversation_store.set_item_delivery, session_id, item_id, state)
+    if publish:
+        event = SessionInputDeliveryEvent(
+            type="session.input.delivery",
+            data=SessionInputDeliveryPayload(item_id=item_id, delivered=state),
+        )
+        session_stream.publish(session_id, event.model_dump())
 
 
 # Wall-clock start of each session's in-flight compaction. A long compaction
@@ -7610,10 +7647,13 @@ class _SessionEventDispatchResult:
         ``"pending_a1b2c3"`` — surfaced to the sender so it can adopt
         the id and dedupe against the snapshot. ``None`` for non-native
         events (already persisted, so no separate pending entry).
+    :param delivery: How the session took the message, as the runner answered:
+        ``"turn"``, ``"steer"`` or ``"queued"``; ``None`` when it did not say.
     """
 
     item_id: str | None
     pending_id: str | None
+    delivery: str | None = None
 
 
 def _extract_persistent_item_from_sse(
@@ -11655,6 +11695,7 @@ __all__ = [
     "_read_state_entry",
     "_read_upload_capped",
     "_record_daily_cost",
+    "_record_input_delivery",
     "_record_turn_failure",
     "_registered_runner_id",
     "_reject_reserved_cost_control_label_seed",

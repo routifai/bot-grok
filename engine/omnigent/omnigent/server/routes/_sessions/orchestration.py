@@ -17,7 +17,7 @@ import secrets
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal, NamedTuple, cast
 
 import httpx
 from fastapi import (
@@ -95,7 +95,6 @@ from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
 from omnigent.runtime import (
     get_policy_store,
     inflight_text,
-    input_delivery,
     pending_elicitations,
     pending_inputs,
 )
@@ -304,6 +303,7 @@ from omnigent.server.routes._sessions.helpers import (
     _query_host_runner_status,
     _read_state_entry,
     _record_daily_cost,
+    _record_input_delivery,
     _reject_reserved_cost_control_label_seed,
     _reject_server_reserved_label_seed,
     _relay_persist,
@@ -5891,6 +5891,38 @@ def _publish_routed_model(session_id: str, model: str) -> None:
     session_stream.publish(session_id, event.model_dump())
 
 
+class _ForwardedItem(NamedTuple):
+    """A user item the runner took: its id and how the session took it.
+
+    :param item_id: Store-assigned id of the persisted item.
+    :param delivery: The runner's answer: ``"turn"`` (started a turn), ``"steer"``
+        (offered to the running turn) or ``"queued"`` (waiting behind it); ``None`` when
+        the runner did not say.
+    """
+
+    item_id: str
+    delivery: str | None
+
+
+def _runner_delivery(response: httpx.Response) -> str | None:
+    """The ``delivery`` a runner's acceptance names, or ``None`` (fakes may expose no body)."""
+    payload: object = None
+    with contextlib.suppress(ValueError, AttributeError, TypeError):
+        payload = response.json()
+    delivery = payload.get("delivery") if isinstance(payload, dict) else None
+    return delivery if delivery in ("turn", "steer", "queued") else None
+
+
+def _is_not_running_refusal(response: httpx.Response) -> bool:
+    """Whether the runner refused an ``if_running`` message because no turn runs."""
+    if response.status_code != 409:
+        return False
+    payload: object = None
+    with contextlib.suppress(ValueError, AttributeError, TypeError):
+        payload = response.json()
+    return isinstance(payload, dict) and payload.get("error") == "not_running"
+
+
 def _runner_reject_detail(response: httpx.Response) -> str:
     """
     Describe a runner's refusal of a forwarded event, for the user-visible error.
@@ -5967,7 +5999,7 @@ async def _forward_event_to_runner(
     created_by: str | None = None,
     host_store: HostStore | None = None,
     persisted_item: ConversationItem | None = None,
-) -> str:
+) -> _ForwardedItem:
     """
     Persist a user event and forward it to the runner.
 
@@ -6088,6 +6120,9 @@ async def _forward_event_to_runner(
         # resolved copy — id-based dedup, not a role/content guess.
         "persisted_item_id": persisted_items[0].id,
     }
+    if body.if_running:
+        # The runner decides under its turn lock: with no turn running it starts none.
+        runner_body["if_running"] = True
     # Persist the turn-initiating actor so /policies/evaluate and MCP
     # tools/call can read it back on any server replica.  Skip system-driven
     # forwards (sub-agent results, parent-wake carry created_by=None) — they
@@ -6438,6 +6473,14 @@ async def _forward_event_to_runner(
         # this only catches "the runner never took the message". Checked on the
         # status rather than via ``raise_for_status`` so the runner-client fakes
         # that only expose ``status_code`` behave as they do in production.
+        if _is_not_running_refusal(_forward_resp):
+            # A message meant only for a running turn found none: it never happened.
+            await asyncio.to_thread(
+                conversation_store.delete_item, session_id, persisted_items[0].id
+            )
+            raise OmnigentError(
+                "No turn is running to take this message.", code=ErrorCode.CONFLICT
+            )
         if _forward_resp.status_code >= 400:
             # The live runner took nothing, so ``idle`` would read as a finished
             # turn that never ran. Persist the reason: the status edge is
@@ -6586,7 +6629,7 @@ async def _forward_event_to_runner(
             code=ErrorCode.RUNNER_UNAVAILABLE,
         ) from exc
 
-    return persisted_items[0].id
+    return _ForwardedItem(persisted_items[0].id, _runner_delivery(_forward_resp))
 
 
 async def _stamp_routing_decision_label(
@@ -7247,7 +7290,7 @@ async def _dispatch_session_event_to_runner_impl(
                     decision_id=_native_decision_id,
                 )
         return _SessionEventDispatchResult(item_id=None, pending_id=pending_id)
-    item_id = await _forward_event_to_runner(
+    forwarded = await _forward_event_to_runner(
         session_id,
         conv,
         body,
@@ -7261,7 +7304,9 @@ async def _dispatch_session_event_to_runner_impl(
         host_store=host_store,
         persisted_item=persisted_item,
     )
-    return _SessionEventDispatchResult(item_id=item_id, pending_id=None)
+    return _SessionEventDispatchResult(
+        item_id=forwarded.item_id, pending_id=None, delivery=forwarded.delivery
+    )
 
 
 # Sized to the runner liveness lease so the relay give-up, the disconnect
@@ -8300,10 +8345,13 @@ async def _relay_runner_stream_once(
                     if evt_type == "session.input.delivery":
                         delivery = event.get("data")
                         if isinstance(delivery, dict):
-                            input_delivery.record(
+                            # Stored before it is relayed: a client refetching on the event
+                            # reads the new state.
+                            await _record_input_delivery(
                                 session_id,
-                                str(delivery.get("item_id")),
-                                str(delivery.get("delivered")),
+                                delivery.get("item_id"),
+                                delivery.get("delivered"),
+                                conversation_store,
                             )
                     session_stream.publish(session_id, event)
 

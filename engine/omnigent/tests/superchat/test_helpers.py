@@ -484,3 +484,19 @@ async def test_bad_input_and_a_failed_send_are_refused_in_message_helper_terms()
     assert failed.startswith("Error: message_helper: failed to look up")
     no_host = HandlerCtx("message_helper", None, "conv_chat", CHAT)
     assert "requires server access" in await h.handle_message_helper(no_host, {"message": "x"})
+
+
+async def test_a_helper_that_finished_before_the_note_arrived_refuses_it() -> None:
+    # Listed as running when the tool looked, idle by the time the send reached it: the send
+    # itself refuses, so the note never starts a second task.
+    sent: list[tuple[str, str]] = []
+    ctx = _messaging_ctx(
+        sent,
+        [("conv_h1", "worker:Deck")],
+        reply=json.dumps({"error": "not_running", "conversation_id": "conv_h1"}),
+    )
+    refused = await h.handle_message_helper(ctx, {"message": "blue"})
+    assert refused == (
+        "Error: message_helper: that Helper is not running; its result has arrived or will"
+    )
+    assert sent == [("conv_h1", "blue")]

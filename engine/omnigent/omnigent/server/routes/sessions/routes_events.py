@@ -201,6 +201,7 @@ from omnigent.server.routes._sessions.helpers import (
     _publish_policy_deny,
     _publish_session_superseded,
     _publish_status,
+    _record_input_delivery,
     _record_turn_failure,
     _remove_session_worktree_best_effort,
     _require_external_status_forward,
@@ -2190,6 +2191,11 @@ def register_events_routes(
                 )
             )
         ):
+            if body.if_running:
+                # The runner is not up, so no turn is running to take it.
+                raise OmnigentError(
+                    "No turn is running to take this message.", code=ErrorCode.CONFLICT
+                )
             stored = await _persist_user_event_item(
                 session_id, conv, body, conversation_store, created_by=created_by
             )
@@ -2198,6 +2204,10 @@ def register_events_routes(
                 await _post_event_impl(request, session_id, body, persisted_item=stored)
 
             async def _fail_turn(exc: Exception) -> None:
+                # The runner never got it: no turn will read it.
+                await _record_input_delivery(
+                    session_id, stored.id, "cancelled", conversation_store, publish=True
+                )
                 failure = ErrorDetail(
                     code=exc.code if isinstance(exc, OmnigentError) else "dispatch_failed",
                     message=str(exc),
@@ -2211,7 +2221,8 @@ def register_events_routes(
                 )
 
             schedule_deferred_message_dispatch(session_id, _wake_and_forward, _fail_turn)
-            return {"queued": True, "item_id": stored.id}
+            # Held until the runner is up; the runner's own delivery events follow.
+            return {"queued": True, "item_id": stored.id, "delivery": "queued"}
         # A Side Chat shares its parent's host: wake it once, bind, then relaunch below.
         conv = await _adopt_parent_host_for_side_chat(
             session_id=session_id,
@@ -2752,6 +2763,9 @@ def register_events_routes(
         response: dict[str, Any] = {"queued": True}
         if dispatch.item_id is not None:
             response["item_id"] = dispatch.item_id
+        if dispatch.delivery is not None:
+            # How the session took it; ``session.input.delivery`` events carry what follows.
+            response["delivery"] = dispatch.delivery
         # Native-terminal web message: hand back the pending-input id. It
         # identifies the snapshot's replayed bubble on rebind and is the
         # cleared_pending_id the consume event carries to drop it. Clients
