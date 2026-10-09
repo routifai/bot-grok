@@ -50,7 +50,7 @@ export function MediaTile({
   return (
     <div
       data-testid="media-tile"
-      className="nova-media relative isolate flex min-h-[250px] w-[min(620px,100%)] flex-col justify-between overflow-hidden rounded-[28px] px-[22px] pt-[22px] pb-[18px] text-white"
+      className="nova-media relative isolate flex min-h-[250px] w-[620px] max-w-full flex-col justify-between overflow-hidden rounded-[28px] px-[22px] pt-[22px] pb-[18px] text-white"
     >
       <div className="relative z-10 min-w-0">
         <span className="flex items-center gap-1.5 text-[15px] font-semibold tracking-[-0.2px] opacity-95">
@@ -77,7 +77,9 @@ export function MediaTile({
       >
         {art}
       </div>
-      <div className="relative z-10 mt-6 flex min-w-0 items-center gap-3">
+      {/* The art owns the tile's right 40%: keep the row (Open, meta, actions) in the left column
+          so nothing sits on the preview. On a phone the art is a faint backdrop, so it spans. */}
+      <div className="relative z-10 mt-6 flex min-w-0 max-w-[calc(60%-34px)] items-center gap-3 max-sm:max-w-none">
         <button
           ref={openRef}
           type="button"
