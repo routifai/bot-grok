@@ -12,7 +12,7 @@ from omnigent.runner.knowledge import runtime as rt
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.knowledge import FEATURE
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
-from tests.superchat.knowledge._support import PDF, SESSION, make_runtime, put_pdf
+from tests.superchat.knowledge._support import SESSION, make_runtime, put_pdf
 
 
 @pytest.fixture(autouse=True)

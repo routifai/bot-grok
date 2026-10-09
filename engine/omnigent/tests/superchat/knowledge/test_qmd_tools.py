@@ -1,4 +1,4 @@
-"""The qmd-style tools: search (BM25), vsearch, query (+ rerank), get / multi_get, status, ingest."""
+"""The qmd-style tools: search, vsearch, query (+ rerank), get, multi_get, status, ingest."""
 
 from __future__ import annotations
 
