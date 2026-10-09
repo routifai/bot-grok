@@ -12,6 +12,7 @@ import {
   getOmnigentModelOverlay,
   getOmnigentModelPreferences,
   getOmnigentSessionModel,
+  listOmnigentAdminModelCatalog,
   listOmnigentAdminUsers,
   listOmnigentModelConnections,
   listOmnigentModels,
@@ -459,5 +460,21 @@ export async function adminBudget(
     monthlyLimitUsd: row.monthly_limit_usd,
     atLimit: row.at_limit,
     spentMonthUsd: row.spent_month_usd,
+  };
+}
+
+export async function adminModelCatalog(
+  deps: EngineModelsDeps,
+  client: OmnigentClientConfig | undefined,
+  actor: Actor,
+  harness: string,
+) {
+  const target = await admin(deps, client, actor);
+  const row = await onModels(listOmnigentAdminModelCatalog(target.client, target.email, harness));
+  return {
+    harness: row.harness,
+    status: row.status,
+    defaultModel: row.default_model,
+    models: row.models,
   };
 }

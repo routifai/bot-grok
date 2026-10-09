@@ -257,6 +257,25 @@ export async function putOmnigentModelOverlay(
   ).harnesses;
 }
 
+/** The binding's whole list for a harness, before the organization's allowlist narrows it. */
+export async function listOmnigentAdminModelCatalog(
+  config: OmnigentClientConfig,
+  email: string,
+  harness: string,
+): Promise<{
+  harness: string;
+  status: string;
+  default_model: string | null;
+  models: { id: string; label: string; family: string | null }[];
+}> {
+  return call(
+    config,
+    email,
+    "list model catalog",
+    `/v1/admin/models/catalog?harness=${seg(harness)}`,
+  );
+}
+
 export async function listOmnigentAdminUsers(
   config: OmnigentClientConfig,
   email: string,

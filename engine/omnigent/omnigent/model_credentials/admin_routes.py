@@ -2,6 +2,7 @@
 
 * ``GET``/``PUT /admin/models``: the model overlay ``{harnesses: {h: {allow, default}}}`` that
   narrows what each harness's connection binding offers (see :mod:`...model_credentials.org`).
+* ``GET /admin/models/catalog?harness=``: the binding's full model list the overlay narrows.
 * ``GET /admin/users``: every person with role, status, spend, sessions, connections, budget and
   Computer; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
 * ``POST /admin/users/{id}/suspend`` and ``/resume``: stop and restore a person's usage.
@@ -159,6 +160,42 @@ def create_org_admin_router(
             }
         await asyncio.to_thread(overlay.set, result)
         return {"harnesses": result}
+
+    @router.get("/admin/models/catalog")
+    async def get_models_catalog(request: Request, harness: str) -> dict[str, Any]:
+        """The harness binding's full model list, before the overlay narrows it.
+
+        What the overlay editor picks from: ``GET /me/models`` already shows the narrowed list.
+        """
+        admin_id = await _admin(request)
+        from omnigent.server.inference_catalog import catalog_row_details
+        from omnigent.server.routes.sandbox_inference import inference_service
+
+        harness = normalize_inference_harness(harness)
+        try:
+            snapshot = await inference_service(request).prepare(
+                None, harness, admin_id, org_overlay=False
+            )
+        except (OmnigentError, ValueError) as exc:
+            raise _invalid(
+                exc.message if isinstance(exc, OmnigentError) else "Invalid configuration"
+            ) from None
+        catalog = snapshot["catalog"] if snapshot is not None else None
+        if catalog is None:
+            raise _invalid(f"No models are managed for harness {harness!r}")
+        return {
+            "harness": harness,
+            "status": catalog["status"],
+            "default_model": catalog["default_model"],
+            "models": [
+                {
+                    "id": row["id"],
+                    "label": row.get("displayName") or row["id"],
+                    "family": catalog_row_details(snapshot, row["id"])["family"],
+                }
+                for row in catalog["models"]
+            ],
+        }
 
     # ---- people and usage ----------------------------------------------------------------
 

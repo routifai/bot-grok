@@ -1,6 +1,7 @@
 import { engineComputerClient } from "../engine-computer.js";
 import {
   adminBudget,
+  adminModelCatalog,
   adminOverlay,
   adminUsage,
   connectEngineModel,
@@ -75,6 +76,9 @@ export function engineModelsRouter(c: RouterContext) {
       ),
       models: authed.engineAdmin.models.handler(({ context }) =>
         adminOverlay(deps, engine(context.actor), context.actor),
+      ),
+      modelsCatalog: authed.engineAdmin.modelsCatalog.handler(({ context, input }) =>
+        adminModelCatalog(deps, engine(context.actor), context.actor, input.harness),
       ),
       setModels: authed.engineAdmin.setModels.handler(({ context, input }) =>
         setAdminOverlay(deps, engine(context.actor), context.actor, input.harnesses),

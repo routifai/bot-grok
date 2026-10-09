@@ -183,6 +183,7 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
 ROUTES = [
     ("GET", "/v1/admin/models"),
     ("PUT", "/v1/admin/models"),
+    ("GET", "/v1/admin/models/catalog?harness=claude-sdk"),
     ("GET", "/v1/admin/users"),
     ("GET", "/v1/admin/usage"),
     ("POST", "/v1/admin/users/bob/suspend"),
@@ -265,6 +266,22 @@ async def test_overlay_narrows_the_catalog_and_org_default_sits_below_the_users(
     cleared = world.client.put("/v1/admin/models", json={"harnesses": {}}, headers=ROOT)
     assert cleared.json() == {"harnesses": {}}
     assert (await _catalog(world))["catalog"]["default_model"] == "claude-sonnet-5-5"
+
+
+def test_overlay_editor_lists_the_whole_binding_even_when_the_overlay_narrows_it(
+    world: World,
+) -> None:
+    world.client.put(
+        "/v1/admin/models",
+        json={"harnesses": {"claude-sdk": {"allow": ["claude-haiku-4-5"]}}},
+        headers=ROOT,
+    )
+    r = world.client.get("/v1/admin/models/catalog?harness=claude-sdk", headers=ROOT)
+    assert r.status_code == 200
+    body = r.json()
+    assert [m["id"] for m in body["models"]] == ["claude-sonnet-5-5", "claude-haiku-4-5"]
+    assert body["default_model"] == "claude-sonnet-5-5"
+    assert all("family" in m and "label" in m for m in body["models"])
 
 
 @pytest.mark.parametrize(

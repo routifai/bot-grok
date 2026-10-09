@@ -122,15 +122,13 @@ export const engineModelsContract = {
     budget: oc.output(EngineBudgetSchema),
     setBudget: oc.input(EngineBudgetInputSchema).output(EngineBudgetSchema),
     /** The model this Muse's Conversation runs on (`null`: the person's default). */
-    sessionModel: oc
-      .input(botId)
-      .output(
-        z.object({
-          harness: z.string(),
-          model: z.string().nullable(),
-          catalog: EngineModelCatalogSchema,
-        }),
-      ),
+    sessionModel: oc.input(botId).output(
+      z.object({
+        harness: z.string(),
+        model: z.string().nullable(),
+        catalog: EngineModelCatalogSchema,
+      }),
+    ),
     setSessionModel: oc
       .input(z.object({ botId: Id, model: z.string().min(1).nullable() }))
       .output(ok),
@@ -140,6 +138,16 @@ export const engineModelsContract = {
     connect: oc.input(connectInput).output(EngineModelConnectionSchema),
     disconnect: oc.input(provider).output(ok),
     models: oc.output(EngineOverlaySchema),
+    modelsCatalog: oc.input(z.object({ harness: z.string().min(1) })).output(
+      z.object({
+        harness: z.string(),
+        status: z.string(),
+        defaultModel: z.string().nullable(),
+        models: z.array(
+          z.object({ id: z.string(), label: z.string(), family: z.string().nullable() }),
+        ),
+      }),
+    ),
     setModels: oc.input(z.object({ harnesses: EngineOverlaySchema })).output(EngineOverlaySchema),
     budget: oc.output(
       z.object({
