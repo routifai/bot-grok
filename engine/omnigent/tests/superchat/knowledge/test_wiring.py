@@ -1,4 +1,4 @@
-"""The feature's wiring: the relays mount, nothing is kept in the engine, citations carry file ids."""
+"""The feature's wiring: the relays mount, nothing is kept in the engine, citations carry ids."""
 
 from __future__ import annotations
 

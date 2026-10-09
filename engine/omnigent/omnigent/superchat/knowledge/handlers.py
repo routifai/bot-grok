@@ -10,9 +10,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 from typing import Any
 
-from omnigent.runner.knowledge.indexer import DEFAULT_K, MAX_K
+from omnigent.runner.knowledge.indexer import DEFAULT_K, MAX_K, AmbiguousFile
 from omnigent.runner.knowledge.runtime import KnowledgeRuntime, configure, get_runtime
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
 from omnigent.superchat._handler_http import HEX_ID_RE, error
@@ -20,6 +21,9 @@ from omnigent.superchat.feature import HandlerCtx
 
 #: Marks a ``files_search`` result so the transcript can show its pages as citation chips.
 SEARCH_RESULT_TYPE = "file_search"
+#: How long a search waits for a file that was just uploaded and is still being read.
+SEARCH_WAIT_SECONDS = 15.0
+_SEARCH_POLL_SECONDS = 0.25
 
 
 def _runtime(ctx: HandlerCtx) -> KnowledgeRuntime:
@@ -78,19 +82,44 @@ def _search(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
             return error("file_ids must be file ids from an earlier search")
     k = args.get("k")
     limit = max(1, min(k, MAX_K)) if isinstance(k, int) and not isinstance(k, bool) else DEFAULT_K
-    found = runtime.indexer.search(query.strip(), file_ids=ids, k=limit)
-    return json.dumps({"type": SEARCH_RESULT_TYPE, **found})
+    indexer = runtime.indexer
+    # A file attached a moment ago may not be readable yet: give it a short while, then say so.
+    pending = indexer.unsearchable(ids)
+    if pending:
+        runtime.kick()
+        deadline = time.monotonic() + SEARCH_WAIT_SECONDS
+        while pending and time.monotonic() < deadline:
+            time.sleep(_SEARCH_POLL_SECONDS)
+            pending = indexer.unsearchable(ids)
+    found = indexer.search(query.strip(), file_ids=ids, k=limit)
+    out: dict[str, Any] = {"type": SEARCH_RESULT_TYPE, **found}
+    if pending:
+        out["still_indexing"] = [{"file_name": row.name, "path": row.path} for row in pending]
+        out["note"] = (
+            "These files are still being indexed, so this search could not see them: "
+            + ", ".join(row.name for row in pending)
+            + ". Read them directly instead of searching again."
+        )
+    return json.dumps(out)
 
 
 def _read_page(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
-    file_id, path, page = args.get("file_id"), args.get("path"), _page_number(args.get("page"))
-    if not (isinstance(file_id, str) and HEX_ID_RE.match(file_id)) and not (
-        isinstance(path, str) and path
-    ):
-        return error("files_read_page requires a file_id (from files_search) or a path")
+    file_id, page = args.get("file_id"), _page_number(args.get("page"))
+    # ``path`` takes a workspace path or a plain file name; a ``file_id`` that is no id is one too.
+    path = next(
+        (v for v in (args.get("path"), args.get("file_name"), args.get("file")) if v), None
+    )
+    if isinstance(file_id, str) and not HEX_ID_RE.match(file_id):
+        path, file_id = path or file_id, None
+    if not file_id and not (isinstance(path, str) and path.strip()):
+        return error("files_read_page requires the file's name or path (or a file_id)")
     if page is None:
         return error("files_read_page requires a page number from 1")
-    row = runtime.indexer.resolve(file_id if isinstance(file_id, str) else None, path)
+    try:
+        row = runtime.indexer.resolve(file_id, path if isinstance(path, str) else None)
+    except AmbiguousFile as exc:
+        listed = ", ".join(exc.candidates)
+        return error(f"More than one file matches '{exc.ref}': {listed}. Pass the full path.")
     if row is None:
         return error("That file isn't in your search index (yet)")
     found = runtime.indexer.page(row, page)

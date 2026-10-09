@@ -90,7 +90,8 @@ export const Composer = memo(function Composer({
   fileInputRef?: RefObject<HTMLInputElement | null>;
   onAttachmentPick?: (files: FileList | null) => void | Promise<void>;
   onRemoveAttachment?: (attachment: PendingAttachment) => void;
-  onSend: (text: string, mentions?: ComposerMention[]) => Promise<void>;
+  /** Resolves `false` when nothing was sent, so the composer gives the person's words back. */
+  onSend: (text: string, mentions?: ComposerMention[]) => Promise<boolean | undefined | void>;
   onStop?: () => Promise<void>;
   onVoice?: () => void;
   /** Overrides the "Message {name}" placeholder. */
@@ -308,6 +309,7 @@ export const Composer = memo(function Composer({
   function send() {
     if (!canSend || sending || disabled) return;
     const text = serializeComposerPrompt(draft, selectedSkill, selectedMentions);
+    const kept = { draft, skill: selectedSkill, mentions: selectedMentions, attachments };
     setDraft("");
     setMentionQuery(null);
     setMentionHighlightIndex(0);
@@ -316,7 +318,14 @@ export const Composer = memo(function Composer({
     const mentions = selectedMentions;
     setSelectedMentions([]);
     clearComposerAttachments();
-    void onSend(withComposerAttachments(text, attachments), mentions);
+    void onSend(withComposerAttachments(text, attachments), mentions).then((sent) => {
+      if (sent !== false) return;
+      // The send failed (the Computer never started, say): nothing is lost.
+      setDraft((current) => (current ? current : kept.draft));
+      setSelectedSkill((current) => current ?? kept.skill);
+      setSelectedMentions((current) => (current.length ? current : kept.mentions));
+      for (const item of kept.attachments) setComposerAttachment(item.kind, item);
+    });
   }
 
   function handleDragEnter(event: DragEvent<HTMLFieldSetElement>) {

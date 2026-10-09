@@ -22,7 +22,7 @@ export function CallView({
   botName: string;
   transcribe: boolean;
   snapshot: ThreadSnapshot | null;
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string) => Promise<unknown>;
   onFollowUp: (text: string) => Promise<void>;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onClose: () => void;

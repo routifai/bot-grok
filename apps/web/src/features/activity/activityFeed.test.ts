@@ -161,6 +161,30 @@ it("stops reading while the tab is hidden and reads at once when it returns", as
   expect(list).toHaveBeenCalledTimes(2);
 });
 
+it("reads once even when first opened in a hidden tab, instead of staying on Loading", async () => {
+  visibility = "hidden";
+  const { feed, list } = setup([page(activity({ id: "a1" }))]);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(ready(feed)).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_IDLE_MS * 3);
+  expect(list).toHaveBeenCalledTimes(1);
+});
+
+it("turns a read that never answers into an error, not an endless loading state", async () => {
+  const list = vi.fn(() => new Promise<ActivityPage>(() => undefined));
+  const feed = new ActivityFeed("bot-1", {
+    list,
+    watch: fakeWatch().watch,
+    isUnavailable: () => false,
+  });
+  feed.subscribe(() => undefined);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(feed.getSnapshot().state.status).toBe("loading");
+  await vi.advanceTimersByTimeAsync(21_000);
+  expect(feed.getSnapshot().state.status).toBe("error");
+});
+
 it("shares one feed between the panel and the chat rows: the last one out closes it", async () => {
   const { feed, list, watch, unsubscribe } = setup([page()]);
   const second = feed.subscribe(() => undefined);

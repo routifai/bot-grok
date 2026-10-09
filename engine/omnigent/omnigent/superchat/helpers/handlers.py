@@ -82,12 +82,15 @@ def helper_type_for(spec: Any) -> str | None:
     )
 
 
-def helper_title(task: str, taken: set[str]) -> str | None:
-    """A short sentence-case title from the first words of ``task``, unique among ``taken``.
+def helper_title(task: str, taken: set[str], given: str | None = None) -> str | None:
+    """A short sentence-case title, unique among ``taken``.
 
-    ``None`` leaves naming to the engine (an ordinal the Activity feed replaces by the task).
+    ``given`` is the title the Muse chose; without a usable one the first words of ``task``
+    are tidied, unless they read as a brief ("The person wants..."), which is no title.
+    ``None`` leaves naming to the engine (the Activity feed then names it by the model).
     """
-    base = tidy_request_title(task, limit=_TITLE_MAX_CHARS)
+    base = tidy_request_title(given, limit=_TITLE_MAX_CHARS) if given else None
+    base = base or tidy_request_title(task, limit=_TITLE_MAX_CHARS)
     if base is None:
         return None
     base = base.replace(":", " ").strip()
@@ -130,7 +133,9 @@ def _invalid_input(args: dict[str, Any]) -> str | None:
     task = args.get("task")
     if not isinstance(task, str) or not task.strip():
         return "requires a non-empty 'task'"
-    extra = set(args) - {"task", "model", "reasoning", "files"}
+    if not isinstance(args.get("title", ""), str):
+        return "'title' must be a string"
+    extra = set(args) - {"task", "title", "model", "reasoning", "files"}
     if extra:
         return f"does not take {', '.join(sorted(extra))}"
     if args.get("model", "strong") not in HELPER_MODEL_CHOICES:
@@ -184,7 +189,7 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             _LEADING_AGENT_PREFIX.sub("", title).strip().casefold()
             for title in await host.child_titles()
         }
-        title = helper_title(task, taken)
+        title = helper_title(task, taken, args.get("title"))
         result = await host.spawn(
             SpawnRequest(
                 agent=agent,

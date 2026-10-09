@@ -13,6 +13,9 @@ out. The rules a client would otherwise copy:
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
 * the pages a ``files_search`` call found become one ``passages`` card (citation chips) under the
   next assistant message;
+* a turn shows one assistant text: its last. Text the Muse wrote between tool calls earlier in
+  the same turn (a user message starts a turn) is interim narration and is not a message; the
+  Helper rows and citation chips it would have carried move to the turn's last text;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
   through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set.
@@ -263,6 +266,20 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
     }
 
 
+def _final_text_ids(items: list[Item]) -> set[str]:
+    """Ids of the assistant text items that end their turn (a user message starts a turn)."""
+    final: dict[int, str] = {}
+    turn = 0
+    for item in items:
+        if item.get("type") != "message" or item.get("is_meta") is True:
+            continue
+        if item.get("role") == "user":
+            turn += 1
+        elif item.get("role") == "assistant" and item_text(item) and "id" in item:
+            final[turn] = item["id"]
+    return set(final.values())
+
+
 def project_items(
     items: list[Item], *, helper_statuses: Mapping[str, str] | None = None
 ) -> list[dict[str, Any]]:
@@ -278,6 +295,7 @@ def project_items(
     helpers: list[dict[str, Any]] = []
     cited: list[dict[str, Any]] = []
     seen_calls: set[str] = set()
+    final_text = _final_text_ids(items)
     for item in items:
         kind = item.get("type")
         if kind == "function_call":
@@ -326,6 +344,8 @@ def project_items(
                 item.get("is_system_notice") is True or is_system_notice_text(text)
             ):
                 continue
+            if role == "assistant" and item.get("id") not in final_text:
+                continue  # interim narration: the turn's last text is its reply
             blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
             if role == "user":
                 cited = []

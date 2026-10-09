@@ -79,6 +79,15 @@ def thumbnail_ref(file_id: str, page: int) -> str:
     return f"files/{file_id}/pages/{page}/thumbnail"
 
 
+class AmbiguousFile(Exception):
+    """A plain file name that matches more than one indexed file."""
+
+    def __init__(self, ref: str, candidates: list[str]) -> None:
+        super().__init__(ref)
+        self.ref = ref
+        self.candidates = candidates
+
+
 class Indexer:
     """Indexes the files area of one workspace; see the module docstring."""
 
@@ -398,6 +407,18 @@ class Indexer:
             "pending": self.db.pending_count(),
         }
 
+    def unsearchable(self, file_ids: Sequence[str] | None = None) -> list[FileRow]:
+        """Files in scope still ``queued``: their text is not stored, so a search cannot see them.
+
+        :param file_ids: Limit to these files; every file when omitted.
+        """
+        wanted = set(file_ids) if file_ids else None
+        return [
+            row
+            for row in self.db.files()
+            if row.state == STATE_QUEUED and (wanted is None or row.file_id in wanted)
+        ]
+
     def search(
         self, query: str, *, file_ids: Sequence[str] | None = None, k: int = DEFAULT_K
     ) -> dict[str, Any]:
@@ -442,11 +463,30 @@ class Indexer:
         }
 
     def resolve(self, file_id: str | None, path: str | None) -> FileRow | None:
-        """The file named by id or by path (either may be given)."""
+        """The file named by id, or by workspace path or plain file name (either may be given).
+
+        :raises AmbiguousFile: when a plain name matches several files.
+        """
         if file_id:
             return self.db.get_file(file_id)
-        relative = self.relative(path) if path else None
-        return self.db.file_by_path(relative) if relative else None
+        ref = (path or "").strip()
+        if not ref:
+            return None
+        relative = self.relative(ref)
+        row = self.db.file_by_path(relative) if relative else None
+        if row is not None:
+            return row
+        wanted = ref.replace("\\", "/").strip("/").lower()
+        matches = [
+            f
+            for f in self.db.files()
+            if f.path.lower() == wanted
+            or f.path.lower().endswith("/" + wanted)
+            or f.name.lower() == wanted
+        ]
+        if len(matches) > 1:
+            raise AmbiguousFile(ref, [m.path for m in matches])
+        return matches[0] if matches else None
 
     def page(self, row: FileRow, page: int) -> dict[str, Any] | None:
         """One page: its text and, for a PDF, its 1024 px image; ``None`` when out of range."""

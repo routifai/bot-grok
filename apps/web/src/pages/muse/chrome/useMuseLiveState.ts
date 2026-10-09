@@ -4,13 +4,31 @@ import { useAsks } from "../../../features/approvals";
 import { useComputerLaunch } from "../../../features/computer/useComputerLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 
-export type MuseLiveRun = Pick<Run, "id" | "status">;
+/** A run as the Muse surfaces see it. `startedAt`/`createdAt` is when it really began, so every
+ * surface (the working row, a remounted pane) counts elapsed time from the run, not from mount. */
+export type MuseLiveRun = Pick<Run, "id" | "status"> &
+  Partial<Pick<Run, "startedAt" | "createdAt">> & {
+    /** Epoch ms the run began, when the caller knows it better than the run's timestamps. */
+    startedAtMs?: number;
+  };
 
 export interface MuseLiveState {
   state: MuseState;
   /** `undefined` while idle — every surface shows nothing rather than a caption. */
   label: string | undefined;
   askCount: number;
+  /** Epoch ms the active run began; `undefined` while idle or when unknown. */
+  runStartedAt: number | undefined;
+}
+
+export function runStartMs(run: MuseLiveRun | undefined): number | undefined {
+  if (!run) return undefined;
+  if (run.startedAtMs !== undefined) return run.startedAtMs;
+  for (const stamp of [run.startedAt, run.createdAt]) {
+    const ms = stamp ? Date.parse(stamp) : Number.NaN;
+    if (Number.isFinite(ms)) return ms;
+  }
+  return undefined;
 }
 
 function activeRunFor(runs: readonly MuseLiveRun[]): MuseLiveRun | undefined {
@@ -50,5 +68,5 @@ export function useMuseLiveState({
   const label = starting
     ? t`Starting your Computer…`
     : museActivityLabel(state, currentToolName(activityMessage?.blocks));
-  return { state, label, askCount };
+  return { state, label, askCount, runStartedAt: runStartMs(activeRun) };
 }

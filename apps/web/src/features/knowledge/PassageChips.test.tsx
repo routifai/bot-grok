@@ -98,6 +98,18 @@ it("keeps the placeholder when a thumbnail cannot be fetched", async () => {
   expect(host.querySelectorAll("button")).toHaveLength(2);
 });
 
+it("shows a skeleton while the thumbnail loads, then a page icon only if it has none", async () => {
+  let fail: (e: Error) => void = () => {};
+  pageThumbnail.mockReturnValue(new Promise((_, reject) => (fail = reject)));
+  const host = await mount(<PassageChips data={data} />);
+  const first = host.querySelector("button");
+  expect(first?.querySelector("[data-testid=passage-thumbnail-loading]")).not.toBeNull();
+  expect(first?.querySelector("svg")).toBeNull();
+  await act(async () => fail(new Error("gone")));
+  expect(first?.querySelector("[data-testid=passage-thumbnail-loading]")).toBeNull();
+  expect(first?.querySelector("svg")).not.toBeNull();
+});
+
 it("a path-only chip opens the Computer file preview at that page", async () => {
   const open = vi.fn();
   const host = await mount(

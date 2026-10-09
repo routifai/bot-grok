@@ -44,7 +44,7 @@ from omnigent.context.labels import (
 )
 from omnigent.superchat._handler_http import session_kind_and_parent as _session_kind_and_parent
 from omnigent.superchat.feature import HandlerCtx, SpawnRequest, SpawnResult, SubAgentHost
-from omnigent.superchat.features import FEATURE_HANDLERS, notify_result
+from omnigent.superchat.features import FEATURE_HANDLERS, FEATURE_RELAY_OPS, notify_result
 from omnigent.superchat.prompt_prefix import fetch_memory_profile as _fetch_memory_profile_block
 from omnigent.superchat.subagents import (
     count_live_children,
@@ -1137,6 +1137,8 @@ def _ungranted_tool_reason(
         )
     if tool_name in granted:
         return None
+    if tool_name in FEATURE_RELAY_OPS and is_superside_chat(labels):
+        return None  # a relay op (a thumbnail, the index status): the engine's call, not a model's
     return (
         f"tool {tool_name!r} is not enabled for this agent "
         f"(not in the agent spec's registered tool surface)"

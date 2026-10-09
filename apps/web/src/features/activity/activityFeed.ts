@@ -24,8 +24,26 @@ export interface ActivityFeedDeps {
 const PAGE_SIZE = 30;
 /** Signals arrive in bursts (a step, its status edge, a title); read once per burst. */
 const REFRESH_THROTTLE_MS = 150;
+/** A read that has not answered by now is an error, never an endless "Loading…". */
+const LIST_TIMEOUT_MS = 20_000;
 const WATCH_RETRY_MIN_MS = 1_000;
 const WATCH_RETRY_MAX_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("activities read timed out")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 function epochSeconds(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
@@ -124,6 +142,9 @@ export class ActivityFeed {
       this.set({ ...this.snapshot, state: { status: "loading" } });
     }
     if (document.visibilityState === "visible") this.activate();
+    // First subscribed while the tab is hidden (a background tab, a headless page): read once
+    // anyway, so the panel shows its feed (or an error) rather than "Loading…" until shown.
+    else if (this.snapshot.state.status === "loading") void this.load(true);
   }
 
   private stop(): void {
@@ -145,15 +166,20 @@ export class ActivityFeed {
     this.watching = false;
   }
 
-  private async load(): Promise<void> {
-    if (!this.active()) return;
+  /** Reads the newest page. `force`: the single first read of a hidden tab (no polling follows). */
+  private async load(force = false): Promise<void> {
+    if (!force && !this.active()) return;
+    if (this.listeners.size === 0) return;
     if (this.loading) {
       this.reloadQueued = true;
       return;
     }
     this.loading = true;
     try {
-      const page = await this.deps.list({ botId: this.botId, limit: PAGE_SIZE });
+      const page = await withTimeout(
+        this.deps.list({ botId: this.botId, limit: PAGE_SIZE }),
+        LIST_TIMEOUT_MS,
+      );
       const prev = this.snapshot.state;
       // Only ever the newest page: merge it into whatever is loaded (which may include older
       // pages from "Load earlier") and leave `hasMore` as it was — it describes pagination
