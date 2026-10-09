@@ -32,14 +32,31 @@ export const CHAT_UNAVAILABLE_MESSAGE = "Chat is not available right now.";
 /** What a person sees when the engine failed in a way with no public copy. The detail (an
  * engine status and body) goes to the log only. */
 export const ENGINE_FAILED_MESSAGE = "Nova couldn't start. Try again in a moment.";
+/** A turn the engine itself reported as failed: its message is written for the person. */
+export class OmnigentTurnFailure extends Error {}
 
-/** The failure text stored on a failed run, which the UI shows: the engine code's copy, or a
- * generic line for an engine API failure; never `omnigent <call> failed (<status>): <body>`. */
+export const ENGINE_INTERRUPTED_MESSAGE = "Nova was interrupted. Send your message again.";
+
+/** Errors from the HTTP stack when the engine connection drops mid-turn (an engine restart or a
+ * network blip): undici's "terminated"/"fetch failed" and the socket codes behind them. */
+const CONNECTION_DROP_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "EPIPE", "UND_ERR_SOCKET"]);
+
+function isConnectionDrop(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message === "terminated" || error.message === "fetch failed") return true;
+  const cause = (error as { cause?: unknown }).cause as { code?: unknown } | undefined;
+  const code = (error as { code?: unknown }).code ?? cause?.code;
+  return typeof code === "string" && CONNECTION_DROP_CODES.has(code);
+}
+
+/** The failure text stored on a failed run, which the UI shows: the engine code's copy, a line
+ * for a dropped connection, else a generic line. Raw details go to the logs, never the UI. */
 export function publicRunError(error: unknown): string {
   const copy = omnigentErrorCopy(error);
   if (copy) return copy;
-  if (error instanceof OmnigentApiError) return ENGINE_FAILED_MESSAGE;
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof OmnigentTurnFailure) return error.message;
+  if (isConnectionDrop(error)) return ENGINE_INTERRUPTED_MESSAGE;
+  return ENGINE_FAILED_MESSAGE;
 }
 
 export interface OmnigentGatewayDeps {
@@ -321,12 +338,12 @@ async function sendTurnAndAwaitCompletion(
         (event.error as { message?: string } | undefined)?.message ||
         "";
       if (!message) getLogger().error("omnigent gateway: turn failed without a message");
-      throw new Error(message || CHAT_UNAVAILABLE_MESSAGE);
+      throw new OmnigentTurnFailure(message || CHAT_UNAVAILABLE_MESSAGE);
     }
     step = await iterator.next();
   }
   getLogger().error("omnigent gateway: session stream ended before response.completed");
-  throw new Error(CHAT_UNAVAILABLE_MESSAGE);
+  throw new OmnigentTurnFailure(CHAT_UNAVAILABLE_MESSAGE);
 }
 
 export type { OmnigentClientConfig, OmnigentConnection };
