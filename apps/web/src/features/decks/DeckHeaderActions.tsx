@@ -6,12 +6,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@nova/ui-web";
-import { Check, ChevronDown, Download, Loader2, Pencil, Presentation, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Download,
+  Loader2,
+  Palette,
+  Pencil,
+  Presentation,
+  X,
+} from "lucide-react";
 import { downloadArtifactBytes } from "../../lib/artifact-open";
 import type { DeckExportFormat, ExportState } from "./DeckExport";
-import { requestDeckPresent, setDeckEditing, useDeckEditing } from "./deck-ui-state";
+import { THEME_BUTTON_ATTR } from "./DeckThemePicker";
+import {
+  requestDeckPresent,
+  setDeckEditing,
+  setDeckThemeOpen,
+  useDeckEditing,
+  useDeckThemeOpen,
+} from "./deck-ui-state";
 
-/** The deck panel's right-hand header controls: Edit, Present and one Download menu. Progress,
+/** The deck panel's right-hand header controls: Theme, Edit, Present and one Download menu. Progress,
  * failure and the "added to your Library" note all show on the Download button itself. */
 export function DeckHeaderActions({
   deckKey,
@@ -30,6 +46,7 @@ export function DeckHeaderActions({
 }) {
   const { t } = useLingui();
   const editing = useDeckEditing(deckKey);
+  const themeOpen = useDeckThemeOpen(deckKey);
   const working = state.kind === "working";
 
   const label =
@@ -47,6 +64,17 @@ export function DeckHeaderActions({
 
   return (
     <>
+      <Button
+        variant={themeOpen ? "default" : "secondary"}
+        size="sm"
+        aria-pressed={themeOpen}
+        aria-haspopup="dialog"
+        {...{ [THEME_BUTTON_ATTR]: "" }}
+        onClick={() => setDeckThemeOpen(deckKey, !themeOpen)}
+      >
+        <Palette size={13} />
+        {t`Theme`}
+      </Button>
       <Button
         variant={editing ? "default" : "secondary"}
         size="sm"

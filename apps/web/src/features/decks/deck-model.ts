@@ -50,3 +50,10 @@ export function readDeckEvent(data: unknown): DeckEvent | null {
   }
   return null;
 }
+
+const THEME_NAME_RE = /\/\* ([^\n]{1,80}?) · layout vocabulary and theme \*\//;
+
+/** The name of the theme a deck was built with (its style block says so), if it has one. */
+export function readDeckThemeName(html: string): string | null {
+  return THEME_NAME_RE.exec(html)?.[1] ?? null;
+}

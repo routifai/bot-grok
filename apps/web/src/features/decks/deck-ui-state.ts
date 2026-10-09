@@ -4,8 +4,8 @@ import { useSyncExternalStore } from "react";
 // artifact registry's `usePanel`) and the DeckViewer body. Keyed by the deck's file name so a
 // new version of the same deck keeps its mode.
 
-type DeckUi = { editing: boolean; presentRequest: number };
-const NONE: DeckUi = { editing: false, presentRequest: 0 };
+type DeckUi = { editing: boolean; presentRequest: number; themeOpen: boolean };
+const NONE: DeckUi = { editing: false, presentRequest: 0, themeOpen: false };
 const states = new Map<string, DeckUi>();
 const listeners = new Set<() => void>();
 
@@ -22,6 +22,12 @@ const subscribe = (listener: () => void) => {
 export const useDeckEditing = (key: string): boolean =>
   useSyncExternalStore(subscribe, () => read(key).editing);
 export const setDeckEditing = (key: string, editing: boolean): void => write(key, { editing });
+
+/** Whether the Theme gallery is open (the header's Theme button toggles it; the viewer shows it). */
+export const useDeckThemeOpen = (key: string): boolean =>
+  useSyncExternalStore(subscribe, () => read(key).themeOpen);
+export const setDeckThemeOpen = (key: string, themeOpen: boolean): void =>
+  write(key, { themeOpen });
 
 /** A counter the header bumps; the viewer enters present mode when it changes. */
 export const useDeckPresentRequest = (key: string): number =>
