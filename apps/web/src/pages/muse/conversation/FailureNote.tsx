@@ -4,6 +4,7 @@ import type { ThreadMessage } from "@nova/contracts";
 import { CircleAlert, Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
+import { requestOpenSettings } from "../../../lib/engine-models";
 
 /** The engine sends a failure's code, never its wording: the copy is ours. */
 export function useFailureNoteText(): (code: string) => string {
@@ -25,8 +26,35 @@ export function useFailureNoteText(): (code: string) => string {
         return t`This conversation is too long for the model.`;
       case "sandbox_unavailable":
         return t`My computer restarted. Try again.`;
+      case "model_key_required":
+        return t`I need your API key to think.`;
+      case "model_budget_exhausted":
+        return t`You've reached your monthly model budget.`;
+      case "account_suspended":
+        return t`Your account is paused. Contact your admin.`;
+      case "model_not_supported":
+        return t`This model isn't available — pick another.`;
+      case "model_provider_unreachable":
+        return t`I couldn't reach the model provider. Try again.`;
       default:
         return t`Something went wrong on my side. Try again.`;
+    }
+  };
+}
+
+/** The one thing a failure note can offer to fix itself: open Settings where it is fixed. */
+export function useFailureNoteAction(): (
+  code: string,
+) => { label: string; onClick: () => void } | null {
+  const { t } = useLingui();
+  return (code) => {
+    switch (code) {
+      case "model_key_required":
+        return { label: t`Add your API key`, onClick: () => requestOpenSettings("models") };
+      case "model_budget_exhausted":
+        return { label: t`Raise budget`, onClick: () => requestOpenSettings("models") };
+      default:
+        return null;
     }
   };
 }
@@ -64,13 +92,30 @@ export function InfoNote({ children }: { children: ReactNode }) {
 }
 
 /** One failed reply as a quiet inline row on Nova's side: a small mark and the note. */
-export function FailureNote({ children }: { children: ReactNode }) {
+export function FailureNote({
+  children,
+  action,
+}: {
+  children: ReactNode;
+  /** A fix the note can open (a key, a budget), as a quiet link after the words. */
+  action?: { label: string; onClick: () => void } | null;
+}) {
   return (
     <div className={ROW}>
       <FailureIcon />
       <p data-testid="message-error-note" className="min-w-0">
         {children}
       </p>
+      {action ? (
+        <button
+          type="button"
+          data-testid="message-error-action"
+          onClick={action.onClick}
+          className="shrink-0 rounded-md px-1 py-0.5 text-link transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          {action.label}
+        </button>
+      ) : null}
     </div>
   );
 }

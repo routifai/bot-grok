@@ -22,7 +22,13 @@ import {
   McpApprovalCard,
 } from "../../shell/message-cards";
 import { FirstRunHint } from "../intro";
-import { FailureNote, InfoNote, useFailureNoteText, useInfoNoteText } from "./FailureNote";
+import {
+  FailureNote,
+  InfoNote,
+  useFailureNoteAction,
+  useFailureNoteText,
+  useInfoNoteText,
+} from "./FailureNote";
 import { HelperTracker } from "./HelperTracker";
 import { accessibleReplyExcerpt, previewMessageText } from "./messageText";
 import { FALLBACK_BOT_COLOR } from "./shared";
@@ -94,6 +100,7 @@ export const MessageView = memo(function MessageView({
 }) {
   const { t } = useLingui();
   const errorNote = useFailureNoteText();
+  const errorAction = useFailureNoteAction();
   const infoNote = useInfoNoteText();
   const isNarration =
     message.role === "bot" &&
@@ -444,7 +451,11 @@ export const MessageView = memo(function MessageView({
           return note ? <InfoNote key={i}>{note}</InfoNote> : null;
         }
         if (block.kind === "error") {
-          return <FailureNote key={i}>{errorNote(block.code)}</FailureNote>;
+          return (
+            <FailureNote key={i} action={errorAction(block.code)}>
+              {errorNote(block.code)}
+            </FailureNote>
+          );
         }
         if (block.kind === "text" && message.role === "user") {
           return (

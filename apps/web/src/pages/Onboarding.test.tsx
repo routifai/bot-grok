@@ -12,7 +12,11 @@ vi.mock("react-dom/client", async (orig) =>
 
 const api = vi.hoisted(() => ({
   me: vi.fn(),
-  models: { list: vi.fn(async () => [] as unknown[]) },
+  models: { list: vi.fn(async () => [] as unknown[]), connect: vi.fn() },
+  engineModels: {
+    status: vi.fn(async () => ({ enabled: false, harnesses: [], isAdmin: false, ready: false })),
+    connect: vi.fn(),
+  },
   integrationSetup: { get: vi.fn(async () => null) },
   bots: {
     list: vi.fn(async () => [] as unknown[]),
@@ -222,6 +226,82 @@ it("creates exactly one bot with the chosen name and color", async () => {
     expect(api.bots.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Nova", color: DEFAULT_MUSE_COLOR }),
     );
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+async function walkToModelStep(page: { container: HTMLElement }) {
+  await act(async () => {
+    await vi.waitFor(() => {
+      expect(page.container.textContent).toContain("Hi, I'm Nova — already on it.");
+    });
+  });
+  await act(async () => findButton(page.container, "Let's get started").click());
+  await act(async () => setInputValue(nameInput(page.container), "Jamie"));
+  await act(async () => {
+    await vi.waitFor(() => nameInput(page.container));
+  });
+  await act(async () => findButton(page.container, "Continue").click());
+  await act(async () => {
+    await vi.waitFor(() => {
+      expect(page.container.textContent).toContain("And what would you like to call me?");
+    });
+  });
+  await act(async () => findButton(page.container, "Continue").click());
+  await act(async () => {
+    await vi.waitFor(() => {
+      expect(page.container.textContent).toContain(
+        "Last thing — connect the brain I'll think with.",
+      );
+    });
+  });
+}
+
+it("on the engine, the model step saves the key there and never in Nova", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.engineModels.status.mockResolvedValueOnce({
+    enabled: true,
+    harnesses: [],
+    isAdmin: false,
+    ready: false,
+  });
+  api.engineModels.connect.mockRejectedValueOnce(new Error("OpenRouter rejected this key"));
+  api.engineModels.connect.mockResolvedValueOnce({ provider: "openrouter" });
+  api.models.connect.mockClear();
+  api.me.mockResolvedValue(baseMe({ needsModel: true }));
+  const page = await renderOnboarding();
+  try {
+    await walkToModelStep(page);
+    expect(page.container.querySelector('[data-testid="engine-model-step"]')).toBeTruthy();
+    expect(page.container.textContent).toContain("Anthropic");
+    expect(page.container.textContent).toContain("OpenRouter");
+
+    await act(async () =>
+      (
+        page.container.querySelector('[data-testid="engine-provider-openrouter"]') as HTMLElement
+      ).click(),
+    );
+    const key = page.container.querySelector('input[type="password"]') as HTMLInputElement;
+    await act(async () => setInputValue(key, "sk-or-bad"));
+    await act(async () => findButton(page.container, "Continue").click());
+    expect(api.engineModels.connect).toHaveBeenCalledWith({
+      provider: "openrouter",
+      apiKey: "sk-or-bad",
+    });
+    expect(page.container.querySelector('[role="alert"]')?.textContent).toBe(
+      "OpenRouter rejected this key",
+    );
+
+    await act(async () => setInputValue(key, "sk-or-good"));
+    await act(async () => findButton(page.container, "Continue").click());
+    expect(api.engineModels.connect).toHaveBeenLastCalledWith({
+      provider: "openrouter",
+      apiKey: "sk-or-good",
+    });
+    expect(api.models.connect).not.toHaveBeenCalled();
+    expect(page.container.querySelector('[data-testid="engine-model-step"]')).toBeNull();
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

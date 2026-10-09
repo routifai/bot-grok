@@ -3,7 +3,7 @@
 // (docs/omnigent-spike.md). Every call carries the identity/proxy
 // headers Omnigent's header auth mode expects — no SDK dependency, just fetch and a tiny
 // SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
-import { redactSecrets } from "@nova/core";
+import { MODEL_ERROR_COPY, redactSecrets } from "@nova/core";
 
 /** How to reach the engine (env `OMNIGENT_URL` / `OMNIGENT_PROXY_SECRET`), before a caller's
  * tenant is known. Bind one with `omnigentClientFor` to make calls. */
@@ -133,11 +133,7 @@ const ERROR_COPY: Record<string, string> = {
   muse_already_set: "You already have a Conversation here.",
   muse_tenant_mismatch: "This Conversation belongs to another space.",
   not_a_super_chat: "This chat can't be your Conversation.",
-  model_key_required: "Add your API key to continue.",
-  model_not_supported: "This model isn't available. Pick another.",
-  model_budget_exhausted: "You've reached your monthly model budget.",
-  model_provider_unreachable: "Couldn't reach the model provider. Try again.",
-  account_suspended: "Your account is paused. Contact your admin.",
+  ...MODEL_ERROR_COPY,
 };
 
 /** Short client copy for an engine error, or `undefined` when its code has none. */

@@ -66,8 +66,8 @@ export function useEngineModelsStatus(
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
-    void rpc.engineModels
-      .status()
+    void Promise.resolve()
+      .then(() => rpc.engineModels.status())
       .then((next) => {
         if (cancelled) return;
         setStatus(next);

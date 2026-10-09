@@ -36,6 +36,7 @@ import { authClient } from "../lib/auth";
 import type { ModelCatalogEntry } from "../lib/model-auth";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
+import { EngineModelStep } from "./welcome/EngineModelStep";
 import {
   WelcomeFrame,
   welcomeFieldClass,
@@ -155,6 +156,8 @@ export function OnboardingPage() {
   const [integrationSetup, setIntegrationSetup] = useState<IntegrationSetupState | null>(null);
   const needsIntegrationSetup = integrationSetup?.needsSetup ?? false;
   const [integrationServers, setIntegrationServers] = useState<string[]>([]);
+  /** Nova runs on the engine: the model step saves a key there instead of in Nova. */
+  const [engineModels, setEngineModels] = useState(false);
   const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const [provider, setProvider] = useState("openrouter");
   const [modelId, setModelId] = useState("");
@@ -195,9 +198,11 @@ export function OnboardingPage() {
       rpc.me(),
       rpc.models.list().catch(() => []),
       rpc.integrationSetup.get().catch(() => null),
+      rpc.engineModels.status().catch(() => null),
     ])
-      .then(([me, models, integrations]) => {
+      .then(([me, models, integrations, engine]) => {
         setIntegrationSetup(integrations);
+        setEngineModels(engine?.enabled === true);
         setCatalog(models);
         const preferred =
           models.find(
@@ -537,7 +542,16 @@ export function OnboardingPage() {
             <StepDots step="museName" />
           </div>
         ) : null}
-        {step === "model" ? (
+        {step === "model" && engineModels ? (
+          <div>
+            <h1 className={welcomeHeadingClass}>
+              <Trans>Last thing — connect the brain I'll think with.</Trans>
+            </h1>
+            <StepDots step="model" />
+            <EngineModelStep onDone={() => setStep(nextStepAfterModel(needsIntegrationSetup))} />
+          </div>
+        ) : null}
+        {step === "model" && !engineModels ? (
           <div>
             <h1 className={welcomeHeadingClass}>
               <Trans>Last thing — connect the brain I'll think with.</Trans>

@@ -47,6 +47,8 @@ vi.mock("@nova/ui-web", () => ({
 
 import { MessageView } from "./MessageView";
 
+let lastHost: HTMLElement | null = null;
+
 async function render(code: string, level?: "info") {
   const message: ThreadMessage = {
     id: "i1",
@@ -58,6 +60,7 @@ async function render(code: string, level?: "info") {
   };
   const host = document.createElement("div");
   document.body.append(host);
+  lastHost = host;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   await act(async () => {
     createRoot(host).render(
@@ -103,4 +106,35 @@ it("shows an info notice as what happened, never as a failure to retry", async (
     "My computer was replaced, so files I hadn't saved elsewhere are gone.",
   );
   expect(await render("some_new_notice", "info")).toBeUndefined();
+});
+
+it("words the model-layer failures calmly", async () => {
+  expect(await render("account_suspended")).toBe("Your account is paused. Contact your admin.");
+  expect(await render("model_not_supported")).toBe("This model isn't available — pick another.");
+  expect(await render("model_budget_exhausted")).toBe("You've reached your monthly model budget.");
+  expect(await render("model_key_required")).toBe("I need your API key to think.");
+});
+
+it("offers the fix for a missing key or an used-up budget by opening Settings > Models", async () => {
+  const opened: unknown[] = [];
+  const listener = (event: Event) => opened.push((event as CustomEvent<unknown>).detail);
+  window.addEventListener("nova:open-settings", listener);
+  try {
+    await render("model_key_required");
+    const key = lastHost?.querySelector('[data-testid="message-error-action"]') as HTMLElement;
+    expect(key.textContent).toBe("Add your API key");
+    await act(async () => key.click());
+    await render("model_budget_exhausted");
+    const budget = lastHost?.querySelector('[data-testid="message-error-action"]') as HTMLElement;
+    expect(budget.textContent).toBe("Raise budget");
+    await act(async () => budget.click());
+    expect(opened).toEqual(["models", "models"]);
+
+    await render("account_suspended");
+    expect(lastHost?.querySelector('[data-testid="message-error-action"]')).toBeNull();
+    await render("model_not_supported");
+    expect(lastHost?.querySelector('[data-testid="message-error-action"]')).toBeNull();
+  } finally {
+    window.removeEventListener("nova:open-settings", listener);
+  }
 });

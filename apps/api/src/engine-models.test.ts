@@ -145,7 +145,7 @@ describe("personal model calls", () => {
     [412, "model_key_required", "PRECONDITION_FAILED", "Add your API key to continue."],
     [403, "account_suspended", "FORBIDDEN", "Your account is paused. Contact your admin."],
     [402, "model_budget_exhausted", "FORBIDDEN", "You've reached your monthly model budget."],
-    [400, "model_not_supported", "BAD_REQUEST", "This model isn't available. Pick another."],
+    [400, "model_not_supported", "BAD_REQUEST", "This model isn't available — pick another."],
     [
       502,
       "model_provider_unreachable",

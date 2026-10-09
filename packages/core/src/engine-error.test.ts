@@ -22,3 +22,15 @@ describe("isEngineErrorText", () => {
     expect(isEngineErrorText(text)).toBe(false);
   });
 });
+
+describe("model-layer failure copy", () => {
+  it("maps a stored failure text back to its engine code, and only that text", async () => {
+    const { MODEL_ERROR_COPY, modelErrorCode } = await import("./engine-error.js");
+    for (const [code, copy] of Object.entries(MODEL_ERROR_COPY)) {
+      expect(modelErrorCode(copy)).toBe(code);
+      expect(modelErrorCode(`  ${copy}\n`)).toBe(code);
+    }
+    expect(modelErrorCode("Add your API key to continue, please")).toBeNull();
+    expect(modelErrorCode("")).toBeNull();
+  });
+});

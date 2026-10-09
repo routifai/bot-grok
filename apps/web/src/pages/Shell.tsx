@@ -53,6 +53,7 @@ import { HostComputerPrompt } from "./HostComputerPrompt";
 import { ApprovalCards } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader, TOOLBAR_BUTTON } from "./muse/chrome/ConversationHeader";
+import { ConversationModelPicker } from "./muse/chrome/ConversationModelPicker";
 import { conversationLayout } from "./muse/chrome/conversationLayout";
 import {
   EmptyConversationLead,
@@ -954,6 +955,7 @@ export function ShellPage() {
                     }
                     actions={
                       <>
+                        <ConversationModelPicker botId={active.id} />
                         <button
                           type="button"
                           title={

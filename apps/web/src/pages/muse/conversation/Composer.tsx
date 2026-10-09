@@ -4,6 +4,7 @@ import {
   type ComposerMention,
   clampMentionHighlightIndex,
   mentionChipKey,
+  modelErrorCode,
   resolveMentionPickerKey,
   SLASH_ACTIONS,
   type SlashActionId,
@@ -24,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { requestOpenSettings } from "../../../lib/engine-models";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
 import { previewMessageText } from "./messageText";
@@ -113,6 +115,14 @@ export const Composer = memo(function Composer({
   const mentionListboxId = useId();
   const dragDepth = useRef(0);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  // A failed turn the person can fix themselves: the note offers where (Settings > Models).
+  const failureCode = !sendError && runError ? modelErrorCode(runError) : null;
+  const fixLabel =
+    failureCode === "model_key_required"
+      ? t`Add your API key`
+      : failureCode === "model_budget_exhausted"
+        ? t`Raise budget`
+        : null;
   const canSend =
     draft.trim().length > 0 ||
     selectedSkill !== null ||
@@ -426,6 +436,16 @@ export const Composer = memo(function Composer({
           className="mb-3 flex items-center gap-2 rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-2 text-[13px] text-destructive"
         >
           <span className="min-w-0 flex-1">{sendError ?? runError}</span>
+          {fixLabel ? (
+            <button
+              type="button"
+              data-testid="composer-error-action"
+              onClick={() => requestOpenSettings("models")}
+              className="shrink-0 rounded-md px-1 py-0.5 font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              {fixLabel}
+            </button>
+          ) : null}
           <button
             type="button"
             aria-label={t`Dismiss error`}
