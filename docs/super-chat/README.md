@@ -84,7 +84,7 @@ Where each concept lives in the engine:
 | Side Chats and Forks | `engine/omnigent/omnigent/superchat/side_chats/` |
 | Helpers | `engine/omnigent/omnigent/superchat/helpers/`, `engine/omnigent/omnigent/superchat/subagents.py` |
 | Activity | `engine/omnigent/omnigent/superchat/activity/` |
-| Memory | `engine/omnigent/omnigent/memory/`, `engine/omnigent/omnigent/superchat/memory_tools/` |
+| Memory | `engine/omnigent/omnigent/memory/`, `engine/omnigent/omnigent/superchat/memory/` |
 | The Computer | `engine/omnigent/omnigent/superchat/computer/`, `engine/omnigent/omnigent/onboarding/sandboxes/computer.py` |
 
 Each of these is a "feature" registered once in `engine/omnigent/omnigent/superchat/features.py`.
@@ -501,7 +501,7 @@ The Muse remembers lasting facts about the person. Memory belongs to the **perso
 the Conversation, every Side Chat, every Fork and every Helper read and write the same set. The
 user is always resolved from the **owner of the calling session** on the server, never from tool
 arguments (`resolve_memory_user` in
-`engine/omnigent/omnigent/superchat/memory_tools/tools.py`; `_resolve_user` in
+`engine/omnigent/omnigent/superchat/memory/tools.py`; `_resolve_user` in
 `engine/omnigent/omnigent/server/routes/session_memory.py`). A session merely shared with someone
 never exposes the owner's memory, even at edit level.
 
@@ -541,7 +541,7 @@ profile is empty, and the memory tools answer "long-term memory is not configure
 Two ways:
 
 1. **Right away, by the model.** Every superside-chat session has five tools
-   (`engine/omnigent/omnigent/superchat/memory_tools/`): `memory_remember`, `memory_search`,
+   (`engine/omnigent/omnigent/superchat/memory/`): `memory_remember`, `memory_search`,
    `memory_get`, `memory_explain` and `memory_forget`.
    - `memory_remember` saves a claim and indexes it immediately. A near-duplicate (high hybrid score
      and high word overlap) is **reinforced** instead of added (confidence +0.05). A claim is only

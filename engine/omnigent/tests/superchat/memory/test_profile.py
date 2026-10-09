@@ -78,7 +78,7 @@ def test_render_failure_is_logged_and_the_turn_proceeds_without_it(
     """A profile render failure must never raise out to the caller (the
     turn proceeds with no Memory Profile) and must be logged once, at
     warning level, with no profile content in the message."""
-    with caplog.at_level(logging.WARNING, logger="omnigent.superchat.memory"):
+    with caplog.at_level(logging.WARNING, logger="omnigent.superchat.memory.profile"):
         block = memory_profile_for("alice", service=_ExplodingMemoryService())
 
     assert block is None

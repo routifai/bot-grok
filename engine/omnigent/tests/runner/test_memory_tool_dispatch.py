@@ -22,7 +22,7 @@ from omnigent.runner.tool_dispatch import (
 )
 from omnigent.spec.types import AgentSpec
 from omnigent.superchat.feature import HandlerCtx
-from omnigent.superchat.memory_tools.handlers import handle_memory_tool
+from omnigent.superchat.memory.handlers import handle_memory_tool
 
 CONV = "conv_native_memory_test"
 
