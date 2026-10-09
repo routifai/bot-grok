@@ -6,13 +6,13 @@ import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@nova/ui-web";
 import { memo, useMemo } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
+import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
 import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
-import { SheetAskChip } from "../../../features/sheets/SheetAskChip";
-import { splitSheetAsk } from "../../../features/sheets/sheet-ask";
 import { SkillDraftCard } from "../../../features/skills/teach/SkillDraftCard";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
+import { splitComposerAttachments } from "../../../lib/composer-attachments";
 import { messageProviderLabel } from "../../../lib/messaging";
 import {
   AppConnectCard,
@@ -459,12 +459,20 @@ export const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text" && message.role === "user") {
-          const ask = splitSheetAsk(block.text);
-          const body = ask ? ask.rest : block.text;
+          const ask = splitComposerAttachments(block.text);
+          const hasChips = ask.chips.length > 0;
+          const body = hasChips ? ask.rest : block.text;
           return (
             <div key={i} className="flex w-fit max-w-full flex-col items-end gap-1.5">
-              {ask ? <SheetAskChip label={ask.label} testId="message-sheet-ask" /> : null}
-              {body || !ask ? (
+              {ask.chips.map((chip) => (
+                <ComposerAttachmentChip
+                  key={chip.kind}
+                  kind={chip.kind}
+                  label={chip.label}
+                  testId={`message-${chip.kind}-ask`}
+                />
+              ))}
+              {body || !hasChips ? (
                 <div
                   data-testid="message-user-bubble"
                   data-quote-message-id={quoteMessageId}

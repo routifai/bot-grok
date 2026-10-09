@@ -1,7 +1,7 @@
 import { t } from "@lingui/core/macro";
 import type { ThreadMessage } from "@nova/contracts";
 import { plainTextFromMarkdown } from "@nova/core";
-import { splitSheetAsk } from "../../../features/sheets/sheet-ask";
+import { splitComposerAttachments } from "../../../lib/composer-attachments";
 
 export function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks
@@ -10,8 +10,8 @@ export function previewMessageText(message: ThreadMessage): string {
       if (block.kind === "text") {
         // Bot text is Markdown; user text is already plain.
         if (message.role === "bot") return plainTextFromMarkdown(block.text);
-        const ask = splitSheetAsk(block.text);
-        return ask ? ask.rest || ask.label : block.text;
+        const ask = splitComposerAttachments(block.text);
+        return ask.chips.length ? ask.rest || (ask.chips[0]?.label ?? "") : block.text;
       }
       return "";
     })

@@ -25,13 +25,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { SheetAskChip } from "../../../features/sheets/SheetAskChip";
+import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import {
-  setSheetAsk,
-  useSheetAsk,
-  useSheetAskTarget,
-  withSheetAsk,
-} from "../../../features/sheets/sheet-ask";
+  clearComposerAttachments,
+  setComposerAttachment,
+  useComposerAttachments,
+  useComposerAttachTarget,
+  withComposerAttachments,
+} from "../../../lib/composer-attachments";
 import { requestOpenSettings } from "../../../lib/open-settings";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
@@ -106,8 +107,8 @@ export const Composer = memo(function Composer({
 }) {
   const { t } = useLingui();
   const [draft, setDraft] = useState("");
-  useSheetAskTarget();
-  const sheetAsk = useSheetAsk();
+  useComposerAttachTarget();
+  const attachments = useComposerAttachments();
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
@@ -311,8 +312,8 @@ export const Composer = memo(function Composer({
     setSelectedSkill(null);
     const mentions = selectedMentions;
     setSelectedMentions([]);
-    setSheetAsk(null);
-    void onSend(withSheetAsk(text, sheetAsk), mentions);
+    clearComposerAttachments();
+    void onSend(withComposerAttachments(text, attachments), mentions);
   }
 
   function handleDragEnter(event: DragEvent<HTMLFieldSetElement>) {
@@ -500,18 +501,23 @@ export const Composer = memo(function Composer({
           </button>
         </div>
       ) : null}
-      {sheetAsk ? (
-        <SheetAskChip label={sheetAsk.label} className="mb-2 w-full">
+      {attachments.map((attachment) => (
+        <ComposerAttachmentChip
+          key={attachment.kind}
+          kind={attachment.kind}
+          label={attachment.label}
+          className="mb-2 w-full"
+        >
           <button
             type="button"
             aria-label={t`Remove selection`}
-            onClick={() => setSheetAsk(null)}
+            onClick={() => setComposerAttachment(attachment.kind, null)}
             className="shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X size={13} strokeWidth={2} />
           </button>
-        </SheetAskChip>
-      ) : null}
+        </ComposerAttachmentChip>
+      ))}
       {attachmentNotice ? (
         <div className="mb-3 rounded-[14px] border border-warning/40 bg-warning/10 px-4 py-2 text-[13px] text-warning">
           {attachmentNotice}

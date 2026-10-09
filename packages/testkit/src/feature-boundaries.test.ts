@@ -143,9 +143,6 @@ const BASELINE: readonly string[] = [
   "web:features/apps/PublishApp.test.tsx -> artifacts",
   // The sheet "ask about this selection" chip lives in the composer and the message view; it
   // needs a composer/message extension point, which comes when those move into their folders.
-  "web:pages/muse/conversation/Composer.tsx -> sheets",
-  "web:pages/muse/conversation/MessageView.tsx -> sheets",
-  "web:pages/muse/conversation/messageText.ts -> sheets",
   // The transcript attaches each message's Forks (side-chats forks.py: forks_by_anchor,
   // attach_forks); goes away when the transcript takes a per-message attachment hook that
   // side-chats registers.

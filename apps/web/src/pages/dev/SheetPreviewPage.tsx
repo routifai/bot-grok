@@ -1,6 +1,6 @@
 import type { ThreadMessage } from "@nova/contracts";
 import { useEffect, useState } from "react";
-import { SheetAskChip } from "../../features/sheets/SheetAskChip";
+import { ComposerAttachmentChip } from "../../components/ComposerAttachmentChip";
 import { SheetView } from "../../features/sheets/SheetView";
 import {
   setSheetAsk,
@@ -64,7 +64,7 @@ export function SheetPreviewPage() {
             onOpenComputer={() => undefined}
           />
         ))}
-        {ask ? <SheetAskChip label={ask.label} /> : null}
+        {ask ? <ComposerAttachmentChip kind="sheet" label={ask.label} /> : null}
         <button
           type="button"
           className="rounded-full border border-border bg-card px-3 py-1.5 text-[13px]"
