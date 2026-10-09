@@ -86,6 +86,16 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             if not isinstance(artifact_id, str) or not HEX_ID_RE.match(artifact_id):
                 return error("artifact_delete requires a valid artifact_id")
             resp = await caller.client.delete(f"/v1/artifacts/{artifact_id}", timeout=30.0)
+        elif tool_name == "artifact_publish":
+            artifact_id = args.get("artifact_id")
+            audience = args.get("audience")
+            if not isinstance(artifact_id, str) or not HEX_ID_RE.match(artifact_id):
+                return error("artifact_publish requires a valid artifact_id")
+            if audience not in ("owner", "org", "link"):
+                return error("artifact_publish audience must be owner, org or link")
+            resp = await caller.client.post(
+                f"/v1/artifacts/{artifact_id}/publish", json={"audience": audience}, timeout=30.0
+            )
         else:
             return await _save(caller.client, chat_id, args)
     except Exception as exc:  # noqa: BLE001

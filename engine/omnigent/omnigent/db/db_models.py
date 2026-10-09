@@ -1817,6 +1817,83 @@ class SqlArtifact(OmnigentBase):
     )
 
 
+class SqlArtifactPublication(OmnigentBase):
+    """
+    SQLAlchemy model for the ``artifact_publications`` table.
+
+    One row per *published* deliverable (an artifact group: ``user_id`` + ``parent_session_id``
+    + ``name``). Presence of the row means "published"; deleting it unpublishes.
+
+    :param slug: URL-safe public address segment (title + short random suffix); unique.
+    :param user_id: Owner identity; ``None`` in single-user mode.
+    :param parent_session_id: The Conversation of the deliverable.
+    :param name: File name of the deliverable.
+    :param audience: ``"owner"``, ``"org"`` or ``"link"``.
+    :param published_version: The pinned version number that is served.
+    :param published_at: Epoch seconds of the first publish.
+    :param updated_at: Epoch seconds of the last republish / audience change.
+    """
+
+    __tablename__ = "artifact_publications"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    slug: Mapped[str] = mapped_column(String(96), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_session_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    audience: Mapped[str] = mapped_column(String(8), nullable=False)
+    published_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    published_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_artifact_publications_group",
+            "workspace_id",
+            "parent_session_id",
+            "name",
+            unique=True,
+        ),
+        Index("ix_artifact_publications_owner", "workspace_id", "user_id"),
+    )
+
+
+class SqlArtifactView(OmnigentBase):
+    """
+    SQLAlchemy model for the ``artifact_views`` table.
+
+    Opens of a published app, one row per (slug, UTC day, viewer key). The viewer key is an
+    account id or a daily-rotating salted hash computed by the caller; never a raw IP.
+
+    :param slug: The publication slug.
+    :param day: UTC day, ``YYYY-MM-DD``.
+    :param viewer_key: Opaque viewer key (<= 64 chars).
+    :param opens: Counted opens by that viewer on that day.
+    :param last_at: Epoch seconds of the last counted open (rapid repeats are not counted).
+    """
+
+    __tablename__ = "artifact_views"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    slug: Mapped[str] = mapped_column(String(96), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    viewer_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    opens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    last_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlDailyNote(OmnigentBase):
     """
     SQLAlchemy model for the ``daily_notes`` table.
