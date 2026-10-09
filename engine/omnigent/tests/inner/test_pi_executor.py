@@ -5514,4 +5514,3 @@ class TestPiSteering(unittest.TestCase):
             self.assertTrue(pi.closed)
 
         _run(_test())
-

@@ -17,7 +17,6 @@ Opt-in like the rest of ``tests/integration`` (it starts the ~200 MB CLI):
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import threading
 import time
@@ -90,7 +89,12 @@ class _FakeMessagesApi(BaseHTTPRequestHandler):
             },
         }
         if main and "TOOL" in first and not seen_tool_result:
-            block = {"type": "tool_use", "id": f"toolu_{time.time_ns()}", "name": "Bash", "input": {}}
+            block = {
+                "type": "tool_use",
+                "id": f"toolu_{time.time_ns()}",
+                "name": "Bash",
+                "input": {},
+            }
             args = json.dumps({"command": "sleep 3", "description": "wait"})
             events = [
                 start,
@@ -101,7 +105,11 @@ class _FakeMessagesApi(BaseHTTPRequestHandler):
                     "delta": {"type": "input_json_delta", "partial_json": args},
                 },
                 {"type": "content_block_stop", "index": 0},
-                {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 5}},
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "tool_use"},
+                    "usage": {"output_tokens": 5},
+                },
                 {"type": "message_stop"},
             ]
             self._sse(events, delay=0)
@@ -110,13 +118,25 @@ class _FakeMessagesApi(BaseHTTPRequestHandler):
         slow = main and "SLOW" in first and user_turns == 1
         events = [
             start,
-            {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+            {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""},
+            },
             *(
-                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": w}}
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": w},
+                }
                 for w in ("an ", "answer ", "streamed ", "slowly")
             ),
             {"type": "content_block_stop", "index": 0},
-            {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}},
+            {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn"},
+                "usage": {"output_tokens": 5},
+            },
             {"type": "message_stop"},
         ]
         self._sse(events, delay=0.4 if slow else 0)
@@ -226,8 +246,10 @@ def test_a_steer_attached_at_a_tool_boundary_is_echoed_before_the_only_result(fa
         cli.write("TOOL run a tool", message_uuid=str(uuid.uuid4()), steer=False)
         _until(
             cli,
-            lambda m, _: m.get("type") == "assistant"
-            and any(b.get("type") == "tool_use" for b in m["message"]["content"]),
+            lambda m, _: (
+                m.get("type") == "assistant"
+                and any(b.get("type") == "tool_use" for b in m["message"]["content"])
+            ),
         )
         cli.write("also say banana", message_uuid=steer, steer=True)  # the tool is running
         seen = _until(cli, lambda m, _: m.get("type") == "result")
@@ -255,6 +277,8 @@ def test_a_steer_that_misses_the_turn_is_echoed_as_the_clis_own_next_turn(fake_a
         cli.close()
 
     first_result = next(i for i, m in enumerate(seen) if m.get("type") == "result")
-    echo = next(i for i, m in enumerate(seen) if m.get("type") == "user" and m.get("uuid") == steer)
+    echo = next(
+        i for i, m in enumerate(seen) if m.get("type") == "user" and m.get("uuid") == steer
+    )
     assert first_result < echo  # missed the first turn, answered by the next
     assert seen[echo].get("isReplay") is True

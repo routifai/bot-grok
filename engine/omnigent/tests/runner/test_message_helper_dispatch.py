@@ -60,7 +60,9 @@ async def _call(
         parent_session_id=PARENT, child_session_id=HELPER, agent="worker", title="Deck"
     )
     entry.status = "running"
-    async with httpx.AsyncClient(transport=_server(posts, rows, idle), base_url="http://s") as client:
+    async with httpx.AsyncClient(
+        transport=_server(posts, rows, idle), base_url="http://s"
+    ) as client:
         try:
             output = await execute_tool(
                 tool_name="message_helper",

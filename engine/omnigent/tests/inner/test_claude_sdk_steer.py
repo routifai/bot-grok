@@ -316,7 +316,11 @@ def test_usage_sums_numbers_and_nested_buckets_and_keeps_the_latest_text():
         {"input_tokens": 1, "cache_creation": {"ephemeral_5m_input_tokens": 2}, "tier": "a"},
         {"input_tokens": 3, "cache_creation": {"ephemeral_5m_input_tokens": 4}, "tier": "b"},
     )
-    assert total == {"input_tokens": 4, "cache_creation": {"ephemeral_5m_input_tokens": 6}, "tier": "b"}
+    assert total == {
+        "input_tokens": 4,
+        "cache_creation": {"ephemeral_5m_input_tokens": 6},
+        "tier": "b",
+    }
 
 
 @pytest.mark.asyncio

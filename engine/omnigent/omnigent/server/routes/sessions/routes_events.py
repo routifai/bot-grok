@@ -2204,10 +2204,6 @@ def register_events_routes(
                 await _post_event_impl(request, session_id, body, persisted_item=stored)
 
             async def _fail_turn(exc: Exception) -> None:
-                # The runner never got it: no turn will read it.
-                await _record_input_delivery(
-                    session_id, stored.id, "cancelled", conversation_store, publish=True
-                )
                 failure = ErrorDetail(
                     code=exc.code if isinstance(exc, OmnigentError) else "dispatch_failed",
                     message=str(exc),
@@ -2218,6 +2214,10 @@ def register_events_routes(
                     session_id,
                     failure,
                     failure_origin="runner_unavailable",
+                )
+                # After the failure, so a waiting client reads why: no turn will read it.
+                await _record_input_delivery(
+                    session_id, stored.id, "cancelled", conversation_store, publish=True
                 )
 
             schedule_deferred_message_dispatch(session_id, _wake_and_forward, _fail_turn)

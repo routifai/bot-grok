@@ -2914,7 +2914,9 @@ async def _run_turn_with_one_steer(executor: Executor) -> list[Any]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("taken", "marker"), [(True, "injection.consumed"), (False, "injection.refused")])
+@pytest.mark.parametrize(
+    ("taken", "marker"), [(True, "injection.consumed"), (False, "injection.refused")]
+)
 async def test_a_pending_steer_is_reported_when_the_turn_says_so(taken: bool, marker: str) -> None:
     """A write is not a take-up: the runner hears about the steer only from the executor's
     own outcome, so it keeps its buffered copy until the running turn really read it."""
