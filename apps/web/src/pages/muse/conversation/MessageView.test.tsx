@@ -251,7 +251,7 @@ it("falls back to the plain chip when the image cannot be read, and omits an emp
 });
 
 describe("a message sent while Nova was working", () => {
-  const userMessage = (delivered?: "steer" | "queued"): ThreadMessage => ({
+  const userMessage = (delivered?: "queued"): ThreadMessage => ({
     id: "u1",
     threadId: "s1",
     seq: 1,
@@ -266,14 +266,6 @@ describe("a message sent while Nova was working", () => {
     expect(host.querySelector('[data-testid="message-queued-note"]')?.textContent).toBe(
       "Nova will see this after the current step",
     );
-    expect(host.querySelector('[data-testid="message-user-bubble"]')?.textContent).toBe(
-      "just redo the deck again",
-    );
-  });
-
-  it("shows a steered message like any other message, in place and with no label", async () => {
-    const host = await mount(userMessage("steer"));
-    expect(host.querySelector('[data-testid="message-queued-note"]')).toBeNull();
     expect(host.querySelector('[data-testid="message-user-bubble"]')?.textContent).toBe(
       "just redo the deck again",
     );

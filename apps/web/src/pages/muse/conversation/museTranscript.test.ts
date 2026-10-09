@@ -163,7 +163,7 @@ describe("a message sent while the Muse works", () => {
     expect(unique(pending)).toBe(true);
 
     // The engine records it (steered into the turn, or queued) and says how.
-    const echo = { ...message("e2", "2026-10-01T10:05:06Z", "user"), delivered: "steer" as const };
+    const echo = message("e2", "2026-10-01T10:05:06Z", "user");
     const settled = conversationMessages([first, reply, echo], [sent]);
     expect(ids(settled)).toEqual(["e0", "e1", "e2"]);
     expect(unique(settled)).toBe(true);

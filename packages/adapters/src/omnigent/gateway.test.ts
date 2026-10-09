@@ -600,7 +600,11 @@ describe("a message the person sends while the turn runs", () => {
     getOmnigentMuse.mockResolvedValue({ session_id: "conv_1", agent: "superchat", created: true });
     interruptOmnigentSession.mockResolvedValue(undefined);
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    // A test that ends before every queued answer was used must not hand it to the next.
+    postOmnigentMessage.mockReset();
+  });
 
   function setup(
     steering: Array<Array<{ id: string; text: string }>>,
@@ -643,7 +647,7 @@ describe("a message the person sends while the turn runs", () => {
 
   it("posts nothing before the engine says the stream is live", async () => {
     const { start } = setup([]);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(postOmnigentMessage).not.toHaveBeenCalled();
     await start();
     expect(postOmnigentMessage).toHaveBeenCalledTimes(1);
@@ -795,17 +799,64 @@ describe("a message the person sends while the turn runs", () => {
     getOmnigentSession.mockReset();
   });
 
-  it("fails with an honest line, never 'couldn't start', when the engine cannot be asked", async () => {
+  it("retries an engine it cannot ask, and fails with an honest line only when it stays gone", async () => {
     const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
     const { events, done, start } = setup([], { config });
     await start();
     getOmnigentSession.mockRejectedValue(new Error("engine gone"));
-    await vi.advanceTimersByTimeAsync(10_000);
+    streamOmnigentSession.mockImplementation(() => {
+      const gone = liveStream();
+      queueMicrotask(() => gone.end());
+      return gone;
+    });
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(events.finalizeRun).not.toHaveBeenCalled(); // not at the first failed snapshot
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "failed", error: ENGINE_NO_ANSWER_MESSAGE }),
+      expect.objectContaining({ outcome: "failed", error: ENGINE_INTERRUPTED_MESSAGE }),
     );
+    expect(publicRunError(new DOMException("x", "TimeoutError"))).toBe(ENGINE_NO_ANSWER_MESSAGE);
     getOmnigentSession.mockReset();
+    streamOmnigentSession.mockReset();
+  });
+
+  it("asks the engine on a clock even while heartbeats keep coming, renewing the lease", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { stream, prisma, events, done, start } = setup([], { config });
+    await start();
+    getOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    for (let tick = 0; tick < 12; tick += 1) {
+      stream.push({ type: "session.heartbeat" }); // the stream is never quiet
+      await vi.advanceTimersByTimeAsync(2_500);
+    }
+    expect(getOmnigentSession).toHaveBeenCalled();
+    expect(prisma.run.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { leaseExpiresAt: expect.any(Date) } }),
+    );
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    getOmnigentSession.mockReset();
+  });
+
+  it("ignores an unnumbered idle once its message joined a numbered turn", async () => {
+    const { stream, events, done, start } = setup([]);
+    await start();
+    stream.push(status("idle")); // the server's own idle for some refused message
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+  });
+
+  it("stops before posting anything when the run is stopped before the stream is live", async () => {
+    const { stream, thread, done } = setup([]);
+    thread.push({ type: "run.cancelled", runId: "run-1", payload: {} });
+    await flush();
+    stream.push({ type: "session.heartbeat" });
+    expect(await done).toBe(true);
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
   });
 
   it("reopens a dropped stream and follows the turn the engine is still running", async () => {

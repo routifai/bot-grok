@@ -2069,10 +2069,10 @@ class PiExecutor(Executor):
     def supports_live_message_queue(self) -> bool:
         return True
 
-    async def steer_session_message(  # type: ignore[explicit-any]
+    async def steer_session_message(
         self,
         session_key: str,
-        content: str | dict[str, Any],
+        text: str,
         *,
         steer_id: str,
     ) -> SteerOffer:
@@ -2087,7 +2087,6 @@ class PiExecutor(Executor):
         state = self._session_states.get(session_key)
         if state is None or state.rpc is None or not state.turn_streaming:
             return "refused"
-        text = content if isinstance(content, str) else str(content)
         command_id = f"steer-{secrets.token_hex(4)}"
         state.pending_steers[command_id] = _PendingSteer(steer_id=steer_id, text=text)
         try:

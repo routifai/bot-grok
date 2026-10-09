@@ -96,6 +96,18 @@ async def _feature_prefix_blocks(
     return blocks
 
 
+def message_needs_own_turn(texts: Sequence[str]) -> bool:
+    """Whether any feature needs this message to start a turn of its own (``needs_own_turn``)."""
+    from omnigent.superchat.features import FEATURES
+
+    return any(
+        feature.needs_own_turn(text)
+        for feature in FEATURES
+        if feature.needs_own_turn is not None
+        for text in texts
+    )
+
+
 async def _message_prefix_blocks(
     server_client: httpx.AsyncClient | None, conversation_id: str, texts: Sequence[str]
 ) -> list[str]:

@@ -112,7 +112,6 @@ it("reads again when the engine says how a message sent mid-turn was taken", asy
       type: "messageDelivery",
       chatId: "conv",
       itemId: "b",
-      delivered: "queued",
     });
     await vi.advanceTimersByTimeAsync(200);
   });
@@ -125,7 +124,6 @@ it("reads again when the engine says how a message sent mid-turn was taken", asy
       type: "messageDelivery",
       chatId: "other",
       itemId: "x",
-      delivered: "steer",
     });
     await vi.advanceTimersByTimeAsync(200);
   });

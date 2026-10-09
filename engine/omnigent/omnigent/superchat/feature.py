@@ -170,6 +170,9 @@ class Feature:
     :param message_prefix: Blocks this feature builds from the turn's own message (the files it
         attaches), prepended for the model only: they sit closest to the message and are never
         part of what is stored as the person's words.
+    :param needs_own_turn: Whether a message's text needs a turn of its own to be read whole,
+        e.g. because it attaches a file whose ``message_prefix`` context only a turn start
+        adds; such a message is never steered into a running turn.
     :param install: Wires stores + routers onto the FastAPI app.
     :param jobs: Returns background jobs (objects with ``start()`` / ``shutdown()``).
     """
@@ -181,5 +184,6 @@ class Feature:
     on_result: ResultListener | None = None
     turn_prefix: TurnPrefix | None = None
     message_prefix: MessagePrefix | None = None
+    needs_own_turn: Callable[[str], bool] | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None

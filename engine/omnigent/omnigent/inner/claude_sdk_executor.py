@@ -731,20 +731,6 @@ async def _steer_message_iter(
     }
 
 
-def _message_text(message: object) -> str:
-    """The plain text of an inner ``Message`` (string content or text blocks)."""
-    content = message.get("content") if isinstance(message, dict) else None
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return " ".join(
-            str(block["text"])
-            for block in content
-            if isinstance(block, dict) and isinstance(block.get("text"), str)
-        )
-    return ""
-
-
 # Diagnostic knob: when set (any truthy value), skip wrapping the CLI
 # via ``create_exec_launcher``. Used to isolate whether the silent
 # connect hang is sandbox-related vs. inside the binary itself.
@@ -2195,7 +2181,7 @@ class ClaudeSDKExecutor(Executor):
     async def steer_session_message(
         self,
         session_key: str,
-        content: str | Message,
+        text: str,
         *,
         steer_id: str,
     ) -> SteerOffer:
@@ -2213,7 +2199,6 @@ class ClaudeSDKExecutor(Executor):
         state = self._clients.get(session_key)
         if window is None or not window.open or state is None:
             return "refused"
-        text = content if isinstance(content, str) else _message_text(content)
         if not text:
             return "refused"
         message_uuid = str(uuid.uuid4())

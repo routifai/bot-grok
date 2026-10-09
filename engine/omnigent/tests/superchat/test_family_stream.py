@@ -212,7 +212,7 @@ async def test_a_message_sent_mid_turn_is_announced_with_how_it_was_taken(
     stream = await _open(conversation_store, root_id, bus)
     bus.publish(
         root_id,
-        {"type": "session.input.delivery", "data": {"item_id": "msg_9", "delivered": "queued"}},
+        {"type": "session.input.delivery", "data": {"item_id": "msg_9"}},
     )
     event = await _next(stream)
     while event["type"] == "activities.changed":
@@ -221,6 +221,5 @@ async def test_a_message_sent_mid_turn_is_announced_with_how_it_was_taken(
         "type": "message.delivery",
         "chat_id": root_id,
         "item_id": "msg_9",
-        "delivered": "queued",
     }
     await stream.aclose()

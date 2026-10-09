@@ -128,8 +128,7 @@ function dropRepeatedFileCards(
   const kept: OmnigentTranscriptPage["data"] = [];
   for (const message of messages) {
     if (message.role !== "assistant") {
-      // A message steered into the running turn is part of that turn's work.
-      if (message.delivered !== "steer") shown = new Set();
+      shown = new Set();
       kept.push(message);
       continue;
     }

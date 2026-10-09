@@ -5928,7 +5928,7 @@
         "type": "object"
       },
       "SessionInputDeliveryEvent": {
-        "description": "A message sent while a turn ran waits behind it, or left that wait.\n\nWire shape uses the nested envelope: `{\"type\": \"session.input.delivery\", \"data\": {\"item_id\", \"delivered\"}}`. A display hint: clients refetch and show a waiting message\nas such (the transcript's `delivered` reads the runner's live queue). A message sent to\nan idle session simply starts a turn and has none.",
+        "description": "A message sent while a turn ran started or stopped waiting behind it.\n\nWire shape uses the nested envelope: `{\"type\": \"session.input.delivery\", \"data\": {\"item_id\"}}`. A refetch ping: the transcript's `delivered: \"queued\"` reads the\nrunner's live queue. A message sent to an idle session simply starts a turn and has none.",
         "properties": {
           "data": {
             "$ref": "#/components/schemas/SessionInputDeliveryPayload",
@@ -5964,17 +5964,6 @@
       "SessionInputDeliveryPayload": {
         "description": "Inner payload of a `SessionInputDeliveryEvent`.",
         "properties": {
-          "delivered": {
-            "description": "`\"queued\"` (waiting behind the running turn), then `\"steer\"` (read by the running turn), `\"turn\"` (now running as a turn of its own) or `\"cancelled\"` (dropped by a stop or a delete).",
-            "enum": [
-              "steer",
-              "queued",
-              "turn",
-              "cancelled"
-            ],
-            "title": "Delivered",
-            "type": "string"
-          },
           "item_id": {
             "description": "The persisted user message this is about, e.g. `\"msg_abc\"`.",
             "title": "Item Id",
@@ -5982,8 +5971,7 @@
           }
         },
         "required": [
-          "item_id",
-          "delivered"
+          "item_id"
         ],
         "title": "SessionInputDeliveryPayload",
         "type": "object"
@@ -11222,7 +11210,7 @@
     "/v1/model/{provider}/{path}": {
       "get": {
         "description": "Forward a model call with the session owner's key; stream the answer back.",
-        "operationId": "model_proxy_v1_model__provider___path__post",
+        "operationId": "model_proxy_v1_model__provider___path__get",
         "parameters": [
           {
             "in": "path",
@@ -11270,7 +11258,7 @@
       },
       "post": {
         "description": "Forward a model call with the session owner's key; stream the answer back.",
-        "operationId": "model_proxy_v1_model__provider___path__post",
+        "operationId": "model_proxy_v1_model__provider___path__get",
         "parameters": [
           {
             "in": "path",

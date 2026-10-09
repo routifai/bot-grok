@@ -305,12 +305,6 @@ def test_the_executor_claims_the_live_queue():
     assert ClaudeSDKExecutor().supports_live_message_queue() is True
 
 
-def test_message_text_reads_string_and_block_content():
-    assert module._message_text({"content": "hi"}) == "hi"
-    assert module._message_text({"content": [{"type": "text", "text": "a"}, {"type": "x"}]}) == "a"
-    assert module._message_text({"content": None}) == ""
-
-
 def test_usage_sums_numbers_and_nested_buckets_and_keeps_the_latest_text():
     total = module._sum_usage(
         {"input_tokens": 1, "cache_creation": {"ephemeral_5m_input_tokens": 2}, "tier": "a"},

@@ -1319,6 +1319,13 @@ class HarnessApp:
                 self._active_turn_ctx._push_injection(request)
                 return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+            if request.injection_id is not None:
+                # Meant for a running turn that has ended: the runner keeps its copy and runs
+                # it as the next turn, so starting one here would answer it twice.
+                raise OmnigentError(
+                    "no turn is running to take this injection", code=ErrorCode.CONFLICT
+                )
+
             if self._shutting_down.is_set():
                 raise OmnigentError(
                     "harness is shutting down; refusing new turn",

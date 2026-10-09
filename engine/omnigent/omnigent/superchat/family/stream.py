@@ -6,9 +6,8 @@ Events carry ids only; the client refetches what changed:
   (``item_id`` is the store id; published where the message is persisted);
 * ``turn.done {chat_id, status}``: a turn in a family chat ended (completed, failed,
   incomplete or cancelled); a failed turn's error item is stored before this is sent;
-* ``message.delivery {chat_id, item_id, delivered}``: a message sent during a turn was steered into
-  it (``steer``), is waiting for the next one (``queued``) or has started as a turn (``turn``);
-  refetch to see it;
+* ``message.delivery {chat_id, item_id}``: a message sent during a turn started or stopped
+  waiting behind it; refetch to see it;
 * ``chat.reset {chat_id, item_id}``: the chat was cleared (``POST .../reset``); its transcript
   now starts after ``item_id``;
 * ``chats.changed {root_id}``: a Side Chat was opened, renamed or archived, or a Helper started;
@@ -57,7 +56,6 @@ def _derive(chat_id: str, root_id: str, event: dict[str, Any]) -> dict[str, Any]
             "type": "message.delivery",
             "chat_id": chat_id,
             "item_id": data.get("item_id"),
-            "delivered": data.get("delivered"),
         }
     if isinstance(kind, str) and kind in _TURN_END_STATUS:
         return {"type": "turn.done", "chat_id": chat_id, "status": _TURN_END_STATUS[kind]}

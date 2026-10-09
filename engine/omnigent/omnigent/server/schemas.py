@@ -3800,23 +3800,18 @@ class SessionInputDeliveryPayload(BaseModel):
     Inner payload of a :class:`SessionInputDeliveryEvent`.
 
     :param item_id: The persisted user message this is about, e.g. ``"msg_abc"``.
-    :param delivered: ``"queued"`` (waiting behind the running turn), then ``"steer"``
-        (read by the running turn), ``"turn"`` (now running as a turn of its own) or
-        ``"cancelled"`` (dropped by a stop or a delete).
     """
 
     item_id: str
-    delivered: Literal["steer", "queued", "turn", "cancelled"]
 
 
 class SessionInputDeliveryEvent(_SSEEventBase):
     """
-    A message sent while a turn ran waits behind it, or left that wait.
+    A message sent while a turn ran started or stopped waiting behind it.
 
     Wire shape uses the nested envelope: ``{"type": "session.input.delivery", "data":
-    {"item_id", "delivered"}}``. A display hint: clients refetch and show a waiting message
-    as such (the transcript's ``delivered`` reads the runner's live queue). A message sent to
-    an idle session simply starts a turn and has none.
+    {"item_id"}}``. A refetch ping: the transcript's ``delivered: "queued"`` reads the
+    runner's live queue. A message sent to an idle session simply starts a turn and has none.
 
     :param type: Always ``"session.input.delivery"``.
     :param data: See :class:`SessionInputDeliveryPayload`.

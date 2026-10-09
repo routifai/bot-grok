@@ -47,15 +47,10 @@ def _events(app: Any, queue: Any = None) -> list[dict[str, Any]]:
     return events
 
 
-def _deliveries(app: Any, queue: Any = None) -> list[tuple[str, str]]:
-    queue = queue or app.state.session_event_queues.get(SESSION)
-    events: list[dict[str, Any]] = []
-    while queue is not None and not queue.empty():
-        events.append(queue.get_nowait())
+def _pings(app: Any, queue: Any = None) -> list[str]:
+    """Item ids of the queue-changed pings (``session.input.delivery``), in order."""
     return [
-        (e["data"]["item_id"], e["data"]["delivered"])
-        for e in events
-        if e and e.get("type") == "session.input.delivery"
+        e["data"]["item_id"] for e in _events(app, queue) if e["type"] == "session.input.delivery"
     ]
 
 
@@ -125,7 +120,7 @@ async def test_a_message_the_harness_takes_into_the_turn_is_steered_once() -> No
 
     await _send_during_a_turn(app, harness, gate)
 
-    assert _deliveries(app) == [("i2", "steer")]
+    assert _pings(app) == []  # offered and read: it never waited
     assert len(harness.posted_bodies) == 1  # one turn, not two
 
 
@@ -138,7 +133,7 @@ async def test_a_message_the_harness_refuses_runs_as_the_next_turn() -> None:
 
     await _send_during_a_turn(app, harness, gate)
 
-    assert _deliveries(app) == [("i2", "queued"), ("i2", "turn")]
+    assert _pings(app) == ["i2", "i2"]  # started waiting, then left the wait as a turn
     assert len(harness.posted_bodies) == 2
 
 
@@ -202,7 +197,7 @@ async def test_a_message_only_for_a_running_turn_steers_into_one() -> None:
     assert answer.status_code == 202
     assert "if_running" not in harness.patched_events[-1]
     assert not any(k.startswith("_only") for k in harness.patched_events[-1])
-    assert _deliveries(app) == [("i2", "steer")]
+    assert _pings(app) == []
 
 
 @pytest.mark.asyncio
@@ -223,7 +218,7 @@ async def test_a_message_only_for_a_running_turn_that_refuses_it_never_runs() ->
     assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
     assert len(harness.posted_bodies) == 1  # it did not become a turn of its own
     assert not app.state.session_message_buffers.get(SESSION)
-    assert _deliveries(app) == []  # the server removes the item; it never happened
+    assert _pings(app) == []  # the server removes the item; it never happened
 
 
 @pytest.mark.asyncio
@@ -244,7 +239,7 @@ async def test_a_message_only_for_a_running_turn_is_refused_when_it_cannot_be_of
         await asyncio.sleep(0.1)
     assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
     assert harness.patched_events == []
-    assert _deliveries(app) == []
+    assert _pings(app) == []
 
 
 @pytest.mark.asyncio
@@ -271,7 +266,7 @@ async def test_a_message_with_an_image_is_not_steered_but_runs_whole_as_a_turn()
     assert answer.json()["status"] == "buffered"
     assert waiting.json() == {"item_ids": ["i2"]}  # the live queue the transcript reads
     assert harness.patched_events == []  # never offered in part
-    assert _deliveries(app) == [("i2", "queued"), ("i2", "turn")]
+    assert _pings(app) == ["i2", "i2"]
 
 
 @pytest.mark.asyncio
@@ -288,7 +283,8 @@ async def test_a_stop_cancels_the_messages_waiting_behind_the_turn() -> None:
         await client.post(f"/v1/sessions/{SESSION}/events", json={"type": "interrupt"})
         gate.set()
         await asyncio.sleep(0.1)
-    assert ("i2", "cancelled") in _deliveries(app)
+    assert "i2" in _pings(app)
+    assert not app.state.session_message_buffers.get(SESSION)
     assert len(harness.posted_bodies) == 1  # it did not run after the stop
 
 
@@ -305,7 +301,7 @@ async def test_deleting_the_session_cancels_the_messages_still_waiting() -> None
         await client.post(f"/v1/sessions/{SESSION}/events", json=_message("and this", "i2"))
         stream = app.state.session_event_queues[SESSION]  # closed and dropped by the delete
         await client.delete(f"/v1/sessions/{SESSION}")
-    assert _deliveries(app, stream) == [("i2", "cancelled")]
+    assert _pings(app, stream) == ["i2"]
 
 
 @pytest.mark.asyncio
@@ -334,4 +330,56 @@ async def test_a_message_attaching_a_file_runs_as_its_own_turn_not_merged() -> N
     assert len(harness.posted_bodies) == 2  # the first turn, then i2 alone as its own
     last_turn = harness.posted_bodies[-1]["content"][-1]
     assert last_turn["content"][0]["text"] == attached  # whole, as its own turn's message
-    assert ("i2", "turn") in _deliveries(app)
+    assert "i2" in _pings(app)
+
+
+class _SilentHarness(_HandshakeHarnessClient):
+    """A harness that never answers an injection (no consumed, no refused)."""
+
+    async def post(self, url: str, *, json: dict[str, Any], timeout: Any = None) -> Any:
+        self.patched_events.append(json)
+
+        class _Response:
+            status_code = 204
+            headers: dict[str, str] = {}
+            content = b""
+
+        return _Response()
+
+
+@pytest.mark.asyncio
+async def test_a_helper_turn_ending_with_a_note_unanswered_still_delivers_its_result() -> None:
+    """A note meant only for the Helper's running turn never holds back that turn's end: the
+    sender hears ``not_running`` and the parent gets the Helper's result."""
+    from omnigent.runner import app as runner_app
+
+    gate = asyncio.Event()
+    app, pm, _ = _build_handshake_app(gate)
+    harness = _SilentHarness(gate)
+    pm._client = harness  # type: ignore[attr-defined]
+    runner_app.register_subagent_work(
+        parent_session_id="conv_parent", child_session_id=SESSION, agent="worker", title="Deck"
+    ).status = "running"
+    try:
+        async with _runner_client(app) as client:
+            await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+            await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
+            await asyncio.sleep(0.05)
+            note = asyncio.create_task(
+                client.post(
+                    f"/v1/sessions/{SESSION}/events",
+                    json={**_message("a note", "i2"), "if_running": True},
+                )
+            )
+            while not harness.patched_events:
+                await asyncio.sleep(0.005)
+            gate.set()  # the Helper's turn ends before it answers the note
+            answer = await asyncio.wait_for(note, 5)
+            await asyncio.sleep(0.1)
+        entry = runner_app.get_subagent_work(SESSION)
+    finally:
+        runner_app.unregister_subagent_work(SESSION)
+    assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
+    assert entry is not None and entry.status == "completed"  # the result goes to the parent
+    statuses = [e["status"] for e in _events(app) if e["type"] == "session.status"]
+    assert statuses[-1] in ("idle", "waiting")

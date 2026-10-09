@@ -202,7 +202,7 @@ from omnigent.superchat.helpers.saved_files import (
     forget_saved_files,
     format_saved_files,
 )
-from omnigent.superchat.prompt_prefix import turn_prefix_blocks
+from omnigent.superchat.prompt_prefix import message_needs_own_turn, turn_prefix_blocks
 from omnigent.superchat.subagents import (
     format_subagent_wake_notice_with_result,
     resolve_wake_target,
@@ -2137,17 +2137,18 @@ def undelivered_subagent_dispatch_id(labels: Mapping[str, object]) -> str | None
     return dispatch_id
 
 
+#: How long an ``if_running`` sender waits for the running turn to offer its message to the
+#: harness (the offer is a stdin or RPC write, answered at once); past it the message is refused.
+_OFFER_VERDICT_TIMEOUT_S = 10.0
+
 #: Buffered-body marker of an ``if_running`` message: it is only for the running turn and
 #: never runs as a turn of its own.
 _ONLY_RUNNING_TURN = "_only_running_turn"
 
 
 def _is_steerable(content: object) -> bool:
-    """Whether a harness steering this message in takes all of it: plain text with no attached
-    file. A file reference needs its turn-start context (``Feature.message_prefix``), which only
-    a turn of its own gets."""
-    from omnigent.superchat.knowledge.attachment_context import REFERENCE_LINE
-
+    """Whether a harness steering this message in takes all of it: plain text that no feature
+    needs a turn of its own for (``Feature.needs_own_turn``, e.g. an attached file)."""
     if isinstance(content, str):
         texts = [content]
     elif isinstance(content, list) and all(
@@ -2157,7 +2158,7 @@ def _is_steerable(content: object) -> bool:
         texts = [str(block.get("text") or "") for block in content]
     else:
         return False
-    return not any(REFERENCE_LINE.search(text) for text in texts)
+    return not message_needs_own_turn(texts)
 
 
 def _side_chat_text_from_content(content: object) -> str:
@@ -5390,14 +5391,14 @@ def create_runner_app(
     async def get_buffered_messages(session_id: str) -> JSONResponse:
         """The messages waiting behind the running turn (live state; nothing is persisted).
 
-        :returns: ``{"item_ids": [...]}``: the persisted user messages in the session's
-            buffer, oldest first.
+        :returns: ``{"item_ids": [...]}``: the persisted user messages waiting for the next
+            turn, oldest first. One offered to the running turn is not waiting.
         """
         return JSONResponse(
             {
                 "item_ids": [
                     body["persisted_item_id"]
-                    for body in _session_message_buffers.get(session_id) or []
+                    for body in _waiting(session_id)
                     if isinstance(body.get("persisted_item_id"), str)
                 ]
             }
@@ -6353,27 +6354,24 @@ def create_runner_app(
             )
         _publish_event(conv_id, event)
 
-    def _publish_input_delivery(conv_id: str, item_id: object, delivered: str) -> None:
-        """Tell clients a message sent during a turn waits behind it or left that wait.
-
-        A display hint (``session.input.delivery``): ``queued``, then ``steer`` (read by the
-        running turn), ``turn`` (now running as its own turn) or ``cancelled`` (dropped by a
-        stop or a delete).
-        """
+    def _queue_changed(conv_id: str, body: Mapping[str, object]) -> None:
+        """Tell clients *body* started or stopped waiting behind the turn (a refetch ping)."""
+        item_id = body.get("persisted_item_id")
         if isinstance(item_id, str) and item_id:
             _publish_event(
-                conv_id,
-                {
-                    "type": "session.input.delivery",
-                    "data": {"item_id": item_id, "delivered": delivered},
-                },
+                conv_id, {"type": "session.input.delivery", "data": {"item_id": item_id}}
             )
 
+    def _waiting(conv_id: str) -> list[dict[str, Any]]:
+        """The buffered messages waiting for the next turn: not (or no longer) offered."""
+        buffered = _session_message_buffers.get(conv_id) or []
+        return [m for m in buffered if not m.get("injection_id")]
+
     def _drop_message_buffer(conv_id: str) -> None:
-        """Drop the messages waiting for *conv_id*'s next turn; each is reported ``cancelled``."""
+        """Drop every message buffered behind *conv_id*'s turn (a stop or a delete)."""
         for body in _session_message_buffers.pop(conv_id, None) or []:
             _answer_offer(body.get("injection_id"), taken=False)
-            _publish_input_delivery(conv_id, body.get("persisted_item_id"), "cancelled")
+            _queue_changed(conv_id, body)
 
     def _remove_buffered(conv_id: str, injection_id: object) -> list[dict[str, Any]]:
         """Take the buffered messages forwarded as *injection_id* out of *conv_id*'s buffer."""
@@ -6392,6 +6390,14 @@ def create_runner_app(
         waiting = _offer_answers.pop(injection_id, None)
         if waiting is not None and not waiting[1].done():
             waiting[1].set_result(taken)
+
+    async def _offer_verdict(injection_id: str, offer: asyncio.Future[bool]) -> bool:
+        """The running turn's verdict on an ``if_running`` message; none in time is a no."""
+        try:
+            return await asyncio.wait_for(asyncio.shield(offer), _OFFER_VERDICT_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            _answer_offer(injection_id, taken=False)
+            return False
 
     def _answer_offers_of(conv_id: str) -> None:
         """The turn of *conv_id* ended: whatever it never answered was not taken."""
@@ -8259,6 +8265,7 @@ def create_runner_app(
         _active_turns.pop(conv_id, None)
         _release_live_turn_markers(conv_id)
         _interrupted_sessions.discard(conv_id)
+        _answer_offers_of(conv_id)
         return True
 
     def _on_proxy_stream_end(
@@ -8297,7 +8304,10 @@ def create_runner_app(
         # Transport-loss ending desyncs harness from runner; flag for clean rebind.
         if error is not None and error.get("code") == "connection_error":
             _desynced_sessions.add(conv_id)
-        has_buffered = bool(_session_message_buffers.get(conv_id))
+        # A message meant only for this turn never runs after it, so it holds nothing back.
+        has_buffered = any(
+            not m.get(_ONLY_RUNNING_TURN) for m in _session_message_buffers.get(conv_id) or []
+        )
         was_interrupted = conv_id in _interrupted_sessions
         # Suppress terminal only if desync recovery claimed the token for THIS generation's epoch.
         _suppress_status = _desync_terminalized.get(conv_id) == _turn_bind_epoch.get(conv_id, 0)
@@ -8736,18 +8746,11 @@ def create_runner_app(
 
             pending_bridge_dir = await _pending_claude_prompt_bridge_dir(session_id)
             # A message meant only for the turn that ended never runs as a turn of its own.
-            _only_running = [m for m in buf if m.get(_ONLY_RUNNING_TURN)]
-            for _only in _only_running:
+            for _only in [m for m in buf if m.get(_ONLY_RUNNING_TURN)]:
                 _remove_buffered(session_id, _only.get("injection_id"))
-                _publish_input_delivery(session_id, _only.get("persisted_item_id"), "cancelled")
             # Stop/delete can clear the queue while the pane inspection is in flight.
             buf = _session_message_buffers.get(session_id)
             if not buf:
-                if _only_running:
-                    # The turn's end held back ``idle`` for these; nothing else waits now.
-                    _publish_turn_status(
-                        session_id, "waiting" if _has_live_child_helpers(session_id) else "idle"
-                    )
                 return
             if pending_bridge_dir is not None:
                 _start_claude_prompt_waiter(session_id, pending_bridge_dir)
@@ -8770,7 +8773,7 @@ def create_runner_app(
                 next_body = buf.pop(0)
                 if not buf:
                     _session_message_buffers.pop(session_id, None)
-                _publish_input_delivery(session_id, next_body.get("persisted_item_id"), "turn")
+                _queue_changed(session_id, next_body)
                 _session_histories.setdefault(session_id, []).append(
                     {
                         "type": "message",
@@ -8791,7 +8794,7 @@ def create_runner_app(
                             "content": body.get("content", []),
                         }
                     )
-                    _publish_input_delivery(session_id, body.get("persisted_item_id"), "turn")
+                    _queue_changed(session_id, body)
                 next_body = all_bodies[-1]
 
             if _is_sdk_compact_body(next_body):
@@ -10793,30 +10796,21 @@ def create_runner_app(
                                                     "content": _m.get("content", []),
                                                 }
                                             )
-                                            _publish_input_delivery(
-                                                conv_id, _m.get("persisted_item_id"), "steer"
-                                            )
                                     continue
                                 if _evt_type == "injection.refused":
                                     # The harness cannot take it into the running turn: the
                                     # buffered copy runs as the next turn, unless it was meant
                                     # only for this one.
                                     _inj_id = event.get("injection_id")
-                                    _sync_wait = _inj_id in _offer_answers
                                     _answer_offer(_inj_id, taken=False)
                                     for _m in list(_session_message_buffers.get(conv_id) or []):
                                         if _m.get("injection_id") != _inj_id:
                                             continue
-                                        if not _m.get(_ONLY_RUNNING_TURN):
-                                            _publish_input_delivery(
-                                                conv_id, _m.get("persisted_item_id"), "queued"
-                                            )
+                                        if _m.get(_ONLY_RUNNING_TURN):
+                                            _remove_buffered(conv_id, _inj_id)
                                             continue
-                                        _remove_buffered(conv_id, _inj_id)
-                                        if not _sync_wait:  # the sender heard "steer" already
-                                            _publish_input_delivery(
-                                                conv_id, _m.get("persisted_item_id"), "cancelled"
-                                            )
+                                        _m.pop("injection_id", None)  # no longer offered: waits
+                                        _queue_changed(conv_id, _m)
                                     continue
                                 if _evt_type == "response.output_text.delta":
                                     delta = event.get("delta")
@@ -11439,9 +11433,7 @@ def create_runner_app(
                             message_body
                         )
                         # Nothing will read it before the turn ends.
-                        _publish_input_delivery(
-                            conversation_id, message_body.get("persisted_item_id"), "queued"
-                        )
+                        _queue_changed(conversation_id, message_body)
                         return JSONResponse(
                             status_code=202,
                             content={
@@ -11494,10 +11486,9 @@ def create_runner_app(
                             _answer_offer(_injection_id, taken=False)
                             _remove_buffered(conversation_id, _injection_id)
                             return _not_running
-                        _publish_input_delivery(
-                            conversation_id, message_body.get("persisted_item_id"), "queued"
-                        )
-                    elif _offer is not None and not await _offer:
+                        message_body.pop("injection_id", None)  # never offered: it waits
+                        _queue_changed(conversation_id, message_body)
+                    elif _offer is not None and not await _offer_verdict(_injection_id, _offer):
                         # The running turn refused it: no turn will read it, nothing is kept.
                         _remove_buffered(conversation_id, _injection_id)
                         return _not_running
@@ -11534,9 +11525,7 @@ def create_runner_app(
                             conversation_id,
                             extra={"session_id": conversation_id},
                         )
-                        _publish_input_delivery(
-                            conversation_id, message_body.get("persisted_item_id"), "queued"
-                        )
+                        _queue_changed(conversation_id, message_body)
                         return JSONResponse(
                             status_code=202,
                             content={
@@ -11757,6 +11746,7 @@ def create_runner_app(
 
         if body_type == "stop_session":
             _cancel_claude_prompt_waiter(conversation_id)
+            _drop_message_buffer(conversation_id)
             _harness = _session_harness_name(conversation_id)
             _stop_resp = await _native_interrupt_runner.stop(_harness, conversation_id)
             if _stop_resp is not None:

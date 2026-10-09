@@ -213,9 +213,11 @@ as a turn of its own, one at a time, so the Computer's framed file text (`Featur
 put in front of it like any turn's message. A stop
 or a delete cancels the messages waiting behind the turn. The session reports `idle` only once none
 waits, and its `session.status` edges carry the runner's turn number, which `POST /events` also answers
-(`turn`) for the turn a message started or joined. `session.input.delivery` events are display hints
-(`queued`, then `steer`, `turn` or `cancelled`); the transcript marks a message `delivered: "queued"`
-from the runner's live queue (`GET /v1/sessions/{id}/buffered` on the runner), with nothing stored.
+(`turn`) for the turn a message started or joined. A `session.input.delivery` ping (`{item_id}`)
+says a message started or stopped waiting; the transcript marks a waiting message
+`delivered: "queued"` from the runner's live queue (`GET /v1/sessions/{id}/buffered` on the runner),
+with nothing stored. Which features need a message to start its own turn is a Feature hook
+(`needs_own_turn`; the knowledge feature answers for attached files).
 
 Nova's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
 the turn, and posts each message the person sends as the thread's own event signal (Postgres
@@ -247,7 +249,7 @@ Events carry **ids only**. The client refetches what changed.
 | Event | Payload | Meaning |
 |---|---|---|
 | `message.done` | `chat_id`, `item_id` | An assistant message was stored in a family chat |
-| `message.delivery` | `chat_id`, `item_id`, `delivered` | How a message sent to the chat was taken: waits for the next turn (`queued`), then read by the running turn (`steer`), ran as its own turn (`turn`) or dropped by a stop (`cancelled`) |
+| `message.delivery` | `chat_id`, `item_id` | A message sent during a turn started or stopped waiting behind it |
 | `turn.done` | `chat_id`, `status` | A turn ended (`completed`, `failed`, `incomplete`, `cancelled`) |
 | `chat.reset` | `chat_id`, `item_id` | The chat was cleared |
 | `chats.changed` | `root_id` | A Side Chat or Fork was opened, renamed or archived, or a Helper started |

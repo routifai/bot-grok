@@ -450,6 +450,8 @@ interface TurnOptions {
 
 /** How a dropped engine stream is retried before the run fails (an engine restart takes seconds). */
 const STREAM_REOPEN_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000, 15_000];
+/** How long a (re)opened stream may take to send its ready heartbeat (it sends one at once). */
+const READY_WAIT_MS = 10_000;
 
 /**
  * Posts the turn's message, then follows the engine session until it is idle with nothing
@@ -649,26 +651,31 @@ async function runTurn(ctx: TurnContext): Promise<"completed" | "cancelled"> {
     return status === undefined ? undefined : "running";
   };
 
-  /** Waits for a (re)opened stream's ready heartbeat; thread signals meanwhile are held. */
-  const awaitReady = async (gen: number): Promise<boolean> => {
+  /** The stream being followed; items of an older (dropped) stream are ignored. */
+  let currentGen = 0;
+
+  /** Opens a stream and waits for its ready heartbeat (a bounded wait: a quiet one counts as a
+   * failed open); thread signals meanwhile are held. */
+  const open = async (): Promise<boolean> => {
+    currentGen = ctx.openStream();
     while (true) {
-      const item = await inbox.next();
-      if (item.kind === "quiet") continue;
+      const item = await inbox.next(READY_WAIT_MS);
+      if (item.kind === "quiet") return false;
       if (item.kind === "signal") {
         held.push(item.event);
         continue;
       }
-      if (item.gen !== gen) continue;
+      if (item.gen !== currentGen) continue;
       // Any first event proves the subscriber is live; only the heartbeat carries nothing.
       if (item.kind === "event" && item.event.type !== "session.heartbeat") inbox.unshift(item);
       return item.kind === "event";
     }
   };
 
-  /** The stream dropped: reopen it, then ask the engine where the session is. */
+  /** Reopens the stream until it is live and the engine answers where the session is. */
   const reopen = async (): Promise<EngineState> => {
     for (const delay of STREAM_REOPEN_DELAYS_MS) {
-      if (await awaitReady(ctx.openStream())) {
+      if (await open()) {
         const state = await engineState();
         if (state) return state;
       }
@@ -687,8 +694,11 @@ async function runTurn(ctx: TurnContext): Promise<"completed" | "cancelled"> {
     return undefined;
   };
 
+  const isStop = (event: ThreadSignal) =>
+    event.type === "run.cancelled" && event.runId === steering?.runId;
+
   const handleSignal = async (event: ThreadSignal): Promise<"cancelled" | undefined> => {
-    if (event.type === "run.cancelled" && event.runId === steering?.runId) {
+    if (isStop(event)) {
       // Stopped in Nova: stop the engine's turn too.
       await interruptOmnigentSession(client, email, sessionId).catch((error) => {
         getLogger().error("omnigent gateway: could not stop the engine turn", error);
@@ -701,9 +711,14 @@ async function runTurn(ctx: TurnContext): Promise<"completed" | "cancelled"> {
   };
 
   // The engine's first event is its ready heartbeat: post only once the stream is live.
-  if (!(await awaitReady(ctx.openStream()))) await reopen();
+  if (!(await open())) await reopen();
+  // Stopped before anything was posted: nothing to send, nothing to stop.
+  if (held.some(isStop)) return "cancelled";
   joined(await postTurn(client, email, sessionId, ctx.turnInput));
 
+  // The engine's word is asked on a clock, whatever the stream carries (it sends a heartbeat
+  // every few seconds), so a long but live turn always keeps its lease.
+  let lastCheckAt = Date.now();
   while (true) {
     const signal = held.shift();
     if (signal) {
@@ -711,36 +726,35 @@ async function runTurn(ctx: TurnContext): Promise<"completed" | "cancelled"> {
       continue;
     }
     const item = await inbox.next(quietMs);
+    if (item.kind === "quiet" || Date.now() - lastCheckAt >= quietMs) {
+      lastCheckAt = Date.now();
+      // An unanswered snapshot is treated like a dropped stream: reopened and asked again.
+      const state = (await engineState()) ?? (await reopen());
+      if (settle(state) === "completed") return "completed";
+      if (item.kind === "quiet") continue;
+    }
     if (item.kind === "signal") {
       if ((await handleSignal(item.event)) === "cancelled") return "cancelled";
       continue;
     }
-    if (item.kind === "quiet") {
-      // Nothing for a while (a long tool, a pending approval): ask the engine, never give up blind.
-      const state = await engineState();
-      if (state === undefined) throw new OmnigentTurnFailure(ENGINE_NO_ANSWER_MESSAGE);
-      if (settle(state) === "completed") return "completed";
-      continue;
-    }
+    if (item.gen !== currentGen) continue;
     if (item.kind === "end" || item.kind === "error") {
       getLogger().error("omnigent gateway: the engine stream dropped; reopening it", {
         error: item.kind === "error" ? String(item.error) : undefined,
       });
       if (settle(await reopen()) === "completed") return "completed";
+      lastCheckAt = Date.now();
       continue;
     }
     const { event } = item;
     if (event.type === "session.heartbeat") continue;
-    if (event.type === "session.status") {
+    if (event.status === "idle" && event.type === "session.status") {
       const turn = typeof event.turn === "number" ? event.turn : undefined;
-      if (
-        event.status === "idle" &&
-        (myTurn === undefined || turn === undefined || turn >= myTurn)
-      ) {
-        return "completed";
-      }
-      if (event.status === "running" || event.status === "waiting") void progress();
+      // Once a message joined a numbered turn, only that turn's (or a later) idle ends the run:
+      // an unnumbered idle is the server's own (a refused message), not the runner's.
+      if (myTurn === undefined || (turn !== undefined && turn >= myTurn)) return "completed";
     }
+    if (event.type === "session.status" && event.status !== "idle") void progress();
     if (isComputerStartFailure(event)) {
       getLogger().error("omnigent gateway: the Computer did not start", {
         type: event.type,

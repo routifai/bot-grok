@@ -723,7 +723,7 @@ class Executor:
         return False
 
     async def steer_session_message(
-        self, session_key: str, content: EnqueuedContent, *, steer_id: str
+        self, session_key: str, text: str, *, steer_id: str
     ) -> SteerOffer:
         """Offer a message to the turn that is running now (a steer).
 
@@ -733,12 +733,12 @@ class Executor:
         turn ends.
 
         :param session_key: The Omnigent session the turn belongs to.
-        :param content: The message, as text or a structured JSON value.
+        :param text: The message: plain text (only a message that is all text is steered).
         :param steer_id: Caller's id for the message, echoed on its :class:`SteerOutcome`.
         :returns: ``"taken"``, ``"pending"`` or ``"refused"`` (see :data:`SteerOffer`).
         """
         del steer_id  # only an executor that answers "pending" echoes it
-        return "taken" if await self.enqueue_session_message(session_key, content) else "refused"
+        return "taken" if await self.enqueue_session_message(session_key, text) else "refused"
 
     def supports_live_message_queue(self) -> bool:
         """Whether ``enqueue_session_message()`` is expected to work during a running turn."""

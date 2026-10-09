@@ -60,8 +60,8 @@ export interface OmnigentTranscriptMessage {
   blocks: OmnigentTranscriptBlock[];
   /** The forks of this message, oldest first (`[]` when none). */
   forks?: OmnigentTranscriptFork[];
-  /** A user message sent during a turn: `steer` (read by the running turn) or `queued`. */
-  delivered?: "steer" | "queued";
+  /** `queued` while this user message waits behind the running turn. */
+  delivered?: "queued";
 }
 
 export interface OmnigentTranscriptLineage {
@@ -105,7 +105,7 @@ export async function getOmnigentTranscript(
 /** A frame of the family stream. Ids only; the caller refetches what changed. */
 export type OmnigentFamilyEvent =
   | { type: "message.done"; chat_id: string; item_id: string }
-  | { type: "message.delivery"; chat_id: string; item_id: string; delivered: string }
+  | { type: "message.delivery"; chat_id: string; item_id: string }
   | { type: "turn.done"; chat_id: string; status: string }
   | { type: "chat.reset"; chat_id: string; item_id: string }
   | { type: "chats.changed"; root_id: string }
