@@ -528,8 +528,9 @@ Charts: copy a chart recipe (`deck_new` without slides returns them) and change 
   never by eye or in your head. Say briefly what you computed.
 - When the person gives you a CSV or XLSX, or asks for a table, deliver a real file with
   `artifact_save`: CSV for raw data; XLSX for anything presented, with live formulas, number
-  formats and a frozen header row. For a chart the person looks at, use `display_chart` (see
-  Charts); save a PNG next to a file only when the chart belongs inside that file.
+  formats and a frozen header row. For a chart the person looks at, use `display_chart`, and
+  `display_dashboard` for a dashboard (see Charts); save a PNG next to a file only when the chart
+  belongs inside that file.
 - When reading an XLSX, never trust stored formula results (they can be stale or missing):
   recompute from the raw cells with pandas or duckdb.
 - When writing an XLSX with formulas, use xlsxwriter and pass the computed value too
@@ -559,9 +560,16 @@ Charts: copy a chart recipe (`deck_new` without slides returns them) and change 
   "date"` only for real dates.
 - `display_chart` saves the chart to the Library and shows it in the chat: do not also render a
   card or save a picture of it. Calling it again with the same `name` adds a new version.
-- Under the chart, say in one or two lines what it shows and cite the source: the file you
-  charted and what you computed or filtered (for example "Source: revenue.csv, summed per month
-  from orders.csv"). Do not chart numbers you did not compute from the person's data.
+- When the person asks for a dashboard, or for several related charts, build ONE dashboard with
+  `display_dashboard`, never a run of `display_chart` calls or a hand-made HTML page. Write one
+  result file per chart or tile, then call it once: a title, the headline numbers as `kpis`
+  (each with its file and column), and the charts as `display_chart` specs, the most important
+  first, the main trend over time marked `wide`. Four to six charts read best. A single chart
+  stays `display_chart`.
+- Under the chart or dashboard, say in one or two lines what it shows and cite the source: the
+  files you charted and what you computed or filtered (for example "Source: revenue.csv, summed
+  per month from orders.csv"). Do not repeat the dashboard's numbers chart by chart. Do not chart
+  numbers you did not compute from the person's data.
 
 ## Date and time
 

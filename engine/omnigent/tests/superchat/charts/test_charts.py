@@ -27,8 +27,12 @@ from omnigent.superchat.charts.data import (
     shape_rows,
 )
 from omnigent.superchat.charts.feature import CHARTS_FEATURE
-from omnigent.superchat.charts.handlers import handle_chart_tool
-from omnigent.superchat.charts.names import chart_file_name
+from omnigent.superchat.charts.handlers import handle_chart_tool, handle_dashboard_tool
+from omnigent.superchat.charts.names import (
+    chart_file_name,
+    dashboard_file_name,
+    is_dashboard_name,
+)
 from omnigent.superchat.charts.spec import (
     CHART_COLOR_PATTERN,
     CHART_TYPES,
@@ -36,7 +40,11 @@ from omnigent.superchat.charts.spec import (
     DisplayChartInput,
     display_chart_parameters,
 )
-from omnigent.superchat.charts.tools import DisplayChartTool
+from omnigent.superchat.charts.tools import (
+    CHART_TOOL_NAMES,
+    DisplayChartTool,
+    DisplayDashboardTool,
+)
 from omnigent.superchat.feature import HandlerCtx
 
 _CHAT = uuid.uuid4().hex
@@ -480,3 +488,90 @@ def test_the_date_set_matches_the_web_twin() -> None:
     assert [t for t in parity["invalid"] if _accepted_date(t)] == []
     for text, utc in parity["instants"]:
         assert _instant(text) == _instant(utc)
+
+
+# --- display_dashboard ------------------------------------------------------------------------
+
+
+def _dashboard(**extra: Any) -> dict[str, Any]:
+    return {
+        "title": "Sales 2026",
+        "kpis": [
+            {
+                "title": "Total revenue",
+                "series": [{"data_key": "revenue", "value_format": {"prefix": "$"}}],
+                "source": {"path": "kpi.csv"},
+            }
+        ],
+        "charts": [
+            {**_call("r.csv", chart_type="line", x_axis_type="date"), "wide": True},
+            _call("r.csv", title="Margin by month", series=[{"data_key": "margin"}]),
+        ],
+        **extra,
+    }
+
+
+def test_dashboard_names_and_tool() -> None:
+    assert is_dashboard_name("a.dashboard.json") and not is_dashboard_name("a.chart.json")
+    assert dashboard_file_name(None, "Sales 2026!") == "sales-2026.dashboard.json"
+    assert dashboard_file_name("q3.dashboard.json", "x") == "q3.dashboard.json"
+    assert CHART_TOOL_NAMES == ("display_chart", "display_dashboard")
+    assert set(CHARTS_FEATURE.handlers) == set(CHART_TOOL_NAMES)
+    schema = DisplayDashboardTool().get_schema()["function"]
+    params = schema["parameters"]
+    assert schema["name"] == "display_dashboard" and "$ref" not in json.dumps(params)
+    assert set(params["required"]) == {"title", "charts"}
+    chart = params["properties"]["charts"]["items"]
+    # each chart is the display_chart spec plus its layout hint
+    assert {"chart_type", "series", "source", "wide"} <= set(chart["properties"])
+    assert "chart_type" not in params["properties"]["kpis"]["items"]["properties"]
+    assert "display_dashboard" in DisplayChartTool.description()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_saves_one_versioned_artifact_with_each_charts_source(
+    server, store, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACE", str(tmp_path))
+    (tmp_path / "r.csv").write_text(CSV)
+    (tmp_path / "kpi.csv").write_text("revenue\n16156500\n")
+    ctx = HandlerCtx("display_dashboard", _ctx(server).server_client, _CHAT, {})
+    out = json.loads(await handle_dashboard_tool(ctx, _dashboard()))
+    assert out["type"] == "artifact" and out["name"] == "sales-2026.dashboard.json"
+    assert out["version"] == 1 and out["title"] == "Sales 2026"
+    assert out["dashboard"] == {
+        "kpis": 1, "charts": ["line", "bar"], "sources": ["kpi.csv", "r.csv"],
+    }  # fmt: skip
+    saved = store.get(out["id"], user_id="alice")
+    assert saved is not None
+    doc = json.loads(store.read(saved))
+    assert doc["version"] == 1 and doc["title"] == "Sales 2026" and "layout" not in doc
+    [kpi] = doc["kpis"]
+    assert kpi["spec"]["chart_type"] == "kpi_card" and kpi["data"] == [{"revenue": 16156500}]
+    assert kpi["source"]["file"] == "kpi.csv"
+    trend, margin = doc["charts"]
+    assert trend["wide"] is True and trend["spec"]["chart_type"] == "line"
+    assert "wide" not in margin and margin["spec"]["series"][0]["data_key"] == "margin"
+    # every chart is a full chart document: its spec, its file, a snapshot of its rows
+    assert margin["source"]["path"] == "r.csv"
+    assert margin["data"][0] == {"month": "2026-01", "margin": 0.2}
+    again = json.loads(await handle_dashboard_tool(ctx, _dashboard(layout="column")))
+    assert again["name"] == out["name"] and again["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_dashboard_errors_name_the_chart(server, tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACE", str(tmp_path))
+    (tmp_path / "r.csv").write_text(CSV)
+    (tmp_path / "kpi.csv").write_text("revenue\n1\n")
+    ctx = HandlerCtx("display_dashboard", _ctx(server).server_client, _CHAT, {})
+    bad = _dashboard()
+    bad["charts"][1]["series"] = [{"data_key": "sales"}]
+    out = json.loads(await handle_dashboard_tool(ctx, bad))
+    assert out["error"].startswith("charts[1] (Margin by month):")
+    assert "'sales' is not a column" in out["error"]
+    kpi_in_charts = _dashboard(charts=[{**_call("kpi.csv"), "chart_type": "kpi_card"}])
+    out = json.loads(await handle_dashboard_tool(ctx, kpi_in_charts))
+    assert out["error"].startswith("Invalid dashboard:") and "kpis" in out["error"]
+    empty = json.loads(await handle_dashboard_tool(ctx, _dashboard(charts=[])))
+    assert empty["error"].startswith("Invalid dashboard:")
