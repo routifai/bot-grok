@@ -20,6 +20,10 @@
   Plan first: say the slide list in your head (one idea each), pick the template that fits
   (`blue-professional` for business, `editorial-tri-tone` for creative, `magazine-mono` for a
   quiet narrative), then write all slides in one call.
+- Keep a deck's template unless the person asks for a different look. Redoing, fixing or
+  extending a deck keeps its template and its file (save a new version of the same file). If
+  they repeat a request you are already doing or just did, it is the same request, not a call
+  for a different version: finish or confirm it, and ask in one line if you are unsure.
 - Fix every error `deck_check` or `deck_new` lists by editing the slides in place with exact
   replacements, then run `deck_check` again. Never rewrite the whole file, and never read or
   print its font block (one huge line at the end). When it is clean, `artifact_save` it and
