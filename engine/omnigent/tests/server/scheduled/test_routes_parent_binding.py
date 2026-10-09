@@ -211,3 +211,40 @@ def test_scheduled_task_timezone_defaults_to_owner_preference(client: TestClient
     assert created["timezone"] == "America/Toronto"
     explicit = client.post("/v1/scheduled-tasks", json=_body(timezone="Europe/Paris", **agent))
     assert explicit.json()["timezone"] == "Europe/Paris"
+
+
+class _Loaded:
+    spec = object()
+
+
+class _Cache:
+    def load(self, *args: Any, **kwargs: Any) -> _Loaded:
+        return _Loaded()
+
+
+def test_retired_type_is_checked_as_the_worker_it_runs_as(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bundle declaring only ``worker`` accepts the retired ``analyst`` Study binding."""
+    monkeypatch.setattr(
+        "omnigent.runtime.workflow._find_spec_by_name",
+        lambda _spec, name: object() if name == "worker" else None,
+    )
+    app = FastAPI()
+    app.include_router(
+        create_scheduled_tasks_router(
+            SqlAlchemyScheduledTaskStore(db_uri),
+            agent_store=_AgentStore(),
+            conversation_store=_ConvStore(),
+            agent_cache=_Cache(),
+        ),
+        prefix="/v1",
+    )
+    api = TestClient(app)
+    ok = api.post(
+        "/v1/scheduled-tasks", json=_body(parent_session_id=_PARENT, agent_type="analyst")
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["agent_type"] == "analyst"
+    with pytest.raises(OmnigentError):
+        api.post("/v1/scheduled-tasks", json=_body(parent_session_id=_PARENT, agent_type="nope"))

@@ -412,6 +412,7 @@ def create_scheduled_tasks_router(
         """Check the parent is the owner's and ``agent_type`` is one of its
         sub-agent Types; returns the parent's agent id."""
         from omnigent.server.routes._sessions.helpers import _require_declared_subagent
+        from omnigent.superchat.subagents import scheduled_helper_type
 
         user_id = None if owner == RESERVED_USER_LOCAL else owner
         await require_access(
@@ -426,7 +427,9 @@ def create_scheduled_tasks_router(
         await asyncio.to_thread(
             _require_declared_subagent,
             agent=agent,
-            sub_agent_name=agent_type,
+            # A retired Type (e.g. the Study's ``analyst``) is stored by name but runs as a
+            # ``worker``, so a bundle only needs to declare the Type it runs as.
+            sub_agent_name=scheduled_helper_type(agent_type),
             agent_cache=agent_cache,
         )
         return str(parent.agent_id)
