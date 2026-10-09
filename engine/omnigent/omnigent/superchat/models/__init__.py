@@ -17,6 +17,14 @@ from typing import TYPE_CHECKING
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
 from omnigent.superchat.models import budget
 from omnigent.superchat.models.budget import ModelBudgets
+from omnigent.superchat.models.embeddings import (
+    DEFAULT_EMBEDDING_DIMENSIONS,
+    REASON_ERROR,
+    REASON_NO_CONNECTION,
+    EmbeddingUnavailable,
+    ModelEmbeddings,
+    get_embeddings,
+)
 from omnigent.superchat.models.org import ModelOrgOverlayStore, Overlay, SuspensionStore
 from omnigent.superchat.models.store import SCOPE_USER, ModelConnectionStore
 
@@ -72,9 +80,21 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     suspensions = SuspensionStore(deps.scheduled_task_store.storage_location)
     app.state.model_suspensions = suspensions
     bind_suspensions(suspensions)
+    from omnigent.superchat.models.embeddings import (
+        EmbeddingSettingStore,
+        ModelEmbeddings,
+        bind_embeddings,
+    )
+
+    embedding_settings = EmbeddingSettingStore(deps.scheduled_task_store.storage_location)
+    app.state.model_embeddings = ModelEmbeddings(store, embedding_settings)
+    bind_embeddings(app.state.model_embeddings)
     app.include_router(
         create_model_connection_router(
-            store, auth_provider=deps.auth_provider, permission_store=deps.permission_store
+            store,
+            auth_provider=deps.auth_provider,
+            permission_store=deps.permission_store,
+            embedding_settings=embedding_settings,
         ),
         prefix="/v1",
         tags=["model-connections"],
@@ -83,14 +103,21 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 
 FEATURE = Feature(name="models", tools=_tools, install=_install)
 
-#: What ``superchat/admin`` (the declared dependent) may read through the package entry point.
+#: What ``superchat/admin`` and ``superchat/knowledge`` (the declared dependents) may read through
+#: the package entry point.
 __all__ = [
+    "DEFAULT_EMBEDDING_DIMENSIONS",
     "FEATURE",
+    "REASON_ERROR",
+    "REASON_NO_CONNECTION",
     "SCOPE_USER",
+    "EmbeddingUnavailable",
     "ModelBudgets",
     "ModelConnectionStore",
+    "ModelEmbeddings",
     "ModelOrgOverlayStore",
     "Overlay",
     "SuspensionStore",
     "budget",
+    "get_embeddings",
 ]

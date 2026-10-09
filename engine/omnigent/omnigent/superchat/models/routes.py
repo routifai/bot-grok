@@ -22,6 +22,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_admin, require_user
+from omnigent.superchat.models.embeddings import (
+    EmbeddingSetting,
+    EmbeddingSettingStore,
+    parse_setting,
+)
 from omnigent.superchat.models.probe import KeyRejectedError, ProbeUnavailableError, probe_key
 from omnigent.superchat.models.store import (
     ORG_OWNER,
@@ -45,6 +50,15 @@ class PutModelConnection(BaseModel):
     label: str | None = None
 
 
+class PutEmbeddingModel(BaseModel):
+    """Body of ``PUT /admin/embedding-model``: ``null`` for either field resets it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = None
+    dimensions: int | None = None
+
+
 def meta_to_response(meta: ConnectionMeta) -> dict[str, Any]:
     """Masked metadata only: never the key."""
     return {
@@ -63,6 +77,7 @@ def create_model_connection_router(
     auth_provider: AuthProvider | None = None,
     permission_store: Any = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    embedding_settings: EmbeddingSettingStore | None = None,
 ) -> APIRouter:
     """Build the router, mounted with ``prefix="/v1"``. *transport* makes the probe injectable."""
     router = APIRouter()
@@ -127,4 +142,31 @@ def create_model_connection_router(
 
     _mount("/me/model-connections", _me)
     _mount("/admin/model-connections", _org)
+
+    if embedding_settings is not None:
+
+        def _setting_view(setting: EmbeddingSetting) -> dict[str, Any]:
+            return {"model": setting.model, "dimensions": setting.dimensions}
+
+        @router.get("/admin/embedding-model")
+        async def get_embedding_model(request: Request) -> dict[str, Any]:
+            """The organization's embedding model (the default until an admin sets one)."""
+            await _org(request)
+            return _setting_view(await asyncio.to_thread(embedding_settings.get))
+
+        @router.put("/admin/embedding-model")
+        async def put_embedding_model(request: Request, body: PutEmbeddingModel) -> dict[str, Any]:
+            """Choose the embedding model files are indexed with; a null model resets it."""
+            await _org(request)
+            if body.model is None:
+                await asyncio.to_thread(embedding_settings.set, None)
+            else:
+                setting = parse_setting({"model": body.model, "dimensions": body.dimensions})
+                if body.dimensions is not None and setting.dimensions != body.dimensions:
+                    raise OmnigentError(
+                        "dimensions must be between 8 and 8192", code=ErrorCode.INVALID_INPUT
+                    )
+                await asyncio.to_thread(embedding_settings.set, setting)
+            return _setting_view(await asyncio.to_thread(embedding_settings.get))
+
     return router

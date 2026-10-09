@@ -20,6 +20,19 @@ AuthStyle = Literal["x-api-key", "bearer"]
 
 
 @dataclass(frozen=True)
+class EmbeddingRoute:
+    """How an upstream serves embeddings (an OpenAI-compatible ``/embeddings`` endpoint).
+
+    :param api_base: Base URL litellm calls (the ``/embeddings`` path is appended by litellm).
+    :param model_prefix: Prefix that makes litellm treat the model as OpenAI-compatible
+        (``openai/``); the rest of the id is what the upstream receives.
+    """
+
+    api_base: str
+    model_prefix: str = "openai/"
+
+
+@dataclass(frozen=True)
 class Upstream:
     """One model upstream.
 
@@ -34,6 +47,8 @@ class Upstream:
     :param extra_headers: Static headers every request to this upstream needs.
     :param id_mapper: Rewrites a catalog model id into the spelling this upstream expects (the
         proxy applies it before forwarding); ``None`` when ids pass through unchanged.
+    :param embeddings: How this upstream serves embeddings, or ``None`` when it does not (a
+        connection to it cannot embed files).
     """
 
     name: str
@@ -45,6 +60,7 @@ class Upstream:
     probe_path: str
     extra_headers: tuple[tuple[str, str], ...] = ()
     id_mapper: Callable[[str], str] | None = None
+    embeddings: EmbeddingRoute | None = None
 
     def serves_model(self, model: str) -> bool:
         """:returns: Whether this upstream can serve *model* (a claude-only one serves Claude)."""
@@ -117,6 +133,7 @@ UPSTREAMS: dict[str, Upstream] = {
         vendors_served="any",
         probe_path="/v1/key",
         id_mapper=openrouter_model_id,
+        embeddings=EmbeddingRoute(api_base="https://openrouter.ai/api/v1"),
     ),
     # OpenAI is deliberately not wired yet (needs the "responses" wire API):
     # "openai": Upstream("openai", "OpenAI", "https://api.openai.com", "bearer",
