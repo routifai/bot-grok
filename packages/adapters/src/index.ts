@@ -88,6 +88,7 @@ export * from "./secrets.js";
 export * from "./sendblue-emulator.js";
 export * from "./skill-tools.js";
 export * from "./smtp-email.js";
+export * from "./space-computers.js";
 export * from "./teaching-session.js";
 export * from "./third-party-connector-emulator.js";
 export * from "./voice-factory.js";
