@@ -391,6 +391,16 @@ class KnowledgeDb:
                 ).fetchone()[0]
             )
 
+    def pending_names(self, limit: int = 10) -> list[str]:
+        """File names that still have a pass to run (path order), at most *limit*."""
+        marks = ", ".join("?" for _ in PENDING_STATES)
+        with self._connection() as conn:
+            rows = conn.execute(
+                f"SELECT name FROM files WHERE state IN ({marks}) ORDER BY path LIMIT ?",
+                (*PENDING_STATES, limit),
+            ).fetchall()
+        return [str(r[0]) for r in rows]
+
     # ------------------------------------------------------------------ passages
 
     def _delete_chunks(self, conn: sqlite3.Connection, file_id: str) -> None:

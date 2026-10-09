@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 
+import pytest
+
 from omnigent.runner.knowledge.chunking import MAX_CHARS, Block, ParsedPage, chunk_pages
 from omnigent.runner.knowledge.parse import INDEXABLE_KINDS, parse_file
 from omnigent.runner.knowledge.pdf import extract_pages, render_page, render_thumbnails
@@ -121,29 +123,10 @@ def test_text_file_gets_virtual_pages_for_citations() -> None:
     assert chunks[0].page_start == 1 and chunks[-1].page_start == len(pages)
 
 
-def test_csv_chunks_repeat_the_header_row() -> None:
-    rows = "\n".join(f"{i},item{i},{i * 3}" for i in range(400))
-    pages, kind = parse_file("csv", ("id,name,qty\n" + rows).encode())
-    chunks = chunk_pages(pages, kind=kind)
-    assert kind == "csv" and len(chunks) > 3
-    assert all(c.text.startswith("id | name | qty") for c in chunks)
-
-
-def test_xlsx_has_one_page_per_sheet_with_the_sheet_name_as_heading() -> None:
-    from openpyxl import Workbook
-
-    book = Workbook()
-    book.active.title = "Sales"
-    book.active.append(["region", "total"])
-    book.active.append(["north", 12.0])
-    book.create_sheet("Costs").append(["item", "cost"])
-    book["Costs"].append(["rent", 5])
-    buffer = io.BytesIO()
-    book.save(buffer)
-    pages, kind = parse_file("xlsx", buffer.getvalue())
-    chunks = chunk_pages(pages, kind=kind)
-    assert [(c.page_start, c.heading_path) for c in chunks] == [(1, "Sales"), (2, "Costs")]
-    assert chunks[0].text == "region | total\nnorth | 12"
+def test_tables_are_not_read_as_pages_of_text() -> None:
+    for kind in ("csv", "xlsx"):
+        with pytest.raises(ValueError):
+            parse_file(kind, b"a,b\n1,2\n")
 
 
 def test_indexable_kinds() -> None:

@@ -20,6 +20,16 @@ _TABLE_KINDS = frozenset({"csv", "sheet"})
 _CELL_SEP = " | "
 
 
+#: A source line that looks like a page marker (any spacing), which must not read as a real one.
+_FORGED_MARKER = re.compile(r"^([ \t]*)(<!--[ \t]*page\b)", re.IGNORECASE | re.MULTILINE)
+
+
+def _neutralise(text: str) -> str:
+    """*text* with every marker-like line defanged (a backslash before it), so only the markers
+    :func:`to_markdown` writes split a file into pages."""
+    return _FORGED_MARKER.sub(r"\1\\\2", text)
+
+
 def page_marker(page_no: int) -> str:
     """The line that starts page *page_no* in a file's Markdown."""
     return _MARKER.format(n=page_no)
@@ -44,7 +54,7 @@ def _table(text: str) -> str:
 
 
 def _block(block: Block, kind: str) -> str:
-    text = block.text.strip()
+    text = _neutralise(block.text.strip())
     if not text:
         return ""
     if block.heading_level is not None:

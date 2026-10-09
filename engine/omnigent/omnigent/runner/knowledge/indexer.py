@@ -55,12 +55,20 @@ from omnigent.runner.knowledge.markdown import (
 from omnigent.runner.knowledge.parse import INDEXABLE_KINDS, parse_file
 from omnigent.runner.knowledge.pdf import render_page, render_thumbnails
 from omnigent.runner.knowledge.rerank import Reranker, RerankUnavailable
+from omnigent.runner.knowledge.tabular import (
+    TABULAR_KINDS,
+    manifest_pages,
+    profile_table,
+    schema_card,
+)
 
 _logger = logging.getLogger(__name__)
 
 #: A file larger than this is not indexed (it shows as failed, with the reason).
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_ATTEMPTS = 3
+#: Longest the background loop holds back for an explicit ingest before it carries on.
+INGEST_YIELD_MAX_SECONDS = 300.0
 _BACKOFF_SECONDS = 30
 DEFAULT_K = 8
 MAX_K = 25
@@ -73,6 +81,11 @@ INLINE_MAX_CHARS = 32_000
 #: Default and ceiling of what ``files_get`` / ``files_multi_get`` return, in characters.
 GET_DEFAULT_CHARS = 24_000
 GET_MAX_CHARS = 60_000
+#: Said with a table file's manifest, in place of its rows.
+TABULAR_NOTE = (
+    "This is the table's schema, not its rows. Compute numbers with code (pandas, duckdb) in "
+    "the Computer, and edit it with the sheet tools."
+)
 MULTI_GET_MAX_FILES = 20
 #: Kinds by file extension (lower case, with the dot).
 _EXTENSION_KIND = {
@@ -138,10 +151,25 @@ class Indexer:
         self.reranker = reranker
         self._md = Path(home) / "md"
         self._work = threading.RLock()  # one pass at a time: the service thread and ingest
+        # Explicit ingests waiting for (or holding) the work lock. Python locks are not FIFO, so a
+        # background loop that re-takes the lock after every file could starve an ingest; the loop
+        # waits on this between files instead (an attachment the person is waiting on goes first).
+        self._ingest_waiting = 0
+        self._ingest_cv = threading.Condition()
         self.workspace = workspace
         self.embedder = embedder
         self._thumbs = Path(home) / "thumbs"
         self._clock = clock
+        self._requeue_row_chunks()
+
+    def _requeue_row_chunks(self) -> None:
+        """Send tables indexed as rows of text (an older version) back to be read as a schema."""
+        if self.db.meta("tabular_schema_only") == "1":
+            return
+        for row in self.db.files():
+            if row.kind in TABULAR_KINDS:
+                self.db.update_file(row.file_id, state=STATE_QUEUED, attempts=0, last_error=None)
+        self.db.set_meta("tabular_schema_only", "1")
 
     # ------------------------------------------------------------------ the files area
 
@@ -267,8 +295,34 @@ class Indexer:
 
     # ------------------------------------------------------------------ the pass
 
+    def _yield_to_ingest(self, timeout: float = INGEST_YIELD_MAX_SECONDS) -> None:
+        """Hold the background loop back while an explicit ingest is waiting or running."""
+        deadline = time.monotonic() + timeout
+        with self._ingest_cv:
+            while self._ingest_waiting > 0:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return
+                self._ingest_cv.wait(timeout=left)
+
+    @contextlib.contextmanager
+    def _ingest_priority(self) -> Iterator[None]:
+        """Mark an explicit ingest as waiting; the background loop gives way until it is done."""
+        with self._ingest_cv:
+            self._ingest_waiting += 1
+        try:
+            yield
+        finally:
+            with self._ingest_cv:
+                self._ingest_waiting -= 1
+                self._ingest_cv.notify_all()
+
     def process_next(self) -> bool:
-        """Run the next due file one step further. ``False`` when nothing is due."""
+        """Run the next due file one step further. ``False`` when nothing is due.
+
+        An explicit :meth:`ingest` goes first: the loop waits for it between files.
+        """
+        self._yield_to_ingest()
         row = self.db.next_due(self._clock())
         if row is None:
             return False
@@ -297,9 +351,18 @@ class Indexer:
                 self._finish(row, data, retry=retry)
 
     def _text_pass(self, row: FileRow, data: bytes) -> FileRow:
-        pages, chunk_kind = parse_file(row.kind, data)
-        chunks = chunk_pages(pages, kind=chunk_kind)
-        self._write_markdown(row.file_id, to_markdown(pages, kind=chunk_kind))
+        if row.kind in TABULAR_KINDS:
+            # A table is never read as rows of text: the index keeps its schema card, the
+            # Markdown version is the manifest (columns, types, row count, a few rows).
+            profile = profile_table(row.kind, data, name=row.name)
+            pages = manifest_pages(profile, row.name)
+            chunks = [schema_card(profile, row.name)]
+            markdown = to_markdown(pages, kind="sheet")
+        else:
+            pages, chunk_kind = parse_file(row.kind, data)
+            chunks = chunk_pages(pages, kind=chunk_kind)
+            markdown = to_markdown(pages, kind=chunk_kind)
+        self._write_markdown(row.file_id, markdown)
         stored = self.db.replace_chunks(row.file_id, chunks)
         self.db.update_file(
             row.file_id,
@@ -492,7 +555,12 @@ class Indexer:
                 vector = self.embedder.embed([query]).vectors[0]
             except EmbeddingUnavailable as exc:
                 reason = exc.reason
-        out: dict[str, Any] = {"query": query, "files_indexing": self.db.pending_count()}
+        out: dict[str, Any] = {
+            "query": query,
+            "files_indexing": self.db.pending_count(),
+            # Which files the answer may be missing, so the model can say so honestly.
+            "files_indexing_names": self.db.pending_names(),
+        }
         if mode == "vector" and vector is None:
             return {**out, "mode": "vector", "reason": "no_embeddings", "detail": reason,
                     "results": []}  # fmt: skip
@@ -578,7 +646,9 @@ class Indexer:
         except OSError:
             return None
 
-    def ingest(self, path: str | Path, *, inline: bool = False) -> dict[str, Any]:
+    def ingest(
+        self, path: str | Path, *, inline: bool = False, within: str | None = None
+    ) -> dict[str, Any]:
         """Read one file through every pass now and return what it came to.
 
         The explicit operation an attachment goes through before its message is sent: convert to
@@ -586,16 +656,20 @@ class Indexer:
         already indexed file answers at once.
 
         :param inline: Also return the Markdown when it is short enough to travel with the message.
+        :param within: Only read a file under this workspace folder (``your_files/uploads/``).
+            The check is on the resolved path, so ``..`` and a symlink out of the folder fail it.
         :raises ValueError: the file cannot be read as an indexable kind, or reading failed.
         :raises FileNotFoundError: there is no such file.
         """
         relative = self.relative(path)
         if relative is None or kind_of(relative) is None:
             raise ValueError("This kind of file can't be read")
+        if within is not None and not relative.startswith(within.rstrip("/") + "/"):
+            raise ValueError("Only an uploaded file can be read here")
         absolute = self.absolute(relative)
         if not absolute.is_file():
             raise FileNotFoundError(relative)
-        with self._work:
+        with self._ingest_priority(), self._work:
             self._sync(relative, absolute, self.db.file_by_path(relative), explicit=False)
             row = self.db.file_by_path(relative)
             assert row is not None
@@ -627,6 +701,7 @@ class Indexer:
             if row.kind == "pdf"
             else 0,
             "chars": len(text),
+            "kind": row.kind,
             "markdown_path": str(self.markdown_path(row.file_id)),
             "search": "hybrid" if row.embed_status == EMBED_EMBEDDED else "keyword",
         }
@@ -667,6 +742,8 @@ class Indexer:
                 + "; ask for the rest with pages."
             )
         out["markdown"] = text
+        if row.kind in TABULAR_KINDS:
+            out["note"] = f"{out['note']} {TABULAR_NOTE}" if "note" in out else TABULAR_NOTE
         return out
 
     def multi_get(self, pattern: str, *, max_chars: int | None = None) -> dict[str, Any]:
@@ -675,15 +752,21 @@ class Indexer:
         The character budget is shared out evenly; at most :data:`MULTI_GET_MAX_FILES` files.
         """
         patterns = [p.strip().lower() for p in pattern.split(",") if p.strip()]
-        rows = [
+        named = [
             row
             for row in self.db.files()
-            if row.state == STATE_READY
-            and any(
+            if any(
                 fnmatch.fnmatchcase(row.path.lower(), p)
                 or fnmatch.fnmatchcase(row.name.lower(), p)
                 for p in patterns
             )
+        ]
+        rows = [row for row in named if row.state == STATE_READY]
+        # Matched files that are not readable yet are reported, never silently left out.
+        not_ready = [
+            {"path": row.path, "state": _file_view(row)["state"], "error": row.last_error}
+            for row in named
+            if row.state != STATE_READY
         ]
         matched = len(rows)
         rows = rows[:MULTI_GET_MAX_FILES]
@@ -695,6 +778,15 @@ class Indexer:
             "matched": matched,
             "returned": len(files),
             "files": files,
+            **(
+                {
+                    "not_ready": not_ready,
+                    "note": f"{len(not_ready)} matching file(s) are still being indexed or "
+                    "could not be read, so they are not included; try again shortly.",
+                }
+                if not_ready
+                else {}
+            ),
         }
 
     def resolve(self, file_id: str | None, path: str | None) -> FileRow | None:

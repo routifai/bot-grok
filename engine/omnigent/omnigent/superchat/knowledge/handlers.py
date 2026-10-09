@@ -19,6 +19,7 @@ from omnigent.runner.knowledge.runtime import KnowledgeRuntime, configure, get_r
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
 from omnigent.superchat._handler_http import HEX_ID_RE, error
 from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
 
 #: Marks a ``files_search`` result so the transcript can show its pages as citation chips.
 SEARCH_RESULT_TYPE = "file_search"
@@ -154,7 +155,11 @@ def _ingest(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
     if not isinstance(path, str) or not path.strip():
         return error("files_ingest requires a path")
     try:
-        return json.dumps(runtime.indexer.ingest(path.strip(), inline=args.get("inline") is True))
+        return json.dumps(
+            runtime.indexer.ingest(
+                path.strip(), inline=args.get("inline") is True, within=UPLOADS_PREFIX
+            )
+        )
     except FileNotFoundError:
         return error("That file isn't in your workspace")
     except ValueError as exc:

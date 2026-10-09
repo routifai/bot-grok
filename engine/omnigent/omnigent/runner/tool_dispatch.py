@@ -1105,6 +1105,7 @@ def _ungranted_tool_reason(
     effective_harness: str | None = None,
     *,
     labels: Mapping[str, str] | None = None,
+    relay: bool = False,
 ) -> str | None:
     """Return why *tool_name* is refused for *agent_spec*, or ``None`` if allowed.
 
@@ -1120,6 +1121,8 @@ def _ungranted_tool_reason(
         was actually advertised. ``None`` falls back to the spec.
     :param labels: The session's labels, when known — see
         :func:`_granted_tool_names`.
+    :param relay: The call is the engine's own relay (``/mcp/execute`` with the relay mark), not a
+        model's tool call; only then may a feature's relay-only op through.
     """
     from omnigent.spec.types import AgentSpec as _AgentSpec
 
@@ -1137,7 +1140,7 @@ def _ungranted_tool_reason(
         )
     if tool_name in granted:
         return None
-    if tool_name in FEATURE_RELAY_OPS and is_superside_chat(labels):
+    if relay and tool_name in FEATURE_RELAY_OPS and is_superside_chat(labels):
         return None  # a relay op (a thumbnail, the index status): the engine's call, not a model's
     return (
         f"tool {tool_name!r} is not enabled for this agent "
@@ -7122,6 +7125,7 @@ async def execute_tool(
     filesystem_registry: FilesystemRegistry | None = None,
     effective_harness: str | None = None,
     labels: Mapping[str, str] | None = None,
+    relay: bool = False,
 ) -> str:
     """
     Execute a tool and return the output string.
@@ -7152,6 +7156,8 @@ async def execute_tool(
     :param labels: The session's labels, when known. Decides label-gated
         registrations in the granted-surface check (currently:
         ``session_history`` for a rollover session).
+    :param relay: The call came through ``/mcp/execute`` with the engine's relay mark; it lets a
+        feature's relay-only ops past the granted-surface check (a model's call never sets it).
     :returns: Tool output string.
     """
     if not arguments.strip():
@@ -7163,7 +7169,9 @@ async def execute_tool(
     # MCP dispatch resolves the target against the spec inside the MCP
     # manager; every other branch is gated on the spec's granted surface.
     if mcp_manager is None:
-        refusal = _ungranted_tool_reason(tool_name, agent_spec, effective_harness, labels=labels)
+        refusal = _ungranted_tool_reason(
+            tool_name, agent_spec, effective_harness, labels=labels, relay=relay
+        )
         if refusal is not None:
             return json.dumps({"error": refusal})
     from omnigent.sandbox.copy_on_write import has_copy_on_write

@@ -212,6 +212,9 @@ class ErrorCode:
         next month lets the same request succeed.
     :cvar ACCOUNT_SUSPENDED: An admin suspended the caller's account. HTTP 403: nothing the
         caller does changes it until an admin resumes the account.
+    :cvar KNOWLEDGE_TIMEOUT: The Computer was reached but did not finish reading a file in time
+        (a big file, or a busy index). HTTP 504: the Computer is awake; the same request may
+        succeed when retried, so callers must not describe it as the Computer starting.
     :cvar MODEL_KEY_REQUIRED: The session owner has not saved a model API key (Anthropic or
         OpenRouter) and the deployment bills model calls to the owner's key. HTTP 412, like
         ``HARNESS_NOT_CONFIGURED``: the request is valid and a retry cannot succeed until
@@ -288,6 +291,7 @@ class ErrorCode:
     MODEL_NOT_SUPPORTED = "model_not_supported"
     MODEL_BUDGET_EXHAUSTED = "model_budget_exhausted"
     ACCOUNT_SUSPENDED = "account_suspended"
+    KNOWLEDGE_TIMEOUT = "knowledge_timeout"
 
 
 # Single source of truth for error code → HTTP status.
@@ -341,6 +345,7 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.MODEL_NOT_SUPPORTED: 400,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: 402,
     ErrorCode.ACCOUNT_SUSPENDED: 403,
+    ErrorCode.KNOWLEDGE_TIMEOUT: 504,
 }
 
 
@@ -391,6 +396,7 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorCategory.USER,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: ErrorCategory.USER,
     ErrorCode.ACCOUNT_SUSPENDED: ErrorCategory.USER,
+    ErrorCode.KNOWLEDGE_TIMEOUT: ErrorCategory.CONFIG,
 }
 
 
@@ -446,6 +452,7 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorImpact.BENIGN,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: ErrorImpact.BENIGN,
     ErrorCode.ACCOUNT_SUSPENDED: ErrorImpact.BENIGN,
+    ErrorCode.KNOWLEDGE_TIMEOUT: ErrorImpact.TRANSIENT,
 }
 
 
@@ -496,6 +503,7 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorPhase.REQUEST,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: ErrorPhase.REQUEST,
     ErrorCode.ACCOUNT_SUSPENDED: ErrorPhase.REQUEST,
+    ErrorCode.KNOWLEDGE_TIMEOUT: ErrorPhase.REQUEST,
 }
 
 

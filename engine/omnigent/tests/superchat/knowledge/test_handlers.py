@@ -137,5 +137,20 @@ def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() ->
     spec = AgentSpec(spec_version=1)
     chat = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
     for name in ("files_ingest", "files_thumbnail", "files_reindex"):
-        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat) is None
-        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels={})
+        relay = {"labels": chat, "relay": True}
+        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", **relay) is None
+        assert tool_dispatch._ungranted_tool_reason(
+            name, spec, "claude-sdk", labels={}, relay=True
+        )
+        # a model's own call of the same name (no relay mark) is refused, even in a Super Chat
+        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat)
+
+
+def test_the_runner_marks_only_the_engines_relay_calls() -> None:
+    """``/mcp/execute`` reads the mark from the request body, which the relays alone set."""
+    from omnigent.superchat.feature import RELAY_MARK
+    from omnigent.superchat.knowledge import routes
+
+    assert routes.RELAY_MARK == RELAY_MARK == "_omnigent_relay"
+    source = Path(routes.__file__).read_text()
+    assert source.count("RELAY_MARK: True") == 1  # in the one helper every relay call goes through

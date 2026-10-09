@@ -190,3 +190,58 @@ def test_reindex_only_runs_on_an_awake_computer(world: World) -> None:
 
 def test_unknown_session_is_404(world: World) -> None:
     assert world.client.get("/v1/sessions/" + "b" * 32 + "/knowledge/status").status_code == 404
+
+
+def test_ingest_needs_write_access_and_only_reads_uploads(world: World, monkeypatch) -> None:
+    seen: list[int] = []
+
+    async def level(_user, _sid, level, *_rest):
+        seen.append(level)
+
+    monkeypatch.setattr("omnigent.superchat.knowledge.routes._require_access", level)
+    path = world.runtime.indexer.workspace / "your_files/uploads/2026-10-09/r.pdf"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(PDF)
+    assert world.client.post(
+        f"{BASE}/ingest", json={"path": "your_files/uploads/2026-10-09/r.pdf"}
+    )
+    assert seen == [2]  # LEVEL_EDIT
+    for bad in ("your_files/other.pdf", "your_files/uploads/../x.pdf", "/etc/passwd"):
+        r = world.client.post(f"{BASE}/ingest", json={"path": bad, "inline": True})
+        assert r.status_code == 400, bad
+    assert seen == [2]  # refused before any access check or wake
+
+
+def test_an_ingest_timeout_is_its_own_error_not_a_starting_computer(world: World) -> None:
+    import httpx
+
+    async def slow(_request):
+        raise httpx.ReadTimeout("slow")
+
+    world.runner.client = lambda: httpx.AsyncClient(  # type: ignore[method-assign]
+        transport=httpx.MockTransport(slow), base_url="http://runner"
+    )
+    path = world.runtime.indexer.workspace / "your_files/uploads/d/r.pdf"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(PDF)
+    r = world.client.post(f"{BASE}/ingest", json={"path": "your_files/uploads/d/r.pdf"})
+    assert r.status_code == 504 and r.json()["code"] == "knowledge_timeout"
+    assert "starting" not in r.json()["message"]
+
+
+def test_every_relay_call_carries_the_relay_mark(world: World) -> None:
+    import json
+
+    bodies: list[dict] = []
+
+    async def spy(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"result": {"output": json.dumps({"files": []})}})
+
+    import httpx
+
+    world.runner.client = lambda: httpx.AsyncClient(  # type: ignore[method-assign]
+        transport=httpx.MockTransport(spy), base_url="http://runner"
+    )
+    world.client.get(f"{BASE}/status")
+    assert bodies and all(b.get("_omnigent_relay") is True for b in bodies)

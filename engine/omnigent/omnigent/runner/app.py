@@ -14225,6 +14225,7 @@ def create_runner_app(
             import json as _json
 
             from omnigent.runner.tool_dispatch import execute_tool
+            from omnigent.superchat.feature import RELAY_MARK
 
             tool_name = cast(str, params.get("name") or "")
             arguments = cast(_JsonObject, params.get("arguments") or {})
@@ -14361,6 +14362,7 @@ def create_runner_app(
                         publish_event=_publish_event,
                         filesystem_registry=filesystem_registry,
                         effective_harness=_session_harness_name(session_id),
+                        relay=body.get(RELAY_MARK) is True,
                     )
                 except Exception as exc:
                     _logger.exception(
