@@ -8,7 +8,6 @@ import { useObjectUrl } from "../lib/use-object-url";
 import { ArtifactPreview } from "../pages/Artifacts";
 import { useArtifactContent } from "../pages/muse/library/useArtifactContent";
 import { formatSize } from "./cards/catalog";
-import { useLatestSavedVersion } from "./cards/context";
 
 const EMPTY_BYTES = new Uint8Array(0);
 
@@ -26,10 +25,7 @@ export function ArtifactPanel({
   onClose: () => void;
 }) {
   const { t } = useLingui();
-  // The name comes from the loaded file; the transcript's newest version of it drives refreshes.
-  const [fileName, setFileName] = useState<string | undefined>(undefined);
-  const latestVersion = useLatestSavedVersion(fileName);
-  const state = useArtifactContent(artifactId, latestVersion);
+  const state = useArtifactContent(artifactId);
   const ready = state.status === "ready" ? state : null;
   const url = useObjectUrl(ready?.bytes ?? EMPTY_BYTES, ready?.artifact.mimeType ?? "");
 
@@ -49,7 +45,6 @@ export function ArtifactPanel({
   }, [onClose, fullScreen, extra.holdsEscape]);
 
   const name = ready?.artifact.name ?? "";
-  useEffect(() => setFileName(ready?.artifact.name), [ready?.artifact.name]);
   const shown = ready ? state.versions.find((entry) => entry.id === ready.artifact.id) : undefined;
   const meta = ready
     ? [

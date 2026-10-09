@@ -5,6 +5,7 @@ import { Check, Download, Library, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
+import { useVisiblePoll } from "../../../lib/use-visible-poll";
 import { ArtifactPreview } from "../../Artifacts";
 
 type Loaded =
@@ -18,6 +19,11 @@ type Saved =
   | { status: "saving" }
   | { status: "done" }
   | { status: "error"; message: string };
+
+const FILE_POLL_MS = 4000;
+
+const sameBytes = (a: Uint8Array, b: Uint8Array) =>
+  a.byteLength === b.byteLength && a.every((value, index) => value === b[index]);
 
 /** Previews one workspace file with the Library's viewers (sandboxed HTML, markdown, PDF, image,
  * text as monospace), with Download and Save to Library. */
@@ -76,6 +82,40 @@ export function FilePreviewDialog({
       cancelled = true;
     };
   }, [botId, path, t]);
+
+  // Nova may rewrite the open file: re-read it quietly and swap the view only when it changed.
+  useVisiblePoll(
+    async () => {
+      const file = await rpc.files.read({ botId, path });
+      if (file.contentBase64 === null) return;
+      const bytes = decodeArtifactBase64(file.contentBase64);
+      setState((current) =>
+        current.status === "ready" && sameBytes(current.bytes, bytes)
+          ? current
+          : {
+              status: "ready",
+              bytes,
+              artifact:
+                current.status === "ready"
+                  ? { ...current.artifact, size: file.size, mimeType: file.mimeType }
+                  : ({
+                      id: path,
+                      botId,
+                      groupId: null,
+                      runId: null,
+                      name: file.name,
+                      description: null,
+                      mimeType: file.mimeType,
+                      size: file.size,
+                      version: 1,
+                      createdAt: new Date().toISOString(),
+                    } satisfies Artifact),
+            },
+      );
+    },
+    FILE_POLL_MS,
+    state.status === "ready",
+  );
 
   const save = () => {
     setSaved({ status: "saving" });

@@ -3,6 +3,7 @@ import type { Artifact, ArtifactVersion } from "@nova/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { decodeArtifactBase64 } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
+import { useVisiblePoll } from "../../../lib/use-visible-poll";
 
 type ContentState =
   | { status: "loading" }
@@ -26,15 +27,14 @@ type Loaded = ContentState & {
   arrived: ArtifactVersion | null;
 };
 
+/** How often an open view re-reads its artifact's version list. */
+const VERSION_POLL_MS = 4000;
+
 /**
  * Loads one artifact's versions and the content of the chosen one (the latest until the person
  * picks another from the dialog's version menu).
  */
-export function useArtifactContent(
-  artifactId: string | null,
-  /** Changes when a newer version of this file may exist (see `useLatestSavedVersion`). */
-  refreshKey?: number,
-): Loaded {
+export function useArtifactContent(artifactId: string | null): Loaded {
   const [state, setState] = useState<ContentState>({ status: "loading" });
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -42,8 +42,8 @@ export function useArtifactContent(
   // The person chose a version from the menu: stay on it instead of following the newest.
   const pinned = useRef(false);
   const [arrived, setArrived] = useState<ArtifactVersion | null>(null);
-  const firstKey = useRef(refreshKey);
   const pickedRef = useRef<string | null>(null);
+  const versionsRef = useRef<ArtifactVersion[]>([]);
 
   const adoptVersion = useCallback(
     (versionId: string) => {
@@ -110,27 +110,25 @@ export function useArtifactContent(
   }, [picked]);
 
   pickedRef.current = picked;
+  versionsRef.current = versions;
 
-  // A new version of the open file arrived: re-read the list, then follow it unless pinned.
-  useEffect(() => {
-    if (!artifactId || refreshKey === firstKey.current) return;
-    let cancelled = false;
-    void rpc.artifacts
-      .listVersions({ familyId: artifactId })
-      .then((list) => {
-        if (cancelled || !list[0]) return;
-        setVersions(list);
-        if (pinned.current) return;
-        if (pickedRef.current === list[0].id) return;
-        silent.current = true;
-        setArrived(list[0]);
-        setPicked(list[0].id);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [artifactId, refreshKey]);
+  // Any open view follows new versions of its artifact: the engine's version list (keyed by the
+  // artifact's family) is re-read while the tab is visible, then the view follows it unless pinned.
+  useVisiblePoll(
+    async () => {
+      if (!artifactId) return;
+      const list = await rpc.artifacts.listVersions({ familyId: artifactId });
+      const top = list[0];
+      if (!top || top.id === versionsRef.current[0]?.id) return;
+      setVersions(list);
+      if (pinned.current || pickedRef.current === top.id) return;
+      silent.current = true;
+      setArrived(top);
+      setPicked(top.id);
+    },
+    VERSION_POLL_MS,
+    artifactId !== null && picked !== null,
+  );
 
   useEffect(() => {
     if (!arrived) return;

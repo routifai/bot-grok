@@ -1,12 +1,5 @@
 import type { ThreadMessage } from "@nova/contracts";
-import {
-  createContext,
-  type ReactNode,
-  useContext,
-  useEffect,
-  useMemo,
-  useSyncExternalStore,
-} from "react";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { type ResolvedReplyCard, replyCardKey, resolveReplyCards } from "./thread";
 
 /** How a card talks back: the person's next message, through the thread's own send path. */
@@ -33,7 +26,6 @@ export function ReplyCardThreadProvider({
 }) {
   const resolved = useMemo(() => resolveReplyCards(messages), [messages]);
   const latest = useMemo(() => latestSavedFiles(messages), [messages]);
-  useEffect(() => publishLatestFiles(latest), [latest]);
   return (
     <ThreadContext.Provider value={resolved}>
       <LatestFilesContext.Provider value={latest}>{children}</LatestFilesContext.Provider>
@@ -64,33 +56,6 @@ export function latestSavedFiles(messages: readonly ThreadMessage[]): Map<string
     }
   }
   return latest;
-}
-
-// The artifact panel sits beside the transcript, not inside it, so the thread publishes the same
-// "newest saved version" signal the cards use for their "Updated" badge into this small store.
-const published = new Map<string, number>();
-const listeners = new Set<() => void>();
-
-function publishLatestFiles(latest: Map<string, LatestFile>) {
-  let changed = false;
-  for (const [name, file] of latest) {
-    if (file.version > (published.get(name) ?? 0)) {
-      published.set(name, file.version);
-      changed = true;
-    }
-  }
-  if (changed) for (const listener of listeners) listener();
-}
-
-/** The newest version of a file the transcript has shown; changes when a new one arrives. */
-export function useLatestSavedVersion(name: string | undefined): number | undefined {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => (name ? published.get(name) : undefined),
-  );
 }
 
 export const useLatestSavedFile = (name: string) => useContext(LatestFilesContext)?.get(name);

@@ -26,30 +26,35 @@ const file = (id: string, version: number) => ({
 });
 
 let latest: ReturnType<typeof useArtifactContent>;
-function Probe({ refreshKey }: { refreshKey: number }) {
-  latest = useArtifactContent("a1", refreshKey);
+function Probe() {
+  latest = useArtifactContent("a1");
   return null;
 }
 
 const root = document.createElement("div");
 const react = createRoot(root);
-const render = (refreshKey: number) =>
+const render = () =>
   act(async () => {
-    react.render(createElement(Probe, { refreshKey }));
+    react.render(createElement(Probe));
   });
+const tick = () => act(async () => vi.advanceTimersByTimeAsync(4000));
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
 
-it("follows a newer version, and stays on one the person picked", async () => {
+it("polls while open, follows a newer version, and stays on one the person picked", async () => {
   api.listVersions.mockResolvedValue([ver("a1", 1)]);
   api.getById.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
     file(artifactId, artifactId === "a2" ? 2 : 1),
   );
-  await render(1);
+  vi.useFakeTimers();
+  await render();
   expect(latest.versionId).toBe("a1");
 
   api.listVersions.mockResolvedValue([ver("a2", 2), ver("a1", 1)]);
-  await render(2);
+  await tick();
   expect(latest.versionId).toBe("a2");
   expect(latest.status).toBe("ready");
   expect(latest.versions).toHaveLength(2);
@@ -59,7 +64,7 @@ it("follows a newer version, and stays on one the person picked", async () => {
   await act(async () => latest.selectVersion("a1"));
   expect(latest.versionId).toBe("a1");
   api.listVersions.mockResolvedValue([ver("a3", 3), ver("a2", 2), ver("a1", 1)]);
-  await render(3);
+  await tick();
   expect(latest.versionId).toBe("a1");
   expect(latest.newer?.id).toBe("a3");
 
