@@ -33,6 +33,8 @@ RISK: dict[str, str | None] = {
     "deck_check": None,
     "deck_export": None,
     "deck_new": None,
+    "deck_theme_set": None,
+    "deck_themes": None,
     "display_chart": None,
     "files_get": None,
     "files_multi_get": None,
