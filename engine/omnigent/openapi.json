@@ -1677,6 +1677,19 @@
             "description": "JSON-Schema dict for form mode (or `None` for url mode). camelCase preserved per MCP spec, e.g. `{\"type\": \"object\", \"properties\": {\"approve\": {\"type\": \"boolean\"}}}`.",
             "title": "Requestedschema"
           },
+          "run_as": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Principal the gated call runs as, e.g. `\"alice@example.com\"`, so an inbox can file the prompt under its owner.",
+            "title": "Run As"
+          },
           "target_session_id": {
             "anyOf": [
               {
@@ -1689,6 +1702,19 @@
             "default": null,
             "description": "AP session whose resolve endpoint owns this elicitation, e.g. `\"conv_child123\"`. Present when a child/sub-agent prompt is mirrored into an ancestor stream; `None` means resolve against the current session.",
             "title": "Target Session Id"
+          },
+          "tool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The gated tool of a tool-call policy prompt, e.g. `\"sys_os_shell\"`.",
+            "title": "Tool Name"
           },
           "url": {
             "anyOf": [

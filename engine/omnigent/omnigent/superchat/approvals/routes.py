@@ -263,6 +263,45 @@ def create_approvals_router(
     return router
 
 
+GENERIC_CATEGORY = "tool"
+_SUMMARY_PREVIEW_CHARS = 160
+
+
+def _reason_text(message: str, policy_names: list[str]) -> str:
+    """The person-facing part of a composed ASK reason (``"<policy>: <reason>; …"``)."""
+    parts = []
+    for part in message.split("; "):
+        for name in policy_names:
+            if part.startswith(f"{name}: "):
+                part = part[len(name) + 2 :]
+                break
+        parts.append(part.strip())
+    return "; ".join(p for p in parts if p)
+
+
+def generic_pending(params: dict[str, Any]) -> tuple[str, str, str] | None:
+    """``(owner, target, summary)`` for a policy ASK no capability encoded, else ``None``.
+
+    Any policy can ASK on a tool call (a budget, an organization rule, a CEL guard); the person
+    still has to see it, so it is listed with the tool, a short argument preview and the reason.
+    Prompts that are not policy asks (an MCP server's own form) carry no ``policy_name``.
+    """
+    policy_names = params.get("policy_names") or [params.get("policy_name")]
+    names = [n for n in policy_names if isinstance(n, str) and n]
+    if not names:
+        return None
+    tool = params.get("tool_name")
+    tool = tool if isinstance(tool, str) and tool else "a tool"
+    preview = " ".join(str(params.get("content_preview") or "").split())
+    if len(preview) > _SUMMARY_PREVIEW_CHARS:
+        preview = preview[: _SUMMARY_PREVIEW_CHARS - 1] + "…"
+    reason = _reason_text(str(params.get("message") or ""), names) or "Approval required"
+    summary = f"{reason} ({tool}: {preview})" if preview else f"{reason} ({tool})"
+    run_as = params.get("run_as")
+    owner = run_as if isinstance(run_as, str) and run_as else LOCAL_OWNER
+    return owner, tool, summary
+
+
 def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
     """Mirror approval prompts into ``store`` and restore the ones a restart interrupted.
 
@@ -274,8 +313,24 @@ def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
             store.delete_pending(elicitation_id)
             return
         params = event.get("params")
-        info = decode_reason(params.get("message") if isinstance(params, dict) else None)
+        if not isinstance(params, dict):
+            return
+        info = decode_reason(params.get("message"))
         if info is None:
+            generic = generic_pending(params)
+            if generic is None:
+                return
+            owner, target, summary = generic
+            store.put_pending(
+                elicitation_id,
+                conversation_id,
+                user_id=owner,
+                category=GENERIC_CATEGORY,
+                target=target,
+                summary=summary,
+                amount_usd=None,
+                event=json.dumps(event),
+            )
             return
         targets = [t for t in info.get("t", []) if isinstance(t, str)]
         amount = info.get("a")

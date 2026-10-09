@@ -4295,6 +4295,11 @@ class ElicitationRequestParams(BaseModel):
         this elicitation, e.g. ``"conv_child123"``. Present when a
         child/sub-agent prompt is mirrored into an ancestor stream;
         ``None`` means resolve against the current session.
+    :param tool_name: The gated tool of a tool-call policy prompt,
+        e.g. ``"sys_os_shell"``.
+    :param run_as: Principal the gated call runs as, e.g.
+        ``"alice@example.com"``, so an inbox can file the prompt
+        under its owner.
     """
 
     mode: Literal["form", "url"] = "form"
@@ -4308,6 +4313,8 @@ class ElicitationRequestParams(BaseModel):
     policy_name: str | None = None
     content_preview: str | None = None
     target_session_id: str | None = None
+    tool_name: str | None = None
+    run_as: str | None = None
 
     # MCP's ElicitRequestParams uses ``extra="allow"``; mirror
     # that here so MCP-shaped passthrough (an MCP server's

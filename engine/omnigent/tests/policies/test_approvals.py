@@ -204,3 +204,140 @@ def test_policy_is_installed_only_for_super_chat_trees(store: SqlAlchemyApproval
     assert not _approvals_apply(plain, [plain])  # type: ignore[arg-type]
     approvals.configure_store(None)
     assert not _approvals_apply(muse, [muse])  # type: ignore[arg-type]
+
+
+# ── every policy ASK on a tool call is a visible ask ──────────────────────────
+
+
+class _NoAncestors:
+    """Conversation store with no parent links (a top-level session)."""
+
+    def get_conversation(self, session_id: str) -> None:
+        return None
+
+
+def _composed_ask(policy_name: str, reason: str) -> Any:
+    """The ASK the engine hands the gate: each reason prefixed with its policy's name."""
+    from omnigent.policies.types import PolicyResult
+    from omnigent.spec.types import PolicyAction
+
+    return PolicyResult(
+        action=PolicyAction.ASK,
+        reason=f"{policy_name}: {reason}",
+        deciding_policies=[policy_name],
+    )
+
+
+async def test_engine_composed_muse_approval_reaches_the_inbox(
+    store: SqlAlchemyApprovalStore, db_uri: str
+) -> None:
+    """The engine prefixes reasons with the policy name; the prompt must still be listed."""
+    from omnigent.policies.function import resolve_function_policy
+    from omnigent.policies.types import EvaluationContext
+    from omnigent.runtime.policies.builder import _APPROVALS_POLICY_SPEC
+    from omnigent.runtime.policies.engine import PolicyEngine
+    from omnigent.server.routes._sessions.orchestration import _register_policy_elicitation
+    from omnigent.spec.types import Phase
+    from omnigent.stores.conversation_store.sqlalchemy_store import (
+        SqlAlchemyConversationStore,
+    )
+
+    conversations = SqlAlchemyConversationStore(db_uri)
+    conv = conversations.create_conversation()
+    engine = PolicyEngine(
+        policies=[resolve_function_policy(_APPROVALS_POLICY_SPEC)],
+        label_defs={},
+        ask_timeout=60,
+        conversation_id=conv.id,
+        initial_labels={},
+        conversation_store=conversations,
+    )
+    arguments = {"command": "rm ~/workspace/sales_dashboard.html"}
+    result = await engine.evaluate(
+        EvaluationContext(
+            phase=Phase.TOOL_CALL,
+            content={"name": "sys_os_shell", "arguments": arguments},
+            tool_name="sys_os_shell",
+            actor={"run_as": "a@x.io"},
+        )
+    )
+    assert result.reason is not None and result.reason.startswith(f"{approvals.POLICY_NAME}: ")
+    install_pending_persistence(store)
+    eid = await _register_policy_elicitation(
+        conv.id,
+        result,
+        json.dumps(arguments),
+        conversations,
+        tool_name="sys_os_shell",
+        actor={"run_as": "a@x.io"},
+    )
+    rows = store.list_pending(user_id="a@x.io")
+    assert [(r.elicitation_id, r.category) for r in rows] == [(eid, "delete")]
+    assert "sales_dashboard.html" in rows[0].summary
+    pending_elicitations.resolve(conv.id, eid)  # type: ignore[arg-type]
+    assert store.list_pending() == []
+
+
+async def test_an_unknown_policy_ask_becomes_a_generic_visible_ask(
+    store: SqlAlchemyApprovalStore,
+) -> None:
+    from omnigent.server.routes._sessions.orchestration import _register_policy_elicitation
+    from omnigent.superchat.approvals.asks import approval_ask
+
+    install_pending_persistence(store)
+    result = _composed_ask("__owner_model_budget", "You've reached your $5.00 budget. Continue?")
+    eid = await _register_policy_elicitation(
+        "s_generic",
+        result,
+        json.dumps({"query": "q3 revenue"}),
+        _NoAncestors(),  # type: ignore[arg-type]
+        tool_name="web_search",
+        actor={"run_as": "a@x.io"},
+    )
+    assert eid is not None
+    [row] = store.list_pending(user_id="a@x.io")
+    assert (row.elicitation_id, row.session_id, row.category) == (eid, "s_generic", "tool")
+    assert row.target == "web_search"
+    assert row.summary.startswith("You've reached your $5.00 budget. Continue?")
+    assert "web_search" in row.summary and "q3 revenue" in row.summary
+    ask = approval_ask(row, cap_usd=0)
+    # One-off answers only: there is no standing rule for an arbitrary policy's ask.
+    assert [c["id"] for c in ask["choices"]] == ["approve_once", "deny"]
+    pending_elicitations.resolve("s_generic", eid)
+    assert store.list_pending() == []
+
+
+def test_a_prompt_that_is_not_a_policy_ask_is_not_listed(store: SqlAlchemyApprovalStore) -> None:
+    install_pending_persistence(store)
+    event = {
+        "type": "response.elicitation_request",
+        "elicitation_id": "elicit_form",
+        "params": {"message": "Which environment?", "requestedSchema": {}},
+    }
+    pending_elicitations.record_publish("s_form", event)
+    assert store.list_pending() == []
+    pending_elicitations.resolve("s_form", "elicit_form")
+
+
+async def test_an_ask_nobody_can_answer_is_denied_not_parked() -> None:
+    from omnigent.runtime import session_stream
+    from omnigent.server.routes._sessions.orchestration import _register_policy_elicitation
+
+    pending_elicitations.set_persist_hook(None)
+    assert not session_stream.has_subscribers("s_headless")
+    eid = await _register_policy_elicitation(
+        "s_headless",
+        _composed_ask("cel_guard", "Approve?"),
+        "{}",
+        _NoAncestors(),  # type: ignore[arg-type]
+        tool_name="sys_os_shell",
+    )
+    assert eid is None
+    assert pending_elicitations.count_for("s_headless") == 0
+
+
+def test_the_engine_prefix_does_not_hide_an_encoded_reason() -> None:
+    reason = approvals.muse_approvals(_event("sys_os_shell", {"command": "git push"}))["reason"]  # type: ignore[index]
+    composed = f"cel_guard: Approve?; {approvals.POLICY_NAME}: {reason}"
+    assert approvals.decode_reason(composed)["c"] == "post"  # type: ignore[index]
+    assert approvals.decode_reason("cel_guard: Approve?") is None

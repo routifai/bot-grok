@@ -124,6 +124,18 @@ def set_persist_hook(hook: Callable[[str, str, dict[str, Any] | None], None] | N
     _persist_hook = hook
 
 
+def has_durable_surface() -> bool:
+    """
+    Whether a durable mirror lists outstanding requests where the person can answer them.
+
+    With one installed (an approvals inbox), a prompt published while nobody watches the
+    session's stream is still seen; without one, only a live subscriber can answer it.
+
+    :returns: ``True`` when a persist hook is registered.
+    """
+    return _persist_hook is not None
+
+
 def _notify_persist_hook(
     conversation_id: str, elicitation_id: str, event: dict[str, Any] | None
 ) -> None:

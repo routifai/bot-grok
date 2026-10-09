@@ -1565,6 +1565,25 @@ def _publish_elicitation_request_to_ancestors(
         session_stream.publish(ancestor_id, mirrored)
 
 
+def _elicitation_has_answer_surface(conv_store: ConversationStore, session_id: str) -> bool:
+    """
+    Whether someone can see and answer a prompt published on *session_id* now.
+
+    True when a durable inbox lists every prompt, or when the session or one of its
+    ancestors (which mirror child prompts) has a live stream subscriber.
+
+    :param conv_store: Store used to discover ancestor sessions.
+    :param session_id: Session the prompt would be published on, e.g. ``"conv_abc123"``.
+    :returns: ``False`` when a prompt would reach nobody.
+    """
+    if pending_elicitations.has_durable_surface() or session_stream.has_subscribers(session_id):
+        return True
+    return any(
+        session_stream.has_subscribers(ancestor_id)
+        for ancestor_id in _ancestor_session_ids(conv_store, session_id)
+    )
+
+
 def _publish_elicitation_resolved_to_ancestors(
     conv_store: ConversationStore,
     session_id: str,
@@ -10840,6 +10859,7 @@ def _mcp_input_required_response(
     message: str,
     request_state: str,
     session_id: str | None = None,
+    ask_timeout: int | None = None,
 ) -> Response:
     """
     Return an MCP ``InputRequiredResult`` asking the runner to collect
@@ -10864,6 +10884,9 @@ def _mcp_input_required_response(
     :param session_id: Session/conversation id for constructing the
         approval page URL, e.g. ``"conv_abc123"``. ``None`` omits the
         URL (form mode).
+    :param ask_timeout: Seconds the deciding policy lets the prompt wait,
+        e.g. ``86400``; carried as ``params.ask_timeout`` so the runner's
+        park is bounded by it. ``None`` leaves the runner's default.
     :returns: A :class:`Response` carrying the JSON-RPC 2.0
         ``InputRequiredResult`` envelope.
     """
@@ -10881,6 +10904,8 @@ def _mcp_input_required_response(
         params["url"] = f"/approve/{session_id}/{elicitation_id}"
     else:
         params["mode"] = "form"
+    if ask_timeout is not None:
+        params["ask_timeout"] = ask_timeout
 
     body = json.dumps(
         {

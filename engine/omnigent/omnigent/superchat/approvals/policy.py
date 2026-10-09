@@ -86,10 +86,17 @@ def encode_reason(risk: Risk, owner: str | None, note: str = "") -> str:
 
 
 def decode_reason(message: object) -> dict[str, Any] | None:
-    """Parse :func:`encode_reason`; ``None`` when the message is not an approval."""
-    if not isinstance(message, str) or not message.startswith(REASON_MARK):
+    """Parse :func:`encode_reason`; ``None`` when the message is not an approval.
+
+    The engine prefixes each ASKing policy's reason with its name (``"<policy>: <reason>"``,
+    joined with ``"; "``), so the mark is found anywhere in the message, not only at its start.
+    """
+    if not isinstance(message, str):
         return None
-    head = message[len(REASON_MARK) :].split("\n", 1)[0]
+    start = message.find(REASON_MARK)
+    if start < 0:
+        return None
+    head = message[start + len(REASON_MARK) :].split("\n", 1)[0]
     try:
         parsed = json.loads(head)
     except ValueError:
