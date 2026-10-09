@@ -204,7 +204,10 @@ class DeckThemeSetTool(Tool):
             "Switch a deck file to another theme: swaps its colours, type, theme CSS and embedded "
             "fonts and leaves every slide's content alone, then re-checks the layout. Use it "
             "when the person asks for a different look; the deck keeps its file, so save it "
-            "again with artifact_save. Do not use it unless they asked for a new theme."
+            "again with artifact_save. Custom CSS and token overrides the deck has outside the "
+            "theme markers (written after the closing marker) are kept; anything edited between "
+            "the markers is moved after it when that stays valid CSS, otherwise the call fails "
+            "and says so. Do not use it unless they asked for a new theme."
         )
 
     def get_schema(self) -> dict[str, Any]:

@@ -317,9 +317,11 @@ def _legacy(deck: str, theme: str) -> str:
 
 def test_a_deck_saved_before_the_markers_is_adopted_without_losing_anything() -> None:
     legacy = _legacy(kit.build_deck("tokyo-night", "Q3", SAMPLE), "tokyo-night")
-    assert "nova:theme" not in legacy and kit.deck_theme_id(legacy) == "tokyo-night"
+    assert "nova:theme id=" not in legacy and kit.deck_theme_id(legacy) == "tokyo-night"
     new, _ = run([SetTheme(kind="set-theme", theme="nord")], legacy)
-    assert new == kit.build_deck("nord", "Q3", SAMPLE).replace(kit._DECK_HINT + "\n", "")
+    assert _norm(new) == _norm(
+        kit.build_deck("nord", "Q3", SAMPLE).replace(kit._DECK_HINT + "\n", "")
+    )
     # extras the deck added around the kit's text survive
     css = kit._css_text(kit.templates()["tokyo-night"])
     legacy_extra = legacy.replace(css, css + "\n    .mine { color: red; }", 1)
@@ -328,8 +330,146 @@ def test_a_deck_saved_before_the_markers_is_adopted_without_losing_anything() ->
     assert ".mine { color: red; }" in kept
 
 
-def test_a_theme_block_edited_inside_is_refused_rather_than_overwritten() -> None:
+def _norm(deck: str) -> str:
+    """The deck minus the framework's guidance comment, which older decks word differently."""
+    import re
+
+    return re.sub(
+        r"Edit only inside the second <style>.*?bodies\."
+        r"|Write per-deck CSS.*?keeps everything outside\)\.",
+        "",
+        deck,
+        flags=re.S,
+    )
+
+
+def _fragment_line(theme: str) -> str:
+    """A declaration line inside one of the theme CSS's multi-line rules."""
+    css = kit._css_text(kit.templates()[theme])
+    return next(
+        line for line in css.splitlines() if line.startswith("  ") and line.rstrip().endswith(";")
+    )
+
+
+def test_a_legacy_block_edited_inside_in_a_way_that_cannot_be_kept_is_refused() -> None:
     legacy = _legacy(kit.build_deck("nord", "Q3", SAMPLE), "nord")
-    edited = legacy.replace("--accent: #", "--accent: #0", 1)
+    line = _fragment_line("nord")
+    edited = legacy.replace(line, line.replace(":", ": 1px /* edited */ +", 1), 1)
+    assert edited != legacy
     with pytest.raises(AmbiguousEdit, match="ask Nova"):
         run([SetTheme(kind="set-theme", theme="tokyo-night")], edited)
+
+
+def test_an_edited_token_line_inside_the_markers_is_kept_after_them() -> None:
+    deck = kit.build_deck("nord", "Q3", SAMPLE)
+    edited = deck.replace("--accent: #88c0d0;", "--accent: #ff0000;", 1)
+    assert edited != deck
+    new, _ = run([SetTheme(kind="set-theme", theme="tokyo-night")], edited)
+    close = new.index("/* /nova:theme-tokens */")
+    assert "--accent: #ff0000;" in new[close : close + 120]
+    assert "--accent: #88c0d0;" not in new
+    # and a second switch keeps it, now as the deck's own override
+    again, _ = run([SetTheme(kind="set-theme", theme="corporate-clean")], new)
+    assert "--accent: #ff0000;" in again
+
+
+def test_css_edited_inside_the_markers_is_moved_after_them_or_refused_never_dropped() -> None:
+    deck = kit.build_deck("nord", "Q3", SAMPLE)
+    rule = ".mine-inside { color: red; }"
+    close = "    /* /nova:theme */"
+    whole = deck.replace(close, f"    {rule}\n{close}", 1)
+    new, _ = run([SetTheme(kind="set-theme", theme="tokyo-night")], whole)
+    assert new.index(rule) > new.index(close)
+    line = _fragment_line("nord")
+    broken = deck.replace(line, line.replace(":", ": 1px /* edited */ +", 1), 1)
+    with pytest.raises(AmbiguousEdit, match="ask Nova"):
+        run([SetTheme(kind="set-theme", theme="tokyo-night")], broken)
+
+
+def test_nested_or_repeated_markers_are_refused() -> None:
+    deck = kit.build_deck("nord", "Q3", SAMPLE)
+    start = "    /* nova:theme id=nord"
+    nested = deck.replace(start, f"{start} sha=000000000000 \u00b7 Nord */\n{start}", 1)
+    with pytest.raises(AmbiguousEdit):
+        run([SetTheme(kind="set-theme", theme="tokyo-night")], nested)
+
+
+def test_regions_without_a_hash_are_still_swapped() -> None:
+    import re
+
+    deck = kit.build_deck("nord", "Q3", SAMPLE)
+    plain = re.sub(r" sha=[0-9a-f]{12}", "", deck)
+    new, _ = run([SetTheme(kind="set-theme", theme="tokyo-night")], plain)
+    assert new == kit.build_deck("tokyo-night", "Q3", SAMPLE)
+
+
+def test_a_marker_lookalike_in_a_slide_is_not_the_decks_theme() -> None:
+    deck = kit.build_deck("nord", "Q3", SAMPLE)
+    fake = deck.replace("</body>", "<!-- /* nova:theme id=bauhaus */ --></body>", 1)
+    assert kit.deck_theme_id(fake) == "nord"
+
+
+def _old_kit(rev: str):
+    """The kit as released at git ``rev``, imported from ``git archive`` (None without git)."""
+    import importlib.util
+    import subprocess
+    import sys
+    import tempfile
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[5]
+    base = "engine/omnigent/omnigent/superchat/decks"
+    tmp = tempfile.mkdtemp()
+    done = subprocess.run(
+        f"git archive {rev} {base} | tar -x -C {tmp}",
+        shell=True,
+        cwd=root,
+        capture_output=True,
+    )
+    path = Path(tmp) / base / "kit.py"
+    if done.returncode != 0 or not path.is_file():
+        return None
+    name = f"oldkit_{rev}"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    sys.modules[name] = module
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+@pytest.mark.parametrize("rev", ["d46b2965", "9a0bb8bc"])
+def test_decks_built_by_every_released_kit_can_switch_theme(rev: str) -> None:
+    old = _old_kit(rev)
+    if old is None:
+        pytest.skip(f"git history for {rev} is not available")
+    fresh = _norm(kit.build_deck("nord", "Q3", SAMPLE).replace(kit._DECK_HINT + "\n", ""))
+    for theme in old.templates():
+        deck = old.build_deck(theme, "Q3", SAMPLE)
+        assert kit.deck_theme_id(deck) == theme
+        new, _ = run([SetTheme(kind="set-theme", theme="nord")], deck)
+        assert kit.deck_theme_id(new) == "nord"
+        assert _slides(new) == _slides(deck)
+        if rev != "d46b2965":  # the first kit had no chart runtime to compare
+            assert _norm(new) == fresh
+        # a custom rule the old deck had survives the adoption
+        block = kit._LEGACY_STYLE_RE.search(deck).group(0)  # type: ignore[union-attr]
+        extra = block[: -len("\n  </style>")] + "\n    .mine { color: red; }\n  </style>"
+        mine = deck.replace(block, extra, 1)
+        assert mine != deck
+        kept, _ = run([SetTheme(kind="set-theme", theme="nord")], mine)
+        assert ".mine { color: red; }" in kept
+
+
+def test_every_released_block_text_is_in_the_shipped_table() -> None:
+    table = kit._legacy_kits()
+    assert set(table) == {"blue-professional", "editorial-tri-tone", "magazine-mono"}
+    assert all(len(texts) >= 2 for texts in table.values())
+    for theme, texts in table.items():
+        for text in texts:
+            head = f"    /* {kit.templates()[theme].name} \u00b7 layout vocabulary and theme */\n"
+            deck = kit.build_deck(theme, "Q3", SAMPLE)
+            legacy = _legacy(deck, theme)
+            old_block = legacy.replace(kit._css_text(kit.templates()[theme]), text["css"], 1)
+            assert head + text["css"] in old_block
+            new, _ = run([SetTheme(kind="set-theme", theme="nord")], old_block)
+            assert kit.deck_theme_id(new) == "nord"
