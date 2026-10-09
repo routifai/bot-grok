@@ -58,7 +58,9 @@ _AUTH_ENABLED_ENV = "OMNIGENT_AUTH_ENABLED"
 
 RESERVED_USER_LOCAL = "local"
 RESERVED_USER_PUBLIC = "__public__"
-_RESERVED_USERS = frozenset({RESERVED_USER_LOCAL, RESERVED_USER_PUBLIC})
+# Owner of workspace-level settings (the organization's model budget) in per-owner tables.
+RESERVED_USER_WORKSPACE = "__workspace__"
+_RESERVED_USERS = frozenset({RESERVED_USER_LOCAL, RESERVED_USER_PUBLIC, RESERVED_USER_WORKSPACE})
 _TRUTHY_STRINGS = ("1", "true", "yes")
 
 # Path prefixes a restricted (device-grant or machine client-credential)

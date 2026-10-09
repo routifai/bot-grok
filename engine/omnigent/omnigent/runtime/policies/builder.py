@@ -127,7 +127,7 @@ def _owner_budget_seed(
     owner = _resolve_session_owner_cached(conversation_id, conversation_store) if budgets else None
     if budgets is None or owner is None:
         return None
-    return budgets.seed_for_policy(owner, conversation_store)
+    return budgets.seed_for_policy(owner)
 
 
 def _budgets_may_apply() -> bool:

@@ -9,9 +9,9 @@ request/tool-call gates and an ASK whose approval the engine records per owner t
 ``state_updates`` key, so it holds across all the owner's sessions.
 
 ``at_limit="stop"`` DENYs once spend reaches the limit. ``"ask"`` ASKs at the limit and then
-each time spend grows by :data:`ASK_STEP` of the limit, remembering the approved level for the
-rest of the month. The person's limit and the organization's are checked independently; a
-stop beats an ask.
+each time spend grows by :data:`ASK_STEP` of the limit. The person's limit and the
+organization's are checked, and their approvals remembered for the rest of the month,
+independently; a stop beats an ask.
 """
 
 from __future__ import annotations
@@ -74,7 +74,6 @@ def owner_model_budget() -> PolicyCallable:
         seed = (event.get("context") or {}).get("user_daily_cost") or {}
         if not seed.get("month_period"):
             return _ALLOW
-        approved = _number(seed, "month_ask_level") or 0.0
         asks: list[tuple[float, str, float]] = []
         for scope, prefix in (("user", "month"), ("org", "org")):
             limit = _number(seed, f"{prefix}_limit_usd")
@@ -89,16 +88,20 @@ def owner_model_budget() -> PolicyCallable:
                 )
                 return {"result": "DENY", "reason": f"{_subject(scope, limit)}. {hint}"}
             level = ask_level(spent, limit)
-            if level is not None and level > approved:
+            if level is not None and level > (_number(seed, f"{scope}_ask_level") or 0.0):
                 asks.append((level, scope, limit))
         if not asks:
             return _ALLOW
-        level, scope, limit = max(asks)
+        level, scope, limit = max(asks, key=lambda ask: ask[0])
         return {
             "result": "ASK",
             "reason": f"{_subject(scope, limit)}. Continue?",
             "state_updates": [
-                {"key": OWNER_BUDGET_ASK_APPROVED_STATE_KEY, "action": "set", "value": level}
+                {
+                    "key": OWNER_BUDGET_ASK_APPROVED_STATE_KEY,
+                    "action": "set",
+                    "value": {"scope": scope, "level": level},
+                }
             ],
         }
 

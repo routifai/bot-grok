@@ -1388,9 +1388,7 @@ class ConversationStore(ABC):
         """
         Sum every user's LLM spend in this workspace over UTC days ``>= since_day_utc``.
 
-        Backs the organization-wide model budget. Only full ``"YYYY-MM-DD"`` days are summed:
-        the ``"YYYY-MM"`` approval rows kept beside them carry no spend and sort below any day.
-
+        Backs the organization-wide model budget.
         :param since_day_utc: Inclusive lower-bound UTC day, e.g. ``"2026-06-01"``.
         :returns: The summed ``cost_usd``, or ``0.0`` when no rows fall in the range.
         """

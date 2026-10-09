@@ -33,10 +33,13 @@ from omnigent.db.utils import (
 )
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.errors import ErrorCode, OmnigentError
+from omnigent.server.auth import RESERVED_USER_WORKSPACE
 
 PREFERENCE_KEY = "model_budget"
-# Owner id of the organization's row; ``__`` keeps it out of any real user id's namespace.
-WORKSPACE_OWNER = "__workspace__"
+APPROVAL_KEY = "model_budget_approval"
+# Owner id of the organization's row: the reserved identity ``RESERVED_USER_WORKSPACE``, which
+# authentication never accepts as a person, so no user can share the organization's row.
+WORKSPACE_OWNER = RESERVED_USER_WORKSPACE
 AT_LIMIT_VALUES = ("stop", "ask")
 DEFAULT_AT_LIMIT = "ask"
 _CACHE_TTL_SECONDS = 5
@@ -150,6 +153,49 @@ class ModelBudgetStore:
         self._cache.pop(owner, None)
         self._any.clear()
 
+    def get_approval(self, owner: str, month: str) -> dict[str, float]:
+        """The levels *owner* approved continuing past this *month* (``"YYYY-MM"``), by scope.
+
+        :returns: ``{"user": level, "org": level}`` with 0.0 for none; an approval stored for
+            another month is ignored, so approvals lapse when the month turns.
+        """
+        with self._session("select_model_budget_approval") as session:
+            row = session.get(SqlPreference, (current_workspace_id(), owner, APPROVAL_KEY))
+            raw = row.value if row is not None else None
+        try:
+            value = json.loads(raw) if raw else {}
+        except ValueError:
+            value = {}
+        if not isinstance(value, dict) or value.get("month") != month:
+            return {"user": 0.0, "org": 0.0}
+        return {scope: float(value.get(f"{scope}_level") or 0.0) for scope in ("user", "org")}
+
+    def set_approval(self, owner: str, month: str, scope: str, level: float) -> None:
+        """Remember that *owner* approved continuing past *scope*'s limit up to *level*."""
+
+        def write(session: Any) -> None:
+            pk = (current_workspace_id(), owner, APPROVAL_KEY)
+            row = session.get(SqlPreference, pk)
+            value: dict[str, Any] = {"month": month, "user_level": None, "org_level": None}
+            if row is not None:
+                try:
+                    stored = json.loads(row.value)
+                except ValueError:
+                    stored = {}
+                if isinstance(stored, dict) and stored.get("month") == month:
+                    value.update(
+                        user_level=stored.get("user_level"), org_level=stored.get("org_level")
+                    )
+            value[f"{scope}_level"] = level
+            if row is None:
+                session.add(
+                    SqlPreference(user_id=owner, key=APPROVAL_KEY, value=json.dumps(value))
+                )
+            else:
+                row.value = json.dumps(value)
+
+        run_write_transaction(self._session_immediate, "upsert_model_budget_approval", write)
+
     def any_limit(self) -> bool:
         """Whether anyone in the workspace has a limit (the cheap gate before per-owner work)."""
         cached = self._any.get("any")
@@ -233,22 +279,18 @@ class ModelBudgets:
         found = self.breaches(owner, only_stop=True)
         return found[0] if found else None
 
-    def seed_for_policy(self, owner: str, ledger: Any) -> dict[str, float | str] | None:
-        """The ``owner_model_budget`` policy's context, or ``None`` when no limit applies.
-
-        :param ledger: The conversation store whose daily rollup holds this month's spend and the
-            person's approval level (the ``"YYYY-MM"`` bucket, see :func:`approval_bucket`).
-        """
+    def seed_for_policy(self, owner: str) -> dict[str, float | str] | None:
+        """The ``owner_model_budget`` policy's context, or ``None`` when no limit applies."""
         if not self.store.any_limit():
             return None
         mine, org = self.store.get(owner), self.store.get(WORKSPACE_OWNER)
         if not (mine.active or org.active):
             return None
+        approved = self.store.get_approval(owner, month_start()[:7])
         seed: dict[str, float | str] = {
             "month_period": month_start(),
-            "month_ask_level": float(
-                ledger.get_daily_cost_state(owner, approval_bucket())["ask_approved_usd"]
-            ),
+            "user_ask_level": approved["user"],
+            "org_ask_level": approved["org"],
         }
         if mine.active:
             assert mine.monthly_limit_usd is not None
@@ -265,17 +307,6 @@ class ModelBudgets:
                 org_cost_usd=self.org_spent(),
             )
         return seed
-
-
-def approval_bucket(epoch: int | None = None) -> str:
-    """The rollup row (``"YYYY-MM"``) that remembers a month's approval level.
-
-    The daily rollup is keyed by a 10-character day string; a 7-character month key can never
-    collide with a day, sorts below every day of its month (so spend sums skip it) and carries no
-    cost, so the approval a person gives to keep going this month is stored beside the day rows
-    with the same ``set_daily_ask_approved`` primitive the daily budget uses.
-    """
-    return month_start(epoch)[:7]
 
 
 _budgets: ModelBudgets | None = None

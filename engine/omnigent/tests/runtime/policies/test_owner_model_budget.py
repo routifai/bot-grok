@@ -13,7 +13,6 @@ from omnigent.model_credentials.budget import (
     Budget,
     ModelBudgets,
     ModelBudgetStore,
-    approval_bucket,
     bind_budgets,
     month_start,
 )
@@ -67,19 +66,23 @@ def test_stop_denies_at_the_limit_with_a_clear_message(phase: str) -> None:
 def test_ask_asks_once_then_again_every_quarter_of_the_limit() -> None:
     evaluate = owner_model_budget()
     seed = _seed(
-        month_limit_usd=20.0, month_at_limit="ask", month_cost_usd=20.5, month_ask_level=0.0
+        month_limit_usd=20.0, month_at_limit="ask", month_cost_usd=20.5, user_ask_level=0.0
     )
     out = evaluate(_event(seed))
     assert out["result"] == "ASK"
     assert out["reason"] == "You've reached your $20.00 monthly budget. Continue?"
     assert out["state_updates"] == [
-        {"key": OWNER_BUDGET_ASK_APPROVED_STATE_KEY, "action": "set", "value": 1.0}
+        {
+            "key": OWNER_BUDGET_ASK_APPROVED_STATE_KEY,
+            "action": "set",
+            "value": {"scope": "user", "level": 1.0},
+        }
     ]
-    approved = {**seed, "month_ask_level": 1.0}
+    approved = {**seed, "user_ask_level": 1.0}
     assert evaluate(_event(approved))["result"] == "ALLOW"
     # +25% of the limit later the next check-in comes.
     later = {**approved, "month_cost_usd": 25.0}
-    assert evaluate(_event(later))["state_updates"][0]["value"] == 1.25
+    assert evaluate(_event(later))["state_updates"][0]["value"]["level"] == 1.25
 
 
 def test_org_cap_applies_and_a_stop_beats_an_ask() -> None:
@@ -114,14 +117,14 @@ def budgets(db_uri: str, conversation_store: SqlAlchemyConversationStore) -> Mod
     return ModelBudgets(ModelBudgetStore(db_uri), conversation_store)
 
 
-def test_seed_only_exists_when_a_limit_does(budgets, conversation_store) -> None:
-    assert budgets.seed_for_policy("alice", conversation_store) is None
+def test_seed_only_exists_when_a_limit_does(budgets) -> None:
+    assert budgets.seed_for_policy("alice") is None
     budgets.store.set("alice", Budget(10.0, "stop"))
-    seed = budgets.seed_for_policy("alice", conversation_store)
+    seed = budgets.seed_for_policy("alice")
     assert seed["month_limit_usd"] == 10.0 and seed["month_at_limit"] == "stop"
     assert "org_limit_usd" not in seed
     # Someone else without a limit of their own is not seeded (no org cap yet).
-    assert budgets.seed_for_policy("bob", conversation_store) is None
+    assert budgets.seed_for_policy("bob") is None
 
 
 def test_month_to_date_sums_this_month_only_and_org_sums_all_users(
@@ -137,7 +140,7 @@ def test_month_to_date_sums_this_month_only_and_org_sums_all_users(
     assert budgets.spent("alice") == pytest.approx(5.0)
     assert budgets.org_spent() == pytest.approx(12.0)
     budgets.store.set(WORKSPACE_OWNER, Budget(10.0, "stop"))
-    seed = budgets.seed_for_policy("alice", conversation_store)
+    seed = budgets.seed_for_policy("alice")
     assert seed["org_cost_usd"] == pytest.approx(12.0) and "month_limit_usd" not in seed
     # Org cap applies to a user who has no limit of their own.
     assert [b.scope for b in budgets.breaches("alice")] == ["org"]
@@ -147,18 +150,45 @@ def test_month_to_date_sums_this_month_only_and_org_sums_all_users(
     assert budgets.breaches("alice") == []
 
 
-def test_approval_bucket_does_not_count_as_spend_and_resets_monthly(
+def test_approvals_are_per_scope_lapse_with_the_month_and_leave_the_ledger_alone(
     budgets, conversation_store, monkeypatch
 ) -> None:
     monkeypatch.setattr(budget_module, "now_epoch", lambda: 1_792_000_000)
     conversation_store.add_daily_cost("alice", "2026-10-14", 1.0)
-    conversation_store.set_daily_ask_approved("alice", approval_bucket(), 1.25)
-    assert budgets.spent("alice") == pytest.approx(1.0)
-    assert budgets.org_spent() == pytest.approx(1.0)
     budgets.store.set("alice", Budget(0.5, "ask"))
-    assert budgets.seed_for_policy("alice", conversation_store)["month_ask_level"] == 1.25
+    budgets.store.set(WORKSPACE_OWNER, Budget(0.5, "ask"))
+    budgets.store.set_approval("alice", "2026-10", "user", 1.25)
+    seed = budgets.seed_for_policy("alice")
+    assert (seed["user_ask_level"], seed["org_ask_level"]) == (1.25, 0.0)
+    budgets.store.set_approval("alice", "2026-10", "org", 1.0)
+    seed = budgets.seed_for_policy("alice")
+    assert (seed["user_ask_level"], seed["org_ask_level"]) == (1.25, 1.0)
+    # Approvals are not spend, and nothing was written to the daily rollup for them.
+    assert budgets.spent("alice") == pytest.approx(1.0)
+    assert conversation_store.list_daily_costs("alice", "0000-00-00") == [("2026-10-14", 1.0)]
+    # The next month starts with nothing approved.
     monkeypatch.setattr(budget_module, "now_epoch", lambda: 1_794_700_000)
-    assert budgets.seed_for_policy("alice", conversation_store)["month_ask_level"] == 0.0
+    seed = budgets.seed_for_policy("alice")
+    assert (seed["user_ask_level"], seed["org_ask_level"]) == (0.0, 0.0)
+
+
+def test_user_and_org_asks_are_independent() -> None:
+    evaluate = owner_model_budget()
+    seed = _seed(
+        month_limit_usd=5.0,
+        month_at_limit="ask",
+        month_cost_usd=6.0,
+        org_limit_usd=100.0,
+        org_at_limit="ask",
+        org_cost_usd=100.0,
+        user_ask_level=1.0,
+    )
+    out = evaluate(_event(seed))
+    assert out["state_updates"][0]["value"] == {"scope": "org", "level": 1.0}
+    assert "organization" in out["reason"]
+    assert evaluate(_event({**seed, "org_ask_level": 1.0}))["result"] == "ALLOW"
+    other_way = {**seed, "user_ask_level": 0.0, "org_ask_level": 1.0}
+    assert evaluate(_event(other_way))["state_updates"][0]["value"]["scope"] == "user"
 
 
 # ── engine routing and auto-injection ──────────────────
@@ -174,7 +204,7 @@ def _owned_conversation(conversation_store, db_uri: str, owner: str) -> str:
 
 @pytest.mark.asyncio
 async def test_approval_is_stored_for_the_month_and_not_asked_again(
-    conversation_store, db_uri: str
+    conversation_store, db_uri: str, budgets
 ) -> None:
     conv_id = _owned_conversation(conversation_store, db_uri, "alice")
     policy = FunctionPolicy(
@@ -194,17 +224,21 @@ async def test_approval_is_stored_for_the_month_and_not_asked_again(
         conversation_id=conv_id,
         initial_labels={},
         initial_user_daily_cost=_seed(
-            month_limit_usd=10.0, month_at_limit="ask", month_cost_usd=11.0, month_ask_level=0.0
+            month_limit_usd=10.0, month_at_limit="ask", month_cost_usd=11.0, user_ask_level=0.0
         ),
         conversation_store=conversation_store,
     )
     ctx = EvaluationContext(phase=Phase.REQUEST, content={})
     first = await engine.evaluate(ctx)
     assert first.action == PolicyAction.ASK
-    engine.apply_state_updates(first.state_updates)
-    assert conversation_store.get_daily_cost_state("alice", approval_bucket())[
-        "ask_approved_usd"
-    ] == pytest.approx(1.0)
+    bind_budgets(budgets)
+    try:
+        engine.apply_state_updates(first.state_updates)
+    finally:
+        bind_budgets(None)
+    assert budgets.store.get_approval("alice", month_start()[:7]) == {"user": 1.0, "org": 0.0}
+    # Nothing was written to the daily rollup.
+    assert conversation_store.list_daily_costs("alice", "0000-00-00") == []
     # Not in session_state, and the same engine does not ask again.
     assert OWNER_BUDGET_ASK_APPROVED_STATE_KEY not in engine.session_state
     assert (await engine.evaluate(ctx)).action == PolicyAction.ALLOW

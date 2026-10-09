@@ -38,7 +38,7 @@ _ASYMMETRIC_ALGORITHMS = frozenset(
     {"RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA"}
 )
 _DEFAULT_ALGORITHMS = ("RS256", "ES256")
-_RESERVED_USERS = frozenset({"local", "__public__"})
+_RESERVED_USERS = frozenset({"local", "__public__", "__workspace__"})
 _LEEWAY_SECONDS = 30
 _JWKS_TIMEOUT_SECONDS = 5
 _JWKS_LIFESPAN_SECONDS = 300

@@ -643,28 +643,27 @@ class PolicyEngine:
 
     def _record_owner_budget_ask_approved(self, value: Any) -> None:
         """
-        Persist the check-in level the owner approved for their monthly model budget.
+        Persist the check-in level the owner approved for one monthly model budget scope.
 
-        Stored in the owner's month bucket of the daily rollup (see
-        :func:`omnigent.model_credentials.budget.approval_bucket`), so it holds across all their
-        sessions until the month ends. A no-op without an owner grant or a numeric *value*.
-
-        :param value: The approved level, e.g. ``1.25`` (spend reached 125% of the limit).
+        *value* is ``{"scope": "user"|"org", "level": float}``. It is kept per owner and scope
+        (see :meth:`omnigent.model_credentials.budget.ModelBudgetStore.set_approval`) and lapses
+        when the month turns. A no-op without an owner grant, a bound budget store or a
+        well-formed *value*.
         """
-        try:
-            level = float(value)
-        except (TypeError, ValueError):
-            return
-        owner = self._store.get_session_owner_authority(self._conversation_id)
-        if owner is None:
-            return
-        from omnigent.db.account_authority import target_account_scope
-        from omnigent.model_credentials.budget import approval_bucket
+        from omnigent.model_credentials.budget import get_budgets, month_start
 
-        with target_account_scope(owner.user_id, owner.generation):
-            self._store.set_daily_ask_approved(owner.user_id, approval_bucket(), level)
+        budgets = get_budgets()
+        owner = self._store.get_session_owner_authority(self._conversation_id)
+        scope = value.get("scope") if isinstance(value, dict) else None
+        try:
+            level = float(value["level"])
+        except (TypeError, KeyError, ValueError):
+            return
+        if budgets is None or owner is None or scope not in ("user", "org"):
+            return
+        budgets.store.set_approval(owner.user_id, month_start()[:7], scope, level)
         if self._user_daily_cost is not None:
-            self._user_daily_cost["month_ask_level"] = level
+            self._user_daily_cost[f"{scope}_ask_level"] = level
 
     def record_usage(
         self,

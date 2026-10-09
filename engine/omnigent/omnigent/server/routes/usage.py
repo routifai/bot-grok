@@ -223,8 +223,6 @@ def _build_usage_report(
         daily_costs_raw = conversation_store.list_daily_costs(rollup_user, _EPOCH_DAY)
     else:
         daily_costs_raw = []
-    # Rows keyed by a month ("YYYY-MM") only remember a budget approval; they are not days.
-    daily_costs_raw = [(day, cost) for day, cost in daily_costs_raw if len(day) == 10]
 
     return UsageReport(
         cost_today=cost_today,

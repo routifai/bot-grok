@@ -88,8 +88,9 @@ class UsageContext(TypedDict, total=False):
 # sessions, not just the one conversation.
 USER_DAILY_ASK_APPROVED_STATE_KEY = "_policy_user_daily_ask_approved_usd"
 
-# Same routing for the owner's monthly model budget (``owner_model_budget``): the engine records
-# the approved check-in level against the owner's month, so it holds across all their sessions.
+# Same routing for the owner's monthly model budget (``owner_model_budget``). The value is
+# ``{"scope": "user"|"org", "level": float}``: the engine records the approved check-in level per
+# owner and scope, so it holds across all their sessions for the month.
 OWNER_BUDGET_ASK_APPROVED_STATE_KEY = "_policy_owner_budget_ask_level"
 
 # Reserved ``state_updates`` key the per-session cost-budget policy emits on
@@ -136,12 +137,13 @@ class UserDailyCostContext(TypedDict, total=False):
     user_id: str
     # Monthly model budget (present only when the owner or the organization has a limit):
     # ``month_*`` the owner's limit/action/spend, ``org_*`` the organization's, and
-    # ``month_ask_level`` the check-in level the owner already approved this month.
+    # ``user_ask_level`` / ``org_ask_level`` the check-in levels already approved this month.
     month_period: str
     month_limit_usd: float
     month_at_limit: str
     month_cost_usd: float
-    month_ask_level: float
+    user_ask_level: float
+    org_ask_level: float
     org_limit_usd: float
     org_at_limit: str
     org_cost_usd: float

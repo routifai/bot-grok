@@ -157,7 +157,6 @@ def test_usage_report_month_window(ledger, monkeypatch) -> None:
     ledger.add_daily_cost("u1", "2026-09-30", 40.0)
     ledger.add_daily_cost("u1", "2026-10-01", 2.0)
     ledger.add_daily_cost("u1", "2026-10-14", 3.0)
-    ledger.set_daily_ask_approved("u1", "2026-10", 1.25)  # a budget approval, not a day
     report = usage_module._build_usage_report(ledger, "u1", window="month")
     assert report.cost_month == pytest.approx(5.0)
     assert report.period_start == "2026-10-01"
@@ -168,3 +167,9 @@ def test_usage_report_month_window(ledger, monkeypatch) -> None:
     default = usage_module._build_usage_report(ledger, "u1")
     assert default.cost_month == pytest.approx(5.0) and default.daily_costs == []
     assert month_start(NOW) == "2026-10-01"
+
+
+def test_the_workspace_owner_is_a_reserved_identity() -> None:
+    from omnigent.server.auth import _RESERVED_USERS
+
+    assert budget_module.WORKSPACE_OWNER in _RESERVED_USERS
