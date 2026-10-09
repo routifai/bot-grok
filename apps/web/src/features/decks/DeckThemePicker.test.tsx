@@ -15,8 +15,13 @@ vi.mock("@lingui/react/macro", () => ({
 }));
 
 import { DeckThemePicker, resetDeckThemeCache } from "./DeckThemePicker";
-import { readDeckThemeName } from "./deck-model";
-import { resetDeckUi, setDeckThemeOpen, useDeckThemeOpen } from "./deck-ui-state";
+import {
+  registerDeckFlush,
+  resetDeckUi,
+  setDeckThemeOpen,
+  takeDeckVersionEdit,
+  useDeckThemeOpen,
+} from "./deck-ui-state";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 
@@ -40,7 +45,7 @@ const THEMES: DeckTheme[] = [
     preview: "data:image/webp;base64,AA==",
   },
 ];
-const DECK = `<style>\n    /* Corporate Clean · layout vocabulary and theme */\n.a{}</style>`;
+const DECK = "<style>.a{}</style>";
 const KEY = "q3.deck.html";
 
 beforeEach(() => {
@@ -54,9 +59,16 @@ afterEach(() => {
   resetDeckUi();
 });
 
-async function mount(over: { editSource?: ReturnType<typeof vi.fn>; onEdited?: () => void } = {}) {
+async function mount(
+  over: {
+    editSource?: ReturnType<typeof vi.fn>;
+    current?: string | null;
+    onEdited?: () => void;
+  } = {},
+) {
   const editSource = over.editSource ?? vi.fn(async () => ({ id: "v2", version: 2 }));
   const onEdited = over.onEdited ?? vi.fn();
+  const theme = over.current === undefined ? "corporate-clean" : over.current;
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -64,17 +76,20 @@ async function mount(over: { editSource?: ReturnType<typeof vi.fn>; onEdited?: (
   function Probe() {
     return <span data-testid="open">{String(useDeckThemeOpen(KEY))}</span>;
   }
-  const render = (html: string, version: number) =>
+  const themes = async () => ({ themes: THEMES, defaultTheme: "corporate-clean" });
+  const render = (html: string, version: number, now: string | null = theme) =>
     act(async () =>
       root.render(
         <I18nProvider i18n={i18n}>
           <Probe />
+          <button type="button" data-deck-theme-button="" data-testid="header-button" />
           <DeckThemePicker
             deckKey={KEY}
             html={html}
             artifact={{ id: `v${version}`, version }}
             onEdited={onEdited}
-            themesSource={async () => ({ themes: THEMES, defaultTheme: "corporate-clean" })}
+            themesSource={themes}
+            themeSource={async () => now}
             editSource={editSource as never}
           />
         </I18nProvider>,
@@ -85,15 +100,15 @@ async function mount(over: { editSource?: ReturnType<typeof vi.fn>; onEdited?: (
 }
 const card = (c: HTMLElement, id: string) =>
   c.querySelector(`[data-testid="deck-theme-${id}"]`) as HTMLButtonElement;
-
-it("reads the theme name from the deck's style block", () => {
-  expect(readDeckThemeName(DECK)).toBe("Corporate Clean");
-  expect(readDeckThemeName("<html></html>")).toBeNull();
-});
+const key = (el: Element, name: string) =>
+  act(
+    async () => void el.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true })),
+  );
 
 it("shows every theme with its thumbnail and mood, grouped, the current one marked", async () => {
   const { container } = await mount();
   expect(container.querySelectorAll('[role="radio"]')).toHaveLength(2);
+  expect(container.querySelectorAll('[role="radiogroup"]')).toHaveLength(1);
   expect(card(container, "corporate-clean").getAttribute("aria-checked")).toBe("true");
   expect(card(container, "nord").getAttribute("aria-checked")).toBe("false");
   expect(card(container, "nord").textContent).toContain("Arctic dark slate.");
@@ -102,6 +117,43 @@ it("shows every theme with its thumbnail and mood, grouped, the current one mark
     "Professional",
     "Dark",
   ]);
+});
+
+it("opens with the keyboard on the current theme and moves with the arrow keys", async () => {
+  const { container } = await mount({ current: "nord" });
+  expect(document.activeElement).toBe(card(container, "nord"));
+  // one tab stop: the focused card
+  expect(card(container, "nord").tabIndex).toBe(0);
+  expect(card(container, "corporate-clean").tabIndex).toBe(-1);
+  await key(card(container, "nord"), "ArrowLeft");
+  expect(document.activeElement).toBe(card(container, "corporate-clean"));
+  expect(card(container, "corporate-clean").tabIndex).toBe(0);
+  expect(card(container, "nord").tabIndex).toBe(-1);
+  await key(card(container, "corporate-clean"), "End");
+  expect(document.activeElement).toBe(card(container, "nord"));
+  await key(card(container, "nord"), "Home");
+  expect(document.activeElement).toBe(card(container, "corporate-clean"));
+});
+
+it("focuses the first card when the deck is on no theme", async () => {
+  const { container } = await mount({ current: null });
+  expect(document.activeElement).toBe(card(container, "corporate-clean"));
+});
+
+it("returns focus to the header's Theme button when it closes from the keyboard", async () => {
+  const { container } = await mount();
+  await act(async () => setDeckThemeOpen(KEY, true));
+  await key(document.body, "Escape");
+  await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  expect(document.activeElement).toBe(container.querySelector('[data-testid="header-button"]'));
+});
+
+it("says upfront that a hand-made deck is on no theme and sends nothing when a card is used", async () => {
+  const { container, editSource } = await mount({ current: null });
+  expect(container.textContent).toContain("This deck isn't on a theme. Ask Nova to restyle it.");
+  expect(container.querySelector('[role="radio"][aria-checked="true"]')).toBeNull();
+  await act(async () => card(container, "nord").click());
+  expect(editSource).not.toHaveBeenCalled();
 });
 
 it("picking a theme sends one set-theme patch on the shown version, and Undo puts the source back", async () => {
@@ -113,9 +165,10 @@ it("picking a theme sends one set-theme patch on the shown version, and Undo put
     patches: [{ kind: "set-theme", theme: "nord" }],
   });
   expect(onEdited).toHaveBeenCalledWith("v2");
-  // the panel adopts the new version
-  const NORD = DECK.replace("Corporate Clean", "Nord");
-  await render(NORD, 2);
+  // the editor's undo history owns that version
+  expect(takeDeckVersionEdit(KEY, 2)).toBe(true);
+  // the panel adopts the new version; the engine says it is on Nord
+  await render("<style>.nord{}</style>", 2, "nord");
   expect(card(container, "nord").getAttribute("aria-checked")).toBe("true");
   expect(container.textContent).toContain("Switched to Nord");
   const undo = Array.from(container.querySelectorAll("button")).find(
@@ -129,14 +182,33 @@ it("picking a theme sends one set-theme patch on the shown version, and Undo put
   });
 });
 
-it("says what went wrong and keeps the gallery when the engine refuses", async () => {
-  const editSource = vi.fn(async () => {
-    throw new Error("This deck's theme can't be swapped exactly; ask Nova to restyle it");
-  });
-  const { container } = await mount({ editSource });
+it("saves what the editor still has staged first and builds on its version", async () => {
+  const { container, editSource } = await mount();
+  registerDeckFlush(KEY, async () => ({ id: "v5", version: 5 }));
   await act(async () => card(container, "nord").click());
-  expect(container.querySelector('[role="status"]')?.textContent).toContain("ask Nova");
-  expect(card(container, "nord").getAttribute("aria-checked")).toBe("false");
+  expect(editSource).toHaveBeenCalledWith({
+    artifactId: "v5",
+    baseVersion: 5,
+    patches: [{ kind: "set-theme", theme: "nord" }],
+  });
+});
+
+it("words a refusal for people, never the engine's text", async () => {
+  const stale = vi.fn(async () => {
+    throw new Error("The deck changed since you opened it, so the latest version is showing now.");
+  });
+  const a = await mount({ editSource: stale });
+  await act(async () => card(a.container, "nord").click());
+  expect(a.container.querySelector('[role="status"]')?.textContent).toBe(
+    "The deck changed since you opened it. Try again.",
+  );
+  const inexact = vi.fn(async () => {
+    throw new Error("Can't apply that edit exactly: ask Nova instead.");
+  });
+  const b = await mount({ editSource: inexact });
+  await act(async () => card(b.container, "nord").click());
+  expect(b.container.querySelector('[role="status"]')?.textContent).toContain("Ask Nova");
+  expect(card(b.container, "nord").getAttribute("aria-checked")).toBe("false");
 });
 
 it("closes on Escape and on a click outside, not on a click inside", async () => {
@@ -154,7 +226,7 @@ it("closes on Escape and on a click outside, not on a click inside", async () =>
   );
   expect(open()).toBe("false");
   await act(async () => setDeckThemeOpen(KEY, true));
-  await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  await key(document.body, "Escape");
   expect(open()).toBe("false");
   await act(async () => setDeckThemeOpen(KEY, true));
   await act(async () =>

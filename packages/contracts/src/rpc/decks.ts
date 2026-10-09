@@ -60,6 +60,10 @@ export type DeckTheme = z.infer<typeof DeckThemeSchema>;
 
 export const decksContract = {
   decks: {
+    /** The id of the theme a deck is on, or null for a hand-made deck (the picker's check mark). */
+    theme: oc
+      .input(z.object({ artifactId: Id }))
+      .output(z.object({ theme: z.string().nullable() })),
     /** The theme dictionary behind the deck panel's Theme picker. */
     themes: oc
       .input(z.object({}))

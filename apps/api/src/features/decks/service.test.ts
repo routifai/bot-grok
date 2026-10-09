@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { engineDeckThemes, engineEditDeck, engineExportDeck } from "./service.js";
+import { engineDeckTheme, engineDeckThemes, engineEditDeck, engineExportDeck } from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",
@@ -161,5 +161,27 @@ describe("engine deck themes", () => {
     vi.stubGlobal("fetch", fetchMock);
     await engineEditDeck(deps, client, actor, { artifactId: "a1", baseVersion: 1, patches });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).patches).toEqual(patches);
+  });
+});
+
+describe("engine deck theme", () => {
+  it("reads the theme id, or null for a hand-made deck", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) => {
+        expect(url.pathname).toBe("/v1/decks/a1/theme");
+        return json({ theme: "nord" });
+      }),
+    );
+    expect(await engineDeckTheme(deps, client, actor, { artifactId: "a1" })).toEqual({
+      theme: "nord",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ theme: null })),
+    );
+    expect(await engineDeckTheme(deps, client, actor, { artifactId: "a1" })).toEqual({
+      theme: null,
+    });
   });
 });

@@ -76,3 +76,14 @@ it("is a slim strip in edit mode that opens on hover and on the toggle", async (
   await act(async () => (c.querySelectorAll('[role="option"]')[1] as HTMLButtonElement).click());
   expect(onSelect).toHaveBeenCalledWith(1);
 });
+
+it("shows each slide's number in the slim strip, the current one emphasised", async () => {
+  const c = await mount(true);
+  const numbers = Array.from(c.querySelectorAll('[role="option"]')).map(
+    (o) => o.querySelector("span.tabular-nums")?.textContent,
+  );
+  expect(numbers).toEqual(["1", "2", "3"]);
+  expect(
+    c.querySelector('[role="option"][aria-selected="true"] span.tabular-nums')?.className,
+  ).toContain("font-semibold");
+});

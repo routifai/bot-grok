@@ -14,6 +14,8 @@ type DevWindow = Window & {
   __deckSetHtml?: (html: string) => void;
   /** The engine's theme dictionary, when a test provides it. */
   __deckThemes?: () => Promise<{ themes: never[]; defaultTheme: string }>;
+  /** The theme id the engine reads from a deck's source (null when hand-made). */
+  __deckTheme?: (html: string) => Promise<string | null>;
   /** What the engine would answer to a `set-theme` patch: the restyled source. */
   __deckRestyle?: (html: string, theme: string) => Promise<string>;
 };
@@ -70,6 +72,10 @@ export function DeckPreviewPage() {
               const dev = window as DevWindow;
               if (dev.__deckThemes) return dev.__deckThemes();
               return { themes: [], defaultTheme: "" };
+            }}
+            themeSource={async () => {
+              const dev = window as DevWindow;
+              return dev.__deckTheme ? dev.__deckTheme(html) : null;
             }}
             editSource={async (input) => {
               const dev = window as DevWindow;

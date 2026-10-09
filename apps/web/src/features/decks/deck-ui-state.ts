@@ -26,6 +26,7 @@ export const setDeckEditing = (key: string, editing: boolean): void => write(key
 /** Whether the Theme gallery is open (the header's Theme button toggles it; the viewer shows it). */
 export const useDeckThemeOpen = (key: string): boolean =>
   useSyncExternalStore(subscribe, () => read(key).themeOpen);
+export const readDeckThemeOpen = (key: string): boolean => read(key).themeOpen;
 export const setDeckThemeOpen = (key: string, themeOpen: boolean): void =>
   write(key, { themeOpen });
 
@@ -35,8 +36,36 @@ export const useDeckPresentRequest = (key: string): number =>
 export const requestDeckPresent = (key: string): void =>
   write(key, { presentRequest: read(key).presentRequest + 1 });
 
+// Edits made outside the editor (the Theme gallery) that the editor's undo history should own,
+// and the editor's way to save what it still has staged before such a change is made.
+const outsideEdits = new Map<string, Set<number>>();
+type Head = { id: string; version: number };
+const flushers = new Map<string, () => Promise<Head>>();
+
+/** Says the saved `version` of a deck was an edit of the person's, so Undo can step back over it. */
+export function noteDeckVersionEdit(key: string, version: number): void {
+  outsideEdits.set(key, (outsideEdits.get(key) ?? new Set()).add(version));
+}
+/** True once (and forgets) when `version` was noted by `noteDeckVersionEdit`. */
+export function takeDeckVersionEdit(key: string, version: number): boolean {
+  return outsideEdits.get(key)?.delete(version) ?? false;
+}
+/** The editor registers how to save its staged changes; returns the unregister. */
+export function registerDeckFlush(key: string, flush: () => Promise<Head>): () => void {
+  flushers.set(key, flush);
+  return () => {
+    if (flushers.get(key) === flush) flushers.delete(key);
+  };
+}
+/** Saves what the editor still has staged for this deck; its newest saved version, or null when
+ * it is not editing. */
+export const flushDeckEdits = async (key: string): Promise<Head | null> =>
+  (await flushers.get(key)?.()) ?? null;
+
 /** Test helper. */
 export const resetDeckUi = (): void => {
   states.clear();
+  outsideEdits.clear();
+  flushers.clear();
   for (const listener of listeners) listener();
 };

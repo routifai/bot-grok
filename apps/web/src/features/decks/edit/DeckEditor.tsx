@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button } from "@nova/ui-web";
+import { Button, cn } from "@nova/ui-web";
 import { Redo2, Undo2 } from "lucide-react";
 import {
   type MutableRefObject,
@@ -18,6 +18,9 @@ import { EditStage } from "./EditStage";
 import { targetLabel } from "./edit-model";
 import { EditNoticeBanner, StylePanel } from "./StylePanel";
 import { type DeckEditSource, type PostToFrame, useDeckEditor } from "./useDeckEditor";
+
+/** How long a selection waits before the stage gives the inspector its room. */
+const DOCK_DELAY_MS = 350;
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -52,6 +55,7 @@ export function DeckEditor({
   const postRef = useRef<PostToFrame>(() => {});
   const post = useCallback<PostToFrame>((message) => postRef.current(message), []);
   const editor = useDeckEditor({
+    deckKey: title,
     artifactId: artifact.id,
     version: artifact.version,
     html,
@@ -118,28 +122,56 @@ export function DeckEditor({
   // Leaving edit mode takes its attachment with it.
   useEffect(() => () => setComposerAttachment(DECK_ASK_KIND, null), []);
 
+  const selected = editor.targets.length > 0;
+  // The inspector makes room for itself a moment after the selection settles, so the second click
+  // of a double-click (to type in the text) still lands on the element the first click chose.
+  const [docked, setDocked] = useState(false);
+  useEffect(() => {
+    if (!selected) {
+      setDocked(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setDocked(true), DOCK_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [selected]);
   return (
-    <div className="relative flex min-w-0 flex-1 flex-col">
-      <div className="relative min-h-0 flex-1">
-        <EditStage
-          html={html}
-          title={title}
-          reloadKey={editor.reloadKey}
-          active={active}
-          selectedIds={editor.selectedIds}
-          frameRef={frameRef}
-          postRef={postRef}
-          onMessage={editor.onFrameMessage}
-        />
-        <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-center gap-2">
+    <div className="relative flex min-w-0 flex-1">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="relative min-h-0 flex-1">
+          <EditStage
+            html={html}
+            title={title}
+            reloadKey={editor.reloadKey}
+            active={active}
+            selectedIds={editor.selectedIds}
+            frameRef={frameRef}
+            postRef={postRef}
+            onMessage={editor.onFrameMessage}
+          />
+        </div>
+        <div className="relative">
+          {editor.notice ? (
+            <div className="pointer-events-none absolute inset-x-3 bottom-full z-10 mb-2 flex justify-center">
+              <div className="pointer-events-auto">
+                <EditNoticeBanner
+                  notice={editor.notice}
+                  targets={editor.targets}
+                  canAsk={canAsk}
+                  onAsk={ask}
+                  onDismissNotice={editor.dismissNotice}
+                />
+              </div>
+            </div>
+          ) : null}
+          {bar}
           <div
             data-testid="deck-edit-toolbar"
-            className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-glass p-1 shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-[0.5px] ring-glass-line ring-inset backdrop-blur-[30px] backdrop-saturate-[1.8]"
+            className="absolute inset-y-0 start-3 flex items-center gap-0.5"
           >
             <Button
               variant="ghost"
               size="icon-sm"
-              className="rounded-full"
+              className="text-muted-foreground"
               aria-label={t`Undo`}
               title={t`Undo`}
               disabled={!editor.canUndo || editor.saving}
@@ -150,7 +182,7 @@ export function DeckEditor({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="rounded-full"
+              className="text-muted-foreground"
               aria-label={t`Redo`}
               title={t`Redo`}
               disabled={!editor.canRedo || editor.saving}
@@ -159,45 +191,46 @@ export function DeckEditor({
               <Redo2 />
             </Button>
           </div>
-          {editor.notice ? (
-            <div className="pointer-events-auto">
-              <EditNoticeBanner
-                notice={editor.notice}
-                targets={editor.targets}
-                canAsk={canAsk}
-                onAsk={ask}
-                onDismissNotice={editor.dismissNotice}
-              />
-            </div>
-          ) : null}
+          {selected ? null : (
+            <p
+              data-testid="deck-edit-hint"
+              className="pointer-events-none absolute inset-y-0 end-4 hidden items-center text-[12px] text-muted-foreground md:flex"
+            >
+              {t`Click an element to edit it.`}
+            </p>
+          )}
         </div>
-        {editor.targets.length ? (
-          <div className="pointer-events-none absolute inset-y-3 end-3 flex items-start justify-end">
-            <div className="pointer-events-auto flex max-h-full">
-              <StylePanel
-                targets={editor.targets}
-                theme={editor.theme}
-                slideCount={editor.theme?.slideCount ?? 0}
-                canAsk={canAsk}
-                asked={asked}
-                focusAsk={editor.askRequest}
-                onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
-                onAttributes={editor.setAttributes}
-                onCommit={() => {
-                  editor.finishText();
-                  void editor.flush();
-                }}
-                onClose={() => post({ type: "nova:edit-select", ids: [] })}
-                onRemove={editor.remove}
-                onDuplicate={editor.duplicate}
-                onAsk={ask}
-                onDismissNotice={editor.dismissNotice}
-              />
-            </div>
-          </div>
-        ) : null}
       </div>
-      {bar}
+      {/* The inspector is docked beside the stage while something is selected: the stage fits the
+          width that is left, so nothing is ever covered. */}
+      <div
+        className={cn(
+          "shrink-0 overflow-hidden motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out",
+          docked ? "w-[300px]" : "w-0",
+        )}
+      >
+        <div className="flex h-full w-[300px] py-3 pe-3">
+          <StylePanel
+            targets={editor.targets}
+            theme={editor.theme}
+            slideCount={editor.theme?.slideCount ?? 0}
+            canAsk={canAsk}
+            asked={asked}
+            focusAsk={editor.askRequest}
+            onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
+            onAttributes={editor.setAttributes}
+            onCommit={() => {
+              editor.finishText();
+              void editor.flush();
+            }}
+            onClose={() => post({ type: "nova:edit-select", ids: [] })}
+            onRemove={editor.remove}
+            onDuplicate={editor.duplicate}
+            onAsk={ask}
+            onDismissNotice={editor.dismissNotice}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -15,6 +15,7 @@ vi.mock("@lingui/react/macro", () => ({
 
 import { DeckViewer } from "./DeckViewer";
 import { FIXTURE_DECK } from "./deck-fixture";
+import { readDeckThemeOpen, setDeckThemeOpen } from "./deck-ui-state";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 
@@ -189,4 +190,21 @@ it("presents full screen and exits on the fullscreen change", async () => {
   Object.defineProperty(document, "fullscreenElement", { value: null, configurable: true });
   await act(async () => document.dispatchEvent(new Event("fullscreenchange")));
   expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+});
+
+it("closes the Theme gallery's open state when the deck leaves the screen", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <I18nProvider i18n={i18n}>
+        <DeckViewer html={FIXTURE_DECK} title="gone.deck.html" />
+      </I18nProvider>,
+    ),
+  );
+  await act(async () => setDeckThemeOpen("gone.deck.html", true));
+  expect(readDeckThemeOpen("gone.deck.html")).toBe(true);
+  await act(async () => root.unmount());
+  expect(readDeckThemeOpen("gone.deck.html")).toBe(false);
 });

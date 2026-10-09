@@ -50,6 +50,22 @@ export async function listOmnigentDeckThemes(
   return (await response.json()) as { themes: OmnigentDeckTheme[]; default: string };
 }
 
+/** `GET /decks/{id}/theme` — the theme id a deck is on, `null` when hand-made. */
+export async function getOmnigentDeckTheme(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+): Promise<string | null> {
+  const response = await fetch(
+    new URL(`/v1/decks/${encodeURIComponent(id)}/theme`, config.baseUrl),
+    {
+      headers: omnigentHeaders(config, email),
+    },
+  );
+  await throwOnError(response, "read deck theme", config.secrets);
+  return ((await response.json()) as { theme: string | null }).theme;
+}
+
 /** One source patch (engine wire format; see engine superchat/decks/patches.py). */
 export type OmnigentDeckPatch =
   | { kind: "set-text"; id: string; text: string }

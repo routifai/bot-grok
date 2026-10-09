@@ -8,7 +8,7 @@ const FRAME_W = 1952;
 const FRAME_H = 1112;
 export const THUMB_W = 116;
 /** The slim rail's thumbnail: the same live frame, scaled down further. */
-export const MINI_THUMB_W = 40;
+export const MINI_THUMB_W = 44;
 const heightFor = (width: number) => Math.round((FRAME_H * width) / FRAME_W);
 /** Without IntersectionObserver (tests) only the first few thumbnails mount. */
 const FALLBACK_MOUNT = 6;
@@ -48,7 +48,7 @@ export function DeckThumb({
   label: string;
   active: boolean;
   onSelect: (index: number) => void;
-  /** A slim-rail thumbnail: smaller, without the number and title under it. */
+  /** A slim-rail thumbnail: smaller, with just its number under it. */
   compact?: boolean;
 }) {
   const width = compact ? MINI_THUMB_W : THUMB_W;
@@ -88,7 +88,7 @@ export function DeckThumb({
       >
         <span
           className={cn(
-            "relative block overflow-hidden rounded-md bg-muted ring-1 ring-inset",
+            "relative block overflow-hidden rounded-[5px] bg-muted ring-1 ring-inset",
             active ? "ring-2 ring-foreground" : "ring-border group-hover:ring-foreground/40",
           )}
           style={{ width, height: heightFor(width) }}
@@ -103,7 +103,16 @@ export function DeckThumb({
             </span>
           ) : null}
         </span>
-        {compact ? null : (
+        {compact ? (
+          <span
+            className={cn(
+              "mt-0.5 block text-center text-[10px] tabular-nums",
+              active ? "font-semibold text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {index + 1}
+          </span>
+        ) : (
           <span className="mt-1 flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
             <span className="tabular-nums">{index + 1}</span>
             <span className="truncate">{label.replace(/^\d+\s*/, "")}</span>

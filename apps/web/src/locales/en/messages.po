@@ -827,6 +827,9 @@ msgstr "Clear conversation"
 msgid "Clearing…"
 msgstr "Clearing…"
 
+msgid "Click an element to edit it."
+msgstr "Click an element to edit it."
+
 msgid "Client ID"
 msgstr "Client ID"
 
@@ -1395,6 +1398,9 @@ msgstr "Couldn't run"
 
 msgid "Couldn't save that change."
 msgstr "Couldn't save that change."
+
+msgid "Couldn't switch the theme."
+msgstr "Couldn't switch the theme."
 
 msgid "Couldn't update avatars"
 msgstr "Couldn't update avatars"
@@ -3978,11 +3984,11 @@ msgstr "Text color"
 msgid "That change can't be made exactly by hand."
 msgstr "That change can't be made exactly by hand."
 
-msgid "That didn't work."
-msgstr "That didn't work."
-
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
+
+msgid "The deck changed since you opened it. Try again."
+msgstr "The deck changed since you opened it. Try again."
 
 msgid "The key is stored encrypted and only used for voice."
 msgstr "The key is stored encrypted and only used for voice."
@@ -4028,6 +4034,12 @@ msgstr "this computer"
 
 msgid "This conversation is too long for the model."
 msgstr "This conversation is too long for the model."
+
+msgid "This deck can't be restyled by hand. Ask Nova to restyle it."
+msgstr "This deck can't be restyled by hand. Ask Nova to restyle it."
+
+msgid "This deck isn't on a theme. Ask Nova to restyle it."
+msgstr "This deck isn't on a theme. Ask Nova to restyle it."
 
 #. placeholder {0}: pendingDelete.versionCount
 msgid "This deletes all {0} versions of this artifact. This can't be undone."

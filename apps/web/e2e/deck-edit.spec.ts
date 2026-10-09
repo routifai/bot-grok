@@ -53,10 +53,13 @@ test("edit widens the panel and leaving it restores the width and the full rail"
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect.poll(() => panelWidth(page)).toBeGreaterThan(before + 200);
   await expect(rail).toHaveAttribute("data-slim", "true");
-  expect((await rail.boundingBox())?.width ?? 999).toBeLessThan(railBefore / 2);
+  await expect
+    .poll(async () => (await rail.boundingBox())?.width ?? 999)
+    .toBeLessThan(railBefore / 2);
   // No empty-state text and no inspector until something is selected.
   await expect(panel(page)).toHaveCount(0);
   await expect(page.getByText("Select an element")).toHaveCount(0);
+  await expect(page.getByTestId("deck-edit-hint")).toBeVisible();
   await page.waitForTimeout(1500);
   await shot(page, "edit");
 
@@ -105,12 +108,20 @@ test("the inspector appears only on a selection and closes with Escape or its bu
   await page.mouse.click(title.x, title.y);
   await expect(panel(page)).toContainText("Slide 1 · Heading");
   await expect(panel(page)).toContainText("cover-title");
-  // It floats over the stage: the slide does not resize or move.
-  expect(await frameBox(page)).toEqual(stageBefore);
+  // It is docked beside the stage, which fits the width that is left: nothing is covered.
+  await expect
+    .poll(async () => (await frameBox(page))?.width ?? 0)
+    .toBeLessThan((stageBefore?.width ?? 0) - 200);
+  const stageAfter = await frameBox(page);
+  const inspector = await panel(page).boundingBox();
+  expect((stageAfter?.x ?? 0) + (stageAfter?.width ?? 0)).toBeLessThanOrEqual(
+    (inspector?.x ?? 0) + 1,
+  );
   await shot(page, "edit-selected");
 
   await page.keyboard.press("Escape");
   await expect(panel(page)).toHaveCount(0);
+  await page.waitForTimeout(500); // the stage grows back before the next click
 
   await page.mouse.click(title.x, title.y);
   await expect(panel(page)).toBeVisible();
@@ -166,16 +177,22 @@ test("the Theme gallery opens from the header, picking a theme sends one set-the
     preview: "",
   }));
   await page.exposeFunction("__deckThemes", () => ({ themes, defaultTheme: "corporate-clean" }));
+  await page.exposeFunction("__deckTheme", () => "corporate-clean");
   await page.goto("/dev/deck");
   await page.getByRole("button", { name: "Theme", exact: true }).click();
   const gallery = page.getByTestId("deck-theme-picker");
   await expect(gallery.getByRole("radio")).toHaveCount(2);
   await expect(gallery).toContainText("Nord mood");
   await shot(page, "theme-gallery");
+  // the keyboard lands on a card, the arrows move between them, Escape gives focus back
+  await expect(gallery.getByTestId("deck-theme-corporate-clean")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(gallery.getByTestId("deck-theme-nord")).toBeFocused();
   await gallery.getByTestId("deck-theme-nord").click();
   await expect.poll(async () => (await edits(page)).length).toBe(1);
   expect((await edits(page))[0]?.patches).toEqual([{ kind: "set-theme", theme: "nord" }]);
   await expect(page.getByTestId("dev-version")).toHaveText("v2");
   await page.keyboard.press("Escape");
   await expect(gallery).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Theme", exact: true })).toBeFocused();
 });

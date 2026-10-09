@@ -4,14 +4,19 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { DeckRail } from "./DeckRail";
-import { DeckThemePicker, type DeckThemesSource } from "./DeckThemePicker";
+import { DeckThemePicker, type DeckThemeSource, type DeckThemesSource } from "./DeckThemePicker";
 import {
   type DeckNavigation,
   parseDeckSlides,
   postDeckNavigation,
   readDeckEvent,
 } from "./deck-model";
-import { useDeckEditing, useDeckPresentRequest, useDeckThemeOpen } from "./deck-ui-state";
+import {
+  setDeckThemeOpen,
+  useDeckEditing,
+  useDeckPresentRequest,
+  useDeckThemeOpen,
+} from "./deck-ui-state";
 import { DeckEditor } from "./edit/DeckEditor";
 import type { DeckEditSource } from "./edit/useDeckEditor";
 
@@ -35,6 +40,7 @@ export function DeckViewer({
   onEdited,
   editSource,
   themesSource,
+  themeSource,
 }: {
   html: string;
   title: string;
@@ -44,6 +50,8 @@ export function DeckViewer({
   editSource?: DeckEditSource;
   /** Where the Theme gallery gets the theme dictionary (the API by default). */
   themesSource?: DeckThemesSource;
+  /** Where the gallery reads the theme the deck is on (the API by default). */
+  themeSource?: DeckThemeSource;
 }) {
   const { t } = useLingui();
   const slides = useMemo(() => parseDeckSlides(html), [html]);
@@ -58,6 +66,11 @@ export function DeckViewer({
   const barTimer = useRef<number | undefined>(undefined);
   const editing = useDeckEditing(title);
   const themeOpen = useDeckThemeOpen(title);
+  // The gallery is a hidden state while presenting and must not outlive the deck on screen.
+  useEffect(() => {
+    if (presenting) setDeckThemeOpen(title, false);
+  }, [presenting, title]);
+  useEffect(() => () => setDeckThemeOpen(title, false), [title]);
   const presentRequest = useDeckPresentRequest(title);
   const handledPresent = useRef(presentRequest);
 
@@ -239,6 +252,7 @@ export function DeckViewer({
           artifact={artifact}
           onEdited={onEdited}
           themesSource={themesSource}
+          themeSource={themeSource}
           editSource={editSource}
         />
       ) : null}

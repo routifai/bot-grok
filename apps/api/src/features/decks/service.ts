@@ -3,6 +3,7 @@
 import {
   editOmnigentDeck,
   exportOmnigentDeck,
+  getOmnigentDeckTheme,
   listOmnigentDeckThemes,
   OmnigentApiError,
   type OmnigentClientConfig,
@@ -83,6 +84,22 @@ export async function engineDeckThemes(
     return {
       defaultTheme: found.default,
       themes: found.themes.map(({ best_for: bestFor, ...theme }) => ({ ...theme, bestFor })),
+    };
+  } catch (error) {
+    return notFound(error);
+  }
+}
+
+/** The theme a deck is on (null when it was not built on one). */
+export async function engineDeckTheme(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  input: { artifactId: string },
+): Promise<{ theme: string | null }> {
+  try {
+    return {
+      theme: await getOmnigentDeckTheme(client, await emailOf(deps, actor), input.artifactId),
     };
   } catch (error) {
     return notFound(error);

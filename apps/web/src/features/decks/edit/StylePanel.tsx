@@ -84,7 +84,7 @@ export function StylePanel(props: StylePanelProps) {
       data-testid="deck-style-panel"
       aria-label={t`Edit`}
       onPointerDownCapture={props.onCommit}
-      className="flex max-h-full w-[288px] flex-col overflow-y-auto overscroll-contain rounded-2xl bg-glass shadow-[0_12px_40px_rgb(0_0_0/0.16)] ring-[0.5px] ring-glass-line ring-inset backdrop-blur-[30px] backdrop-saturate-[1.8] motion-safe:animate-[deck-inspector-in_180ms_ease-out]"
+      className="flex max-h-full w-[288px] flex-col overflow-y-auto overscroll-contain rounded-2xl bg-popover text-popover-foreground shadow-[0_12px_40px_rgb(0_0_0/0.16)] ring-1 ring-border motion-safe:animate-[deck-inspector-in_180ms_ease-out]"
     >
       <header className="flex items-center gap-1 px-4 py-3">
         <div className="min-w-0 flex-1">
@@ -154,7 +154,7 @@ export function EditNoticeBanner({
     <div
       role="status"
       data-testid="deck-edit-notice"
-      className="flex w-fit max-w-[360px] flex-col gap-2 rounded-2xl bg-glass px-3.5 py-2.5 text-[12px] shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-[0.5px] ring-glass-line ring-inset backdrop-blur-[30px] backdrop-saturate-[1.8]"
+      className="flex w-fit max-w-[360px] flex-col gap-2 rounded-2xl bg-popover px-3.5 py-2.5 text-[12px] text-popover-foreground shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-1 ring-border"
     >
       <div className="flex items-start gap-2">
         <span className="flex-1">{text}</span>
