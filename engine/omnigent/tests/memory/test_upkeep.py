@@ -584,6 +584,30 @@ async def test_apply_rejects_rather_than_inserts_on_unparseable_classification()
     assert memory.claims["existing"]["confidence"] == pytest.approx(0.9)
 
 
+async def test_apply_stores_nothing_for_a_withdrawal() -> None:
+    """A classifier-flagged withdrawal never becomes a negation beside the old instruction."""
+    memory = FakeMemory(
+        seed_claims=[
+            {
+                "claim_id": "existing",
+                "user_id": "alice",
+                "kind": "instruction",
+                "text": "The user wants replies in French.",
+                "status": "active",
+                "confidence": 0.9,
+            }
+        ]
+    )
+    llm = StubLLM(
+        extraction_response="{}",
+        classify_responses=['{"relation": "withdrawal", "claim_id": null}'],
+    )
+    outcome = await upkeep.apply_candidate(memory, "alice", _verified(), "run1", llm)
+    assert outcome == "withdrawal"
+    assert len(memory.claims) == 1
+    assert memory.claims["existing"]["status"] == "active"
+
+
 # ── classify_relation ─────────────────────────────────────────────────────
 
 
@@ -875,5 +899,15 @@ def test_classify_prompt_matches_what_the_service_does_with_edited_claims() -> N
     assert "superseded (kept as history, no longer active)" in prompt
     assert "wrote or edited it themselves it is kept and the new claim sits beside it" in prompt
     # A withdrawal is not a contradiction and never becomes a stored negation.
-    assert "never record a negation" in prompt
-    assert '"relation": "same"|"new"|"contradicts"' in prompt
+    assert "never a recorded negation" in prompt
+    assert '"relation": "same"|"new"|"contradicts"|"withdrawal"' in prompt
+    assert 'use "new" and' not in prompt
+
+
+def test_extraction_prompt_skips_withdrawals_and_gates_stated_instructions() -> None:
+    prompt = upkeep.MEMORY_UPKEEP_EXTRACTION_PROMPT
+    assert "A withdrawal is not a claim" in prompt
+    assert "Forgetting is handled in the live conversation" in prompt
+    # "stated" for an instruction needs the permanence signal, as the gate says.
+    assert "for an instruction, only with the permanence signal" in prompt
+    assert "for every instruction that carries no such signal" in prompt

@@ -114,9 +114,10 @@ def resolve_upkeep_max_concurrency() -> int:
 # ── extraction / classification prompts (module constants, per plan) ────
 # Portions modified from getnao/nao
 # apps/backend/src/components/ai/memory-system-prompt.tsx@5bde830, Apache-2.0; changes: only the
-# rules are merged (default to extracting nothing, instructions need a permanence signal while
-# profile facts do not, a changed fact or revoked instruction supersedes the old claim); Nova's
-# kinds, verbatim-quote check and evidence scoring are unchanged.
+# rules are merged (default to extracting nothing, instructions without a permanence signal are
+# kept only as inferred evidence while profile facts need none, a changed fact or replaced
+# instruction supersedes the old claim, a withdrawal is never stored); Nova's kinds,
+# verbatim-quote check and evidence scoring are unchanged.
 
 MEMORY_UPKEEP_EXTRACTION_PROMPT = """\
 You are extracting durable long-term memory claims about one user from a \
@@ -142,6 +143,12 @@ standing): still extract it, but mark it "inferred", so repeating it later \
 builds the evidence. Extract nothing for one-off requests, small talk or doubt \
 about what the user said; most transcripts hold only a few claims.
 
+A withdrawal is not a claim: when the user only takes something back ("I no \
+longer want French", "forget that", "stop doing that"), extract nothing for it \
+and never write a negation such as "The user no longer wants French." Forgetting \
+is handled in the live conversation, not here. A replacement that states the \
+new thing ("reply in German from now on") is still extracted as the new claim.
+
 Each candidate's "claim_text" must be one self-contained sentence, written \
 so it makes sense with no other context. Refer to the user as "The user"; \
 never give them a name the user didn't state as their own. Write an instruction \
@@ -151,8 +158,10 @@ the exact words the user wrote, copied verbatim from the cited item — do \
 not paraphrase, fix spelling, or add punctuation the user didn't use.
 
 Mark "explicitness" as "stated" when the user said it directly (e.g. "I \
-prefer...", "always...", "call me..."), or "inferred" when you are deducing \
-it from behavior or a correction rather than a direct statement.
+prefer...", "I'm the head of sales", "call me...") — for an instruction, only \
+with the permanence signal above, or an explicit "remember". Mark it "inferred" \
+when you are deducing it from behavior or a correction rather than a direct \
+statement, and for every instruction that carries no such signal.
 
 Respond with a JSON object of this exact shape and nothing else:
 {"candidates": [{"kind": "preference"|"instruction"|"fact"|"decision"|
@@ -167,7 +176,7 @@ Decide how a new memory candidate about a user relates to their existing \
 memory claims, listed below.
 
 Respond with a JSON object of this exact shape and nothing else:
-{"relation": "same"|"new"|"contradicts", "claim_id": "<id or null>"}
+{"relation": "same"|"new"|"contradicts"|"withdrawal", "claim_id": "<id or null>"}
 Use "same" when the candidate restates or paraphrases one of the listed \
 claims with the same meaning — set "claim_id" to that claim's id. Use \
 "contradicts" only when the candidate clearly conflicts with one specific \
@@ -175,8 +184,9 @@ listed claim — set "claim_id" to that claim's id; this includes a changed fact
 (new role, new employer) and an instruction the user replaced with a new one. \
 The old claim is then superseded (kept as history, no longer active); if the \
 user wrote or edited it themselves it is kept and the new claim sits beside it. \
-An instruction the user only withdrew is not a contradiction: use "new" and \
-never record a negation. Never guess at a contradiction the text doesn't name. \
+A candidate that only withdraws or negates something ("no longer wants French") \
+is not a claim to store: use "withdrawal" with "claim_id": null, never "new" and \
+never a recorded negation. Never guess at a contradiction the text doesn't name. \
 Otherwise use "new" with "claim_id": null. Output JSON only — no markdown, no commentary."""
 
 # ── secret / one-time guards (verify step) ───────────────────────────────
@@ -678,7 +688,7 @@ async def classify_relation(
         return "skip", None
     relation = parsed.get("relation")
     claim_id = parsed.get("claim_id")
-    if relation not in ("same", "new", "contradicts"):
+    if relation not in ("same", "new", "contradicts", "withdrawal"):
         return "skip", None
     return relation, claim_id if isinstance(claim_id, str) else None
 
@@ -691,7 +701,8 @@ async def apply_candidate(
     llm_caller: UpkeepLLMCaller,
 ) -> str:
     """Apply one verified candidate. Returns ``"inserted"``, ``"reinforced"``,
-    ``"superseded"``, or a rejection reason string.
+    ``"superseded"``, or a rejection reason string (``"withdrawal"`` when the candidate only
+    takes something back: nothing is stored).
 
     Every ``memory.*`` call is synchronous (``UpkeepMemory`` is backed by a
     DB + a txtai index), so each one runs in a worker thread
@@ -728,6 +739,10 @@ async def apply_candidate(
         # risk inserting a duplicate of a claim it may have meant to
         # reinforce or supersede.
         return "unparseable"
+
+    if relation == "withdrawal":
+        # A negation is never stored; forgetting belongs to the live conversation.
+        return "withdrawal"
 
     if relation == "same":
         target_id = str(
