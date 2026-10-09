@@ -29,6 +29,48 @@ def local_browser_backend_enabled() -> bool:
     return os.environ.get(BROWSER_BACKEND_ENV, "").strip().lower() == "local"
 
 
+# Found in the title or the first text of the page: a bot challenge or Chromium's error page.
+_CHALLENGE_MARKERS = (
+    "just a moment",
+    "attention required",
+    "verify you are human",
+    "are you a robot",
+    "this page couldn't load",
+    "this site can't be reached",
+)
+# Too common in normal pages to trust in body text: only the title, or an error status.
+_WEAK_MARKERS = ("access denied", "captcha")
+
+
+def _flag_blocked(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Add ``blocked`` and ``reason`` to a navigate result when the site refused the browser.
+
+    Looks at the main document's HTTP status and a short title/text excerpt (bot
+    challenges, Chromium's own error page). Other fields are left as they are; the helper's
+    ``excerpt`` is consumed here.
+
+    :param data: The helper's navigate result.
+    :returns: The same dict, with ``blocked: True`` and ``reason`` when blocked.
+    """
+    excerpt = str(data.pop("excerpt", "") or "")
+    if not data.get("ok"):
+        if "net::err" in str(data.get("error", "")).lower():
+            data.update(blocked=True, reason=f"page failed to load: {str(data['error'])[:100]}")
+        return data
+    status = data.get("status")
+    title = str(data.get("title") or "").lower()
+    text = f"{title} {excerpt.lower()}"
+    if status in (401, 403, 429):
+        data.update(blocked=True, reason=f"site answered HTTP {status}")
+    elif any(m in text for m in _CHALLENGE_MARKERS) or any(
+        m in title or (isinstance(status, int) and status >= 400 and m in text)
+        for m in _WEAK_MARKERS
+    ):
+        data.update(blocked=True, reason="bot challenge or error page")
+    return data
+
+
 class LocalBrowserBackend:
     """Executes ``browser_*`` actions against the runner's own Chromium."""
 
@@ -49,7 +91,9 @@ class LocalBrowserBackend:
         try:
             if action == "navigate":
                 return json.dumps(
-                    await self._helper_call("navigate", {"url": args.get("url", "")})
+                    _flag_blocked(
+                        await self._helper_call("navigate", {"url": args.get("url", "")})
+                    )
                 )
             if action == "snapshot":
                 return json.dumps(self._format_snapshot(await self._helper_call("snapshot", {})))

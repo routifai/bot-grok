@@ -107,6 +107,8 @@ class CdpClient:
         self._pending: dict[int, dict[str, Any] | None] = {}
         # Worlds live in Chromium until navigation; rediscover them per CLI process.
         self._contexts: dict[int, dict[str, Any]] = {}
+        # Main-document HTTP status by loader id (Network.responseReceived, type Document).
+        self.doc_status: dict[str, int] = {}
 
     def connect(self) -> None:
         assert self._ws_url.startswith("ws://"), self._ws_url
@@ -243,7 +245,12 @@ class CdpClient:
         method = message.get("method")
         params = message.get("params") or {}
         session_id = message.get("sessionId")
-        if method == "Runtime.executionContextCreated":
+        if method == "Network.responseReceived":
+            if params.get("type") == "Document" and isinstance(
+                (params.get("response") or {}).get("status"), int
+            ):
+                self.doc_status[str(params.get("loaderId"))] = params["response"]["status"]
+        elif method == "Runtime.executionContextCreated":
             context = params.get("context")
             if not isinstance(context, dict):
                 return
@@ -567,6 +574,10 @@ def navigate(client: CdpClient, session_id: str, url: str) -> dict[str, Any]:
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https") or parsed.username or parsed.password:
         raise RuntimeError("Only HTTP(S) URLs without embedded credentials are supported")
+    try:
+        client.call("Network.enable", session_id=session_id)
+    except Exception:
+        pass
     result = client.call("Page.navigate", {"url": url}, session_id=session_id, timeout_s=15.0)
     if result.get("errorText") or result.get("isDownload"):
         raise RuntimeError(result.get("errorText") or "Navigation started a download")
@@ -580,8 +591,15 @@ def navigate(client: CdpClient, session_id: str, url: str) -> dict[str, Any]:
             ensure_world(client, session_id)
             ready = eval_json(client, session_id, "document.readyState")
             if ready in ("interactive", "complete"):
-                return {"ok": True, "url": eval_json(client, session_id, "location.href"),
-                        "title": eval_json(client, session_id, "(document.title || '').slice(0, 200)")}
+                out = {"ok": True, "url": eval_json(client, session_id, "location.href"),
+                       "title": eval_json(client, session_id, "(document.title || '').slice(0, 200)")}
+                status = client.doc_status.get(str(result.get("loaderId")))
+                if status is not None:
+                    out["status"] = status
+                out["excerpt"] = eval_json(
+                    client, session_id, "((document.body && document.body.innerText) || '').slice(0, 300)"
+                )
+                return out
         except Exception:
             pass
         time.sleep(0.1)

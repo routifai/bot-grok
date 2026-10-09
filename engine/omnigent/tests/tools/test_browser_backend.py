@@ -53,6 +53,36 @@ def test_navigate_and_snapshot_map_to_helper(monkeypatch: pytest.MonkeyPatch) ->
     assert "[ref=1]" in snap["tree"] and "[ebbb]" not in snap["tree"]
 
 
+def _navigate(monkeypatch: pytest.MonkeyPatch, reply: dict[str, Any]) -> dict[str, Any]:
+    backend, _ = _backend(monkeypatch, [reply])
+    return json.loads(asyncio.run(backend.execute("navigate", {"url": "https://x.test"})))
+
+
+def test_navigate_200_result_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    reply = {"ok": True, "url": "u", "title": "Home", "status": 200, "excerpt": "Hello"}
+    nav = _navigate(monkeypatch, reply)
+    assert nav == {"ok": True, "url": "u", "title": "Home", "status": 200}
+
+
+def test_navigate_403_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    nav = _navigate(monkeypatch, {"ok": True, "url": "u", "title": "x", "status": 403})
+    assert nav["blocked"] is True and "403" in nav["reason"] and nav["status"] == 403
+
+
+def test_navigate_challenge_title_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    nav = _navigate(
+        monkeypatch, {"ok": True, "url": "u", "title": "Just a moment...", "status": 200}
+    )
+    assert nav["blocked"] is True
+
+
+def test_navigate_error_page_and_net_error_are_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    page = {"ok": True, "url": "u", "title": "u", "excerpt": "This page couldn't load"}
+    assert _navigate(monkeypatch, page)["blocked"] is True
+    err = _navigate(monkeypatch, {"ok": False, "error": "net::ERR_HTTP2_PROTOCOL_ERROR"})
+    assert err["blocked"] is True
+
+
 def test_click_and_type_map_refs(monkeypatch: pytest.MonkeyPatch) -> None:
     backend, calls = _backend(monkeypatch, [SNAPSHOT, SNAPSHOT, SNAPSHOT])
     snap = json.loads(asyncio.run(backend.execute("snapshot", {})))
