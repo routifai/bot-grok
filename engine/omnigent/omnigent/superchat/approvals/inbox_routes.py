@@ -1,7 +1,7 @@
 """``/v1/me/asks``: the decisions waiting on the person, and how to answer them.
 
 * ``GET /me/asks`` -> ``{"data": [ask]}``, newest first: pending approvals, open plan proposals
-  and blocked tasks of the caller's active Goals (see :mod:`omnigent.superchat.inbox.asks`),
+  and blocked tasks of the caller's active Goals (see :mod:`omnigent.superchat.approvals.asks`),
   redacted of the secrets the engine knows (:mod:`omnigent.server.redaction`).
 * ``POST /me/asks/{id}/answer`` ``{choice, note?}`` -> ``{"ok": true}``. Dispatches to the
   approval answer function and the objective store, the same code the underlying routes run;
@@ -25,14 +25,14 @@ from omnigent.server.redaction import request_redactor
 from omnigent.server.routes._auth_helpers import require_user
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
 from omnigent.stores.objective_store import ObjectiveStore, ProposalNotOpenError
-from omnigent.superchat.approvals.routes import answer_approval, owner_of
-from omnigent.superchat.inbox.asks import (
+from omnigent.superchat.approvals.asks import (
     approval_ask,
     approval_decision,
     objective_asks,
     parse_ask_id,
     proposal_accepts,
 )
+from omnigent.superchat.approvals.routes import answer_approval, owner_of
 
 _NOTE_MAX = 2000
 

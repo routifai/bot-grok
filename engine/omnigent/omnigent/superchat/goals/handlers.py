@@ -10,7 +10,7 @@ import httpx
 
 from omnigent.superchat._handler_http import HEX_ID_RE, finish, resolve_caller
 from omnigent.superchat.feature import HandlerCtx
-from omnigent.superchat.objectives.tools import OBJECTIVE_HELPER_TOOL_NAMES
+from omnigent.superchat.goals.tools import OBJECTIVE_HELPER_TOOL_NAMES
 
 
 def _objective_plan(raw: object) -> list[dict[str, str]] | None:

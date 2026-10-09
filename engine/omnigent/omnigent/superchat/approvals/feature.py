@@ -18,7 +18,26 @@ def _tools(_labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool
     return []
 
 
+def _install_asks(app: FastAPI, deps: InstallDeps) -> None:
+    """Mount the decisions inbox (``/v1/me/asks``): everything waiting on the person."""
+    from omnigent.superchat.approvals.inbox_routes import create_asks_router
+
+    app.include_router(
+        create_asks_router(
+            objective_store=deps.objective_store,
+            conversation_store=deps.conversation_store,
+            agent_store=deps.agent_store,
+            runner_router=deps.runner_router,
+            permission_store=deps.permission_store,
+            auth_provider=deps.auth_provider,
+        ),
+        prefix="/v1",
+        tags=["asks"],
+    )
+
+
 def _install(app: FastAPI, deps: InstallDeps) -> None:
+    _install_asks(app, deps)
     from omnigent.superchat.approvals.policy import configure_store
     from omnigent.superchat.approvals.routes import (
         create_approvals_router,

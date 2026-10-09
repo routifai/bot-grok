@@ -11,9 +11,9 @@ from fastapi.testclient import TestClient
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.stores.objective_store.sqlalchemy_store import SqlAlchemyObjectiveStore
+from omnigent.superchat.approvals.asks import parse_ask_id
+from omnigent.superchat.approvals.inbox_routes import create_asks_router
 from omnigent.superchat.approvals.store import SqlAlchemyApprovalStore
-from omnigent.superchat.inbox.asks import parse_ask_id
-from omnigent.superchat.inbox.routes import create_asks_router
 
 _SESSION = uuid.uuid4().hex
 

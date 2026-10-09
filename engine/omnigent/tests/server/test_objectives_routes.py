@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.stores.objective_store.sqlalchemy_store import SqlAlchemyObjectiveStore
 from omnigent.stores.scheduled_task_store.sqlalchemy_store import SqlAlchemyScheduledTaskStore
-from omnigent.superchat.objectives.routes import create_objectives_router
+from omnigent.superchat.goals.routes import create_objectives_router
 
 _AGENT = uuid.uuid4().hex
 _PARENT = uuid.uuid4().hex

@@ -17,8 +17,8 @@ from omnigent.superchat.feature import (
     is_helper,
     is_super_chat,
 )
-from omnigent.superchat.objectives.handlers import handle_objective_tool
-from omnigent.superchat.objectives.tools import OBJECTIVE_TOOL_NAMES
+from omnigent.superchat.goals.handlers import handle_objective_tool
+from omnigent.superchat.goals.tools import OBJECTIVE_TOOL_NAMES
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
     """Super Chat gets all five; a Helper only read, task progress and propose."""
-    from omnigent.superchat.objectives.tools import (
+    from omnigent.superchat.goals.tools import (
         ObjectiveCreateTool,
         ObjectiveGetTool,
         ObjectiveListTool,
@@ -43,7 +43,7 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
-    from omnigent.superchat.objectives.routes import create_objectives_router
+    from omnigent.superchat.goals.routes import create_objectives_router
 
     if deps.objective_store is None:
         return
