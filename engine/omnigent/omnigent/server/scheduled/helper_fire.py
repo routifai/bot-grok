@@ -318,7 +318,7 @@ async def _post_failure_note(deps: FireDeps, task: ScheduledTask, reason: str) -
             task.rrule,
             datetime.now(ZoneInfo(task.timezone)),
             ZoneInfo(task.timezone),
-            datetime.fromtimestamp(task.created_at, tz=ZoneInfo("UTC")),
+            datetime.fromtimestamp(task.anchor_epoch, tz=ZoneInfo("UTC")),
         )
     except (ValueError, ZoneInfoNotFoundError, RRuleValidationError):
         nxt = None

@@ -27,6 +27,15 @@ _RRULE_DESC = (
 )
 
 
+_STARTS_ON_DESC = (
+    "First day the schedule may fire, as YYYY-MM-DD in the task's timezone: pass the start the "
+    "person gave ('starting next week' -> that date). An interval rule such as "
+    "'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR' counts its periods from this day. Omit to start now; "
+    "changing 'rrule' without it restarts the count from the moment of the edit. Send the rule "
+    "alone: no DTSTART line."
+)
+
+
 class SysScheduledTaskCreateTool(Tool):
     """Create a scheduled task. Runner-dispatched to ``POST /v1/scheduled-tasks``."""
 
@@ -71,6 +80,7 @@ class SysScheduledTaskCreateTool(Tool):
                             ),
                         },
                         "rrule": {"type": "string", "description": _RRULE_DESC},
+                        "starts_on": {"type": "string", "description": _STARTS_ON_DESC},
                         "agent_id": {
                             "type": "string",
                             "description": (
@@ -240,6 +250,7 @@ class SysScheduledTaskUpdateTool(Tool):
                         "name": {"type": "string", "description": "New task name."},
                         "prompt": {"type": "string", "description": "New prompt."},
                         "rrule": {"type": "string", "description": _RRULE_DESC},
+                        "starts_on": {"type": "string", "description": _STARTS_ON_DESC},
                         "agent_id": {
                             "type": "string",
                             "description": (

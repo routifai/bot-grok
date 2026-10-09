@@ -27,7 +27,7 @@ class _FakeTask:
     """The slice of ``ScheduledTask`` the scheduler reads.
 
     The scheduler only touches ``id``, ``workspace_id``, ``rrule``,
-    ``timezone``, ``created_at`` (the stable phase of INTERVAL>1 rules) and ``state``, so the
+    ``timezone``, ``anchor_epoch`` (the stable phase of INTERVAL>1 rules) and ``state``, so the
     tests drive it with this local stand-in
     rather than the full persisted entity — keeping the scheduler unit tests
     independent of the entity's field set.
@@ -39,6 +39,11 @@ class _FakeTask:
     state: str
     workspace_id: int = 0
     created_at: int = 0
+    anchor_at: int | None = None
+
+    @property
+    def anchor_epoch(self) -> int:
+        return self.anchor_at if self.anchor_at is not None else self.created_at
 
 
 # ── Fakes ────────────────────────────────────────────────────────────────────

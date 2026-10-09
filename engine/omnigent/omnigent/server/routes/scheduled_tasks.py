@@ -17,7 +17,7 @@ import asyncio
 import logging
 import re
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -94,6 +94,9 @@ class CreateScheduledTaskRequest(BaseModel):
     # ``managed_sandbox`` runs the task in a fresh server-provisioned sandbox
     # (no host_id/workspace); default keeps the connected-host behavior.
     execution_target: str = "connected_host"
+    # First day the schedule may fire, in the task timezone. It also fixes the phase of an
+    # ``INTERVAL>1`` rule ("every other Friday starting next week"). Omit to start now.
+    starts_on: date | None = None
 
     @model_validator(mode="after")
     def _validate_create(self) -> CreateScheduledTaskRequest:
@@ -121,6 +124,11 @@ class PreviewScheduleRequest(BaseModel):
     rrule: str
     # ``None`` = the owner's preference timezone, else UTC (same as task creation).
     timezone: str | None = None
+    # First day the schedule may fire, in the task timezone. It also fixes the phase of an
+    # ``INTERVAL>1`` rule ("every other Friday starting next week"). Omit to start now.
+    starts_on: date | None = None
+    # An existing task to preview an edit of: its own anchor applies while its rule is unchanged.
+    scheduled_task_id: str | None = None
 
 
 class UpdateScheduledTaskRequest(BaseModel):
@@ -147,6 +155,9 @@ class UpdateScheduledTaskRequest(BaseModel):
     # Rebind to another parent / Type; null for both unbinds the task.
     parent_session_id: str | None = Field(default=None, min_length=1)
     agent_type: str | None = Field(default=None, min_length=1)
+    # Re-anchor an interval rule on this day (task timezone). A changed ``rrule`` otherwise
+    # re-anchors at the moment of the edit.
+    starts_on: date | None = None
 
     @model_validator(mode="after")
     def _validate_patch(self) -> UpdateScheduledTaskRequest:
@@ -218,20 +229,27 @@ def _prefs_to_response(prefs: OwnerPreferences) -> dict[str, Any]:
     }
 
 
+def _anchor_epoch(starts_on: date, timezone: str) -> int:
+    """Midnight of ``starts_on`` in ``timezone`` as epoch seconds."""
+    return int(datetime.combine(starts_on, time.min, tzinfo=ZoneInfo(timezone)).timestamp())
+
+
 def _upcoming_fires(
-    rrule: str, timezone: str, created_at: int | None, count: int = 3
+    rrule: str, timezone: str, anchor_epoch: int | None, count: int = 3
 ) -> list[str]:
     """The next ``count`` fire times as ISO-8601 strings in the task's own timezone.
 
     The Muse reads these back to the person ("Mondays at 09:00, starting Oct 12"), so they are
     local wall-clock times with the offset, never UTC. Uses the same stable anchor as the live
-    scheduler, so an ``INTERVAL>1`` rule previews exactly what will fire.
+    scheduler, so an ``INTERVAL>1`` rule previews exactly what will fire. A preview must never
+    take down the response around it, so any failure is logged and yields no fires.
     """
     try:
         zone = ZoneInfo(timezone)
-        anchor = datetime.fromtimestamp(created_at, tz=zone) if created_at else None
+        anchor = datetime.fromtimestamp(anchor_epoch, tz=zone) if anchor_epoch else None
         fires = next_fire_times(rrule, datetime.now(zone), zone, count, anchor)
-    except (RRuleValidationError, ZoneInfoNotFoundError, ValueError):
+    except Exception:
+        _logger.exception("could not preview fires for rrule %r", rrule)
         return []
     return [fire.isoformat(timespec="minutes") for fire in fires]
 
@@ -265,6 +283,7 @@ def _to_response(
         "agent_id": task.agent_id,
         "timezone": task.timezone,
         "created_at": task.created_at,
+        "anchor_at": task.anchor_epoch,
         "model_override": task.model_override,
         "reasoning_effort": task.reasoning_effort,
         "permission_mode": task.permission_mode,
@@ -281,7 +300,7 @@ def _to_response(
         "last_run_conversation_id": task.last_run_conversation_id,
         "next_run_at": next_run_at,
         "next_fire_times": (
-            _upcoming_fires(task.rrule, task.timezone, task.created_at)
+            _upcoming_fires(task.rrule, task.timezone, task.anchor_epoch)
             if task.state == "active"
             else []
         ),
@@ -512,10 +531,20 @@ def create_scheduled_tasks_router(
             timezone = prefs.timezone if prefs is not None else "UTC"
         _validate_timezone_or_400(timezone)
         _validate_rrule_or_400(body.rrule)
+        # Same anchor rules as saving: the given start day, else the task's own anchor while
+        # its rule is unchanged, else now (a new or edited rule counts from the moment it is set).
+        anchor: int | None = None
+        if body.starts_on is not None:
+            anchor = _anchor_epoch(body.starts_on, timezone)
+        elif body.scheduled_task_id is not None:
+            owner_id = None if owner == RESERVED_USER_LOCAL else owner
+            existing = _require_owned(body.scheduled_task_id, owner_id)
+            if existing.rrule == body.rrule:
+                anchor = existing.anchor_epoch
         return {
             "rrule": body.rrule,
             "timezone": timezone,
-            "next_fire_times": _upcoming_fires(body.rrule, timezone, None),
+            "next_fire_times": _upcoming_fires(body.rrule, timezone, anchor),
         }
 
     @router.post("/scheduled-tasks")
@@ -568,6 +597,9 @@ def create_scheduled_tasks_router(
             workspace=workspace,
             host_id=body.host_id,
             execution_target=body.execution_target,
+            anchor_at=(
+                _anchor_epoch(body.starts_on, timezone) if body.starts_on is not None else None
+            ),
         )
         scheduler = _scheduler(request)
         if scheduler is not None:
@@ -739,6 +771,11 @@ def create_scheduled_tasks_router(
         if body.timezone is not None:
             _validate_timezone_or_400(body.timezone)
         fields = body.model_dump(exclude_unset=True)
+        starts_on = fields.pop("starts_on", None)
+        if starts_on is not None:
+            fields["anchor_at"] = _anchor_epoch(
+                starts_on, fields.get("timezone") or existing.timezone
+            )
         if not fields:
             raise OmnigentError(
                 "nothing to update: send at least one field to change",

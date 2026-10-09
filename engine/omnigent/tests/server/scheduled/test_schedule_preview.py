@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -190,3 +190,127 @@ def test_create_requires_an_rrule_and_rejects_schedule_text(client: TestClient) 
     assert client.post("/v1/scheduled-tasks", json=_task()).status_code == 422
     body = _task(rrule="FREQ=DAILY;BYHOUR=9", schedule="every day")
     assert client.post("/v1/scheduled-tasks", json=body).status_code == 422
+
+
+# ── DTSTART and multi-line rules are refused before anything is saved ───────────────────
+
+_DTSTART_RULE = (
+    "DTSTART:20261016T090000\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=FR;BYHOUR=9;BYMINUTE=0"
+)
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        _DTSTART_RULE,
+        "RRULE:FREQ=DAILY;BYHOUR=9\nRRULE:FREQ=DAILY;BYHOUR=10",
+        "DTSTART;TZID=UTC:2026",
+    ],
+)
+def test_validate_refuses_dtstart_and_multi_line_rules(rule: str) -> None:
+    with pytest.raises(Exception, match="single RRULE line without DTSTART"):
+        validate_rrule(rule)
+
+
+def test_create_with_dtstart_is_a_400_and_persists_nothing(client: TestClient) -> None:
+    with pytest.raises(OmnigentError, match="without DTSTART"):
+        client.post("/v1/scheduled-tasks", json=_task(rrule=_DTSTART_RULE))
+    assert client.get("/v1/scheduled-tasks").json() == {"scheduled_tasks": []}
+
+
+def test_preview_with_dtstart_is_a_400(client: TestClient) -> None:
+    with pytest.raises(OmnigentError, match="without DTSTART"):
+        client.post("/v1/scheduled-tasks/preview-schedule", json={"rrule": _DTSTART_RULE})
+
+
+def test_a_broken_stored_rule_does_not_take_down_listing(client: TestClient, db_uri: str) -> None:
+    store = SqlAlchemyScheduledTaskStore(db_uri)
+    store.create(uuid.uuid4().hex, "legacy", "p", _DTSTART_RULE, None, _AGENT, "UTC")
+    resp = client.get("/v1/scheduled-tasks")
+    assert resp.status_code == 200
+    (task,) = resp.json()["scheduled_tasks"]
+    assert task["next_fire_times"] == []
+
+
+# ── start date and re-anchoring ─────────────────────────────────────────────────────────
+
+
+def _next_week() -> str:
+    return (datetime.now(_PARIS).date() + timedelta(days=7)).isoformat()
+
+
+def test_starts_on_next_week_gives_the_first_fire_next_week(client: TestClient) -> None:
+    start = _next_week()
+    resp = client.post(
+        "/v1/scheduled-tasks",
+        json=_task(
+            rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0", timezone="Europe/Paris", starts_on=start
+        ),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["next_fire_times"][0].startswith(start)
+
+
+def test_starts_on_places_an_interval_rule_in_the_start_week(client: TestClient) -> None:
+    start = datetime.fromisoformat(_next_week())
+    resp = client.post(
+        "/v1/scheduled-tasks",
+        json=_task(
+            rrule=_EVERY_OTHER_FRIDAY, timezone="Europe/Paris", starts_on=start.date().isoformat()
+        ),
+    )
+    first = datetime.fromisoformat(resp.json()["next_fire_times"][0])
+    # The first Friday on or after the start day, never one before it.
+    assert first.weekday() == 4 and 0 <= (first.date() - start.date()).days < 7
+
+
+def test_editing_the_rule_re_anchors_it(client: TestClient, db_uri: str) -> None:
+    store = SqlAlchemyScheduledTaskStore(db_uri)
+    old = store.create(
+        uuid.uuid4().hex, "n", "p", "FREQ=DAILY;BYHOUR=9", None, _AGENT, "Europe/Paris"
+    )
+    store.update(old.id, anchor_at=old.created_at - 40 * 86400)
+    assert store.get(old.id).anchor_epoch == old.created_at - 40 * 86400
+    resp = client.patch(f"/v1/scheduled-tasks/{old.id}", json={"rrule": _EVERY_OTHER_FRIDAY})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["anchor_at"] >= old.created_at  # counted from the edit, not the old phase
+    # Re-sending the same rule keeps the anchor it has.
+    again = client.patch(f"/v1/scheduled-tasks/{old.id}", json={"rrule": _EVERY_OTHER_FRIDAY})
+    assert again.json()["anchor_at"] == resp.json()["anchor_at"]
+
+
+def test_patch_starts_on_re_anchors_without_a_rule_change(client: TestClient) -> None:
+    created = client.post(
+        "/v1/scheduled-tasks", json=_task(rrule="FREQ=DAILY;BYHOUR=9", timezone="Europe/Paris")
+    ).json()
+    start = _next_week()
+    resp = client.patch(f"/v1/scheduled-tasks/{created['id']}", json={"starts_on": start})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["next_fire_times"][0].startswith(start)
+
+
+def test_preview_uses_starts_on_and_the_tasks_own_anchor(client: TestClient) -> None:
+    start = _next_week()
+    body = {"rrule": "FREQ=DAILY;BYHOUR=9", "timezone": "Europe/Paris", "starts_on": start}
+    fires = client.post("/v1/scheduled-tasks/preview-schedule", json=body).json()
+    assert fires["next_fire_times"][0].startswith(start)
+    created = client.post("/v1/scheduled-tasks", json=_task(**body)).json()
+    same = client.post(
+        "/v1/scheduled-tasks/preview-schedule",
+        json={
+            "rrule": body["rrule"],
+            "timezone": "Europe/Paris",
+            "scheduled_task_id": created["id"],
+        },
+    ).json()
+    assert same["next_fire_times"] == created["next_fire_times"]
+    # A different rule for that task counts from now, not from the old start week.
+    edited = client.post(
+        "/v1/scheduled-tasks/preview-schedule",
+        json={
+            "rrule": "FREQ=DAILY;BYHOUR=10",
+            "timezone": "Europe/Paris",
+            "scheduled_task_id": created["id"],
+        },
+    ).json()
+    assert not edited["next_fire_times"][0].startswith(start)

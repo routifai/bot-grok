@@ -73,6 +73,11 @@ def _has_interval(rule_str: str) -> bool:
     return match is not None and int(match.group(1)) > 1
 
 
+def _anchor_applies(rule_str: str, after: datetime, tz: ZoneInfo, anchor: datetime) -> bool:
+    """Whether the anchor shapes this rule: it skips periods, or its start day is still ahead."""
+    return _has_interval(rule_str) or anchor.astimezone(tz).date() > after.astimezone(tz).date()
+
+
 def _anchor_dtstart(after: datetime, tz: ZoneInfo, anchor: datetime | None = None) -> datetime:
     """Midnight of the local day that fixes the rule's phase.
 
@@ -82,7 +87,8 @@ def _anchor_dtstart(after: datetime, tz: ZoneInfo, anchor: datetime | None = Non
 
     ``INTERVAL>1`` rules ("every other Friday", "every 5 hours") count periods from dtstart, so
     anchoring at the query day would slip them after every restart. The scheduler therefore
-    passes the task's creation time as ``anchor``: the phase is fixed for the life of the task.
+    passes the task's anchor (its start date, else the moment its rule was set): the phase is
+    fixed for the life of the rule. Any rule with an anchor day still ahead waits for it.
     """
     local = (anchor or after).astimezone(tz)
     return local.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -104,13 +110,15 @@ def get_next_fire_time(
     :param rule_str: An RFC 5545 recurrence rule, e.g. ``"FREQ=DAILY;BYHOUR=9"``.
     :param after: The instant to search after (any tz-aware datetime).
     :param tz: The IANA timezone occurrences are evaluated in.
-    :param anchor: A stable instant (the task's creation) fixing the phase of ``INTERVAL>1``
-        rules; ignored for every other rule.
+    :param anchor: A stable instant (the task's start date, else when its rule was set) fixing
+        the phase of ``INTERVAL>1`` rules and holding any rule back until its day arrives.
     :returns: The next fire as a tz-aware datetime, or ``None`` if the rule has no further
         occurrences.
     :raises RRuleValidationError: If ``rule_str`` is malformed.
     """
-    use_anchor = anchor if anchor is not None and _has_interval(rule_str) else None
+    use_anchor = (
+        anchor if anchor is not None and _anchor_applies(rule_str, after, tz, anchor) else None
+    )
     dtstart = _anchor_dtstart(after, tz, use_anchor)
     rule = _parse(rule_str, dtstart)
     # `rule.after` compares in dtstart's timezone, so localize `after` too. A
@@ -145,7 +153,7 @@ class RRuleTrigger:
     """A validated RRULE string that can compute its next fire."""
 
     rule: str
-    #: Stable instant fixing the phase of ``INTERVAL>1`` rules (the task's creation time).
+    #: Stable instant fixing the phase of ``INTERVAL>1`` rules (start date, else rule-set time).
     anchor: datetime | None = None
 
     def anchored(self, anchor: datetime) -> RRuleTrigger:
@@ -173,6 +181,22 @@ def _parse(rule_str: str, dtstart: datetime) -> _ParsedRRule:
         raise RRuleValidationError(f"Invalid RRULE {rule_str!r}: {exc}") from exc
 
 
+def _reject_embedded_dtstart(rule_str: str) -> None:
+    """Only a single bare ``RRULE`` is accepted; the start date is a separate field.
+
+    A ``DTSTART`` line (or any multi-line rule) would override the scheduler's anchor and carry
+    a naive datetime the scheduler cannot compare, so it is refused up front.
+
+    :raises RRuleValidationError: On a multi-line rule or one that mentions ``DTSTART``.
+    """
+    stripped = rule_str.strip()
+    if "\n" in stripped or "\r" in stripped or "DTSTART" in stripped.upper():
+        raise RRuleValidationError(
+            "send a single RRULE line without DTSTART (e.g. 'FREQ=WEEKLY;BYDAY=FR'); "
+            "give the first day as starts_on instead"
+        )
+
+
 def validate_rrule(rule_str: str, tz: ZoneInfo | None = None) -> RRuleTrigger:  # noqa: ARG001
     """Parse and validate an RRULE string for use as a recurring trigger.
 
@@ -191,6 +215,7 @@ def validate_rrule(rule_str: str, tz: ZoneInfo | None = None) -> RRuleTrigger:  
     :raises RRuleValidationError: On bad syntax, never-fires, fires-once, or a
         sub-minimum interval.
     """
+    _reject_embedded_dtstart(rule_str)
     rule = _parse(rule_str, _INTERVAL_ANCHOR)
 
     # Pull consecutive occurrences from the fixed anchor, bounded by the sample

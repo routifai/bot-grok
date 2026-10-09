@@ -235,7 +235,7 @@ class ScheduledTaskScheduler:
     def _register(self, task: ScheduledTask) -> None:
         """Validate the task's rrule and arm its timer, replacing any existing."""
         trigger = validate_rrule(task.rrule).anchored(
-            datetime.fromtimestamp(task.created_at, tz=_UTC)
+            datetime.fromtimestamp(task.anchor_epoch, tz=_UTC)
         )
         self.remove(task.id)  # replace_existing semantics
         job = _Job(
