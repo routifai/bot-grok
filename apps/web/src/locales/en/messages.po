@@ -1322,6 +1322,9 @@ msgstr "Couldn’t reach Nova’s computer. Retrying…"
 msgid "Couldn't read that selection."
 msgstr "Couldn't read that selection."
 
+msgid "Couldn't run"
+msgstr "Couldn't run"
+
 msgid "Couldn't save that change."
 msgstr "Couldn't save that change."
 
@@ -3515,6 +3518,9 @@ msgstr "Slack message"
 
 msgid "Slack not enabled"
 msgstr "Slack not enabled"
+
+msgid "Something went wrong before it could start."
+msgstr "Something went wrong before it could start."
 
 msgid "Something went wrong on my side. Try again."
 msgstr "Something went wrong on my side. Try again."

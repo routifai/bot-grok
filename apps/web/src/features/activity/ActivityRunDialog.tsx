@@ -238,12 +238,20 @@ export function ActivityRunDialog({
 
   if (!activity) return null;
   const steps = detail?.steps ?? [];
+  // A failed run with no steps never got going (e.g. its Computer didn't start): it
+  // "couldn't run", it didn't "not finish" — and it always says why.
+  const neverRan = activity.status === "failed" && detail !== null && steps.length === 0;
   const outcome =
-    activity.outcome ?? (activity.status === "in_progress" ? t`Still working on this.` : null);
+    activity.outcome ??
+    (activity.status === "in_progress"
+      ? t`Still working on this.`
+      : activity.status === "failed"
+        ? t`Something went wrong before it could start.`
+        : null);
   const statusLabel = {
     in_progress: t`In progress`,
     done: t`Done`,
-    failed: t`Didn't finish`,
+    failed: neverRan ? t`Couldn't run` : t`Didn't finish`,
     cancelled: t`Cancelled`,
   }[activity.status];
   const showHelper = helperOpen && isHelperActivity(activity);
