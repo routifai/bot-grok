@@ -25,6 +25,7 @@ from pathlib import Path
 
 KIT_DIR = Path(__file__).parent / "kit"
 TEMPLATES_DIR = KIT_DIR / "templates"
+FONTS_DIR = KIT_DIR / "fonts"
 CHARTS_DIR = KIT_DIR / "charts"
 CHARTJS_PATH = KIT_DIR / "vendor" / "chart.js" / "chart.umd.js"
 
@@ -45,6 +46,8 @@ class Template:
     name: str
     description: str
     best_for: str
+    category: str
+    mode: str
     fonts: tuple[dict[str, object], ...]
 
     @property
@@ -63,6 +66,8 @@ def templates() -> dict[str, Template]:
             name=data["name"],
             description=data["description"],
             best_for=data["best_for"],
+            category=data["category"],
+            mode=data["mode"],
             fonts=tuple(data["fonts"]),
         )
     return found
@@ -82,7 +87,7 @@ def _font_faces_css(template_id: str) -> str:
     template = templates()[template_id]
     rules = []
     for font in template.fonts:
-        path = template.directory / "fonts" / str(font["file"])
+        path = FONTS_DIR / str(font["file"])
         mime = _FONT_MIME.get(path.suffix.lower(), "font/ttf")
         data = base64.b64encode(path.read_bytes()).decode("ascii")
         rules.append(

@@ -28,13 +28,16 @@ def _slides_in(deck: str) -> str:
     return deck.split(kit.SLOTS_OPEN, 1)[1].split(kit.SLOTS_CLOSE, 1)[0]
 
 
-def test_three_templates_with_licenses_and_embeddable_fonts() -> None:
-    assert set(kit.templates()) == {"blue-professional", "editorial-tri-tone", "magazine-mono"}
-    for template in kit.templates().values():
+def test_theme_library_has_licenses_metadata_and_embeddable_fonts() -> None:
+    templates = kit.templates()
+    assert len(templates) == 18
+    assert {"corporate-clean", "minimal-white", "editorial-tri-tone"} <= set(templates)
+    for template in templates.values():
         assert (template.directory / "LICENSE").read_text("utf-8").startswith("MIT License")
+        assert template.category and template.mode in {"light", "dark"}
         for font in template.fonts:
-            assert (template.directory / "fonts" / str(font["file"])).stat().st_size > 10_000
-            assert (template.directory / "fonts" / str(font["license"])).read_text("utf-8").strip()
+            assert (kit.FONTS_DIR / str(font["file"])).stat().st_size > 10_000
+            assert (kit.FONTS_DIR / str(font["license"])).read_text("utf-8").strip()
 
 
 @pytest.mark.parametrize("template", sorted(kit.templates()))

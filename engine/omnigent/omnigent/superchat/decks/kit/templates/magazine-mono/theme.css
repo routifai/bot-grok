@@ -3,7 +3,7 @@
    motifs kept; rewritten for Nova's fixed 1920x1080 canvas (px units, no vw/vh or clamp()),
    expressed as tokens (tokens.css) plus the three surface classes of the shared layouts
    (../../layouts.css); web fonts replaced by static Latin-subset TTFs embedded at assembly
-   (fonts/, SIL OFL 1.1, license texts alongside). */
+   (kit/fonts, SIL OFL 1.1, license texts alongside). */
 /* Magazine Mono: ink on paper, one voice, serif display. t-a = paper, t-b = ink, t-c = tinted paper. */
 .slide.t-a { background: #f1efea; color: #0a0a0b; }
 .slide.t-b { background: #0a0a0b; color: #f1efea; --fg: #f1efea; --muted: #a9a69f; --accent: #f1efea; --surface: #18181a; --line: #3a3a3d; }
