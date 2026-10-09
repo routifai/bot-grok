@@ -133,6 +133,7 @@ def _read_csv(data: bytes) -> list[dict[str, Any]]:
     rows, _, _ = _csv_rows(text)
     n_cols = max((len(r) for r in rows), default=0)
     grid = [[_csv_cell(c) for c in r[:MAX_COLS]] for r in rows[:MAX_ROWS]]
+    widths = _csv_widths(rows[:MAX_ROWS], min(n_cols, MAX_COLS))
     return [
         {
             "name": "Sheet1",
@@ -141,8 +142,23 @@ def _read_csv(data: bytes) -> list[dict[str, Any]]:
             "n_rows": len(rows),
             "n_cols": n_cols,
             "truncated": len(rows) > MAX_ROWS or n_cols > MAX_COLS,
+            **({"col_widths": widths} if widths else {}),
         }
     ]
+
+
+#: CSV has no stored widths: size each column to its longest cell (in characters), within bounds.
+CSV_MIN_WIDTH = 8
+CSV_MAX_WIDTH = 48
+
+
+def _csv_widths(rows: list[list[str]], n_cols: int) -> list[float | None]:
+    widths: list[float | None] = []
+    for c in range(n_cols):
+        longest = max((len(r[c]) for r in rows if c < len(r)), default=0)
+        # a little room for padding; shown numbers can gain thousands separators
+        widths.append(float(min(max(longest + 2, CSV_MIN_WIDTH), CSV_MAX_WIDTH)))
+    return widths
 
 
 def _fmt_csv_value(value: Any) -> str:
@@ -233,8 +249,12 @@ def _read_xlsx(data: bytes) -> list[dict[str, Any]]:
                     v, t = _xlsx_value(ws_cached.cell(row=r, column=c).value)
                 else:
                     v, t = _xlsx_value(cell.value)
-                line.append({"v": v, "f": f, "t": t})
+                entry: dict[str, Any] = {"v": v, "f": f, "t": t}
+                if cell.number_format and cell.number_format != "General":
+                    entry["z"] = cell.number_format
+                line.append(entry)
             grid.append(line)
+        widths = _xlsx_widths(ws, min(n_cols, MAX_COLS))
         frozen = 0
         if ws.freeze_panes:
             frozen = max(_parse_ref(str(ws.freeze_panes))[0], 0)
@@ -246,9 +266,23 @@ def _read_xlsx(data: bytes) -> list[dict[str, Any]]:
                 "n_rows": n_rows,
                 "n_cols": n_cols,
                 "truncated": n_rows > MAX_ROWS or n_cols > MAX_COLS,
+                **({"col_widths": widths} if widths else {}),
             }
         )
     return sheets
+
+
+def _xlsx_widths(ws: Any, n_cols: int) -> list[float | None]:
+    """Widths (characters) of the first ``n_cols`` columns; empty when the sheet sets none."""
+    widths: list[float | None] = [None] * n_cols
+    for dim in ws.column_dimensions.values():
+        if not dim.customWidth or dim.hidden or not dim.width:
+            continue
+        lo = dim.min or 1
+        hi = dim.max or lo
+        for c in range(lo, min(hi, n_cols) + 1):
+            widths[c - 1] = float(dim.width)
+    return widths if any(w is not None for w in widths) else []
 
 
 def _edit_xlsx(data: bytes, edits: list[CellEdit]) -> tuple[bytes, list[tuple[CellEdit, str]]]:
@@ -257,6 +291,7 @@ def _edit_xlsx(data: bytes, edits: list[CellEdit]) -> tuple[bytes, list[tuple[Ce
     changes: list[tuple[CellEdit, str]] = []
     patches: list[tuple[str, int, int, Any]] = []
     pending: dict[tuple[str, int, int], Any] = {}
+    date_keys: set[tuple[str, int, int]] = set()
     for e in edits:
         if e.sheet not in wb.sheetnames:
             raise TableError(f"unknown sheet: {e.sheet}")
@@ -272,6 +307,13 @@ def _edit_xlsx(data: bytes, edits: list[CellEdit]) -> tuple[bytes, list[tuple[Ce
             current = cell.value
             old = formula or _display(cell.value)
         value = e.value
+        if key not in date_keys and (cell.is_date or isinstance(current, datetime | date | time)):
+            date_keys.add(key)
+        if key in date_keys and isinstance(value, str):
+            # a date cell stays a date: the viewer sends dates back as ISO text (an undo, a retype)
+            serial = _date_serial(value, wb.epoch)
+            if serial is not None:
+                value = serial
         if isinstance(value, str):
             if value == "":
                 value = None
@@ -290,6 +332,27 @@ def _edit_xlsx(data: bytes, edits: list[CellEdit]) -> tuple[bytes, list[tuple[Ce
         return patch_cells(data, patches), changes
     except XlsxPatchError as exc:
         raise TableError(f"cannot edit spreadsheet: {exc}") from exc
+
+
+def _date_serial(text: str, epoch: Any) -> float | int | None:
+    """An ISO date / datetime / time as an Excel serial number (what a date cell stores)."""
+    from openpyxl.utils.datetime import to_excel
+
+    raw = text.strip()
+    parsed: datetime | date | time
+    try:
+        if len(raw) == 10:
+            parsed = date.fromisoformat(raw)
+        elif ":" in raw and "-" not in raw:
+            parsed = time.fromisoformat(raw)
+        else:
+            parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if isinstance(parsed, datetime) and parsed.tzinfo is not None:
+        parsed = parsed.replace(tzinfo=None)
+    serial = to_excel(parsed, epoch)
+    return int(serial) if float(serial).is_integer() else serial
 
 
 # ------------------------------------------------------------------------------- shared

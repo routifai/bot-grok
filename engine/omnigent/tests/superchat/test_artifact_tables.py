@@ -148,8 +148,9 @@ def test_table_route_shape_and_non_table_rejected(env) -> None:
     assert set(body) == {"artifact_id", "version", "kind", "sheets"}
     assert body["version"] == 1 and body["kind"] == "xlsx"
     assert set(body["sheets"][0]) == {
-        "name", "rows", "frozen_rows", "n_rows", "n_cols", "truncated",
+        "name", "rows", "frozen_rows", "n_rows", "n_cols", "truncated", "col_widths",
     }  # fmt: skip
+    assert body["sheets"][0]["col_widths"][0] == 33.0
     md = _save(store, b"# hi", "notes.md")
     assert client.get(f"/v1/artifacts/{md.id}/table", headers=H).status_code == 400
 
@@ -413,3 +414,68 @@ def test_range_errors(env) -> None:
         ).status_code
         == 400
     )
+
+
+# ------------------------------------------------------------------- formats, widths, dates
+
+
+def _dated_xlsx() -> bytes:
+    import datetime as dt
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sales"
+    ws.append(["When", "Amount", "Rate", "Plain"])
+    ws.append([dt.datetime(2024, 3, 1), 1234.5, 0.25, 7])  # noqa: DTZ001
+    ws["A2"].number_format = "yyyy-mm-dd"
+    ws["B2"].number_format = "#,##0.00"
+    ws["C2"].number_format = "0%"
+    ws.column_dimensions["A"].width = 14
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def test_read_xlsx_reports_formats_and_widths() -> None:
+    sheet = tbl.read_table(_dated_xlsx(), "xlsx")[0]
+    row = sheet["rows"][1]
+    assert row[0]["z"] == "yyyy-mm-dd" and row[0]["t"] == "d"
+    assert row[1]["z"] == "#,##0.00" and row[2]["z"] == "0%"
+    assert "z" not in row[3]  # General is not reported
+    assert sheet["col_widths"] == [14.0, None, None, None]
+
+
+def test_read_xlsx_without_widths_omits_them() -> None:
+    wb = Workbook()
+    wb.active["A1"] = 1
+    out = io.BytesIO()
+    wb.save(out)
+    assert "col_widths" not in tbl.read_table(out.getvalue(), "xlsx")[0]
+
+
+def test_read_csv_sizes_columns_to_content() -> None:
+    long = "x" * 80
+    data = f"id,when,note\n1,2024-03-01,{long}\n".encode()
+    sheet = tbl.read_table(data, "csv")[0]
+    assert sheet["col_widths"] == [8.0, 12.0, float(tbl.CSV_MAX_WIDTH)]
+    assert all("z" not in cell for row in sheet["rows"] for cell in row)
+
+
+def test_date_cell_stays_a_date_through_edit_and_undo() -> None:
+    data = _dated_xlsx()
+    first = tbl.read_table(data, "xlsx")[0]["rows"][1][0]
+    edit = tbl.CellEdit("Sales", 1, 0, "2025-01-15T00:00:00")
+    edited, _ = tbl.apply_edits(data, "xlsx", [edit])
+    ws = load_workbook(io.BytesIO(edited))["Sales"]
+    assert ws["A2"].is_date and ws["A2"].value.isoformat() == "2025-01-15T00:00:00"
+    assert ws["A2"].number_format == "yyyy-mm-dd"
+    # undo: the viewer sends the old value back as the ISO text it was read as
+    undone, _ = tbl.apply_edits(edited, "xlsx", [tbl.CellEdit("Sales", 1, 0, first["v"])])
+    cell = load_workbook(io.BytesIO(undone))["Sales"]["A2"]
+    assert cell.is_date and cell.value.isoformat() == first["v"]
+    assert tbl.read_table(undone, "xlsx")[0]["rows"][1][0]["t"] == "d"
+
+
+def test_non_date_text_in_a_date_cell_stays_text() -> None:
+    edited, _ = tbl.apply_edits(_dated_xlsx(), "xlsx", [tbl.CellEdit("Sales", 1, 0, "soon")])
+    assert load_workbook(io.BytesIO(edited))["Sales"]["A2"].value == "soon"
