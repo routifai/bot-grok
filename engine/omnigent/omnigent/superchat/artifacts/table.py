@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Any
 
+from omnigent.superchat.artifacts.xlsx_patch import XlsxPatchError, patch_cells
+
 MAX_ROWS = 2000
 MAX_COLS = 100
 MAX_SUMMARY_CHARS = 200
@@ -250,30 +252,44 @@ def _read_xlsx(data: bytes) -> list[dict[str, Any]]:
 
 
 def _edit_xlsx(data: bytes, edits: list[CellEdit]) -> tuple[bytes, list[tuple[CellEdit, str]]]:
-    wb = _load_xlsx(data, data_only=False)
+    """Splice the edited cells into the zip; charts, pivots, images etc. stay untouched."""
+    wb = _load_xlsx(data, data_only=False)  # read-only use: old values + numeric columns
     changes: list[tuple[CellEdit, str]] = []
+    patches: list[tuple[str, int, int, Any]] = []
+    pending: dict[tuple[str, int, int], Any] = {}
     for e in edits:
         if e.sheet not in wb.sheetnames:
             raise TableError(f"unknown sheet: {e.sheet}")
         if e.row < 0 or e.col < 0 or e.row >= 1_048_576 or e.col >= 16_384:
             raise TableError("cell out of range")
         cell = wb[e.sheet].cell(row=e.row + 1, column=e.col + 1)
-        old = _formula_text(cell) or _display(cell.value)
+        key = (e.sheet, e.row, e.col)
+        formula = _formula_text(cell)
+        if key in pending:
+            current = pending[key]
+            old = _display(current)
+        else:
+            current = cell.value
+            old = formula or _display(cell.value)
         value = e.value
         if isinstance(value, str):
             if value == "":
                 value = None
-            elif not value.startswith("=") and isinstance(cell.value, int | float):
+            elif not value.startswith("=") and isinstance(current, int | float):
                 try:
                     num = float(value.replace(",", ""))
                     value = int(num) if num.is_integer() and "." not in value else num
                 except ValueError:
                     pass
-        cell.value = value
+        unchanged_formula = key not in pending and formula is not None and value == formula
+        pending[key] = value
         changes.append((e, old))
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue(), changes
+        if not unchanged_formula:  # same formula: keep the cell and its cached value as is
+            patches.append((e.sheet, e.row, e.col, value))
+    try:
+        return patch_cells(data, patches), changes
+    except XlsxPatchError as exc:
+        raise TableError(f"cannot edit spreadsheet: {exc}") from exc
 
 
 # ------------------------------------------------------------------------------- shared
