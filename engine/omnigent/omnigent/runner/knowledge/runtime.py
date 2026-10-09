@@ -151,6 +151,11 @@ def start_for_runner(server_url: str | None) -> KnowledgeRuntime | None:
 def notify_written(path: str | Path) -> None:
     """A file was written through the runner (an upload): index it if the service is running."""
     runtime = _runtime
+    if runtime is None and os.environ.get("IS_SANDBOX") == "1":
+        # The first upload can land before any tool call built the service: build it now so the
+        # file is indexed at once, not on the next slow tick.
+        runtime = get_runtime()
+        runtime.start()
     if runtime is not None:
         runtime.add(path)
 

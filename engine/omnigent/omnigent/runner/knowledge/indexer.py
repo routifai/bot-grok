@@ -407,6 +407,18 @@ class Indexer:
             "pending": self.db.pending_count(),
         }
 
+    def unsearchable(self, file_ids: Sequence[str] | None = None) -> list[FileRow]:
+        """Files in scope still ``queued``: their text is not stored, so a search cannot see them.
+
+        :param file_ids: Limit to these files; every file when omitted.
+        """
+        wanted = set(file_ids) if file_ids else None
+        return [
+            row
+            for row in self.db.files()
+            if row.state == STATE_QUEUED and (wanted is None or row.file_id in wanted)
+        ]
+
     def search(
         self, query: str, *, file_ids: Sequence[str] | None = None, k: int = DEFAULT_K
     ) -> dict[str, Any]:
