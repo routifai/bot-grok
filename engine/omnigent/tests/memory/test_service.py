@@ -212,6 +212,19 @@ def test_forget_with_confirm_removes_the_claim(service: MemoryService) -> None:
     assert service.search("alice", "figures CAD") == []
 
 
+def test_forget_all_removes_every_claim_of_one_person_and_no_one_else(
+    service: MemoryService,
+) -> None:
+    service.remember("alice", "Prefers figures in CAD", kind="preference")
+    service.remember("alice", "Works on the Atlas migration", kind="focus")
+    service.remember("bob", "Prefers metric units", kind="preference")
+
+    assert service.forget_all("alice") == 2
+    assert service.list_claims("alice") == []
+    assert [c["text"] for c in service.list_claims("bob")] == ["Prefers metric units"]
+    assert service.forget_all("alice") == 0  # idempotent
+
+
 def test_forget_is_scoped_to_user(service: MemoryService) -> None:
     result = service.remember("alice", "Alice's claim", kind="fact")
     claim_id = result["claim"]["claim_id"]

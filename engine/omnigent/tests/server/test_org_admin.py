@@ -501,6 +501,7 @@ def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
         "sessions_deleted": 1,
         "computers_stopped": 1,
         "model_connections_deleted": 2,
+        "memory_claims_forgotten": 0,  # no memory service in this world
     }
     assert world.terminated == ["host-c1"]  # the managed Computer only; no user-owned host left
     assert world.perms.get_user("alice") is None

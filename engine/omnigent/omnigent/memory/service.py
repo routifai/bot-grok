@@ -486,6 +486,17 @@ class MemoryService:
         self._invalidate_profile(user_id)
         return {"status": "forgotten", "claim": _claim_to_dict(updated)}
 
+    def forget_all(self, user_id: str) -> int:
+        """Forget every claim of *user_id* (account deletion): nothing may outlive the person.
+
+        :returns: How many claims were forgotten.
+        """
+        forgotten = 0
+        for claim in self.list_claims(user_id):
+            result = self.forget(user_id, claim_id=claim["claim_id"], confirm=True)
+            forgotten += int(result.get("status") == "forgotten")
+        return forgotten
+
     # ── Work profile (Phase 2) ──────────────────────────────────────
 
     def profile(self, user_id: str) -> str | None:
