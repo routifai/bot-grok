@@ -100,7 +100,7 @@ export const ACTIVITY_LOADING_GRACE_MS = 4_000;
 /**
  * True once a load has run past its grace period, or straight away while the page is hidden
  * (the feed pauses then, so the read the skeleton waits on is not coming): either way the
- * panel shows its calm empty line rather than a skeleton that never ends.
+ * panel shows a quiet loading line rather than a skeleton that never ends.
  */
 function useLoadingOverdue(loading: boolean): boolean {
   const [overdue, setOverdue] = useState(false);
@@ -117,6 +117,17 @@ function useLoadingOverdue(loading: boolean): boolean {
     return () => window.clearTimeout(timer);
   }, [loading]);
   return overdue;
+}
+
+/** A slow or paused first read: say it is loading, never "Nothing yet", which would claim the
+ * person has no Activity when the read simply has not come back. */
+function ActivitiesStillLoading() {
+  const { t } = useLingui();
+  return (
+    <p className="px-3 py-8 text-center text-[12.5px] text-ink-3" data-testid="activity-loading">
+      {t`Loading…`}
+    </p>
+  );
 }
 
 /** The same calm line, whichever of "truly nothing yet" or "this Muse has no
@@ -180,7 +191,7 @@ export function ActivityPanel({
   // (NOT_IMPLEMENTED); neither is an error.
   if (state.status === "unavailable") return <EmptyActivities />;
   if (state.status === "loading") {
-    return loadingOverdue ? <EmptyActivities /> : <PanelRowSkeletonList count={4} />;
+    return loadingOverdue ? <ActivitiesStillLoading /> : <PanelRowSkeletonList count={4} />;
   }
   if (state.status === "error") {
     return <p className="text-[13px] text-destructive">{t`Could not load Activity`}</p>;

@@ -127,14 +127,15 @@ async function mountLoading() {
   return container;
 }
 
-it("shows the skeleton while the feed loads, then settles on the empty line instead of hanging", async () => {
+it("shows the skeleton while the feed loads, then a quiet loading line, never the empty line", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
     const container = await mountLoading();
     expect(container.querySelector("[data-testid=panel-skeleton]")).not.toBeNull();
     await act(async () => vi.advanceTimersByTime(ACTIVITY_LOADING_GRACE_MS));
     expect(container.querySelector("[data-testid=panel-skeleton]")).toBeNull();
-    expect(container.querySelector("[data-testid=activity-empty]")).not.toBeNull();
+    expect(container.querySelector("[data-testid=activity-empty]")).toBeNull();
+    expect(container.querySelector("[data-testid=activity-loading]")).not.toBeNull();
   } finally {
     vi.useRealTimers();
   }
@@ -145,7 +146,7 @@ it("skips the skeleton while the page is hidden, since the feed is paused", asyn
   try {
     const container = await mountLoading();
     expect(container.querySelector("[data-testid=panel-skeleton]")).toBeNull();
-    expect(container.querySelector("[data-testid=activity-empty]")).not.toBeNull();
+    expect(container.querySelector("[data-testid=activity-loading]")).not.toBeNull();
   } finally {
     visibility.mockRestore();
   }
