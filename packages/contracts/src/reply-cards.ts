@@ -88,12 +88,18 @@ export const ReplyCardData = {
   passages: z.object({
     items: z
       .array(
-        z.object({
-          artifactId: Text,
-          name: Text,
-          page: z.number().int().positive(),
-          hasThumbnail: z.boolean().optional(),
-        }),
+        z
+          .object({
+            /** The file in the Computer's index; `artifactId` only on rows from before. */
+            fileId: Text.optional(),
+            artifactId: Text.optional(),
+            name: Text,
+            page: z.number().int().positive(),
+            hasThumbnail: z.boolean().optional(),
+          })
+          .refine((item) => Boolean(item.fileId || item.artifactId), {
+            message: "A passage needs a fileId or artifactId",
+          }),
       )
       .min(1)
       .max(12),

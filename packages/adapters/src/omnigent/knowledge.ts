@@ -1,10 +1,13 @@
-// The person's file search on the Omnigent side (engine/omnigent/omnigent/superchat/knowledge):
-// which files are indexed, passages by query, and page thumbnails. Plain fetch client.
+// The person's file search on the Omnigent side. The index lives in the person's Computer; the
+// engine only relays it through the Muse session's routes (`/v1/sessions/{id}/knowledge/*`).
+// Plain fetch client.
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client/core.js";
 
-/** One file's index state (`GET /v1/knowledge/status`). */
+/** One file's index state (`GET /v1/sessions/{id}/knowledge/status`). */
 export interface OmnigentKnowledgeFile {
-  artifact_id: string;
+  file_id: string;
+  /** Workspace-relative, e.g. `your_files/uploads/2026-10-09/report.pdf`. */
+  path: string;
   name: string;
   kind: string;
   state: "indexing" | "searchable" | "failed";
@@ -14,17 +17,24 @@ export interface OmnigentKnowledgeFile {
   pages: number;
   pages_without_text: number;
   error: string | null;
+  /** Set when the file is also a Library artifact. */
+  artifact_id: string | null;
 }
 
 export interface OmnigentKnowledgeStatus {
   files: OmnigentKnowledgeFile[];
   embeddings: { available: boolean; reason: string | null };
+  /** `asleep`: `files` is the last-known snapshot; the call never wakes the Computer. */
+  computer: "awake" | "asleep";
+  updated_at: number | null;
 }
 
-/** One passage a search found (`POST /v1/knowledge/search`). */
+/** One passage a search found (`POST /v1/sessions/{id}/knowledge/search`). */
 export interface OmnigentKnowledgePassage {
+  file_id: string;
+  path: string;
   file_name: string;
-  artifact_id: string;
+  artifact_id: string | null;
   page: number;
   page_end: number;
   score: number;
@@ -40,25 +50,31 @@ export interface OmnigentKnowledgeSearch {
   results: OmnigentKnowledgePassage[];
 }
 
-/** `GET /v1/knowledge/status` — the caller's files and whether searches can embed. */
+function knowledgeUrl(config: OmnigentClientConfig, sessionId: string, tail: string): URL {
+  return new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/knowledge${tail}`, config.baseUrl);
+}
+
+/** `GET .../knowledge/status` — the Muse's files and whether searches can embed. */
 export async function getOmnigentKnowledgeStatus(
   config: OmnigentClientConfig,
   email: string,
+  sessionId: string,
 ): Promise<OmnigentKnowledgeStatus> {
-  const response = await fetch(new URL("/v1/knowledge/status", config.baseUrl), {
+  const response = await fetch(knowledgeUrl(config, sessionId, "/status"), {
     headers: omnigentHeaders(config, email),
   });
   await throwOnError(response, "get knowledge status", config.secrets);
   return (await response.json()) as OmnigentKnowledgeStatus;
 }
 
-/** `POST /v1/knowledge/search` — passages from the caller's files, best first. */
+/** `POST .../knowledge/search` — passages from the Muse's files, best first (wakes the Computer). */
 export async function searchOmnigentKnowledge(
   config: OmnigentClientConfig,
   email: string,
+  sessionId: string,
   input: { query: string; fileIds?: string[]; k?: number },
 ): Promise<OmnigentKnowledgeSearch> {
-  const response = await fetch(new URL("/v1/knowledge/search", config.baseUrl), {
+  const response = await fetch(knowledgeUrl(config, sessionId, "/search"), {
     method: "POST",
     headers: { ...omnigentHeaders(config, email), "content-type": "application/json" },
     body: JSON.stringify({ query: input.query, file_ids: input.fileIds, k: input.k }),
@@ -67,28 +83,31 @@ export async function searchOmnigentKnowledge(
   return (await response.json()) as OmnigentKnowledgeSearch;
 }
 
-/** `GET /v1/knowledge/files/{id}/pages/{n}/thumbnail` — the page's WebP bytes. */
+/** `GET .../knowledge/files/{file_id}/pages/{n}/thumbnail` — the page's WebP bytes. */
 export async function fetchOmnigentPageThumbnail(
   config: OmnigentClientConfig,
   email: string,
-  artifactId: string,
+  sessionId: string,
+  fileId: string,
   page: number,
 ): Promise<Uint8Array> {
-  const url = new URL(
-    `/v1/knowledge/files/${encodeURIComponent(artifactId)}/pages/${page}/thumbnail`,
-    config.baseUrl,
+  const url = knowledgeUrl(
+    config,
+    sessionId,
+    `/files/${encodeURIComponent(fileId)}/pages/${page}/thumbnail`,
   );
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "read page thumbnail", config.secrets);
   return new Uint8Array(await response.arrayBuffer());
 }
 
-/** `POST /v1/knowledge/reindex` — re-embed files indexed without embeddings. */
+/** `POST .../knowledge/reindex` — re-embed files indexed without embeddings (0 when asleep). */
 export async function reindexOmnigentKnowledge(
   config: OmnigentClientConfig,
   email: string,
+  sessionId: string,
 ): Promise<{ queued: number }> {
-  const response = await fetch(new URL("/v1/knowledge/reindex", config.baseUrl), {
+  const response = await fetch(knowledgeUrl(config, sessionId, "/reindex"), {
     method: "POST",
     headers: omnigentHeaders(config, email),
   });

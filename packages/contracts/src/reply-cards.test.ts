@@ -16,6 +16,17 @@ const valid = {
   progress: { label: "Import", value: 40, status: "running" },
 } as const;
 
+describe("passages card", () => {
+  const parse = (item: object) =>
+    ReplyCardData.passages.safeParse({ items: [{ name: "r.pdf", page: 1, ...item }] }).success;
+
+  it("takes a fileId, a legacy artifactId, and refuses neither", () => {
+    expect(parse({ fileId: "f".repeat(32) })).toBe(true);
+    expect(parse({ artifactId: "a".repeat(32) })).toBe(true);
+    expect(parse({})).toBe(false);
+  });
+});
+
 describe("reply cards", () => {
   it("has a fixture for every kind", () => {
     expect(Object.keys(valid).sort()).toEqual(Object.keys(ReplyCardData).sort());

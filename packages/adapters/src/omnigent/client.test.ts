@@ -26,10 +26,12 @@ import {
   putOmnigentDailyNote,
   putOmnigentMuseAgent,
   putOmnigentProactivity,
+  reindexOmnigentKnowledge,
   releaseOmnigentComputer,
   streamOmnigentFamily,
   streamOmnigentSession,
   unarchiveOmnigentSession,
+  writeOmnigentFile,
 } from "./client.js";
 
 const CONFIG = { baseUrl: "http://omnigent.test", proxySecret: "proxy-secret", tenant: "space-1" };
@@ -193,6 +195,54 @@ describe("omnigent client", () => {
     await expect(postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).rejects.toThrow(
       /post message event failed \(400\)/,
     );
+  });
+
+  it("postOmnigentMessage appends images as input_image data URIs after the text", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "look", [
+      { mimeType: "image/png", dataBase64: "iVBORw==" },
+    ]);
+    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
+    expect(JSON.parse(String(init.body))).toEqual({
+      type: "message",
+      data: {
+        role: "user",
+        content: [
+          { type: "input_text", text: "look" },
+          { type: "input_image", image_url: "data:image/png;base64,iVBORw==" },
+        ],
+      },
+    });
+  });
+
+  it("writeOmnigentFile PUTs base64 into the workspace; knowledge relays are session-scoped", async () => {
+    const calls: Array<[string, string | undefined, unknown]> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL, init?: RequestInit) => {
+        calls.push([url.pathname, init?.method, init?.body ? JSON.parse(String(init.body)) : null]);
+        return jsonResponse({ bytes_written: 3, path: "your_files/uploads/d/a b.png", queued: 1 });
+      }),
+    );
+    const written = await writeOmnigentFile(
+      CONFIG,
+      "e@x.test",
+      "sess 1",
+      "your_files/uploads/d/a b.png",
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(written).toEqual({ path: "your_files/uploads/d/a b.png", bytesWritten: 3 });
+    expect(calls[0]).toEqual([
+      "/v1/sessions/sess%201/resources/environments/default/filesystem/your_files/uploads/d/a%20b.png",
+      "PUT",
+      { content: "AQID", encoding: "base64", create_parents: true },
+    ]);
+    await expect(
+      writeOmnigentFile(CONFIG, "e@x.test", "s", "../x", new Uint8Array([1])),
+    ).rejects.toThrow(/outside the workspace/);
+    await reindexOmnigentKnowledge(CONFIG, "e@x.test", "sess-1");
+    expect(calls.at(-1)?.[0]).toBe("/v1/sessions/sess-1/knowledge/reindex");
   });
 
   it("streamOmnigentSession yields parsed data frames and skips [DONE]/keepalives", async () => {

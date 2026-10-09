@@ -189,6 +189,34 @@ export async function readOmnigentFile(
   };
 }
 
+/** `PUT .../filesystem/{path}` — writes bytes into the workspace (base64 on the wire, parent
+ * folders created). Wakes a sleeping Computer; a 503 means it could not start. */
+export async function writeOmnigentFile(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  path: string,
+  bytes: Uint8Array,
+): Promise<{ path: string; bytesWritten: number }> {
+  const clean = confineWorkspacePath(path);
+  if (!clean) throw new WorkspacePathError("Not a file");
+  const response = await fetch(filesystemUrl(config, sessionId, clean), {
+    method: "PUT",
+    headers: { ...omnigentHeaders(config, email), "content-type": "application/json" },
+    body: JSON.stringify({
+      content: Buffer.from(bytes).toString("base64"),
+      encoding: "base64",
+      create_parents: true,
+    }),
+  });
+  await throwOnError(response, "write file", config.secrets);
+  const body = (await response.json().catch(() => ({}))) as {
+    path?: string;
+    bytes_written?: number;
+  };
+  return { path: body.path ?? clean, bytesWritten: body.bytes_written ?? bytes.length };
+}
+
 const MIME_BY_EXTENSION: Record<string, string> = {
   html: "text/html",
   htm: "text/html",

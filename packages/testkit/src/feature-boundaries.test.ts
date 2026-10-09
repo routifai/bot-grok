@@ -125,9 +125,10 @@ const BASES: Record<string, readonly string[]> = {
   admin: ["models"],
   skills: ["computer"],
   computer: ["artifacts"],
-  // Every file it indexes is an artifact (it follows their saves and deletes, lists them by id and
-  // marks them in the Library); embeddings run on the person's own model connection.
-  knowledge: ["artifacts", "models"],
+  // The files it indexes live in the person's Computer workspace (the api resolves the Muse
+  // session through the Computer); files that are also Library artifacts link to the Library.
+  // Embeddings are the engine's model proxy, so nothing here sits on models.
+  knowledge: ["artifacts", "computer"],
 };
 
 /**
@@ -183,6 +184,7 @@ const BASELINE: readonly string[] = [
   // waiting sheet, the Feed) to refetch; goes away when the composer takes an "answered an ask"
   // callback from the shell.
   "web:pages/muse/conversation/useComposerSend.ts -> approvals",
+  "web:pages/muse/conversation/useComposerSend.test.tsx -> approvals",
   // The Muse's live state (waiting face, sidebar badge) counts the open Asks (useAsks); goes away
   // when the shell passes the count in instead of the state hook reaching into approvals.
   "web:pages/muse/chrome/useMuseLiveState.test.tsx -> approvals",

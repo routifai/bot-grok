@@ -4,7 +4,6 @@
 // the engine's artifact id standing in for both the family id and the version id.
 import {
   createChatOwnershipResolver,
-  createOmnigentArtifact,
   deleteOmnigentArtifact,
   fetchOmnigentArtifactContent,
   getOmnigentArtifact,
@@ -215,36 +214,4 @@ export function notFound(error: unknown): never {
     throw new ORPCError("NOT_FOUND", { message: "Artifact not found" });
   }
   throw error;
-}
-
-/** File types the engine's file search reads (engine `knowledge/parse.py` INDEXABLE_KINDS). */
-const SEARCHABLE_UPLOAD = /\.(pdf|txt|md|markdown|csv|xlsx)$/i;
-
-/**
- * A searchable file the person attaches is also saved to the Library on the engine (in the
- * Muse's Conversation), which is what makes it searchable there. Best effort: the attachment
- * itself already succeeded, and a Muse with no Conversation yet has nowhere to save it.
- */
-export async function engineSaveUpload(
-  deps: EngineArtifactsDeps,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  input: { botId: string; name: string; contentBase64: string },
-): Promise<void> {
-  if (!SEARCHABLE_UPLOAD.test(input.name)) return;
-  try {
-    const bot = await deps.prisma.bot.findFirst({
-      where: { id: input.botId, spaceId: actor.spaceId, userId: actor.userId },
-      select: { omnigentSession: { select: { omnigentSessionId: true } } },
-    });
-    const sessionId = bot?.omnigentSession?.omnigentSessionId;
-    if (!sessionId) return;
-    await createOmnigentArtifact(client, await emailOf(deps, actor), {
-      parentSessionId: sessionId,
-      name: input.name,
-      bytes: new Uint8Array(Buffer.from(input.contentBase64, "base64")),
-    });
-  } catch {
-    // Not saved to the Library; the attachment still reaches the chat.
-  }
 }

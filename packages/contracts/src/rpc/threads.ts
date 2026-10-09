@@ -1,6 +1,6 @@
 import { eventIterator, oc } from "@orpc/contract";
 import * as z from "zod";
-import { ATTACHMENT_MAX_COUNT } from "../attachments.js";
+import { ATTACHMENT_MAX_COUNT, WorkspaceAttachmentSchema } from "../attachments.js";
 import {
   REPLY_QUOTE_MAX_LENGTH,
   ThreadMessagePageSchema,
@@ -23,6 +23,8 @@ const threadSendInput = threadTarget
   .safeExtend({
     text: z.string().optional(),
     artifactIds: z.array(Id).max(ATTACHMENT_MAX_COUNT).optional(),
+    /** Files already uploaded to the Muse's workspace (`files.uploadAttachment`). */
+    attachments: z.array(WorkspaceAttachmentSchema).max(ATTACHMENT_MAX_COUNT).optional(),
     /** Bare bot ids (legacy) or typed mention chips from the composer. */
     mentions: z
       .array(z.union([Id, structuredMentionTarget]))
@@ -35,7 +37,7 @@ const threadSendInput = threadTarget
   .superRefine((input, ctx) => {
     const text = input.text?.trim() ?? "";
     const artifactIds = input.artifactIds ?? [];
-    if (!text && artifactIds.length === 0) {
+    if (!text && artifactIds.length === 0 && (input.attachments ?? []).length === 0) {
       ctx.addIssue({
         code: "custom",
         message: "Provide text or at least one attachment",
