@@ -34,6 +34,25 @@ export function computeNiceDomain(dataMin: number, dataMax: number): [number, nu
   return [niceMin, niceMax];
 }
 
+/**
+ * Evenly spaced ticks for a fixed numeric domain, on the same nice step `computeNiceDomain`
+ * rounds to; undefined for an automatic domain (the axis then picks its own). Without them the
+ * axis divides an odd domain into uneven-looking labels ($1.2M, $1.26M, $1.33M).
+ */
+export function evenTicks(
+  domain: [number | "auto", number | "auto"] | undefined,
+): number[] | undefined {
+  if (!domain) return undefined;
+  const [low, high] = domain;
+  if (typeof low !== "number" || typeof high !== "number" || !(high > low)) return undefined;
+  const step = niceNumber((high - low) / 4, true);
+  const count = Math.round((high - low) / step);
+  if (count < 2 || count > 10 || Math.abs(low + count * step - high) > step * 1e-6) {
+    return undefined;
+  }
+  return Array.from({ length: count + 1 }, (_, i) => Number((low + i * step).toPrecision(12)));
+}
+
 export function collectAxisValues(data: Record<string, unknown>[], dataKeys: string[]): number[] {
   return data.flatMap((row) =>
     dataKeys

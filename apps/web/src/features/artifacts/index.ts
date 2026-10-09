@@ -11,6 +11,7 @@ export {
   type ArtifactPanelArgs,
   type ArtifactPanelParts,
   ArtifactRegistryProvider,
+  type ArtifactResultArgs,
   type ArtifactThumbnailArgs,
   type ArtifactViewProps,
   useArtifactCardParts,
