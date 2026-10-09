@@ -34,17 +34,22 @@ export async function getOmnigentSession(
   return (await response.json()) as OmnigentSessionSnapshot;
 }
 
-/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and, optionally, images as `input_image` data URIs.
- * Resolves to the stored message's id (`undefined` from an engine that does not say). Sent while a
- * turn runs, the engine steers it into that turn or queues it, and says which on the session
- * stream (`session.input.delivery` carrying this id). */
+/** What the engine answers for a posted message: its stored id and how the session took it
+ * (`turn`: started a turn; `steer`: offered to the running turn; `queued`: waiting behind it).
+ * The session stream then settles it with `session.input.delivery` events carrying `itemId`. */
+export interface OmnigentPostedMessage {
+  itemId: string | undefined;
+  delivery: "turn" | "steer" | "queued" | undefined;
+}
+
+/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and, optionally, images as `input_image` data URIs. */
 export async function postOmnigentMessage(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
   text: string,
   images?: Array<{ mimeType: string; dataBase64: string }>,
-): Promise<string | undefined> {
+): Promise<OmnigentPostedMessage> {
   const content: Array<Record<string, string>> = [{ type: "input_text", text }];
   for (const image of images ?? []) {
     content.push({
@@ -64,8 +69,15 @@ export async function postOmnigentMessage(
     },
   );
   await throwOnError(response, "post message event", config.secrets);
-  const body = (await response.json().catch(() => undefined)) as { item_id?: unknown } | undefined;
-  return typeof body?.item_id === "string" ? body.item_id : undefined;
+  const body = (await response.json().catch(() => undefined)) as
+    | { item_id?: unknown; delivery?: unknown }
+    | undefined;
+  const delivery = body?.delivery;
+  return {
+    itemId: typeof body?.item_id === "string" ? body.item_id : undefined,
+    delivery:
+      delivery === "turn" || delivery === "steer" || delivery === "queued" ? delivery : undefined,
+  };
 }
 
 /** `POST /v1/sessions/{id}/read` — the person has the chat open: moves their read baseline

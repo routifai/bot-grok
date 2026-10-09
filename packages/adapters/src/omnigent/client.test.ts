@@ -197,17 +197,23 @@ describe("omnigent client", () => {
     );
   });
 
-  it("postOmnigentMessage answers with the stored message's id when the engine gives one", async () => {
+  it("postOmnigentMessage answers with the stored message's id and how the session took it", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse({ queued: true, item_id: "msg_9" })),
+      vi.fn(async () => jsonResponse({ queued: true, item_id: "msg_9", delivery: "steer" })),
     );
-    expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toBe("msg_9");
+    expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toEqual({
+      itemId: "msg_9",
+      delivery: "steer",
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(null, { status: 202 })),
     );
-    expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toBeUndefined();
+    expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toEqual({
+      itemId: undefined,
+      delivery: undefined,
+    });
   });
 
   it("postOmnigentMessage appends images as input_image data URIs after the text", async () => {

@@ -80,10 +80,17 @@ function fakePrisma(overrides: Record<string, unknown> = {}): PrismaClient {
   return { ...base, ...overrides } as unknown as PrismaClient;
 }
 
+/** Thread events that never signal anything (the turn simply has no new messages). */
+async function* quietThread(_threadId: string, _cursor: number, signal?: AbortSignal) {
+  await new Promise((resolve) => signal?.addEventListener("abort", resolve));
+  yield* [];
+}
+
 function fakeEvents(): ThreadEvents {
   return {
     finalizeRun: vi.fn(async () => ({ continuationRunId: null })),
     claimSteering: vi.fn(async () => []),
+    follow: vi.fn(quietThread),
   } as unknown as ThreadEvents;
 }
 
@@ -562,6 +569,10 @@ const delivery = (itemId: string, delivered: string) => ({
   data: { item_id: itemId, delivered },
 });
 
+const userMessage = { type: "thread.message.created", payload: { role: "user" } };
+const posted = (itemId: string, delivery = "steer") => ({ itemId, delivery });
+const flush = () => vi.advanceTimersByTimeAsync(0);
+
 describe("a message the person sends while the turn runs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -570,33 +581,59 @@ describe("a message the person sends while the turn runs", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  function setup(steering: Array<Array<{ id: string; text: string }>>) {
+  function setup(
+    steering: Array<Array<{ id: string; text: string }>>,
+    config?: { turnTimeoutMs: number; leaseDurationMs: number; chatsPageSize: number },
+  ) {
     const stream = liveStream();
     streamOmnigentSession.mockReturnValue(stream);
+    const thread = liveStream(); // the thread's own events (the realtime signal)
     const batches = [...steering];
     const steeringMessage = {
-      findFirst: vi.fn(async () => (batches.length ? { id: "pending" } : null)),
       deleteMany: vi.fn(async () => ({ count: 1 })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
     };
     const prisma = fakePrisma({ steeringMessage });
     const events = fakeEvents();
-    // The first claim is the turn's own (nothing yet); later ones are the polls.
+    vi.mocked(events.follow).mockReturnValue(thread as never);
+    // The first claim is the turn's own (nothing yet); later ones follow the thread's signal.
     vi.mocked(events.claimSteering)
       .mockResolvedValueOnce([])
       .mockImplementation(async () =>
         (batches.shift() ?? []).map((item) => ({ ...item, messageId: "m", blocks: [] })),
       );
-    const done = runTurnOnOmnigent({ prisma, events, ...DEPS_BASE }, "run-1", "worker-1");
-    return { stream, prisma, events, steeringMessage, done };
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_1", "turn"));
+    const done = runTurnOnOmnigent(
+      { prisma, events, ...DEPS_BASE, ...(config ? { config } : {}) },
+      "run-1",
+      "worker-1",
+    );
+    const start = async () => {
+      stream.push({ type: "session.heartbeat" }); // the engine's ready signal
+      await flush();
+      stream.push(delivery("msg_1", "turn"));
+      stream.push({ type: "response.created", response: { id: "resp_1" } });
+      await flush();
+    };
+    return { stream, thread, prisma, events, steeringMessage, done, start };
   }
 
-  it("is posted to the engine as the turn runs, once, and the run ends with the turn", async () => {
-    const { stream, events, steeringMessage, done } = setup([
+  it("posts nothing before the engine says the stream is live", async () => {
+    const { start } = setup([]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
+    await start();
+    expect(postOmnigentMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("is posted when the thread signals it, once, and the run ends with the turn", async () => {
+    const { stream, thread, events, steeringMessage, done, start } = setup([
       [{ id: "s1", text: "just redo the deck again" }],
     ]);
-    postOmnigentMessage.mockResolvedValueOnce(undefined).mockResolvedValueOnce("msg_2");
-
-    await vi.advanceTimersByTimeAsync(1_000);
+    await start();
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2"));
+    thread.push(userMessage);
+    await flush();
 
     expect(postOmnigentMessage).toHaveBeenCalledTimes(2);
     expect(postOmnigentMessage).toHaveBeenLastCalledWith(
@@ -607,91 +644,119 @@ describe("a message the person sends while the turn runs", () => {
     );
     // The engine has it: a continuation must not send it again.
     expect(steeringMessage.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["s1"] } } });
-    expect(events.finalizeRun).not.toHaveBeenCalled();
 
     stream.push(delivery("msg_2", "steer"));
     stream.push({ type: "response.completed", response: { output: [] } });
     expect(await done).toBe(true);
-
-    expect(postOmnigentMessage).toHaveBeenCalledTimes(2); // one turn, no resend
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "completed" }),
     );
-    const polls = vi.mocked(events.claimSteering).mock.calls.map(([input]) => input.seenIds);
-    expect(polls.at(-1)).toEqual(["s1"]); // a claimed message is never claimed twice
+    // Claimed only when the thread said something happened; nothing is polled.
+    const claims = vi.mocked(events.claimSteering).mock.calls.map(([input]) => input.seenIds);
+    expect(claims).toEqual([[], []]);
   });
 
-  it("keeps the run working until the turn of a message the engine queued has finished", async () => {
-    const { stream, events, done } = setup([[{ id: "s1", text: "and make it blue" }]]);
-    postOmnigentMessage.mockResolvedValueOnce(undefined).mockResolvedValueOnce("msg_2");
-    await vi.advanceTimersByTimeAsync(1_000);
+  it("waits, with no timer, until a queued message's own turn has finished", async () => {
+    const { stream, thread, events, done, start } = setup([[{ id: "s1", text: "make it blue" }]]);
+    await start();
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", "queued"));
+    thread.push(userMessage);
+    await flush();
 
     stream.push(delivery("msg_2", "queued"));
     stream.push({ type: "response.completed", response: { output: [] } });
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     // The first turn is over, the queued one has not run yet: still working.
     expect(events.finalizeRun).not.toHaveBeenCalled();
 
     stream.push(delivery("msg_2", "turn"));
     stream.push({ type: "response.created", response: { id: "resp_2" } });
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(events.finalizeRun).not.toHaveBeenCalled(); // its turn is running
 
     stream.push({ type: "response.completed", response: { output: [] } });
     expect(await done).toBe(true);
     expect(events.finalizeRun).toHaveBeenCalledTimes(1);
-    expect(events.finalizeRun).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "completed" }),
-    );
   });
 
-  it("is not waited on when the engine reported it before the post answered", async () => {
-    const { stream, events, done } = setup([[{ id: "s1", text: "also blue" }]]);
-    let answer: (id: string) => void = () => undefined;
-    postOmnigentMessage
-      .mockResolvedValueOnce(undefined)
-      .mockImplementationOnce(() => new Promise<string>((resolve) => (answer = resolve)));
-    await vi.advanceTimersByTimeAsync(1_000);
+  it("ends when a message is cancelled by a stop and no turn runs", async () => {
+    const { stream, thread, done, start } = setup([[{ id: "s1", text: "also this" }]]);
+    await start();
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", "queued"));
+    thread.push(userMessage);
+    await flush();
+    stream.push({ type: "response.cancelled", response: { id: "resp_1" } });
+    await flush();
+    stream.push(delivery("msg_2", "cancelled"));
+    expect(await done).toBe(true);
+  });
 
-    stream.push(delivery("msg_2", "steer")); // beats the HTTP response
-    await vi.advanceTimersByTimeAsync(0);
-    answer("msg_2");
-    await vi.advanceTimersByTimeAsync(0);
+  it("acts only on deliveries of its own messages", async () => {
+    const { stream, events, done, start } = setup([]);
+    await start();
+    stream.push(delivery("someone_elses", "queued"));
     stream.push({ type: "response.completed", response: { output: [] } });
-
-    expect(await done).toBe(true);
+    expect(await done).toBe(true); // another message's queued turn is not this run's to wait for
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "completed" }),
     );
   });
 
-  it("ends the run after a short wait when an engine never reports what became of it", async () => {
-    const { stream, events, done } = setup([[{ id: "s1", text: "also blue" }]]);
-    postOmnigentMessage.mockResolvedValueOnce(undefined).mockResolvedValueOnce("msg_2");
-    await vi.advanceTimersByTimeAsync(1_000);
+  it("keeps a message it could not post for the continuation and goes on with the turn", async () => {
+    const { stream, thread, events, steeringMessage, done, start } = setup([
+      [{ id: "s1", text: "also blue" }],
+    ]);
+    await start();
+    postOmnigentMessage.mockRejectedValueOnce(new Error("fetch failed"));
+    thread.push(userMessage);
+    await flush();
 
-    stream.push({ type: "response.completed", response: { output: [] } });
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(events.finalizeRun).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1_500);
-
-    expect(await done).toBe(true);
-    expect(events.finalizeRun).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "completed" }),
-    );
-  });
-
-  it("fails the run, keeping the message for a retry, when the engine cannot be reached", async () => {
-    const { stream, events, steeringMessage, done } = setup([[{ id: "s1", text: "also blue" }]]);
-    postOmnigentMessage
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error("fetch failed"));
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    expect(await done).toBe(true);
-    expect(events.finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));
+    expect(steeringMessage.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["s1"] } },
+      data: { claimedAt: null },
+    });
     expect(steeringMessage.deleteMany).not.toHaveBeenCalled();
     stream.push({ type: "response.completed", response: { output: [] } });
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+  });
+
+  it("stops following a run stopped in Nova, leaving it as the stop settled it", async () => {
+    const { thread, events, done, start } = setup([]);
+    await start();
+    thread.push({ type: "run.cancelled", runId: "run-1", payload: {} });
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+  });
+
+  it("gives every engine turn the full time budget and renews the run's lease", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { stream, thread, prisma, events, done, start } = setup(
+      [[{ id: "s1", text: "and blue" }]],
+      config,
+    );
+    await start();
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", "queued"));
+    thread.push(userMessage);
+    await flush();
+    stream.push(delivery("msg_2", "queued"));
+    await vi.advanceTimersByTimeAsync(8_000);
+    stream.push({ type: "response.completed", response: { output: [] } });
+    stream.push(delivery("msg_2", "turn"));
+    stream.push({ type: "response.created", response: { id: "resp_2" } });
+    await vi.advanceTimersByTimeAsync(8_000); // 16 s in all, 8 s into this turn
+    stream.push({ type: "response.completed", response: { output: [] } });
+
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+    expect(prisma.run.updateMany).toHaveBeenCalledWith({
+      where: { id: "run-1", status: "running", leaseOwner: "worker-1", leaseFence: 1 },
+      data: { leaseExpiresAt: expect.any(Date) },
+    });
   });
 });
 
@@ -811,7 +876,8 @@ describe("attached documents", () => {
 
   it("sends the text of a short file, or a manifest line for a long one, with the turn", async () => {
     getOmnigentMuse.mockResolvedValue({ session_id: "sess-1", agent: "agent", created: false });
-    streamOmnigentSession.mockReturnValue(
+    // A fresh stream per turn: each run opens its own.
+    streamOmnigentSession.mockImplementation(() =>
       eventsFrom([{ type: "response.completed", response: { output: [] } }]),
     );
     for (const [extra, expected] of [

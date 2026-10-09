@@ -19,6 +19,7 @@ import {
 import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { STEERING_CONTINUATION_PROMPT } from "@nova/db";
 import { getLogger } from "@nova/logging";
+import type { OmnigentPostedMessage } from "./client.js";
 import {
   adoptOmnigentMuse,
   getOmnigentMuse,
@@ -153,7 +154,7 @@ export async function runTurnOnOmnigent(
 
   const thread = await deps.prisma.thread.findUnique({
     where: { id: run.threadId },
-    select: { botId: true, goalId: true },
+    select: { botId: true, goalId: true, nextEventSeq: true },
   });
   if (!thread || thread.botId !== run.botId || thread.goalId) return false;
 
@@ -200,6 +201,9 @@ export async function runTurnOnOmnigent(
     }
 
     const sessionId = await resolveMuseSession(deps, client, user.email, run.botId);
+    // Thread events from here on wake the turn when the person sends a message: read before the
+    // first claim, so a message committed in between is still seen.
+    const cursor = (thread.nextEventSeq ?? 1) - 1;
     // Messages the person sent while a run was active are SteeringMessage rows, not Task.prompt:
     // a continuation's prompt is only a marker. Claim them so the engine gets every exact text.
     const steering = await deps.events.claimSteering({
@@ -214,34 +218,44 @@ export async function runTurnOnOmnigent(
       task.prompt,
       steering.map((item) => item.text),
     );
-    await sendTurnAndAwaitCompletion(client, user.email, sessionId, turnInput, config, {
+    const outcome = await sendTurnAndAwaitCompletion(client, user.email, sessionId, turnInput, {
+      config,
       // Messages the person sends while the turn runs reach it as it works (the engine steers
       // them in, or queues them), instead of waiting for a continuation after it ends.
-      claim: async (seenIds) => {
-        const pending = await deps.prisma.steeringMessage.findFirst({
-          where: {
+      steering: {
+        runId,
+        signals: (signal) => deps.events.follow(run.threadId, cursor, signal),
+        claim: (seenIds) =>
+          deps.events.claimSteering({
+            threadId: run.threadId,
             botId: run.botId,
-            claimedAt: null,
-            message: { threadId: run.threadId },
-            OR: [{ runId: null }, { runId }],
-          },
-          select: { id: true },
-        });
-        if (!pending) return [];
-        return deps.events.claimSteering({
-          threadId: run.threadId,
-          botId: run.botId,
-          runId,
-          leaseOwner: workerId,
-          leaseFence: fence,
-          seenIds,
-        });
+            runId,
+            leaseOwner: workerId,
+            leaseFence: fence,
+            seenIds,
+          }),
+        // The engine has the message now; a continuation must not send it again.
+        forwarded: async (ids) => {
+          await deps.prisma.steeringMessage.deleteMany({ where: { id: { in: ids } } });
+        },
+        // The engine never got it: unclaimed, the continuation after this run sends it.
+        release: async (ids) => {
+          await deps.prisma.steeringMessage.updateMany({
+            where: { id: { in: ids } },
+            data: { claimedAt: null },
+          });
+        },
       },
-      // The engine has the message now; a continuation must not send it again.
-      forwarded: async (ids) => {
-        await deps.prisma.steeringMessage.deleteMany({ where: { id: { in: ids } } });
+      // The run is still being worked on: keep its lease while the engine shows progress.
+      progress: async () => {
+        await deps.prisma.run.updateMany({
+          where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
+          data: { leaseExpiresAt: new Date(Date.now() + config.leaseDurationMs) },
+        });
       },
     });
+    // Stopped in Nova: the stop already settled the run.
+    if (outcome === "cancelled") return true;
 
     const completed = await deps.events.finalizeRun({
       spaceId: run.spaceId,
@@ -404,21 +418,40 @@ export async function readTurnImages(
   return images;
 }
 
-/** How often a running turn looks for messages the person sent meanwhile. */
-const STEERING_POLL_MS = 1_000;
-/** After the turn completes, how long to wait for the engine to say what became of a message sent
- * during it (taken into the turn, or started as the next one). */
-const DELIVERY_GRACE_MS = 3_000;
-
 /** What `sendTurnAndAwaitCompletion` needs to hand the engine messages sent during the turn. */
 export interface SteeringFeed {
+  /** The run whose turn this is; its `run.cancelled` ends the wait. */
+  runId: string;
+  /** The thread's events from the turn's start: each user message is a reason to claim. */
+  signals(signal: AbortSignal): AsyncIterable<{ type: string; runId?: string; payload: unknown }>;
   /** Claims the person's new messages for this run; `seenIds` are the ones already handed over. */
   claim(seenIds: string[]): Promise<Array<{ id: string; text: string }>>;
   /** Called once the engine holds the messages with these steering ids. */
   forwarded(ids: string[]): Promise<void>;
+  /** Called when the engine could not take them: they wait, unclaimed, for the next run. */
+  release(ids: string[]): Promise<void>;
 }
 
-/** The engine's account of a message sent during a turn (`session.input.delivery`). */
+interface TurnOptions {
+  config: OmnigentSuperChatConfig;
+  steering?: SteeringFeed;
+  /** Called on each sign of progress (a turn starts, a message is settled). */
+  progress?: () => Promise<void>;
+}
+
+/** How a message ended up, per the engine (`session.input.delivery`): `steer`, `turn` and
+ * `cancelled` are final, `queued` is not. */
+const FINAL_DELIVERIES: ReadonlySet<string> = new Set(["steer", "turn", "cancelled"]);
+/** A turn the engine is running for one of these, or for a turn they wait behind. */
+const RUNNING_DELIVERIES: ReadonlySet<string> = new Set(["steer", "turn", "queued"]);
+/** Every way an engine turn ends. */
+const TURN_ENDS: ReadonlySet<string> = new Set([
+  "response.completed",
+  "response.cancelled",
+  "response.incomplete",
+]);
+
+/** The engine's account of a message sent to the session (`session.input.delivery`). */
 function deliveryOf(event: { type: string; [key: string]: unknown }) {
   if (event.type !== "session.input.delivery") return undefined;
   const data = event.data as { item_id?: unknown; delivered?: unknown } | undefined;
@@ -464,34 +497,91 @@ export async function readTurnAttachmentContext(
 }
 
 /**
- * Posts the turn's message, then reads the live stream until `response.completed`, so the run
- * tracks the turn (working row, stop, failure). The reply itself is not kept here: the engine's
- * transcript holds it (ADR 0009). The GET stream request is started (its body opened) before the
- * POST so a fast reply cannot race ahead of the listener — see
- * engine/omnigent/omnigent/server/API.md's "Reconnect Contract" note on opening the stream first.
+ * Posts the turn's message, then reads the live stream until the engine is done with every
+ * message this run handed it, so the run tracks the turn (working row, stop, failure). The reply
+ * itself is not kept here: the engine's transcript holds it (ADR 0009).
  *
- * Messages the person sends while the turn runs are posted to the engine as they arrive. The
- * engine steers each into the running turn (`steer`), or holds it for the next one (`queued`),
- * and says which on the stream; a queued message runs as a turn of its own, so the run stays
- * open until that turn completes too.
+ * The stream is open before the post: the engine's first event (its ready heartbeat) comes once
+ * this subscriber is registered, so no event of the turn can be missed.
+ *
+ * Messages the person sends while the turn runs are posted as they arrive (the thread's own
+ * event signal wakes the loop). The engine reports each message exactly once as `steer` (read by
+ * the running turn), `turn` (ran as a turn of its own) or `cancelled`, so the run ends when all
+ * of its messages are settled and no turn is running: no timers or polling decide it.
  */
 async function sendTurnAndAwaitCompletion(
   client: OmnigentClientConfig,
   email: string,
   sessionId: string,
   turnInput: string,
-  config: OmnigentSuperChatConfig,
-  steering?: SteeringFeed,
-): Promise<void> {
+  options: TurnOptions,
+): Promise<"completed" | "cancelled"> {
   const stop = new AbortController();
-  const signal = AbortSignal.any([AbortSignal.timeout(config.turnTimeoutMs), stop.signal]);
-  const iterator = streamOmnigentSession(client, email, sessionId, signal)[Symbol.asyncIterator]();
+  // Each engine turn gets the full budget: a run spanning several turns is not cut short.
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const startTurnClock = () => {
+    clearTimeout(deadline);
+    deadline = setTimeout(
+      () => stop.abort(new DOMException("The turn took too long", "TimeoutError")),
+      options.config.turnTimeoutMs,
+    );
+  };
+  startTurnClock();
+  const inbox = new Inbox();
+  const stream = streamOmnigentSession(client, email, sessionId, stop.signal);
+  void pump(stream, inbox, (event) => ({ kind: "event", event }));
+  const signals = options.steering?.signals(stop.signal);
+  if (signals) void pump(signals, inbox, (event) => ({ kind: "signal", event }), true);
   try {
-    await runTurn(client, email, sessionId, turnInput, iterator, steering);
+    return await runTurn(client, email, sessionId, turnInput, inbox, options, startTurnClock);
   } finally {
-    // Closing the generator releases its reader; aborting ends the HTTP stream itself.
+    clearTimeout(deadline);
+    // Aborting ends the HTTP stream and the thread follow; both pumps then stop.
     stop.abort();
-    await iterator.return?.(undefined).catch(() => undefined);
+  }
+}
+
+type Inbound =
+  | { kind: "event"; event: { type: string; [key: string]: unknown } }
+  | { kind: "signal"; event: { type: string; runId?: string; payload: unknown } }
+  | { kind: "end" }
+  | { kind: "error"; error: unknown };
+
+/** One ordered queue for everything the turn reacts to: engine events and thread signals. */
+class Inbox {
+  private readonly items: Inbound[] = [];
+  private waiting: ((item: Inbound) => void) | undefined;
+
+  push(item: Inbound): void {
+    const waiting = this.waiting;
+    if (waiting) {
+      this.waiting = undefined;
+      waiting(item);
+    } else this.items.push(item);
+  }
+
+  next(): Promise<Inbound> {
+    const item = this.items.shift();
+    if (item) return Promise.resolve(item);
+    return new Promise((resolve) => {
+      this.waiting = resolve;
+    });
+  }
+}
+
+/** Feeds an async source into the inbox; its end (or failure) is an item too, unless `quiet`. */
+async function pump<T>(
+  source: AsyncIterable<T>,
+  inbox: Inbox,
+  wrap: (value: T) => Inbound,
+  quiet = false,
+): Promise<void> {
+  try {
+    for await (const value of source) inbox.push(wrap(value));
+    if (!quiet) inbox.push({ kind: "end" });
+  } catch (error) {
+    if (quiet) getLogger().error("omnigent gateway: thread signals stopped", error);
+    else inbox.push({ kind: "error", error });
   }
 }
 
@@ -500,7 +590,7 @@ async function postTurn(
   email: string,
   sessionId: string,
   text: string,
-): Promise<string | undefined> {
+): Promise<OmnigentPostedMessage> {
   const images = await readTurnImages(client, email, sessionId, text);
   const sent = withAttachmentContext(
     text,
@@ -516,103 +606,82 @@ async function runTurn(
   email: string,
   sessionId: string,
   turnInput: string,
-  iterator: AsyncIterator<{ type: string; [key: string]: unknown }>,
-  steering: SteeringFeed | undefined,
-): Promise<void> {
-  type Step = IteratorResult<{ type: string; [key: string]: unknown }>;
-  const first = iterator.next();
-  await postTurn(client, email, sessionId, turnInput);
-
-  const seen: string[] = [];
-  /** Messages posted during the turn whose fate the engine has not reported yet. */
-  const unresolved = new Set<string>();
-  /** Messages the engine already reported taken (a report can beat the post's own response). */
+  inbox: Inbox,
+  options: TurnOptions,
+  startTurnClock: () => void,
+): Promise<"completed" | "cancelled"> {
+  const steering = options.steering;
+  /** The engine's ids of the messages this run posted, and which are settled. */
+  const own = new Set<string>();
   const settled = new Set<string>();
-  /** Messages the engine said it holds for the next turn. */
-  const queued = new Set<string>();
-  let completedAt: number | undefined;
-  let queuedTurnPending = false;
-  let next: Promise<Step> | undefined = first;
-  // The pending read is abandoned when the turn ends and the stream is aborted.
-  first.catch(() => undefined);
+  const seen: string[] = [];
+  let turnRunning = false;
+  const progress = () =>
+    options.progress?.().catch((error) => {
+      getLogger().error("omnigent gateway: could not renew the run lease", error);
+    });
+
+  const track = (posted: OmnigentPostedMessage | undefined) => {
+    if (posted?.itemId) own.add(posted.itemId);
+    else getLogger().error("omnigent gateway: the engine did not identify a posted message");
+  };
 
   const forwardNewMessages = async () => {
     if (!steering) return;
-    const claimed = await steering.claim(seen);
-    for (const message of claimed) {
+    for (const message of await steering.claim([...seen])) {
       seen.push(message.id);
-      const itemId = await postTurn(client, email, sessionId, message.text);
-      if (itemId && !settled.has(itemId)) unresolved.add(itemId);
+      try {
+        track(await postTurn(client, email, sessionId, message.text));
+      } catch (error) {
+        // Not this run's to fail: the message waits, unclaimed, for the continuation.
+        getLogger().error("omnigent gateway: a message sent during the turn was not posted", error);
+        await steering.release([message.id]);
+        continue;
+      }
       await steering.forwarded([message.id]);
     }
   };
 
-  while (true) {
-    if (!next) {
-      next = iterator.next();
-      next.catch(() => undefined);
-    }
-    const waitMs =
-      completedAt === undefined || queuedTurnPending
-        ? STEERING_POLL_MS
-        : Math.max(0, completedAt + DELIVERY_GRACE_MS - Date.now());
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const tick = new Promise<"tick">((resolve) => {
-      timer = setTimeout(() => resolve("tick"), waitMs);
-    });
-    const raced = await Promise.race([next, tick]);
-    clearTimeout(timer);
+  // The engine's first event is its ready heartbeat: post only once the stream is live.
+  let pending: Inbound | undefined = await inbox.next();
+  if (pending.kind === "end" || pending.kind === "error") return failStream(pending);
+  track(await postTurn(client, email, sessionId, turnInput));
 
-    if (raced === "tick") {
-      if (completedAt === undefined) {
-        await forwardNewMessages();
-      } else if (!queuedTurnPending) {
-        getLogger().error("omnigent gateway: a message sent during the turn was never reported", {
-          count: unresolved.size,
-        });
-        return;
-      }
+  while (true) {
+    const item = pending ?? (await inbox.next());
+    pending = undefined;
+    if (item.kind === "end" || item.kind === "error") return failStream(item);
+    if (item.kind === "signal") {
+      const { event } = item;
+      if (event.type === "run.cancelled" && event.runId === steering?.runId) return "cancelled";
+      const role = (event.payload as { role?: unknown } | undefined)?.role;
+      if (event.type === "thread.message.created" && role === "user") await forwardNewMessages();
       continue;
     }
-    next = undefined;
-    if (raced.done) break;
-    const event = raced.value;
-
+    const { event } = item;
     const delivery = deliveryOf(event);
     if (delivery) {
-      if (delivery.delivered === "turn") queuedTurnPending = true;
-      if (delivery.delivered === "queued") {
-        queued.add(delivery.itemId);
-      } else {
+      // Only this run's messages count; others belong to another run or a Side Chat.
+      if (!own.has(delivery.itemId)) continue;
+      if (RUNNING_DELIVERIES.has(delivery.delivered)) turnRunning = true;
+      if (FINAL_DELIVERIES.has(delivery.delivered)) {
         settled.add(delivery.itemId);
-        unresolved.delete(delivery.itemId);
-        queued.delete(delivery.itemId);
+        void progress();
       }
-      if (completedAt !== undefined && unresolved.size === 0 && !queuedTurnPending) return;
+    } else if (event.type === "response.created") {
+      turnRunning = true;
+      startTurnClock();
+      void progress();
       continue;
-    }
-    if (event.type === "response.created" && completedAt !== undefined) {
-      // The next turn started: a queued message is running now.
-      queuedTurnPending = true;
-      completedAt = undefined;
-      continue;
-    }
-    if (event.type === "response.completed") {
-      if (unresolved.size === 0) return;
-      // A message sent during the turn may still be waiting for the next one.
-      completedAt = Date.now();
-      // One the engine said it holds runs as the next turn, however soon that starts.
-      queuedTurnPending = [...unresolved].some((id) => queued.has(id));
-      continue;
-    }
-    if (isComputerStartFailure(event)) {
+    } else if (TURN_ENDS.has(event.type)) {
+      turnRunning = false;
+    } else if (isComputerStartFailure(event)) {
       getLogger().error("omnigent gateway: the Computer did not start", {
         type: event.type,
         error: event.error,
       });
       throw new OmnigentTurnFailure(COMPUTER_START_FAILED_MESSAGE);
-    }
-    if (event.type === "response.failed" || event.type === "response.error") {
+    } else if (event.type === "response.failed" || event.type === "response.error") {
       // Omnigent nests the failure under response.error, like response.completed's output.
       const response = event.response as { error?: { message?: string } } | undefined;
       const message =
@@ -621,9 +690,16 @@ async function runTurn(
         "";
       if (!message) getLogger().error("omnigent gateway: turn failed without a message");
       throw new OmnigentTurnFailure(message || CHAT_UNAVAILABLE_MESSAGE);
+    } else {
+      continue;
     }
+    if (!turnRunning && [...own].every((id) => settled.has(id))) return "completed";
   }
-  getLogger().error("omnigent gateway: session stream ended before response.completed");
+}
+
+function failStream(item: { kind: "end" } | { kind: "error"; error: unknown }): never {
+  if (item.kind === "error") throw item.error;
+  getLogger().error("omnigent gateway: session stream ended before the turn finished");
   throw new OmnigentTurnFailure(CHAT_UNAVAILABLE_MESSAGE);
 }
 

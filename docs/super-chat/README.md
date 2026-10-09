@@ -196,22 +196,37 @@ returns a chat as **typed blocks**. It works for the Conversation, a Side Chat, 
 
 ### Messages sent while the Muse works (steering)
 
-A message that arrives while a turn runs is a steer, not a new turn. The engine delivers it into the
+A message that arrives while a turn runs is a steer, not a new turn. The engine offers it to the
 running turn when the harness can take it, so the model reads it at its next step; otherwise it waits
-and runs as the next turn.
+and runs as the next turn. Nothing is decided by a timer: each step is a signal from the harness, the
+runner or the thread.
 
-| Harness | How a steer reaches the turn | When it cannot |
-|---|---|---|
-| `claude-sdk` | Written to the live CLI's stdin at priority `next` (`inner/claude_sdk_executor.py`); the CLI attaches it at the next tool boundary. The stream reads on until every pushed message is answered. | No turn running: queued |
-| `pi` | RPC `steer` (between tool calls); a refused `steer` is sent again as `follow_up` | Queued |
-| native terminals (`claude-native`, `pi-native`) | The terminal's own input queue; Nova does not use them | n/a |
+| Harness | How a steer reaches the turn | Taken when | When it cannot |
+|---|---|---|---|
+| `claude-sdk` | Written to the live CLI's stdin at priority `next` (`inner/claude_sdk_executor.py`); the CLI attaches it at the next tool boundary, or runs it as its own next turn if it missed this one | The CLI echoes our uuid (`--replay-user-messages`); the stream reads on until it does or ends | No turn running, or the stream ended first: refused, queued |
+| `pi` | RPC `steer` while the agent loop runs | Pi emits it as a user `message_start`; at `agent_end`, `clear_queue` takes back what Pi never delivered | Refused, queued |
+| native terminals (`claude-native`, `pi-native`) | The terminal's own input queue; Nova does not use them | n/a | n/a |
 
-The engine says which happened: `session.input.delivery` on the session stream, `message.delivery` on the
-family stream, and `delivered` (`steer` or `queued`) on the user message in the transcript. A client shows
-a steered message in place and a queued one as waiting. Nova's worker posts the person's new messages to
-the engine as the turn runs (`packages/adapters/src/omnigent/gateway.ts`) and keeps the run open until a
-queued message's own turn has ended. For a Helper that is already working, the Muse uses `message_helper`,
-which posts into the Helper's running turn; the Helper's single result still arrives in the inbox.
+The runner keeps its copy of a message until the harness says the running turn took it
+(`injection.consumed`); anything refused, or never reported when the turn ends, runs as the next turn.
+
+`POST /v1/sessions/{id}/events` answers at once with `delivery` (`turn`, `steer` = offered to the running
+turn, or `queued`). Then every message gets exactly one final `session.input.delivery` on the session
+stream: `steer` (read by the running turn), `turn` (ran as its own turn, also for an idle session) or
+`cancelled` (dropped by a stop or a delete); `queued` may come before it. The family stream relays it as
+`message.delivery`, and the server stores it per message (`conversation_item_deliveries`), so the
+transcript's `delivered` (`steer` or `queued`) is the same on every replica and after a reload.
+
+Nova's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
+the turn, and posts each message the person sends as the thread's own event signal (Postgres
+`LISTEN/NOTIFY`) announces it. The run ends when every message it posted is settled and no turn is
+running. A message that fails to post stays unclaimed for the continuation. Each engine turn gets the full
+turn timeout, and the run's lease is renewed as turns start.
+
+For a Helper that is already working, the Muse uses `message_helper`, which posts with `if_running`: the
+Helper takes it into its running turn, or, if that turn has ended by then, refuses it (409
+`not_running`) and nothing is kept, so a note never starts a second task. The Helper's single result
+still arrives in the inbox.
 
 ### Family SSE stream
 
@@ -224,7 +239,7 @@ Events carry **ids only**. The client refetches what changed.
 | Event | Payload | Meaning |
 |---|---|---|
 | `message.done` | `chat_id`, `item_id` | An assistant message was stored in a family chat |
-| `message.delivery` | `chat_id`, `item_id`, `delivered` | A message sent during a turn was steered into it (`steer`), waits for the next one (`queued`) or is now running as a turn (`turn`) |
+| `message.delivery` | `chat_id`, `item_id`, `delivered` | How a message sent to the chat was taken: waits for the next turn (`queued`), then read by the running turn (`steer`), ran as its own turn (`turn`) or dropped by a stop (`cancelled`) |
 | `turn.done` | `chat_id`, `status` | A turn ended (`completed`, `failed`, `incomplete`, `cancelled`) |
 | `chat.reset` | `chat_id`, `item_id` | The chat was cleared |
 | `chats.changed` | `root_id` | A Side Chat or Fork was opened, renamed or archived, or a Helper started |
