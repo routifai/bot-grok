@@ -64,3 +64,15 @@ it("does not read the Computer while idle", async () => {
   expect(api.computer.status).not.toHaveBeenCalled();
   expect(latest?.label).toBeUndefined();
 });
+
+it("returns the active run's real start from startedAt, falling back to createdAt", async () => {
+  const { runStartMs } = await import("./useMuseLiveState");
+  expect(
+    runStartMs({ id: "r", status: "running", startedAt: "2026-01-01T00:00:00Z", createdAt: "x" }),
+  ).toBe(Date.parse("2026-01-01T00:00:00Z"));
+  expect(
+    runStartMs({ id: "r", status: "running", startedAt: null, createdAt: "2026-01-01T00:01:00Z" }),
+  ).toBe(Date.parse("2026-01-01T00:01:00Z"));
+  expect(runStartMs({ id: "r", status: "running" })).toBeUndefined();
+  expect(runStartMs(undefined)).toBeUndefined();
+});
