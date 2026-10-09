@@ -34,6 +34,24 @@ export async function getOmnigentSession(
   return (await response.json()) as OmnigentSessionSnapshot;
 }
 
+/** `POST /v1/sessions/{id}/events` `interrupt`: stops the running turn; messages waiting behind it
+ * are cancelled (`session.input.delivery` `cancelled`). */
+export async function interruptOmnigentSession(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+): Promise<void> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/events`, config.baseUrl),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify({ type: "interrupt", data: {} }),
+    },
+  );
+  await throwOnError(response, "interrupt session", config.secrets);
+}
+
 /** What the engine answers for a posted message: its stored id and how the session took it
  * (`turn`: started a turn; `steer`: offered to the running turn; `queued`: waiting behind it).
  * The session stream then settles it with `session.input.delivery` events carrying `itemId`. */

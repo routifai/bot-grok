@@ -209,6 +209,10 @@ runner or the thread.
 
 The runner keeps its copy of a message until the harness says the running turn took it
 (`injection.consumed`); anything refused, or never reported when the turn ends, runs as the next turn.
+Only plain text is steered; a message with an image or a file runs as a turn of its own, whole. A
+stop (`interrupt`) cancels the messages waiting behind the turn. A queued message lives only in the
+runner's memory: when a runner initializes the session it reports the messages it still holds
+(`held_item_ids`), and the server cancels any other one stored as `queued`, so none waits forever.
 
 `POST /v1/sessions/{id}/events` answers at once with `delivery` (`turn`, `steer` = offered to the running
 turn, or `queued`). Then every message gets exactly one final `session.input.delivery` on the session
@@ -220,8 +224,13 @@ transcript's `delivered` (`steer` or `queued`) is the same on every replica and 
 Nova's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
 the turn, and posts each message the person sends as the thread's own event signal (Postgres
 `LISTEN/NOTIFY`) announces it. The run ends when every message it posted is settled and no turn is
-running. A message that fails to post stays unclaimed for the continuation. Each engine turn gets the full
-turn timeout, and the run's lease is renewed as turns start.
+running. A message's steering row is deleted once a turn read it (`steer` or `turn`) and released for
+the continuation when none will (`cancelled`, a failed post, a failed or timed-out run). A stop in Nova
+interrupts the engine's turn. A dropped engine stream is reopened; the engine's snapshot then says
+whether the turn still runs (the run follows it), is over (the run ends, releasing what was never seen
+read) or failed, and an engine that does not come back fails the run within about half a minute, not
+at the deadline. Each engine turn gets the full turn timeout, and the run's lease is renewed as turns
+start.
 
 For a Helper that is already working, the Muse uses `message_helper`, which posts with `if_running`: the
 Helper takes it into its running turn, or, if that turn has ended by then, refuses it (409
