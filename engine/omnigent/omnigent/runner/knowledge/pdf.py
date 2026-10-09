@@ -1,4 +1,4 @@
-"""PDF text layer and page renders with pypdfium2 (Apache-2.0 / BSD-3 bindings to PDFium).
+"""PDF text layer, thumbnails and page renders with pypdfium2 (Apache-2.0 / BSD-3 PDFium bindings).
 
 No OCR and no ML: a page without a text layer yields no blocks (the deep-parse slice reads those).
 Headings are lines set noticeably larger than the document's body text.
@@ -9,10 +9,9 @@ from __future__ import annotations
 import io
 from collections import Counter
 from collections.abc import Iterator
-from dataclasses import dataclass
 from typing import Any
 
-from omnigent.superchat.knowledge.chunking import Block, ParsedPage
+from omnigent.runner.knowledge.chunking import Block, ParsedPage
 
 THUMB_WIDTH = 256
 PAGE_WIDTH = 1024
@@ -20,15 +19,6 @@ _WEBP_QUALITY = 80
 #: A line is a heading when its font is this much larger than the body font.
 _HEADING_RATIO = 1.15
 _HEADING_MAX_CHARS = 140
-
-
-@dataclass(frozen=True)
-class PageImages:
-    """The two renders stored per page, both WebP."""
-
-    page_no: int
-    thumbnail: bytes
-    page: bytes
 
 
 def _lines(textpage: Any, raw: Any) -> list[tuple[str, float]]:
@@ -110,8 +100,8 @@ def extract_pages(data: bytes) -> list[ParsedPage]:
         document.close()
 
 
-def render_pages(data: bytes) -> Iterator[PageImages]:
-    """Render each page to a 1024 px-wide WebP and a 256 px thumbnail, one page at a time."""
+def render_thumbnails(data: bytes) -> Iterator[tuple[int, bytes]]:
+    """``(page number, WebP)`` of every page at thumbnail size, one page at a time."""
     import pypdfium2 as pdfium
     from PIL import Image
 
@@ -121,12 +111,33 @@ def render_pages(data: bytes) -> Iterator[PageImages]:
             page = document[index]
             try:
                 width_pt, _ = page.get_size()
-                image = page.render(scale=PAGE_WIDTH / max(width_pt, 1.0)).to_pil().convert("RGB")
+                image = page.render(scale=THUMB_WIDTH / max(width_pt, 1.0)).to_pil().convert("RGB")
             finally:
                 page.close()
-            thumb = image.copy()
-            thumb.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.Resampling.LANCZOS)
-            yield PageImages(index + 1, _webp(thumb), _webp(image))
+            image.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 4), Image.Resampling.LANCZOS)
+            yield index + 1, _webp(image)
+    finally:
+        document.close()
+
+
+def render_page(data: bytes, page_no: int) -> bytes | None:
+    """One page (from 1) as a 1024 px-wide WebP, or ``None`` when the document has no such page."""
+    import pypdfium2 as pdfium
+
+    try:
+        document = pdfium.PdfDocument(data)
+    except pdfium.PdfiumError:
+        return None
+    try:
+        if page_no < 1 or page_no > len(document):
+            return None
+        page = document[page_no - 1]
+        try:
+            width_pt, _ = page.get_size()
+            image = page.render(scale=PAGE_WIDTH / max(width_pt, 1.0)).to_pil().convert("RGB")
+        finally:
+            page.close()
+        return _webp(image)
     finally:
         document.close()
 

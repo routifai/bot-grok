@@ -186,12 +186,14 @@ def _citations(output: str | None) -> list[dict[str, Any]]:
     for hit in result.get("results") if isinstance(result.get("results"), list) else []:
         if not isinstance(hit, dict):
             continue
-        artifact_id, name, page = hit.get("artifact_id"), hit.get("file_name"), hit.get("page")
-        if not (isinstance(artifact_id, str) and isinstance(name, str) and isinstance(page, int)):
+        file_id, name, page = hit.get("file_id"), hit.get("file_name"), hit.get("page")
+        if not (isinstance(file_id, str) and isinstance(name, str) and isinstance(page, int)):
             continue
+        artifact_id = hit.get("artifact_id")
         found.append(
             {
-                "artifactId": artifact_id,
+                "fileId": file_id,
+                **({"artifactId": artifact_id} if isinstance(artifact_id, str) else {}),
                 "name": name,
                 "page": page,
                 **({"hasThumbnail": True} if hit.get("thumbnail_url") else {}),
@@ -202,7 +204,7 @@ def _citations(output: str | None) -> list[dict[str, Any]]:
 
 def _citation_block(items: list[dict[str, Any]]) -> dict[str, Any] | None:
     """One ``card`` block of citation chips for the pages searched this turn."""
-    unique = list({(i["artifactId"], i["page"]): i for i in items}.values())[:_MAX_CITATIONS]
+    unique = list({(i["fileId"], i["page"]): i for i in items}.values())[:_MAX_CITATIONS]
     if not unique:
         return None
     label = ", ".join(f"{i['name']} p. {i['page']}" for i in unique)

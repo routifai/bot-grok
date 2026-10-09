@@ -2387,3 +2387,36 @@ async def test_scoped_search_reaches_snapshot_files_past_the_budget(
 
     assert [e["path"] for e in body["data"]] == ["zzz/new.txt"], body
     assert body["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_write_file_base64_keeps_binary_bytes_and_tells_the_file_search(
+    client: httpx.AsyncClient,
+    workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An upload's bytes arrive as base64, land intact, and the file search hears about them."""
+    import base64
+
+    told: list[object] = []
+    monkeypatch.setattr("omnigent.runner.knowledge.runtime.notify_written", told.append)
+    data = bytes(range(256)) * 4
+    resp = await client.put(
+        f"/v1/sessions/conv_test/resources/environments"
+        f"/{DEFAULT_ENVIRONMENT_ID}/filesystem/your_files/uploads/2026-10-09/blob.pdf",
+        json={"content": base64.b64encode(data).decode(), "encoding": "base64"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["bytes_written"] == len(data)
+    assert (workspace / "your_files/uploads/2026-10-09/blob.pdf").read_bytes() == data
+    assert len(told) == 1 and str(told[0]).endswith("uploads/2026-10-09/blob.pdf")
+
+
+@pytest.mark.asyncio
+async def test_write_file_rejects_invalid_base64(client: httpx.AsyncClient) -> None:
+    resp = await client.put(
+        f"/v1/sessions/conv_test/resources/environments"
+        f"/{DEFAULT_ENVIRONMENT_ID}/filesystem/bad.bin",
+        json={"content": "***not base64***", "encoding": "base64"},
+    )
+    assert resp.status_code == 400

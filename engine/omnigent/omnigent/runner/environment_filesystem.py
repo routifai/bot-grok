@@ -1183,10 +1183,18 @@ print(json.dumps({'r': results, 't': truncated}))
         :returns: Write result with change tracking.
         """
         target, direct = self._write_route(path)
-        content_str = content.decode("utf-8")
+        try:
+            content_str, binary = content.decode("utf-8"), False
+        except UnicodeDecodeError:
+            # Not text (an uploaded PDF, an image): it crosses the helper as base64.
+            content_str, binary = base64.b64encode(content).decode("ascii"), True
 
         if direct is not None:
-            result = await _run_impl_direct(_write_impl, direct, content_str)
+            result = await _run_impl_direct(_write_impl, direct, content_str, binary)
+        elif binary:
+            result = await _run_os_env_async(
+                self._os_env.write, target, content_str, encoding="base64"
+            )
         else:
             result = await _run_os_env_async(self._os_env.write, target, content_str)
         if "error" in result:

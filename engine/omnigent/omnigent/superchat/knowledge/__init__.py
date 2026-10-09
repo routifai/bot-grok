@@ -1,29 +1,35 @@
-"""Knowledge: a person's own file search (a small RAG over what they uploaded or the Muse saved).
+"""Knowledge: a person's own file search (a small RAG over the files in their Computer).
 
-Layout: ``chunking`` / ``parse`` / ``pdf`` (text and page renders, no ML), ``store`` (index jobs
-and the ``file_chunks`` table), ``vectors`` / ``index`` (the per-user txtai hybrid index),
-``service`` (the indexing pass and search), ``worker`` (the background job), ``routes``
-(``/v1/knowledge``), ``tools`` / ``handlers`` (``files_search`` / ``files_read_page``).
+The Computer's workspace is the one copy of a person's files, and the index lives there too
+(``omnigent.runner.knowledge``: parse, passages, thumbnails, FTS5 + sqlite-vec). This folder is the
+engine's side and holds no file data: ``tools`` / ``handlers`` register the Muse's
+``files_search`` / ``files_read_page`` (the handler runs in the Computer), and ``routes`` relays
+status, search and page thumbnails to it for Nova. Embeddings are made through the engine's model
+proxy (``models``), so no key enters the Computer.
 
-It sits on ``artifacts`` (every file it indexes is an artifact; it follows their saves and
-deletes through the artifacts events) and on ``models`` (embeddings use the person's own model
-connection).
+It sits on ``artifacts`` only to tell a Library file from a plain one in the answers (matched by
+the workspace path the artifact was saved from).
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.context.labels import is_superside_chat
-from omnigent.superchat.feature import BackgroundJob, Feature, InstallDeps, ToolManagerCtx
+from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
 from omnigent.superchat.knowledge.tools import KNOWLEDGE_TOOL_NAMES
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+    from omnigent.superchat.feature import HandlerCtx
     from omnigent.tools.base import Tool
+
+#: Handlers the engine's relays call; never offered to a model.
+_INTERNAL_OPS = ("files_status", "files_thumbnail", "files_reindex")
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
@@ -37,51 +43,45 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
-    from omnigent.superchat.artifacts import (
-        SqlAlchemyArtifactStore,
-        subscribe_created,
-        subscribe_deleted,
-    )
+    from omnigent.superchat.artifacts import SqlAlchemyArtifactStore
     from omnigent.superchat.knowledge.routes import create_knowledge_router
-    from omnigent.superchat.knowledge.service import KnowledgeService
-    from omnigent.superchat.knowledge.store import KnowledgeStore
-    from omnigent.superchat.models import get_embeddings
 
-    if deps.scheduled_task_store is None:
+    if deps.scheduled_task_store is None or deps.conversation_store is None:
         return
     location = deps.scheduled_task_store.storage_location
-    service = KnowledgeService(
-        KnowledgeStore(location),
-        SqlAlchemyArtifactStore(location, get_artifact_store),
-        get_artifact_store,
-        get_embeddings,
-    )
-    app.state.knowledge_service = service
-    subscribe_created(service.on_created)
-    subscribe_deleted(service.on_deleted)
     app.include_router(
-        create_knowledge_router(service, auth_provider=deps.auth_provider),
+        create_knowledge_router(
+            conversation_store=deps.conversation_store,
+            artifact_store=SqlAlchemyArtifactStore(location, get_artifact_store),
+            runner_router=deps.runner_router,
+            permission_store=deps.permission_store,
+            auth_provider=deps.auth_provider,
+        ),
         prefix="/v1",
         tags=["knowledge"],
     )
 
 
-def _jobs(app: FastAPI) -> list[BackgroundJob]:
-    """The indexing worker, once the service is installed."""
-    from omnigent.superchat.knowledge.worker import IndexWorker
+def _on_result(ctx: HandlerCtx, output: str) -> None:
+    """A file the Muse saved as an artifact is searchable from the workspace it was saved from."""
+    if ctx.tool_name != "artifact_save":
+        return
+    try:
+        saved = json.loads(output)
+    except ValueError:
+        return
+    path = saved.get("source_path") if isinstance(saved, dict) else None
+    if not isinstance(path, str) or not path:
+        return
+    from omnigent.runner.knowledge.runtime import notify_saved
 
-    service = getattr(app.state, "knowledge_service", None)
-    if service is None:
-        return []
-    worker = IndexWorker(service)
-    app.state.knowledge_worker = worker
-    return [worker]
+    notify_saved(path)
 
 
 FEATURE = Feature(
     name="knowledge",
     tools=_tools,
-    handlers=dict.fromkeys(KNOWLEDGE_TOOL_NAMES, handle_knowledge_tool),
+    handlers=dict.fromkeys((*KNOWLEDGE_TOOL_NAMES, *_INTERNAL_OPS), handle_knowledge_tool),
+    on_result=_on_result,
     install=_install,
-    jobs=_jobs,
 )

@@ -249,3 +249,32 @@ def test_in_computer_auth_command_prints_only_the_launch_credential(tmp_path, mo
     monkeypatch.delenv("IS_SANDBOX")
     assert host_side.configure_host_model("host-a", tmp_path / "other.json") is False
     assert host_side.read_credential(tmp_path / "missing.json") is None
+
+
+def test_embedding_plan_route_answers_for_the_hosts_owner(store, monkeypatch) -> None:
+    from omnigent.superchat.models import embeddings as emb
+
+    seen: list[httpx.Request] = []
+    client = _client(store, seen)
+    layer = emb.ModelEmbeddings(store, emb.EmbeddingSettingStore(store.storage_location))
+    client.app.state.model_embeddings = layer  # type: ignore[attr-defined]
+    assert client.get("/v1/model/embeddings").status_code == 401
+    # alice only has an Anthropic key: no embedding-capable connection
+    no = client.get("/v1/model/embeddings", headers={"x-api-key": CRED})
+    assert no.json() == {"available": False, "reason": "no_connection"}
+    yes = client.get("/v1/model/embeddings", headers={"x-api-key": "host-b:tok-b"}).json()
+    assert yes["available"] and yes["provider"] == "openrouter"
+    assert yes["tag"].startswith("openrouter:") and not seen
+
+
+def test_embeddings_call_is_forwarded_with_the_owners_key(store) -> None:
+    seen: list[httpx.Request] = []
+    r = _client(store, seen).post(
+        "/v1/model/openrouter/v1/embeddings",
+        json={"model": "openai/text-embedding-3-small", "input": ["a"]},
+        headers={"authorization": "Bearer host-b:tok-b"},
+    )
+    assert r.status_code == 200
+    (req,) = seen
+    assert str(req.url) == "https://openrouter.ai/api/v1/embeddings"
+    assert req.headers["authorization"] == f"Bearer {BOB_KEY}"

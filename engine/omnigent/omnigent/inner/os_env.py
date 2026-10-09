@@ -326,7 +326,8 @@ class OSEnvironment(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def write(self, path: str, content: str) -> OpResult:
+    async def write(self, path: str, content: str, *, encoding: str = "utf-8") -> OpResult:
+        """Write a file; ``encoding="base64"`` means *content* is base64 of binary bytes."""
         raise NotImplementedError
 
     @abstractmethod
@@ -919,15 +920,11 @@ class CallerProcessOSEnvironment(OSEnvironment):
         )
         return cast(OpResult, result)
 
-    async def write(self, path: str, content: str) -> OpResult:
-        result = await run_sync_on_thread(
-            self._helper.request,
-            {
-                "op": "write",
-                "path": path,
-                "content": content,
-            },
-        )
+    async def write(self, path: str, content: str, *, encoding: str = "utf-8") -> OpResult:
+        request: dict[str, Any] = {"op": "write", "path": path, "content": content}
+        if encoding != "utf-8":
+            request["encoding"] = encoding
+        result = await run_sync_on_thread(self._helper.request, request)
         return cast(OpResult, result)
 
     async def edit(
@@ -1094,7 +1091,7 @@ def _handle_helper_request(
             content = raw_content
         else:
             return {"error": "content must be a string"}
-        return _write_impl(path, content)
+        return _write_impl(path, content, request.get("encoding") == "base64")
 
     if op == "edit":
         raw_path = request.get("path")
@@ -1417,13 +1414,20 @@ def _read_impl(
     }
 
 
-def _write_impl(path: Path, content: str) -> OpResult:
+def _write_impl(path: Path, content: str, base64_content: bool = False) -> OpResult:
+    if base64_content:
+        try:
+            data = base64.b64decode(content, validate=True)
+        except ValueError:
+            return {"error": "content is not valid base64"}
+    else:
+        data = content.encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
     existed = path.exists()
-    path.write_text(content, encoding="utf-8")
+    path.write_bytes(data)
     return {
         "path": str(path),
-        "bytes_written": len(content.encode("utf-8")),
+        "bytes_written": len(data),
         "created": not existed,
     }
 

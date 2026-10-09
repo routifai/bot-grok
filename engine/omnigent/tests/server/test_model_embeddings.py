@@ -256,3 +256,18 @@ def test_admin_route_reads_and_sets_the_embedding_model(uri) -> None:
     )
     reset = client.put("/v1/admin/embedding-model", json={"model": None}, headers=root)
     assert reset.json()["model"] == "openai/text-embedding-3-small"
+
+
+def test_plan_names_the_provider_and_model_a_computer_embeds_with(uri, monkeypatch) -> None:
+    connections, layer = _layer(uri, monkeypatch, _FakeLitellm())
+    with pytest.raises(emb.EmbeddingUnavailable) as raised:
+        layer.plan("alice")
+    assert raised.value.reason == emb.REASON_NO_CONNECTION
+    connections.put(SCOPE_USER, "alice", "openrouter", USER_KEY)
+    plan = layer.plan("alice")
+    assert (plan.provider, plan.model, plan.dimensions) == (
+        "openrouter",
+        "openai/text-embedding-3-small",
+        512,
+    )
+    assert plan.tag == "openrouter:openai/text-embedding-3-small:512"

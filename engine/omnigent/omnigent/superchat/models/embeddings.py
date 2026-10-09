@@ -140,6 +140,22 @@ class EmbeddingResult:
     cost_usd: float
 
 
+@dataclass(frozen=True)
+class EmbeddingPlan:
+    """How a Computer should embed for its owner through the model proxy.
+
+    :param provider: Upstream the proxy forwards to (the ``{provider}`` of its route).
+    :param model: Model id as the provider spells it.
+    :param dimensions: Vector size to request, or ``None`` for the model's own.
+    :param tag: ``provider:model:dims``, stored beside each vector.
+    """
+
+    provider: str
+    model: str
+    dimensions: int | None
+    tag: str
+
+
 def _load_litellm() -> Any:
     """Import litellm lazily (it ships with the ``memory`` extra); tests replace this."""
     try:
@@ -203,6 +219,24 @@ class ModelEmbeddings:
         except EmbeddingUnavailable:
             return None
         return _tag(connection.provider, self._settings.get())
+
+    def plan(self, owner_id: str) -> EmbeddingPlan:
+        """The provider and model *owner_id*'s Computer embeds with through the model proxy.
+
+        Same resolution, suspension and budget checks as :meth:`embed`; the call itself and its
+        cost then go through the proxy.
+
+        :raises EmbeddingUnavailable: no connection, suspended or budget used up.
+        """
+        self._check(owner_id)
+        connection = self._connection(owner_id)
+        setting = self._settings.get()
+        return EmbeddingPlan(
+            connection.provider,
+            setting.model,
+            setting.dimensions,
+            _tag(connection.provider, setting),
+        )
 
     def _check(self, owner_id: str) -> None:
         suspensions = get_suspensions()

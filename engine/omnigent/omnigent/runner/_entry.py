@@ -1588,9 +1588,15 @@ def create_app(
     @contextlib.asynccontextmanager
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await _start_pm()
+        # A managed Computer keeps its person's file index current (reconcile, then upkeep).
+        from omnigent.runner.knowledge.runtime import start_for_runner
+
+        knowledge = start_for_runner(server_url)
         try:
             yield
         finally:
+            if knowledge is not None:
+                await asyncio.to_thread(knowledge.stop)
             await _stop_pm()
 
     app.router.lifespan_context = _lifespan

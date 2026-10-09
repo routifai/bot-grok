@@ -118,4 +118,5 @@ async def _save(client: Any, chat_id: str, args: dict[str, Any]) -> str:
     if resp.status_code >= 400:
         return finish(resp)
     saved = resp.json()
-    return json.dumps({"type": "artifact", **saved})
+    # source_path lets the file search follow a saved file (knowledge's on_result listener).
+    return json.dumps({"type": "artifact", **saved, "source_path": str(file)})

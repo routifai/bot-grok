@@ -1,0 +1,95 @@
+"""The Muse's tools and the relay ops, answered from the Computer's index."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+
+import pytest
+
+from omnigent.runner.knowledge import runtime as rt
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.knowledge import FEATURE
+from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
+from tests.superchat.knowledge._support import SESSION, make_runtime, put_pdf
+
+
+@pytest.fixture(autouse=True)
+def _fresh_runtime():
+    yield
+    rt.reset_runtime()
+
+
+def call(tool: str, **args) -> dict:
+    out = asyncio.run(handle_knowledge_tool(HandlerCtx(tool, None, SESSION), args))
+    return json.loads(out)
+
+
+def test_search_returns_passages_with_file_page_and_thumbnail(tmp_path: Path, monkeypatch) -> None:
+    put_pdf(make_runtime(tmp_path, monkeypatch))
+    found = call("files_search", query="currency exposure", k=3)
+    assert found["type"] == "file_search" and found["mode"] == "hybrid"
+    top = found["results"][0]
+    assert (top["file_name"], top["page"], top["path"]) == (
+        "finance.pdf",
+        1,
+        "your_files/finance.pdf",
+    )
+    assert top["thumbnail_url"] and len(top["file_id"]) == 32
+
+
+def test_read_page_returns_text_and_an_image_envelope(tmp_path: Path, monkeypatch) -> None:
+    runtime = make_runtime(tmp_path, monkeypatch)
+    put_pdf(runtime)
+    fid = call("files_search", query="currency")["results"][0]["file_id"]
+    out = asyncio.run(
+        handle_knowledge_tool(
+            HandlerCtx("files_read_page", None, SESSION), {"file_id": fid, "page": 1}
+        )
+    )
+    assert "image" in out and "Currency exposure" in out
+    assert call("files_read_page", file_id=fid, page=9)["error"] == "Page not found"
+    assert "page number" in call("files_read_page", file_id=fid, page=0)["error"]
+    assert (
+        "isn't in your search index" in call("files_read_page", file_id="f" * 32, page=1)["error"]
+    )
+
+
+def test_argument_errors_are_tool_errors(tmp_path: Path, monkeypatch) -> None:
+    make_runtime(tmp_path, monkeypatch)
+    assert call("files_search", query=" ")["error"]
+    assert call("files_search", query="x", file_ids=["nope"])["error"]
+    assert call("files_read_page", page=1)["error"]
+
+
+def test_relay_ops_status_thumbnail_reindex(tmp_path: Path, monkeypatch) -> None:
+    put_pdf(make_runtime(tmp_path, monkeypatch))
+    status = call("files_status")
+    assert status["files"][0]["state"] == "searchable" and status["files"][0]["abs_path"]
+    fid = status["files"][0]["file_id"]
+    assert call("files_thumbnail", file_id=fid, page=1)["image_mime"] == "image/webp"
+    assert call("files_thumbnail", file_id=fid, page=4)["error"]
+    assert call("files_reindex") == {"queued": 0}
+
+
+def test_models_get_only_the_two_search_tools(tmp_path: Path) -> None:
+    labels = {"omnigent.context_mode": "superside_chat"}
+    from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
+
+    labels = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
+    names = [t.name() for t in FEATURE.tools(labels, None)]  # type: ignore[arg-type]
+    assert names == ["files_search", "files_read_page"]
+    assert FEATURE.tools({}, None) == []  # type: ignore[arg-type]
+    assert {"files_status", "files_thumbnail", "files_reindex"} <= set(FEATURE.handlers)
+
+
+def test_a_saved_artifact_is_followed_through_on_result(tmp_path: Path, monkeypatch) -> None:
+    runtime = make_runtime(tmp_path, monkeypatch)
+    note = runtime.indexer.workspace / "projects" / "q3" / "summary.md"
+    note.parent.mkdir(parents=True)
+    note.write_text("# Summary\nRevenue grew.\n")
+    ctx = HandlerCtx("artifact_save", None, SESSION)
+    FEATURE.on_result(ctx, json.dumps({"type": "artifact", "source_path": str(note)}))  # type: ignore[misc]
+    assert runtime.indexer.db.file_by_path("projects/q3/summary.md") is not None
+    FEATURE.on_result(HandlerCtx("other", None, SESSION), "{}")  # type: ignore[misc]
