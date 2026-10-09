@@ -253,3 +253,35 @@ def test_daily_note_tools_are_granted_only_to_a_helper_of_a_super_chat() -> None
             tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=helper) is None
         )
         assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat)
+
+
+def _note_at(real: Any, stamp: float):
+    def get(owner: str, day: str):
+        note = real(owner, day)
+        if note is not None:
+            note.updated_at = int(stamp)
+        return note
+
+    return get
+
+
+@pytest.mark.asyncio
+async def test_min_gap_spaces_passes(harness, monkeypatch) -> None:
+    qm, notes, _prefs, started = harness
+    monkeypatch.setenv(quiet_moment.MIN_GAP_SECONDS_ENV, "21600")
+    _messages(notes, monkeypatch, _stamps(3))
+    assert await qm.idle_due(now=NOON) == 1
+    monkeypatch.setattr(notes, "get", _note_at(notes.get, NOON))
+    # new messages and idle again, but within 6 hours of the last pass: held
+    _messages(notes, monkeypatch, _stamps(3, last=NOON + 3600))
+    assert await qm.idle_due(now=NOON + 7200) == 0
+    # past the gap: runs
+    _messages(notes, monkeypatch, _stamps(3, last=NOON + 21600))
+    assert await qm.idle_due(now=NOON + 21600 + 3600) == 1
+    assert len(started) == 2
+
+
+def test_min_gap_seconds_env() -> None:
+    assert quiet_moment.min_gap_seconds({}) == 0.0
+    assert quiet_moment.min_gap_seconds({quiet_moment.MIN_GAP_SECONDS_ENV: "21600"}) == 21600.0
+    assert quiet_moment.min_gap_seconds({quiet_moment.MIN_GAP_SECONDS_ENV: "x"}) == 0.0

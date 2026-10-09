@@ -33,6 +33,8 @@ _logger = logging.getLogger(__name__)
 # ``worker`` (superchat.subagents.resolve_scheduled_helper).
 AGENT_TYPE = "analyst"
 IDLE_SECONDS_ENV = "OMNIGENT_QUIET_MOMENT_IDLE_SECONDS"
+# Minimum time between two passes for the same owner (0 = no gap beyond the idle rule).
+MIN_GAP_SECONDS_ENV = "OMNIGENT_QUIET_MOMENT_MIN_GAP_SECONDS"
 DEFAULT_IDLE_SECONDS = 1200.0
 MIN_TURNS = 3
 MAX_PASSES_PER_DAY = 4
@@ -136,6 +138,16 @@ Finish with exactly one fenced JSON block and nothing after it:
 {{"kind": "people", "pages_written": 0}}
 ```
 """
+
+
+def min_gap_seconds(env: dict[str, str] | None = None) -> float:
+    """Spacing between passes; ``OMNIGENT_QUIET_MOMENT_MIN_GAP_SECONDS``, default none (0)."""
+    raw = (env if env is not None else os.environ).get(MIN_GAP_SECONDS_ENV, "")
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.0
+    return max(value, 0.0)
 
 
 def idle_seconds(env: dict[str, str] | None = None) -> float:
@@ -253,6 +265,9 @@ class QuietMoment:
         baseline = day_start.timestamp()
         if note is not None and note.quiet_passes > 0:
             baseline = max(baseline, float(note.updated_at))
+            # Space passes out: the note's updated_at is the last pass (or a later note edit).
+            if now - float(note.updated_at) < min_gap_seconds():
+                return False
         if sum(1 for stamp in stamps if stamp > baseline) < MIN_TURNS:
             return False
         claimed = await asyncio.to_thread(
