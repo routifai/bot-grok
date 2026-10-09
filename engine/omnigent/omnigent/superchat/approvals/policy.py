@@ -86,7 +86,11 @@ def encode_reason(risk: Risk, owner: str | None, note: str = "") -> str:
 
 
 def decode_reason(message: object) -> dict[str, Any] | None:
-    """Parse :func:`encode_reason`; ``None`` when the message is not an approval."""
+    """Parse :func:`encode_reason`; ``None`` when the message is not an approval.
+
+    Strict: the mark must open the message. Pass this policy's own reason (the engine keeps
+    it per policy), never a composed one, where other policies' text could imitate a header.
+    """
     if not isinstance(message, str) or not message.startswith(REASON_MARK):
         return None
     head = message[len(REASON_MARK) :].split("\n", 1)[0]

@@ -27,6 +27,7 @@ from omnigent.server.routes._sessions.orchestration import _resolve_elicitation
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
 from omnigent.superchat.approvals.policy import (
     CATEGORIES,
+    POLICY_NAME,
     decode_reason,
     rule_label,
 )
@@ -89,8 +90,13 @@ def _decoded(pending: PendingApproval) -> dict[str, Any]:
     except ValueError:
         return {}
     params = event.get("params") if isinstance(event, dict) else None
-    decoded = decode_reason(params.get("message") if isinstance(params, dict) else None)
-    return decoded or {}
+    if not isinstance(params, dict):
+        return {}
+    # Filed by the mirror from the server-attested reason; older rows kept the raw reason.
+    approval = params.get("approval")
+    if isinstance(approval, dict):
+        return approval
+    return decode_reason(params.get("message")) or {}
 
 
 def pending_to_response(pending: PendingApproval, cap_usd: float) -> dict[str, Any]:
@@ -156,13 +162,14 @@ async def answer_approval(
                 target=target,
                 label=rule_label(pending.category, target),
             )
-    if decision != "deny" and pending.category == "spend" and pending.amount_usd:
-        await asyncio.to_thread(store.add_spend, owner, _today(), pending.amount_usd)
     data = {
         "elicitation_id": elicitation_id,
         "action": "decline" if decision == "deny" else "accept",
     }
     await _resolve_elicitation(pending.session_id, data, runner_router, conversation_store)
+    # Count the spend only once the verdict reached the waiting call.
+    if decision != "deny" and pending.category == "spend" and pending.amount_usd:
+        await asyncio.to_thread(store.add_spend, owner, _today(), pending.amount_usd)
     await _apply_pending_policy_ask_writes(
         pending.session_id, conv, conversation_store, agent_store, data
     )
@@ -263,8 +270,29 @@ def create_approvals_router(
     return router
 
 
+GENERIC_CATEGORY = "tool"
+_SUMMARY_PREVIEW_CHARS = 160
+
+
+def _generic_summary(context: dict[str, Any]) -> str:
+    """One line for a policy ask no capability encoded: the reasons, the tool, its arguments."""
+    reasons = context.get("policy_reasons") or {}
+    reason = "; ".join(str(r).strip() for r in reasons.values() if str(r).strip())
+    tool = context.get("tool_name") or "a tool"
+    preview = " ".join(str(context.get("content_preview") or "").split())
+    if len(preview) > _SUMMARY_PREVIEW_CHARS:
+        preview = preview[: _SUMMARY_PREVIEW_CHARS - 1] + "…"
+    reason = reason or "Approval required"
+    return f"{reason} ({tool}: {preview})" if preview else f"{reason} ({tool})"
+
+
 def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
     """Mirror approval prompts into ``store`` and restore the ones a restart interrupted.
+
+    Only tool-call prompts the server raised itself are filed, from the context it attested
+    (:func:`omnigent.runtime.pending_elicitations.attest`): this policy's own reason decoded
+    strictly, the owner from the server-set principal. Event text is never trusted. Any other
+    policy's ask is filed as a generic one-off ask naming the tool and its arguments.
 
     :returns: How many pending approvals were put back in the live index.
     """
@@ -274,20 +302,38 @@ def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
             store.delete_pending(elicitation_id)
             return
         params = event.get("params")
-        info = decode_reason(params.get("message") if isinstance(params, dict) else None)
-        if info is None:
+        if not isinstance(params, dict) or params.get("target_session_id"):
+            return  # an ancestor's mirrored copy: the original is filed under its own session
+        context = pending_elicitations.attested(elicitation_id)
+        if context is None or context.get("phase") != "tool_call":
             return
-        targets = [t for t in info.get("t", []) if isinstance(t, str)]
-        amount = info.get("a")
+        run_as = context.get("run_as")
+        owner = run_as if isinstance(run_as, str) and run_as else LOCAL_OWNER
+        reasons = context.get("policy_reasons") or {}
+        info = decode_reason(reasons.get(POLICY_NAME))
+        if info is None:
+            category, target, summary, amount = (
+                GENERIC_CATEGORY,
+                str(context.get("tool_name") or ""),
+                _generic_summary(context),
+                None,
+            )
+        else:
+            targets = [t for t in info.get("t", []) if isinstance(t, str)]
+            raw_amount = info.get("a")
+            info = {"c": info["c"], "t": targets, "s": str(info.get("s") or "")}
+            category, target, summary = info["c"], ", ".join(targets), info["s"]
+            amount = float(raw_amount) if isinstance(raw_amount, (int, float)) else None
+        stored = {**event, "params": {**params, "approval": info or {}}}
         store.put_pending(
             elicitation_id,
             conversation_id,
-            user_id=info.get("u") or LOCAL_OWNER,
-            category=info["c"],
-            target=", ".join(targets),
-            summary=str(info.get("s") or ""),
-            amount_usd=float(amount) if isinstance(amount, (int, float)) else None,
-            event=json.dumps(event),
+            user_id=owner,
+            category=category,
+            target=target,
+            summary=summary,
+            amount_usd=amount,
+            event=json.dumps(stored),
         )
 
     restored = 0

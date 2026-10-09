@@ -283,6 +283,10 @@ class PolicyResult:
         agent-spec policies (not workspace-scoped) and on ALLOW.
         Surfaced so a denial can be attributed to the owning
         workspace in logs.
+    :param ask_reasons: On a composed ASK, each ASKing policy's own reason
+        keyed by policy name, e.g. ``{"cost_gate": "Over budget. Continue?"}``,
+        so a consumer reads one policy's reason without parsing ``reason``
+        (which other policies' text could imitate). ``None`` otherwise.
     """
 
     action: PolicyAction
@@ -292,6 +296,7 @@ class PolicyResult:
     data: object | None = None
     state_updates: list[StateUpdate] | None = None
     deciding_policy_workspace_id: int | None = None
+    ask_reasons: dict[str, str] | None = None
 
     @property
     def deciding_policy(self) -> str | None:

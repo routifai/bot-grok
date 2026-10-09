@@ -3454,6 +3454,34 @@ async def _publish_runner_recovered_status_impl(
     await _persist_session_status_error_labels(session_id, None, conversation_store)
 
 
+async def _drop_runner_owned_prompts(
+    session_id: str, conversation_store: ConversationStore
+) -> None:
+    """
+    Resolve, as unanswered, every prompt the session itself parked (not mirrored child prompts).
+
+    :param session_id: Session whose runner went away, e.g. ``"conv_abc123"``.
+    :param conversation_store: Store used to mirror the resolution into ancestor streams.
+    """
+    for event in pending_elicitations.snapshot_for(session_id):
+        params = event.get("params")
+        if isinstance(params, dict) and params.get("target_session_id"):
+            continue
+        elicitation_id = event.get("elicitation_id")
+        if not isinstance(elicitation_id, str) or not elicitation_id:
+            continue
+        _pending_policy_ask_writes.pop(elicitation_id, None)
+        _publish_elicitation_resolved(session_id, elicitation_id, reason="unanswered")
+        await asyncio.to_thread(
+            _publish_elicitation_resolved_to_ancestors,
+            conversation_store,
+            session_id,
+            elicitation_id,
+            None,
+            "unanswered",
+        )
+
+
 async def _mark_runner_sessions_offline_impl(
     convs: list[Conversation],
     error: ErrorDetail,
@@ -3494,6 +3522,9 @@ async def _mark_runner_sessions_offline_impl(
     :returns: None.
     """
     for conv in convs:
+        # The runner's approval parks died with it: drop their prompts so no one is
+        # asked a question whose answer could never reach a turn.
+        await _drop_runner_owned_prompts(conv.id, conversation_store)
         # An intentional teardown (Stop / archive) drops the tunnel on
         # purpose. The relay owns that path — it publishes a quiet idle and
         # consumes the marker — so peek without discarding here.
@@ -8287,6 +8318,9 @@ async def _relay_runner_stream_once(
                         session_stream.publish(session_id, event)
                         elicitation_id = event.get("elicitation_id")
                         if isinstance(elicitation_id, str) and elicitation_id:
+                            if event.get("reason") == "unanswered":
+                                # No retry follows an unanswered park; drop its stash.
+                                _pending_policy_ask_writes.pop(elicitation_id, None)
                             await asyncio.to_thread(
                                 _publish_elicitation_resolved_to_ancestors,
                                 conversation_store,
@@ -8506,6 +8540,9 @@ async def _register_policy_elicitation(
     result: PolicyResult,
     arguments_preview: str,
     conversation_store: ConversationStore,
+    *,
+    tool_name: str | None = None,
+    actor: dict[str, str] | None = None,
 ) -> str:
     """
     Publish an elicitation request event on the session stream.
@@ -8516,6 +8553,11 @@ async def _register_policy_elicitation(
     sees the approval prompt, and returns the elicitation_id
     so the runner can key its Future on it.
 
+    Before publishing, the server attests the prompt's policy context (each ASKing
+    policy's own reason, the tool, the principal) in
+    :mod:`omnigent.runtime.pending_elicitations`, so a durable inbox reads facts the
+    server established rather than text on the event.
+
     :param session_id: Session/conversation identifier,
         e.g. ``"conv_abc123"``.
     :param result: The :class:`PolicyResult` with action=ASK,
@@ -8524,15 +8566,18 @@ async def _register_policy_elicitation(
         the elicitation UI preview (max ~1024 chars).
     :param conversation_store: Store used to mirror child-session
         prompts into ancestor streams.
-    :returns: The generated elicitation id,
-        e.g. ``"elicit_a1b2c3..."``.
+    :param tool_name: The gated tool, e.g. ``"sys_os_shell"``; shown on the event.
+    :param actor: Principal the call runs as, e.g. ``{"run_as": "alice@example.com"}``;
+        attested so an inbox files the prompt under its owner.
+    :returns: The generated elicitation id, e.g. ``"elicit_a1b2c3..."``.
     """
+    policies = result.deciding_policies or ["unknown"]
     elicitation_id = f"elicit_{secrets.token_hex(16)}"
     elicitation = ElicitationRequest(
         message=result.reason or "Approval required",
         requested_schema={},
         phase=Phase.TOOL_CALL.value,
-        policy_names=result.deciding_policies or ["unknown"],
+        policy_names=policies,
         content_preview=arguments_preview[:1024],
     )
     # Approval state lives on the runner (in-memory
@@ -8543,6 +8588,26 @@ async def _register_policy_elicitation(
     # runner which resolves it. No server-side state needed.
     _elicit_event = build_elicitation_request_event(
         elicitation_id, elicitation, session_id=session_id
+    )
+    if tool_name:
+        _elicit_event["params"]["tool_name"] = tool_name
+    pending_elicitations.attest(
+        elicitation_id,
+        {
+            "phase": Phase.TOOL_CALL.value,
+            "tool_name": tool_name,
+            "run_as": (actor or {}).get("run_as"),
+            "policy_reasons": dict(result.ask_reasons or {}),
+            "content_preview": arguments_preview[:1024],
+        },
+    )
+    _logger.info(
+        "policy ASK raised: session=%s tool=%s policy=%s elicitation_id=%s",
+        session_id,
+        tool_name,
+        ",".join(policies),
+        elicitation_id,
+        extra={"session_id": session_id},
     )
     session_stream.publish(session_id, _elicit_event)
     await asyncio.to_thread(
@@ -8658,6 +8723,8 @@ async def _evaluate_tool_call_policy(
         result=result,
         arguments_preview=arguments_str,
         conversation_store=conversation_store,
+        tool_name=tool_name,
+        actor=actor,
     )
     # The deciding policy's writes (e.g. a cost-budget checkpoint via
     # ``state_updates``) must land ONLY on approve. This relay path returns
@@ -10969,11 +11036,13 @@ async def _handle_mcp_tools_call(
             session_id, spec, conversation_store, conv, call_ctx
         )
 
-        _logger.debug(
-            "MCP tools/call TOOL_CALL policy: session=%r tool=%r action=%r reason=%r",
+        # A gate that stops a call is logged at INFO so the tool and policy are on record.
+        (_logger.debug if call_result.action == PolicyAction.ALLOW else _logger.info)(
+            "MCP tools/call TOOL_CALL policy: session=%r tool=%r action=%r policy=%r reason=%r",
             session_id,
             namespaced_name,
             call_result.action,
+            call_result.deciding_policies,
             call_result.reason,
             extra={"session_id": session_id},
         )
@@ -10996,6 +11065,8 @@ async def _handle_mcp_tools_call(
                 call_result,
                 json.dumps(arguments)[:1024],
                 conversation_store,
+                tool_name=namespaced_name,
+                actor=actor,
             )
             # Keep the reviewed call and deferred writes together until approval.
             _pending_policy_ask_writes[elicitation_id] = _PendingPolicyAskWrites(
@@ -11017,6 +11088,7 @@ async def _handle_mcp_tools_call(
                 message=call_result.reason or "Approval required to run this tool",
                 request_state=request_state,
                 session_id=session_id,
+                ask_timeout=resolve_ask_timeout(engine, call_result),
             )
         # ALLOW — apply labels now that we know the action is not ASK.
         if call_result.set_labels:

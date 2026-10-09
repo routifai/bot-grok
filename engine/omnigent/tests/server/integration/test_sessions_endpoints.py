@@ -7897,6 +7897,95 @@ async def test_relay_tool_call_ask_decline_does_not_record_checkpoint(
     assert (await _evaluate_tool(client, sid)).get("verdict") == "pending"
 
 
+async def test_a_parked_tool_call_reports_waiting_on_the_person(
+    client: httpx.AsyncClient,
+) -> None:
+    """While a tool call waits on an approval the snapshot says so, naming the tool.
+
+    The session ``status`` stays ``running`` (``waiting`` on the stream means the turn
+    ended with Helpers still working); the outstanding prompt is the waiting signal, on
+    the session snapshot and as the list's ``pending_elicitations_count``.
+    """
+    from omnigent.runtime import pending_elicitations, session_stream
+
+    agent = await create_test_agent(client, guardrails=_COST_GUARD_SOFT_GUARDRAILS)
+    sid = (await _create_session(client, agent["id"]))["id"]
+    resp = await client.post(
+        f"/v1/sessions/{sid}/events",
+        json={"type": "external_session_usage", "data": {"cumulative_cost_usd": 0.1}},
+    )
+    assert resp.status_code == 202, resp.text
+
+    resp = await client.post(
+        f"/v1/sessions/{sid}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "mcp__test__echo", "arguments": {"q": "x"}},
+        },
+    )
+    result = resp.json()["result"]
+    eid = next(iter(result["inputRequests"]))
+    assert result["inputRequests"][eid]["params"]["ask_timeout"] > 0
+
+    snapshot = (await client.get(f"/v1/sessions/{sid}")).json()
+    [prompt] = snapshot["pending_elicitations"]
+    assert prompt["elicitation_id"] == eid
+    assert prompt["params"]["tool_name"] == "mcp__test__echo"
+    assert prompt["params"]["policy_name"] == "cost_guard"
+    listed = (await client.get("/v1/sessions")).json()["data"]
+    assert next(r for r in listed if r["id"] == sid)["pending_elicitations_count"] == 1
+
+    # The runner's park ends unanswered (timeout or turn end): the waiting signal clears.
+    session_stream.publish(
+        sid,
+        {"type": "response.elicitation_resolved", "elicitation_id": eid, "reason": "unanswered"},
+    )
+    assert (await client.get(f"/v1/sessions/{sid}")).json()["pending_elicitations"] == []
+    assert pending_elicitations.count_for(sid) == 0
+
+
+async def test_runner_departure_drops_the_prompts_it_was_parked_on(
+    client: httpx.AsyncClient,
+    db_uri: str,
+) -> None:
+    """A prompt whose runner died can never be answered into a turn, so it is withdrawn."""
+    from omnigent.runtime import pending_elicitations
+    from omnigent.server.routes import sessions as sessions_module
+    from omnigent.server.routes.sessions import _pending_policy_ask_writes
+    from omnigent.server.schemas import ErrorDetail
+
+    agent = await create_test_agent(client, guardrails=_COST_GUARD_SOFT_GUARDRAILS)
+    sid = (await _create_session(client, agent["id"]))["id"]
+    await client.post(
+        f"/v1/sessions/{sid}/events",
+        json={"type": "external_session_usage", "data": {"cumulative_cost_usd": 0.1}},
+    )
+    resp = await client.post(
+        f"/v1/sessions/{sid}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "mcp__test__echo", "arguments": {}},
+        },
+    )
+    eid = next(iter(resp.json()["result"]["inputRequests"]))
+    assert pending_elicitations.count_for(sid) == 1
+    assert eid in _pending_policy_ask_writes
+    store = SqlAlchemyConversationStore(db_uri)
+
+    await sessions_module._mark_runner_sessions_offline(
+        [store.get_conversation(sid)],
+        ErrorDetail(code="runner_disconnected", message="Runner disconnected unexpectedly."),
+        store,
+    )
+
+    assert pending_elicitations.count_for(sid) == 0
+    assert eid not in _pending_policy_ask_writes
+
+
 async def test_mcp_relay_tool_call_ask_approval_persists_checkpoint(
     client: httpx.AsyncClient,
     db_uri: str,

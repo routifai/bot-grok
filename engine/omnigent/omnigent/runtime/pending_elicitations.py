@@ -124,6 +124,36 @@ def set_persist_hook(hook: Callable[[str, str, dict[str, Any] | None], None] | N
     _persist_hook = hook
 
 
+# Server-attested context of prompts the server raised itself (``elicitation_id`` ->
+# context): each ASKing policy's own reason, the tool, the principal. A durable mirror
+# reads this, never the event text, which relayed runner events could imitate.
+_attested: dict[str, dict[str, Any]] = {}
+
+
+def attest(elicitation_id: str, context: dict[str, Any]) -> None:
+    """
+    Record what the server established about a prompt it is about to publish.
+
+    :param elicitation_id: The prompt's id, e.g. ``"elicit_abc123"``.
+    :param context: e.g. ``{"phase": "tool_call", "tool_name": "sys_os_shell",
+        "run_as": "alice@example.com", "policy_reasons": {"cost_gate": "Continue?"}}``.
+    """
+    with _lock:
+        _attested[elicitation_id] = copy.deepcopy(context)
+
+
+def attested(elicitation_id: str) -> dict[str, Any] | None:
+    """
+    The server-attested context of a prompt, or ``None`` when the server did not raise it.
+
+    :param elicitation_id: The prompt's id, e.g. ``"elicit_abc123"``.
+    :returns: A copy of the context passed to :func:`attest`.
+    """
+    with _lock:
+        context = _attested.get(elicitation_id)
+        return copy.deepcopy(context) if context is not None else None
+
+
 def _notify_persist_hook(
     conversation_id: str, elicitation_id: str, event: dict[str, Any] | None
 ) -> None:
@@ -253,6 +283,7 @@ def resolve(conversation_id: str, elicitation_id: str) -> None:
         approval payload, e.g. ``"elicit_abc123"``.
     """
     with _lock:
+        _attested.pop(elicitation_id, None)
         ids = _pending.get(conversation_id)
         if ids is None:
             return
@@ -431,4 +462,5 @@ def reset_for_tests() -> None:
     global _observer
     with _lock:
         _pending.clear()
+        _attested.clear()
     _observer = None

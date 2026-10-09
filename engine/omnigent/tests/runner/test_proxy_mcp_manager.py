@@ -713,3 +713,85 @@ async def test_call_tool_uses_configured_read_timeout() -> None:
         "otherwise call_tool may regress to httpx's shorter default."
     )
     assert timeout["connect"] == 10.0, "Connect timeout stays short to fail fast on a dead server"
+
+
+def _ask(elicitation_id: str, *, ask_timeout: float | None = None) -> httpx.Response:
+    params: dict[str, object] = {"message": "Approve?", "requestedSchema": {}}
+    if ask_timeout is not None:
+        params["ask_timeout"] = ask_timeout
+    return _json_resp(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "resultType": "input_required",
+                "inputRequests": {
+                    elicitation_id: {"method": "elicitation/create", "params": params}
+                },
+                "requestState": "state",
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_unanswered_approval_times_out_on_the_policy_timeout_and_fails_closed() -> None:
+    """The park is bounded by the server's ``ask_timeout``; the tool never runs."""
+    transport = _StubTransport([_ask("elicit_slow", ask_timeout=0.05)])
+    published: list[tuple[str, dict[str, object]]] = []
+    manager = ProxyMcpManager(
+        "conv_test", httpx.AsyncClient(transport=transport, base_url="http://test"),
+        publish_event=lambda sid, event: published.append((sid, event)),
+    )  # fmt: skip
+    pending_approvals.reset_for_tests()
+
+    result = await asyncio.wait_for(
+        manager.call_tool(_make_spec("github"), "artifact_delete", {"id": "a1"}), timeout=5
+    )
+
+    assert "Approval not given (timeout)" in json.loads(result)["error"]
+    assert len(transport.calls) == 1  # no retry: nothing is sent on to execute
+    assert published == [
+        (
+            "conv_test",
+            {
+                "type": "response.elicitation_resolved",
+                "elicitation_id": "elicit_slow",
+                "reason": "unanswered",
+            },
+        )
+    ]
+    assert not pending_approvals.has_pending("conv_test")
+
+
+@pytest.mark.asyncio
+async def test_a_park_ends_when_its_turn_is_interrupted() -> None:
+    transport = _StubTransport([_ask("elicit_turn")])
+    manager = _make_manager(transport)
+    pending_approvals.reset_for_tests()
+    task = asyncio.create_task(manager.call_tool(_make_spec("github"), "sys_os_shell", {}))
+    for _ in range(1000):
+        if pending_approvals.has_pending(manager._session_id):
+            break
+        await asyncio.sleep(0.001)
+
+    assert pending_approvals.cancel_session(manager._session_id, "interrupted") == 1
+    result = await asyncio.wait_for(task, timeout=5)
+
+    assert "Approval not given (interrupted)" in json.loads(result)["error"]
+    assert len(transport.calls) == 1
+    assert not pending_approvals.has_pending(manager._session_id)
+
+
+def test_ask_timeout_falls_back_to_a_finite_default() -> None:
+    from omnigent.runner.proxy_mcp_manager import _DEFAULT_ASK_TIMEOUT_S, _ask_timeout_of
+
+    assert _ask_timeout_of({"params": {"ask_timeout": 30}}) == 30.0
+    for malformed in (
+        None,
+        {},
+        {"params": {"ask_timeout": "soon"}},
+        {"params": {"ask_timeout": 0}},
+    ):
+        assert _ask_timeout_of(malformed) == _DEFAULT_ASK_TIMEOUT_S  # type: ignore[arg-type]
+    assert 0 < _DEFAULT_ASK_TIMEOUT_S < float("inf")

@@ -1499,6 +1499,9 @@ class HarnessApp:
         heartbeat_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await heartbeat_task
+        # A turn that ended (e.g. its CLI died) can leave tool handlers parked on
+        # ``dispatch_tool``; release them so they never outlive the turn.
+        ctx._cancel_pending()
         if not run_task.done():
             # Defensive: run_turn might still be parked on a
             # Future the cleanup didn't release. Cancel here as a

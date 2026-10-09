@@ -2004,3 +2004,53 @@ def test_runner_disconnect_grace_exceeds_runner_worst_case_reconnect() -> None:
         f"({_MAX_RECONNECT_DELAY_S} * (1 + {_RECONNECT_JITTER_FRACTION}) = "
         f"{worst_case_reconnect_s}s)"
     )
+
+
+@pytest.mark.asyncio
+async def test_relay_drops_the_stash_of_an_unanswered_approval(db_uri: str) -> None:
+    """An approval park that ended unanswered gets no retry, so its stashed writes go.
+
+    A human verdict (no ``reason``) keeps the stash: the MRTR retry consumes it.
+    """
+    from omnigent.runtime import session_stream
+    from omnigent.server.routes import sessions as sessions_module
+    from omnigent.server.routes.sessions import (
+        _pending_policy_ask_writes,
+        _PendingPolicyAskWrites,
+    )
+
+    sessions_module._runner_relay_tasks.clear()
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = store.create_conversation().id
+    _pending_policy_ask_writes["elicit_timed_out"] = _PendingPolicyAskWrites(None, None)
+    _pending_policy_ask_writes["elicit_answered"] = _PendingPolicyAskWrites(None, None)
+    release = asyncio.Event()
+    fake_runner = _ScriptedRunnerClient(
+        release,
+        [
+            {
+                "type": "response.elicitation_resolved",
+                "elicitation_id": "elicit_timed_out",
+                "reason": "unanswered",
+            },
+            {"type": "response.elicitation_resolved", "elicitation_id": "elicit_answered"},
+        ],
+    )
+    try:
+        handle = await sessions_module._ensure_runner_relay_ready(
+            session_id,
+            "runner_relay_stash",
+            fake_runner,  # type: ignore[arg-type]
+            conversation_store=store,
+        )
+        assert handle is not None
+        release.set()
+        await asyncio.wait_for(handle.task, timeout=_TASK_TIMEOUT_S)
+        assert "elicit_timed_out" not in _pending_policy_ask_writes
+        assert "elicit_answered" in _pending_policy_ask_writes
+    finally:
+        release.set()
+        _pending_policy_ask_writes.pop("elicit_timed_out", None)
+        _pending_policy_ask_writes.pop("elicit_answered", None)
+        sessions_module._runner_relay_tasks.clear()
+        session_stream.close(session_id)

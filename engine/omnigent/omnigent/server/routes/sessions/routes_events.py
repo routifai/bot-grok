@@ -1548,7 +1548,16 @@ def register_events_routes(
                 session_id,
                 _mcp_elicit_payload,
             )
-            return {"queued": False, "elicitation_id": elicit_id}
+            # Bound the runner's wait by the session's approval window.
+            from omnigent.server.routes._sessions.orchestration import (
+                _load_agent_spec_for_session,
+            )
+            from omnigent.spec.types import DEFAULT_ASK_TIMEOUT
+
+            spec = await asyncio.to_thread(_load_agent_spec_for_session, conv, agent_store)
+            guardrails = spec.guardrails if spec is not None else None
+            ask_timeout = guardrails.ask_timeout if guardrails else DEFAULT_ASK_TIMEOUT
+            return {"queued": False, "elicitation_id": elicit_id, "ask_timeout": ask_timeout}
         if body.type == _COMPACT_TYPE:
             # Unified control dispatch (designs/CLAUDE_NATIVE.md
             # "Control events dispatch on the runner"): forward /compact
