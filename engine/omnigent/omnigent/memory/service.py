@@ -489,13 +489,23 @@ class MemoryService:
     def forget_all(self, user_id: str) -> int:
         """Forget every claim of *user_id* (account deletion): nothing may outlive the person.
 
+        Loops until no active claim is left (a write that lands mid-way is caught on the next
+        pass), and stops if a pass makes no progress rather than spinning.
+
         :returns: How many claims were forgotten.
         """
         forgotten = 0
-        for claim in self.list_claims(user_id):
-            result = self.forget(user_id, claim_id=claim["claim_id"], confirm=True)
-            forgotten += int(result.get("status") == "forgotten")
-        return forgotten
+        while True:
+            claims = self.list_claims(user_id)
+            if not claims:
+                return forgotten
+            progress = 0
+            for claim in claims:
+                result = self.forget(user_id, claim_id=claim["claim_id"], confirm=True)
+                progress += int(result.get("status") == "forgotten")
+            if progress == 0:
+                return forgotten
+            forgotten += progress
 
     # ── Work profile (Phase 2) ──────────────────────────────────────
 
