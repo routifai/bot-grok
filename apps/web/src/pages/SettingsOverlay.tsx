@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import type { AvatarStyle, Bot } from "@nova/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@nova/ui-web";
 import {
+  Building2,
   CloudDownload,
   Cpu,
   Gauge,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
 import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
+import { useEngineModelsStatus } from "../lib/engine-models";
 import {
   ComputerSettingsPanel,
   GeneralSettingsPanels,
@@ -23,6 +25,8 @@ import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { NovaTile, type TileTone } from "./muse/chrome/NovaTile";
 import { NovaSettingsPanel } from "./muse/NovaSettingsPanel";
 import { GeneralPanel } from "./muse/settings/GeneralPanel";
+import { ModelsPanel } from "./muse/settings/ModelsPanel";
+import { OrganizationPanel } from "./muse/settings/OrganizationPanel";
 import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
@@ -31,6 +35,7 @@ export type SettingsSection =
   | "general"
   | "models"
   | "voice"
+  | "organization"
   | "usage"
   | "computer"
   | "updates";
@@ -43,6 +48,7 @@ const SETTINGS_TONE: Partial<Record<SettingsSection, TileTone>> = {
   computer: "blue",
   usage: "green",
   models: "indigo",
+  organization: "orange",
   updates: "teal",
 };
 
@@ -105,20 +111,38 @@ export function SettingsOverlay({
     }
   }, [section]);
 
+  // On the engine, the Muse person has Models (and admins an Organization); without it
+  // neither exists. The classic app keeps its own Models.
+  const [engineModels, refreshEngineModels, engineSettled] = useEngineModelsStatus(museMode);
+  const showEngineModels = museMode && engineModels?.enabled === true;
+  const showOrganization = showEngineModels && engineModels?.isAdmin === true;
+
   // "Updates" only covers the desktop app's own auto-update, which isn't a section a
   // Muse person can land on.
   useEffect(() => {
-    if (museMode && (section === "updates" || section === "models")) setSection("general");
-  }, [museMode, section]);
+    if (!museMode) {
+      if (section === "organization") setSection("general");
+      return;
+    }
+    if (section === "updates") setSection("general");
+    if (!engineSettled) return;
+    if (section === "models" && !showEngineModels) setSection("general");
+    if (section === "organization" && !showOrganization) setSection("general");
+  }, [museMode, section, engineSettled, showEngineModels, showOrganization]);
 
   const navItems: NavItem[] = [
     ...(museMode
       ? [{ id: "nova" as const, label: museBot?.name || t`Nova`, icon: UserRound }]
       : []),
     { id: "general", label: t`General`, icon: Settings },
-    // The Muse's engine and model are the server's business; only the classic app picks one.
-    ...(museMode ? [] : [{ id: "models" as const, label: t`Models`, icon: Cpu }]),
+    // The classic app picks its own model; on the engine, the Muse person manages keys here.
+    ...(museMode && !showEngineModels
+      ? []
+      : [{ id: "models" as const, label: t`Models`, icon: Cpu }]),
     { id: "voice", label: t`Voice`, icon: Volume2 },
+    ...(showOrganization
+      ? [{ id: "organization" as const, label: t`Organization`, icon: Building2 }]
+      : []),
     ...(museMode ? [] : [{ id: "usage" as const, label: t`Usage`, icon: Gauge }]),
     ...(showComputer ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
     ...(museMode ? [] : [{ id: "updates" as const, label: t`Updates`, icon: CloudDownload }]),
@@ -282,6 +306,12 @@ export function SettingsOverlay({
               {section === "updates" && !museMode ? <UpdatesSettingsPanel /> : null}
               {section === "models" && !museMode ? (
                 <ModelSettingsOverlay embedded onClose={requestClose} />
+              ) : null}
+              {section === "models" && museMode && engineModels?.enabled ? (
+                <ModelsPanel status={engineModels} onChanged={refreshEngineModels} />
+              ) : null}
+              {section === "organization" && showOrganization && engineModels ? (
+                <OrganizationPanel status={engineModels} selfEmail={email} />
               ) : null}
               {section === "voice" && museMode ? <VoicePanel onBusyChange={setVoiceBusy} /> : null}
               {section === "voice" && !museMode ? (
