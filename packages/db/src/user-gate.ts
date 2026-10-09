@@ -1,9 +1,11 @@
 import { unverifiedAccessAllowed } from "@nova/core";
 import type { PrismaClient } from "./client.js";
 
-/** What this process knows about mail delivery; the stored signup mode is read from the database. */
+/**
+ * Whether mail can be sent and the signup mode are read from DeploymentSettings (the API records
+ * its delivery state at boot), so every process, the worker included, applies one rule.
+ */
 export interface UserGateRule {
-  hasEmailDelivery: boolean;
   /** The personal-install escape hatch, already false on a hosted deployment. */
   devFlagAllowed: boolean;
 }
@@ -24,15 +26,13 @@ export async function userMayAct(
   });
   if (user?.status !== "active") return false;
   if (user.emailVerified) return true;
-  if (rule.hasEmailDelivery) return false;
-  if (rule.devFlagAllowed) return true;
   const settings = await prisma.deploymentSettings.findUnique({
     where: { id: "default" },
-    select: { signupMode: true, signupPolicyInitialized: true },
+    select: { signupMode: true, signupPolicyInitialized: true, emailDelivery: true },
   });
   return unverifiedAccessAllowed({
-    hasEmailDelivery: false,
-    devFlagAllowed: false,
+    hasEmailDelivery: settings?.emailDelivery ?? false,
+    devFlagAllowed: rule.devFlagAllowed,
     mode: settings?.signupPolicyInitialized ? settings.signupMode : undefined,
   });
 }

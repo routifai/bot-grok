@@ -103,6 +103,8 @@ export const PendingSignupSchema = z.object({
   name: z.string(),
   /** False when the mailbox was never proved (no email provider, or not yet verified). */
   emailVerified: z.boolean(),
+  /** A previous space is kept, detached, until the admin restores or discards it. */
+  quarantined: z.boolean(),
   createdAt: z.string(),
 });
 export type PendingSignup = z.infer<typeof PendingSignupSchema>;
@@ -115,5 +117,9 @@ export const signupsContract = {
     pending: oc.output(z.array(PendingSignupSchema)),
     approve: oc.input(z.object({ userId: Id })).output(ok),
     reject: oc.input(z.object({ userId: Id })).output(ok),
+    /** Re-attach the previous space and let the person in (they are confirmed as the same person). */
+    restore: oc.input(z.object({ userId: Id })).output(ok),
+    /** Purge the kept space now. */
+    discard: oc.input(z.object({ userId: Id })).output(ok),
   },
 };

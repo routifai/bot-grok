@@ -107,17 +107,22 @@ model Verification {
 }
 
 model Organization {
-  id          String       @id
-  name        String
-  slug        String
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
-  members     Member[]
-  invitations Invitation[]
-  spaces      Space[]
+  id                    String       @id
+  name                  String
+  slug                  String
+  logo                  String?
+  createdAt             DateTime
+  metadata              String?
+  members               Member[]
+  invitations           Invitation[]
+  spaces                Space[]
+  /// Set when a mailbox was proved on an account that had used this space unverified: the space is
+  /// detached from everyone and kept for an admin to restore or discard, then purged after a TTL.
+  quarantinedFromUserId String?
+  quarantinedAt         DateTime?
 
   @@unique([slug])
+  @@index([quarantinedAt])
   @@map("organization")
 }
 
@@ -306,6 +311,9 @@ model DeploymentSettings {
   signupAllowlist                 String     @default("")
   /// Comma-separated domains admitted in `domain` mode.
   signupDomains                   String     @default("")
+  /// Whether this deployment can send mail, recorded by the API at boot so the worker and other
+  /// processes apply the same "may an unverified person act" rule.
+  emailDelivery                   Boolean    @default(false)
   signupPolicyInitialized         Boolean    @default(false)
   defaultModelProvider            String?
   defaultModelId                  String?
