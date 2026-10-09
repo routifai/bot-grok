@@ -18,7 +18,13 @@ vi.mock("../../lib/rpc", () => ({
   rpc: { knowledge: { pageThumbnail: (...a: unknown[]) => pageThumbnail(...a) } },
 }));
 
-import { ArtifactPanelProvider } from "../../components/cards/context";
+vi.mock("../computer", () => ({
+  FilePreviewDialog: ({ botId, path, page }: { botId: string; path: string; page?: number }) => (
+    <div data-testid="file-preview">{`${botId}|${path}|${page}`}</div>
+  ),
+}));
+
+import { ArtifactPanelProvider, ReplyCardBotProvider } from "../../components/cards/context";
 import { PassageChips, resetThumbnailCache } from "./PassageChips";
 
 const A = "a".repeat(32);
@@ -92,19 +98,44 @@ it("keeps the placeholder when a thumbnail cannot be fetched", async () => {
   expect(host.querySelectorAll("button")).toHaveLength(2);
 });
 
-it("a Computer-only file is a non-interactive chip that still shows its thumbnail", async () => {
+it("a path-only chip opens the Computer file preview at that page", async () => {
   const open = vi.fn();
   const host = await mount(
-    <ArtifactPanelProvider value={{ openId: null, open, close: vi.fn() }}>
-      <PassageChips
-        data={{ items: [{ fileId: "f9", name: "scan.pdf", page: 4, hasThumbnail: true }] }}
-      />
-    </ArtifactPanelProvider>,
+    <ReplyCardBotProvider botId="bot-1">
+      <ArtifactPanelProvider value={{ openId: null, open, close: vi.fn() }}>
+        <PassageChips
+          data={{
+            items: [
+              {
+                fileId: "f9",
+                path: "uploads/scan.pdf",
+                name: "scan.pdf",
+                page: 4,
+                hasThumbnail: true,
+              },
+            ],
+          }}
+        />
+      </ArtifactPanelProvider>
+    </ReplyCardBotProvider>,
+  );
+  expect(pageThumbnail).toHaveBeenCalledWith({ fileId: "f9", page: 4 });
+  const chip = host.querySelector("button");
+  expect(chip?.getAttribute("aria-label")).toBe("Open scan.pdf, page 4");
+  expect(document.querySelector("[data-testid=file-preview]")).toBeNull();
+  await act(async () => chip?.click());
+  expect(document.querySelector("[data-testid=file-preview]")?.textContent).toBe(
+    "bot-1|uploads/scan.pdf|4",
+  );
+  expect(open).not.toHaveBeenCalled();
+});
+
+it("a chip with neither artifact nor path stays a plain chip", async () => {
+  const host = await mount(
+    <ReplyCardBotProvider botId="bot-1">
+      <PassageChips data={{ items: [{ fileId: "f9", name: "scan.pdf", page: 4 }] }} />
+    </ReplyCardBotProvider>,
   );
   expect(host.querySelector("button")).toBeNull();
   expect(host.textContent).toContain("scan.pdf");
-  expect(host.textContent).toContain("p. 4");
-  expect(pageThumbnail).toHaveBeenCalledWith({ fileId: "f9", page: 4 });
-  expect(host.querySelector("img")).not.toBeNull();
-  expect(open).not.toHaveBeenCalled();
 });

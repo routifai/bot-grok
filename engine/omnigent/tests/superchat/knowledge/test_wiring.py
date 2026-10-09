@@ -35,7 +35,13 @@ def test_search_results_become_citation_chips_by_file_id() -> None:
         {
             "type": "file_search",
             "results": [
-                {"file_id": "f" * 32, "file_name": "a.pdf", "page": 2, "thumbnail_url": "x"},
+                {
+                    "file_id": "f" * 32,
+                    "file_name": "a.pdf",
+                    "path": "uploads/a.pdf",
+                    "page": 2,
+                    "thumbnail_url": "x",
+                },
                 {
                     "file_id": "f" * 32,
                     "artifact_id": "a" * 32,
@@ -48,7 +54,13 @@ def test_search_results_become_citation_chips_by_file_id() -> None:
         }
     )
     found = _citations(output)
-    assert found[0] == {"fileId": "f" * 32, "name": "a.pdf", "page": 2, "hasThumbnail": True}
+    assert found[0] == {
+        "fileId": "f" * 32,
+        "path": "uploads/a.pdf",
+        "name": "a.pdf",
+        "page": 2,
+        "hasThumbnail": True,
+    }
     assert found[1]["artifactId"] == "a" * 32
     block = _citation_block(found)
     assert block is not None and len(block["card"]["data"]["items"]) == 2

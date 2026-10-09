@@ -189,11 +189,12 @@ def _citations(output: str | None) -> list[dict[str, Any]]:
         file_id, name, page = hit.get("file_id"), hit.get("file_name"), hit.get("page")
         if not (isinstance(file_id, str) and isinstance(name, str) and isinstance(page, int)):
             continue
-        artifact_id = hit.get("artifact_id")
+        artifact_id, path = hit.get("artifact_id"), hit.get("path")
         found.append(
             {
                 "fileId": file_id,
                 **({"artifactId": artifact_id} if isinstance(artifact_id, str) else {}),
+                **({"path": path} if isinstance(path, str) and path else {}),
                 "name": name,
                 "page": page,
                 **({"hasThumbnail": True} if hit.get("thumbnail_url") else {}),
