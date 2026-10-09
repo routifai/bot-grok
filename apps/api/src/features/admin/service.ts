@@ -155,29 +155,54 @@ export async function adminModelCatalog(
   };
 }
 
+type EngineOutcome = "done" | "no-engine" | "no-owner";
+
+async function engineAdminEmail(deps: EngineModelsDeps): Promise<string | null> {
+  const settings = await deps.prisma.deploymentSettings.findUnique({
+    where: { id: "default" },
+    select: { ownerUserId: true },
+  });
+  if (!settings?.ownerUserId) return null;
+  const owner = await deps.prisma.user.findUnique({
+    where: { id: settings.ownerUserId },
+    select: { email: true },
+  });
+  return owner?.email ?? null;
+}
+
 /**
  * Stop (or resume) an account's engine-side work, the way suspension does: scheduled tasks and
  * in-flight runs live in the engine, which only an engine admin can pause. The deployment owner is
- * the admin identity; with no engine or owner there is nothing to do. Engine users are named by
- * email. Best-effort: Nova's own gates already hold the account.
+ * the admin identity, so the owner must also be an engine admin; an engine refusal throws, and
+ * "no engine" or "no owner" is reported so the caller can warn. Engine users are named by email.
  */
 export async function setEngineAccountSuspended(
   deps: EngineModelsDeps,
   client: OmnigentClientConfig | undefined,
   email: string,
   suspended: boolean,
-): Promise<void> {
-  if (!client) return;
-  const settings = await deps.prisma.deploymentSettings.findUnique({
-    where: { id: "default" },
-    select: { ownerUserId: true },
-  });
-  const owner = settings?.ownerUserId
-    ? await deps.prisma.user.findUnique({
-        where: { id: settings.ownerUserId },
-        select: { email: true },
-      })
-    : null;
-  if (!owner) return;
-  await onModels(setOmnigentUserSuspended(client, owner.email, email, suspended));
+): Promise<EngineOutcome> {
+  if (!client) return "no-engine";
+  const admin = await engineAdminEmail(deps);
+  if (!admin) return "no-owner";
+  await onModels(setOmnigentUserSuspended(client, admin, email, suspended));
+  return "done";
+}
+
+/**
+ * Reset an engine account instead of resuming it. The engine's user delete removes the person's
+ * sessions, managed Computers, keys, scheduled tasks and account, and forgets their long-term
+ * memory; the account is recreated, empty, on next use. This is what a clean approval after a
+ * quarantine needs: a squatter's memory and schedules must not come back with the same email.
+ */
+export async function resetEngineAccount(
+  deps: EngineModelsDeps,
+  client: OmnigentClientConfig | undefined,
+  email: string,
+): Promise<EngineOutcome> {
+  if (!client) return "no-engine";
+  const admin = await engineAdminEmail(deps);
+  if (!admin) return "no-owner";
+  await onModels(deleteOmnigentUser(client, admin, email));
+  return "done";
 }

@@ -407,12 +407,25 @@ export async function createApp(
         "identity.organizations": organizationIds.join(","),
         "identity.computers_stop_failed": stopFailed,
       });
-      await setEngineAccountSuspended(
-        { prisma },
-        engineComputerClient({ spaceId: "identity" }),
-        email,
-        true,
-      ).catch((error) => getLogger().error("could not pause the engine account", error));
+      try {
+        const outcome = await setEngineAccountSuspended(
+          { prisma },
+          engineComputerClient({ spaceId: "identity" }),
+          email,
+          true,
+        );
+        if (outcome !== "done") {
+          getLogger().warn(`engine account not paused after quarantine: ${outcome}`, {
+            "user.id": userId,
+          });
+        }
+      } catch (error) {
+        // Most often: the deployment owner is not an engine admin, so the engine refused.
+        getLogger().warn(
+          "could not pause the engine account after quarantine (is the deployment owner an engine admin?)",
+          { "user.id": userId, error: error instanceof Error ? error.message : String(error) },
+        );
+      }
     },
   });
   // Same composition ./omnigent/env.ts#omnigentRedactionSecretsFromEnv uses for the Omnigent
@@ -533,6 +546,14 @@ export async function createApp(
     secret: env.authSecret,
     // The engine only needs the connection for /v1/published; the tenant is not used there.
     engine: () => engineComputerClient({ spaceId: "apps-gateway" }),
+    // An app stops being served once its owner may no longer act (suspended, waiting, quarantined).
+    ownerMayAct: async (ownerEmail) => {
+      const owner = await prisma.user.findFirst({
+        where: { email: { equals: ownerEmail, mode: "insensitive" } },
+        select: { id: true },
+      });
+      return owner ? mayAct(owner.id) : false;
+    },
     viewer: async (c) => {
       const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
       if (!session?.user || !(await mayAct(session.user.id))) return null;

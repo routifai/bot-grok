@@ -18,6 +18,11 @@ export interface PublishedAppViewer {
 
 export interface PublishedAppsDeps {
   prisma: Pick<PrismaClient, "user" | "member">;
+  /**
+   * False when the app's owner may no longer act (suspended, waiting, quarantined): the app is
+   * then not served, as if unpublished. Omitted, every published app is served.
+   */
+  ownerMayAct?: (ownerEmail: string) => Promise<boolean>;
   /** The signed-in viewer for this request, or null. */
   viewer: (c: Context) => Promise<PublishedAppViewer | null>;
   /** The engine connection, or undefined when Nova runs without one. */
@@ -123,6 +128,7 @@ export function mountPublishedApps(app: Hono, deps: PublishedAppsDeps) {
       return html(404, page("Not available", "This app could not be loaded right now."), null);
     }
     if (!published) return notFound();
+    if (deps.ownerMayAct && !(await deps.ownerMayAct(published.owner))) return notFound();
     const viewer = await deps.viewer(c);
     if (!(await canOpen(deps, published.audience, published.owner, viewer))) {
       return html(

@@ -29,16 +29,17 @@ const waiting = [
     email: "ada@corp.test",
     name: "Ada",
     emailVerified: true,
-    quarantined: false,
+    previousSpace: null,
     createdAt: "2026-10-01T09:30:00Z",
   },
 ];
+const kept = { createdAt: "2026-09-01T10:00:00Z", lastActive: "2026-09-20T10:00:00Z", muses: 2 };
 const squatted = {
   userId: "u2",
   email: "dave@corp.test",
   name: "Dave",
   emailVerified: false,
-  quarantined: false,
+  previousSpace: null,
   createdAt: "2026-10-02T09:30:00Z",
 };
 
@@ -116,7 +117,7 @@ it("does not warn when everyone waiting has verified their email", async () => {
 });
 
 it("offers to restore or discard a kept previous space, with the note to confirm the person", async () => {
-  api.pending.mockResolvedValue([{ ...waiting[0], quarantined: true }]);
+  api.pending.mockResolvedValue([{ ...waiting[0], previousSpace: kept }]);
   const view = await mount();
   try {
     const row = view.container.querySelector('[data-testid="signup-u1"]')!;
@@ -125,7 +126,20 @@ it("offers to restore or discard a kept previous space, with the note to confirm
     );
     await act(async () => named(row, "Restore previous space").click());
     expect(api.restore).toHaveBeenCalledWith({ userId: "u1" });
+    expect(row.querySelector('[data-testid="signup-evidence"]')?.textContent).toMatch(
+      /Created .*2026 · Last active .*2026 · 2 Muses/,
+    );
+    // Discarding is destructive: it asks first, and nothing is sent until confirmed.
     await act(async () => named(row, "Discard").click());
+    expect(api.discard).not.toHaveBeenCalled();
+    const dialog = document.querySelector('[data-testid="discard-space-dialog"]')!;
+    expect(dialog.textContent).toContain("removed for good");
+    await act(async () => named(dialog, "Cancel").click());
+    expect(api.discard).not.toHaveBeenCalled();
+    await act(async () => named(row, "Discard").click());
+    await act(async () =>
+      named(document.querySelector('[data-testid="discard-space-dialog"]')!, "Discard").click(),
+    );
     expect(api.discard).toHaveBeenCalledWith({ userId: "u1" });
     // Approving instead gives a clean space; it stays available.
     expect(named(row, "Approve")).toBeTruthy();

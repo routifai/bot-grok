@@ -51,6 +51,7 @@ function build(opts: {
   viewer?: PublishedAppViewer | null;
   sharesOrg?: boolean;
   noEngine?: boolean;
+  ownerMayAct?: (ownerEmail: string) => Promise<boolean>;
 }) {
   const app = new Hono();
   const member = { findFirst: vi.fn(async () => (opts.sharesOrg ? { id: "m1" } : null)) };
@@ -62,6 +63,7 @@ function build(opts: {
     viewer: async () => opts.viewer ?? null,
     engine: () => (opts.noEngine ? undefined : engine),
     secret: "s3cret",
+    ownerMayAct: opts.ownerMayAct,
   });
   return { app, member };
 }
@@ -190,6 +192,18 @@ describe("published apps gateway", () => {
     expect(res.status).toBe(404);
     expectSandboxed(res);
     expect(errors).toHaveLength(1);
+  });
+
+  it("stops serving an app whose owner may no longer act, like an unpublished one", async () => {
+    engineStub("link", "owner@example.test");
+    const ownerMayAct = vi.fn(async () => false);
+    const { app } = build({ ownerMayAct });
+    const res = await app.request("/apps/todo-abc123");
+    expect(res.status).toBe(404);
+    expectSandboxed(res);
+    expect(ownerMayAct).toHaveBeenCalledWith("owner@example.test");
+    const allowed = build({ ownerMayAct: async () => true });
+    expect((await allowed.app.request("/apps/todo-abc123")).status).toBe(200);
   });
 
   it("does not count HEAD requests", async () => {

@@ -1,6 +1,18 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { PendingSignup, SignupSettings } from "@nova/contracts";
-import { Button, cn, Textarea } from "@nova/ui-web";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  Button,
+  cn,
+  Textarea,
+} from "@nova/ui-web";
 import { useCallback, useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
@@ -27,6 +39,7 @@ export function OrgSignups() {
   const [list, setList] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [discarding, setDiscarding] = useState<PendingSignup | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -41,6 +54,25 @@ export function OrgSignups() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** "Created Oct 1 · Last active Oct 3 · 2 Muses": just enough to tell if it is the same person. */
+  function evidenceLine(space: NonNullable<PendingSignup["previousSpace"]>): string {
+    const day = (iso: string) =>
+      new Date(iso).toLocaleDateString(i18n.locale, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    const created = day(space.createdAt);
+    const parts = [t`Created ${created}`];
+    if (space.lastActive) {
+      const last = day(space.lastActive);
+      parts.push(t`Last active ${last}`);
+    }
+    const muses = space.muses;
+    parts.push(t`${muses} Muses`);
+    return parts.join(" · ");
+  }
 
   async function run(key: string, action: () => Promise<unknown>, fallback: string) {
     setError(null);
@@ -142,6 +174,11 @@ export function OrgSignups() {
               >
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-[13px] text-foreground">{person.email}</span>
+                  {person.previousSpace ? (
+                    <span data-testid="signup-evidence" className="text-[11.5px] text-ink-3">
+                      {evidenceLine(person.previousSpace)}
+                    </span>
+                  ) : null}
                   <span className="flex items-center gap-2 text-[11.5px] text-ink-3">
                     <time dateTime={person.createdAt}>
                       {new Date(person.createdAt).toLocaleString(i18n.locale, {
@@ -149,7 +186,7 @@ export function OrgSignups() {
                         timeStyle: "short",
                       })}
                     </time>
-                    {person.quarantined ? (
+                    {person.previousSpace ? (
                       <span data-testid="signup-quarantined">
                         <Trans>Previous space kept: confirm it&apos;s the same person</Trans>
                       </span>
@@ -165,19 +202,13 @@ export function OrgSignups() {
                   </span>
                 </span>
                 <span className="inline-flex shrink-0 items-center gap-1">
-                  {person.quarantined ? (
+                  {person.previousSpace ? (
                     <>
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={busy === person.userId}
-                        onClick={() =>
-                          void run(
-                            person.userId,
-                            () => rpc.signups.discard({ userId: person.userId }),
-                            t`Could not discard the previous space.`,
-                          )
-                        }
+                        onClick={() => setDiscarding(person)}
                       >
                         <Trans>Discard</Trans>
                       </Button>
@@ -230,6 +261,43 @@ export function OrgSignups() {
           </>
         )}
       </div>
+      <AlertDialog
+        open={discarding !== null}
+        onOpenChange={(open) => {
+          if (!open) setDiscarding(null);
+        }}
+      >
+        <AlertDialogContent data-testid="discard-space-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <Trans>Discard the previous space?</Trans>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <Trans>Its Muses, memory and Computer are removed for good.</Trans>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                const target = discarding;
+                if (!target) return;
+                setDiscarding(null);
+                void run(
+                  target.userId,
+                  () => rpc.signups.discard({ userId: target.userId }),
+                  t`Could not discard the previous space.`,
+                );
+              }}
+            >
+              <Trans>Discard</Trans>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

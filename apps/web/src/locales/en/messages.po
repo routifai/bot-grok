@@ -134,6 +134,9 @@ msgstr "{hours}h ago"
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
 
+msgid "{muses} Muses"
+msgstr "{muses} Muses"
+
 msgid "{n} cells"
 msgstr "{n} cells"
 
@@ -1458,6 +1461,9 @@ msgstr "Create space"
 msgid "Created"
 msgstr "Created"
 
+msgid "Created {created}"
+msgstr "Created {created}"
+
 msgid "Creating…"
 msgstr "Creating…"
 
@@ -1609,6 +1615,9 @@ msgstr "Direct MCP"
 
 msgid "Discard"
 msgstr "Discard"
+
+msgid "Discard the previous space?"
+msgstr "Discard the previous space?"
 
 msgid "Disconnect"
 msgstr "Disconnect"
@@ -2227,6 +2236,9 @@ msgstr "Its address stops working right away. You can publish it again later."
 msgid "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 msgstr "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 
+msgid "Its Muses, memory and Computer are removed for good."
+msgstr "Its Muses, memory and Computer are removed for good."
+
 msgid "ITS OWN COMPUTER"
 msgstr "ITS OWN COMPUTER"
 
@@ -2276,6 +2288,9 @@ msgstr "Language"
 
 msgid "Last active"
 msgstr "Last active"
+
+msgid "Last active {last}"
+msgstr "Last active {last}"
 
 msgid "Last thing — connect the brain I'll think with."
 msgstr "Last thing — connect the brain I'll think with."

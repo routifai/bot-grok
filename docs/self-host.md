@@ -151,11 +151,11 @@ someone who pre-registered another person's address gains nothing; the owner sig
 the account had been used before (it has a space, which is only possible with no mail provider),
 its space is **quarantined, not deleted**: its Computers stop, keys, connections, secrets, MCP
 servers, messaging links and approval rules are stripped, scheduled and running work is cancelled
-(and the engine account is paused), and the personal organization is detached from everyone and
+(the engine account is paused, which needs the deployment owner to be an engine admin; the API logs a warning when that fails), screen links stop working, published apps stop being served, and the personal organization is detached from everyone and
 kept. The account returns to pending. In Settings > Signups the row says "Previous space kept:
 confirm it's the same person" and offers **Restore previous space** (re-attaches the space, bots
 and memory; keys and links stay gone and routines stay off) or **Discard** (destroys its Computers
-and removes it now); approving instead gives a clean space. Unclaimed quarantined spaces are purged
+and removes it now); approving instead gives a clean space and **resets the engine account** (its sessions, Computer, keys, schedules and long-term memory are deleted), so nothing the earlier holder taught the engine reaches the new space. Only Restore resumes the engine account. Unclaimed quarantined spaces are purged
 after 30 days by the worker, Computers first. Context a squatter planted cannot be told from the
 person's own, which is why nothing is re-attached until an admin confirms the person. The
 deployment owner is exempt. Memberships in any shared organization are removed too (shared
