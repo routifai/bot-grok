@@ -256,6 +256,26 @@ describe("engine artifact tables", () => {
     });
   });
 
+  it("passes number formats and column widths through", async () => {
+    const withFormats = {
+      ...table,
+      sheets: [
+        {
+          ...table.sheets[0],
+          rows: [[{ v: 64000, f: null, t: "n", z: "$#,##0" }]],
+          col_widths: [12, null],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json(withFormats)),
+    );
+    const result = await engineGetTable(deps, client, actor, "a1");
+    expect(result.sheets[0]?.rows[0]?.[0]?.z).toBe("$#,##0");
+    expect(result.sheets[0]?.colWidths).toEqual([12, null]);
+  });
+
   it("sends edits against a base version and returns the new version", async () => {
     const fetchMock = vi.fn(async (_url: URL, init?: RequestInit) =>
       json(

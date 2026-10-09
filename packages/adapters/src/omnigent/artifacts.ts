@@ -128,6 +128,7 @@ export interface OmnigentTableCell {
   v: string | number | boolean | null;
   f: string | null;
   t: string | null;
+  z?: string;
 }
 
 export interface OmnigentTableSheet {
@@ -137,6 +138,7 @@ export interface OmnigentTableSheet {
   n_rows: number;
   n_cols: number;
   truncated: boolean;
+  col_widths?: Array<number | null>;
 }
 
 export interface OmnigentTable {

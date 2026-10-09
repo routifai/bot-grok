@@ -240,6 +240,7 @@ export async function engineGetTable(
       nRows: sheet.n_rows,
       nCols: sheet.n_cols,
       truncated: sheet.truncated,
+      ...(sheet.col_widths ? { colWidths: sheet.col_widths } : {}),
     })),
   };
 }

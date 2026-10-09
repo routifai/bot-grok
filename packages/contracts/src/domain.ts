@@ -801,6 +801,8 @@ export const TableCellSchema = z.object({
   v: z.union([z.string(), z.number(), z.boolean()]).nullable(),
   f: z.string().nullable(),
   t: z.string().nullable(),
+  /** The cell's Excel number format, when it is not "General" (XLSX only). */
+  z: z.string().optional(),
 });
 export type TableCell = z.infer<typeof TableCellSchema>;
 
@@ -811,6 +813,8 @@ export const TableSheetSchema = z.object({
   nRows: z.number().int(),
   nCols: z.number().int(),
   truncated: z.boolean(),
+  /** Column widths in characters (null = default), index = column; absent when none are set. */
+  colWidths: z.array(z.number().nullable()).optional(),
 });
 export type TableSheet = z.infer<typeof TableSheetSchema>;
 
