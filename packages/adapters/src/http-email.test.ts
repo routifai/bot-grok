@@ -36,6 +36,11 @@ describe("HttpEmailProvider", () => {
     await new HttpEmailProvider(config, { fetch: flaky as never, sleep }).send(message);
     expect(flaky).toHaveBeenCalledTimes(3);
     expect(sleep.mock.calls.map(([delay]) => delay)).toEqual([250, 1_000]);
+    const keys = (flaky.mock.calls as unknown as Array<[string, RequestInit]>).map(([, init]) =>
+      new Headers(init.headers).get("idempotency-key"),
+    );
+    expect(new Set(keys).size).toBe(1);
+    expect(keys[0]).toBeTruthy();
 
     const rejected = vi.fn(async () => new Response("", { status: 422 }));
     await expect(

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { TransactionalEmail, TransactionalEmailProvider } from "@nova/adapter-kit";
 
 export interface HttpEmailConfig {
@@ -75,6 +76,8 @@ export class HttpEmailProvider implements TransactionalEmailProvider {
   }
 
   private async deliver(message: TransactionalEmail): Promise<void> {
+    // One key across every retry, so a slow first attempt cannot become two emails.
+    const idempotencyKey = randomUUID();
     for (let attempt = 0; ; attempt += 1) {
       let retryable = true;
       let failure: Error;
@@ -84,6 +87,7 @@ export class HttpEmailProvider implements TransactionalEmailProvider {
           headers: {
             authorization: `Bearer ${this.config.apiKey}`,
             "content-type": "application/json",
+            "idempotency-key": idempotencyKey,
           },
           body: JSON.stringify({
             from: this.config.from,

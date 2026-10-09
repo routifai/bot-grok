@@ -39,21 +39,17 @@ describe("buildTrustedOrigins", () => {
 });
 
 describe("passwordResetEmail", () => {
-  it("keeps the reset URL in text and escapes user-controlled HTML", () => {
+  it("keeps the reset URL in text and HTML and never echoes the user-chosen name", () => {
     const message = passwordResetEmail(
       { id: "user-1", email: "ada@example.test", name: '<Ada & "team">' },
       "https://nova.test/reset-password?token=secret&next=1",
     );
 
-    expect(message).toMatchObject({
-      to: "ada@example.test",
-      subject: "Reset your Nova password",
-    });
+    expect(message).toMatchObject({ to: "ada@example.test", subject: "Reset your Nova password" });
     expect(message.text).toContain("https://nova.test/reset-password?token=secret&next=1");
-    expect(message.html).toContain("&lt;Ada &amp; &quot;team&quot;&gt;");
     expect(message.html).toContain("token=secret&amp;next=1");
     expect(message.html).toContain("Nova");
-    expect(message.html).not.toContain('<Ada & "team">');
+    expect(`${message.text}${message.html}`).not.toContain("Ada");
   });
 });
 

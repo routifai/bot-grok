@@ -66,11 +66,11 @@ export function passwordResetEmail(
   user: { id: string; email: string; name: string },
   resetUrl: string,
 ): TransactionalEmail {
-  const name = user.name.trim() || "there";
+  // No user-chosen text: the name is free-form input that would land in an email we send.
   return render({
     to: user.email,
     subject: "Reset your Nova password",
-    lead: `Hi ${name}, reset your Nova password here.`,
+    lead: "Reset your Nova password here.",
     action: { label: "Reset password", url: resetUrl },
     footer: "This link expires in one hour. If you did not ask for it, ignore this email.",
   });
