@@ -12,7 +12,6 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "culori": "4.0.2",
     "d3-format": "3.1.0",
     "recharts": "2.15.4",
     "zod": "4.6.2"
@@ -22,7 +21,6 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@types/culori": "4.0.1",
     "@types/d3-format": "3.0.4",
     "@types/react": "19.2.18",
     "react": "19.2.3",

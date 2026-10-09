@@ -75,7 +75,11 @@ import type * as displayChart from "./spec.js";
 export const DEFAULT_COLORS = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `var(--chart-${n})`);
 
 const CHART_LABEL_FONT_SIZE = 12;
-const AXIS_TICK = { fontSize: CHART_LABEL_FONT_SIZE, fontFamily: CHART_FONT_STACK };
+const AXIS_TICK = {
+  fontSize: CHART_LABEL_FONT_SIZE,
+  fontFamily: CHART_FONT_STACK,
+  fill: "var(--muted-foreground)",
+};
 const CATEGORY_XAXIS_HEIGHT = 56;
 const X_AXIS_LABEL_HEIGHT = 22;
 
@@ -101,6 +105,8 @@ const MUTED_FOREGROUND = "var(--muted-foreground)";
  * title. Y values are abbreviated by `formatYAxisTick` (e.g. `1.2K`).
  */
 const Y_AXIS_WIDTH = 36;
+/** Room for "100%" at the 12px tick size. */
+const PERCENT_AXIS_WIDTH = 44;
 const VALUE_AXIS_DEFAULT_WIDTH = 40;
 const VALUE_AXIS_MAX_WIDTH = 120;
 const VALUE_AXIS_CHARACTER_WIDTH = 7;
@@ -610,7 +616,7 @@ function renderValueYAxis(
 ) {
   return (
     <YAxis
-      width={Y_AXIS_WIDTH + (yAxisLabel ? AXIS_LABEL_WIDTH : 0)}
+      width={(isPercent ? PERCENT_AXIS_WIDTH : Y_AXIS_WIDTH) + (yAxisLabel ? AXIS_LABEL_WIDTH : 0)}
       tick={AXIS_TICK}
       tickLine={false}
       axisLine={false}
@@ -1227,6 +1233,8 @@ function buildAreaChart(props: ResolvedProps) {
   const isStacked = isStackedChartType(chartType);
   const isPercent = isPercentStackedChartType(chartType);
   const zeroBaseline = chartType !== "line";
+  // The soft fill under a line reads as volume only when the axis starts at zero.
+  const filled = zeroBaseline && !(yAxisMin !== undefined && yAxisMin > 0);
   const { renderedSeries, stackTotalLayer } = getDataLabelSetup(props, isStacked);
   const dataKeys = renderedSeries.map((s) => s.data_key);
   const axisValues = isStacked
@@ -1293,7 +1301,7 @@ function buildAreaChart(props: ResolvedProps) {
           dataKey={s.data_key}
           type="monotone"
           stroke={colorFor(s.data_key, i)}
-          fill={`url(#${gradientIdFor(i)})`}
+          fill={filled ? `url(#${gradientIdFor(i)})` : "none"}
           stackId={isStacked ? "stack" : undefined}
           isAnimationActive={Boolean(props.animate)}
           animationDuration={CHART_ANIMATION_DURATION_MS}

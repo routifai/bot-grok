@@ -38,6 +38,30 @@ const channel: ChartRow[] = [
   { quarter: "Q4", online: 372, retail: 150, partners: 124 },
 ];
 
+const SCATTER: ChartRow[] = [
+  { spend: 12, signups: 40 },
+  { spend: 18, signups: 52 },
+  { spend: 25, signups: 71 },
+  { spend: 31, signups: 80 },
+  { spend: 40, signups: 118 },
+  { spend: 47, signups: 121 },
+  { spend: 55, signups: 160 },
+];
+
+const RADAR: ChartRow[] = [
+  { skill: "Speed", team_a: 82, team_b: 64 },
+  { skill: "Quality", team_a: 71, team_b: 88 },
+  { skill: "Cost", team_a: 60, team_b: 75 },
+  { skill: "Support", team_a: 90, team_b: 70 },
+  { skill: "Reach", team_a: 55, team_b: 81 },
+];
+
+const CHANNEL_SERIES = [
+  { data_key: "online", label: "Online" },
+  { data_key: "retail", label: "Retail" },
+  { data_key: "partners", label: "Partners" },
+];
+
 export const CHART_FIXTURES: ChartFixture[] = [
   {
     id: "bar",
@@ -159,5 +183,106 @@ export const CHART_FIXTURES: ChartFixture[] = [
       series: [{ data_key: "revenue", label: "Revenue", value_format: USD }],
     },
     data: monthly,
+  },
+  {
+    id: "horizontal-bar",
+    label: "Horizontal bar",
+    spec: {
+      chart_type: "horizontal_bar",
+      title: "Sales by region (ranked)",
+      x_axis_key: "region",
+      x_axis_type: "category",
+      series: [{ data_key: "sales", label: "Sales" }],
+    },
+    data: regions,
+  },
+  {
+    id: "horizontal-bar-100",
+    label: "Horizontal bar 100%",
+    spec: {
+      chart_type: "horizontal_bar_100",
+      title: "Channel mix per quarter",
+      x_axis_key: "quarter",
+      x_axis_type: "category",
+      series: CHANNEL_SERIES,
+    },
+    data: channel,
+  },
+  {
+    id: "stacked-bar-100",
+    label: "Stacked bar 100%",
+    spec: {
+      chart_type: "stacked_bar_100",
+      title: "Channel share of orders",
+      x_axis_key: "quarter",
+      x_axis_type: "category",
+      series: CHANNEL_SERIES,
+    },
+    data: channel,
+  },
+  {
+    id: "stacked-area",
+    label: "Stacked area",
+    spec: {
+      chart_type: "stacked_area",
+      title: "Orders by channel over time",
+      x_axis_key: "quarter",
+      x_axis_type: "category",
+      series: CHANNEL_SERIES,
+    },
+    data: channel,
+  },
+  {
+    id: "stacked-area-100",
+    label: "Stacked area 100%",
+    spec: {
+      chart_type: "stacked_area_100",
+      title: "Channel share over time",
+      x_axis_key: "quarter",
+      x_axis_type: "category",
+      series: CHANNEL_SERIES,
+    },
+    data: channel,
+  },
+  {
+    id: "donut",
+    label: "Donut",
+    spec: {
+      chart_type: "donut",
+      title: "Sales by region",
+      x_axis_key: "region",
+      x_axis_type: "category",
+      series: [{ data_key: "sales", label: "Sales" }],
+    },
+    data: regions,
+  },
+  {
+    id: "scatter",
+    label: "Scatter",
+    spec: {
+      chart_type: "scatter",
+      title: "Signups against ad spend",
+      x_axis_key: "spend",
+      x_axis_type: "number",
+      x_axis_label: "Spend ($k)",
+      y_axis_label: "Signups",
+      series: [{ data_key: "signups", label: "Signups" }],
+    },
+    data: SCATTER,
+  },
+  {
+    id: "radar",
+    label: "Radar",
+    spec: {
+      chart_type: "radar",
+      title: "Team profile",
+      x_axis_key: "skill",
+      x_axis_type: "category",
+      series: [
+        { data_key: "team_a", label: "Team A" },
+        { data_key: "team_b", label: "Team B" },
+      ],
+    },
+    data: RADAR,
   },
 ];

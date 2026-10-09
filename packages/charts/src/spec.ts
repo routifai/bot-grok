@@ -45,9 +45,14 @@ export const SeriesTypeEnum = z.enum(["bar", "line", "area"]);
 
 export const YAxisSideEnum = z.enum(["left", "right"]);
 
+/** A CSS color a series may use: hex, rgb(), hsl(), a plain name or a `--chart-N` token. Same pattern in the engine. */
+export const CHART_COLOR_PATTERN =
+  "^(#[0-9a-fA-F]{3,8}|rgba?\\([0-9.,%\\s/]{1,48}\\)|hsla?\\([0-9.,%\\sdeg/]{1,48}\\)|[a-zA-Z]{3,24}|var\\(--chart-[1-8]\\))$";
+export const ChartColorSchema = z.string().max(64).regex(new RegExp(CHART_COLOR_PATTERN));
+
 export const SeriesConfigSchema = z.object({
   data_key: z.string().describe("Column name from the result file to plot."),
-  color: z.string().describe("CSS color (defaults to theme colors).").optional(),
+  color: ChartColorSchema.describe("CSS color (defaults to theme colors).").optional(),
   label: z.string().describe("Label to display in the legend.").optional(),
   value_format: ValueFormatSchema.describe(
     'Controls how this series\' numeric values render on the axis, tooltip, data labels, and KPI card. The number is formatted as-is: use prefix for any currency symbol and suffix for percentages or units; never use d3\'s "%" type because it multiplies by 100. Examples: USD { d3_format: ",.2f", prefix: "$", compact: "financial" }; percentage stored as 42.5 { d3_format: ".1f", suffix: "%" }; volts { d3_format: ",.0f", suffix: " V" }; bytes { d3_format: ".2s", suffix: "B", compact: "si" }.',
@@ -65,73 +70,6 @@ export const SeriesConfigSchema = z.object({
     'Which Y-axis this series is plotted against ("left" or "right"). Only used when chart_type is "mixed"; defaults to "left". A right axis is drawn whenever any series uses "right" — use it to compare metrics with very different scales/units.',
   ).optional(),
 });
-
-export const ColorScaleRuleSchema = z.object({
-  type: z.literal("color-scale"),
-  color: z
-    .string()
-    .describe(
-      "Main color of the scale; the gradient runs from a light tint of it (low) to it (high). Use hex, rgb(), rgba(), hsl(), hsla() or a common CSS color name.",
-    )
-    .optional(),
-  minColor: z
-    .string()
-    .describe(
-      "Color for the lowest value (overrides the derived tint). Hex, rgb(), rgba(), hsl(), hsla() or name.",
-    )
-    .optional(),
-  maxColor: z
-    .string()
-    .describe(
-      "Color for the highest value (overrides the derived color). Hex, rgb(), rgba(), hsl(), hsla() or name.",
-    )
-    .optional(),
-  min: z
-    .number()
-    .describe("Explicit lower bound of the scale; defaults to the column minimum.")
-    .optional(),
-  max: z
-    .number()
-    .describe("Explicit upper bound of the scale; defaults to the column maximum.")
-    .optional(),
-});
-
-export const ThresholdRuleSchema = z.object({
-  type: z.literal("threshold"),
-  operator: z.enum([">=", ">", "<=", "<", "="]).describe("Comparison applied to each cell value."),
-  value: z.number().describe("Value to compare each cell against."),
-  color: z.string().describe("CSS background color applied when the comparison passes."),
-});
-
-export const BooleanRuleSchema = z.object({
-  type: z.literal("boolean"),
-  trueColor: z.string().describe("Background color for true cells (omit for none).").optional(),
-  falseColor: z.string().describe("Background color for false cells (omit for none).").optional(),
-});
-
-export const StringRuleSchema = z.object({
-  type: z.literal("string"),
-  operator: z
-    .enum(["equals", "in", "like"])
-    .describe(
-      '"equals": exact match; "in": value is one of a list; "like": case-insensitive substring.',
-    ),
-  value: z
-    .union([z.string(), z.array(z.string())])
-    .describe('A single string for "equals"/"like", or an array of strings for "in".'),
-  color: z.string().describe("CSS background color applied when the cell matches."),
-});
-
-export const ConditionalFormatRuleSchema = z.discriminatedUnion("type", [
-  ColorScaleRuleSchema,
-  ThresholdRuleSchema,
-  BooleanRuleSchema,
-  StringRuleSchema,
-]);
-
-export const ColumnConditionalFormatsSchema = z
-  .record(z.string(), ConditionalFormatRuleSchema)
-  .describe("Map of column name to the conditional-formatting rule applied to that column.");
 
 /**
  * Where the chart's rows come from. Nova replaces nao's `query_id` (a previous `execute_sql` result) with a
@@ -296,12 +234,6 @@ export type ValueFormat = z.infer<typeof ValueFormatSchema>;
 export type SeriesType = z.infer<typeof SeriesTypeEnum>;
 export type YAxisSide = z.infer<typeof YAxisSideEnum>;
 export type SeriesConfig = z.infer<typeof SeriesConfigSchema>;
-export type ColorScaleRule = z.infer<typeof ColorScaleRuleSchema>;
-export type ThresholdRule = z.infer<typeof ThresholdRuleSchema>;
-export type BooleanRule = z.infer<typeof BooleanRuleSchema>;
-export type StringRule = z.infer<typeof StringRuleSchema>;
-export type ConditionalFormatRule = z.infer<typeof ConditionalFormatRuleSchema>;
-export type ColumnConditionalFormats = z.infer<typeof ColumnConditionalFormatsSchema>;
 export type Output = z.infer<typeof OutputSchema>;
 
 export type BuiltinChartInput = Omit<ChartInput, "chart_type"> & { chart_type: ChartType };

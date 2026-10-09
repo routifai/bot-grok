@@ -328,18 +328,18 @@ export const chartLightPalette = {
   "chart-4": "#5AC8FA",
   "chart-5": "#48484A",
   "chart-6": "#5856D6",
-  "chart-7": "#AEAEB2",
+  "chart-7": "#C7C7CC",
   "chart-8": "#34C759",
 } as const;
 
 export const chartDarkPalette = {
   "chart-1": "#F5F5F7",
   "chart-2": "#0A84FF",
-  "chart-3": "#98989D",
+  "chart-3": "#78787D",
   "chart-4": "#64D2FF",
-  "chart-5": "#AEAEB2",
+  "chart-5": "#C7C7CC",
   "chart-6": "#5E5CE6",
-  "chart-7": "#636366",
+  "chart-7": "#545458",
   "chart-8": "#30D158",
 } as const;
 

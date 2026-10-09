@@ -53,7 +53,12 @@ export function attachValueAffixes(value: string, valueFormat?: ValueFormat): st
   const hasNegativeSign = value.startsWith("-") || value.startsWith("−");
   const body = hasNegativeSign ? value.slice(1) : value;
   const sign = hasNegativeSign ? "-" : "";
-  return `${sign}${valueFormat?.prefix ?? ""}${body}${valueFormat?.suffix ?? ""}`;
+  // A zero needs no magnitude suffix: "$0", not "$0k".
+  const suffix =
+    body === "0" && /^\s*[kKmMbBtT]$/.test(valueFormat?.suffix ?? "")
+      ? ""
+      : (valueFormat?.suffix ?? "");
+  return `${sign}${valueFormat?.prefix ?? ""}${body}${suffix}`;
 }
 
 export function getChartLevelValueFormat(

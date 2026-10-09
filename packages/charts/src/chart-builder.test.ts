@@ -109,7 +109,7 @@ describe("prepareChart", () => {
     const prepared = prepareChart(fixture.spec, fixture.data, { width: 600, height: 360 });
     expect(prepared.chart).toBeTruthy();
     expect(prepared.isKpi).toBe(fixture.spec.chart_type === "kpi_card");
-    if (fixture.spec.chart_type === "pie") {
+    if (fixture.spec.chart_type === "pie" || fixture.spec.chart_type === "donut") {
       expect(prepared.legendLayout).toBe("vertical");
       expect(prepared.chartWidth).toBe(400);
       expect(prepared.legend).toHaveLength(5);

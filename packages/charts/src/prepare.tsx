@@ -36,6 +36,8 @@ export interface PrepareChartOptions {
   /** The chart surface color; defaults to `var(--background)`. */
   backgroundColor?: string;
   animate?: boolean;
+  /** Prefix for SVG ids (gradients), unique per chart on a page. */
+  idPrefix?: string;
 }
 
 export interface PreparedChart {
@@ -135,6 +137,8 @@ export function prepareChart(
     comparisonMode: spec.comparison_mode,
     children: options.children,
     animate: options.animate,
+    idPrefix: options.idPrefix,
+    gradientIdPrefix: options.idPrefix,
   });
   return {
     chart: chart as PreparedChart["chart"],

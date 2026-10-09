@@ -31,8 +31,8 @@ export const chartsContract = {
           artifactId: Id,
           format: z.enum(CHART_THUMBNAIL_FORMATS).default("png"),
           theme: z.enum(CHART_THUMBNAIL_THEMES).default("light"),
-          width: z.number().int().min(160).max(1600).default(640),
-          height: z.number().int().min(100).max(1200).default(400),
+          width: z.number().int().min(160).max(800).default(640),
+          height: z.number().int().min(100).max(500).default(400),
         }),
       )
       .output(ChartThumbnailSchema),
