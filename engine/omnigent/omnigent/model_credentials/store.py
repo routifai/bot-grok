@@ -163,6 +163,22 @@ class ModelConnectionStore:
             ).all()
             return [_meta(row) for row in rows]
 
+    def list_by_user(self) -> dict[str, list[ConnectionMeta]]:
+        """:returns: Masked metadata of every person's own connections, by user id."""
+        with self._session("model_connection_list_by_user") as session:
+            rows = session.scalars(
+                select(SqlModelConnection)
+                .where(
+                    SqlModelConnection.workspace_id == current_workspace_id(),
+                    SqlModelConnection.scope == SCOPE_USER,
+                )
+                .order_by(SqlModelConnection.owner_id, SqlModelConnection.provider)
+            ).all()
+            found: dict[str, list[ConnectionMeta]] = {}
+            for row in rows:
+                found.setdefault(row.owner_id, []).append(_meta(row))
+            return found
+
     def get_plaintext(
         self, scope: str, owner_id: str, preferred: Sequence[str]
     ) -> tuple[str, str] | None:

@@ -1883,6 +1883,8 @@ def create_app(
     app.state.background_title_coordinator = background_title_coordinator
     app.state.host_registry = host_registry
     app.state.host_store = host_store
+    app.state.file_store = file_store
+    app.state.artifact_store = artifact_store
     if host_store is not None:
         host_registry.launch_authorizer = partial(
             host_store.admit_launch, require_account_owner=runner_account_store is not None

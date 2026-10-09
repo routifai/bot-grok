@@ -210,6 +210,8 @@ class ErrorCode:
     :cvar MODEL_BUDGET_EXHAUSTED: The session owner (or their organization) reached a monthly
         model budget set to stop at the limit. HTTP 402: raising the limit or waiting for the
         next month lets the same request succeed.
+    :cvar ACCOUNT_SUSPENDED: An admin suspended the caller's account. HTTP 403: nothing the
+        caller does changes it until an admin resumes the account.
     :cvar MODEL_KEY_REQUIRED: The session owner has not saved a model API key (Anthropic or
         OpenRouter) and the deployment bills model calls to the owner's key. HTTP 412, like
         ``HARNESS_NOT_CONFIGURED``: the request is valid and a retry cannot succeed until
@@ -285,6 +287,7 @@ class ErrorCode:
     MODEL_KEY_REQUIRED = "model_key_required"
     MODEL_NOT_SUPPORTED = "model_not_supported"
     MODEL_BUDGET_EXHAUSTED = "model_budget_exhausted"
+    ACCOUNT_SUSPENDED = "account_suspended"
 
 
 # Single source of truth for error code → HTTP status.
@@ -337,6 +340,7 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.MODEL_KEY_REQUIRED: 412,
     ErrorCode.MODEL_NOT_SUPPORTED: 400,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: 402,
+    ErrorCode.ACCOUNT_SUSPENDED: 403,
 }
 
 
@@ -386,6 +390,7 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     ErrorCode.MODEL_KEY_REQUIRED: ErrorCategory.USER,
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorCategory.USER,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: ErrorCategory.USER,
+    ErrorCode.ACCOUNT_SUSPENDED: ErrorCategory.USER,
 }
 
 
@@ -440,6 +445,7 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.MODEL_KEY_REQUIRED: ErrorImpact.BENIGN,
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorImpact.BENIGN,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: ErrorImpact.BENIGN,
+    ErrorCode.ACCOUNT_SUSPENDED: ErrorImpact.BENIGN,
 }
 
 
@@ -489,6 +495,7 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     ErrorCode.MODEL_KEY_REQUIRED: ErrorPhase.REQUEST,
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorPhase.REQUEST,
     ErrorCode.MODEL_BUDGET_EXHAUSTED: ErrorPhase.REQUEST,
+    ErrorCode.ACCOUNT_SUSPENDED: ErrorPhase.REQUEST,
 }
 
 

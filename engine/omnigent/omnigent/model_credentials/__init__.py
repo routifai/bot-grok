@@ -3,7 +3,8 @@
 Layout: ``upstreams`` (the provider registry), ``store`` (SQLAlchemy store, sealed with the vault's
 AES-GCM), ``probe`` (one cheap validation call), ``routes`` (``/v1/me/model-connections`` and
 ``/v1/admin/model-connections``), ``budget``/``budget_routes`` (monthly limits and
-``/v1/me/budget``, ``/v1/admin/budget``), ``spend`` (what a proxied call cost), ``proxy`` (the
+``/v1/me/budget``, ``/v1/admin/budget``), ``org``/``admin_routes`` (model overlay, suspension,
+``/v1/admin/{models,users,usage}``), ``spend`` (what a proxied call cost), ``proxy`` (the
 engine model proxy). The key goes in once, is
 probed, sealed and never shown back; the run path reads it server-side through
 :func:`omnigent.model_credentials.store.resolve_model_connection`.
@@ -61,6 +62,31 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         ),
         prefix="/v1",
         tags=["model-budget"],
+    )
+    from omnigent.model_credentials.admin_routes import create_org_admin_router
+    from omnigent.model_credentials.org import (
+        ModelOrgOverlayStore,
+        SuspensionStore,
+        bind_suspensions,
+    )
+
+    overlay = ModelOrgOverlayStore(deps.scheduled_task_store.storage_location)
+    suspensions = SuspensionStore(deps.scheduled_task_store.storage_location)
+    app.state.model_org_overlay = overlay
+    bind_suspensions(suspensions)
+    app.include_router(
+        create_org_admin_router(
+            overlay=overlay,
+            suspensions=suspensions,
+            budgets=budgets,
+            connections=store,
+            conversation_store=deps.conversation_store,
+            scheduled_task_store=deps.scheduled_task_store,
+            auth_provider=deps.auth_provider,
+            permission_store=deps.permission_store,
+        ),
+        prefix="/v1",
+        tags=["org-admin"],
     )
     app.include_router(
         create_model_connection_router(

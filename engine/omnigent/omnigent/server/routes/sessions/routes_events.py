@@ -46,6 +46,7 @@ from omnigent.host.frames import (
 from omnigent.host.frames import (
     workspace_missing_message as _workspace_missing_message,
 )
+from omnigent.model_credentials.org import refuse_if_suspended
 from omnigent.runner.identity import RUNNER_TUNNEL_TOKEN_HEADER, token_bound_runner_id
 from omnigent.runner.launch_failure import classify_native_turn_error
 from omnigent.runner.routing import RunnerRouter, routing_host_id
@@ -855,6 +856,8 @@ def register_events_routes(
         :raises OmnigentError: 404 if no session exists.
         """
         user_id, conv = await _authorized_conversation(request, session_id)
+        if body.type in ("message", _SLASH_COMMAND_TYPE):
+            await refuse_if_suspended(user_id)
         if body.type == "message":
             await _require_helper_writer(request, user_id, conv)
         if in_flight is not None:

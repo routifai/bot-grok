@@ -43,6 +43,7 @@ from omnigent.entities import (
 )
 from omnigent.entities.permission import SessionPermission
 from omnigent.errors import ErrorCategory, ErrorCode, ErrorImpact, ErrorPhase, OmnigentError
+from omnigent.model_credentials.org import refuse_if_suspended
 from omnigent.models.model_fallbacks import ROLLOVER_SUMMARY_FALLBACK_MODEL
 from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.models.model_override import validate_model_override
@@ -702,6 +703,7 @@ def register_core_routes(
             database creation fails.
         """
         user_id = _require_user(request, auth_provider)
+        await refuse_if_suspended(user_id)
         content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
         if content_type == "multipart/form-data":
             result = await _create_bundled_session_from_multipart(request, user_id)
@@ -757,6 +759,7 @@ def register_core_routes(
         :param conversation_id: A server-chosen id, so a creator can rely on the primary key
             to stay idempotent; a clash raises ``ConversationAlreadyExistsError``.
         """
+        await refuse_if_suspended(user_id)  # also the scheduled and sub-agent creators
         creation_metadata(parent_session_id=body.parent_session_id, host_type=body.host_type)
         resp, conv = await _create_session_from_existing_agent(
             conversation_store,
@@ -3190,6 +3193,7 @@ def register_core_routes(
             for a sandbox this server has not configured.
         """
         user_id = _get_user_id(request, auth_provider)
+        await refuse_if_suspended(user_id)
         access = await _require_access_and_level(
             user_id, source_id, LEVEL_READ, permission_store, conversation_store
         )

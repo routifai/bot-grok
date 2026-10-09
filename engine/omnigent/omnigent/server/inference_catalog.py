@@ -22,6 +22,7 @@ from omnigent.inference_config import (
     resolve_bound_provider,
     validate_inference_credentials,
 )
+from omnigent.model_credentials.org import apply_overlay
 from omnigent.model_credentials.proxy import KEY_REQUIRED_MESSAGE
 from omnigent.model_credentials.store import resolve_model_connection
 from omnigent.model_credentials.upstreams import harness_family, preferred_providers
@@ -234,14 +235,28 @@ class SandboxInferenceService:
             return None
         return await resolve_databricks_token(owner, store=store, client=client)
 
+    async def _org_overlay_entry(self, harness: str) -> dict[str, Any] | None:
+        """The organization's overlay for *harness*, if an admin set one."""
+        store = getattr(self._state, "model_org_overlay", None)
+        if store is None:
+            return None
+        overlay = await asyncio.to_thread(store.get)
+        return overlay.get(normalize_inference_harness(harness))
+
     async def prepare(
         self,
         provider: str | None,
         harness: str,
         user_id: str | None,
         agent_auth: object = None,
+        *,
+        org_overlay: bool = True,
     ) -> dict[str, Any] | None:
-        """Capture nonsecret launch inputs and verify the selected provider's catalog."""
+        """Capture nonsecret launch inputs and verify the selected provider's catalog.
+
+        The organization's model overlay narrows the harness binding unless *org_overlay* is
+        ``False`` (the admin route that validates an overlay against the bare binding).
+        """
         deployment = getattr(self._state, "sandbox_config", None)
         if deployment is None:
             return None
@@ -395,6 +410,7 @@ class SandboxInferenceService:
                     _endpoint(original_family["base_url"])
             for family in providers[name].families.values():
                 _endpoint(family.base_url)
+        overlay_entry = await self._org_overlay_entry(harness) if org_overlay else None
         for saved_harness, saved in runtime["inference"]["harnesses"].items():
             entry = providers[saved["provider"]]
             # An unconnected Unity reference remains unusable, never late-bound.
@@ -411,6 +427,10 @@ class SandboxInferenceService:
                 saved["default_model"] = _resolve_alias(
                     entry, saved_harness, saved["default_model"]
                 )
+        if overlay_entry:
+            apply_overlay(
+                runtime["inference"]["harnesses"][_binding_key(runtime, harness)], overlay_entry
+            )
         target_id = f"sandbox:{target.provider or 'default'}"
         snapshot: dict[str, Any] = {
             "version": 1,
@@ -421,6 +441,7 @@ class SandboxInferenceService:
                     "model_discovery": discovery,
                     "connections": connections,
                     "model_providers": model_providers,
+                    "org_overlay": overlay_entry,
                     "target_id": target_id,
                     "harness": harness,
                 },

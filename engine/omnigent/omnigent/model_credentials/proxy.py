@@ -15,7 +15,9 @@ style come from there) and is resolved to the owner's connection for exactly tha
 own key first, else the organization's. Auth headers and
 bodies are never logged.
 
-Before forwarding, an owner (or organization) at a monthly budget set to stop is refused with
+Before forwarding, a suspended owner is refused with ``account_suspended`` (HTTP 403; the error
+type, not the status, is what harnesses classify on); an owner (or organization) at a monthly
+budget set to stop is refused with
 ``model_budget_exhausted`` (HTTP 402); after it, the call's cost is read from the response as it
 streams through (:mod:`omnigent.model_credentials.spend`) and added to the owner's daily rollup.
 """
@@ -33,6 +35,7 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from omnigent.errors import ErrorCode, OmnigentError
+from omnigent.model_credentials.org import SUSPENDED_MESSAGE, get_suspensions
 from omnigent.model_credentials.spend import UsageTap, cost_usd
 from omnigent.model_credentials.store import resolve_model_connection
 from omnigent.model_credentials.upstreams import UPSTREAMS, Upstream
@@ -108,6 +111,15 @@ def _checked_body(content: bytes, upstream_cfg: Upstream, path: str = "") -> tup
     return json.dumps(payload, separators=(",", ":")).encode(), model
 
 
+def _suspended_refusal() -> JSONResponse:
+    """403 in the provider error shape; the ``account_suspended`` type is what harnesses read."""
+    code = ErrorCode.ACCOUNT_SUSPENDED
+    return JSONResponse(
+        {"type": "error", "error": {"type": code, "code": code, "message": SUSPENDED_MESSAGE}},
+        status_code=403,
+    )
+
+
 def _budget_refusal(message: str) -> JSONResponse:
     """402 in the provider error shape, so a harness reads ``model_budget_exhausted``."""
     code = ErrorCode.MODEL_BUDGET_EXHAUSTED
@@ -153,6 +165,11 @@ def create_model_proxy_router(
         segments = path.split("/")
         if upstream_cfg is None or segments[0] != "v1" or ".." in segments or "" in segments:
             raise HTTPException(status_code=404, detail="unknown model route")
+        suspensions = get_suspensions()
+        if suspensions is not None and await asyncio.to_thread(
+            suspensions.is_suspended, managed.user_id
+        ):
+            return _suspended_refusal()
         budgets = getattr(request.app.state, "model_budgets", None)
         if budgets is not None:
             breach = await asyncio.to_thread(budgets.stop_breach, managed.user_id)
