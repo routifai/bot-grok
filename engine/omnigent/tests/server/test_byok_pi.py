@@ -25,7 +25,7 @@ from omnigent.server.inference_catalog import SandboxInferenceService
 from omnigent.server.managed_hosts import parse_sandbox_config
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
-TEMPLATE = Path(__file__).resolve().parents[4] / "infra/railway/engine.config.yaml.tmpl"
+TEMPLATE = Path(__file__).resolve().parents[4] / "infra/railway/engine.config.byok.yaml.tmpl"
 AUTH = "python3 -m omnigent.host.model_credential token"
 
 
@@ -125,10 +125,10 @@ async def test_pi_without_a_key_needs_one() -> None:
     assert str(caught.value.code) == "model_key_required"
 
 
-def test_hosted_engine_defaults_to_the_pi_bundle() -> None:
+def test_hosted_engine_ships_both_bundles() -> None:
     dockerfile = TEMPLATE.with_name("Dockerfile.engine").read_text()
-    assert "OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi" in dockerfile
-    assert "/opt/nova/agents/nova-claude" in dockerfile  # still available
+    assert "/opt/nova/agents/nova-pi" in dockerfile
+    assert "/opt/nova/agents/nova-claude" in dockerfile
 
 
 @pytest.fixture

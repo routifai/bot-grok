@@ -1,0 +1,65 @@
+# STAGE B (bring-your-own key) Omnigent server config for the Nova engine on Railway. To switch the
+# hosted deployment to it, COPY this file as the config template in Dockerfile.engine and set
+# OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi there.
+# Omnigent server config for the Nova engine on Railway. NON-SECRET: engine-start.sh renders
+# __ENGINE_PUBLIC_URL__ from the ENGINE_PUBLIC_URL variable; ${...} is expanded by the engine.
+llm:
+  # Server-side helper model (titles, summaries). Same generic Anthropic connection as the Muse.
+  model: anthropic/claude-haiku-4-5-20251001
+  connection:
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: https://api.anthropic.com/v1
+sandbox:
+  provider: computer
+  # Where the runner inside each Computer dials back: this service's PUBLIC https URL.
+  server_url: __ENGINE_PUBLIC_URL__
+  # NAMES only. Resolved from this service's environment and handed to each Computer's runner.
+  # No model key here: the agent can run shell commands in its Computer, so a key in its env is
+  # readable. Model calls go through the engine's model proxy with the PERSON's own saved key
+  # (host_config below). Self-hosting with one operator key for everyone: in host_config, replace
+  # the `byok` provider with the `operator` block, and add ANTHROPIC_API_KEY back to this list.
+  runner_env:
+    - TAVILY_API_KEY
+    - NOVA_CLAUDE_MODEL
+    - OMNIGENT_HELPER_MODEL_FAST
+    - OMNIGENT_HELPER_MODEL_STRONG
+    - OMNIGENT_BROWSER_BACKEND
+    - OMNIGENT_SUBAGENT_MAX_CONCURRENT
+  host_config:
+    providers:
+      # Bring-your-own key: base_url + auth are filled per person at session start (a person
+      # without a saved key gets `model_key_required`). The harness binding below must list the
+      # models the person may pick; keep it in step with NOVA_CLAUDE_MODEL / the helper models.
+      byok:
+        kind: gateway
+        connection: model
+        anthropic:
+          models: {}
+      # Operator key for everyone (self-hosting). Unused unless a binding below selects it, and
+      # needs ANTHROPIC_API_KEY in runner_env above.
+      # operator:
+      #   kind: gateway
+      #   anthropic:
+      #     base_url: https://api.anthropic.com
+      #     api_key_ref: env:ANTHROPIC_API_KEY
+    inference:
+      harnesses:
+        claude-sdk:
+          provider: byok          # operator-key self-hosting: provider: operator
+          model_allowlist: [claude-sonnet-5-5, claude-haiku-4-5]
+          default_model: claude-sonnet-5-5
+        # pi is the hosted default Muse harness (Dockerfile.engine: nova-pi). With an Anthropic key
+        # it speaks Anthropic Messages through /v1/model/anthropic; with an OpenRouter key it
+        # speaks Chat Completions through /v1/model/openrouter/v1. Anthropic ids and OpenRouter
+        # ids share this list (the person's model picker offers all of them; use ids that match
+        # the provider of the saved key). Per-person model choice is a separate design.
+        pi:
+          provider: byok
+          model_allowlist:
+            - claude-sonnet-5-5
+            - claude-haiku-4-5
+            - deepseek/deepseek-chat
+            - qwen/qwen3-coder
+            - moonshotai/kimi-k2
+            - anthropic/claude-sonnet-4.5
+          default_model: claude-sonnet-5-5
