@@ -168,7 +168,7 @@ Names only below; never commit values.
 | `OMNIGENT_URL` | nova-app | Engine public URL, `https://<engine>.up.railway.app` |
 | `OMNIGENT_PROXY_SECRET` | nova-app | Same value as the engine's `OMNIGENT_AUTH_HEADER_SECRET` |
 | `ANTHROPIC_API_KEY` | nova-app | Your key (makes the Claude harness show as available) |
-| `SIGNUPS_ENABLED`, `SIGNUP_ALLOWLIST` | nova-app | `true`; comma-separated emails (see section 5) |
+| `SIGNUP_MODE`, `SIGNUP_ALLOWLIST`, `SIGNUP_DOMAINS` | nova-app | `invite`; comma-separated emails (see section 5) |
 | `SMTP_URL`, `EMAIL_FROM` | nova-app | From your mail provider (see section 5) |
 | `ENGINE_PUBLIC_URL` | omnigent-engine | Engine's own public URL (the runners dial it) |
 | `OMNIGENT_AUTH_HEADER_SECRET` | omnigent-engine | `openssl rand -hex 32`; equals nova-app `OMNIGENT_PROXY_SECRET` |
@@ -188,16 +188,34 @@ supervisor's data dir, which it does), proactive Study on.
 
 Signup is controlled by the Nova API, not by the engine:
 
-- The **first** account to register becomes the deployment owner.
-- `SIGNUP_ALLOWLIST` is a comma-separated list of exact emails or `@domain` entries. A non-empty
-  value is applied on **every** API start and replaces the stored list. Only listed people can
-  register. Leave `SIGNUPS_ENABLED=true` (it is only read the first time the API starts).
-- With a non-empty allowlist, **SMTP is required for every account after the first**; they
-  must verify their email. Without SMTP only the first account can register. Easiest: a free Resend
-  account, `SMTP_URL=smtps://resend:<api-key>@smtp.resend.com:465` and
-  `EMAIL_FROM="Nova <no-reply@<your-domain>>"` after verifying the domain with Resend.
-- Order: set the allowlist and SMTP **before the first start**, register yourself first, then add
-  friends by editing `SIGNUP_ALLOWLIST` on Railway (the service restarts and applies it).
+- On a hosted deployment the owner is whoever signs up presenting `OWNER_SETUP_TOKEN` while no
+  owner exists; being first does not count, in any mode.
+- `SIGNUP_MODE` (`closed`, `invite`, `domain`, `approval` or `open`) seeds the mode on the first
+  start; the owner changes it later in Settings > Organization > Signups. `SIGNUP_ALLOWLIST` is a
+  comma-separated list of exact emails or `@domain` entries for `invite` mode; a non-empty value is
+  applied on **every** API start and replaces the stored list. `SIGNUP_DOMAINS` seeds `domain` mode.
+- Email delivery is **required** for `invite`, `domain` and `open`: new accounts prove their
+  mailbox with a six-digit code, and a hosted API will not start in production without it.
+  `approval` needs none (use it until you own a mail domain). Easiest email: a free Resend
+  account, `EMAIL_API_URL=https://api.resend.com/emails`, `EMAIL_API_KEY=<api-key>` and
+  `EMAIL_FROM="Nova <no-reply@<your-domain>>"` after verifying the domain with Resend (or SMTP:
+  `SMTP_URL=smtps://resend:<api-key>@smtp.resend.com:465`).
+- **Owner token (required while no owner exists).** Set `OWNER_SETUP_TOKEN` to a long random
+  one-time secret before the first start; the API refuses to start hosted without it. Open the
+  sign-up page, enter the token in the "Setup token" field and register: that account becomes the
+  owner. **Then unset `OWNER_SETUP_TOKEN`** so the secret does not outlive its job.
+- **Client IPs (required hosted).** Set `AUTH_CLIENT_IP_HEADER` (a header your edge sets or
+  overwrites) or `AUTH_TRUSTED_PROXIES`; the API refuses to start hosted otherwise. The header
+  must never be passed through from clients: a spoofable header lets anyone dodge the limits, and
+  a missing one puts every client in one bucket. On Railway, use `AUTH_CLIENT_IP_HEADER=x-real-ip`:
+  Railway staff state the edge overwrites `X-Real-IP` and `X-Forwarded-For`, with the first
+  `X-Forwarded-For` value the connecting IP, but community reports show `X-Real-IP` carrying a
+  Railway address in some setups and CDN addresses in the chain on CDN-routed paths. That is not
+  documented on Railway's own docs pages, so confirm on your service (log the header, call it
+  from two networks) before relying on it. Set `NODE_ENV=production`; hosted detection depends on it.
+- Order: set the mode, email, owner token and client-IP header **before the first start**,
+  register yourself with the token, unset the token, then add people in the Signups panel or by
+  editing `SIGNUP_ALLOWLIST` on Railway.
 - Not recommended: an empty allowlist leaves registration open to anyone who finds the URL, and
   they would spend your key.
 

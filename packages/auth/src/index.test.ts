@@ -39,72 +39,66 @@ describe("buildTrustedOrigins", () => {
 });
 
 describe("passwordResetEmail", () => {
-  it("keeps the reset URL in text and escapes user-controlled HTML", () => {
+  it("keeps the reset URL in text and HTML and never echoes the user-chosen name", () => {
     const message = passwordResetEmail(
       { id: "user-1", email: "ada@example.test", name: '<Ada & "team">' },
       "https://nova.test/reset-password?token=secret&next=1",
     );
 
-    expect(message).toMatchObject({
-      to: "ada@example.test",
-      subject: "Reset your Nova password",
-    });
+    expect(message).toMatchObject({ to: "ada@example.test", subject: "Reset your Nova password" });
     expect(message.text).toContain("https://nova.test/reset-password?token=secret&next=1");
-    expect(message.html).toContain("&lt;Ada &amp; &quot;team&quot;&gt;");
     expect(message.html).toContain("token=secret&amp;next=1");
-    expect(message.html).not.toContain('<Ada & "team">');
+    expect(message.html).toContain("Nova");
+    expect(`${message.text}${message.html}`).not.toContain("Ada");
   });
 });
 
 describe("resolveSignupPolicy", () => {
   it("uses environment defaults before deployment settings exist", async () => {
-    const prisma = {
-      deploymentSettings: { findUnique: vi.fn().mockResolvedValue(null) },
-    };
+    const prisma = { deploymentSettings: { findUnique: vi.fn().mockResolvedValue(null) } };
     await expect(
       resolveSignupPolicy(prisma as never, {
         signupsEnabled: "false",
         signupAllowlist: "you@example.com,@company.test",
       }),
     ).resolves.toEqual({
-      enabled: false,
-      allowlist: ["you@example.com", "@company.test"],
+      mode: "closed",
+      invites: ["you@example.com", "@company.test"],
+      domains: [],
     });
   });
 
-  it("keeps using the environment policy for a pre-upgrade uninitialized row", async () => {
+  it("keeps using the environment policy for an uninitialized row", async () => {
     const prisma = {
       deploymentSettings: {
         findUnique: vi.fn().mockResolvedValue({
-          signupsEnabled: true,
+          signupMode: "open",
           signupAllowlist: "",
+          signupDomains: "",
           signupPolicyInitialized: false,
         }),
       },
     };
     await expect(
-      resolveSignupPolicy(prisma as never, {
-        signupsEnabled: "false",
-        signupAllowlist: "existing-policy@example.com",
-      }),
-    ).resolves.toEqual({ enabled: false, allowlist: ["existing-policy@example.com"] });
+      resolveSignupPolicy(prisma as never, { signupAllowlist: "existing@example.com" }),
+    ).resolves.toEqual({ mode: "invite", invites: ["existing@example.com"], domains: [] });
   });
 
   it("uses live deployment settings as the effective policy after initial seeding", async () => {
     const prisma = {
       deploymentSettings: {
         findUnique: vi.fn().mockResolvedValue({
-          signupsEnabled: false,
+          signupMode: "domain",
           signupAllowlist: "approved@example.com",
+          signupDomains: "Corp.test,@other.test",
           signupPolicyInitialized: true,
         }),
       },
     };
-    await expect(
-      resolveSignupPolicy(prisma as never, {
-        signupsEnabled: "false",
-        signupAllowlist: "environment-only@example.com",
-      }),
-    ).resolves.toEqual({ enabled: false, allowlist: ["approved@example.com"] });
+    await expect(resolveSignupPolicy(prisma as never, { signupMode: "open" })).resolves.toEqual({
+      mode: "domain",
+      invites: ["approved@example.com"],
+      domains: ["corp.test", "other.test"],
+    });
   });
 });

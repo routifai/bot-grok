@@ -1,5 +1,7 @@
 import { resolveDeploymentModel, resolveSandboxProvider } from "@nova/adapters";
+import { assertOidcConfig, type OidcConfig } from "@nova/auth";
 import {
+  parseDomains,
   resolveAuthSecret,
   resolveEncryptionKey,
   resolveScreenProxySecret,
@@ -19,8 +21,19 @@ export interface AppEnv {
   privacyPolicyUrl?: string;
   apiUrl: string;
   apiHost: string;
+  signupMode: string | undefined;
   signupsEnabled: string | undefined;
   signupAllowlist: string | undefined;
+  signupDomains: string | undefined;
+  /** Local development only: skip mailbox proof when no email provider exists. */
+  allowUnverifiedEmail: boolean;
+  /** One generic OIDC sign-in connection; on only when fully configured. */
+  oidc: OidcConfig | undefined;
+  /** One-time operator secret that binds the deployment owner seat in approval mode. */
+  ownerSetupToken: string | undefined;
+  trustedProxies: string[];
+  clientIpHeader: string | undefined;
+  rateLimit: boolean | undefined;
   encryptionKey: string;
   dataDir: string;
   sandboxSupervisorUrl: string;
@@ -47,6 +60,9 @@ export interface AppEnv {
   sendblueSigningSecret: string | undefined;
   sendbluePhoneNumber: string | undefined;
   smtpUrl: string | undefined;
+  /** Resend-compatible HTTPS endpoint and key; used when SMTP_URL is not set. */
+  emailApiUrl: string | undefined;
+  emailApiKey: string | undefined;
   emailFrom: string | undefined;
   emailEmulator: boolean;
   slackBotToken: string | undefined;
@@ -92,8 +108,24 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     privacyPolicyUrl: optional(source.PRIVACY_POLICY_URL),
     apiUrl: source.API_URL ?? "http://127.0.0.1:3100",
     apiHost: source.API_HOST ?? "127.0.0.1",
+    signupMode: optional(source.SIGNUP_MODE),
     signupsEnabled: source.SIGNUPS_ENABLED,
     signupAllowlist: source.SIGNUP_ALLOWLIST,
+    signupDomains: source.SIGNUP_DOMAINS,
+    allowUnverifiedEmail: source.AUTH_ALLOW_UNVERIFIED_EMAIL === "true",
+    oidc: oidcFromEnv(source),
+    ownerSetupToken: optional(source.OWNER_SETUP_TOKEN),
+    trustedProxies: (source.AUTH_TRUSTED_PROXIES ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    clientIpHeader: optional(source.AUTH_CLIENT_IP_HEADER),
+    rateLimit:
+      source.AUTH_RATE_LIMIT === "true"
+        ? true
+        : source.AUTH_RATE_LIMIT === "false"
+          ? false
+          : undefined,
     encryptionKey: resolveEncryptionKey(source),
     dataDir: source.DATA_DIR ?? "./data",
     sandboxSupervisorUrl: source.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
@@ -122,8 +154,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     sendblueSigningSecret: optional(source.SENDBLUE_SIGNING_SECRET),
     sendbluePhoneNumber: optional(source.SENDBLUE_PHONE_NUMBER),
     smtpUrl: optional(source.SMTP_URL),
+    emailApiUrl: optional(source.EMAIL_API_URL),
+    emailApiKey: optional(source.EMAIL_API_KEY),
     emailFrom: optional(source.EMAIL_FROM),
-    emailEmulator: source.EMAIL_EMULATOR === "true" && source.NODE_ENV !== "production",
+    // On by default in development so sign-up works with no mail provider; EMAIL_EMULATOR=false opts out.
+    emailEmulator:
+      source.NODE_ENV !== "production" &&
+      (source.EMAIL_EMULATOR === "true" ||
+        (source.NODE_ENV === "development" && source.EMAIL_EMULATOR !== "false")),
     slackBotToken: optional(source.SLACK_BOT_TOKEN),
     slackSigningSecret: optional(source.SLACK_SIGNING_SECRET),
     whatsappAccessToken: optional(source.WHATSAPP_ACCESS_TOKEN),
@@ -150,6 +188,28 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     port: Number(source.API_PORT ?? 3100),
     gitSha: optional(source.GIT_SHA) ?? optional(source.NOVA_GIT_SHA),
   };
+}
+
+function oidcFromEnv(source: NodeJS.ProcessEnv): OidcConfig | undefined {
+  const issuer = optional(source.AUTH_OIDC_ISSUER);
+  const clientId = optional(source.AUTH_OIDC_CLIENT_ID);
+  const clientSecret = optional(source.AUTH_OIDC_CLIENT_SECRET);
+  if (!issuer && !clientId && !clientSecret) return undefined;
+  if (!issuer || !clientId || !clientSecret) {
+    throw new Error(
+      "AUTH_OIDC_ISSUER, AUTH_OIDC_CLIENT_ID and AUTH_OIDC_CLIENT_SECRET go together",
+    );
+  }
+  const config: OidcConfig = {
+    issuer,
+    clientId,
+    clientSecret,
+    name: optional(source.AUTH_OIDC_NAME),
+    allowedDomains: parseDomains(source.AUTH_OIDC_ALLOWED_DOMAINS),
+  };
+  // Refuse an unsafe connection (for example a multi-tenant Microsoft issuer) at startup.
+  assertOidcConfig(config);
+  return config;
 }
 
 function required(source: NodeJS.ProcessEnv, key: string): string {

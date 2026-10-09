@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
 import { IsolationError, requireMembership } from "./scope.js";
 
-function prismaForMembership(found: boolean) {
+function prismaForMembership(found: boolean, status = "active") {
   return {
     spaceMember: {
       findFirst: vi.fn(async ({ where }: { where: { userId: string; spaceId?: string } }) =>
@@ -10,7 +10,7 @@ function prismaForMembership(found: boolean) {
           ? {
               userId: where.userId,
               spaceId: where.spaceId ?? "space-default",
-              member: { user: { email: "owner@example.test" } },
+              member: { user: { email: "owner@example.test", status } },
             }
           : null,
       ),
@@ -54,5 +54,13 @@ describe("requireMembership", () => {
         orderBy: [{ space: { isDefault: "desc" } }, { createdAt: "asc" }, { id: "asc" }],
       }),
     );
+  });
+
+  it("gives a pending or suspended account no actor, even if it already owns a space", async () => {
+    for (const status of ["pending", "suspended"]) {
+      await expect(
+        requireMembership(prismaForMembership(true, status), "user-1"),
+      ).rejects.toBeInstanceOf(IsolationError);
+    }
   });
 });

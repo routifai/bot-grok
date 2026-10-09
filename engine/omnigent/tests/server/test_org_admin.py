@@ -495,12 +495,16 @@ def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
 
     r = world.client.delete("/v1/admin/users/alice", headers=ROOT)
     assert r.status_code == 200
-    assert r.json() == {
+    body = r.json()
+    # What the schema-wide sweep found after the dedicated steps; its exact count is not the point.
+    assert body.pop("rows_removed") >= 0
+    assert body == {
         "id": "alice",
         "deleted": True,
         "sessions_deleted": 1,
         "computers_stopped": 1,
         "model_connections_deleted": 2,
+        "memory_claims_forgotten": 0,  # no memory service in this world
     }
     assert world.terminated == ["host-c1"]  # the managed Computer only; no user-owned host left
     assert world.perms.get_user("alice") is None
@@ -615,3 +619,80 @@ def _proxy_round_trip(keys, suspensions, CRED, _client) -> None:
         client.post("/v1/model/anthropic/v1/messages", json=body, headers=headers).status_code
         == 200
     )
+
+
+def test_delete_leaves_no_skills_artifacts_publications_or_blobs_for_a_returning_account(
+    world: World,
+) -> None:
+    """A reset account reuses the email, so whatever the engine kept would come back with it."""
+    import uuid
+
+    from sqlalchemy import insert, select
+
+    tables = OmnigentBase.metadata.tables
+    engine = get_or_create_engine(world.uri)
+    deleted_blobs: list[str] = []
+    world.client.app.state.artifact_store = SimpleNamespace(delete=deleted_blobs.append)
+    _seed_people(world)
+
+    def seed(user: str) -> None:
+        skill, artifact, parent = (uuid.uuid4().hex for _ in range(3))
+        slug = f"app-{user}-{uuid.uuid4().hex[:6]}"
+        with engine.begin() as c:
+            c.execute(
+                insert(tables["taught_skills"]).values(
+                    id=skill, user_id=user, parent_session_id=parent, goal="g", created_at=1
+                )
+            )
+            c.execute(
+                insert(tables["taught_skill_versions"]).values(
+                    skill_id=skill, version=1, doc="d", created_at=1
+                )
+            )
+            c.execute(
+                insert(tables["artifacts"]).values(
+                    id=artifact,
+                    user_id=user,
+                    parent_session_id=parent,
+                    name="a.html",
+                    kind="html",
+                    mime="text/html",
+                    size=1,
+                    blob_key=f"blob-{user}",
+                    created_at=1,
+                )
+            )
+            c.execute(
+                insert(tables["artifact_publications"]).values(
+                    slug=slug,
+                    user_id=user,
+                    parent_session_id=parent,
+                    name="a.html",
+                    audience="link",
+                    published_version=1,
+                    published_at=1,
+                )
+            )
+            c.execute(
+                insert(tables["artifact_views"]).values(
+                    slug=slug, day="2026-10-01", viewer_key="v", last_at=1
+                )
+            )
+
+    seed("alice")
+    seed("bob")
+    r = world.client.delete("/v1/admin/users/alice", headers=ROOT)
+    assert r.status_code == 200
+    assert r.json()["rows_removed"] >= 5
+    assert deleted_blobs == ["blob-alice"]
+    with engine.begin() as c:
+        for name in (
+            "taught_skills",
+            "taught_skill_versions",
+            "artifacts",
+            "artifact_publications",
+            "artifact_views",
+        ):
+            assert len(c.execute(select(tables[name])).all()) == 1, name  # bob's only
+        owners = {row.user_id for row in c.execute(select(tables["artifact_publications"]))}
+    assert owners == {"bob"}

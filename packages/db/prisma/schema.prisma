@@ -31,6 +31,12 @@ model User {
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
   avatarStyle                 String                       @default("robot")
+  /// pending = signed up, awaiting admin approval (no space, Computer or model spend yet);
+  /// suspended = no access. Everyone else, and every pre-existing user, is active.
+  status                      UserStatus                   @default(active)
+  /// The engine account was paused when a space of theirs was quarantined; approving or discarding
+  /// resets the engine account instead of resuming it, restoring resumes it.
+  engineQuarantinePaused      Boolean                      @default(false)
   /// IANA zone name (e.g. "America/Toronto"); validated server-side, invalid values fall
   /// back to "UTC" (preferences.update, apps/api/src/router.ts). Drives quiet hours and
   /// the daily Followed-topic digest (packages/adapters/src/muse/feed-jobs.ts).
@@ -104,17 +110,24 @@ model Verification {
 }
 
 model Organization {
-  id          String       @id
-  name        String
-  slug        String
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
-  members     Member[]
-  invitations Invitation[]
-  spaces      Space[]
+  id                       String       @id
+  name                     String
+  slug                     String
+  logo                     String?
+  createdAt                DateTime
+  metadata                 String?
+  members                  Member[]
+  invitations              Invitation[]
+  spaces                   Space[]
+  /// Set when a mailbox was proved on an account that had used this space unverified: the space is
+  /// detached from everyone and kept for an admin to restore or discard, then purged after a TTL.
+  quarantinedFromUserId    String?
+  quarantinedAt            DateTime?
+  /// Set while a purge works on this organization, so a restore cannot take it half-way.
+  quarantinePurgeStartedAt DateTime?
 
   @@unique([slug])
+  @@index([quarantinedAt])
   @@map("organization")
 }
 
@@ -258,18 +271,61 @@ model Invitation {
   @@map("invitation")
 }
 
+enum SignupMode {
+  closed
+  invite
+  domain
+  approval
+  open
+}
+
+enum UserStatus {
+  pending
+  active
+  suspended
+}
+
+/// Shared counters for the auth rate limiter and the per-address send/verify caps.
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rate_limit")
+}
+
+/// Fixed-window counters for per-address send and failure caps. Separate from RateLimit, which
+/// Better Auth prunes by age.
+model EmailQuota {
+  key         String @id
+  count       Int
+  windowStart BigInt
+
+  @@index([windowStart])
+  @@map("email_quota")
+}
+
 model DeploymentSettings {
-  id                              String   @id @default("default")
+  id                              String     @id @default("default")
   ownerUserId                     String?
-  signupsEnabled                  Boolean  @default(true)
-  signupAllowlist                 String   @default("")
-  signupPolicyInitialized         Boolean  @default(false)
+  /// Deprecated, kept one release so an old replica can still read it during a rolling deploy.
+  signupsEnabled                  Boolean    @default(true)
+  signupMode                      SignupMode @default(open)
+  /// Invite list for `invite` mode: comma-separated emails (or @domain entries).
+  signupAllowlist                 String     @default("")
+  /// Comma-separated domains admitted in `domain` mode.
+  signupDomains                   String     @default("")
+  /// Whether this deployment can send mail, recorded by the API at boot so the worker and other
+  /// processes apply the same "may an unverified person act" rule.
+  emailDelivery                   Boolean    @default(false)
+  signupPolicyInitialized         Boolean    @default(false)
   defaultModelProvider            String?
   defaultModelId                  String?
   deploymentModelCredentialCipher String?
   computerHost                    String?
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
+  createdAt                       DateTime   @default(now())
+  updatedAt                       DateTime   @updatedAt
 
   @@map("deployment_settings")
 }
@@ -978,21 +1034,21 @@ model Episode {
 /// that is (`GET /v1/me/muse`); this row is Nova's copy of the answer, read by the routes that
 /// need the id. One row per bot.
 model OmnigentSession {
-  id                String   @id @default(cuid())
-  botId             String   @unique
-  bot               Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
-  omnigentSessionId String
+  id                 String    @id @default(cuid())
+  botId              String    @unique
+  bot                Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  omnigentSessionId  String
   /// Built-in agent the session last reported running on (`GET /v1/me/muse`'s `agent`).
-  agentName         String   @default("nova-claude")
+  agentName          String    @default("nova-claude")
   /// Unused since the engine owns the Muse (ADR 0009). Kept, not dropped.
-  runnerLocation    String   @default("computer")
+  runnerLocation     String    @default("computer")
   /// Unused since the mirror job was removed (ADR 0009). Kept, not dropped.
   lastMirroredItemId String?
   /// When the engine adopted this row's session as the person's Muse (`POST
   /// /v1/me/muse/adopt`), so a Conversation started before ADR 0009 is claimed once and kept.
-  engineAdoptedAt   DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  engineAdoptedAt    DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@map("omnigent_sessions")
 }

@@ -24,13 +24,16 @@ import {
   createRunSandbox,
   createRunSecretWriter,
   destroyBot,
+  destroyPersonalComputers,
   EmailEmulator,
   EncryptedSecretStore,
   GraphileJobPublisher,
+  HttpEmailProvider,
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
   IntegrationProviderSettings,
+  identityMaintenance,
   isComposioEnabled,
   isMessagingSurfaceEnabled,
   isPipedreamEnabled,
@@ -49,8 +52,16 @@ import {
   reconcileComputerUpdates,
   SmtpEmailProvider,
   sandboxProviderOptionsFromEnv,
+  stopSpaceComputers,
 } from "@nova/adapters";
-import { blockedAuthPaths, createAuth } from "@nova/auth";
+import {
+  assertIdentityConfig,
+  blockedAuthPaths,
+  createAuth,
+  isHostedDeployment,
+  oidcLabel,
+  resolveSignupPolicy,
+} from "@nova/auth";
 import { signupAllowlistBootUpdate, signupPolicyFromEnv } from "@nova/core";
 import type { Pool, PrismaClient } from "@nova/db";
 import {
@@ -60,6 +71,7 @@ import {
   parsePositiveInteger,
   provisionMessagingIdentity,
   requireMembership,
+  userMayAct,
 } from "@nova/db";
 import type { Logger } from "@nova/logging";
 import {
@@ -77,6 +89,7 @@ import { cors } from "hono/cors";
 import { engineComputerClient } from "./engine-client.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
+import { setEngineAccountSuspended } from "./features/admin/service.js";
 import { mountPublishedApps } from "./features/apps/published-apps.js";
 import { mountScreenTarget } from "./features/computer/screen-proxy.js";
 import { mountLocalSettings } from "./local-settings.js";
@@ -147,16 +160,68 @@ export async function createApp(
   const events = createThreadEvents(prisma, realtime, {
     runSecretWriter: createRunSecretWriter(secrets),
   });
+  const localEmailEmulator =
+    !emailOverride && !env.smtpUrl && !env.emailApiUrl && env.emailEmulator
+      ? new EmailEmulator((message) => {
+          getLogger().info("email emulator captured message", {
+            "email.subject": message.subject,
+          });
+        })
+      : undefined;
+  if (localEmailEmulator && !isLoopbackHost(env.apiHost)) {
+    throw new Error("EMAIL_EMULATOR requires API_HOST to be a loopback host");
+  }
+  const email: TransactionalEmailProvider | undefined =
+    emailOverride ??
+    (env.smtpUrl
+      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
+      : env.emailApiUrl
+        ? new HttpEmailProvider({
+            url: env.emailApiUrl,
+            apiKey: env.emailApiKey ?? "",
+            from: env.emailFrom ?? "",
+          })
+        : localEmailEmulator);
+  // Fail at startup, before anything is seeded, not at the first stranger's signup.
+  const existingSettings = await prisma.deploymentSettings.findUnique({ where: { id: "default" } });
+  assertIdentityConfig(
+    {
+      hosted: isHostedDeployment(env),
+      allowUnverifiedEmail: env.allowUnverifiedEmail,
+      ownerSetupToken: env.ownerSetupToken,
+      hasEmail: Boolean(email),
+      ownerExists: Boolean(existingSettings?.ownerUserId),
+      clientIpConfigured: env.trustedProxies.length > 0 || Boolean(env.clientIpHeader),
+    },
+    await resolveSignupPolicy(prisma, env),
+  );
+  if (env.allowUnverifiedEmail && !email) {
+    getLogger().warn(
+      "AUTH_ALLOW_UNVERIFIED_EMAIL is on: accounts are usable without proving their email. Local installs only.",
+    );
+  }
+  // One rule for "may this person act now", shared with the session lookup: active, and either
+  // the mailbox is proved or nothing can prove one and the deployment's rule lets them in.
+  const gateRule = { devFlagAllowed: env.allowUnverifiedEmail && !isHostedDeployment(env) };
+  const mayAct = (userId: string) => userMayAct(prisma, userId, gateRule);
   const environmentSignupPolicy = signupPolicyFromEnv(env);
   const deploymentSettings = await prisma.deploymentSettings.upsert({
     where: { id: "default" },
     create: {
       id: "default",
-      signupsEnabled: environmentSignupPolicy.enabled,
-      signupAllowlist: environmentSignupPolicy.allowlist.join(","),
+      signupMode: environmentSignupPolicy.mode,
+      signupsEnabled: environmentSignupPolicy.mode !== "closed",
+      signupAllowlist: environmentSignupPolicy.invites.join(","),
+      signupDomains: environmentSignupPolicy.domains.join(","),
       signupPolicyInitialized: true,
     },
     update: {},
+  });
+  // Recorded for the other processes (the worker) so everyone applies one "may an unverified
+  // person act" rule.
+  await prisma.deploymentSettings.update({
+    where: { id: "default" },
+    data: { emailDelivery: Boolean(email) },
   });
   if (!deploymentSettings.signupPolicyInitialized) {
     // Older versions created this row with schema defaults even though auth
@@ -166,8 +231,10 @@ export async function createApp(
     await prisma.deploymentSettings.updateMany({
       where: { id: "default", signupPolicyInitialized: false },
       data: {
-        signupsEnabled: environmentSignupPolicy.enabled,
-        signupAllowlist: environmentSignupPolicy.allowlist.join(","),
+        signupMode: environmentSignupPolicy.mode,
+        signupsEnabled: environmentSignupPolicy.mode !== "closed",
+        signupAllowlist: environmentSignupPolicy.invites.join(","),
+        signupDomains: environmentSignupPolicy.domains.join(","),
         signupPolicyInitialized: true,
       },
     });
@@ -260,22 +327,6 @@ export async function createApp(
     })
       ? new ChatSdkMessagingSurface(messagingPlatforms)
       : undefined);
-  const localEmailEmulator =
-    !emailOverride && !env.smtpUrl && env.emailEmulator
-      ? new EmailEmulator((message) => {
-          getLogger().info("email emulator captured message", {
-            "email.subject": message.subject,
-          });
-        })
-      : undefined;
-  if (localEmailEmulator && !isLoopbackHost(env.apiHost)) {
-    throw new Error("EMAIL_EMULATOR requires API_HOST to be a loopback host");
-  }
-  const email: TransactionalEmailProvider | undefined =
-    emailOverride ??
-    (env.smtpUrl
-      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
-      : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const integrationSettings = new IntegrationProviderSettings(prisma, secrets, env.encryptionKey, {
     composio:
@@ -299,8 +350,17 @@ export async function createApp(
     secret: env.authSecret,
     baseURL: env.authUrl,
     webOrigin: env.webOrigin,
+    signupMode: env.signupMode,
     signupsEnabled: env.signupsEnabled,
     signupAllowlist: env.signupAllowlist,
+    signupDomains: env.signupDomains,
+    nodeEnv: env.nodeEnv,
+    allowUnverifiedEmail: env.allowUnverifiedEmail,
+    oidc: env.oidc,
+    ownerSetupToken: env.ownerSetupToken,
+    trustedProxies: env.trustedProxies,
+    clientIpHeader: env.clientIpHeader,
+    rateLimit: env.rateLimit,
     email,
     onEmailError: (error) => getLogger().error("transactional email delivery failed", error),
     extraOrigins: [
@@ -334,7 +394,38 @@ export async function createApp(
           ),
         ),
       );
+      // The team Computer is not any one bot's: destroy it too, before its rows are erased.
+      await destroyPersonalComputers({ prisma, sandbox }, userId);
       await rm(pushTokenPath(env.dataDir, userId), { force: true }).catch(() => undefined);
+    },
+    beforeQuarantine: (userId, spaceIds) =>
+      stopSpaceComputers({ prisma, sandbox }, spaceIds, `quarantine:${userId}`),
+    afterQuarantine: async ({ userId, email, organizationIds, stopFailed }) => {
+      // The admin log is not built yet (audit is a later phase); this line is the record.
+      getLogger().warn("quarantined a space after its mailbox was proved", {
+        "user.id": userId,
+        "identity.organizations": organizationIds.join(","),
+        "identity.computers_stop_failed": stopFailed,
+      });
+      try {
+        const outcome = await setEngineAccountSuspended(
+          { prisma },
+          engineComputerClient({ spaceId: "identity" }),
+          email,
+          true,
+        );
+        if (outcome !== "done") {
+          getLogger().warn(`engine account not paused after quarantine: ${outcome}`, {
+            "user.id": userId,
+          });
+        }
+      } catch (error) {
+        // Most often: the deployment owner is not an engine admin, so the engine refused.
+        getLogger().warn(
+          "could not pause the engine account after quarantine (is the deployment owner an engine admin?)",
+          { "user.id": userId, error: error instanceof Error ? error.message : String(error) },
+        );
+      }
     },
   });
   // Same composition ./omnigent/env.ts#omnigentRedactionSecretsFromEnv uses for the Omnigent
@@ -344,6 +435,7 @@ export async function createApp(
   const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
   const jobHandlers = createBackgroundJobHandlers({
+    userMayAct: mayAct,
     prisma,
     sandbox,
     home,
@@ -361,6 +453,7 @@ export async function createApp(
         prisma,
         jobs,
         reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
+        identityMaintenance: () => identityMaintenance({ prisma, sandbox }),
       })
     : undefined;
   reconciler?.start();
@@ -381,6 +474,11 @@ export async function createApp(
     remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
+    identity: {
+      signupPolicy: env,
+      production: isHostedDeployment(env),
+      emailDelivery: Boolean(email),
+    },
     messaging: {
       enabled: Boolean(messaging),
       providers: messaging?.platforms().map((platform) => platform.provider) ?? [],
@@ -414,12 +512,24 @@ export async function createApp(
       credentials: true,
     }),
   );
-  app.get("/api/auth/capabilities", (c) =>
-    c.json({
+  app.get("/api/auth/capabilities", async (c) => {
+    const policy = await resolveSignupPolicy(prisma, env);
+    const settings = await prisma.deploymentSettings.findUnique({
+      where: { id: "default" },
+      select: { ownerUserId: true },
+    });
+    return c.json({
       passwordReset: Boolean(email),
       resetUrl: email ? new URL("/reset-password", env.webOrigin).href : null,
-    }),
-  );
+      // Mailbox proof by one-time code works wherever mail can be sent.
+      emailCode: Boolean(email),
+      sso: env.oidc ? { name: oidcLabel(env.oidc) } : null,
+      signupMode: policy.mode,
+      // The owner seat is claimed with the operator's setup token until someone holds it.
+      ownerSetup:
+        Boolean(env.ownerSetupToken) && policy.mode !== "closed" && !settings?.ownerUserId,
+    });
+  });
   if (localEmailEmulator && env.nodeEnv === "development") {
     app.get(
       "/api/dev/emails",
@@ -430,15 +540,24 @@ export async function createApp(
     );
   }
   mountApiRequestBodyLimits(app);
-  mountScreenTarget(app, prisma, env.screenProxySecret);
+  mountScreenTarget(app, prisma, env.screenProxySecret, mayAct);
   mountPublishedApps(app, {
     prisma,
     secret: env.authSecret,
     // The engine only needs the connection for /v1/published; the tenant is not used there.
     engine: () => engineComputerClient({ spaceId: "apps-gateway" }),
+    // An app stops being served once its owner may no longer act (suspended, waiting, quarantined).
+    ownerMayAct: async (ownerEmail) => {
+      const owner = await prisma.user.findFirst({
+        where: { email: { equals: ownerEmail, mode: "insensitive" } },
+        select: { id: true },
+      });
+      return owner ? mayAct(owner.id) : false;
+    },
     viewer: async (c) => {
       const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
-      return session?.user ? { userId: session.user.id, email: session.user.email } : null;
+      if (!session?.user || !(await mayAct(session.user.id))) return null;
+      return { userId: session.user.id, email: session.user.email };
     },
     onError: (error) => logUnexpectedRpcError(error, ["apps"]),
   });
@@ -459,16 +578,21 @@ export async function createApp(
     if (actor) {
       enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     }
+    const suspension = actor
+      ? endWhenInactive(mayAct, actor.userId, c.req.raw.signal)
+      : { signal: c.req.raw.signal, stop: () => undefined };
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
-      context: { actor, signal: c.req.raw.signal },
+      context: { actor, signal: suspension.signal },
     });
+    // Only a live stream keeps watching; a finished request has nothing left to end.
+    if (!response?.headers.get("content-type")?.includes("text/event-stream")) suspension.stop();
     if (matched) return c.newResponse(response.body, response);
     await next();
   });
   mountVoiceHttpRoutes(app, { prisma, secrets }, async (c) => {
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
-    if (!session?.user) return null;
+    if (!session?.user || !(await mayAct(session.user.id))) return null;
     const actor = await requireMembership(
       prisma,
       session.user.id,
@@ -485,14 +609,17 @@ export async function createApp(
   // Messaging webhooks only exist when the surface is enabled.
   if (messaging) {
     const inboundDeps = {
+      userMayAct: mayAct,
       prisma,
       events,
       jobs,
       provision: (request, policyEnv) => provisionMessagingIdentity(prisma, request, policyEnv),
       openSignup: env.messagingOpenSignup,
       signupPolicy: {
+        signupMode: env.signupMode,
         signupsEnabled: env.signupsEnabled,
         signupAllowlist: env.signupAllowlist,
+        signupDomains: env.signupDomains,
       },
       typing: (threadId) => {
         // Keep conversation addresses out of trace ids — those reach logs
@@ -614,6 +741,31 @@ function isTrustedOrigin(origin: string, env: AppEnv) {
   } catch {
     return false;
   }
+}
+
+/**
+ * A long-lived stream is authorized once, at its start. This aborts the request's signal as soon as
+ * the account stops being active, so a suspended person's open streams end instead of running on.
+ */
+function endWhenInactive(
+  mayAct: (userId: string) => Promise<boolean>,
+  userId: string,
+  requestSignal: AbortSignal,
+  intervalMs = 15_000,
+): { signal: AbortSignal; stop: () => void } {
+  const controller = new AbortController();
+  const timer = setInterval(() => {
+    void mayAct(userId)
+      .then((allowed) => {
+        if (!allowed) controller.abort();
+      })
+      .catch(() => undefined);
+  }, intervalMs);
+  timer.unref();
+  const stop = () => clearInterval(timer);
+  requestSignal.addEventListener("abort", stop, { once: true });
+  controller.signal.addEventListener("abort", stop, { once: true });
+  return { signal: AbortSignal.any([requestSignal, controller.signal]), stop };
 }
 
 function isLoopbackHost(host: string): boolean {

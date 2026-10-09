@@ -399,9 +399,31 @@ def create_org_admin_router(
                         await asyncio.to_thread(blobs.delete, key)
                 deleted += 1 if await conversation_store.delete_conversation(conv.id) else 0
 
+    async def _delete_user_data(request: Request, directory: Any, user_id: str) -> int:
+        from omnigent.db.utils import get_or_create_engine
+        from omnigent.superchat.admin.user_data import artifact_blob_keys, delete_user_rows
+
+        engine = get_or_create_engine(directory.storage_location)
+        blobs = getattr(request.app.state, "artifact_store", None)
+
+        def _keys() -> list[str]:
+            with engine.begin() as connection:
+                return artifact_blob_keys(connection, user_id)
+
+        keys = await asyncio.to_thread(_keys)
+        if blobs is not None:
+            for key in keys:
+                await asyncio.to_thread(blobs.delete, key)
+
+        def _delete() -> dict[str, int]:
+            with engine.begin() as connection:
+                return delete_user_rows(connection, user_id)
+
+        return sum((await asyncio.to_thread(_delete)).values())
+
     @router.delete("/admin/users/{user_id}")
     async def delete_user(request: Request, user_id: str) -> dict[str, Any]:
-        """Delete a person: sessions, Computer, keys, preferences and the account. Idempotent.
+        """Delete a person: sessions, Computer, keys, preferences, memory, the account. Idempotent.
 
         Refuses the caller's own account and the last admin. A person already gone is a no-op.
         """
@@ -447,6 +469,20 @@ def create_org_admin_router(
                 await asyncio.to_thread(connections.delete, SCOPE_USER, user_id, meta.provider)
             )
 
+        # Long-term memory is keyed by the user id, which an email-named account reuses when the
+        # same address returns: it must not outlive the person it was learned from.
+        memory_forgotten = 0
+        from omnigent.runtime import get_memory_service
+
+        memory = get_memory_service()
+        if memory is not None:
+            memory_forgotten = await asyncio.to_thread(memory.forget_all, user_id)
+
+        # Everything else the engine stores for this person (skills, artifacts and their blobs,
+        # publications, memory rows, approvals, ...), by the schema-wide registry: complete by
+        # construction rather than table by table. Blobs first, then the rows that name them.
+        rows_removed = await _delete_user_data(request, directory, user_id)
+
         removed = False
         if account is not None:
             from omnigent.server.accounts_store import SqlAlchemyAccountStore
@@ -466,6 +502,8 @@ def create_org_admin_router(
             "sessions_deleted": sessions,
             "computers_stopped": hosts_stopped,
             "model_connections_deleted": keys,
+            "memory_claims_forgotten": memory_forgotten,
+            "rows_removed": rows_removed,
         }
 
     return router

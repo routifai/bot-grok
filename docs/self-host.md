@@ -123,18 +123,78 @@ WEB_ORIGIN=https://app.example.com
 API_URL=https://app.example.com
 ```
 
-Cookies and CORS follow those origins. `SIGNUPS_ENABLED` seeds whether registration is open
-when the API starts for the first time and is not reapplied on restart. A non-empty
-`SIGNUP_ALLOWLIST` is applied on every API start, replacing the allowlist stored for the deployment.
-Leave it empty to keep that stored list.
+Cookies and CORS follow those origins.
 
-With a nonempty signup allowlist and SMTP configured, users—including existing accounts—must
-verify their email to sign in. On a fresh instance with no SMTP, the first allowlisted account
-can register without verification. That signup does not prove mailbox ownership, so create the
-account before exposing the service. Further accounts still need SMTP.
+### Who can sign up
 
-For a public deployment, configure SMTP and an allowlist before the API's first start.
-Keep an installation without email on a trusted local network.
+`SIGNUP_MODE` seeds the signup mode on the API's first start. After that the deployment owner
+changes it in Settings > Organization > Signups, which is also where pending accounts are approved.
+
+| Mode | Who gets in |
+| --- | --- |
+| `closed` | Nobody new. |
+| `invite` | Emails (or `@domain` entries) in the invite list (`SIGNUP_ALLOWLIST` seeds it; a non-empty value is reapplied on every API start). |
+| `domain` | Addresses at the domains in `SIGNUP_DOMAINS`. |
+| `approval` | Anyone, but every account waits (no space, Computer or model access) until the owner approves it. Needs no email provider. |
+| `open` | Anyone who proves their email. |
+
+Without `SIGNUP_MODE`, the older variables keep their meaning: `SIGNUPS_ENABLED=false` is `closed`
+and a non-empty `SIGNUP_ALLOWLIST` is `invite`.
+
+Every account that gets in on its own (`invite`, `domain`, `open`) proves its mailbox with a
+six-digit code, so those modes need email delivery: `SMTP_URL`, or `EMAIL_API_URL` and
+`EMAIL_API_KEY` for a Resend-compatible HTTPS API, plus `EMAIL_FROM`. A hosted deployment
+(`NODE_ENV=production` on a non-loopback `WEB_ORIGIN`; hosted requires `NODE_ENV=production`)
+refuses to start with one of those modes and no provider. `approval` and `closed` need none.
+Proving a mailbox voids anything attached to that address earlier, including a password, so
+someone who pre-registered another person's address gains nothing; the owner signs in by code. If
+the account had been used before (it has a space, which is only possible with no mail provider),
+its space is **quarantined, not deleted**: its Computers stop, keys, connections, secrets, MCP
+servers, messaging links and approval rules are stripped, scheduled and running work is cancelled
+(the engine account is paused, which needs the deployment owner to be an engine admin; the API logs a warning when that fails), screen links stop working, published apps stop being served, and the personal organization is detached from everyone and
+kept. The account returns to pending. In Settings > Signups the row says "Previous space kept:
+confirm it's the same person" and offers **Restore previous space** (re-attaches the space, bots
+and memory; keys and links stay gone and routines stay off) or **Discard** (destroys its Computers
+and removes it now); approving instead gives a clean space and **resets the engine account** (its sessions, Computer, keys, schedules and long-term memory are deleted), so nothing the earlier holder taught the engine reaches the new space. Only Restore resumes the engine account. Unclaimed quarantined spaces are purged
+after 30 days by the worker, Computers first. Context a squatter planted cannot be told from the
+person's own, which is why nothing is re-attached until an admin confirms the person. The
+deployment owner is exempt. Memberships in any shared organization are removed too (shared
+organizations cannot be created or joined in this version).
+
+The first owner is seated by a claim. With `OWNER_SETUP_TOKEN` set, only a sign-up presenting it
+(the "Setup token" field) can claim the seat; a hosted deployment with no owner requires the token
+in every mode and refuses to start without it, and you should unset it once an owner exists. On a
+personal install with email and no token, the first verified mailbox claims it; with neither
+email nor token, nobody can. When email arrives later, approved people whose address was never
+proved are asked for a code at their next sign-in.
+
+For a personal install on this machine only, `AUTH_ALLOW_UNVERIFIED_EMAIL=true` skips mailbox
+proof for the self-serve modes when no provider is configured; a hosted deployment refuses to
+start with it, and the API logs a warning while it is on. In development the email emulator is on
+by default.
+
+One generic OIDC connection adds a sign-in button: `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`,
+`AUTH_OIDC_CLIENT_SECRET`, optionally `AUTH_OIDC_NAME` and `AUTH_OIDC_ALLOWED_DOMAINS`. Register
+`<BETTER_AUTH_URL>/api/auth/callback/sso` with the provider. For Microsoft the issuer must
+be `https://login.microsoftonline.com/<tenant-guid>/v2.0`; `common`, `organizations` and
+`consumers` are refused. With `AUTH_OIDC_ALLOWED_DOMAINS` set, this provider (and only it) may link to an existing
+person with the same email, and a sign-in on an unverified account is mailbox proof; without
+domains no provider account is linked by email. Entra issuers require the domains, and guests
+are refused. Enable the optional `xms_edov` claim on the Entra app registration: when a token
+carries it, it must be true. The signup mode applies like any other way in.
+
+**Upgrade note.** The migration marks every existing user who already has a space as verified so
+the upgrade does not lock them out. An address squatted under an earlier open, no-SMTP signup that
+already had a space therefore becomes verified; review the people list after upgrading.
+
+The API records whether it can send mail in the database at boot, so the worker and other
+processes apply the same rule about unverified accounts.
+
+A hosted deployment must set one of `AUTH_TRUSTED_PROXIES` or `AUTH_CLIENT_IP_HEADER` (see the split
+deployment guide for Railway) and will not start without it. Behind a reverse proxy set `AUTH_TRUSTED_PROXIES` (its IPs or CIDRs) or `AUTH_CLIENT_IP_HEADER`,
+or the rate limiter sees every client as one address. Limits are stored in the database. Sends
+are capped per address and network with a looser per-address cap overall; failed password and code
+attempts count in short windows, so a lock lifts itself in minutes.
 
 ### Verification and password recovery email
 
@@ -511,7 +571,7 @@ shared filesystem; an object-storage adapter is not available yet.
 
 Use the same HTTPS origin for the web app, `/api`, and `/rpc`. Preserve the authenticated screen
 proxy routes. Choose a [computer provider](#choosing-a-computer-provider) appropriate to the
-service's trust boundary. `SIGNUPS_ENABLED` applies on the API's first start. A non-empty
+service's trust boundary. `SIGNUP_MODE` applies on the API's first start. A non-empty
 `SIGNUP_ALLOWLIST` applies on every API start.
 The optional marketing site in `apps/www` can be hosted separately.
 

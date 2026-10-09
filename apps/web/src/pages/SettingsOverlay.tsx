@@ -8,12 +8,13 @@ import {
   Gauge,
   Monitor,
   Settings,
+  UserPlus,
   UserRound,
   Volume2,
   XIcon,
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
-import { OrganizationPanel } from "../features/admin";
+import { OrganizationPanel, OrgSignups } from "../features/admin";
 import { computersAreUnavailable } from "../features/computer/ComputersUnavailableHint";
 import { ModelsPanel, useEngineModelsStatus } from "../features/models";
 import {
@@ -35,6 +36,7 @@ export type SettingsSection =
   | "models"
   | "voice"
   | "organization"
+  | "signups"
   | "usage"
   | "computer"
   | "updates";
@@ -48,6 +50,7 @@ const SETTINGS_TONE: Partial<Record<SettingsSection, TileTone>> = {
   usage: "green",
   models: "indigo",
   organization: "orange",
+  signups: "orange",
   updates: "teal",
 };
 
@@ -128,6 +131,10 @@ export function SettingsOverlay({
     if (section === "models" && !showEngineModels) setSection("general");
     if (section === "organization" && !showOrganization) setSection("general");
   }, [museMode, section, engineSettled, showEngineModels, showOrganization]);
+  // Signups belong to the deployment owner and do not depend on the engine being reachable.
+  useEffect(() => {
+    if (section === "signups" && !isDeploymentOwner) setSection("general");
+  }, [section, isDeploymentOwner]);
 
   const navItems: NavItem[] = [
     ...(museMode
@@ -142,6 +149,7 @@ export function SettingsOverlay({
     ...(showOrganization
       ? [{ id: "organization" as const, label: t`Organization`, icon: Building2 }]
       : []),
+    ...(isDeploymentOwner ? [{ id: "signups" as const, label: t`Signups`, icon: UserPlus }] : []),
     ...(museMode ? [] : [{ id: "usage" as const, label: t`Usage`, icon: Gauge }]),
     ...(showComputer ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
     ...(museMode ? [] : [{ id: "updates" as const, label: t`Updates`, icon: CloudDownload }]),
@@ -312,6 +320,7 @@ export function SettingsOverlay({
               {section === "organization" && showOrganization && engineModels ? (
                 <OrganizationPanel status={engineModels} selfEmail={email} />
               ) : null}
+              {section === "signups" && isDeploymentOwner ? <OrgSignups /> : null}
               {section === "voice" && museMode ? <VoicePanel onBusyChange={setVoiceBusy} /> : null}
               {section === "voice" && !museMode ? (
                 <VoiceSettingsOverlay embedded onClose={requestClose} onBusyChange={setVoiceBusy} />

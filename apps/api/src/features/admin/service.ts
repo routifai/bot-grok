@@ -14,6 +14,7 @@ import {
   setOmnigentUserSuspended,
 } from "@nova/adapters";
 import type { Actor, EngineAdminUsage, EngineAdminUser } from "@nova/contracts";
+import { ORPCError } from "@orpc/server";
 import { adminActor, type EngineModelsDeps, onModels } from "../models/index.js";
 
 export async function listAdminUsers(
@@ -64,9 +65,25 @@ export async function setUserSuspended(
   input: { userId: string; suspended: boolean },
 ): Promise<{ ok: true }> {
   const target = await adminActor(deps, client, actor);
+  // Engine users are identified by email, so match the Nova account by email, and refuse
+  // anything but exactly one match rather than guess. Resolve it before touching the engine, so a
+  // refusal leaves both sides as they were.
+  const matches = await deps.prisma.user.findMany({
+    where: { email: { equals: input.userId, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (matches.length !== 1) {
+    throw new ORPCError("NOT_FOUND", { message: "No single matching account" });
+  }
   await onModels(
     setOmnigentUserSuspended(target.client, target.email, input.userId, input.suspended),
   );
+  // One suspension: the engine stops model use, and Nova stops sign-in and space access. A
+  // waiting signup stays in the approval queue, so only active and suspended accounts toggle.
+  await deps.prisma.user.updateMany({
+    where: { id: matches[0]!.id, status: input.suspended ? "active" : "suspended" },
+    data: { status: input.suspended ? "suspended" : "active" },
+  });
   return { ok: true as const };
 }
 
@@ -136,4 +153,56 @@ export async function adminModelCatalog(
     defaultModel: row.default_model,
     models: row.models,
   };
+}
+
+type EngineOutcome = "done" | "no-engine" | "no-owner";
+
+async function engineAdminEmail(deps: EngineModelsDeps): Promise<string | null> {
+  const settings = await deps.prisma.deploymentSettings.findUnique({
+    where: { id: "default" },
+    select: { ownerUserId: true },
+  });
+  if (!settings?.ownerUserId) return null;
+  const owner = await deps.prisma.user.findUnique({
+    where: { id: settings.ownerUserId },
+    select: { email: true },
+  });
+  return owner?.email ?? null;
+}
+
+/**
+ * Stop (or resume) an account's engine-side work, the way suspension does: scheduled tasks and
+ * in-flight runs live in the engine, which only an engine admin can pause. The deployment owner is
+ * the admin identity, so the owner must also be an engine admin; an engine refusal throws, and
+ * "no engine" or "no owner" is reported so the caller can warn. Engine users are named by email.
+ */
+export async function setEngineAccountSuspended(
+  deps: EngineModelsDeps,
+  client: OmnigentClientConfig | undefined,
+  email: string,
+  suspended: boolean,
+): Promise<EngineOutcome> {
+  if (!client) return "no-engine";
+  const admin = await engineAdminEmail(deps);
+  if (!admin) return "no-owner";
+  await onModels(setOmnigentUserSuspended(client, admin, email, suspended));
+  return "done";
+}
+
+/**
+ * Reset an engine account instead of resuming it. The engine's user delete removes the person's
+ * sessions, managed Computers, keys, scheduled tasks and account, and forgets their long-term
+ * memory; the account is recreated, empty, on next use. This is what a clean approval after a
+ * quarantine needs: a squatter's memory and schedules must not come back with the same email.
+ */
+export async function resetEngineAccount(
+  deps: EngineModelsDeps,
+  client: OmnigentClientConfig | undefined,
+  email: string,
+): Promise<EngineOutcome> {
+  if (!client) return "no-engine";
+  const admin = await engineAdminEmail(deps);
+  if (!admin) return "no-owner";
+  await onModels(deleteOmnigentUser(client, admin, email));
+  return "done";
 }

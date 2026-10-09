@@ -25,7 +25,13 @@ export function addScreenProxyCapability(
   return sealScreenCapability(url, secret, origin, scope, now);
 }
 
-export function mountScreenTarget(app: Hono, prisma: PrismaClient, secret: string) {
+export function mountScreenTarget(
+  app: Hono,
+  prisma: PrismaClient,
+  secret: string,
+  /** The person the screen belongs to must still be allowed to act (not suspended or waiting). */
+  mayAct: (userId: string) => Promise<boolean> = async () => true,
+) {
   app.post(SCREEN_TARGET_ENDPOINT, requestBodyLimit(16 * 1024), async (c) => {
     c.header("cache-control", "no-store");
     const supplied = Buffer.from(c.req.header("authorization") ?? "");
@@ -41,9 +47,9 @@ export function mountScreenTarget(app: Hono, prisma: PrismaClient, secret: strin
       // The engine owns this Computer and its screen token: only check the Muse is still ours.
       const engineBot = await prisma.bot.findFirst({
         where: { id: scope.botId, archivedAt: null, screenGeneration: scope.botGeneration },
-        select: { id: true },
+        select: { id: true, userId: true },
       });
-      return engineBot ? c.json(target) : c.body(null, 403);
+      return engineBot && (await mayAct(engineBot.userId)) ? c.json(target) : c.body(null, 403);
     }
     const bot = await prisma.bot.findFirst({
       where: {
@@ -53,6 +59,7 @@ export function mountScreenTarget(app: Hono, prisma: PrismaClient, secret: strin
         screenGeneration: scope.botGeneration,
       },
       select: {
+        userId: true,
         computer: {
           select: {
             screenGeneration: true,
@@ -68,6 +75,8 @@ export function mountScreenTarget(app: Hono, prisma: PrismaClient, secret: strin
     });
     const computer = bot?.computer;
     if (
+      !bot ||
+      !(await mayAct(bot.userId)) ||
       !computer ||
       computer.screenGeneration !== scope.computerGeneration ||
       !computer.providerRef ||

@@ -48,7 +48,9 @@ describeWithDatabase("API authorization and resource isolation", () => {
       sandboxProvider: "fake",
       agentRuntime: "scripted",
       wakeupDriver: "memory",
-      signupsEnabled: "true",
+      signupMode: "open",
+      // Local-dev escape hatch: these fixtures have no mailbox to prove.
+      allowUnverifiedEmail: true,
       composio: new ComposioEmulator(),
     });
     app = handles.app;
@@ -64,7 +66,9 @@ describeWithDatabase("API authorization and resource isolation", () => {
     const calls = exhaustiveProtectedCalls([
       ["me"],
       ["deployment/get"],
-      ["deployment/update", { signupsEnabled: true }],
+      ["signups/update", { mode: "open" }],
+      ["signups/pending"],
+      ["signups/approve", { userId: "nobody" }],
       ["models/list"],
       ["models/credentials"],
       ["models/connect", { provider: "test", apiKey: "not-a-real-key" }],
@@ -1307,71 +1311,64 @@ describeWithDatabase("API authorization and resource isolation", () => {
     });
     await handles.prisma.deploymentSettings.update({
       where: { id: "default" },
-      data: {
-        ownerUserId: ownerActor.userId,
-        signupsEnabled: true,
-        signupAllowlist: "",
-      },
+      data: { ownerUserId: ownerActor.userId, signupMode: "open", signupAllowlist: "" },
     });
 
     expect(otherActor.userId).not.toBe(ownerActor.userId);
 
     await rpc(app, owner, "deployment/get");
     await expectDenied(app, other, "deployment/get", {});
-    await expectDenied(app, other, "deployment/update", {
-      signupsEnabled: false,
-      signupAllowlist: ["attacker@example.test"],
-    });
+    await expectDenied(app, other, "signups/update", { mode: "open" });
+    await expectDenied(app, other, "signups/pending", {});
+    await expectDenied(app, other, "signups/approve", { userId: otherActor.userId });
     expect(
       await handles.prisma.deploymentSettings.findUniqueOrThrow({ where: { id: "default" } }),
-    ).toMatchObject({ signupsEnabled: true, signupAllowlist: "" });
+    ).toMatchObject({ signupMode: "open", signupAllowlist: "" });
 
-    try {
-      await rpc(app, owner, "deployment/update", { signupsEnabled: false });
-      const closedSignup = await app.request("/api/auth/sign-up/email", {
+    const trySignup = (email: string) =>
+      app.request("/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email: `closed-${stamp}@nova.test`,
-          password: "password123",
-          name: "Closed Signup",
-        }),
+        body: JSON.stringify({ email, password: "password123", name: "Signup" }),
       });
+    try {
+      await rpc(app, owner, "signups/update", { mode: "closed" });
+      const closedSignup = await trySignup(`closed-${stamp}@nova.test`);
       expect(closedSignup.status).toBe(400);
       expect(await closedSignup.text()).toContain("Registration is closed");
 
       const approvedEmail = `approved-${stamp}@example.test`;
-      await rpc(app, owner, "deployment/update", {
-        signupsEnabled: true,
-        signupAllowlist: [approvedEmail],
-      });
-      const disallowedSignup = await app.request("/api/auth/sign-up/email", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email: `not-approved-${stamp}@nova.test`,
-          password: "password123",
-          name: "Disallowed Signup",
-        }),
-      });
+      await rpc(app, owner, "signups/update", { mode: "invite", invites: [approvedEmail] });
+      const disallowedSignup = await trySignup(`not-approved-${stamp}@nova.test`);
       expect(disallowedSignup.status).toBe(400);
       expect(await disallowedSignup.text()).toContain("Email is not allowed to register");
-      const unverifiedSignup = await app.request("/api/auth/sign-up/email", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email: approvedEmail,
-          password: "password123",
-          name: "Approved Signup",
-        }),
+      expect((await trySignup(approvedEmail)).status).toBe(200);
+
+      // Approval mode: a stranger signs in but owns nothing until the owner approves them.
+      await rpc(app, owner, "signups/update", { mode: "approval" });
+      const waitingEmail = `waiting-${stamp}@example.test`;
+      const waiting = await trySignup(waitingEmail);
+      expect(waiting.status).toBe(200);
+      const waitingCookie = sessionCookieHeader(waiting);
+      const waitingUser = await handles.prisma.user.findUniqueOrThrow({
+        where: { email: waitingEmail },
       });
-      expect(unverifiedSignup.status).toBe(400);
-      expect(await unverifiedSignup.text()).toContain("Registration requires email delivery");
+      expect(waitingUser.status).toBe("pending");
+      expect(await handles.prisma.spaceMember.count({ where: { userId: waitingUser.id } })).toBe(0);
+      await expectDenied(app, waitingCookie, "me", {});
+      const queue = await rpc<Array<{ userId: string }>>(app, owner, "signups/pending");
+      expect(queue.map((person) => person.userId)).toContain(waitingUser.id);
+
+      await rpc(app, owner, "signups/approve", { userId: waitingUser.id });
+      expect(await rpc<Actor>(app, waitingCookie, "me")).toMatchObject({
+        userId: waitingUser.id,
+      });
+      expect(
+        (await handles.prisma.deploymentSettings.findUniqueOrThrow({ where: { id: "default" } }))
+          .ownerUserId,
+      ).toBe(ownerActor.userId);
     } finally {
-      await rpc(app, owner, "deployment/update", {
-        signupsEnabled: true,
-        signupAllowlist: [],
-      });
+      await rpc(app, owner, "signups/update", { mode: "open", invites: [] });
     }
   });
 });

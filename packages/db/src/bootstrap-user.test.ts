@@ -76,7 +76,7 @@ describe("bootstrapUserSpace", () => {
     const { create, update } = prisma.deploymentSettings.upsert.mock.calls[0]![0];
     expect(create.id).toBe("default");
     expect(create.ownerUserId).toBe("user-1");
-    expect(create.signupsEnabled).toBe(false);
+    expect(create.signupMode).toBe("closed");
     expect(create.signupAllowlist).toBe("a@example.com,b@example.com");
     expect(create.signupPolicyInitialized).toBe(true);
     expect(update).toEqual({});

@@ -1,11 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { signupPolicyFromEnv } from "@nova/core";
+import { type SignupPolicyEnv, signupPolicyFromEnv } from "@nova/core";
 import type { PrismaClient } from "./client.js";
 
-export interface SignupPolicyEnv {
-  signupsEnabled: string | undefined;
-  signupAllowlist: string | undefined;
-}
+export type { SignupPolicyEnv };
 
 function newId(): string {
   return randomBytes(16).toString("hex");
@@ -94,8 +91,10 @@ export async function bootstrapUserSpace(
     create: {
       id: "default",
       ownerUserId: claimDeploymentOwner ? user.id : null,
-      signupsEnabled: policy.enabled,
-      signupAllowlist: policy.allowlist.join(","),
+      signupMode: policy.mode,
+      signupsEnabled: policy.mode !== "closed",
+      signupAllowlist: policy.invites.join(","),
+      signupDomains: policy.domains.join(","),
       signupPolicyInitialized: true,
     },
     update: {},

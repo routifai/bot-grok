@@ -31,6 +31,8 @@ export interface MessagingInboundDeps {
    * Poke-style open line: unknown senders auto-provision their own account.
    * Off by default — strangers' runs would bill the deployment model key.
    */
+  /** Active and verified-or-allowed; defaults to a status check when unset (tests). */
+  userMayAct?: (userId: string) => Promise<boolean>;
   openSignup: boolean;
   signupPolicy: SignupPolicyEnv;
   /**
@@ -76,6 +78,8 @@ async function handleDirectEvent(
 
   const where = { provider_address: { provider: event.provider, address: event.from } } as const;
   const existing = await deps.prisma.messagingIdentity.findUnique({ where });
+  // A suspended or still-pending person's lines go quiet: no bot wakes, no model is spent.
+  if (existing && !(await userIsActive(deps, existing.userId))) return;
   if (existing) {
     // Any reply — even a content-free reaction — ends the consecutive-
     // outbound streak, but only real text wakes the bot. The conversation
@@ -512,7 +516,7 @@ async function handleChannelEvent(
     const identity = await deps.prisma.messagingIdentity.findUnique({
       where: { id: member.identityId! },
     });
-    if (!identity) continue;
+    if (!identity || !(await userIsActive(deps, identity.userId))) continue;
     const thread = await deps.prisma.thread.findFirst({ where: { botId: identity.botId } });
     if (!thread) continue;
     const target = {
@@ -580,6 +584,15 @@ async function inviteMember(
   await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
     getLogger().error("messaging invite enqueue error", error);
   });
+}
+
+async function userIsActive(deps: MessagingInboundDeps, userId: string) {
+  if (deps.userMayAct) return deps.userMayAct(userId);
+  const user = await deps.prisma.user.findUnique({
+    where: { id: userId },
+    select: { status: true },
+  });
+  return user?.status === "active";
 }
 
 async function ownerFirstName(

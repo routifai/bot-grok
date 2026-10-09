@@ -2,7 +2,13 @@ import type { PrismaClient } from "@nova/db";
 import type { ORPCError } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectEngineModel } from "../models/index.js";
-import { deleteEngineUser, listAdminUsers } from "./service.js";
+import {
+  deleteEngineUser,
+  listAdminUsers,
+  resetEngineAccount,
+  setEngineAccountSuspended,
+  setUserSuspended,
+} from "./service.js";
 
 const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [], tenant: "s1" };
 const actor = { userId: "user-1", spaceId: "s1" } as never;
@@ -88,5 +94,96 @@ describe("admin gating", () => {
         lastActive: 100,
       },
     ]);
+  });
+});
+
+describe("suspension", () => {
+  function nova(users: Array<{ id: string; email: string }>) {
+    const d = deps();
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    const findMany = vi.fn(async ({ where }: { where: { email: { equals: string } } }) =>
+      users.filter((user) => user.email.toLowerCase() === where.email.equals.toLowerCase()),
+    );
+    (d.prisma as unknown as { user: object }).user = { ...d.prisma.user, findMany, updateMany };
+    return { d, updateMany };
+  }
+
+  it("also suspends and restores the Nova account, matched by the engine's email id", async () => {
+    stub(() => json({ user_id: "p", is_admin: true, ok: true }));
+    const { d, updateMany } = nova([{ id: "nova-9", email: "Bob@Acme.test" }]);
+    await setUserSuspended(d, client, actor, { userId: "bob@acme.test", suspended: true });
+    expect(updateMany).toHaveBeenLastCalledWith({
+      where: { id: "nova-9", status: "active" },
+      data: { status: "suspended" },
+    });
+    await setUserSuspended(d, client, actor, { userId: "bob@acme.test", suspended: false });
+    expect(updateMany).toHaveBeenLastCalledWith({
+      where: { id: "nova-9", status: "suspended" },
+      data: { status: "active" },
+    });
+  });
+
+  it("refuses when no single account matches, rather than guess", async () => {
+    stub(() => json({ user_id: "p", is_admin: true, ok: true }));
+    const none = nova([]);
+    expect(
+      (
+        await rejection(
+          setUserSuspended(none.d, client, actor, { userId: "x@acme.test", suspended: true }),
+        )
+      ).code,
+    ).toBe("NOT_FOUND");
+    const twice = nova([
+      { id: "a", email: "x@acme.test" },
+      { id: "b", email: "X@acme.test" },
+    ]);
+    await rejection(
+      setUserSuspended(twice.d, client, actor, { userId: "x@acme.test", suspended: true }),
+    );
+    expect(none.updateMany).not.toHaveBeenCalled();
+    expect(twice.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("engine account pause and reset (quarantine)", () => {
+  function ownerDeps(owner: string | null) {
+    const d = deps();
+    Object.assign(d.prisma, {
+      deploymentSettings: { findUnique: vi.fn(async () => ({ ownerUserId: owner })) },
+      user: {
+        findUnique: vi.fn(async () => (owner ? { email: "root@acme.test" } : null)),
+      },
+    });
+    return d;
+  }
+
+  it("uses the deployment owner as the engine admin to pause, resume and reset", async () => {
+    const fetchMock = stub(() => json({ user_id: "root", is_admin: true, ok: true }));
+    const d = ownerDeps("owner-1");
+    expect(await setEngineAccountSuspended(d, client, "squatter@acme.test", true)).toBe("done");
+    expect(await resetEngineAccount(d, client, "squatter@acme.test")).toBe("done");
+    const calls = fetchMock.mock.calls.map(
+      ([url, init]) =>
+        `${(init as RequestInit | undefined)?.method ?? "GET"} ${(url as URL).pathname}`,
+    );
+    expect(calls).toContain("POST /v1/admin/users/squatter%40acme.test/suspend");
+    expect(calls).toContain("DELETE /v1/admin/users/squatter%40acme.test");
+  });
+
+  it("says so when there is no engine or no owner, rather than failing quietly", async () => {
+    expect(await setEngineAccountSuspended(ownerDeps("o"), undefined, "a@acme.test", true)).toBe(
+      "no-engine",
+    );
+    expect(await resetEngineAccount(ownerDeps(null), client, "a@acme.test")).toBe("no-owner");
+    expect(await setEngineAccountSuspended(ownerDeps(null), client, "a@acme.test", true)).toBe(
+      "no-owner",
+    );
+  });
+
+  it("throws when the engine refuses (the owner is not an engine admin)", async () => {
+    stub(() => json({ error: "forbidden" }, 403));
+    await expect(
+      setEngineAccountSuspended(ownerDeps("owner-1"), client, "a@acme.test", true),
+    ).rejects.toThrow();
   });
 });

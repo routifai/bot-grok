@@ -259,6 +259,7 @@ export const RU_MESSAGES: Record<string, string> = {
   Description: "Описание",
   "Describe what this bot does": "Опишите, что делает этот бот",
   "Don’t have an account?": "Нет аккаунта?",
+  "Sign up on the web": "Зарегистрируйтесь на сайте",
   Done: "Готово",
   Disconnect: "Отключить",
   "Disconnecting…": "Отключение…",

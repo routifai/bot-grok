@@ -96,6 +96,7 @@ vi.mock("../features/models", () => ({
 }));
 vi.mock("../features/admin", () => ({
   OrganizationPanel: () => <div data-testid="organization-panel" />,
+  OrgSignups: () => <div data-testid="org-signups" />,
 }));
 vi.mock("../features/computer/ComputersUnavailableHint", () => ({
   computersAreUnavailable: () => false,
@@ -289,6 +290,38 @@ it("opens at Models when asked to, and falls back to General without the engine"
     engine.status = null;
     await act(async () => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("offers Signups to the deployment owner only, whether or not the engine is reachable", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  try {
+    for (const [isDeploymentOwner, expected] of [
+      [false, ["nova", "general", "voice"]],
+      [true, ["nova", "general", "voice", "signups"]],
+    ] as const) {
+      engine.status = null;
+      const { container, root } = render();
+      try {
+        await act(async () =>
+          root.render(<SettingsOverlay {...museProps} isDeploymentOwner={isDeploymentOwner} />),
+        );
+        expect(navIds(container)).toEqual(expected);
+        if (isDeploymentOwner) {
+          await act(async () =>
+            container
+              .querySelector<HTMLButtonElement>('[data-testid="settings-nav-signups"]')
+              ?.click(),
+          );
+          expect(container.querySelector('[data-testid="org-signups"]')).toBeTruthy();
+        }
+      } finally {
+        await act(async () => root.unmount());
+        container.remove();
+      }
+    }
+  } finally {
     vi.unstubAllGlobals();
   }
 });

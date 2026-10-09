@@ -35,6 +35,7 @@ export const DE_MESSAGES: Record<string, string> = {
   "Custom server": "Eigener Server",
   "Custom server {host}": "Eigener Server {host}",
   "Don’t have an account?": "Du hast noch kein Konto?",
+  "Sign up on the web": "Konto im Web erstellen",
   Email: "E-Mail",
   "Enter your Nova server address.": "Gib die Adresse deines Nova-Servers ein.",
   "Forgot password?": "Passwort vergessen?",

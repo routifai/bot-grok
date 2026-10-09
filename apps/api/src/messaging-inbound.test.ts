@@ -217,7 +217,7 @@ function createDeps(
       update: vi.fn(async () => ({})),
     },
     user: {
-      findUnique: vi.fn(async () => ({ id: "user-1", name: "Alice Owner" })),
+      findUnique: vi.fn(async () => ({ id: "user-1", name: "Alice Owner", status: "active" })),
     },
     // Claim-and-confirm paths run inside their own transaction; the tx
     // delegate shares the same stateful models (plus the txMock tables used
@@ -310,6 +310,24 @@ describe("createMessagingInboundHandler DM routing", () => {
     expect(deps.enqueue).toHaveBeenCalledWith(
       expect.objectContaining({ name: "run.continue", payload: { runId: "run-1" } }),
     );
+  });
+
+  it("goes quiet for a sender whose account is suspended or still pending", async () => {
+    for (const status of ["suspended", "pending"]) {
+      const deps = createDeps();
+      deps.prisma.user.findUnique = vi.fn(async () => ({ id: "user-1", name: "A", status }));
+      await createMessagingInboundHandler(deps)(dmEvent);
+      expect(deps.sendUserMessage).not.toHaveBeenCalled();
+      expect(deps.provision).not.toHaveBeenCalled();
+    }
+  });
+
+  it("applies the deployment's full rule, not just the status column", async () => {
+    const deps = createDeps();
+    const userMayAct = vi.fn(async () => false);
+    await createMessagingInboundHandler({ ...deps, userMayAct })(dmEvent);
+    expect(userMayAct).toHaveBeenCalledWith("user-1");
+    expect(deps.sendUserMessage).not.toHaveBeenCalled();
   });
 
   it("provisions on first contact and uses the new identity", async () => {

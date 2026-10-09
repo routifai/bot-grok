@@ -1,6 +1,6 @@
 import { accountContract } from "./rpc/account.js";
 import { activityContract } from "./rpc/activity.js";
-import { engineAdminContract } from "./rpc/admin.js";
+import { engineAdminContract, signupsContract } from "./rpc/admin.js";
 import { agentSecretsContract } from "./rpc/agent-secrets.js";
 import { approvalsContract } from "./rpc/approvals.js";
 import { appsContract } from "./rpc/apps.js";
@@ -55,6 +55,7 @@ export const appContract = {
   ...scratchpadContract,
   ...sheetsContract,
   ...sideChatsContract,
+  ...signupsContract,
   ...skillsContract,
   ...threadsContract,
   ...vaultContract,

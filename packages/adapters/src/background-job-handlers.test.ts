@@ -23,19 +23,40 @@ vi.mock("./omnigent/gateway.js", () => ({
 }));
 vi.mock("./routine-wakeup.js", () => ({ wakeRoutine: vi.fn(async () => undefined) }));
 
+/** Just the lookups the handlers make; any other database call would throw. */
+function prismaFor(status: string) {
+  const self = {
+    run: {
+      findUnique: vi.fn(async () => ({ id: "run-1", taskId: "task-1", userId: "user-1" })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
+    routine: { findUnique: vi.fn(async () => ({ userId: "user-1" })) },
+    user: { findUnique: vi.fn(async () => ({ status })) },
+    attempt: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    task: { updateMany: vi.fn(async () => ({ count: 1 })) },
+    $transaction: async (run: (tx: unknown) => Promise<unknown>) => run(self),
+  };
+  return self;
+}
+
 function handlersFor(overrides: {
+  status?: string;
+  userMayAct?: (userId: string) => Promise<boolean>;
+  prisma?: unknown;
   jobs?: JobPublisher;
   messaging?: MessagingSurface;
   omnigent?: OmnigentGatewayDeps;
 }) {
   return createBackgroundJobHandlers({
     // Any Computer or database lookup would throw on these empty clients.
-    prisma: {} as unknown as PrismaClient,
+    prisma: (overrides.prisma ??
+      prismaFor(overrides.status ?? "active")) as unknown as PrismaClient,
     sandbox: {} as unknown as SandboxProvider,
     home: {} as unknown as AgentHomeStore,
     jobs: overrides.jobs ?? ({ enqueue: vi.fn() } as unknown as JobPublisher),
     events: {} as unknown as ThreadEvents,
     workerId: "worker-1",
+    userMayAct: overrides.userMayAct,
     messaging: overrides.messaging,
     omnigent: overrides.omnigent,
   });
@@ -121,5 +142,34 @@ describe("createBackgroundJobHandlers", () => {
     await handlers["computer.control-expire"]({ computerId: "computer-1", leaseId: "lease-1" });
 
     expect(jobs.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("cancels a run and skips a routine wakeup for an account that is not active", async () => {
+    for (const status of ["suspended", "pending"]) {
+      const prisma = prismaFor(status);
+      const handlers = handlersFor({
+        prisma,
+        omnigent: {} as unknown as OmnigentGatewayDeps,
+      });
+      await handlers["run.continue"]({ runId: "run-1" });
+      expect(runTurnOnOmnigent).not.toHaveBeenCalled();
+      expect(prisma.run.updateMany).toHaveBeenCalled();
+      await handlers["routine.wakeup"]({ routineId: "routine-1", scheduledFor: "2026-01-01" });
+      expect(wakeRoutine).not.toHaveBeenCalled();
+    }
+  });
+
+  it("uses the deployment's full rule when one is supplied", async () => {
+    const prisma = prismaFor("active");
+    const userMayAct = vi.fn(async () => false);
+    const handlers = handlersFor({
+      prisma,
+      userMayAct,
+      omnigent: {} as unknown as OmnigentGatewayDeps,
+    });
+    await handlers["run.continue"]({ runId: "run-1" });
+    expect(userMayAct).toHaveBeenCalledWith("user-1");
+    expect(runTurnOnOmnigent).not.toHaveBeenCalled();
+    expect(prisma.run.updateMany).toHaveBeenCalled();
   });
 });

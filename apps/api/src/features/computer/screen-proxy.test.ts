@@ -142,4 +142,51 @@ describe("screen capability lifecycle authorization", () => {
     findFirst.mockResolvedValue(null as never);
     expect((await request()).status).toBe(403);
   });
+
+  it("stops relaying a screen once its owner may no longer act", async () => {
+    let allowed = true;
+    const mayAct = vi.fn(async () => allowed);
+    const engineBot = { id: "bot", userId: "user-1" };
+    const computerBot = {
+      userId: "user-1",
+      computer: {
+        screenGeneration: 0,
+        providerRef: "fake-provider",
+        state: "running",
+        controlHolder: "user",
+        controlLeaseId: "lease",
+        controlBotId: "bot",
+        controlLeaseExpiresAt: new Date(Date.now() + 60_000),
+      },
+    };
+    for (const [computerId, bot] of [
+      [ENGINE_COMPUTER_ID, engineBot],
+      ["computer", computerBot],
+    ] as const) {
+      allowed = true;
+      const app = new Hono();
+      mountScreenTarget(
+        app,
+        { bot: { findFirst: vi.fn(async () => bot) } } as unknown as PrismaClient,
+        secret,
+        mayAct,
+      );
+      const url = addScreenProxyCapability(
+        "http://127.0.0.1:49152/vnc.html?view_only=true",
+        secret,
+        "https://app.example",
+        { ...scope, computerId, controlLeaseId: null },
+      );
+      const request = () =>
+        app.request(SCREEN_TARGET_ENDPOINT, {
+          method: "POST",
+          headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+          body: JSON.stringify({ path: new URL(url).pathname }),
+        });
+      expect((await request()).status).toBe(200);
+      allowed = false;
+      expect((await request()).status).toBe(403);
+      expect(mayAct).toHaveBeenLastCalledWith("user-1");
+    }
+  });
 });

@@ -244,6 +244,7 @@ export const ZH_MESSAGES: Record<string, string> = {
   Description: "描述",
   "Describe what this bot does": "描述这个 Bot 的工作",
   "Don’t have an account?": "还没有账户？",
+  "Sign up on the web": "请在网页上注册",
   Done: "完成",
   Disconnect: "断开",
   "Disconnecting…": "正在断开…",

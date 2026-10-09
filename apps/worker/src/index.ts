@@ -18,6 +18,7 @@ import {
   GraphileJobWorkerHost,
   InMemoryJobQueue,
   InstalledConnectorProvider,
+  identityMaintenance,
   isComposioEnabled,
   isMessagingSurfaceEnabled,
   isPipedreamEnabled,
@@ -36,12 +37,18 @@ import {
   resolveSandboxProvider,
   sandboxProviderOptionsFromEnv,
 } from "@nova/adapters";
-import { resolveEncryptionKey, resolveSupervisorToken } from "@nova/core";
+import {
+  emailDeliveryConfigured,
+  isHostedDeployment,
+  resolveEncryptionKey,
+  resolveSupervisorToken,
+} from "@nova/core";
 import {
   createDb,
   createThreadEvents,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
+  userMayAct,
 } from "@nova/db";
 import { SERVICE_NAMES } from "@nova/logging";
 import { createRootLogger } from "@nova/logging/axiom";
@@ -149,7 +156,38 @@ async function main() {
   // set of deployment secrets.
   const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
+  // The same "may this person act" rule the API applies to sessions: active, and verified or
+  // allowed unverified. Whether mail can be sent is the API's recorded state, not this process's
+  // own environment.
+  const gateRule = {
+    devFlagAllowed:
+      process.env.AUTH_ALLOW_UNVERIFIED_EMAIL === "true" &&
+      !isHostedDeployment({
+        nodeEnv: process.env.NODE_ENV,
+        webOrigin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:5173",
+      }),
+  };
+  // The API records whether mail can be sent; this process only reads it. Say so, and say when
+  // this process's own environment disagrees (a likely misconfiguration of one of them).
+  const recorded = await prisma.deploymentSettings.findUnique({
+    where: { id: "default" },
+    select: { emailDelivery: true },
+  });
+  const own = emailDeliveryConfigured(process.env);
+  logger.info("mail delivery as recorded by the API", {
+    "identity.email_delivery": recorded?.emailDelivery ?? false,
+  });
+  if ((recorded?.emailDelivery ?? false) !== own) {
+    logger.warn(
+      "this process's mail settings disagree with what the API recorded; the recorded value decides who may act while unverified",
+      {
+        "identity.email_delivery_recorded": recorded?.emailDelivery ?? false,
+        "identity.email_delivery_env": own,
+      },
+    );
+  }
   const jobHandlers = createBackgroundJobHandlers({
+    userMayAct: (userId) => userMayAct(prisma, userId, gateRule),
     prisma,
     sandbox,
     home,
@@ -184,6 +222,7 @@ async function main() {
     events,
     leadership: createPostgresReconciliationLeadership(pool),
     reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
+    identityMaintenance: () => identityMaintenance({ prisma, sandbox }),
   });
   reconciler.start();
 
