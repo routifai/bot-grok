@@ -193,11 +193,15 @@ Signup is controlled by the Nova API, not by the engine:
   start; the owner changes it later in Settings > Organization > Signups. `SIGNUP_ALLOWLIST` is a
   comma-separated list of exact emails or `@domain` entries for `invite` mode; a non-empty value is
   applied on **every** API start and replaces the stored list. `SIGNUP_DOMAINS` seeds `domain` mode.
-- Email delivery is **required** for every mode except `closed`: new accounts prove their mailbox
-  with a six-digit code, and the API will not start in production without it. Easiest: a free
-  Resend account, `EMAIL_API_URL=https://api.resend.com/emails`, `EMAIL_API_KEY=<api-key>` and
-  `EMAIL_FROM="Nova <no-reply@<your-domain>>"` after verifying the domain with Resend (or SMTP:
-  `SMTP_URL=smtps://resend:<api-key>@smtp.resend.com:465`).
+- Email delivery is **required** for `invite`, `domain` and `open`: new accounts prove their
+  mailbox with a six-digit code, and a hosted API will not start in production without it.
+  `approval` needs none (use it until you own a mail domain), but then set `OWNER_SETUP_TOKEN`: a
+  one-time secret you enter as "Setup token" when you sign up, which is the only way to seat the
+  first owner. Easiest email: a free Resend account, `EMAIL_API_URL=https://api.resend.com/emails`,
+  `EMAIL_API_KEY=<api-key>` and `EMAIL_FROM="Nova <no-reply@<your-domain>>"` after verifying the
+  domain with Resend (or SMTP: `SMTP_URL=smtps://resend:<api-key>@smtp.resend.com:465`).
+  Railway: set `AUTH_CLIENT_IP_HEADER=x-real-ip` (or `AUTH_TRUSTED_PROXIES`) so rate limits see
+  real client addresses. Set `NODE_ENV=production`; hosted detection depends on it.
 - Order: set the mode and email **before the first start**, register yourself first (the first
   account becomes the owner), then add friends in the Signups panel or by editing
   `SIGNUP_ALLOWLIST` on Railway.

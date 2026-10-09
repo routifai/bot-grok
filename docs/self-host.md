@@ -135,23 +135,41 @@ changes it in Settings > Organization > Signups, which is also where pending acc
 | `closed` | Nobody new. |
 | `invite` | Emails (or `@domain` entries) in the invite list (`SIGNUP_ALLOWLIST` seeds it; a non-empty value is reapplied on every API start). |
 | `domain` | Addresses at the domains in `SIGNUP_DOMAINS`. |
-| `approval` | Anyone who proves their email; they wait with no space, Computer or model access until the owner approves. The first account is active so someone can approve. |
+| `approval` | Anyone, but every account waits (no space, Computer or model access) until the owner approves it. Needs no email provider. |
 | `open` | Anyone who proves their email. |
 
 Without `SIGNUP_MODE`, the older variables keep their meaning: `SIGNUPS_ENABLED=false` is `closed`
 and a non-empty `SIGNUP_ALLOWLIST` is `invite`.
 
-Every new account proves its mailbox with a six-digit code, so every mode except `closed` needs
-email delivery: `SMTP_URL`, or `EMAIL_API_URL` and `EMAIL_API_KEY` for a Resend-compatible HTTPS API,
-plus `EMAIL_FROM`. A hosted deployment (`NODE_ENV=production` on a non-loopback `WEB_ORIGIN`)
-refuses to start otherwise. For a personal install on this machine only,
-`AUTH_ALLOW_UNVERIFIED_EMAIL=true` skips mailbox proof when no provider is configured; a hosted
-deployment refuses to start with it set.
+Every account that gets in on its own (`invite`, `domain`, `open`) proves its mailbox with a
+six-digit code, so those modes need email delivery: `SMTP_URL`, or `EMAIL_API_URL` and
+`EMAIL_API_KEY` for a Resend-compatible HTTPS API, plus `EMAIL_FROM`. A hosted deployment
+(`NODE_ENV=production` on a non-loopback `WEB_ORIGIN`; hosted requires `NODE_ENV=production`)
+refuses to start with one of those modes and no provider. `approval` and `closed` need none.
+Proving a mailbox voids anything attached to that address earlier, including a password, so
+someone who pre-registered another person's address gains nothing; the owner signs in by code.
 
-Google and Microsoft sign-in appear once `AUTH_GOOGLE_CLIENT_ID` and `AUTH_GOOGLE_CLIENT_SECRET`
-(optionally `AUTH_GOOGLE_HOSTED_DOMAIN` to pin one Workspace domain) or `AUTH_MICROSOFT_CLIENT_ID`,
-`AUTH_MICROSOFT_CLIENT_SECRET` and `AUTH_MICROSOFT_TENANT_ID` are set. The signup mode applies to
-them like any other way in.
+`approval` with no email provider needs a way to seat the first owner: set `OWNER_SETUP_TOKEN` to a
+one-time secret and enter it as "Setup token" when you sign up. Until an owner exists only that
+sign-in can claim the seat; without a token (and without email) nobody can, and a hosted
+deployment refuses to start. When email arrives later, approved people whose address was never
+proved are asked for a code at their next sign-in.
+
+For a personal install on this machine only, `AUTH_ALLOW_UNVERIFIED_EMAIL=true` skips mailbox
+proof for the self-serve modes when no provider is configured; a hosted deployment refuses to
+start with it, and the API logs a warning while it is on. In development the email emulator is on
+by default.
+
+One generic OIDC connection adds a sign-in button: `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`,
+`AUTH_OIDC_CLIENT_SECRET`, optionally `AUTH_OIDC_NAME` and `AUTH_OIDC_ALLOWED_DOMAINS`. Register
+`<BETTER_AUTH_URL>/api/auth/oauth2/callback/sso` with the provider. For Microsoft the issuer must
+be `https://login.microsoftonline.com/<tenant-guid>/v2.0`; `common`, `organizations` and
+`consumers` are refused. Provider accounts are never linked to an existing person by email, and
+the signup mode applies to them like any other way in.
+
+Behind a reverse proxy set `AUTH_TRUSTED_PROXIES` (its IPs or CIDRs) or `AUTH_CLIENT_IP_HEADER`,
+or the rate limiter sees every client as one address. Limits are stored in the database and also
+cap sends and verifies per email address.
 
 ### Verification and password recovery email
 
