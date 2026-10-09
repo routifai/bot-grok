@@ -149,6 +149,11 @@ export function OrgSignups() {
                         timeStyle: "short",
                       })}
                     </time>
+                    {person.quarantined ? (
+                      <span data-testid="signup-quarantined">
+                        <Trans>Previous space kept: confirm it&apos;s the same person</Trans>
+                      </span>
+                    ) : null}
                     {person.emailVerified ? null : (
                       <span
                         data-testid="signup-unverified"
@@ -160,6 +165,38 @@ export function OrgSignups() {
                   </span>
                 </span>
                 <span className="inline-flex shrink-0 items-center gap-1">
+                  {person.quarantined ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy === person.userId}
+                        onClick={() =>
+                          void run(
+                            person.userId,
+                            () => rpc.signups.discard({ userId: person.userId }),
+                            t`Could not discard the previous space.`,
+                          )
+                        }
+                      >
+                        <Trans>Discard</Trans>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy === person.userId}
+                        onClick={() =>
+                          void run(
+                            person.userId,
+                            () => rpc.signups.restore({ userId: person.userId }),
+                            t`Could not restore the previous space.`,
+                          )
+                        }
+                      >
+                        <Trans>Restore previous space</Trans>
+                      </Button>
+                    </>
+                  ) : null}
                   <Button
                     size="sm"
                     variant="ghost"

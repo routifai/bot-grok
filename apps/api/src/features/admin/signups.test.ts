@@ -1,10 +1,17 @@
-import { bootstrapUserSpace } from "@nova/db";
+import { purgeQuarantinedOrganizations } from "@nova/adapters";
+import {
+  bootstrapUserSpace,
+  quarantinedOrganizationsToPurge,
+  restoreQuarantinedSpaces,
+} from "@nova/db";
 import type { ORPCError } from "@orpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveSignup,
+  discardSignup,
   pendingSignups,
   rejectSignup,
+  restoreSignup,
   signupSettings,
   updateSignupSettings,
 } from "./signups.js";
@@ -12,7 +19,10 @@ import {
 vi.mock("@nova/db", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })),
+  restoreQuarantinedSpaces: vi.fn(async () => 1),
+  quarantinedOrganizationsToPurge: vi.fn(async () => [{ id: "org-1", spaces: [{ id: "s-1" }] }]),
 }));
+vi.mock("@nova/adapters", () => ({ purgeQuarantinedOrganizations: vi.fn(async () => undefined) }));
 
 const owner = { userId: "owner", spaceId: "s1", isDeploymentOwner: true } as never;
 const member = { userId: "member", spaceId: "s1", isDeploymentOwner: false } as never;
@@ -74,6 +84,11 @@ function fixture(identity?: { production: boolean; emailDelivery: boolean }) {
   };
   const quotaWrites: string[] = [];
   Object.assign(prisma, {
+    organization: {
+      findMany: vi.fn(async ({ where }: { where: { quarantinedFromUserId: { in: string[] } } }) =>
+        where.quarantinedFromUserId.in.includes("u1") ? [{ quarantinedFromUserId: "u1" }] : [],
+      ),
+    },
     $queryRaw: vi.fn(async (_strings: TemplateStringsArray, key: string) => {
       quotaWrites.push(key);
       return [{ count: 1 }];
@@ -90,6 +105,7 @@ function fixture(identity?: { production: boolean; emailDelivery: boolean }) {
       prisma: prisma as never,
       identity: identity && { ...identity, signupPolicy: {} },
       auth: { $context: Promise.resolve({ internalAdapter: { deleteUser } }) } as never,
+      sandbox: {} as never,
     },
     settings,
     users,
@@ -127,9 +143,9 @@ describe("signup administration", () => {
   it("lists everyone who waits, unverified rows included and marked", async () => {
     const mailed = fixture({ production: false, emailDelivery: true });
     const rows = await pendingSignups(mailed.deps, owner);
-    expect(rows.map((p) => [p.userId, p.emailVerified])).toEqual([
-      ["u1", true],
-      ["u2", false],
+    expect(rows.map((p) => [p.userId, p.emailVerified, p.quarantined])).toEqual([
+      ["u1", true, true],
+      ["u2", false, false],
     ]);
     expect(rows[0]!.createdAt).toBe("2026-01-01T00:00:00.000Z");
   });
@@ -184,6 +200,31 @@ describe("signup administration", () => {
       domains: ["corp.test"],
     });
     expect(settings.signupMode).toBe("invite");
+  });
+
+  it("restores a kept space and lets the confirmed person in", async () => {
+    const { deps, users } = fixture();
+    await restoreSignup(deps, owner, "u1");
+    expect(restoreQuarantinedSpaces).toHaveBeenCalledWith(expect.anything(), "u1");
+    expect(users[0]!.status).toBe("active");
+    expect(bootstrapUserSpace).not.toHaveBeenCalled();
+    vi.mocked(restoreQuarantinedSpaces).mockResolvedValueOnce(0);
+    expect((await rejection(restoreSignup(deps, owner, "u2"))).code).toBe("NOT_FOUND");
+    expect(users[1]!.status).toBe("pending");
+    expect((await rejection(restoreSignup(deps, member, "u1"))).code).toBe("FORBIDDEN");
+  });
+
+  it("discards a kept space through the shared purge, which destroys Computers first", async () => {
+    const { deps } = fixture();
+    await discardSignup(deps, owner, "u1");
+    expect(purgeQuarantinedOrganizations).toHaveBeenCalledWith(
+      deps,
+      [{ id: "org-1", spaces: [{ id: "s-1" }] }],
+      "quarantine-discard:u1",
+    );
+    vi.mocked(quarantinedOrganizationsToPurge).mockResolvedValueOnce([]);
+    expect((await rejection(discardSignup(deps, owner, "u1"))).code).toBe("NOT_FOUND");
+    expect((await rejection(discardSignup(deps, member, "u1"))).code).toBe("FORBIDDEN");
   });
 
   it("will not open signup in production without email delivery, but allows closing it", async () => {

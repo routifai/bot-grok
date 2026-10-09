@@ -1,5 +1,7 @@
 // Who may join, and who is waiting. Deployment owner only; the owner check is the same one
 // `deployment.update` uses. Approval is the moment a pending account first gets a space.
+
+import { purgeQuarantinedOrganizations } from "@nova/adapters";
 import {
   prismaEmailQuota,
   REJECTION_COOLDOWN_MS,
@@ -8,11 +10,15 @@ import {
 } from "@nova/auth";
 import type { Actor, PendingSignup, SignupSettings } from "@nova/contracts";
 import { parseAllowlist, parseDomains, signupNeedsEmailDelivery } from "@nova/core";
-import { bootstrapUserSpace } from "@nova/db";
+import {
+  bootstrapUserSpace,
+  quarantinedOrganizationsToPurge,
+  restoreQuarantinedSpaces,
+} from "@nova/db";
 import { ORPCError } from "@orpc/server";
 import type { RouterDeps } from "../../routers/context.js";
 
-type SignupsDeps = Pick<RouterDeps, "prisma" | "identity" | "auth">;
+type SignupsDeps = Pick<RouterDeps, "prisma" | "identity" | "auth" | "sandbox">;
 
 function assertOwner(actor: Actor): void {
   if (!actor.isDeploymentOwner) throw new ORPCError("FORBIDDEN");
@@ -79,7 +85,16 @@ export async function pendingSignups(deps: SignupsDeps, actor: Actor): Promise<P
     orderBy: { createdAt: "asc" },
     select: { id: true, email: true, name: true, emailVerified: true, createdAt: true },
   });
+  const kept = new Set(
+    (
+      await deps.prisma.organization.findMany({
+        where: { quarantinedFromUserId: { in: users.map((user) => user.id) } },
+        select: { quarantinedFromUserId: true },
+      })
+    ).map((organization) => organization.quarantinedFromUserId),
+  );
   return users.map((user) => ({
+    quarantined: kept.has(user.id),
     userId: user.id,
     email: user.email,
     name: user.name,
@@ -133,5 +148,45 @@ export async function rejectSignup(
     await (await deps.auth.$context).internalAdapter.deleteUser(user.id);
     await prismaEmailQuota(deps.prisma).fail(rejectionKey(user.email), REJECTION_COOLDOWN_MS);
   }
+  return { ok: true as const };
+}
+
+/**
+ * The admin has confirmed this is the same person as before: re-attach the kept space and let
+ * them in. Keys, connections and messaging links were stripped and stay gone; routines stay off.
+ */
+export async function restoreSignup(
+  deps: SignupsDeps,
+  actor: Actor,
+  userId: string,
+): Promise<{ ok: true }> {
+  assertOwner(actor);
+  const waiting = await deps.prisma.user.findFirst({
+    where: { id: userId, status: "pending" },
+    select: { id: true },
+  });
+  if (!waiting) throw new ORPCError("NOT_FOUND", { message: "Not waiting for approval" });
+  if ((await restoreQuarantinedSpaces(deps.prisma, userId)) === 0) {
+    throw new ORPCError("NOT_FOUND", { message: "No previous space is kept" });
+  }
+  await deps.prisma.user.updateMany({
+    where: { id: userId, status: "pending" },
+    data: { status: "active" },
+  });
+  return { ok: true as const };
+}
+
+/** Purge the kept space now: Computers are destroyed first, then the records go. */
+export async function discardSignup(
+  deps: SignupsDeps,
+  actor: Actor,
+  userId: string,
+): Promise<{ ok: true }> {
+  assertOwner(actor);
+  const organizations = await quarantinedOrganizationsToPurge(deps.prisma, { userId });
+  if (organizations.length === 0) {
+    throw new ORPCError("NOT_FOUND", { message: "No previous space is kept" });
+  }
+  await purgeQuarantinedOrganizations(deps, organizations, `quarantine-discard:${userId}`);
   return { ok: true as const };
 }

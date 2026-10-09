@@ -24,6 +24,7 @@ import {
   createRunSandbox,
   createRunSecretWriter,
   destroyBot,
+  destroyPersonalComputers,
   EmailEmulator,
   EncryptedSecretStore,
   GraphileJobPublisher,
@@ -32,6 +33,7 @@ import {
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
   IntegrationProviderSettings,
+  identityMaintenance,
   isComposioEnabled,
   isMessagingSurfaceEnabled,
   isPipedreamEnabled,
@@ -50,6 +52,7 @@ import {
   reconcileComputerUpdates,
   SmtpEmailProvider,
   sandboxProviderOptionsFromEnv,
+  stopSpaceComputers,
 } from "@nova/adapters";
 import {
   assertIdentityConfig,
@@ -86,6 +89,7 @@ import { cors } from "hono/cors";
 import { engineComputerClient } from "./engine-client.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
+import { setEngineAccountSuspended } from "./features/admin/service.js";
 import { mountPublishedApps } from "./features/apps/published-apps.js";
 import { mountScreenTarget } from "./features/computer/screen-proxy.js";
 import { mountLocalSettings } from "./local-settings.js";
@@ -198,10 +202,7 @@ export async function createApp(
   }
   // One rule for "may this person act now", shared with the session lookup: active, and either
   // the mailbox is proved or nothing can prove one and the deployment's rule lets them in.
-  const gateRule = {
-    hasEmailDelivery: Boolean(email),
-    devFlagAllowed: env.allowUnverifiedEmail && !isHostedDeployment(env),
-  };
+  const gateRule = { devFlagAllowed: env.allowUnverifiedEmail && !isHostedDeployment(env) };
   const mayAct = (userId: string) => userMayAct(prisma, userId, gateRule);
   const environmentSignupPolicy = signupPolicyFromEnv(env);
   const deploymentSettings = await prisma.deploymentSettings.upsert({
@@ -215,6 +216,12 @@ export async function createApp(
       signupPolicyInitialized: true,
     },
     update: {},
+  });
+  // Recorded for the other processes (the worker) so everyone applies one "may an unverified
+  // person act" rule.
+  await prisma.deploymentSettings.update({
+    where: { id: "default" },
+    data: { emailDelivery: Boolean(email) },
   });
   if (!deploymentSettings.signupPolicyInitialized) {
     // Older versions created this row with schema defaults even though auth
@@ -387,7 +394,25 @@ export async function createApp(
           ),
         ),
       );
+      // The team Computer is not any one bot's: destroy it too, before its rows are erased.
+      await destroyPersonalComputers({ prisma, sandbox }, userId);
       await rm(pushTokenPath(env.dataDir, userId), { force: true }).catch(() => undefined);
+    },
+    beforeQuarantine: (userId, spaceIds) =>
+      stopSpaceComputers({ prisma, sandbox }, spaceIds, `quarantine:${userId}`),
+    afterQuarantine: async ({ userId, email, organizationIds, stopFailed }) => {
+      // The admin log is not built yet (audit is a later phase); this line is the record.
+      getLogger().warn("quarantined a space after its mailbox was proved", {
+        "user.id": userId,
+        "identity.organizations": organizationIds.join(","),
+        "identity.computers_stop_failed": stopFailed,
+      });
+      await setEngineAccountSuspended(
+        { prisma },
+        engineComputerClient({ spaceId: "identity" }),
+        email,
+        true,
+      ).catch((error) => getLogger().error("could not pause the engine account", error));
     },
   });
   // Same composition ./omnigent/env.ts#omnigentRedactionSecretsFromEnv uses for the Omnigent
@@ -415,6 +440,7 @@ export async function createApp(
         prisma,
         jobs,
         reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
+        identityMaintenance: () => identityMaintenance({ prisma, sandbox }),
       })
     : undefined;
   reconciler?.start();

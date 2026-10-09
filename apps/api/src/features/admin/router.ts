@@ -9,12 +9,15 @@ import {
   deleteEngineUser,
   listAdminUsers,
   setAdminOverlay,
+  setEngineAccountSuspended,
   setUserSuspended,
 } from "./service.js";
 import {
   approveSignup,
+  discardSignup,
   pendingSignups,
   rejectSignup,
+  restoreSignup,
   signupSettings,
   updateSignupSettings,
 } from "./signups.js";
@@ -24,6 +27,21 @@ import {
 export function engineAdminRouter(c: RouterContext) {
   const { authed, deps } = c;
   const engine = (actor: { spaceId: string }) => engineComputerClient(actor);
+  // An account whose space was quarantined had its engine-side work paused; letting the person
+  // back in resumes it.
+  const keptEmail = async (userId: string) => {
+    const kept = await deps.prisma.organization.count({ where: { quarantinedFromUserId: userId } });
+    if (kept === 0) return null;
+    return (
+      (await deps.prisma.user.findUnique({ where: { id: userId }, select: { email: true } }))
+        ?.email ?? null
+    );
+  };
+  const resumeEngine = async (actor: { spaceId: string }, email: string | null) => {
+    if (email) {
+      await setEngineAccountSuspended(deps, engine(actor), email, false).catch(() => undefined);
+    }
+  };
   return {
     signups: {
       settings: authed.signups.settings.handler(({ context }) =>
@@ -33,8 +51,20 @@ export function engineAdminRouter(c: RouterContext) {
         updateSignupSettings(deps, context.actor, input),
       ),
       pending: authed.signups.pending.handler(({ context }) => pendingSignups(deps, context.actor)),
-      approve: authed.signups.approve.handler(({ context, input }) =>
-        approveSignup(deps, context.actor, input.userId),
+      approve: authed.signups.approve.handler(async ({ context, input }) => {
+        const kept = await keptEmail(input.userId);
+        const result = await approveSignup(deps, context.actor, input.userId);
+        await resumeEngine(context.actor, kept);
+        return result;
+      }),
+      restore: authed.signups.restore.handler(async ({ context, input }) => {
+        const kept = await keptEmail(input.userId);
+        const result = await restoreSignup(deps, context.actor, input.userId);
+        await resumeEngine(context.actor, kept);
+        return result;
+      }),
+      discard: authed.signups.discard.handler(({ context, input }) =>
+        discardSignup(deps, context.actor, input.userId),
       ),
       reject: authed.signups.reject.handler(({ context, input }) =>
         rejectSignup(deps, context.actor, input.userId),

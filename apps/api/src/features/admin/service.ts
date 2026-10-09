@@ -154,3 +154,30 @@ export async function adminModelCatalog(
     models: row.models,
   };
 }
+
+/**
+ * Stop (or resume) an account's engine-side work, the way suspension does: scheduled tasks and
+ * in-flight runs live in the engine, which only an engine admin can pause. The deployment owner is
+ * the admin identity; with no engine or owner there is nothing to do. Engine users are named by
+ * email. Best-effort: Nova's own gates already hold the account.
+ */
+export async function setEngineAccountSuspended(
+  deps: EngineModelsDeps,
+  client: OmnigentClientConfig | undefined,
+  email: string,
+  suspended: boolean,
+): Promise<void> {
+  if (!client) return;
+  const settings = await deps.prisma.deploymentSettings.findUnique({
+    where: { id: "default" },
+    select: { ownerUserId: true },
+  });
+  const owner = settings?.ownerUserId
+    ? await deps.prisma.user.findUnique({
+        where: { id: settings.ownerUserId },
+        select: { email: true },
+      })
+    : null;
+  if (!owner) return;
+  await onModels(setOmnigentUserSuspended(client, owner.email, email, suspended));
+}

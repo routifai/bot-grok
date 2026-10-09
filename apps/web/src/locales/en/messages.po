@@ -1131,6 +1131,9 @@ msgstr "Could not delete this."
 msgid "Could not delete."
 msgstr "Could not delete."
 
+msgid "Could not discard the previous space."
+msgstr "Could not discard the previous space."
+
 msgid "Could not disconnect OAuth"
 msgstr "Could not disconnect OAuth"
 
@@ -1284,6 +1287,9 @@ msgstr "Could not render chart"
 
 msgid "Could not reset password"
 msgstr "Could not reset password"
+
+msgid "Could not restore the previous space."
+msgstr "Could not restore the previous space."
 
 msgid "Could not revoke"
 msgstr "Could not revoke"
@@ -3105,6 +3111,9 @@ msgstr "Preview isn't available for this file type."
 msgid "Previous slide"
 msgstr "Previous slide"
 
+msgid "Previous space kept: confirm it's the same person"
+msgstr "Previous space kept: confirm it's the same person"
+
 msgid "Private"
 msgstr "Private"
 
@@ -3422,6 +3431,9 @@ msgstr "Restart to update"
 
 msgid "Restore"
 msgstr "Restore"
+
+msgid "Restore previous space"
+msgstr "Restore previous space"
 
 msgid "Restore the last saved workspace. Unsaved work on the computer is lost."
 msgstr "Restore the last saved workspace. Unsaved work on the computer is lost."

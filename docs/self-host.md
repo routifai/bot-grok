@@ -149,9 +149,17 @@ refuses to start with one of those modes and no provider. `approval` and `closed
 Proving a mailbox voids anything attached to that address earlier, including a password, so
 someone who pre-registered another person's address gains nothing; the owner signs in by code. If
 the account had been used before (it has a space, which is only possible with no mail provider),
-its space, bots, memory, connections, credentials, secrets and messaging links are deleted as well
-and it returns to pending for the admin to confirm: context a squatter planted cannot be told from
-the person's own, so it is removed rather than quarantined. The deployment owner is exempt.
+its space is **quarantined, not deleted**: its Computers stop, keys, connections, secrets, MCP
+servers, messaging links and approval rules are stripped, scheduled and running work is cancelled
+(and the engine account is paused), and the personal organization is detached from everyone and
+kept. The account returns to pending. In Settings > Signups the row says "Previous space kept:
+confirm it's the same person" and offers **Restore previous space** (re-attaches the space, bots
+and memory; keys and links stay gone and routines stay off) or **Discard** (destroys its Computers
+and removes it now); approving instead gives a clean space. Unclaimed quarantined spaces are purged
+after 30 days by the worker, Computers first. Context a squatter planted cannot be told from the
+person's own, which is why nothing is re-attached until an admin confirms the person. The
+deployment owner is exempt. Memberships in any shared organization are removed too (shared
+organizations cannot be created or joined in this version).
 
 The first owner is seated by a claim. With `OWNER_SETUP_TOKEN` set, only a sign-up presenting it
 (the "Setup token" field) can claim the seat; a hosted deployment with no owner requires the token
@@ -172,11 +180,15 @@ be `https://login.microsoftonline.com/<tenant-guid>/v2.0`; `common`, `organizati
 `consumers` are refused. With `AUTH_OIDC_ALLOWED_DOMAINS` set, this provider (and only it) may link to an existing
 person with the same email, and a sign-in on an unverified account is mailbox proof; without
 domains no provider account is linked by email. Entra issuers require the domains, and guests
-are refused. The signup mode applies like any other way in.
+are refused. Enable the optional `xms_edov` claim on the Entra app registration: when a token
+carries it, it must be true. The signup mode applies like any other way in.
 
 **Upgrade note.** The migration marks every existing user who already has a space as verified so
 the upgrade does not lock them out. An address squatted under an earlier open, no-SMTP signup that
 already had a space therefore becomes verified; review the people list after upgrading.
+
+The API records whether it can send mail in the database at boot, so the worker and other
+processes apply the same rule about unverified accounts.
 
 A hosted deployment must set one of `AUTH_TRUSTED_PROXIES` or `AUTH_CLIENT_IP_HEADER` (see the split
 deployment guide for Railway) and will not start without it. Behind a reverse proxy set `AUTH_TRUSTED_PROXIES` (its IPs or CIDRs) or `AUTH_CLIENT_IP_HEADER`,

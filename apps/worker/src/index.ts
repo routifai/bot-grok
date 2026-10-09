@@ -18,6 +18,7 @@ import {
   GraphileJobWorkerHost,
   InMemoryJobQueue,
   InstalledConnectorProvider,
+  identityMaintenance,
   isComposioEnabled,
   isMessagingSurfaceEnabled,
   isPipedreamEnabled,
@@ -36,12 +37,7 @@ import {
   resolveSandboxProvider,
   sandboxProviderOptionsFromEnv,
 } from "@nova/adapters";
-import {
-  emailDeliveryConfigured,
-  isHostedDeployment,
-  resolveEncryptionKey,
-  resolveSupervisorToken,
-} from "@nova/core";
+import { isHostedDeployment, resolveEncryptionKey, resolveSupervisorToken } from "@nova/core";
 import {
   createDb,
   createThreadEvents,
@@ -156,9 +152,9 @@ async function main() {
   const runtimeSecrets = omnigentRedactionSecretsFromEnv(process.env);
   const omnigent = omnigentGatewayDepsFromEnv(process.env, prisma, events, runtimeSecrets);
   // The same "may this person act" rule the API applies to sessions: active, and verified or
-  // allowed unverified (no mail provider and approval mode, or the personal-install flag).
+  // allowed unverified. Whether mail can be sent is the API's recorded state, not this process's
+  // own environment.
   const gateRule = {
-    hasEmailDelivery: emailDeliveryConfigured(process.env),
     devFlagAllowed:
       process.env.AUTH_ALLOW_UNVERIFIED_EMAIL === "true" &&
       !isHostedDeployment({
@@ -202,6 +198,7 @@ async function main() {
     events,
     leadership: createPostgresReconciliationLeadership(pool),
     reconcileComputerUpdates: () => reconcileComputerUpdates({ prisma, jobs }),
+    identityMaintenance: () => identityMaintenance({ prisma, sandbox }),
   });
   reconciler.start();
 

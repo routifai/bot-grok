@@ -14,6 +14,8 @@ const api = vi.hoisted(() => ({
   pending: vi.fn(),
   approve: vi.fn(),
   reject: vi.fn(),
+  restore: vi.fn(),
+  discard: vi.fn(),
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: { signups: api } }));
 
@@ -27,6 +29,7 @@ const waiting = [
     email: "ada@corp.test",
     name: "Ada",
     emailVerified: true,
+    quarantined: false,
     createdAt: "2026-10-01T09:30:00Z",
   },
 ];
@@ -35,6 +38,7 @@ const squatted = {
   email: "dave@corp.test",
   name: "Dave",
   emailVerified: false,
+  quarantined: false,
   createdAt: "2026-10-02T09:30:00Z",
 };
 
@@ -45,6 +49,8 @@ beforeEach(() => {
   api.update.mockResolvedValue({ mode: "open", invites: [], domains: ["corp.test"] });
   api.approve.mockResolvedValue({ ok: true });
   api.reject.mockResolvedValue({ ok: true });
+  api.restore.mockResolvedValue({ ok: true });
+  api.discard.mockResolvedValue({ ok: true });
 });
 
 async function mount() {
@@ -104,6 +110,36 @@ it("does not warn when everyone waiting has verified their email", async () => {
   const view = await mount();
   try {
     expect(view.container.textContent).not.toContain("confirming the person another way");
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("offers to restore or discard a kept previous space, with the note to confirm the person", async () => {
+  api.pending.mockResolvedValue([{ ...waiting[0], quarantined: true }]);
+  const view = await mount();
+  try {
+    const row = view.container.querySelector('[data-testid="signup-u1"]')!;
+    expect(row.querySelector('[data-testid="signup-quarantined"]')?.textContent).toBe(
+      "Previous space kept: confirm it's the same person",
+    );
+    await act(async () => named(row, "Restore previous space").click());
+    expect(api.restore).toHaveBeenCalledWith({ userId: "u1" });
+    await act(async () => named(row, "Discard").click());
+    expect(api.discard).toHaveBeenCalledWith({ userId: "u1" });
+    // Approving instead gives a clean space; it stays available.
+    expect(named(row, "Approve")).toBeTruthy();
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("shows no restore or discard when nothing is kept", async () => {
+  const view = await mount();
+  try {
+    const row = view.container.querySelector('[data-testid="signup-u1"]')!;
+    expect(row.querySelector('[data-testid="signup-quarantined"]')).toBeNull();
+    expect(named(row, "Restore previous space")).toBeUndefined();
   } finally {
     await view.cleanup();
   }
