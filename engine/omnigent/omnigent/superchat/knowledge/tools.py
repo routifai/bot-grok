@@ -44,10 +44,15 @@ class FilesReadPageTool(ArtifactTool):
     _DESC = (
         "Look at one page of an indexed file: returns the page image (so you can read charts, "
         "tables and layout) and the page's text. Use it after files_search when the answer is "
-        "visual or needs the whole page. Pages are numbered from 1."
+        "visual or needs the whole page. Name the file by its name or path (as you know it from "
+        "the person's files or from files_search); a file_id works too. Pages are numbered from 1."
     )
     _PROPERTIES = {
-        "file_id": {"type": "string", "description": "The file id from files_search."},
+        "path": {
+            "type": "string",
+            "description": "The file's workspace path or plain file name, e.g. report.pdf.",
+        },
+        "file_id": {"type": "string", "description": "Optional: the file id from files_search."},
         "page": {"type": "integer", "description": "Page number, from 1."},
     }
-    _REQUIRED = ("file_id", "page")
+    _REQUIRED = ("path", "page")

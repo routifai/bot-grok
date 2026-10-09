@@ -56,6 +56,26 @@ def test_read_page_returns_text_and_an_image_envelope(tmp_path: Path, monkeypatc
     )
 
 
+def test_read_page_accepts_a_file_name_or_path(tmp_path: Path, monkeypatch) -> None:
+    runtime = make_runtime(tmp_path, monkeypatch)
+    put_pdf(runtime)
+    put_pdf(runtime, "your_files/uploads/2026-10-09/notes.pdf")
+    for ref in ("your_files/finance.pdf", "finance.pdf", "Finance.PDF", "uploads/2026-10-09/notes.pdf"):
+        out = asyncio.run(
+            handle_knowledge_tool(
+                HandlerCtx("files_read_page", None, SESSION), {"path": ref, "page": 1}
+            )
+        )
+        assert "Currency exposure" in out, ref
+    # A name the model put in file_id is still read as a name.
+    assert "Currency exposure" in json.dumps(call("files_read_page", file_id="notes.pdf", page=1))
+    put_pdf(runtime, "your_files/uploads/other/notes.pdf")
+    err = call("files_read_page", path="notes.pdf", page=1)["error"]
+    assert "More than one file" in err and "uploads/2026-10-09/notes.pdf" in err
+    assert "uploads/other/notes.pdf" in err
+    assert "isn't in your search index" in call("files_read_page", path="nope.pdf", page=1)["error"]
+
+
 def test_argument_errors_are_tool_errors(tmp_path: Path, monkeypatch) -> None:
     make_runtime(tmp_path, monkeypatch)
     assert call("files_search", query=" ")["error"]
