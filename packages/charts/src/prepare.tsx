@@ -9,7 +9,7 @@ import {
   sortByDateKey,
 } from "./chart-builder.js";
 import { isBuiltinChartType } from "./chart-types.js";
-import type { DateFormatSettings } from "./date.js";
+import { type DateFormatSettings, dateFormatForValues } from "./date.js";
 import type { ChartSpec } from "./spec.js";
 
 export type ChartRow = Record<string, unknown>;
@@ -85,7 +85,6 @@ export function prepareChart(
     throw new Error(`Unknown chart type "${spec.chart_type}".`);
   }
   const chartType = spec.chart_type;
-  const { dateFormat } = options;
   // Column names are matched case-insensitively against the real rows.
   const xAxisKey = resolveDataKey(rows, spec.x_axis_key ?? undefined);
   const series = spec.series.map((s) => ({ ...s, data_key: resolveDataKey(rows, s.data_key) }));
@@ -93,6 +92,13 @@ export function prepareChart(
     series.find((s) => s.data_key === key)?.color || defaultColorFor(key, index);
 
   const isPie = chartType === "pie" || chartType === "donut";
+  const dateFormat =
+    spec.x_axis_type === "date"
+      ? dateFormatForValues(
+          rows.map((row) => row[xAxisKey]),
+          options.dateFormat,
+        )
+      : options.dateFormat;
   const ordered = spec.x_axis_type === "date" ? sortByDateKey(rows, xAxisKey) : rows;
   const chartData = isPie ? bucketPieData(ordered, xAxisKey, series[0]?.data_key ?? "") : ordered;
 

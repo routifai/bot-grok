@@ -48,35 +48,96 @@ export const SUPPORTED_DATE_FORMAT_TOKENS: Array<{ token: string; description: s
   { token: "D", description: "Numeric day (e.g. 5)" },
   { token: "dddd", description: "Weekday (e.g. Friday)" },
   { token: "ddd", description: "Short weekday (e.g. Fri)" },
+  { token: "HH", description: "0-padded 24-hour (e.g. 09)" },
+  { token: "mm", description: "0-padded minute (e.g. 05)" },
 ];
 
 /**
- * Strict ISO date check: accept either a date-only `YYYY-MM-DD` or a full
- * datetime with an explicit timezone offset (`Z` or `±HH:MM`). Naive datetime
- * strings without a timezone are rejected because converting them via
- * `new Date(...)` would silently shift the day in the local timezone.
+ * The ISO shapes a chart date may take. The engine's `_ISO_DATE` / `_instant`
+ * (engine/.../superchat/charts/data.py) accept the same set; `date-parity.json` pins both.
+ * `YYYY-MM`, `YYYY-MM-DD`, then an optional time (space or `T`, any number of fraction digits)
+ * and an optional `Z` or `±HH:MM` / `±HHMM` offset. No offset means UTC.
  */
 const ISO_DATE_REGEX =
-  /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+  /^(\d{4})-(\d{2})(?:-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:?\d{2})?)?)?$/;
 
-/**
- * Returns true when the input looks like an ISO date (date-only or datetime
- * with explicit timezone) and parses to a real Date.
- */
-export function isIsoDateLike(value: unknown): boolean {
-  return typeof value === "string" && isIsoDateString(value);
+/** Milliseconds since the epoch for an ISO date or date-time, or null when it is not a real one. */
+export function parseIsoInstant(text: string): number | null {
+  const match = ISO_DATE_REGEX.exec(text);
+  if (!match) {
+    return null;
+  }
+  const [, y, mo, d, h, mi, sec, frac, zone] = match;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d ?? "1");
+  const hour = Number(h ?? "0");
+  const minute = Number(mi ?? "0");
+  const second = Number(sec ?? "0");
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, Number(`${frac ?? ""}000`.slice(0, 3)));
+  const real =
+    year >= 1 &&
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day &&
+    hour < 24 &&
+    minute < 60 &&
+    second < 60;
+  if (!real) {
+    return null;
+  }
+  let offsetMinutes = 0;
+  if (zone && zone !== "Z") {
+    const digits = zone.slice(1).replace(":", "");
+    const zoneHours = Number(digits.slice(0, 2));
+    const zoneMinutes = Number(digits.slice(2));
+    if (zoneHours >= 24 || zoneMinutes >= 60) {
+      return null;
+    }
+    offsetMinutes = (zone.startsWith("-") ? -1 : 1) * (zoneHours * 60 + zoneMinutes);
+  }
+  return date.getTime() - offsetMinutes * 60_000;
 }
 
-function isIsoDateString(value: string): boolean {
-  if (!ISO_DATE_REGEX.test(value)) {
-    return false;
+/** True when the input is an ISO date or date-time the engine would accept as a chart date. */
+export function isIsoDateLike(value: unknown): boolean {
+  return typeof value === "string" && parseIsoInstant(value) !== null;
+}
+
+/** Shown instead of the default when a chart's dates all fall within this span. */
+const INTRADAY_SPAN_MS = 2 * 24 * 60 * 60 * 1000;
+const INTRADAY_DATE_FORMAT: DateFormatSettings = {
+  preset: "custom",
+  customFormat: "MMM D, HH:mm",
+};
+
+/**
+ * The format for a chart's date values: the person's own when set, else the default, which shows
+ * the time when the dates span under two days (the day alone would repeat on every tick).
+ */
+export function dateFormatForValues(
+  values: unknown[],
+  settings?: DateFormatSettings | null,
+): DateFormatSettings | null | undefined {
+  if (settings) {
+    return settings;
   }
-  return !Number.isNaN(new Date(value).getTime());
+  const instants = values.flatMap((value) => {
+    const instant = typeof value === "string" ? parseIsoInstant(value) : null;
+    return instant === null ? [] : [instant];
+  });
+  if (instants.length === 0) {
+    return settings;
+  }
+  const span = Math.max(...instants) - Math.min(...instants);
+  return span < INTRADAY_SPAN_MS ? INTRADAY_DATE_FORMAT : settings;
 }
 
 /**
  * Resolves the effective pattern for the given settings, falling back to the
- * European preset when the custom pattern is missing.
+ * default ("MMM D, YYYY") when the custom pattern is missing.
  */
 export function resolveDateFormatPattern(settings?: DateFormatSettings | null): string {
   const preset = settings?.preset ?? DEFAULT_DATE_FORMAT_SETTINGS.preset;
@@ -96,10 +157,11 @@ export function resolveDateFormatPattern(settings?: DateFormatSettings | null): 
  * inputs are stringified unchanged.
  */
 export function formatDateValue(value: unknown, settings?: DateFormatSettings | null): string {
-  if (typeof value !== "string" || !isIsoDateString(value)) {
+  const instant = typeof value === "string" ? parseIsoInstant(value) : null;
+  if (instant === null) {
     return String(value ?? "");
   }
-  const date = new Date(value);
+  const date = new Date(instant);
   const pattern = resolveDateFormatPattern(settings);
   return formatDateWithPattern(date, pattern);
 }
@@ -130,7 +192,7 @@ const WEEKDAY_NAMES_LONG = [
 ];
 const WEEKDAY_NAMES_SHORT = WEEKDAY_NAMES_LONG.map((w) => w.slice(0, 3));
 
-const TOKEN_REGEX = /YYYY|YY|MMMM|MMM|MM|M|DD|D|dddd|ddd|\[([^\]]*)\]/g;
+const TOKEN_REGEX = /YYYY|YY|MMMM|MMM|MM|M|DD|D|dddd|ddd|HH|mm|\[([^\]]*)\]/g;
 
 function formatDateWithPattern(date: Date, pattern: string): string {
   const year = date.getUTCFullYear();
@@ -163,6 +225,10 @@ function formatDateWithPattern(date: Date, pattern: string): string {
         return WEEKDAY_NAMES_LONG[weekdayIndex] ?? "";
       case "ddd":
         return WEEKDAY_NAMES_SHORT[weekdayIndex] ?? "";
+      case "HH":
+        return String(date.getUTCHours()).padStart(2, "0");
+      case "mm":
+        return String(date.getUTCMinutes()).padStart(2, "0");
       default:
         return token;
     }

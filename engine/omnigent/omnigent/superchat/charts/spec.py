@@ -172,7 +172,7 @@ class ChartSource(BaseModel):
     path: str = Field(
         min_length=1,
         description=(
-            "Path of a result file in your workspace (.csv, .json or .jsonl) that "
+            "Path of a result file in your workspace (.csv, .tsv, .json, .jsonl or .ndjson) that "
             "your own code (pandas, duckdb) already wrote. The chart reads its rows from here; "
             "never retype data values."
         ),

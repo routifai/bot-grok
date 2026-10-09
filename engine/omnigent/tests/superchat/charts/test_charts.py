@@ -20,6 +20,8 @@ from omnigent.superchat.charts import CHART_SUFFIX, chart_stem, is_chart_name
 from omnigent.superchat.charts.data import (
     READ_CAP,
     ChartDataError,
+    _date_text,
+    _instant,
     _json_safe,
     read_rows,
     shape_rows,
@@ -453,3 +455,28 @@ async def test_a_file_past_the_read_cap_says_so(server, tmp_path: Path, monkeypa
     )
     assert out["chart"]["truncated"] is True
     assert "only the first 30 were read" in out["note"]
+
+
+def _date_parity() -> dict[str, Any]:
+    path = Path(__file__).resolve().parents[5] / "packages" / "charts" / "date-parity.json"
+    return json.loads(path.read_text())
+
+
+def _accepted_date(text: str) -> bool:
+    shaped = _date_text(text)
+    if shaped is None:
+        return False
+    try:
+        _instant(shaped)
+    except ValueError:
+        return False
+    return True
+
+
+def test_the_date_set_matches_the_web_twin() -> None:
+    """``packages/charts/src/date.ts`` reads the same file (date.test.ts): one definition."""
+    parity = _date_parity()
+    assert [t for t in parity["valid"] if not _accepted_date(t)] == []
+    assert [t for t in parity["invalid"] if _accepted_date(t)] == []
+    for text, utc in parity["instants"]:
+        assert _instant(text) == _instant(utc)

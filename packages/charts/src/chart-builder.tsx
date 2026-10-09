@@ -68,7 +68,12 @@ import {
   niceAxisMax,
   toFiniteNumber,
 } from "./chart-values.js";
-import { type DateFormatSettings, formatDateValue, isIsoDateLike } from "./date.js";
+import {
+  type DateFormatSettings,
+  formatDateValue,
+  isIsoDateLike,
+  parseIsoInstant,
+} from "./date.js";
 import type * as displayChart from "./spec.js";
 
 /** The series palette: Nova's `--chart-N` tokens (light and dark), resolved by the page or, for PNG, by the server render. */
@@ -1752,7 +1757,10 @@ function toDateTime(value: unknown): number | null {
   if (value == null) {
     return null;
   }
-  const time = new Date(value as string | number | Date).getTime();
+  if (typeof value === "string") {
+    return parseIsoInstant(value);
+  }
+  const time = new Date(value as number | Date).getTime();
   return Number.isNaN(time) ? null : time;
 }
 

@@ -1,3 +1,4 @@
+import { Children, isValidElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -116,6 +117,23 @@ describe("prepareChart", () => {
     } else if (!prepared.isKpi) {
       expect(prepared.legend).toHaveLength(fixture.spec.series.length);
     }
+  });
+
+  it("draws the radar ticks after the polygons", () => {
+    const fixture = CHART_FIXTURES.find((f) => f.spec.chart_type === "radar");
+    if (!fixture) throw new Error("no radar fixture");
+    const prepared = prepareChart(fixture.spec, fixture.data, { width: 600, height: 360 });
+    const names = Children.toArray((prepared.chart.props as { children?: ReactNode }).children).map(
+      (child) => {
+        const type = isValidElement(child) ? child.type : null;
+        return typeof type === "function" || typeof type === "object"
+          ? ((type as { displayName?: string }).displayName ?? "")
+          : "";
+      },
+    );
+    const lastRadar = names.lastIndexOf("Radar");
+    expect(lastRadar).toBeGreaterThan(-1);
+    expect(names.indexOf("PolarRadiusAxis")).toBeGreaterThan(lastRadar);
   });
 
   it("rejects an unknown chart type", () => {
