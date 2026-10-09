@@ -17,12 +17,12 @@ from fastapi.testclient import TestClient
 from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.inner.pi_executor import _build_models_json, _only_configured_family
-from omnigent.model_credentials.proxy import create_model_proxy_router
-from omnigent.model_credentials.store import ModelConnectionStore
 from omnigent.onboarding.provider_config import load_providers
 from omnigent.runtime.workflow import _apply_provider_to_pi
 from omnigent.server.inference_catalog import SandboxInferenceService
 from omnigent.server.managed_hosts import parse_sandbox_config
+from omnigent.superchat.models.proxy import create_model_proxy_router
+from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
 TEMPLATE = Path(__file__).resolve().parents[4] / "infra/railway/engine.config.byok.yaml.tmpl"

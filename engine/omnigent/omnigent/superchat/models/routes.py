@@ -20,8 +20,10 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.model_credentials.probe import KeyRejectedError, ProbeUnavailableError, probe_key
-from omnigent.model_credentials.store import (
+from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.routes._auth_helpers import require_admin, require_user
+from omnigent.superchat.models.probe import KeyRejectedError, ProbeUnavailableError, probe_key
+from omnigent.superchat.models.store import (
     ORG_OWNER,
     SCOPE_ORG,
     SCOPE_USER,
@@ -29,9 +31,7 @@ from omnigent.model_credentials.store import (
     ConnectionMeta,
     ModelConnectionStore,
 )
-from omnigent.model_credentials.upstreams import PROVIDERS
-from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
-from omnigent.server.routes._auth_helpers import require_admin, require_user
+from omnigent.superchat.models.upstreams import PROVIDERS
 from omnigent.superchat.sealing import VaultUnavailableError
 
 

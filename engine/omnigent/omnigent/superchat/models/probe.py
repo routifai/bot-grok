@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from omnigent.model_credentials.upstreams import PROVIDERS, UPSTREAMS
+from omnigent.superchat.models.upstreams import PROVIDERS, UPSTREAMS
 
 __all__ = ["PROVIDERS", "KeyRejectedError", "ProbeUnavailableError", "probe_key", "provider_label"]
 

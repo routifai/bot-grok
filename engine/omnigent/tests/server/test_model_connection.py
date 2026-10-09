@@ -17,13 +17,13 @@ from fastapi.testclient import TestClient
 from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
-from omnigent.model_credentials.routes import create_model_connection_router
-from omnigent.model_credentials.store import (
+from omnigent.superchat.models.routes import create_model_connection_router
+from omnigent.superchat.models.store import (
     ConnectionInputError,
     ModelConnectionStore,
     resolve_model_connection,
 )
-from omnigent.model_credentials.upstreams import UPSTREAMS, preferred_providers
+from omnigent.superchat.models.upstreams import UPSTREAMS, preferred_providers
 from omnigent.superchat.vault.store import (
     VAULT_KEY_ENV,
     VaultUnavailableError,
@@ -97,7 +97,7 @@ ROOT = {"x-user": "root"}
 
 
 def test_seal_aad_binds_scope_owner_and_provider(uri: str) -> None:
-    from omnigent.model_credentials.store import seal_key, unseal_key
+    from omnigent.superchat.models.store import seal_key, unseal_key
 
     token = seal_key("user", "u1", "anthropic", KEY)
     assert KEY not in token

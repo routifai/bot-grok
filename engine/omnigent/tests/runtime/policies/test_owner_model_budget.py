@@ -7,15 +7,6 @@ from pathlib import Path
 import pytest
 
 from omnigent.db.utils import now_epoch
-from omnigent.model_credentials import budget as budget_module
-from omnigent.model_credentials.budget import (
-    WORKSPACE_OWNER,
-    Budget,
-    ModelBudgets,
-    ModelBudgetStore,
-    bind_budgets,
-    month_start,
-)
 from omnigent.policies.builtins.model_budget import ask_level, owner_model_budget
 from omnigent.policies.function import FunctionPolicy
 from omnigent.policies.schema import OWNER_BUDGET_ASK_APPROVED_STATE_KEY
@@ -31,6 +22,15 @@ from omnigent.spec.types import (
 )
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
+from omnigent.superchat.models import budget as budget_module
+from omnigent.superchat.models.budget import (
+    WORKSPACE_OWNER,
+    Budget,
+    ModelBudgets,
+    ModelBudgetStore,
+    bind_budgets,
+    month_start,
+)
 
 
 def _event(seed: dict | None, phase: str = "request") -> dict:

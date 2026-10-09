@@ -14,15 +14,15 @@ from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
 from omnigent.inference_config import HarnessInferenceBinding
-from omnigent.model_credentials.selection import (
-    ModelPreferenceStore,
-    create_model_selection_router,
-)
 from omnigent.onboarding.provider_config import MODEL_CONNECTION, ProviderEntry
 from omnigent.server.inference_catalog import SandboxInferenceService
 from omnigent.server.routes.sandbox_inference import (
     prepare_create_inference,
     snapshot_serves_model,
+)
+from omnigent.superchat.models.selection import (
+    ModelPreferenceStore,
+    create_model_selection_router,
 )
 
 from .test_byok_pi import _hosted_state

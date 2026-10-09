@@ -14,7 +14,9 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
 
-from omnigent.model_credentials.budget import (
+from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.routes._auth_helpers import require_admin, require_user
+from omnigent.superchat.models.budget import (
     DEFAULT_AT_LIMIT,
     WORKSPACE_OWNER,
     Budget,
@@ -22,8 +24,6 @@ from omnigent.model_credentials.budget import (
     month_start,
     parse_budget,
 )
-from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
-from omnigent.server.routes._auth_helpers import require_admin, require_user
 
 
 class PutBudget(BaseModel):

@@ -3,7 +3,7 @@
 A thin sibling of :func:`omnigent.policies.builtins.cost.user_daily_cost_budget`, not a mode of
 it: that factory is a daily, admin-configured *downgrade gate* with unpriced-model prompts, while
 this one is month-based, takes its limits from the person's and the organization's settings
-(:mod:`omnigent.model_credentials.budget`) and must not nag about unpriced models. It shares the
+(:mod:`omnigent.superchat.models.budget`) and must not nag about unpriced models. It shares the
 mechanics that matter: the owner rollup seed in ``event["context"]["user_daily_cost"]``, the
 request/tool-call gates and an ASK whose approval the engine records per owner through a reserved
 ``state_updates`` key, so it holds across all the owner's sessions.

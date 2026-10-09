@@ -1,4 +1,4 @@
-"""In-Computer side of the engine model proxy (:mod:`omnigent.model_credentials.proxy`).
+"""In-Computer side of the engine model proxy (:mod:`omnigent.superchat.models.proxy`).
 
 The owner's model API key never enters the Computer. The harness is pointed at the engine's proxy
 and its gateway auth command (``python3 -m omnigent.host.model_credential token``) prints the only

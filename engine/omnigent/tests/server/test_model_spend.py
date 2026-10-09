@@ -14,19 +14,19 @@ from fastapi.testclient import TestClient
 from omnigent.db.utils import now_epoch, utc_day
 from omnigent.errors import OmnigentError
 from omnigent.llms.context_window import ModelPricing
-from omnigent.model_credentials import spend as spend_module
-from omnigent.model_credentials.budget import (
+from omnigent.runtime.public_error_codes import PUBLIC_ERROR_CODES, public_error_code
+from omnigent.server.inference_catalog import SandboxInferenceService, snapshot_uses_model_proxy
+from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
+from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
+from omnigent.superchat.models import spend as spend_module
+from omnigent.superchat.models.budget import (
     WORKSPACE_OWNER,
     Budget,
     ModelBudgets,
     ModelBudgetStore,
 )
-from omnigent.model_credentials.proxy import create_model_proxy_router
-from omnigent.model_credentials.spend import UsageTap, cost_usd
-from omnigent.runtime.public_error_codes import PUBLIC_ERROR_CODES, public_error_code
-from omnigent.server.inference_catalog import SandboxInferenceService, snapshot_uses_model_proxy
-from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
-from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
+from omnigent.superchat.models.proxy import create_model_proxy_router
+from omnigent.superchat.models.spend import UsageTap, cost_usd
 
 from .test_byok_pi import _hosted_state
 from .test_model_proxy import _Hosts

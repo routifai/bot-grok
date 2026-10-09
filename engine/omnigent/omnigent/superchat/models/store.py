@@ -25,7 +25,7 @@ from omnigent.db.utils import (
     now_epoch,
     run_write_transaction,
 )
-from omnigent.model_credentials.upstreams import PROVIDERS
+from omnigent.superchat.models.upstreams import PROVIDERS
 from omnigent.superchat.sealing import seal, unseal
 
 STATUS_VALID = "valid"

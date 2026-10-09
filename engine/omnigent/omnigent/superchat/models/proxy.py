@@ -10,7 +10,7 @@ leaves the engine process.
 
 Route: ``/v1/model/{provider}/{path}``. There is no host id in the path: the base URL is fixed in
 the session snapshot before the Computer exists, so the host id travels inside the credential.
-``provider`` is an upstream from :mod:`omnigent.model_credentials.upstreams` (base URL and auth
+``provider`` is an upstream from :mod:`omnigent.superchat.models.upstreams` (base URL and auth
 style come from there) and is resolved to the owner's connection for exactly that provider: their
 own key first, else the organization's. Auth headers and
 bodies are never logged.
@@ -19,7 +19,7 @@ Before forwarding, a suspended owner is refused with ``account_suspended`` (HTTP
 type, not the status, is what harnesses classify on); an owner (or organization) at a monthly
 budget set to stop is refused with
 ``model_budget_exhausted`` (HTTP 402); after it, the call's cost is read from the response as it
-streams through (:mod:`omnigent.model_credentials.spend`) and added to the owner's daily rollup.
+streams through (:mod:`omnigent.superchat.models.spend`) and added to the owner's daily rollup.
 """
 
 from __future__ import annotations
@@ -35,11 +35,11 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.model_credentials.org import SUSPENDED_MESSAGE, get_suspensions
-from omnigent.model_credentials.spend import UsageTap, cost_usd
-from omnigent.model_credentials.store import resolve_model_connection
-from omnigent.model_credentials.upstreams import UPSTREAMS, Upstream
 from omnigent.stores.host_store import HostStore
+from omnigent.superchat.models.org import SUSPENDED_MESSAGE, get_suspensions
+from omnigent.superchat.models.spend import UsageTap, cost_usd
+from omnigent.superchat.models.store import resolve_model_connection
+from omnigent.superchat.models.upstreams import UPSTREAMS, Upstream
 
 _logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 """Organization admin routes (``/v1/admin/...``), admin-only; the organization is the workspace.
 
 * ``GET``/``PUT /admin/models``: the model overlay ``{harnesses: {h: {allow, default}}}`` that
-  narrows what each harness's connection binding offers (see :mod:`...model_credentials.org`).
+  narrows what each harness's connection binding offers (see :mod:`omnigent.superchat.models.org`).
 * ``GET /admin/models/catalog?harness=``: the binding's full model list the overlay narrows.
 * ``GET /admin/users``: every person with role, status, spend, sessions, connections, budget and
   Computer; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
@@ -25,14 +25,6 @@ from pydantic import BaseModel, ConfigDict
 from omnigent.db.utils import utc_day
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.inference_config import normalize_inference_harness
-from omnigent.model_credentials import budget as budget_module
-from omnigent.model_credentials.budget import ModelBudgets
-from omnigent.model_credentials.org import (
-    ModelOrgOverlayStore,
-    Overlay,
-    SuspensionStore,
-)
-from omnigent.model_credentials.store import SCOPE_USER, ModelConnectionStore
 from omnigent.server.auth import (
     RESERVED_USER_LOCAL,
     RESERVED_USER_PUBLIC,
@@ -40,6 +32,15 @@ from omnigent.server.auth import (
     AuthProvider,
 )
 from omnigent.server.routes._auth_helpers import require_admin
+from omnigent.superchat.models import (
+    SCOPE_USER,
+    ModelBudgets,
+    ModelConnectionStore,
+    ModelOrgOverlayStore,
+    Overlay,
+    SuspensionStore,
+)
+from omnigent.superchat.models import budget as budget_module
 
 _logger = logging.getLogger(__name__)
 _RESERVED = frozenset({RESERVED_USER_LOCAL, RESERVED_USER_PUBLIC, RESERVED_USER_WORKSPACE})
