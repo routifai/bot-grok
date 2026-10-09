@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from itertools import pairwise
 from datetime import datetime, timedelta
+from itertools import pairwise
 from zoneinfo import ZoneInfo
 
 import pytest
