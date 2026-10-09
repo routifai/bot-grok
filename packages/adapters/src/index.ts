@@ -61,6 +61,7 @@ export * from "./none-sandbox.js";
 export * from "./omnigent/apps.js";
 export * from "./omnigent/artifacts.js";
 export * from "./omnigent/client.js";
+export * from "./omnigent/decks.js";
 export * from "./omnigent/env.js";
 export * from "./omnigent/gateway.js";
 export * from "./omnigent/projects.js";
