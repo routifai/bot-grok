@@ -525,9 +525,6 @@ msgstr "Automated senders will appear after they post here."
 msgid "Available after the routine is saved"
 msgstr "Available after the routine is saved"
 
-msgid "Avatar Studio"
-msgstr "Avatar Studio"
-
 msgid "Avatars"
 msgstr "Avatars"
 
@@ -690,9 +687,6 @@ msgstr "Choose a bot…"
 msgid "Choose a new password"
 msgstr "Choose a new password"
 
-msgid "Choose the Muse's color"
-msgstr "Choose the Muse's color"
-
 msgid "Choose which connected model Nova uses."
 msgstr "Choose which connected model Nova uses."
 
@@ -756,12 +750,6 @@ msgstr "Code"
 
 msgid "Collapse sidebar"
 msgstr "Collapse sidebar"
-
-msgid "Color"
-msgstr "Color"
-
-msgid "Color {color}"
-msgstr "Color {color}"
 
 msgid "Coming soon"
 msgstr "Coming soon"
@@ -1271,9 +1259,6 @@ msgstr "Current password"
 
 msgid "Customer support"
 msgstr "Customer support"
-
-msgid "Customize bot avatar"
-msgstr "Customize bot avatar"
 
 msgid "Daily spending limit"
 msgstr "Daily spending limit"
@@ -3520,6 +3505,9 @@ msgstr "This file is not valid UTF-8 text."
 
 msgid "this Mac"
 msgstr "this Mac"
+
+msgid "This message can’t be forked. Pick another message, or ask in a side chat."
+msgstr "This message can’t be forked. Pick another message, or ask in a side chat."
 
 msgid "This month"
 msgstr "This month"
