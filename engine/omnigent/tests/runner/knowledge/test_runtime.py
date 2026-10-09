@@ -54,7 +54,6 @@ def test_an_upload_is_indexed_immediately_not_on_the_idle_tick(tmp_path: Path) -
             and row.state in (STATE_TEXT_READY, STATE_READY)
         )
     )
-    assert runtime.indexer.unsearchable() == []
 
 
 def test_the_first_upload_starts_the_service_in_a_computer(

@@ -749,6 +749,7 @@ export function ShellPage() {
     reactToMessage,
     onAttachmentPick,
     removeAttachment,
+    retryAttachment,
     sendMessage,
     sendCardReply,
     followUpMessage,
@@ -1219,6 +1220,7 @@ export function ShellPage() {
                       fileInputRef={fileInputRef}
                       onAttachmentPick={onAttachmentPick}
                       onRemoveAttachment={removeAttachment}
+                      onRetryAttachment={retryAttachment}
                       onSend={sendMessage}
                       seedText={composerSeed}
                       onSeedConsumed={() => setComposerSeed(null)}

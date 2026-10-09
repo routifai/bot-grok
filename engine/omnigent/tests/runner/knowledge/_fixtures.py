@@ -14,6 +14,7 @@ from omnigent.runner.knowledge.embedder import (
     EmbeddingUnavailable,
 )
 from omnigent.runner.knowledge.indexer import Indexer
+from omnigent.runner.knowledge.rerank import Reranker, RerankUnavailable
 
 DIMS = 64
 TAG = "openrouter:fake-embed:64"
@@ -93,3 +94,19 @@ def run_all(indexer: Indexer) -> None:
     """Run every due file to the end, as the runtime thread would."""
     while indexer.process_next():
         pass
+
+
+@dataclass
+class FakeReranker(Reranker):
+    """Puts the passages containing ``prefer`` first (a stand-in for the model's judgment)."""
+
+    prefer: str = ""
+    reason: str | None = None  # set: cannot rerank, for that reason
+    calls: list[tuple[str, int]] = field(default_factory=list)
+
+    def rerank(self, query: str, passages: list[str]) -> list[int]:
+        if self.reason:
+            raise RerankUnavailable(self.reason)
+        self.calls.append((query, len(passages)))
+        order = range(len(passages))
+        return sorted(order, key=lambda i: (self.prefer.lower() not in passages[i].lower(), i))

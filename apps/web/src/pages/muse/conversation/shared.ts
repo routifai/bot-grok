@@ -3,12 +3,25 @@ import { ATTACHMENT_ALLOWED_MIME_TYPES } from "@nova/contracts";
 /** Identity colour for bots the roster no longer knows about. */
 export const FALLBACK_BOT_COLOR = "#85858A";
 
+/** Where a Muse attachment is before its message can go: written to the Computer, read there
+ * (converted, indexed), ready, or failed. Absent for chats that do not read files first. */
+export type AttachmentStatus = "uploading" | "reading" | "ready" | "error";
+
 export type PendingAttachment = {
   id: string;
   threadKey: string;
   file: File;
   previewUrl?: string;
+  status?: AttachmentStatus;
+  /** Calm copy for a failed attachment; the person can retry or remove it. */
+  error?: string;
 };
+
+/** Send waits until every attachment that is being read is ready (a failed one is removed or
+ * retried first). */
+export function attachmentsBlockSend(attachments: readonly PendingAttachment[]): boolean {
+  return attachments.some((attachment) => attachment.status && attachment.status !== "ready");
+}
 
 export const NO_ATTACHMENTS: PendingAttachment[] = [];
 export const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_MIME_TYPES.join(",");

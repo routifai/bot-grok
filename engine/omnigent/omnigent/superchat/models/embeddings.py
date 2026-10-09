@@ -238,6 +238,14 @@ class ModelEmbeddings:
             _tag(connection.provider, setting),
         )
 
+    def check(self, owner_id: str) -> None:
+        """Refuse a suspended owner or one whose "stop" budget is used up (shared by every
+        helper that calls a model for a Computer).
+
+        :raises EmbeddingUnavailable: ``suspended`` or ``budget``.
+        """
+        self._check(owner_id)
+
     def _check(self, owner_id: str) -> None:
         suspensions = get_suspensions()
         if suspensions is not None and suspensions.is_suspended(owner_id):

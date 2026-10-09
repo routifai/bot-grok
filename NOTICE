@@ -74,3 +74,12 @@ engine/omnigent/omnigent/superchat/daily_notes/quiet_moment.py and
 infra/omnigent/templates/AGENTS.md (from apps/backend/src/components/ai/memory-system-prompt.tsx and
 agents/memory/memory-extractor-llm.ts: standing instructions apart from profile facts, instructions
 only on permanence signals, supersede on change, default to extracting nothing).
+
+Nova's file-search guidance (the "The person's files" section of infra/omnigent/templates/AGENTS.md)
+and the shape of its files_* tools (search by keywords, by meaning, hybrid with a model rerank; get
+and multi-get; status) are adapted from the pi-qmd extension and its qmd-knowledge skill
+(https://github.com/hjanuschka/pi-qmd, commit 8266056, skills/qmd-knowledge/SKILL.md), Copyright (c)
+hjanuschka, licensed under the MIT License (declared in its package.json and README; the repository
+ships no separate LICENSE file), which wraps qmd (https://github.com/tobi/qmd, MIT, Copyright (c)
+Tobi Lutke). No qmd or pi-qmd code is included: the tools are re-implemented in Python over SQLite
+FTS5 and sqlite-vec (omnigent/runner/knowledge).

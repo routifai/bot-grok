@@ -3,8 +3,10 @@
 import {
   confineWorkspacePath,
   createOmnigentArtifact,
+  ingestOmnigentKnowledge,
   listOmnigentFiles,
   looksBinary,
+  OmnigentApiError,
   type OmnigentClientConfig,
   readOmnigentFile,
   WORKSPACE_FILE_MAX_BYTES,
@@ -212,6 +214,45 @@ export async function engineUploadAttachment(
       throw new ORPCError("SERVICE_UNAVAILABLE", {
         message: "Your Computer is starting. Try again in a moment.",
       });
+    }
+    return mapError(error);
+  }
+}
+
+/** Reads an uploaded attachment in the Computer and answers when it is searchable. One awaited
+ * call: the composer keeps Send disabled until it returns. Wakes the Computer. */
+export async function engineIngestAttachment(
+  deps: EngineFilesDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  input: { botId: string; path: string },
+): Promise<{ fileId: string; name: string; pages: number; chars: number }> {
+  const bot = await deps.prisma.bot.findFirst({
+    where: { id: input.botId, spaceId: actor.spaceId, userId: actor.userId },
+    select: { id: true },
+  });
+  if (!bot) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
+  let path: string;
+  try {
+    path = confineWorkspacePath(input.path);
+  } catch (error) {
+    return mapError(error);
+  }
+  if (path !== input.path || !path.startsWith(WORKSPACE_UPLOADS_PREFIX)) {
+    throw new ORPCError("BAD_REQUEST", { message: "Attachment is not an uploaded file" });
+  }
+  try {
+    const { email, sessionId } = await resolveMuseSession(deps, client, actor);
+    const read = await ingestOmnigentKnowledge(client, email, sessionId, { path });
+    return { fileId: read.file_id, name: read.name, pages: read.pages, chars: read.chars };
+  } catch (error) {
+    if (error instanceof Error && /\(503\)/.test(error.message)) {
+      throw new ORPCError("SERVICE_UNAVAILABLE", {
+        message: "Your Computer is starting. Try again in a moment.",
+      });
+    }
+    if (error instanceof OmnigentApiError && /\((400|404|422)\)/.test(error.message)) {
+      throw new ORPCError("BAD_REQUEST", { message: "Nova couldn't read this file." });
     }
     return mapError(error);
   }

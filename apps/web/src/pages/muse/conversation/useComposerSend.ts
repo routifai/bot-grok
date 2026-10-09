@@ -5,6 +5,7 @@ import {
   attachmentsForThread,
   type ComposerMention,
   inferAttachmentMimeType,
+  isIngestableAttachmentMimeType,
   resolveComposerSendPlan,
 } from "@nova/core";
 import { ORPCError } from "@orpc/client";
@@ -26,7 +27,7 @@ import { isRawEngineError, userFacingError } from "../../../lib/user-facing-erro
 import type { useCreateBot } from "../chrome/useCreateBot";
 import { markFirstRunSeen } from "../intro";
 import { quotedMessageText } from "./museTranscript";
-import { type PendingAttachment, readFileAsBase64 } from "./shared";
+import { attachmentsBlockSend, type PendingAttachment, readFileAsBase64 } from "./shared";
 import { uploadWhenComputerReady } from "./uploadWhenComputerReady";
 import type { useThreadState } from "./useThreadState";
 import type { useThreadSync } from "./useThreadSync";
@@ -178,11 +179,71 @@ export function useComposerSend({
     },
     [t],
   );
+  const setAttachmentState = useCallback(
+    (id: string, status: PendingAttachment["status"], error?: string) =>
+      setPendingAttachments((current) =>
+        current.map((item) =>
+          item.id === id
+            ? { ...item, status, error: status === "error" ? error : undefined }
+            : item,
+        ),
+      ),
+    [],
+  );
+  /** A Muse attachment is written to the Computer and read there as soon as it is picked, so its
+   * text is ready before the message goes (uploading, reading, ready, or a calm error). */
+  const prepareAttachment = useCallback(
+    async (attachment: PendingAttachment, botId: string) => {
+      const mimeType = inferAttachmentMimeType(attachment.file.name, attachment.file.type);
+      if (!mimeType) return;
+      try {
+        let stored = uploadedRef.current.get(attachment.id);
+        if (!stored) {
+          setAttachmentState(attachment.id, "uploading");
+          const contentBase64 = await readFileAsBase64(attachment.file);
+          stored = await uploadWhenComputerReady(
+            () =>
+              rpc.files.uploadAttachment({
+                botId,
+                name: attachment.file.name,
+                mimeType,
+                contentBase64,
+              }),
+            isComputerStarting,
+            () => undefined,
+          );
+          uploadedRef.current.set(attachment.id, stored);
+        }
+        if (isIngestableAttachmentMimeType(mimeType)) {
+          setAttachmentState(attachment.id, "reading");
+          await rpc.files.ingestAttachment({ botId, path: stored.path });
+        }
+        setAttachmentState(attachment.id, "ready");
+      } catch (error) {
+        setAttachmentState(
+          attachment.id,
+          "error",
+          isComputerStarting(error)
+            ? t`Your Computer is starting. Try again in a moment.`
+            : userFacingError(error, t`Couldn't read ${attachment.file.name}`),
+        );
+      }
+    },
+    [setAttachmentState, t],
+  );
+  const retryAttachment = useCallback(
+    (attachment: PendingAttachment) => {
+      const botId = activeBotId.current;
+      if (botId) void prepareAttachment(attachment, botId);
+    },
+    [prepareAttachment],
+  );
   const onAttachmentPick = useCallback(
     async (files: FileList | null) => {
       const threadKey = activeGroupId.current ?? activeBotId.current;
       if (!threadKey || !files?.length) return;
       const existing = attachmentsForThread(pendingAttachments, threadKey);
+      const toWorkspace = Boolean(museMode && activeBotId.current && !activeGroupId.current);
       const next: PendingAttachment[] = [];
       const skipped: string[] = [];
       for (const file of Array.from(files)) {
@@ -204,13 +265,17 @@ export function useComposerSend({
           threadKey,
           file,
           previewUrl: mimeType.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+          ...(toWorkspace ? { status: "uploading" as const } : {}),
         });
       }
       if (next.length) setPendingAttachments((current) => [...current, ...next]);
+      if (toWorkspace && activeBotId.current) {
+        for (const item of next) void prepareAttachment(item, activeBotId.current);
+      }
       setAttachmentNotice(skipped.length ? t`Skipped ${skipped.join(", ")}` : null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    [pendingAttachments, t],
+    [museMode, pendingAttachments, prepareAttachment, t],
   );
   const removeAttachment = useCallback((attachment: PendingAttachment) => {
     revokePendingAttachmentPreviews([attachment]);
@@ -227,6 +292,8 @@ export function useComposerSend({
       setFollowSignal((current) => current + 1);
       const originThreadKey = initialGroupTarget ?? initialBotTarget;
       const attachments = attachmentsForThread(pendingAttachments, originThreadKey);
+      // A file still being read (or one that failed) holds the message back; Send is disabled.
+      if (attachmentsBlockSend(attachments)) return false;
       const plan = resolveComposerSendPlan({
         text,
         mentions,
@@ -525,6 +592,7 @@ export function useComposerSend({
     reactToMessage,
     onAttachmentPick,
     removeAttachment,
+    retryAttachment,
     sendMessage,
     sendCardReply,
     followUpMessage,
