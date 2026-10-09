@@ -3237,6 +3237,55 @@ class TestSessionManagement(unittest.TestCase):
             cmd = mock_rpc.send_command.call_args[0][0]
             self.assertEqual(cmd["type"], "steer")
             self.assertEqual(cmd["message"], "STOP")
+            # Framed as one JSONL line Pi can answer by id.
+            self.assertTrue(cmd["id"].startswith("steer-"))
+            self.assertEqual(set(cmd), {"id", "type", "message"})
+            self.assertEqual(executor._session_states["test"].pending_steers, {cmd["id"]: "STOP"})
+
+        _run(_test())
+
+    def test_refused_steer_is_sent_again_as_follow_up(self):
+        async def _test():
+            from omnigent.inner.pi_executor import PiExecutor, _PiSessionState
+
+            rpc = MagicMock()
+            rpc.send_command = AsyncMock()
+            state = _PiSessionState(rpc=rpc, pending_steers={"steer-1": "make it blue"})
+
+            handled = await PiExecutor._resend_refused_steer(
+                state,
+                rpc,
+                {"type": "response", "command": "steer", "id": "steer-1", "success": False},
+            )
+
+            self.assertTrue(handled)
+            sent = rpc.send_command.call_args[0][0]
+            self.assertEqual(sent["type"], "follow_up")
+            self.assertEqual(sent["message"], "make it blue")
+            self.assertEqual(state.pending_steers, {})
+
+        _run(_test())
+
+    def test_accepted_steer_is_forgotten_and_other_responses_are_not_handled(self):
+        async def _test():
+            from omnigent.inner.pi_executor import PiExecutor, _PiSessionState
+
+            rpc = MagicMock()
+            rpc.send_command = AsyncMock()
+            state = _PiSessionState(rpc=rpc, pending_steers={"steer-1": "x"})
+
+            ok = {"type": "response", "command": "steer", "id": "steer-1", "success": True}
+            self.assertTrue(await PiExecutor._resend_refused_steer(state, rpc, ok))
+            rpc.send_command.assert_not_called()
+            self.assertEqual(state.pending_steers, {})
+
+            other = {"type": "response", "command": "prompt", "success": False}
+            self.assertFalse(await PiExecutor._resend_refused_steer(state, rpc, other))
+
+            # A refused follow_up never sinks the turn: it is only logged.
+            refused = {"type": "response", "command": "follow_up", "id": "f", "success": False}
+            self.assertTrue(await PiExecutor._resend_refused_steer(state, rpc, refused))
+            rpc.send_command.assert_not_called()
 
         _run(_test())
 

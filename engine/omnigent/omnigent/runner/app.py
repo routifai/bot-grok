@@ -6293,6 +6293,17 @@ def create_runner_app(
             )
         _publish_event(conv_id, event)
 
+    def _publish_input_delivery(conv_id: str, item_id: object, delivered: str) -> None:
+        """Tell clients how a message sent mid-turn was taken: steered, queued, or now a turn."""
+        if isinstance(item_id, str) and item_id:
+            _publish_event(
+                conv_id,
+                {
+                    "type": "session.input.delivery",
+                    "data": {"item_id": item_id, "delivered": delivered},
+                },
+            )
+
     def _is_native_harness(conv_id: str) -> bool:
         return is_native_harness(_session_harness_name(conv_id))
 
@@ -8646,6 +8657,7 @@ def create_runner_app(
                 next_body = buf.pop(0)
                 if not buf:
                     _session_message_buffers.pop(session_id, None)
+                _publish_input_delivery(session_id, next_body.get("persisted_item_id"), "turn")
                 _session_histories.setdefault(session_id, []).append(
                     {
                         "type": "message",
@@ -8666,6 +8678,7 @@ def create_runner_app(
                             "content": body.get("content", []),
                         }
                     )
+                    _publish_input_delivery(session_id, body.get("persisted_item_id"), "turn")
                 next_body = all_bodies[-1]
 
             if _is_sdk_compact_body(next_body):
@@ -10664,6 +10677,18 @@ def create_runner_app(
                                                     "content": _m.get("content", []),
                                                 }
                                             )
+                                            _publish_input_delivery(
+                                                conv_id, _m.get("persisted_item_id"), "steer"
+                                            )
+                                    continue
+                                if _evt_type == "injection.refused":
+                                    # The harness cannot take it into the running turn: the
+                                    # buffered copy runs as the next turn.
+                                    for _m in _session_message_buffers.get(conv_id) or []:
+                                        if _m.get("injection_id") == event.get("injection_id"):
+                                            _publish_input_delivery(
+                                                conv_id, _m.get("persisted_item_id"), "queued"
+                                            )
                                     continue
                                 if _evt_type == "response.output_text.delta":
                                     delta = event.get("delta")
@@ -11270,6 +11295,11 @@ def create_runner_app(
                         conversation_id,
                         [],
                     ).append(message_body)
+                    if not _can_forward:
+                        # Nothing will read it before the turn ends.
+                        _publish_input_delivery(
+                            conversation_id, message_body.get("persisted_item_id"), "queued"
+                        )
                     if _can_forward and process_manager is not None:
                         try:
                             _hc = await process_manager.get_client(conversation_id, "any")
@@ -11287,6 +11317,11 @@ def create_runner_app(
                                     _response_body_preview(_injection_resp),
                                     extra={"session_id": conversation_id},
                                 )
+                                _publish_input_delivery(
+                                    conversation_id,
+                                    message_body.get("persisted_item_id"),
+                                    "queued",
+                                )
                             else:
                                 _logger.debug(
                                     "post_session_events: mid-turn injection forward accepted "
@@ -11302,6 +11337,9 @@ def create_runner_app(
                                 conversation_id,
                                 exc_info=True,
                                 extra={"session_id": conversation_id},
+                            )
+                            _publish_input_delivery(
+                                conversation_id, message_body.get("persisted_item_id"), "queued"
                             )
                     return JSONResponse(
                         status_code=202,

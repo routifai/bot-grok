@@ -77,6 +77,19 @@ describe("pendingUserMessages", () => {
     expect(pendingUserMessages([sent, reply], transcript)).toEqual([]);
   });
 
+  it("keeps a message sent while the Muse works, though its replies landed after the send", () => {
+    // The person's first message, then tool work and a reply stamped after the second send.
+    const transcript = [
+      message("e0", "2026-10-01T10:04:00Z", "user"),
+      message("e1", "2026-10-01T10:05:03Z"),
+      message("e2", "2026-10-01T10:05:09Z"),
+    ];
+    expect(pendingUserMessages([sent], transcript)).toEqual([sent]);
+    // Once the engine records it, it is in the transcript and no longer pending.
+    const recorded = [...transcript, message("e3", "2026-10-01T10:05:10Z", "user")];
+    expect(pendingUserMessages([sent], recorded)).toEqual([]);
+  });
+
   it("shows every accepted message when the transcript is empty", () => {
     expect(pendingUserMessages([sent], [])).toEqual([sent]);
   });

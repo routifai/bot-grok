@@ -486,6 +486,12 @@ describe("watchFamily", () => {
   it("relays the engine's family events as ids only", async () => {
     streamOmnigentFamily.mockImplementation(async function* () {
       yield { type: "message.done", chat_id: "conv_side", item_id: "msg_9" };
+      yield {
+        type: "message.delivery",
+        chat_id: "conv_super",
+        item_id: "msg_10",
+        delivered: "queued",
+      };
       yield { type: "chat.reset", chat_id: "conv_super", item_id: "r1" };
       yield { type: "chats.changed", root_id: "conv_super" };
       yield { type: "activities.changed", root_id: "conv_super" };
@@ -500,6 +506,7 @@ describe("watchFamily", () => {
     expect(events).toEqual([
       { type: "open" },
       { type: "messageDone", chatId: "conv_side", itemId: "msg_9" },
+      { type: "messageDelivery", chatId: "conv_super", itemId: "msg_10", delivered: "queued" },
       { type: "chatReset", chatId: "conv_super", itemId: "r1" },
       { type: "chatsChanged" },
       { type: "activitiesChanged" },

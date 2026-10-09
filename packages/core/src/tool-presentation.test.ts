@@ -173,6 +173,14 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.snippet('{"error":"cap reached"}')).toBe("cap reached");
   });
 
+  it("message_helper: says a note was passed on and shows a refusal", () => {
+    const entry = TOOL_PRESENTATION.message_helper as ToolPresentation;
+    expect(entry.icon).toBe("helper");
+    expect(entry.title({ message: "make it blue" })).toBe("Passed a note to background work");
+    expect(entry.snippet('{"sent":true,"helper_id":"conv_1"}')).toBeNull();
+    expect(entry.snippet('{"error":"no Helper is running"}')).toBe("no Helper is running");
+  });
+
   it("open_project: says a Project was opened and shows its name", () => {
     const entry = TOOL_PRESENTATION.open_project as ToolPresentation;
     expect(entry.title({ slug: "q3-deck" })).toBe("Opened a project");
