@@ -236,5 +236,11 @@ def test_more_natural_questions_rank_the_right_page(tmp_path: Path) -> None:
 
 
 def test_query_syntax_is_never_executed(tmp_path: Path) -> None:
-    for query in ['budget" OR *', "NEAR(budget aurora)", "budget AND NOT", "-budget ^aurora:", "a:b*"]:
+    for query in [
+        'budget" OR *',
+        "NEAR(budget aurora)",
+        "budget AND NOT",
+        "-budget ^aurora:",
+        "a:b*",
+    ]:
         _first_page(tmp_path / str(abs(hash(query))), query + " aurora")

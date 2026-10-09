@@ -84,8 +84,10 @@ def _search(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
 
 def _read_page(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
     file_id, page = args.get("file_id"), _page_number(args.get("page"))
-    # ``path`` takes a workspace path or a plain file name; ``file_id`` that is no id is read as one.
-    path = next((v for v in (args.get("path"), args.get("file_name"), args.get("file")) if v), None)
+    # ``path`` takes a workspace path or a plain file name; a ``file_id`` that is no id is one too.
+    path = next(
+        (v for v in (args.get("path"), args.get("file_name"), args.get("file")) if v), None
+    )
     if isinstance(file_id, str) and not HEX_ID_RE.match(file_id):
         path, file_id = path or file_id, None
     if not file_id and not (isinstance(path, str) and path.strip()):

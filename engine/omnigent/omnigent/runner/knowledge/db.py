@@ -91,19 +91,20 @@ _TOKEN = re.compile(r"[^\W_]+", re.UNICODE)
 #: person uses to talk *to* the search ("find", "cite the file and page").
 _STOPWORDS = frozenset(
     """
-    a about above after again all also am an and any are as at be because been before being below
-    between both but by can could did do does doing down during each few for from further had has
-    have having he her here hers him his how i if in into is it its just me more most my no nor
-    not now of off on once only or other our ours out over own same she should so some such than
-    that the their them then there these they this those through to too under until up us very
-    was we were what when where which while who whom why will with would you your yours
-    please tell show give get got look looking find found use using used check cite citing
-    le la les un une des du de d l et ou en au aux ce ces cet cette dans sur sous par pour avec
-    sans que qui quoi dont est sont etre ete suis es ai as avons avez ont mon ma mes ton ta tes
-    son sa ses notre nos votre vos leur leurs je tu il elle nous vous ils elles se y ne pas plus
-    quel quelle quels quelles comment combien quand cherche trouve trouver donne montre
-    file files fichier fichiers page pages search document documents
-    """.split()
+    a about above after again all also am an and any are as at be because been before being
+    below between both but by can could did do does doing down during each few for from
+    further had has have having he her here hers him his how i if in into is it its just me
+    more most my no nor not now of off on once only or other our ours out over own same she
+    should so some such than that the their them then there these they this those through to
+    too under until up us very was we were what when where which while who whom why will
+    with would you your yours please tell show give get got look looking find found use
+    using used check cite citing le la les un une des du de d l et ou en au aux ce ces cet
+    cette dans sur sous par pour avec sans que qui quoi dont est sont etre ete suis es ai as
+    avons avez ont mon ma mes ton ta tes son sa ses notre nos votre vos leur leurs je tu il
+    elle nous vous ils elles se y ne pas plus quel quelle quels quelles comment combien
+    quand cherche trouve trouver donne montre file files fichier fichiers page pages search
+    document documents
+    """.split()  # noqa: SIM905
 )
 _PREFIX_MIN = 5  # a term this long also matches its longer forms (budget -> budgets, budgeting)
 

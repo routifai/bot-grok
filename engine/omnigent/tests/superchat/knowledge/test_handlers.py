@@ -60,7 +60,12 @@ def test_read_page_accepts_a_file_name_or_path(tmp_path: Path, monkeypatch) -> N
     runtime = make_runtime(tmp_path, monkeypatch)
     put_pdf(runtime)
     put_pdf(runtime, "your_files/uploads/2026-10-09/notes.pdf")
-    for ref in ("your_files/finance.pdf", "finance.pdf", "Finance.PDF", "uploads/2026-10-09/notes.pdf"):
+    for ref in (
+        "your_files/finance.pdf",
+        "finance.pdf",
+        "Finance.PDF",
+        "uploads/2026-10-09/notes.pdf",
+    ):
         out = asyncio.run(
             handle_knowledge_tool(
                 HandlerCtx("files_read_page", None, SESSION), {"path": ref, "page": 1}
@@ -73,7 +78,9 @@ def test_read_page_accepts_a_file_name_or_path(tmp_path: Path, monkeypatch) -> N
     err = call("files_read_page", path="notes.pdf", page=1)["error"]
     assert "More than one file" in err and "uploads/2026-10-09/notes.pdf" in err
     assert "uploads/other/notes.pdf" in err
-    assert "isn't in your search index" in call("files_read_page", path="nope.pdf", page=1)["error"]
+    assert (
+        "isn't in your search index" in call("files_read_page", path="nope.pdf", page=1)["error"]
+    )
 
 
 def test_argument_errors_are_tool_errors(tmp_path: Path, monkeypatch) -> None:
