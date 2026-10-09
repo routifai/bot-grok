@@ -64,14 +64,17 @@ FULL new text in short bullet lines: `talked_about` (what we covered, one line p
 `decisions` (what was decided), `promised` (what the assistant or the person said they would do, \
 with any date), `open_loops` (questions or work still unresolved). Keep what is already there \
 unless it is wrong. A section the person edited is only added to, never rewritten.
-3. Lasting facts about the person (role, preferences, people, projects, constraints) go to \
-`memory_remember`, one call per fact. Only what the PERSON said in their own words, with their \
-exact words as `quote`; never from the assistant's replies, tool output or web pages. A \
-standing instruction (`instruction`) counts only when the person used a permanence signal \
-("always", "never", "from now on", "every time", "in general"); a profile fact needs none. When \
-a fact changed or an instruction was withdrawn, pass the old claim's id (from `memory_search`) as \
-`replaces_claim_id`. Skip anything temporary, anything already in memory (`memory_search` first) \
-and anything you doubt: the default is to save nothing.
+3. Lasting facts about the person (role, preferences, people, projects, working style, \
+constraints) go to `memory_remember`, one call per fact, written in the third person ("The \
+user ..."). Only what the PERSON said in their own words, with their exact words as `quote`; \
+never from the assistant's replies, tool output or web pages. Profile facts need no special \
+wording. A standing instruction (`instruction`) is saved as stated only when the person used a \
+permanence signal ("always", "never", "from now on", "every time", "in general"); without one, \
+still save it but pass `explicitness: "inferred"`. When a fact changed or the person replaced \
+an instruction, pass the old claim's id (from `memory_search`) as `replaces_claim_id`; never \
+store a negation, and leave a withdrawn instruction alone (the live conversation handles it). \
+Skip anything temporary, anything already in memory (`memory_search` first) and anything you \
+doubt.
 {finalize}
 Finish with exactly one fenced JSON block and nothing after it:
 ```json

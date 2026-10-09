@@ -852,19 +852,28 @@ async def test_extract_candidates_reads_json_after_prose() -> None:
     assert await upkeep.extract_candidates(caller, []) == [{"kind": "fact"}]
 
 
-def test_extraction_prompt_defaults_to_nothing_and_gates_instructions_on_permanence() -> None:
+def test_extraction_prompt_has_two_bars_and_keeps_unsignalled_instructions_as_inferred() -> None:
     prompt = upkeep.MEMORY_UPKEEP_EXTRACTION_PROMPT
-    assert "Default to extracting nothing" in prompt
-    # Instructions need a permanence signal; profile facts do not.
-    assert "permanence signal" in prompt and '"always"' in prompt and '"from now on"' in prompt
-    assert "A profile fact" in prompt and "needs no special wording" in prompt
-    # Nova's own kinds survive the merge.
+    # One gate, on the instruction kind only; every other kind (incl. working style) needs none.
+    assert 'Profile facts (every kind except "instruction"' in prompt
+    assert "need no special wording" in prompt
+    for signal in ('"always"', '"never"', '"from now on"', '"every time"'):
+        assert signal in prompt
+    # Not dropped: an instruction without a signal is extracted as inferred evidence.
+    assert 'still extract it, but mark it "inferred"' in prompt
+    # Third person, never an order to the assistant.
+    assert "The user wants replies in French." in prompt
+    assert "never as an order to the assistant" in prompt
+    # The old blanket default must not come back.
+    assert "Default to extracting nothing" not in prompt
     for kind in ("preference", "instruction", "fact", "decision", "person", "project"):
-        assert f'"{kind}"' in prompt or f"|{kind}" in prompt or f'"{kind}"|' in prompt
+        assert kind in prompt
 
 
-def test_classify_prompt_supersedes_changed_facts_and_revoked_instructions() -> None:
+def test_classify_prompt_matches_what_the_service_does_with_edited_claims() -> None:
     prompt = upkeep.MEMORY_UPKEEP_CLASSIFY_PROMPT
-    assert "superseded rather than kept beside the new one" in prompt
-    assert "revoked or replaced" in prompt
+    assert "superseded (kept as history, no longer active)" in prompt
+    assert "wrote or edited it themselves it is kept and the new claim sits beside it" in prompt
+    # A withdrawal is not a contradiction and never becomes a stored negation.
+    assert "never record a negation" in prompt
     assert '"relation": "same"|"new"|"contradicts"' in prompt

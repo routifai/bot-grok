@@ -130,19 +130,23 @@ correction. Never extract one-time requests (e.g. "send this to Bob \
 today"), small talk, or secrets (passwords, tokens, API keys, account \
 numbers) — leave those out entirely.
 
-Default to extracting nothing: most transcripts hold no durable claim, and \
-when you doubt the user meant it to last, leave it out. Keep two bars apart. \
-A profile fact about the user (role, team, location, background) needs no \
-special wording. A standing instruction ("kind": "instruction") needs a clear \
-permanence signal in the user's own words — "always", "never", "from now on", \
-"every time", "in general", "don't ever", "remember that I" — otherwise it \
-only applies to that conversation (so "use Python" is not a claim, "always \
-use Python" is). Write an instruction as a directive ("Reply in French."), \
-not as "The user wants ...".
+Two bars, kept apart. Profile facts (every kind except "instruction": role, \
+team, location, background, projects, people, decisions, how the user likes to \
+work) need no special wording: extract them whenever the user states them. A \
+standing instruction ("kind": "instruction", how the user wants the assistant to \
+behave from now on) is "stated" only when the user's own words carry a permanence \
+signal — "always", "never", "from now on", "every time", "in general", "don't \
+ever", "remember that I". An instruction without one applies to that \
+conversation only (so "use Python" is a one-off, "always use Python" is \
+standing): still extract it, but mark it "inferred", so repeating it later \
+builds the evidence. Extract nothing for one-off requests, small talk or doubt \
+about what the user said; most transcripts hold only a few claims.
 
 Each candidate's "claim_text" must be one self-contained sentence, written \
 so it makes sense with no other context. Refer to the user as "The user"; \
-never give them a name the user didn't state as their own. Each candidate's "quote" must be \
+never give them a name the user didn't state as their own. Write an instruction \
+in the third person too ("The user wants replies in French."), never as an \
+order to the assistant. Each candidate's "quote" must be \
 the exact words the user wrote, copied verbatim from the cited item — do \
 not paraphrase, fix spelling, or add punctuation the user didn't use.
 
@@ -168,10 +172,12 @@ Use "same" when the candidate restates or paraphrases one of the listed \
 claims with the same meaning — set "claim_id" to that claim's id. Use \
 "contradicts" only when the candidate clearly conflicts with one specific \
 listed claim — set "claim_id" to that claim's id; this includes a changed fact \
-(new role, new employer) and an instruction the user revoked or replaced, so \
-the old claim is superseded rather than kept beside the new one. Never guess \
-at a contradiction the text doesn't name. Otherwise use "new" with "claim_id": \
-null. Output JSON only — no markdown, no commentary."""
+(new role, new employer) and an instruction the user replaced with a new one. \
+The old claim is then superseded (kept as history, no longer active); if the \
+user wrote or edited it themselves it is kept and the new claim sits beside it. \
+An instruction the user only withdrew is not a contradiction: use "new" and \
+never record a negation. Never guess at a contradiction the text doesn't name. \
+Otherwise use "new" with "claim_id": null. Output JSON only — no markdown, no commentary."""
 
 # ── secret / one-time guards (verify step) ───────────────────────────────
 

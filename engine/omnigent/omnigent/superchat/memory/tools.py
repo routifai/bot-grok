@@ -104,6 +104,16 @@ class MemoryRememberTool(Tool):
                             "type": "string",
                             "description": "The user's exact words this claim is drawn from.",
                         },
+                        "explicitness": {
+                            "type": "string",
+                            "enum": ["stated", "inferred"],
+                            "description": (
+                                "'inferred' for a standing instruction the person gave without "
+                                "a permanence signal (always, never, from now on): saved at low "
+                                "confidence so repetition builds the evidence. Defaults to "
+                                "'stated'."
+                            ),
+                        },
                         "replaces_claim_id": {
                             "type": "string",
                             "description": (
@@ -145,6 +155,9 @@ class MemoryRememberTool(Tool):
             quote=args.get("quote"),
             evidence=evidence,
             replaces_claim_id=args.get("replaces_claim_id") or None,
+            explicitness=args.get("explicitness")
+            if args.get("explicitness") == "inferred"
+            else None,
         )
         return json.dumps(result)
 

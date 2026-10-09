@@ -287,8 +287,10 @@ def test_min_gap_seconds_env() -> None:
     assert quiet_moment.min_gap_seconds({quiet_moment.MIN_GAP_SECONDS_ENV: "x"}) == 0.0
 
 
-def test_quiet_prompt_gates_instructions_and_supersedes_changes() -> None:
+def test_quiet_prompt_uses_the_same_gate_as_the_other_memory_prompts() -> None:
     prompt = quiet_moment.QUIET_PROMPT
-    assert "permanence signal" in prompt and "a profile fact needs none" in prompt
-    assert "`replaces_claim_id`" in prompt
-    assert "the default is to save nothing" in prompt
+    assert "Profile facts need no special wording" in prompt
+    assert "permanence signal" in prompt and '`explicitness: "inferred"`' in prompt
+    assert 'third person ("The user ...")' in prompt
+    assert "`replaces_claim_id`" in prompt and "never store a negation" in prompt
+    assert "the default is to save nothing" not in prompt
