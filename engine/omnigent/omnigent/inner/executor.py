@@ -13,7 +13,7 @@ import json
 import threading
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeAlias, runtime_checkable
+from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 from omnigent.runtime.mcp_tool_result import decode_mcp_image_result
 
@@ -318,6 +318,28 @@ class SubAgentToolCall(ExecutorEvent):
     call_id: str
     name: str
     args: ToolArgs = field(default_factory=dict)
+
+
+@dataclass
+class SteerOutcome(ExecutorEvent):
+    """How a message offered with :meth:`Executor.steer_session_message` ended.
+
+    An executor that answered ``"pending"`` yields exactly one of these per offered message
+    before its turn's terminal event.
+
+    :param steer_id: The ``steer_id`` the message was offered with, e.g. ``"inj_ab12"``.
+    :param taken: ``True`` when the running turn took the message up (the model reads it);
+        ``False`` when it did not, so the caller keeps it for the next turn.
+    """
+
+    steer_id: str
+    taken: bool
+
+
+#: An executor's answer to :meth:`Executor.steer_session_message`: ``"taken"`` (the write
+#: itself puts the message in the running turn), ``"pending"`` (a :class:`SteerOutcome` for it
+#: follows in the turn's events) or ``"refused"`` (nothing was delivered).
+SteerOffer: TypeAlias = Literal["taken", "pending", "refused"]
 
 
 @dataclass
@@ -699,6 +721,24 @@ class Executor:
     async def enqueue_session_message(self, session_key: str, content: EnqueuedContent) -> bool:  # noqa: ARG002 — default no-op; subclasses override to support live queueing
         """Send a new user message to a live session without interrupting it, if supported."""
         return False
+
+    async def steer_session_message(
+        self, session_key: str, content: EnqueuedContent, *, steer_id: str
+    ) -> SteerOffer:
+        """Offer a message to the turn that is running now (a steer).
+
+        The default writes it with :meth:`enqueue_session_message`, whose acceptance is the
+        take-up. An executor that learns later whether its running turn read the message
+        answers ``"pending"`` and yields one :class:`SteerOutcome` with ``steer_id`` before the
+        turn ends.
+
+        :param session_key: The Omnigent session the turn belongs to.
+        :param content: The message, as text or a structured JSON value.
+        :param steer_id: Caller's id for the message, echoed on its :class:`SteerOutcome`.
+        :returns: ``"taken"``, ``"pending"`` or ``"refused"`` (see :data:`SteerOffer`).
+        """
+        del steer_id  # only an executor that answers "pending" echoes it
+        return "taken" if await self.enqueue_session_message(session_key, content) else "refused"
 
     def supports_live_message_queue(self) -> bool:
         """Whether ``enqueue_session_message()`` is expected to work during a running turn."""

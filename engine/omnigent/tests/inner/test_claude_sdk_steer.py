@@ -2,7 +2,9 @@
 
 The CLI is faked at the SDK client: ``query`` records what is written to its stdin and
 ``receive_response`` reads what the fake CLI "prints", ending at a ``ResultMessage`` like the
-real one. No process and no API call is involved.
+real one. No process and no API call is involved. The real CLI's behaviour these fakes follow
+(it echoes a ``priority: "next"`` message with our uuid, both when it attaches it at a tool
+boundary and when it runs it as its own next turn) was checked against the bundled CLI.
 """
 
 import asyncio
@@ -16,17 +18,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from omnigent.inner import claude_sdk_executor as module
 from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-from omnigent.inner.executor import ExecutorError, TurnComplete
+from omnigent.inner.executor import ExecutorError, SteerOutcome, TurnComplete
 
 SESSION = "sess_steer"
+#: Printed by the fake CLI to end its stream without a ``ResultMessage`` (the CLI exited).
+END = object()
 
 
 class _Result:
-    def __init__(self, text: str, tokens: int = 10):
+    def __init__(self, text: str, tokens: int = 10, cache_read: int = 0):
         self.session_id = "cli-session"
         self.result = text
         self.is_error = False
-        self.usage = {"input_tokens": tokens, "output_tokens": tokens}
+        self.usage = {
+            "input_tokens": tokens,
+            "output_tokens": tokens,
+            "cache_read_input_tokens": cache_read,
+            "service_tier": "standard",
+        }
 
 
 class _User:
@@ -44,6 +53,8 @@ class _Cli:
         self.writes: list[dict] = []
         self.prompt_written = asyncio.Event()
         self.fail_writes = False
+        self.write_gate: asyncio.Event | None = None
+        self.disconnected = 0
 
     def print_(self, message) -> None:
         self.stdout.put_nowait(message)
@@ -75,19 +86,23 @@ def _sdk(cli: _Cli, options_seen: list):
                 if isinstance(prompt, str):
                     cli.writes.append({"prompt": prompt})
                     cli.prompt_written.set()
-                else:
-                    async for message in prompt:
-                        cli.writes.append(message)
+                    return
+                if cli.write_gate is not None:
+                    await cli.write_gate.wait()
+                async for message in prompt:
+                    cli.writes.append(message)
 
             async def receive_response(self):
                 while True:
                     message = await cli.stdout.get()
+                    if message is END:
+                        return
                     yield message
                     if isinstance(message, _Result):
                         return
 
             async def disconnect(self):
-                return None
+                cli.disconnected += 1
 
     return _FakeSDK
 
@@ -111,25 +126,30 @@ async def _start_turn(executor: ClaudeSDKExecutor, cli: _Cli, options_seen: list
     return task, events
 
 
+def _outcomes(events: list) -> list[tuple[str, bool]]:
+    return [(e.steer_id, e.taken) for e in events if isinstance(e, SteerOutcome)]
+
+
 @pytest.mark.asyncio
-async def test_a_message_during_the_turn_is_written_to_the_live_cli():
+async def test_a_message_during_the_turn_is_written_and_taken_when_the_cli_echoes_it():
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
     task, events = await _start_turn(executor, cli, seen)
 
-    assert await executor.enqueue_session_message(SESSION, "just redo the deck again") is True
+    offer = await executor.steer_session_message(SESSION, "just redo it", steer_id="inj_1")
+    assert offer == "pending"  # written, but taken only once the CLI says so
 
     pushed = cli.writes[-1]
-    assert pushed["message"] == {"role": "user", "content": "just redo the deck again"}
+    assert pushed["message"] == {"role": "user", "content": "just redo it"}
     assert pushed["priority"] == "next"  # joins the running turn at its next step
     assert pushed["session_id"] == SESSION
-    assert pushed["uuid"] in executor._steer_windows[SESSION].pending
+    assert executor._steer_windows[SESSION].pending == {pushed["uuid"]: "inj_1"}
 
-    cli.print_(_User(pushed["uuid"]))  # the CLI took it up mid-turn
+    cli.print_(_User(pushed["uuid"]))  # the CLI attached it at a tool boundary
     cli.print_(_Result("done once"))
     await asyncio.wait_for(task, 5)
 
-    assert [type(e) for e in events] == [TurnComplete]  # one turn, not two
-    assert events[0].response == "done once"
+    assert _outcomes(events) == [("inj_1", True)]
+    assert isinstance(events[-1], TurnComplete) and events[-1].response == "done once"
     assert SESSION not in executor._steer_windows
 
 
@@ -147,21 +167,29 @@ async def test_a_steer_that_missed_the_turn_is_answered_inside_the_same_turn():
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
     task, events = await _start_turn(executor, cli, seen)
 
-    assert await executor.enqueue_session_message(SESSION, "and make it blue") is True
+    assert await executor.steer_session_message(SESSION, "make it blue", steer_id="b") == "pending"
     uuid = cli.writes[-1]["uuid"]
 
-    # The model was already answering: the turn ends first, then the CLI runs the steer.
-    cli.print_(_Result("first answer", tokens=10))
+    # The model was already answering: the turn's result comes first, then the CLI runs the
+    # steer as its own next turn. Nothing but the CLI's own output decides when to stop.
+    cli.print_(_Result("first answer", tokens=10, cache_read=100))
     await asyncio.sleep(0.05)
     assert not task.done()  # still reading: an answer is owed
-    assert SESSION in executor._steer_windows and executor._steer_windows[SESSION].open
+    assert executor._steer_windows[SESSION].open
 
     cli.print_(_User(uuid))
-    cli.print_(_Result("blue answer", tokens=5))
+    cli.print_(_Result("blue answer", tokens=5, cache_read=40))
     await asyncio.wait_for(task, 5)
 
-    assert len(events) == 1 and isinstance(events[0], TurnComplete)
-    assert events[0].usage["input_tokens"] == 15  # both runs are billed
+    assert _outcomes(events) == [("b", True)]
+    done = events[-1]
+    assert isinstance(done, TurnComplete)
+    # Both CLI turns are billed, cache buckets included.
+    assert done.usage["input_tokens"] == 15
+    assert done.usage["output_tokens"] == 15
+    assert done.usage["total_tokens"] == 30
+    assert done.usage["cache_read_input_tokens"] == 140
+    assert done.usage["service_tier"] == "standard"
     assert not executor._steer_windows
 
 
@@ -169,61 +197,108 @@ async def test_a_steer_that_missed_the_turn_is_answered_inside_the_same_turn():
 async def test_a_second_steer_during_the_followup_is_read_too():
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
     task, events = await _start_turn(executor, cli, seen)
-    await executor.enqueue_session_message(SESSION, "one")
+    await executor.steer_session_message(SESSION, "one", steer_id="s1")
     first = cli.writes[-1]["uuid"]
     cli.print_(_Result("r1"))
     await asyncio.sleep(0.02)
     cli.print_(_User(first))
     await asyncio.sleep(0.02)
-    assert await executor.enqueue_session_message(SESSION, "two") is True
+    assert await executor.steer_session_message(SESSION, "two", steer_id="s2") == "pending"
     second = cli.writes[-1]["uuid"]
     cli.print_(_Result("r2"))
     await asyncio.sleep(0.02)
     cli.print_(_User(second))
     cli.print_(_Result("r3"))
     await asyncio.wait_for(task, 5)
-    assert len(events) == 1 and isinstance(events[0], TurnComplete)
+    assert _outcomes(events) == [("s1", True), ("s2", True)]
+    assert sum(isinstance(e, TurnComplete) for e in events) == 1
 
 
 @pytest.mark.asyncio
 async def test_no_steer_is_accepted_once_the_turn_is_over_or_before_it_started():
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
-    assert await executor.enqueue_session_message(SESSION, "too early") is False
+    assert await executor.steer_session_message(SESSION, "early", steer_id="e") == "refused"
 
     task, _ = await _start_turn(executor, cli, seen)
     cli.print_(_Result("ok"))
     await asyncio.wait_for(task, 5)
 
-    assert await executor.enqueue_session_message(SESSION, "too late") is False
+    assert await executor.steer_session_message(SESSION, "late", steer_id="l") == "refused"
     assert [w for w in cli.writes if "uuid" in w] == []  # nothing was written to the CLI
 
 
 @pytest.mark.asyncio
-async def test_a_failed_push_is_refused_so_the_message_waits_for_the_next_turn():
+async def test_a_failed_write_is_refused_and_drops_the_broken_cli():
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
     task, events = await _start_turn(executor, cli, seen)
     cli.fail_writes = True
 
-    assert await executor.enqueue_session_message(SESSION, "lost?") is False
-    assert not executor._steer_windows[SESSION].pending  # the stream will not wait for it
+    assert await executor.steer_session_message(SESSION, "lost?", steer_id="x") == "refused"
+    assert not executor._steer_windows[SESSION].pending
+    assert SESSION not in executor._clients  # stdin is broken; the next turn starts fresh
 
     cli.print_(_Result("ok"))
     await asyncio.wait_for(task, 5)
-    assert isinstance(events[0], TurnComplete)
+    assert _outcomes(events) == []
 
 
 @pytest.mark.asyncio
-async def test_a_steer_the_cli_never_takes_up_drops_the_client_instead_of_hanging():
+async def test_a_stream_that_ends_without_a_result_refuses_pending_steers_and_drops_the_cli():
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
     task, events = await _start_turn(executor, cli, seen)
-    await executor.enqueue_session_message(SESSION, "ghost")
+    await executor.steer_session_message(SESSION, "ghost", steer_id="g")
 
-    with patch.object(module, "_STEER_FOLLOWUP_TIMEOUT_S", 0.05):
-        cli.print_(_Result("answer"))
-        await asyncio.wait_for(task, 5)
+    cli.print_(END)  # the CLI went away before answering
+    await asyncio.wait_for(task, 5)
 
-    assert isinstance(events[0], TurnComplete)
-    assert SESSION not in executor._clients  # the next turn rebuilds from history
+    assert _outcomes(events) == [("g", False)]
+    assert SESSION not in executor._clients  # the next turn rebuilds; nothing answers it twice
+    assert cli.disconnected == 1
+
+
+@pytest.mark.asyncio
+async def test_a_result_with_no_steer_pending_ends_the_turn_at_once():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, events = await _start_turn(executor, cli, seen)
+    cli.print_(_Result("answer"))
+    await asyncio.wait_for(task, 5)
+    assert [type(e) for e in events] == [TurnComplete]
+    assert SESSION in executor._clients  # kept for the next turn
+
+
+@pytest.mark.asyncio
+async def test_a_steer_write_survives_its_caller_being_cancelled():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, events = await _start_turn(executor, cli, seen)
+    cli.write_gate = asyncio.Event()
+
+    offer = asyncio.create_task(executor.steer_session_message(SESSION, "half", steer_id="h"))
+    await asyncio.sleep(0.01)
+    offer.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await offer
+    cli.write_gate.set()
+    await asyncio.sleep(0.01)
+
+    uuid = cli.writes[-1]["uuid"]  # the write still completed
+    assert executor._steer_windows[SESSION].pending == {uuid: "h"}
+    cli.print_(_User(uuid))
+    cli.print_(_Result("ok"))
+    await asyncio.wait_for(task, 5)
+    assert _outcomes(events) == [("h", True)]
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_turn_with_a_steer_in_flight_drops_the_cli():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, _ = await _start_turn(executor, cli, seen)
+    await executor.steer_session_message(SESSION, "queued in the cli", steer_id="q")
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert SESSION not in executor._clients
+    assert SESSION not in executor._steer_windows
 
 
 def test_the_executor_claims_the_live_queue():
@@ -236,6 +311,14 @@ def test_message_text_reads_string_and_block_content():
     assert module._message_text({"content": None}) == ""
 
 
+def test_usage_sums_numbers_and_nested_buckets_and_keeps_the_latest_text():
+    total = module._sum_usage(
+        {"input_tokens": 1, "cache_creation": {"ephemeral_5m_input_tokens": 2}, "tier": "a"},
+        {"input_tokens": 3, "cache_creation": {"ephemeral_5m_input_tokens": 4}, "tier": "b"},
+    )
+    assert total == {"input_tokens": 4, "cache_creation": {"ephemeral_5m_input_tokens": 6}, "tier": "b"}
+
+
 @pytest.mark.asyncio
 async def test_an_error_result_still_ends_the_turn():
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
@@ -244,4 +327,4 @@ async def test_an_error_result_still_ends_the_turn():
     bad.is_error = True
     cli.print_(bad)
     await asyncio.wait_for(task, 5)
-    assert isinstance(events[0], ExecutorError)
+    assert isinstance(events[-1], ExecutorError)
