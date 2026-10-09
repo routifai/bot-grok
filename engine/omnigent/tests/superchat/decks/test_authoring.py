@@ -13,7 +13,7 @@ from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.authoring import handle_authoring_tool
 from omnigent.superchat.decks.feature import DECKS_FEATURE
 from omnigent.superchat.decks.handlers import HELPER_ENV
-from omnigent.superchat.decks.tools import DeckCheckTool, DeckNewTool
+from omnigent.superchat.decks.tools import DeckCheckTool, DeckNewTool, DeckThemeSetTool
 
 SAMPLE = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
 
@@ -28,13 +28,16 @@ def _slides_in(deck: str) -> str:
     return deck.split(kit.SLOTS_OPEN, 1)[1].split(kit.SLOTS_CLOSE, 1)[0]
 
 
-def test_three_templates_with_licenses_and_embeddable_fonts() -> None:
-    assert set(kit.templates()) == {"blue-professional", "editorial-tri-tone", "magazine-mono"}
-    for template in kit.templates().values():
+def test_theme_library_has_licenses_metadata_and_embeddable_fonts() -> None:
+    templates = kit.templates()
+    assert len(templates) == 18
+    assert {"corporate-clean", "minimal-white", "editorial-tri-tone"} <= set(templates)
+    for template in templates.values():
         assert (template.directory / "LICENSE").read_text("utf-8").startswith("MIT License")
+        assert template.category and template.mode in {"light", "dark"}
         for font in template.fonts:
-            assert (template.directory / "fonts" / str(font["file"])).stat().st_size > 10_000
-            assert (template.directory / "fonts" / str(font["license"])).read_text("utf-8").strip()
+            assert (kit.FONTS_DIR / str(font["file"])).stat().st_size > 10_000
+            assert (kit.FONTS_DIR / str(font["license"])).read_text("utf-8").strip()
 
 
 @pytest.mark.parametrize("template", sorted(kit.templates()))
@@ -88,13 +91,16 @@ def test_unknown_template_is_refused() -> None:
 
 def test_tools_are_offered_to_the_muse_only() -> None:
     names = {t.name() for t in DECKS_FEATURE.tools(_labels(), None)}  # type: ignore[arg-type]
-    assert names == {"deck_new", "deck_check", "deck_export"}
+    assert names == {"deck_new", "deck_check", "deck_export", "deck_themes", "deck_theme_set"}
     assert DECKS_FEATURE.tools({}, None) == []  # type: ignore[arg-type]
     new = DeckNewTool().get_schema()["function"]["parameters"]
     assert new["required"] == ["path", "template", "title"]
     assert new["properties"]["template"]["enum"] == list(kit.templates())
     assert DeckCheckTool().get_schema()["function"]["parameters"]["required"] == ["path"]
-    for name in ("deck_new", "deck_check"):
+    setter = DeckThemeSetTool().get_schema()["function"]["parameters"]
+    assert setter["required"] == ["path", "theme_id"]
+    assert setter["properties"]["theme_id"]["enum"] == list(kit.templates())
+    for name in ("deck_new", "deck_check", "deck_themes", "deck_theme_set"):
         assert name in DECKS_FEATURE.handlers
 
 
@@ -230,3 +236,56 @@ async def test_deck_check_still_checks_structure_when_chromium_is_missing(
 async def test_deck_check_unknown_file(workspace: Path) -> None:
     out = json.loads(await handle_authoring_tool("deck_check", {"path": "missing.deck.html"}))
     assert "not found" in out["error"].lower()
+
+
+def test_every_theme_has_a_small_thumbnail() -> None:
+    from PIL import Image
+
+    for theme in kit.theme_dictionary():
+        path = kit.PREVIEWS_DIR / f"{theme['id']}.webp"
+        assert path.stat().st_size < 40_000
+        with Image.open(path) as image:
+            assert image.size == (480, 270)
+        with Image.open(path) as image:  # no baked-in letterbox: the corners are the slide
+            corners = [image.convert("L").getpixel(xy) for xy in ((0, 0), (479, 0), (0, 269))]
+        assert (max(corners) < 90) == (theme["mode"] == "dark")
+    gallery = {t["id"]: t for t in kit.theme_gallery()}
+    assert all(t["preview"].startswith("data:image/webp;base64,") for t in gallery.values())
+
+
+async def test_deck_themes_returns_the_dictionary_and_a_restrained_default() -> None:
+    out = json.loads(await handle_authoring_tool("deck_themes", {}))
+    ids = [t["id"] for t in out["themes"]]
+    assert ids == [t["id"] for t in kit.theme_dictionary()] and len(ids) == 18
+    assert out["default"] == "corporate-clean"
+    assert set(out["themes"][0]) == {"id", "name", "mood", "category", "mode", "best_for"}
+    assert {t["category"] for t in out["themes"]} == {"professional", "editorial", "bold", "dark"}
+    assert {t["mode"] for t in out["themes"]} == {"light", "dark"}
+
+
+async def test_deck_theme_set_restyles_the_file_and_keeps_the_slides(workspace: Path) -> None:
+    deck = kit.build_deck("corporate-clean", "T", SAMPLE)
+    (workspace / "d.deck.html").write_text(deck, "utf-8")
+    args = {"path": "d.deck.html", "theme_id": "nord"}
+    out = json.loads(await handle_authoring_tool("deck_theme_set", args))
+    assert out["ok"] is True and out["changed"] is True and out["previous"] == "corporate-clean"
+    written = (workspace / "d.deck.html").read_text("utf-8")
+    assert written == kit.build_deck("nord", "T", SAMPLE)
+    again = json.loads(await handle_authoring_tool("deck_theme_set", args))
+    assert again == {"ok": True, "changed": False, "theme": "nord", "path": again["path"]}
+
+
+async def test_deck_theme_set_refuses_bad_input(workspace: Path) -> None:
+    (workspace / "d.deck.html").write_text("<html><body>hand made</body></html>", "utf-8")
+    bad_theme = await handle_authoring_tool(
+        "deck_theme_set", {"path": "d.deck.html", "theme_id": "x"}
+    )
+    assert "theme_id must be one of" in json.loads(bad_theme)["error"]
+    hand_made = await handle_authoring_tool(
+        "deck_theme_set", {"path": "d.deck.html", "theme_id": "nord"}
+    )
+    assert "ask Nova" in json.loads(hand_made)["error"]
+    missing = await handle_authoring_tool(
+        "deck_theme_set", {"path": "no.deck.html", "theme_id": "nord"}
+    )
+    assert "not found" in json.loads(missing)["error"].lower()

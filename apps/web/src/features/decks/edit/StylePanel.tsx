@@ -8,10 +8,8 @@ import {
   AlignRight,
   Copy,
   Italic,
-  Redo2,
   Sparkles,
   Trash2,
-  Undo2,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -41,10 +39,6 @@ const WEIGHTS = [300, 400, 500, 600, 700, 800] as const;
 export type StylePanelProps = {
   targets: readonly DeckEditTarget[];
   theme: DeckEditTheme | null;
-  notice: EditNotice | null;
-  saving: boolean;
-  canUndo: boolean;
-  canRedo: boolean;
   slideCount: number;
   /** Whether a message composer is mounted to receive "Ask Nova". */
   canAsk: boolean;
@@ -53,8 +47,8 @@ export type StylePanelProps = {
   onStyle: (changes: StyleChanges, mode: ChangeMode) => void;
   onAttributes: (attributes: { href?: string | null; alt?: string | null }) => void;
   onCommit: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
+  /** Clears the selection, which closes the inspector. */
+  onClose: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
   onAsk: (notes: Record<string, string>) => void;
@@ -62,9 +56,11 @@ export type StylePanelProps = {
 };
 
 /**
- * The right-hand panel of the deck editor: what the selection looks like and controls that
- * change it. Fonts and colours come from the deck's own theme, so a change stays on the deck's
- * palette; everything else is plain CSS the engine writes into the element's inline style.
+ * The compact inspector of the deck editor: what the selection looks like and controls that
+ * change it. It exists only while something is selected and floats over the stage's end edge, so
+ * the slide never gives up room to it. Fonts and colours come from the deck's own theme, so a
+ * change stays on the deck's palette; everything else is plain CSS the engine writes into the
+ * element's inline style.
  */
 export function StylePanel(props: StylePanelProps) {
   const { t } = useLingui();
@@ -80,85 +76,107 @@ export function StylePanel(props: StylePanelProps) {
   };
   const isSlide = targets.length > 0 && targets.every((target) => target.kind === "slide");
   const hasText = targets.some((target) => target.kind === "text" || target.kind === "link");
-  const title = !primary
-    ? t`Select an element`
-    : targets.length > 1
-      ? t`${targets.length} elements`
-      : targetLabel(primary, words);
+  if (!primary) return <EmptyInspector theme={props.theme} />;
+  const title = targets.length > 1 ? t`${targets.length} elements` : targetLabel(primary, words);
 
   return (
     <aside
       data-testid="deck-style-panel"
       aria-label={t`Edit`}
       onPointerDownCapture={props.onCommit}
-      className="flex w-[272px] shrink-0 flex-col overflow-y-auto border-s border-border"
+      className="flex max-h-full w-[288px] flex-col overflow-y-auto overscroll-contain rounded-2xl bg-popover text-popover-foreground shadow-[0_12px_40px_rgb(0_0_0/0.16)] ring-1 ring-border motion-safe:animate-[deck-inspector-in_180ms_ease-out]"
     >
       <header className="flex items-center gap-1 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium" dir="auto">
             {title}
           </div>
-          {primary && targets.length === 1 ? (
+          {targets.length === 1 ? (
             <div className="truncate text-[11px] text-muted-foreground">{primary.id}</div>
           ) : null}
         </div>
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={t`Undo`}
-          title={t`Undo`}
-          disabled={!props.canUndo || props.saving}
-          onClick={props.onUndo}
+          className="text-muted-foreground"
+          aria-label={t`Close`}
+          title={t`Close`}
+          onClick={props.onClose}
         >
-          <Undo2 />
+          <X />
+        </Button>
+      </header>
+      <div className="flex items-center gap-1 px-4 pb-3">
+        <Button variant="ghost" size="sm" onClick={props.onDuplicate}>
+          <Copy />
+          {t`Duplicate`}
         </Button>
         <Button
           variant="ghost"
-          size="icon-sm"
-          aria-label={t`Redo`}
-          title={t`Redo`}
-          disabled={!props.canRedo || props.saving}
-          onClick={props.onRedo}
+          size="sm"
+          disabled={isSlide && props.slideCount <= 1}
+          onClick={props.onRemove}
         >
-          <Redo2 />
+          <Trash2 />
+          {t`Delete`}
         </Button>
-      </header>
-      {props.notice ? <Notice {...props} /> : null}
-      {primary ? (
-        <>
-          <div className="flex items-center gap-1 px-4 pb-3">
-            <Button variant="ghost" size="sm" onClick={props.onDuplicate}>
-              <Copy />
-              {t`Duplicate`}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={isSlide && props.slideCount <= 1}
-              onClick={props.onRemove}
-            >
-              <Trash2 />
-              {t`Delete`}
-            </Button>
-          </div>
-          {hasText ? <TextSection {...props} primary={primary} /> : null}
-          <BoxSection {...props} primary={primary} isSlide={isSlide} />
-          {isSlide ? null : <PositionSection {...props} primary={primary} />}
-          {primary.kind === "link" || primary.kind === "image" ? (
-            <AttributeSection key={primary.id} {...props} primary={primary} />
-          ) : null}
-          <AskSection {...props} />
-        </>
-      ) : (
-        <p className="px-4 text-[12px] text-muted-foreground">
-          {t`Click an element on the slide. Double-click text to type.`}
-        </p>
-      )}
+      </div>
+      {hasText ? <TextSection {...props} primary={primary} /> : null}
+      <BoxSection {...props} primary={primary} isSlide={isSlide} />
+      {isSlide ? null : <PositionSection {...props} primary={primary} />}
+      {primary.kind === "link" || primary.kind === "image" ? (
+        <AttributeSection key={primary.id} {...props} primary={primary} />
+      ) : null}
+      <AskSection {...props} />
     </aside>
   );
 }
 
-function Notice({ notice, onDismissNotice, onAsk, targets, canAsk }: StylePanelProps) {
+/** The inspector with nothing selected: what to do, and the deck's palette to see. The column is
+ * reserved for the whole edit session, so a selection never moves the stage. */
+function EmptyInspector({ theme }: { theme: DeckEditTheme | null }) {
+  const { t } = useLingui();
+  const swatches = COLOR_SWATCHES(theme);
+  return (
+    <aside
+      data-testid="deck-style-empty"
+      aria-label={t`Style`}
+      className="flex max-h-full w-[288px] flex-col gap-4 overflow-y-auto rounded-2xl bg-popover px-4 py-4 text-popover-foreground ring-1 ring-border"
+    >
+      <p className="text-[12px] text-muted-foreground">{t`Click an element to edit it.`}</p>
+      {swatches.length ? (
+        <div>
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t`Palette`}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {swatches.map((swatch) => (
+              <span
+                key={swatch.name}
+                title={swatch.name.replace(/^--/, "")}
+                role="img"
+                aria-label={swatch.name.replace(/^--/, "")}
+                className="size-5 rounded-full ring-1 ring-border ring-inset"
+                style={{ background: swatch.value }}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </aside>
+  );
+}
+
+/** The save / stale notice, shown over the stage whether or not anything is selected. */
+export function EditNoticeBanner({
+  notice,
+  onDismissNotice,
+  onAsk,
+  targets,
+  canAsk,
+}: Pick<StylePanelProps, "onDismissNotice" | "onAsk" | "targets" | "canAsk"> & {
+  notice: EditNotice | null;
+}) {
   const { t } = useLingui();
   if (!notice) return null;
   const text =
@@ -171,7 +189,7 @@ function Notice({ notice, onDismissNotice, onAsk, targets, canAsk }: StylePanelP
     <div
       role="status"
       data-testid="deck-edit-notice"
-      className="mx-4 mb-3 flex flex-col gap-2 rounded-xl border border-border bg-muted px-3 py-2.5 text-[12px]"
+      className="flex w-fit max-w-[360px] flex-col gap-2 rounded-2xl bg-popover px-3.5 py-2.5 text-[12px] text-popover-foreground shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-1 ring-border"
     >
       <div className="flex items-start gap-2">
         <span className="flex-1">{text}</span>

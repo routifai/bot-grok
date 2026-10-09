@@ -14,6 +14,7 @@ vi.mock("../../lib/artifact-open", () => ({
 }));
 
 import { ChartInlinePreview } from "./ChartArtifact";
+import { ChartGallery, chartOfMessage } from "./ChartResult";
 import { ChartThumbnail } from "./ChartThumbnail";
 import { ChartView } from "./ChartView";
 import { chartsExtension } from "./extension";
@@ -143,7 +144,7 @@ it("asks the server for the Library thumbnail in the current theme", async () =>
     width: 1,
     height: 1,
   });
-  render(<ChartThumbnail artifactId="thumb-1" version={2} />);
+  const root = render(<ChartThumbnail artifactId="thumb-1" version={2} />);
   await act(async () => {
     await Promise.resolve();
   });
@@ -155,5 +156,74 @@ it("asks the server for the Library thumbnail in the current theme", async () =>
     height: 400,
   });
   expect(host.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+  act(() => root.unmount());
   delete document.documentElement.dataset.theme;
+});
+
+function chartMessage(id: string, name = `${id}.chart.json`) {
+  return {
+    id: `m-${id}`,
+    role: "bot",
+    createdAt: "2026-10-09T00:00:00Z",
+    blocks: [
+      {
+        kind: "reply_card",
+        card: "file",
+        id: `artifact:${id}`,
+        data: { name, artifactId: id, kind: "json", size: 10, version: 1 },
+        fallback: "Saved",
+      },
+    ],
+  } as never;
+}
+
+it("reads a chart only from a message that is one chart file card", () => {
+  expect(chartOfMessage(chartMessage("a"))).toMatchObject({ artifactId: "a", messageId: "m-a" });
+  expect(chartOfMessage(chartMessage("b", "b.json"))).toBeNull();
+  expect(
+    chartOfMessage({ id: "t", role: "bot", blocks: [{ kind: "text", text: "hi" }] } as never),
+  ).toBeNull();
+});
+
+it("lays a dashboard reply out as KPI tiles and chart cards, never file cards", async () => {
+  const docs: Record<string, ChartDocument> = {
+    "g-kpi": documentOf("kpi"),
+    "g-line": documentOf("line"),
+    "g-bar": documentOf("bar"),
+  };
+  api.getById.mockImplementation(({ artifactId }: { artifactId: string }) =>
+    Promise.resolve({ contentBase64: btoa(JSON.stringify(docs[artifactId])) }),
+  );
+  render(
+    <ChartGallery
+      messages={[chartMessage("g-kpi"), chartMessage("g-line"), chartMessage("g-bar")]}
+    />,
+  );
+  expect(host.querySelector('[aria-busy="true"]')).not.toBeNull();
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(host.querySelector('[data-chart="kpi_card"]')?.textContent).toContain("$190,300");
+  expect(host.querySelectorAll("[data-chart]").length).toBe(3);
+  expect(host.textContent).toContain(docs["g-line"]?.spec.title);
+  expect(host.textContent).not.toContain("JSON");
+  // Every chart keeps its message id, so jumping to a message still lands on it.
+  expect(host.querySelectorAll("[data-message-id]").length).toBe(3);
+});
+
+it("says a chart is unavailable when its file is not a chart", async () => {
+  api.getById.mockResolvedValue({ contentBase64: btoa("not a chart") });
+  render(<ChartGallery messages={[chartMessage("g-broken")]} />);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(host.textContent).toContain("Chart unavailable");
+});
+
+it("draws chart files as charts wherever a file card would show", () => {
+  const args = { artifactId: "a", version: 1, data: {} };
+  expect(chartsExtension.result?.({ ...args, name: "a.chart.json" })).not.toBeNull();
+  expect(chartsExtension.result?.({ ...args, name: "a.pdf" })).toBeNull();
 });

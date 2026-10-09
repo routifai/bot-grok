@@ -3,8 +3,10 @@
   "name": "Editorial Tri-Tone",
   "description": "Three flat colours (dusty pink, mustard, burgundy), grotesk and literary serif; high contrast and expressive.",
   "best_for": "pitches, creative and brand decks, anything that should feel like a magazine spread",
+  "category": "bold",
+  "mode": "light",
   "upstream": "https://github.com/zarazhangrui/beautiful-html-templates/tree/main/templates/editorial-tri-tone",
-  "license": "MIT (see LICENSE); fonts SIL OFL 1.1 (see fonts/OFL-*.txt)",
+  "license": "MIT (see LICENSE); fonts SIL OFL 1.1 (see ../../fonts/OFL-*.txt)",
   "fonts": [
     {
       "family": "Bricolage Grotesque",

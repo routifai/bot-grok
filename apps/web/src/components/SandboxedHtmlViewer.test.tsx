@@ -5,13 +5,13 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 
-async function render(html: string) {
+async function render(html: string, decorative = false) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<SandboxedHtmlViewer title="Notes" html={html} />);
+    root.render(<SandboxedHtmlViewer title="Notes" html={html} decorative={decorative} />);
   });
   const iframe = container.querySelector("iframe");
   return {
@@ -116,3 +116,13 @@ function sourceAllows(source: string, url: URL): boolean {
   }
   return false;
 }
+
+it("lets only a decorative preview (a thumbnail) be barred from taking focus", async () => {
+  const plain = await render("<p>hi</p>");
+  expect(plain.srcDoc).not.toContain("window.focus=function");
+  await plain.cleanup();
+  const thumb = await render("<p>hi</p>", true);
+  expect(thumb.srcDoc).toContain("window.focus=function");
+  expect(thumb.srcDoc).toContain("font-src data:");
+  await thumb.cleanup();
+});

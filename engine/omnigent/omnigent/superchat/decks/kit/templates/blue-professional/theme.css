@@ -3,7 +3,7 @@
    motifs kept; rewritten for Nova's fixed 1920x1080 canvas (px units, no vw/vh or clamp()),
    expressed as tokens (tokens.css) plus the three surface classes of the shared layouts
    (../../layouts.css); web fonts replaced by static Latin-subset TTFs embedded at assembly
-   (fonts/, SIL OFL 1.1, license texts alongside). */
+   (kit/fonts, SIL OFL 1.1, license texts alongside). */
 /* Blue Professional: cream paper, electric cobalt. t-a = paper, t-b = cobalt, t-c = ink. */
 .slide.t-a { background: var(--bg); color: var(--fg); }
 .slide.t-b { background: #1e2bfa; color: #fdfae7; --muted: #d6d9ff; --accent: #fdfae7; --surface: #2c39fb; --line: #6b74fc; }

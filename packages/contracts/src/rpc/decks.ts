@@ -38,12 +38,36 @@ export const DeckPatchSchema = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("remove-element"), id: ElementId }),
   z.object({ kind: z.literal("duplicate-element"), id: ElementId }),
+  /** Swap the whole theme (tokens, theme CSS, fonts); the slides are untouched. */
+  z.object({ kind: z.literal("set-theme"), theme: z.string().min(1).max(60) }),
   z.object({ kind: z.literal("set-full-source"), source: z.string().min(1).max(25_000_000) }),
 ]);
 export type DeckPatch = z.infer<typeof DeckPatchSchema>;
 
+export const DECK_THEME_CATEGORIES = ["professional", "editorial", "bold", "dark"] as const;
+
+/** One entry of the deck theme dictionary; `preview` is a small thumbnail as a `data:` URI. */
+export const DeckThemeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  mood: z.string(),
+  category: z.enum(DECK_THEME_CATEGORIES),
+  mode: z.enum(["light", "dark"]),
+  bestFor: z.string(),
+  preview: z.string(),
+});
+export type DeckTheme = z.infer<typeof DeckThemeSchema>;
+
 export const decksContract = {
   decks: {
+    /** The id of the theme a deck is on, or null for a hand-made deck (the picker's check mark). */
+    theme: oc
+      .input(z.object({ artifactId: Id }))
+      .output(z.object({ theme: z.string().nullable() })),
+    /** The theme dictionary behind the deck panel's Theme picker. */
+    themes: oc
+      .input(z.object({}))
+      .output(z.object({ themes: z.array(DeckThemeSchema), defaultTheme: z.string() })),
     /** Hand edits as source patches: a new `manual` version; CONFLICT when `baseVersion` is no
      * longer the newest or the engine cannot apply a patch exactly (ask Nova instead). */
     edit: oc

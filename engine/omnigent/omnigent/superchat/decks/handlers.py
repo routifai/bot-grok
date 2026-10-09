@@ -19,7 +19,7 @@ from urllib.parse import quote
 from omnigent.superchat._handler_http import HEX_ID_RE, error, finish, resolve_caller
 from omnigent.superchat.artifact_kinds import MAX_ARTIFACT_BYTES
 from omnigent.superchat.decks.names import deck_stem, is_deck_name
-from omnigent.superchat.decks.tools import DECK_EXPORT_FORMATS
+from omnigent.superchat.decks.tools import DECK_AUTHORING_TOOL_NAMES, DECK_EXPORT_FORMATS
 from omnigent.superchat.feature import HandlerCtx
 
 HELPER_ENV = "NOVA_DECK_EXPORT_HELPER"
@@ -66,13 +66,14 @@ async def run_helper(fmt: str, html: Path, out: Path | None = None) -> dict[str,
 
 async def handle_deck_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     """
-    Run one deck tool: ``deck_new`` / ``deck_check`` author a deck, ``deck_export`` exports it.
+    Run one deck tool: the authoring tools (``deck_new``, ``deck_check``, ``deck_themes``,
+    ``deck_theme_set``) write or restyle a deck, ``deck_export`` exports it.
 
     :param ctx: The call context.
     :param args: Parsed tool arguments.
     :returns: Tool output JSON string (``{"type": "artifact", ...}`` for an export).
     """
-    if ctx.tool_name in ("deck_new", "deck_check"):
+    if ctx.tool_name in DECK_AUTHORING_TOOL_NAMES:
         from omnigent.superchat.decks.authoring import handle_authoring_tool
 
         return await handle_authoring_tool(ctx.tool_name, args)

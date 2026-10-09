@@ -8,7 +8,39 @@ import { ChartView } from "./ChartView";
 
 const documents = new Map<string, ChartDocument>();
 
-type State = { status: "loading" } | { status: "failed" } | { status: "ready"; doc: ChartDocument };
+export type ChartDocumentState =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "ready"; doc: ChartDocument };
+
+/**
+ * A chart artifact's document, fetched once per version and kept for the session; null when the
+ * bytes are not a chart document.
+ */
+export function loadChartDocument(
+  artifactId: string,
+  version: number | undefined,
+  bytes?: Uint8Array,
+): Promise<ChartDocument | null> {
+  const key = `${artifactId}:${version ?? ""}`;
+  const cached = documents.get(key);
+  if (cached) return Promise.resolve(cached);
+  const load = bytes
+    ? Promise.resolve(bytes)
+    : rpc.artifacts
+        .getById({ artifactId })
+        .then((artifact) => decodeArtifactBase64(artifact.contentBase64));
+  return load.then((raw) => {
+    const doc = parseChartDocument(raw);
+    if (doc) documents.set(key, doc);
+    return doc;
+  });
+}
+
+/** The document already loaded for this version, if any (renders without a loading frame). */
+export function cachedChartDocument(artifactId: string, version: number | undefined) {
+  return documents.get(`${artifactId}:${version ?? ""}`);
+}
 
 /** A chart artifact's document: from its bytes when the panel has them, else fetched once. */
 export function useChartDocument(
@@ -16,35 +48,21 @@ export function useChartDocument(
   version: number | undefined,
   bytes?: Uint8Array,
   enabled = true,
-): State {
-  const key = `${artifactId}:${version ?? ""}`;
-  const [state, setState] = useState<State>(() => {
-    const cached = documents.get(key);
+): ChartDocumentState {
+  const [state, setState] = useState<ChartDocumentState>(() => {
+    const cached = cachedChartDocument(artifactId, version);
     return cached ? { status: "ready", doc: cached } : { status: "loading" };
   });
   useEffect(() => {
     if (!enabled) return;
-    const cached = documents.get(key);
-    if (cached) return setState({ status: "ready", doc: cached });
     let cancelled = false;
-    const load = bytes
-      ? Promise.resolve(bytes)
-      : rpc.artifacts
-          .getById({ artifactId })
-          .then((artifact) => decodeArtifactBase64(artifact.contentBase64));
-    load
-      .then((raw) => {
-        if (cancelled) return;
-        const doc = parseChartDocument(raw);
-        if (!doc) return setState({ status: "failed" });
-        documents.set(key, doc);
-        setState({ status: "ready", doc });
-      })
+    loadChartDocument(artifactId, version, bytes)
+      .then((doc) => !cancelled && setState(doc ? { status: "ready", doc } : { status: "failed" }))
       .catch(() => !cancelled && setState({ status: "failed" }));
     return () => {
       cancelled = true;
     };
-  }, [artifactId, bytes, enabled, key]);
+  }, [artifactId, version, bytes, enabled]);
   return state;
 }
 

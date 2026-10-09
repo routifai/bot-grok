@@ -11,6 +11,11 @@ import { useArtifactContent } from "./library/useArtifactContent";
 import { PanelOverflowMenu } from "./PanelOverflowMenu";
 import { useArtifactPanelParts } from "./registry";
 
+/** The panel's width from `md` up: usual, wider for a file that needs room, widest while a file is
+ * being edited. */
+export const artifactPanelWidth = ({ wide, expanded }: { wide?: boolean; expanded?: boolean }) =>
+  expanded ? "md:w-[min(84vw,1600px)]" : wide ? "md:w-[min(58vw,900px)]" : "md:w-[min(46vw,640px)]";
+
 const EMPTY_BYTES = new Uint8Array(0);
 
 /**
@@ -74,7 +79,9 @@ export function ArtifactPanel({
         "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background",
         !fullScreen &&
           "md:relative md:inset-auto md:z-auto md:m-2 md:shrink-0 md:rounded-[18px] md:bg-glass md:ring-[0.5px] md:ring-glass-line md:ring-inset md:backdrop-blur-[30px] md:backdrop-saturate-[1.8]",
-        !fullScreen && (extra.wide ? "md:w-[min(58vw,900px)]" : "md:w-[min(46vw,640px)]"),
+        !fullScreen && artifactPanelWidth(extra),
+        !fullScreen &&
+          "md:motion-safe:transition-[width] md:motion-safe:duration-300 md:motion-safe:ease-out",
       )}
     >
       <header className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5">

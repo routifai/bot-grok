@@ -3,14 +3,20 @@ import { Button, cn } from "@nova/ui-web";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
-import { DeckThumb } from "./DeckThumb";
+import { DeckRail } from "./DeckRail";
+import { DeckThemePicker, type DeckThemeSource, type DeckThemesSource } from "./DeckThemePicker";
 import {
   type DeckNavigation,
   parseDeckSlides,
   postDeckNavigation,
   readDeckEvent,
 } from "./deck-model";
-import { useDeckEditing, useDeckPresentRequest } from "./deck-ui-state";
+import {
+  setDeckThemeOpen,
+  useDeckEditing,
+  useDeckPresentRequest,
+  useDeckThemeOpen,
+} from "./deck-ui-state";
 import { DeckEditor } from "./edit/DeckEditor";
 import type { DeckEditSource } from "./edit/useDeckEditor";
 
@@ -33,6 +39,8 @@ export function DeckViewer({
   artifact,
   onEdited,
   editSource,
+  themesSource,
+  themeSource,
 }: {
   html: string;
   title: string;
@@ -40,6 +48,10 @@ export function DeckViewer({
   artifact?: { id: string; version: number };
   onEdited?: (artifactId: string) => void;
   editSource?: DeckEditSource;
+  /** Where the Theme gallery gets the theme dictionary (the API by default). */
+  themesSource?: DeckThemesSource;
+  /** Where the gallery reads the theme the deck is on (the API by default). */
+  themeSource?: DeckThemeSource;
 }) {
   const { t } = useLingui();
   const slides = useMemo(() => parseDeckSlides(html), [html]);
@@ -53,6 +65,12 @@ export function DeckViewer({
   const [barVisible, setBarVisible] = useState(true);
   const barTimer = useRef<number | undefined>(undefined);
   const editing = useDeckEditing(title);
+  const themeOpen = useDeckThemeOpen(title);
+  // The gallery is a hidden state while presenting and must not outlive the deck on screen.
+  useEffect(() => {
+    if (presenting) setDeckThemeOpen(title, false);
+  }, [presenting, title]);
+  useEffect(() => () => setDeckThemeOpen(title, false), [title]);
   const presentRequest = useDeckPresentRequest(title);
   const handledPresent = useRef(presentRequest);
 
@@ -212,26 +230,10 @@ export function DeckViewer({
       data-testid="deck-viewer"
       aria-label={title}
       onMouseMove={presenting ? revealBar : undefined}
-      className={cn("flex h-full min-h-0 bg-background", presenting && "bg-black")}
+      className={cn("relative flex h-full min-h-0 bg-background", presenting && "bg-black")}
     >
       {presenting ? null : (
-        <div
-          role="listbox"
-          aria-label={t`Slides`}
-          aria-orientation="vertical"
-          className="flex w-[148px] shrink-0 flex-col gap-3 overflow-y-auto border-e border-border px-4 py-3"
-        >
-          {slides.map((slide) => (
-            <DeckThumb
-              key={slide.index}
-              html={html}
-              index={slide.index}
-              label={slide.label}
-              active={slide.index === active}
-              onSelect={goTo}
-            />
-          ))}
-        </div>
+        <DeckRail html={html} slides={slides} active={active} onSelect={goTo} slim={!!editor} />
       )}
       {editor ? (
         editor
@@ -243,6 +245,17 @@ export function DeckViewer({
           {bar}
         </div>
       )}
+      {themeOpen && artifact && !presenting ? (
+        <DeckThemePicker
+          deckKey={title}
+          frameRef={frame}
+          artifact={artifact}
+          onEdited={onEdited}
+          themesSource={themesSource}
+          themeSource={themeSource}
+          editSource={editSource}
+        />
+      ) : null}
     </section>
   );
 }

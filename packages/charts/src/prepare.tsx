@@ -9,7 +9,12 @@ import {
   sortByDateKey,
 } from "./chart-builder.js";
 import { isBuiltinChartType } from "./chart-types.js";
-import { type DateFormatSettings, dateFormatForValues } from "./date.js";
+import {
+  type DateFormatSettings,
+  dateFormatForValues,
+  fullDateFormatForValues,
+  isIsoDateLike,
+} from "./date.js";
 import type { ChartSpec } from "./spec.js";
 
 export type ChartRow = Record<string, unknown>;
@@ -48,6 +53,8 @@ export interface PreparedChart {
   legendLayout: LegendLayout;
   /** The plot width once a right-hand legend column is reserved. */
   chartWidth: number;
+  /** An x value read on its own (the tooltip's heading): a date in full, a category labelized. */
+  formatLabel: (value: unknown) => string;
 }
 
 /** Exact column name in the rows for `key`, matched case-insensitively. */
@@ -60,8 +67,40 @@ export function resolveDataKey(data: ChartRow[], key: string | undefined): strin
 }
 
 const CHAR_WIDTH_PX = 7;
-const TICK_PADDING_PX = 16;
-const MIN_TICK_WIDTH_PX = 40;
+/** Average width of a tick character (12px system font), for shortening category names. */
+const TICK_CHAR_WIDTH_PX = 6;
+/** Space kept between two shortened category names. */
+const CATEGORY_GAP_PX = 8;
+const TICK_PADDING_PX = 12;
+const MIN_TICK_WIDTH_PX = 32;
+/** Up to this many bars show their values by default. */
+const FEW_BARS = 8;
+/** The value axes and margins the x ticks cannot use. */
+const Y_AXES_ALLOWANCE_PX = 56;
+
+/**
+ * How many x ticks fit side by side: the plot's width (less the value axis) over the widest
+ * label. At least two, so a narrow chart still shows its first and last value.
+ */
+export function maxXAxisTicks(plotWidth: number, labelWidth: number): number {
+  const usable = Math.max(plotWidth - Y_AXES_ALLOWANCE_PX, 0);
+  return Math.max(2, Math.floor(usable / Math.max(labelWidth, MIN_TICK_WIDTH_PX)));
+}
+
+/**
+ * How many characters each category label may keep so that every category gets its tick, or null
+ * when even a short label would not fit (the axis then thins its ticks instead).
+ */
+export function categoryLabelChars(count: number, plotWidth: number): number | null {
+  if (count === 0) return null;
+  const slot = Math.max(plotWidth - Y_AXES_ALLOWANCE_PX, 0) / count;
+  const chars = Math.floor((slot - CATEGORY_GAP_PX) / TICK_CHAR_WIDTH_PX);
+  return chars >= 4 ? chars : null;
+}
+
+function truncateLabel(label: string, chars: number): string {
+  return label.length > chars ? `${label.slice(0, chars - 1).trimEnd()}…` : label;
+}
 
 function estimateMaxLabelWidth(
   data: ChartRow[],
@@ -92,13 +131,17 @@ export function prepareChart(
     series.find((s) => s.data_key === key)?.color || defaultColorFor(key, index);
 
   const isPie = chartType === "pie" || chartType === "donut";
-  const dateFormat =
-    spec.x_axis_type === "date"
-      ? dateFormatForValues(
-          rows.map((row) => row[xAxisKey]),
-          options.dateFormat,
-        )
-      : options.dateFormat;
+  const xValues = rows.map((row) => row[xAxisKey]);
+  // Dates sent as a category axis ("2026-01", "2026-02") still read as dates.
+  const isDate =
+    spec.x_axis_type === "date" ||
+    (spec.x_axis_type !== "number" &&
+      xValues.length > 0 &&
+      xValues.every((value) => isIsoDateLike(value)));
+  const dateFormat = isDate ? dateFormatForValues(xValues, options.dateFormat) : options.dateFormat;
+  const fullDateFormat = isDate
+    ? fullDateFormatForValues(xValues, options.dateFormat)
+    : options.dateFormat;
   const ordered = spec.x_axis_type === "date" ? sortByDateKey(rows, xAxisKey) : rows;
   const chartData = isPie ? bucketPieData(ordered, xAxisKey, series[0]?.data_key ?? "") : ordered;
 
@@ -118,6 +161,20 @@ export function prepareChart(
       ? Math.max(options.width - VERTICAL_LEGEND_WIDTH, 0)
       : options.width;
 
+  const labelWidth = estimateMaxLabelWidth(chartData, xAxisKey, dateFormat);
+  let xTicks = maxXAxisTicks(chartWidth, labelWidth);
+  let tickLabel = (value: string) => labelize(value, dateFormat);
+  // Named categories (regions, products) each keep a tick, shortened, rather than every other one
+  // disappearing; dates and numbers thin out instead, since the reader can fill in the gaps.
+  const vertical = chartType !== "horizontal_bar" && chartType !== "horizontal_bar_100";
+  if (!isDate && !isPie && vertical && spec.x_axis_type !== "number" && chartData.length > xTicks) {
+    const chars = categoryLabelChars(chartData.length, chartWidth);
+    if (chars !== null) {
+      xTicks = chartData.length;
+      tickLabel = (value: string) => truncateLabel(labelize(value, dateFormat), chars);
+    }
+  }
+
   const chart = buildChart({
     data: chartData,
     chartType,
@@ -126,13 +183,16 @@ export function prepareChart(
     xAxisLabel: spec.x_axis_label,
     series,
     colorFor,
-    labelFormatter: (value: string) => labelize(value, dateFormat),
+    labelFormatter: tickLabel,
     showGrid: true,
-    showDataLabels: spec.show_data_labels,
+    // A few bars of one series read best with their values on them, unless the spec says otherwise.
+    showDataLabels:
+      spec.show_data_labels ??
+      (chartType === "bar" && series.length === 1 && chartData.length <= FEW_BARS),
     margin: options.margin ?? { top: 10, right: 20, bottom: 5, left: 0 },
     title: spec.title,
     renderTitle: options.renderTitle,
-    maxXAxisTicks: Math.floor(chartWidth / estimateMaxLabelWidth(chartData, xAxisKey, dateFormat)),
+    maxXAxisTicks: xTicks,
     backgroundColor: options.backgroundColor,
     yAxisMin: spec.y_axis_min,
     yAxisMax: spec.y_axis_max,
@@ -152,5 +212,6 @@ export function prepareChart(
     legend,
     legendLayout,
     chartWidth,
+    formatLabel: (value: unknown) => labelize(value, fullDateFormat),
   };
 }

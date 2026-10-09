@@ -62,11 +62,18 @@ def store(db_uri: str, tmp_path: Path) -> SqlAlchemyArtifactStore:
     return SqlAlchemyArtifactStore(db_uri, lambda: blobs)
 
 
-def _save(store: SqlAlchemyArtifactStore, name: str, *, chat: str = _CHAT, user: str = "alice"):
+def _save(
+    store: SqlAlchemyArtifactStore,
+    name: str,
+    *,
+    chat: str = _CHAT,
+    user: str = "alice",
+    data: bytes = _HTML,
+):
     kind = name.rsplit(".", 1)[1]
     return store.create(
         user_id=user, parent_session_id=chat, name=name, title="Q3 review", kind=kind,
-        mime=KIND_MIME[kind], data=_HTML, source_path=None,
+        mime=KIND_MIME[kind], data=data, source_path=None,
     )  # fmt: skip
 
 
@@ -380,3 +387,27 @@ async def test_handler_exports_a_kit_deck_with_the_real_helper(
     assert out["type"] == "artifact" and out["name"] == f"q3.{fmt}" and out["size"] > 10_000
     data = store.read(store.get(out["id"], user_id="alice"))
     assert data.startswith(b"%PDF" if fmt == "pdf" else b"PK")
+
+
+def test_theme_route_lists_the_gallery(route_client) -> None:
+    client, _ = route_client
+    resp = client.get("/v1/decks/themes", headers=H)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["default"] == "corporate-clean" and len(body["themes"]) == 18
+    first = body["themes"][0]
+    assert {"id", "name", "mood", "category", "mode", "preview"} <= set(first)
+    assert first["preview"].startswith("data:image/webp;base64,")
+
+
+def test_theme_route_names_the_decks_current_theme(store, route_client) -> None:
+    from omnigent.superchat.decks import kit
+
+    client, _ = route_client
+    slides = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
+    themed = _save(store, "a.deck.html", data=kit.build_deck("nord", "T", slides).encode())
+    by_hand = _save(store, "b.deck.html")
+    assert client.get(f"/v1/decks/{themed.id}/theme", headers=H).json() == {"theme": "nord"}
+    assert client.get(f"/v1/decks/{by_hand.id}/theme", headers=H).json() == {"theme": None}
+    page = _save(store, "p.html")
+    assert client.get(f"/v1/decks/{page.id}/theme", headers=H).status_code == 400
