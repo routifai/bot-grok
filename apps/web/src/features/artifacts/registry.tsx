@@ -58,6 +58,25 @@ export interface ArtifactExtension {
   card(artifact: Artifact): ArtifactCardParts | null;
   /** A viewer for this file, or null to leave it to the default preview. */
   view?(props: ArtifactViewProps): ReactNode | null;
+  /** A live preview for a chat file card's body (a chart), or null to leave it to the default.
+   * `near` is true once the card is close to the viewport, so it can fetch lazily. */
+  inline?(props: ArtifactInlineArgs): ReactNode | null;
+  /** The Library thumbnail for this file, or null to leave it to the default preview. */
+  thumbnail?(artifact: ArtifactThumbnailArgs): ReactNode | null;
+}
+
+export interface ArtifactInlineArgs {
+  artifactId: string;
+  name: string;
+  version?: number;
+  near: boolean;
+}
+
+export interface ArtifactThumbnailArgs {
+  id: string;
+  name: string;
+  mimeType: string;
+  version?: number;
 }
 
 const ArtifactRegistryContext = createContext<readonly ArtifactExtension[]>([]);

@@ -10,6 +10,7 @@ import { decodeArtifactBase64 } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { useObjectUrl } from "../../../lib/use-object-url";
 import { documentHeading } from "../ArtifactPreviewThumbnail";
+import { useArtifactExtensions } from "../registry";
 
 const bytesCache = new Map<string, { mimeType: string; bytes: Uint8Array }>();
 const HTML_VIEWPORT_WIDTH = 1280;
@@ -70,10 +71,15 @@ export function ArtifactInlinePreview({
   const [ref, near] = useNearViewport();
   const [state, setState] = useState<State>({ status: "idle" });
   const key = `${artifactId}:${version ?? ""}`;
+  // A capability's own preview (a live chart) takes the box; the default fetch below stands down.
+  const extensions = useArtifactExtensions();
+  const custom = extensions
+    .map((extension) => extension.inline?.({ artifactId, name, version, near }) ?? null)
+    .find((node) => node !== null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: onFailed is a notification only
   useEffect(() => {
-    if (!near) return;
+    if (!near || custom) return;
     if (size !== undefined && size > PREVIEW_MAX_BYTES) {
       setState({ status: "failed" });
       return;
@@ -104,7 +110,7 @@ export function ArtifactInlinePreview({
     return () => {
       cancelled = true;
     };
-  }, [near, key, artifactId, size]);
+  }, [near, key, artifactId, size, custom]);
 
   useEffect(() => {
     if (state.status !== "ready" || !onHeading || state.mimeType.startsWith("image/")) return;
@@ -117,13 +123,15 @@ export function ArtifactInlinePreview({
     <div
       ref={ref}
       data-testid="artifact-preview"
-      data-preview={state.status === "ready" ? previewKind(mimeType) : "cover"}
+      data-preview={custom ? "custom" : state.status === "ready" ? previewKind(mimeType) : "cover"}
       className={cn(
         "relative h-[200px] overflow-hidden rounded-lg border border-border bg-muted/40 sm:h-[260px]",
         className,
       )}
     >
-      {state.status === "ready" ? (
+      {custom ? (
+        custom
+      ) : state.status === "ready" ? (
         <PreviewBody name={name} kind={kind} size={size} {...state} />
       ) : (
         <Cover name={name} kind={kind} size={size} busy={state.status === "loading"} />

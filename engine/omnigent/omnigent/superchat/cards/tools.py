@@ -50,10 +50,13 @@ def _kind_hints() -> str:
     return "; ".join(f"{kind} {_shape(s)}" for kind, s in CARD_DATA_SCHEMAS.items())
 
 
+# No `chart` card is offered: charts come from `display_chart`, which reads a result file so the
+# model never types data values. Old transcripts keep their chart cards; clients still draw them.
+
 # Kinds that are the answer itself. ``plan`` and ``progress`` are living cards the Muse
 # re-renders (same ``id``) while it works, so they never end the reply; ``ask`` waits on
 # the person's pick.
-_TERMINAL_CARDS = frozenset({"sources", "compare", "ask", "chart", "person", "file", "quote"})
+_TERMINAL_CARDS = frozenset({"sources", "compare", "ask", "person", "file", "quote"})
 
 
 def _arr(items: dict[str, Any], *, min_items: int = 1, max_items: int = 50) -> dict[str, Any]:
@@ -97,15 +100,6 @@ CARD_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
         changePct=_NUM,
         asOf=_STR,
         source=_STR,
-    ),
-    "chart": _obj(
-        ["kind", "x", "series"],
-        kind={"type": "string", "enum": ["line", "bar"]},
-        x=_arr(_STR, max_items=120),
-        series=_arr(
-            _obj(["name", "values"], name=_STR, values=_arr(_NUM, max_items=120)), max_items=4
-        ),
-        unit=_STR,
     ),
     "person": _obj(["name"], name=_STR, role=_STR, org=_STR, email=_STR, phone=_STR, url=_STR),
     "file": _obj(
@@ -229,8 +223,9 @@ class RenderCardTool(Tool):
         return (
             "Show the person a card instead of prose, only when it reads better than text: "
             "numbers to compare (compare), a market quote (quote), a plan you will update "
-            "(plan), a decision with options (ask), sources you read (sources), a series "
-            "(chart), a contact (person), a file (file), long-running work (progress). "
+            "(plan), a decision with options (ask), sources you read (sources), a contact "
+            "(person), a file (file), long-running work (progress). For a chart use "
+            "`display_chart` on a result file, never a card with typed numbers. "
             "Otherwise write normally. `data` is an object whose shape depends on `card` "
             f"(`?` = optional): {_kind_hints()}. "
             "`fallback` is a complete markdown summary of the card, used where it cannot be "

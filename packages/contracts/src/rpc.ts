@@ -6,6 +6,7 @@ import { approvalsContract } from "./rpc/approvals.js";
 import { appsContract } from "./rpc/apps.js";
 import { artifactsContract } from "./rpc/artifacts.js";
 import { botsContract } from "./rpc/bots.js";
+import { chartsContract } from "./rpc/charts.js";
 import { computerContract } from "./rpc/computer.js";
 import { dailyNotesContract } from "./rpc/daily-notes.js";
 import { decksContract } from "./rpc/decks.js";
@@ -35,6 +36,7 @@ export const appContract = {
   ...approvalsContract,
   ...artifactsContract,
   ...botsContract,
+  ...chartsContract,
   ...computerContract,
   ...dailyNotesContract,
   ...decksContract,
