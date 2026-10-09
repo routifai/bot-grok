@@ -1374,6 +1374,10 @@ msgstr "Couldn't prepare PowerPoint"
 msgid "Couldn’t reach Nova’s computer. Retrying…"
 msgstr "Couldn’t reach Nova’s computer. Retrying…"
 
+#. placeholder {0}: attachment.file.name
+msgid "Couldn't read {0}"
+msgstr "Couldn't read {0}"
+
 msgid "Couldn't read that selection."
 msgstr "Couldn't read that selection."
 
@@ -3142,6 +3146,10 @@ msgstr "Read replies aloud"
 msgid "read-only"
 msgstr "read-only"
 
+#. placeholder {0}: attachment.file.name
+msgid "Reading {0}…"
+msgstr "Reading {0}…"
+
 msgid "Ready"
 msgstr "Ready"
 
@@ -4152,6 +4160,10 @@ msgstr "Updating…"
 #. placeholder {1}: attachments.length
 msgid "Uploading {0} of {1}"
 msgstr "Uploading {0} of {1}"
+
+#. placeholder {0}: attachment.file.name
+msgid "Uploading {0}…"
+msgstr "Uploading {0}…"
 
 msgid "Usage"
 msgstr "Usage"

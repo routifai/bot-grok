@@ -63,7 +63,12 @@ tools:
     - artifact_save
     - artifact_list
     - files_search
+    - files_vsearch
+    - files_query
+    - files_get
+    - files_multi_get
     - files_read_page
+    - files_status
     - deck_new
     - deck_check
     - start_helper

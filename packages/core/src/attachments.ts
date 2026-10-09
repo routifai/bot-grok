@@ -271,7 +271,9 @@ export interface IngestedAttachment {
 
 /** Marks that must not appear inside a file's text, or the block would end early. */
 function neutralise(markdown: string): string {
-  return markdown.replaceAll(CONTEXT_CLOSE, "<\\/attachment_context>").replaceAll("</file>", "<\\/file>");
+  return markdown
+    .replaceAll(CONTEXT_CLOSE, "<\\/attachment_context>")
+    .replaceAll("</file>", "<\\/file>");
 }
 
 function quoteAttr(value: string): string {

@@ -12,7 +12,18 @@ import {
   truncateSlashDescription,
 } from "@nova/core";
 import { Button, cn } from "@nova/ui-web";
-import { ArrowUp, Box, Mic, Paperclip, Plus, Settings, Square, X } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUp,
+  Box,
+  Loader2,
+  Mic,
+  Paperclip,
+  Plus,
+  Settings,
+  Square,
+  X,
+} from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -37,7 +48,12 @@ import { requestOpenSettings } from "../../../lib/open-settings";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
 import { previewMessageText } from "./messageText";
-import { ATTACHMENT_ACCEPT, NO_ATTACHMENTS, type PendingAttachment } from "./shared";
+import {
+  ATTACHMENT_ACCEPT,
+  attachmentsBlockSend,
+  NO_ATTACHMENTS,
+  type PendingAttachment,
+} from "./shared";
 import { slashActionLabel } from "./slashActionLabel";
 
 export const Composer = memo(function Composer({
@@ -57,6 +73,7 @@ export const Composer = memo(function Composer({
   fileInputRef,
   onAttachmentPick,
   onRemoveAttachment,
+  onRetryAttachment,
   onSend,
   onStop,
   onVoice,
@@ -90,6 +107,7 @@ export const Composer = memo(function Composer({
   fileInputRef?: RefObject<HTMLInputElement | null>;
   onAttachmentPick?: (files: FileList | null) => void | Promise<void>;
   onRemoveAttachment?: (attachment: PendingAttachment) => void;
+  onRetryAttachment?: (attachment: PendingAttachment) => void;
   /** Resolves `false` when nothing was sent, so the composer gives the person's words back. */
   onSend: (text: string, mentions?: ComposerMention[]) => Promise<boolean | undefined | void>;
   onStop?: () => Promise<void>;
@@ -142,6 +160,8 @@ export const Composer = memo(function Composer({
     selectedSkill !== null ||
     selectedMentions.length > 0 ||
     pendingAttachments.length > 0;
+  // A file still being read, or one that failed, holds Send until it is ready, removed or retried.
+  const attachmentsPending = attachmentsBlockSend(pendingAttachments);
 
   useEffect(() => {
     if (!runError || !runErrorId) return;
@@ -307,7 +327,7 @@ export const Composer = memo(function Composer({
     (slashSkillOptions.length > 0 || slashActionOptions.length > 0);
 
   function send() {
-    if (!canSend || sending || disabled) return;
+    if (!canSend || sending || disabled || attachmentsPending) return;
     const text = serializeComposerPrompt(draft, selectedSkill, selectedMentions);
     const kept = { draft, skill: selectedSkill, mentions: selectedMentions, attachments };
     setDraft("");
@@ -549,7 +569,12 @@ export const Composer = memo(function Composer({
           {pendingAttachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[13px] text-foreground/75"
+              data-testid="composer-attachment"
+              data-status={attachment.status ?? "ready"}
+              className={cn(
+                "flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[13px] text-foreground/75",
+                attachment.status === "error" && "border-warning/40",
+              )}
             >
               {attachment.previewUrl ? (
                 <img
@@ -561,8 +586,38 @@ export const Composer = memo(function Composer({
                 <Paperclip size={14} strokeWidth={1.8} />
               )}
               <span className="max-w-[180px] truncate" dir="auto">
-                {attachment.file.name}
+                {attachment.status === "uploading"
+                  ? t`Uploading ${attachment.file.name}…`
+                  : attachment.status === "reading"
+                    ? t`Reading ${attachment.file.name}…`
+                    : attachment.file.name}
               </span>
+              {attachment.status === "uploading" || attachment.status === "reading" ? (
+                <Loader2
+                  size={13}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                  className="animate-spin text-muted-foreground motion-reduce:animate-none"
+                />
+              ) : null}
+              {attachment.status === "error" ? (
+                <>
+                  <span
+                    role="alert"
+                    className="flex max-w-[220px] items-center gap-1 truncate text-[12px] text-warning"
+                  >
+                    <AlertCircle size={13} strokeWidth={2} aria-hidden="true" />
+                    {attachment.error}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRetryAttachment?.(attachment)}
+                    className="text-[12px] font-medium text-foreground underline-offset-2 hover:underline"
+                  >
+                    {t`Retry`}
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 aria-label={t`Remove ${attachment.file.name}`}
@@ -844,7 +899,7 @@ export const Composer = memo(function Composer({
             <Button
               size="icon"
               aria-label={t`Send`}
-              disabled={sending || !canSend || disabled}
+              disabled={sending || !canSend || disabled || attachmentsPending}
               onClick={send}
               className={cn(
                 "size-8 rounded-full shadow-sm transition-transform active:scale-95",
@@ -870,7 +925,7 @@ export const Composer = memo(function Composer({
           <Button
             size="icon"
             aria-label={t`Send`}
-            disabled={sending || !canSend || disabled}
+            disabled={sending || !canSend || disabled || attachmentsPending}
             onClick={send}
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",

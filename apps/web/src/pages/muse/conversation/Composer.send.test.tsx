@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
-  files: { uploadAttachment: vi.fn() },
+  files: { uploadAttachment: vi.fn(), ingestAttachment: vi.fn() },
   artifacts: { create: vi.fn() },
   threads: { send: vi.fn() },
   routines: { testRun: vi.fn() },
@@ -82,6 +82,7 @@ function Wired() {
       fileInputRef={latest.fileInputRef}
       onAttachmentPick={latest.onAttachmentPick}
       onRemoveAttachment={latest.removeAttachment}
+      onRetryAttachment={latest.retryAttachment}
       onSend={latest.sendMessage}
     />
   );
@@ -97,6 +98,7 @@ async function mountWithAttachmentAndText(text: string) {
   await act(async () =>
     latest.onAttachmentPick(Object.assign([file], { item: () => file }) as never),
   );
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
   const box = host.querySelector("textarea") as HTMLTextAreaElement;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(box, text);
@@ -117,6 +119,12 @@ beforeEach(() => {
     mimeType: "application/pdf",
     size: 3,
   }));
+  api.files.ingestAttachment.mockReset().mockResolvedValue({
+    fileId: "ab12",
+    name: "vendor-review.pdf",
+    pages: 2,
+    chars: 40,
+  });
   api.threads.send.mockReset().mockResolvedValue({ runId: "r1", taskId: "t1" });
 });
 afterEach(async () => {
@@ -139,11 +147,12 @@ async function click(host: HTMLElement) {
 }
 
 for (const how of ["Enter", "Send button"] as const) {
-  it(`${how} uploads the attachment and sends the question`, async () => {
+  it(`${how} sends the question with the attachment that was read when it was picked`, async () => {
     const { host, box } = await mountWithAttachmentAndText("what is the Northwind fee?");
     if (how === "Enter") await press(box);
     else await click(host);
     expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
+    expect(api.files.ingestAttachment).toHaveBeenCalledTimes(1);
     expect(api.threads.send).toHaveBeenCalledTimes(1);
     expect(api.threads.send.mock.calls[0]?.[0]).toMatchObject({
       botId: BOT,
@@ -166,4 +175,42 @@ it("gives the draft back when sendMessage returns early without sending", async 
   expect(api.threads.send).not.toHaveBeenCalled();
   expect(box.value).toBe("keep me");
   expect(host.textContent).toContain("vendor-review.pdf");
+});
+
+it("shows Reading on the chip and keeps Send disabled until the file is ready", async () => {
+  let release: () => void = () => undefined;
+  api.files.ingestAttachment.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve({ fileId: "ab12", name: "vendor-review.pdf", pages: 2, chars: 40 });
+      }),
+  );
+  const { host, box } = await mountWithAttachmentAndText("what is the fee?");
+  const chip = host.querySelector('[data-testid="composer-attachment"]') as HTMLElement;
+  expect(chip.dataset.status).toBe("reading");
+  expect(chip.textContent).toContain("Reading vendor-review.pdf…");
+  const sendButton = host.querySelector('button[aria-label="Send"]') as HTMLButtonElement;
+  expect(sendButton.disabled).toBe(true);
+  await press(box);
+  expect(api.threads.send).not.toHaveBeenCalled();
+  expect(box.value).toBe("what is the fee?");
+  await act(async () => release());
+  await settle();
+  expect(chip.dataset.status).toBe("ready");
+  expect(sendButton.disabled).toBe(false);
+});
+
+it("shows a failure on the chip with Retry, and never loses the draft", async () => {
+  api.files.ingestAttachment.mockRejectedValueOnce(new Error("boom"));
+  const { host, box } = await mountWithAttachmentAndText("keep this");
+  const chip = host.querySelector('[data-testid="composer-attachment"]') as HTMLElement;
+  expect(chip.dataset.status).toBe("error");
+  expect((host.querySelector('button[aria-label="Send"]') as HTMLButtonElement).disabled).toBe(
+    true,
+  );
+  expect(box.value).toBe("keep this");
+  const retry = Array.from(chip.querySelectorAll("button")).find((b) => b.textContent === "Retry");
+  await act(async () => retry?.click());
+  await settle();
+  expect(chip.dataset.status).toBe("ready");
 });

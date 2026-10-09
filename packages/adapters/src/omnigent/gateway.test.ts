@@ -670,4 +670,3 @@ describe("attached documents", () => {
     expect(await readTurnAttachmentContext(CLIENT, "p@example.test", "sess-1", text)).toEqual([]);
   });
 });
-
