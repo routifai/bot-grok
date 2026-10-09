@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from "@nova/charts";
 import { cn } from "@nova/ui-web";
-import { cloneElement, useMemo } from "react";
+import { cloneElement, useId, useMemo } from "react";
 
 /** The series' labels, colors and formats, which the tooltip and legend read by column name. */
 function configFor(document: Pick<ChartDocument, "spec" | "data">, categories: string[]) {
@@ -50,6 +50,8 @@ export function ChartView({
   className?: string;
 }) {
   const { spec, data, source } = document;
+  // Gradient ids are document-wide: two charts on a page must not share them.
+  const idPrefix = `c${useId().replace(/[^a-zA-Z0-9]/g, "")}-`;
   const plotted = useMemo(() => {
     const isPie = spec.chart_type === "pie" || spec.chart_type === "donut";
     const hasRight = spec.series.some((s) => s.y_axis === "right");
@@ -57,6 +59,7 @@ export function ChartView({
       width: 640,
       height: 320,
       renderTitle: false,
+      idPrefix,
       margin: { top: 8, right: hasRight ? 8 : 16, bottom: 4, left: 0 },
       children:
         spec.chart_type === "kpi_card"
@@ -86,7 +89,7 @@ export function ChartView({
     });
     const categories = prepared.legend.map((entry) => entry.label);
     return { prepared, categories };
-  }, [spec, data]);
+  }, [spec, data, idPrefix]);
 
   const { prepared, categories } = plotted;
   const config = useMemo(

@@ -3053,6 +3053,9 @@ msgstr "Preview isn't available for this file type — download it to view it."
 msgid "Preview isn't available for this file type."
 msgstr "Preview isn't available for this file type."
 
+msgid "Preview unavailable"
+msgstr "Preview unavailable"
+
 msgid "Previous slide"
 msgstr "Previous slide"
 
