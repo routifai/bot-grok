@@ -32,6 +32,11 @@ export async function requireMembership(
   if (!membership) {
     throw new IsolationError("No personal space");
   }
+  // The last gate before any space, Computer or model access: a pending (awaiting approval) or
+  // suspended account has none, whatever rows it may already own.
+  if (membership.member.user.status !== "active") {
+    throw new IsolationError("Account is not active");
+  }
   const settings = await prisma.deploymentSettings.findUnique({
     where: { id: "default" },
   });
