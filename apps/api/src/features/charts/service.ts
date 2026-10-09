@@ -1,9 +1,16 @@
-import type { OmnigentClientConfig } from "@nova/adapters";
+import {
+  fetchOmnigentArtifactContent,
+  getOmnigentArtifact,
+  type OmnigentClientConfig,
+} from "@nova/adapters";
 import { parseChartDocument } from "@nova/charts";
 import { type Actor, type ChartThumbnail, isChartArtifactName } from "@nova/contracts";
 import { ORPCError } from "@orpc/server";
-import { type EngineArtifactsDeps, engineGetArtifact } from "../artifacts/index.js";
-import { renderChart } from "./render.js";
+import { type EngineArtifactsDeps, emailOf, notFound } from "../artifacts/index.js";
+import { ThumbnailCache } from "./cache.js";
+import { RenderBusyError, type RenderJob, sharedRenderPool } from "./pool.js";
+import type { RenderedChart } from "./render.js";
+import { limitForThumbnail } from "./thumbnail-limits.js";
 
 export interface ChartThumbnailInput {
   artifactId: string;
@@ -13,28 +20,75 @@ export interface ChartThumbnailInput {
   height: number;
 }
 
-/** A saved chart (`*.chart.json`) drawn as a PNG or SVG, for the Library card and the feed. */
+/** What draws a chart: the worker pool in the API, anything else in tests. */
+export type ChartRenderer = (job: RenderJob) => Promise<RenderedChart>;
+
+const cache = new ThumbnailCache<ChartThumbnail & { bytes: { length: number } }>();
+
+/**
+ * A saved chart (`*.chart.json`) drawn as a PNG or SVG, for the Library card and the feed.
+ * Authorised by the artifact lookup, cached by (artifact, version, theme, size, format), cut down
+ * to a thumbnail's worth of points and drawn off the event loop in a worker thread.
+ */
 export async function engineChartThumbnail(
   deps: EngineArtifactsDeps,
   client: OmnigentClientConfig,
   actor: Actor,
   input: ChartThumbnailInput,
+  render: ChartRenderer = (job) => sharedRenderPool().render(job),
 ): Promise<ChartThumbnail> {
-  const artifact = await engineGetArtifact(deps, client, actor, input.artifactId);
-  if (!isChartArtifactName(artifact.name)) {
+  const email = await emailOf(deps, actor);
+  const meta = await getOmnigentArtifact(client, email, input.artifactId).catch(notFound);
+  if (!isChartArtifactName(meta.name)) {
     throw new ORPCError("BAD_REQUEST", { message: "That file is not a chart" });
   }
-  const document = parseChartDocument(Buffer.from(artifact.contentBase64, "base64"));
+  const key = [
+    input.artifactId,
+    meta.version,
+    input.theme,
+    input.width,
+    input.height,
+    input.format,
+  ].join(":");
+  const hit = cache.get(key);
+  if (hit)
+    return {
+      mimeType: hit.mimeType,
+      contentBase64: hit.contentBase64,
+      width: hit.width,
+      height: hit.height,
+    };
+
+  const bytes = await fetchOmnigentArtifactContent(
+    client,
+    email,
+    input.artifactId,
+    meta.version,
+  ).catch(notFound);
+  const document = parseChartDocument(bytes);
   if (!document) throw new ORPCError("BAD_REQUEST", { message: "That chart file is unreadable" });
   try {
-    const image = renderChart(document, input);
-    return {
+    const image = await render({
+      document: limitForThumbnail(document),
+      options: {
+        width: input.width,
+        height: input.height,
+        theme: input.theme,
+        format: input.format,
+      },
+    });
+    const result = {
       mimeType: image.mimeType,
       contentBase64: image.bytes.toString("base64"),
       width: image.width,
       height: image.height,
     };
+    cache.set(key, { ...result, bytes: image.bytes });
+    return result;
   } catch (error) {
+    if (error instanceof RenderBusyError) {
+      throw new ORPCError("SERVICE_UNAVAILABLE", { message: error.message });
+    }
     throw new ORPCError("INTERNAL_SERVER_ERROR", {
       message: `The chart could not be drawn: ${error instanceof Error ? error.message : "unknown error"}`,
     });

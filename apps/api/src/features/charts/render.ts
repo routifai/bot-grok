@@ -1,4 +1,6 @@
 /* Portions modified from getnao/nao apps/backend/src/components/generate-chart.tsx and apps/backend/src/utils/generate-chart.ts@5bde830, Apache-2.0; changes: the SVG is stitched with string operations (no cheerio), `var(--token)` colors resolve against Nova's light and dark tokens, a KPI card gets its own SVG, the PNG is drawn by @resvg/resvg-js (MPL-2.0, used unmodified as a library). */
+
+import { fileURLToPath } from "node:url";
 import {
   CHART_FONT_STACK,
   type ChartDocument,
@@ -25,6 +27,10 @@ export interface RenderedChart {
   width: number;
   height: number;
 }
+
+const FONT_FILES = ["DejaVuSans.ttf", "DejaVuSans-Bold.ttf"].map((name) =>
+  fileURLToPath(new URL(`../../../assets/fonts/${name}`, import.meta.url)),
+);
 
 const THEMES: Record<ChartTheme, Record<string, string>> = {
   light: tokenMap(museLightTokens),
@@ -86,7 +92,7 @@ function horizontalLegend(
   );
   let x = Math.max((width - total) / 2, 8);
   const items = entries.map((entry) => {
-    const swatch = `<rect x="${x}" y="${centerY - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" rx="2" fill="${entry.color}"/>`;
+    const swatch = `<rect x="${x}" y="${centerY - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" rx="2" fill="${escapeXml(entry.color)}"/>`;
     const text = legendText(x + SWATCH + 6, centerY, entry.label, theme);
     x += SWATCH + 6 + entry.label.length * LEGEND_CHAR_WIDTH + 16;
     return swatch + text;
@@ -106,7 +112,7 @@ function verticalLegend(
   const maxChars = Math.max(1, Math.floor((rightEdge - textX - 12) / LEGEND_CHAR_WIDTH));
   let y = (height - entries.length * lineHeight) / 2 + lineHeight / 2;
   const items = entries.map((entry) => {
-    const swatch = `<rect x="${xOffset}" y="${y - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" rx="2" fill="${entry.color}"/>`;
+    const swatch = `<rect x="${xOffset}" y="${y - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" rx="2" fill="${escapeXml(entry.color)}"/>`;
     const text = legendText(textX, y, truncateLabel(entry.label, maxChars), theme);
     y += lineHeight;
     return swatch + text;
@@ -216,7 +222,14 @@ export function renderChart(
   }
   const resvg = new Resvg(svg, {
     fitTo: { mode: "zoom", value: 2 },
-    font: { loadSystemFonts: true, defaultFontFamily: "DejaVu Sans" },
+    // Bundled DejaVu only: a slim image has no system fonts, and the same face on every host keeps
+    // the thumbnails identical.
+    font: {
+      fontFiles: FONT_FILES,
+      loadSystemFonts: false,
+      defaultFontFamily: "DejaVu Sans",
+      sansSerifFamily: "DejaVu Sans",
+    },
   });
   return { mimeType: "image/png", bytes: Buffer.from(resvg.render().asPng()), width, height };
 }

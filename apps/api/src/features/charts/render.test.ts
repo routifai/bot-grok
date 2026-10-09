@@ -52,6 +52,28 @@ describe("renderChartSvg", () => {
   });
 });
 
+describe("untrusted colors", () => {
+  it("cannot break out of an SVG attribute", () => {
+    const evil = 'red" onload="alert(1)';
+    const svg = renderChartSvg(
+      {
+        spec: {
+          chart_type: "bar",
+          title: "T",
+          x_axis_key: "k",
+          x_axis_type: "category",
+          series: [{ data_key: "v", color: evil }],
+        },
+        data: [{ k: "a", v: 1 }],
+      },
+      { width: 400, height: 300, theme: "light" },
+    );
+    // The quote is escaped, so "onload=" stays inside the fill value and is never an attribute.
+    expect(svg).not.toContain('" onload="');
+    expect(svg).toContain("&quot; onload=&quot;");
+  });
+});
+
 describe("renderChart", () => {
   it("rasterises to a PNG, 2x", () => {
     const [bar] = CHART_FIXTURES;
