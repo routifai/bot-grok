@@ -59,6 +59,8 @@ tools:
     - vault_fill
     - artifact_save
     - artifact_list
+    - files_search
+    - files_read_page
     - deck_new
     - deck_check
     - start_helper
