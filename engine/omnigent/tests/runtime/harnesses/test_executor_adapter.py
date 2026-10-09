@@ -2921,14 +2921,21 @@ async def test_a_pending_steer_is_reported_when_the_turn_says_so(taken: bool, ma
     """A write is not a take-up: the runner hears about the steer only from the executor's
     own outcome, so it keeps its buffered copy until the running turn really read it."""
     markers = await _run_turn_with_one_steer(_SteeringExecutor(outcome=taken))
-    assert [(m.type, m.injection_id) for m in markers] == [(marker, "inj_p")]
+    # "offered" first: the runner can answer a sender waiting on the offer at once.
+    assert [(m.type, m.injection_id) for m in markers] == [
+        ("injection.offered", "inj_p"),
+        (marker, "inj_p"),
+    ]
 
 
 @pytest.mark.asyncio
 async def test_a_steer_the_turn_never_reported_is_refused_when_the_turn_ends() -> None:
     """The turn ended without saying it read the steer: refused, so the runner replays it."""
     markers = await _run_turn_with_one_steer(_SteeringExecutor(outcome=None))
-    assert [(m.type, m.injection_id) for m in markers] == [("injection.refused", "inj_p")]
+    assert [(m.type, m.injection_id) for m in markers] == [
+        ("injection.offered", "inj_p"),
+        ("injection.refused", "inj_p"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2953,3 +2960,38 @@ async def test_a_steer_write_cancelled_with_the_turn_is_refused() -> None:
 
     markers = await _run_turn_with_one_steer(_SlowWrite())
     assert [(m.type, m.injection_id) for m in markers] == [("injection.refused", "inj_p")]
+
+
+@pytest.mark.asyncio
+async def test_an_injection_that_is_not_plain_text_is_refused_whole() -> None:
+    """An image (or any non-text block) cannot be steered in whole: refused, so the runner
+    runs the full message as a turn instead of the model reading only its text."""
+    import asyncio as _aio
+
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import CreateResponseRequest, InjectionRefusedEvent
+
+    executor = _AcceptingInjectionExecutor()
+    adapter = ExecutorAdapter(executor_factory=lambda: executor, session_key="sk")
+    ctx = _OneInjectionCtx(
+        CreateResponseRequest(
+            model="m",
+            input=[
+                {"type": "input_text", "text": "what is this?"},
+                {"type": "input_image", "image_url": "data:image/png;base64,AA=="},
+            ],
+            injection_id="inj_img",
+        )
+    )
+    task = _aio.create_task(adapter._watch_injections(ctx, executor, set()))  # type: ignore[arg-type]
+    try:
+        for _ in range(200):
+            if ctx.emitted:
+                break
+            await _aio.sleep(0.01)
+    finally:
+        task.cancel()
+        with contextlib.suppress(_aio.CancelledError):
+            await task
+    assert executor.received == []
+    assert [type(e) for e in ctx.emitted] == [InjectionRefusedEvent]

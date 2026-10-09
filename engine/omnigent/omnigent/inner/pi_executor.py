@@ -2111,6 +2111,12 @@ class PiExecutor(Executor):
         A failed ``response`` to a steer command refuses it. A user ``message_start`` whose
         text is a pending steer's is Pi delivering it into the turn (Pi matches its own
         steering queue the same way).
+
+        Limit: Pi's RPC carries no id on a delivered message (0.87), so correlation is by
+        text, first in first out. Two pending steers with the same text are interchangeable
+        in what the model reads; only which of their ids is reported first can swap. The
+        ``clear_queue`` settlement at ``agent_end`` relies on the same first-in-first-out
+        order of Pi's steering queue.
         """
         if event.get("type") == "response" and event.get("command") == "steer":
             pending = state.pending_steers.get(str(event.get("id")))

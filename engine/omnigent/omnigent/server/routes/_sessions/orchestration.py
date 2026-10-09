@@ -322,6 +322,7 @@ from omnigent.server.routes._sessions.helpers import (
     _session_status_from_cache,
     _session_status_with_child_rollup,
     _SessionEventDispatchResult,
+    _settle_lost_queued_messages,
     _signal_terminal_resolved_harness_elicitation,
     _spec_harness,
     _stop_session_via_runner,
@@ -4867,6 +4868,8 @@ async def _ensure_runner_session_initialized(
         # via the same warning path rather than silently forwarding into a
         # half-initialized runner.
         resp.raise_for_status()
+        if initializer is None:
+            await _settle_lost_queued_messages(session_id, resp, conversation_store)
     except (httpx.HTTPError, ConnectionError) as exc:
         _logger.warning(
             "Session-init handshake to runner failed for session %s; "

@@ -4159,6 +4159,23 @@ class InjectionRefusedEvent(_SSEEventBase):
     injection_id: str
 
 
+class InjectionOfferedEvent(_SSEEventBase):
+    """
+    Runner-internal marker: a mid-turn injection was offered to the running turn.
+
+    Emitted by the executor adapter when the inner executor accepted the message for the
+    turn's next step and will report later whether it was read (``injection.consumed`` or
+    ``injection.refused`` follows). Lets the runner answer a sender waiting on the offer.
+    Never relayed to clients.
+
+    :param type: Always ``"injection.offered"``.
+    :param injection_id: The id the runner stamped on the forwarded injection.
+    """
+
+    type: Literal["injection.offered"]
+    injection_id: str
+
+
 class OutputFileDoneEvent(_SSEEventBase):
     """
     A streamed file output completed materializing.
@@ -5211,6 +5228,7 @@ HarnessStreamEvent = (
     ServerStreamEvent
     | InjectionConsumedEvent
     | InjectionRefusedEvent
+    | InjectionOfferedEvent
     | PolicyEvaluationRequestEvent
     | SubagentStartedEvent
     | SubagentCompletedEvent

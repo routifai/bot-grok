@@ -149,6 +149,13 @@ async def test_a_message_only_for_a_running_turn_is_refused_by_an_idle_session()
     assert _deliveries(app) == []
 
 
+async def _gate_when_forwarded(harness: Any, gate: asyncio.Event) -> None:
+    """Let the turn go on once the runner has forwarded the injection to the harness."""
+    while not harness.patched_events:
+        await asyncio.sleep(0.005)
+    gate.set()
+
+
 @pytest.mark.asyncio
 async def test_a_message_only_for_a_running_turn_steers_into_one() -> None:
     gate = asyncio.Event()
@@ -158,12 +165,101 @@ async def test_a_message_only_for_a_running_turn_steers_into_one() -> None:
         await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
         await asyncio.sleep(0.05)
         body = {**_message("a note", "i2"), "if_running": True}
+        release = asyncio.create_task(_gate_when_forwarded(harness, gate))
+        # Answered once the running turn has its verdict on the note, not before.
         answer = await client.post(f"/v1/sessions/{SESSION}/events", json=body)
-        gate.set()
+        await release
         await asyncio.sleep(0.1)
     assert answer.json()["delivery"] == "steer"
     assert "if_running" not in harness.patched_events[-1]
+    assert not any(k.startswith("_only") for k in harness.patched_events[-1])
     assert _deliveries(app) == [("i1", "turn"), ("i2", "steer")]
+
+
+@pytest.mark.asyncio
+async def test_a_message_only_for_a_running_turn_that_refuses_it_never_runs() -> None:
+    gate = asyncio.Event()
+    app, pm, _ = _build_handshake_app(gate)
+    harness = _RefusingHarness(gate)
+    pm._client = harness  # type: ignore[attr-defined]
+    async with _runner_client(app) as client:
+        await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
+        await asyncio.sleep(0.05)
+        body = {**_message("a note", "i2"), "if_running": True}
+        release = asyncio.create_task(_gate_when_forwarded(harness, gate))
+        answer = await client.post(f"/v1/sessions/{SESSION}/events", json=body)
+        await release
+        await asyncio.sleep(0.1)
+    assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
+    assert len(harness.posted_bodies) == 1  # it did not become a turn of its own
+    assert not app.state.session_message_buffers.get(SESSION)
+    # The sender was told; the server removes the item, so no delivery is reported for it.
+    assert _deliveries(app) == [("i1", "turn")]
+
+
+@pytest.mark.asyncio
+async def test_a_message_only_for_a_running_turn_is_refused_when_it_cannot_be_offered() -> None:
+    gate = asyncio.Event()
+    app, _pm, harness = _build_handshake_app(gate)
+    async with _runner_client(app) as client:
+        await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
+        await asyncio.sleep(0.05)
+        body = {
+            **_message("look", "i2"),
+            "content": [{"type": "input_image", "image_url": "data:image/png;base64,AA=="}],
+            "if_running": True,
+        }
+        answer = await client.post(f"/v1/sessions/{SESSION}/events", json=body)
+        gate.set()
+        await asyncio.sleep(0.1)
+    assert (answer.status_code, answer.json()["error"]) == (409, "not_running")
+    assert harness.patched_events == []
+    assert _deliveries(app) == [("i1", "turn")]
+
+
+@pytest.mark.asyncio
+async def test_a_message_with_an_image_is_not_steered_but_runs_whole_as_a_turn() -> None:
+    gate = asyncio.Event()
+    app, _pm, harness = _build_handshake_app(gate)
+    async with _runner_client(app) as client:
+        await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
+        await asyncio.sleep(0.05)
+        image = [
+            {"type": "input_text", "text": "what is this?"},
+            {"type": "input_image", "image_url": "data:image/png;base64,AA=="},
+        ]
+        answer = await client.post(
+            f"/v1/sessions/{SESSION}/events", json={**_message("x", "i2"), "content": image}
+        )
+        gate.set()
+        for _ in range(100):
+            await asyncio.sleep(0.01)
+            if len(harness.posted_bodies) >= 2:
+                break
+    assert answer.json()["delivery"] == "queued"
+    assert harness.patched_events == []  # never offered in part
+    assert _deliveries(app) == [("i1", "turn"), ("i2", "queued"), ("i2", "turn")]
+
+
+@pytest.mark.asyncio
+async def test_a_stop_cancels_the_messages_waiting_behind_the_turn() -> None:
+    gate = asyncio.Event()
+    app, pm, _ = _build_handshake_app(gate)
+    harness = _RefusingHarness(gate)
+    pm._client = harness  # type: ignore[attr-defined]
+    async with _runner_client(app) as client:
+        await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
+        await asyncio.sleep(0.05)
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("and this", "i2"))
+        await client.post(f"/v1/sessions/{SESSION}/events", json={"type": "interrupt"})
+        gate.set()
+        await asyncio.sleep(0.1)
+    assert ("i2", "cancelled") in _deliveries(app)
+    assert len(harness.posted_bodies) == 1  # it did not run after the stop
 
 
 @pytest.mark.asyncio
@@ -180,3 +276,21 @@ async def test_deleting_the_session_cancels_the_messages_still_waiting() -> None
         stream = app.state.session_event_queues[SESSION]  # closed and dropped by the delete
         await client.delete(f"/v1/sessions/{SESSION}")
     assert _deliveries(app, stream) == [("i1", "turn"), ("i2", "cancelled")]
+
+
+@pytest.mark.asyncio
+async def test_session_init_reports_the_messages_the_runner_still_holds() -> None:
+    gate = asyncio.Event()
+    app, pm, _ = _build_handshake_app(gate)
+    harness = _RefusingHarness(gate)
+    pm._client = harness  # type: ignore[attr-defined]
+    async with _runner_client(app) as client:
+        first = await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+        assert first.json()["held_item_ids"] == []
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("work", "i1"))
+        await asyncio.sleep(0.05)
+        await client.post(f"/v1/sessions/{SESSION}/events", json=_message("and this", "i2"))
+        again = await client.post("/v1/sessions", json={"session_id": SESSION, "agent_id": AGENT})
+        gate.set()
+        await asyncio.sleep(0.1)
+    assert again.json()["held_item_ids"] == ["i2"]

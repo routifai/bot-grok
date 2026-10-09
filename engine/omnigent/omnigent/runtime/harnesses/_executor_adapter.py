@@ -50,6 +50,7 @@ from omnigent.server.schemas import (
     CreateResponseRequest,
     ElicitationRequestParams,
     InjectionConsumedEvent,
+    InjectionOfferedEvent,
     InjectionRefusedEvent,
     OutputItemDoneEvent,
     OutputTextDeltaEvent,
@@ -584,9 +585,10 @@ class ExecutorAdapter(HarnessApp):
             injection_id = getattr(injection, "injection_id", None)
             steer_id = injection_id or f"local_{uuid.uuid4().hex}"
             text = _extract_user_text(injection.input)
-            if not text:
+            if not text or not _is_text_only(injection.input):
+                # Offered only whole: one that is not plain text runs as a turn instead.
                 _logger.warning(
-                    "skipping in-band injection with no text payload: %r",
+                    "not steering an in-band injection that is not plain text: %r",
                     injection.input,
                 )
                 if injection_id:
@@ -606,6 +608,11 @@ class ExecutorAdapter(HarnessApp):
             except Exception:
                 _logger.exception("inner executor.steer_session_message failed")
                 offer = "refused"
+            if injection_id and offer == "pending" and injection_id in offered:
+                offered_event = InjectionOfferedEvent(
+                    type="injection.offered", injection_id=injection_id
+                )
+                ctx.emit(offered_event)
             if not injection_id or offer == "pending" or injection_id not in offered:
                 continue  # nothing to report, or settled by its SteerOutcome / the turn's end
             offered.discard(injection_id)
@@ -1273,6 +1280,16 @@ def _report_injection(ctx: TurnContext, injection_id: str, *, taken: bool) -> No
         ctx.emit(InjectionConsumedEvent(type="injection.consumed", injection_id=injection_id))
     else:
         ctx.emit(InjectionRefusedEvent(type="injection.refused", injection_id=injection_id))
+
+
+def _is_text_only(input_value: str | list[dict[str, Any]]) -> bool:
+    """Whether an injection is plain text, so a steer carries all of it."""
+    if isinstance(input_value, str):
+        return True
+    return all(
+        isinstance(block, dict) and block.get("type") in ("input_text", "text")
+        for block in input_value
+    )
 
 
 def _extract_user_text(

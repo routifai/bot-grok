@@ -1783,6 +1783,10 @@ async def _send_to_in_flight_child(
             # Reuse the one entry so its single completion delivers under it;
             # re-stamping/replacing here is what would orphan that completion.
             work_id = entry.work_id
+        elif if_running:
+            # Taken only into the turn that was running, which its own entry tracks: no new
+            # turn was started, so there is nothing new to track.
+            pass
         else:
             # No active tracked turn: the old turn ended and a fresh one started,
             # or the in-flight turn was untracked locally (post-restart). Track

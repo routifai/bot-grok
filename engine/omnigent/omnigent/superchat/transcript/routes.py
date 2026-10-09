@@ -92,11 +92,12 @@ def read_transcript(
             statuses[helper_id] = sub_agent_status(helper)
     messages = project_items(items, helper_statuses=statuses)
     # A message sent during a turn says how it was taken: ``steer`` (read by that turn) or
-    # ``queued`` (waiting for the next). One that ran as its own turn reads as any other.
+    # ``queued`` (waiting for the next). One that ran as its own turn reads as any other, and
+    # nothing waits behind a session that is not mid-turn (its runner settles the rest).
     deliveries = conv_store.get_item_deliveries(conversation.id) if messages else {}
     for message in messages:
         state = deliveries.get(message["id"]) if message["role"] == "user" else None
-        if state in ("steer", "queued"):
+        if state == "steer" or (state == "queued" and live):
             message["delivered"] = state
     can_fork = lineage["kind"] == "super" or lineage["anchor_item_id"] is not None
     grouped = forks_by_anchor(conv_store, conversation, viewer_id) if can_fork and messages else {}

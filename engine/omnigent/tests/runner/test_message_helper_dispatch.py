@@ -50,7 +50,11 @@ def _server(
 
 
 async def _call(
-    arguments: dict[str, Any], rows: list[dict[str, Any]], idle: bool = False
+    arguments: dict[str, Any],
+    rows: list[dict[str, Any]],
+    idle: bool = False,
+    entry_status: str = "running",
+    after: list[Any] | None = None,
 ) -> tuple[str, list[Any]]:
     from omnigent.runner import app as runner_app
     from omnigent.runner.tool_dispatch import execute_tool
@@ -59,7 +63,7 @@ async def _call(
     entry = runner_app.register_subagent_work(
         parent_session_id=PARENT, child_session_id=HELPER, agent="worker", title="Deck"
     )
-    entry.status = "running"
+    entry.status = entry_status
     async with httpx.AsyncClient(
         transport=_server(posts, rows, idle), base_url="http://s"
     ) as client:
@@ -74,6 +78,8 @@ async def _call(
                 labels={CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE},
             )
         finally:
+            if after is not None:
+                after.append(runner_app.get_subagent_work(HELPER))
             runner_app.unregister_subagent_work(HELPER)
             runner_app._session_inboxes_ref.pop(PARENT, None)
     return output, posts
@@ -111,3 +117,16 @@ async def test_a_helper_that_already_finished_is_not_started_again() -> None:
 
     assert output.startswith("Error: message_helper: no Helper is running")
     assert posts == []
+
+
+@pytest.mark.asyncio
+async def test_a_note_never_registers_new_work_for_the_helper() -> None:
+    # The tracked turn reads as ended locally while the child still took the note into its
+    # running turn: no fresh work entry may appear, or a phantom result would be awaited.
+    rows = [{"id": HELPER, "title": "worker:Deck", "busy": True}]
+    seen: list[Any] = []
+    output, _posts = await _call(
+        {"message": "use the blue template"}, rows, entry_status="done", after=seen
+    )
+    assert json.loads(output)["sent"] is True
+    assert seen[0] is not None and seen[0].status == "done"  # the same, untouched entry

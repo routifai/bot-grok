@@ -332,3 +332,30 @@ async def test_an_error_result_still_ends_the_turn():
     cli.print_(bad)
     await asyncio.wait_for(task, 5)
     assert isinstance(events[-1], ExecutorError)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_first_answer_is_not_the_turns_end_when_the_steer_turn_succeeds():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, events = await _start_turn(executor, cli, seen)
+    await executor.steer_session_message(SESSION, "try again", steer_id="t")
+    uuid = cli.writes[-1]["uuid"]
+    bad = _Result("overloaded")
+    bad.is_error = True
+    cli.print_(bad)
+    await asyncio.sleep(0.02)
+    cli.print_(_User(uuid))
+    cli.print_(_Result("worked this time"))
+    await asyncio.wait_for(task, 5)
+    assert _outcomes(events) == [("t", True)]
+    assert isinstance(events[-1], TurnComplete)
+
+
+@pytest.mark.asyncio
+async def test_a_stream_end_with_a_steer_pending_closes_the_cli_once():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, _ = await _start_turn(executor, cli, seen)
+    await executor.steer_session_message(SESSION, "ghost", steer_id="g")
+    cli.print_(END)
+    await asyncio.wait_for(task, 5)
+    assert cli.disconnected == 1

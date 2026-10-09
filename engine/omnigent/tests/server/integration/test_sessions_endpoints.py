@@ -12353,6 +12353,14 @@ async def test_a_message_only_for_a_running_turn_is_refused_and_not_kept(
     fake_runner, forwarded = _fake_runner_answering(
         monkeypatch, httpx.Response(409, json={"error": "not_running", "detail": "no turn"})
     )
+    from omnigent.server.routes._sessions import orchestration as orchestration_module
+
+    announced: list[str] = []
+    monkeypatch.setattr(
+        orchestration_module,
+        "_publish_input_consumed",
+        lambda session_id, item, *args, **kwargs: announced.append(item.id),
+    )
     try:
         agent = await create_test_agent(client)
         sid = (await _create_session(client, agent["id"]))["id"]
@@ -12370,6 +12378,8 @@ async def test_a_message_only_for_a_running_turn_is_refused_and_not_kept(
         assert snap["status"] != "failed", snap
         items = (await client.get(f"/v1/sessions/{sid}/items")).json()["data"]
         assert not any(i.get("type") == "message" for i in items), items
+        # Never announced either: no client ever saw the refused message.
+        assert announced == []
     finally:
         await fake_runner.aclose()
 

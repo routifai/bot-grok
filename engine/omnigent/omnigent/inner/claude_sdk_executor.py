@@ -2278,14 +2278,14 @@ class ClaudeSDKExecutor(Executor):
             window.open = False
             return
 
-    async def _settle_steer_window(
-        self, session_key: str, window: _SteerWindow | None
-    ) -> list[SteerOutcome]:
+    @staticmethod
+    def _settle_steer_window(session_key: str, window: _SteerWindow | None) -> list[SteerOutcome]:
         """Close a turn's steer window; refuse what the CLI never answered for.
 
         A message still pending means the stream ended without the CLI finishing (no result
-        after it): the CLI may hold it, so the live client is dropped and the next turn
-        starts fresh with the caller's own copy.
+        after it): the CLI may hold it, so the turn's ``finally`` (or its error path) has
+        already dropped the live client, and the next turn starts fresh with the caller's
+        own copy.
         """
         if window is None:
             return []
@@ -2296,12 +2296,10 @@ class ClaudeSDKExecutor(Executor):
         window.pending.clear()
         if refused:
             logger.warning(
-                "Claude SDK turn for session %s ended with %d steer(s) unanswered; "
-                "dropping the live client",
+                "Claude SDK turn for session %s ended with %d steer(s) unanswered",
                 session_key,
                 len(refused),
             )
-            await self._close_live_client(session_key)
         return refused
 
     @staticmethod
@@ -3473,8 +3471,14 @@ class ClaudeSDKExecutor(Executor):
                                 # failures with no structured marker.
                                 message=failure_text,
                             )
-                        elif not response_text and result_msg.result:
-                            response_text = result_msg.result
+                        else:
+                            # A later CLI turn (a steer that missed the first) succeeded:
+                            # the turn ends on its answer, not an earlier error.
+                            terminal_error = None
+                            terminal_code = None
+                            provider_error_type = None
+                            if not response_text and result_msg.result:
+                                response_text = result_msg.result
                         raw_usage = getattr(result_msg, "usage", None)
                         if isinstance(raw_usage, dict) and raw_usage:
                             # ``ResultMessage.usage`` is CUMULATIVE across every
@@ -3625,7 +3629,7 @@ class ClaudeSDKExecutor(Executor):
             self._pending_framework_context.pop(session_key, None)
             self._crashed_sessions[session_key] = str(exc)
             await self._close_live_client(session_key)
-            for refused in await self._settle_steer_window(session_key, steer_window):
+            for refused in self._settle_steer_window(session_key, steer_window):
                 yield refused
             stderr_text = "\n".join(stderr_lines) if stderr_lines else "(no stderr captured)"
             diagnostics_text = (
@@ -3667,7 +3671,7 @@ class ClaudeSDKExecutor(Executor):
                     await self._close_live_client(session_key)
         # Steers the CLI never answered for (its stream ended early, or the loop stopped on a
         # terminal error): refused, so the caller's copy runs as the next turn.
-        for refused in await self._settle_steer_window(session_key, steer_window):
+        for refused in self._settle_steer_window(session_key, steer_window):
             yield refused
         # A turn can end without ``ResultMessage`` usage — the CLI can close
         # the stream early, fail terminally (auth failure, rejected retries),

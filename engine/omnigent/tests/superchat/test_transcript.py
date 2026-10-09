@@ -530,6 +530,12 @@ async def test_a_message_sent_during_a_turn_says_how_it_was_taken(
     conversation_store.set_item_delivery(root.id, stopped.id, "cancelled")
     url = f"/v1/sessions/{root.id}/transcript"
 
+    # Not mid-turn: nothing can be waiting behind a turn.
+    messages = {m["id"]: m for m in (await client.get(url)).json()["data"]}
+    assert "delivered" not in messages[queued.id]
+    assert messages[steered.id]["delivered"] == "steer"
+
+    conversation_store.set_session_live_status(root.id, "running")
     messages = {m["id"]: m for m in (await client.get(url)).json()["data"]}
     assert "delivered" not in messages[first.id]
     assert messages[steered.id]["delivered"] == "steer"

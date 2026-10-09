@@ -2165,6 +2165,9 @@ async def test_item_deliveries_keep_the_latest_state_and_go_with_the_conversatio
         first.id: "steer",
         second.id: "turn",
     }
+    # A late "queued" never undoes a final state.
+    conversation_store.set_item_delivery(conv.id, second.id, "queued")
+    assert conversation_store.get_item_deliveries(conv.id)[second.id] == "turn"
 
     assert await conversation_store.delete_conversation(conv.id) is True
     assert conversation_store.get_item_deliveries(conv.id) == {}

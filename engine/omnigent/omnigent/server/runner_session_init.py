@@ -224,6 +224,12 @@ class RunnerSessionInitializer:
                 )
                 raise
             failed = not 200 <= response.status_code < 300
+            if not failed and self._conversation_store is not None:
+                from omnigent.server.routes._sessions.helpers import (
+                    _settle_lost_queued_messages,
+                )
+
+                await _settle_lost_queued_messages(session_id, response, self._conversation_store)
             log = _logger.error if failed else _logger.info
             log(
                 "Runner session initialization finished",

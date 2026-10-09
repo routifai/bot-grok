@@ -2804,28 +2804,49 @@ class SqlAlchemyConversationStore(ConversationStore):
 
     def set_item_delivery(self, conversation_id: str, item_id: str, delivered: str) -> None:
         """
-        Upsert how a user message sent to the session was taken.
+        Upsert how a user message sent to the session was taken, in one statement.
+
+        A final state (``steer``, ``turn``, ``cancelled``) is never replaced by ``queued``,
+        whatever order two writers land in.
 
         :param conversation_id: The session.
         :param item_id: The persisted user message.
         :param delivered: ``"queued"``, ``"steer"``, ``"turn"`` or ``"cancelled"``.
         """
+        table = SqlConversationItemDelivery
+        row = {
+            "workspace_id": current_workspace_id(),
+            "conversation_id": conversation_id,
+            "item_id": item_id,
+            "delivered": delivered,
+            "updated_at": now_epoch(),
+        }
 
         def write(session: Session) -> None:
-            key = (current_workspace_id(), conversation_id, item_id)
-            row = session.get(SqlConversationItemDelivery, key)
-            if row is None:
-                session.add(
-                    SqlConversationItemDelivery(
-                        conversation_id=conversation_id,
-                        item_id=item_id,
-                        delivered=delivered,
-                        updated_at=now_epoch(),
-                    )
+            dialect = session.get_bind().dialect.name
+            if dialect == "sqlite" or is_postgresql_family(dialect):
+                stmt: Any
+                if dialect == "sqlite":
+                    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+                    stmt = sqlite_insert(table).values(row)
+                else:
+                    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+                    stmt = pg_insert(table).values(row)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["workspace_id", "conversation_id", "item_id"],
+                    set_={"delivered": stmt.excluded.delivered, "updated_at": row["updated_at"]},
+                    where=(stmt.excluded.delivered != "queued") | (table.delivered == "queued"),
                 )
-            else:
-                row.delivered = delivered
-                row.updated_at = now_epoch()
+                session.execute(stmt)
+                return
+            existing = session.get(table, (row["workspace_id"], conversation_id, item_id))
+            if existing is None:
+                session.add(table(**row))
+            elif delivered != "queued" or existing.delivered == "queued":
+                existing.delivered = delivered
+                existing.updated_at = row["updated_at"]
 
         run_write_transaction(self._conv_session_immediate, "set_item_delivery", write)
 
