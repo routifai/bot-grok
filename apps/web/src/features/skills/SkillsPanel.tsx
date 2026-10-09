@@ -17,10 +17,10 @@ import {
 } from "@nova/ui-web";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import { SkillReviewSheet } from "../../../components/teach/SkillReviewSheet";
-import { illustrationUrl } from "../../../lib/illustrations";
-import { rpc } from "../../../lib/rpc";
-import { EmptyState, MUSE_INSET_GROUP } from "../ui";
+import { illustrationUrl } from "../../lib/illustrations";
+import { rpc } from "../../lib/rpc";
+import { EmptyState, MUSE_INSET_GROUP } from "../../pages/muse/ui/index";
+import { SkillReviewSheet } from "./teach/SkillReviewSheet";
 
 /**
  * Library · Skills: what the Muse knows how to do. Skills come from a demonstration (Teach a

@@ -7,7 +7,7 @@ import path from "node:path";
 import { openScreenCapability } from "@nova/core/node/screen-capability";
 import { expect, test } from "@playwright/test";
 import { createServer, type Plugin, preview, type ViteDevServer } from "vite";
-import { addScreenProxyCapability } from "../../api/src/screen-proxy";
+import { addScreenProxyCapability } from "../../api/src/features/computer/screen-proxy";
 
 const scope = {
   botId: "bot",

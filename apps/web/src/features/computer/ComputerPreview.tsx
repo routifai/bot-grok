@@ -3,20 +3,17 @@ import type { Bot, ComputerStatus } from "@nova/contracts";
 import { Button, cn } from "@nova/ui-web";
 import { Maximize2 } from "lucide-react";
 import type { ReactNode } from "react";
-import {
-  ComputersUnavailableHint,
-  computersAreUnavailable,
-} from "../../../components/ComputersUnavailableHint";
-import { screenIframeSandbox } from "../../../lib/computer-screen";
-import { museMode } from "../chrome/museMode";
-import { FilesTab } from "../files/FilesTab";
-import { FirstRunHint } from "../intro";
+import { museMode } from "../../pages/muse/chrome/museMode";
+import { FirstRunHint } from "../../pages/muse/intro/index";
+import { ComputersUnavailableHint, computersAreUnavailable } from "./ComputersUnavailableHint";
+import { screenIframeSandbox } from "./computer-screen";
 import {
   computerLabel,
   computerPlaceholder,
   DesktopKindEmptyState,
   screenView,
 } from "./computerPanelParts";
+import { FilesTab } from "./FilesTab";
 import type { useComputer } from "./useComputer";
 import type { useComputerScreen } from "./useComputerScreen";
 import type { ComputerView } from "./useComputerView";

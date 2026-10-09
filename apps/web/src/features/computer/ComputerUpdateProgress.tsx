@@ -18,8 +18,8 @@ import {
 } from "@nova/ui-web";
 import { CheckCircle2, Circle, CircleAlert, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { computerUpdates } from "../lib/computer-updates";
-import { LoadingState } from "./ai/primitives";
+import { LoadingState } from "../../components/ai/primitives";
+import { computerUpdates } from "./computer-updates";
 
 export function ComputerUpdateProgress({ onCompleted }: { onCompleted: () => void }) {
   const { t } = useLingui();

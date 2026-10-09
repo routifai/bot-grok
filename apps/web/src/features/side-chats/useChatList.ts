@@ -1,8 +1,8 @@
 import type { ChatSummary, SideChatStart } from "@nova/contracts";
 import { ORPCError } from "@orpc/client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { watchFamily } from "../../../lib/family-stream";
-import { rpc } from "../../../lib/rpc";
+import { watchFamily } from "../../lib/family-stream";
+import { rpc } from "../../lib/rpc";
 
 /** The Chat List wire: a Muse's Side Chats, or why they can't be shown. */
 export type ChatListState =

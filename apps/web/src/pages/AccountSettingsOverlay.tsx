@@ -12,9 +12,9 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { SuccessPop } from "../components/ai/primitives";
-import { ComputersUnavailableHint } from "../components/ComputersUnavailableHint";
 import { DesktopUpdateSection } from "../components/DesktopUpdates";
 import { ApprovalRulesSettings } from "../features/approvals";
+import { ComputersUnavailableHint } from "../features/computer/ComputersUnavailableHint";
 import { authClient } from "../lib/auth";
 import { getActiveUiLocale, setUiLocale } from "../lib/i18n";
 import {

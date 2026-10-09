@@ -29,7 +29,7 @@ const {
   resetOmnigentSession: vi.fn(),
   omnigentClientConfigFromEnv: vi.fn(),
   // The ownership rule itself is covered against a mocked Omnigent client in
-  // packages/adapters/src/omnigent/chats.test.ts — here it's faked so `getChatTranscript`
+  // packages/adapters/src/omnigent/side-chats.test.ts — here it's faked so `getChatTranscript`
   // never makes a real network call just to resolve which Super Chat owns `chatId`.
   resolveChatOwnership: vi.fn(),
   streamOmnigentFamily: vi.fn(),
@@ -73,7 +73,7 @@ const {
   sendToChat,
   summaryPreview,
   watchFamily,
-} = await import("./chats.js");
+} = await import("./service.js");
 
 const actor: Actor = {
   spaceId: "space-1",

@@ -4,8 +4,8 @@ import type { ChatSummary, ThreadMessage } from "@nova/contracts";
 import { cn } from "@nova/ui-web";
 import { ArrowLeft } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
-import { copyableMessageText } from "../../../lib/message-text";
-import type { SideChatWire } from "../chrome/SideChatSession";
+import { copyableMessageText } from "../../lib/message-text";
+import type { SideChatWire } from "./SideChatSession";
 
 /** What the fork UI needs beyond a Side Chat's own wire (`chats.*`): kept as an explicit shape so
  * tests can supply fakes. */

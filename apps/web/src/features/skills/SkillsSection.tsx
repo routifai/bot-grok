@@ -2,7 +2,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type { AgentSkill, AgentSkillCatalogEntry } from "@nova/contracts";
 import { Button, Skeleton, Textarea } from "@nova/ui-web";
 import { useEffect, useRef, useState } from "react";
-import { rpc } from "../lib/rpc";
+import { rpc } from "../../lib/rpc";
 
 const fieldClass = "mt-2 w-full font-mono text-[13px] leading-relaxed";
 

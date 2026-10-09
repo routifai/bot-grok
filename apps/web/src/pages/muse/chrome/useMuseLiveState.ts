@@ -1,8 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import type { MuseState, Run, ThreadMessage } from "@nova/contracts";
 import { useAsks } from "../../../features/approvals";
+import { useComputerLaunch } from "../../../features/computer/useComputerLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
-import { useComputerLaunch } from "./useComputerLaunch";
 
 export type MuseLiveRun = Pick<Run, "id" | "status">;
 

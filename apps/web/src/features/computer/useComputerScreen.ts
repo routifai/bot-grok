@@ -1,13 +1,13 @@
 import { useLingui } from "@lingui/react/macro";
 import { type MutableRefObject, useEffect, useRef, useState } from "react";
+import { rpc } from "../../lib/rpc";
+import { SCREEN_DISCONNECTED_MESSAGE } from "../../novnc-html";
 import {
   loadComputerScreen,
   screenLinkKey,
   screenUrlStillFresh,
   shareInflight,
-} from "../../../lib/computer-screen";
-import { rpc } from "../../../lib/rpc";
-import { SCREEN_DISCONNECTED_MESSAGE } from "../../../novnc-html";
+} from "./computer-screen";
 
 import type { useComputerStore } from "./useComputerStore";
 

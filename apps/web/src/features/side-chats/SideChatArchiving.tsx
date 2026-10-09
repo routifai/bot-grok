@@ -3,7 +3,7 @@ import type { Archiving } from "@nova/contracts";
 import { SIDE_CHAT_ARCHIVE_DAYS } from "@nova/contracts";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import { MUSE_INSET_GROUP } from "./ui";
+import { MUSE_INSET_GROUP } from "../../pages/muse/ui/index";
 
 type Days = Archiving["sideChatAutoArchiveDays"];
 
@@ -27,7 +27,7 @@ export function SideChatArchiving({ botId }: { botId: string }) {
   useEffect(() => {
     let cancelled = false;
     setDays(undefined);
-    void rpc.muse.archiving({ botId }).then((next) => {
+    void rpc.chats.archiving({ botId }).then((next) => {
       if (!cancelled) setDays(next.sideChatAutoArchiveDays);
     });
     return () => {
@@ -39,7 +39,7 @@ export function SideChatArchiving({ botId }: { botId: string }) {
     setDays(next);
     setError(null);
     try {
-      const saved = await rpc.muse.updateArchiving({ botId, sideChatAutoArchiveDays: next });
+      const saved = await rpc.chats.updateArchiving({ botId, sideChatAutoArchiveDays: next });
       setDays(saved.sideChatAutoArchiveDays);
     } catch (err) {
       setDays(previous);

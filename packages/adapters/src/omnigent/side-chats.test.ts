@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { OmnigentApiError } from "./client/core.js";
 import {
   createChatOwnershipResolver,
   deriveSideChatTitle,
@@ -6,12 +7,11 @@ import {
   mapSideChatCreateToSummary,
   resolveChatOwnership,
   sideChatStartToWire,
-} from "./chats.js";
-import { OmnigentApiError } from "./client/core.js";
+} from "./side-chats.js";
 
 const { getOmnigentSession } = vi.hoisted(() => ({ getOmnigentSession: vi.fn() }));
 
-vi.mock("./client.js", () => ({ getOmnigentSession }));
+vi.mock("./client/sessions.js", () => ({ getOmnigentSession }));
 
 const CLIENT = { baseUrl: "http://omnigent.test", proxySecret: "secret", tenant: "space-1" };
 const EMAIL = "person@example.test";

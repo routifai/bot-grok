@@ -2,7 +2,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type { ComputerStatus } from "@nova/contracts";
 import { Button, Label, Popover, PopoverContent, PopoverTrigger, Textarea } from "@nova/ui-web";
 import { useEffect, useRef, useState } from "react";
-import { rpc } from "../../lib/rpc";
+import { rpc } from "../../../lib/rpc";
 
 /**
  * Compact Teach a task control for the computer chrome bar above the screen

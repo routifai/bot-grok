@@ -2,7 +2,7 @@ import type { OmnigentClientConfig } from "@nova/adapters";
 import type { Actor, Ask } from "@nova/contracts";
 import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
-import { requireEngine } from "../../engine-computer.js";
+import { requireEngine } from "../../engine-client.js";
 import { engineAnswerAsk, engineListAsks, isEngineAskId } from "./asks.js";
 
 // `asks.list` / `asks.count` / `asks.answer`. The Asks are the engine's decisions inbox

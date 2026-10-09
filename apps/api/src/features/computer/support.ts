@@ -17,9 +17,9 @@ import type { Actor, ComputerStatus } from "@nova/contracts";
 import type { PrismaClient } from "@nova/db";
 import { createRepos, IsolationError } from "@nova/db";
 import { ORPCError } from "@orpc/server";
-import { resolveBusyBotName, toComputerStatus } from "../computer-status.js";
-import type { RouterDeps } from "./context.js";
-import { computerContext } from "./shared.js";
+import type { RouterDeps } from "../../routers/context.js";
+import { computerContext } from "../../routers/shared.js";
+import { resolveBusyBotName, toComputerStatus } from "./status.js";
 
 export async function computerStatus(
   deps: RouterDeps,

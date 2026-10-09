@@ -25,7 +25,6 @@ import {
 import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { aiConsentStatus, allowAiConsent } from "../ai-consent.js";
-import { withEngineComputer } from "../engine-computer.js";
 import { syncEngineTimezone } from "../engine-timezone.js";
 import { listSpaceRuns } from "../runs.js";
 import { engineSearch, querySpaceSearch } from "../search.js";
@@ -248,7 +247,7 @@ export function accountRouter(c: RouterContext) {
         ? await Promise.all([
             resolveThreadTarget(deps.prisma, actor, { botId: active.id })
               .then((target) => threadSnapshot(deps, target))
-              .then((snapshot) => withEngineComputer(deps, actor, snapshot)),
+              .then((snapshot) => c.withComputer(actor, snapshot)),
             listRoutinesDto(deps, actor, active.id),
           ])
         : [null, []];

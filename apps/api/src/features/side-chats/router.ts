@@ -1,3 +1,5 @@
+import type { RouterContext } from "../../routers/context.js";
+import { getArchiving, updateArchiving } from "./archiving.js";
 import {
   addForkToConversation,
   archiveChat,
@@ -12,15 +14,13 @@ import {
   summaryPreview,
   unarchiveChat,
   watchFamily,
-} from "../chats.js";
-
-import type { RouterContext } from "./context.js";
+} from "./service.js";
 
 export function sideChatsRouter(c: RouterContext) {
   const { museOnly, deps } = c;
   return {
     // Super Chat Side Chats and Helpers (docs/super-chat/WIRING.md slice A1) — real handlers in
-    // ./chats.js; the ownership rule and Omnigent mapping live in @nova/adapters.
+    // ./service.js; the ownership rule and Omnigent mapping live in @nova/adapters.
     chats: {
       list: museOnly.chats.list.handler(({ context, input }) =>
         listChats(deps, context.actor, input),
@@ -60,6 +60,12 @@ export function sideChatsRouter(c: RouterContext) {
       ),
       project: museOnly.chats.project.handler(({ context, input }) =>
         getChatProject(deps, context.actor, input),
+      ),
+      archiving: museOnly.chats.archiving.handler(({ context, input }) =>
+        getArchiving(deps, context.actor, input.botId),
+      ),
+      updateArchiving: museOnly.chats.updateArchiving.handler(({ context, input }) =>
+        updateArchiving(deps, context.actor, input),
       ),
     },
   };

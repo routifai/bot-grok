@@ -16,8 +16,8 @@ import {
 import { ORPCError } from "@orpc/client";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { rpc } from "../../lib/rpc";
-import { Shimmer } from "../ai/primitives";
+import { Shimmer } from "../../../components/ai/primitives";
+import { rpc } from "../../../lib/rpc";
 
 const POLL_MS = 2500;
 

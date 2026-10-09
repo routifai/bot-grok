@@ -7,9 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
 const { template } = vi.hoisted(() => ({
@@ -42,17 +40,19 @@ vi.mock("@nova/ui-web", () => ({
     <div data-testid="fork-fan">{children}</div>
   ),
 }));
-vi.mock("../../../components/cards/context", () => ({
+vi.mock("../../components/cards/context", () => ({
   ReplyCardBotProvider: ({ children }: { children: ReactNode }) => children,
   ReplyCardThreadProvider: ({ children }: { children: ReactNode }) => children,
   ReplyCardSendProvider: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("../conversation/MessageView", () => ({
+vi.mock("../../pages/muse/conversation/MessageView", () => ({
   MessageView: ({ message }: { message: ThreadMessage }) => (
     <p>{message.blocks.map((block) => (block.kind === "text" ? block.text : "")).join("")}</p>
   ),
 }));
-vi.mock("../conversation/MessageHoverActions", () => ({ MessageHoverActions: () => null }));
+vi.mock("../../pages/muse/conversation/MessageHoverActions", () => ({
+  MessageHoverActions: () => null,
+}));
 
 import { AllForks } from "./AllForks";
 import { ForkAsk } from "./ForkAsk";

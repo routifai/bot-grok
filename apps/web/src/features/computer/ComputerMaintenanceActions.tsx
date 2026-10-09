@@ -17,8 +17,8 @@ import {
 } from "@nova/ui-web";
 import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
-import { computerUpdates } from "../lib/computer-updates";
-import { rpc } from "../lib/rpc";
+import { rpc } from "../../lib/rpc";
+import { computerUpdates } from "./computer-updates";
 
 type Action = "recover" | "reset" | "update";
 

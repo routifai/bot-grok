@@ -7,17 +7,11 @@ import {
   ReplyCardBotProvider,
   ReplyCardSendProvider,
   ReplyCardThreadProvider,
-} from "../../../components/cards/context";
-import type { ArtifactTarget } from "../../../lib/artifact-open";
-import { RestoreButton } from "../chrome/RestoreButton";
-import {
-  SendFailureNote,
-  type SideChatBot,
-  type SideChatRef,
-  useSideChatThread,
-} from "../chrome/SideChatSession";
-import { MessageHoverActions } from "../conversation/MessageHoverActions";
-import { MessageView } from "../conversation/MessageView";
+} from "../../components/cards/context";
+import type { ArtifactTarget } from "../../lib/artifact-open";
+import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
+import { MessageHoverActions } from "../../pages/muse/conversation/MessageHoverActions";
+import { MessageView } from "../../pages/muse/conversation/MessageView";
 import { ForkComposer } from "./ForkComposer";
 import { ForkOverlay, type ForkWire, LiftedMessage, OverlayTopBar } from "./ForkOverlay";
 import { ForkUnderMessage } from "./ForkUnderMessage";
@@ -30,6 +24,12 @@ import {
   messageForkStatus,
 } from "./forkModel";
 import { LiveDot } from "./forkParts";
+import {
+  SendFailureNote,
+  type SideChatBot,
+  type SideChatRef,
+  useSideChatThread,
+} from "./SideChatSession";
 
 /** The fork a thread view shows, and what its opener already knows of it. */
 export type ForkThreadTarget = {

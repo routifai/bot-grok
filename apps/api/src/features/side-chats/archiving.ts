@@ -13,16 +13,11 @@ import { ORPCError } from "@orpc/server";
 // owns it (`/v1/me/archiving`, ADR 0009) and runs the sweep; this only proxies, scoped to the
 // actor's own bot like the other Muse settings.
 
-export interface MuseArchivingDeps {
+export interface ArchivingDeps {
   prisma: PrismaClient;
 }
 
-async function engineOf(
-  deps: MuseArchivingDeps,
-  actor: Actor,
-  botId: string,
-  env: NodeJS.ProcessEnv,
-) {
+async function engineOf(deps: ArchivingDeps, actor: Actor, botId: string, env: NodeJS.ProcessEnv) {
   const bot = await deps.prisma.bot.findFirst({
     where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
     select: { id: true },
@@ -45,8 +40,8 @@ function toArchiving(saved: OmnigentArchiving): Archiving {
   };
 }
 
-export async function getMuseArchiving(
-  deps: MuseArchivingDeps,
+export async function getArchiving(
+  deps: ArchivingDeps,
   actor: Actor,
   botId: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -57,8 +52,8 @@ export async function getMuseArchiving(
   return toArchiving(saved);
 }
 
-export async function updateMuseArchiving(
-  deps: MuseArchivingDeps,
+export async function updateArchiving(
+  deps: ArchivingDeps,
   actor: Actor,
   input: { botId: string } & ArchivingUpdate,
   env: NodeJS.ProcessEnv = process.env,

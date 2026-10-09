@@ -8,9 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
 const api = vi.hoisted(() => ({
@@ -23,7 +21,7 @@ const api = vi.hoisted(() => ({
     send: vi.fn(),
   },
 }));
-vi.mock("../../../lib/rpc", () => ({ rpc: api }));
+vi.mock("../../lib/rpc", () => ({ rpc: api }));
 vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, ""),
@@ -69,6 +67,8 @@ vi.mock("@nova/ui-web", () => ({
     onCheckedChange?: (value: boolean) => void;
   } & ComponentProps<"span">) => (
     // Like the real Switch: a click flips it via onCheckedChange and bubbles to its parent.
+    // biome-ignore lint/a11y/noStaticElementInteractions: test double of the Switch
+    // biome-ignore lint/a11y/useKeyWithClickEvents: test double of the Switch
     <span
       data-testid="switch-knob"
       data-checked={checked}
@@ -79,7 +79,7 @@ vi.mock("@nova/ui-web", () => ({
   Textarea: (props: ComponentProps<"textarea">) => <textarea {...props} />,
 }));
 
-import { ChatTree } from "./MuseSidebar";
+import { ChatTree } from "../../pages/muse/chrome/MuseSidebar";
 import { SideChatSession, type SideChatView, type SideChatWire } from "./SideChatSession";
 
 /** Stands in for the Conversation's Transcript/Composer (Shell.tsx), which the session

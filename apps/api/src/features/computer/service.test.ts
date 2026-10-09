@@ -6,7 +6,7 @@ import {
   engineComputerScreenUrl,
   engineComputerStatus,
   engineComputerTakeover,
-} from "./engine-computer.js";
+} from "./service.js";
 
 const client = { baseUrl: "http://omnigent.test", proxySecret: "proxy", secrets: [] };
 const actor = { userId: "user-1", spaceId: "space-1" } as never;

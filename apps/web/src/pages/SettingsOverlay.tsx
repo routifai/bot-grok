@@ -13,8 +13,8 @@ import {
   XIcon,
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
-import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
 import { OrganizationPanel } from "../features/admin";
+import { computersAreUnavailable } from "../features/computer/ComputersUnavailableHint";
 import { ModelsPanel, useEngineModelsStatus } from "../features/models";
 import {
   ComputerSettingsPanel,

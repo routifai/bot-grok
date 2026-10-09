@@ -20,10 +20,10 @@ import {
 import { ChevronRight, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LoadingState } from "../../../components/ai/primitives";
-import { ReplyCardSendProvider } from "../../../components/cards/context";
-import { type ChatProject, ProjectChip, useChatProject } from "./ProjectChip";
-import { RestoreButton } from "./RestoreButton";
+import { LoadingState } from "../../components/ai/primitives";
+import { ReplyCardSendProvider } from "../../components/cards/context";
+import { type ChatProject, ProjectChip, useChatProject } from "../../pages/muse/chrome/ProjectChip";
+import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
 
 /** The Side Chat session's wire: what it needs from `chats.*`, kept as an explicit shape
  * (not the `rpc` client) so the dev fixture page can supply fakes instead. */
@@ -224,45 +224,6 @@ function SessionHeader({
       >
         <X size={17} strokeWidth={1.75} />
       </button>
-    </div>
-  );
-}
-
-/** A plain-text message bubble, matching the Conversation's own bubble tokens
- * (Shell.tsx's `message-user-bubble` / `message-bot-bubble`) since that rendering is
- * defined inline in Shell.tsx and too tied to attachments/reactions/voice to import.
- * Exported for the Activity panel's read-only Helper view (ActivityRunDialog.tsx), which
- * needs the exact same rendering for a Helper's messages. */
-export function MessageRow({ message }: { message: ThreadMessage }) {
-  const text = message.blocks
-    .filter((block): block is { kind: "text"; text: string } => block.kind === "text")
-    .map((block) => block.text)
-    .join("\n\n");
-  if (!text) return null;
-  if (message.role === "system") {
-    return (
-      <p className="self-center text-[12.5px] text-muted-foreground" dir="auto">
-        {text}
-      </p>
-    );
-  }
-  if (message.role === "user") {
-    return (
-      <div className="flex w-fit max-w-full justify-end">
-        <div
-          className="max-w-full rounded-[20px] rounded-ee-[6px] bg-bubble px-4 py-2.5 text-[15.5px] leading-[1.6] whitespace-pre-wrap wrap-anywhere text-chat-user-foreground"
-          dir="auto"
-        >
-          {text}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="flex w-fit max-w-full justify-start">
-      <div className="max-w-full text-[15.5px] leading-[1.6] text-foreground" dir="auto">
-        <ChatMarkdown>{text}</ChatMarkdown>
-      </div>
     </div>
   );
 }

@@ -6,7 +6,9 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
 );
 
 const api = vi.hoisted(() => ({
@@ -16,13 +18,13 @@ const api = vi.hoisted(() => ({
   testRun: vi.fn(),
   remove: vi.fn(),
 }));
-vi.mock("../../lib/rpc", () => ({ rpc: { skills: api } }));
+vi.mock("../../../lib/rpc", () => ({ rpc: { skills: api } }));
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((out, part, i) => out + part + (values[i] ?? ""), "");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
-vi.mock("../ai/primitives", () => ({
+vi.mock("../../../components/ai/primitives", () => ({
   Shimmer: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@nova/ui-web", () => {

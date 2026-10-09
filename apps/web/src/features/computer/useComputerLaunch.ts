@@ -1,6 +1,6 @@
 import type { ComputerStatus } from "@nova/contracts";
 import { useEffect, useState } from "react";
-import { rpc } from "../../../lib/rpc";
+import { rpc } from "../../lib/rpc";
 
 type Launch = NonNullable<ComputerStatus["launch"]>;
 

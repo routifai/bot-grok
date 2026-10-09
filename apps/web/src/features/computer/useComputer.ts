@@ -1,14 +1,14 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Bot, ComputerReleaseReason, ThreadSnapshot } from "@nova/contracts";
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
-import { rpc } from "../../../lib/rpc";
+import { rpc } from "../../lib/rpc";
 import {
   computerPanelAutoBoot,
   computerPanelAutoUsesBoot,
   computerTakeoverBlocked,
   userHoldsComputerControl,
-} from "../../../lib/thread-events";
-import type { Panel } from "../chrome/panel";
+} from "../../lib/thread-events";
+import type { Panel } from "../../pages/muse/chrome/panel";
 import type { useComputerScreen } from "./useComputerScreen";
 import type { useComputerStore } from "./useComputerStore";
 

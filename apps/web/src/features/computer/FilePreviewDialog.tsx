@@ -3,10 +3,10 @@ import type { Artifact } from "@nova/contracts";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@nova/ui-web";
 import { Check, Download, Library, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ArtifactPreview } from "../../../features/artifacts";
-import { decodeArtifactBase64, downloadArtifactBytes } from "../../../lib/artifact-open";
-import { rpc } from "../../../lib/rpc";
-import { useVisiblePoll } from "../../../lib/use-visible-poll";
+import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
+import { rpc } from "../../lib/rpc";
+import { useVisiblePoll } from "../../lib/use-visible-poll";
+import { ArtifactPreview } from "../artifacts/index";
 
 type Loaded =
   | { status: "loading" }

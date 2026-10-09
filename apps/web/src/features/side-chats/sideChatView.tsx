@@ -1,10 +1,10 @@
 import { userVisibleMessages } from "@nova/core";
 import { useMemo, useRef } from "react";
-import type { ArtifactTarget } from "../../../lib/artifact-open";
-import type { SideChatView } from "../chrome/SideChatSession";
-import type { MuseLiveRun } from "../chrome/useMuseLiveState";
-import { Composer } from "./Composer";
-import { Transcript } from "./Transcript";
+import type { ArtifactTarget } from "../../lib/artifact-open";
+import type { MuseLiveRun } from "../../pages/muse/chrome/useMuseLiveState";
+import { Composer } from "../../pages/muse/conversation/Composer";
+import { Transcript } from "../../pages/muse/conversation/Transcript";
+import type { SideChatView } from "./SideChatSession";
 
 const noop = () => undefined;
 const noopAsync = async () => undefined;

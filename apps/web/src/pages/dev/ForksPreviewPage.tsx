@@ -1,16 +1,16 @@
 import type { ChatSummary, ThreadMessage } from "@nova/contracts";
 import { cn } from "@nova/ui-web";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { AllForks, ForkViewSwitch } from "../../features/side-chats/AllForks";
+import { ForkAsk } from "../../features/side-chats/ForkAsk";
+import { ForkGutter } from "../../features/side-chats/ForkGutter";
+import type { ForkWire } from "../../features/side-chats/ForkOverlay";
+import { ForkThread } from "../../features/side-chats/ForkThread";
+import type { ChatListState } from "../../features/side-chats/useChatList";
+import { useForkView } from "../../features/side-chats/useForkView";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { MuseSidebar } from "../muse/chrome/MuseSidebar";
-import type { ChatListState } from "../muse/chrome/useChatList";
 import { Transcript } from "../muse/conversation/Transcript";
-import { AllForks, ForkViewSwitch } from "../muse/forks/AllForks";
-import { ForkAsk } from "../muse/forks/ForkAsk";
-import { ForkGutter } from "../muse/forks/ForkGutter";
-import type { ForkWire } from "../muse/forks/ForkOverlay";
-import { ForkThread } from "../muse/forks/ForkThread";
-import { useForkView } from "../muse/forks/useForkView";
 import {
   conversationWithForks,
   FORK_DEV_CONVERSATION,

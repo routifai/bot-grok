@@ -1,7 +1,7 @@
 import type { TaughtSkill } from "@nova/contracts";
 import { DEFAULT_COMPUTER_SCREEN, mapTeachPointer, teachCaptureKey } from "@nova/core";
 import { useEffect, useRef } from "react";
-import { rpc } from "../../lib/rpc";
+import { rpc } from "../../../lib/rpc";
 
 export function TeachCaptureOverlay({
   botId,
@@ -44,7 +44,7 @@ export function TeachCaptureOverlay({
       y: number,
       button: "left" | "right" = "left",
     ) {
-      await rpc.computer.input({
+      await rpc.skills.input({
         botId,
         kind: "pointer",
         payload: { x, y, button, type },
@@ -52,11 +52,11 @@ export function TeachCaptureOverlay({
     }
 
     async function sendKey(key: string) {
-      await rpc.computer.input({ botId, kind: "key", payload: { key } });
+      await rpc.skills.input({ botId, kind: "key", payload: { key } });
     }
 
     async function sendScroll(direction: "up" | "down", amount: number) {
-      await rpc.computer.input({
+      await rpc.skills.input({
         botId,
         kind: "scroll",
         payload: { direction, amount },

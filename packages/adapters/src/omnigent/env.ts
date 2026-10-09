@@ -21,7 +21,7 @@ export interface OmnigentSuperChatConfig {
    * (env `OMNIGENT_LEASE_DURATION_MS`). */
   leaseDurationMs: number;
   /** Messages fetched per `chats.transcript` page (env `OMNIGENT_CHATS_PAGE_SIZE`;
-   * apps/api/src/chats.ts). */
+   * apps/api/src/features/side-chats/service.ts). */
   chatsPageSize: number;
 }
 
@@ -92,7 +92,7 @@ export function omnigentGatewayDepsFromEnv(
 
 /**
  * The engine connection for query-side Super Chat calls (`chats.*`/`activities.*`,
- * apps/api/src/chats.ts and ./activities.ts) — `undefined` whenever `OMNIGENT_URL` or
+ * apps/api/src/features/side-chats/service.ts and ./activities.ts) — `undefined` whenever `OMNIGENT_URL` or
  * `OMNIGENT_PROXY_SECRET` is missing, so callers can surface a clean "not available" response
  * instead of throwing at request time. Boot-time wiring (`omnigentGatewayDepsFromEnv`, run
  * path) is strict about a half-configured connection; this is read lazily per request.

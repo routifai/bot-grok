@@ -17,11 +17,12 @@ import {
 import { ACTIVE_RUN_STATUSES } from "@nova/core";
 import { IsolationError } from "@nova/db";
 import { ORPCError } from "@orpc/server";
-import { engineComputerClient, engineComputerStatus } from "../engine-computer.js";
-import { computerControlProcedures } from "./computer-control.js";
-import { computerStatus, runComputerReplace } from "./computer-support.js";
-import type { RouterContext } from "./context.js";
-import { computerContext } from "./shared.js";
+import { engineComputerClient } from "../../engine-client.js";
+import type { RouterContext } from "../../routers/context.js";
+import { computerContext } from "../../routers/shared.js";
+import { computerControlProcedures } from "./control.js";
+import { engineComputerStatus } from "./service.js";
+import { computerStatus, runComputerReplace } from "./support.js";
 
 export function computerRouter(c: RouterContext) {
   const { deps, authed, repos } = c;

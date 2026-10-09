@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 const takeover = vi.fn(async () => ({ leaseId: "engine", expiresAt: "" }));
 const release = vi.fn(async () => ({ ok: true as const }));
-vi.mock("./engine-computer.js", () => ({
-  engineComputerClient: () => ({ baseUrl: "http://omnigent.test" }),
+vi.mock("../computer/index.js", () => ({
   engineComputerTakeover: takeover,
   engineComputerRelease: release,
+}));
+vi.mock("../../engine-client.js", () => ({
+  engineComputerClient: () => ({ baseUrl: "http://omnigent.test" }),
   engineSessionOf: vi.fn(async () => ({ email: "me@example.test", sessionId: "sess-1" })),
 }));
 
@@ -30,7 +32,7 @@ const engine = {
 };
 vi.mock("@nova/adapters", () => engine);
 
-const { assertTeachingSendAllowed, createTaughtSkillsService } = await import("./taught-skills.js");
+const { createTaughtSkillsService } = await import("./taught-skills.js");
 
 const actor = { userId: "user-1", spaceId: "space-1" } as never;
 const doc = {
@@ -206,20 +208,5 @@ describe("teaching on the engine", () => {
       "me@example.test",
       "skill-1",
     );
-  });
-});
-
-describe("assertTeachingSendAllowed", () => {
-  it("holds sends while the person is teaching and fails open when the engine is down", async () => {
-    engine.listOmnigentTaughtSkills.mockResolvedValueOnce([
-      engineSkill({ status: "recording" }),
-    ] as never);
-    await expect(assertTeachingSendAllowed({} as never, actor, "bot-1")).rejects.toThrow(
-      "Stop teaching first",
-    );
-    engine.listOmnigentTaughtSkills.mockRejectedValueOnce(new Error("down"));
-    await expect(assertTeachingSendAllowed({} as never, actor, "bot-1")).resolves.toBeUndefined();
-    engine.listOmnigentTaughtSkills.mockResolvedValueOnce([engineSkill()] as never);
-    await expect(assertTeachingSendAllowed({} as never, actor, "bot-1")).resolves.toBeUndefined();
   });
 });

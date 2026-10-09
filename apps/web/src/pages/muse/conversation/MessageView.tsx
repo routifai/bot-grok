@@ -7,11 +7,11 @@ import { memo, useMemo } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
-import { SkillDraftCard } from "../../../components/teach/SkillDraftCard";
 import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
 import { SheetAskChip } from "../../../features/sheets/SheetAskChip";
 import { splitSheetAsk } from "../../../features/sheets/sheet-ask";
+import { SkillDraftCard } from "../../../features/skills/teach/SkillDraftCard";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { messageProviderLabel } from "../../../lib/messaging";
 import {

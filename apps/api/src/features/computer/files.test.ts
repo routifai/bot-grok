@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "./engine-files.js";
+import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "./files.js";
 
 const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [] };
 const actor = { userId: "user-1", spaceId: "space-1" } as never;

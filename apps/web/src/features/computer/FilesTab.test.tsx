@@ -8,8 +8,8 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ list: vi.fn() }));
-vi.mock("../../../lib/rpc", () => ({ rpc: { files: api } }));
-vi.mock("../../../lib/relative-time", () => ({ formatRelativeTime: () => "just now" }));
+vi.mock("../../lib/rpc", () => ({ rpc: { files: api } }));
+vi.mock("../../lib/relative-time", () => ({ formatRelativeTime: () => "just now" }));
 vi.mock("./FilePreviewDialog", () => ({
   FilePreviewDialog: ({ path }: { path: string }) => <div data-testid="preview">{path}</div>,
 }));

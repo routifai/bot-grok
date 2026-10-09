@@ -1,9 +1,9 @@
 import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
 import { type RefObject, useCallback, useMemo, useState } from "react";
-import type { ChatListState } from "../chrome/useChatList";
 import { type ForkThreadTarget, forkTarget } from "./ForkThread";
 import { ForkUnderMessage } from "./ForkUnderMessage";
 import { type ForkFilter, type ForkRow, forkRows } from "./forkModel";
+import type { ChatListState } from "./useChatList";
 
 /** How long a jumped-to message keeps its flash. */
 const FLASH_MS = 1400;

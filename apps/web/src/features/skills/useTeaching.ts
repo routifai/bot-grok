@@ -6,7 +6,7 @@ import {
   useCallback,
   useState,
 } from "react";
-import { rpc } from "../../../lib/rpc";
+import { rpc } from "../../lib/rpc";
 
 /** Stopping a teaching recording and refreshing the teach chrome. */
 export function useTeaching({

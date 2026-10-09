@@ -1,19 +1,14 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerStatus, TaughtSkill } from "@nova/contracts";
+import type { Bot, ComputerStatus } from "@nova/contracts";
 import { Button } from "@nova/ui-web";
 import { Monitor, X } from "lucide-react";
-import { ComputerMaintenanceActions } from "../../../components/ComputerMaintenanceActions";
-import { TeachCaptureOverlay } from "../../../components/teach/TeachCaptureOverlay";
-import { TeachComputerOverlayControl } from "../../../components/teach/TeachComputerOverlay";
-import {
-  TeachRecordingChrome,
-  TeachStopButton,
-} from "../../../components/teach/TeachRecordingChrome";
-import { screenIframeSandbox } from "../../../lib/computer-screen";
-import { type activeThreadRuns, userHoldsComputerControl } from "../../../lib/thread-events";
-import { museMode } from "../chrome/museMode";
-import { NovaTile } from "../chrome/NovaTile";
-import { StatusPill } from "../ui";
+import type { ReactNode } from "react";
+import { type activeThreadRuns, userHoldsComputerControl } from "../../lib/thread-events";
+import { museMode } from "../../pages/muse/chrome/museMode";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { StatusPill } from "../../pages/muse/ui/index";
+import { ComputerMaintenanceActions } from "./ComputerMaintenanceActions";
+import { screenIframeSandbox } from "./computer-screen";
 import {
   ComputerReleaseActions,
   computerLabel,
@@ -23,8 +18,18 @@ import {
 import type { useComputer } from "./useComputer";
 import type { useComputerScreen } from "./useComputerScreen";
 
-// Mirrors ENGINE_COMPUTER_ID (core/node): teaching on the engine records it as the control lease.
-const ENGINE_TEACH_LEASE = "engine";
+/** What the skills capability puts on the Computer while the person teaches a task: the shell
+ * passes it in, so the Computer knows nothing about teaching. */
+export interface ComputerTeachSlots {
+  /** A skill is being recorded: the title bar shows the recording, not the Computer's name. */
+  recording: boolean;
+  /** Nova's own overlay captures the demonstration, so the screen itself takes no input. */
+  capturesInput: boolean;
+  recordingChrome: ReactNode;
+  stopButton: ReactNode;
+  startControl: (botId: string) => ReactNode;
+  captureOverlay: (botId: string) => ReactNode;
+}
 
 /** CSS zoom applied to #root (Muse wide-screen scaling); 1 when none. */
 function rootZoom(): number {
@@ -47,12 +52,7 @@ export function ComputerOverlay({
   computer: ComputerStatus | null;
   ctl: ReturnType<typeof useComputer>;
   screen: ReturnType<typeof useComputerScreen>;
-  teach: {
-    recordingSkill: TaughtSkill | null;
-    teachBusy: boolean;
-    stopTeaching: () => Promise<void>;
-    refreshActiveTeaching: () => Promise<void>;
-  };
+  teach: ComputerTeachSlots;
   run: {
     currentRuns: ReturnType<typeof activeThreadRuns>;
     composerRunning: boolean;
@@ -72,13 +72,10 @@ export function ComputerOverlay({
     refreshComputerFor,
   } = ctl;
   const { screenReloadKey } = screen;
-  const { recordingSkill, teachBusy, stopTeaching, refreshActiveTeaching } = teach;
+  const { recording } = teach;
   const { composerRunning, sending, sendError, stopRun } = run;
   const { embeddedScreenUrl, computerScreenError } = screenView(screen, computerBot);
   const hasControl = userHoldsComputerControl(computer, computerBot?.id);
-  // On the engine the person demonstrates straight into the interactive stream (the engine holds
-  // control); Nova's capture overlay would sit on top of it and swallow every click and key.
-  const teachesOnEngine = recordingSkill?.recording.controlLeaseId === ENGINE_TEACH_LEASE;
   return (
     <>
       {booting ? (
@@ -119,13 +116,8 @@ export function ComputerOverlay({
                 <NovaTile tone="gray" size={28}>
                   <Monitor strokeWidth={2.2} />
                 </NovaTile>
-                {recordingSkill ? (
-                  <TeachRecordingChrome
-                    recording={recordingSkill}
-                    busy={teachBusy}
-                    onStop={stopTeaching}
-                    variant="overlay"
-                  />
+                {recording ? (
+                  teach.recordingChrome
                 ) : (
                   <span
                     className={
@@ -140,11 +132,11 @@ export function ComputerOverlay({
                       : computerLabel(computer?.mode, computerBot.name)}
                   </span>
                 )}
-                {museMode && !recordingSkill && hasControl ? (
+                {museMode && !recording && hasControl ? (
                   <StatusPill tone={computer?.takeoverRequested ? "attention" : "live"}>
                     {computer?.takeoverRequested ? t`Needs you` : t`You have control`}
                   </StatusPill>
-                ) : !recordingSkill && hasControl ? (
+                ) : !recording && hasControl ? (
                   computer?.takeoverRequested ? (
                     <span className="rounded-full bg-warning/15 px-[11px] py-1 text-[13px] text-warning">
                       <Trans>Needs you</Trans>
@@ -176,8 +168,8 @@ export function ComputerOverlay({
                     <Trans>Stop</Trans>
                   </Button>
                 ) : null}
-                {recordingSkill ? (
-                  <TeachStopButton busy={teachBusy} onStop={stopTeaching} />
+                {recording ? (
+                  teach.stopButton
                 ) : hasControl ? (
                   <ComputerReleaseActions
                     takeoverRequested={Boolean(computer?.takeoverRequested)}
@@ -185,16 +177,8 @@ export function ComputerOverlay({
                     museName={museMode ? computerBot.name : undefined}
                   />
                 ) : null}
-                {computerBot && !recordingSkill ? (
-                  <TeachComputerOverlayControl
-                    key={computerBot.id}
-                    botId={computerBot.id}
-                    computer={computer}
-                    busy={teachBusy}
-                    onRefresh={refreshActiveTeaching}
-                  />
-                ) : null}
-                {computerBot && !recordingSkill ? (
+                {computerBot && !recording ? teach.startControl(computerBot.id) : null}
+                {computerBot && !recording ? (
                   <ComputerMaintenanceActions
                     botId={computerBot.id}
                     computer={computer}
@@ -236,19 +220,10 @@ export function ComputerOverlay({
                     className="h-full w-full border-0 bg-black"
                     allow="clipboard-read; clipboard-write; fullscreen"
                     style={{
-                      pointerEvents:
-                        (recordingSkill && !teachesOnEngine) || !hasControl ? "none" : "auto",
+                      pointerEvents: teach.capturesInput || !hasControl ? "none" : "auto",
                     }}
                   />
-                  {computerBot && !teachesOnEngine ? (
-                    <TeachCaptureOverlay
-                      botId={computerBot.id}
-                      skill={recordingSkill}
-                      enabled={Boolean(recordingSkill)}
-                      screenWidth={computer?.screenWidth}
-                      screenHeight={computer?.screenHeight}
-                    />
-                  ) : null}
+                  {computerBot ? teach.captureOverlay(computerBot.id) : null}
                 </>
               ) : (
                 <div className="grid h-full place-items-center text-sm text-muted-foreground/80">

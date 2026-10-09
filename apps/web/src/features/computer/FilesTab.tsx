@@ -3,8 +3,8 @@ import { cn, Input } from "@nova/ui-web";
 import { ORPCError } from "@orpc/client";
 import { ChevronRight, Eye, EyeOff, File, Folder, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatRelativeTime } from "../../../lib/relative-time";
-import { rpc } from "../../../lib/rpc";
+import { formatRelativeTime } from "../../lib/relative-time";
+import { rpc } from "../../lib/rpc";
 import { FilePreviewDialog } from "./FilePreviewDialog";
 
 type Entry = Awaited<ReturnType<typeof rpc.files.list>>["entries"][number];

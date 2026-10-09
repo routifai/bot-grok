@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { SandboxProvider } from "@nova/adapter-kit";
 import { computerControlExpireJobKey } from "@nova/adapter-kit";
 import {
-  applyTeachingDesktopInput,
   clearInactiveUserComputerControl,
   displayBotWorkspacePath,
   enqueueTakeoverContinuation,
@@ -20,27 +19,27 @@ import {
 import { IsolationError, parseComputerMode } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
-import { executionBlocksUserTakeover } from "../computer-status.js";
+import { engineComputerClient } from "../../engine-client.js";
+import type { RouterContext } from "../../routers/context.js";
+import { computerContext } from "../../routers/shared.js";
+import { addScreenProxyCapability } from "./screen-proxy.js";
 import {
-  engineComputerClient,
   engineComputerRelease,
   engineComputerScreenUrl,
   engineComputerTakeover,
-} from "../engine-computer.js";
-import { addScreenProxyCapability } from "../screen-proxy.js";
+} from "./service.js";
+import { executionBlocksUserTakeover } from "./status.js";
 import {
   bindWaitingTakeoverToControl,
   computerScreenContext,
   expireStaleComputerControl,
   withViewOnly,
-} from "./computer-support.js";
-import type { RouterContext } from "./context.js";
-import { computerContext } from "./shared.js";
+} from "./support.js";
 
 const MAX_COMPUTER_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 
 export function computerControlProcedures(c: RouterContext) {
-  const { deps, authed, repos, taughtSkills } = c;
+  const { deps, authed, repos } = c;
   return {
     takeover: authed.computer.takeover.handler(async ({ context, input }) => {
       const engine = engineComputerClient(context.actor);
@@ -244,50 +243,6 @@ export function computerControlProcedures(c: RouterContext) {
 
       await enqueueTakeoverContinuation(deps.jobs, released.runId);
       scheduleComputerSleep(deps.jobs, bot.computer.id);
-      return { ok: true as const };
-    }),
-    input: authed.computer.input.handler(async ({ context, input }) => {
-      const bot = await repos.getBot(context.actor, input.botId);
-      const computer = bot.computer;
-      if (!computer || !hasActiveComputerControl(computer) || computer.controlBotId !== bot.id) {
-        await expireStaleComputerControl(deps, computer);
-        throw new ORPCError("FORBIDDEN");
-      }
-      if (!computer.providerRef) return { ok: true as const };
-      const mapped =
-        input.kind === "key"
-          ? { kind: "key" as const, key: String(input.payload.key ?? "") }
-          : input.kind === "clipboard"
-            ? { kind: "clipboard" as const, text: String(input.payload.text ?? "") }
-            : input.kind === "scroll"
-              ? {
-                  kind: "scroll" as const,
-                  direction: input.payload.direction === "up" ? ("up" as const) : ("down" as const),
-                  amount: Number(input.payload.amount ?? 3),
-                }
-              : {
-                  kind: "pointer" as const,
-                  x: Number(input.payload.x ?? 0),
-                  y: Number(input.payload.y ?? 0),
-                  button: (input.payload.button as "left" | "right" | undefined) ?? "left",
-                  type:
-                    (input.payload.type as "move" | "down" | "up" | "click" | undefined) ?? "click",
-                };
-      const outcome = await taughtSkills.recordInput(context.actor, bot.id, mapped);
-      if (outcome === "stale") return { ok: true as const };
-      if (outcome !== "recorded") {
-        await applyTeachingDesktopInput(
-          deps.sandbox,
-          computer,
-          mapped,
-          computerContext(context.actor, bot.id, "input"),
-        );
-      }
-      await deps.prisma.computer.updateMany({
-        where: { id: computer.id, state: "running" },
-        data: { updatedAt: new Date() },
-      });
-      scheduleComputerSleep(deps.jobs, computer.id);
       return { ok: true as const };
     }),
     files: authed.computer.files.handler(async ({ context, input }) => {

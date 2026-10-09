@@ -9,7 +9,7 @@ import {
 } from "@nova/core/node/screen-capability";
 import type { PrismaClient } from "@nova/db";
 import type { Hono } from "hono";
-import { requestBodyLimit } from "./request-body-limit.js";
+import { requestBodyLimit } from "../../request-body-limit.js";
 
 export function addScreenProxyCapability(
   url: string,

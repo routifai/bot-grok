@@ -22,7 +22,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { screenLinkKey } from "../../../lib/computer-screen";
+import { screenLinkKey } from "../../../features/computer/computer-screen";
+import type { useComputerScreen } from "../../../features/computer/useComputerScreen";
+import type { useComputerStore } from "../../../features/computer/useComputerStore";
 import { markOnce } from "../../../lib/performance";
 import { rpc } from "../../../lib/rpc";
 import {
@@ -32,8 +34,6 @@ import {
 } from "../../../lib/thread-events";
 import { transcriptCanSnapAfterFrame, transcriptIsNearEnd } from "../../../lib/transcript-scroll";
 import type { useBrowserNotifications } from "../chrome/useBrowserNotifications";
-import type { useComputerScreen } from "../files/useComputerScreen";
-import type { useComputerStore } from "../files/useComputerStore";
 import { applyThreadEvent } from "./threadEvents";
 import type { useThreadState } from "./useThreadState";
 

@@ -11,7 +11,7 @@ import {
   listArtifactVersions,
   listSpaceArtifacts,
 } from "../../attachments.js";
-import { engineComputerClient } from "../../engine-computer.js";
+import { engineComputerClient } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";
 import {
   engineGetArtifact,

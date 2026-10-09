@@ -3,7 +3,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { cn } from "@nova/ui-web";
 import { MessageCircle, Search } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
-import { RestoreButton } from "../chrome/RestoreButton";
+import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
 import {
   FORK_FILTERS,
   FORK_TONE_CLASS,

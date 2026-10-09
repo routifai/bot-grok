@@ -1,6 +1,6 @@
+import type { OmnigentClientConfig } from "./client/core.js";
+import { omnigentHeaders, throwOnError } from "./client/core.js";
 import { computerUrl } from "./computer.js";
-import type { OmnigentClientConfig } from "./core.js";
-import { omnigentHeaders, throwOnError } from "./core.js";
 
 /** A taught skill's document (engine/omnigent/omnigent/superchat/taught_skills.py). */
 export interface OmnigentSkillDoc {

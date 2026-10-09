@@ -1,74 +1,16 @@
-import { isScratchpadStatus, listScratchpadItems, mapScratchpadItem } from "@nova/adapters";
-import { IsolationError } from "@nova/db";
+import {
+  applyTeachingDesktopInput,
+  hasActiveComputerControl,
+  scheduleComputerSleep,
+} from "@nova/adapters";
 import { ORPCError } from "@orpc/server";
-
-import type { RouterContext } from "./context.js";
+import type { RouterContext } from "../../routers/context.js";
+import { computerContext } from "../../routers/shared.js";
+import { expireStaleComputerControl } from "../computer/index.js";
 
 export function skillsRouter(c: RouterContext) {
   const { authed, repos, taughtSkills, agentSkills, deps } = c;
   return {
-    scratchpad: {
-      list: authed.scratchpad.list.handler(async ({ context, input }) => {
-        await repos.getBot(context.actor, input.botId);
-        return listScratchpadItems(
-          { prisma: deps.prisma },
-          {
-            spaceId: context.actor.spaceId,
-            botId: input.botId,
-            status: input.status,
-            includeDone: input.includeDone ?? false,
-          },
-        );
-      }),
-      create: authed.scratchpad.create.handler(async ({ context, input }) => {
-        await repos.getBot(context.actor, input.botId);
-        const row = await deps.prisma.scratchpadItem.create({
-          data: {
-            spaceId: context.actor.spaceId,
-            botId: input.botId,
-            userId: context.actor.userId,
-            title: input.title.trim(),
-            status: input.status,
-            notes: input.notes.trim(),
-          },
-        });
-        return mapScratchpadItem(row);
-      }),
-      update: authed.scratchpad.update.handler(async ({ context, input }) => {
-        const existing = await deps.prisma.scratchpadItem.findFirst({
-          where: {
-            id: input.itemId,
-            spaceId: context.actor.spaceId,
-            userId: context.actor.userId,
-          },
-        });
-        if (!existing) throw new IsolationError();
-        if (input.status !== undefined && !isScratchpadStatus(input.status)) {
-          throw new ORPCError("BAD_REQUEST", { message: "Invalid scratchpad status." });
-        }
-        const row = await deps.prisma.scratchpadItem.update({
-          where: { id: existing.id },
-          data: {
-            ...(input.title !== undefined ? { title: input.title.trim() } : {}),
-            ...(input.status !== undefined ? { status: input.status } : {}),
-            ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
-          },
-        });
-        return mapScratchpadItem(row);
-      }),
-      remove: authed.scratchpad.remove.handler(async ({ context, input }) => {
-        const existing = await deps.prisma.scratchpadItem.findFirst({
-          where: {
-            id: input.itemId,
-            spaceId: context.actor.spaceId,
-            userId: context.actor.userId,
-          },
-        });
-        if (!existing) throw new IsolationError();
-        await deps.prisma.scratchpadItem.delete({ where: { id: existing.id } });
-        return { ok: true as const };
-      }),
-    },
     skills: {
       list: authed.skills.list.handler(async ({ context, input }) => {
         await repos.getBot(context.actor, input.botId);
@@ -108,6 +50,52 @@ export function skillsRouter(c: RouterContext) {
       remove: authed.skills.remove.handler(async ({ context, input }) =>
         taughtSkills.remove(context.actor, input.skillId),
       ),
+      input: authed.skills.input.handler(async ({ context, input }) => {
+        const bot = await repos.getBot(context.actor, input.botId);
+        const computer = bot.computer;
+        if (!computer || !hasActiveComputerControl(computer) || computer.controlBotId !== bot.id) {
+          await expireStaleComputerControl(deps, computer);
+          throw new ORPCError("FORBIDDEN");
+        }
+        if (!computer.providerRef) return { ok: true as const };
+        const mapped =
+          input.kind === "key"
+            ? { kind: "key" as const, key: String(input.payload.key ?? "") }
+            : input.kind === "clipboard"
+              ? { kind: "clipboard" as const, text: String(input.payload.text ?? "") }
+              : input.kind === "scroll"
+                ? {
+                    kind: "scroll" as const,
+                    direction:
+                      input.payload.direction === "up" ? ("up" as const) : ("down" as const),
+                    amount: Number(input.payload.amount ?? 3),
+                  }
+                : {
+                    kind: "pointer" as const,
+                    x: Number(input.payload.x ?? 0),
+                    y: Number(input.payload.y ?? 0),
+                    button: (input.payload.button as "left" | "right" | undefined) ?? "left",
+                    type:
+                      (input.payload.type as "move" | "down" | "up" | "click" | undefined) ??
+                      "click",
+                  };
+        const outcome = await taughtSkills.recordInput(context.actor, bot.id, mapped);
+        if (outcome === "stale") return { ok: true as const };
+        if (outcome !== "recorded") {
+          await applyTeachingDesktopInput(
+            deps.sandbox,
+            computer,
+            mapped,
+            computerContext(context.actor, bot.id, "input"),
+          );
+        }
+        await deps.prisma.computer.updateMany({
+          where: { id: computer.id, state: "running" },
+          data: { updatedAt: new Date() },
+        });
+        scheduleComputerSleep(deps.jobs, computer.id);
+        return { ok: true as const };
+      }),
     },
     agentSkills: {
       list: authed.agentSkills.list.handler(async ({ context }) => agentSkills.list(context.actor)),

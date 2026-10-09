@@ -1,7 +1,7 @@
 // Real `chats.*` handlers (packages/contracts/src/rpc.ts, docs/super-chat/WIRING.md slice
 // A1): Side Chats and Helpers of a Muse's Super Chat. Nova's API only checks who is asking and
 // passes the call through (ADR 0001) — the mapping/ownership logic itself lives in
-// packages/adapters/src/omnigent/chats.ts so it can be unit-tested with a mocked Omnigent
+// packages/adapters/src/omnigent/side-chats.ts so it can be unit-tested with a mocked Omnigent
 // client, same as ./engine-info.ts does for `engine.*`.
 import {
   addOmnigentForkToConversation,
@@ -41,8 +41,8 @@ import {
 import type { PrismaClient } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
-import { syncEngineTimezone } from "./engine-timezone.js";
-import { onSuperChat } from "./omnigent-errors.js";
+import { syncEngineTimezone } from "../../engine-timezone.js";
+import { onSuperChat } from "../../omnigent-errors.js";
 
 export interface ChatsDeps {
   prisma: PrismaClient;

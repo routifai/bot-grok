@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { executionBlocksUserTakeover, toComputerStatus } from "./computer-status.js";
+import { executionBlocksUserTakeover, toComputerStatus } from "./status.js";
 
 describe("toComputerStatus", () => {
   it("only marks control that is bound to a waiting run as a requested takeover", () => {

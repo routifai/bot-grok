@@ -6,7 +6,6 @@ import { approvalsContract } from "./rpc/approvals.js";
 import { appsContract } from "./rpc/apps.js";
 import { artifactsContract } from "./rpc/artifacts.js";
 import { botsContract } from "./rpc/bots.js";
-import { chatsContract } from "./rpc/chats.js";
 import { computerContract } from "./rpc/computer.js";
 import { dailyNotesContract } from "./rpc/daily-notes.js";
 import { feedContract } from "./rpc/feed.js";
@@ -19,7 +18,9 @@ import { messagingContract } from "./rpc/messaging.js";
 import { engineModelsContract } from "./rpc/models.js";
 import { museContract } from "./rpc/muse.js";
 import { scheduledContract } from "./rpc/scheduled.js";
+import { scratchpadContract } from "./rpc/scratchpad.js";
 import { sheetsContract } from "./rpc/sheets.js";
+import { sideChatsContract } from "./rpc/side-chats.js";
 import { skillsContract } from "./rpc/skills.js";
 import { threadsContract } from "./rpc/threads.js";
 import { vaultContract } from "./rpc/vault.js";
@@ -32,7 +33,6 @@ export const appContract = {
   ...approvalsContract,
   ...artifactsContract,
   ...botsContract,
-  ...chatsContract,
   ...computerContract,
   ...dailyNotesContract,
   ...engineAdminContract,
@@ -46,7 +46,9 @@ export const appContract = {
   ...modelsContract,
   ...museContract,
   ...scheduledContract,
+  ...scratchpadContract,
   ...sheetsContract,
+  ...sideChatsContract,
   ...skillsContract,
   ...threadsContract,
   ...vaultContract,

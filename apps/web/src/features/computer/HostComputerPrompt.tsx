@@ -9,8 +9,8 @@ import {
   DialogTitle,
 } from "@nova/ui-web";
 import { useEffect, useState } from "react";
-import { desktopBridge } from "../lib/desktop";
-import { rpc } from "../lib/rpc";
+import { desktopBridge } from "../../lib/desktop";
+import { rpc } from "../../lib/rpc";
 
 export function HostComputerPrompt({ initialMe }: { initialMe?: Me }) {
   const { t } = useLingui();

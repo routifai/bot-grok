@@ -4,8 +4,6 @@
 import {
   getOmnigentComputer,
   type OmnigentClientConfig,
-  omnigentClientConfigFromEnv,
-  omnigentClientFor,
   openOmnigentComputerScreen,
   releaseOmnigentComputer,
 } from "@nova/adapters";
@@ -13,72 +11,17 @@ import type { Actor, ComputerStatus } from "@nova/contracts";
 import { ENGINE_COMPUTER_ID, SCREEN_PROXY_TTL_MS } from "@nova/core/node/screen-capability";
 import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
-import { toComputerStatus } from "./computer-status.js";
+import {
+  type EngineComputer,
+  engineComputerClient,
+  resolveEngineComputer,
+} from "../../engine-client.js";
 import { addScreenProxyCapability } from "./screen-proxy.js";
+import { toComputerStatus } from "./status.js";
 
 export interface EngineComputerDeps {
   prisma: PrismaClient;
   env: { screenProxySecret: string; webOrigin: string };
-}
-
-interface EngineComputer {
-  client: OmnigentClientConfig;
-  email: string;
-  sessionId: string | null;
-  bot: { id: string; screenGeneration: number };
-}
-
-/** The engine client for this actor's space (the tenant every engine call carries); `undefined`
- * when no engine is configured. Capability routes pass it through `requireEngine`. */
-export function engineComputerClient(
-  actor: Pick<Actor, "spaceId">,
-  env: NodeJS.ProcessEnv = process.env,
-): OmnigentClientConfig | undefined {
-  const connection = omnigentClientConfigFromEnv(env);
-  return connection ? omnigentClientFor(connection, actor.spaceId) : undefined;
-}
-
-/** The engine client, or a clear "not configured" error: Nova runs on the engine, so a route has
- * no fallback to serve without it. `what` names the capability ("Goals", "The Feed"). */
-export function requireEngine(
-  client: OmnigentClientConfig | undefined,
-  what: string,
-): OmnigentClientConfig {
-  if (!client) throw new ORPCError("SERVICE_UNAVAILABLE", { message: `${what} need the engine` });
-  return client;
-}
-
-async function resolve(
-  deps: Pick<EngineComputerDeps, "prisma">,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  botId: string,
-): Promise<EngineComputer> {
-  const [bot, user, session] = await Promise.all([
-    deps.prisma.bot.findFirst({
-      where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
-      select: { id: true, screenGeneration: true },
-    }),
-    deps.prisma.user.findUnique({ where: { id: actor.userId }, select: { email: true } }),
-    deps.prisma.omnigentSession.findUnique({
-      where: { botId },
-      select: { omnigentSessionId: true },
-    }),
-  ]);
-  if (!bot || !user) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
-  return { client, email: user.email, sessionId: session?.omnigentSessionId ?? null, bot };
-}
-
-/** The engine session and owner email behind a Muse's Computer, for engine routes that act on
- * it (teaching records it). `sessionId` is `null` until the Muse has had a turn. */
-export async function engineSessionOf(
-  deps: Pick<EngineComputerDeps, "prisma">,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  botId: string,
-): Promise<{ email: string; sessionId: string | null }> {
-  const { email, sessionId } = await resolve(deps, client, actor, botId);
-  return { email, sessionId };
 }
 
 async function state(target: EngineComputer) {
@@ -95,7 +38,7 @@ export async function engineComputerStatus(
   botId: string,
 ): Promise<ComputerStatus> {
   const { available, in_control, ready, launch } = await state(
-    await resolve(deps, client, actor, botId),
+    await resolveEngineComputer(deps, client, actor, botId),
   );
   const status = toComputerStatus(botId, {
     kind: "docker",
@@ -135,7 +78,7 @@ export async function engineComputerScreenUrl(
   actor: Actor,
   botId: string,
 ): Promise<{ url: string | null }> {
-  const target = await resolve(deps, client, actor, botId);
+  const target = await resolveEngineComputer(deps, client, actor, botId);
   const current = await state(target);
   if (!target.sessionId || !current.available) return { url: null };
   const screen = await openOmnigentComputerScreen(
@@ -153,7 +96,7 @@ export async function engineComputerTakeover(
   actor: Actor,
   botId: string,
 ): Promise<{ leaseId: string; expiresAt: string }> {
-  const target = await resolve(deps, client, actor, botId);
+  const target = await resolveEngineComputer(deps, client, actor, botId);
   if (!target.sessionId || !(await state(target)).available) {
     throw new ORPCError("BAD_REQUEST", { message: "Nova's computer starts when Nova needs it" });
   }
@@ -170,7 +113,7 @@ export async function engineComputerRelease(
   actor: Actor,
   botId: string,
 ): Promise<{ ok: true }> {
-  const target = await resolve(deps, client, actor, botId);
+  const target = await resolveEngineComputer(deps, client, actor, botId);
   if (target.sessionId) await releaseOmnigentComputer(client, target.email, target.sessionId);
   return { ok: true };
 }

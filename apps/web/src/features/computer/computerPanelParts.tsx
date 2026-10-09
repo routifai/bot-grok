@@ -2,8 +2,8 @@ import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { Bot, ComputerReleaseReason, ComputerStatus } from "@nova/contracts";
 import { Button } from "@nova/ui-web";
-import { embeddableScreenUrl } from "../../../lib/computer-screen";
-import { StatusPill } from "../ui";
+import { StatusPill } from "../../pages/muse/ui/index";
+import { embeddableScreenUrl } from "./computer-screen";
 import type { useComputerScreen } from "./useComputerScreen";
 
 export function ComputerReleaseActions({

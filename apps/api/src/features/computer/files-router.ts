@@ -1,9 +1,9 @@
 // `files.*`: the Computer workspace browser (list, preview, save to Library). It belongs to the
 // `computer` capability and moves there with it; until then it is wired from `router.ts`.
 import { ORPCError } from "@orpc/server";
-import { engineComputerClient } from "../engine-computer.js";
-import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "../engine-files.js";
-import type { RouterContext } from "./context.js";
+import { engineComputerClient } from "../../engine-client.js";
+import type { RouterContext } from "../../routers/context.js";
+import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "./files.js";
 
 export function filesRouter(c: RouterContext) {
   const { authed, engineFilesDeps } = c;

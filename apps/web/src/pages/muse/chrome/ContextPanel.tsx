@@ -24,6 +24,7 @@ import {
   taskCounts,
 } from "../../../features/goals";
 import { MemoryTab, type MemoryWire } from "../../../features/memory";
+import type { ChatListState } from "../../../features/side-chats/useChatList";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { rpc } from "../../../lib/rpc";
 import { StatusPill } from "../ui";
@@ -34,7 +35,6 @@ import {
 } from "./connectionStatus";
 import { ChevronGlyph } from "./NovaGlyphs";
 import { NovaTile, type TileTone } from "./NovaTile";
-import type { ChatListState } from "./useChatList";
 
 // The right-hand context panel beside the Conversation (docs/muse/DESIGN.md, "Conversation"):
 // only what matters right now, pulled from data the shell already loads elsewhere (Asks,

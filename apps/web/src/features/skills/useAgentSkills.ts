@@ -1,6 +1,6 @@
 import type { AgentSkillCatalogEntry } from "@nova/contracts";
 import { useCallback, useEffect, useState } from "react";
-import { rpc } from "../../../lib/rpc";
+import { rpc } from "../../lib/rpc";
 
 /** The agent skill catalog the composer's slash menu offers. */
 export function useAgentSkills() {

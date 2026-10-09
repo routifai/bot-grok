@@ -2,14 +2,14 @@ import type { ChatSummary, ThreadMessage } from "@nova/contracts";
 import { useMemo, useRef, useState } from "react";
 import type { MuseRailView } from "../../components/AppRail";
 import { ApprovalCards } from "../../features/approvals";
-import { MuseSidebar } from "../muse/chrome/MuseSidebar";
 import {
   SideChatSession,
   type SideChatView,
   type SideChatWire,
-} from "../muse/chrome/SideChatSession";
-import type { ChatListState } from "../muse/chrome/useChatList";
-import { sideChatView } from "../muse/conversation/sideChatView";
+} from "../../features/side-chats/SideChatSession";
+import { sideChatView } from "../../features/side-chats/sideChatView";
+import type { ChatListState } from "../../features/side-chats/useChatList";
+import { MuseSidebar } from "../muse/chrome/MuseSidebar";
 import {
   DEV_BOT_ID,
   DEV_PERSON_NAME,

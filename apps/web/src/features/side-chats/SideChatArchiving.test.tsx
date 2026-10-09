@@ -9,7 +9,7 @@ vi.mock("react-dom/client", async (orig) =>
 );
 
 const api = vi.hoisted(() => ({ archiving: vi.fn(), updateArchiving: vi.fn() }));
-vi.mock("../../lib/rpc", () => ({ rpc: { muse: api } }));
+vi.mock("../../lib/rpc", () => ({ rpc: { chats: api } }));
 
 import { SideChatArchiving } from "./SideChatArchiving";
 

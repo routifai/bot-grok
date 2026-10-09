@@ -21,6 +21,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "approvals",
     "apps",
     "artifacts",
+    "computer",
     "daily-notes",
     "feed",
     "goals",
@@ -28,6 +29,8 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "memory",
     "models",
     "sheets",
+    "side-chats",
+    "skills",
     "vault",
   ],
   api: [
@@ -36,6 +39,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "approvals",
     "apps",
     "artifacts",
+    "computer",
     "daily-notes",
     "feed",
     "goals",
@@ -43,6 +47,8 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "memory",
     "models",
     "sheets",
+    "side-chats",
+    "skills",
     "vault",
   ],
   adapters: [
@@ -50,6 +56,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "approvals",
     "apps",
     "artifacts",
+    "computer",
     "daily-notes",
     "feed",
     "goals",
@@ -57,6 +64,8 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "memory",
     "models",
     "sheets",
+    "side-chats",
+    "skills",
     "vault",
   ],
   contracts: [
@@ -65,6 +74,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "approvals",
     "apps",
     "artifacts",
+    "computer",
     "daily-notes",
     "feed",
     "goals",
@@ -72,6 +82,8 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "memory",
     "models",
     "sheets",
+    "side-chats",
+    "skills",
     "vault",
   ],
   web: [
@@ -80,6 +92,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "approvals",
     "apps",
     "artifacts",
+    "computer",
     "daily-notes",
     "feed",
     "goals",
@@ -87,6 +100,8 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "memory",
     "models",
     "sheets",
+    "side-chats",
+    "skills",
     "vault",
   ],
 };
@@ -97,6 +112,7 @@ const BASES: Record<string, readonly string[]> = {
   apps: ["artifacts"],
   admin: ["models"],
   skills: ["computer"],
+  computer: ["artifacts"],
 };
 
 /**
@@ -110,11 +126,10 @@ const BASELINE: readonly string[] = [
   "api:routers/shared.ts -> models",
   // The transcript draws a saved file (message block, reply card) with the artifacts file card;
   // goes away when the conversation and cards move into their folders and take a block extension
-  // point. The Computer panel's file preview reuses the artifact preview; goes away with computer.
+  // point.
   "web:components/cards/ReplyCard.tsx -> artifacts",
   "web:pages/muse/conversation/MessageView.test.tsx -> artifacts",
   "web:pages/muse/conversation/MessageView.tsx -> artifacts",
-  "web:pages/muse/files/FilePreviewDialog.tsx -> artifacts",
   // Tests of the apps extension mount the artifact host (ArtifactPanel, LibraryCard) and stub its
   // preview/thumbnail modules by path; they test the seam from the host side.
   "web:features/apps/LibraryCardPublished.test.tsx -> artifacts",
@@ -124,15 +139,14 @@ const BASELINE: readonly string[] = [
   "web:pages/muse/conversation/Composer.tsx -> sheets",
   "web:pages/muse/conversation/MessageView.tsx -> sheets",
   "web:pages/muse/conversation/messageText.ts -> sheets",
-  // The family routes (unread, search, signals, stream) and the transcript routes resolve a chat's
-  // Super Chat, its roots and a Helper's status with helpers that still live in activity/derive.py
-  // (resolve_super_chat_id, list_chat_roots, sub_agent_status). Goes away when those family-tree
-  // helpers move into a family module that activity builds on.
-  "engine:family/routes.py -> activity",
-  "engine:family/search.py -> activity",
-  "engine:family/signals.py -> activity",
-  "engine:family/stream.py -> activity",
-  "engine:transcript/routes.py -> activity",
+  // The transcript attaches each message's Forks (side-chats forks.py: forks_by_anchor,
+  // attach_forks); goes away when the transcript takes a per-message attachment hook that
+  // side-chats registers.
+  "engine:transcript/routes.py -> side-chats",
+  // The thread snapshot carries the Computer's status and builds its base value with the
+  // computer mapper (toComputerStatus); goes away when the snapshot takes `computer` only from
+  // the shell (withComputer) and drops the local-sandbox base.
+  "api:thread-target.ts -> computer",
   // The conversation draws a Helper's row and the working line from the Activity feed (activity
   // rows, tree, durations, the run dialog); goes away when the conversation moves into its folder
   // and takes a Helper-row extension point.
@@ -147,6 +161,9 @@ const BASELINE: readonly string[] = [
   // artifact card above.
   "web:pages/muse/conversation/MessageView.test.tsx -> approvals",
   "web:pages/muse/conversation/MessageView.tsx -> approvals",
+  // The same block extension point will draw the taught-skill draft card (skills SkillDraftCard).
+  "web:pages/muse/conversation/MessageView.test.tsx -> skills",
+  "web:pages/muse/conversation/MessageView.tsx -> skills",
   // Answering an inline ask from the composer calls asks.answer and tells the Asks list (the
   // waiting sheet, the Feed) to refetch; goes away when the composer takes an "answered an ask"
   // callback from the shell.
@@ -158,6 +175,20 @@ const BASELINE: readonly string[] = [
   // The General settings panel lists the standing approval rules (ApprovalRulesSettings); goes
   // away when the settings panels take their sections from the settings overlay.
   "web:pages/muse/settings/GeneralPanel.tsx -> approvals",
+  // The transcript draws the Fork gutter and branch icon under each message, and the sidebar lists
+  // the Side Chats and Forks (their row model, live dot and list state); both go away when the
+  // conversation and the sidebar move into their folders and take a Side-Chat extension point.
+  "web:pages/muse/chrome/MuseSidebar.tsx -> side-chats",
+  "web:pages/muse/conversation/MessageHoverActions.tsx -> side-chats",
+  "web:pages/muse/conversation/Transcript.tsx -> side-chats",
+  // The conversation's hooks keep the Computer's store, screen link and launch stage in step with
+  // the thread (read the screen link, show "Starting your Computer", mirror the store into the
+  // panel header); goes away when the conversation moves into its folder and takes the Computer
+  // as an injected store.
+  "web:pages/muse/chrome/SidePanelHeader.tsx -> computer",
+  "web:pages/muse/chrome/useMuseLiveState.ts -> computer",
+  "web:pages/muse/conversation/useComposerSend.ts -> computer",
+  "web:pages/muse/conversation/useThreadSync.ts -> computer",
 ];
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));

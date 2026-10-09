@@ -7,10 +7,10 @@ import {
 } from "@nova/contracts";
 import { Button } from "@nova/ui-web";
 import { useRef, useState } from "react";
-import { type SendFailure, SendFailureNote } from "../chrome/SideChatSession";
 import { ForkComposer } from "./ForkComposer";
 import { ForkOverlay, type ForkWire, LiftedMessage, OverlayTopBar } from "./ForkOverlay";
 import { BranchIcon } from "./forkParts";
+import { type SendFailure, SendFailureNote } from "./SideChatSession";
 
 const errorCode = (error: unknown) =>
   error && typeof error === "object" && "code" in error ? String(error.code) : null;
