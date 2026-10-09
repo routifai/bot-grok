@@ -353,11 +353,19 @@ class RunnerMcpManager:
                 # The runner-owned MCP execution is suspended in this callback.
                 # A reconnect re-publishes the same question under a fresh id;
                 # it never invokes the external tool again.
+                ask_timeout = data.get("ask_timeout") if isinstance(data, dict) else None
                 try:
                     verdict = await pending_approvals.wait_for_user_verdict(
                         elicitation_id=elicitation_id,
                         conversation_id=session_id,
                         publish_event=lambda _s, _e: None,
+                        timeout_seconds=(
+                            float(ask_timeout)
+                            if isinstance(ask_timeout, (int, float))
+                            and not isinstance(ask_timeout, bool)
+                            and ask_timeout > 0
+                            else None
+                        ),
                         retry_on_server_reconnect=True,
                     )
                 except pending_approvals.ServerReconnected:

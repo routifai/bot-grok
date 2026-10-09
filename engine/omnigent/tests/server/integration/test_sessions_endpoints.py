@@ -7780,32 +7780,6 @@ _COST_GUARD_SOFT_GUARDRAILS = {
 }
 
 
-@pytest.fixture
-async def watch_session() -> AsyncIterator[Any]:
-    """Open a live stream subscriber on a session, as a person watching it would.
-
-    A tool-call ASK is only raised when someone can answer it; without a watcher (or a
-    durable inbox) the gate denies instead.
-    """
-    from omnigent.runtime import session_stream
-
-    tasks: list[asyncio.Task[None]] = []
-
-    async def _watch(sid: str) -> None:
-        async def _drain() -> None:
-            async for _event in session_stream.subscribe(sid):
-                pass
-
-        tasks.append(asyncio.create_task(_drain()))
-        while not session_stream.has_subscribers(sid):
-            await asyncio.sleep(0)
-
-    yield _watch
-    for task in tasks:
-        task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-
 async def _evaluate_tool(client: httpx.AsyncClient, sid: str) -> dict[str, Any]:
     """Run a relay tool-call policy query (the non-native gate) and return the verdict.
 
@@ -7839,7 +7813,6 @@ async def _evaluate_tool(client: httpx.AsyncClient, sid: str) -> dict[str, Any]:
 async def test_relay_tool_call_ask_approval_persists_checkpoint(
     client: httpx.AsyncClient,
     db_uri: str,
-    watch_session: Any,
 ) -> None:
     """Approving a relay tool-call ASK records the checkpoint so it stops re-asking.
 
@@ -7855,7 +7828,6 @@ async def test_relay_tool_call_ask_approval_persists_checkpoint(
     agent = await create_test_agent(client, guardrails=_COST_GUARD_SOFT_GUARDRAILS)
     session = await _create_session(client, agent["id"])
     sid = session["id"]
-    await watch_session(sid)
     store = SqlAlchemyConversationStore(db_uri)
 
     # Push spend past the $0.05 soft checkpoint (still under the $1.00 limit).
@@ -7891,7 +7863,6 @@ async def test_relay_tool_call_ask_approval_persists_checkpoint(
 async def test_relay_tool_call_ask_decline_does_not_record_checkpoint(
     client: httpx.AsyncClient,
     db_uri: str,
-    watch_session: Any,
 ) -> None:
     """A declined relay tool-call ASK leaves the checkpoint unrecorded.
 
@@ -7904,7 +7875,6 @@ async def test_relay_tool_call_ask_decline_does_not_record_checkpoint(
     agent = await create_test_agent(client, guardrails=_COST_GUARD_SOFT_GUARDRAILS)
     session = await _create_session(client, agent["id"])
     sid = session["id"]
-    await watch_session(sid)
     store = SqlAlchemyConversationStore(db_uri)
 
     resp = await client.post(
@@ -7929,7 +7899,6 @@ async def test_relay_tool_call_ask_decline_does_not_record_checkpoint(
 
 async def test_a_parked_tool_call_reports_waiting_on_the_person(
     client: httpx.AsyncClient,
-    watch_session: Any,
 ) -> None:
     """While a tool call waits on an approval the snapshot says so, naming the tool.
 
@@ -7941,7 +7910,6 @@ async def test_a_parked_tool_call_reports_waiting_on_the_person(
 
     agent = await create_test_agent(client, guardrails=_COST_GUARD_SOFT_GUARDRAILS)
     sid = (await _create_session(client, agent["id"]))["id"]
-    await watch_session(sid)
     resp = await client.post(
         f"/v1/sessions/{sid}/events",
         json={"type": "external_session_usage", "data": {"cumulative_cost_usd": 0.1}},
@@ -7981,21 +7949,20 @@ async def test_a_parked_tool_call_reports_waiting_on_the_person(
 async def test_runner_departure_drops_the_prompts_it_was_parked_on(
     client: httpx.AsyncClient,
     db_uri: str,
-    watch_session: Any,
 ) -> None:
     """A prompt whose runner died can never be answered into a turn, so it is withdrawn."""
     from omnigent.runtime import pending_elicitations
     from omnigent.server.routes import sessions as sessions_module
+    from omnigent.server.routes.sessions import _pending_policy_ask_writes
     from omnigent.server.schemas import ErrorDetail
 
     agent = await create_test_agent(client, guardrails=_COST_GUARD_SOFT_GUARDRAILS)
     sid = (await _create_session(client, agent["id"]))["id"]
-    await watch_session(sid)
     await client.post(
         f"/v1/sessions/{sid}/events",
         json={"type": "external_session_usage", "data": {"cumulative_cost_usd": 0.1}},
     )
-    await client.post(
+    resp = await client.post(
         f"/v1/sessions/{sid}/mcp",
         json={
             "jsonrpc": "2.0",
@@ -8004,7 +7971,9 @@ async def test_runner_departure_drops_the_prompts_it_was_parked_on(
             "params": {"name": "mcp__test__echo", "arguments": {}},
         },
     )
+    eid = next(iter(resp.json()["result"]["inputRequests"]))
     assert pending_elicitations.count_for(sid) == 1
+    assert eid in _pending_policy_ask_writes
     store = SqlAlchemyConversationStore(db_uri)
 
     await sessions_module._mark_runner_sessions_offline(
@@ -8014,12 +7983,12 @@ async def test_runner_departure_drops_the_prompts_it_was_parked_on(
     )
 
     assert pending_elicitations.count_for(sid) == 0
+    assert eid not in _pending_policy_ask_writes
 
 
 async def test_mcp_relay_tool_call_ask_approval_persists_checkpoint(
     client: httpx.AsyncClient,
     db_uri: str,
-    watch_session: Any,
 ) -> None:
     """Approving an MCP relay ``tools/call`` ASK records the checkpoint (no re-prompt).
 
@@ -8037,7 +8006,6 @@ async def test_mcp_relay_tool_call_ask_approval_persists_checkpoint(
     agent = await create_test_agent(client, guardrails=_COST_GUARD_SOFT_GUARDRAILS)
     session = await _create_session(client, agent["id"])
     sid = session["id"]
-    await watch_session(sid)
     store = SqlAlchemyConversationStore(db_uri)
 
     resp = await client.post(

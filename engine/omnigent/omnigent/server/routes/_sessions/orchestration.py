@@ -241,7 +241,6 @@ from omnigent.server.routes._sessions.helpers import (
     _delete_stored_session_bundle_after_failure,
     _derive_terminal_launch_args_from_spec,
     _devin_subagent_labels_from_body,
-    _elicitation_has_answer_surface,
     _emit_server_routing_decision,
     _error_item_from_sse,
     _extract_claude_native_runner_failure,
@@ -3471,6 +3470,7 @@ async def _drop_runner_owned_prompts(
         elicitation_id = event.get("elicitation_id")
         if not isinstance(elicitation_id, str) or not elicitation_id:
             continue
+        _pending_policy_ask_writes.pop(elicitation_id, None)
         _publish_elicitation_resolved(session_id, elicitation_id, reason="unanswered")
         await asyncio.to_thread(
             _publish_elicitation_resolved_to_ancestors,
@@ -8318,6 +8318,9 @@ async def _relay_runner_stream_once(
                         session_stream.publish(session_id, event)
                         elicitation_id = event.get("elicitation_id")
                         if isinstance(elicitation_id, str) and elicitation_id:
+                            if event.get("reason") == "unanswered":
+                                # No retry follows an unanswered park; drop its stash.
+                                _pending_policy_ask_writes.pop(elicitation_id, None)
                             await asyncio.to_thread(
                                 _publish_elicitation_resolved_to_ancestors,
                                 conversation_store,
@@ -8540,7 +8543,7 @@ async def _register_policy_elicitation(
     *,
     tool_name: str | None = None,
     actor: dict[str, str] | None = None,
-) -> str | None:
+) -> str:
     """
     Publish an elicitation request event on the session stream.
 
@@ -8550,9 +8553,10 @@ async def _register_policy_elicitation(
     sees the approval prompt, and returns the elicitation_id
     so the runner can key its Future on it.
 
-    A prompt nobody can see would park its turn until the ask timeout, so when no
-    surface can answer (no durable inbox, no live subscriber on the session or an
-    ancestor) nothing is published and ``None`` is returned; the caller denies.
+    Before publishing, the server attests the prompt's policy context (each ASKing
+    policy's own reason, the tool, the principal) in
+    :mod:`omnigent.runtime.pending_elicitations`, so a durable inbox reads facts the
+    server established rather than text on the event.
 
     :param session_id: Session/conversation identifier,
         e.g. ``"conv_abc123"``.
@@ -8562,25 +8566,12 @@ async def _register_policy_elicitation(
         the elicitation UI preview (max ~1024 chars).
     :param conversation_store: Store used to mirror child-session
         prompts into ancestor streams.
-    :param tool_name: The gated tool, e.g. ``"sys_os_shell"``; carried on the
-        event so a durable inbox can name it.
+    :param tool_name: The gated tool, e.g. ``"sys_os_shell"``; shown on the event.
     :param actor: Principal the call runs as, e.g. ``{"run_as": "alice@example.com"}``;
-        its ``run_as`` is carried so the inbox files the prompt under its owner.
-    :returns: The generated elicitation id, e.g. ``"elicit_a1b2c3..."``,
-        or ``None`` when no surface could answer it.
+        attested so an inbox files the prompt under its owner.
+    :returns: The generated elicitation id, e.g. ``"elicit_a1b2c3..."``.
     """
     policies = result.deciding_policies or ["unknown"]
-    if not await asyncio.to_thread(
-        _elicitation_has_answer_surface, conversation_store, session_id
-    ):
-        _logger.info(
-            "policy ASK denied, no surface can answer it: session=%s tool=%s policy=%s",
-            session_id,
-            tool_name,
-            ",".join(policies),
-            extra={"session_id": session_id},
-        )
-        return None
     elicitation_id = f"elicit_{secrets.token_hex(16)}"
     elicitation = ElicitationRequest(
         message=result.reason or "Approval required",
@@ -8600,9 +8591,16 @@ async def _register_policy_elicitation(
     )
     if tool_name:
         _elicit_event["params"]["tool_name"] = tool_name
-    run_as = (actor or {}).get("run_as")
-    if run_as:
-        _elicit_event["params"]["run_as"] = run_as
+    pending_elicitations.attest(
+        elicitation_id,
+        {
+            "phase": Phase.TOOL_CALL.value,
+            "tool_name": tool_name,
+            "run_as": (actor or {}).get("run_as"),
+            "policy_reasons": dict(result.ask_reasons or {}),
+            "content_preview": arguments_preview[:1024],
+        },
+    )
     _logger.info(
         "policy ASK raised: session=%s tool=%s policy=%s elicitation_id=%s",
         session_id,
@@ -8728,12 +8726,6 @@ async def _evaluate_tool_call_policy(
         tool_name=tool_name,
         actor=actor,
     )
-    if elicitation_id is None:
-        return {
-            "verdict": "deny",
-            "reason": "This needs the person's approval and no one can answer here "
-            f"({result.reason or 'approval required'})",
-        }
     # The deciding policy's writes (e.g. a cost-budget checkpoint via
     # ``state_updates``) must land ONLY on approve. This relay path returns
     # ``pending`` and the verdict arrives later off-request, so stash them to
@@ -11076,13 +11068,6 @@ async def _handle_mcp_tools_call(
                 tool_name=namespaced_name,
                 actor=actor,
             )
-            if elicitation_id is None:
-                return _mcp_error_response(
-                    rpc_id,
-                    -32000,
-                    "Denied: this needs the person's approval and no one can answer here "
-                    f"({call_result.reason or 'approval required'})",
-                )
             # Keep the reviewed call and deferred writes together until approval.
             _pending_policy_ask_writes[elicitation_id] = _PendingPolicyAskWrites(
                 state_updates=call_result.state_updates,

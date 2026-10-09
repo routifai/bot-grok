@@ -1565,25 +1565,6 @@ def _publish_elicitation_request_to_ancestors(
         session_stream.publish(ancestor_id, mirrored)
 
 
-def _elicitation_has_answer_surface(conv_store: ConversationStore, session_id: str) -> bool:
-    """
-    Whether someone can see and answer a prompt published on *session_id* now.
-
-    True when a durable inbox lists every prompt, or when the session or one of its
-    ancestors (which mirror child prompts) has a live stream subscriber.
-
-    :param conv_store: Store used to discover ancestor sessions.
-    :param session_id: Session the prompt would be published on, e.g. ``"conv_abc123"``.
-    :returns: ``False`` when a prompt would reach nobody.
-    """
-    if pending_elicitations.has_durable_surface() or session_stream.has_subscribers(session_id):
-        return True
-    return any(
-        session_stream.has_subscribers(ancestor_id)
-        for ancestor_id in _ancestor_session_ids(conv_store, session_id)
-    )
-
-
 def _publish_elicitation_resolved_to_ancestors(
     conv_store: ConversationStore,
     session_id: str,

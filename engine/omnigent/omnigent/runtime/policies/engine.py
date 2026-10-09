@@ -338,6 +338,7 @@ class PolicyEngine:
         accumulated_state: list[StateUpdate] = []
         ask_reasons: list[str] = []
         deciding_ask_policies: list[str] = []
+        own_ask_reasons: dict[str, str] = {}
         # Owning workspace of the first ASKing policy, mirroring
         # ``deciding_ask_policies[0]`` (None for non-workspace-scoped specs).
         first_ask_workspace_id: int | None = None
@@ -387,6 +388,7 @@ class PolicyEngine:
                 ask_reasons.append(
                     f"{policy.spec.name}: {result.reason or 'approval required'}",
                 )
+                own_ask_reasons[policy.spec.name] = result.reason or ""
                 if not deciding_ask_policies:
                     first_ask_workspace_id = getattr(policy.spec, "workspace_id", None)
                 deciding_ask_policies.append(policy.spec.name)
@@ -405,6 +407,7 @@ class PolicyEngine:
                 deciding_policies=deciding_ask_policies,
                 deciding_policy_workspace_id=first_ask_workspace_id,
                 data=composed_data,
+                ask_reasons=own_ask_reasons,
             )
         if not read_only:
             self.apply_label_writes(accumulated)

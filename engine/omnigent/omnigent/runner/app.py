@@ -11429,10 +11429,11 @@ def create_runner_app(
 
         if body_type == "interrupt":
             _cancel_claude_prompt_waiter(conversation_id)
-            pending_approvals.cancel_session(conversation_id, "interrupted")
             _harness = _session_harness_name(conversation_id)
             _interrupt_resp = await _native_interrupt_runner.interrupt(_harness, conversation_id)
             if _interrupt_resp is not None:
+                # Native turns skip _cancel_inprocess_turn, which releases approval parks.
+                pending_approvals.cancel_session(conversation_id, "interrupted")
                 return _interrupt_resp
             await _cancel_inprocess_turn(conversation_id)
             return Response(status_code=204)
@@ -11581,10 +11582,11 @@ def create_runner_app(
 
         if body_type == "stop_session":
             _cancel_claude_prompt_waiter(conversation_id)
-            pending_approvals.cancel_session(conversation_id, "interrupted")
             _harness = _session_harness_name(conversation_id)
             _stop_resp = await _native_interrupt_runner.stop(_harness, conversation_id)
             if _stop_resp is not None:
+                # Native turns skip _cancel_inprocess_turn, which releases approval parks.
+                pending_approvals.cancel_session(conversation_id, "interrupted")
                 return _stop_resp
             await _cancel_inprocess_turn(conversation_id)
             return Response(status_code=204)

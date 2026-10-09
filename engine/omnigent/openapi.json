@@ -1677,19 +1677,6 @@
             "description": "JSON-Schema dict for form mode (or `None` for url mode). camelCase preserved per MCP spec, e.g. `{\"type\": \"object\", \"properties\": {\"approve\": {\"type\": \"boolean\"}}}`.",
             "title": "Requestedschema"
           },
-          "run_as": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Principal the gated call runs as, e.g. `\"alice@example.com\"`, so an inbox can file the prompt under its owner.",
-            "title": "Run As"
-          },
           "target_session_id": {
             "anyOf": [
               {
