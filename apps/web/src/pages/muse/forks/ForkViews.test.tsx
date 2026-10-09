@@ -289,6 +289,37 @@ it("offers a plain side chat when the fork would be too deep", async () => {
   expect(onOpenSideChat).toHaveBeenCalledWith(side);
 });
 
+it("says so when the message can't be forked, instead of Didn't send", async () => {
+  const forkWire = wire({
+    createFork: vi.fn(async () => {
+      throw Object.assign(new Error("no"), { code: "FORK_ANCHOR_INVALID" });
+    }),
+  });
+  render(
+    <ForkAsk
+      botId="bot-1"
+      wire={forkWire}
+      anchor={message({ id: "m9" })}
+      chatId={null}
+      onClose={vi.fn()}
+      onCreated={vi.fn()}
+      onOpenSideChat={vi.fn()}
+    />,
+  );
+  const field = host.querySelector("textarea");
+  if (!field) throw new Error("no question box");
+  await act(async () => {
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    setValue?.call(field, "how?");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    host.querySelector("form")?.requestSubmit();
+  });
+  expect(host.textContent).toContain("can’t be forked");
+  expect(host.textContent).not.toContain("Didn’t send");
+});
+
 it("the thread view adds the fork back to the Conversation and returns to its anchor", async () => {
   const anchor = message({ forks: [fork()] });
   const forkWire = wire({

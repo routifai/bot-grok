@@ -39,6 +39,7 @@ import {
   type ThreadMessagePage,
 } from "@nova/contracts";
 import type { PrismaClient } from "@nova/db";
+import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
 import { syncEngineTimezone } from "./engine-timezone.js";
 import { onSuperChat } from "./omnigent-errors.js";
@@ -199,6 +200,9 @@ export async function createFork(
       anchorItemId: input.anchorItemId,
     });
   } catch (error) {
+    // The engine's refusal (its redacted error body is in the message) would otherwise be lost
+    // behind the mapped RPC error below.
+    getLogger().error("chats.createFork: engine refused", error);
     if (error instanceof OmnigentSideChatError) {
       if (error.code === "fork_too_deep") {
         throw new ORPCError(FORK_TOO_DEEP, { status: 422, message: "This fork can't be forked." });

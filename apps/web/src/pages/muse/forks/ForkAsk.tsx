@@ -1,5 +1,10 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { type ChatSummary, FORK_TOO_DEEP, type ThreadMessage } from "@nova/contracts";
+import {
+  type ChatSummary,
+  FORK_ANCHOR_INVALID,
+  FORK_TOO_DEEP,
+  type ThreadMessage,
+} from "@nova/contracts";
 import { Button } from "@nova/ui-web";
 import { useRef, useState } from "react";
 import { type SendFailure, SendFailureNote } from "../chrome/SideChatSession";
@@ -38,11 +43,14 @@ export function ForkAsk({
   const [failure, setFailure] = useState<SendFailure | null>(null);
   /** The question that could not be a fork of a fork: it can open as a side chat instead. */
   const [tooDeep, setTooDeep] = useState<string | null>(null);
+  /** The engine refused this message as an anchor: asking again cannot help. */
+  const [cannotFork, setCannotFork] = useState(false);
   const backRef = useRef<HTMLButtonElement>(null);
 
   const ask = async (text: string) => {
     setSending(true);
     setFailure(null);
+    setCannotFork(false);
     try {
       const created = await wire.createFork({
         botId,
@@ -54,6 +62,7 @@ export function ForkAsk({
       return true;
     } catch (error) {
       if (errorCode(error) === FORK_TOO_DEEP) setTooDeep(text);
+      else if (errorCode(error) === FORK_ANCHOR_INVALID) setCannotFork(true);
       else setFailure({ text, stage: "failed" });
       return false;
     } finally {
@@ -98,6 +107,13 @@ export function ForkAsk({
                 <Trans>Open as side chat</Trans>
               </Button>
             </div>
+          ) : null}
+          {cannotFork ? (
+            <p role="status" className="px-1 text-end text-[13px] text-muted-foreground">
+              <Trans>
+                This message can’t be forked. Pick another message, or ask in a side chat.
+              </Trans>
+            </p>
           ) : null}
           {failure ? (
             <SendFailureNote failure={failure} onRetry={() => void ask(failure.text)} />

@@ -25,6 +25,7 @@ import {
   FORK_TONE_CLASS,
   type ForkStatus,
   type ForkTone,
+  forkAnchorFor,
   forkTone,
   messageForkStatus,
 } from "./forkModel";
@@ -282,8 +283,11 @@ export function ForkThread({
                     index={index}
                     tone={tone}
                     artifactTarget={artifactTarget}
-                    canFork={canFork && message.forks !== undefined}
-                    onFork={(anchorMessage) => onAsk(anchorMessage, chat.id)}
+                    canFork={canFork && forkAnchorFor(message, messages) !== null}
+                    onFork={(clicked) => {
+                      const anchor = forkAnchorFor(clicked, messages);
+                      if (anchor) onAsk(anchor, chat.id);
+                    }}
                     onOpenFork={(fork, forkAnchor) => onOpenFork(forkTarget(fork, forkAnchor))}
                   />
                 ))}

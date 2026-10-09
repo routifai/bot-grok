@@ -2,6 +2,7 @@ import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
 import { describe, expect, it } from "vitest";
 import {
   filterForks,
+  forkAnchorFor,
   forkColorIndex,
   forkCounts,
   forkGroup,
@@ -322,5 +323,36 @@ describe("All forks", () => {
       now,
     );
     expect(grouped.map((group) => group.group)).toEqual(["today", "earlier"]);
+  });
+});
+
+describe("forkAnchorFor", () => {
+  const user = (id: string): ThreadMessage => ({ ...message(id, "q", []), role: "user" });
+  const card = (id: string): ThreadMessage => ({
+    ...message(id, "", []),
+    blocks: [{ kind: "reply_card", card: "file", data: {}, fallback: "f" }],
+  });
+
+  it("anchors a fork to a text message itself", () => {
+    const reply = message("a1", "Done.", []);
+    expect(forkAnchorFor(reply, [user("u1"), reply])).toBe(reply);
+  });
+
+  it("anchors a fork from a card to the assistant message that follows it in the turn", () => {
+    const done = message("a2", "Done.", []);
+    const turn = [user("u1"), card("c1"), card("c2"), done];
+    expect(forkAnchorFor(turn[1] as ThreadMessage, turn)).toBe(done);
+  });
+
+  it("falls back to the assistant message before the card, never across a user message", () => {
+    const intro = message("a1", "Here it is.", []);
+    const turn = [user("u1"), intro, card("c1"), user("u2"), card("c2")];
+    expect(forkAnchorFor(turn[2] as ThreadMessage, turn)).toBe(intro);
+    expect(forkAnchorFor(turn[4] as ThreadMessage, turn)).toBeNull();
+  });
+
+  it("offers nothing for a message the engine did not send forks for", () => {
+    const local = message("optimistic", "hi");
+    expect(forkAnchorFor(local, [local])).toBeNull();
   });
 });

@@ -347,3 +347,35 @@ export function groupForks(
     return inGroup ? [{ group, rows: inGroup }] : [];
   });
 }
+
+/** A message the engine can anchor a fork to: a user or assistant message with text. A card, file
+ * or error is its own transcript entry (it carries a tool call's id), so it cannot. */
+function hasForkableText(message: ThreadMessage): boolean {
+  return message.forks !== undefined && message.blocks.some((block) => block.kind === "text");
+}
+
+/**
+ * The message a fork of `message` is anchored to. A text message is its own anchor. A card, file or
+ * other tool-made entry anchors to the assistant message of its turn: the next one, else the
+ * last one before it, never crossing a user message. `null` when the turn has none.
+ */
+export function forkAnchorFor(
+  message: ThreadMessage,
+  messages: readonly ThreadMessage[],
+): ThreadMessage | null {
+  if (hasForkableText(message)) return message;
+  if (message.role === "user") return null;
+  const at = messages.findIndex((candidate) => candidate.id === message.id);
+  if (at < 0) return null;
+  for (let i = at + 1; i < messages.length; i += 1) {
+    const next = messages[i] as ThreadMessage;
+    if (next.role === "user") break;
+    if (hasForkableText(next)) return next;
+  }
+  for (let i = at - 1; i >= 0; i -= 1) {
+    const previous = messages[i] as ThreadMessage;
+    if (previous.role === "user") break;
+    if (hasForkableText(previous)) return previous;
+  }
+  return null;
+}

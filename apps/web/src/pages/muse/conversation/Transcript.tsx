@@ -26,6 +26,7 @@ import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
 import { type MuseLiveRun, useMuseLiveState } from "../chrome/useMuseLiveState";
+import { forkAnchorFor } from "../forks/forkModel";
 import { FailureRun } from "./FailureNote";
 import type { TranscriptRow } from "./failureNotes";
 import { foldFailureRuns } from "./failureNotes";
@@ -515,7 +516,14 @@ const TranscriptView = memo(function Transcript({
                       onReply={onReply}
                       onReact={onReact}
                       conversational={!museMode}
-                      onFork={onFork && message.forks !== undefined ? onFork : undefined}
+                      onFork={
+                        onFork && message.forks !== undefined && forkAnchorFor(message, messages)
+                          ? (clicked) => {
+                              const anchor = forkAnchorFor(clicked, messages);
+                              if (anchor) onFork(anchor);
+                            }
+                          : undefined
+                      }
                       above={Boolean(onFork)}
                     />
                   )}
