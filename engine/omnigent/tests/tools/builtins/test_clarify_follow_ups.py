@@ -206,3 +206,39 @@ def _msg(item_id: str, role: str, text: str) -> dict:
         "content": [{"type": kind, "text": text}],
         "created_at": 100,
     }
+
+
+def _themed(*ids: str) -> list[dict]:
+    return [{"label": f"Look {i}", "preview": {"kind": "deck-theme", "id": i}} for i in ids]
+
+
+def test_clarification_options_may_preview_a_deck_theme() -> None:
+    out = _ask(question="Which look?", options=_themed("corporate-clean", "nord", "bauhaus"))
+    assert out["card"] == "ask"
+    assert out["data"]["options"][1] == {
+        "id": "opt-2",
+        "label": "Look nord",
+        "preview": {"kind": "deck-theme", "id": "nord"},
+    }
+    # Plain and previewed options mix; a plain option carries no preview key.
+    mixed = _ask(question="Which?", options=["Plain", *_themed("nord")])
+    assert "preview" not in mixed["data"]["options"][0]
+
+
+def test_clarification_rejects_unknown_preview_ids_and_kinds() -> None:
+    assert (
+        "not a known deck-theme" in _ask(question="Q?", options=_themed("nord", "nope"))["error"]
+    )
+    bad_kind = [{"label": "A", "preview": {"kind": "photo", "id": "x"}}, "B"]
+    assert "preview.kind" in _ask(question="Q?", options=bad_kind)["error"]
+    assert (
+        "label and preview" in _ask(question="Q?", options=[{"label": "A", "x": 1}, "B"])["error"]
+    )
+
+
+def test_transcript_carries_the_option_previews() -> None:
+    card = build_clarification({"question": "Which look?", "options": _themed("nord", "bauhaus")})
+    items = [_call("ask_clarification", "k1"), _output("k1", card)]
+    (message,) = project_items(items)
+    options = message["blocks"][0]["card"]["data"]["options"]
+    assert [o["preview"]["id"] for o in options] == ["nord", "bauhaus"]

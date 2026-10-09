@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import unicodedata
+from collections.abc import Callable
 from typing import Any
 
 from omnigent.tools.base import Tool, ToolContext
@@ -79,7 +80,15 @@ def _arr(items: dict[str, Any], *, min_items: int = 1, max_items: int = 50) -> d
 _ASK_SCHEMA: dict[str, Any] = _obj(
     ["question", "options"],
     question=_STR,
-    options=_arr(_obj(["id", "label"], id=_STR, label=_STR), max_items=8),
+    options=_arr(
+        _obj(
+            ["id", "label"],
+            id=_STR,
+            label=_STR,
+            preview=_obj(["kind", "id"], kind=_STR, id=_STR),
+        ),
+        max_items=8,
+    ),
     allowFreeText={"type": "boolean"},
 )
 
@@ -339,6 +348,48 @@ def _clean_strings(
     return out, None
 
 
+def _deck_theme_ids() -> set[str]:
+    from omnigent.superchat.decks import kit
+
+    return set(kit.templates())
+
+
+#: What an option's ``preview`` may point at: ``kind`` -> the ids that exist. The client draws
+#: the preview from its own data (a theme's thumbnail); an unknown kind or id is refused here.
+PREVIEW_KINDS: dict[str, Callable[[], set[str]]] = {"deck-theme": _deck_theme_ids}
+
+
+def _split_options(raw: Any) -> tuple[list[Any], list[Any], str | None]:
+    """Labels and previews of ``options`` entries (a string, or ``{label, preview?}``)."""
+    if not isinstance(raw, list):
+        return [], [], "options must be an array"
+    labels: list[Any] = []
+    previews: list[Any] = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict):
+            labels.append(item)
+            previews.append(None)
+            continue
+        if set(item) - {"label", "preview"}:
+            return [], [], f"options[{i}] allows only label and preview"
+        preview = item.get("preview")
+        if preview is not None:
+            if not isinstance(preview, dict) or set(preview) != {"kind", "id"}:
+                return [], [], f"options[{i}].preview must be {{kind, id}}"
+            ids = PREVIEW_KINDS.get(preview["kind"]) if isinstance(preview["kind"], str) else None
+            if ids is None:
+                return (
+                    [],
+                    [],
+                    f"options[{i}].preview.kind must be one of {', '.join(PREVIEW_KINDS)}",
+                )
+            if preview["id"] not in ids():
+                return [], [], f"options[{i}].preview.id is not a known {preview['kind']}"
+        labels.append(item.get("label"))
+        previews.append(preview)
+    return labels, previews, None
+
+
 def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     """
     Validate ``ask_clarification`` arguments and build its ``ask`` card payload.
@@ -351,8 +402,11 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(question, str) or not question.strip():
         return {"error": "question must be a non-empty string"}
     question = " ".join(question.split())
+    raw_labels, previews, err = _split_options(args.get("options"))
+    if err is not None:
+        return {"error": err}
     options, err = _clean_strings(
-        args.get("options"),
+        raw_labels,
         path="options",
         min_items=CLARIFICATION_MIN_OPTIONS,
         max_items=CLARIFICATION_MAX_OPTIONS,
@@ -366,7 +420,10 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
             "card": "ask",
             "data": {
                 "question": question,
-                "options": [{"id": f"opt-{i}", "label": o} for i, o in enumerate(options, 1)],
+                "options": [
+                    {"id": f"opt-{i}", "label": o, **({"preview": p} if p else {})}
+                    for i, (o, p) in enumerate(zip(options, previews, strict=True), 1)
+                ],
             },
             "fallback": fallback,
         },
@@ -469,13 +526,39 @@ class AskClarificationTool(_CardSiblingTool):
                         },
                         "options": {
                             "type": "array",
-                            "items": {"type": "string"},
+                            "items": {
+                                "anyOf": [
+                                    {"type": "string"},
+                                    {
+                                        "type": "object",
+                                        "properties": {
+                                            "label": {"type": "string"},
+                                            "preview": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "kind": {
+                                                        "type": "string",
+                                                        "enum": list(PREVIEW_KINDS),
+                                                    },
+                                                    "id": {"type": "string"},
+                                                },
+                                                "required": ["kind", "id"],
+                                                "additionalProperties": False,
+                                            },
+                                        },
+                                        "required": ["label"],
+                                        "additionalProperties": False,
+                                    },
+                                ]
+                            },
                             "minItems": CLARIFICATION_MIN_OPTIONS,
                             "maxItems": CLARIFICATION_MAX_OPTIONS,
                             "description": (
                                 f"{CLARIFICATION_MIN_OPTIONS}-{CLARIFICATION_MAX_OPTIONS} "
                                 f"distinct answers, each under "
-                                f"{CLARIFICATION_OPTION_MAX_CHARS} characters."
+                                f"{CLARIFICATION_OPTION_MAX_CHARS} characters. An option may be "
+                                '{"label", "preview": {"kind": "deck-theme", "id": <deck '
+                                "theme id>}} to show that theme's thumbnail."
                             ),
                         },
                     },
