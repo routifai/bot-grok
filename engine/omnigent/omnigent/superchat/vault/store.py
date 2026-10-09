@@ -10,16 +10,10 @@ logged.
 
 from __future__ import annotations
 
-import base64
-import binascii
-import os
-import secrets
 import uuid
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -35,15 +29,16 @@ from omnigent.db.utils import (
     now_epoch,
     run_write_transaction,
 )
+from omnigent.superchat.sealing import (  # noqa: F401  (re-exported: the vault's old home)
+    VAULT_KEY_ENV,
+    VaultUnavailableError,
+    require_key,
+    seal,
+    unseal,
+)
 
-VAULT_KEY_ENV = "OMNIGENT_VAULT_KEY"
-_PREFIX = "v1:"
 MAX_VALUE = 4096
 REQUEST_TTL_SECONDS = 15 * 60
-
-
-class VaultUnavailableError(RuntimeError):
-    """The vault has no usable key (unset or malformed): it refuses to store or reveal."""
 
 
 class VaultInputError(ValueError):
@@ -73,40 +68,6 @@ class VaultRequest:
     site: str
     reason: str
     status: str  # pending | saved | expired
-
-
-def _key() -> bytes:
-    raw = os.environ.get(VAULT_KEY_ENV, "").strip()
-    if not raw:
-        raise VaultUnavailableError(f"the vault is off: {VAULT_KEY_ENV} is not set")
-    try:
-        key = base64.b64decode(raw + "=" * (-len(raw) % 4), altchars=b"-_")
-    except (binascii.Error, ValueError):
-        key = b""
-    if len(key) != 32:
-        raise VaultUnavailableError(f"the vault is off: {VAULT_KEY_ENV} must be 32 bytes, base64")
-    return key
-
-
-def _aad(user_id: str | None, secret_id: str) -> bytes:
-    return f"{user_id or ''}|{secret_id}".encode()
-
-
-def seal(value: str, *, user_id: str | None, secret_id: str) -> str:
-    """:returns: ``v1:`` + base64(nonce + ciphertext) of value."""
-    nonce = secrets.token_bytes(12)
-    blob = AESGCM(_key()).encrypt(nonce, value.encode(), _aad(user_id, secret_id))
-    return _PREFIX + base64.b64encode(nonce + blob).decode("ascii")
-
-
-def unseal(token: str, *, user_id: str | None, secret_id: str) -> str:
-    """:returns: The plaintext; raises :class:`VaultUnavailableError` on a wrong key or tamper."""
-    key = _key()
-    try:
-        raw = base64.b64decode(token.removeprefix(_PREFIX))
-        return AESGCM(key).decrypt(raw[:12], raw[12:], _aad(user_id, secret_id)).decode()
-    except (InvalidTag, ValueError, binascii.Error) as exc:
-        raise VaultUnavailableError("the saved value cannot be read with this key") from exc
 
 
 def normalize_site(site: str) -> str:
@@ -177,7 +138,7 @@ class VaultStore:
         self, *, user_id: str | None, session_id: str, name: str, site: str, reason: str
     ) -> VaultRequest:
         """Open a one-time request the person answers on a secure form."""
-        _key()  # fail closed: never show a card that cannot save
+        require_key()  # fail closed: never show a card that cannot save
         name = _clean_name(name)
         site = normalize_site(site)
         req = SqlVaultRequest(
@@ -227,7 +188,7 @@ class VaultStore:
         request_id: str | None = None,
     ) -> VaultEntry:
         """Encrypt and store a login (same name replaces it); audit ``create``."""
-        _key()
+        require_key()
         name = _clean_name(name)
         site = normalize_site(site)
         if not password or len(password) > MAX_VALUE:
@@ -315,7 +276,7 @@ class VaultStore:
         is off; a row that cannot be decrypted is skipped.
         """
         try:
-            _key()
+            require_key()
         except VaultUnavailableError:
             return []
         with self._session("vault_secret_values") as session:
@@ -361,7 +322,7 @@ class VaultStore:
                 else unseal(row.ciphertext, user_id=user_id, secret_id=row.id)
             )
             if field == "username":
-                _key()
+                require_key()
             row.last_used_at = now_epoch()
             _audit(session, user_id, row, "fill", session_id)
             return value, row.site

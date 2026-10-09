@@ -49,7 +49,6 @@ from omnigent.stores.conversation_store import (
     side_chat_parent_id,
 )
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.activity.titles import tidy_request_title
 from omnigent.superchat.family.signals import notify_chats_changed, notify_message_done
 from omnigent.superchat.side_chats.chats import (
     SIDE_CHAT_START_WITH_CONTEXT,
@@ -70,6 +69,7 @@ from omnigent.superchat.side_chats.forks import (
     store_added_summary,
     summary_prompt,
 )
+from omnigent.superchat.titles import tidy_request_title
 
 _logger = logging.getLogger(__name__)
 

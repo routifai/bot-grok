@@ -26,7 +26,7 @@ from omnigent.db.utils import (
     run_write_transaction,
 )
 from omnigent.model_credentials.upstreams import PROVIDERS
-from omnigent.superchat.vault.store import seal, unseal
+from omnigent.superchat.sealing import seal, unseal
 
 STATUS_VALID = "valid"
 SCOPE_USER = "user"

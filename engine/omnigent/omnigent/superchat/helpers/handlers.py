@@ -14,9 +14,9 @@ import time
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from omnigent.superchat.activity.titles import tidy_request_title
 from omnigent.superchat.feature import HandlerCtx, SpawnRequest
 from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHOICES
+from omnigent.superchat.titles import tidy_request_title
 
 #: A repeat of the same task from the same chat inside this window is the same hand-off.
 DEDUP_WINDOW_S = 10.0

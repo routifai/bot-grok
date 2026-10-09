@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import quote
 
 from omnigent.superchat._handler_http import HEX_ID_RE, error, finish, resolve_caller
-from omnigent.superchat.artifacts.types import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
+from omnigent.superchat.artifact_kinds import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
 from omnigent.superchat.feature import HandlerCtx
 
 

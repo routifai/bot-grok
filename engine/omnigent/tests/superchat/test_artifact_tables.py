@@ -20,10 +20,10 @@ from sqlalchemy.exc import IntegrityError
 from omnigent.errors import OmnigentError
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat import prompt_prefix
+from omnigent.superchat.artifact_kinds import KIND_MIME
 from omnigent.superchat.artifacts import table as tbl
 from omnigent.superchat.artifacts.routes import create_artifacts_router
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionConflictError
-from omnigent.superchat.artifacts.types import KIND_MIME
 from omnigent.superchat.artifacts.writeback import deliver_manual_edits
 
 _SESSION = uuid.uuid4().hex

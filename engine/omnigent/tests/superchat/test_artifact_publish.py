@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from omnigent.errors import OmnigentError
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat.approvals.policy import classify_tool_call
+from omnigent.superchat.artifact_kinds import KIND_MIME
 from omnigent.superchat.artifacts import feature as _feature  # noqa: F401  (registers classifiers)
 from omnigent.superchat.artifacts import store as store_mod
 from omnigent.superchat.artifacts.routes import (
@@ -22,7 +23,6 @@ from omnigent.superchat.artifacts.routes import (
     create_artifacts_router,
 )
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, make_slug
-from omnigent.superchat.artifacts.types import KIND_MIME
 
 _SESSION = uuid.uuid4().hex
 ALICE = {"x-user": "alice"}

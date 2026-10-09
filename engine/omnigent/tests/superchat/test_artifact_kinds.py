@@ -2,7 +2,7 @@
 
 import pytest
 
-from omnigent.superchat.artifacts.types import KIND_MIME, kind_for_name
+from omnigent.superchat.artifact_kinds import KIND_MIME, kind_for_name
 
 
 @pytest.mark.parametrize(

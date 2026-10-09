@@ -22,6 +22,7 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.stores import ConversationStore, PermissionStore
+from omnigent.superchat.artifact_kinds import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
 from omnigent.superchat.artifacts import table as tbl
 from omnigent.superchat.artifacts.store import (
     AUDIENCES,
@@ -31,7 +32,6 @@ from omnigent.superchat.artifacts.store import (
     VersionConflictError,
     ViewStats,
 )
-from omnigent.superchat.artifacts.types import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
 
 #: The preview is shown in a sandboxed, origin-less iframe; this keeps a page that is opened
 #: directly (or downloaded and served) from reaching anything but public https assets.

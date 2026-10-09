@@ -32,7 +32,7 @@ from omnigent.model_credentials.store import (
 from omnigent.model_credentials.upstreams import PROVIDERS
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_admin, require_user
-from omnigent.superchat.vault.store import VaultUnavailableError
+from omnigent.superchat.sealing import VaultUnavailableError
 
 
 class PutModelConnection(BaseModel):

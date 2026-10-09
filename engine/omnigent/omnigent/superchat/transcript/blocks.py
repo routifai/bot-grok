@@ -23,7 +23,7 @@ from typing import Any
 
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.runtime.public_error_codes import public_error_code
-from omnigent.superchat.artifacts.types import KIND_MIME
+from omnigent.superchat.artifact_kinds import KIND_MIME
 from omnigent.superchat.cards.tools import CARD_TOOL_NAME
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 

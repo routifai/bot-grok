@@ -24,13 +24,18 @@ import os
 import re
 import shlex
 import time
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from fnmatch import fnmatchcase
 from typing import Any
 from urllib.parse import urlparse
 
 from omnigent.policies.schema import PolicyEvent, PolicyResponse
+from omnigent.superchat.risk import (  # noqa: F401  (re-exported: the classifier registry's old home)
+    Classifier,
+    Risk,
+    _extra_classifiers,
+    register_classifier,
+)
 
 POLICY_NAME = "__muse_approvals"
 
@@ -57,37 +62,6 @@ _RULE_LABEL = {
     "upload": "Upload files to {t}",
     "share": "Share with {t}",
 }
-
-
-@dataclass(frozen=True)
-class Risk:
-    """One recognised risky action.
-
-    :param category: One of :data:`CATEGORIES`.
-    :param targets: Who or what it touches (recipients, host, path, tool); a standing rule must
-        cover every one.
-    :param summary: One plain sentence for the person.
-    :param amount_usd: What it would cost, when the call says so.
-    """
-
-    category: str
-    targets: tuple[str, ...]
-    summary: str
-    amount_usd: float | None = None
-
-
-Classifier = Callable[[str, Mapping[str, Any]], Risk | None]
-
-_extra_classifiers: list[Classifier] = []
-
-
-def register_classifier(classifier: Classifier) -> None:
-    """Add a recogniser for a tool family (an email or payments connector, say).
-
-    :param classifier: ``(tool_name, arguments) -> Risk | None``; ``None`` means "not mine".
-    """
-    if classifier not in _extra_classifiers:
-        _extra_classifiers.append(classifier)
 
 
 def rule_label(category: str, target: str) -> str:

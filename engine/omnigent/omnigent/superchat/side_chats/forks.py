@@ -317,7 +317,7 @@ def summary_prompt(conv_store: ConversationStore, fork: Conversation) -> tuple[s
         and the first sentence of its last reply (``None`` when it has none). The prompt is
         empty when the fork has no message of its own yet.
     """
-    from omnigent.superchat.activity.derive import one_line_summary
+    from omnigent.superchat.titles import one_line_summary
 
     page = conv_store.list_items(fork.id, limit=_SUMMARY_MESSAGES, order="desc", type="message")
     own = list(reversed(_own_messages(page.data, fork)))

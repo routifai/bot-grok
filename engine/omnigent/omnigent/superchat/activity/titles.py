@@ -21,6 +21,20 @@ import time
 from datetime import UTC, datetime
 
 from omnigent.superchat.proactive.provisioner import CHECKIN_NAME, STUDY_NAME
+from omnigent.superchat.titles import (  # noqa: F401  (tidy_request_title etc. are re-exported)
+    SUMMARY_MAX_CHARS,
+    SUMMARY_MAX_WORDS,
+    TITLE_MAX_CHARS,
+    TITLE_MAX_WORDS,
+    TRAILING_PUNCTUATION,
+    clip,
+    one_line_summary,
+    plain_text,
+    scrub_internal_words,
+    sentence_case,
+    strip_reply_filler,
+    tidy_request_title,
+)
 
 #: Appended to the title service's prompt through its per-request
 #: ``additional_instructions`` (a title-format override, no runner change).
@@ -40,20 +54,7 @@ ACTIVITY_TITLE_INSTRUCTIONS = (
     "$242, up 3% on the day'."
 )
 
-TITLE_MAX_CHARS = 60
-_TITLE_MAX_WORDS = 8
-SUMMARY_MAX_CHARS = 110
-_SUMMARY_MAX_WORDS = 16
 _LABEL_SEPARATOR = " | "
-
-_FILLER_PREFIX = re.compile(
-    r"^(?:(?:yo+|hey+|hi+|hello|hiya|howdy|sup|ok(?:ay)?|so|well|um+|uh+|please|pls|"
-    r"thanks|thank you|can you|could you|would you|will you|"
-    r"i(?:'d| would) like (?:you )?to|i (?:want|need) (?:you )?to|help me|let'?s)\b"
-    r"[\s,!.:;-]*)+",
-    re.IGNORECASE,
-)
-_TRAILING_PUNCTUATION = re.compile(r"[\s?!.,;:]+$")
 
 #: The collision fallback a scheduled Helper's title can carry
 #: (built by :func:`fire_title_candidates`): `` (Oct 03 07:00 UTC)`` plus an optional task-id stub.
@@ -70,58 +71,6 @@ _STANDING_TASK_TITLES = {
 }
 
 
-_MARKDOWN_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_MARKDOWN_NOISE = re.compile(r"[*`#>]+|(?<!\w)_+|_+(?!\w)|^\s*[-+]\s+", re.MULTILINE)
-
-
-def plain_text(text: str) -> str:
-    """``text`` as one line of plain words: markdown marks dropped, links kept as their label."""
-    return " ".join(_MARKDOWN_NOISE.sub(" ", _MARKDOWN_LINK.sub(r"\1", text)).split())
-
-
-_INTERNAL_PHRASES = (
-    (re.compile(r"\bbackground[\s-]+tasks?\b", re.IGNORECASE), "task"),
-    (re.compile(r"\bsessions?\b", re.IGNORECASE), "chat"),
-)
-_INTERNAL_WORDS = re.compile(r"\b(?:sub[\s-]?agents?|helpers?|tools?)\b", re.IGNORECASE)
-
-
-def scrub_internal_words(text: str) -> str:
-    """``text`` without the engine words (sub-agent, Helper, background task, session, tool)."""
-    for pattern, replacement in _INTERNAL_PHRASES:
-        text = pattern.sub(replacement, text)
-    return " ".join(_INTERNAL_WORDS.sub(" ", text).split())
-
-
-def _sentence_case(text: str) -> str:
-    return text[:1].upper() + text[1:] if text else text
-
-
-def _clip(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    cut = text[: limit - 1]
-    if " " in cut:
-        cut = cut.rsplit(" ", 1)[0]
-    return cut.rstrip(" ,;:-") + "…"
-
-
-def tidy_request_title(text: str | None, *, limit: int = TITLE_MAX_CHARS) -> str | None:
-    """A request as a short title: fillers dropped, sentence case, trimmed to ``limit``.
-
-    :param text: The person's message (or a delegated task prompt).
-    :param limit: Maximum characters, ellipsis included.
-    :returns: The tidied title, or ``None`` when nothing meaningful is left.
-    """
-    if not text:
-        return None
-    collapsed = scrub_internal_words(plain_text(text))
-    stripped = _TRAILING_PUNCTUATION.sub("", _FILLER_PREFIX.sub("", collapsed, count=1))
-    if len(stripped) < 2:
-        return None
-    return _clip(_sentence_case(stripped), limit)
-
-
 def clean_generated_title(raw: str | None) -> str | None:
     """Validate a model-written title: sentence case, short, no trailing punctuation.
 
@@ -130,12 +79,12 @@ def clean_generated_title(raw: str | None) -> str | None:
     """
     if not raw:
         return None
-    title = _TRAILING_PUNCTUATION.sub("", scrub_internal_words(raw).strip("'\"`“”‘’"))
+    title = TRAILING_PUNCTUATION.sub("", scrub_internal_words(raw).strip("'\"`“”‘’"))
     if title.endswith("…"):
         return None
-    if len(title) < 3 or len(title) > TITLE_MAX_CHARS or len(title.split()) > _TITLE_MAX_WORDS:
+    if len(title) < 3 or len(title) > TITLE_MAX_CHARS or len(title.split()) > TITLE_MAX_WORDS:
         return None
-    return _sentence_case(title)
+    return sentence_case(title)
 
 
 def clean_generated_label(raw: str | None) -> str | None:
@@ -153,39 +102,21 @@ def clean_generated_label(raw: str | None) -> str | None:
     title = clean_generated_title(title_part)
     if title is None:
         return None
-    summary = _TRAILING_PUNCTUATION.sub("", scrub_internal_words(summary_part).strip("'\"`“”‘’"))
+    summary = TRAILING_PUNCTUATION.sub("", scrub_internal_words(summary_part).strip("'\"`“”‘’"))
     summary = strip_reply_filler(summary) or ""
     if (
         len(summary) < 8
         or len(summary) > SUMMARY_MAX_CHARS
-        or len(summary.split()) > _SUMMARY_MAX_WORDS
+        or len(summary.split()) > SUMMARY_MAX_WORDS
     ):
         return title
-    return f"{title}{_LABEL_SEPARATOR}{_sentence_case(summary)}"
+    return f"{title}{_LABEL_SEPARATOR}{sentence_case(summary)}"
 
 
 def split_generated_label(label: str) -> tuple[str, str | None]:
     """``(title, summary)`` of a :func:`clean_generated_label` result."""
     title, _, summary = label.partition(_LABEL_SEPARATOR)
     return title, summary or None
-
-
-#: Acknowledgement openers a reply starts with before getting to the point.
-_REPLY_FILLER = re.compile(
-    r"^(?:(?:perfect|great|sure|got it|alright|all right|okay|ok|absolutely|of course|done|"
-    r"awesome|excellent|certainly|good|nice|right)\b[\s.!,:;—–-]*"
-    r"|now i (?:have|can|know|see)\b[^.!?]*[.!?]\s*"
-    r"|working on it\b[\s.!,:;—–-]*)+",
-    re.IGNORECASE,
-)
-
-
-def strip_reply_filler(text: str | None) -> str | None:
-    """``text`` without leading acknowledgements ("Perfect.", "Got it.", "Working on it —")."""
-    if not text:
-        return text
-    stripped = _REPLY_FILLER.sub("", text.strip(), count=1).strip()
-    return _sentence_case(stripped) if stripped else None
 
 
 def is_generic_title(title: str | None) -> bool:
@@ -226,4 +157,4 @@ def scheduled_display_title(task_name: str) -> str | None:
     name = scrub_internal_words(_FIRE_SUFFIX.sub("", task_name.strip()))
     if is_generic_title(name):
         return None
-    return _STANDING_TASK_TITLES.get(name.lower()) or _clip(_sentence_case(name), TITLE_MAX_CHARS)
+    return _STANDING_TASK_TITLES.get(name.lower()) or clip(sentence_case(name), TITLE_MAX_CHARS)

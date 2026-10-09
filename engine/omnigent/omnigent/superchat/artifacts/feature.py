@@ -6,10 +6,11 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from omnigent.context.labels import is_superside_chat
-from omnigent.superchat.approvals.policy import Risk, register_classifier
 from omnigent.superchat.artifacts.handlers import handle_artifact_tool
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
+from omnigent.superchat.artifacts.writeback import deliver_manual_edits
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
+from omnigent.superchat.risk import Risk, register_classifier
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -84,5 +85,6 @@ ARTIFACTS_FEATURE = Feature(
     name="artifacts",
     tools=_tools,
     handlers=dict.fromkeys(ARTIFACT_TOOL_NAMES, handle_artifact_tool),
+    turn_prefix=deliver_manual_edits,
     install=_install,
 )

@@ -134,6 +134,8 @@ class BackgroundJob(Protocol):
 
 Handler = Callable[[HandlerCtx, dict[str, Any]], Awaitable[str]]
 ResultListener = Callable[[HandlerCtx, str], None]
+#: ``(server_client, conversation_id) -> blocks`` prepended to a Super Chat turn (never raises).
+TurnPrefix = Callable[["httpx.AsyncClient | None", str], Awaitable[list[str]]]
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,8 @@ class Feature:
     :param handlers: ``tool_name -> async handler`` run on the runner.
     :param on_result: Sees every feature handler's ``(ctx, output)`` after it ran (any feature's
         tool), so a feature can follow another's results without importing it.
+    :param turn_prefix: Blocks this feature prepends to a Super Chat turn (e.g. one-shot notes),
+        read by ``prompt_prefix`` in feature order; a failure never fails the turn.
     :param install: Wires stores + routers onto the FastAPI app.
     :param jobs: Returns background jobs (objects with ``start()`` / ``shutdown()``).
     """
@@ -153,5 +157,6 @@ class Feature:
     tools: Callable[[Mapping[str, str] | None, ToolManagerCtx], list[Tool]]
     handlers: Mapping[str, Handler] = field(default_factory=dict)
     on_result: ResultListener | None = None
+    turn_prefix: TurnPrefix | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None

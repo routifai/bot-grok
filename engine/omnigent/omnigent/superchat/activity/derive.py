@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -37,7 +36,6 @@ from omnigent.superchat.activity.titles import (
     ACTIVITY_TITLE_INSTRUCTIONS,
     clean_generated_label,
     is_generic_title,
-    plain_text,
     scheduled_display_title,
     scrub_internal_words,
     split_generated_label,
@@ -45,6 +43,7 @@ from omnigent.superchat.activity.titles import (
     strip_reply_filler,
     tidy_request_title,
 )
+from omnigent.superchat.titles import STRUCTURED_TEXT, one_line_summary, truncate
 from omnigent.superchat.work_tools import is_work_tool
 from omnigent.tools.builtins.spawn import _project_activity_item
 from omnigent.util.session_lifecycle import is_session_closed, title_without_closed_marker
@@ -108,7 +107,6 @@ def _resolve_items_scan_limit() -> int:
 _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 100
 _OUTCOME_MAX_CHARS = 140
-_SUMMARY_MAX_CHARS = 110
 _TITLE_MAX_CHARS = 80
 _TITLE_PROMPT_REQUEST_CHARS = 700
 _TITLE_PROMPT_STEPS = 6
@@ -224,32 +222,6 @@ def _args_dict(raw_arguments: str) -> dict[str, Any]:
     except (ValueError, TypeError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
-
-
-def _truncate(text: str, limit: int) -> str:
-    collapsed = " ".join(text.split())
-    if len(collapsed) <= limit:
-        return collapsed
-    return collapsed[: max(0, limit - 1)].rstrip() + "…"
-
-
-#: A reply that is a code block or raw JSON (a Helper's machine-readable Result) says
-#: nothing in a one-line gist.
-_STRUCTURED_TEXT = re.compile(r"\s*(?:```|[{\[])")
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
-
-
-def one_line_summary(text: str | None) -> str | None:
-    """The first sentence of ``text`` as plain words, at most :data:`_SUMMARY_MAX_CHARS`."""
-    if not text or _STRUCTURED_TEXT.match(text):
-        return None
-    plain = strip_reply_filler(plain_text(text))
-    if not plain:
-        return None
-    first = _SENTENCE_END.split(plain, maxsplit=1)[0]
-    if len(first) < 10:
-        first = plain
-    return _truncate(first, _SUMMARY_MAX_CHARS)
 
 
 def _message_text(item: ConversationItem) -> str | None:
@@ -379,7 +351,7 @@ def _turn_outcome(group: list[ConversationItem], *, status: str) -> str | None:
 def _reply_outcome(reply: str | None) -> str | None:
     """A reply as the one-line outcome, its acknowledgement opener ("Perfect.") dropped."""
     opened = strip_reply_filler(reply)
-    return _truncate(opened, _OUTCOME_MAX_CHARS) if opened else None
+    return truncate(opened, _OUTCOME_MAX_CHARS) if opened else None
 
 
 def _status_summary(
@@ -405,23 +377,23 @@ def _turn_title(conversation: Conversation, request: str | None, reply: str | No
     if tidied:
         return tidied
     if conversation.title:
-        return _truncate(conversation.title, _TITLE_MAX_CHARS)
+        return truncate(conversation.title, _TITLE_MAX_CHARS)
     return "Activity"
 
 
 def _plain_reply(reply: str | None) -> str | None:
-    return None if not reply or _STRUCTURED_TEXT.match(reply) else reply
+    return None if not reply or STRUCTURED_TEXT.match(reply) else reply
 
 
 def _turn_title_prompt(request: str, steps: list[Step], result: str | None = None) -> str:
     """What a title is written from: the request, the first few things done for it and,
     once finished, the result to summarise."""
     done = "; ".join(step.title for step in steps[:_TITLE_PROMPT_STEPS])
-    prompt = f"Request to name:\n{_truncate(request, _TITLE_PROMPT_REQUEST_CHARS)}"
+    prompt = f"Request to name:\n{truncate(request, _TITLE_PROMPT_REQUEST_CHARS)}"
     if done:
         prompt = f"{prompt}\n\nWhat was done for it: {done}"
     if result:
-        prompt = f"{prompt}\n\nResult:\n{_truncate(result, _TITLE_PROMPT_RESULT_CHARS)}"
+        prompt = f"{prompt}\n\nResult:\n{truncate(result, _TITLE_PROMPT_RESULT_CHARS)}"
     return prompt
 
 
@@ -527,10 +499,10 @@ def _sub_agent_title(
         if named:
             return named, None
     elif not is_generic_title(display_title):
-        return _truncate(strip_fire_suffix(display_title), _TITLE_MAX_CHARS), None
+        return truncate(strip_fire_suffix(display_title), _TITLE_MAX_CHARS), None
     return tidy_request_title(task) or (
         "Working on something" if source == SOURCE_BACKGROUND else "Scheduled work"
-    ), (f"Request to name:\n{_truncate(task, _TITLE_PROMPT_REQUEST_CHARS)}" if task else None)
+    ), (f"Request to name:\n{truncate(task, _TITLE_PROMPT_REQUEST_CHARS)}" if task else None)
 
 
 def sub_agent_status(
