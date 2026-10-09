@@ -1,7 +1,6 @@
 import type { ComposerMention } from "@nova/core";
-import { BotAvatar } from "@nova/ui-web";
 import { Clock, Puzzle } from "lucide-react";
-import { FALLBACK_BOT_COLOR } from "./shared";
+import { NovaOrb } from "../../../components/ai/orb";
 
 export function MentionOptionIcon({ mention }: { mention: ComposerMention }) {
   if (mention.kind === "routine") {
@@ -24,7 +23,7 @@ export function MentionOptionIcon({ mention }: { mention: ComposerMention }) {
       </span>
     );
   }
-  return <BotAvatar color={mention.color ?? FALLBACK_BOT_COLOR} identity={mention.id} size={16} />;
+  return <NovaOrb size={16} flies={false} />;
 }
 
 export function MentionChipIcon({ mention }: { mention: ComposerMention }) {
@@ -41,5 +40,5 @@ export function MentionChipIcon({ mention }: { mention: ComposerMention }) {
       </span>
     );
   }
-  return <BotAvatar color={mention.color ?? FALLBACK_BOT_COLOR} identity={mention.id} size={16} />;
+  return <NovaOrb size={16} flies={false} />;
 }

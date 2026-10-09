@@ -21,7 +21,7 @@ vi.mock("@lingui/react/macro", () => {
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
 vi.mock("@lingui/core/macro", () => ({ t: (parts: TemplateStringsArray) => parts.join("") }));
-vi.mock("./avatar-studio-popover", () => ({ AvatarStudioPopover: () => <div /> }));
+vi.mock("../../components/ai/orb", () => ({ NovaOrb: () => <div /> }));
 vi.mock("../ScratchpadSection", () => ({ ScratchpadSection: () => <div /> }));
 vi.mock("../SkillsSection", () => ({ SkillsSection: () => <div /> }));
 vi.mock("@nova/ui-web", () => {

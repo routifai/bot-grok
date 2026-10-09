@@ -19,10 +19,13 @@ export function NovaOrb({
   size = 34,
   state,
   className,
+  flies = true,
 }: {
   size?: number;
   state?: OrbState;
   className?: string;
+  /** The one placed orb carries the shared view-transition name; decorative copies (settings, mentions, cards) pass false. */
+  flies?: boolean;
 }) {
   const presence = useNovaPresence();
   const current = state ?? presence;
@@ -63,7 +66,7 @@ export function NovaOrb({
       className={cn("nova-orb relative inline-block shrink-0 rounded-full", className)}
       // One orb is ever mounted (placement.tsx), so the shared name is unique: the View
       // Transition flies it from the start page to its home (flight.ts).
-      style={{ width: size, height: size, viewTransitionName: "nova-orb" }}
+      style={{ width: size, height: size, viewTransitionName: flies ? "nova-orb" : undefined }}
     >
       {fallback ? null : <canvas ref={canvasRef} className="block size-full rounded-full" />}
     </span>

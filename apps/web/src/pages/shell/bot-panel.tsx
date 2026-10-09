@@ -26,8 +26,8 @@ import {
 } from "@nova/ui-web";
 import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
+import { NovaOrb } from "../../components/ai/orb";
 import { rpc } from "../../lib/rpc";
-import { AvatarStudioPopover } from "./avatar-studio-popover";
 
 const ScratchpadSection = lazy(() =>
   import("../ScratchpadSection").then((module) => ({ default: module.ScratchpadSection })),
@@ -200,7 +200,6 @@ export function BotSettings({
     title?: string;
     description?: string;
     instructions?: string;
-    color?: string;
     notifyOnFinish?: boolean;
     computerMode: ComputerMode;
     autoSpeak?: boolean;
@@ -218,7 +217,6 @@ export function BotSettings({
   const [name, setName] = useState(bot.name);
   const [title, setTitle] = useState(bot.title);
   const [description, setDescription] = useState(bot.description);
-  const [color, setColor] = useState(bot.color);
   const [notifyOnFinish, setNotifyOnFinish] = useState(bot.notifyOnFinish ?? true);
   const [computerMode, setComputerMode] = useState(bot.computerMode);
   const [autoSpeak, setAutoSpeak] = useState(bot.autoSpeak);
@@ -240,7 +238,6 @@ export function BotSettings({
       name?: string;
       title?: string;
       description?: string;
-      color?: string;
       notifyOnFinish?: boolean;
     }) => Promise<void>
   >(async () => undefined);
@@ -326,7 +323,6 @@ export function BotSettings({
     name?: string;
     title?: string;
     description?: string;
-    color?: string;
     notifyOnFinish?: boolean;
   }) {
     const selected = modelKey ? parseModelOptionKey(modelKey) : null;
@@ -335,7 +331,6 @@ export function BotSettings({
     const nextDescription = (
       patchOverrides?.description !== undefined ? patchOverrides.description : description
     ).trim();
-    const nextColor = patchOverrides?.color !== undefined ? patchOverrides.color : color;
     const nextNotify =
       patchOverrides?.notifyOnFinish !== undefined ? patchOverrides.notifyOnFinish : notifyOnFinish;
 
@@ -351,8 +346,6 @@ export function BotSettings({
         title: nextTitle,
         description: nextDescription,
         instructions: nextDescription,
-        // Unchanged color stays off the wire so a legacy named value cannot fail a name save.
-        ...(nextColor !== bot.color ? { color: nextColor } : {}),
         notifyOnFinish: nextNotify,
         computerMode,
         autoSpeak,
@@ -379,7 +372,6 @@ export function BotSettings({
     name?: string;
     title?: string;
     description?: string;
-    color?: string;
     notifyOnFinish?: boolean;
   }) {
     // Serialize full-object auto-saves so an older in-flight request cannot
@@ -394,16 +386,7 @@ export function BotSettings({
   return (
     <div data-testid="bot-settings">
       <div className="flex justify-center py-4">
-        <AvatarStudioPopover
-          value={color}
-          identity={bot.id}
-          status={bot.status}
-          size={76}
-          onChange={(newColor) => {
-            setColor(newColor);
-            void enqueueSave({ color: newColor });
-          }}
-        />
+        <NovaOrb size={76} flies={false} />
       </div>
       <label htmlFor={`${ids}-name`} className="mt-4 block text-[13.5px] text-muted-foreground/80">
         <Trans>Name</Trans>
@@ -573,7 +556,6 @@ export function BotSettings({
               name,
               title,
               description,
-              color,
               notifyOnFinish,
             });
           }}

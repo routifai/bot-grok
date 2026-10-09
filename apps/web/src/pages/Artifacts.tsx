@@ -11,7 +11,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  BotAvatar,
   Button,
   NativeSelect,
   NativeSelectOption,
@@ -32,6 +31,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppRail } from "../components/AppRail";
+import { NovaOrb } from "../components/ai/orb";
 import { PdfViewer } from "../components/PdfViewer";
 import { SandboxedHtmlViewer } from "../components/SandboxedHtmlViewer";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../lib/artifact-open";
@@ -609,7 +609,7 @@ function BotFilterChip({
           : "text-muted-foreground hover:bg-accent/40 hover:text-accent-foreground"
       }`}
     >
-      <BotAvatar color={bot.color} identity={bot.id} size={16} status={bot.status} />
+      <NovaOrb size={16} flies={false} />
       <span className="max-w-[120px] truncate">{bot.name}</span>
     </button>
   );
@@ -684,7 +684,7 @@ function ArtifactCard({
         <div className="mt-auto flex items-center gap-2 text-[12px] text-muted-foreground">
           {bot ? (
             <>
-              <BotAvatar color={bot.color} identity={bot.id} size={20} status={bot.status} />
+              <NovaOrb size={20} flies={false} />
               <span className="min-w-0 flex-1 truncate">{bot.name}</span>
             </>
           ) : (
@@ -744,7 +744,7 @@ function ArtifactRow({
         <div className="flex items-center gap-1.5 ps-8 text-[11.5px] text-muted-foreground">
           {bot ? (
             <>
-              <BotAvatar color={bot.color} identity={bot.id} size={14} status={bot.status} />
+              <NovaOrb size={14} flies={false} />
               <span className="max-w-[140px] truncate">{bot.name}</span>
               <span aria-hidden="true">·</span>
             </>

@@ -75,23 +75,8 @@ vi.mock("@nova/ui-web", () => ({
   ),
 }));
 
-vi.mock("../shell/avatar-studio-popover", () => ({
-  AvatarStudioPopover: ({
-    value,
-    onChange,
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-  }) => (
-    <button
-      type="button"
-      data-testid="avatar-studio-stub"
-      data-color={value}
-      onClick={() => onChange("#FF0000")}
-    >
-      avatar
-    </button>
-  ),
+vi.mock("../../components/ai/orb", () => ({
+  NovaOrb: () => <span data-testid="nova-orb" />,
 }));
 
 import { NovaSettingsPanel } from "./NovaSettingsPanel";
@@ -164,34 +149,16 @@ it("saves the name on blur when it changed", async () => {
   }
 });
 
-it("saves the color chosen from the reused avatar studio", async () => {
+it("shows the orb, not the old mascot or a color picker", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   museApi.settings.mockResolvedValue({ proactivity: "normal", quietHours: "22:00-08:00" });
-  const onSave = vi.fn().mockResolvedValue(undefined);
   const { container, root } = render();
   try {
-    await act(async () => root.render(<NovaSettingsPanel bot={bot()} onSave={onSave} />));
-    const avatarButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="avatar-studio-stub"]',
+    await act(async () =>
+      root.render(<NovaSettingsPanel bot={bot()} onSave={vi.fn().mockResolvedValue(undefined)} />),
     );
-    await act(async () => avatarButton?.click());
-    expect(onSave).toHaveBeenCalledWith({ color: "#FF0000" });
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-    vi.unstubAllGlobals();
-  }
-});
-
-it("wires the reused ProactivitySettings to the bot's id", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  museApi.settings.mockResolvedValue({ proactivity: "high", quietHours: "22:00-08:00" });
-  const { container, root } = render();
-  try {
-    await act(async () => root.render(<NovaSettingsPanel bot={bot()} onSave={vi.fn()} />));
-    await act(async () => undefined);
-    expect(museApi.settings).toHaveBeenCalledWith({ botId: "bot-1" });
-    expect(container.querySelector('[data-testid="proactivity-settings"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="nova-orb"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("change the color");
   } finally {
     await act(async () => root.unmount());
     container.remove();

@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { Bot, ComputerStatus, TaughtSkill } from "@nova/contracts";
-import { BotAvatar, Button } from "@nova/ui-web";
+import { Button } from "@nova/ui-web";
 import { Monitor, X } from "lucide-react";
 import { ComputerMaintenanceActions } from "../../../components/ComputerMaintenanceActions";
 import { TeachCaptureOverlay } from "../../../components/teach/TeachCaptureOverlay";
@@ -116,18 +116,9 @@ export function ComputerOverlay({
               }
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                {museMode ? (
-                  <NovaTile tone="gray" size={28}>
-                    <Monitor strokeWidth={2.2} />
-                  </NovaTile>
-                ) : (
-                  <BotAvatar
-                    color={computerBot.color}
-                    identity={computerBot.id}
-                    size={28}
-                    status={computerBot.status}
-                  />
-                )}
+                <NovaTile tone="gray" size={28}>
+                  <Monitor strokeWidth={2.2} />
+                </NovaTile>
                 {recordingSkill ? (
                   <TeachRecordingChrome
                     recording={recordingSkill}

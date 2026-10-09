@@ -16,14 +16,7 @@ import {
   latestAnswerableAskMessageId,
   userVisibleMessages,
 } from "@nova/core";
-import {
-  AvatarStyleProvider,
-  BotAvatar,
-  Button,
-  cn,
-  GroupAvatar,
-  type GroupAvatarMember,
-} from "@nova/ui-web";
+import { AvatarStyleProvider, Button, cn, GroupAvatar, type GroupAvatarMember } from "@nova/ui-web";
 import { Menu, Monitor, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -1012,13 +1005,6 @@ export function ShellPage() {
                           <GroupAvatar
                             members={activeSnapshot?.members ?? activeGroup?.members ?? []}
                             size={26}
-                          />
-                        ) : active && !museMode ? (
-                          <BotAvatar
-                            color={active.color}
-                            identity={active.id}
-                            size={26}
-                            status={active.status}
                           />
                         ) : null}
                         <span className="min-w-0">

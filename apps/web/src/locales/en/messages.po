@@ -3432,9 +3432,6 @@ msgstr "Talking points are ready for 5 of 12 clients. Two drifted more than 8% f
 msgid "Talking points are ready for all 12 clients"
 msgstr "Talking points are ready for all 12 clients"
 
-msgid "Tap the face to change the color"
-msgstr "Tap the face to change the color"
-
 msgid "Taught"
 msgstr "Taught"
 
