@@ -481,6 +481,7 @@ export function useSideChatThread({
         window.clearTimeout(recheck);
         recheck = window.setTimeout(() => void refresh(), SETTLE_RECHECK_MS);
       } else if (
+        (event.type === "messageDelivery" && event.chatId === chat.id) ||
         event.type === "open" ||
         event.type === "chatsChanged" ||
         (event.type === "heartbeat" && awaitingRef.current)
