@@ -234,7 +234,10 @@ def test_create_tool_schema_makes_workspace_and_host_optional() -> None:
     assert "workspace" not in schema["required"]
     assert "host_id" not in schema["required"]
     # agent_id is optional: a parent-bound task runs the parent's agent.
-    assert set(schema["required"]) == {"name", "prompt", "rrule"}
+    # The schedule is `rrule` or plain-words `schedule` (the server resolves it); the route checks
+    # that exactly one is sent.
+    assert set(schema["required"]) == {"name", "prompt"}
+    assert "rrule" in properties and "schedule" in properties
 
 
 def test_update_tool_schema_allows_connected_host_changes() -> None:

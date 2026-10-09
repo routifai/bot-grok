@@ -37,6 +37,7 @@ from omnigent.server.routes._session_create_validation import (
     validate_session_model_metadata,
     validate_session_permission_mode,
 )
+from omnigent.server.scheduled.nlp import natural_language_to_rrule
 from omnigent.server.scheduled.rrule import RRuleValidationError, validate_rrule
 from omnigent.server.scheduled.run_reconciler import force_fail_stale_runs
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
@@ -60,7 +61,10 @@ class CreateScheduledTaskRequest(BaseModel):
 
     name: str
     prompt: str
-    rrule: str
+    # Exactly one of ``rrule`` or ``schedule`` (plain words, e.g. "every Monday at 9", turned
+    # into an RRULE by :func:`natural_language_to_rrule` and validated like any rule).
+    rrule: str | None = None
+    schedule: str | None = Field(default=None, min_length=1, max_length=300)
     # Optional only with ``parent_session_id`` (then the parent's agent is used).
     agent_id: str | None = None
     # Bind each fire to this session as a sub-agent (Helper) child; its result
@@ -92,6 +96,8 @@ class CreateScheduledTaskRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_create(self) -> CreateScheduledTaskRequest:
+        if (self.rrule is None) == (self.schedule is None):
+            raise ValueError("provide exactly one of rrule or schedule")
         if self.execution_target not in _VALID_EXECUTION_TARGETS:
             raise ValueError("execution_target must be 'connected_host' or 'managed_sandbox'")
         if self.execution_target == "managed_sandbox" and (
@@ -108,6 +114,16 @@ class CreateScheduledTaskRequest(BaseModel):
         return self
 
 
+class ParseScheduleRequest(BaseModel):
+    """Body for ``POST /v1/scheduled-tasks/parse-schedule``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=300)
+    # ``None`` = the owner's preference timezone, else UTC (same as task creation).
+    timezone: str | None = None
+
+
 class UpdateScheduledTaskRequest(BaseModel):
     """Body for ``PATCH /v1/scheduled-tasks/{id}``. Unset fields are unchanged."""
 
@@ -116,6 +132,8 @@ class UpdateScheduledTaskRequest(BaseModel):
     name: str | None = None
     prompt: str | None = None
     rrule: str | None = None
+    # Plain words instead of ``rrule``; never both.
+    schedule: str | None = Field(default=None, min_length=1, max_length=300)
     # Rebinding the agent switches the harness the task fires with. The
     # per-agent settings below do not survive the switch — see the PATCH
     # handler, which clears any the caller does not resend.
@@ -276,6 +294,32 @@ def _validate_rrule_or_400(rrule: str) -> None:
         validate_rrule(rrule)
     except RRuleValidationError as exc:
         raise OmnigentError(f"invalid rrule: {exc}", code=ErrorCode.INVALID_INPUT) from exc
+
+
+async def _schedule_to_rrule_or_400(request: Request, text: str, timezone: str) -> str:
+    """The RRULE for a plain-words *text* in *timezone*, or a 400 telling the model what to do.
+
+    The model caller is ``app.state.schedule_llm_caller`` when set (tests), else the server's own
+    cheap-model caller; none configured means the caller must send an ``rrule`` instead.
+    """
+    caller = getattr(request.app.state, "schedule_llm_caller", None)
+    if caller is None:
+        from omnigent.memory.upkeep import build_upkeep_llm_caller
+
+        caller = build_upkeep_llm_caller()
+    if caller is None:
+        raise OmnigentError(
+            "no model is configured to read a plain-words schedule; send an rrule instead",
+            code=ErrorCode.INVALID_INPUT,
+        )
+    rule = await natural_language_to_rrule(text, timezone=timezone, llm_caller=caller)
+    if rule is None:
+        raise OmnigentError(
+            f"could not read {text!r} as a recurring schedule at most hourly; "
+            "send an rrule or ask the person to rephrase",
+            code=ErrorCode.INVALID_INPUT,
+        )
+    return rule
 
 
 def _validate_timezone_or_400(timezone: str) -> None:
@@ -464,6 +508,18 @@ def create_scheduled_tasks_router(
             raise OmnigentError("Scheduled task not found", code=ErrorCode.NOT_FOUND)
         return task
 
+    @router.post("/scheduled-tasks/parse-schedule")
+    async def parse_schedule(request: Request, body: ParseScheduleRequest) -> dict[str, Any]:
+        """Turn plain words ("every Monday at 9") into a validated RRULE, without saving."""
+        owner = _owner(request)
+        timezone = body.timezone
+        if timezone is None:
+            prefs = await asyncio.to_thread(store.get_owner_preferences, owner)
+            timezone = prefs.timezone if prefs is not None else "UTC"
+        _validate_timezone_or_400(timezone)
+        rrule = await _schedule_to_rrule_or_400(request, body.text, timezone)
+        return {"rrule": rrule, "timezone": timezone}
+
     @router.post("/scheduled-tasks")
     async def create_scheduled_task(
         request: Request,
@@ -471,12 +527,17 @@ def create_scheduled_tasks_router(
     ) -> dict[str, Any]:
         """Create a scheduled task and arm it on the live scheduler."""
         owner = _owner(request)
-        _validate_rrule_or_400(body.rrule)
         timezone = body.timezone
         if timezone is None:
             prefs = await asyncio.to_thread(store.get_owner_preferences, owner)
             timezone = prefs.timezone if prefs is not None else "UTC"
         _validate_timezone_or_400(timezone)
+        if body.schedule is not None:
+            rrule = await _schedule_to_rrule_or_400(request, body.schedule, timezone)
+        else:
+            assert body.rrule is not None  # guaranteed by the request validator
+            rrule = body.rrule
+        _validate_rrule_or_400(rrule)
         permission_mode = validate_session_permission_mode(body.permission_mode)
         agent_id = body.agent_id
         if body.parent_session_id is not None and body.agent_type is not None:
@@ -499,7 +560,7 @@ def create_scheduled_tasks_router(
             scheduled_task_id=uuid.uuid4().hex,
             name=body.name,
             prompt=body.prompt,
-            rrule=body.rrule,
+            rrule=rrule,
             user_id=None if owner == RESERVED_USER_LOCAL else owner,
             agent_id=agent_id,
             parent_session_id=body.parent_session_id,
@@ -681,11 +742,20 @@ def create_scheduled_tasks_router(
         owner = _owner(request)
         owner_id = None if owner == RESERVED_USER_LOCAL else owner
         existing = _require_owned(scheduled_task_id, owner_id)
-        if body.rrule is not None:
-            _validate_rrule_or_400(body.rrule)
+        if body.rrule is not None and body.schedule is not None:
+            raise OmnigentError(
+                "provide at most one of rrule or schedule", code=ErrorCode.INVALID_INPUT
+            )
         if body.timezone is not None:
             _validate_timezone_or_400(body.timezone)
         fields = body.model_dump(exclude_unset=True)
+        schedule_text = fields.pop("schedule", None)
+        if schedule_text is not None:
+            fields["rrule"] = await _schedule_to_rrule_or_400(
+                request, schedule_text, body.timezone or existing.timezone
+            )
+        if fields.get("rrule") is not None:
+            _validate_rrule_or_400(fields["rrule"])
         target_agent_id = fields.get("agent_id") or existing.agent_id
         agent_changed = target_agent_id != existing.agent_id
         if agent_changed:

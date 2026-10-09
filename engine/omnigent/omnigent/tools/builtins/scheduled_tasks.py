@@ -24,6 +24,12 @@ _RRULE_DESC = (
     "mornings). Must fire at least twice and no more often than once per hour."
 )
 
+_SCHEDULE_DESC = (
+    "The schedule in the person's own words, e.g. 'every Monday at 9' or 'weekdays at 6pm'. "
+    "Pass this OR rrule, never both. It is turned into a validated rule in the person's "
+    "timezone (no more often than hourly); an error means rephrase it or pass an rrule."
+)
+
 
 class SysScheduledTaskCreateTool(Tool):
     """Create a scheduled task. Runner-dispatched to ``POST /v1/scheduled-tasks``."""
@@ -69,6 +75,7 @@ class SysScheduledTaskCreateTool(Tool):
                             ),
                         },
                         "rrule": {"type": "string", "description": _RRULE_DESC},
+                        "schedule": {"type": "string", "description": _SCHEDULE_DESC},
                         "agent_id": {
                             "type": "string",
                             "description": (
@@ -166,7 +173,7 @@ class SysScheduledTaskCreateTool(Tool):
                             ),
                         },
                     },
-                    "required": ["name", "prompt", "rrule"],
+                    "required": ["name", "prompt"],
                     "additionalProperties": False,
                 },
             },
@@ -238,6 +245,7 @@ class SysScheduledTaskUpdateTool(Tool):
                         "name": {"type": "string", "description": "New task name."},
                         "prompt": {"type": "string", "description": "New prompt."},
                         "rrule": {"type": "string", "description": _RRULE_DESC},
+                        "schedule": {"type": "string", "description": _SCHEDULE_DESC},
                         "agent_id": {
                             "type": "string",
                             "description": (
