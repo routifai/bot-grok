@@ -4,7 +4,8 @@ Pure: items in (the flat ``ConversationItem.to_api_dict()`` shape, oldest first)
 out. The rules a client would otherwise copy:
 
 * a message item is a ``text`` block; the runtime's own notices and hidden context are dropped;
-* ``render_card`` / ``vault_request_secret`` / ``artifact_save`` / ``deck_export`` calls become
+* ``render_card`` / ``vault_request_secret`` / ``artifact_save`` / ``deck_export`` /
+  ``display_chart`` calls become
   ``card`` / ``secure_entry`` / ``file`` messages of their own (a call whose output says it
   failed shows nothing; a card still running is ``pending``);
 * a delivered file (a ``resource_event`` whose ``resource_type`` is ``artifact``: something the
@@ -39,6 +40,8 @@ VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
 ARTIFACT_SAVE_TOOL_NAME = "artifact_save"
 #: Returns the same ``{"type": "artifact", ...}`` result, so its file shows as the same card.
 DECK_EXPORT_TOOL_NAME = "deck_export"
+#: Also returns the ``{"type": "artifact", ...}`` result: the saved chart shows as a file card.
+CHART_TOOL_NAME = "display_chart"
 
 #: ``ResourceEventData`` fields of a file a person's own action delivered into the chat.
 DELIVERED_ARTIFACT_RESOURCE = "artifact"
@@ -318,7 +321,11 @@ def project_items(
                 block = _card_block(item, output)
             elif _is_call(item, VAULT_REQUEST_TOOL_NAME):
                 block = _secure_entry_block(output)
-            elif _is_call(item, ARTIFACT_SAVE_TOOL_NAME) or _is_call(item, DECK_EXPORT_TOOL_NAME):
+            elif (
+                _is_call(item, ARTIFACT_SAVE_TOOL_NAME)
+                or _is_call(item, DECK_EXPORT_TOOL_NAME)
+                or _is_call(item, CHART_TOOL_NAME)
+            ):
                 block = _file_block(output)
             if block:
                 messages.append(_message(item, "assistant", [block]))
