@@ -117,6 +117,14 @@ COPY --chmod=755 infra/sandboxes/computer/control.py /usr/local/bin/nova-compute
 COPY --from=capture-builder /build/libnova-xcapture.so /usr/local/lib/libnova-xcapture.so
 COPY --chmod=755 infra/sandboxes/computer/nova-browser /usr/local/bin/nova-browser
 COPY --chmod=755 infra/sandboxes/computer/nova-page-browser /usr/local/bin/nova-page-browser
+COPY --chmod=755 infra/sandboxes/computer/nova-deck-export /usr/local/bin/nova-deck-export
+# Deck export (`deck_export`: editable PPTX + vector PDF). The page-side capture module and the
+# vendored dom-to-pptx browser bundle (MIT, v2.0.1; LICENSE kept next to its .gz) are read by
+# nova-deck-export from this directory. The bundle is committed gzipped and expanded here, so the
+# repository carries no 3.8 MB script.
+COPY --chmod=644 infra/sandboxes/computer/deck-export/deck-capture-page.js /usr/local/share/nova/deck-export/deck-capture-page.js
+COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js.gz
+COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/LICENSE /usr/local/share/nova/deck-export/dom-to-pptx.LICENSE
 COPY --chmod=755 infra/sandboxes/computer/nova-recorder /usr/local/bin/nova-recorder
 COPY --chmod=644 infra/sandboxes/computer/nova-recorder.js /usr/local/share/nova/nova-recorder.js
 COPY --chmod=644 infra/sandboxes/computer/nova-browser.desktop /usr/share/applications/nova-browser.desktop
@@ -169,8 +177,10 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # COPY --chmod=644 also gives the directory it creates mode 644 (no search bit), which left
 # the recorder's page script unreadable to USER 1000.
 RUN ldconfig \
-  && chmod 755 /usr/local/share/nova \
-  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-recorder \
+  && chmod 755 /usr/local/share/nova /usr/local/share/nova/deck-export \
+  && gzip -dc /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js.gz > /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
+  && chmod 644 /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
+  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-deck-export /usr/local/bin/nova-recorder \
     /etc/nova/fluxbox/init /etc/nova/fluxbox/apps /etc/nova/fluxbox/menu \
     /etc/profile.d/nova-local-bin.sh
 EXPOSE 7070 6080 6081 6082 6083 6084 6085 6086 6087 6088 6089 6090 6091 6092 6093 6094 6095

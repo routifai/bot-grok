@@ -22,7 +22,8 @@
       "!**/data",
       "!**/*.astro",
       "!**/apps/www",
-      "!engine/omnigent"
+      "!engine/omnigent",
+      "!infra/sandboxes/computer/deck-export/fixtures"
     ]
   },
   "formatter": {

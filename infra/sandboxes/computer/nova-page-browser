@@ -96,6 +96,10 @@ def discover_ws_url(port: int) -> str:
 
 WORLD_NAME = "nova-page-browser"
 
+# Largest CDP message accepted. Page automation stays small; a caller that reads whole files over
+# the same client (nova-deck-export: PNG layers, a PPTX) raises `max_frame_bytes` on its instance.
+MAX_FRAME_BYTES = 2 * 1024 * 1024
+
 
 class CdpClient:
     def __init__(self, ws_url: str) -> None:
@@ -109,6 +113,7 @@ class CdpClient:
         self._contexts: dict[int, dict[str, Any]] = {}
         # Main-document HTTP status by loader id (Network.responseReceived, type Document).
         self.doc_status: dict[str, int] = {}
+        self.max_frame_bytes = MAX_FRAME_BYTES
 
     def connect(self) -> None:
         assert self._ws_url.startswith("ws://"), self._ws_url
@@ -214,7 +219,7 @@ class CdpClient:
                     self._read_more()
                 length = struct.unpack("!Q", self._buf[2:10])[0]
                 offset = 10
-            if length > 2 * 1024 * 1024:
+            if length > self.max_frame_bytes:
                 raise RuntimeError("CDP frame too large")
             if not (b1 & 0x80):
                 raise RuntimeError("Fragmented CDP message unsupported")
