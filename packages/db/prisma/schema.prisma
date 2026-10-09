@@ -285,6 +285,17 @@ model RateLimit {
   @@map("rate_limit")
 }
 
+/// Fixed-window counters for per-address send and failure caps. Separate from RateLimit, which
+/// Better Auth prunes by age.
+model EmailQuota {
+  key         String @id
+  count       Int
+  windowStart BigInt
+
+  @@index([windowStart])
+  @@map("email_quota")
+}
+
 model DeploymentSettings {
   id                              String     @id @default("default")
   ownerUserId                     String?

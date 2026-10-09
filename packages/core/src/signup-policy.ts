@@ -142,3 +142,74 @@ export function admitSignup(policy: SignupPolicy, email: string): SignupAdmissio
 export function signupNeedsEmailDelivery(mode: SignupMode): boolean {
   return mode !== "closed" && mode !== "approval";
 }
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * A production process that is reachable beyond this machine. A production build served only on
+ * loopback (a local Docker install) is a personal install, not a hosted one. Hosted requires
+ * NODE_ENV=production.
+ */
+export function isHostedDeployment(env: {
+  nodeEnv?: string | undefined;
+  webOrigin: string;
+}): boolean {
+  if (env.nodeEnv !== "production") return false;
+  try {
+    return !LOOPBACK_HOSTS.has(new URL(env.webOrigin).hostname);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * May an account whose mailbox was never proved hold access? Only where nothing can send mail and
+ * either an admin vets every account (approval) or a personal install opted in. One rule, used by
+ * the session lookup, background jobs, messaging, streams and the screen proxy.
+ */
+export function unverifiedAccessAllowed(input: {
+  hasEmailDelivery: boolean;
+  mode: SignupMode | undefined;
+  devFlagAllowed: boolean;
+}): boolean {
+  if (input.hasEmailDelivery) return false;
+  return input.devFlagAllowed || input.mode === "approval";
+}
+
+/**
+ * Address used only as a rate-limit key: lower-case, with a `+tag` dropped from the local part so
+ * one mailbox cannot be multiplied into many counters. Never used to identify a person.
+ */
+export function quotaEmailKey(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  if (at < 0) return normalized;
+  const local = normalized.slice(0, at).split("+")[0] ?? "";
+  return `${local}${normalized.slice(at)}`;
+}
+
+/** The /24 (IPv4) or /64 (IPv6) a client IP belongs to; "unknown" when there is none. */
+export function ipPrefix(ip: string | null | undefined): string {
+  if (!ip) return "unknown";
+  if (ip.includes(":")) {
+    const groups = ip.toLowerCase().split("::")[0]?.split(":") ?? [];
+    return `${groups.slice(0, 4).join(":")}::/64`;
+  }
+  const parts = ip.split(".");
+  return parts.length === 4 ? `${parts.slice(0, 3).join(".")}.0/24` : "unknown";
+}
+
+/** Whether any mail provider is configured for this process (shared by the API and the worker). */
+export function emailDeliveryConfigured(source: {
+  SMTP_URL?: string | undefined;
+  EMAIL_API_URL?: string | undefined;
+  EMAIL_EMULATOR?: string | undefined;
+  NODE_ENV?: string | undefined;
+}): boolean {
+  if (source.SMTP_URL?.trim() || source.EMAIL_API_URL?.trim()) return true;
+  return (
+    source.NODE_ENV !== "production" &&
+    (source.EMAIL_EMULATOR === "true" ||
+      (source.NODE_ENV === "development" && source.EMAIL_EMULATOR !== "false"))
+  );
+}

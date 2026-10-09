@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   admitSignup,
   emailAllowed,
+  emailDeliveryConfigured,
   emailDomainOf,
+  ipPrefix,
+  isHostedDeployment,
   parseAllowlist,
   parseDomains,
   parseSignupMode,
+  quotaEmailKey,
   type SignupPolicy,
   signupAllowlistBootUpdate,
   signupNeedsEmailDelivery,
   signupPolicyFromEnv,
   signupRequiresEmailVerification,
+  unverifiedAccessAllowed,
 } from "./signup-policy.js";
 
 const policy = (over: Partial<SignupPolicy>): SignupPolicy => ({
@@ -118,5 +123,50 @@ describe("admitSignup", () => {
     for (const mode of ["invite", "domain", "open"] as const) {
       expect(signupNeedsEmailDelivery(mode)).toBe(true);
     }
+  });
+});
+
+describe("identity helpers", () => {
+  it("treats production on a public origin as hosted", () => {
+    expect(
+      isHostedDeployment({ nodeEnv: "production", webOrigin: "https://app.example.test" }),
+    ).toBe(true);
+    expect(isHostedDeployment({ nodeEnv: "production", webOrigin: "http://127.0.0.1:5173" })).toBe(
+      false,
+    );
+    expect(
+      isHostedDeployment({ nodeEnv: "development", webOrigin: "https://app.example.test" }),
+    ).toBe(false);
+  });
+
+  it("allows unverified access only with no mail and approval or the personal-install flag", () => {
+    const base = { hasEmailDelivery: false, devFlagAllowed: false };
+    expect(unverifiedAccessAllowed({ ...base, mode: "approval" })).toBe(true);
+    expect(unverifiedAccessAllowed({ ...base, mode: "open" })).toBe(false);
+    expect(unverifiedAccessAllowed({ ...base, mode: "open", devFlagAllowed: true })).toBe(true);
+    expect(unverifiedAccessAllowed({ ...base, mode: "approval", hasEmailDelivery: true })).toBe(
+      false,
+    );
+  });
+
+  it("keys rate limits on one mailbox however it is spelled, without changing identity", () => {
+    expect(quotaEmailKey("Dave+one@Corp.test")).toBe("dave@corp.test");
+    expect(quotaEmailKey("dave+two+x@corp.test")).toBe("dave@corp.test");
+    expect(quotaEmailKey("nobody")).toBe("nobody");
+  });
+
+  it("groups clients by /24 and /64", () => {
+    expect(ipPrefix("203.0.113.77")).toBe("203.0.113.0/24");
+    expect(ipPrefix("2001:db8:1:2:3:4:5:6")).toBe("2001:db8:1:2::/64");
+    expect(ipPrefix(null)).toBe("unknown");
+  });
+
+  it("knows whether a process can send mail", () => {
+    expect(emailDeliveryConfigured({ SMTP_URL: "smtps://x" })).toBe(true);
+    expect(emailDeliveryConfigured({ NODE_ENV: "development" })).toBe(true);
+    expect(emailDeliveryConfigured({ NODE_ENV: "development", EMAIL_EMULATOR: "false" })).toBe(
+      false,
+    );
+    expect(emailDeliveryConfigured({ NODE_ENV: "production", EMAIL_EMULATOR: "true" })).toBe(false);
   });
 });
