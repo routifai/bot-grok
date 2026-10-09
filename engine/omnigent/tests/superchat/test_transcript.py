@@ -186,6 +186,20 @@ def test_deck_export_becomes_a_file_block() -> None:
     )
 
 
+def test_display_chart_becomes_a_file_block() -> None:
+    saved = {
+        "type": "artifact", "id": "art_9", "name": "rev.chart.json", "kind": "json", "size": 90,
+        "title": "Revenue", "chart": {"chart_type": "bar"},
+    }  # fmt: skip
+    [message] = project_items([_call("c1", "display_chart", "kc"), _out("co", "kc", saved)])
+    block = message["blocks"][0]
+    assert block["type"] == "file" and block["artifact_id"] == "art_9"
+    assert block["name"] == "rev.chart.json" and block["title"] == "Revenue"
+    assert (
+        project_items([_call("c2", "display_chart", "kf"), _out("cf", "kf", {"error": "x"})]) == []
+    )
+
+
 def test_delivered_artifact_is_a_user_file_block_and_other_resources_show_nothing() -> None:
     saved = {"type": "artifact", "id": "art_3", "name": "q3.pdf", "kind": "pdf", "size": 7}
     event = {

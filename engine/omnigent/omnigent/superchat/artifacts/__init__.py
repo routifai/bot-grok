@@ -8,7 +8,7 @@ edits -> the Computer workspace, run as a turn prefix), ``feature`` (registratio
 from __future__ import annotations
 
 from omnigent.superchat.artifacts.feature import ARTIFACTS_FEATURE
-from omnigent.superchat.artifacts.handlers import workspace_roots
+from omnigent.superchat.artifacts.handlers import resolve_workspace_file, workspace_roots
 from omnigent.superchat.artifacts.routes import (
     artifact_to_response,
     check_id,
@@ -44,5 +44,6 @@ __all__ = [
     "load_artifact",
     "publication_to_response",
     "request_owner",
+    "resolve_workspace_file",
     "workspace_roots",
 ]
