@@ -7,12 +7,18 @@ handler — no real Nova supervisor, network, or Docker daemon involved.
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import click
 import httpx
 import pytest
 
-from omnigent.onboarding.sandboxes.base import ExecModelHostLauncher
+from omnigent.onboarding.sandboxes.base import (
+    ExecModelHostLauncher,
+    RemoteCommandResult,
+    supervise_host_command,
+)
 from omnigent.onboarding.sandboxes.computer import (
     HOME_ROOT_ENV_VAR,
     SUPERVISOR_TOKEN_ENV_VAR,
@@ -482,3 +488,85 @@ def test_ensure_display_falls_back_when_the_supervisor_omits_it() -> None:
 
 def test_capabilities_declare_screen() -> None:
     assert make_launcher(FakeSupervisor()).capabilities.screen is True
+
+
+class _LocalShellLauncher(ComputerSandboxLauncher):
+    """Runs the exec'd command in a real local ``sh`` with a throwaway ``$HOME``."""
+
+    home: str = ""
+
+    def run(self, sandbox_id, command, *, check=True, env=None):  # type: ignore[no-untyped-def]
+        import subprocess
+
+        done = subprocess.run(
+            ["sh", "-c", command],
+            capture_output=True,
+            text=True,
+            env={"HOME": self.home, "PATH": "/usr/bin:/bin"},
+        )
+        return RemoteCommandResult(done.returncode, done.stdout, done.stderr)
+
+
+def _local_launcher(home: str) -> _LocalShellLauncher:
+    launcher = _LocalShellLauncher(
+        supervisor_url="http://supervisor.test",
+        supervisor_token="t",
+        client=FakeSupervisor().client(),
+    )
+    launcher.home = home
+    return launcher
+
+
+def test_supervisor_check_rejects_a_stale_pidfile_pointing_at_another_process(
+    tmp_path: Path,
+) -> None:
+    """A persistent $HOME keeps the pidfile across a container recreate; the pid is then reused
+    by an unrelated live process and must not count as the supervise loop."""
+    import os
+    import subprocess
+
+    (tmp_path / ".omnigent" / "hosts").mkdir(parents=True)
+    other = subprocess.Popen(["sleep", "30"])
+    try:
+        (tmp_path / ".omnigent" / "hosts" / "abc123.pid").write_text(f"{other.pid}\n")
+        assert os.path.exists(f"/proc/{other.pid}/cmdline") or os.uname().sysname != "Linux"
+        assert (
+            _local_launcher(str(tmp_path)).is_host_supervisor_running(SANDBOX_ID, "abc123")
+            is False
+        )
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_supervisor_check_accepts_the_real_supervise_loop(tmp_path: Path) -> None:
+    import subprocess
+
+    if not os.path.isdir("/proc/self"):
+        pytest.skip("needs /proc")
+    script = supervise_host_command("sleep 30", host_id="abc123")
+    loop = subprocess.Popen(
+        ["sh", "-c", script], env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    )
+    try:
+        import time
+
+        for _ in range(50):
+            if (tmp_path / ".omnigent" / "hosts" / "abc123.pid").exists():
+                break
+            time.sleep(0.05)
+        assert (
+            _local_launcher(str(tmp_path)).is_host_supervisor_running(SANDBOX_ID, "abc123") is True
+        )
+    finally:
+        loop.kill()
+        loop.wait()
+
+
+def test_supervisor_check_is_false_without_a_pidfile_or_with_junk(tmp_path: Path) -> None:
+    launcher = _local_launcher(str(tmp_path))
+    assert launcher.is_host_supervisor_running(SANDBOX_ID, "abc123") is False
+    (tmp_path / ".omnigent" / "hosts").mkdir(parents=True)
+    (tmp_path / ".omnigent" / "hosts" / "abc123.pid").write_text("12; rm -rf /\n")
+    assert launcher.is_host_supervisor_running(SANDBOX_ID, "abc123") is False
+    assert launcher.is_host_supervisor_running(SANDBOX_ID, "a;b") is False

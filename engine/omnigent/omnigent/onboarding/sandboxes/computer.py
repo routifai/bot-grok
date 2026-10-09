@@ -86,7 +86,11 @@ from urllib.parse import quote
 import click
 import httpx
 
-from omnigent.onboarding.sandboxes.base import ExecModelHostLauncher, RemoteCommandResult
+from omnigent.onboarding.sandboxes.base import (
+    ExecModelHostLauncher,
+    RemoteCommandResult,
+    supervised_host_pidfile_path,
+)
 from omnigent.onboarding.sandboxes.recording import RecordingMixin
 from omnigent.onboarding.sandboxes.types import SandboxCapabilities, SandboxError
 
@@ -463,6 +467,33 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
             )
         body = response.json()
         return body if isinstance(body, dict) else {}
+
+    def is_host_supervisor_running(self, sandbox_id: str, host_id: str) -> bool:
+        """
+        Whether the supervised host loop for *host_id* is alive in the Computer.
+
+        Stricter than the base check. The Computer's ``$HOME`` is a persistent volume, so the
+        pidfile survives a container recreate while pids restart from scratch: the recorded pid
+        can then belong to an unrelated process (a short-lived browser, say), and a bare
+        ``kill -0`` would wrongly report the loop as running and skip the launch. A pid counts
+        only when it answers ``kill -0`` AND its ``/proc/<pid>/cmdline`` carries this host's
+        pidfile path, which only the supervise loop's ``sh -c <script>`` argv contains.
+
+        :param sandbox_id: Target Computer.
+        :param host_id: Host id of a prior launch; server-generated, validated here anyway.
+        :returns: ``True`` iff the recorded pid is alive and is this host's supervise loop.
+        """
+        if not host_id.replace("-", "").replace("_", "").isalnum():
+            return False
+        pidfile = supervised_host_pidfile_path(host_id)
+        marker = f"hosts/{host_id}.pid"
+        check = (
+            f"pid=$(cat {pidfile} 2>/dev/null); "
+            'case "$pid" in ""|*[!0-9]*) exit 1;; esac; '
+            'kill -0 "$pid" 2>/dev/null || exit 1; '
+            f"tr '\\0' ' ' < \"/proc/$pid/cmdline\" 2>/dev/null | grep -qF -- '{marker}'"
+        )
+        return self.run(sandbox_id, check, check=False).returncode == 0
 
     def ensure_display(self, sandbox_id: str) -> str:
         """
