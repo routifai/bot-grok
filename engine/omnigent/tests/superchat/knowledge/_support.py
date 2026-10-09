@@ -18,14 +18,17 @@ PDF = make_pdf([[("Risks", 20), ("Currency exposure is the main risk.", 11)]])
 
 
 def make_runtime(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, embedder=None
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, embedder=None, reranker=None
 ) -> KnowledgeRuntime:
     """A runtime over ``tmp_path/workspace`` that is never started (tests drive the indexer)."""
     rt.reset_runtime()
     monkeypatch.setattr(KnowledgeRuntime, "start", lambda self: None)
     runtime = rt.get_runtime(
         lambda: KnowledgeRuntime(
-            tmp_path / "home" / "knowledge", tmp_path / "workspace", embedder or FakeEmbedder()
+            tmp_path / "home" / "knowledge",
+            tmp_path / "workspace",
+            embedder or FakeEmbedder(),
+            reranker=reranker,
         )
     )
     (tmp_path / "workspace" / "your_files").mkdir(parents=True, exist_ok=True)

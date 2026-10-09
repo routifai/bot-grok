@@ -114,3 +114,37 @@ export async function reindexOmnigentKnowledge(
   await throwOnError(response, "reindex files", config.secrets);
   return (await response.json()) as { queued: number };
 }
+
+/** What reading one file came to (`POST .../knowledge/ingest`). */
+export interface OmnigentKnowledgeIngest {
+  file_id: string;
+  name: string;
+  path: string;
+  pages: number;
+  pages_without_text: number;
+  chars: number;
+  /** Where the Markdown version lives in the Computer. */
+  markdown_path: string;
+  search: "hybrid" | "keyword";
+  /** Only when asked for (`inline`) and short enough to travel with a message. */
+  markdown?: string;
+}
+
+/**
+ * `POST .../knowledge/ingest` — reads one workspace file through every pass (Markdown, passages,
+ * embeddings, index) and answers when it is searchable. Wakes the Computer. Idempotent.
+ */
+export async function ingestOmnigentKnowledge(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  input: { path: string; inline?: boolean },
+): Promise<OmnigentKnowledgeIngest> {
+  const response = await fetch(knowledgeUrl(config, sessionId, "/ingest"), {
+    method: "POST",
+    headers: { ...omnigentHeaders(config, email), "content-type": "application/json" },
+    body: JSON.stringify({ path: input.path, inline: input.inline ?? false }),
+  });
+  await throwOnError(response, "read file", config.secrets);
+  return (await response.json()) as OmnigentKnowledgeIngest;
+}

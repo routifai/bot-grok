@@ -12,8 +12,8 @@ out. The rules a client would otherwise copy:
   person did, such as exporting a deck from the panel) becomes a ``file`` message marked
   ``"by": "user"``; it is not a tool call, and the Muse's history never replays it;
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
-* the pages a ``files_search`` call found become one ``passages`` card (citation chips) under the
-  next assistant message;
+* the pages a ``files_search`` / ``files_vsearch`` / ``files_query`` call found become one
+  ``passages`` card (citation chips) under the next assistant message;
 * a turn shows one assistant text: its last. Text the Muse wrote between tool calls earlier in
   the same turn (a user message starts a turn) is interim narration and is not a message; the
   Helper rows and citation chips it would have carried move to the turn's last text;
@@ -46,7 +46,7 @@ CHART_TOOL_NAME = "display_chart"
 #: ``ResourceEventData`` fields of a file a person's own action delivered into the chat.
 DELIVERED_ARTIFACT_RESOURCE = "artifact"
 DELIVERED_EVENT = "session.resource.created"
-FILES_SEARCH_TOOL_NAME = "files_search"
+FILES_SEARCH_TOOL_NAMES = ("files_search", "files_vsearch", "files_query")
 #: Most pages shown as citation chips under one answer.
 _MAX_CITATIONS = 6
 
@@ -314,7 +314,7 @@ def project_items(
                 if helper:
                     helpers.append(helper)
                 continue
-            if _is_call(item, FILES_SEARCH_TOOL_NAME):
+            if any(_is_call(item, name) for name in FILES_SEARCH_TOOL_NAMES):
                 cited.extend(_citations(output))
                 continue
             if _is_call(item, CARD_TOOL_NAME):

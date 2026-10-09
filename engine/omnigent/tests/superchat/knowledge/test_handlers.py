@@ -12,7 +12,7 @@ from omnigent.runner.knowledge import runtime as rt
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.knowledge import FEATURE
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
-from tests.superchat.knowledge._support import PDF, SESSION, make_runtime, put_pdf
+from tests.superchat.knowledge._support import SESSION, make_runtime, put_pdf
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +29,7 @@ def call(tool: str, **args) -> dict:
 def test_search_returns_passages_with_file_page_and_thumbnail(tmp_path: Path, monkeypatch) -> None:
     put_pdf(make_runtime(tmp_path, monkeypatch))
     found = call("files_search", query="currency exposure", k=3)
-    assert found["type"] == "file_search" and found["mode"] == "hybrid"
+    assert found["type"] == "file_search" and found["mode"] == "keyword"
     top = found["results"][0]
     assert (top["file_name"], top["page"], top["path"]) == (
         "finance.pdf",
@@ -52,7 +52,7 @@ def test_read_page_returns_text_and_an_image_envelope(tmp_path: Path, monkeypatc
     assert call("files_read_page", file_id=fid, page=9)["error"] == "Page not found"
     assert "page number" in call("files_read_page", file_id=fid, page=0)["error"]
     assert (
-        "isn't in your search index" in call("files_read_page", file_id="f" * 32, page=1)["error"]
+        "isn't in your files index" in call("files_read_page", file_id="f" * 32, page=1)["error"]
     )
 
 
@@ -78,9 +78,7 @@ def test_read_page_accepts_a_file_name_or_path(tmp_path: Path, monkeypatch) -> N
     err = call("files_read_page", path="notes.pdf", page=1)["error"]
     assert "More than one file" in err and "uploads/2026-10-09/notes.pdf" in err
     assert "uploads/other/notes.pdf" in err
-    assert (
-        "isn't in your search index" in call("files_read_page", path="nope.pdf", page=1)["error"]
-    )
+    assert "isn't in your files index" in call("files_read_page", path="nope.pdf", page=1)["error"]
 
 
 def test_argument_errors_are_tool_errors(tmp_path: Path, monkeypatch) -> None:
@@ -100,15 +98,22 @@ def test_relay_ops_status_thumbnail_reindex(tmp_path: Path, monkeypatch) -> None
     assert call("files_reindex") == {"queued": 0}
 
 
-def test_models_get_only_the_two_search_tools(tmp_path: Path) -> None:
-    labels = {"omnigent.context_mode": "superside_chat"}
+def test_models_get_the_qmd_style_tools(tmp_path: Path) -> None:
     from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
 
     labels = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
     names = [t.name() for t in FEATURE.tools(labels, None)]  # type: ignore[arg-type]
-    assert names == ["files_search", "files_read_page"]
+    assert names == [
+        "files_search",
+        "files_vsearch",
+        "files_query",
+        "files_get",
+        "files_multi_get",
+        "files_read_page",
+        "files_status",
+    ]
     assert FEATURE.tools({}, None) == []  # type: ignore[arg-type]
-    assert {"files_status", "files_thumbnail", "files_reindex"} <= set(FEATURE.handlers)
+    assert {"files_ingest", "files_thumbnail", "files_reindex"} <= set(FEATURE.handlers)
 
 
 def test_a_saved_artifact_is_followed_through_on_result(tmp_path: Path, monkeypatch) -> None:
@@ -131,62 +136,6 @@ def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() ->
 
     spec = AgentSpec(spec_version=1)
     chat = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
-    for name in ("files_status", "files_thumbnail", "files_reindex"):
+    for name in ("files_ingest", "files_thumbnail", "files_reindex"):
         assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat) is None
         assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels={})
-
-
-def _queue_pdf(runtime, rel: str = "your_files/vendor-review.pdf") -> None:
-    path = runtime.indexer.workspace / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(PDF)
-    runtime.indexer.scan()  # queued, not yet read
-
-
-def test_search_waits_for_a_queued_file_then_finds_it(tmp_path: Path, monkeypatch) -> None:
-    import threading
-    import time
-
-    from tests.runner.knowledge._fixtures import run_all
-
-    runtime = make_runtime(tmp_path, monkeypatch)
-    _queue_pdf(runtime)
-    assert runtime.indexer.unsearchable()
-    worker = threading.Timer(0.6, lambda: run_all(runtime.indexer))
-    worker.start()
-    started = time.monotonic()
-    found = call("files_search", query="what is the currency exposure risk?")
-    worker.join()
-    assert time.monotonic() - started >= 0.5
-    assert found["results"] and found["results"][0]["file_name"] == "vendor-review.pdf"
-    assert "still_indexing" not in found
-
-
-def test_search_that_times_out_names_the_files_still_indexing(tmp_path: Path, monkeypatch) -> None:
-    from omnigent.superchat.knowledge import handlers
-
-    monkeypatch.setattr(handlers, "SEARCH_WAIT_SECONDS", 0.4)
-    runtime = make_runtime(tmp_path, monkeypatch)
-    _queue_pdf(runtime)
-    found = call("files_search", query="currency exposure")
-    assert found["results"] == []
-    assert found["still_indexing"] == [
-        {"file_name": "vendor-review.pdf", "path": "your_files/vendor-review.pdf"}
-    ]
-    assert "vendor-review.pdf" in found["note"] and "directly" in found["note"]
-
-
-def test_search_does_not_wait_for_files_outside_its_scope(tmp_path: Path, monkeypatch) -> None:
-    import time
-
-    from omnigent.superchat.knowledge import handlers
-
-    monkeypatch.setattr(handlers, "SEARCH_WAIT_SECONDS", 5.0)
-    runtime = make_runtime(tmp_path, monkeypatch)
-    put_pdf(runtime)
-    done = runtime.indexer.db.file_by_path("your_files/finance.pdf")
-    _queue_pdf(runtime)
-    started = time.monotonic()
-    found = call("files_search", query="currency", file_ids=[done.file_id])
-    assert time.monotonic() - started < 2.0
-    assert found["results"] and "still_indexing" not in found

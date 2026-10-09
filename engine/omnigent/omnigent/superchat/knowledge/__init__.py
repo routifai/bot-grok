@@ -2,10 +2,11 @@
 
 The Computer's workspace is the one copy of a person's files, and the index lives there too
 (``omnigent.runner.knowledge``: parse, passages, thumbnails, FTS5 + sqlite-vec). This folder is the
-engine's side and holds no file data: ``tools`` / ``handlers`` register the Muse's
-``files_search`` / ``files_read_page`` (the handler runs in the Computer), and ``routes`` relays
-status, search and page thumbnails to it for Nova. Embeddings are made through the engine's model
-proxy (``models``), so no key enters the Computer.
+engine's side and holds no file data: ``tools`` / ``handlers`` register the Muse's qmd-style
+``files_*`` tools (the handler runs in the Computer), and ``routes`` relays ingest (an attachment
+read before its message is sent), status, search and page thumbnails to it for Nova. Embeddings
+and the search rerank are made through the engine's model proxy (``models``), so no key enters the
+Computer.
 
 It sits on ``artifacts`` only to tell a Library file from a plain one in the answers (matched by
 the workspace path the artifact was saved from).
@@ -29,16 +30,24 @@ if TYPE_CHECKING:
     from omnigent.tools.base import Tool
 
 #: Handlers the engine's relays call; never offered to a model.
-_INTERNAL_OPS = ("files_status", "files_thumbnail", "files_reindex")
+_INTERNAL_OPS = ("files_ingest", "files_thumbnail", "files_reindex")
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
     """The Super Chat and its Helpers search the person's files."""
-    from omnigent.superchat.knowledge.tools import FilesReadPageTool, FilesSearchTool
+    from omnigent.superchat.knowledge import tools
 
     if not is_superside_chat(labels):
         return []
-    return [FilesSearchTool(), FilesReadPageTool()]
+    return [
+        tools.FilesSearchTool(),
+        tools.FilesVsearchTool(),
+        tools.FilesQueryTool(),
+        tools.FilesGetTool(),
+        tools.FilesMultiGetTool(),
+        tools.FilesReadPageTool(),
+        tools.FilesStatusTool(),
+    ]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:

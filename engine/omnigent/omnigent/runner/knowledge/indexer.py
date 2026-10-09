@@ -16,8 +16,11 @@ Everything blocks; the runtime (:mod:`omnigent.runner.knowledge.runtime`) runs i
 from __future__ import annotations
 
 import base64
+import contextlib
+import fnmatch
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path, PurePosixPath
@@ -43,8 +46,15 @@ from omnigent.runner.knowledge.embedder import (
     Embedder,
     EmbeddingUnavailable,
 )
+from omnigent.runner.knowledge.markdown import (
+    parse_page_spec,
+    select_pages,
+    split_pages,
+    to_markdown,
+)
 from omnigent.runner.knowledge.parse import INDEXABLE_KINDS, parse_file
 from omnigent.runner.knowledge.pdf import render_page, render_thumbnails
+from omnigent.runner.knowledge.rerank import Reranker, RerankUnavailable
 
 _logger = logging.getLogger(__name__)
 
@@ -56,6 +66,14 @@ DEFAULT_K = 8
 MAX_K = 25
 #: Longest passage returned to the model, in characters.
 _PASSAGE_CHARS = 1600
+#: How many fused candidates the LLM rerank reads.
+RERANK_CANDIDATES = 20
+#: A file whose Markdown is at most this long (about 8k tokens) travels whole with the message.
+INLINE_MAX_CHARS = 32_000
+#: Default and ceiling of what ``files_get`` / ``files_multi_get`` return, in characters.
+GET_DEFAULT_CHARS = 24_000
+GET_MAX_CHARS = 60_000
+MULTI_GET_MAX_FILES = 20
 #: Kinds by file extension (lower case, with the dot).
 _EXTENSION_KIND = {
     ".pdf": "pdf",
@@ -79,6 +97,16 @@ def thumbnail_ref(file_id: str, page: int) -> str:
     return f"files/{file_id}/pages/{page}/thumbnail"
 
 
+def collection_of(path: str) -> str:
+    """The folder a workspace path belongs to: ``your_files``, ``goals/<id>`` or ``other``."""
+    parts = PurePosixPath(path).parts
+    if parts[:1] == ("your_files",):
+        return "your_files"
+    if len(parts) > 2 and parts[0] == "goals" and parts[2] == "files":
+        return f"goals/{parts[1]}"
+    return "other"
+
+
 class AmbiguousFile(Exception):
     """A plain file name that matches more than one indexed file."""
 
@@ -97,14 +125,19 @@ class Indexer:
         workspace: Path,
         embedder: Embedder,
         *,
+        reranker: Reranker | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         """
         :param home: The index directory (``~/.nova/knowledge``): the database and thumbnails.
         :param workspace: The workspace root the indexed paths are relative to (``~/workspace``).
         :param embedder: Makes the vectors (or says why it cannot).
+        :param reranker: Reorders the best hybrid hits with a model (``None``: fused order).
         """
         self.db = KnowledgeDb(home)
+        self.reranker = reranker
+        self._md = Path(home) / "md"
+        self._work = threading.RLock()  # one pass at a time: the service thread and ingest
         self.workspace = workspace
         self.embedder = embedder
         self._thumbs = Path(home) / "thumbs"
@@ -197,6 +230,7 @@ class Indexer:
         fid = file_id_for(relative)
         self.db.delete_file(fid)
         self._drop_thumbs(fid)
+        self.markdown_path(fid).unlink(missing_ok=True)
 
     def _sync(
         self, relative: str, absolute: Path, row: FileRow | None, *, explicit: bool
@@ -245,21 +279,27 @@ class Indexer:
             self._record_failure(row, exc)
         return True
 
-    def process(self, row: FileRow) -> None:
+    def process(self, row: FileRow, *, retry: bool = True) -> None:
         """Run the pass(es) a file is due. Raises on failure; the caller records it."""
-        absolute = self.absolute(row.path)
-        if not absolute.is_file():
-            self.remove(row.path)
-            return
-        data = absolute.read_bytes()
-        if row.state == STATE_QUEUED:
-            row = self._text_pass(row, data)
-        if row.state == STATE_TEXT_READY:
-            self._finish(row, data)
+        with self._work:
+            absolute = self.absolute(row.path)
+            if not absolute.is_file():
+                self.remove(row.path)
+                return
+            current = self.db.get_file(row.file_id)
+            if current is None:
+                return
+            row = current
+            data = absolute.read_bytes()
+            if row.state == STATE_QUEUED:
+                row = self._text_pass(row, data)
+            if row.state == STATE_TEXT_READY:
+                self._finish(row, data, retry=retry)
 
     def _text_pass(self, row: FileRow, data: bytes) -> FileRow:
         pages, chunk_kind = parse_file(row.kind, data)
         chunks = chunk_pages(pages, kind=chunk_kind)
+        self._write_markdown(row.file_id, to_markdown(pages, kind=chunk_kind))
         stored = self.db.replace_chunks(row.file_id, chunks)
         self.db.update_file(
             row.file_id,
@@ -273,8 +313,8 @@ class Indexer:
         assert updated is not None
         return updated
 
-    def _finish(self, row: FileRow, data: bytes) -> None:
-        status, reason = self._embed(row, self.db.chunks_for(row.file_id))
+    def _finish(self, row: FileRow, data: bytes, *, retry: bool = True) -> None:
+        status, reason = self._embed(row, self.db.chunks_for(row.file_id), retry=retry)
         if row.kind == "pdf":
             self._write_thumbs(row.file_id, data)
         self.db.update_file(
@@ -286,7 +326,9 @@ class Indexer:
             attempts=0,
         )
 
-    def _embed(self, row: FileRow, chunks: Sequence[ChunkRow]) -> tuple[str, str | None]:
+    def _embed(
+        self, row: FileRow, chunks: Sequence[ChunkRow], *, retry: bool = True
+    ) -> tuple[str, str | None]:
         """Embed the passages that have no current vector; ``(status, reason)``."""
         if not chunks:
             return EMBED_KEYWORD, None
@@ -300,7 +342,7 @@ class Indexer:
         try:
             result = self.embedder.embed([search_text(c.heading_path, c.text) for c in todo])
         except EmbeddingUnavailable as exc:
-            if exc.reason == REASON_ERROR and row.attempts + 1 < MAX_ATTEMPTS:
+            if retry and exc.reason == REASON_ERROR and row.attempts + 1 < MAX_ATTEMPTS:
                 raise  # a provider hiccup: retry the file rather than settle for keywords
             return EMBED_KEYWORD, exc.reason
         dims = len(result.vectors[0])
@@ -404,34 +446,95 @@ class Indexer:
                 for row in self.db.files()
             ],
             "embeddings": {"available": reason is None, "reason": reason},
+            "collections": self._collections(),
             "pending": self.db.pending_count(),
         }
 
-    def unsearchable(self, file_ids: Sequence[str] | None = None) -> list[FileRow]:
-        """Files in scope still ``queued``: their text is not stored, so a search cannot see them.
-
-        :param file_ids: Limit to these files; every file when omitted.
-        """
-        wanted = set(file_ids) if file_ids else None
+    def _collections(self) -> list[dict[str, Any]]:
+        """The person's folders and what is indexed in each."""
+        names = ["your_files"]
+        goals = self.workspace / "goals"
+        with contextlib.suppress(OSError):
+            names += [f"goals/{g.name}" for g in sorted(goals.iterdir()) if (g / "files").is_dir()]
+        rows = self.db.files()
         return [
-            row
-            for row in self.db.files()
-            if row.state == STATE_QUEUED and (wanted is None or row.file_id in wanted)
+            {
+                "name": name,
+                "files": sum(1 for r in rows if collection_of(r.path) == name),
+                "searchable": sum(
+                    1 for r in rows if collection_of(r.path) == name and r.state == STATE_READY
+                ),
+            }
+            for name in names
         ]
 
     def search(
-        self, query: str, *, file_ids: Sequence[str] | None = None, k: int = DEFAULT_K
+        self,
+        query: str,
+        *,
+        mode: str = "hybrid",
+        file_ids: Sequence[str] | None = None,
+        k: int = DEFAULT_K,
+        rerank: bool = False,
     ) -> dict[str, Any]:
-        """Hybrid search over the files (BM25 only when the owner cannot embed)."""
+        """Passages for *query*.
+
+        :param mode: ``keyword`` (BM25), ``vector`` (nearest passages) or ``hybrid`` (both,
+            fused by reciprocal rank). Hybrid falls back to BM25 when the owner cannot embed;
+            vector then answers ``reason: no_embeddings`` and nothing else.
+        :param rerank: Reorder the best :data:`RERANK_CANDIDATES` hits with the model; the result
+            says ``rerank: llm`` or ``rerank: fused`` (with ``rerank_reason``) either way.
+        """
         limit = max(1, min(int(k), MAX_K))
-        mode, reason, vector = "keyword", None, None
+        vector, reason = None, None
+        if mode in ("vector", "hybrid"):
+            try:
+                vector = self.embedder.embed([query]).vectors[0]
+            except EmbeddingUnavailable as exc:
+                reason = exc.reason
+        out: dict[str, Any] = {"query": query, "files_indexing": self.db.pending_count()}
+        if mode == "vector" and vector is None:
+            return {**out, "mode": "vector", "reason": "no_embeddings", "detail": reason,
+                    "results": []}  # fmt: skip
+        out_mode = "keyword" if vector is None else mode
+        fetch = max(limit, RERANK_CANDIDATES) if rerank else limit
+        found = self.db.search(
+            query,
+            limit=fetch,
+            file_ids=file_ids,
+            query_vector=vector,
+            keyword=mode != "vector",
+        )
+        results = self._hits(found)
+        out["mode"] = out_mode
+        out["keyword_only_reason"] = reason if out_mode == "keyword" else None
+        if rerank:
+            results, verdict = self._rerank(query, results)
+            out.update(verdict)
+        out["results"] = results[:limit]
+        return out
+
+    def _rerank(
+        self, query: str, hits: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """*hits* in the model's order, or as they are with the reason it could not."""
+        if len(hits) < 2:
+            return hits, {"rerank": "fused", "rerank_reason": "too_few_results"}
         try:
-            vector = self.embedder.embed([query]).vectors[0]
-            mode = "hybrid"
-        except EmbeddingUnavailable as exc:
-            reason = exc.reason
+            if self.reranker is None:
+                raise RerankUnavailable("no_connection")
+            order = self.reranker.rerank(query, [h["passage"] for h in hits])
+        except RerankUnavailable as exc:
+            return hits, {"rerank": "fused", "rerank_reason": exc.reason}
+        seen = set(order)
+        order = [*order, *(i for i in range(len(hits)) if i not in seen)]
+        ranked = [dict(hits[i]) for i in order]
+        for place, hit in enumerate(ranked):
+            hit["score"] = round(1.0 - place / len(ranked), 4)
+        return ranked, {"rerank": "llm", "rerank_reason": None}
+
+    def _hits(self, found: Sequence[tuple[ChunkRow, float]]) -> list[dict[str, Any]]:
         files = {row.file_id: row for row in self.db.files()}
-        found = self.db.search(query, limit=limit, file_ids=file_ids, query_vector=vector)
         results = []
         for chunk, score in found:
             row = files.get(chunk.file_id)
@@ -454,12 +557,144 @@ class Indexer:
                     else None,
                 }
             )
+        return results
+
+    # ------------------------------------------------------------------ Markdown
+
+    def markdown_path(self, file_id: str) -> Path:
+        """Where a file's Markdown version lives (``~/.nova/knowledge/md/<file_id>.md``)."""
+        return self._md / f"{file_id}.md"
+
+    def _write_markdown(self, file_id: str, text: str) -> None:
+        self._md.mkdir(parents=True, exist_ok=True)
+        target = self.markdown_path(file_id)
+        scratch = target.with_suffix(".md.tmp")
+        scratch.write_text(text, encoding="utf-8")
+        scratch.replace(target)
+
+    def _markdown(self, row: FileRow) -> str | None:
+        try:
+            return self.markdown_path(row.file_id).read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def ingest(self, path: str | Path, *, inline: bool = False) -> dict[str, Any]:
+        """Read one file through every pass now and return what it came to.
+
+        The explicit operation an attachment goes through before its message is sent: convert to
+        Markdown, cut passages, embed (when the owner can), index. Idempotent: an unchanged,
+        already indexed file answers at once.
+
+        :param inline: Also return the Markdown when it is short enough to travel with the message.
+        :raises ValueError: the file cannot be read as an indexable kind, or reading failed.
+        :raises FileNotFoundError: there is no such file.
+        """
+        relative = self.relative(path)
+        if relative is None or kind_of(relative) is None:
+            raise ValueError("This kind of file can't be read")
+        absolute = self.absolute(relative)
+        if not absolute.is_file():
+            raise FileNotFoundError(relative)
+        with self._work:
+            self._sync(relative, absolute, self.db.file_by_path(relative), explicit=False)
+            row = self.db.file_by_path(relative)
+            assert row is not None
+            if row.size > MAX_FILE_BYTES:
+                raise ValueError(f"File is too large to read ({MAX_FILE_BYTES >> 20} MB max)")
+            if row.state == STATE_FAILED or (
+                row.state == STATE_READY and self._markdown(row) is None
+            ):
+                # A retry by the person, or a file indexed before Markdown was kept: read it again.
+                self.db.update_file(row.file_id, state=STATE_QUEUED, attempts=0, last_error=None)
+                row = self.db.get_file(row.file_id)
+                assert row is not None
+            if row.state != STATE_READY:
+                try:
+                    self.process(row, retry=False)
+                except Exception as exc:  # noqa: BLE001 - reported to the caller below
+                    message = (str(exc) or type(exc).__name__)[:300]
+                    self.db.update_file(row.file_id, state=STATE_FAILED, last_error=message)
+            row = self.db.file_by_path(relative)
+        if row is None or row.state != STATE_READY:
+            raise ValueError((row.last_error if row else None) or "The file could not be read")
+        text = self._markdown(row) or ""
+        out: dict[str, Any] = {
+            "file_id": row.file_id,
+            "name": row.name,
+            "path": row.path,
+            "pages": row.page_count,
+            "pages_without_text": max(row.page_count - row.text_pages, 0)
+            if row.kind == "pdf"
+            else 0,
+            "chars": len(text),
+            "markdown_path": str(self.markdown_path(row.file_id)),
+            "search": "hybrid" if row.embed_status == EMBED_EMBEDDED else "keyword",
+        }
+        if inline and len(text) <= INLINE_MAX_CHARS:
+            out["markdown"] = text
+        return out
+
+    def get(
+        self, row: FileRow, *, pages: object = None, max_chars: int | None = None
+    ) -> dict[str, Any] | None:
+        """A file's Markdown (all of it, or only *pages*), cut to *max_chars*; ``None`` unread."""
+        text = self._markdown(row)
+        if text is None:
+            return None
+        limit = max(1000, min(max_chars or GET_DEFAULT_CHARS, GET_MAX_CHARS))
+        selected: list[int] | None = None
+        if pages is not None:
+            selected = parse_page_spec(pages, row.page_count)
+            if not selected:
+                raise ValueError(f"{row.name} has pages 1 to {max(row.page_count, 1)}")
+            text = select_pages(text, selected)
+        total = len(text)
+        out: dict[str, Any] = {
+            "file_id": row.file_id,
+            "path": row.path,
+            "name": row.name,
+            "pages": row.page_count,
+            "chars": total,
+            "truncated": total > limit,
+        }
+        if total > limit:
+            cut = text.rfind("\n", 0, limit)
+            text = text[: cut if cut > limit // 2 else limit]
+            shown = list(split_pages(text))
+            out["note"] = (
+                f"Cut at {len(text)} of {total} characters"
+                + (f" (through page {shown[-1]})" if shown else "")
+                + "; ask for the rest with pages."
+            )
+        out["markdown"] = text
+        return out
+
+    def multi_get(self, pattern: str, *, max_chars: int | None = None) -> dict[str, Any]:
+        """The Markdown of every file whose path matches *pattern* (a glob, or comma-separated).
+
+        The character budget is shared out evenly; at most :data:`MULTI_GET_MAX_FILES` files.
+        """
+        patterns = [p.strip().lower() for p in pattern.split(",") if p.strip()]
+        rows = [
+            row
+            for row in self.db.files()
+            if row.state == STATE_READY
+            and any(
+                fnmatch.fnmatchcase(row.path.lower(), p)
+                or fnmatch.fnmatchcase(row.name.lower(), p)
+                for p in patterns
+            )
+        ]
+        matched = len(rows)
+        rows = rows[:MULTI_GET_MAX_FILES]
+        budget = max(1000, min(max_chars or GET_DEFAULT_CHARS, GET_MAX_CHARS))
+        each = max(1000, budget // max(len(rows), 1))
+        files = [got for row in rows if (got := self.get(row, max_chars=each)) is not None]
         return {
-            "query": query,
-            "mode": mode,
-            "keyword_only_reason": reason if mode == "keyword" else None,
-            "files_indexing": self.db.pending_count(),
-            "results": results,
+            "pattern": pattern,
+            "matched": matched,
+            "returned": len(files),
+            "files": files,
         }
 
     def resolve(self, file_id: str | None, path: str | None) -> FileRow | None:
@@ -524,6 +759,7 @@ def _file_view(row: FileRow) -> dict[str, Any]:
         "path": row.path,
         "name": row.name,
         "kind": row.kind,
+        "collection": collection_of(row.path),
         "state": state,
         "search": "hybrid" if row.embed_status == EMBED_EMBEDDED else "keyword",
         "keyword_only_reason": row.embed_reason,

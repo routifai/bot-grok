@@ -4,6 +4,7 @@ import { ORPCError } from "@orpc/server";
 import { engineComputerClient } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";
 import {
+  engineIngestAttachment,
   engineListFiles,
   engineReadFile,
   engineSaveFileToLibrary,
@@ -28,6 +29,11 @@ export function filesRouter(c: RouterContext) {
         const engine = engineComputerClient(context.actor);
         if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
         return engineUploadAttachment(engineFilesDeps, engine, context.actor, input);
+      }),
+      ingestAttachment: authed.files.ingestAttachment.handler(async ({ context, input }) => {
+        const engine = engineComputerClient(context.actor);
+        if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
+        return engineIngestAttachment(engineFilesDeps, engine, context.actor, input);
       }),
       saveToLibrary: authed.files.saveToLibrary.handler(async ({ context, input }) => {
         const engine = engineComputerClient(context.actor);
