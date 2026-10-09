@@ -1,6 +1,9 @@
 Nova
 Copyright 2026 the Nova authors
 
+Nova began as a fork of Rakazo, Copyright 2026 Rakazo contributors, licensed under the Apache
+License 2.0 (see LICENSE).
+
 Nova's 3D illustrations (apps/web/public/illustrations) are from Microsoft's
 Fluent Emoji (https://github.com/microsoft/fluentui-emoji), Copyright (c)
 Microsoft Corporation, licensed under the MIT License.
