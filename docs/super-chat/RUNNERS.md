@@ -135,7 +135,7 @@ only relays.
 - The supervisor's `screen-mode` returns the Muse's X `display`; the provider
   forwards it to the runner as `DISPLAY`, so the viewer and the runner share
   one screen.
-- Nova's API (`apps/api/src/engine-computer.ts`) calls those routes and
+- Nova's API (`apps/api/src/features/computer/service.ts`) calls those routes and
   relays the noVNC stream through its same-origin screen proxy; browsers
   never reach the engine.
 - While the person holds control, the Muse's computer tools (`sys_os_*`,

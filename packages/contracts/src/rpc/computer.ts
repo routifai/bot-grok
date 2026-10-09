@@ -7,6 +7,7 @@ import {
 } from "../domain.js";
 import { Id } from "../ids.js";
 
+import { ArtifactSchema } from "./artifacts.js";
 import { botId } from "./shared.js";
 
 export const computerContract = {
@@ -31,15 +32,6 @@ export const computerContract = {
         }),
       )
       .output(z.object({ ok: z.literal(true) })),
-    input: oc
-      .input(
-        z.object({
-          botId: Id,
-          kind: z.enum(["key", "pointer", "clipboard", "scroll"]),
-          payload: z.record(z.string(), z.unknown()),
-        }),
-      )
-      .output(z.object({ ok: z.literal(true) })),
     files: oc
       .input(z.object({ botId: Id, path: z.string().default("/") }))
       .output(
@@ -50,5 +42,35 @@ export const computerContract = {
       .output(z.object({ path: z.string(), content: z.string() })),
     screenUrl: oc.input(botId).output(z.object({ url: z.string().nullable() })),
     heartbeat: oc.input(botId).output(z.object({ ok: z.literal(true) })),
+  },
+  files: {
+    list: oc.input(z.object({ botId: Id, path: z.string().max(1024).default("") })).output(
+      z.object({
+        entries: z.array(
+          z.object({
+            name: z.string(),
+            path: z.string(),
+            type: z.enum(["file", "directory"]),
+            size: z.number().int().nullable(),
+            modifiedAt: z.number().int(),
+          }),
+        ),
+      }),
+    ),
+    read: oc.input(z.object({ botId: Id, path: z.string().min(1).max(1024) })).output(
+      z.object({
+        path: z.string(),
+        name: z.string(),
+        mimeType: z.string(),
+        size: z.number().int(),
+        /** Over the preview cap, or not text-like and not previewable: no content sent. */
+        tooLarge: z.boolean(),
+        binary: z.boolean(),
+        contentBase64: z.string().nullable(),
+      }),
+    ),
+    saveToLibrary: oc
+      .input(z.object({ botId: Id, path: z.string().min(1).max(1024) }))
+      .output(ArtifactSchema),
   },
 };

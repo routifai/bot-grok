@@ -6,11 +6,11 @@ import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { NovaOrb } from "../../components/ai/orb";
 import { ApprovalsSettings } from "../../features/approvals";
+import { SideChatArchiving } from "../../features/side-chats/SideChatArchiving";
 import { VaultSettings } from "../../features/vault";
 import { authClient } from "../../lib/auth";
 import { resetFirstRun } from "./intro";
 import { ProactivitySettings } from "./ProactivitySettings";
-import { SideChatArchiving } from "./SideChatArchiving";
 import { MUSE_INSET_GROUP } from "./ui";
 
 /**

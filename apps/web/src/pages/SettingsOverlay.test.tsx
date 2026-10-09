@@ -97,7 +97,7 @@ vi.mock("../features/models", () => ({
 vi.mock("../features/admin", () => ({
   OrganizationPanel: () => <div data-testid="organization-panel" />,
 }));
-vi.mock("../components/ComputersUnavailableHint", () => ({
+vi.mock("../features/computer/ComputersUnavailableHint", () => ({
   computersAreUnavailable: () => false,
 }));
 

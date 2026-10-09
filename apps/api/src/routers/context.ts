@@ -21,10 +21,12 @@ import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { createGroupRepos, createRepos, IsolationError } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
-import { createAgentSkillsService } from "../agent-skills.js";
 import type { EngineArtifactsDeps } from "../features/artifacts/index.js";
+import { withEngineComputer } from "../features/computer/service.js";
 import type { EngineIdeasDeps } from "../features/ideas/service.js";
-import { assertTeachingSendAllowed, createTaughtSkillsService } from "../taught-skills.js";
+import { createAgentSkillsService } from "../features/skills/agent-skills.js";
+import { createTaughtSkillsService } from "../features/skills/taught-skills.js";
+import { assertTeachingSendAllowed } from "../teaching-guard.js";
 import { resolveThreadTarget } from "../thread-target.js";
 
 export interface RouterDeps {
@@ -92,6 +94,11 @@ export interface RouterContext {
   agentSkills: ReturnType<typeof createAgentSkillsService>;
   engineArtifactsDeps: EngineArtifactsDeps;
   engineFilesDeps: { prisma: RouterDeps["prisma"] };
+  /** A thread snapshot with its Computer as the engine sees it. */
+  withComputer<T extends Parameters<typeof withEngineComputer>[2]>(
+    actor: Actor,
+    snapshot: T,
+  ): Promise<T>;
   engineIdeasDeps: EngineIdeasDeps;
 }
 
@@ -154,6 +161,7 @@ export function createRouterContext(deps: RouterDeps): RouterContext {
     agentSkills,
     engineArtifactsDeps,
     engineFilesDeps,
+    withComputer: (actor, snapshot) => withEngineComputer(deps, actor, snapshot),
     engineIdeasDeps,
   };
 }

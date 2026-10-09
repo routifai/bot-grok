@@ -1,4 +1,4 @@
-import { engineComputerClient, requireEngine } from "../../engine-computer.js";
+import { engineComputerClient, requireEngine } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";
 import {
   engineAcceptProposal,

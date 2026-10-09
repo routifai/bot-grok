@@ -74,16 +74,16 @@ import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { engineComputerClient } from "./engine-computer.js";
+import { engineComputerClient } from "./engine-client.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { mountPublishedApps } from "./features/apps/published-apps.js";
+import { mountScreenTarget } from "./features/computer/screen-proxy.js";
 import { mountLocalSettings } from "./local-settings.js";
 import { createMessagingInboundHandler } from "./messaging-inbound.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
 import { mountApiRequestBodyLimits } from "./request-body-limit.js";
 import { createRouter } from "./router.js";
-import { mountScreenTarget } from "./screen-proxy.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
 import { mountWebhookHttpRoutes } from "./webhook.js";
 

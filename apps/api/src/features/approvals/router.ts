@@ -4,7 +4,7 @@ import {
   resolveAutoReviewChecker,
 } from "@nova/adapters";
 import type { Actor } from "@nova/contracts";
-import { engineComputerClient } from "../../engine-computer.js";
+import { engineComputerClient } from "../../engine-client.js";
 import type { RouterContext, RouterDeps } from "../../routers/context.js";
 import { answerAsk, countAsks, listAsks } from "./asks-service.js";
 import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "./service.js";

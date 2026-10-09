@@ -46,7 +46,7 @@ class TaughtSkill:
     :param name: Short name (from the document once drafted).
     :param goal: What the person said they were teaching.
     :param status: One of :data:`TAUGHT_SKILL_STATUSES`.
-    :param doc: The current document (see ``omnigent.superchat.taught_skills.doc``), or ``None``
+    :param doc: The current document (see ``omnigent.superchat.skills.doc``), or ``None``
         before the first draft.
     :param version: Current version number; ``0`` before the first draft.
     :param created_at: Epoch seconds.

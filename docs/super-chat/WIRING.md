@@ -13,7 +13,7 @@ apps/web ──oRPC──▶ apps/api (auth, ownership) ──HTTP──▶ Omni
 Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for example
 `side-chats.ts`, `computer.ts`, `memory.ts`, `goals.ts`, `feed.ts`), their contracts in
 `packages/contracts/src/rpc/` (`chats.ts`, `computer.ts`, ...), and engine relays in
-`apps/api/src/engine-*.ts` and `apps/api/src/chats.ts` / `activities.ts`.
+`apps/api/src/features/<capability>/service.ts` / `activities.ts`.
 
 ## Identity and ownership
 

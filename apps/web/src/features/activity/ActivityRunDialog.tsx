@@ -6,8 +6,8 @@ import { Button, cn, Dialog, DialogContent } from "@nova/ui-web";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { RunStatusDot } from "../../pages/muse/chrome/RunStatusDot";
-import { MessageRow } from "../../pages/muse/chrome/SideChatSession";
 import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "../../pages/muse/chrome/toolIcons";
+import { MessageRow } from "../../pages/muse/conversation/MessageRow";
 import { ActivityIconTile } from "./ActivityIconTile";
 import { formatClockTime, formatDayAndTime, isHelperActivity } from "./activityGrouping";
 

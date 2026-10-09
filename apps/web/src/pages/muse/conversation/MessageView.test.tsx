@@ -30,7 +30,7 @@ vi.mock("../../../features/approvals/AskCard", () => ({ AskCard: () => null }));
 vi.mock("../../../components/ai/CollaborationMarker", () => ({ CollaborationMarker: () => null }));
 vi.mock("../../../components/CloudAgentCard", () => ({ CloudAgentCard: () => null }));
 vi.mock("../../../components/cards/ReplyCard", () => ({ ReplyCardBlockView: () => null }));
-vi.mock("../../../components/teach/SkillDraftCard", () => ({ SkillDraftCard: () => null }));
+vi.mock("../../../features/skills/teach/SkillDraftCard", () => ({ SkillDraftCard: () => null }));
 vi.mock("../../shell/message-cards", () => ({
   AppConnectCard: () => null,
   ArtifactImage: () => null,

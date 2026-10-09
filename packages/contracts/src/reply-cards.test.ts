@@ -11,6 +11,7 @@ const valid = {
   chart: { kind: "line", x: ["a"], series: [{ name: "s", values: [1] }] },
   person: { name: "Ada" },
   file: { name: "r.pdf", size: 10 },
+  secure_entry: { requestId: "req-1", name: "Bank login", site: "bank.example" },
   progress: { label: "Import", value: 40, status: "running" },
 } as const;
 

@@ -7,18 +7,23 @@ holding only a session id can tell a Super Chat from a Side Chat or a Helper wit
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Mapping
 from typing import Any
 
 from omnigent.context.labels import is_superside_chat
 from omnigent.context.rollover import side_chat_seed_checkpoint
 from omnigent.entities import Conversation
 from omnigent.stores import ConversationStore
-from omnigent.stores.conversation_store import side_chat_parent_id
+from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
 from omnigent.superchat.feature import is_helper, is_super_chat
 from omnigent.superchat.projects.card import project_slug_from_workspace
-from omnigent.superchat.side_chats.forks import fork_anchor_id, fork_parent_id
 
 _MAX_HELPER_HOPS = 8
+
+#: The message a fork started from (an item id of its parent chat).
+FORK_ANCHOR_LABEL_KEY = "omnigent.side_chat.anchor_item_id"
+#: The chat holding the anchor: the Super Chat, or the fork a fork of a fork came from.
+FORK_PARENT_LABEL_KEY = "omnigent.side_chat.fork_parent_id"
 
 #: Session label holding the open Project's card name, stamped when ``open_project`` moves the
 #: working directory (the card itself lives on the session's host, not the server).
@@ -57,6 +62,20 @@ def _helper_root(conv_store: ConversationStore, conversation: Conversation) -> C
             break
         root = parent
     return root
+
+
+def fork_anchor_id(labels: Mapping[str, str]) -> str | None:
+    """The anchor of a fork, or ``None`` for any other chat."""
+    if SIDE_CHAT_LABEL_KEY not in labels:
+        return None
+    return labels.get(FORK_ANCHOR_LABEL_KEY) or None
+
+
+def fork_parent_id(labels: Mapping[str, str]) -> str | None:
+    """The chat a fork's anchor is in, or ``None`` when *labels* are not a fork's."""
+    if fork_anchor_id(labels) is None:
+        return None
+    return labels.get(FORK_PARENT_LABEL_KEY) or side_chat_parent_id(labels)
 
 
 def _super_chat_id_of(root: Conversation) -> str | None:

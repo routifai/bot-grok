@@ -1,5 +1,5 @@
-import type { AgentSkillCatalogEntry, Bot, Group, ThreadSnapshot } from "@nova/contracts";
-import type { Dispatch, SetStateAction } from "react";
+import type { Bot, Group, ThreadSnapshot } from "@nova/contracts";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useNavigate } from "react-router-dom";
 import { rpc } from "../../../lib/rpc";
 import { GroupSettings } from "../../GroupPanel";
@@ -54,12 +54,12 @@ export function GroupSettingsPanel({
 /** The Muse's settings panel: save, export and clear. */
 export function BotSettingsPanel({
   active,
-  setAgentSkills,
+  skillsSection,
   refreshBots,
   onClear,
 }: {
   active: Bot;
-  setAgentSkills: Dispatch<SetStateAction<AgentSkillCatalogEntry[]>>;
+  skillsSection?: ReactNode;
   refreshBots: () => Promise<void>;
   onClear?: () => void;
 }) {
@@ -67,7 +67,7 @@ export function BotSettingsPanel({
     <BotSettings
       key={active.id}
       bot={active}
-      onSkillsChange={setAgentSkills}
+      skillsSection={skillsSection}
       onSave={async ({ computerMode, ...patch }) => {
         if (computerMode !== active.computerMode) {
           await rpc.bots.setComputer({

@@ -14,8 +14,8 @@ import {
 import { Check, Copy, MoreHorizontal, Reply, Smile } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MessageHoverMetadata } from "../../../components/MessageHoverMetadata";
+import { BranchIcon } from "../../../features/side-chats/forkParts";
 import { copyableMessageText } from "../../../lib/message-text";
-import { BranchIcon } from "../forks/forkParts";
 
 export function MessageHoverActions({
   message,

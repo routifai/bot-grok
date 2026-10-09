@@ -9,8 +9,7 @@ import {
 } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { ORPCError } from "@orpc/server";
-import { withEngineComputer } from "../engine-computer.js";
-import { assertTeachingSendAllowed } from "../taught-skills.js";
+import { assertTeachingSendAllowed } from "../teaching-guard.js";
 import {
   isPeerRun,
   loadMessagePage,
@@ -39,7 +38,7 @@ export function threadsRouter(c: RouterContext) {
       }),
       get: authed.threads.get.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-        return withEngineComputer(deps, context.actor, await threadSnapshot(deps, target));
+        return c.withComputer(context.actor, await threadSnapshot(deps, target));
       }),
       messages: authed.threads.messages.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);

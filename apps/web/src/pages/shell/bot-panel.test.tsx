@@ -23,7 +23,6 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("@lingui/core/macro", () => ({ t: (parts: TemplateStringsArray) => parts.join("") }));
 vi.mock("../../components/ai/orb", () => ({ NovaOrb: () => <div /> }));
 vi.mock("../ScratchpadSection", () => ({ ScratchpadSection: () => <div /> }));
-vi.mock("../SkillsSection", () => ({ SkillsSection: () => <div /> }));
 vi.mock("@nova/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
@@ -109,7 +108,6 @@ it("never renders a proactivity control (it now lives in Settings > Nova)", asyn
       root.render(
         <BotSettings
           bot={bot()}
-          onSkillsChange={() => undefined}
           onSave={async () => undefined}
           onExport={async () => undefined}
           onClear={() => undefined}

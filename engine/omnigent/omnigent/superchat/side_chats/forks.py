@@ -29,11 +29,11 @@ from omnigent.stores.conversation_store import (
 )
 from omnigent.superchat.family.search import own_items, shown_text
 from omnigent.superchat.feature import is_helper
+from omnigent.superchat.lineage import (
+    fork_anchor_id,
+    fork_parent_id,
+)
 
-#: The message a fork started from (an item id of its parent chat).
-FORK_ANCHOR_LABEL_KEY = "omnigent.side_chat.anchor_item_id"
-#: The chat holding the anchor: the Super Chat, or the fork a fork of a fork came from.
-FORK_PARENT_LABEL_KEY = "omnigent.side_chat.fork_parent_id"
 #: The one-line summary the person added to the Conversation (state ``added``).
 FORK_SUMMARY_LABEL_KEY = "omnigent.side_chat.fork_summary"
 #: The parent-chat item that carries that summary to the Muse.
@@ -67,20 +67,6 @@ FORK_SUMMARY_INSTRUCTIONS = (
     'price cuts, not costs". No greetings, quotes, ids or trailing punctuation. Never use '
     "internal words: sub-agent, helper, session, tool, fork."
 )
-
-
-def fork_anchor_id(labels: Mapping[str, str]) -> str | None:
-    """The anchor of a fork, or ``None`` for any other chat."""
-    if SIDE_CHAT_LABEL_KEY not in labels:
-        return None
-    return labels.get(FORK_ANCHOR_LABEL_KEY) or None
-
-
-def fork_parent_id(labels: Mapping[str, str]) -> str | None:
-    """The chat a fork's anchor is in, or ``None`` when *labels* are not a fork's."""
-    if fork_anchor_id(labels) is None:
-        return None
-    return labels.get(FORK_PARENT_LABEL_KEY) or side_chat_parent_id(labels)
 
 
 def fork_depth(labels: Mapping[str, str]) -> int:

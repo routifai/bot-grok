@@ -22,11 +22,11 @@ import {
   ReplyCardSendProvider,
   ReplyCardThreadProvider,
 } from "../../../components/cards/context";
+import { forkAnchorFor } from "../../../features/side-chats/forkModel";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
 import { type MuseLiveRun, useMuseLiveState } from "../chrome/useMuseLiveState";
-import { forkAnchorFor } from "../forks/forkModel";
 import { FailureRun } from "./FailureNote";
 import type { TranscriptRow } from "./failureNotes";
 import { foldFailureRuns } from "./failureNotes";

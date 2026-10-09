@@ -40,7 +40,6 @@ import {
   orbPlacement,
   useIsDesktop,
 } from "../components/ai/orb";
-import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
 import { useNovaWork } from "../features/activity";
 import { ApprovalCards, FeedAsks, useAsks, WaitingSheet } from "../features/approvals";
@@ -48,11 +47,36 @@ import { appsExtension } from "../features/apps";
 import { LibraryScreen } from "../features/artifacts/LibraryScreen";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
+import { ComputerOverlay } from "../features/computer/ComputerOverlay";
+import { ComputerPreview } from "../features/computer/ComputerPreview";
+import { ComputerUpdateProgress } from "../features/computer/ComputerUpdateProgress";
+import { HostComputerPrompt } from "../features/computer/HostComputerPrompt";
+import { useComputer } from "../features/computer/useComputer";
+import { useComputerScreen } from "../features/computer/useComputerScreen";
+import { useComputerStore } from "../features/computer/useComputerStore";
+import { useComputerView } from "../features/computer/useComputerView";
 import { FeedScreen } from "../features/feed";
 import { GoalsScreen } from "../features/goals";
 import { IdeasScreen } from "../features/ideas";
 import { ConversationModelPicker } from "../features/models";
 import { sheetsExtension } from "../features/sheets";
+import { AllForks, ForkViewSwitch } from "../features/side-chats/AllForks";
+import { ForkAsk } from "../features/side-chats/ForkAsk";
+import { ForkGutter } from "../features/side-chats/ForkGutter";
+import type { ForkWire } from "../features/side-chats/ForkOverlay";
+import { ForkThread, type ForkThreadTarget } from "../features/side-chats/ForkThread";
+import {
+  SideChatSession,
+  type SideChatView,
+  type SideChatWire,
+} from "../features/side-chats/SideChatSession";
+import { sideChatView } from "../features/side-chats/sideChatView";
+import { useChatList } from "../features/side-chats/useChatList";
+import { forkChatSummary, useForkView } from "../features/side-chats/useForkView";
+import { computerTeachSlots } from "../features/skills/computerTeachSlots";
+import { SkillsPanel } from "../features/skills/SkillsPanel";
+import { useAgentSkills } from "../features/skills/useAgentSkills";
+import { useTeaching } from "../features/skills/useTeaching";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { authClient } from "../lib/auth";
 import { watchFamily } from "../lib/family-stream";
@@ -60,7 +84,6 @@ import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { activeThreadRuns } from "../lib/thread-events";
 import { memberName } from "./GroupPanel";
-import { HostComputerPrompt } from "./HostComputerPrompt";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader, TOOLBAR_BUTTON } from "./muse/chrome/ConversationHeader";
 import { conversationLayout } from "./muse/chrome/conversationLayout";
@@ -73,15 +96,9 @@ import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
 import { type ChatProject, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
-import {
-  SideChatSession,
-  type SideChatView,
-  type SideChatWire,
-} from "./muse/chrome/SideChatSession";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
-import { useChatList } from "./muse/chrome/useChatList";
 import { useCreateBot } from "./muse/chrome/useCreateBot";
 import type { MuseLiveRun } from "./muse/chrome/useMuseLiveState";
 import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
@@ -90,34 +107,18 @@ import { ClearConversationHost } from "./muse/conversation/ClearConversationHost
 import { Composer } from "./muse/conversation/Composer";
 import { conversationMessages as layerConversation } from "./muse/conversation/museTranscript";
 import { FALLBACK_BOT_COLOR } from "./muse/conversation/shared";
-import { sideChatView } from "./muse/conversation/sideChatView";
 import { Transcript } from "./muse/conversation/Transcript";
 import { useComposerSend } from "./muse/conversation/useComposerSend";
 import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
 import { useThreadState } from "./muse/conversation/useThreadState";
 import { useThreadSync } from "./muse/conversation/useThreadSync";
-import { ComputerOverlay } from "./muse/files/ComputerOverlay";
-import { ComputerPreview } from "./muse/files/ComputerPreview";
-import { useComputer } from "./muse/files/useComputer";
-import { useComputerScreen } from "./muse/files/useComputerScreen";
-import { useComputerStore } from "./muse/files/useComputerStore";
-import { useComputerView } from "./muse/files/useComputerView";
-import { AllForks, ForkViewSwitch } from "./muse/forks/AllForks";
-import { ForkAsk } from "./muse/forks/ForkAsk";
-import { ForkGutter } from "./muse/forks/ForkGutter";
-import type { ForkWire } from "./muse/forks/ForkOverlay";
-import { ForkThread, type ForkThreadTarget } from "./muse/forks/ForkThread";
-import { forkChatSummary, useForkView } from "./muse/forks/useForkView";
-import { SkillsPanel } from "./muse/library/SkillsPanel";
 import { RoutineList } from "./muse/routines/RoutineList";
 import { RoutinePanel } from "./muse/routines/RoutinePanel";
 import { useRoutineEditor } from "./muse/routines/useRoutineEditor";
 import { IntegrationOverlays } from "./muse/settings/IntegrationOverlays";
 import { SettingsHost } from "./muse/settings/SettingsHost";
 import { useShellSettings } from "./muse/settings/useShellSettings";
-import { useAgentSkills } from "./muse/skills/useAgentSkills";
-import { useTeaching } from "./muse/skills/useTeaching";
 import { useMuseNav } from "./muse/useMuseNav";
 import { draftFromRoutine } from "./RoutineEditor";
 import { CreateBotForm } from "./shell/bot-panel";
@@ -125,6 +126,9 @@ import { DeleteItemDialog } from "./shell/dialogs";
 
 const PeerMessagesOverlay = lazy(() =>
   import("./PeerMessagesOverlay").then((module) => ({ default: module.PeerMessagesOverlay })),
+);
+const SkillsSection = lazy(() =>
+  import("../features/skills/SkillsSection").then((module) => ({ default: module.SkillsSection })),
 );
 const CallView = lazy(() => import("./CallView").then((module) => ({ default: module.CallView })));
 
@@ -1396,7 +1400,7 @@ export function ShellPage() {
             {panel === "settings" && active ? (
               <BotSettingsPanel
                 active={active}
-                setAgentSkills={setAgentSkills}
+                skillsSection={<SkillsSection onSkillsChange={setAgentSkills} />}
                 refreshBots={refreshBots}
                 onClear={() => setClearTarget({ kind: "bot", chat: active })}
               />
@@ -1481,7 +1485,13 @@ export function ShellPage() {
         computer={computer}
         ctl={computerCtl}
         screen={screen}
-        teach={{ recordingSkill, teachBusy, stopTeaching, refreshActiveTeaching }}
+        teach={computerTeachSlots({
+          recordingSkill,
+          computer,
+          teachBusy,
+          stopTeaching,
+          refreshActiveTeaching,
+        })}
         run={{ currentRuns, composerRunning, sending, sendError, stopRun }}
       />
     </div>

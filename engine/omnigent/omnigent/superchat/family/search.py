@@ -14,7 +14,7 @@ from omnigent.context.rollover import side_chat_seed_checkpoint
 from omnigent.entities import Conversation, ConversationItem, MessageData
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.stores import ConversationStore
-from omnigent.superchat.activity.derive import list_chat_roots, resolve_super_chat_id
+from omnigent.superchat.family.tree import list_chat_roots, resolve_super_chat_id
 from omnigent.superchat.transcript.blocks import item_text
 
 #: Items read after a seed to tell a chat's own first messages from the copy (same second).

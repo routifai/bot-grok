@@ -50,6 +50,7 @@ from omnigent.stores.conversation_store import (
 )
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.family.signals import notify_chats_changed, notify_message_done
+from omnigent.superchat.lineage import FORK_ANCHOR_LABEL_KEY, FORK_PARENT_LABEL_KEY
 from omnigent.superchat.side_chats.chats import (
     SIDE_CHAT_START_WITH_CONTEXT,
     build_side_chat_blank_create_body,
@@ -58,8 +59,6 @@ from omnigent.superchat.side_chats.chats import (
 )
 from omnigent.superchat.side_chats.forks import (
     FORK_ADDED_LABEL_KEYS,
-    FORK_ANCHOR_LABEL_KEY,
-    FORK_PARENT_LABEL_KEY,
     FORK_SUMMARY_INSTRUCTIONS,
     STATE_ADDED,
     STATE_ARCHIVED,

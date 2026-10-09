@@ -381,7 +381,7 @@ In `GET /v1/sessions/{id}/transcript`, each message has `forks: []`. Each entry 
 
 - **Open as side chat** has no engine call. A Fork already is a Side Chat, so the client just opens
   it in the Side Chat list (Nova: `onOpenSideChat` in
-  `apps/web/src/pages/muse/forks/ForkThread.tsx`).
+  `apps/web/src/features/side-chats/ForkThread.tsx`).
 - **Archive** is the normal Side Chat archive (see [Archiving](#8-archiving)). An archived Fork has
   `state: archived`.
 
@@ -693,8 +693,8 @@ the person and by the Muse (`related_chats` still returns it with `archived: tru
 ### Manual archive (today)
 
 - **How.** `PATCH /v1/sessions/{id}` with `{"archived": true}` (owner only). Nova calls it from
-  `chats.archive` (`apps/api/src/chats.ts`, `archiveOmnigentSession` in
-  `packages/adapters/src/omnigent/client/side-chats.ts`).
+  `chats.archive` (`apps/api/src/features/side-chats/service.ts`, `archiveOmnigentSession` in
+  `packages/adapters/src/omnigent/side-chats.ts`).
 - **What happens.** The archived flag and an `omnigent.archived_at` label are set; the family gets
   `chats.changed`; the person's read state for that chat is dropped; and the runner is stopped after
   a delay (the delay leaves room for an Undo). An unarchive within that time cancels the stop

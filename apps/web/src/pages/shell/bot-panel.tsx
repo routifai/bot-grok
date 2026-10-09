@@ -1,7 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type {
-  AgentSkillCatalogEntry,
   Bot,
   ComputerMode,
   Me,
@@ -25,16 +24,13 @@ import {
   Toggle,
 } from "@nova/ui-web";
 import { X } from "lucide-react";
+import type { ReactNode } from "react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { NovaOrb } from "../../components/ai/orb";
 import { rpc } from "../../lib/rpc";
 
 const ScratchpadSection = lazy(() =>
   import("../ScratchpadSection").then((module) => ({ default: module.ScratchpadSection })),
-);
-
-const SkillsSection = lazy(() =>
-  import("../SkillsSection").then((module) => ({ default: module.SkillsSection })),
 );
 
 const fieldLabelClass = "mt-4 block text-[14px] text-muted-foreground";
@@ -188,13 +184,14 @@ export function CreateBotForm({
 
 export function BotSettings({
   bot,
-  onSkillsChange,
+  skillsSection,
   onSave,
   onExport,
   onClear,
 }: {
   bot: Bot;
-  onSkillsChange: (skills: AgentSkillCatalogEntry[]) => void;
+  /** The agent skills section, from the shell; shown once Advanced is opened. */
+  skillsSection?: ReactNode;
   onSave: (patch: {
     name?: string;
     title?: string;
@@ -466,7 +463,7 @@ export function BotSettings({
         <ComputerModePicker value={computerMode} onChange={setComputerMode} />
         <Suspense fallback={null}>
           <ScratchpadSection botId={bot.id} />
-          {advancedOpened ? <SkillsSection onSkillsChange={onSkillsChange} /> : null}
+          {advancedOpened ? skillsSection : null}
         </Suspense>
         <label htmlFor={`${ids}-model`} className={fieldLabelClass}>
           <Trans>Model</Trans>
