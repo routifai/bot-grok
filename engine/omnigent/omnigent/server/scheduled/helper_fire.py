@@ -28,6 +28,7 @@ from omnigent.context.labels import (
 from omnigent.entities import Conversation, OwnerPreferences, ScheduledTask
 from omnigent.errors import OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL
+from omnigent.server.scheduled.rrule import RRuleValidationError, get_next_fire_time
 from omnigent.server.scheduled.run_reconciler import force_fail_stale_runs
 from omnigent.server.schemas import SessionEventInput
 from omnigent.stores.conversation_store import NameAlreadyExistsError
@@ -254,6 +255,134 @@ async def _run_parent_bound_fire(
         fire._OWNER_LAUNCHING.discard(owner_key)
 
 
+_DEFAULT_FAILURE_REASON = "it could not be started"
+
+
+def _sentence(reason: str) -> str:
+    """*reason* as a capitalised sentence."""
+    return reason[:1].upper() + reason[1:] + ("" if reason.endswith(".") else ".")
+
+
+async def _create_failed_helper_session(
+    deps: FireDeps, task: ScheduledTask, scheduled_at: int
+) -> str | None:
+    """Create the Helper session a run that never started reports its failure on, if possible."""
+    try:
+        conv = await _create_helper_session(deps, task, scheduled_at)
+        await fire._grant_owner(deps, task, conv.id)
+        return conv.id
+    except Exception:
+        _logger.exception("scheduled fire: could not record a failed Helper for task %s", task.id)
+        return None
+
+
+async def _mark_helper_failed(deps: FireDeps, conv_id: str, message: str) -> None:
+    """Make a Helper that never ran read as failed, with *message* as its reason."""
+    from omnigent.entities import ErrorData, NewConversationItem
+    from omnigent.server.routes._sessions.helpers import _publish_external_conversation_item
+
+    try:
+        persisted = await asyncio.to_thread(
+            deps.conversation_store.append,
+            conv_id,
+            [
+                NewConversationItem(
+                    type="error",
+                    response_id=fire._new_id(),
+                    data=ErrorData(
+                        source="execution", code="scheduled_run_failed", message=message
+                    ),
+                )
+            ],
+        )
+        await asyncio.to_thread(deps.conversation_store.set_session_live_status, conv_id, "failed")
+        if persisted:
+            _publish_external_conversation_item(conv_id, persisted[0])
+    except Exception:
+        _logger.exception("scheduled fire: could not mark helper %s failed", conv_id)
+
+
+async def _post_failure_note(deps: FireDeps, task: ScheduledTask, reason: str) -> None:
+    """Tell the person, in the parent Conversation, that a scheduled run could not run.
+
+    A calm system item rather than a Result wake: the wake would need the parent's runner,
+    which is the thing that was down.
+    """
+    from omnigent.entities import ErrorData, NewConversationItem
+    from omnigent.server.routes._sessions.helpers import _publish_external_conversation_item
+
+    assert task.parent_session_id is not None
+    again = "I'll try again at the next scheduled time."
+    try:
+        nxt = get_next_fire_time(
+            task.rrule, datetime.now(ZoneInfo(task.timezone)), ZoneInfo(task.timezone)
+        )
+    except (ValueError, ZoneInfoNotFoundError, RRuleValidationError):
+        nxt = None
+    if task.rrule and nxt is None:
+        again = "It has no more scheduled runs."
+    message = f"Your {task.name} couldn't run: {reason}. {again}"
+    try:
+        persisted = await asyncio.to_thread(
+            deps.conversation_store.append,
+            task.parent_session_id,
+            [
+                NewConversationItem(
+                    type="error",
+                    response_id=fire._new_id(),
+                    data=ErrorData(
+                        source="execution",
+                        code="scheduled_run_failed",
+                        message=message,
+                        level="info",
+                    ),
+                )
+            ],
+        )
+        if persisted:
+            _publish_external_conversation_item(task.parent_session_id, persisted[0])
+    except Exception:
+        _logger.exception("scheduled fire: could not post the failure note for task %s", task.id)
+
+
+# How long a scheduled Helper run waits for its parent's Computer to wake and its runner connect.
+_PARENT_WAKE_TIMEOUT_S = 120.0
+
+
+async def _wake_parent_runner(deps: FireDeps, parent: Conversation) -> Conversation:
+    """Bring the parent's runner online, waking its sleeping managed Computer first.
+
+    Reuses the path a user message takes (:func:`ensure_runner_connected`: resume or relaunch the
+    managed sandbox, launch a runner on it, wait for the tunnel), so a scheduled run needs no
+    separate launch logic. A parent whose runner is already connected returns at once.
+
+    :returns: The parent row re-read after the wake (its runner id may have been rebound).
+    :raises RuntimeError: When the Computer could not be brought online.
+    """
+    from omnigent.server.routes._sessions.orchestration import ensure_runner_connected
+
+    if deps.app_state is None:  # embedders without server wiring have nothing to wake
+        return parent
+    try:
+        client, woken = await asyncio.wait_for(
+            ensure_runner_connected(
+                session_id=parent.id,
+                conv=parent,
+                app_state=deps.app_state,
+                conversation_store=deps.conversation_store,
+                runner_router=deps.runner_router,
+            ),
+            timeout=_PARENT_WAKE_TIMEOUT_S,
+        )
+    except TimeoutError as exc:
+        raise RuntimeError("your Computer didn't start in time") from exc
+    except OmnigentError as exc:
+        raise RuntimeError(f"your Computer didn't start: {exc.message}") from exc
+    if client is None:
+        raise RuntimeError("your Computer didn't start: the parent's runner is not connected")
+    return woken
+
+
 async def _launch_helper(
     deps: FireDeps,
     task: ScheduledTask,
@@ -266,8 +395,12 @@ async def _launch_helper(
     """Create the Helper child of the task's parent, dispatch its prompt, record the run."""
     conv_id: str | None = None
 
-    async def fail(error: str, code: str, *, retryable: bool) -> None:
+    async def fail(
+        error: str, code: str, *, retryable: bool, reason: str = _DEFAULT_FAILURE_REASON
+    ) -> None:
+        nonlocal conv_id
         note = ""
+        retry_armed = False
         if retryable and retry and attempt < fire._MAX_ATTEMPTS:
             if _schedule_refire(
                 deps,
@@ -278,8 +411,15 @@ async def _launch_helper(
                 attempt=attempt + 1,
                 deferrals=0,
             ):
+                retry_armed = True
                 note = f"; retry scheduled in {fire._RETRY_BACKOFF_S}s"
         _logger.warning("scheduled fire: task %s helper fire failed: %s%s", task.id, error, note)
+        # The run must read as failed in Activity: mark its Helper failed (creating one on the
+        # final attempt when the failure came before any was made), with the reason as its outcome.
+        if conv_id is None and not retry_armed:
+            conv_id = await _create_failed_helper_session(deps, task, scheduled_at)
+        if conv_id is not None:
+            await _mark_helper_failed(deps, conv_id, _sentence(reason))
         await fire._record_run(
             deps,
             task,
@@ -290,6 +430,8 @@ async def _launch_helper(
             error_code=code,
             attempt=attempt,
         )
+        if not retry_armed:
+            await _post_failure_note(deps, task, reason)
 
     assert task.parent_session_id is not None and task.agent_type is not None
     parent = await asyncio.to_thread(
@@ -311,6 +453,18 @@ async def _launch_helper(
             )
     except OmnigentError as exc:
         await fail(exc.message, "invalid_agent_type", retryable=False)
+        return
+
+    try:
+        await _wake_parent_runner(deps, parent)
+    except Exception as exc:
+        _logger.exception("scheduled fire: task %s could not wake the parent runner", task.id)
+        await fail(
+            f"helper launch/dispatch failed: {exc}",
+            "launch_failed",
+            retryable=True,
+            reason="your Computer didn't start",
+        )
         return
 
     try:

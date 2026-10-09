@@ -319,6 +319,7 @@ def _deps(sched_store: FakeScheduledTaskStore, **overrides: Any) -> FireDeps:
         artifact_store=overrides.get("artifact_store"),
         sandbox_config=overrides.get("sandbox_config"),
         managed_launches=overrides.get("managed_launches"),
+        app_state=overrides.get("app_state"),
     )
 
 

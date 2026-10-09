@@ -37,6 +37,7 @@ class _Parent:
     agent_id: str = "ag_1"
     runner_id: str | None = "runner_1"
     model_override: str | None = None
+    inference_snapshot: Any = None
     labels: dict[str, str] = field(
         default_factory=lambda: {"omnigent.context.mode": "superside-chat", "other": "x"}
     )
@@ -46,9 +47,18 @@ class _ParentConversationStore(FakeConversationStore):
     def __init__(self, parent: _Parent | None) -> None:
         super().__init__()
         self.parent = parent
+        self.appended: dict[str, list[Any]] = {}
+        self.live_status: dict[str, str] = {}
 
     def get_conversation(self, conversation_id: str) -> Any:
         return self.parent if conversation_id == "conv_parent" else None
+
+    def append(self, conversation_id: str, items: list[Any]) -> list[Any]:
+        self.appended.setdefault(conversation_id, []).extend(items)
+        return []
+
+    def set_session_live_status(self, conversation_id: str, status: str) -> None:
+        self.live_status[conversation_id] = status
 
 
 class _Store(FakeScheduledTaskStore):
@@ -432,3 +442,110 @@ async def test_scheduled_helper_on_claude_bundle_keeps_the_global_fast_id(
 ) -> None:
     model = await _scheduled_model("nova-claude", "worker", None, monkeypatch, _GLOBAL_CLAUDE_IDS)
     assert model == "claude-haiku-4-5"
+
+
+def _wake_deps(store: Any, conv_store: Any) -> Any:
+    return _deps(store, conversation_store=conv_store, app_state=SimpleNamespace())
+
+
+async def test_scheduled_fire_wakes_the_parent_computer_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sleeping Computer is launched through the message path, then the Helper is dispatched."""
+    from omnigent.server.routes._sessions import orchestration
+
+    order: list[str] = []
+
+    async def _ensure(**kwargs: Any) -> Any:
+        order.append(f"wake:{kwargs['session_id']}")
+        return object(), kwargs["conv"]
+
+    async def launch(conv: Any, task: Any) -> None:
+        order.append("dispatch")
+
+    monkeypatch.setattr(orchestration, "ensure_runner_connected", _ensure)
+    store = _Store({"task_1": _bound_task()})
+    conv_store = _ParentConversationStore(_Parent())
+    on_fire = build_on_fire(_wake_deps(store, conv_store), launch_dispatch=launch)
+    await on_fire(0, "task_1")
+    await _drain()
+
+    assert order == ["wake:conv_parent", "dispatch"]
+    assert store.runs[0]["status"] == "running"
+    assert conv_store.appended == {}
+
+
+async def test_failed_wake_records_launch_failed_and_retries_quietly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.errors import ErrorCode, OmnigentError
+    from omnigent.server.routes._sessions import orchestration
+
+    async def _ensure(**_: Any) -> Any:
+        raise OmnigentError("sandbox quota", code=ErrorCode.RUNNER_UNAVAILABLE)
+
+    dispatched: list[Any] = []
+
+    async def launch(conv: Any, task: Any) -> None:
+        dispatched.append(conv)
+
+    monkeypatch.setattr(orchestration, "ensure_runner_connected", _ensure)
+    store = _Store({"task_1": _bound_task()})
+    conv_store = _ParentConversationStore(_Parent())
+    await build_on_fire(_wake_deps(store, conv_store), launch_dispatch=launch)(0, "task_1")
+    await _drain()
+
+    run = store.runs[0]
+    assert run["status"] == "failed" and run["error_code"] == "launch_failed"
+    assert "your Computer didn't start: sandbox quota" in run["error"]
+    assert "retry scheduled" in run["error"]
+    assert (0, "task_1") in fire_mod._REFIRES
+    assert dispatched == [] and conv_store.created == []
+    assert conv_store.appended == {}  # the person is told only once the retries are spent
+
+
+async def test_final_failure_posts_a_note_and_shows_as_a_failed_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.server.routes._sessions import orchestration
+
+    async def _ensure(**_: Any) -> Any:
+        return None, None
+
+    monkeypatch.setattr(orchestration, "ensure_runner_connected", _ensure)
+    store = _Store({"task_1": _bound_task(name="8am market report")})
+    conv_store = _ParentConversationStore(_Parent())
+    deps = _wake_deps(store, conv_store)
+    await fire_mod._run_parent_bound_fire(
+        deps,
+        _bound_task(name="8am market report"),
+        fire_mod._build_fire_dispatch(deps, _ok_launch),
+        int(time.time()),
+        attempt=2,
+        deferrals=0,
+    )
+
+    run = store.runs[-1]
+    assert run["status"] == "failed" and run["error_code"] == "launch_failed"
+    assert not fire_mod._REFIRES
+    # The run has a Helper session, marked failed with the reason, so Activity reads it as failed.
+    assert run["conversation_id"] == "conv_1"
+    assert conv_store.live_status == {"conv_1": "failed"}
+    helper_error = conv_store.appended["conv_1"][0].data
+    assert helper_error.message == "Your Computer didn't start."
+    # The parent Conversation gets one calm note.
+    note = conv_store.appended["conv_parent"][0].data
+    assert note.level == "info"
+    assert note.message.startswith(
+        "Your 8am market report couldn't run: your Computer didn't start."
+    )
+    assert "next scheduled time" in note.message
+
+
+async def test_dispatch_failure_marks_its_helper_failed() -> None:
+    store = _Store({"task_1": _bound_task()})
+    conv_store = _ParentConversationStore(_Parent())
+    await _fire(store, conv_store, _boom)
+    assert conv_store.live_status == {"conv_1": "failed"}
+    assert store.runs[0]["conversation_id"] == "conv_1"
+    assert "conv_parent" not in conv_store.appended  # a retry is pending
