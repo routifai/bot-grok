@@ -122,9 +122,12 @@ describe("sealed screen capabilities", () => {
     expect(
       openScreenCapability(`${prefix}/screens/abc123/core/rfb.js`, "fake-secret", 101)?.target.path,
     ).toBe("/screens/abc123/core/rfb.js");
+    // The embed is told to open its socket next to itself, and that socket carries the
+    // sealed screen token to the relay.
+    expect(url.searchParams.get("path")).toBe("websockify");
     expect(
       openScreenCapability(`${prefix}/screens/abc123/websockify`, "fake-secret", 101)?.target.path,
-    ).toBe("/screens/abc123/websockify");
+    ).toBe("/screens/abc123/websockify?token=view-token");
   });
 
   it("randomizes issuance even at the same timestamp", () => {

@@ -73,7 +73,7 @@ export function sealScreenCapability(
     view_only: policy === "control" ? "false" : "true",
     // Our embed resolves the socket relative to its own capability directory;
     // stock noVNC resolves it from the origin root.
-    path: target.pathname === "/embed.html" ? "websockify" : `${prefix.slice(1)}/websockify`,
+    path: isOurEmbed(target.pathname) ? "websockify" : `${prefix.slice(1)}/websockify`,
   }).toString();
   return result.toString();
 }
@@ -147,14 +147,27 @@ export function screenPolicyPath(requestedPath: string, interactive: boolean) {
   return `${parsed.pathname}${parsed.search}`;
 }
 
+/** Our own embed page, at the root or under a relay prefix; it resolves its socket next to itself. */
+function isOurEmbed(pathname: string) {
+  return pathname === "/embed.html" || pathname.endsWith("/embed.html");
+}
+
+function isSocketPath(path: string, pagePath: string) {
+  return (
+    path === "/websockify" || path === `${pagePath.slice(0, pagePath.lastIndexOf("/"))}/websockify`
+  );
+}
+
 function remoteTargetPath(target: URL, requestedPath: string) {
   const requested = new URL(requestedPath, "https://screen.invalid");
   const path = requested.pathname || target.pathname || "/";
-  if (path === "/websockify" && target.searchParams.has("path")) {
+  // The socket sits next to the page: "/websockify" for a screen served at the root, or
+  // "<dir>/websockify" when a relay serves it under a prefix (e.g. /screens/<id>/embed.html).
+  if (isSocketPath(path, target.pathname) && target.searchParams.has("path")) {
     const socket = new URL(target.searchParams.get("path")!, target);
     return `${socket.pathname}${socket.search}`;
   }
-  if (path === target.pathname || path === "/websockify") {
+  if (path === target.pathname || isSocketPath(path, target.pathname)) {
     return `${path}${target.search}`;
   }
   return `${path}${requested.search}`;
