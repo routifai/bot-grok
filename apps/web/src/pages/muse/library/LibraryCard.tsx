@@ -6,13 +6,14 @@ import {
   DropdownMenuTrigger,
 } from "@nova/ui-web";
 import { Download, Ellipsis, Maximize2 } from "lucide-react";
+import { Fragment } from "react";
 import {
   ArtifactPreviewCard,
   GlassAction,
   glassActionClassName,
 } from "../../../components/ArtifactPreviewCard";
-import { viewsText } from "../../../components/PublishApp";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";
+import { useArtifactCardParts } from "../../../lib/artifact-registry";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { LibraryArt } from "./LibraryArt";
 import type { ArtifactSummary } from "./types";
@@ -30,25 +31,25 @@ export function LibraryCard({
 }) {
   const { t } = useLingui();
   const kind = artifactKind(artifact.mimeType);
-  const publish = artifact.publish;
-  const base = `${kindLabel(kind)} · ${formatRelativeTime(artifact.createdAt)}`;
+  const extra = useArtifactCardParts(artifact);
+  const badges = extra.filter((part) => part.badge);
+  const meta = [
+    `${kindLabel(kind)} · ${formatRelativeTime(artifact.createdAt)}`,
+    ...extra.map((part) => part.meta),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <ArtifactPreviewCard
       size="grid"
       artifact={artifact}
       title={artifact.name}
-      meta={publish ? `${base} · ${viewsText(publish.stats)}` : base}
+      meta={meta}
       badge={
-        publish ? (
-          <span
-            data-testid="library-card-published"
-            className="nova-glass-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium text-ink-2"
-          >
-            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
-            {t`Published`}
-          </span>
-        ) : null
+        badges.length
+          ? badges.map((part, index) => <Fragment key={index}>{part.badge}</Fragment>)
+          : null
       }
       buttonLabel={t`Open ${artifact.name}`}
       onOpen={onOpen}

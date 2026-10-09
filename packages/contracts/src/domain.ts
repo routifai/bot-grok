@@ -3,6 +3,7 @@ import { BotAvatarValueSchema } from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
 import { Id, RunStatus, SandboxKind } from "./ids.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
+import { ArtifactPublishSchema } from "./rpc/apps.js";
 
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
 export type ComputerMode = z.infer<typeof ComputerModeSchema>;
@@ -740,26 +741,6 @@ export const BotMcpServerSchema = z.object({
   updatedAt: z.string(),
 });
 export type BotMcpServer = z.infer<typeof BotMcpServerSchema>;
-
-export const ARTIFACT_PUBLISH_AUDIENCES = ["owner", "org", "link"] as const;
-export const ArtifactPublishAudienceSchema = z.enum(ARTIFACT_PUBLISH_AUDIENCES);
-export type ArtifactPublishAudience = z.infer<typeof ArtifactPublishAudienceSchema>;
-
-/** A published app: its address segment, who can open it, the pinned version and view counts. */
-export const ArtifactPublishSchema = z.object({
-  slug: z.string(),
-  /** The path the app is served at, e.g. `/apps/budget-k3m9xq`. */
-  urlPath: z.string(),
-  audience: ArtifactPublishAudienceSchema,
-  version: z.number().int(),
-  publishedAt: z.string(),
-  stats: z.object({
-    opensTotal: z.number().int(),
-    uniqueViewers: z.number().int(),
-    opens7d: z.number().int(),
-  }),
-});
-export type ArtifactPublish = z.infer<typeof ArtifactPublishSchema>;
 
 export const ArtifactSchema = z.object({
   id: Id,

@@ -8,7 +8,6 @@ import {
   editOmnigentTable,
   fetchOmnigentArtifactContent,
   getOmnigentArtifact,
-  getOmnigentPublication,
   getOmnigentTable,
   getOmnigentTableRange,
   listOmnigentArtifacts,
@@ -16,14 +15,11 @@ import {
   type OmnigentClientConfig,
   type OmnigentPublication,
   OmnigentTableConflictError,
-  publishOmnigentArtifact,
-  unpublishOmnigentArtifact,
 } from "@nova/adapters";
 import type {
   Actor,
   Artifact,
   ArtifactPublish,
-  ArtifactPublishAudience,
   ArtifactTable,
   ArtifactVersion,
   ArtifactWithContent,
@@ -41,7 +37,7 @@ const iso = (epochSeconds: number): string => new Date(epochSeconds * 1000).toIS
 /** The served content type without parameters (`text/html; charset=utf-8` -> `text/html`). */
 const baseMime = (mime: string): string => mime.split(";")[0]?.trim() || mime;
 
-async function emailOf(deps: EngineArtifactsDeps, actor: Actor): Promise<string> {
+export async function emailOf(deps: EngineArtifactsDeps, actor: Actor): Promise<string> {
   const user = await deps.prisma.user.findUnique({
     where: { id: actor.userId },
     select: { email: true },
@@ -293,55 +289,9 @@ export async function engineGetTableRange(
   }
 }
 
-function notFound(error: unknown): never {
+export function notFound(error: unknown): never {
   if (error instanceof Error && /\(404\)/.test(error.message)) {
     throw new ORPCError("NOT_FOUND", { message: "Artifact not found" });
   }
   throw error;
-}
-
-/** Only the owner's own file is ever found: the engine 404s another owner's artifact. */
-export async function enginePublishArtifact(
-  deps: EngineArtifactsDeps,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  input: { artifactId: string; audience: ArtifactPublishAudience; version?: number },
-): Promise<ArtifactPublish> {
-  const email = await emailOf(deps, actor);
-  const published = await publishOmnigentArtifact(client, email, input.artifactId, {
-    audience: input.audience,
-    version: input.version,
-  }).catch(publishError);
-  return toPublish(published);
-}
-
-export async function engineUnpublishArtifact(
-  deps: EngineArtifactsDeps,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  artifactId: string,
-): Promise<{ ok: true }> {
-  await unpublishOmnigentArtifact(client, await emailOf(deps, actor), artifactId).catch(notFound);
-  return { ok: true as const };
-}
-
-export async function engineGetPublication(
-  deps: EngineArtifactsDeps,
-  client: OmnigentClientConfig,
-  actor: Actor,
-  artifactId: string,
-): Promise<ArtifactPublish | null> {
-  const publication = await getOmnigentPublication(
-    client,
-    await emailOf(deps, actor),
-    artifactId,
-  ).catch(notFound);
-  return publication ? toPublish(publication) : null;
-}
-
-function publishError(error: unknown): never {
-  if (error instanceof Error && /\(400\)/.test(error.message)) {
-    throw new ORPCError("BAD_REQUEST", { message: "This file cannot be published" });
-  }
-  return notFound(error);
 }

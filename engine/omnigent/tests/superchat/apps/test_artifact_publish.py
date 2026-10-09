@@ -15,13 +15,11 @@ from fastapi.testclient import TestClient
 from omnigent.errors import OmnigentError
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat.approvals.policy import classify_tool_call
+from omnigent.superchat.apps import feature as _feature  # noqa: F401  (registers classifiers)
+from omnigent.superchat.apps.routes import PUBLISHED_GATEWAY_USER_DEFAULT, create_apps_router
 from omnigent.superchat.artifact_kinds import KIND_MIME
-from omnigent.superchat.artifacts import feature as _feature  # noqa: F401  (registers classifiers)
 from omnigent.superchat.artifacts import store as store_mod
-from omnigent.superchat.artifacts.routes import (
-    PUBLISHED_GATEWAY_USER_DEFAULT,
-    create_artifacts_router,
-)
+from omnigent.superchat.artifacts.routes import create_artifacts_router
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, make_slug
 
 _SESSION = uuid.uuid4().hex
@@ -53,6 +51,7 @@ def env(db_uri: str, tmp_path: Path):
         create_artifacts_router(store, conversation_store=_Convs(), auth_provider=_Auth()),  # type: ignore[arg-type]
         prefix="/v1",
     )
+    app.include_router(create_apps_router(store, auth_provider=_Auth()), prefix="/v1")
     return store, TestClient(app)
 
 

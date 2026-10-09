@@ -6,8 +6,6 @@ import {
   ATTACHMENT_MAX_BASE64_LENGTH,
 } from "../attachments.js";
 import {
-  ArtifactPublishAudienceSchema,
-  ArtifactPublishSchema,
   ArtifactSchema,
   ArtifactTableSchema,
   ArtifactVersionSchema,
@@ -69,17 +67,6 @@ export const artifactsContract = {
         z.object({ artifactId: Id, sheet: z.string().max(256), range: z.string().min(1).max(64) }),
       )
       .output(z.object({ version: z.number().int(), block: z.string() })),
-    publish: oc
-      .input(
-        z.object({
-          artifactId: Id,
-          audience: ArtifactPublishAudienceSchema,
-          version: z.number().int().min(1).optional(),
-        }),
-      )
-      .output(ArtifactPublishSchema),
-    unpublish: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
-    publishState: oc.input(z.object({ artifactId: Id })).output(ArtifactPublishSchema.nullable()),
   },
   files: {
     list: oc.input(z.object({ botId: Id, path: z.string().max(1024).default("") })).output(

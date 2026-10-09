@@ -29,6 +29,7 @@ def _load() -> list[Feature]:
     """Import each feature folder (order is registration order)."""
     from omnigent.model_credentials import FEATURE as model_credentials
     from omnigent.superchat.approvals import FEATURE as approvals
+    from omnigent.superchat.apps import FEATURE as apps
     from omnigent.superchat.artifacts import ARTIFACTS_FEATURE as artifacts
     from omnigent.superchat.cards import FEATURE as cards
     from omnigent.superchat.daily_notes import FEATURE as daily_notes
@@ -57,6 +58,7 @@ def _load() -> list[Feature]:
         cards,
         memory_tools,
         artifacts,
+        apps,
         side_chats,
         helpers,
         projects,

@@ -1,15 +1,13 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ArtifactPublish, ArtifactPublishAudience } from "@nova/contracts";
 import { Button, cn } from "@nova/ui-web";
 import { Download, ExternalLink, Lock, Maximize2, Minimize2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { downloadArtifactBytes } from "../lib/artifact-open";
-import { rpc } from "../lib/rpc";
+import { useArtifactPanelParts } from "../lib/artifact-registry";
 import { useObjectUrl } from "../lib/use-object-url";
 import { ArtifactPreview } from "../pages/Artifacts";
 import { useArtifactContent } from "../pages/muse/library/useArtifactContent";
 import { formatSize } from "./cards/catalog";
-import { PublishDialog, PublishedBar, PublishedPill } from "./PublishApp";
 import { SHEET_MIME_TYPES } from "./sheets/sheet-model";
 
 const EMPTY_BYTES = new Uint8Array(0);
@@ -34,40 +32,18 @@ export function ArtifactPanel({
 
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [publish, setPublish] = useState<ArtifactPublish | null>(null);
   const isApp = ready?.artifact.mimeType === "text/html";
-  const readyArtifact = ready?.artifact;
-  useEffect(() => {
-    setPublish(readyArtifact?.publish ?? null);
-  }, [readyArtifact]);
+  const extra = useArtifactPanelParts({ artifact: ready?.artifact, title });
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || publishing) return;
+      if (event.key !== "Escape" || event.defaultPrevented || extra.holdsEscape) return;
       if (fullScreen) setFullScreen(false);
       else onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, fullScreen, publishing]);
-
-  async function publishWith(audience: ArtifactPublishAudience) {
-    if (!readyArtifact) return;
-    const published = await rpc.artifacts.publish({
-      artifactId: readyArtifact.id,
-      audience,
-      version: readyArtifact.version,
-    });
-    setPublish(published);
-    setPublishing(false);
-  }
-
-  async function unpublish() {
-    if (!readyArtifact) return;
-    await rpc.artifacts.unpublish({ artifactId: readyArtifact.id });
-    setPublish(null);
-  }
+  }, [onClose, fullScreen, extra.holdsEscape]);
 
   const name = ready?.artifact.name ?? "";
   const meta = ready
@@ -96,7 +72,7 @@ export function ArtifactPanel({
             <div className="truncate text-[14px] font-medium" dir="auto">
               {title || name || t`Loading…`}
             </div>
-            {publish ? <PublishedPill /> : null}
+            {extra.badge}
           </div>
           {meta ? <div className="truncate text-[12px] text-muted-foreground">{meta}</div> : null}
         </div>
@@ -127,11 +103,9 @@ export function ArtifactPanel({
               {fullScreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
               {fullScreen ? t`Exit full screen` : t`Open full screen`}
             </Button>
-            <Button size="sm" onClick={() => setPublishing(true)}>
-              {publish ? t`Publish settings` : t`Publish…`}
-            </Button>
           </>
         ) : null}
+        {extra.actions}
         {ready ? (
           <>
             <Button
@@ -168,21 +142,8 @@ export function ArtifactPanel({
           <X />
         </Button>
       </header>
-      {isApp && publish ? (
-        <PublishedBar
-          publish={publish}
-          onSettings={() => setPublishing(true)}
-          onUnpublish={unpublish}
-        />
-      ) : null}
-      {publishing && readyArtifact ? (
-        <PublishDialog
-          name={title || readyArtifact.name}
-          current={publish}
-          onClose={() => setPublishing(false)}
-          onConfirm={publishWith}
-        />
-      ) : null}
+      {extra.below}
+      {extra.overlay}
       <div className="relative min-h-0 flex-1">
         {state.status === "loading" ? (
           <div className="grid h-full place-items-center text-[13.5px] text-muted-foreground">

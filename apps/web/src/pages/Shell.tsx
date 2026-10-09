@@ -42,7 +42,9 @@ import {
 } from "../components/ai/orb";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
+import { appsExtension } from "../features/apps";
 import type { ArtifactTarget } from "../lib/artifact-open";
+import { ArtifactRegistryProvider } from "../lib/artifact-registry";
 import { authClient } from "../lib/auth";
 import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
@@ -141,6 +143,9 @@ function NovaPresence({
 }
 
 const MUSE_CONTENT_PANE = "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
+
+/** What the capabilities built on artifacts add to the panel and the Library cards. */
+const ARTIFACT_EXTENSIONS = [appsExtension];
 
 export function ShellPage() {
   const { t } = useLingui();
@@ -1454,26 +1459,28 @@ export function ShellPage() {
   return (
     <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>
       <ArtifactPanelProvider value={chatArtifacts.api}>
-        {museMode ? (
-          // The window ground around Nova's rounded content window.
-          <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
-            {active ? (
-              <OrbHomeProvider home={orbHome}>
-                <NovaPresence
-                  botId={active.id}
-                  runs={currentRuns}
-                  messages={activeSnapshot?.messages}
-                >
-                  {shell}
-                </NovaPresence>
-              </OrbHomeProvider>
-            ) : (
-              shell
-            )}
-          </div>
-        ) : (
-          shell
-        )}
+        <ArtifactRegistryProvider value={ARTIFACT_EXTENSIONS}>
+          {museMode ? (
+            // The window ground around Nova's rounded content window.
+            <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
+              {active ? (
+                <OrbHomeProvider home={orbHome}>
+                  <NovaPresence
+                    botId={active.id}
+                    runs={currentRuns}
+                    messages={activeSnapshot?.messages}
+                  >
+                    {shell}
+                  </NovaPresence>
+                </OrbHomeProvider>
+              ) : (
+                shell
+              )}
+            </div>
+          ) : (
+            shell
+          )}
+        </ArtifactRegistryProvider>
       </ArtifactPanelProvider>
     </AvatarStyleProvider>
   );

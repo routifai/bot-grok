@@ -6,7 +6,6 @@ endpoints (``artifact_save`` first reads the file from the Computer workspace).
 * ``artifact_save`` — save a finished file from the workspace into the Conversation.
 * ``artifact_list`` — list the Conversation's saved files.
 * ``artifact_delete`` — delete a saved file (the person is asked first).
-* ``artifact_publish`` — publish a saved HTML app at its own address (the person is asked first).
 """
 
 from __future__ import annotations
@@ -15,10 +14,10 @@ from typing import Any
 
 from omnigent.tools.base import Tool
 
-ARTIFACT_TOOL_NAMES = ("artifact_save", "artifact_list", "artifact_delete", "artifact_publish")
+ARTIFACT_TOOL_NAMES = ("artifact_save", "artifact_list", "artifact_delete")
 
 
-class _ArtifactTool(Tool):
+class ArtifactTool(Tool):
     _NAME = ""
     _DESC = ""
     _PROPERTIES: dict[str, Any] = {}
@@ -51,7 +50,7 @@ class _ArtifactTool(Tool):
         }
 
 
-class ArtifactSaveTool(_ArtifactTool):
+class ArtifactSaveTool(ArtifactTool):
     """Save a workspace file for the person; dispatched to ``POST /v1/artifacts``."""
 
     _NAME = "artifact_save"
@@ -71,14 +70,14 @@ class ArtifactSaveTool(_ArtifactTool):
     _REQUIRED = ("path",)
 
 
-class ArtifactListTool(_ArtifactTool):
+class ArtifactListTool(ArtifactTool):
     """List this chat's saved files; dispatched to ``GET /v1/artifacts``."""
 
     _NAME = "artifact_list"
     _DESC = "List the files already saved for the person in this chat (name, kind, versions)."
 
 
-class ArtifactDeleteTool(_ArtifactTool):
+class ArtifactDeleteTool(ArtifactTool):
     """Delete a saved file; dispatched to ``DELETE /v1/artifacts/{id}``."""
 
     _NAME = "artifact_delete"
@@ -88,24 +87,3 @@ class ArtifactDeleteTool(_ArtifactTool):
     )
     _PROPERTIES = {"artifact_id": {"type": "string", "description": "The artifact id."}}
     _REQUIRED = ("artifact_id",)
-
-
-class ArtifactPublishTool(_ArtifactTool):
-    """Publish a saved HTML app; dispatched to ``POST /v1/artifacts/{id}/publish``."""
-
-    _NAME = "artifact_publish"
-    _DESC = (
-        "Publish a saved single-file HTML app at its own web address. The person is asked to "
-        "approve first, including who can open it; only call it when they asked you to publish. "
-        "A published app cannot store data yet."
-    )
-    _PROPERTIES = {
-        "artifact_id": {"type": "string", "description": "The artifact id of the HTML file."},
-        "audience": {
-            "type": "string",
-            "enum": ["owner", "org", "link"],
-            "description": "Who can open it: only the person, their organization, or anyone "
-            "with the link.",
-        },
-    }
-    _REQUIRED = ("artifact_id", "audience")

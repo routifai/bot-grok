@@ -7,19 +7,19 @@
 // Edges that existed before a capability moved are listed in BASELINE. It is a ratchet: a new
 // edge fails, and an entry that no longer exists fails too, so the list can only shrink.
 import { readdirSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { posix, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 type LayerName = "engine" | "api" | "adapters" | "contracts" | "web";
 
 /** Capabilities already in capability layout, per layer. Add a name here as it moves. */
 const CAPABILITIES: Record<LayerName, readonly string[]> = {
-  engine: [],
-  api: [],
-  adapters: [],
-  contracts: [],
-  web: [],
+  engine: ["apps", "artifacts"],
+  api: ["apps"],
+  adapters: ["apps"],
+  contracts: ["apps"],
+  web: ["apps"],
 };
 
 /** `capability -> capabilities it may import`, through their public entry point only. */
@@ -34,7 +34,11 @@ const BASES: Record<string, readonly string[]> = {
  * Edges that exist today and are not allowed: `"<layer>:<file relative to the layer root> ->
  * <capability>"`. Remove an entry when the edge is gone; never add one without a reason.
  */
-const BASELINE: readonly string[] = [];
+const BASELINE: readonly string[] = [
+  // `ArtifactSchema.publish` embeds the apps publication shape; goes away when the artifact
+  // schemas move into `rpc/artifacts.ts` and reach it as a base.
+  "contracts:domain.ts -> apps",
+];
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -135,14 +139,14 @@ const TS_SPECIFIER =
   /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bvi\.(?:mock|doMock|importActual|importMock|unmock)\s*\(\s*)["']([^"']+)["']/g;
 
 /** Every module specifier a TS/TSX source names (`from`, `import()`, side-effect import, vi.mock). */
-export function tsSpecifiers(source: string): string[] {
+function tsSpecifiers(source: string): string[] {
   return [...source.matchAll(TS_SPECIFIER)].map((match) => match[1] as string);
 }
 
 const PY_IMPORT = /^\s*(?:from|import)\s+omnigent\.superchat\.(\w+)((?:\.\w+)*)/gm;
 
 /** `[first segment, deeper submodule path]` of every `omnigent.superchat.<x>` import. */
-export function pySuperchatImports(source: string): Array<{ top: string; rest: string }> {
+function pySuperchatImports(source: string): Array<{ top: string; rest: string }> {
   return [...source.matchAll(PY_IMPORT)].map((match) => ({
     top: match[1] as string,
     rest: match[2] as string,
@@ -154,7 +158,7 @@ interface Edge {
   target: string;
 }
 
-function tsEdges(layer: Layer, file: string, source: string): Edge[] {
+function tsEdges(file: string, source: string): Edge[] {
   const edges: Edge[] = [];
   for (const specifier of tsSpecifiers(source)) {
     if (!specifier.startsWith(".")) continue;
@@ -173,7 +177,7 @@ function pyEdges(source: string): Edge[] {
 }
 
 /** The violations (`"<layer>:<file> -> <cap>"`) one layer has today. */
-export function violationsOf(
+function violationsOf(
   layer: Layer,
   capabilities: readonly string[],
   files: ReadonlyMap<string, string>,
@@ -184,7 +188,7 @@ export function violationsOf(
     if (layer.composition.some((root) => root.test(file))) continue;
     const from = layer.capOf(file);
     const owner = from !== null && known.has(from) ? from : null;
-    const edges = layer.name === "engine" ? pyEdges(source) : tsEdges(layer, file, source);
+    const edges = layer.name === "engine" ? pyEdges(source) : tsEdges(file, source);
     for (const { target } of edges) {
       const candidate = layer.capOf(target);
       if (candidate === null || !known.has(candidate) || candidate === owner) continue;

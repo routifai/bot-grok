@@ -283,7 +283,7 @@ it("shows a no-results state when the search matches nothing", async () => {
   }
 });
 
-it("marks published apps on their card with their opens and adds a Published facet", async () => {
+it("adds a Published facet that filters to the published apps", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.listSpace.mockResolvedValue({
     items: [
@@ -309,10 +309,6 @@ it("marks published apps on their card with their opens and adds a Published fac
         expect(page.container.textContent).toContain("todo.html");
       });
     });
-    const marks = page.container.querySelectorAll("[data-testid=library-card-published]");
-    expect(marks).toHaveLength(1);
-    expect(marks[0]?.textContent).toBe("Published");
-    expect(page.container.textContent).toContain("14 opens · 5 viewers");
     const facet = findButton(page.container, "Published 1");
     expect(facet).toBeTruthy();
     act(() => {

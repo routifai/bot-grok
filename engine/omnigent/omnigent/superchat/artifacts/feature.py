@@ -27,23 +27,7 @@ def _classify_delete(tool_name: str, arguments: Mapping[str, Any]) -> Risk | Non
     return Risk("delete", (f"artifact:{target}",), "Delete a saved file and all its versions")
 
 
-def _classify_publish(tool_name: str, arguments: Mapping[str, Any]) -> Risk | None:
-    """``artifact_publish`` is a ``post``-category action: the person is always asked."""
-    base = tool_name.rsplit("__", 1)[-1]
-    if base != "artifact_publish":
-        return None
-    target = str(arguments.get("artifact_id") or "a saved app")
-    audience = str(arguments.get("audience") or "")
-    who = {
-        "owner": "only you",
-        "org": "your organization",
-        "link": "anyone with the link",
-    }.get(audience, "the chosen audience")
-    return Risk("post", (f"artifact:{target}",), f"Publish an app to its own address for {who}")
-
-
 register_classifier(_classify_delete)
-register_classifier(_classify_publish)
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
@@ -51,13 +35,12 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     from omnigent.superchat.artifacts.tools import (
         ArtifactDeleteTool,
         ArtifactListTool,
-        ArtifactPublishTool,
         ArtifactSaveTool,
     )
 
     if not is_superside_chat(labels):
         return []
-    return [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool(), ArtifactPublishTool()]
+    return [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool()]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:

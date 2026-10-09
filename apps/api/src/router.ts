@@ -1,3 +1,4 @@
+import { appsRouter } from "./features/apps/router.js";
 import { accountRouter } from "./routers/account.js";
 import { approvalsRouter } from "./routers/approvals.js";
 import { artifactsRouter } from "./routers/artifacts.js";
@@ -26,6 +27,7 @@ export function createRouter(deps: RouterDeps) {
   const c = createRouterContext(deps);
   return c.os.router({
     ...accountRouter(c),
+    ...appsRouter(c),
     ...approvalsRouter(c),
     ...artifactsRouter(c),
     ...botsRouter(c),
