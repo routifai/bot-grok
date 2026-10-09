@@ -15,6 +15,24 @@ describe("screen proxy", () => {
     ).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
   });
+  it("accepts the https supervisor relay host the API sealed (split deployment)", async () => {
+    const target = {
+      protocol: "https:",
+      hostname: "54-39-21-138.sslip.io",
+      port: 443,
+      path: "/screens/abc123/websockify?token=view-token",
+      interactive: false,
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(target)));
+    expect(
+      await resolveNovncTarget(
+        "/novnc/session/view/token/screens/abc123/websockify",
+        "secret",
+        "http://api.example",
+        0,
+      ),
+    ).toEqual(target);
+  });
   it("checks each request and fails closed on revocation or API failure", async () => {
     const target = {
       protocol: "http:",

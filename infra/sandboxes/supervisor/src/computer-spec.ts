@@ -342,6 +342,27 @@ export function screenUrlWithToken(screenUrl: string, token: string) {
 }
 
 /**
+ * Base URL (origin only) under which this supervisor relays Computer screens, for deployments
+ * where Computers are on private networks. Unset or invalid keeps the direct Computer address.
+ */
+export function resolveScreenPublicUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Entry page of the supervisor relay for one Computer's screen. */
+export function relayScreenUrlFor(publicUrl: string, computerId: string) {
+  return `${publicUrl}/screens/${encodeURIComponent(computerId)}/embed.html`;
+}
+
+/**
  * Decide which host:port clients (and readiness probes) should use.
  *
  * Per-bot NetworkMode isolation must not change this: a container always has a

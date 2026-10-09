@@ -113,7 +113,7 @@ describe("engine-owned computer", () => {
   it("refuses take over when there is no Computer", async () => {
     stubEngine({ available: false, in_control: false });
     await expect(engineComputerTakeover(deps().deps, client, actor, "bot-1")).rejects.toThrow(
-      "computer must be running",
+      "Nova's computer starts when Nova needs it",
     );
   });
 });

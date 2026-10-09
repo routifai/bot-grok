@@ -1,16 +1,20 @@
 # TLS front for the sandbox supervisor. Caddy gets and renews the certificate for
 # $COMPUTERS_HOST by itself (ports 80 and 443 must reach this VM). The supervisor checks the
 # bearer token on every /computers request; Caddy only terminates TLS and drops other paths.
+# /screens/* is the browser-facing screen relay (noVNC assets and websocket): it cannot carry
+# the bearer token, so the supervisor checks the per-view token instead.
 {$COMPUTERS_HOST} {
 	encode zstd gzip
 
-	@supervisor path /health /computers /computers/*
+	@supervisor path /health /computers /computers/* /screens/*
 	handle @supervisor {
 		reverse_proxy supervisor:7091 {
 			# Provisioning a Computer can take a while the first time.
 			transport http {
 				response_header_timeout 150s
 			}
+			# Screen websockets stay open for hours; do not cut them when a config reloads.
+			stream_close_delay 5m
 		}
 	}
 

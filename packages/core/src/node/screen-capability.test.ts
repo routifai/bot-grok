@@ -103,6 +103,30 @@ describe("sealed screen capabilities", () => {
     );
   });
 
+  it("routes a split-deployment supervisor relay (https, public host) to /screens/:id", () => {
+    const relay = new URL("https://54-39-21-138.sslip.io/screens/abc123/embed.html");
+    relay.searchParams.set("path", "websockify?token=view-token");
+    const url = new URL(
+      sealScreenCapability(relay.toString(), "fake-secret", "https://app.example", scope, 100),
+    );
+    expect(url.toString()).not.toContain("view-token");
+    const prefix = url.pathname.replace(/\/screens\/abc123\/embed\.html$/, "");
+    const entry = openScreenCapability(url.pathname + url.search, "fake-secret", 101);
+    expect(entry?.target).toMatchObject({
+      protocol: "https:",
+      hostname: "54-39-21-138.sslip.io",
+      port: 443,
+    });
+    expect(entry?.target.path.startsWith("/screens/abc123/embed.html?")).toBe(true);
+    // The shipped embed resolves its socket and assets next to itself, inside the capability.
+    expect(
+      openScreenCapability(`${prefix}/screens/abc123/core/rfb.js`, "fake-secret", 101)?.target.path,
+    ).toBe("/screens/abc123/core/rfb.js");
+    expect(
+      openScreenCapability(`${prefix}/screens/abc123/websockify`, "fake-secret", 101)?.target.path,
+    ).toBe("/screens/abc123/websockify");
+  });
+
   it("randomizes issuance even at the same timestamp", () => {
     expect(path("http://127.0.0.1:49152/embed.html")).not.toBe(
       path("http://127.0.0.1:49152/embed.html"),

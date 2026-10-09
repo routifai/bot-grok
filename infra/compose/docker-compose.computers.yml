@@ -73,6 +73,9 @@ services:
       SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}
       # One private Docker network per Computer; the supervisor joins each to reach it.
       SANDBOX_SCREEN_NETWORK: isolated
+      # Computers sit on private networks, so screens are served through this host (Caddy
+      # proxies /screens/* to the supervisor) instead of the Computer's own address.
+      SANDBOX_SCREEN_PUBLIC_URL: https://${COMPUTERS_HOST:?Set COMPUTERS_HOST}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

@@ -137,7 +137,7 @@ export async function engineComputerTakeover(
 ): Promise<{ leaseId: string; expiresAt: string }> {
   const target = await resolve(deps, client, actor, botId);
   if (!target.sessionId || !(await state(target)).available) {
-    throw new ORPCError("BAD_REQUEST", { message: "computer must be running" });
+    throw new ORPCError("BAD_REQUEST", { message: "Nova's computer starts when Nova needs it" });
   }
   await openOmnigentComputerScreen(client, target.email, target.sessionId, true);
   return {

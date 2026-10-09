@@ -35,8 +35,10 @@ import {
   hostComputerUser,
   legacyNetworkOwnedSolelyBy,
   publishedLoopbackControlHostPort,
+  relayScreenUrlFor,
   resolveComputerControlEndpoint,
   resolveScreenNetworkMode,
+  resolveScreenPublicUrl,
   resolveScreenPublishTarget,
   resolveSpaceComputerLimit,
   resolveTeamScreenLimit,
@@ -48,6 +50,7 @@ import {
 } from "./computer-spec.js";
 import { assertComputerHomeWritable, homeWritableAsUser } from "./home-ownership.js";
 import { forgetScreenRegistry, loadScreenRegistry, saveScreenRegistry } from "./screen-registry.js";
+import { createScreenRelay } from "./screen-relay.js";
 import {
   assertRequestIdentity,
   attemptComputerControl,
@@ -93,6 +96,9 @@ let supervisorInfo: Docker.ContainerInspectInfo | undefined;
 const supervisorToken = resolveSupervisorToken(process.env);
 const screenNetworkMode = resolveScreenNetworkMode(process.env.SANDBOX_SCREEN_NETWORK);
 const teamScreenLimit = resolveTeamScreenLimit();
+// Set when Computers are only reachable from this supervisor (split deployment): screens are
+// then served through /screens/:id on the supervisor's public host instead of the Computer's IP.
+const screenPublicUrl = resolveScreenPublicUrl(process.env.SANDBOX_SCREEN_PUBLIC_URL);
 // Host-run supervisors on Docker Desktop (macOS/Windows) cannot reach container
 // IPs, so computer control must use a published loopback port instead.
 const controlViaLoopback = process.env.SANDBOX_CONTROL_VIA_LOOPBACK === "true";
@@ -617,11 +623,51 @@ app.get("/computers/:id/screen", async (c) => {
       c.req.header("x-nova-screen-lease-id"),
     );
     const screenUrl = await publishedScreenUrl(container, info, layout.viewPort);
-    return c.redirect(screenUrlWithToken(screenUrl, viewToken));
+    return c.redirect(screenUrlWithToken(clientScreenUrl(id, screenUrl), viewToken));
   } catch {
     return c.json({ error: "computer not found" }, 404);
   }
 });
+
+/** The address clients load a screen from: the public relay when configured, else the Computer's own. */
+function clientScreenUrl(computerId: string, directUrl: string) {
+  return screenPublicUrl ? relayScreenUrlFor(screenPublicUrl, computerId) : directUrl;
+}
+
+const screenRelay = createScreenRelay({
+  async registeredPorts(computerId) {
+    const assigned =
+      computerScreens.get(computerId) ?? (await loadScreenRegistry(dataDir, computerId));
+    return [...assigned.values()]
+      .filter((slot) => !slot.releasing)
+      .map((slot) => screenPorts(slot.index).viewPort);
+  },
+  async resolveTarget(computerId, port) {
+    const container = docker.getContainer(computerId);
+    const info = await container.inspect();
+    if (info.Config.Labels?.["nova.managed"] !== "true" && info.Config.Image !== COMPUTER_IMAGE) {
+      return undefined;
+    }
+    if (!info.State.Running) return undefined;
+    if (screenNetworkMode === "isolated") {
+      const runtime = supervisorInfo ?? (await inspectSupervisorContainer());
+      const networkName = info.HostConfig.NetworkMode;
+      if (runtime && networkName) await connectComposeScreenPeers(networkName, runtime);
+    }
+    const target = resolveScreenPublishTarget({
+      screenNetwork: screenNetworkMode,
+      networkMode: info.HostConfig.NetworkMode,
+      networks: info.NetworkSettings?.Networks,
+      hostPort: info.NetworkSettings?.Ports?.[`${port}/tcp`]?.[0]?.HostPort,
+      containerPort: port,
+      screenHost: SCREEN_HOST,
+    });
+    return target ? { host: target.host, port: Number(target.port) } : undefined;
+  },
+});
+
+// Not under /computers: browsers cannot send the bearer token. The relay checks the view token.
+app.all("/screens/:id/*", (c) => screenRelay.http(c.req.raw));
 
 app.post("/computers/:id/screen-mode", async (c) => {
   const body = z
@@ -682,7 +728,10 @@ app.post("/computers/:id/screen-mode", async (c) => {
       body.interactive ? layout.controlPort : layout.viewPort,
     );
     return c.json({
-      screenUrl: screenUrlWithToken(screenUrl, body.interactive ? body.controlToken! : viewToken),
+      screenUrl: screenUrlWithToken(
+        clientScreenUrl(id, screenUrl),
+        body.interactive ? body.controlToken! : viewToken,
+      ),
       display: layout.display,
     });
   } catch (error) {
@@ -846,6 +895,7 @@ function startSupervisor() {
   const server = serve({ fetch: app.fetch, hostname, port }, () => {
     logger.info("supervisor listening", { "http.host": hostname, "http.port": port });
   });
+  server.on("upgrade", (req, socket, head) => void screenRelay.upgrade(req, socket, head));
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
