@@ -92,20 +92,49 @@ describe("admin gating", () => {
 });
 
 describe("suspension", () => {
-  it("also suspends and restores the Nova account, and leaves waiting signups alone", async () => {
-    stub(() => json({ user_id: "p", is_admin: true, ok: true }));
+  function nova(users: Array<{ id: string; email: string }>) {
     const d = deps();
     const updateMany = vi.fn(async () => ({ count: 1 }));
-    (d.prisma as unknown as { user: object }).user = { ...d.prisma.user, updateMany };
-    await setUserSuspended(d, client, actor, { userId: "u9", suspended: true });
+    const findMany = vi.fn(async ({ where }: { where: { email: { equals: string } } }) =>
+      users.filter((user) => user.email.toLowerCase() === where.email.equals.toLowerCase()),
+    );
+    (d.prisma as unknown as { user: object }).user = { ...d.prisma.user, findMany, updateMany };
+    return { d, updateMany };
+  }
+
+  it("also suspends and restores the Nova account, matched by the engine's email id", async () => {
+    stub(() => json({ user_id: "p", is_admin: true, ok: true }));
+    const { d, updateMany } = nova([{ id: "nova-9", email: "Bob@Acme.test" }]);
+    await setUserSuspended(d, client, actor, { userId: "bob@acme.test", suspended: true });
     expect(updateMany).toHaveBeenLastCalledWith({
-      where: { id: "u9", status: "active" },
+      where: { id: "nova-9", status: "active" },
       data: { status: "suspended" },
     });
-    await setUserSuspended(d, client, actor, { userId: "u9", suspended: false });
+    await setUserSuspended(d, client, actor, { userId: "bob@acme.test", suspended: false });
     expect(updateMany).toHaveBeenLastCalledWith({
-      where: { id: "u9", status: "suspended" },
+      where: { id: "nova-9", status: "suspended" },
       data: { status: "active" },
     });
+  });
+
+  it("refuses when no single account matches, rather than guess", async () => {
+    stub(() => json({ user_id: "p", is_admin: true, ok: true }));
+    const none = nova([]);
+    expect(
+      (
+        await rejection(
+          setUserSuspended(none.d, client, actor, { userId: "x@acme.test", suspended: true }),
+        )
+      ).code,
+    ).toBe("NOT_FOUND");
+    const twice = nova([
+      { id: "a", email: "x@acme.test" },
+      { id: "b", email: "X@acme.test" },
+    ]);
+    await rejection(
+      setUserSuspended(twice.d, client, actor, { userId: "x@acme.test", suspended: true }),
+    );
+    expect(none.updateMany).not.toHaveBeenCalled();
+    expect(twice.updateMany).not.toHaveBeenCalled();
   });
 });

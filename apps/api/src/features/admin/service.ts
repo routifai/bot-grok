@@ -14,6 +14,7 @@ import {
   setOmnigentUserSuspended,
 } from "@nova/adapters";
 import type { Actor, EngineAdminUsage, EngineAdminUser } from "@nova/contracts";
+import { ORPCError } from "@orpc/server";
 import { adminActor, type EngineModelsDeps, onModels } from "../models/index.js";
 
 export async function listAdminUsers(
@@ -67,10 +68,19 @@ export async function setUserSuspended(
   await onModels(
     setOmnigentUserSuspended(target.client, target.email, input.userId, input.suspended),
   );
-  // One suspension: the engine stops model use, and Nova stops sign-in and space access. A
-  // waiting signup stays in the approval queue, so only active and suspended accounts toggle.
+  // One suspension: the engine stops model use, and Nova stops sign-in and space access. Engine
+  // users are identified by email, so match the Nova account by email, and refuse anything but
+  // exactly one match rather than guess. A waiting signup stays in the approval queue, so only
+  // active and suspended accounts toggle.
+  const matches = await deps.prisma.user.findMany({
+    where: { email: { equals: input.userId, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (matches.length !== 1) {
+    throw new ORPCError("NOT_FOUND", { message: "No single matching account" });
+  }
   await deps.prisma.user.updateMany({
-    where: { id: input.userId, status: input.suspended ? "active" : "suspended" },
+    where: { id: matches[0]!.id, status: input.suspended ? "active" : "suspended" },
     data: { status: input.suspended ? "suspended" : "active" },
   });
   return { ok: true as const };

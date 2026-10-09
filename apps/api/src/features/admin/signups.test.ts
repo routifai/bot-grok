@@ -37,6 +37,18 @@ function fixture(identity?: { production: boolean; emailDelivery: boolean }) {
       }),
     },
     user: {
+      findFirst: vi.fn(
+        async ({ where }: { where: { id: string; status: string } }) =>
+          users.find((user) => user.id === where.id && user.status === where.status) ?? null,
+      ),
+      deleteMany: vi.fn(async ({ where }: { where: { id: string; status: string } }) => {
+        const index = users.findIndex(
+          (user) => user.id === where.id && user.status === where.status,
+        );
+        if (index < 0) return { count: 0 };
+        users.splice(index, 1);
+        return { count: 1 };
+      }),
       findMany: vi.fn(async ({ where }: { where: { status: string; emailVerified?: boolean } }) =>
         users.filter(
           (user) =>
@@ -93,13 +105,14 @@ describe("signup administration", () => {
     expect(bootstrapUserSpace).not.toHaveBeenCalled();
   });
 
-  it("lists who waits, and with mail delivery only those who proved their mailbox", async () => {
-    expect((await pendingSignups(fixture().deps, owner)).map((p) => p.userId)).toEqual([
-      "u1",
-      "u2",
-    ]);
+  it("lists everyone who waits, unverified rows included and marked", async () => {
     const mailed = fixture({ production: false, emailDelivery: true });
-    expect((await pendingSignups(mailed.deps, owner)).map((p) => p.userId)).toEqual(["u1"]);
+    const rows = await pendingSignups(mailed.deps, owner);
+    expect(rows.map((p) => [p.userId, p.emailVerified])).toEqual([
+      ["u1", true],
+      ["u2", false],
+    ]);
+    expect(rows[0]!.createdAt).toBe("2026-01-01T00:00:00.000Z");
   });
 
   it("approves once: activates, then provisions without taking the owner seat", async () => {
@@ -119,11 +132,14 @@ describe("signup administration", () => {
     expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects by suspending, with no provisioning", async () => {
+  it("rejects a proven address by suspending it, and removes an unproven one", async () => {
     const { deps, users } = fixture();
     await rejectSignup(deps, owner, "u1");
     expect(users[0]!.status).toBe("suspended");
     expect((await rejection(rejectSignup(deps, owner, "u1"))).code).toBe("NOT_FOUND");
+    // u2 never proved its mailbox: it may be squatting on someone else's address.
+    await rejectSignup(deps, owner, "u2");
+    expect(users.map((user) => user.id)).toEqual(["u1", "u3"]);
     expect(bootstrapUserSpace).not.toHaveBeenCalled();
   });
 

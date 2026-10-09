@@ -84,6 +84,8 @@ services:
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       SANDBOX_SUPERVISOR_TOKEN: topology-only-supervisor-token-at-least-32-characters
       SIGNUPS_ENABLED: "true"
+      # Loopback-only CI topology with no mailbox: the personal-install escape hatch.
+      AUTH_ALLOW_UNVERIFIED_EMAIL: "true"
       WAKEUP_DRIVER: graphile
       SANDBOX_PROVIDER: docker
       # Omnigent chat engine connection; both set = chat runs on it (empty = built-in executor).

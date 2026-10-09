@@ -47,28 +47,58 @@ describe("loadEnv", () => {
     expect([env.emailApiUrl, env.emailApiKey]).toEqual(["https://mail.example.test/emails", "key"]);
   });
 
-  it("enables social sign-in only when fully configured, and Microsoft only with a tenant", () => {
-    expect(loadEnv(base).social).toEqual({});
+  it("enables one generic OIDC connection only when fully configured", () => {
+    expect(loadEnv(base).oidc).toBeUndefined();
     expect(
       loadEnv({
         ...base,
-        AUTH_GOOGLE_CLIENT_ID: "g",
-        AUTH_GOOGLE_CLIENT_SECRET: "s",
-        AUTH_GOOGLE_HOSTED_DOMAIN: "corp.test",
-        AUTH_MICROSOFT_CLIENT_ID: "m",
-        AUTH_MICROSOFT_CLIENT_SECRET: "s",
-      }).social,
+        AUTH_OIDC_ISSUER: "https://accounts.google.com",
+        AUTH_OIDC_CLIENT_ID: "g",
+        AUTH_OIDC_CLIENT_SECRET: "s",
+        AUTH_OIDC_ALLOWED_DOMAINS: "@Corp.test, corp.test",
+      }).oidc,
     ).toEqual({
-      google: { clientId: "g", clientSecret: "s", hostedDomain: "corp.test" },
+      issuer: "https://accounts.google.com",
+      clientId: "g",
+      clientSecret: "s",
+      name: undefined,
+      allowedDomains: ["corp.test"],
     });
+    expect(() => loadEnv({ ...base, AUTH_OIDC_ISSUER: "https://accounts.google.com" })).toThrow(
+      /go together/,
+    );
+  });
+
+  it("refuses a multi-tenant Microsoft issuer at startup", () => {
+    for (const tenant of ["common", "organizations", "consumers"]) {
+      expect(() =>
+        loadEnv({
+          ...base,
+          AUTH_OIDC_ISSUER: `https://login.microsoftonline.com/${tenant}/v2.0`,
+          AUTH_OIDC_CLIENT_ID: "m",
+          AUTH_OIDC_CLIENT_SECRET: "s",
+        }),
+      ).toThrow(/tenant/);
+    }
+  });
+
+  it("reads the owner setup token, proxy trust and the dev email emulator default", () => {
+    const env = loadEnv({
+      ...base,
+      OWNER_SETUP_TOKEN: " tok ",
+      AUTH_TRUSTED_PROXIES: "10.0.0.0/24, 192.0.2.1",
+      AUTH_CLIENT_IP_HEADER: "x-real-ip",
+    });
+    expect([env.ownerSetupToken, env.trustedProxies, env.clientIpHeader]).toEqual([
+      "tok",
+      ["10.0.0.0/24", "192.0.2.1"],
+      "x-real-ip",
+    ]);
+    expect(loadEnv({ ...base, NODE_ENV: "development" }).emailEmulator).toBe(true);
     expect(
-      loadEnv({
-        ...base,
-        AUTH_MICROSOFT_CLIENT_ID: "m",
-        AUTH_MICROSOFT_CLIENT_SECRET: "s",
-        AUTH_MICROSOFT_TENANT_ID: "tenant-1",
-      }).social,
-    ).toEqual({ microsoft: { clientId: "m", clientSecret: "s", tenantId: "tenant-1" } });
+      loadEnv({ ...base, NODE_ENV: "development", EMAIL_EMULATOR: "false" }).emailEmulator,
+    ).toBe(false);
+    expect(loadEnv(base).emailEmulator).toBe(false);
   });
 
   it("loads an optional integrations catalog mirror", () => {

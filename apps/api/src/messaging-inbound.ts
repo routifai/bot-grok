@@ -76,6 +76,8 @@ async function handleDirectEvent(
 
   const where = { provider_address: { provider: event.provider, address: event.from } } as const;
   const existing = await deps.prisma.messagingIdentity.findUnique({ where });
+  // A suspended or still-pending person's lines go quiet: no bot wakes, no model is spent.
+  if (existing && !(await userIsActive(deps.prisma, existing.userId))) return;
   if (existing) {
     // Any reply — even a content-free reaction — ends the consecutive-
     // outbound streak, but only real text wakes the bot. The conversation
@@ -512,7 +514,7 @@ async function handleChannelEvent(
     const identity = await deps.prisma.messagingIdentity.findUnique({
       where: { id: member.identityId! },
     });
-    if (!identity) continue;
+    if (!identity || !(await userIsActive(deps.prisma, identity.userId))) continue;
     const thread = await deps.prisma.thread.findFirst({ where: { botId: identity.botId } });
     if (!thread) continue;
     const target = {
@@ -580,6 +582,11 @@ async function inviteMember(
   await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
     getLogger().error("messaging invite enqueue error", error);
   });
+}
+
+async function userIsActive(prisma: MessagingInboundDeps["prisma"], userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { status: true } });
+  return user?.status === "active";
 }
 
 async function ownerFirstName(

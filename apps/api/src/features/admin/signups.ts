@@ -49,12 +49,14 @@ export async function updateSignupSettings(
       id: "default",
       ownerUserId: actor.userId,
       signupMode: next.mode,
+      signupsEnabled: next.mode !== "closed",
       signupAllowlist: next.invites.join(","),
       signupDomains: next.domains.join(","),
       signupPolicyInitialized: true,
     },
     update: {
       signupMode: next.mode,
+      signupsEnabled: next.mode !== "closed",
       signupAllowlist: next.invites.join(","),
       signupDomains: next.domains.join(","),
       signupPolicyInitialized: true,
@@ -66,15 +68,17 @@ export async function updateSignupSettings(
 export async function pendingSignups(deps: SignupsDeps, actor: Actor): Promise<PendingSignup[]> {
   assertOwner(actor);
   const users = await deps.prisma.user.findMany({
-    // With mail delivery a pending person has proved their mailbox before they appear.
-    where: { status: "pending", ...(deps.identity?.emailDelivery ? { emailVerified: true } : {}) },
+    // Unverified rows are listed too: with no mail provider nobody has proved a mailbox, and an
+    // admin needs to see (and be able to remove) a squatted address.
+    where: { status: "pending" },
     orderBy: { createdAt: "asc" },
-    select: { id: true, email: true, name: true, createdAt: true },
+    select: { id: true, email: true, name: true, emailVerified: true, createdAt: true },
   });
   return users.map((user) => ({
     userId: user.id,
     email: user.email,
     name: user.name,
+    emailVerified: user.emailVerified,
     createdAt: user.createdAt.toISOString(),
   }));
 }
@@ -98,18 +102,29 @@ export async function approveSignup(
   return { ok: true as const };
 }
 
-/** Rejecting suspends rather than deletes, so the same address cannot queue up again. */
+/**
+ * Reject a waiting signup. A person who proved their mailbox is suspended, so the same address
+ * cannot queue up again. An unproven address may be someone squatting on another person's
+ * email, so that account is removed instead and the real owner can register.
+ */
 export async function rejectSignup(
   deps: SignupsDeps,
   actor: Actor,
   userId: string,
 ): Promise<{ ok: true }> {
   assertOwner(actor);
-  const rejected = await deps.prisma.user.updateMany({
+  const user = await deps.prisma.user.findFirst({
     where: { id: userId, status: "pending" },
-    data: { status: "suspended" },
+    select: { id: true, emailVerified: true },
   });
-  if (rejected.count !== 1)
-    throw new ORPCError("NOT_FOUND", { message: "Not waiting for approval" });
+  if (!user) throw new ORPCError("NOT_FOUND", { message: "Not waiting for approval" });
+  if (user.emailVerified) {
+    await deps.prisma.user.updateMany({
+      where: { id: user.id, status: "pending" },
+      data: { status: "suspended" },
+    });
+  } else {
+    await deps.prisma.user.deleteMany({ where: { id: user.id, status: "pending" } });
+  }
   return { ok: true as const };
 }

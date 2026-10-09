@@ -1,6 +1,7 @@
 import { resolveDeploymentModel, resolveSandboxProvider } from "@nova/adapters";
-import type { SocialConfig } from "@nova/auth";
+import { assertOidcConfig, type OidcConfig } from "@nova/auth";
 import {
+  parseDomains,
   resolveAuthSecret,
   resolveEncryptionKey,
   resolveScreenProxySecret,
@@ -26,8 +27,13 @@ export interface AppEnv {
   signupDomains: string | undefined;
   /** Local development only: skip mailbox proof when no email provider exists. */
   allowUnverifiedEmail: boolean;
-  /** Google / Microsoft sign-in; each is on only when fully configured. */
-  social: SocialConfig;
+  /** One generic OIDC sign-in connection; on only when fully configured. */
+  oidc: OidcConfig | undefined;
+  /** One-time operator secret that binds the deployment owner seat in approval mode. */
+  ownerSetupToken: string | undefined;
+  trustedProxies: string[];
+  clientIpHeader: string | undefined;
+  rateLimit: boolean | undefined;
   encryptionKey: string;
   dataDir: string;
   sandboxSupervisorUrl: string;
@@ -107,7 +113,19 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     signupAllowlist: source.SIGNUP_ALLOWLIST,
     signupDomains: source.SIGNUP_DOMAINS,
     allowUnverifiedEmail: source.AUTH_ALLOW_UNVERIFIED_EMAIL === "true",
-    social: socialConfigFromEnv(source),
+    oidc: oidcFromEnv(source),
+    ownerSetupToken: optional(source.OWNER_SETUP_TOKEN),
+    trustedProxies: (source.AUTH_TRUSTED_PROXIES ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    clientIpHeader: optional(source.AUTH_CLIENT_IP_HEADER),
+    rateLimit:
+      source.AUTH_RATE_LIMIT === "true"
+        ? true
+        : source.AUTH_RATE_LIMIT === "false"
+          ? false
+          : undefined,
     encryptionKey: resolveEncryptionKey(source),
     dataDir: source.DATA_DIR ?? "./data",
     sandboxSupervisorUrl: source.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
@@ -139,7 +157,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     emailApiUrl: optional(source.EMAIL_API_URL),
     emailApiKey: optional(source.EMAIL_API_KEY),
     emailFrom: optional(source.EMAIL_FROM),
-    emailEmulator: source.EMAIL_EMULATOR === "true" && source.NODE_ENV !== "production",
+    // On by default in development so sign-up works with no mail provider; EMAIL_EMULATOR=false opts out.
+    emailEmulator:
+      source.NODE_ENV !== "production" &&
+      (source.EMAIL_EMULATOR === "true" ||
+        (source.NODE_ENV === "development" && source.EMAIL_EMULATOR !== "false")),
     slackBotToken: optional(source.SLACK_BOT_TOKEN),
     slackSigningSecret: optional(source.SLACK_SIGNING_SECRET),
     whatsappAccessToken: optional(source.WHATSAPP_ACCESS_TOKEN),
@@ -168,27 +190,26 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   };
 }
 
-function socialConfigFromEnv(source: NodeJS.ProcessEnv): SocialConfig {
-  const googleId = optional(source.AUTH_GOOGLE_CLIENT_ID);
-  const googleSecret = optional(source.AUTH_GOOGLE_CLIENT_SECRET);
-  const microsoftId = optional(source.AUTH_MICROSOFT_CLIENT_ID);
-  const microsoftSecret = optional(source.AUTH_MICROSOFT_CLIENT_SECRET);
-  const tenantId = optional(source.AUTH_MICROSOFT_TENANT_ID);
-  return {
-    ...(googleId && googleSecret
-      ? {
-          google: {
-            clientId: googleId,
-            clientSecret: googleSecret,
-            hostedDomain: optional(source.AUTH_GOOGLE_HOSTED_DOMAIN),
-          },
-        }
-      : {}),
-    // A tenant id is required: without one any Microsoft account could assert any address.
-    ...(microsoftId && microsoftSecret && tenantId
-      ? { microsoft: { clientId: microsoftId, clientSecret: microsoftSecret, tenantId } }
-      : {}),
+function oidcFromEnv(source: NodeJS.ProcessEnv): OidcConfig | undefined {
+  const issuer = optional(source.AUTH_OIDC_ISSUER);
+  const clientId = optional(source.AUTH_OIDC_CLIENT_ID);
+  const clientSecret = optional(source.AUTH_OIDC_CLIENT_SECRET);
+  if (!issuer && !clientId && !clientSecret) return undefined;
+  if (!issuer || !clientId || !clientSecret) {
+    throw new Error(
+      "AUTH_OIDC_ISSUER, AUTH_OIDC_CLIENT_ID and AUTH_OIDC_CLIENT_SECRET go together",
+    );
+  }
+  const config: OidcConfig = {
+    issuer,
+    clientId,
+    clientSecret,
+    name: optional(source.AUTH_OIDC_NAME),
+    allowedDomains: parseDomains(source.AUTH_OIDC_ALLOWED_DOMAINS),
   };
+  // Refuse an unsafe connection (for example a multi-tenant Microsoft issuer) at startup.
+  assertOidcConfig(config);
+  return config;
 }
 
 function required(source: NodeJS.ProcessEnv, key: string): string {

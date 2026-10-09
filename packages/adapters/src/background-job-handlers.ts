@@ -6,7 +6,7 @@ import type {
   SandboxProvider,
 } from "@nova/adapter-kit";
 import { messagingDeliverJob } from "@nova/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@nova/db";
+import { cancelRunsInTransaction, type PrismaClient, type ThreadEvents } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { expireComputerControl } from "./computer-control.js";
 import { scheduleComputerSleep, sleepComputerIfIdle } from "./computer-idle.js";
@@ -53,8 +53,23 @@ export function createBackgroundJobHandlers(deps: {
     if (!ran) await failRunUnsupportedOnOmnigent(deps.omnigent, runId, workerId);
   };
 
+  // Background work runs as a person, so it stops when that person is no longer active
+  // (suspended, or still waiting for approval).
+  const isActive = async (userId: string) =>
+    (await deps.prisma.user.findUnique({ where: { id: userId }, select: { status: true } }))
+      ?.status === "active";
+
   return {
     "run.continue": async (payload) => {
+      const run = await deps.prisma.run.findUnique({
+        where: { id: payload.runId },
+        select: { id: true, taskId: true, userId: true },
+      });
+      if (run && !(await isActive(run.userId))) {
+        getLogger().warn("run.continue cancelled: account is not active", { runId: run.id });
+        await deps.prisma.$transaction((tx) => cancelRunsInTransaction(tx, [run], new Date()));
+        return;
+      }
       if (deps.omnigent) {
         await continueOnEngine(payload.runId, deps.workerId);
       } else {
@@ -78,6 +93,11 @@ export function createBackgroundJobHandlers(deps: {
       await deliverMessaging(payload.runId);
     },
     "routine.wakeup": async (payload) => {
+      const routine = await deps.prisma.routine.findUnique({
+        where: { id: payload.routineId },
+        select: { userId: true },
+      });
+      if (routine && !(await isActive(routine.userId))) return;
       await wakeRoutine(deps, payload.routineId, payload.scheduledFor);
     },
     "computer.update": async ({ updateId }) => {

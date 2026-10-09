@@ -56,8 +56,8 @@ import {
   blockedAuthPaths,
   createAuth,
   isHostedDeployment,
+  oidcLabel,
   resolveSignupPolicy,
-  socialProviderIds,
 } from "@nova/auth";
 import { signupAllowlistBootUpdate, signupPolicyFromEnv } from "@nova/core";
 import type { Pool, PrismaClient } from "@nova/db";
@@ -155,12 +155,52 @@ export async function createApp(
   const events = createThreadEvents(prisma, realtime, {
     runSecretWriter: createRunSecretWriter(secrets),
   });
+  const localEmailEmulator =
+    !emailOverride && !env.smtpUrl && !env.emailApiUrl && env.emailEmulator
+      ? new EmailEmulator((message) => {
+          getLogger().info("email emulator captured message", {
+            "email.subject": message.subject,
+          });
+        })
+      : undefined;
+  if (localEmailEmulator && !isLoopbackHost(env.apiHost)) {
+    throw new Error("EMAIL_EMULATOR requires API_HOST to be a loopback host");
+  }
+  const email: TransactionalEmailProvider | undefined =
+    emailOverride ??
+    (env.smtpUrl
+      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
+      : env.emailApiUrl
+        ? new HttpEmailProvider({
+            url: env.emailApiUrl,
+            apiKey: env.emailApiKey ?? "",
+            from: env.emailFrom ?? "",
+          })
+        : localEmailEmulator);
+  // Fail at startup, before anything is seeded, not at the first stranger's signup.
+  const existingSettings = await prisma.deploymentSettings.findUnique({ where: { id: "default" } });
+  assertIdentityConfig(
+    {
+      hosted: isHostedDeployment(env),
+      allowUnverifiedEmail: env.allowUnverifiedEmail,
+      ownerSetupToken: env.ownerSetupToken,
+      hasEmail: Boolean(email),
+      ownerExists: Boolean(existingSettings?.ownerUserId),
+    },
+    await resolveSignupPolicy(prisma, env),
+  );
+  if (env.allowUnverifiedEmail && !email) {
+    getLogger().warn(
+      "AUTH_ALLOW_UNVERIFIED_EMAIL is on: accounts are usable without proving their email. Local installs only.",
+    );
+  }
   const environmentSignupPolicy = signupPolicyFromEnv(env);
   const deploymentSettings = await prisma.deploymentSettings.upsert({
     where: { id: "default" },
     create: {
       id: "default",
       signupMode: environmentSignupPolicy.mode,
+      signupsEnabled: environmentSignupPolicy.mode !== "closed",
       signupAllowlist: environmentSignupPolicy.invites.join(","),
       signupDomains: environmentSignupPolicy.domains.join(","),
       signupPolicyInitialized: true,
@@ -176,6 +216,7 @@ export async function createApp(
       where: { id: "default", signupPolicyInitialized: false },
       data: {
         signupMode: environmentSignupPolicy.mode,
+        signupsEnabled: environmentSignupPolicy.mode !== "closed",
         signupAllowlist: environmentSignupPolicy.invites.join(","),
         signupDomains: environmentSignupPolicy.domains.join(","),
         signupPolicyInitialized: true,
@@ -270,37 +311,6 @@ export async function createApp(
     })
       ? new ChatSdkMessagingSurface(messagingPlatforms)
       : undefined);
-  const localEmailEmulator =
-    !emailOverride && !env.smtpUrl && env.emailEmulator
-      ? new EmailEmulator((message) => {
-          getLogger().info("email emulator captured message", {
-            "email.subject": message.subject,
-          });
-        })
-      : undefined;
-  if (localEmailEmulator && !isLoopbackHost(env.apiHost)) {
-    throw new Error("EMAIL_EMULATOR requires API_HOST to be a loopback host");
-  }
-  const email: TransactionalEmailProvider | undefined =
-    emailOverride ??
-    (env.smtpUrl
-      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
-      : env.emailApiUrl
-        ? new HttpEmailProvider({
-            url: env.emailApiUrl,
-            apiKey: env.emailApiKey ?? "",
-            from: env.emailFrom ?? "",
-          })
-        : localEmailEmulator);
-  // Fail at startup, not at the first stranger's signup.
-  assertIdentityConfig(
-    {
-      hosted: isHostedDeployment(env),
-      allowUnverifiedEmail: env.allowUnverifiedEmail,
-      hasEmail: Boolean(email),
-    },
-    await resolveSignupPolicy(prisma, env),
-  );
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const integrationSettings = new IntegrationProviderSettings(prisma, secrets, env.encryptionKey, {
     composio:
@@ -330,7 +340,11 @@ export async function createApp(
     signupDomains: env.signupDomains,
     nodeEnv: env.nodeEnv,
     allowUnverifiedEmail: env.allowUnverifiedEmail,
-    social: env.social,
+    oidc: env.oidc,
+    ownerSetupToken: env.ownerSetupToken,
+    trustedProxies: env.trustedProxies,
+    clientIpHeader: env.clientIpHeader,
+    rateLimit: env.rateLimit,
     email,
     onEmailError: (error) => getLogger().error("transactional email delivery failed", error),
     extraOrigins: [
@@ -451,13 +465,20 @@ export async function createApp(
   );
   app.get("/api/auth/capabilities", async (c) => {
     const policy = await resolveSignupPolicy(prisma, env);
+    const settings = await prisma.deploymentSettings.findUnique({
+      where: { id: "default" },
+      select: { ownerUserId: true },
+    });
     return c.json({
       passwordReset: Boolean(email),
       resetUrl: email ? new URL("/reset-password", env.webOrigin).href : null,
       // Mailbox proof by one-time code works wherever mail can be sent.
       emailCode: Boolean(email),
-      social: socialProviderIds(env.social),
+      sso: env.oidc ? { name: oidcLabel(env.oidc) } : null,
       signupMode: policy.mode,
+      // The owner seat is claimed with the operator's setup token until someone holds it.
+      ownerSetup:
+        Boolean(env.ownerSetupToken) && policy.mode === "approval" && !settings?.ownerUserId,
     });
   });
   if (localEmailEmulator && env.nodeEnv === "development") {
@@ -499,10 +520,15 @@ export async function createApp(
     if (actor) {
       enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     }
+    const suspension = actor
+      ? endWhenInactive(prisma, actor.userId, c.req.raw.signal)
+      : { signal: c.req.raw.signal, stop: () => undefined };
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
-      context: { actor, signal: c.req.raw.signal },
+      context: { actor, signal: suspension.signal },
     });
+    // Only a live stream keeps watching; a finished request has nothing left to end.
+    if (!response?.headers.get("content-type")?.includes("text/event-stream")) suspension.stop();
     if (matched) return c.newResponse(response.body, response);
     await next();
   });
@@ -656,6 +682,32 @@ function isTrustedOrigin(origin: string, env: AppEnv) {
   } catch {
     return false;
   }
+}
+
+/**
+ * A long-lived stream is authorized once, at its start. This aborts the request's signal as soon as
+ * the account stops being active, so a suspended person's open streams end instead of running on.
+ */
+function endWhenInactive(
+  prisma: PrismaClient,
+  userId: string,
+  requestSignal: AbortSignal,
+  intervalMs = 15_000,
+): { signal: AbortSignal; stop: () => void } {
+  const controller = new AbortController();
+  const timer = setInterval(() => {
+    void prisma.user
+      .findUnique({ where: { id: userId }, select: { status: true } })
+      .then((user) => {
+        if (user?.status !== "active") controller.abort();
+      })
+      .catch(() => undefined);
+  }, intervalMs);
+  timer.unref();
+  const stop = () => clearInterval(timer);
+  requestSignal.addEventListener("abort", stop, { once: true });
+  controller.signal.addEventListener("abort", stop, { once: true });
+  return { signal: AbortSignal.any([requestSignal, controller.signal]), stop };
 }
 
 function isLoopbackHost(host: string): boolean {
