@@ -41,6 +41,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@hono/node-server':
+        specifier: 2.1.1
+        version: 2.1.1(hono@4.13.7)
       '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../../packages/adapter-kit
@@ -62,9 +65,6 @@ importers:
       '@nova/logging':
         specifier: workspace:*
         version: link:../../packages/logging
-      '@hono/node-server':
-        specifier: 2.1.1
-        version: 2.1.1(hono@4.13.7)
       '@orpc/server':
         specifier: 1.15.0
         version: 1.15.0(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.21.3)
@@ -112,6 +112,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@expo/metro-runtime':
+        specifier: 57.0.16
+        version: 57.0.16(@expo/log-box@57.0.4)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@nova/chat-ui':
         specifier: workspace:*
         version: link:../../packages/chat-ui
@@ -124,9 +127,6 @@ importers:
       '@nova/ui-tokens':
         specifier: workspace:*
         version: link:../../packages/ui-tokens
-      '@expo/metro-runtime':
-        specifier: 57.0.16
-        version: 57.0.16(@expo/log-box@57.0.4)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@react-native-vector-icons/ionicons':
         specifier: 13.1.4
         version: 13.1.4(@expo/config-plugins@57.0.9(typescript@6.0.3))(@react-native/assets-registry@0.86.3)(expo-font@57.0.4)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
@@ -254,6 +254,24 @@ importers:
 
   apps/web:
     dependencies:
+      '@fontsource-variable/geist-mono':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource-variable/instrument-sans':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/instrument-serif':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@formulajs/formulajs':
+        specifier: 4.6.1
+        version: 4.6.1
+      '@lingui/core':
+        specifier: 6.6.0
+        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)
+      '@lingui/react':
+        specifier: 6.6.0
+        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(react@19.2.3)
       '@nova/chat-ui':
         specifier: workspace:*
         version: link:../../packages/chat-ui
@@ -269,21 +287,6 @@ importers:
       '@nova/ui-web':
         specifier: workspace:*
         version: link:../../packages/ui-web
-      '@fontsource-variable/geist-mono':
-        specifier: 5.3.0
-        version: 5.3.0
-      '@fontsource-variable/instrument-sans':
-        specifier: 5.3.0
-        version: 5.3.0
-      '@fontsource/instrument-serif':
-        specifier: 5.3.0
-        version: 5.3.0
-      '@lingui/core':
-        specifier: 6.6.0
-        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)
-      '@lingui/react':
-        specifier: 6.6.0
-        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(react@19.2.3)
       '@orpc/client':
         specifier: 1.15.0
         version: 1.15.0(@opentelemetry/api@1.9.1)
@@ -400,18 +403,18 @@ importers:
 
   apps/www:
     dependencies:
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@nova/ui-web':
-        specifier: workspace:*
-        version: link:../../packages/ui-web
       '@astrojs/react':
         specifier: 6.0.5
         version: 6.0.5(@types/node@26.5.0)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(esbuild@0.28.2)(jiti@2.7.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(terser@5.50.0)(tsx@4.23.13)(yaml@2.9.0)
       '@astrojs/sitemap':
         specifier: 3.7.4
         version: 3.7.4
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@nova/ui-web':
+        specifier: workspace:*
+        version: link:../../packages/ui-web
       '@vercel/functions':
         specifier: 3.9.7
         version: 3.9.7(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3)
@@ -455,15 +458,15 @@ importers:
 
   infra/sandboxes/supervisor:
     dependencies:
+      '@hono/node-server':
+        specifier: 2.1.1
+        version: 2.1.1(hono@4.13.7)
       '@nova/core':
         specifier: workspace:*
         version: link:../../../packages/core
       '@nova/logging':
         specifier: workspace:*
         version: link:../../../packages/logging
-      '@hono/node-server':
-        specifier: 2.1.1
-        version: 2.1.1(hono@4.13.7)
       dockerode:
         specifier: 5.0.1
         version: 5.0.1
@@ -505,21 +508,6 @@ importers:
 
   packages/adapters:
     dependencies:
-      '@nova/adapter-kit':
-        specifier: workspace:*
-        version: link:../adapter-kit
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova/db':
-        specifier: workspace:*
-        version: link:../db
-      '@nova/logging':
-        specifier: workspace:*
-        version: link:../logging
       '@asciidev/box-sdk':
         specifier: 0.0.34
         version: 0.0.34
@@ -550,6 +538,21 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
         version: 1.30.0(@cfworker/json-schema@4.1.1)(zod@4.6.2)
+      '@nova/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
+      '@nova/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova/db':
+        specifier: workspace:*
+        version: link:../db
+      '@nova/logging':
+        specifier: workspace:*
+        version: link:../logging
       chat:
         specifier: 4.40.0
         version: 4.40.0(zod@4.6.2)
@@ -785,6 +788,9 @@ importers:
 
   packages/testkit:
     dependencies:
+      '@hono/node-server':
+        specifier: 2.1.1
+        version: 2.1.1(hono@4.13.7)
       '@nova/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
@@ -800,9 +806,6 @@ importers:
       '@nova/db':
         specifier: workspace:*
         version: link:../db
-      '@hono/node-server':
-        specifier: 2.1.1
-        version: 2.1.1(hono@4.13.7)
       '@testcontainers/postgresql':
         specifier: 12.1.0
         version: 12.1.0
@@ -834,15 +837,6 @@ importers:
 
   packages/ui-web:
     dependencies:
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova/ui-tokens':
-        specifier: workspace:*
-        version: link:../ui-tokens
       '@base-ui/react':
         specifier: 1.8.0
         version: 1.8.0(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -852,6 +846,15 @@ importers:
       '@lingui/react':
         specifier: 6.6.0
         version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(react@19.2.3)
+      '@nova/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova/ui-tokens':
+        specifier: workspace:*
+        version: link:../ui-tokens
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -2343,6 +2346,10 @@ packages:
 
   '@fontsource/instrument-serif@5.3.0':
     resolution: {integrity: sha512-mDiaIg0u67sYV59fie92Wz4sM8UiVlbL7fLxnFPCKkX15DMASEnQTREbaP5S5/3DCcsoAOcQ0sV9E4AeY4QqYQ==}
+
+  '@formulajs/formulajs@4.6.1':
+    resolution: {integrity: sha512-QkHPCaHljG4SRT5TNOIBx4ClgQYyLlblwthF4tJP5GsWEJ7uD8eu+yN9RyCl3NCQdpWIEdtJb+pnQpuceywrLA==}
+    hasBin: true
 
   '@google/genai@2.21.0':
     resolution: {integrity: sha512-+PDtco2/Z0ONdzCGekCoCT+O1VJS9xJQNN4XzQpXG/t3El/SWWMkCWlFRO1KmivOHPa4Q0VjUYu1HBKCZ/v33Q==}
@@ -4700,6 +4707,10 @@ packages:
   bcrypt-pbkdf@1.0.2:
     resolution: {integrity: sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w==}
 
+  bessel@1.0.2:
+    resolution: {integrity: sha512-Al3nHGQGqDYqqinXhQzmwmcRToe/3WyBv4N8aZc5Pef8xw2neZlR9VPi84Sa23JtgWcucu18HxVZrnI0fn2etw==}
+    engines: {node: '>=0.8'}
+
   better-auth@1.7.4:
     resolution: {integrity: sha512-rjL9g8b8UvdwK/ZSdawhqYzOm8YegurB6Fuzqtu/zFJamlFrPa+eEhP8Qj2vFWsMzHOk2mb/L4FRYh9pgaU7OA==}
     peerDependencies:
@@ -6830,6 +6841,9 @@ packages:
 
   jsonfile@6.2.1:
     resolution: {integrity: sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q==}
+
+  jstat@1.9.6:
+    resolution: {integrity: sha512-rPBkJbK2TnA8pzs93QcDDPlKcrtZWuuCo2dVR0TFLOJSxhqfWOVCSp8aV3/oSbn+4uY4yw1URtLpHQedtmXfug==}
 
   jwa@2.0.1:
     resolution: {integrity: sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==}
@@ -11743,6 +11757,11 @@ snapshots:
 
   '@fontsource/instrument-serif@5.3.0': {}
 
+  '@formulajs/formulajs@4.6.1':
+    dependencies:
+      bessel: 1.0.2
+      jstat: 1.9.6
+
   '@google/genai@2.21.0(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.6.2))':
     dependencies:
       google-auth-library: 10.9.1
@@ -14533,6 +14552,8 @@ snapshots:
     dependencies:
       tweetnacl: 0.14.5
 
+  bessel@1.0.2: {}
+
   better-auth@1.7.4(@opentelemetry/api@1.9.1)(@prisma/client@7.10.0(prisma@7.10.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(magicast@0.5.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@7.0.2))(typescript@7.0.2))(mysql2@3.15.3)(pg@8.23.0)(prisma@7.10.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(magicast@0.5.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@7.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.0(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.13)(yaml@2.9.0))):
     dependencies:
       '@better-auth/core': 1.7.4(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.2))(jose@6.2.8)(kysely@0.29.5)(nanostores@1.4.2)
@@ -16936,6 +16957,8 @@ snapshots:
       universalify: 2.0.1
     optionalDependencies:
       graceful-fs: 4.2.11
+
+  jstat@1.9.6: {}
 
   jwa@2.0.1:
     dependencies:

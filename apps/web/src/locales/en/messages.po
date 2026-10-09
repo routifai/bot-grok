@@ -104,6 +104,9 @@ msgstr "{activeCount} active · {waiting} need you"
 msgid "{botName}’s computer"
 msgstr "{botName}’s computer"
 
+msgid "{changedCount, plural, one {You changed # cell on {sheetName}. Nova sees this before its next reply.} other {You changed # cells on {sheetName}. Nova sees this before its next reply.}}"
+msgstr "{changedCount, plural, one {You changed # cell on {sheetName}. Nova sees this before its next reply.} other {You changed # cells on {sheetName}. Nova sees this before its next reply.}}"
+
 msgid "{count, plural, one {# reply} other {# replies}}"
 msgstr "{count, plural, one {# reply} other {# replies}}"
 
@@ -121,6 +124,9 @@ msgstr "{hours}h ago"
 
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
+
+msgid "{n, plural, one {# cell} other {# cells}}"
+msgstr "{n, plural, one {# cell} other {# cells}}"
 
 #. js-lingui-explicit-id
 msgid "{name} failed"
@@ -152,6 +158,9 @@ msgstr "{steps, plural, one {# step} other {# steps}}"
 
 msgid "{toolCount, plural, one {# tool} other {# tools}}"
 msgstr "{toolCount, plural, one {# tool} other {# tools}}"
+
+msgid "{total, plural, one {# cell} other {# cells}}"
+msgstr "{total, plural, one {# cell} other {# cells}}"
 
 msgid "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
 msgstr "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
@@ -524,6 +533,9 @@ msgstr "Ask me first"
 #. placeholder {0}: index + 1
 msgid "Ask me first before step {0}"
 msgstr "Ask me first before step {0}"
+
+msgid "Ask Nova about {label}"
+msgstr "Ask Nova about {label}"
 
 msgid "Ask once and get on with your day."
 msgstr "Ask once and get on with your day."
@@ -1284,8 +1296,17 @@ msgstr "Could not update reaction"
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
 
+msgid "Couldn't open this sheet."
+msgstr "Couldn't open this sheet."
+
 msgid "Couldn’t reach Nova’s computer. Retrying…"
 msgstr "Couldn’t reach Nova’s computer. Retrying…"
+
+msgid "Couldn't read that selection."
+msgstr "Couldn't read that selection."
+
+msgid "Couldn't save that change."
+msgstr "Couldn't save that change."
 
 msgid "Couldn't update avatars"
 msgstr "Couldn't update avatars"
@@ -2990,6 +3011,9 @@ msgstr "Remove message trigger"
 msgid "Remove schedule"
 msgstr "Remove schedule"
 
+msgid "Remove selection"
+msgstr "Remove selection"
+
 #. placeholder {0}: selectedSkill.name
 msgid "Remove skill {0}"
 msgstr "Remove skill {0}"
@@ -3340,6 +3364,9 @@ msgstr "Setup help"
 msgid "Shared chat with 2-6 bots. They all reply in the same thread."
 msgstr "Shared chat with 2-6 bots. They all reply in the same thread."
 
+msgid "Sheets"
+msgstr "Sheets"
+
 msgid "Show"
 msgstr "Show"
 
@@ -3372,6 +3399,10 @@ msgstr "Show replies as they're written"
 
 msgid "Show settings"
 msgstr "Show settings"
+
+#. placeholder {0}: sheet.rows.length
+msgid "Showing the first {0} rows"
+msgstr "Showing the first {0} rows"
 
 msgid "Side chat"
 msgstr "Side chat"
@@ -3549,6 +3580,10 @@ msgstr "subagent"
 
 msgid "Submit"
 msgstr "Submit"
+
+#. placeholder {0}: formatSum(stats.sum)
+msgid "Sum {0}"
+msgstr "Sum {0}"
 
 msgid "Summary — Revenue up 8% quarter on quarter, led by three renewals."
 msgstr "Summary — Revenue up 8% quarter on quarter, led by three renewals."

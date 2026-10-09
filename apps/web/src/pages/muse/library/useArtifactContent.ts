@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import type { Artifact, ArtifactVersion } from "@nova/contracts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { decodeArtifactBase64 } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 
@@ -15,6 +15,9 @@ type Loaded = ContentState & {
   /** The version currently shown (its artifact id). */
   versionId: string | null;
   selectVersion: (versionId: string) => void;
+  /** A new version saved from the viewer (a sheet edit): show it and refresh the list without
+   * blanking the viewer. */
+  adoptVersion: (versionId: string) => void;
 };
 
 /**
@@ -25,6 +28,21 @@ export function useArtifactContent(artifactId: string | null): Loaded {
   const [state, setState] = useState<ContentState>({ status: "loading" });
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
+  const silent = useRef(false);
+
+  const adoptVersion = useCallback(
+    (versionId: string) => {
+      silent.current = true;
+      setPicked(versionId);
+      if (artifactId) {
+        void rpc.artifacts
+          .listVersions({ familyId: versionId })
+          .then(setVersions)
+          .catch(() => undefined);
+      }
+    },
+    [artifactId],
+  );
 
   useEffect(() => {
     if (!artifactId) return;
@@ -49,7 +67,8 @@ export function useArtifactContent(artifactId: string | null): Loaded {
   useEffect(() => {
     if (!picked) return;
     let cancelled = false;
-    setState({ status: "loading" });
+    if (silent.current) silent.current = false;
+    else setState({ status: "loading" });
     void rpc.artifacts
       .getById({ artifactId: picked })
       .then((artifact) => {
@@ -72,5 +91,5 @@ export function useArtifactContent(artifactId: string | null): Loaded {
     };
   }, [picked]);
 
-  return { ...state, versions, versionId: picked, selectVersion: setPicked };
+  return { ...state, versions, versionId: picked, selectVersion: setPicked, adoptVersion };
 }

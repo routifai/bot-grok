@@ -12,7 +12,7 @@ import {
   truncateSlashDescription,
 } from "@nova/core";
 import { Button, cn } from "@nova/ui-web";
-import { ArrowUp, Box, Mic, Paperclip, Plus, Settings, Square, X } from "lucide-react";
+import { ArrowUp, Box, Mic, Paperclip, Plus, Settings, Square, Table2, X } from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -27,6 +27,7 @@ import {
 } from "react";
 import { requestOpenSettings } from "../../../lib/engine-models";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
+import { setSheetAsk, useSheetAsk, useSheetAskTarget, withSheetAsk } from "../../../lib/sheet-ask";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
 import { previewMessageText } from "./messageText";
 import { ATTACHMENT_ACCEPT, NO_ATTACHMENTS, type PendingAttachment } from "./shared";
@@ -99,6 +100,8 @@ export const Composer = memo(function Composer({
 }) {
   const { t } = useLingui();
   const [draft, setDraft] = useState("");
+  useSheetAskTarget();
+  const sheetAsk = useSheetAsk();
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
@@ -302,7 +305,8 @@ export const Composer = memo(function Composer({
     setSelectedSkill(null);
     const mentions = selectedMentions;
     setSelectedMentions([]);
-    void onSend(text, mentions);
+    setSheetAsk(null);
+    void onSend(withSheetAsk(text, sheetAsk), mentions);
   }
 
   function handleDragEnter(event: DragEvent<HTMLFieldSetElement>) {
@@ -484,6 +488,23 @@ export const Composer = memo(function Composer({
               // The chip unmounts with this button — keep focus in the composer.
               textareaRef.current?.focus();
             }}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
+        </div>
+      ) : null}
+      {sheetAsk ? (
+        <div
+          data-testid="sheet-ask-chip"
+          className="mb-2 flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[13px] text-foreground/75"
+        >
+          <Table2 size={14} strokeWidth={1.8} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{sheetAsk.label}</span>
+          <button
+            type="button"
+            aria-label={t`Remove selection`}
+            onClick={() => setSheetAsk(null)}
             className="shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X size={13} strokeWidth={2} />

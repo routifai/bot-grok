@@ -761,6 +761,10 @@ export const ArtifactVersionSchema = z.object({
   version: z.number().int(),
   name: z.string(),
   createdAt: z.string(),
+  /** "manual" when the person edited it by hand. */
+  origin: z.string().optional(),
+  parentVersionId: Id.nullable().optional(),
+  editSummary: z.string().nullable().optional(),
 });
 
 export type ArtifactVersion = z.infer<typeof ArtifactVersionSchema>;
@@ -769,6 +773,40 @@ export const ArtifactWithContentSchema = ArtifactSchema.extend({
   contentBase64: z.string(),
 });
 export type ArtifactWithContent = z.infer<typeof ArtifactWithContentSchema>;
+
+/** One cell of a CSV / XLSX artifact; `v` is null for a formula with no cached value. */
+export const TableCellSchema = z.object({
+  v: z.union([z.string(), z.number(), z.boolean()]).nullable(),
+  f: z.string().nullable(),
+  t: z.string().nullable(),
+});
+export type TableCell = z.infer<typeof TableCellSchema>;
+
+export const TableSheetSchema = z.object({
+  name: z.string(),
+  rows: z.array(z.array(TableCellSchema)),
+  frozenRows: z.number().int(),
+  nRows: z.number().int(),
+  nCols: z.number().int(),
+  truncated: z.boolean(),
+});
+export type TableSheet = z.infer<typeof TableSheetSchema>;
+
+export const ArtifactTableSchema = z.object({
+  artifactId: Id,
+  version: z.number().int(),
+  kind: z.string(),
+  sheets: z.array(TableSheetSchema),
+});
+export type ArtifactTable = z.infer<typeof ArtifactTableSchema>;
+
+export const TableCellEditSchema = z.object({
+  sheet: z.string().max(256),
+  row: z.number().int().min(0),
+  col: z.number().int().min(0),
+  value: z.union([z.string(), z.number(), z.boolean()]).nullable(),
+});
+export type TableCellEdit = z.infer<typeof TableCellEditSchema>;
 
 export const UsageRecordSchema = z.object({
   id: Id,

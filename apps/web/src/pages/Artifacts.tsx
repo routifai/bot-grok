@@ -34,6 +34,8 @@ import { AppRail } from "../components/AppRail";
 import { NovaOrb } from "../components/ai/orb";
 import { PdfViewer } from "../components/PdfViewer";
 import { SandboxedHtmlViewer } from "../components/SandboxedHtmlViewer";
+import { SheetView } from "../components/sheets/SheetView";
+import { SHEET_MIME_TYPES } from "../components/sheets/sheet-model";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../lib/artifact-open";
 import { takeInitialBootstrap } from "../lib/bootstrap";
 import { formatRelativeTime } from "../lib/relative-time";
@@ -954,7 +956,29 @@ function PreviewPane({
 }
 
 /** Exported so the Muse Library screen can reuse the same per-mime-type preview. */
-export function ArtifactPreview({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {
+export function ArtifactPreview({
+  artifact,
+  bytes,
+  onEdited,
+}: {
+  artifact: Artifact;
+  bytes: Uint8Array;
+  /** A new version was saved from the viewer (a sheet edit). */
+  onEdited?: (artifactId: string) => void;
+}) {
+  if (SHEET_MIME_TYPES.has(artifact.mimeType)) {
+    return (
+      <SheetView
+        artifact={artifact}
+        onEdited={onEdited}
+        fallback={<ArtifactPreviewBody artifact={artifact} bytes={bytes} />}
+      />
+    );
+  }
+  return <ArtifactPreviewBody artifact={artifact} bytes={bytes} />;
+}
+
+function ArtifactPreviewBody({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {
   if (artifact.mimeType === "text/html") {
     const html = new TextDecoder("utf-8").decode(bytes);
     return <SandboxedHtmlViewer html={html} title={artifact.name} />;

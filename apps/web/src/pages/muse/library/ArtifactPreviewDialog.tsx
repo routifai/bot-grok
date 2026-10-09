@@ -67,7 +67,11 @@ export function ArtifactPreviewDialog({
             </div>
           ) : (
             <>
-              <ArtifactPreview artifact={state.artifact} bytes={state.bytes} />
+              <ArtifactPreview
+                artifact={state.artifact}
+                bytes={state.bytes}
+                onEdited={state.adoptVersion}
+              />
               {state.artifact.mimeType === "text/html" ? (
                 <div className="pointer-events-none absolute bottom-3 end-3 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1.5 text-[11px] text-white">
                   <Lock size={12} strokeWidth={2} />
