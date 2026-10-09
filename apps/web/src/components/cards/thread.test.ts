@@ -1,6 +1,6 @@
 import type { ReplyCardBlock, ThreadMessage } from "@nova/contracts";
 import { expect, it } from "vitest";
-import { replyCardKey, resolveReplyCards } from "./thread";
+import { hiddenFollowUpMessageIds, replyCardKey, resolveReplyCards } from "./thread";
 
 const card = (id: string | undefined, over: Partial<ReplyCardBlock> = {}): ReplyCardBlock => ({
   kind: "reply_card",
@@ -88,4 +88,22 @@ it("locks a clarification card on the person's next message", () => {
   const pick = message("user", { kind: "text", text: "B" });
   expect(resolveReplyCards([ask, pick]).get(replyCardKey(ask.id, 0))?.answer).toBe("B");
   expect(resolveReplyCards([ask]).get(replyCardKey(ask.id, 0))?.answer).toBeUndefined();
+});
+
+it("hides rows that hold only follow-up chips that are not shown (no ghost row)", () => {
+  const chips = (): ReplyCardBlock =>
+    card(undefined, { card: "follow_ups", data: { suggestions: ["Next"] } });
+  const answer = message("bot", { kind: "text", text: "Answer" });
+  const old = message("bot", chips());
+  const reply = message("user", { kind: "text", text: "ok" });
+  const latest = message("bot", chips());
+  expect([...hiddenFollowUpMessageIds([answer, old, reply, latest], false)]).toEqual([old.id]);
+  // While the Muse works the latest chips go too; an answer row is never hidden.
+  expect([...hiddenFollowUpMessageIds([answer, old, reply, latest], true)]).toEqual([
+    old.id,
+    latest.id,
+  ]);
+  // A message with chips and other content keeps its row.
+  const mixed = message("bot", { kind: "text", text: "Hi" }, chips());
+  expect(hiddenFollowUpMessageIds([mixed, reply], false).size).toBe(0);
 });

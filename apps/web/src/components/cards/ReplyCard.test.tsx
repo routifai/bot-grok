@@ -246,3 +246,39 @@ it("follow-ups are hidden while the Muse is working, and outside a resolved thre
   const bare = mount(<ReplyCardBlockView block={followUps} messageId="m1" index={0} />);
   expect(bare.querySelector("[data-testid=follow-ups]")).toBeNull();
 });
+
+it("follow-ups: two clicks in the same tick still send exactly once", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard block={followUps} />
+    </ReplyCardSendProvider>,
+  );
+  const [first, second] = [
+    ...host.querySelectorAll("[data-testid=follow-ups] button"),
+  ] as HTMLButtonElement[];
+  act(() => {
+    first?.click();
+    second?.click();
+    first?.click();
+  });
+  expect(send).toHaveBeenCalledExactlyOnceWith("Compare with last year");
+});
+
+it("follow-ups: hidden control characters never reach the chip or the sent text", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard
+        block={block({
+          card: "follow_ups",
+          data: { suggestions: ["Show\u200b it\u202e by region\ufeff"] },
+        })}
+      />
+    </ReplyCardSendProvider>,
+  );
+  const chip = host.querySelector("[data-testid=follow-ups] button") as HTMLButtonElement;
+  expect(chip.textContent).toBe("Show it by region");
+  act(() => chip.click());
+  expect(send).toHaveBeenCalledWith("Show it by region");
+});

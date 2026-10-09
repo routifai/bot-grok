@@ -146,3 +146,63 @@ def test_transcript_skips_unfinished_and_failed_calls() -> None:
     assert project_items([_call("ask_clarification", "k1")]) == []
     failed = [_call("suggest_follow_ups", "k2"), _output("k2", build_follow_ups({}))]
     assert project_items(failed) == []
+
+
+def test_hidden_control_characters_are_stripped_from_buttons() -> None:
+    # Zero-width space, RTL override and a BOM can hide or reorder what a button says.
+    out = build_follow_ups({"suggestions": ["Show\u200b it\u202e by region\ufeff"]})
+    assert out["data"]["suggestions"] == ["Show it by region"]
+    ask = build_clarification({"question": "Q?", "options": ["A\u200b", "B\u2066"]})
+    assert [o["label"] for o in ask["data"]["options"]] == ["A", "B"]
+    # Stripping must not let two look-alike options through as distinct.
+    assert (
+        "repeats" in build_clarification({"question": "Q?", "options": ["A", "A\u200b"]})["error"]
+    )
+
+
+def test_text_after_a_follow_ups_card_does_not_replace_the_answer() -> None:
+    items = [
+        _msg("u1", "user", "How is the backlog?"),
+        _msg("a1", "assistant", "It fell from 84 to 61."),
+        _call("suggest_follow_ups", "k1"),
+        _output("k1", build_follow_ups({"suggestions": ["By auditor"]})),
+        _msg("a2", "assistant", "Here are some things you can ask next."),
+    ]
+    out = project_items(items)
+    assert [m["id"] for m in out] == ["u1", "a1", "i-k1"]
+    assert out[1]["blocks"][0]["text"] == "It fell from 84 to 61."
+    # The chips are the last message, which is what the client keys "latest answer" on.
+    assert out[-1]["blocks"][0]["card"]["card"] == "follow_ups"
+
+
+def test_a_rejected_follow_ups_call_leaves_the_turns_last_text_as_its_answer() -> None:
+    items = [
+        _msg("u1", "user", "Hi"),
+        _msg("a1", "assistant", "First."),
+        _call("suggest_follow_ups", "k1"),
+        _output("k1", build_follow_ups({})),
+        _msg("a2", "assistant", "Second."),
+    ]
+    assert [m["id"] for m in project_items(items)] == ["u1", "a2"]
+
+
+def test_text_after_a_clarification_card_is_dropped_too() -> None:
+    items = [
+        _msg("u1", "user", "Pull the numbers"),
+        _msg("a1", "assistant", "I need one thing first."),
+        _call("ask_clarification", "k1"),
+        _output("k1", build_clarification({"question": "Which?", "options": ["A", "B"]})),
+        _msg("a2", "assistant", "Let me know."),
+    ]
+    assert [m["id"] for m in project_items(items)] == ["u1", "a1", "i-k1"]
+
+
+def _msg(item_id: str, role: str, text: str) -> dict:
+    kind = "output_text" if role == "assistant" else "input_text"
+    return {
+        "id": item_id,
+        "type": "message",
+        "role": role,
+        "content": [{"type": kind, "text": text}],
+        "created_at": 100,
+    }

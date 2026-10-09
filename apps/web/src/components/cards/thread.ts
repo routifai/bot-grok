@@ -67,3 +67,23 @@ export function resolveReplyCards(
   }
   return resolved;
 }
+
+/**
+ * Messages that hold nothing but follow-up chips the thread does not show right now (not the
+ * final message, or the Muse is working). A transcript drops these rows entirely: no empty
+ * bubble, no gutter face, no hover actions (Copy has no text to copy).
+ */
+export function hiddenFollowUpMessageIds(
+  messages: readonly ThreadMessage[],
+  running: boolean,
+): Set<string> {
+  const last = messages.at(-1);
+  const hidden = new Set<string>();
+  for (const message of messages) {
+    const onlyChips =
+      message.blocks.length > 0 &&
+      message.blocks.every((block) => block.kind === "reply_card" && block.card === "follow_ups");
+    if (onlyChips && (running || message !== last)) hidden.add(message.id);
+  }
+  return hidden;
+}

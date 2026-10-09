@@ -1,7 +1,7 @@
 """Built-in ``render_card`` tool: show the person a structured card instead of prose.
 
 The model *decides* when a card reads better than text (numbers to compare, a quote, a plan
-it will update, a decision with options, sources it read). The tool validates the input
+it will update, sources it read). The tool validates the input
 against one small JSON schema per card kind and returns a typed ``{"type": "card", ...}``
 payload that clients render with their own component catalog; the required ``fallback``
 markdown rides along so the model's history (and any client without the catalog) has text.
@@ -22,6 +22,7 @@ genuinely ambiguous, suggest only natural next steps) are in the tool descriptio
 from __future__ import annotations
 
 import json
+import unicodedata
 from typing import Any
 
 from omnigent.tools.base import Tool, ToolContext
@@ -70,6 +71,15 @@ def _arr(items: dict[str, Any], *, min_items: int = 1, max_items: int = 50) -> d
     return {"type": "array", "items": items, "minItems": min_items, "maxItems": max_items}
 
 
+#: The ``ask`` card is drawn only for ``ask_clarification`` (one way to ask); it is not a
+#: ``render_card`` kind, though the client still draws it from older conversations.
+_ASK_SCHEMA: dict[str, Any] = _obj(
+    ["question", "options"],
+    question=_STR,
+    options=_arr(_obj(["id", "label"], id=_STR, label=_STR), max_items=8),
+    allowFreeText={"type": "boolean"},
+)
+
 # One schema per kind. These are both the model-facing schema and the validator's source.
 CARD_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
     "sources": _obj(
@@ -90,12 +100,6 @@ CARD_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
                 status={"type": "string", "enum": ["todo", "doing", "done"]},
             )
         ),
-    ),
-    "ask": _obj(
-        ["question", "options"],
-        question=_STR,
-        options=_arr(_obj(["id", "label"], id=_STR, label=_STR), max_items=8),
-        allowFreeText={"type": "boolean"},
     ),
     "quote": _obj(
         ["symbol", "price"],
@@ -198,16 +202,21 @@ def build_card(args: dict[str, Any]) -> dict[str, Any]:
     :returns: ``{"type": "card", "card", "id"?, "title"?, "data", "fallback"}``, or
         ``{"error": "..."}`` describing the first problem so the model can retry.
     """
+    return _build_card(args, CARD_DATA_SCHEMAS)
+
+
+def _build_card(args: dict[str, Any], schemas: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """:func:`build_card` over the given kinds (``ask_clarification`` adds the ``ask`` kind)."""
     card = args.get("card")
-    if card not in CARD_DATA_SCHEMAS:
-        return {"error": f"card must be one of {', '.join(CARD_DATA_SCHEMAS)}"}
+    if card not in schemas:
+        return {"error": f"card must be one of {', '.join(schemas)}"}
     fallback = args.get("fallback")
     if not isinstance(fallback, str) or not fallback.strip():
         return {"error": "fallback must be a non-empty markdown string"}
     for key in ("id", "title"):
         if key in args and not isinstance(args[key], str):
             return {"error": f"{key} must be a string"}
-    err = _check(args.get("data"), CARD_DATA_SCHEMAS[card], "data")
+    err = _check(args.get("data"), schemas[card], "data")
     if err is not None:
         return {"error": err}
     out: dict[str, Any] = {"type": "card", "card": card}
@@ -239,7 +248,7 @@ class RenderCardTool(Tool):
         return (
             "Show the person a card instead of prose, only when it reads better than text: "
             "numbers to compare (compare), a market quote (quote), a plan you will update "
-            "(plan), a decision with options (ask), sources you read (sources), a series "
+            "(plan), sources you read (sources), a series "
             "(chart), a contact (person), a file (file), long-running work (progress). "
             "Otherwise write normally. `data` is an object whose shape depends on `card` "
             f"(`?` = optional): {_kind_hints()}. "
@@ -308,11 +317,6 @@ CLARIFICATION_OPTION_MAX_CHARS = 60
 FOLLOW_UPS_MAX = 3
 FOLLOW_UP_MAX_CHARS = 120
 
-#: Shape of the ``follow_ups`` card ``data`` (the client's ``ReplyCardData.follow_ups``).
-FOLLOW_UPS_DATA_SCHEMA: dict[str, Any] = _obj(
-    ["suggestions"], suggestions=_arr(_STR, max_items=FOLLOW_UPS_MAX)
-)
-
 
 def _clean_strings(
     value: Any, *, path: str, min_items: int, max_items: int, max_chars: int
@@ -324,7 +328,8 @@ def _clean_strings(
     for i, item in enumerate(value):
         if not isinstance(item, str):
             return [], f"{path}[{i}] must be a string"
-        text = " ".join(item.split())
+        # Zero-width and bidi controls (category Cf) can hide or reorder what a button says.
+        text = " ".join("".join(c for c in item if unicodedata.category(c) != "Cf").split())
         if not text:
             return [], f"{path}[{i}] must not be empty"
         if len(text) > max_chars:
@@ -342,7 +347,7 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     Validate ``ask_clarification`` arguments and build its ``ask`` card payload.
 
     :param args: Parsed tool arguments: ``question`` and 2-5 short, distinct ``options``.
-    :returns: The same ``{"type": "card", "card": "ask", ...}`` payload ``render_card`` returns,
+    :returns: A ``{"type": "card", "card": "ask", ...}`` payload shaped like ``render_card``'s,
         or ``{"error": "..."}`` so the model can retry.
     """
     question = args.get("question")
@@ -359,7 +364,7 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     if err is not None:
         return {"error": err}
     fallback = question + "\n\n" + "\n".join(f"- {option}" for option in options)
-    out = build_card(
+    out = _build_card(
         {
             "card": "ask",
             "data": {
@@ -367,7 +372,8 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
                 "options": [{"id": f"opt-{i}", "label": o} for i, o in enumerate(options, 1)],
             },
             "fallback": fallback,
-        }
+        },
+        {"ask": _ASK_SCHEMA},
     )
     if "error" not in out:
         out["note"] = (

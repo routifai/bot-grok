@@ -271,16 +271,36 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-def _final_text_ids(items: list[Item]) -> set[str]:
-    """Ids of the assistant text items that end their turn (a user message starts a turn)."""
+_TURN_ENDING_CARD_TOOLS = (CLARIFICATION_TOOL_NAME, FOLLOW_UPS_TOOL_NAME)
+
+
+def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
+    """Ids of the assistant text items that end their turn (a user message starts a turn).
+
+    A turn that shows an ``ask_clarification`` or ``suggest_follow_ups`` card ends there: the
+    card belongs to the answer written before it, so text the model adds after the card is
+    dropped instead of replacing the answer (and pushing the chips off the last message).
+    """
     final: dict[int, str] = {}
+    closed: set[int] = set()
     turn = 0
     for item in items:
+        if item.get("type") == "function_call":
+            if any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
+                result = _object(outputs.get(str(item.get("call_id") or "")))
+                if result and result.get("type") == "card":
+                    closed.add(turn)
+            continue
         if item.get("type") != "message" or item.get("is_meta") is True:
             continue
         if item.get("role") == "user":
             turn += 1
-        elif item.get("role") == "assistant" and item_text(item) and "id" in item:
+        elif (
+            item.get("role") == "assistant"
+            and turn not in closed
+            and item_text(item)
+            and "id" in item
+        ):
             final[turn] = item["id"]
     return set(final.values())
 
@@ -300,7 +320,7 @@ def project_items(
     helpers: list[dict[str, Any]] = []
     cited: list[dict[str, Any]] = []
     seen_calls: set[str] = set()
-    final_text = _final_text_ids(items)
+    final_text = _final_text_ids(items, outputs)
     for item in items:
         kind = item.get("type")
         if kind == "function_call":
