@@ -11589,6 +11589,7 @@ async def _run_runner_status_probe(
     :returns: The runner's raw status on a 200, else ``None``.
     """
     started = time.monotonic()
+    cache_before = _session_status_cache.get(session_id)
     try:
         try:
             resp = await asyncio.wait_for(
@@ -11610,10 +11611,17 @@ async def _run_runner_status_probe(
                     payload = None
                 if isinstance(payload, dict):
                     raw = str(payload.get("status", "idle"))
+                    _runner_status_probe_backoff.pop(session_id, None)
+                    current = _session_status_cache.get(session_id)
+                    if current is not None and current != cache_before:
+                        # The runner's live relay published a status while this probe was in
+                        # flight. The relay is the newer, ordered source; the probe's answer
+                        # describes an earlier moment, and applying it would turn a finished
+                        # turn back into ``running`` with no later edge to clear it.
+                        return current
                     _session_status_cache[session_id] = raw
                     if raw in ("idle", "running", "waiting", "failed"):
                         session_live_state.persist_live_status(session_id, raw)
-                    _runner_status_probe_backoff.pop(session_id, None)
                     return raw
                 failure = "HTTP 200 with a malformed body"
             elif elapsed < _RUNNER_STATUS_PROBE_SLOW_S:

@@ -2988,3 +2988,30 @@ async def test_snapshot_does_not_query_runner_skills_or_publish_skill_events(
     assert "skills_status" not in snapshot.model_dump()
     assert all(not url.endswith("/skills") for url in calls)
     assert all(event.get("type") != "session.skills" for event in published)
+
+
+@pytest.mark.asyncio
+async def test_status_probe_answer_does_not_overwrite_a_newer_relay_status() -> None:
+    """A slow probe that reports ``running`` must not undo the relay's later ``idle``.
+
+    The probe describes the moment the runner answered; the relay's ``idle`` edge arrived
+    while it was in flight. Applying the probe would leave the finished turn "Working"
+    forever, because no later edge clears it.
+    """
+    from omnigent.server.routes import sessions as _mod
+    from omnigent.server.routes._sessions import orchestration
+
+    session_id = "6a0d8f5c2b3e4e4f9c1a2d0e7f6b8c3d"
+    _mod._session_status_cache.pop(session_id, None)
+    _mod._runner_status_probe_backoff.pop(session_id, None)
+    runner_client = _GatedRunnerClient()
+
+    probe = asyncio.create_task(
+        orchestration._probe_runner_live_status(runner_client, session_id)  # type: ignore[arg-type]
+    )
+    await asyncio.wait_for(runner_client.arrived.wait(), timeout=1.0)
+    _mod._session_status_cache[session_id] = "idle"  # the relay's turn-end edge
+    runner_client.release.set()
+
+    assert await probe == "idle"
+    assert _mod._session_status_cache.get(session_id) == "idle"
