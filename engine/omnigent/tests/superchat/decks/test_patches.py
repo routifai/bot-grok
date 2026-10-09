@@ -269,3 +269,67 @@ def test_set_theme_refuses_unknown_themes_and_decks_the_kit_did_not_build() -> N
         run([SetTheme(kind="set-theme", theme="nope")], deck)
     with pytest.raises(AmbiguousEdit, match="ask Nova"):
         run([SetTheme(kind="set-theme", theme="nord")], DOC)
+
+
+def _with_custom(deck: str) -> str:
+    """The deck as a person or Nova leaves it: a custom rule, token and a theme-token override."""
+    own = (
+        "    .brand-card { border: 3px solid var(--brand); }\n"
+        "    :root { --brand: #123456; --accent: #ff00aa; }\n"
+    )
+    marker = "    /* /nova:theme */\n"
+    return deck.replace(marker, marker + own, 1)
+
+
+def test_set_theme_keeps_the_decks_own_css_tokens_and_overrides() -> None:
+    deck = _with_custom(kit.build_deck("corporate-clean", "Q3", SAMPLE))
+    assert ".brand-card" in deck
+    new, _ = run([SetTheme(kind="set-theme", theme="nord")], deck)
+    assert ".brand-card { border: 3px solid var(--brand); }" in new
+    assert ":root { --brand: #123456; --accent: #ff00aa; }" in new
+    assert kit.deck_theme_id(new) == "nord"
+    # the kit's regions are the new theme's, and the deck's own lines stayed after them
+    assert new == _with_custom(kit.build_deck("nord", "Q3", SAMPLE))
+    back, _ = run([SetTheme(kind="set-theme", theme="corporate-clean")], new)
+    assert back == deck
+
+
+def test_every_theme_round_trips_to_every_other_for_an_unmodified_deck() -> None:
+    ids = sorted(kit.templates())
+    base = kit.build_deck(ids[0], "Q3", SAMPLE)
+    for source in ids:
+        deck = kit.build_deck(source, "Q3", SAMPLE)
+        for target in ids:
+            new, _ = run([SetTheme(kind="set-theme", theme=target)], deck)
+            assert new == kit.build_deck(target, "Q3", SAMPLE)
+    assert run([SetTheme(kind="set-theme", theme=ids[0])], base)[0] == base
+
+
+def _legacy(deck: str, theme: str) -> str:
+    """A deck as saved before the markers: one whole :root and one whole style block."""
+    t = kit.templates()[theme]
+    deck = deck.replace(kit._tokens_region(t), kit._tokens_text(t), 1)
+    head = f"    /* {t.name} \u00b7 layout vocabulary and theme */\n"
+    old = deck[deck.index("  <style>\n    /* nova:theme") :]
+    old = old[: old.index("  </style>") + len("  </style>")]
+    return deck.replace(old, "  <style>\n" + head + kit._css_text(t) + "\n  </style>", 1)
+
+
+def test_a_deck_saved_before_the_markers_is_adopted_without_losing_anything() -> None:
+    legacy = _legacy(kit.build_deck("tokyo-night", "Q3", SAMPLE), "tokyo-night")
+    assert "nova:theme" not in legacy and kit.deck_theme_id(legacy) == "tokyo-night"
+    new, _ = run([SetTheme(kind="set-theme", theme="nord")], legacy)
+    assert new == kit.build_deck("nord", "Q3", SAMPLE).replace(kit._DECK_HINT + "\n", "")
+    # extras the deck added around the kit's text survive
+    css = kit._css_text(kit.templates()["tokyo-night"])
+    legacy_extra = legacy.replace(css, css + "\n    .mine { color: red; }", 1)
+    assert ".mine" in legacy_extra
+    kept, _ = run([SetTheme(kind="set-theme", theme="nord")], legacy_extra)
+    assert ".mine { color: red; }" in kept
+
+
+def test_a_theme_block_edited_inside_is_refused_rather_than_overwritten() -> None:
+    legacy = _legacy(kit.build_deck("nord", "Q3", SAMPLE), "nord")
+    edited = legacy.replace("--accent: #", "--accent: #0", 1)
+    with pytest.raises(AmbiguousEdit, match="ask Nova"):
+        run([SetTheme(kind="set-theme", theme="tokyo-night")], edited)

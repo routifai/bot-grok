@@ -246,6 +246,9 @@ def test_every_theme_has_a_small_thumbnail() -> None:
         assert path.stat().st_size < 40_000
         with Image.open(path) as image:
             assert image.size == (480, 270)
+        with Image.open(path) as image:  # no baked-in letterbox: the corners are the slide
+            corners = [image.convert("L").getpixel(xy) for xy in ((0, 0), (479, 0), (0, 269))]
+        assert (max(corners) < 90) == (theme["mode"] == "dark")
     gallery = {t["id"]: t for t in kit.theme_gallery()}
     assert all(t["preview"].startswith("data:image/webp;base64,") for t in gallery.values())
 

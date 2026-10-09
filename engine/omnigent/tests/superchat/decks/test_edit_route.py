@@ -104,12 +104,23 @@ def test_set_theme_is_a_manual_version_the_muse_is_told_about(env) -> None:
     assert unknown.status_code == 400
 
 
+def test_an_edit_that_changes_nothing_saves_no_version(env) -> None:
+    from omnigent.superchat.decks import kit
+
+    store, client = env
+    slides = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
+    v1 = _save(store, data=kit.build_deck("nord", "Q3", slides).encode())
+    resp = _edit(client, v1.id, patches=[{"kind": "set-theme", "theme": "nord"}])
+    assert resp.status_code == 200 and resp.json()["id"] == v1.id
+    assert len(store.versions(v1)) == 1
+
+
 def test_stale_base_is_a_409(env) -> None:
     store, client = env
     v1 = _save(store)
     assert _edit(client, v1.id).status_code == 200
     stale = _edit(client, v1.id, base=1)
-    assert stale.status_code == 409 and "Stale edit" in stale.json()["error"]
+    assert stale.status_code == 409 and "changed since you opened" in stale.json()["error"]
 
 
 def test_ambiguous_patch_is_a_409_ask_nova(env) -> None:

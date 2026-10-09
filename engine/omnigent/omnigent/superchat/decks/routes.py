@@ -91,6 +91,15 @@ def create_decks_router(
         request_owner(request, auth_provider)
         return {"themes": kit.theme_gallery(), "default": kit.DEFAULT_THEME}
 
+    @router.get("/decks/{artifact_id}/theme")
+    async def deck_theme(request: Request, artifact_id: str) -> dict[str, Any]:
+        """The theme id a deck is on (``null`` when hand-made), for the picker's check mark."""
+        item = await load_artifact(store, request_owner(request, auth_provider), artifact_id)
+        if not is_deck_name(item.name):
+            raise OmnigentError("That file isn't a deck", code=ErrorCode.INVALID_INPUT)
+        data = await asyncio.to_thread(store.read, item)
+        return {"theme": kit.deck_theme_id(data.decode("utf-8", "replace"))}
+
     @router.post("/decks/{artifact_id}/export")
     async def export_deck(
         request: Request, artifact_id: str, body: DeckExportBody

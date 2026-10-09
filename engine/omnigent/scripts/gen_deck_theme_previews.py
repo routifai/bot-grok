@@ -52,7 +52,11 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         for template_id in kit.templates():
             page = Path(tmp) / f"{template_id}.html"
-            page.write_text(kit.build_deck(template_id, "Quarterly review", slides), "utf-8")
+            deck = kit.build_deck(template_id, "Quarterly review", slides)
+            # data-nova-export is what the exporter sets: the stage stays at its authored 1920x1080
+            # instead of being scaled to fit (which would leave a letterbox in the picture).
+            deck = deck.replace("<html ", "<html data-nova-export ", 1)
+            page.write_text(deck, "utf-8")
             shot = Path(tmp) / f"{template_id}.png"
             subprocess.run(
                 [

@@ -120,4 +120,4 @@ export function previewOf(patch: DeckPatch): { id: string; style: StyleChanges }
 
 /** A patch the engine's reply says it will not apply exactly (the "ask Nova instead" 409). */
 export const isInexact = (message: string): boolean => /ask Nova instead/i.test(message);
-export const isStale = (message: string): boolean => /^stale edit/i.test(message);
+export const isStale = (message: string): boolean => /^the deck changed since/i.test(message);

@@ -34,6 +34,9 @@ from omnigent.superchat.decks.patches import (
     apply_patches,
 )
 
+#: What a person is told when the deck moved on under their edit (the web matches the start).
+STALE_MESSAGE = "The deck changed since you opened it, so the latest version is showing now."
+
 
 class DeckEditBody(BaseModel):
     """``PATCH /artifacts/{id}/edit`` body."""
@@ -58,7 +61,7 @@ def create_deck_edit_router(
         head = newest.version if newest else item.version
         if body.base_version != head or item.version != head:
             raise OmnigentError(
-                f"Stale edit: the newest version is {head}, not {body.base_version}",
+                STALE_MESSAGE,
                 code=ErrorCode.CONFLICT,
             )
         data = await asyncio.to_thread(store.read, item)
@@ -68,6 +71,8 @@ def create_deck_edit_router(
             raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from exc
         except AmbiguousEdit as exc:
             raise OmnigentError(str(exc), code=ErrorCode.CONFLICT) from exc
+        if new_data == data:  # nothing changed: no identical "edited by hand" version
+            return artifact_to_response(item, versions=item.version)
         if len(new_data) > MAX_ARTIFACT_BYTES:
             raise OmnigentError("file too large (25 MB max)", code=ErrorCode.INVALID_INPUT)
         try:
@@ -88,7 +93,7 @@ def create_deck_edit_router(
             )
         except VersionConflictError as exc:
             raise OmnigentError(
-                f"Stale edit: the newest version is {exc.newest}, not {body.base_version}",
+                STALE_MESSAGE,
                 code=ErrorCode.CONFLICT,
             ) from exc
         return artifact_to_response(created, versions=created.version)

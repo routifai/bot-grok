@@ -97,6 +97,7 @@ def theme_dictionary() -> list[dict[str, str]]:
     ]
 
 
+@cache
 def theme_gallery() -> list[dict[str, str]]:
     """The dictionary for the picker: each entry plus its thumbnail as a ``data:`` URI."""
     out = []
@@ -218,28 +219,66 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-_ROOT_RE = re.compile(r"    :root \{.*?\n    \}", re.S)
-_STYLE_HEAD = " · layout vocabulary and theme */"
-_STYLE_RE = re.compile(
-    r"  <style>\n    /\* [^\n]*? · layout vocabulary and theme \*/.*?\n  </style>", re.S
+# A built deck separates what the kit owns from what is the deck's own. The kit owns two marked
+# regions (the theme's tokens inside the framework's ``:root``, and the layout vocabulary plus
+# theme CSS in the first per-deck ``<style>``) and the embedded-font block. Everything outside
+# the markers is the deck's: custom rules, custom tokens and overrides of a theme token (a later
+# ``:root { --accent: ... }`` in the per-deck style block). A theme switch rewrites only the kit's
+# regions and carries the rest over byte for byte, so a token override persists exactly because
+# someone wrote it outside the kit's regions: the kit never writes there.
+_TOKENS_OPEN = "      /* nova:theme-tokens id={id} */"
+_TOKENS_CLOSE = "      /* /nova:theme-tokens */"
+_CSS_OPEN = "    /* nova:theme id={id} \u00b7 {name} */"
+_CSS_CLOSE = "    /* /nova:theme */"
+_DECK_HINT = (
+    "    /* Per-deck rules and token overrides (for example :root { --accent: ... }) go below;\n"
+    "       a theme switch keeps everything outside the nova:theme markers above. */"
 )
+_ROOT_RE = re.compile(r"    :root \{.*?\n    \}", re.S)
+_TOKENS_RE = re.compile(
+    r"      /\* nova:theme-tokens id=[a-z0-9-]+ \*/\n.*?\n      /\* /nova:theme-tokens \*/", re.S
+)
+_CSS_RE = re.compile(
+    r"    /\* nova:theme id=[a-z0-9-]+ \u00b7 [^\n]*?\*/\n.*?\n    /\* /nova:theme \*/", re.S
+)
+_THEME_ID_RE = re.compile(r"/\* nova:theme id=([a-z0-9-]+) ")
+# Decks saved before the markers existed: one whole ``:root`` and one whole style block.
+_LEGACY_STYLE_RE = re.compile(
+    r"  <style>\n    /\* [^\n]*? \u00b7 layout vocabulary and theme \*/.*?\n  </style>", re.S
+)
+_LEGACY_NAME_RE = re.compile(r"/\* ([^\n]*?) \u00b7 layout vocabulary and theme \*/")
 _PLACEHOLDER_STYLE_RE = re.compile(
     r"  <style>\n    /\* SLOT: per-deck styles.*?\n  </style>", re.S
 )
 _FONTS_RE = re.compile(r"  <style data-nova-fonts>.*?\n  </style>\n", re.S)
-_HEAD_NAME_RE = re.compile(r"/\* ([^\n]*?) · layout vocabulary and theme \*/")
+
+
+def _tokens_text(template: Template) -> str:
+    return (template.directory / "tokens.css").read_text("utf-8").rstrip()
+
+
+def _css_text(template: Template) -> str:
+    theme = (template.directory / "theme.css").read_text("utf-8").strip()
+    layouts = (KIT_DIR / "layouts.css").read_text("utf-8").strip()
+    return f"{layouts}\n\n{theme}"
+
+
+def _tokens_region(template: Template) -> str:
+    open_ = _TOKENS_OPEN.format(id=template.id)
+    return f"{open_}\n{_tokens_text(template)}\n{_TOKENS_CLOSE}"
+
+
+def _css_region(template: Template) -> str:
+    open_ = _CSS_OPEN.format(id=template.id, name=template.name)
+    return f"{open_}\n{_css_text(template)}\n{_CSS_CLOSE}"
 
 
 def _tokens_block(template: Template) -> str:
-    tokens = (template.directory / "tokens.css").read_text("utf-8").rstrip()
-    return "    :root {\n" + tokens + "\n    }"
+    return "    :root {\n" + _tokens_region(template) + "\n    }"
 
 
 def _style_block(template: Template) -> str:
-    theme = (template.directory / "theme.css").read_text("utf-8").strip()
-    layouts = (KIT_DIR / "layouts.css").read_text("utf-8").strip()
-    head = f"  <style>\n    /* {template.name}{_STYLE_HEAD}"
-    return f"{head}\n{layouts}\n\n{theme}\n  </style>"
+    return f"  <style>\n{_css_region(template)}\n{_DECK_HINT}\n  </style>"
 
 
 def _fonts_block(template_id: str) -> str:
@@ -288,30 +327,68 @@ def build_deck(template_id: str, title: str, slides_html: str | None = None) -> 
 
 
 def deck_theme_id(document: str) -> str | None:
-    """The id of the theme a built deck carries (from its style block), if it is one of ours."""
-    found = _HEAD_NAME_RE.search(document)
-    if found is None:
+    """The id of the theme a built deck carries (from its marker), if it is one of ours."""
+    found = _THEME_ID_RE.search(document)
+    if found is not None:
+        return found.group(1) if found.group(1) in templates() else None
+    legacy = _LEGACY_NAME_RE.search(document)
+    if legacy is None:
         return None
-    return next((t.id for t in templates().values() if t.name == found.group(1)), None)
+    return next((t.id for t in templates().values() if t.name == legacy.group(1)), None)
+
+
+_INEXACT = "this deck's theme can't be swapped exactly; ask Nova to restyle it"
+
+
+def _only(pattern: re.Pattern[str], text: str) -> re.Match[str]:
+    found = list(pattern.finditer(text))
+    if len(found) != 1:
+        raise KitError(_INEXACT)
+    return found[0]
+
+
+def _adopt_markers(document: str, template: Template) -> str:
+    """A deck saved before the markers existed, with the kit's regions marked and the rest kept.
+
+    The deck's theme block is only recognised when it still holds exactly what the kit wrote for
+    its theme (anything the deck added around it is kept); a block someone edited inside is not
+    rewritten, because that would silently drop their work.
+    """
+    root = _only(_ROOT_RE, document)
+    tokens = _tokens_text(template)
+    if tokens not in root.group(0):
+        raise KitError(_INEXACT)
+    inner = root.group(0).replace(tokens, _tokens_region(template), 1)
+    document = document[: root.start()] + inner + document[root.end() :]
+    style = _only(_LEGACY_STYLE_RE, document)
+    head = f"    /* {template.name} \u00b7 layout vocabulary and theme */\n"
+    css = _css_text(template)
+    if head + css not in style.group(0):
+        raise KitError(_INEXACT)
+    block = style.group(0).replace(head + css, _css_region(template), 1)
+    return document[: style.start()] + block + document[style.end() :]
 
 
 def restyle_deck(document: str, template_id: str) -> str:
-    """The deck with its theme swapped: tokens, theme CSS and fonts; the slides are untouched.
+    """The deck with its theme swapped; the kit's regions and fonts change, all else stays.
 
-    :raises KitError: for an unknown theme, or a deck that was not built by the kit (its token,
-        style or font block cannot be found exactly), which is then restyled by asking the Muse.
+    :raises KitError: for an unknown theme, or a deck whose kit regions cannot be found exactly,
+        which is then restyled by asking the Muse.
     """
     template = templates().get(template_id)
     if template is None:
         raise KitError(f"Unknown theme '{template_id}'. Use one of: {', '.join(templates())}")
-    swaps = ((_ROOT_RE, _tokens_block(template)), (_STYLE_RE, _style_block(template)))
+    if _THEME_ID_RE.search(document) is None:
+        current = deck_theme_id(document)
+        if current is None:
+            raise KitError(_INEXACT)
+        document = _adopt_markers(document, templates()[current])
     out = document
-    for pattern, block in swaps:
-        found = list(pattern.finditer(out))
-        if len(found) != 1:
-            raise KitError("this deck's theme can't be swapped exactly; ask Nova to restyle it")
-        out = out[: found[0].start()] + block + out[found[0].end() :]
-    fonts = list(_FONTS_RE.finditer(out))
-    if len(fonts) != 1:
-        raise KitError("this deck's theme can't be swapped exactly; ask Nova to restyle it")
-    return out[: fonts[0].start()] + _fonts_block(template_id) + out[fonts[0].end() :]
+    for pattern, region in (
+        (_TOKENS_RE, _tokens_region(template)),
+        (_CSS_RE, _css_region(template)),
+    ):
+        found = _only(pattern, out)
+        out = out[: found.start()] + region + out[found.end() :]
+    fonts = _only(_FONTS_RE, out)
+    return out[: fonts.start()] + _fonts_block(template_id) + out[fonts.end() :]

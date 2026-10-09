@@ -51,7 +51,9 @@ lewislulu/html-ppt-skill (Copyright (c) 2026 lewis), as shipped in Open Design's
 at 802708f: Corporate Clean, Minimal White, Swiss Grid, Arctic Cool, Academic Paper, Editorial Serif,
 Japanese Minimal, Magazine Bold, Bauhaus, Midcentury, Pitch Deck VC, Sharp Mono, Nord and Tokyo
 Night. From op7418/guizang-ppt-skill (Copyright (c) 2026 op7418): Magazine Mono. Gradients and
-shadows were dropped so every theme exports to native PowerPoint shapes. Their fonts
+shadows were dropped so every theme exports to native PowerPoint shapes. The Nord theme uses the Nord
+palette (Arctic Ice Studio, Copyright (c) 2016-present Sven Greb, MIT) and the Tokyo Night theme the
+Tokyo Night palette (enkia, Copyright (c) 2018 enkia, MIT). Their fonts
 (kit/fonts) are Latin subsets of Space Grotesk, Inter, Bricolage Grotesque, Instrument Serif,
 JetBrains Mono, Newsreader, Playfair Display and Archivo Black, each under the SIL Open Font
 License 1.1 with its license text (OFL-*.txt) beside the font files.
