@@ -1,5 +1,5 @@
-import type { OmnigentClientConfig } from "./core.js";
-import { omnigentHeaders, throwOnError } from "./core.js";
+import type { OmnigentClientConfig } from "./client/core.js";
+import { omnigentHeaders, throwOnError } from "./client/core.js";
 
 /** An objective: an outcome pursued over time under one parent session
  * (engine/omnigent/docs/OBJECTIVES.md, routes/objectives.py `_to_response`). */

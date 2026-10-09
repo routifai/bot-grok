@@ -5,7 +5,7 @@ import {
   engineListFeedPosts,
   engineListTopics,
   engineRemoveTopic,
-} from "./engine-feed.js";
+} from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",

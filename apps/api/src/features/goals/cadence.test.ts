@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cronFromRrule, rruleFromCron } from "./goal-cadence.js";
+import { cronFromRrule, rruleFromCron } from "./cadence.js";
 
 describe("goal cadence", () => {
   it.each([

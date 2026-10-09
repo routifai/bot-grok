@@ -29,7 +29,7 @@ import type {
 } from "@nova/contracts";
 import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
-import { cronFromRrule, rruleFromCron } from "./goal-cadence.js";
+import { cronFromRrule, rruleFromCron } from "./cadence.js";
 
 const LOG_LIMIT = 50;
 
@@ -41,12 +41,6 @@ interface Target {
   client: OmnigentClientConfig;
   email: string;
   botId: string;
-}
-
-/** Goals live on the engine: without one configured there is nothing to read or change. */
-export function requireGoalsEngine(client: OmnigentClientConfig | undefined): OmnigentClientConfig {
-  if (!client) throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Goals need the engine" });
-  return client;
 }
 
 const iso = (epochSeconds: number) => new Date(epochSeconds * 1000).toISOString();

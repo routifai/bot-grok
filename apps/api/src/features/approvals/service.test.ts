@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "./engine-approvals.js";
+import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",

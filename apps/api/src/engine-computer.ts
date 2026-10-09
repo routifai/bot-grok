@@ -28,14 +28,24 @@ interface EngineComputer {
   bot: { id: string; screenGeneration: number };
 }
 
-/** The engine client for this actor's space (the tenant every engine call carries), when Nova
- * runs on the engine; `undefined` keeps the Pi-era path. */
+/** The engine client for this actor's space (the tenant every engine call carries); `undefined`
+ * when no engine is configured. Capability routes pass it through `requireEngine`. */
 export function engineComputerClient(
   actor: Pick<Actor, "spaceId">,
   env: NodeJS.ProcessEnv = process.env,
 ): OmnigentClientConfig | undefined {
   const connection = omnigentClientConfigFromEnv(env);
   return connection ? omnigentClientFor(connection, actor.spaceId) : undefined;
+}
+
+/** The engine client, or a clear "not configured" error: Nova runs on the engine, so a route has
+ * no fallback to serve without it. `what` names the capability ("Goals", "The Feed"). */
+export function requireEngine(
+  client: OmnigentClientConfig | undefined,
+  what: string,
+): OmnigentClientConfig {
+  if (!client) throw new ORPCError("SERVICE_UNAVAILABLE", { message: `${what} need the engine` });
+  return client;
 }
 
 async function resolve(

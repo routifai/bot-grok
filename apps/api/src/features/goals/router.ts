@@ -1,4 +1,5 @@
-import { engineComputerClient } from "../engine-computer.js";
+import { engineComputerClient, requireEngine } from "../../engine-computer.js";
+import type { RouterContext } from "../../routers/context.js";
 import {
   engineAcceptProposal,
   engineDismissProposal,
@@ -6,20 +7,23 @@ import {
   engineGoalLog,
   engineListGoals,
   engineUpdateGoal,
-  requireGoalsEngine,
-} from "../engine-goals.js";
-import { answerAsk, countAsks, listAsks } from "../muse-asks.js";
+} from "./service.js";
 
-import type { RouterContext } from "./context.js";
+const requireGoalsEngine = (client: ReturnType<typeof engineComputerClient>) =>
+  requireEngine(client, "Goals");
 
 export function goalsRouter(c: RouterContext) {
   const { museOnly, deps } = c;
   return {
     goals: {
-      list: museOnly.goals.list.handler(({ context, input }) => {
-        const engine = engineComputerClient(context.actor);
-        return engine ? engineListGoals(deps, engine, context.actor, input) : [];
-      }),
+      list: museOnly.goals.list.handler(({ context, input }) =>
+        engineListGoals(
+          deps,
+          requireGoalsEngine(engineComputerClient(context.actor)),
+          context.actor,
+          input,
+        ),
+      ),
       get: museOnly.goals.get.handler(({ context, input }) =>
         engineGetGoal(
           deps,
@@ -59,17 +63,6 @@ export function goalsRouter(c: RouterContext) {
           context.actor,
           input.goalId,
         ),
-      ),
-    },
-    asks: {
-      list: museOnly.asks.list.handler(({ context, input }) =>
-        listAsks(deps, engineComputerClient(context.actor), context.actor, input.botId),
-      ),
-      count: museOnly.asks.count.handler(({ context, input }) =>
-        countAsks(deps, engineComputerClient(context.actor), context.actor, input.botId),
-      ),
-      answer: museOnly.asks.answer.handler(({ context, input }) =>
-        answerAsk(deps, engineComputerClient(context.actor), context.actor, input),
       ),
     },
   };

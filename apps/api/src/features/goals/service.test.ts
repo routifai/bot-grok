@@ -7,7 +7,7 @@ import {
   engineGoalLog,
   engineListGoals,
   engineUpdateGoal,
-} from "./engine-goals.js";
+} from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",

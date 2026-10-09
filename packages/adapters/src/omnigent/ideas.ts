@@ -1,5 +1,5 @@
-import type { OmnigentClientConfig } from "./core.js";
-import { omnigentHeaders, throwOnError } from "./core.js";
+import type { OmnigentClientConfig } from "./client/core.js";
+import { omnigentHeaders, throwOnError } from "./client/core.js";
 
 /** A suggestion (an Idea) recorded by a background run
  * (engine/omnigent/omnigent/server/routes/suggestions.py `suggestion_to_response`). */

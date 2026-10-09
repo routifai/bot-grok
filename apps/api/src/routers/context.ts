@@ -22,10 +22,8 @@ import { createGroupRepos, createRepos, IsolationError } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
 import { createAgentSkillsService } from "../agent-skills.js";
-import type { EngineIdeasDeps } from "../engine-ideas.js";
 import type { EngineArtifactsDeps } from "../features/artifacts/index.js";
-import type { MuseFeedDeps } from "../muse-feed.js";
-import type { MuseIdeasDeps } from "../muse-ideas.js";
+import type { EngineIdeasDeps } from "../features/ideas/service.js";
 import { assertTeachingSendAllowed, createTaughtSkillsService } from "../taught-skills.js";
 import { resolveThreadTarget } from "../thread-target.js";
 
@@ -92,8 +90,6 @@ export interface RouterContext {
   mcpOAuth: McpOAuthBroker;
   taughtSkills: ReturnType<typeof createTaughtSkillsService>;
   agentSkills: ReturnType<typeof createAgentSkillsService>;
-  museIdeasDeps: MuseIdeasDeps;
-  museFeedDeps: MuseFeedDeps;
   engineArtifactsDeps: EngineArtifactsDeps;
   engineFilesDeps: { prisma: RouterDeps["prisma"] };
   engineIdeasDeps: EngineIdeasDeps;
@@ -120,8 +116,6 @@ export function createRouterContext(deps: RouterDeps): RouterContext {
   // Muse is the only edition now; these routes (Goals, Asks, Feed, Ideas, followed
   // topics, Muse settings) no longer need a mode gate, but the alias documents intent.
   const museOnly = authed;
-  const museIdeasDeps: MuseIdeasDeps = { prisma: deps.prisma };
-  const museFeedDeps: MuseFeedDeps = { prisma: deps.prisma };
   const engineArtifactsDeps: EngineArtifactsDeps = { prisma: deps.prisma };
   const engineFilesDeps = { prisma: deps.prisma };
   const engineIdeasDeps: EngineIdeasDeps = {
@@ -158,8 +152,6 @@ export function createRouterContext(deps: RouterDeps): RouterContext {
     mcpOAuth,
     taughtSkills,
     agentSkills,
-    museIdeasDeps,
-    museFeedDeps,
     engineArtifactsDeps,
     engineFilesDeps,
     engineIdeasDeps,

@@ -1,5 +1,5 @@
-import type { OmnigentClientConfig } from "./core.js";
-import { omnigentHeaders, throwOnError } from "./core.js";
+import type { OmnigentClientConfig } from "./client/core.js";
+import { omnigentHeaders, throwOnError } from "./client/core.js";
 
 /** A topic the Muse follows for the person (`GET /v1/me/topics`). */
 export interface OmnigentTopic {

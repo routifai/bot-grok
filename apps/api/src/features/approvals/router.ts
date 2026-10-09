@@ -4,10 +4,10 @@ import {
   resolveAutoReviewChecker,
 } from "@nova/adapters";
 import type { Actor } from "@nova/contracts";
-import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "../agent-secrets.js";
-import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "../engine-approvals.js";
-import { engineComputerClient } from "../engine-computer.js";
-import type { RouterContext, RouterDeps } from "./context.js";
+import { engineComputerClient } from "../../engine-computer.js";
+import type { RouterContext, RouterDeps } from "../../routers/context.js";
+import { answerAsk, countAsks, listAsks } from "./asks-service.js";
+import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "./service.js";
 
 async function loadAutoReviewSettings(deps: RouterDeps, actor: Actor) {
   const environmentAvailable = isAutoReviewCheckerConfigured({ env: process.env });
@@ -35,6 +35,8 @@ async function loadAutoReviewSettings(deps: RouterDeps, actor: Actor) {
   return { enabled, checkerAvailable };
 }
 
+/** `approvalRules.*`, `autoReview.*`, `approvals.*` (the engine's standing rules and spending cap)
+ * and `asks.*` (the decisions inbox: approvals, plan proposals and blocked Goal tasks). */
 export function approvalsRouter(c: RouterContext) {
   const { authed, museOnly, deps } = c;
   return {
@@ -127,20 +129,15 @@ export function approvalsRouter(c: RouterContext) {
         setApprovalSpending(deps, engineComputerClient(context.actor), context.actor, input),
       ),
     },
-    agentSecrets: {
-      list: authed.agentSecrets.list.handler(async ({ context }) =>
-        listAgentSecrets({ prisma: deps.prisma, secrets: deps.secrets }, context.actor),
+    asks: {
+      list: museOnly.asks.list.handler(({ context, input }) =>
+        listAsks(deps, engineComputerClient(context.actor), context.actor, input.botId),
       ),
-      put: authed.agentSecrets.put.handler(async ({ context, input, signal }) =>
-        putAgentSecret(
-          { prisma: deps.prisma, secrets: deps.secrets },
-          context.actor,
-          input,
-          signal,
-        ),
+      count: museOnly.asks.count.handler(({ context, input }) =>
+        countAsks(deps, engineComputerClient(context.actor), context.actor, input.botId),
       ),
-      remove: authed.agentSecrets.remove.handler(async ({ context, input }) =>
-        deleteAgentSecret({ prisma: deps.prisma, secrets: deps.secrets }, context.actor, input.id),
+      answer: museOnly.asks.answer.handler(({ context, input }) =>
+        answerAsk(deps, engineComputerClient(context.actor), context.actor, input),
       ),
     },
   };

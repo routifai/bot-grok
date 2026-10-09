@@ -1,7 +1,7 @@
 // The standing approval rules and daily spending cap Settings shows (docs/muse/PLAN.md, Q5).
 // Nova keeps no approval rows: the engine decides what needs asking, remembers what the person
 // always allows and never lets an unanswered one through. Waiting approvals are Asks
-// (./engine-asks.ts).
+// (./asks.ts).
 import {
   deleteOmnigentApprovalRule,
   getOmnigentApprovalSettings,
@@ -12,7 +12,7 @@ import {
 import type { Actor, ApprovalSpending, ApprovalStandingRule } from "@nova/contracts";
 import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
-import { onSuperChat } from "./omnigent-errors.js";
+import { onSuperChat } from "../../omnigent-errors.js";
 
 export interface EngineApprovalsDeps {
   prisma: PrismaClient;
