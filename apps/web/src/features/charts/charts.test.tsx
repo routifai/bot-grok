@@ -122,7 +122,10 @@ it("loads the inline preview's document once near the viewport", async () => {
   await act(async () => {
     await Promise.resolve();
   });
-  expect(api.getById).toHaveBeenCalledWith({ artifactId: "inline-1" });
+  expect(api.getById).toHaveBeenCalledWith(
+    { artifactId: "inline-1" },
+    { signal: expect.any(AbortSignal) },
+  );
   expect(host.textContent).toContain("$190,300");
   act(() => root.unmount());
 });
@@ -220,6 +223,29 @@ it("says a chart is unavailable when its file is not a chart", async () => {
     await Promise.resolve();
   });
   expect(host.textContent).toContain("Chart unavailable");
+});
+
+it("shows a chart whose request failed as an error with Retry, never an endless skeleton", async () => {
+  // The live bug: requests that never settle kept the whole set on skeletons.
+  api.getById.mockRejectedValueOnce(new Error("Failed to fetch"));
+  render(<ChartGallery messages={[chartMessage("g-offline")]} />);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(host.querySelector('[aria-busy="true"]')).toBeNull();
+  expect(host.querySelector('[data-chart-state="error"]')?.textContent).toContain("Couldn't load");
+  // The request carries a deadline, so one that never answers fails the same way.
+  expect(api.getById.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  api.getById.mockResolvedValueOnce({ contentBase64: btoa(JSON.stringify(documentOf("bar"))) });
+  const retry = [...host.querySelectorAll("button")].find((b) => b.textContent === "Retry");
+  await act(async () => {
+    retry?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(host.querySelector('[data-chart="bar"]')).not.toBeNull();
+  expect(api.getById).toHaveBeenCalledTimes(2);
 });
 
 it("draws chart files as charts wherever a file card would show", () => {

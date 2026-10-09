@@ -1371,6 +1371,9 @@ msgstr "Could not update reaction"
 msgid "Couldn't index"
 msgstr "Couldn't index"
 
+msgid "Couldn't load"
+msgstr "Couldn't load"
+
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
 
