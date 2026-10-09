@@ -2,7 +2,7 @@ import type { PrismaClient } from "@nova/db";
 import type { ORPCError } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectEngineModel } from "../models/index.js";
-import { deleteEngineUser, listAdminUsers } from "./service.js";
+import { deleteEngineUser, listAdminUsers, setUserSuspended } from "./service.js";
 
 const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [], tenant: "s1" };
 const actor = { userId: "user-1", spaceId: "s1" } as never;
@@ -88,5 +88,24 @@ describe("admin gating", () => {
         lastActive: 100,
       },
     ]);
+  });
+});
+
+describe("suspension", () => {
+  it("also suspends and restores the Nova account, and leaves waiting signups alone", async () => {
+    stub(() => json({ user_id: "p", is_admin: true, ok: true }));
+    const d = deps();
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    (d.prisma as unknown as { user: object }).user = { ...d.prisma.user, updateMany };
+    await setUserSuspended(d, client, actor, { userId: "u9", suspended: true });
+    expect(updateMany).toHaveBeenLastCalledWith({
+      where: { id: "u9", status: "active" },
+      data: { status: "suspended" },
+    });
+    await setUserSuspended(d, client, actor, { userId: "u9", suspended: false });
+    expect(updateMany).toHaveBeenLastCalledWith({
+      where: { id: "u9", status: "suspended" },
+      data: { status: "active" },
+    });
   });
 });

@@ -31,7 +31,9 @@ describeWithDatabase("structured @ mention targets", () => {
       sandboxProvider: "fake",
       agentRuntime: "scripted",
       composio: new ComposioEmulator(),
-      signupsEnabled: "true",
+      signupMode: "open",
+      // Local-dev escape hatch: these fixtures have no mailbox to prove.
+      allowUnverifiedEmail: true,
     });
     app = handles.app;
     prisma = handles.prisma;

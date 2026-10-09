@@ -173,6 +173,8 @@ function configureEnvironment() {
     DATA_DIR,
     SIGNUPS_ENABLED: "true",
     SIGNUP_ALLOWLIST: "",
+    // Local-dev escape hatch: screenshots have no mailbox to prove.
+    AUTH_ALLOW_UNVERIFIED_EMAIL: "true",
     CI: "1",
   });
 }

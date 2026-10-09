@@ -73,6 +73,8 @@ async function main() {
     process.env.DATA_DIR = path.join(reportDir, "data");
     process.env.SIGNUPS_ENABLED = "true";
     process.env.SIGNUP_ALLOWLIST = "";
+    // Local-dev escape hatch: the e2e harness has no mailbox to prove.
+    process.env.AUTH_ALLOW_UNVERIFIED_EMAIL = "true";
     process.env.CI = "1";
 
     execSync("pnpm --filter @nova/db generate", { stdio: "inherit", env: process.env });

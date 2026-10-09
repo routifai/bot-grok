@@ -28,6 +28,49 @@ describe("loadEnv", () => {
     expect(env.wakeupDriver).toBe("memory");
   });
 
+  it("keeps the unverified-email escape hatch off unless explicitly set", () => {
+    expect(loadEnv(base).allowUnverifiedEmail).toBe(false);
+    expect(loadEnv({ ...base, AUTH_ALLOW_UNVERIFIED_EMAIL: "true" }).allowUnverifiedEmail).toBe(
+      true,
+    );
+  });
+
+  it("reads signup mode and the HTTP email provider", () => {
+    const env = loadEnv({
+      ...base,
+      SIGNUP_MODE: "approval",
+      SIGNUP_DOMAINS: "corp.test",
+      EMAIL_API_URL: "https://mail.example.test/emails",
+      EMAIL_API_KEY: "key",
+    });
+    expect([env.signupMode, env.signupDomains]).toEqual(["approval", "corp.test"]);
+    expect([env.emailApiUrl, env.emailApiKey]).toEqual(["https://mail.example.test/emails", "key"]);
+  });
+
+  it("enables social sign-in only when fully configured, and Microsoft only with a tenant", () => {
+    expect(loadEnv(base).social).toEqual({});
+    expect(
+      loadEnv({
+        ...base,
+        AUTH_GOOGLE_CLIENT_ID: "g",
+        AUTH_GOOGLE_CLIENT_SECRET: "s",
+        AUTH_GOOGLE_HOSTED_DOMAIN: "corp.test",
+        AUTH_MICROSOFT_CLIENT_ID: "m",
+        AUTH_MICROSOFT_CLIENT_SECRET: "s",
+      }).social,
+    ).toEqual({
+      google: { clientId: "g", clientSecret: "s", hostedDomain: "corp.test" },
+    });
+    expect(
+      loadEnv({
+        ...base,
+        AUTH_MICROSOFT_CLIENT_ID: "m",
+        AUTH_MICROSOFT_CLIENT_SECRET: "s",
+        AUTH_MICROSOFT_TENANT_ID: "tenant-1",
+      }).social,
+    ).toEqual({ microsoft: { clientId: "m", clientSecret: "s", tenantId: "tenant-1" } });
+  });
+
   it("loads an optional integrations catalog mirror", () => {
     expect(loadEnv(base).integrationsCatalogUrl).toBeUndefined();
     expect(

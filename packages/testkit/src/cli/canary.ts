@@ -36,6 +36,8 @@ async function main() {
       WEB_ORIGIN: "http://127.0.0.1:5173",
       SIGNUPS_ENABLED: "true",
       SIGNUP_ALLOWLIST: "",
+      // Local-dev escape hatch: the canary has no mailbox to prove.
+      AUTH_ALLOW_UNVERIFIED_EMAIL: "true",
       DATA_DIR: dataDir,
     };
     if (postgres) {

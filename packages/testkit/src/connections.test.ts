@@ -59,7 +59,9 @@ describeWithDatabase("Composio catalog reconciliation", () => {
         resolveHostname: thirdParties.resolveHostname,
       },
       encryptionKey: TEST_ENCRYPTION_KEY,
-      signupsEnabled: "true",
+      signupMode: "open",
+      // Local-dev escape hatch: these fixtures have no mailbox to prove.
+      allowUnverifiedEmail: true,
     });
     app = handles.app;
   });

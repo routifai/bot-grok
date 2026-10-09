@@ -27,6 +27,7 @@ import {
   EmailEmulator,
   EncryptedSecretStore,
   GraphileJobPublisher,
+  HttpEmailProvider,
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
@@ -50,7 +51,14 @@ import {
   SmtpEmailProvider,
   sandboxProviderOptionsFromEnv,
 } from "@nova/adapters";
-import { blockedAuthPaths, createAuth } from "@nova/auth";
+import {
+  assertIdentityConfig,
+  blockedAuthPaths,
+  createAuth,
+  isHostedDeployment,
+  resolveSignupPolicy,
+  socialProviderIds,
+} from "@nova/auth";
 import { signupAllowlistBootUpdate, signupPolicyFromEnv } from "@nova/core";
 import type { Pool, PrismaClient } from "@nova/db";
 import {
@@ -152,8 +160,9 @@ export async function createApp(
     where: { id: "default" },
     create: {
       id: "default",
-      signupsEnabled: environmentSignupPolicy.enabled,
-      signupAllowlist: environmentSignupPolicy.allowlist.join(","),
+      signupMode: environmentSignupPolicy.mode,
+      signupAllowlist: environmentSignupPolicy.invites.join(","),
+      signupDomains: environmentSignupPolicy.domains.join(","),
       signupPolicyInitialized: true,
     },
     update: {},
@@ -166,8 +175,9 @@ export async function createApp(
     await prisma.deploymentSettings.updateMany({
       where: { id: "default", signupPolicyInitialized: false },
       data: {
-        signupsEnabled: environmentSignupPolicy.enabled,
-        signupAllowlist: environmentSignupPolicy.allowlist.join(","),
+        signupMode: environmentSignupPolicy.mode,
+        signupAllowlist: environmentSignupPolicy.invites.join(","),
+        signupDomains: environmentSignupPolicy.domains.join(","),
         signupPolicyInitialized: true,
       },
     });
@@ -275,7 +285,22 @@ export async function createApp(
     emailOverride ??
     (env.smtpUrl
       ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
-      : localEmailEmulator);
+      : env.emailApiUrl
+        ? new HttpEmailProvider({
+            url: env.emailApiUrl,
+            apiKey: env.emailApiKey ?? "",
+            from: env.emailFrom ?? "",
+          })
+        : localEmailEmulator);
+  // Fail at startup, not at the first stranger's signup.
+  assertIdentityConfig(
+    {
+      hosted: isHostedDeployment(env),
+      allowUnverifiedEmail: env.allowUnverifiedEmail,
+      hasEmail: Boolean(email),
+    },
+    await resolveSignupPolicy(prisma, env),
+  );
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const integrationSettings = new IntegrationProviderSettings(prisma, secrets, env.encryptionKey, {
     composio:
@@ -299,8 +324,13 @@ export async function createApp(
     secret: env.authSecret,
     baseURL: env.authUrl,
     webOrigin: env.webOrigin,
+    signupMode: env.signupMode,
     signupsEnabled: env.signupsEnabled,
     signupAllowlist: env.signupAllowlist,
+    signupDomains: env.signupDomains,
+    nodeEnv: env.nodeEnv,
+    allowUnverifiedEmail: env.allowUnverifiedEmail,
+    social: env.social,
     email,
     onEmailError: (error) => getLogger().error("transactional email delivery failed", error),
     extraOrigins: [
@@ -381,6 +411,11 @@ export async function createApp(
     remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
+    identity: {
+      signupPolicy: env,
+      production: isHostedDeployment(env),
+      emailDelivery: Boolean(email),
+    },
     messaging: {
       enabled: Boolean(messaging),
       providers: messaging?.platforms().map((platform) => platform.provider) ?? [],
@@ -414,12 +449,17 @@ export async function createApp(
       credentials: true,
     }),
   );
-  app.get("/api/auth/capabilities", (c) =>
-    c.json({
+  app.get("/api/auth/capabilities", async (c) => {
+    const policy = await resolveSignupPolicy(prisma, env);
+    return c.json({
       passwordReset: Boolean(email),
       resetUrl: email ? new URL("/reset-password", env.webOrigin).href : null,
-    }),
-  );
+      // Mailbox proof by one-time code works wherever mail can be sent.
+      emailCode: Boolean(email),
+      social: socialProviderIds(env.social),
+      signupMode: policy.mode,
+    });
+  });
   if (localEmailEmulator && env.nodeEnv === "development") {
     app.get(
       "/api/dev/emails",
@@ -491,8 +531,10 @@ export async function createApp(
       provision: (request, policyEnv) => provisionMessagingIdentity(prisma, request, policyEnv),
       openSignup: env.messagingOpenSignup,
       signupPolicy: {
+        signupMode: env.signupMode,
         signupsEnabled: env.signupsEnabled,
         signupAllowlist: env.signupAllowlist,
+        signupDomains: env.signupDomains,
       },
       typing: (threadId) => {
         // Keep conversation addresses out of trace ids — those reach logs

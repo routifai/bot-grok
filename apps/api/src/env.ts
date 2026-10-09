@@ -1,4 +1,5 @@
 import { resolveDeploymentModel, resolveSandboxProvider } from "@nova/adapters";
+import type { SocialConfig } from "@nova/auth";
 import {
   resolveAuthSecret,
   resolveEncryptionKey,
@@ -19,8 +20,14 @@ export interface AppEnv {
   privacyPolicyUrl?: string;
   apiUrl: string;
   apiHost: string;
+  signupMode: string | undefined;
   signupsEnabled: string | undefined;
   signupAllowlist: string | undefined;
+  signupDomains: string | undefined;
+  /** Local development only: skip mailbox proof when no email provider exists. */
+  allowUnverifiedEmail: boolean;
+  /** Google / Microsoft sign-in; each is on only when fully configured. */
+  social: SocialConfig;
   encryptionKey: string;
   dataDir: string;
   sandboxSupervisorUrl: string;
@@ -47,6 +54,9 @@ export interface AppEnv {
   sendblueSigningSecret: string | undefined;
   sendbluePhoneNumber: string | undefined;
   smtpUrl: string | undefined;
+  /** Resend-compatible HTTPS endpoint and key; used when SMTP_URL is not set. */
+  emailApiUrl: string | undefined;
+  emailApiKey: string | undefined;
   emailFrom: string | undefined;
   emailEmulator: boolean;
   slackBotToken: string | undefined;
@@ -92,8 +102,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     privacyPolicyUrl: optional(source.PRIVACY_POLICY_URL),
     apiUrl: source.API_URL ?? "http://127.0.0.1:3100",
     apiHost: source.API_HOST ?? "127.0.0.1",
+    signupMode: optional(source.SIGNUP_MODE),
     signupsEnabled: source.SIGNUPS_ENABLED,
     signupAllowlist: source.SIGNUP_ALLOWLIST,
+    signupDomains: source.SIGNUP_DOMAINS,
+    allowUnverifiedEmail: source.AUTH_ALLOW_UNVERIFIED_EMAIL === "true",
+    social: socialConfigFromEnv(source),
     encryptionKey: resolveEncryptionKey(source),
     dataDir: source.DATA_DIR ?? "./data",
     sandboxSupervisorUrl: source.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
@@ -122,6 +136,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     sendblueSigningSecret: optional(source.SENDBLUE_SIGNING_SECRET),
     sendbluePhoneNumber: optional(source.SENDBLUE_PHONE_NUMBER),
     smtpUrl: optional(source.SMTP_URL),
+    emailApiUrl: optional(source.EMAIL_API_URL),
+    emailApiKey: optional(source.EMAIL_API_KEY),
     emailFrom: optional(source.EMAIL_FROM),
     emailEmulator: source.EMAIL_EMULATOR === "true" && source.NODE_ENV !== "production",
     slackBotToken: optional(source.SLACK_BOT_TOKEN),
@@ -149,6 +165,29 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     mcpAllowPrivateEndpoint: source.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
     port: Number(source.API_PORT ?? 3100),
     gitSha: optional(source.GIT_SHA) ?? optional(source.NOVA_GIT_SHA),
+  };
+}
+
+function socialConfigFromEnv(source: NodeJS.ProcessEnv): SocialConfig {
+  const googleId = optional(source.AUTH_GOOGLE_CLIENT_ID);
+  const googleSecret = optional(source.AUTH_GOOGLE_CLIENT_SECRET);
+  const microsoftId = optional(source.AUTH_MICROSOFT_CLIENT_ID);
+  const microsoftSecret = optional(source.AUTH_MICROSOFT_CLIENT_SECRET);
+  const tenantId = optional(source.AUTH_MICROSOFT_TENANT_ID);
+  return {
+    ...(googleId && googleSecret
+      ? {
+          google: {
+            clientId: googleId,
+            clientSecret: googleSecret,
+            hostedDomain: optional(source.AUTH_GOOGLE_HOSTED_DOMAIN),
+          },
+        }
+      : {}),
+    // A tenant id is required: without one any Microsoft account could assert any address.
+    ...(microsoftId && microsoftSecret && tenantId
+      ? { microsoft: { clientId: microsoftId, clientSecret: microsoftSecret, tenantId } }
+      : {}),
   };
 }
 

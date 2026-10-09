@@ -17,7 +17,7 @@ import { McpOAuthBroker } from "@nova/adapters";
 import type { Auth } from "@nova/auth";
 import type { Actor } from "@nova/contracts";
 import { appContract } from "@nova/contracts";
-import type { PrismaClient, ThreadEvents } from "@nova/db";
+import type { PrismaClient, SignupPolicyEnv, ThreadEvents } from "@nova/db";
 import { createGroupRepos, createRepos, IsolationError } from "@nova/db";
 import { getLogger } from "@nova/logging";
 import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
@@ -45,6 +45,13 @@ export interface RouterDeps {
   remoteConnectors?: RemoteConnectorDependencies;
   artifacts: ArtifactStore;
   dataDir: string;
+  /** Identity settings the signup admin needs; absent in unit fixtures that do not touch it. */
+  identity?: {
+    /** Environment seed, used only if the settings row has to be created. */
+    signupPolicy: SignupPolicyEnv;
+    production: boolean;
+    emailDelivery: boolean;
+  };
   /** Present when the external messaging surface is enabled. */
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {

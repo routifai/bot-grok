@@ -67,6 +67,12 @@ export async function setUserSuspended(
   await onModels(
     setOmnigentUserSuspended(target.client, target.email, input.userId, input.suspended),
   );
+  // One suspension: the engine stops model use, and Nova stops sign-in and space access. A
+  // waiting signup stays in the approval queue, so only active and suspended accounts toggle.
+  await deps.prisma.user.updateMany({
+    where: { id: input.userId, status: input.suspended ? "active" : "suspended" },
+    data: { status: input.suspended ? "suspended" : "active" },
+  });
   return { ok: true as const };
 }
 
