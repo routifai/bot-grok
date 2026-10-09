@@ -39,9 +39,19 @@ function useDecksPanel({ artifact, bytes, openUrl }: ArtifactPanelArgs): Artifac
 export const decksExtension: ArtifactExtension = {
   usePanel: useDecksPanel,
   card: (artifact) => (isDeckArtifactName(artifact.name) ? { meta: t`Slide deck` } : null),
-  view: ({ artifact, bytes }) => {
+  view: ({ artifact, bytes, onEdited }) => {
     if (!isDeckArtifactName(artifact.name)) return null;
     const html = new TextDecoder("utf-8").decode(bytes);
-    return <DeckViewer key={artifact.id} html={html} title={artifact.name} />;
+    // Keyed by the file, not the version: a new version keeps the slide, the mode and the
+    // selection instead of starting the viewer over.
+    return (
+      <DeckViewer
+        key={artifact.name}
+        html={html}
+        title={artifact.name}
+        artifact={{ id: artifact.id, version: artifact.version }}
+        onEdited={onEdited}
+      />
+    );
   },
 };

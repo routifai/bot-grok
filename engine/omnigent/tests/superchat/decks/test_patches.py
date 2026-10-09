@@ -214,3 +214,19 @@ def test_real_kit_deck_only_the_span_changes() -> None:
     assert 'slide 1 cover-title "' in summary
     # the font block and framework survive byte for byte
     assert out.count(b"@font-face") == deck.count(b"@font-face")
+
+
+def test_set_style_summary_uses_the_editor_s_before_values() -> None:
+    """A property with no inline declaration is worded from the editor's before value."""
+    out, summary = run(
+        [
+            SetStyle(
+                kind="set-style",
+                id="body",
+                style={"font-size": "72px"},
+                before={"font-size": "64px"},
+            )
+        ]
+    )
+    assert "font-size 64px→72px" in summary
+    assert "before" not in out

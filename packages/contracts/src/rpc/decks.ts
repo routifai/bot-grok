@@ -25,6 +25,8 @@ export const DeckPatchSchema = z.discriminatedUnion("kind", [
     id: ElementId,
     /** Kebab-case CSS property -> value; null removes the declaration. */
     style: z.record(z.string().regex(/^[a-z-]{1,64}$/), z.string().max(512).nullable()),
+    /** What the editor showed before, only to word "you changed X" (never written to the file). */
+    before: z.record(z.string().regex(/^[a-z-]{1,64}$/), z.string().max(200)).optional(),
   }),
   z.object({
     kind: z.literal("set-attributes"),

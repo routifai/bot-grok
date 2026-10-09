@@ -69,6 +69,9 @@ class SetStyle(BaseModel):
     kind: Literal["set-style"]
     id: str
     style: dict[str, str | None] = Field(min_length=1, max_length=40)
+    #: What the editor showed before (computed values), only to word the summary for a property
+    #: the element had no inline declaration for. Never written into the file.
+    before: dict[str, str] = Field(default_factory=dict, max_length=40)
 
 
 class SetAttributes(BaseModel):
@@ -432,7 +435,7 @@ def _apply_set_style(doc: _Doc, patch: SetStyle) -> tuple[str, str]:
         idx = next((i for i, d in enumerate(decls) if _decl_name(d) == prop), None)
         before = (
             decls[idx].split(":", 1)[1].strip() if idx is not None and ":" in decls[idx] else ""
-        )
+        ) or " ".join(re.sub(r"[\x00-\x1f<>\"]", " ", patch.before.get(prop, "")).split())[:40]
         if value is None:
             if idx is not None:
                 del decls[idx]

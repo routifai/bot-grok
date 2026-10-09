@@ -17,6 +17,14 @@ tests (infra/sandboxes/computer/deck-export/*.test.ts), and packages/contracts/s
 deck-framework.ts with runtime/deck-protocol.ts (the deck skeleton and navigation protocol,
 engine/omnigent/omnigent/superchat/decks/kit/skeleton.html).
 
+Deck editing on the canvas ports ideas and code from Open Design's edit mode, also Apache-2.0
+at commit 802708f: apps/web/src/edit-mode/bridge.ts (the in-frame selection, inline text edit and
+hover logic, rewritten as apps/web/src/features/decks/edit/bridge.js), apps/web/src/edit-mode/
+source-patches.ts (the patch kinds, rewritten in Python as engine/omnigent/omnigent/superchat/
+decks/patches.py), the manual edit panel (rewritten small as StylePanel.tsx), and the
+attached-preview-comments block (deck-ask.ts). The untrusted-text sanitizer comes from this
+repository's Omnigent web client (engine/omnigent/web/src/lib/designModePrompt.ts).
+
 The PowerPoint export vendors dom-to-pptx 2.0.1 (https://github.com/atharva9167j/dom-to-pptx),
 MIT License, Copyright (c) 2025 Atharva Dharmendra Jagtap and dom-to-pptx contributors, as the
 browser bundle Open Design ships; its license is kept in

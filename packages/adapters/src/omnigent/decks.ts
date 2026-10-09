@@ -30,7 +30,12 @@ export async function exportOmnigentDeck(
 /** One source patch (engine wire format; see engine superchat/decks/patches.py). */
 export type OmnigentDeckPatch =
   | { kind: "set-text"; id: string; text: string }
-  | { kind: "set-style"; id: string; style: Record<string, string | null> }
+  | {
+      kind: "set-style";
+      id: string;
+      style: Record<string, string | null>;
+      before?: Record<string, string>;
+    }
   | {
       kind: "set-attributes";
       id: string;
