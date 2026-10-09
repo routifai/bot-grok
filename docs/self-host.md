@@ -147,12 +147,17 @@ six-digit code, so those modes need email delivery: `SMTP_URL`, or `EMAIL_API_UR
 (`NODE_ENV=production` on a non-loopback `WEB_ORIGIN`; hosted requires `NODE_ENV=production`)
 refuses to start with one of those modes and no provider. `approval` and `closed` need none.
 Proving a mailbox voids anything attached to that address earlier, including a password, so
-someone who pre-registered another person's address gains nothing; the owner signs in by code.
+someone who pre-registered another person's address gains nothing; the owner signs in by code. If
+the account had been used before (it has a space, which is only possible with no mail provider),
+its space, bots, memory, connections, credentials, secrets and messaging links are deleted as well
+and it returns to pending for the admin to confirm: context a squatter planted cannot be told from
+the person's own, so it is removed rather than quarantined. The deployment owner is exempt.
 
-`approval` with no email provider needs a way to seat the first owner: set `OWNER_SETUP_TOKEN` to a
-one-time secret and enter it as "Setup token" when you sign up. Until an owner exists only that
-sign-in can claim the seat; without a token (and without email) nobody can, and a hosted
-deployment refuses to start. When email arrives later, approved people whose address was never
+The first owner is seated by a claim. With `OWNER_SETUP_TOKEN` set, only a sign-up presenting it
+(the "Setup token" field) can claim the seat; a hosted deployment with no owner requires the token
+in every mode and refuses to start without it, and you should unset it once an owner exists. On a
+personal install with email and no token, the first verified mailbox claims it; with neither
+email nor token, nobody can. When email arrives later, approved people whose address was never
 proved are asked for a code at their next sign-in.
 
 For a personal install on this machine only, `AUTH_ALLOW_UNVERIFIED_EMAIL=true` skips mailbox
@@ -162,14 +167,22 @@ by default.
 
 One generic OIDC connection adds a sign-in button: `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`,
 `AUTH_OIDC_CLIENT_SECRET`, optionally `AUTH_OIDC_NAME` and `AUTH_OIDC_ALLOWED_DOMAINS`. Register
-`<BETTER_AUTH_URL>/api/auth/oauth2/callback/sso` with the provider. For Microsoft the issuer must
+`<BETTER_AUTH_URL>/api/auth/callback/sso` with the provider. For Microsoft the issuer must
 be `https://login.microsoftonline.com/<tenant-guid>/v2.0`; `common`, `organizations` and
-`consumers` are refused. Provider accounts are never linked to an existing person by email, and
-the signup mode applies to them like any other way in.
+`consumers` are refused. With `AUTH_OIDC_ALLOWED_DOMAINS` set, this provider (and only it) may link to an existing
+person with the same email, and a sign-in on an unverified account is mailbox proof; without
+domains no provider account is linked by email. Entra issuers require the domains, and guests
+are refused. The signup mode applies like any other way in.
 
-Behind a reverse proxy set `AUTH_TRUSTED_PROXIES` (its IPs or CIDRs) or `AUTH_CLIENT_IP_HEADER`,
-or the rate limiter sees every client as one address. Limits are stored in the database and also
-cap sends and verifies per email address.
+**Upgrade note.** The migration marks every existing user who already has a space as verified so
+the upgrade does not lock them out. An address squatted under an earlier open, no-SMTP signup that
+already had a space therefore becomes verified; review the people list after upgrading.
+
+A hosted deployment must set one of `AUTH_TRUSTED_PROXIES` or `AUTH_CLIENT_IP_HEADER` (see the split
+deployment guide for Railway) and will not start without it. Behind a reverse proxy set `AUTH_TRUSTED_PROXIES` (its IPs or CIDRs) or `AUTH_CLIENT_IP_HEADER`,
+or the rate limiter sees every client as one address. Limits are stored in the database. Sends
+are capped per address and network with a looser per-address cap overall; failed password and code
+attempts count in short windows, so a lock lifts itself in minutes.
 
 ### Verification and password recovery email
 
