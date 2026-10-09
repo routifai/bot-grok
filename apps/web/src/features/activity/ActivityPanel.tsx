@@ -194,7 +194,7 @@ export function ActivityPanel({
     return loadingOverdue ? <ActivitiesStillLoading /> : <PanelRowSkeletonList count={4} />;
   }
   if (state.status === "error") {
-    return <p className="text-[13px] text-destructive">{t`Could not load Activity`}</p>;
+    return <p className="text-[13px] text-muted-foreground">{t`Could not load Activity`}</p>;
   }
 
   // Resynced by id every render, not the clicked snapshot — so the run page reflects

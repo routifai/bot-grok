@@ -18,6 +18,7 @@ from pathlib import Path
 
 from omnigent.runner.knowledge.embedder import Embedder, ProxyEmbedder
 from omnigent.runner.knowledge.indexer import Indexer
+from omnigent.runner.knowledge.rerank import ProxyReranker, Reranker
 
 _logger = logging.getLogger(__name__)
 
@@ -46,9 +47,10 @@ class KnowledgeRuntime:
         workspace: Path,
         embedder: Embedder,
         *,
+        reranker: Reranker | None = None,
         idle_seconds: float = IDLE_SECONDS,
     ) -> None:
-        self.indexer = Indexer(home, workspace, embedder)
+        self.indexer = Indexer(home, workspace, embedder, reranker=reranker)
         self._idle = idle_seconds
         self._wake = threading.Event()
         self._stop = threading.Event()
@@ -135,7 +137,8 @@ def get_runtime(factory: Callable[[], KnowledgeRuntime] | None = None) -> Knowle
 
 def _build() -> KnowledgeRuntime:
     embedder = ProxyEmbedder(lambda: _server_url, _credential)
-    return KnowledgeRuntime(default_home(), default_workspace(), embedder)
+    reranker = ProxyReranker(lambda: _server_url, _credential)
+    return KnowledgeRuntime(default_home(), default_workspace(), embedder, reranker=reranker)
 
 
 def start_for_runner(server_url: str | None) -> KnowledgeRuntime | None:
@@ -151,6 +154,11 @@ def start_for_runner(server_url: str | None) -> KnowledgeRuntime | None:
 def notify_written(path: str | Path) -> None:
     """A file was written through the runner (an upload): index it if the service is running."""
     runtime = _runtime
+    if runtime is None and os.environ.get("IS_SANDBOX") == "1":
+        # The first upload can land before any tool call built the service: build it now so the
+        # file is indexed at once, not on the next slow tick.
+        runtime = get_runtime()
+        runtime.start()
     if runtime is not None:
         runtime.add(path)
 

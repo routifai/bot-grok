@@ -88,6 +88,16 @@ export const computerContract = {
           size: z.number().int(),
         }),
       ),
+    /** Reads an uploaded attachment in the Computer (Markdown, passages, embeddings, index) and
+     * answers when it is searchable. The composer awaits it before Send is enabled. */
+    ingestAttachment: oc.input(z.object({ botId: Id, path: z.string().min(1).max(1024) })).output(
+      z.object({
+        fileId: z.string(),
+        name: z.string(),
+        pages: z.number().int(),
+        chars: z.number().int(),
+      }),
+    ),
     saveToLibrary: oc
       .input(z.object({ botId: Id, path: z.string().min(1).max(1024) }))
       .output(ArtifactSchema),

@@ -267,6 +267,28 @@ def test_embedding_plan_route_answers_for_the_hosts_owner(store, monkeypatch) ->
     assert yes["tag"].startswith("openrouter:") and not seen
 
 
+def test_rerank_plan_route_picks_a_cheap_chat_model_only_with_a_chat_connection(store) -> None:
+    from omnigent.superchat.models import embeddings as emb
+    from omnigent.superchat.models.rerank import RERANK_MODEL, ModelRerank
+
+    seen: list[httpx.Request] = []
+    client = _client(store, seen)
+    layer = emb.ModelEmbeddings(store, emb.EmbeddingSettingStore(store.storage_location))
+    client.app.state.model_rerank = ModelRerank(store, layer)  # type: ignore[attr-defined]
+    assert client.get("/v1/model/rerank").status_code == 401
+    # alice only has an Anthropic key (Messages API, no Chat Completions): no rerank
+    no = client.get("/v1/model/rerank", headers={"x-api-key": CRED})
+    assert no.json() == {"available": False, "reason": "no_connection"}
+    yes = client.get("/v1/model/rerank", headers={"x-api-key": "host-b:tok-b"}).json()
+    assert yes == {
+        "available": True,
+        "reason": None,
+        "provider": "openrouter",
+        "model": RERANK_MODEL,
+    }
+    assert not seen
+
+
 def test_embeddings_call_is_forwarded_with_the_owners_key(store) -> None:
     seen: list[httpx.Request] = []
     r = _client(store, seen).post(

@@ -66,3 +66,12 @@ PptxGenJS 4.0.1 (MIT, Copyright (c) Brent Ely), react, react-dom, react-icons, s
 and markitdown for it, each under its own permissive license, and applies the upstream PptxGenJS
 fixes for gitbrent/PptxGenJS issue 1531 and pull requests 1537 and 1540
 (infra/sandboxes/computer/pptx/runtime/patches).
+
+Nova's file-search guidance (the "The person's files" section of infra/omnigent/templates/AGENTS.md)
+and the shape of its files_* tools (search by keywords, by meaning, hybrid with a model rerank; get
+and multi-get; status) are adapted from the pi-qmd extension and its qmd-knowledge skill
+(https://github.com/hjanuschka/pi-qmd, commit 8266056, skills/qmd-knowledge/SKILL.md), Copyright (c)
+hjanuschka, licensed under the MIT License (declared in its package.json and README; the repository
+ships no separate LICENSE file), which wraps qmd (https://github.com/tobi/qmd, MIT, Copyright (c)
+Tobi Lutke). No qmd or pi-qmd code is included: the tools are re-implemented in Python over SQLite
+FTS5 and sqlite-vec (omnigent/runner/knowledge).

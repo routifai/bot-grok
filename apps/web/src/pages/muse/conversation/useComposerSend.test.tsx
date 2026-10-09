@@ -7,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
-  files: { uploadAttachment: vi.fn() },
+  files: { uploadAttachment: vi.fn(), ingestAttachment: vi.fn() },
   artifacts: { create: vi.fn() },
   threads: { send: vi.fn() },
   routines: { testRun: vi.fn() },
@@ -78,6 +78,12 @@ beforeEach(() => {
     mimeType: "application/pdf",
     size: 3,
   }));
+  api.files.ingestAttachment.mockReset().mockImplementation(async (input: { path: string }) => ({
+    fileId: "ab12",
+    name: input.path.split("/").pop(),
+    pages: 2,
+    chars: 40,
+  }));
   api.artifacts.create.mockReset();
   api.threads.send.mockReset().mockResolvedValue({ runId: "r1", taskId: "t1" });
 });
@@ -92,11 +98,14 @@ async function mount() {
   await act(async () => root.render(<Harness />));
 }
 
-it("uploads each attachment to the Computer and sends them as workspace attachments", async () => {
+const settled = () => act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+const statuses = () => latest.pendingAttachments.map((a) => a.status);
+
+it("uploads and reads each attachment when it is picked, then sends them as workspace attachments", async () => {
   await mount();
   await pickFiles(["a.pdf", "aaa", "application/pdf"], ["b.pdf", "bbb", "application/pdf"]);
-  expect(latest.pendingAttachments).toHaveLength(2);
-  await act(async () => latest.sendMessage("read these"));
+  await settled();
+  expect(statuses()).toEqual(["ready", "ready"]);
   expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2);
   expect(api.files.uploadAttachment.mock.calls[0]?.[0]).toMatchObject({
     botId: BOT,
@@ -104,25 +113,35 @@ it("uploads each attachment to the Computer and sends them as workspace attachme
     mimeType: "application/pdf",
     contentBase64: "YWFh",
   });
+  expect(api.files.ingestAttachment.mock.calls.map((c) => c[0])).toEqual([
+    { botId: BOT, path: "your_files/uploads/2026-10-09/a.pdf" },
+    { botId: BOT, path: "your_files/uploads/2026-10-09/b.pdf" },
+  ]);
+  await act(async () => latest.sendMessage("read these"));
+  expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2); // not uploaded again at send
   expect(api.artifacts.create).not.toHaveBeenCalled();
   const sent = api.threads.send.mock.calls[0]?.[0];
-  expect(sent.artifactIds).toBeUndefined();
   expect(sent.attachments).toEqual([
     expect.objectContaining({ path: "your_files/uploads/2026-10-09/a.pdf", name: "a.pdf" }),
     expect.objectContaining({ path: "your_files/uploads/2026-10-09/b.pdf", name: "b.pdf" }),
   ]);
   expect(latest.pendingAttachments).toHaveLength(0);
-  expect(latest.uploadStatus).toBeNull();
 });
 
-it("shows upload progress while files are written", async () => {
+it("goes uploading, reading, ready, and holds the message back until then", async () => {
   await mount();
-  await pickFiles(["a.pdf", "aaa", "application/pdf"], ["b.pdf", "bbb", "application/pdf"]);
   let release: () => void = () => undefined;
+  api.files.ingestAttachment.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve({ fileId: "ab12", name: "a.pdf", pages: 1, chars: 3 });
+      }),
+  );
+  let finishUpload: () => void = () => undefined;
   api.files.uploadAttachment.mockImplementation(
     (input: { name: string }) =>
       new Promise((resolve) => {
-        release = () =>
+        finishUpload = () =>
           resolve({
             path: `p/${input.name}`,
             name: input.name,
@@ -131,49 +150,96 @@ it("shows upload progress while files are written", async () => {
           });
       }),
   );
-  let sending: Promise<void> = Promise.resolve();
-  await act(async () => {
-    sending = latest.sendMessage("");
-  });
-  expect(latest.uploadStatus).toBe("Uploading 1 of 2");
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
-  await act(async () => settle());
-  await act(async () => {
-    release();
-    await settle();
-  });
-  expect(latest.uploadStatus).toBe("Uploading 2 of 2");
-  await act(async () => {
-    release();
-    await settle();
-  });
-  await act(async () => sending);
-  expect(latest.uploadStatus).toBeNull();
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["uploading"]);
+  expect(await act(async () => latest.sendMessage("hi"))).toBe(false);
+  await act(async () => finishUpload());
+  await settled();
+  expect(statuses()).toEqual(["reading"]);
+  expect(await act(async () => latest.sendMessage("hi"))).toBe(false);
+  expect(api.threads.send).not.toHaveBeenCalled();
+  await act(async () => release());
+  await settled();
+  expect(statuses()).toEqual(["ready"]);
+  expect(await act(async () => latest.sendMessage("hi"))).toBe(true);
 });
 
-it("keeps the files and says the Computer is starting; a retry does not upload twice", async () => {
-  await mount();
-  await pickFiles(["a.pdf", "aaa", "application/pdf"], ["b.pdf", "bbb", "application/pdf"]);
-  api.files.uploadAttachment
-    .mockResolvedValueOnce({ path: "p/a.pdf", name: "a.pdf", mimeType: "application/pdf", size: 3 })
-    .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }));
-  await act(async () => latest.sendMessage("hi"));
-  expect(latest.sendError).toBe("Your Computer is starting. Try again in a moment.");
-  expect(latest.pendingAttachments).toHaveLength(2);
-  expect(api.threads.send).not.toHaveBeenCalled();
+it("waits for a starting Computer while uploading, and uploads nothing twice", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.files.uploadAttachment
+      .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }))
+      .mockResolvedValueOnce({
+        path: "p/a.pdf",
+        name: "a.pdf",
+        mimeType: "application/pdf",
+        size: 3,
+      });
+    await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(statuses()).toEqual(["ready"]);
+    expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
-  api.files.uploadAttachment.mockImplementation(async (input: { name: string }) => ({
-    path: `p/${input.name}`,
-    name: input.name,
-    mimeType: "application/pdf",
-    size: 3,
-  }));
-  await act(async () => latest.sendMessage("hi"));
-  // a.pdf once, b.pdf failed once then uploaded on retry.
-  const names = api.files.uploadAttachment.mock.calls.map((call) => call[0].name);
-  expect(names).toEqual(["a.pdf", "b.pdf", "b.pdf"]);
-  expect(
-    api.threads.send.mock.calls[0]?.[0].attachments.map((a: { path: string }) => a.path),
-  ).toEqual(["p/a.pdf", "p/b.pdf"]);
-  expect(latest.sendError).toBeNull();
+it("shows a calm error on the chip when the Computer never starts, and retries", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.files.uploadAttachment.mockRejectedValue(
+      new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }),
+    );
+    await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(125_000);
+    });
+    expect(statuses()).toEqual(["error"]);
+    expect(latest.pendingAttachments[0]?.error).toBe(
+      "Your Computer is starting. Try again in a moment.",
+    );
+    expect(await act(async () => latest.sendMessage("hi"))).toBe(false);
+    api.files.uploadAttachment.mockReset().mockResolvedValue({
+      path: "p/a.pdf",
+      name: "a.pdf",
+      mimeType: "application/pdf",
+      size: 3,
+    });
+    const failed = latest.pendingAttachments[0] as never;
+    await act(async () => latest.retryAttachment(failed));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(statuses()).toEqual(["ready"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("keeps the draft and the file when reading fails, and lets the person retry or remove it", async () => {
+  await mount();
+  api.files.ingestAttachment.mockRejectedValueOnce(new Error("boom"));
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["error"]);
+  expect(latest.pendingAttachments[0]?.error).toBeTruthy();
+  await act(async () => latest.retryAttachment(latest.pendingAttachments[0] as never));
+  await settled();
+  expect(statuses()).toEqual(["ready"]);
+  expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1); // the retry only reads again
+  await act(async () => latest.removeAttachment(latest.pendingAttachments[0] as never));
+  expect(latest.pendingAttachments).toHaveLength(0);
+});
+
+it("sends an image without reading it", async () => {
+  await mount();
+  await pickFiles(["p.png", "png", "image/png"]);
+  await settled();
+  expect(statuses()).toEqual(["ready"]);
+  expect(api.files.ingestAttachment).not.toHaveBeenCalled();
 });

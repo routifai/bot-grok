@@ -54,7 +54,7 @@ def test_schema_is_one_flat_task_with_fast_strong() -> None:
     params = StartHelperTool().get_schema()["function"]["parameters"]
     assert params["required"] == ["task"]
     assert params["additionalProperties"] is False
-    assert set(params["properties"]) == {"task", "model", "reasoning", "files"}
+    assert set(params["properties"]) == {"task", "title", "model", "reasoning", "files"}
     assert params["properties"]["model"]["enum"] == ["fast", "strong"]
     assert params["properties"]["model"]["default"] == "strong"
     assert params["properties"]["reasoning"]["enum"] == ["low", "medium", "high"]
@@ -125,6 +125,25 @@ def test_title_is_first_words_in_sentence_case_never_a_slug() -> None:
     assert "-" not in title.split()[0]
     assert ":" not in title
     assert len(title) <= 48
+
+
+def test_given_title_wins_over_the_brief() -> None:
+    brief = "The person wants using Python in the PDFs folder to count words"
+    title = h.helper_title(brief, set(), "counting words in your PDFs.")
+    assert title == "Counting words in your PDFs"
+
+
+@pytest.mark.parametrize(
+    "brief",
+    [
+        "The person wants using Python in the PDFs folder to count words",
+        "The user asked for a comparison of notes apps",
+        "Your task is to compare notes apps",
+        "You are a researcher comparing notes apps",
+    ],
+)
+def test_brief_speak_is_never_a_title(brief: str) -> None:
+    assert h.helper_title(brief, set()) is None
 
 
 def test_title_is_unique_among_siblings() -> None:
@@ -274,7 +293,8 @@ async def test_refusal_is_not_cached_and_names_the_right_tool(
 @pytest.mark.parametrize(
     ("args", "mention"),
     [
-        ({"task": "x", "title": "y"}, "does not take title"),
+        ({"task": "x", "colour": "y"}, "does not take colour"),
+        ({"task": "x", "title": 3}, "'title' must be a string"),
         ({"task": " "}, "requires a non-empty 'task'"),
         ({"task": "x", "model": "gpt"}, "'model' must be one of fast, strong"),
         ({"task": "x", "reasoning": "ultra"}, "'reasoning' must be one of low, medium, high"),

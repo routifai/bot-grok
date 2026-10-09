@@ -156,7 +156,7 @@ const TranscriptView = memo(function Transcript({
   aside?: ReactNode;
 }) {
   const { t } = useLingui();
-  const { label: museLiveLabel } = useMuseLiveState({
+  const { label: museLiveLabel, runStartedAt } = useMuseLiveState({
     botId: museFace?.identity ?? "",
     runs: museRuns ?? [],
     messages,
@@ -599,7 +599,7 @@ const TranscriptView = memo(function Transcript({
         ) ? (
           museMode && museFace ? (
             museLiveLabel ? (
-              <WorkingRow label={museLiveLabel} />
+              <WorkingRow label={museLiveLabel} startedAt={runStartedAt} />
             ) : null
           ) : (
             <ActiveBotGlyph bots={workingBots} label={workingLabel} />

@@ -85,7 +85,28 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
 );
 """
 
-_TOKEN = re.compile(r"\w+", re.UNICODE)
+_TOKEN = re.compile(r"[^\W_]+", re.UNICODE)
+
+#: Words that say nothing about which passage answers (English and French), plus the words a
+#: person uses to talk *to* the search ("find", "cite the file and page").
+_STOPWORDS = frozenset(
+    """
+    a about above after again all also am an and any are as at be because been before being
+    below between both but by can could did do does doing down during each few for from
+    further had has have having he her here hers him his how i if in into is it its just me
+    more most my no nor not now of off on once only or other our ours out over own same she
+    should so some such than that the their them then there these they this those through to
+    too under until up us very was we were what when where which while who whom why will
+    with would you your yours please tell show give get got look looking find found use
+    using used check cite citing le la les un une des du de d l et ou en au aux ce ces cet
+    cette dans sur sous par pour avec sans que qui quoi dont est sont etre ete suis es ai as
+    avons avez ont mon ma mes ton ta tes son sa ses notre nos votre vos leur leurs je tu il
+    elle nous vous ils elles se y ne pas plus quel quelle quels quelles comment combien
+    quand cherche trouve trouver donne montre file files fichier fichiers page pages search
+    document documents
+    """.split()  # noqa: SIM905
+)
+_PREFIX_MIN = 5  # a term this long also matches its longer forms (budget -> budgets, budgeting)
 
 
 def file_id_for(path: str) -> str:
@@ -100,12 +121,24 @@ def search_text(heading_path: str, text: str) -> str:
     return text
 
 
+def _query_terms(query: str) -> list[str]:
+    words = list(dict.fromkeys(_TOKEN.findall(query.lower())))
+    # A query made only of filler ("the file") still searches, rather than finding nothing.
+    return [w for w in words if w not in _STOPWORDS] or words
+
+
 def fts_query(query: str) -> str | None:
-    """An FTS5 MATCH expression (any of the words, quoted), or ``None`` for a query with none."""
-    words = _TOKEN.findall(query.lower())
-    if not words:
-        return None
-    return " OR ".join('"' + word.replace('"', "") + '"' for word in dict.fromkeys(words))
+    """An FTS5 MATCH expression, or ``None`` for a query with no words.
+
+    Natural language in, OR of terms out: filler words are dropped, every term is a quoted
+    phrase (so FTS operators in the query are plain text) and longer terms also match their
+    longer and plural forms. BM25 then ranks passages by how many, and how rare, the terms are.
+    """
+    parts = []
+    for word in _query_terms(query):
+        stem = word[:-1] if len(word) > _PREFIX_MIN and word.endswith("s") else word
+        parts.append(f'"{stem}"*' if len(stem) >= _PREFIX_MIN else f'"{word}"')
+    return " OR ".join(parts) or None
 
 
 def vector_bytes(vector: Sequence[float]) -> bytes:
@@ -477,11 +510,13 @@ class KnowledgeDb:
         limit: int,
         file_ids: Sequence[str] | None = None,
         query_vector: Sequence[float] | None = None,
+        keyword: bool = True,
     ) -> list[tuple[ChunkRow, float]]:
-        """Best passages, best first, with a score in ``[0, 1]``.
+        """Best passages, best first, with a score in ``[0, 1]`` (the top hit of a list is 1).
 
         With *query_vector* the BM25 and vector rankings are fused (reciprocal rank fusion);
-        without it BM25 alone ranks. *file_ids* restricts the search to those files.
+        without it BM25 alone ranks; ``keyword=False`` with a vector ranks by vector alone.
+        *file_ids* restricts the search to those files.
         """
         wanted = set(file_ids) if file_ids is not None else None
         if wanted is not None and not wanted:
@@ -489,7 +524,7 @@ class KnowledgeDb:
         candidates = max(limit * _CANDIDATE_FACTOR, _MIN_CANDIDATES)
         ranks: dict[int, float] = {}
         best = 0.0
-        lists: list[list[int]] = [self._bm25(query, candidates, wanted)]
+        lists: list[list[int]] = [self._bm25(query, candidates, wanted)] if keyword else []
         if query_vector is not None and self.vector_dims() == len(query_vector):
             lists.append(self._nearest(query_vector, candidates, wanted))
         for ids in lists:

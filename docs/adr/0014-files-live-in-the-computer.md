@@ -18,3 +18,11 @@ The engine worker, `file_chunks` / `file_index_jobs` (migration `kn2b3c4d5e6f`),
 - An asleep Computer's Library shows last-known badges, or none after an engine restart, until it wakes.
 - Existing engine-indexed files are not migrated: a file is searchable once it is in the Computer's files area.
 - Mobile still uploads through the legacy artifact path until it adopts `files.uploadAttachment`.
+
+## Update: qmd-style tools, and attachments are read before the message is sent
+
+The tool surface follows qmd (MIT; the pi-qmd extension and its `qmd-knowledge` skill, see `NOTICE`): `files_search` (BM25), `files_vsearch` (vectors; `reason: no_embeddings` without a key), `files_query` (both fused, then a cheap chat model reorders the top 20 through the model proxy; the fused order is kept, with the reason, when the owner has no chat-capable connection), `files_get` / `files_multi_get` (the file's Markdown, page markers kept, size-capped), `files_read_page` and `files_status`. Each file's Markdown lives at `~/.nova/knowledge/md/<file_id>.md`.
+
+There is no wait and no "still indexing" rule. Indexing starts on upload, and a composer attachment is **ingested** explicitly: after the upload the composer awaits `files.ingestAttachment` (engine `POST /knowledge/ingest`, runner `files_ingest`), which converts, chunks, embeds when it can, and indexes, and answers when the file is searchable. The chip reads Uploading, Reading, Ready (or a calm error with Retry), and Send stays disabled until every chip is ready. The turn carries the attachment: the gateway adds an `<attachment_context>` block between the reference lines and the caption, holding the whole Markdown for a short file (about 8k tokens) or a manifest line (`indexed: name, n pages, file_id ...; use files_query / files_get`) for a long one. The stored message keeps only the reference lines; the block is skipped when the message is shown.
+
+The engine also gains `GET /v1/model/rerank` (which cheap chat model, or why not), beside `GET /v1/model/embeddings`.

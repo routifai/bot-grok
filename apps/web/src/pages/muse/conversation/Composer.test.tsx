@@ -31,7 +31,10 @@ vi.stubGlobal(
   },
 );
 
-async function render(runError: string | null) {
+async function render(
+  runError: string | null,
+  onSend: (text: string) => Promise<boolean | undefined> = async () => undefined,
+) {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   const host = document.createElement("div");
   document.body.append(host);
@@ -44,7 +47,7 @@ async function render(runError: string | null) {
         sending={false}
         runError={runError}
         runErrorId="run-1"
-        onSend={async () => undefined}
+        onSend={onSend}
       />,
     );
   });
@@ -84,4 +87,32 @@ it("shows the paused-account and unsupported-model notes without a fix button", 
     expect(view.host.querySelector('[data-testid="composer-error-action"]')).toBeNull();
     await view.cleanup();
   }
+});
+
+it("gives the person's words back when the send fails, and clears them when it works", async () => {
+  const view = await render(null, async () => false);
+  const box = view.host.querySelector("textarea") as HTMLTextAreaElement;
+  await act(async () => {
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    set?.call(box, "what is the Northwind fee?");
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+  expect(box.value).toBe("what is the Northwind fee?");
+  await view.cleanup();
+
+  const ok = await render(null, async () => true);
+  const okBox = ok.host.querySelector("textarea") as HTMLTextAreaElement;
+  await act(async () => {
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    set?.call(okBox, "hello");
+    okBox.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    okBox.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+  expect(okBox.value).toBe("");
+  await ok.cleanup();
 });

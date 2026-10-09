@@ -76,6 +76,17 @@ def strip_reply_filler(text: str | None) -> str | None:
     return sentence_case(stripped) if stripped else None
 
 
+#: A brief written about the person ("The person wants...", "Your task is...") is instruction to
+#: a Helper, not a title; deriving one from its first words would show the brief's wording.
+_BRIEF_SPEAK = re.compile(
+    r"^(?:(?:the|this)\s+)?(?:person|user|human|customer|client)\b"
+    r"|^(?:your|the)\s+(?:task|job|goal|brief)\s+is\b"
+    r"|^you\s+(?:are|will|should|must)\b"
+    r"|^task\s*:",
+    re.IGNORECASE,
+)
+
+
 def tidy_request_title(text: str | None, *, limit: int = TITLE_MAX_CHARS) -> str | None:
     """A request as a short title: fillers dropped, sentence case, trimmed to ``limit``.
 
@@ -86,6 +97,8 @@ def tidy_request_title(text: str | None, *, limit: int = TITLE_MAX_CHARS) -> str
     if not text:
         return None
     collapsed = scrub_internal_words(plain_text(text))
+    if _BRIEF_SPEAK.match(collapsed):
+        return None
     stripped = TRAILING_PUNCTUATION.sub("", _FILLER_PREFIX.sub("", collapsed, count=1))
     if len(stripped) < 2:
         return None

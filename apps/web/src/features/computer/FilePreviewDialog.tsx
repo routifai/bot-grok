@@ -30,10 +30,13 @@ const sameBytes = (a: Uint8Array, b: Uint8Array) =>
 export function FilePreviewDialog({
   botId,
   path,
+  page,
   onOpenChange,
 }: {
   botId: string;
   path: string;
+  /** Open a PDF at this page (1-based). */
+  page?: number;
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useLingui();
@@ -190,7 +193,7 @@ export function FilePreviewDialog({
             </div>
           ) : (
             <>
-              <ArtifactPreview artifact={state.artifact} bytes={state.bytes} />
+              <ArtifactPreview artifact={state.artifact} bytes={state.bytes} page={page} />
               {state.artifact.mimeType === "text/html" ? (
                 <div className="pointer-events-none absolute bottom-3 end-3 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1.5 text-[11px] text-white">
                   <Lock size={12} strokeWidth={2} />

@@ -11,8 +11,11 @@ out. The rules a client would otherwise copy:
   person did, such as exporting a deck from the panel) becomes a ``file`` message marked
   ``"by": "user"``; it is not a tool call, and the Muse's history never replays it;
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
-* the pages a ``files_search`` call found become one ``passages`` card (citation chips) under the
-  next assistant message;
+* the pages a ``files_search`` / ``files_vsearch`` / ``files_query`` call found become one
+  ``passages`` card (citation chips) under the next assistant message;
+* a turn shows one assistant text: its last. Text the Muse wrote between tool calls earlier in
+  the same turn (a user message starts a turn) is interim narration and is not a message; the
+  Helper rows and citation chips it would have carried move to the turn's last text;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
   through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set.
@@ -40,7 +43,7 @@ DECK_EXPORT_TOOL_NAME = "deck_export"
 #: ``ResourceEventData`` fields of a file a person's own action delivered into the chat.
 DELIVERED_ARTIFACT_RESOURCE = "artifact"
 DELIVERED_EVENT = "session.resource.created"
-FILES_SEARCH_TOOL_NAME = "files_search"
+FILES_SEARCH_TOOL_NAMES = ("files_search", "files_vsearch", "files_query")
 #: Most pages shown as citation chips under one answer.
 _MAX_CITATIONS = 6
 
@@ -189,11 +192,12 @@ def _citations(output: str | None) -> list[dict[str, Any]]:
         file_id, name, page = hit.get("file_id"), hit.get("file_name"), hit.get("page")
         if not (isinstance(file_id, str) and isinstance(name, str) and isinstance(page, int)):
             continue
-        artifact_id = hit.get("artifact_id")
+        artifact_id, path = hit.get("artifact_id"), hit.get("path")
         found.append(
             {
                 "fileId": file_id,
                 **({"artifactId": artifact_id} if isinstance(artifact_id, str) else {}),
+                **({"path": path} if isinstance(path, str) and path else {}),
                 "name": name,
                 "page": page,
                 **({"hasThumbnail": True} if hit.get("thumbnail_url") else {}),
@@ -262,6 +266,20 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
     }
 
 
+def _final_text_ids(items: list[Item]) -> set[str]:
+    """Ids of the assistant text items that end their turn (a user message starts a turn)."""
+    final: dict[int, str] = {}
+    turn = 0
+    for item in items:
+        if item.get("type") != "message" or item.get("is_meta") is True:
+            continue
+        if item.get("role") == "user":
+            turn += 1
+        elif item.get("role") == "assistant" and item_text(item) and "id" in item:
+            final[turn] = item["id"]
+    return set(final.values())
+
+
 def project_items(
     items: list[Item], *, helper_statuses: Mapping[str, str] | None = None
 ) -> list[dict[str, Any]]:
@@ -277,6 +295,7 @@ def project_items(
     helpers: list[dict[str, Any]] = []
     cited: list[dict[str, Any]] = []
     seen_calls: set[str] = set()
+    final_text = _final_text_ids(items)
     for item in items:
         kind = item.get("type")
         if kind == "function_call":
@@ -292,7 +311,7 @@ def project_items(
                 if helper:
                     helpers.append(helper)
                 continue
-            if _is_call(item, FILES_SEARCH_TOOL_NAME):
+            if any(_is_call(item, name) for name in FILES_SEARCH_TOOL_NAMES):
                 cited.extend(_citations(output))
                 continue
             if _is_call(item, CARD_TOOL_NAME):
@@ -325,6 +344,8 @@ def project_items(
                 item.get("is_system_notice") is True or is_system_notice_text(text)
             ):
                 continue
+            if role == "assistant" and item.get("id") not in final_text:
+                continue  # interim narration: the turn's last text is its reply
             blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
             if role == "user":
                 cited = []
