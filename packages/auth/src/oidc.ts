@@ -5,6 +5,9 @@ import { genericOAuth } from "better-auth/plugins";
 /** The one provider id every OIDC sign-in uses; the button label comes from `name`. */
 export const OIDC_PROVIDER_ID = "sso";
 
+/** Register this with the provider: better-auth serves every provider on `/callback/:id`. */
+export const OIDC_CALLBACK_PATH = `/api/auth/callback/${OIDC_PROVIDER_ID}`;
+
 /**
  * A single generic OIDC connection (any issuer with discovery): Google Workspace, Microsoft
  * Entra, Okta, Keycloak. Google's `hd` and Entra's tenant semantics are derived from the issuer.
@@ -50,8 +53,17 @@ export function assertOidcConfig(config: OidcConfig): void {
   } catch {
     throw new Error("AUTH_OIDC_ISSUER must be a URL");
   }
-  if (url.protocol !== "https:") throw new Error("AUTH_OIDC_ISSUER must use https://");
-  entraTenantOf(config.issuer);
+  // A local identity provider (Keycloak in Docker, a test IdP) may use plain http on loopback.
+  const loopbackHttp =
+    url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname);
+  if (url.protocol !== "https:" && !loopbackHttp) {
+    throw new Error("AUTH_OIDC_ISSUER must use https://");
+  }
+  // An Entra address is administered by the tenant, but a tenant can include guests and
+  // admin-edited addresses: pin sign-in to the company's own domains as well.
+  if (entraTenantOf(config.issuer) && (config.allowedDomains?.length ?? 0) === 0) {
+    throw new Error("AUTH_OIDC_ALLOWED_DOMAINS is required with a Microsoft Entra issuer");
+  }
 }
 
 export function oidcLabel(config: OidcConfig): string {
@@ -69,7 +81,14 @@ const deny = () => new APIError("FORBIDDEN", { message: "This account is not all
  */
 export function checkOidcProfile(
   config: OidcConfig,
-  profile: { email?: unknown; email_verified?: unknown; hd?: unknown; tid?: unknown },
+  profile: {
+    email?: unknown;
+    email_verified?: unknown;
+    hd?: unknown;
+    tid?: unknown;
+    acct?: unknown;
+    xms_edov?: unknown;
+  },
 ): { emailVerified: boolean } {
   const email = typeof profile.email === "string" ? profile.email.trim().toLowerCase() : "";
   if (!email) throw deny();
@@ -79,6 +98,8 @@ export function checkOidcProfile(
     // Entra's email claim is not proof of ownership in general (nOAuth). Inside the one tenant
     // we named, the organization itself administers the address.
     if (typeof profile.tid !== "string" || profile.tid.toLowerCase() !== tenant) throw deny();
+    // Guests of the tenant (acct 1) and addresses Entra itself marks as unverified do not count.
+    if (profile.acct === 1 || profile.xms_edov === false) throw deny();
     emailVerified = true;
   } else {
     emailVerified = profile.email_verified === true;

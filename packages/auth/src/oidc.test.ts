@@ -6,6 +6,7 @@ const entra = {
   issuer: `https://login.microsoftonline.com/${TENANT}/v2.0`,
   clientId: "c",
   clientSecret: "s",
+  allowedDomains: ["corp.test"],
 };
 const google = { issuer: "https://accounts.google.com", clientId: "c", clientSecret: "s" };
 
@@ -24,6 +25,22 @@ describe("Microsoft Entra tenancy", () => {
     expect(() => assertOidcConfig({ ...entra, issuer: "http://accounts.example.test" })).toThrow(
       /https/,
     );
+    expect(() => assertOidcConfig({ ...google, issuer: "http://127.0.0.1:9000" })).not.toThrow();
+  });
+
+  it("requires company domains with an Entra issuer, and refuses guests and unverified domains", () => {
+    expect(() => assertOidcConfig({ ...entra, allowedDomains: [] })).toThrow(/ALLOWED_DOMAINS/);
+    expect(() => assertOidcConfig(entra)).not.toThrow();
+    expect(() => checkOidcProfile(entra, { email: "a@corp.test", tid: TENANT, acct: 1 })).toThrow();
+    expect(() =>
+      checkOidcProfile(entra, { email: "a@corp.test", tid: TENANT, xms_edov: false }),
+    ).toThrow();
+    expect(() => checkOidcProfile(entra, { email: "a@elsewhere.test", tid: TENANT })).toThrow();
+    expect(
+      checkOidcProfile(entra, { email: "a@corp.test", tid: TENANT, acct: 0, xms_edov: true }),
+    ).toEqual({
+      emailVerified: true,
+    });
   });
 
   it("trusts the email only for a token issued by the configured tenant (nOAuth)", () => {
@@ -76,5 +93,22 @@ describe("generic and Google OIDC", () => {
     expect(oidcLabel(entra)).toBe("Microsoft");
     expect(oidcLabel({ ...entra, name: "Contoso" })).toBe("Contoso");
     expect(oidcLabel({ ...google, issuer: "https://idp.corp.test" })).toBe("SSO");
+  });
+});
+
+describe("callback path", () => {
+  it("is the route better-auth serves for every provider, so the documented URI is right", async () => {
+    const { OIDC_CALLBACK_PATH } = await import("./oidc.js");
+    expect(OIDC_CALLBACK_PATH).toBe("/api/auth/callback/sso");
+    const { betterAuth } = await import("better-auth");
+    const { memoryAdapter } = await import("better-auth/adapters/memory");
+    const auth = betterAuth({
+      secret: "offline-auth-secret-at-least-32-characters",
+      baseURL: "http://auth.example.test",
+      database: memoryAdapter({ user: [], account: [], session: [], verification: [] }),
+    });
+    expect((auth.api as unknown as { callbackOAuth: { path: string } }).callbackOAuth.path).toBe(
+      "/callback/:id",
+    );
   });
 });

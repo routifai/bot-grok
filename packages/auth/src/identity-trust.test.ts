@@ -1,5 +1,5 @@
 import type { TransactionalEmail } from "@nova/adapter-kit";
-import { bootstrapUserSpace } from "@nova/db";
+import { bootstrapUserSpace, eraseUserAttachments } from "@nova/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assertIdentityConfig,
@@ -18,7 +18,10 @@ vi.mock("better-auth/adapters/prisma", async () => {
       memoryAdapter(prisma.authData),
   };
 });
-vi.mock("@nova/db", () => ({ bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })) }));
+vi.mock("@nova/db", () => ({
+  bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })),
+  eraseUserAttachments: vi.fn(async () => undefined),
+}));
 
 type Mode = "closed" | "invite" | "domain" | "approval" | "open";
 const SETUP_TOKEN = "operator-owner-setup-token";
@@ -99,6 +102,59 @@ function fixture({
       ),
     },
   };
+  Object.assign(prisma.user, {
+    findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+      const found = data.user!.find((user) => user.id === where.id);
+      return found
+        ? { emailVerified: found.emailVerified, status: found.status ?? "active" }
+        : null;
+    }),
+    update: vi.fn(async ({ where, data: patch }: { where: { id: string }; data: object }) => {
+      Object.assign(data.user!.find((user) => user.id === where.id)!, patch);
+    }),
+    updateMany: vi.fn(
+      async ({
+        where,
+        data: patch,
+      }: {
+        where: { id: string; emailVerified?: boolean };
+        data: object;
+      }) => {
+        const found = data.user!.find(
+          (user) =>
+            user.id === where.id &&
+            (where.emailVerified === undefined || user.emailVerified === where.emailVerified),
+        );
+        if (found) Object.assign(found, patch);
+        return { count: found ? 1 : 0 };
+      },
+    ),
+  });
+  Object.assign(prisma, {
+    account: {
+      deleteMany: vi.fn(
+        async ({ where }: { where: { userId: string; providerId: { notIn: string[] } } }) => {
+          for (let index = data.account!.length - 1; index >= 0; index -= 1) {
+            const account = data.account![index]!;
+            if (
+              account.userId === where.userId &&
+              !where.providerId.notIn.includes(String(account.providerId))
+            ) {
+              data.account!.splice(index, 1);
+            }
+          }
+        },
+      ),
+    },
+    session: {
+      deleteMany: vi.fn(async ({ where }: { where: { userId: string } }) => {
+        for (let index = data.session!.length - 1; index >= 0; index -= 1) {
+          if (data.session![index]!.userId === where.userId) data.session!.splice(index, 1);
+        }
+      }),
+    },
+  });
+  const beforeDeleteUser = vi.fn(async () => undefined);
   vi.mocked(bootstrapUserSpace).mockImplementation(async (_prisma, user) => {
     members.add(user.id);
     return { spaceId: "space-1" };
@@ -110,6 +166,8 @@ function fixture({
     allowUnverifiedEmail,
     ownerSetupToken,
     nodeEnv,
+    beforeDeleteUser,
+    trustedProxies: undefined,
     rateLimit: false,
     emailQuota: memoryEmailQuota(),
     email: delivery
@@ -185,6 +243,7 @@ function fixture({
     policy,
     messages,
     members,
+    beforeDeleteUser,
   };
 }
 
@@ -412,6 +471,35 @@ describe("assertIdentityConfig", () => {
     ).not.toThrow();
     expect(() =>
       assertIdentityConfig({ ...withoutMail, ownerExists: true }, policy("approval")),
+    ).not.toThrow();
+  });
+
+  it("refuses a hosted start that cannot tell clients apart for rate limits", () => {
+    expect(() =>
+      assertIdentityConfig({ ...withMail, clientIpConfigured: false }, policy("closed")),
+    ).toThrow(/AUTH_TRUSTED_PROXIES or AUTH_CLIENT_IP_HEADER/);
+    expect(() =>
+      assertIdentityConfig({ ...withMail, clientIpConfigured: true }, policy("open")),
+    ).not.toThrow();
+  });
+
+  it("requires the setup token on a hosted deployment with no owner, in every admitting mode", () => {
+    for (const mode of ["invite", "domain", "approval", "open"] as const) {
+      expect(() => assertIdentityConfig({ ...withMail, ownerExists: false }, policy(mode))).toThrow(
+        /OWNER_SETUP_TOKEN/,
+      );
+      expect(() =>
+        assertIdentityConfig(
+          { ...withMail, ownerExists: false, ownerSetupToken: "t" },
+          policy(mode),
+        ),
+      ).not.toThrow();
+      expect(() =>
+        assertIdentityConfig({ ...withMail, ownerExists: true }, policy(mode)),
+      ).not.toThrow();
+    }
+    expect(() =>
+      assertIdentityConfig({ ...withMail, ownerExists: false }, policy("closed")),
     ).not.toThrow();
   });
 
@@ -657,5 +745,263 @@ describe("internal messaging identities", () => {
     f.data.user![0]!.email = "msg-taken@messaging.invalid";
     expect(await (await f.request("/get-session", undefined, token)).json()).toBeNull();
     expect((await f.request("/update-user", { name: "Changed" }, token)).status).toBe(401);
+  });
+});
+
+const asNetwork = (n: number) => ({ "x-forwarded-for": `198.51.${n}.7` });
+const seedUnverified = (
+  f: ReturnType<typeof fixture>,
+  email: string,
+  over: Record<string, unknown> = {},
+) => {
+  f.data.user!.push({
+    id: `seed-${email}`,
+    email,
+    name: "Seed",
+    emailVerified: false,
+    status: "active",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...over,
+  });
+  f.data.account!.push({
+    id: `acc-${email}`,
+    userId: `seed-${email}`,
+    accountId: `seed-${email}`,
+    providerId: "credential",
+    password: "not-a-real-hash",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  return `seed-${email}`;
+};
+
+describe("proving a mailbox after unverified use", () => {
+  it("erases what the earlier holder attached and returns the account to pending", async () => {
+    const f = fixture();
+    const id = seedUnverified(f, "dave@example.test");
+    f.members.add(id); // it got a space while nobody could prove the address
+    await f.sendSignInCode("dave@example.test");
+    const response = await f.codeSignIn("dave@example.test");
+    expect(response.status).toBe(200);
+    const { token } = (await response.json()) as { token: string };
+    expect(f.beforeDeleteUser).toHaveBeenCalledWith(id);
+    expect(eraseUserAttachments).toHaveBeenCalledWith(expect.anything(), id);
+    expect(f.data.account).toHaveLength(0);
+    expect(f.data.user![0]).toMatchObject({ emailVerified: true, status: "pending" });
+    expect((await sessionFor(f, token))?.user).toMatchObject({ status: "pending" });
+  });
+
+  it("leaves an account that was never used active, and only voids its password", async () => {
+    const f = fixture();
+    seedUnverified(f, "dave@example.test");
+    await f.sendSignInCode("dave@example.test");
+    await f.codeSignIn("dave@example.test");
+    expect(eraseUserAttachments).not.toHaveBeenCalled();
+    expect(f.data.user![0]).toMatchObject({ emailVerified: true, status: "active" });
+    expect(f.data.account).toHaveLength(0);
+  });
+
+  it("never touches the deployment owner, whose seat is bound to the operator's secret", async () => {
+    const f = fixture();
+    const id = seedUnverified(f, "owner@example.test");
+    f.members.add(id);
+    f.policy.ownerUserId = id;
+    await f.sendSignInCode("owner@example.test");
+    await f.codeSignIn("owner@example.test");
+    expect(eraseUserAttachments).not.toHaveBeenCalled();
+    expect(f.beforeDeleteUser).not.toHaveBeenCalled();
+    expect(f.data.user![0]).toMatchObject({ emailVerified: true, status: "active" });
+  });
+});
+
+describe("password reset is mailbox proof", () => {
+  const resetByCode = async (f: ReturnType<typeof fixture>, email: string, password: string) => {
+    await f.request("/email-otp/request-password-reset", { email });
+    return f.request("/email-otp/reset-password", { email, otp: f.lastCode(), password });
+  };
+
+  it("voids a squatter's password, keeps the new one, and verifies the address (code reset)", async () => {
+    const f = fixture();
+    await f.signup("dave@example.test", {}, {}, "squatter-password1");
+    const reset = await resetByCode(f, "dave@example.test", "dave-new-password1");
+    expect(reset.status).toBe(200);
+    expect(f.data.user![0]!.emailVerified).toBe(true);
+    expect((await f.signin("dave@example.test", "squatter-password1")).status).not.toBe(200);
+    expect((await f.signin("dave@example.test", "dave-new-password1")).status).toBe(200);
+  });
+
+  it("does the same through the emailed link", async () => {
+    const f = fixture();
+    await f.signup("dave@example.test", {}, {}, "squatter-password1");
+    await f.request("/request-password-reset", {
+      email: "dave@example.test",
+      redirectTo: "http://web.example.test/reset-password",
+    });
+    const url = new URL(f.messages.at(-1)!.text.match(/http:\/\/\S+/)![0]);
+    const token = url.pathname.split("/").pop()!;
+    const reset = await f.request("/reset-password", { token, newPassword: "dave-new-password1" });
+    expect(reset.status).toBe(200);
+    expect(f.data.user![0]!.emailVerified).toBe(true);
+    expect((await f.signin("dave@example.test", "squatter-password1")).status).not.toBe(200);
+    expect((await f.signin("dave@example.test", "dave-new-password1")).status).toBe(200);
+  });
+
+  it("caps reset requests per address", async () => {
+    const f = fixture();
+    await f.signup("dave@example.test");
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      statuses.push(
+        (await f.request("/email-otp/request-password-reset", { email: "dave@example.test" }))
+          .status,
+      );
+    }
+    expect(statuses.filter((status) => status === 429).length).toBeGreaterThan(0);
+  });
+});
+
+describe("hosted owner seat", () => {
+  it("does not seat the first verified stranger in approval mode without the setup token", async () => {
+    const f = fixture({ mode: "approval", nodeEnv: "production" });
+    await f.signup("stranger@example.test");
+    await f.verify("stranger@example.test");
+    expect(f.policy.ownerUserId).toBeNull();
+    expect(f.data.user![0]!.status).toBe("pending");
+    f.messages.length = 0;
+    await f.sendSignInCode("stranger@example.test");
+    await f.codeSignIn("stranger@example.test", { [OWNER_SETUP_HEADER]: "wrong" });
+    expect(f.policy.ownerUserId).toBeNull();
+  });
+
+  it("does not make the first invited person owner without the token, in any mode", async () => {
+    const f = fixture({
+      mode: "invite",
+      invites: "@example.test",
+      nodeEnv: "production",
+      ownerSetupToken: SETUP_TOKEN,
+    });
+    await f.signup("first@example.test");
+    await f.verify("first@example.test");
+    expect(bootstrapUserSpace).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { claimDeploymentOwner: false },
+    );
+    await f.signup("second@example.test");
+    f.messages.splice(0, f.messages.length - 1);
+    await f.verify("second@example.test", { [OWNER_SETUP_HEADER]: SETUP_TOKEN });
+    expect(bootstrapUserSpace).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { claimDeploymentOwner: true },
+    );
+  });
+
+  it("keeps the first-verified-claims rule on a personal install", async () => {
+    const f = fixture({ mode: "approval" });
+    await f.signup("owner@example.test");
+    await f.verify("owner@example.test");
+    expect(f.policy.ownerUserId).not.toBeNull();
+  });
+});
+
+describe("per-address limits", () => {
+  it("caps sends per address and network, then overall, so other networks still work", async () => {
+    const f = fixture();
+    const send = (network: number, email = "target@example.test") =>
+      f.request(
+        "/email-otp/send-verification-otp",
+        { email, type: "sign-in" },
+        undefined,
+        asNetwork(network),
+      );
+    const fromA: number[] = [];
+    for (let attempt = 0; attempt < 7; attempt += 1) fromA.push((await send(1)).status);
+    expect(fromA).toEqual([200, 200, 200, 200, 200, 429, 429]);
+    // A different network is not locked out by the first one's traffic.
+    expect((await send(2)).status).toBe(200);
+    // ...until the looser per-address cap across all networks is reached.
+    let blocked = 0;
+    for (let network = 3; network < 40; network += 1) {
+      if ((await send(network)).status === 429) blocked += 1;
+    }
+    expect(blocked).toBeGreaterThan(0);
+    expect(f.messages.length).toBeLessThanOrEqual(21);
+  });
+
+  it("treats +tags as the same mailbox for limits, without changing who the account is", async () => {
+    const f = fixture();
+    const statuses: number[] = [];
+    for (const tag of ["a", "b", "c", "d", "e", "f"]) {
+      statuses.push(
+        (
+          await f.request("/email-otp/send-verification-otp", {
+            email: `dave+${tag}@example.test`,
+            type: "sign-in",
+          })
+        ).status,
+      );
+    }
+    expect(statuses.slice(0, 5)).toEqual([200, 200, 200, 200, 200]);
+    expect(statuses[5]).toBe(429);
+  });
+
+  it("counts only failures for code attempts, per network, in a short window", async () => {
+    const f = fixture();
+    await f.sendSignInCode("target@example.test");
+    const wrong = (network: number) =>
+      f.request(
+        "/sign-in/email-otp",
+        { email: "target@example.test", otp: "000000" },
+        undefined,
+        asNetwork(network),
+      );
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 10; attempt += 1) statuses.push((await wrong(1)).status);
+    expect(statuses.slice(0, 8).every((status) => status !== 429)).toBe(true);
+    expect(statuses.slice(8)).toEqual([429, 429]);
+    // The person themselves, from another network, is not locked out of the right code.
+    const right = await f.request(
+      "/sign-in/email-otp",
+      { email: "target@example.test", otp: f.lastCode() },
+      undefined,
+      asNetwork(2),
+    );
+    expect([200, 400, 401, 403]).toContain(right.status);
+    expect(right.status).not.toBe(429);
+  });
+
+  it("does not count successful sign-ins against anyone", async () => {
+    const f = fixture();
+    await f.signup("dave@example.test");
+    await f.verify("dave@example.test");
+    f.data.user![0]!.emailVerified = true;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await f.sendSignInCode("dave@example.test").catch(() => undefined);
+    }
+    expect(f.data.user).toHaveLength(1);
+  });
+});
+
+describe("enumeration and background surfaces", () => {
+  it("answers a repeat signup like a new one when no mail can prove the address", async () => {
+    const f = fixture({ mode: "approval", delivery: false });
+    await f.signup("dave@example.test");
+    const again = await f.signup("dave@example.test");
+    expect(again.status).toBe(200);
+    expect(await again.text()).not.toMatch(/exist/i);
+    expect(f.data.user).toHaveLength(1);
+  });
+
+  it("keeps pending accounts away from organization endpoints", async () => {
+    const f = fixture({ mode: "approval", delivery: false });
+    const signup = await f.signup("dave@example.test");
+    const { token } = (await signup.json()) as { token: string };
+    expect((await sessionFor(f, token))?.user).toMatchObject({ status: "pending" });
+    const listed = await f.request("/organization/list", undefined, token);
+    expect(listed.status).toBe(401);
   });
 });

@@ -2,23 +2,28 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { TransactionalEmailProvider } from "@nova/adapter-kit";
 import {
   admitSignup,
+  ipPrefix,
+  isHostedDeployment,
   isMessagingEmail,
   parseAllowlist,
   parseDomains,
+  quotaEmailKey,
   type SignupPolicy,
   type SignupPolicyEnv,
   signupNeedsEmailDelivery,
   signupPolicyFromEnv,
+  unverifiedAccessAllowed,
 } from "@nova/core";
-import { bootstrapUserSpace, type PrismaClient } from "@nova/db";
+import { bootstrapUserSpace, eraseUserAttachments, type PrismaClient } from "@nova/db";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getIP } from "better-auth/api";
 import { bearer, emailOTP, organization } from "better-auth/plugins";
 import { type EmailQuota, prismaEmailQuota } from "./email-quota.js";
 import { codeEmail, OTP_EXPIRES_MINUTES, OTP_LENGTH, passwordResetEmail } from "./emails.js";
-import { type OidcConfig, oidcPlugin } from "./oidc.js";
+import { OIDC_PROVIDER_ID, type OidcConfig, oidcPlugin } from "./oidc.js";
 
+export { isHostedDeployment } from "@nova/core";
 export type { EmailQuota } from "./email-quota.js";
 export { memoryEmailQuota, prismaEmailQuota } from "./email-quota.js";
 export { codeEmail, passwordResetEmail } from "./emails.js";
@@ -35,6 +40,7 @@ export interface AuthEnv extends SignupPolicyEnv {
   extraOrigins?: string[];
   email?: TransactionalEmailProvider;
   onEmailError?: (error: unknown) => void;
+  /** Destroys what an account owns outside the database (bots, Computers); used on delete and void. */
   beforeDeleteUser?: (userId: string) => Promise<void>;
   /** A hosted `production` deployment disables the local-development escape hatch below. */
   nodeEnv?: string;
@@ -46,9 +52,9 @@ export interface AuthEnv extends SignupPolicyEnv {
   /** One generic OIDC connection (Google Workspace, Entra, Okta, ...). */
   oidc?: OidcConfig;
   /**
-   * One-time operator secret that binds the deployment owner seat. While no owner exists in
-   * `approval` mode, only a sign-in presenting this token (header `x-owner-setup-token`) can
-   * claim it. With no token and no email provider nobody can claim it.
+   * One-time operator secret that binds the deployment owner seat. While no owner exists, only a
+   * sign-in presenting this token (header `x-owner-setup-token`) can claim it; a hosted
+   * deployment with no owner requires it in every signup mode. Unset it once an owner exists.
    */
   ownerSetupToken?: string;
   /** Per-address send/verify caps; defaults to a database-backed counter. */
@@ -84,32 +90,17 @@ export async function resolveSignupPolicy(
   return signupPolicyFromEnv(env);
 }
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-/**
- * A production process that is reachable beyond this machine. A production build served only on
- * loopback (a local Docker install) is a personal install, not a hosted one. Hosted requires
- * NODE_ENV=production.
- */
-export function isHostedDeployment(env: Pick<AuthEnv, "nodeEnv" | "webOrigin">): boolean {
-  if (env.nodeEnv !== "production") return false;
-  try {
-    return !LOOPBACK_HOSTS.has(new URL(env.webOrigin).hostname);
-  } catch {
-    return true;
-  }
-}
-
 /**
  * Startup check. A hosted deployment must be able to prove the mailbox of anyone it admits on
- * their own (invite, domain, open), and must be able to seat an owner in approval mode. It
- * never honors the local-development exemption.
+ * their own (invite, domain, open), must be able to tell clients apart for rate limits, and must
+ * bind its first owner to an operator secret. It never honors the local-development exemption.
  */
 export function assertIdentityConfig(
   env: Pick<AuthEnv, "allowUnverifiedEmail" | "ownerSetupToken"> & {
     hosted: boolean;
     hasEmail: boolean;
     ownerExists?: boolean;
+    clientIpConfigured?: boolean;
   },
   policy: SignupPolicy,
 ): void {
@@ -124,14 +115,14 @@ export function assertIdentityConfig(
       `Signup mode "${policy.mode}" needs email delivery to verify new accounts. Configure SMTP_URL or EMAIL_API_URL, or use the "approval" or "closed" mode.`,
     );
   }
-  if (
-    policy.mode === "approval" &&
-    !env.hasEmail &&
-    !env.ownerSetupToken &&
-    env.ownerExists === false
-  ) {
+  if (env.clientIpConfigured === false) {
     throw new Error(
-      "Approval mode with no email provider and no owner needs OWNER_SETUP_TOKEN, or nobody can be seated as owner.",
+      "A hosted deployment needs AUTH_TRUSTED_PROXIES or AUTH_CLIENT_IP_HEADER so rate limits see real client addresses. The header must be set or overwritten by your edge, never passed through from clients.",
+    );
+  }
+  if (policy.mode !== "closed" && env.ownerExists === false && !env.ownerSetupToken) {
+    throw new Error(
+      "A hosted deployment with no owner needs OWNER_SETUP_TOKEN (a one-time secret entered at sign-up to claim the owner seat). Unset it once an owner exists.",
     );
   }
 }
@@ -150,30 +141,50 @@ function tokenMatches(presented: string | null | undefined, expected: string): b
   return typeof presented === "string" && timingSafeEqual(digest(presented), digest(expected));
 }
 
-const HOUR = 60 * 60 * 1000;
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-/** Per-address caps on top of the per-IP limiter, so one mailbox cannot be hammered from many IPs. */
-const EMAIL_RULES: Record<string, { group: string; hour: number; day: number }> = {
-  "/email-otp/send-verification-otp": { group: "otp-send", hour: 5, day: 20 },
-  "/sign-in/email-otp": { group: "otp-verify", hour: 10, day: 30 },
-  "/email-otp/verify-email": { group: "otp-verify", hour: 10, day: 30 },
-  "/email-otp/check-verification-otp": { group: "otp-verify", hour: 10, day: 30 },
-  "/sign-up/email": { group: "password", hour: 10, day: 40 },
-  "/sign-in/email": { group: "password", hour: 10, day: 40 },
-  "/request-password-reset": { group: "reset", hour: 5, day: 20 },
-};
+/**
+ * Per-address caps on top of the per-IP limiter. Sends are counted per (address, client network)
+ * with a looser cap per address overall, so one person cannot exhaust another's mailbox from a
+ * single network, yet a flood from many networks still stops. Password and code attempts count
+ * only failures, in short windows: a lock that lifts itself in minutes, never a day-long lockout.
+ */
+const SEND_PATHS = new Set([
+  "/email-otp/send-verification-otp",
+  "/sign-up/email",
+  "/request-password-reset",
+  "/email-otp/request-password-reset",
+]);
+const FAIL_PATHS = new Set([
+  "/sign-in/email",
+  "/sign-in/email-otp",
+  "/email-otp/verify-email",
+  "/email-otp/check-verification-otp",
+  "/email-otp/reset-password",
+]);
+const SEND_LIMITS = { network: { hour: 5, day: 20 }, address: { hour: 20, day: 60 } };
+const FAIL_LIMITS = { window: 15 * MINUTE, network: 8, address: 40 };
+
+/** How long an address an admin removed from the approval queue cannot queue up again. */
+export const REJECTION_COOLDOWN_MS = DAY;
+export const rejectionKey = (email: string) => `rejected:${quotaEmailKey(email)}`;
 
 export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   const hosted = isHostedDeployment(env);
   // Mailbox proof is required whenever mail can be sent.
   const verifyEmail = Boolean(env.email);
   // With no mail provider, unverified accounts are usable only where an admin vets every account
-  // (approval mode) or on a personal install that opted in.
+  // (approval mode) or on a personal install that opted in. Same rule as `userMayAct`.
   const unverifiedAllowed = (policy: SignupPolicy) =>
-    !env.email && (policy.mode === "approval" || (env.allowUnverifiedEmail === true && !hosted));
+    unverifiedAccessAllowed({
+      hasEmailDelivery: Boolean(env.email),
+      mode: policy.mode,
+      devFlagAllowed: env.allowUnverifiedEmail === true && !hosted,
+    });
   const quota = env.emailQuota ?? prismaEmailQuota(prisma);
-  const sendCode = async (email: string, otp: string, type: Parameters<typeof codeEmail>[2]) => {
+  const sendCode = async (email: string, otp: string, type: CodeType) => {
     if (type === "sign-in") {
       // Do not mail a code to an address that could never get an account, and do not tell the
       // caller: the response is the same either way.
@@ -184,6 +195,7 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       if (!existing) {
         const admission = admitSignup(await resolveSignupPolicy(prisma, env), email);
         if (!admission.ok) return;
+        if (await quota.blocked(rejectionKey(email), REJECTION_COOLDOWN_MS, 1)) return;
       }
     }
     // Keep the response timing generic. Production providers track and retry the promise,
@@ -192,8 +204,8 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   };
   /**
    * Claim the deployment owner seat for a waiting account. Atomic, and only while the deployment
-   * has no owner and no other active person; bound to the operator's setup token when one is set,
-   * otherwise to a proven mailbox.
+   * has no owner and no other active person; bound to the operator's setup token when one is set.
+   * A hosted deployment always requires the token; otherwise a proven mailbox is enough.
    */
   const claimOwnerSeat = async (user: { id: string }, presented: string | null | undefined) => {
     const settings = await prisma.deploymentSettings.findUnique({
@@ -204,7 +216,7 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     if (settings.ownerUserId) return settings.ownerUserId === user.id;
     if (env.ownerSetupToken) {
       if (!tokenMatches(presented, env.ownerSetupToken)) return false;
-    } else if (!env.email) {
+    } else if (hosted || !env.email) {
       return false;
     }
     const someoneElse = await prisma.user.findFirst({
@@ -222,14 +234,59 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     });
     return claimed.count === 1;
   };
+  /**
+   * A mailbox is being proved for an account that was not verified before. Whatever was attached
+   * to it until now came from someone who had not proved the address: their password and sessions
+   * go; and if the account had been used (it has a space), everything it owns goes too and it
+   * returns to `pending`, so an admin confirms the person who just proved the address. The
+   * deployment owner is exempt (their seat is bound to the operator's secret), and OIDC accounts
+   * are kept (the identity provider vouches for that address). Reset flows pass `keepCredential`
+   * for the password they have just set.
+   */
+  const proveMailbox = async (userId: string, options: { keepCredential?: boolean } = {}) => {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { emailVerified: true, status: true },
+    });
+    if (!user || user.emailVerified) return;
+    const settings = await prisma.deploymentSettings.findUnique({
+      where: { id: "default" },
+      select: { ownerUserId: true },
+    });
+    if (settings?.ownerUserId === userId) return;
+    const kept = options.keepCredential ? ["credential", OIDC_PROVIDER_ID] : [OIDC_PROVIDER_ID];
+    await prisma.account.deleteMany({ where: { userId, providerId: { notIn: kept } } });
+    await prisma.session.deleteMany({ where: { userId } });
+    const used = (await prisma.spaceMember.findFirst({ where: { userId } })) !== null;
+    if (used) {
+      await env.beforeDeleteUser?.(userId);
+      await eraseUserAttachments(prisma, userId);
+      if (user.status === "active") {
+        await prisma.user.update({ where: { id: userId }, data: { status: "pending" } });
+      }
+    }
+  };
+  const linkingTrusted = Boolean(env.oidc && (env.oidc.allowedDomains?.length ?? 0) > 0);
+  const clientNetwork = (ctx: { request?: Request; context: { options: never } }) =>
+    ipPrefix(ctx.request ? getIP(ctx.request, ctx.context.options) : null);
   return betterAuth({
     appName: "Nova",
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: buildTrustedOrigins(env),
     database: prismaAdapter(prisma, { provider: "postgresql" }),
-    // Never link a provider account to an existing person by email alone.
-    account: { accountLinking: { disableImplicitLinking: true } },
+    // Linking is off unless the SSO connection is pinned to company domains. Then only that
+    // provider may link to an existing person by email. The local row need not be verified:
+    // an SSO sign-in is itself mailbox proof, and proving it voids whatever was attached before.
+    account: {
+      accountLinking: linkingTrusted
+        ? {
+            enabled: true,
+            trustedProviders: [OIDC_PROVIDER_ID],
+            requireLocalEmailVerified: false,
+          }
+        : { enabled: false, disableImplicitLinking: true },
+    },
     rateLimit: {
       enabled: env.rateLimit ?? env.nodeEnv === "production",
       // Shared by every API process, not a per-process memory bucket.
@@ -258,6 +315,15 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
               .catch((error) => env.onEmailError?.(error));
           }
         : undefined,
+      // A reset is mailbox proof: void what was attached before it, keep the password just set,
+      // and mark the address verified.
+      onPasswordReset: async ({ user }) => {
+        await proveMailbox(user.id, { keepCredential: true });
+        await prisma.user.updateMany({
+          where: { id: user.id, emailVerified: false },
+          data: { emailVerified: true },
+        });
+      },
     },
     emailVerification: {
       sendOnSignIn: true,
@@ -329,36 +395,75 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
             throw new APIError("BAD_REQUEST", { message: "Email is not available" });
           }
         }
-        const rule = EMAIL_RULES[ctx.path];
-        if (rule && typeof ctx.body?.email === "string") {
-          const email = ctx.body.email.trim().toLowerCase();
-          const allowed =
-            (await quota.consume(`${rule.group}:h:${email}`, HOUR, rule.hour)) &&
-            (await quota.consume(`${rule.group}:d:${email}`, DAY, rule.day));
-          if (!allowed) {
-            throw new APIError("TOO_MANY_REQUESTS", {
-              message: "Too many attempts. Try again later.",
-            });
+        const address = typeof ctx.body?.email === "string" ? quotaEmailKey(ctx.body.email) : null;
+        if (address && (SEND_PATHS.has(ctx.path) || FAIL_PATHS.has(ctx.path))) {
+          const network = clientNetwork(ctx as never);
+          const tooMany = () =>
+            new APIError("TOO_MANY_REQUESTS", { message: "Too many attempts. Try again later." });
+          if (SEND_PATHS.has(ctx.path)) {
+            const within =
+              (await quota.consume(
+                `send:h:${address}:${network}`,
+                HOUR,
+                SEND_LIMITS.network.hour,
+              )) &&
+              (await quota.consume(`send:d:${address}:${network}`, DAY, SEND_LIMITS.network.day)) &&
+              (await quota.consume(`send:h:${address}`, HOUR, SEND_LIMITS.address.hour)) &&
+              (await quota.consume(`send:d:${address}`, DAY, SEND_LIMITS.address.day));
+            if (!within) throw tooMany();
+          } else if (
+            (await quota.blocked(
+              `fail:${address}:${network}`,
+              FAIL_LIMITS.window,
+              FAIL_LIMITS.network,
+            )) ||
+            (await quota.blocked(`fail:${address}`, FAIL_LIMITS.window, FAIL_LIMITS.address))
+          ) {
+            throw tooMany();
           }
         }
-        if (ctx.path === "/sign-up/email" && !env.email) {
-          if (!unverifiedAllowed(await resolveSignupPolicy(prisma, env))) {
+        if (
+          ctx.path === "/sign-up/email" &&
+          address &&
+          (await quota.blocked(rejectionKey(address), REJECTION_COOLDOWN_MS, 1))
+        ) {
+          // An admin removed this address from the queue a moment ago.
+          throw new APIError("TOO_MANY_REQUESTS", { message: "Try again later." });
+        }
+        if (ctx.path === "/sign-up/email") {
+          const policy = !env.email ? await resolveSignupPolicy(prisma, env) : undefined;
+          if (policy && !unverifiedAllowed(policy)) {
             throw new APIError("BAD_REQUEST", {
               message: "Email delivery is not configured. Ask your administrator to set it up.",
             });
           }
+          // With no mail to prove an address, "already registered" would tell anyone which
+          // people use this deployment. Answer as if the signup is waiting for verification.
+          if (policy && typeof ctx.body?.email === "string") {
+            const existing = await ctx.context.internalAdapter.findUserByEmail(ctx.body.email);
+            if (existing) return ctx.json({ token: null, user: null });
+          }
         }
+        const adapter = ctx.context.internalAdapter;
         return {
           context: {
             context: {
               internalAdapter: {
-                ...ctx.context.internalAdapter,
+                ...adapter,
                 // Authorize at lookup: bearer conversion happens after before
                 // hooks, and auth mutations also read sessions through here.
                 findSession: async (token: string) => {
-                  const session = await ctx.context.internalAdapter.findSession(token);
+                  const session = await adapter.findSession(token);
                   if (!session || isMessagingEmail(session.user.email)) return null;
                   if (statusOf(session.user) === "suspended") return null;
+                  // Waiting accounts hold a session only for their own screen: not for
+                  // organization data such as invitations.
+                  if (
+                    ctx.path.startsWith("/organization/") &&
+                    statusOf(session.user) !== "active"
+                  ) {
+                    return null;
+                  }
                   if (
                     !session.user.emailVerified &&
                     !unverifiedAllowed(await resolveSignupPolicy(prisma, env))
@@ -367,10 +472,40 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
                   }
                   return session;
                 },
+                // Every way an address becomes verified (code, link, reset, SSO) comes through
+                // here, keyed on the account itself: void what was attached before the proof.
+                updateUser: async (userId: string, data: Record<string, unknown>) => {
+                  if (data.emailVerified === true) await proveMailbox(userId);
+                  return adapter.updateUser(userId, data);
+                },
+                updateUserByEmail: async (email: string, data: Record<string, unknown>) => {
+                  if (data.emailVerified === true) {
+                    const found = await adapter.findUserByEmail(email);
+                    if (found) await proveMailbox(found.user.id);
+                  }
+                  return adapter.updateUserByEmail(email, data);
+                },
               },
             },
           },
         };
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        // Failed password and code attempts count against the address, in short windows.
+        const address = typeof ctx.body?.email === "string" ? quotaEmailKey(ctx.body.email) : null;
+        if (!address || !FAIL_PATHS.has(ctx.path)) return;
+        const returned = ctx.context.returned as unknown;
+        const failed =
+          returned instanceof Error ||
+          (returned instanceof Response && returned.status >= 400) ||
+          (typeof returned === "object" &&
+            returned !== null &&
+            "status" in returned &&
+            Number((returned as { status: unknown }).status) >= 400);
+        if (!failed) return;
+        const network = clientNetwork(ctx as never);
+        await quota.fail(`fail:${address}:${network}`, FAIL_LIMITS.window);
+        await quota.fail(`fail:${address}`, FAIL_LIMITS.window);
       }),
     },
     databaseHooks: {
@@ -390,11 +525,11 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
             if (!user.emailVerified && !unverifiedAllowed(policy)) {
               throw new APIError("FORBIDDEN", { message: "Email verification required" });
             }
+            const presented =
+              ctx?.headers?.get(OWNER_SETUP_HEADER) ??
+              ctx?.request?.headers.get(OWNER_SETUP_HEADER);
             let status = statusOf(user);
             if (status === "pending" && policy.mode === "approval") {
-              const presented =
-                ctx?.headers?.get(OWNER_SETUP_HEADER) ??
-                ctx?.request?.headers.get(OWNER_SETUP_HEADER);
               if (await claimOwnerSeat(user, presented)) {
                 await ctx?.context.internalAdapter.updateUser(user.id, { status: "active" });
                 status = "active";
@@ -407,7 +542,13 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
             if (!membership) {
               const admission = admitSignup(policy, user.email);
               if (!admission.ok) throw new APIError("FORBIDDEN", { message: admission.message });
-              await bootstrapUserSpace(prisma, user, env);
+              // On a hosted deployment the first person to arrive does not become owner just by
+              // being first: the setup token decides, whatever the signup mode.
+              const mayClaimOwner =
+                !hosted ||
+                (Boolean(env.ownerSetupToken) &&
+                  tokenMatches(presented, env.ownerSetupToken ?? ""));
+              await bootstrapUserSpace(prisma, user, env, { claimDeploymentOwner: mayClaimOwner });
             }
           },
         },
@@ -425,23 +566,9 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
           },
         },
         update: {
-          before: async (user, ctx) => {
+          before: async (user) => {
             if (user.email && isMessagingEmail(user.email)) {
               throw new APIError("BAD_REQUEST", { message: "Email is not available" });
-            }
-            // The moment a mailbox is proved, anything attached before the proof is void: a
-            // squatter who registered this address with a password must not keep it. The proof
-            // has already been checked; the new session is created after this update.
-            const email = ctx?.body?.email;
-            if (user.emailVerified === true && typeof email === "string") {
-              const found = await ctx?.context.internalAdapter.findUserByEmail(email);
-              if (found && !found.user.emailVerified) {
-                await ctx?.context.internalAdapter.deleteAccounts(found.user.id);
-                const sessions = await ctx?.context.internalAdapter.listSessions(found.user.id);
-                await ctx?.context.internalAdapter.deleteSessions(
-                  (sessions ?? []).map((existing) => existing.token),
-                );
-              }
             }
           },
         },
@@ -449,6 +576,8 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     },
   });
 }
+
+type CodeType = Parameters<typeof codeEmail>[2];
 
 export type Auth = ReturnType<typeof createAuth>;
 
