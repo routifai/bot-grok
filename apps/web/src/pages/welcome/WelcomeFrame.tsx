@@ -41,7 +41,7 @@ export function WelcomeFrame({
   return (
     <div
       ref={rootRef}
-      className="relative isolate flex min-h-full flex-col bg-welcome-night text-welcome-night-ink antialiased [color-scheme:dark]"
+      className="relative isolate flex min-h-full flex-col pt-safe pb-safe bg-welcome-night text-welcome-night-ink antialiased [color-scheme:dark]"
       data-nova-surface="welcome"
     >
       <Stars scrollRef={rootRef} />

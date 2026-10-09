@@ -29,6 +29,19 @@ import { DEFAULT_OMNIGENT_SUPERCHAT_CONFIG, type OmnigentSuperChatConfig } from 
 /** What a person sees when a turn cannot run for an engine-side reason (details go to the log). */
 export const CHAT_UNAVAILABLE_MESSAGE = "Chat is not available right now.";
 
+/** What a person sees when the engine failed in a way with no public copy. The detail (an
+ * engine status and body) goes to the log only. */
+export const ENGINE_FAILED_MESSAGE = "Nova couldn't start. Try again in a moment.";
+
+/** The failure text stored on a failed run, which the UI shows: the engine code's copy, or a
+ * generic line for an engine API failure; never `omnigent <call> failed (<status>): <body>`. */
+export function publicRunError(error: unknown): string {
+  const copy = omnigentErrorCopy(error);
+  if (copy) return copy;
+  if (error instanceof OmnigentApiError) return ENGINE_FAILED_MESSAGE;
+  return error instanceof Error ? error.message : String(error);
+}
+
 export interface OmnigentGatewayDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
@@ -185,7 +198,7 @@ export async function runTurnOnOmnigent(
         leaseOwner: workerId,
         leaseFence: fence,
         outcome: "failed",
-        error: omnigentErrorCopy(error) ?? (error instanceof Error ? error.message : String(error)),
+        error: publicRunError(error),
       })
       .catch((finalizeError) =>
         getLogger().error("omnigent gateway: finalizeRun(failed) also failed", finalizeError),

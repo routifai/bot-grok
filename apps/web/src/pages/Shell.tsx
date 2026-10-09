@@ -864,7 +864,7 @@ export function ShellPage() {
             : "flex min-w-0 flex-1 flex-col bg-background"
         }
       >
-        {museMode && active ? (
+        {museMode && active && (museView !== "conversation" || activeChat) ? (
           <div className="flex h-12 shrink-0 items-center gap-2 px-3 md:hidden">
             <button
               type="button"
@@ -951,6 +951,7 @@ export function ShellPage() {
                     identityCollapsed={contextPanelCollapsed || panel !== null}
                     onOpenWaiting={() => setWaitingOpen(true)}
                     isNew={shownStart}
+                    onOpenMenu={() => setNavOpen(true)}
                     project={conversationProject}
                     onOpenProject={openProjectFiles}
                     leading={
@@ -1467,7 +1468,7 @@ export function ShellPage() {
       <ArtifactPanelProvider value={chatArtifacts.api}>
         {museMode ? (
           // The window ground around Nova's rounded content window.
-          <div className="muse-wash flex h-full md:p-2">
+          <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
             {active ? (
               <OrbHomeProvider home={orbHome}>
                 <NovaPresence

@@ -176,6 +176,20 @@
   );
 }
 
+/* Notch and home-indicator insets (the viewport is `viewport-fit=cover`). */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility ps-safe {
+  padding-inline-start: env(safe-area-inset-left);
+}
+@utility pe-safe {
+  padding-inline-end: env(safe-area-inset-right);
+}
+
 html,
 body,
 #root {
@@ -184,6 +198,13 @@ body,
   background: var(--background);
   color: var(--foreground);
   font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Nothing pans sideways on a phone, whatever a stray child measures. */
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
 }
 
 /* Muse edition: content scrolls, but scrollbars stay out of sight and nothing pans

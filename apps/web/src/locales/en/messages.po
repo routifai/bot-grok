@@ -2446,6 +2446,9 @@ msgstr "Notifications"
 msgid "Nova"
 msgstr "Nova"
 
+msgid "Nova couldn't start. Try again in a moment."
+msgstr "Nova couldn't start. Try again in a moment."
+
 msgid "Nova is working"
 msgstr "Nova is working"
 

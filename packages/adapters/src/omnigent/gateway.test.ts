@@ -463,5 +463,23 @@ describe("runTurnOnOmnigent", () => {
         expect.objectContaining({ outcome: "failed", error: "Chat is not available right now." }),
       );
     });
+
+    it("never shows an engine API failure's status or body", async () => {
+      getOmnigentMuse.mockRejectedValue(
+        new OmnigentApiError(
+          'omnigent get muse failed (400): {"error":{"code":"invalid_input","message":"Unresolved environment variable"}}',
+          "invalid_input",
+        ),
+      );
+      const events = fakeEvents();
+      await runTurnOnOmnigent({ prisma: fakePrisma(), events, ...DEPS_BASE }, "run-1", "worker-1");
+
+      expect(events.finalizeRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "failed",
+          error: "Nova couldn't start. Try again in a moment.",
+        }),
+      );
+    });
   });
 });

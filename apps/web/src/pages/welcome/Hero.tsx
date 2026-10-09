@@ -100,7 +100,7 @@ export function Hero() {
       />
 
       <div
-        className={`relative z-3 transition-opacity duration-500 ${GUTTER} ${film ? "pointer-events-none opacity-0" : ""}`}
+        className={`relative z-3 pt-safe transition-opacity duration-500 ${GUTTER} ${film ? "pointer-events-none opacity-0" : ""}`}
       >
         <header className="flex items-center gap-5 py-[22px] max-[560px]:gap-3">
           {/* Window controls only inside the desktop app; on the web the wordmark sits flush left. */}

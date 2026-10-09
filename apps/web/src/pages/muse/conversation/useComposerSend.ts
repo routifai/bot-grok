@@ -19,6 +19,7 @@ import {
   clearActiveThreadRuns,
   threadRunError,
 } from "../../../lib/thread-events";
+import { isRawEngineError, userFacingError } from "../../../lib/user-facing-error";
 import { notifyAsksChanged } from "../asks";
 import type { useCreateBot } from "../chrome/useCreateBot";
 import type { useComputerStore } from "../files/useComputerStore";
@@ -100,7 +101,12 @@ export function useComposerSend({
     setReplyQuote(null);
   }, []);
   const runError = threadRunError(activeSnapshot, dismissedRunErrorIds);
-  const displayedRunError = !sendError ? runError : null;
+  // A run that failed before the API hid engine detail may still carry a raw status line.
+  const displayedRunError = sendError
+    ? null
+    : runError && isRawEngineError(runError)
+      ? t`Nova couldn't start. Try again in a moment.`
+      : runError;
   const displayedRunErrorId = displayedRunError ? (activeSnapshot?.run?.id ?? null) : null;
   const handleRunErrorPresented = useCallback((runId: string) => {
     rememberSeenRunErrorId(runId);
@@ -154,7 +160,7 @@ export function useComposerSend({
           ? activeGroupId.current === groupId
           : activeBotId.current === botId;
         if (!stillHere) return;
-        setSendError(error instanceof Error ? error.message : t`Could not update reaction`);
+        setSendError(userFacingError(error, t`Could not update reaction`));
       }
     },
     [t],
@@ -334,11 +340,11 @@ export function useComposerSend({
         else if (botTarget) await refreshThreadRef.current(botTarget);
       } catch (error) {
         if (reroutedToGroup && groupTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(userFacingError(error, t`Failed to send message`));
         } else if (groupTarget && activeGroupId.current === groupTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(userFacingError(error, t`Failed to send message`));
         } else if (botTarget && activeBotId.current === botTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(userFacingError(error, t`Failed to send message`));
         }
       } finally {
         setSending(false);
@@ -376,7 +382,7 @@ export function useComposerSend({
           await rpc.threads.stop({ groupId: groupTarget });
         } catch (error) {
           if (activeGroupId.current === groupTarget) {
-            setSendError(error instanceof Error ? error.message : t`Failed to stop`);
+            setSendError(userFacingError(error, t`Failed to stop`));
           }
           return;
         }
@@ -395,7 +401,7 @@ export function useComposerSend({
         await rpc.threads.stop({ botId: botTarget });
       } catch (error) {
         if (activeBotId.current === botTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to stop`);
+          setSendError(userFacingError(error, t`Failed to stop`));
         }
         return;
       }
