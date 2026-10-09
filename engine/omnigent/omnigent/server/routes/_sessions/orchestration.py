@@ -95,6 +95,7 @@ from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
 from omnigent.runtime import (
     get_policy_store,
     inflight_text,
+    input_delivery,
     pending_elicitations,
     pending_inputs,
 )
@@ -8296,6 +8297,14 @@ async def _relay_runner_stream_once(
                                 reason=event.get("reason"),
                             )
                         continue
+                    if evt_type == "session.input.delivery":
+                        delivery = event.get("data")
+                        if isinstance(delivery, dict):
+                            input_delivery.record(
+                                session_id,
+                                str(delivery.get("item_id")),
+                                str(delivery.get("delivered")),
+                            )
                     session_stream.publish(session_id, event)
 
     except (httpx.HTTPError, ConnectionError) as exc:
