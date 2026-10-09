@@ -2754,9 +2754,6 @@ msgstr "Nova Report"
 msgid "Nova starts fresh. You can still show earlier messages."
 msgstr "Nova starts fresh. You can still show earlier messages."
 
-msgid "Nova will see this after the current step"
-msgstr "Nova will see this after the current step"
-
 msgid "Nova's computer · Live"
 msgstr "Nova's computer · Live"
 

@@ -3784,37 +3784,6 @@ class SessionInputConsumedEvent(_SSEEventBase):
     data: SessionInputConsumedPayload
 
 
-class SessionInputDeliveryPayload(BaseModel):
-    """
-    Inner payload of a :class:`SessionInputDeliveryEvent`.
-
-    :param item_id: The persisted user message this is about, e.g. ``"msg_abc"``.
-    :param delivered: How the running session took the message: ``"steer"`` (into the turn
-        that is running, read at its next step), ``"queued"`` (held until the turn ends) or
-        ``"turn"`` (a queued message that has now started as its own turn).
-    """
-
-    item_id: str
-    delivered: Literal["steer", "queued", "turn"]
-
-
-class SessionInputDeliveryEvent(_SSEEventBase):
-    """
-    A message sent while a turn was running was steered into it or queued behind it.
-
-    Wire shape uses the nested envelope: ``{"type": "session.input.delivery", "data":
-    {"item_id", "delivered"}}``. A message sent to an idle session has no such event (it
-    simply starts a turn). Clients show a queued message as waiting and a steered one as
-    part of the ongoing work.
-
-    :param type: Always ``"session.input.delivery"``.
-    :param data: See :class:`SessionInputDeliveryPayload`.
-    """
-
-    type: Literal["session.input.delivery"]
-    data: SessionInputDeliveryPayload
-
-
 class SessionInterruptedPayload(BaseModel):
     """
     Inner payload of a :class:`SessionInterruptedEvent`.
@@ -4132,23 +4101,6 @@ class InjectionConsumedEvent(_SSEEventBase):
     """
 
     type: Literal["injection.consumed"]
-    injection_id: str
-
-
-class InjectionRefusedEvent(_SSEEventBase):
-    """
-    Runner-internal marker: a mid-turn injection was refused.
-
-    Emitted by the executor adapter (``_watch_injections``) when the inner executor cannot
-    take a live message into the running turn. The runner keeps the buffered copy, which then
-    runs as the next turn, and tells clients the message is queued. Like
-    :class:`InjectionConsumedEvent` it is **never** relayed to clients.
-
-    :param type: Always ``"injection.refused"``.
-    :param injection_id: The id the runner stamped on the forwarded injection.
-    """
-
-    type: Literal["injection.refused"]
     injection_id: str
 
 
@@ -4998,7 +4950,6 @@ ServerStreamEvent = Annotated[
     | SessionMcpStartupEvent
     | SessionModelOptionsEvent
     | SessionInputConsumedEvent
-    | SessionInputDeliveryEvent
     | SessionInterruptedEvent
     | SessionCreatedEvent
     | SessionSupersededEvent
@@ -5203,7 +5154,6 @@ class SubagentToolCallEvent(_SSEEventBase):
 HarnessStreamEvent = (
     ServerStreamEvent
     | InjectionConsumedEvent
-    | InjectionRefusedEvent
     | PolicyEvaluationRequestEvent
     | SubagentStartedEvent
     | SubagentCompletedEvent

@@ -500,29 +500,3 @@ async def test_transcript_redacts_deployment_secrets(
     )
     raw = (await reset_client.get(f"/v1/sessions/{root.id}/transcript")).text
     assert secret not in raw and "[redacted]" in raw
-
-
-async def test_a_message_sent_during_a_turn_says_how_it_was_taken(
-    client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
-) -> None:
-    from omnigent.runtime import input_delivery
-
-    root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
-    first, steered, queued = conversation_store.append(
-        root.id, [_say("user", "redo"), _say("user", "again"), _say("user", "and blue")]
-    )
-    input_delivery.record(root.id, steered.id, "steer")
-    input_delivery.record(root.id, queued.id, "queued")
-    url = f"/v1/sessions/{root.id}/transcript"
-
-    conversation_store.set_session_live_status(root.id, "running")
-    messages = {m["id"]: m for m in (await client.get(url)).json()["data"]}
-    assert "delivered" not in messages[first.id]
-    assert messages[steered.id]["delivered"] == "steer"
-    assert messages[queued.id]["delivered"] == "queued"
-
-    # Once the turn started it as its own (or a stop dropped the queue) nothing is waiting.
-    input_delivery.record(root.id, queued.id, "turn")
-    messages = {m["id"]: m for m in (await client.get(url)).json()["data"]}
-    assert "delivered" not in messages[queued.id]
-    input_delivery.forget(root.id)

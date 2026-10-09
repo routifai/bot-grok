@@ -15,7 +15,6 @@ from fastapi import APIRouter, Query, Request
 
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.entities import Conversation
-from omnigent.runtime import input_delivery
 from omnigent.server.auth import LEVEL_READ, AuthProvider
 from omnigent.server.redaction import session_redactor
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
@@ -92,11 +91,6 @@ def read_transcript(
         for helper_id, helper in conv_store.get_conversations(helper_ids).items():
             statuses[helper_id] = sub_agent_status(helper)
     messages = project_items(items, helper_statuses=statuses)
-    # A message sent during a turn says how it was taken (``steer`` / ``queued``).
-    delivered = input_delivery.delivered_for(conversation.id, session_running=live)
-    for message in messages:
-        if message["role"] == "user" and message["id"] in delivered:
-            message["delivered"] = delivered[message["id"]]
     can_fork = lineage["kind"] == "super" or lineage["anchor_item_id"] is not None
     grouped = forks_by_anchor(conv_store, conversation, viewer_id) if can_fork and messages else {}
     return _page(
@@ -160,8 +154,7 @@ def register_transcript_routes(
             ``reset`` is ``{"item_id", "created_at"}`` of the latest reset or ``None``; ``live``
             is whether a turn is in flight. Each message has ``forks`` (``[]`` when none:
             ``{session_id, title, replies, live, unread, state, summary, created_at}``) and an
-            added fork's ``fork_summary`` block. A user message sent while a turn ran has
-            ``delivered``: ``steer`` (read by the running turn) or ``queued`` (waits for the next).
+            added fork's ``fork_summary`` block.
         :raises OmnigentError: 403 without READ; 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)

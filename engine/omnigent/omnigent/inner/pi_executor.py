@@ -1329,9 +1329,6 @@ class _PiSessionState:
     # so an unchanged effort costs no RPC and a changed one is applied live.
     applied_thinking: str | None = None
     _has_sent_prompt: bool = False
-    # Steering texts sent and not yet acknowledged by Pi, by command id: a refused ``steer``
-    # is sent again as ``follow_up``.
-    pending_steers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -2051,50 +2048,25 @@ class PiExecutor(Executor):
     ) -> bool:
         """Send a steering message to Pi mid-turn.
 
-        Pi's RPC ``steer`` command injects a user message between tool calls within the
-        current agent turn, so the model sees it before its next response. If Pi refuses
-        it (see :meth:`_resend_refused_steer`) it is sent again as ``follow_up``, which Pi
-        delivers once it has no more tool calls.
+        Pi's RPC ``steer`` command injects a user message between tool calls
+        within the current agent turn, so the model sees it before its next
+        response.
         """
         state = self._session_states.get(session_key)
         if state is None or state.rpc is None:
             return False
         text = content if isinstance(content, str) else str(content)
-        command_id = f"steer-{secrets.token_hex(4)}"
-        state.pending_steers[command_id] = text
         try:
-            await state.rpc.send_command({"id": command_id, "type": "steer", "message": text})
+            await state.rpc.send_command(
+                {
+                    "type": "steer",
+                    "message": text,
+                }
+            )
             return True
         except Exception as exc:  # noqa: BLE001 — steer is best-effort; any failure surfaces as False
-            state.pending_steers.pop(command_id, None)
             logger.debug("PiExecutor: failed to enqueue steer message: %s", exc)
             return False
-
-    @staticmethod
-    async def _resend_refused_steer(
-        state: _PiSessionState, rpc: _PiRpcSession, event: dict[str, Any]
-    ) -> bool:  # type: ignore[explicit-any]
-        """Handle Pi's answer to a steering command; ``True`` when it was one.
-
-        An accepted ``steer`` is forgotten. A refused one is sent again as ``follow_up``; a
-        refused ``follow_up`` is only logged (the message is stored, so the next turn sees it).
-        """
-        command = event.get("command")
-        if command not in ("steer", "follow_up"):
-            return False
-        text = state.pending_steers.pop(str(event.get("id")), None)
-        if event.get("success", True):
-            return True
-        if command == "steer" and text is not None:
-            try:
-                await rpc.send_command(
-                    {"id": f"follow-{secrets.token_hex(4)}", "type": "follow_up", "message": text}
-                )
-            except Exception as exc:  # noqa: BLE001 — best-effort, see above
-                logger.warning("PiExecutor: follow_up after refused steer failed: %s", exc)
-        else:
-            logger.warning("PiExecutor: Pi refused %s: %s", command, event.get("error"))
-        return True
 
     async def close_session(self, session_key: str) -> None:
         state = self._session_states.pop(session_key, None)
@@ -2716,8 +2688,6 @@ class PiExecutor(Executor):
 
             # Skip the command-ack response.
             if event_type == "response":
-                if state is not None and await self._resend_refused_steer(state, rpc, event):
-                    continue
                 if not event.get("success", True):
                     yield ExecutorError(message=event.get("error", "Pi command failed"))
                     return

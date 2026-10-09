@@ -194,25 +194,6 @@ returns a chat as **typed blocks**. It works for the Conversation, a Side Chat, 
 - `live` is true while a turn is in flight.
 - Every string is redacted of the secrets the engine knows.
 
-### Messages sent while the Muse works (steering)
-
-A message that arrives while a turn runs is a steer, not a new turn. The engine delivers it into the
-running turn when the harness can take it, so the model reads it at its next step; otherwise it waits
-and runs as the next turn.
-
-| Harness | How a steer reaches the turn | When it cannot |
-|---|---|---|
-| `claude-sdk` | Written to the live CLI's stdin at priority `next` (`inner/claude_sdk_executor.py`); the CLI attaches it at the next tool boundary. The stream reads on until every pushed message is answered. | No turn running: queued |
-| `pi` | RPC `steer` (between tool calls); a refused `steer` is sent again as `follow_up` | Queued |
-| native terminals (`claude-native`, `pi-native`) | The terminal's own input queue; Nova does not use them | n/a |
-
-The engine says which happened: `session.input.delivery` on the session stream, `message.delivery` on the
-family stream, and `delivered` (`steer` or `queued`) on the user message in the transcript. A client shows
-a steered message in place and a queued one as waiting. Nova's worker posts the person's new messages to
-the engine as the turn runs (`packages/adapters/src/omnigent/gateway.ts`) and keeps the run open until a
-queued message's own turn has ended. For a Helper that is already working, the Muse uses `message_helper`,
-which posts into the Helper's running turn; the Helper's single result still arrives in the inbox.
-
 ### Family SSE stream
 
 `GET /v1/sessions/{id}/family/stream` is **one** stream for a Conversation, its Side Chats, Forks and
@@ -224,7 +205,6 @@ Events carry **ids only**. The client refetches what changed.
 | Event | Payload | Meaning |
 |---|---|---|
 | `message.done` | `chat_id`, `item_id` | An assistant message was stored in a family chat |
-| `message.delivery` | `chat_id`, `item_id`, `delivered` | A message sent during a turn was steered into it (`steer`), waits for the next one (`queued`) or is now running as a turn (`turn`) |
 | `turn.done` | `chat_id`, `status` | A turn ended (`completed`, `failed`, `incomplete`, `cancelled`) |
 | `chat.reset` | `chat_id`, `item_id` | The chat was cleared |
 | `chats.changed` | `root_id` | A Side Chat or Fork was opened, renamed or archived, or a Helper started |
