@@ -2610,7 +2610,7 @@ class SqlModelConnection(OmnigentBase):
 
     :param scope: ``user`` (a person's own key) or ``org`` (shared by the workspace).
     :param owner_id: The user id for scope ``user``; ``''`` for scope ``org``.
-    :param provider: Upstream name from :mod:`omnigent.model_credentials.upstreams`.
+    :param provider: Upstream name from :mod:`omnigent.superchat.models.upstreams`.
     :param ciphertext: AES-GCM envelope of the key (never plaintext).
     :param hint: Last 4 characters of the key, for display.
     :param validated_at: Epoch seconds of the last successful provider probe.

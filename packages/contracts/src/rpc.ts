@@ -1,17 +1,18 @@
 import { accountContract } from "./rpc/account.js";
+import { engineAdminContract } from "./rpc/admin.js";
 import { approvalsContract } from "./rpc/approvals.js";
 import { appsContract } from "./rpc/apps.js";
 import { artifactsContract } from "./rpc/artifacts.js";
 import { botsContract } from "./rpc/bots.js";
 import { chatsContract } from "./rpc/chats.js";
 import { computerContract } from "./rpc/computer.js";
-import { engineModelsContract } from "./rpc/engine-models.js";
 import { feedContract } from "./rpc/feed.js";
 import { goalsContract } from "./rpc/goals.js";
 import { integrationsContract } from "./rpc/integrations.js";
+import { modelsContract } from "./rpc/local-models.js";
 import { memoryContract } from "./rpc/memory.js";
 import { messagingContract } from "./rpc/messaging.js";
-import { modelsContract } from "./rpc/models.js";
+import { engineModelsContract } from "./rpc/models.js";
 import { scheduledContract } from "./rpc/scheduled.js";
 import { sheetsContract } from "./rpc/sheets.js";
 import { skillsContract } from "./rpc/skills.js";
@@ -25,6 +26,7 @@ export const appContract = {
   ...botsContract,
   ...chatsContract,
   ...computerContract,
+  ...engineAdminContract,
   ...engineModelsContract,
   ...feedContract,
   ...goalsContract,

@@ -43,7 +43,6 @@ from omnigent.entities import (
 )
 from omnigent.entities.permission import SessionPermission
 from omnigent.errors import ErrorCategory, ErrorCode, ErrorImpact, ErrorPhase, OmnigentError
-from omnigent.model_credentials.org import refuse_if_suspended
 from omnigent.models.model_fallbacks import ROLLOVER_SUMMARY_FALLBACK_MODEL
 from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.models.model_override import validate_model_override
@@ -230,6 +229,7 @@ from omnigent.stores.conversation_store import (
 from omnigent.stores.file_store import FileStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.project_store import ProjectStore
+from omnigent.superchat.models.org import refuse_if_suspended
 from omnigent.util.cost_plan import (
     reserved_cost_control_keys,
 )

@@ -43,6 +43,7 @@ import {
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
 import { appsExtension } from "../features/apps";
+import { ConversationModelPicker } from "../features/models";
 import { sheetsExtension } from "../features/sheets";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { ArtifactRegistryProvider } from "../lib/artifact-registry";
@@ -56,7 +57,6 @@ import { HostComputerPrompt } from "./HostComputerPrompt";
 import { ApprovalCards } from "./muse/asks";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader, TOOLBAR_BUTTON } from "./muse/chrome/ConversationHeader";
-import { ConversationModelPicker } from "./muse/chrome/ConversationModelPicker";
 import { conversationLayout } from "./muse/chrome/conversationLayout";
 import {
   EmptyConversationLead,

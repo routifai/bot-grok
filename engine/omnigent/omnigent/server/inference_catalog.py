@@ -22,10 +22,6 @@ from omnigent.inference_config import (
     resolve_bound_provider,
     validate_inference_credentials,
 )
-from omnigent.model_credentials.org import apply_overlay
-from omnigent.model_credentials.proxy import KEY_REQUIRED_MESSAGE
-from omnigent.model_credentials.store import resolve_model_connection
-from omnigent.model_credentials.upstreams import harness_family, preferred_providers
 from omnigent.models import model_catalog
 from omnigent.models.model_catalog import (
     ModelEntry,
@@ -42,6 +38,10 @@ from omnigent.onboarding.provider_config import (
 )
 from omnigent.server.auth import RESERVED_USER_LOCAL
 from omnigent.server.databricks_identity import resolve_databricks_token
+from omnigent.superchat.models.org import apply_overlay
+from omnigent.superchat.models.proxy import KEY_REQUIRED_MESSAGE
+from omnigent.superchat.models.store import resolve_model_connection
+from omnigent.superchat.models.upstreams import harness_family, preferred_providers
 
 MODEL_PROXY_AUTH_COMMAND = "python3 -m omnigent.host.model_credential token"
 

@@ -12,11 +12,11 @@ from fastapi.testclient import TestClient
 from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
-from omnigent.model_credentials import budget as budget_module
-from omnigent.model_credentials.budget import Budget, ModelBudgets, ModelBudgetStore, month_start
-from omnigent.model_credentials.budget_routes import create_budget_router
 from omnigent.server.routes import usage as usage_module
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
+from omnigent.superchat.models import budget as budget_module
+from omnigent.superchat.models.budget import Budget, ModelBudgets, ModelBudgetStore, month_start
+from omnigent.superchat.models.budget_routes import create_budget_router
 
 from .test_model_connection import _Auth, _Perms
 

@@ -19,18 +19,6 @@ from omnigent.db.utils import (
     make_named_managed_session_maker,
 )
 from omnigent.errors import OmnigentError
-from omnigent.model_credentials import budget as budget_module
-from omnigent.model_credentials import org as org_module
-from omnigent.model_credentials.admin_routes import create_org_admin_router
-from omnigent.model_credentials.budget import Budget, ModelBudgets, ModelBudgetStore
-from omnigent.model_credentials.org import (
-    ModelOrgOverlayStore,
-    SuspensionStore,
-    apply_overlay,
-    bind_suspensions,
-    refuse_if_suspended,
-)
-from omnigent.model_credentials.store import ModelConnectionStore
 from omnigent.runtime.public_error_codes import classify_provider_failure
 from omnigent.server.auth import LEVEL_OWNER
 from omnigent.server.inference_catalog import SandboxInferenceService
@@ -38,6 +26,18 @@ from omnigent.server.routes.sandbox_inference import selected_catalog_model
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.host_store import Host
 from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
+from omnigent.superchat.admin.routes import create_org_admin_router
+from omnigent.superchat.models import budget as budget_module
+from omnigent.superchat.models import org as org_module
+from omnigent.superchat.models.budget import Budget, ModelBudgets, ModelBudgetStore
+from omnigent.superchat.models.org import (
+    ModelOrgOverlayStore,
+    SuspensionStore,
+    apply_overlay,
+    bind_suspensions,
+    refuse_if_suspended,
+)
+from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
 from .test_byok_pi import _hosted_state
@@ -481,7 +481,7 @@ def _preference_keys(world: World, user: str) -> set[str]:
 def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
     world: World,
 ) -> None:
-    from omnigent.model_credentials.selection import ModelPreferenceStore
+    from omnigent.superchat.models.selection import ModelPreferenceStore
 
     _seed_people(world)
     world.hosts.hosts["alice"] = [_host("c1", "computer"), _host("laptop", None)]

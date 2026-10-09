@@ -17,16 +17,16 @@ from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
 from omnigent.inference_config import HarnessInferenceBinding, parse_inference_config
-from omnigent.model_credentials.proxy import create_model_proxy_router
-from omnigent.model_credentials.store import ModelConnectionStore
-from omnigent.model_credentials.upstreams import (
+from omnigent.onboarding.provider_config import ProviderEntry
+from omnigent.server.inference_catalog import SandboxInferenceService
+from omnigent.superchat.models.proxy import create_model_proxy_router
+from omnigent.superchat.models.store import ModelConnectionStore
+from omnigent.superchat.models.upstreams import (
     UPSTREAMS,
     harness_family,
     openrouter_model_id,
     preferred_providers,
 )
-from omnigent.onboarding.provider_config import ProviderEntry
-from omnigent.server.inference_catalog import SandboxInferenceService
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
 from .test_inference_catalog import _state, _transport, credentials  # noqa: F401

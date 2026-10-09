@@ -90,13 +90,11 @@ vi.mock("./muse/NovaSettingsPanel", () => ({
   ),
 }));
 const engine = vi.hoisted(() => ({ status: null as unknown }));
-vi.mock("../lib/engine-models", () => ({
+vi.mock("../features/models", () => ({
   useEngineModelsStatus: () => [engine.status, () => undefined, true],
-}));
-vi.mock("./muse/settings/ModelsPanel", () => ({
   ModelsPanel: () => <div data-testid="engine-models-panel" />,
 }));
-vi.mock("./muse/settings/OrganizationPanel", () => ({
+vi.mock("../features/admin", () => ({
   OrganizationPanel: () => <div data-testid="organization-panel" />,
 }));
 vi.mock("../components/ComputersUnavailableHint", () => ({

@@ -46,7 +46,6 @@ from omnigent.host.frames import (
 from omnigent.host.frames import (
     workspace_missing_message as _workspace_missing_message,
 )
-from omnigent.model_credentials.org import refuse_if_suspended
 from omnigent.runner.identity import RUNNER_TUNNEL_TOKEN_HEADER, token_bound_runner_id
 from omnigent.runner.launch_failure import classify_native_turn_error
 from omnigent.runner.routing import RunnerRouter, routing_host_id
@@ -273,6 +272,7 @@ from omnigent.stores.file_store import FileStore
 from omnigent.stores.host_store import host_is_live
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.lineage import is_super_chat_helper
+from omnigent.superchat.models.org import refuse_if_suspended
 from omnigent.superchat.proactive.hook import schedule_proactive_provisioning
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id

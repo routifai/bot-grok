@@ -121,7 +121,7 @@ def _owner_budget_seed(
     conversation_id: str, conversation_store: ConversationStore
 ) -> dict[str, float | str] | None:
     """The owner's monthly-budget context, or ``None`` when no limit applies to the session."""
-    from omnigent.model_credentials.budget import get_budgets
+    from omnigent.superchat.models.budget import get_budgets
 
     budgets = get_budgets()
     owner = _resolve_session_owner_cached(conversation_id, conversation_store) if budgets else None
@@ -132,7 +132,7 @@ def _owner_budget_seed(
 
 def _budgets_may_apply() -> bool:
     """Whether any monthly budget exists in the workspace (the engine decides per owner)."""
-    from omnigent.model_credentials.budget import get_budgets
+    from omnigent.superchat.models.budget import get_budgets
 
     budgets = get_budgets()
     return budgets is not None and budgets.store.any_limit()

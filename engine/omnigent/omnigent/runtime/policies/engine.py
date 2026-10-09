@@ -646,11 +646,11 @@ class PolicyEngine:
         Persist the check-in level the owner approved for one monthly model budget scope.
 
         *value* is ``{"scope": "user"|"org", "level": float}``. It is kept per owner and scope
-        (see :meth:`omnigent.model_credentials.budget.ModelBudgetStore.set_approval`) and lapses
+        (see :meth:`omnigent.superchat.models.budget.ModelBudgetStore.set_approval`) and lapses
         when the month turns. A no-op without an owner grant, a bound budget store or a
         well-formed *value*.
         """
-        from omnigent.model_credentials.budget import get_budgets, month_start
+        from omnigent.superchat.models.budget import get_budgets, month_start
 
         budgets = get_budgets()
         owner = self._store.get_session_owner_authority(self._conversation_id)

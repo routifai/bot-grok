@@ -18,8 +18,8 @@ from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
 from omnigent.host import model_credential as host_side
-from omnigent.model_credentials.proxy import create_model_proxy_router
-from omnigent.model_credentials.store import ModelConnectionStore
+from omnigent.superchat.models.proxy import create_model_proxy_router
+from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
 ALICE_KEY = "sk-ant-api03-ALICE-SECRET-1111"

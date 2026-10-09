@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useOpenSettingsRequests } from "../../../lib/engine-models";
+import { useOpenSettingsRequests } from "../../../lib/open-settings";
 import { rpc } from "../../../lib/rpc";
 import type { SettingsSection } from "../../SettingsOverlay";
 
