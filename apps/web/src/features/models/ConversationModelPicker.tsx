@@ -12,10 +12,11 @@ import {
 } from "@nova/ui-web";
 import { Cpu } from "lucide-react";
 import { useState } from "react";
-import { errorText, useEngineModelsStatus } from "../../../lib/engine-models";
-import { rpc } from "../../../lib/rpc";
-import { modelOptionLabel } from "../settings/DefaultModel";
-import { TOOLBAR_BUTTON } from "./ConversationHeader";
+import { errorText } from "../../lib/error-text";
+import { rpc } from "../../lib/rpc";
+import { TOOLBAR_BUTTON } from "../../pages/muse/chrome/ConversationHeader";
+import { modelOptionLabel } from "./DefaultModel";
+import { useEngineModelsStatus } from "./engine-models";
 
 const DEFAULT_VALUE = "__default__";
 

@@ -4,7 +4,7 @@ import type { ThreadMessage } from "@nova/contracts";
 import { CircleAlert, Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
-import { requestOpenSettings } from "../../../lib/engine-models";
+import { requestOpenSettings } from "../../../lib/open-settings";
 
 /** The engine sends a failure's code, never its wording: the copy is ours. */
 export function useFailureNoteText(): (code: string) => string {

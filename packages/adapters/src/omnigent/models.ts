@@ -1,8 +1,8 @@
-// The engine's model layer (engine/omnigent/omnigent/model_credentials/*): a person's provider
+// The engine's model layer (engine/omnigent/omnigent/superchat/models/*): a person's provider
 // keys, the models their connection serves, their default per harness, their budget, and the
 // organization's side of each (admin only). Shapes are the engine's; apps/api maps them.
-import type { OmnigentClientConfig } from "./core.js";
-import { omnigentHeaders, throwOnError } from "./core.js";
+import type { OmnigentClientConfig } from "./client/core.js";
+import { omnigentHeaders, throwOnError } from "./client/core.js";
 
 export type OmnigentModelScope = "user" | "org";
 

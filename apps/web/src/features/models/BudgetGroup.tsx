@@ -1,8 +1,9 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useCallback, useEffect, useId, useState } from "react";
-import { errorText, formatUsd } from "../../../lib/engine-models";
-import { rpc } from "../../../lib/rpc";
-import { SettingsGroup, SettingsRow, SettingsSegmented } from "./kit";
+import { errorText } from "../../lib/error-text";
+import { rpc } from "../../lib/rpc";
+import { SettingsGroup, SettingsRow, SettingsSegmented } from "../../pages/muse/settings/kit";
+import { formatUsd } from "./engine-models";
 
 type BudgetView = {
   monthlyLimitUsd: number | null;

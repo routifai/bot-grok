@@ -1,4 +1,6 @@
+import { engineAdminRouter } from "./features/admin/router.js";
 import { appsRouter } from "./features/apps/router.js";
+import { engineModelsRouter } from "./features/models/router.js";
 import { sheetsRouter } from "./features/sheets/router.js";
 import { accountRouter } from "./routers/account.js";
 import { approvalsRouter } from "./routers/approvals.js";
@@ -8,7 +10,6 @@ import { computerRouter } from "./routers/computer.js";
 import { connectionsRouter } from "./routers/connections.js";
 import type { RouterDeps } from "./routers/context.js";
 import { createRouterContext } from "./routers/context.js";
-import { engineModelsRouter } from "./routers/engine-models.js";
 import { feedRouter } from "./routers/feed.js";
 import { goalsRouter } from "./routers/goals.js";
 import { integrationsRouter } from "./routers/integrations.js";
@@ -33,6 +34,7 @@ export function createRouter(deps: RouterDeps) {
     ...artifactsRouter(c),
     ...botsRouter(c),
     ...computerRouter(c),
+    ...engineAdminRouter(c),
     ...engineModelsRouter(c),
     ...connectionsRouter(c),
     ...feedRouter(c),

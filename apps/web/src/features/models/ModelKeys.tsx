@@ -3,9 +3,10 @@ import type { EngineModelConnection } from "@nova/contracts";
 import { Button } from "@nova/ui-web";
 import { KeyRound } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
-import { errorText, formatEngineDate } from "../../../lib/engine-models";
-import { rpc } from "../../../lib/rpc";
-import { SettingsGroup, SettingsRow } from "./kit";
+import { errorText } from "../../lib/error-text";
+import { rpc } from "../../lib/rpc";
+import { SettingsGroup, SettingsRow } from "../../pages/muse/settings/kit";
+import { formatEngineDate } from "./engine-models";
 
 /** The providers a model key can be for; the engine's list, in the order people see them. */
 export const MODEL_PROVIDERS = [

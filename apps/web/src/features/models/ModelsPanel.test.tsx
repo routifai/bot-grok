@@ -7,9 +7,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray, ...values: unknown[]) =>
@@ -29,7 +27,7 @@ const api = vi.hoisted(() => ({
   budget: vi.fn(),
   setBudget: vi.fn(),
 }));
-vi.mock("../../../lib/rpc", () => ({ rpc: { engineModels: api } }));
+vi.mock("../../lib/rpc", () => ({ rpc: { engineModels: api } }));
 
 import { ModelsPanel } from "./ModelsPanel";
 

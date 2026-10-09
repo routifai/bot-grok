@@ -3,9 +3,9 @@ import type { EngineModelCatalog, EngineModelRow } from "@nova/contracts";
 import { NativeSelect, NativeSelectOption } from "@nova/ui-web";
 import { Cpu } from "lucide-react";
 import { useEffect, useState } from "react";
-import { errorText } from "../../../lib/engine-models";
-import { rpc } from "../../../lib/rpc";
-import { SettingsGroup, SettingsRow } from "./kit";
+import { errorText } from "../../lib/error-text";
+import { rpc } from "../../lib/rpc";
+import { SettingsGroup, SettingsRow } from "../../pages/muse/settings/kit";
 
 /** A model as the person reads it: its name, and its family when the name does not say it. */
 export function modelOptionLabel(model: Pick<EngineModelRow, "label" | "family">): string {

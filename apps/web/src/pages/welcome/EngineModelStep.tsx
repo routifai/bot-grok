@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Button, cn, Input } from "@nova/ui-web";
 import { useId, useState } from "react";
-import { errorText } from "../../lib/engine-models";
+import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
 import { welcomeFieldClass, welcomeSubmitClass } from "./WelcomeFrame";
 

@@ -13,10 +13,10 @@ import {
   cn,
 } from "@nova/ui-web";
 import { useCallback, useEffect, useState } from "react";
-import { errorText, formatEngineDate, formatUsd } from "../../../lib/engine-models";
-import { rpc } from "../../../lib/rpc";
-import { MUSE_INSET_GROUP } from "../ui";
-import { MODEL_PROVIDERS } from "./ModelKeys";
+import { errorText } from "../../lib/error-text";
+import { rpc } from "../../lib/rpc";
+import { MUSE_INSET_GROUP } from "../../pages/muse/ui";
+import { formatEngineDate, formatUsd, MODEL_PROVIDERS } from "../models";
 
 const CELL = "whitespace-nowrap px-3 py-2.5 text-[13px] tabular-nums";
 const HEAD = "whitespace-nowrap px-3 py-2 text-start text-[11.5px] font-medium text-ink-3";

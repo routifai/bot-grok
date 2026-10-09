@@ -6,9 +6,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray, ...values: unknown[]) =>
@@ -24,17 +22,15 @@ const state = vi.hoisted(() => ({
   sessionModel: vi.fn(),
   setSessionModel: vi.fn(),
 }));
-vi.mock("../../../lib/engine-models", () => ({
+vi.mock("./engine-models", () => ({
   useEngineModelsStatus: () => [state.status, () => undefined, true],
-  errorText: (error: unknown, fallback: string) =>
-    error instanceof Error && error.message ? error.message : fallback,
 }));
-vi.mock("../../../lib/rpc", () => ({
+vi.mock("../../lib/rpc", () => ({
   rpc: {
     engineModels: { sessionModel: state.sessionModel, setSessionModel: state.setSessionModel },
   },
 }));
-vi.mock("../../../components/ai/orb", () => ({ NovaOrb: () => null, useOrbHome: () => false }));
+vi.mock("../../components/ai/orb", () => ({ NovaOrb: () => null, useOrbHome: () => false }));
 
 import { ConversationModelPicker } from "./ConversationModelPicker";
 

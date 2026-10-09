@@ -1,9 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import type { EngineModelsStatus } from "@nova/contracts";
 import { useState } from "react";
-import { BudgetGroup } from "./BudgetGroup";
-import { SettingsGroup, SettingsSegmented } from "./kit";
-import { ModelKeys } from "./ModelKeys";
+import { SettingsGroup, SettingsSegmented } from "../../pages/muse/settings/kit";
+import { BudgetGroup, ModelKeys } from "../models";
 import { OrgModels } from "./OrgModels";
 import { OrgUsage } from "./OrgUsage";
 import { OrgUsers } from "./OrgUsers";

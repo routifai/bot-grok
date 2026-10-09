@@ -3,7 +3,7 @@ import * as z from "zod";
 import { Id } from "../ids.js";
 import { botId } from "./shared.js";
 
-// The engine's model layer as the web sees it (apps/api/src/engine-models.ts maps the engine's
+// The engine's model layer as the web sees it (apps/api/src/features/models/service.ts maps the engine's
 // snake_case). Every rule - what a key may be, what a budget means, who is an admin - is the
 // engine's; these are the shapes the screens render.
 
@@ -70,39 +70,8 @@ export const EngineBudgetInputSchema = z.object({
   atLimit: EngineBudgetActionSchema,
 });
 
-export const EngineOverlayEntrySchema = z.object({
-  allow: z.array(z.string()).nullable(),
-  default: z.string().nullable(),
-});
-export const EngineOverlaySchema = z.record(z.string(), EngineOverlayEntrySchema);
-
-export const EngineAdminUserSchema = z.object({
-  id: z.string(),
-  email: z.string().nullable(),
-  isAdmin: z.boolean(),
-  status: z.enum(["active", "suspended"]),
-  spendMonthUsd: z.number(),
-  spendTodayUsd: z.number(),
-  sessionCount: z.number(),
-  providers: z.array(z.string()),
-  budget: z.object({ monthlyLimitUsd: z.number().nullable(), atLimit: EngineBudgetActionSchema }),
-  computer: z.enum(["online", "offline"]).nullable(),
-  lastActive: z.number().nullable(),
-});
-export type EngineAdminUser = z.infer<typeof EngineAdminUserSchema>;
-
-export const EngineUsageWindowSchema = z.enum(["day", "month"]);
-
-export const EngineAdminUsageSchema = z.object({
-  window: EngineUsageWindowSchema,
-  totalUsd: z.number(),
-  byUser: z.array(z.object({ userId: z.string(), costUsd: z.number() })),
-  byDay: z.array(z.object({ day: z.string(), costUsd: z.number() })),
-});
-export type EngineAdminUsage = z.infer<typeof EngineAdminUsageSchema>;
-
-const provider = z.object({ provider: z.string().min(1).max(64) });
-const connectInput = provider.extend({
+export const EngineProviderInputSchema = z.object({ provider: z.string().min(1).max(64) });
+export const EngineConnectInputSchema = EngineProviderInputSchema.extend({
   apiKey: z.string().min(1).max(4_096),
   label: z.string().max(120).optional(),
 });
@@ -112,8 +81,8 @@ export const engineModelsContract = {
   engineModels: {
     status: oc.output(EngineModelsStatusSchema),
     connections: oc.output(z.array(EngineModelConnectionSchema)),
-    connect: oc.input(connectInput).output(EngineModelConnectionSchema),
-    disconnect: oc.input(provider).output(ok),
+    connect: oc.input(EngineConnectInputSchema).output(EngineModelConnectionSchema),
+    disconnect: oc.input(EngineProviderInputSchema).output(ok),
     catalog: oc.input(z.object({ harness: z.string().min(1) })).output(EngineModelCatalogSchema),
     preferences: oc.output(z.record(z.string(), z.string())),
     setDefault: oc
@@ -132,42 +101,5 @@ export const engineModelsContract = {
     setSessionModel: oc
       .input(z.object({ botId: Id, model: z.string().min(1).nullable() }))
       .output(ok),
-  },
-  engineAdmin: {
-    connections: oc.output(z.array(EngineModelConnectionSchema)),
-    connect: oc.input(connectInput).output(EngineModelConnectionSchema),
-    disconnect: oc.input(provider).output(ok),
-    models: oc.output(EngineOverlaySchema),
-    modelsCatalog: oc.input(z.object({ harness: z.string().min(1) })).output(
-      z.object({
-        harness: z.string(),
-        status: z.string(),
-        defaultModel: z.string().nullable(),
-        models: z.array(
-          z.object({ id: z.string(), label: z.string(), family: z.string().nullable() }),
-        ),
-      }),
-    ),
-    setModels: oc.input(z.object({ harnesses: EngineOverlaySchema })).output(EngineOverlaySchema),
-    budget: oc.output(
-      z.object({
-        monthlyLimitUsd: z.number().nullable(),
-        atLimit: EngineBudgetActionSchema,
-        spentMonthUsd: z.number(),
-      }),
-    ),
-    setBudget: oc.input(EngineBudgetInputSchema).output(
-      z.object({
-        monthlyLimitUsd: z.number().nullable(),
-        atLimit: EngineBudgetActionSchema,
-        spentMonthUsd: z.number(),
-      }),
-    ),
-    users: oc.output(z.array(EngineAdminUserSchema)),
-    usage: oc.input(z.object({ window: EngineUsageWindowSchema })).output(EngineAdminUsageSchema),
-    setSuspended: oc
-      .input(z.object({ userId: z.string().min(1), suspended: z.boolean() }))
-      .output(ok),
-    deleteUser: oc.input(z.object({ userId: z.string().min(1) })).output(ok),
   },
 };

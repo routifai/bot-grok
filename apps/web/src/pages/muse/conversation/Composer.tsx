@@ -32,7 +32,7 @@ import {
   useSheetAskTarget,
   withSheetAsk,
 } from "../../../features/sheets/sheet-ask";
-import { requestOpenSettings } from "../../../lib/engine-models";
+import { requestOpenSettings } from "../../../lib/open-settings";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
 import { previewMessageText } from "./messageText";

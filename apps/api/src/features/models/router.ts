@@ -1,30 +1,21 @@
-import { engineComputerClient } from "../engine-computer.js";
+import { engineComputerClient } from "../../engine-computer.js";
+import type { RouterContext } from "../../routers/context.js";
 import {
-  adminBudget,
-  adminModelCatalog,
-  adminOverlay,
-  adminUsage,
   connectEngineModel,
-  deleteEngineUser,
   disconnectEngineModel,
   engineBudget,
   engineModelCatalog,
   engineModelPreferences,
   engineModelsStatus,
   engineSessionModel,
-  listAdminUsers,
   listEngineConnections,
-  listOrgConnections,
-  setAdminOverlay,
   setEngineBudget,
   setEngineDefaultModel,
   setEngineSessionModel,
-  setUserSuspended,
-} from "../engine-models.js";
-import type { RouterContext } from "./context.js";
+} from "./service.js";
 
-/** `engineModels.*` (the person's keys, models, budget) and `engineAdmin.*` (the organization's,
- * admins only): thin relays to the engine's model layer (../engine-models.ts). */
+/** `engineModels.*` (the person's keys, models, budget): thin relays to the engine's model layer
+ * (./service.ts). The organization's side is `engineAdmin.*` in ../admin/router.ts. */
 export function engineModelsRouter(c: RouterContext) {
   const { authed, deps } = c;
   const engine = (actor: { spaceId: string }) => engineComputerClient(actor);
@@ -62,44 +53,6 @@ export function engineModelsRouter(c: RouterContext) {
       ),
       setSessionModel: authed.engineModels.setSessionModel.handler(({ context, input }) =>
         setEngineSessionModel(deps, engine(context.actor), context.actor, input),
-      ),
-    },
-    engineAdmin: {
-      connections: authed.engineAdmin.connections.handler(({ context }) =>
-        listOrgConnections(deps, engine(context.actor), context.actor),
-      ),
-      connect: authed.engineAdmin.connect.handler(({ context, input }) =>
-        connectEngineModel(deps, engine(context.actor), context.actor, input, "org"),
-      ),
-      disconnect: authed.engineAdmin.disconnect.handler(({ context, input }) =>
-        disconnectEngineModel(deps, engine(context.actor), context.actor, input.provider, "org"),
-      ),
-      models: authed.engineAdmin.models.handler(({ context }) =>
-        adminOverlay(deps, engine(context.actor), context.actor),
-      ),
-      modelsCatalog: authed.engineAdmin.modelsCatalog.handler(({ context, input }) =>
-        adminModelCatalog(deps, engine(context.actor), context.actor, input.harness),
-      ),
-      setModels: authed.engineAdmin.setModels.handler(({ context, input }) =>
-        setAdminOverlay(deps, engine(context.actor), context.actor, input.harnesses),
-      ),
-      budget: authed.engineAdmin.budget.handler(({ context }) =>
-        adminBudget(deps, engine(context.actor), context.actor),
-      ),
-      setBudget: authed.engineAdmin.setBudget.handler(({ context, input }) =>
-        adminBudget(deps, engine(context.actor), context.actor, input),
-      ),
-      users: authed.engineAdmin.users.handler(({ context }) =>
-        listAdminUsers(deps, engine(context.actor), context.actor),
-      ),
-      usage: authed.engineAdmin.usage.handler(({ context, input }) =>
-        adminUsage(deps, engine(context.actor), context.actor, input.window),
-      ),
-      setSuspended: authed.engineAdmin.setSuspended.handler(({ context, input }) =>
-        setUserSuspended(deps, engine(context.actor), context.actor, input),
-      ),
-      deleteUser: authed.engineAdmin.deleteUser.handler(({ context, input }) =>
-        deleteEngineUser(deps, engine(context.actor), context.actor, input.userId),
       ),
     },
   };

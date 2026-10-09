@@ -1,16 +1,11 @@
 import { useEffect, useState } from "react";
-import { rpc } from "./rpc";
+import { rpc } from "../../lib/rpc";
 
 /** The engine's public code on an RPC error (`data.code`: `model_key_required`,
  * `account_suspended`, ...), when it has one. */
 export function engineErrorCode(error: unknown): string | undefined {
   const code = (error as { data?: { code?: unknown } } | null)?.data?.code;
   return typeof code === "string" ? code : undefined;
-}
-
-/** The error's own message (the API already worded it for the person), or `fallback`. */
-export function errorText(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export function formatUsd(value: number, locale: string): string {
@@ -29,27 +24,6 @@ export function formatEngineDate(seconds: number | null, locale: string): string
     month: "short",
     day: "numeric",
   });
-}
-
-export type ModelsSettingsSection = "models" | "organization";
-
-const OPEN_SETTINGS_EVENT = "nova:open-settings";
-
-/** Asks the Shell to open Settings at a section, from anywhere (a note in the Conversation). */
-export function requestOpenSettings(section: ModelsSettingsSection): void {
-  window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_EVENT, { detail: section }));
-}
-
-/** Calls `onOpen` when `requestOpenSettings` fires. */
-export function useOpenSettingsRequests(onOpen: (section: ModelsSettingsSection) => void): void {
-  useEffect(() => {
-    const listener = (event: Event) => {
-      const section = (event as CustomEvent<unknown>).detail;
-      if (section === "models" || section === "organization") onOpen(section);
-    };
-    window.addEventListener(OPEN_SETTINGS_EVENT, listener);
-    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, listener);
-  }, [onOpen]);
 }
 
 type Status = Awaited<ReturnType<typeof rpc.engineModels.status>>;

@@ -5,15 +5,10 @@
 // admin, `GET /v1/me`) and by the engine, which refuses anyone else.
 import {
   deleteOmnigentModelConnection,
-  deleteOmnigentUser,
-  getOmnigentAdminUsage,
   getOmnigentBudget,
   getOmnigentIdentity,
-  getOmnigentModelOverlay,
   getOmnigentModelPreferences,
   getOmnigentSessionModel,
-  listOmnigentAdminModelCatalog,
-  listOmnigentAdminUsers,
   listOmnigentModelConnections,
   listOmnigentModels,
   OmnigentApiError,
@@ -24,15 +19,11 @@ import {
   omnigentErrorCopy,
   putOmnigentBudget,
   putOmnigentModelConnection,
-  putOmnigentModelOverlay,
   putOmnigentModelPreferences,
   setOmnigentSessionModel,
-  setOmnigentUserSuspended,
 } from "@nova/adapters";
 import type {
   Actor,
-  EngineAdminUsage,
-  EngineAdminUser,
   EngineBudget,
   EngineModelCatalog,
   EngineModelConnection,
@@ -97,7 +88,7 @@ const ALL_HARNESSES = [AGENT_HARNESS["nova-claude"], AGENT_HARNESS["nova-pi"]] a
   label: string;
 }[];
 
-async function person(
+export async function person(
   deps: EngineModelsDeps,
   client: OmnigentClientConfig | undefined,
   actor: Actor,
@@ -111,7 +102,7 @@ async function person(
   return { client, email: user.email };
 }
 
-async function admin(
+export async function adminActor(
   deps: EngineModelsDeps,
   client: OmnigentClientConfig | undefined,
   actor: Actor,
@@ -218,7 +209,7 @@ export async function connectEngineModel(
   scope: "user" | "org" = "user",
 ): Promise<EngineModelConnection> {
   const target =
-    scope === "org" ? await admin(deps, client, actor) : await person(deps, client, actor);
+    scope === "org" ? await adminActor(deps, client, actor) : await person(deps, client, actor);
   const row = await onModels(
     putOmnigentModelConnection(target.client, target.email, scope, input.provider, {
       api_key: input.apiKey,
@@ -236,7 +227,7 @@ export async function disconnectEngineModel(
   scope: "user" | "org" = "user",
 ): Promise<{ ok: true }> {
   const target =
-    scope === "org" ? await admin(deps, client, actor) : await person(deps, client, actor);
+    scope === "org" ? await adminActor(deps, client, actor) : await person(deps, client, actor);
   await onModels(deleteOmnigentModelConnection(target.client, target.email, scope, provider));
   return { ok: true as const };
 }
@@ -246,7 +237,7 @@ export async function listOrgConnections(
   client: OmnigentClientConfig | undefined,
   actor: Actor,
 ): Promise<EngineModelConnection[]> {
-  const target = await admin(deps, client, actor);
+  const target = await adminActor(deps, client, actor);
   const rows = await onModels(listOmnigentModelConnections(target.client, target.email, "org"));
   return rows.map(toConnection);
 }
@@ -355,126 +346,4 @@ export async function setEngineSessionModel(
     setOmnigentSessionModel(target.client, target.email, session.omnigentSessionId, input.model),
   );
   return { ok: true as const };
-}
-
-export async function listAdminUsers(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-): Promise<EngineAdminUser[]> {
-  const target = await admin(deps, client, actor);
-  const users = await onModels(listOmnigentAdminUsers(target.client, target.email));
-  return users.map((user) => ({
-    id: user.id,
-    email: user.email,
-    isAdmin: user.is_admin,
-    status: user.status,
-    spendMonthUsd: user.spend_month_usd,
-    spendTodayUsd: user.spend_today_usd,
-    sessionCount: user.session_count,
-    providers: user.model_connections.map((connection) => connection.provider),
-    budget: {
-      monthlyLimitUsd: user.budget.monthly_limit_usd,
-      atLimit: user.budget.at_limit,
-    },
-    computer: user.computer?.state ?? null,
-    lastActive: user.last_active,
-  }));
-}
-
-export async function adminUsage(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-  window: "day" | "month",
-): Promise<EngineAdminUsage> {
-  const target = await admin(deps, client, actor);
-  const usage = await onModels(getOmnigentAdminUsage(target.client, target.email, window));
-  return {
-    window: usage.window,
-    totalUsd: usage.total_usd,
-    byUser: usage.by_user.map((row) => ({ userId: row.user_id, costUsd: row.cost_usd })),
-    byDay: usage.by_day.map((row) => ({ day: row.day, costUsd: row.cost_usd })),
-  };
-}
-
-export async function setUserSuspended(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-  input: { userId: string; suspended: boolean },
-): Promise<{ ok: true }> {
-  const target = await admin(deps, client, actor);
-  await onModels(
-    setOmnigentUserSuspended(target.client, target.email, input.userId, input.suspended),
-  );
-  return { ok: true as const };
-}
-
-export async function deleteEngineUser(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-  userId: string,
-): Promise<{ ok: true }> {
-  const target = await admin(deps, client, actor);
-  await onModels(deleteOmnigentUser(target.client, target.email, userId));
-  return { ok: true as const };
-}
-
-export async function adminOverlay(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-) {
-  const target = await admin(deps, client, actor);
-  return onModels(getOmnigentModelOverlay(target.client, target.email));
-}
-
-export async function setAdminOverlay(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-  harnesses: Record<string, { allow: string[] | null; default: string | null }>,
-) {
-  const target = await admin(deps, client, actor);
-  return onModels(putOmnigentModelOverlay(target.client, target.email, harnesses));
-}
-
-export async function adminBudget(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-  next?: { monthlyLimitUsd: number | null; atLimit: "stop" | "ask" },
-) {
-  const target = await admin(deps, client, actor);
-  const row = await onModels(
-    next
-      ? putOmnigentBudget(target.client, target.email, "org", {
-          monthly_limit_usd: next.monthlyLimitUsd,
-          at_limit: next.atLimit,
-        })
-      : getOmnigentBudget(target.client, target.email, "org"),
-  );
-  return {
-    monthlyLimitUsd: row.monthly_limit_usd,
-    atLimit: row.at_limit,
-    spentMonthUsd: row.spent_month_usd,
-  };
-}
-
-export async function adminModelCatalog(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-  harness: string,
-) {
-  const target = await admin(deps, client, actor);
-  const row = await onModels(listOmnigentAdminModelCatalog(target.client, target.email, harness));
-  return {
-    harness: row.harness,
-    status: row.status,
-    defaultModel: row.default_model,
-    models: row.models,
-  };
 }

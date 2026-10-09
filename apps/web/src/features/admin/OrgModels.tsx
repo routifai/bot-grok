@@ -1,10 +1,10 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Button, Checkbox, NativeSelect, NativeSelectOption, Switch } from "@nova/ui-web";
 import { useEffect, useState } from "react";
-import { errorText } from "../../../lib/engine-models";
-import { rpc } from "../../../lib/rpc";
-import { modelOptionLabel } from "./DefaultModel";
-import { SettingsGroup, SettingsRow } from "./kit";
+import { errorText } from "../../lib/error-text";
+import { rpc } from "../../lib/rpc";
+import { SettingsGroup, SettingsRow } from "../../pages/muse/settings/kit";
+import { modelOptionLabel } from "../models";
 
 type Catalog = Awaited<ReturnType<typeof rpc.engineAdmin.modelsCatalog>>;
 type Draft = { all: boolean; allow: string[]; default: string | null };

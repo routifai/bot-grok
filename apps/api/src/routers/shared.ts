@@ -3,7 +3,7 @@ import type { Actor, Me } from "@nova/contracts";
 import { findDefaultModelCredential } from "@nova/db";
 
 import { engineComputerClient } from "../engine-computer.js";
-import { engineModelsStatus } from "../engine-models.js";
+import { engineModelsStatus } from "../features/models/service.js";
 import type { RouterDeps } from "./context.js";
 
 export const THREAD_MESSAGE_PAGE_SIZE = 100;

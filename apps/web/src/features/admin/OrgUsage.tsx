@@ -1,9 +1,10 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { EngineAdminUsage } from "@nova/contracts";
 import { useEffect, useState } from "react";
-import { errorText, formatUsd } from "../../../lib/engine-models";
-import { rpc } from "../../../lib/rpc";
-import { SettingsGroup, SettingsRow, SettingsSegmented } from "./kit";
+import { errorText } from "../../lib/error-text";
+import { rpc } from "../../lib/rpc";
+import { SettingsGroup, SettingsRow, SettingsSegmented } from "../../pages/muse/settings/kit";
+import { formatUsd } from "../models";
 
 type Window = "day" | "month";
 

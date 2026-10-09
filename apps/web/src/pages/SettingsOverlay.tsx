@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
 import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
-import { useEngineModelsStatus } from "../lib/engine-models";
+import { OrganizationPanel } from "../features/admin";
+import { ModelsPanel, useEngineModelsStatus } from "../features/models";
 import {
   ComputerSettingsPanel,
   GeneralSettingsPanels,
@@ -25,8 +26,6 @@ import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { NovaTile, type TileTone } from "./muse/chrome/NovaTile";
 import { NovaSettingsPanel } from "./muse/NovaSettingsPanel";
 import { GeneralPanel } from "./muse/settings/GeneralPanel";
-import { ModelsPanel } from "./muse/settings/ModelsPanel";
-import { OrganizationPanel } from "./muse/settings/OrganizationPanel";
 import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 

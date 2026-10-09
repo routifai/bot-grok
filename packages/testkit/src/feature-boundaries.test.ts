@@ -15,11 +15,11 @@ type LayerName = "engine" | "api" | "adapters" | "contracts" | "web";
 
 /** Capabilities already in capability layout, per layer. Add a name here as it moves. */
 const CAPABILITIES: Record<LayerName, readonly string[]> = {
-  engine: ["apps", "artifacts", "sheets"],
-  api: ["apps", "sheets"],
-  adapters: ["apps", "sheets"],
-  contracts: ["apps", "sheets"],
-  web: ["apps", "sheets"],
+  engine: ["admin", "apps", "artifacts", "models", "sheets"],
+  api: ["admin", "apps", "models", "sheets"],
+  adapters: ["apps", "models", "sheets"],
+  contracts: ["admin", "apps", "models", "sheets"],
+  web: ["admin", "apps", "models", "sheets"],
 };
 
 /** `capability -> capabilities it may import`, through their public entry point only. */
@@ -38,6 +38,10 @@ const BASELINE: readonly string[] = [
   // `ArtifactSchema.publish` embeds the apps publication shape; goes away when the artifact
   // schemas move into `rpc/artifacts.ts` and reach it as a base.
   "contracts:domain.ts -> apps",
+  // The bootstrap payload says whether the person still needs a model; that is the models
+  // capability's answer (engine key/budget status). Goes away when bootstrap assembles per-
+  // capability contributions instead of reaching into each one.
+  "api:routers/shared.ts -> models",
   // The sheet "ask about this selection" chip lives in the composer and the message view; it
   // needs a composer/message extension point, which comes when those move into their folders.
   "web:pages/muse/conversation/Composer.tsx -> sheets",
@@ -122,7 +126,7 @@ const LAYERS: readonly Layer[] = [
   featuresLayout("web", "apps/web/src", [
     /^App\.tsx$/,
     /^pages\/Shell\.tsx$/,
-    /^pages\/SettingsOverlay\.tsx$/,
+    /^pages\/SettingsOverlay(\.test)?\.tsx$/,
     /^pages\/muse\/NovaSettingsPanel\.tsx$/,
     /^pages\/muse\/chrome\/ContextPanel\.tsx$/,
     /^pages\/dev\//,
