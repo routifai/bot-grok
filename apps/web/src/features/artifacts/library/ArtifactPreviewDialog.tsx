@@ -1,8 +1,11 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@nova/ui-web";
+import { Button, cn, Dialog, DialogContent, DialogHeader, DialogTitle } from "@nova/ui-web";
 import { Download, Lock } from "lucide-react";
+import { useState } from "react";
 import { downloadArtifactBytes } from "../../../lib/artifact-open";
 import { ArtifactPreview } from "../Artifacts";
+import { FullScreenToggle } from "../FullScreenToggle";
+import { useArtifactPanelParts } from "../registry";
 import { useArtifactContent } from "./useArtifactContent";
 
 /**
@@ -19,14 +22,26 @@ export function ArtifactPreviewDialog({
 }) {
   const { t } = useLingui();
   const state = useArtifactContent(artifactId);
+  const [fullScreen, setFullScreen] = useState(false);
+  const ready = state.status === "ready" ? state : null;
+  // Same registry parts as ArtifactPanel, so apps/sheets add their controls here too.
+  const extra = useArtifactPanelParts({ artifact: ready?.artifact });
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[90vh] w-[94vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl sm:rounded-3xl">
+      <DialogContent
+        className={cn(
+          "flex max-w-none flex-col gap-0 overflow-hidden p-0",
+          fullScreen
+            ? "h-screen w-screen sm:max-w-none sm:rounded-none"
+            : "h-[90vh] w-[94vw] sm:max-w-6xl sm:rounded-3xl",
+        )}
+      >
         <DialogHeader className="shrink-0 flex-row items-center justify-between gap-3 border-b border-border px-5 py-3.5 text-left">
-          <DialogTitle className="min-w-0 truncate pe-8 text-[15px] font-medium">
+          <DialogTitle className="min-w-0 flex-1 truncate pe-8 text-[15px] font-medium">
             {state.status === "ready" ? state.artifact.name : t`Loading…`}
           </DialogTitle>
+          {extra.badge}
           {state.versions.length > 1 ? (
             <select
               aria-label={t`Version`}
@@ -41,6 +56,10 @@ export function ArtifactPreviewDialog({
               ))}
             </select>
           ) : null}
+          {ready?.artifact.mimeType === "text/html" ? (
+            <FullScreenToggle fullScreen={fullScreen} onToggle={() => setFullScreen((v) => !v)} />
+          ) : null}
+          {extra.actions}
           {state.status === "ready" ? (
             <Button
               variant="outline"
@@ -55,6 +74,8 @@ export function ArtifactPreviewDialog({
             </Button>
           ) : null}
         </DialogHeader>
+        {extra.below}
+        {extra.overlay}
 
         <div className="relative min-h-0 flex-1">
           {state.status === "loading" ? (

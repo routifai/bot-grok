@@ -1,11 +1,12 @@
 import { useLingui } from "@lingui/react/macro";
 import { Button, cn } from "@nova/ui-web";
-import { Download, ExternalLink, Lock, Maximize2, Minimize2, X } from "lucide-react";
+import { Download, ExternalLink, Lock, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { formatSize } from "../../components/cards/catalog";
 import { downloadArtifactBytes } from "../../lib/artifact-open";
 import { useObjectUrl } from "../../lib/use-object-url";
 import { ArtifactPreview } from "./Artifacts";
+import { FullScreenToggle } from "./FullScreenToggle";
 import { useArtifactContent } from "./library/useArtifactContent";
 import { useArtifactPanelParts } from "./registry";
 
@@ -115,17 +116,7 @@ export function ArtifactPanel({
           </select>
         ) : null}
         {isApp ? (
-          <>
-            <Button
-              variant="secondary"
-              size="sm"
-              aria-pressed={fullScreen}
-              onClick={() => setFullScreen((value) => !value)}
-            >
-              {fullScreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-              {fullScreen ? t`Exit full screen` : t`Open full screen`}
-            </Button>
-          </>
+          <FullScreenToggle fullScreen={fullScreen} onToggle={() => setFullScreen((v) => !v)} />
         ) : null}
         {extra.actions}
         {ready ? (
