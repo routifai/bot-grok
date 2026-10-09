@@ -3,6 +3,7 @@
 export {
   type EngineArtifactsDeps,
   emailOf,
+  engineGetArtifact,
   notFound,
   toArtifact,
   toPublish,
