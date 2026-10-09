@@ -1,0 +1,287 @@
+// Capability folders: the same capability name in every layer (engine `superchat/<cap>/`, api
+// `features/<cap>/`, adapters `omnigent/<cap>.ts`, contracts `rpc/<cap>.ts`, web
+// `features/<cap>/`). This test fails on any import from one capability into another, except
+//   - the declared BASES (a capability may sit on top of its base, through the base's public
+//     `__init__.py` / `index.ts` only), and
+//   - the composition roots (the files that wire every capability together).
+// Edges that existed before a capability moved are listed in BASELINE. It is a ratchet: a new
+// edge fails, and an entry that no longer exists fails too, so the list can only shrink.
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { posix, relative, sep } from "node:path";
+import { describe, expect, it } from "vitest";
+
+type LayerName = "engine" | "api" | "adapters" | "contracts" | "web";
+
+/** Capabilities already in capability layout, per layer. Add a name here as it moves. */
+const CAPABILITIES: Record<LayerName, readonly string[]> = {
+  engine: [],
+  api: [],
+  adapters: [],
+  contracts: [],
+  web: [],
+};
+
+/** `capability -> capabilities it may import`, through their public entry point only. */
+const BASES: Record<string, readonly string[]> = {
+  sheets: ["artifacts"],
+  apps: ["artifacts"],
+  admin: ["models"],
+  skills: ["computer"],
+};
+
+/**
+ * Edges that exist today and are not allowed: `"<layer>:<file relative to the layer root> ->
+ * <capability>"`. Remove an entry when the edge is gone; never add one without a reason.
+ */
+const BASELINE: readonly string[] = [];
+
+const REPO = fileURLToPath(new URL("../../../", import.meta.url));
+
+interface Layer {
+  name: LayerName;
+  /** Absolute root directory the layer is scanned from. */
+  root: string;
+  extensions: readonly string[];
+  /** Composition roots, relative to `root`: they may import any capability. */
+  composition: readonly RegExp[];
+  /** The capability folder a root-relative path (extension optional) belongs to, or null. */
+  capOf(path: string): string | null;
+  /** True when a path inside the capability is its public entry point. */
+  isPublic(path: string, cap: string): boolean;
+}
+
+const stem = (segment: string): string => segment.split(".")[0] ?? segment;
+
+/** `features/<cap>/…` layout shared by api and web. */
+function featuresLayout(name: "api" | "web", root: string, composition: RegExp[]): Layer {
+  return {
+    name,
+    root: `${REPO}${root}`,
+    extensions: [".ts", ".tsx"],
+    composition,
+    capOf(path) {
+      const [dir, cap] = path.split("/");
+      return dir === "features" && cap ? stem(cap) : null;
+    },
+    isPublic(path, cap) {
+      return new RegExp(`^features/${cap}(/index)?(\\.[a-z]+)?$`).test(path);
+    },
+  };
+}
+
+/** `<dir>/<cap>.ts` or `<dir>/<cap>/…` layout shared by adapters and contracts. */
+function fileLayout(
+  name: "adapters" | "contracts",
+  root: string,
+  dir: string,
+  composition: RegExp[],
+): Layer {
+  return {
+    name,
+    root: `${REPO}${root}`,
+    extensions: [".ts", ".tsx"],
+    composition,
+    capOf(path) {
+      const [first, cap] = path.split("/");
+      return first === dir && cap ? stem(cap) : null;
+    },
+    isPublic(path, cap) {
+      return new RegExp(`^${dir}/${cap}(/index)?(\\.[a-z]+)?$`).test(path);
+    },
+  };
+}
+
+const LAYERS: readonly Layer[] = [
+  {
+    name: "engine",
+    root: `${REPO}engine/omnigent/omnigent/superchat`,
+    extensions: [".py"],
+    composition: [/^features\.py$/],
+    capOf: (path) => {
+      const [first] = path.split("/");
+      return first && path.includes("/") ? first.replaceAll("_", "-") : null;
+    },
+    isPublic: (path) => /\/__init__\.py$/.test(path),
+  },
+  featuresLayout("api", "apps/api/src", [/^router\.ts$/, /^app\.ts$/, /^routers\/context\.ts$/]),
+  fileLayout("adapters", "packages/adapters/src", "omnigent", [
+    /^index\.ts$/,
+    /^omnigent\/client\.ts$/,
+  ]),
+  fileLayout("contracts", "packages/contracts/src", "rpc", [/^rpc\.ts$/, /^index\.ts$/]),
+  featuresLayout("web", "apps/web/src", [
+    /^App\.tsx$/,
+    /^pages\/Shell\.tsx$/,
+    /^pages\/SettingsOverlay\.tsx$/,
+    /^pages\/muse\/NovaSettingsPanel\.tsx$/,
+    /^pages\/muse\/chrome\/ContextPanel\.tsx$/,
+    /^pages\/dev\//,
+  ]),
+];
+
+const SKIPPED = new Set(["node_modules", "dist", "__pycache__", ".venv", ".turbo"]);
+
+function listFiles(layer: Layer): string[] {
+  return readdirSync(layer.root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && layer.extensions.some((ext) => entry.name.endsWith(ext)))
+    .map((entry) =>
+      relative(layer.root, `${entry.parentPath}${sep}${entry.name}`).split(sep).join("/"),
+    )
+    .filter((path) => !path.split("/").some((segment) => SKIPPED.has(segment)));
+}
+
+const TS_SPECIFIER =
+  /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bvi\.(?:mock|doMock|importActual|importMock|unmock)\s*\(\s*)["']([^"']+)["']/g;
+
+/** Every module specifier a TS/TSX source names (`from`, `import()`, side-effect import, vi.mock). */
+export function tsSpecifiers(source: string): string[] {
+  return [...source.matchAll(TS_SPECIFIER)].map((match) => match[1] as string);
+}
+
+const PY_IMPORT = /^\s*(?:from|import)\s+omnigent\.superchat\.(\w+)((?:\.\w+)*)/gm;
+
+/** `[first segment, deeper submodule path]` of every `omnigent.superchat.<x>` import. */
+export function pySuperchatImports(source: string): Array<{ top: string; rest: string }> {
+  return [...source.matchAll(PY_IMPORT)].map((match) => ({
+    top: match[1] as string,
+    rest: match[2] as string,
+  }));
+}
+
+interface Edge {
+  /** Path of the imported module relative to the layer root (no extension fix-ups). */
+  target: string;
+}
+
+function tsEdges(layer: Layer, file: string, source: string): Edge[] {
+  const edges: Edge[] = [];
+  for (const specifier of tsSpecifiers(source)) {
+    if (!specifier.startsWith(".")) continue;
+    const resolved = posix.normalize(posix.join(posix.dirname(file), specifier));
+    if (resolved.startsWith("..")) continue;
+    edges.push({ target: resolved });
+  }
+  return edges;
+}
+
+function pyEdges(source: string): Edge[] {
+  return pySuperchatImports(source).map(({ top, rest }) => ({
+    // A bare `omnigent.superchat.<cap>` is the package, i.e. its `__init__.py`.
+    target: rest ? `${top}${rest.replaceAll(".", "/")}.py` : `${top}/__init__.py`,
+  }));
+}
+
+/** The violations (`"<layer>:<file> -> <cap>"`) one layer has today. */
+export function violationsOf(
+  layer: Layer,
+  capabilities: readonly string[],
+  files: ReadonlyMap<string, string>,
+): string[] {
+  const known = new Set(capabilities);
+  const found = new Set<string>();
+  for (const [file, source] of files) {
+    if (layer.composition.some((root) => root.test(file))) continue;
+    const from = layer.capOf(file);
+    const owner = from !== null && known.has(from) ? from : null;
+    const edges = layer.name === "engine" ? pyEdges(source) : tsEdges(layer, file, source);
+    for (const { target } of edges) {
+      const candidate = layer.capOf(target);
+      if (candidate === null || !known.has(candidate) || candidate === owner) continue;
+      const allowedBase =
+        owner !== null &&
+        (BASES[owner] ?? []).includes(candidate) &&
+        layer.isPublic(target, candidate);
+      if (!allowedBase) found.add(`${layer.name}:${file} -> ${candidate}`);
+    }
+  }
+  return [...found].sort();
+}
+
+function read(layer: Layer): Map<string, string> {
+  return new Map(
+    listFiles(layer).map((file) => [file, readFileSync(`${layer.root}/${file}`, "utf8")]),
+  );
+}
+
+describe("feature boundaries", () => {
+  const found = LAYERS.flatMap((layer) =>
+    violationsOf(layer, CAPABILITIES[layer.name], read(layer)),
+  );
+
+  it("has no cross-capability edge outside the baseline", () => {
+    expect(found.filter((edge) => !BASELINE.includes(edge))).toEqual([]);
+  });
+
+  it("keeps no baseline entry for an edge that is gone", () => {
+    expect(BASELINE.filter((edge) => !found.includes(edge))).toEqual([]);
+  });
+
+  it("only names capabilities that exist as folders", () => {
+    for (const layer of LAYERS) {
+      const folders = new Set(listFiles(layer).map((file) => layer.capOf(file)));
+      for (const cap of CAPABILITIES[layer.name]) expect(folders.has(cap)).toBe(true);
+    }
+  });
+});
+
+describe("boundary scanner", () => {
+  const web = LAYERS.find((layer) => layer.name === "web") as Layer;
+  const engine = LAYERS.find((layer) => layer.name === "engine") as Layer;
+
+  it("reads from, import(), side-effect import and vi.mock specifiers", () => {
+    const source = [
+      `import { a } from "./a.js";`,
+      `export * from '../b';`,
+      `const c = await import("./c");`,
+      `import "./d.css";`,
+      `vi.mock("./e", () => ({}));`,
+    ].join("\n");
+    expect(tsSpecifiers(source)).toEqual(["./a.js", "../b", "./c", "./d.css", "./e"]);
+  });
+
+  it("reads superchat python imports with their submodule", () => {
+    const source = [
+      "from omnigent.superchat.artifacts import store",
+      "    from omnigent.superchat.artifacts.store import X",
+      "import omnigent.superchat.apps.routes as r",
+      "from omnigent.superchat import feature",
+    ].join("\n");
+    expect(pySuperchatImports(source)).toEqual([
+      { top: "artifacts", rest: "" },
+      { top: "artifacts", rest: ".store" },
+      { top: "apps", rest: ".routes" },
+    ]);
+  });
+
+  it("flags a cross-capability import, allows a base through its entry point only", () => {
+    const files = new Map([
+      ["features/apps/a.ts", `import "../sheets/x.js"; import "../artifacts/index.js";`],
+      ["features/sheets/b.ts", `import "../artifacts/store.js"; import "../../lib/core.js";`],
+      ["lib/core.ts", `import "../features/apps/a.js";`],
+      ["App.tsx", `import "./features/apps/a.js";`],
+    ]);
+    expect(violationsOf(web, ["apps", "sheets", "artifacts"], files)).toEqual([
+      "web:features/apps/a.ts -> sheets",
+      "web:features/sheets/b.ts -> artifacts",
+      "web:lib/core.ts -> apps",
+    ]);
+  });
+
+  it("applies the same rules to python imports", () => {
+    const files = new Map([
+      [
+        "apps/routes.py",
+        "from omnigent.superchat.artifacts import X\nfrom omnigent.superchat.sheets import Y",
+      ],
+      ["sheets/routes.py", "from omnigent.superchat.artifacts.store import S"],
+      ["titles.py", "from omnigent.superchat.apps import Z"],
+      ["features.py", "from omnigent.superchat.apps import FEATURE"],
+    ]);
+    expect(violationsOf(engine, ["apps", "sheets", "artifacts"], files)).toEqual([
+      "engine:apps/routes.py -> sheets",
+      "engine:sheets/routes.py -> artifacts",
+      "engine:titles.py -> apps",
+    ]);
+  });
+});
