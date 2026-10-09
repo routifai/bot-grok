@@ -1,8 +1,7 @@
 """Sheets: CSV / XLSX artifacts read as grids, hand-edited into new versions, written back.
 
 Layout: ``table`` (read / apply edits), ``xlsx_patch`` (edit an XLSX in place), ``routes``
-(``/v1/artifacts/{id}/table``), ``writeback`` (hand edits -> the Computer workspace, run as a
-turn prefix), ``feature`` (registration). Sits on top of artifacts.
+(``/v1/artifacts/{id}/table``), ``feature`` (registration). Sits on top of artifacts.
 """
 
 from __future__ import annotations

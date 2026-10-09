@@ -10,8 +10,8 @@ when the person saved). For every hand-edited version the server still lists as 
 3. return one compact note per file for the turn prefix.
 
 A failed write is not acked: the next turn retries, and the note says the file was not updated.
-Reusable by any artifact kind (the HTML canvas editor will save ``origin="manual"`` versions the
-same way).
+Generic over artifact kinds: sheets cell edits and the deck editor both save ``origin="manual"``
+versions, and this one pass delivers them all.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from omnigent.superchat.artifacts import workspace_roots
+from omnigent.superchat.artifacts.handlers import workspace_roots
 
 _logger = logging.getLogger(__name__)
 

@@ -346,6 +346,23 @@ class SqlAlchemyArtifactStore:
             )
             return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
 
+    def versions_of(
+        self, *, user_id: str | None, parent_session_id: str, name: str
+    ) -> list[Artifact]:
+        """Every version of a deliverable by its identity, newest first (empty if none)."""
+        with self._session("list_artifact_versions_by_name") as session:
+            stmt = (
+                select(SqlArtifact)
+                .where(
+                    SqlArtifact.workspace_id == current_workspace_id(),
+                    _owner_clause(user_id),
+                    SqlArtifact.parent_session_id == parent_session_id,
+                    SqlArtifact.name == name,
+                )
+                .order_by(desc(SqlArtifact.version))
+            )
+            return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
+
     def list_latest(
         self,
         *,
