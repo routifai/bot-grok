@@ -120,3 +120,17 @@ def test_a_saved_artifact_is_followed_through_on_result(tmp_path: Path, monkeypa
     FEATURE.on_result(ctx, json.dumps({"type": "artifact", "source_path": str(note)}))  # type: ignore[misc]
     assert runtime.indexer.db.file_by_path("projects/q3/summary.md") is not None
     FEATURE.on_result(HandlerCtx("other", None, SESSION), "{}")  # type: ignore[misc]
+
+
+def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() -> None:
+    """The relays reach the Computer through /mcp/execute; this gate once refused them, so every
+    citation thumbnail 404ed."""
+    from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
+    from omnigent.runner import tool_dispatch
+    from omnigent.spec.types import AgentSpec
+
+    spec = AgentSpec(spec_version=1)
+    chat = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
+    for name in ("files_status", "files_thumbnail", "files_reindex"):
+        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat) is None
+        assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels={})

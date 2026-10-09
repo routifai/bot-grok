@@ -31,9 +31,11 @@ export function resetThumbnailCache() {
 }
 
 function Thumbnail({ fileId, page }: { fileId: string; page: number }) {
-  const [src, setSrc] = useState<string | null>(null);
+  // undefined: still loading (a skeleton); null: the page truly has no thumbnail (a page icon).
+  const [src, setSrc] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
+    setSrc(undefined);
     void loadThumbnail(fileId, page).then((url) => {
       if (live) setSrc(url);
     });
@@ -41,10 +43,15 @@ function Thumbnail({ fileId, page }: { fileId: string; page: number }) {
       live = false;
     };
   }, [fileId, page]);
+  if (src === undefined) {
+    return (
+      <span data-testid="passage-thumbnail-loading" className="size-full animate-pulse bg-muted" />
+    );
+  }
   return src ? (
     <img src={src} alt="" className="size-full object-cover object-top" />
   ) : (
-    <span className="size-full animate-pulse bg-muted" />
+    <FileText size={15} className="text-muted-foreground" />
   );
 }
 

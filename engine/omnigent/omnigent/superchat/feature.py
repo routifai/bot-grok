@@ -145,6 +145,9 @@ class Feature:
     :param name: Folder / feature name, e.g. ``"vault"``.
     :param tools: ``(labels, ctx) -> tool defs`` (label-gated: Super Chat vs Helper).
     :param handlers: ``tool_name -> async handler`` run on the runner.
+    :param relay_ops: Handler names only the engine's relays call (through the runner's
+        ``/mcp/execute``): never offered to a model, yet allowed through the runner's granted-tool
+        gate for a Super Chat session.
     :param on_result: Sees every feature handler's ``(ctx, output)`` after it ran (any feature's
         tool), so a feature can follow another's results without importing it.
     :param turn_prefix: Blocks this feature prepends to a Super Chat turn (e.g. one-shot notes),
@@ -156,6 +159,7 @@ class Feature:
     name: str
     tools: Callable[[Mapping[str, str] | None, ToolManagerCtx], list[Tool]]
     handlers: Mapping[str, Handler] = field(default_factory=dict)
+    relay_ops: frozenset[str] = frozenset()
     on_result: ResultListener | None = None
     turn_prefix: TurnPrefix | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None

@@ -82,6 +82,7 @@ FEATURE = Feature(
     name="knowledge",
     tools=_tools,
     handlers=dict.fromkeys((*KNOWLEDGE_TOOL_NAMES, *_INTERNAL_OPS), handle_knowledge_tool),
+    relay_ops=frozenset(_INTERNAL_OPS),
     on_result=_on_result,
     install=_install,
 )
