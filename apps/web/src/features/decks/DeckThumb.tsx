@@ -7,8 +7,9 @@ import { postDeckNavigation, readDeckEvent } from "./deck-model";
 const FRAME_W = 1952;
 const FRAME_H = 1112;
 export const THUMB_W = 116;
-const SCALE = THUMB_W / FRAME_W;
-const THUMB_H = Math.round(FRAME_H * SCALE);
+/** The slim rail's thumbnail: the same live frame, scaled down further. */
+export const MINI_THUMB_W = 40;
+const heightFor = (width: number) => Math.round((FRAME_H * width) / FRAME_W);
 /** Without IntersectionObserver (tests) only the first few thumbnails mount. */
 const FALLBACK_MOUNT = 6;
 
@@ -40,13 +41,18 @@ export function DeckThumb({
   label,
   active,
   onSelect,
+  compact = false,
 }: {
   html: string;
   index: number;
   label: string;
   active: boolean;
   onSelect: (index: number) => void;
+  /** A slim-rail thumbnail: smaller, without the number and title under it. */
+  compact?: boolean;
 }) {
+  const width = compact ? MINI_THUMB_W : THUMB_W;
+  const scale = width / FRAME_W;
   const { ref, near } = useNearViewport(index);
   const frame = useRef<HTMLIFrameElement>(null);
 
@@ -85,22 +91,24 @@ export function DeckThumb({
             "relative block overflow-hidden rounded-md bg-muted ring-1 ring-inset",
             active ? "ring-2 ring-foreground" : "ring-border group-hover:ring-foreground/40",
           )}
-          style={{ width: THUMB_W, height: THUMB_H }}
+          style={{ width, height: heightFor(width) }}
         >
           {near ? (
             <span
               aria-hidden="true"
               className="pointer-events-none absolute start-0 top-0 block origin-top-left"
-              style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${SCALE})` }}
+              style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})` }}
             >
               <SandboxedHtmlViewer html={html} title={label} relay frameRef={frame} />
             </span>
           ) : null}
         </span>
-        <span className="mt-1 flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
-          <span className="tabular-nums">{index + 1}</span>
-          <span className="truncate">{label.replace(/^\d+\s*/, "")}</span>
-        </span>
+        {compact ? null : (
+          <span className="mt-1 flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
+            <span className="tabular-nums">{index + 1}</span>
+            <span className="truncate">{label.replace(/^\d+\s*/, "")}</span>
+          </span>
+        )}
       </button>
     </div>
   );

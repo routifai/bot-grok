@@ -6,6 +6,7 @@ import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from ".
 import { useDeckExport } from "./DeckExport";
 import { DeckHeaderActions } from "./DeckHeaderActions";
 import { DeckViewer } from "./DeckViewer";
+import { useDeckEditing } from "./deck-ui-state";
 import { PptxPreview } from "./PptxPreview";
 import { isPptxArtifact } from "./pptx-normalize";
 
@@ -15,10 +16,13 @@ function useDecksPanel({ artifact, bytes, openUrl }: ArtifactPanelArgs): Artifac
   const deck: Artifact | undefined =
     artifact && isDeckArtifactName(artifact.name) ? artifact : undefined;
   const { state, run, cancel } = useDeckExport(deck?.id);
+  // Editing wants the slide as big as it can be: the panel widens, and goes back afterwards.
+  const editing = useDeckEditing(deck?.name ?? "");
   // A PowerPoint file keeps the panel's own Download and full-screen buttons; it only needs room.
   if (!deck) return { wide: !!artifact && isPptxArtifact(artifact) };
   return {
     wide: true,
+    expanded: editing,
     hideDefaults: true,
     actions: (
       <DeckHeaderActions

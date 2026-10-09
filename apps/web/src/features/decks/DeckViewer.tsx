@@ -3,7 +3,7 @@ import { Button, cn } from "@nova/ui-web";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
-import { DeckThumb } from "./DeckThumb";
+import { DeckRail } from "./DeckRail";
 import {
   type DeckNavigation,
   parseDeckSlides,
@@ -215,23 +215,7 @@ export function DeckViewer({
       className={cn("flex h-full min-h-0 bg-background", presenting && "bg-black")}
     >
       {presenting ? null : (
-        <div
-          role="listbox"
-          aria-label={t`Slides`}
-          aria-orientation="vertical"
-          className="flex w-[148px] shrink-0 flex-col gap-3 overflow-y-auto border-e border-border px-4 py-3"
-        >
-          {slides.map((slide) => (
-            <DeckThumb
-              key={slide.index}
-              html={html}
-              index={slide.index}
-              label={slide.label}
-              active={slide.index === active}
-              onSelect={goTo}
-            />
-          ))}
-        </div>
+        <DeckRail html={html} slides={slides} active={active} onSelect={goTo} slim={!!editor} />
       )}
       {editor ? (
         editor

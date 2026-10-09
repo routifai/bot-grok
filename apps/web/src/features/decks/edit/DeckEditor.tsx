@@ -1,4 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
+import { Button } from "@nova/ui-web";
+import { Redo2, Undo2 } from "lucide-react";
 import {
   type MutableRefObject,
   type ReactNode,
@@ -14,7 +16,7 @@ import {
 import { buildDeckAsk, DECK_ASK_KIND } from "../deck-ask";
 import { EditStage } from "./EditStage";
 import { targetLabel } from "./edit-model";
-import { StylePanel } from "./StylePanel";
+import { EditNoticeBanner, StylePanel } from "./StylePanel";
 import { type DeckEditSource, type PostToFrame, useDeckEditor } from "./useDeckEditor";
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -117,46 +119,85 @@ export function DeckEditor({
   useEffect(() => () => setComposerAttachment(DECK_ASK_KIND, null), []);
 
   return (
-    <>
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="relative min-h-0 flex-1">
-          <EditStage
-            html={html}
-            title={title}
-            reloadKey={editor.reloadKey}
-            active={active}
-            selectedIds={editor.selectedIds}
-            frameRef={frameRef}
-            postRef={postRef}
-            onMessage={editor.onFrameMessage}
-          />
+    <div className="relative flex min-w-0 flex-1 flex-col">
+      <div className="relative min-h-0 flex-1">
+        <EditStage
+          html={html}
+          title={title}
+          reloadKey={editor.reloadKey}
+          active={active}
+          selectedIds={editor.selectedIds}
+          frameRef={frameRef}
+          postRef={postRef}
+          onMessage={editor.onFrameMessage}
+        />
+        <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-center gap-2">
+          <div
+            data-testid="deck-edit-toolbar"
+            className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-glass p-1 shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-[0.5px] ring-glass-line ring-inset backdrop-blur-[30px] backdrop-saturate-[1.8]"
+          >
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              aria-label={t`Undo`}
+              title={t`Undo`}
+              disabled={!editor.canUndo || editor.saving}
+              onClick={() => void editor.undo()}
+            >
+              <Undo2 />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              aria-label={t`Redo`}
+              title={t`Redo`}
+              disabled={!editor.canRedo || editor.saving}
+              onClick={() => void editor.redo()}
+            >
+              <Redo2 />
+            </Button>
+          </div>
+          {editor.notice ? (
+            <div className="pointer-events-auto">
+              <EditNoticeBanner
+                notice={editor.notice}
+                targets={editor.targets}
+                canAsk={canAsk}
+                onAsk={ask}
+                onDismissNotice={editor.dismissNotice}
+              />
+            </div>
+          ) : null}
         </div>
-        {bar}
+        {editor.targets.length ? (
+          <div className="pointer-events-none absolute inset-y-3 end-3 flex items-start justify-end">
+            <div className="pointer-events-auto flex max-h-full">
+              <StylePanel
+                targets={editor.targets}
+                theme={editor.theme}
+                slideCount={editor.theme?.slideCount ?? 0}
+                canAsk={canAsk}
+                asked={asked}
+                focusAsk={editor.askRequest}
+                onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
+                onAttributes={editor.setAttributes}
+                onCommit={() => {
+                  editor.finishText();
+                  void editor.flush();
+                }}
+                onClose={() => post({ type: "nova:edit-select", ids: [] })}
+                onRemove={editor.remove}
+                onDuplicate={editor.duplicate}
+                onAsk={ask}
+                onDismissNotice={editor.dismissNotice}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
-      <StylePanel
-        targets={editor.targets}
-        theme={editor.theme}
-        notice={editor.notice}
-        saving={editor.saving}
-        canUndo={editor.canUndo}
-        canRedo={editor.canRedo}
-        slideCount={editor.theme?.slideCount ?? 0}
-        canAsk={canAsk}
-        asked={asked}
-        focusAsk={editor.askRequest}
-        onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
-        onAttributes={editor.setAttributes}
-        onCommit={() => {
-          editor.finishText();
-          void editor.flush();
-        }}
-        onUndo={() => void editor.undo()}
-        onRedo={() => void editor.redo()}
-        onRemove={editor.remove}
-        onDuplicate={editor.duplicate}
-        onAsk={ask}
-        onDismissNotice={editor.dismissNotice}
-      />
-    </>
+      {bar}
+    </div>
   );
 }

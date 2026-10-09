@@ -73,6 +73,13 @@ it("renders the deck in the sandboxed frame with the relay and a slide rail", as
   expect(container.querySelector('[data-testid="deck-counter"]')?.textContent).toBe("1 / 3");
 });
 
+it("keeps the full rail in view mode", async () => {
+  const container = await mount();
+  const rail = container.querySelector('[data-testid="deck-rail"]');
+  expect(rail?.getAttribute("data-slim")).toBeNull();
+  expect(container.querySelector('button[aria-label="Expand slides"]')).toBeNull();
+});
+
 it("mirrors the deck's state and only trusts its own frame", async () => {
   const container = await mount();
   const frame = stageFrame(container);

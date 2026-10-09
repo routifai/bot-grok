@@ -1,4 +1,6 @@
+import { cn } from "@nova/ui-web";
 import { useState } from "react";
+import { artifactPanelWidth } from "../../features/artifacts/ArtifactPanel";
 import { DeckViewer } from "../../features/decks/DeckViewer";
 import { setDeckEditing, useDeckEditing } from "../../features/decks/deck-ui-state";
 import sample from "../../features/decks/edit/sample-deck.txt?raw";
@@ -16,7 +18,13 @@ export function DeckPreviewPage() {
   const [version, setVersion] = useState(1);
   return (
     <div className="flex h-dvh justify-center bg-background p-2">
-      <section className="flex min-h-0 w-[min(58vw,900px)] flex-col overflow-hidden rounded-[18px] border border-border bg-card">
+      <section
+        data-testid="dev-panel"
+        className={cn(
+          "flex min-h-0 flex-col overflow-hidden rounded-[18px] border border-border bg-card motion-safe:transition-[width] motion-safe:duration-300 motion-safe:ease-out",
+          artifactPanelWidth({ wide: true, expanded: editing }),
+        )}
+      >
         <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
           <div className="min-w-0 flex-1 truncate text-[14px] font-medium">{NAME}</div>
           <button
