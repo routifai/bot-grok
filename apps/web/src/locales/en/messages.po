@@ -66,10 +66,6 @@ msgstr "{0} default"
 msgid "{0} handling"
 msgstr "{0} handling"
 
-#. placeholder {0}: state.file.name
-msgid "{0} is ready"
-msgstr "{0} is ready"
-
 #. placeholder {0}: format(size / 1024)
 msgid "{0} KB"
 msgstr "{0} KB"
@@ -348,6 +344,9 @@ msgstr "Added"
 
 msgid "Added to Conversation"
 msgstr "Added to Conversation"
+
+msgid "Added to your Library"
+msgstr "Added to your Library"
 
 msgid "Adding…"
 msgstr "Adding…"
@@ -1320,11 +1319,11 @@ msgstr "Couldn't load messaging settings"
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
 
-msgid "Couldn't prepare the PDF. Nothing was changed."
-msgstr "Couldn't prepare the PDF. Nothing was changed."
+msgid "Couldn't prepare PDF"
+msgstr "Couldn't prepare PDF"
 
-msgid "Couldn't prepare the PowerPoint. Nothing was changed."
-msgstr "Couldn't prepare the PowerPoint. Nothing was changed."
+msgid "Couldn't prepare PowerPoint"
+msgstr "Couldn't prepare PowerPoint"
 
 msgid "Couldn’t reach Nova’s computer. Retrying…"
 msgstr "Couldn’t reach Nova’s computer. Retrying…"
@@ -1707,12 +1706,6 @@ msgstr "Export renewals"
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
 
-msgid "Export to PDF"
-msgstr "Export to PDF"
-
-msgid "Export to PowerPoint"
-msgstr "Export to PowerPoint"
-
 msgid "External conversation"
 msgstr "External conversation"
 
@@ -1968,6 +1961,9 @@ msgstr "How often"
 #. placeholder {0}: index + 1
 msgid "How to tell step {0} worked"
 msgstr "How to tell step {0} worked"
+
+msgid "HTML (source)"
+msgstr "HTML (source)"
 
 msgid "I ask before doing anything I can't undo."
 msgstr "I ask before doing anything I can't undo."
@@ -2380,6 +2376,9 @@ msgstr "Monthly limit"
 
 msgid "More"
 msgstr "More"
+
+msgid "More actions"
+msgstr "More actions"
 
 #. placeholder {0}: artifact.name
 #. placeholder {0}: data.name
@@ -2843,6 +2842,9 @@ msgstr "Pause"
 msgid "Paused"
 msgstr "Paused"
 
+msgid "PDF"
+msgstr "PDF"
+
 msgid "Pending"
 msgstr "Pending"
 
@@ -2892,6 +2894,9 @@ msgstr "Please propose a plan for my goal \"{0}\"."
 msgid "POST to"
 msgstr "POST to"
 
+msgid "PowerPoint (.pptx)"
+msgstr "PowerPoint (.pptx)"
+
 msgid "Prep me for Thursday's call with Northwind."
 msgstr "Prep me for Thursday's call with Northwind."
 
@@ -2900,12 +2905,6 @@ msgstr "Preparing PDF…"
 
 msgid "Preparing PowerPoint…"
 msgstr "Preparing PowerPoint…"
-
-msgid "Preparing your PDF. This can take a minute."
-msgstr "Preparing your PDF. This can take a minute."
-
-msgid "Preparing your PowerPoint. This can take a minute."
-msgstr "Preparing your PowerPoint. This can take a minute."
 
 msgid "Present"
 msgstr "Present"

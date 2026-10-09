@@ -19,6 +19,21 @@ export interface ArtifactPanelParts {
   wide?: boolean;
   /** True while an overlay should take Escape instead of closing the panel. */
   holdsEscape?: boolean;
+  /** `DropdownMenuItem`s for the header's `⋯` menu (shown only when some extension adds one). */
+  overflow?: ReactNode;
+  /** The extension draws its own Download / Open in new tab / full screen controls, so the
+   * panel leaves its defaults out (a deck: one Download menu, Present, `⋯`). */
+  hideDefaults?: boolean;
+}
+
+/** What `usePanel` is given about the file being shown. */
+export interface ArtifactPanelArgs {
+  artifact: Artifact | undefined;
+  title?: string;
+  /** The shown version's bytes, once loaded. */
+  bytes?: Uint8Array;
+  /** An object URL of the bytes (for "Open in new tab"), once available. */
+  openUrl?: string | null;
 }
 
 export interface ArtifactCardParts {
@@ -38,7 +53,7 @@ export interface ArtifactViewProps {
 
 export interface ArtifactExtension {
   /** Called as a hook for every panel render; `artifact` is undefined until the file loads. */
-  usePanel(args: { artifact: Artifact | undefined; title?: string }): ArtifactPanelParts;
+  usePanel(args: ArtifactPanelArgs): ArtifactPanelParts;
   /** Plain function for a Library card. */
   card(artifact: Artifact): ArtifactCardParts | null;
   /** A viewer for this file, or null to leave it to the default preview. */
@@ -50,10 +65,9 @@ export const ArtifactRegistryProvider = ArtifactRegistryContext.Provider;
 export const useArtifactExtensions = () => useContext(ArtifactRegistryContext);
 
 /** Every extension's panel parts, merged in registry order. */
-export function useArtifactPanelParts(args: {
-  artifact: Artifact | undefined;
-  title?: string;
-}): Required<ArtifactPanelParts> {
+export function useArtifactPanelParts(
+  args: ArtifactPanelArgs,
+): Required<ArtifactPanelParts> & { hasOverflow: boolean } {
   const extensions = useArtifactExtensions();
   // The registry never changes after Shell mounts it, so the hook order is stable.
   // biome-ignore lint/correctness/useHookAtTopLevel: a fixed list, called in the same order
@@ -67,6 +81,9 @@ export function useArtifactPanelParts(args: {
     overlay: slot((part) => part.overlay),
     wide: parts.some((part) => part.wide),
     holdsEscape: parts.some((part) => part.holdsEscape),
+    overflow: slot((part) => part.overflow),
+    hasOverflow: parts.some((part) => !!part.overflow),
+    hideDefaults: parts.some((part) => part.hideDefaults),
   };
 }
 

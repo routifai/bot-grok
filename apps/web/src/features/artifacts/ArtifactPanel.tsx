@@ -8,6 +8,7 @@ import { useObjectUrl } from "../../lib/use-object-url";
 import { ArtifactPreview } from "./Artifacts";
 import { FullScreenToggle } from "./FullScreenToggle";
 import { useArtifactContent } from "./library/useArtifactContent";
+import { PanelOverflowMenu } from "./PanelOverflowMenu";
 import { useArtifactPanelParts } from "./registry";
 
 const EMPTY_BYTES = new Uint8Array(0);
@@ -33,7 +34,12 @@ export function ArtifactPanel({
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
   const isApp = ready?.artifact.mimeType === "text/html";
-  const extra = useArtifactPanelParts({ artifact: ready?.artifact, title });
+  const extra = useArtifactPanelParts({
+    artifact: ready?.artifact,
+    title,
+    bytes: ready?.bytes,
+    openUrl: url,
+  });
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -115,11 +121,12 @@ export function ArtifactPanel({
             ))}
           </select>
         ) : null}
-        {isApp ? (
+        {isApp && !extra.hideDefaults ? (
           <FullScreenToggle fullScreen={fullScreen} onToggle={() => setFullScreen((v) => !v)} />
         ) : null}
         {extra.actions}
-        {ready ? (
+        {extra.hasOverflow ? <PanelOverflowMenu>{extra.overflow}</PanelOverflowMenu> : null}
+        {ready && !extra.hideDefaults ? (
           <>
             <Button
               variant="ghost"

@@ -3,9 +3,11 @@
 export { ArtifactFileCard } from "./ArtifactFileCard";
 export { ArtifactPreview } from "./Artifacts";
 export { ArtifactFileCard as ReplyArtifactFileCard } from "./cards/ArtifactFileCard";
+export { PanelOverflowMenu } from "./PanelOverflowMenu";
 export {
   type ArtifactCardParts,
   type ArtifactExtension,
+  type ArtifactPanelArgs,
   type ArtifactPanelParts,
   ArtifactRegistryProvider,
   type ArtifactViewProps,

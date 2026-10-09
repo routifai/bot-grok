@@ -1,6 +1,11 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Artifact, ArtifactPublish, ArtifactPublishAudience } from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+import {
+  type Artifact,
+  type ArtifactPublish,
+  type ArtifactPublishAudience,
+  isDeckArtifactName,
+} from "@nova/contracts";
+import { Button, DropdownMenuItem } from "@nova/ui-web";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import type { ArtifactExtension, ArtifactPanelParts } from "../artifacts";
@@ -40,11 +45,17 @@ function useAppsPanel({
     setPublish(null);
   }
 
+  // A deck keeps its header quiet: Publish… lives in the `⋯` menu next to Open in new tab.
+  const quiet = isDeckArtifactName(name);
+  const publishLabel = publish ? t`Publish settings` : t`Publish…`;
   return {
     badge: publish ? <PublishedPill /> : null,
-    actions: (
+    overflow: quiet ? (
+      <DropdownMenuItem onClick={() => setPublishing(true)}>{publishLabel}</DropdownMenuItem>
+    ) : null,
+    actions: quiet ? null : (
       <Button size="sm" onClick={() => setPublishing(true)}>
-        {publish ? t`Publish settings` : t`Publish…`}
+        {publishLabel}
       </Button>
     ),
     below: publish ? (
