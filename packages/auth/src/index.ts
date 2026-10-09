@@ -1,227 +1,139 @@
-import type { TransactionalEmail, TransactionalEmailProvider } from "@nova/adapter-kit";
+import type { TransactionalEmailProvider } from "@nova/adapter-kit";
 import {
-  allowlistedSignupAdmission,
-  emailAllowed,
-  firstAccountClaimDecision,
+  admitSignup,
   isMessagingEmail,
   parseAllowlist,
+  parseDomains,
+  type SignupPolicy,
+  type SignupPolicyEnv,
+  signupNeedsEmailDelivery,
   signupPolicyFromEnv,
 } from "@nova/core";
 import { bootstrapUserSpace, type PrismaClient } from "@nova/db";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware } from "better-auth/api";
-import { bearer, organization } from "better-auth/plugins";
+import { bearer, emailOTP, organization } from "better-auth/plugins";
+import { codeEmail, OTP_EXPIRES_MINUTES, OTP_LENGTH, passwordResetEmail } from "./emails.js";
+import { type SocialConfig, socialProviders } from "./social.js";
 
-export interface AuthEnv {
+export { codeEmail, passwordResetEmail } from "./emails.js";
+export type { SocialConfig } from "./social.js";
+export { socialProviderIds } from "./social.js";
+
+export interface AuthEnv extends SignupPolicyEnv {
   secret: string;
   baseURL: string;
   webOrigin: string;
-  signupsEnabled: string | undefined;
-  signupAllowlist: string | undefined;
   extraOrigins?: string[];
   email?: TransactionalEmailProvider;
   onEmailError?: (error: unknown) => void;
   beforeDeleteUser?: (userId: string) => Promise<void>;
+  /** A hosted `production` deployment disables the local-development escape hatch below. */
+  nodeEnv?: string;
+  /**
+   * Local development only, off by default: with no email provider, accounts are usable
+   * without mailbox proof. Refused on a hosted deployment (see isHostedDeployment).
+   */
+  allowUnverifiedEmail?: boolean;
+  social?: SocialConfig;
 }
 
 export async function resolveSignupPolicy(
   prisma: Pick<PrismaClient, "deploymentSettings">,
-  env: Pick<AuthEnv, "signupsEnabled" | "signupAllowlist">,
-): Promise<{ enabled: boolean; allowlist: string[] }> {
+  env: SignupPolicyEnv,
+): Promise<SignupPolicy> {
   const settings = await prisma.deploymentSettings.findUnique({
     where: { id: "default" },
-    select: { signupsEnabled: true, signupAllowlist: true, signupPolicyInitialized: true },
+    select: {
+      signupMode: true,
+      signupAllowlist: true,
+      signupDomains: true,
+      signupPolicyInitialized: true,
+    },
   });
   if (settings?.signupPolicyInitialized) {
     return {
-      enabled: settings.signupsEnabled,
-      allowlist: parseAllowlist(settings.signupAllowlist),
+      mode: settings.signupMode,
+      invites: parseAllowlist(settings.signupAllowlist),
+      domains: parseDomains(settings.signupDomains),
     };
   }
   return signupPolicyFromEnv(env);
 }
 
-const signupGates = new Map<string, Array<() => Promise<void>>>();
-
-/** Serializes first-account admission inside this process. */
-let signupGateTail: Promise<void> = Promise.resolve();
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
- * Transaction-scoped lock shared by every API process. Held from the
- * allowlist check until that signup finishes, so a second signup cannot
- * insert a user until the first one is visible.
+ * A production process that is reachable beyond this machine. A production build served only on
+ * loopback (a local Docker install) is a personal install, not a hosted one.
  */
-const FIRST_ACCOUNT_ADMISSION_LOCK = 872014;
-
-function enqueueSignupGate(): { wait: Promise<void>; done: () => void } {
-  let settle: () => void = () => undefined;
-  const gate = new Promise<void>((resolve) => {
-    settle = resolve;
-  });
-  const wait = signupGateTail;
-  let settled = false;
-  const done = () => {
-    if (settled) return;
-    settled = true;
-    settle();
-  };
-  signupGateTail = gate;
-  return { wait, done };
-}
-
-/**
- * Hold the first-account gate until the signup handler finishes, so a second
- * allowlisted signup cannot insert a user until the first one is visible.
- * The transaction commits on release, which drops the advisory lock.
- */
-async function holdFirstAccountGate(prisma: PrismaClient): Promise<{
-  admission: "open" | "needs-delivery";
-  release: () => Promise<void>;
-}> {
-  const turn = enqueueSignupGate();
-  await turn.wait;
-  let resolveReady: (admission: "open" | "needs-delivery") => void = () => undefined;
-  let rejectReady: (error: unknown) => void = () => undefined;
-  let readySettled = false;
-  const ready = new Promise<"open" | "needs-delivery">((resolve, reject) => {
-    resolveReady = (admission) => {
-      if (readySettled) return;
-      readySettled = true;
-      resolve(admission);
-    };
-    rejectReady = (error) => {
-      if (readySettled) return;
-      readySettled = true;
-      reject(error);
-    };
-  });
-  let releaseGate: () => void = () => undefined;
-  const released = new Promise<void>((resolve) => {
-    releaseGate = resolve;
-  });
-  // The catch must not rethrow. Nothing waits on this promise until the
-  // signup's after hook, so a later timeout would otherwise be an unhandled
-  // rejection. A failure after admission must not replace a completed signup:
-  // the account may already exist, and a 500 would leave the client unable to
-  // retry that address.
-  const finished = prisma
-    .$transaction(
-      async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${FIRST_ACCOUNT_ADMISSION_LOCK})`;
-        const otherHuman = await tx.user.findFirst({
-          where: {
-            NOT: { email: { endsWith: "@messaging.invalid", mode: "insensitive" } },
-          },
-          select: { id: true },
-        });
-        resolveReady(otherHuman ? "needs-delivery" : "open");
-        await released;
-      },
-      { timeout: 20_000, maxWait: 10_000 },
-    )
-    .catch((error: unknown) => {
-      rejectReady(error);
-    })
-    .finally(() => {
-      turn.done();
-    });
+export function isHostedDeployment(env: Pick<AuthEnv, "nodeEnv" | "webOrigin">): boolean {
+  if (env.nodeEnv !== "production") return false;
   try {
-    const admission = await ready;
-    return {
-      admission,
-      release: async () => {
-        releaseGate();
-        await finished;
-      },
-    };
-  } catch (error) {
-    turn.done();
-    if (error instanceof APIError) throw error;
-    throw new APIError("INTERNAL_SERVER_ERROR");
+    return !LOOPBACK_HOSTS.has(new URL(env.webOrigin).hostname);
+  } catch {
+    return true;
   }
 }
 
-function rememberSignupGate(email: string, release: () => Promise<void>) {
-  const key = email.trim().toLowerCase();
-  const pending = signupGates.get(key) ?? [];
-  pending.push(release);
-  signupGates.set(key, pending);
-}
-
-async function releaseSignupGate(email: string) {
-  const key = email.trim().toLowerCase();
-  const pending = signupGates.get(key);
-  const release = pending?.shift();
-  if (!pending?.length) signupGates.delete(key);
-  await release?.();
-}
-
 /**
- * One allowlisted account may skip mailbox proof when nothing can send mail.
- * Admission is reserved before the user row is inserted. This claim is the
- * backstop: the deployment-settings row is locked, then a conditional owner
- * update lets only one overlapping signup win. Any other human account,
- * verified or not, denies the exemption.
+ * Startup check. A hosted deployment that admits strangers must be able to prove their mailbox,
+ * so it refuses to run an open mode without an email provider, and never honors the
+ * local-development exemption.
  */
-async function claimUnverifiedFirstAccount(prisma: PrismaClient, userId: string): Promise<boolean> {
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT id FROM deployment_settings WHERE id = 'default' FOR UPDATE`;
-    const [settings, otherHuman] = await Promise.all([
-      tx.deploymentSettings.findUnique({
-        where: { id: "default" },
-        select: { ownerUserId: true },
-      }),
-      tx.user.findFirst({
-        where: {
-          id: { not: userId },
-          NOT: { email: { endsWith: "@messaging.invalid", mode: "insensitive" } },
-        },
-        select: { id: true },
-      }),
-    ]);
-    const decision = firstAccountClaimDecision({
-      userId,
-      ownerUserId: settings?.ownerUserId ?? null,
-      otherHuman: otherHuman !== null,
-    });
-    if (decision === "deny") return false;
-    if (decision === "claim") {
-      const claimed = await tx.deploymentSettings.updateMany({
-        where: { id: "default", ownerUserId: null },
-        data: { ownerUserId: userId },
-      });
-      if (claimed.count !== 1) return false;
-    }
-    // The signup user can still be invisible here when this runs inside the
-    // auth transaction. Mark the row when it is already committed; the caller
-    // also updates it through the auth adapter.
-    await tx.user.updateMany({
-      where: { id: userId },
-      data: { emailVerified: true },
-    });
-    return true;
-  });
+export function assertIdentityConfig(
+  env: Pick<AuthEnv, "allowUnverifiedEmail"> & { hosted: boolean; hasEmail: boolean },
+  policy: SignupPolicy,
+): void {
+  if (!env.hosted) return;
+  if (env.allowUnverifiedEmail) {
+    throw new Error(
+      "AUTH_ALLOW_UNVERIFIED_EMAIL is for local development and cannot run on a hosted deployment",
+    );
+  }
+  if (!env.hasEmail && signupNeedsEmailDelivery(policy.mode)) {
+    throw new Error(
+      `Signup mode "${policy.mode}" needs email delivery to verify new accounts. Configure SMTP_URL or EMAIL_API_URL, or set the signup mode to "closed".`,
+    );
+  }
+}
+
+type UserStatus = "pending" | "active" | "suspended";
+
+function statusOf(user: object): UserStatus {
+  const status = (user as { status?: unknown }).status;
+  return status === "pending" || status === "suspended" ? status : "active";
 }
 
 export function createAuth(prisma: PrismaClient, env: AuthEnv) {
+  // Mailbox proof is required whenever mail can be sent. Only a non-production process with no
+  // provider and the explicit flag may skip it.
+  const verifyEmail = Boolean(env.email);
+  const unverifiedAllowed =
+    !env.email && env.allowUnverifiedEmail === true && !isHostedDeployment(env);
+  const sendCode = (email: string, otp: string, type: Parameters<typeof codeEmail>[2]) => {
+    // Keep the response timing generic. Production providers track and retry the promise,
+    // while the composition root drains accepted delivery during graceful shutdown.
+    void env.email?.send(codeEmail(email, otp, type)).catch((error) => env.onEmailError?.(error));
+  };
   return betterAuth({
     appName: "Nova",
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: buildTrustedOrigins(env),
     database: prismaAdapter(prisma, { provider: "postgresql" }),
+    socialProviders: socialProviders(env.social),
     emailAndPassword: {
       enabled: true,
-      // Signup policy is mutable deployment state, so the request hook below
-      // enforces it instead of freezing an environment value at process start.
+      // Signup policy is mutable deployment state, so the user-create hook enforces it
+      // instead of freezing an environment value at process start.
       disableSignUp: false,
+      requireEmailVerification: verifyEmail,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: 60 * 60,
       sendResetPassword: env.email
         ? async ({ user, url }) => {
-            // Keep the response timing generic. Production providers track and retry the promise,
-            // while the composition root drains accepted delivery during graceful shutdown.
             void env.email
               ?.send(passwordResetEmail(user, url))
               .catch((error) => env.onEmailError?.(error));
@@ -230,19 +142,13 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
     },
     emailVerification: {
       sendOnSignIn: true,
-      autoSignInAfterVerification: false,
-      sendVerificationEmail: env.email
-        ? async ({ user, url }) => {
-            const verificationUrl = new URL(url);
-            verificationUrl.searchParams.set(
-              "callbackURL",
-              new URL("/sign-in", env.webOrigin).href,
-            );
-            await env.email!.send(verificationEmail(user.email, verificationUrl.href));
-          }
-        : undefined,
+      autoSignInAfterVerification: true,
     },
     user: {
+      additionalFields: {
+        // Server-owned: never accepted from a signup body.
+        status: { type: "string", defaultValue: "active", input: false },
+      },
       deleteUser: {
         enabled: true,
         beforeDelete: async (user) => {
@@ -283,6 +189,18 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
         allowUserToCreateOrganization: false,
         creatorRole: "owner",
       }),
+      ...(env.email
+        ? [
+            emailOTP({
+              otpLength: OTP_LENGTH,
+              expiresIn: OTP_EXPIRES_MINUTES * 60,
+              allowedAttempts: 3,
+              storeOTP: "hashed",
+              overrideDefaultEmailVerification: true,
+              sendVerificationOTP: async ({ email, otp, type }) => sendCode(email, otp, type),
+            }),
+          ]
+        : []),
     ],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
@@ -291,52 +209,28 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
             throw new APIError("BAD_REQUEST", { message: "Email is not available" });
           }
         }
-        let policy =
-          ctx.path === "/sign-up/email" || ctx.path === "/sign-in/email"
-            ? await resolveSignupPolicy(prisma, env)
-            : undefined;
-        let requireEmailVerification = false;
-        if (ctx.path === "/sign-up/email") {
-          if (!policy?.enabled) {
-            throw new APIError("BAD_REQUEST", { message: "Registration is closed" });
-          }
-          const email = String(ctx.body?.email ?? "");
-          if (!emailAllowed(email, policy.allowlist)) {
-            throw new APIError("BAD_REQUEST", { message: "Email is not allowed to register" });
-          }
-          if (policy.allowlist.length > 0 && !env.email) {
-            const held = await holdFirstAccountGate(prisma);
-            if (held.admission === "needs-delivery") {
-              await held.release();
-              throw new APIError("BAD_REQUEST", {
-                message: "Registration requires email delivery",
-              });
-            }
-            rememberSignupGate(email, held.release);
-            requireEmailVerification = false;
-          } else {
-            requireEmailVerification =
-              allowlistedSignupAdmission({
-                allowlistSize: policy.allowlist.length,
-                hasEmailDelivery: Boolean(env.email),
-                existingHumanCount: 0,
-              }) === "verify";
-          }
-        } else if (policy) {
-          requireEmailVerification = policy.allowlist.length > 0;
+        if (ctx.path === "/sign-up/email" && !env.email && !unverifiedAllowed) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Email delivery is not configured. Ask your administrator to set it up.",
+          });
         }
-        // Return a request-local override; mutating the shared auth options
-        // would leak a concurrent request's policy into another signup.
+        if (
+          ctx.path === "/email-otp/send-verification-otp" &&
+          ctx.body?.type === "sign-in" &&
+          typeof ctx.body.email === "string"
+        ) {
+          // Do not mail a code to an address that could never get an account.
+          const existing = await ctx.context.internalAdapter.findUserByEmail(ctx.body.email);
+          if (!existing) {
+            const admission = admitSignup(await resolveSignupPolicy(prisma, env), ctx.body.email, {
+              firstAccount: true,
+            });
+            if (!admission.ok) throw new APIError("BAD_REQUEST", { message: admission.message });
+          }
+        }
         return {
           context: {
             context: {
-              ...(policy
-                ? {
-                    options: {
-                      emailAndPassword: { requireEmailVerification },
-                    },
-                  }
-                : {}),
               internalAdapter: {
                 ...ctx.context.internalAdapter,
                 // Authorize at lookup: bearer conversion happens after before
@@ -344,19 +238,14 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
                 findSession: async (token: string) => {
                   const session = await ctx.context.internalAdapter.findSession(token);
                   if (!session || isMessagingEmail(session.user.email)) return null;
-                  if (session.user.emailVerified) return session;
-                  policy ??= await resolveSignupPolicy(prisma, env);
-                  return policy.allowlist.length === 0 ? session : null;
+                  if (statusOf(session.user) === "suspended") return null;
+                  if (!session.user.emailVerified && !unverifiedAllowed) return null;
+                  return session;
                 },
               },
             },
           },
         };
-      }),
-      after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path === "/sign-up/email") {
-          await releaseSignupGate(String(ctx.body?.email ?? ""));
-        }
       }),
     },
     databaseHooks: {
@@ -365,29 +254,24 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
           before: async (session, ctx) => {
             // The auth adapter can still be inside the signup transaction.
             const user = await ctx?.context.internalAdapter.findUserById(session.userId);
-            const policy = await resolveSignupPolicy(prisma, env);
             if (!user || isMessagingEmail(user.email)) {
               throw new APIError("FORBIDDEN", { message: "Email verification required" });
             }
-            if (!user.emailVerified && policy.allowlist.length > 0) {
-              if (env.email || !emailAllowed(user.email, policy.allowlist)) {
-                throw new APIError("FORBIDDEN", { message: "Email verification required" });
-              }
-              // Mailbox ownership is not proved. The claim serializes the exemption
-              // so a second overlapping signup cannot take it as well.
-              const admitted = await claimUnverifiedFirstAccount(prisma, user.id);
-              if (!admitted || !ctx) {
-                throw new APIError("FORBIDDEN", { message: "Email verification required" });
-              }
-              await ctx.context.internalAdapter.updateUser(user.id, { emailVerified: true });
+            if (statusOf(user) === "suspended") {
+              throw new APIError("FORBIDDEN", { message: "Account suspended" });
             }
-            // Unverified signup must not provision resources or claim the
-            // deployment owner. Bootstrap only at the first admitted session.
+            if (!user.emailVerified && !unverifiedAllowed) {
+              throw new APIError("FORBIDDEN", { message: "Email verification required" });
+            }
+            // A pending account may sign in to see its waiting screen, but gets no space,
+            // Computer or model access until an admin approves it.
+            if (statusOf(user) === "pending") return;
             const membership = await prisma.spaceMember.findFirst({ where: { userId: user.id } });
             if (!membership) {
-              if (!policy.enabled || !emailAllowed(user.email, policy.allowlist)) {
-                throw new APIError("FORBIDDEN", { message: "Registration is closed" });
-              }
+              const admission = admitSignup(await resolveSignupPolicy(prisma, env), user.email, {
+                firstAccount: true,
+              });
+              if (!admission.ok) throw new APIError("FORBIDDEN", { message: admission.message });
               await bootstrapUserSpace(prisma, user, env);
             }
           },
@@ -399,6 +283,19 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
             if (isMessagingEmail(user.email)) {
               throw new APIError("BAD_REQUEST", { message: "Email is not available" });
             }
+            // One choke point for every way in: password, email code, Google, Microsoft.
+            const [policy, settings] = await Promise.all([
+              resolveSignupPolicy(prisma, env),
+              prisma.deploymentSettings.findUnique({
+                where: { id: "default" },
+                select: { ownerUserId: true },
+              }),
+            ]);
+            const admission = admitSignup(policy, user.email, {
+              firstAccount: !settings?.ownerUserId,
+            });
+            if (!admission.ok) throw new APIError("BAD_REQUEST", { message: admission.message });
+            return { data: { ...user, status: admission.status } };
           },
         },
         update: {
@@ -411,45 +308,6 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       },
     },
   });
-}
-
-export function verificationEmail(email: string, url: string): TransactionalEmail {
-  return {
-    to: email,
-    subject: "Verify your Nova email",
-    text: `Verify your email, then return to Nova to sign in:\n\n${url}\n\nThis link expires in one hour. If you did not register, ignore this email.`,
-    html: `<p><a href="${escapeHtml(url)}">Verify email</a>, then return to Nova to sign in.</p><p>This link expires in one hour. If you did not register, ignore this email.</p>`,
-  };
-}
-
-export function passwordResetEmail(
-  user: { id: string; email: string; name: string },
-  resetUrl: string,
-): TransactionalEmail {
-  const name = user.name.trim() || "there";
-  const safeName = escapeHtml(name);
-  const safeUrl = escapeHtml(resetUrl);
-  return {
-    to: user.email,
-    subject: "Reset your Nova password",
-    text: [
-      `Hi ${name},`,
-      "",
-      "Reset your Nova password using this link:",
-      resetUrl,
-      "",
-      "This link expires in one hour. If you did not request this, you can ignore this email.",
-    ].join("\n"),
-    html: `<p>Hi ${safeName},</p><p>Reset your Nova password:</p><p><a href="${safeUrl}">Reset password</a></p><p>This link expires in one hour. If you did not request this, you can ignore this email.</p>`,
-  };
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!,
-  );
 }
 
 export type Auth = ReturnType<typeof createAuth>;

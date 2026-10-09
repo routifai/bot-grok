@@ -1,7 +1,7 @@
 import type { TransactionalEmail } from "@nova/adapter-kit";
 import { bootstrapUserSpace } from "@nova/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createAuth } from "./index.js";
+import { assertIdentityConfig, createAuth, isHostedDeployment } from "./index.js";
 
 // Exercise Better Auth's real routing, password hashing, verification and
 // session hooks with its official offline adapter. Only persistence is faked.
@@ -14,20 +14,26 @@ vi.mock("better-auth/adapters/prisma", async () => {
 });
 vi.mock("@nova/db", () => ({ bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })) }));
 
+type Mode = "closed" | "invite" | "domain" | "approval" | "open";
+
 function fixture({
-  allowlist = "",
+  mode = "open",
+  invites = "",
+  domains = "",
   delivery = true,
+  allowUnverifiedEmail = false,
   baseURL = "http://auth.example.test",
   webOrigin = "http://web.example.test",
   requestOrigin,
-  expireAdmissionGate,
 }: {
-  allowlist?: string;
+  mode?: Mode;
+  invites?: string;
+  domains?: string;
   delivery?: boolean;
+  allowUnverifiedEmail?: boolean;
   baseURL?: string;
   webOrigin?: string;
   requestOrigin?: string;
-  expireAdmissionGate?: "before" | "after";
 } = {}) {
   const data: Record<string, Record<string, unknown>[]> = {
     user: [],
@@ -35,71 +41,18 @@ function fixture({
     session: [],
     verification: [],
   };
-  const policy: {
-    signupsEnabled: boolean;
-    signupAllowlist: string;
-    signupPolicyInitialized: boolean;
-    ownerUserId: string | null;
-  } = {
-    signupsEnabled: true,
-    signupAllowlist: allowlist,
+  const policy = {
+    signupMode: mode,
+    signupAllowlist: invites,
+    signupDomains: domains,
     signupPolicyInitialized: true,
-    ownerUserId: null,
+    ownerUserId: null as string | null,
   };
   const messages: TransactionalEmail[] = [];
   const members = new Set<string>();
   const prisma = {
     authData: data,
-    $executeRaw: vi.fn(async () => 0),
-    $transaction: vi.fn(
-      async (run: (tx: typeof prisma) => Promise<unknown>, options?: { timeout?: number }) => {
-        if (!expireAdmissionGate || options?.timeout === undefined) return run(prisma);
-        if (expireAdmissionGate === "before") throw new Error("admission gate timeout");
-        const pending = run(prisma);
-        void pending.catch(() => undefined);
-        for (let step = 0; step < 5; step += 1) await Promise.resolve();
-        throw new Error("admission gate timeout");
-      },
-    ),
-    deploymentSettings: {
-      findUnique: vi.fn(async () => policy),
-      updateMany: vi.fn(async ({ data: patch }: { data: { ownerUserId: string } }) => {
-        if (policy.ownerUserId !== null) return { count: 0 };
-        policy.ownerUserId = patch.ownerUserId;
-        return { count: 1 };
-      }),
-    },
-    user: {
-      findMany: vi.fn(async () =>
-        data
-          .user!.filter((user) => !String(user.email).toLowerCase().endsWith("@messaging.invalid"))
-          .slice(0, 2)
-          .map((user) => ({ id: String(user.id) })),
-      ),
-      findFirst: vi.fn(async ({ where }: { where?: { id?: { not?: string } } }) => {
-        const excluded = where?.id?.not;
-        const other = data.user!.find(
-          (user) =>
-            (excluded === undefined || user.id !== excluded) &&
-            !String(user.email).toLowerCase().endsWith("@messaging.invalid"),
-        );
-        return other ? { id: String(other.id) } : null;
-      }),
-      updateMany: vi.fn(
-        async ({
-          where,
-          data: patch,
-        }: {
-          where: { id: string };
-          data: { emailVerified: boolean };
-        }) => {
-          const user = data.user!.find((item) => item.id === where.id);
-          if (!user) return { count: 0 };
-          Object.assign(user, patch);
-          return { count: 1 };
-        },
-      ),
-    },
+    deploymentSettings: { findUnique: vi.fn(async () => policy) },
     spaceMember: {
       findFirst: vi.fn(async ({ where }: { where: { userId: string } }) =>
         members.has(where.userId) ? { spaceId: "space-1" } : null,
@@ -114,8 +67,7 @@ function fixture({
     secret: "offline-auth-secret-at-least-32-characters",
     baseURL,
     webOrigin,
-    signupsEnabled: "true",
-    signupAllowlist: "",
+    allowUnverifiedEmail,
     email: delivery
       ? {
           describe: () => ({
@@ -142,24 +94,38 @@ function fixture({
         body: body ? JSON.stringify(body) : undefined,
       }),
     );
-  const signup = (email = "approved@example.test") =>
+  const signup = (email = "approved@example.test", extra: Record<string, unknown> = {}) =>
     request("/sign-up/email", {
       email,
       password: "offline-password12",
       name: "Test User",
       emailVerified: true,
       id: "msg-attacker-chosen-id",
+      ...extra,
     });
   const signin = (email = "approved@example.test") =>
-    request("/sign-in/email", {
-      email,
-      password: "offline-password12",
-    });
-  const verify = () => {
-    const url = new URL(messages.at(-1)!.text.match(/http:\/\/\S+/)![0]);
-    return request(`${url.pathname.replace("/api/auth", "")}${url.search}`);
+    request("/sign-in/email", { email, password: "offline-password12" });
+  const lastCode = () => messages.at(-1)!.text.match(/\b\d{6}\b/)![0];
+  const verify = (email = "approved@example.test") =>
+    request("/email-otp/verify-email", { email, otp: lastCode() });
+  const sendSignInCode = (email = "approved@example.test") =>
+    request("/email-otp/send-verification-otp", { email, type: "sign-in" });
+  const codeSignIn = (email = "approved@example.test") =>
+    request("/sign-in/email-otp", { email, otp: lastCode() });
+  return {
+    auth,
+    request,
+    signup,
+    signin,
+    verify,
+    sendSignInCode,
+    codeSignIn,
+    lastCode,
+    data,
+    policy,
+    messages,
+    members,
   };
-  return { auth, request, signup, signin, verify, data, policy, messages, members };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -167,7 +133,6 @@ beforeEach(() => vi.clearAllMocks());
 describe("loopback trusted origins", () => {
   it("accepts Origin localhost when webOrigin is 127.0.0.1", async () => {
     const f = fixture({
-      delivery: false,
       baseURL: "http://127.0.0.1:5173",
       webOrigin: "http://127.0.0.1:5173",
       requestOrigin: "http://localhost:5173",
@@ -177,7 +142,6 @@ describe("loopback trusted origins", () => {
 
   it("accepts Origin 127.0.0.1 when webOrigin is localhost", async () => {
     const f = fixture({
-      delivery: false,
       baseURL: "http://localhost:5173",
       webOrigin: "http://localhost:5173",
       requestOrigin: "http://127.0.0.1:5173",
@@ -186,234 +150,295 @@ describe("loopback trusted origins", () => {
   });
 });
 
-describe("identity trust through auth endpoints", () => {
-  it("keeps first-owner bootstrap and password signup available without email for open deployments", async () => {
-    const f = fixture({ delivery: false });
-    const response = await f.signup();
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      token: string;
-      user: { id: string; emailVerified: boolean };
-    };
-    expect(body.token).toEqual(expect.any(String));
-    expect(body.user.emailVerified).toBe(false);
-    expect(body.user.id).not.toBe("msg-attacker-chosen-id");
-    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
-    expect((await f.signin()).status).toBe(200);
-    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
-  });
-
-  it("admits the first allowlisted account without email delivery and still blocks everyone else", async () => {
-    const f = fixture({ allowlist: "@example.test", delivery: false });
-    expect((await f.signup("outsider@other.test")).status).toBe(400);
-    expect(f.data.user).toHaveLength(0);
-    const response = await f.signup();
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { token: string; user: { emailVerified: boolean } };
-    expect(body.token).toEqual(expect.any(String));
-    expect(f.data.user).toHaveLength(1);
-    expect(f.data.user![0]!.emailVerified).toBe(true);
-    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
-    expect(
-      await f.auth.api.getSession({
-        headers: new Headers({ authorization: `Bearer ${body.token}` }),
-      }),
-    ).toMatchObject({ user: { emailVerified: true } });
-    expect((await f.signin()).status).toBe(200);
-    const second = await f.signup("second@example.test");
-    expect(second.status).toBe(400);
-    expect(await second.text()).toContain("Registration requires email delivery");
-    expect(f.data.user).toHaveLength(1);
-    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
-    expect(f.messages).toHaveLength(0);
-  });
-
-  it("admits only one of two overlapping allowlisted signups without delivery", async () => {
-    const f = fixture({ allowlist: "@example.test", delivery: false });
-    const [first, second] = await Promise.all([
-      f.signup("one@example.test"),
-      f.signup("two@example.test"),
-    ]);
-    const admitted = [first, second].filter((response) => response.status === 200);
-    const denied = [first, second].filter((response) => response.status === 400);
-    expect(admitted).toHaveLength(1);
-    expect(denied).toHaveLength(1);
-    expect(await denied[0]!.text()).toContain("Registration requires email delivery");
-    expect(f.data.user).toHaveLength(1);
-    expect(f.policy.ownerUserId).toBe(f.data.user![0]!.id);
-  });
-
-  it("keeps a completed signup when the admission gate expires after admission", async () => {
-    const unhandled: unknown[] = [];
-    const onUnhandled = (reason: unknown) => {
-      unhandled.push(reason);
-    };
-    process.on("unhandledRejection", onUnhandled);
-    try {
-      const f = fixture({
-        allowlist: "@example.test",
-        delivery: false,
-        expireAdmissionGate: "after",
-      });
-      const response = await f.signup();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(unhandled).toEqual([]);
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as { token: string };
-      expect(body.token).toEqual(expect.any(String));
-      expect(f.data.user).toHaveLength(1);
-      expect(f.data.user![0]!.emailVerified).toBe(true);
-      expect(f.policy.ownerUserId).toBe(f.data.user![0]!.id);
-      expect((await f.signin()).status).toBe(200);
-    } finally {
-      process.off("unhandledRejection", onUnhandled);
-    }
-  });
-
-  it("fails signup when the admission gate expires before an account exists", async () => {
-    const unhandled: unknown[] = [];
-    const onUnhandled = (reason: unknown) => {
-      unhandled.push(reason);
-    };
-    process.on("unhandledRejection", onUnhandled);
-    try {
-      const f = fixture({
-        allowlist: "@example.test",
-        delivery: false,
-        expireAdmissionGate: "before",
-      });
-      const response = await f.signup();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(unhandled).toEqual([]);
-      expect(response.status).toBe(500);
-      expect(f.data.user).toHaveLength(0);
-    } finally {
-      process.off("unhandledRejection", onUnhandled);
-    }
-  });
-
-  it("does not let an unverified account claim the owner seat while another human exists", async () => {
-    const f = fixture({ allowlist: "@example.test", delivery: false });
-    expect((await f.signup()).status).toBe(200);
-    f.data.user![0]!.emailVerified = false;
-    f.data.user!.push({
-      id: "human-2",
-      name: "Other",
-      email: "other@example.test",
-      emailVerified: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    expect((await f.signin()).status).toBe(403);
-    expect(f.policy.ownerUserId).toBe(f.data.user![0]!.id);
-  });
-
-  it("does not treat a messaging identity as the first account", async () => {
-    const f = fixture({ allowlist: "approved@example.test", delivery: false });
-    f.data.user!.push({
-      id: "msg-1",
-      name: "Messaging",
-      email: "msg-sendblue15550001111@messaging.invalid",
-      emailVerified: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    const response = await f.signup();
-    expect(response.status).toBe(200);
-    expect(f.data.user!.filter((user) => user.email === "approved@example.test")).toHaveLength(1);
-    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps allowlisted signup closed without delivery once a human account exists", async () => {
-    const f = fixture({ allowlist: "@example.test", delivery: false });
-    f.data.user!.push({
-      id: "human-1",
-      name: "Owner",
-      email: "owner@example.test",
-      emailVerified: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    const response = await f.signup("second@example.test");
-    expect(response.status).toBe(400);
-    expect(await response.text()).toContain("Registration requires email delivery");
-    expect(f.data.user).toHaveLength(1);
-    expect(bootstrapUserSpace).not.toHaveBeenCalled();
-  });
-
-  it("requires mailbox proof before creating a session, space or first-owner claim", async () => {
-    const f = fixture({ allowlist: "approved@example.test" });
-    expect((await f.signup("outsider@example.test")).status).toBe(400);
+describe("verified email", () => {
+  it("gives no session, space or owner claim until a code proves the mailbox", async () => {
+    const f = fixture();
     const response = await f.signup();
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(await response.json()).toMatchObject({ token: null, user: { emailVerified: false } });
+    expect(f.data.user![0]!.id).not.toBe("msg-attacker-chosen-id");
     expect(f.data.session).toHaveLength(0);
     expect(bootstrapUserSpace).not.toHaveBeenCalled();
-    expect((await f.signin()).status).toBe(403);
-    expect(f.messages).toHaveLength(2);
-    expect((await f.request("/verify-email?token=forged-token")).status).not.toBe(200);
-    expect(f.data.user![0]!.emailVerified).toBe(false);
-    const verified = await f.verify();
-    expect(verified.status).toBe(302);
-    expect(verified.headers.get("location")).toBe("http://web.example.test/sign-in");
-    expect(verified.headers.get("set-cookie")).toBeNull();
-    expect(f.data.user![0]!.emailVerified).toBe(true);
-    expect(bootstrapUserSpace).not.toHaveBeenCalled();
-    const signedIn = await f.signin();
-    expect(signedIn.status).toBe(200);
-    const { token } = (await signedIn.json()) as { token: string };
-    expect(token).toEqual(expect.any(String));
-    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
-    expect(
-      await f.auth.api.getSession({ headers: new Headers({ authorization: `Bearer ${token}` }) }),
-    ).toMatchObject({ user: { emailVerified: true } });
-  });
-
-  it("rechecks policy before admitting a verified but unprovisioned signup", async () => {
-    const f = fixture({ allowlist: "@example.test" });
-    await f.signup();
-    await f.verify();
-    f.policy.signupsEnabled = false;
-    expect((await f.signin()).status).toBe(403);
-    expect(bootstrapUserSpace).not.toHaveBeenCalled();
-    f.policy.signupsEnabled = true;
-    f.policy.signupAllowlist = "someone-else@example.test";
-    expect((await f.signin()).status).toBe(403);
-    expect(bootstrapUserSpace).not.toHaveBeenCalled();
-  });
-
-  it("gates existing unverified sessions and auth mutations when the live allowlist is enabled", async () => {
-    const f = fixture();
-    const signedUp = await f.signup();
-    const cookie = signedUp.headers.get("set-cookie")!.split(";")[0]!;
-    const { token } = (await signedUp.json()) as { token: string };
-    expect(await f.auth.api.getSession({ headers: new Headers({ cookie }) })).not.toBeNull();
-    f.policy.signupAllowlist = "@example.test";
-    expect(await f.auth.api.getSession({ headers: new Headers({ cookie }) })).toBeNull();
-    expect(await (await f.request("/get-session", undefined, token)).json()).toBeNull();
-    expect(
-      await f.auth.api.getSession({ headers: new Headers({ authorization: `Bearer ${token}` }) }),
-    ).toBeNull();
-    expect((await f.request("/update-user", { name: "Changed" }, token)).status).toBe(401);
-    expect((await f.signin()).status).toBe(403);
-    await f.verify();
-    expect((await f.signin()).status).toBe(200);
-  });
-
-  it("does not leak request-local verification settings when signup policy changes", async () => {
-    const f = fixture({ allowlist: "@example.test" });
-    expect(await (await f.signup()).json()).toMatchObject({ token: null });
-    f.policy.signupAllowlist = "";
-    expect(await (await f.signup("open@example.test")).json()).toMatchObject({
-      token: expect.any(String),
-    });
     expect(f.messages).toHaveLength(1);
-    f.policy.signupAllowlist = "@example.test";
-    expect(await (await f.signup("restricted@example.test")).json()).toMatchObject({ token: null });
+    expect(f.messages[0]!.subject).toMatch(/^\d{6} is your Nova code$/);
+    expect(f.messages[0]!.html).toContain("Nova");
+
+    expect((await f.signin()).status).toBe(403);
     expect(f.messages).toHaveLength(2);
+    expect(
+      (
+        await f.request("/email-otp/verify-email", {
+          email: "approved@example.test",
+          otp: "000000",
+        })
+      ).status,
+    ).not.toBe(200);
+    expect(f.data.user![0]!.emailVerified).toBe(false);
+
+    const verified = await f.verify();
+    expect(verified.status).toBe(200);
+    expect(await verified.json()).toMatchObject({ token: expect.any(String) });
+    expect(f.data.user![0]!.emailVerified).toBe(true);
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
+    expect((await f.signin()).status).toBe(200);
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects an unverified session wherever it is presented, even with no signup restriction", async () => {
+    const f = fixture();
+    f.data.user!.push({
+      id: "user-1",
+      email: "ghost@example.test",
+      name: "Ghost",
+      emailVerified: false,
+      status: "active",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    f.data.session!.push({
+      id: "session-1",
+      token: "stale-token",
+      userId: "user-1",
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(
+      await f.auth.api.getSession({
+        headers: new Headers({ authorization: "Bearer stale-token" }),
+      }),
+    ).toBeNull();
+    expect((await f.request("/update-user", { name: "Changed" }, "stale-token")).status).toBe(401);
+    f.data.user![0]!.emailVerified = true;
+    expect(
+      await f.auth.api.getSession({
+        headers: new Headers({ authorization: "Bearer stale-token" }),
+      }),
+    ).not.toBeNull();
+  });
+
+  it("signs in with an emailed code and creates a verified account", async () => {
+    const f = fixture();
+    expect((await f.sendSignInCode()).status).toBe(200);
+    expect(f.messages).toHaveLength(1);
+    expect(
+      (await f.request("/sign-in/email-otp", { email: "approved@example.test", otp: "000000" }))
+        .status,
+    ).not.toBe(200);
+    expect(f.data.user).toHaveLength(0);
+    const response = await f.codeSignIn();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      token: expect.any(String),
+      user: { emailVerified: true },
+    });
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
+  });
+
+  it("limits a code to a few attempts", async () => {
+    const f = fixture();
+    await f.sendSignInCode();
+    const real = f.lastCode();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await f.request("/sign-in/email-otp", { email: "approved@example.test", otp: "000000" });
+    }
+    expect(
+      (await f.request("/sign-in/email-otp", { email: "approved@example.test", otp: real })).status,
+    ).not.toBe(200);
+    expect(f.data.user).toHaveLength(0);
+  });
+
+  it("refuses password signup with no email provider, unless the dev flag is set outside production", async () => {
+    const closedOff = fixture({ delivery: false });
+    const refused = await closedOff.signup();
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("Email delivery is not configured");
+    expect(closedOff.data.user).toHaveLength(0);
+
+    const dev = fixture({ delivery: false, allowUnverifiedEmail: true });
+    const accepted = await dev.signup();
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      token: expect.any(String),
+      user: { emailVerified: false },
+    });
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
+  });
+
+  it("never honors the dev flag on a hosted deployment", async () => {
+    const f = fixture({ delivery: false, allowUnverifiedEmail: true });
+    const prod = createAuth({ deploymentSettings: { findUnique: async () => f.policy } } as never, {
+      secret: "offline-auth-secret-at-least-32-characters",
+      baseURL: "http://auth.example.test",
+      webOrigin: "http://web.example.test",
+      allowUnverifiedEmail: true,
+      nodeEnv: "production",
+    });
+    const response = await prod.handler(
+      new Request("http://auth.example.test/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://web.example.test" },
+        body: JSON.stringify({
+          email: "a@example.test",
+          password: "offline-password12",
+          name: "A",
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("assertIdentityConfig", () => {
+  const withMail = { hosted: true, hasEmail: true, allowUnverifiedEmail: false };
+  const withoutMail = { hosted: true, hasEmail: false, allowUnverifiedEmail: false };
+  const policy = (mode: Mode) => ({ mode, invites: [], domains: [] });
+
+  it("refuses to start an admitting mode in production without an email provider", () => {
+    for (const mode of ["invite", "domain", "approval", "open"] as const) {
+      expect(() => assertIdentityConfig(withoutMail, policy(mode))).toThrow(/needs email delivery/);
+      expect(() => assertIdentityConfig(withMail, policy(mode))).not.toThrow();
+    }
+    expect(() => assertIdentityConfig(withoutMail, policy("closed"))).not.toThrow();
+  });
+
+  it("treats production on a public origin as hosted, and loopback or non-production as local", () => {
+    expect(
+      isHostedDeployment({ nodeEnv: "production", webOrigin: "https://app.example.test" }),
+    ).toBe(true);
+    expect(isHostedDeployment({ nodeEnv: "production", webOrigin: "http://127.0.0.1:5173" })).toBe(
+      false,
+    );
+    expect(
+      isHostedDeployment({ nodeEnv: "development", webOrigin: "https://app.example.test" }),
+    ).toBe(false);
+  });
+
+  it("refuses the unverified-email flag when hosted and ignores it elsewhere", () => {
+    expect(() =>
+      assertIdentityConfig({ ...withMail, allowUnverifiedEmail: true }, policy("closed")),
+    ).toThrow(/local development/);
+    expect(() =>
+      assertIdentityConfig(
+        { hosted: false, hasEmail: false, allowUnverifiedEmail: true },
+        policy("open"),
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe("signup modes", () => {
+  it("closed refuses every route in", async () => {
+    const f = fixture({ mode: "closed" });
+    const response = await f.signup();
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("Registration is closed");
+    expect((await f.sendSignInCode()).status).toBe(400);
+    expect(f.data.user).toHaveLength(0);
+    expect(f.messages).toHaveLength(0);
+  });
+
+  it("invite admits listed addresses and domains only, and mails no code to anyone else", async () => {
+    const f = fixture({ mode: "invite", invites: "approved@example.test,@corp.test" });
+    expect((await f.signup("outsider@example.test")).status).toBe(400);
+    expect((await f.sendSignInCode("outsider@example.test")).status).toBe(400);
+    expect(f.messages).toHaveLength(0);
+    expect(f.data.user).toHaveLength(0);
+    expect((await f.signup()).status).toBe(200);
+    await f.verify();
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
+    expect((await f.sendSignInCode("new@corp.test")).status).toBe(200);
+  });
+
+  it("invite with an empty list admits nobody", async () => {
+    const f = fixture({ mode: "invite" });
+    expect((await f.signup()).status).toBe(400);
+  });
+
+  it("domain admits only the listed domains", async () => {
+    const f = fixture({ mode: "domain", domains: "corp.test" });
+    expect((await f.signup("a@other.test")).status).toBe(400);
+    expect((await f.signup("a@corp.test.evil.test")).status).toBe(400);
+    expect((await f.sendSignInCode("a@other.test")).status).toBe(400);
+    expect((await f.signup("a@corp.test")).status).toBe(200);
+    // An email-code account is checked at creation too, not only at the signup route.
+    await f.sendSignInCode("b@corp.test");
+    expect((await f.codeSignIn("b@corp.test")).status).toBe(200);
+    f.policy.signupDomains = "elsewhere.test";
+    await f.sendSignInCode("c@elsewhere.test");
+    f.policy.signupDomains = "corp.test";
+    expect((await f.codeSignIn("c@elsewhere.test")).status).not.toBe(200);
+    expect(f.data.user!.map((user) => user.email)).toEqual(["a@corp.test", "b@corp.test"]);
+  });
+
+  it("approval: the first account is active, later ones wait with no space until approved", async () => {
+    const f = fixture({ mode: "approval" });
+    await f.signup("owner@example.test");
+    await f.verify("owner@example.test");
+    expect(f.data.user![0]!.status).toBe("active");
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
+    f.policy.ownerUserId = String(f.data.user![0]!.id);
+
+    // A client cannot pick its own status.
+    const response = await f.signup("waiting@example.test", { status: "active" });
+    expect(response.status).toBe(200);
+    expect(f.data.user![1]!.status).toBe("pending");
+    const verified = await f.verify("waiting@example.test");
+    const { token } = (await verified.json()) as { token: string };
+    expect(token).toEqual(expect.any(String));
+
+    // Signed in, but nothing is provisioned.
+    const session = await f.auth.api.getSession({
+      headers: new Headers({ authorization: `Bearer ${token}` }),
+    });
+    expect(session?.user).toMatchObject({ email: "waiting@example.test", status: "pending" });
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
+    expect((await f.signin("waiting@example.test")).status).toBe(200);
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(1);
+
+    // Approval flips the status; the next sign-in provisions (approveSignup also does at once).
+    f.data.user![1]!.status = "active";
+    expect((await f.signin("waiting@example.test")).status).toBe(200);
+    expect(bootstrapUserSpace).toHaveBeenCalledTimes(2);
+  });
+
+  it("open admits anyone once their mailbox is proved", async () => {
+    const f = fixture({ mode: "open" });
+    expect((await f.signup("anyone@anywhere.test")).status).toBe(200);
+    await f.verify("anyone@anywhere.test");
+    expect(f.data.user![0]!.status).toBe("active");
+  });
+
+  it("rechecks policy before provisioning a verified but unprovisioned account", async () => {
+    const f = fixture({ mode: "domain", domains: "example.test" });
+    await f.signup();
+    f.data.user![0]!.emailVerified = true;
+    f.policy.signupMode = "closed";
+    expect((await f.signin()).status).toBe(403);
+    f.policy.signupMode = "domain";
+    f.policy.signupDomains = "elsewhere.test";
+    expect((await f.signin()).status).toBe(403);
+    expect(bootstrapUserSpace).not.toHaveBeenCalled();
+  });
+});
+
+describe("suspension", () => {
+  it("blocks new and existing sessions of a suspended account", async () => {
+    const f = fixture();
+    await f.signup();
+    const { token } = (await (await f.verify()).json()) as { token: string };
+    const headers = () => new Headers({ authorization: `Bearer ${token}` });
+    expect(await f.auth.api.getSession({ headers: headers() })).not.toBeNull();
+    f.data.user![0]!.status = "suspended";
+    expect(await f.auth.api.getSession({ headers: headers() })).toBeNull();
+    const response = await f.signin();
+    expect(response.status).toBe(403);
+    expect(await response.text()).toContain("Account suspended");
+  });
+});
+
+describe("internal messaging identities", () => {
   it("reserves internal messaging emails across registration, recovery and email changes", async () => {
     const f = fixture();
     for (const email of [
@@ -422,11 +447,12 @@ describe("identity trust through auth endpoints", () => {
     ]) {
       expect((await f.signup(email)).status).toBe(400);
       expect((await f.signin(email)).status).toBe(400);
+      expect((await f.sendSignInCode(email)).status).toBe(400);
       expect((await f.request("/request-password-reset", { email })).status).toBe(400);
-      expect((await f.request("/send-verification-email", { email })).status).toBe(400);
     }
     expect(f.data.user).toHaveLength(0);
-    const { token } = (await (await f.signup()).json()) as { token: string };
+    await f.signup();
+    const { token } = (await (await f.verify()).json()) as { token: string };
     expect(
       (await f.request("/change-email", { newEmail: "msg-taken@messaging.invalid" }, token)).status,
     ).toBe(400);
@@ -434,6 +460,5 @@ describe("identity trust through auth endpoints", () => {
     f.data.user![0]!.email = "msg-taken@messaging.invalid";
     expect(await (await f.request("/get-session", undefined, token)).json()).toBeNull();
     expect((await f.request("/update-user", { name: "Changed" }, token)).status).toBe(401);
-    expect(f.messages).toHaveLength(0);
   });
 });
