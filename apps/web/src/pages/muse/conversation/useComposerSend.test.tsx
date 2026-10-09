@@ -363,3 +363,31 @@ it("gives every picked attachment its own id, even for identical files picked to
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
   expect(new Set(latest.pendingAttachments.map((a) => a.id)).size).toBe(3);
 });
+
+it("decides a starting Computer by the error code, not by words in the message", async () => {
+  await mount();
+  api.files.ingestAttachment.mockRejectedValueOnce(
+    new ORPCError("INTERNAL_SERVER_ERROR", { message: "omnigent read failed (503): starting" }),
+  );
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["error"]);
+  expect(latest.pendingAttachments[0]?.error).not.toContain("Your Computer is starting");
+});
+
+it("does not wait for an 'up' event that already happened", async () => {
+  await mount();
+  api.files.uploadAttachment
+    .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }))
+    .mockResolvedValueOnce({
+      path: "p/a.pdf",
+      name: "a.pdf",
+      mimeType: "application/pdf",
+      size: 3,
+    });
+  computerBus.emit(UP); // the Computer came up in the moment between the call and the wait
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["ready"]);
+  expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2);
+});

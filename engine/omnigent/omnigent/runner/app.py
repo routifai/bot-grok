@@ -13148,6 +13148,8 @@ def create_runner_app(
             order=order,
         )
 
+    _exclusive_create_lock = asyncio.Lock()
+
     @app.put(
         "/v1/sessions/{session_id}/resources/environments"
         "/{environment_id}/filesystem/{relative_path:path}"
@@ -13183,21 +13185,32 @@ def create_runner_app(
                 )
         else:
             content_bytes = content_str.encode(encoding)
-        try:
-            existing = await fs.read(relative_path, limit=None)
-            if existing.encoding and filesystem_registry is not None:
-                filesystem_registry.seed_snapshot(
-                    relative_path,
-                    existing.data.decode(existing.encoding, errors="replace"),
-                    session_id=session_id,
+        # ``if_exists: "fail"`` is an exclusive create (two uploads that picked the same free name
+        # cannot overwrite each other): the check and the write happen under one lock.
+        exclusive = body.get("if_exists") == "fail"
+        async with _exclusive_create_lock if exclusive else contextlib.AsyncExitStack():
+            existed = False
+            try:
+                existing = await fs.read(relative_path, limit=None)
+                existed = True
+                if existing.encoding and filesystem_registry is not None:
+                    filesystem_registry.seed_snapshot(
+                        relative_path,
+                        existing.data.decode(existing.encoding, errors="replace"),
+                        session_id=session_id,
+                    )
+            except Exception:  # noqa: BLE001
+                pass
+            if exclusive and existed:
+                return JSONResponse(
+                    status_code=409,
+                    content={"error": {"message": "A file with that name already exists"}},
                 )
-        except Exception:  # noqa: BLE001
-            pass
-        result = await fs.write(
-            relative_path,
-            content_bytes,
-            create_parents=create_parents,
-        )
+            result = await fs.write(
+                relative_path,
+                content_bytes,
+                create_parents=create_parents,
+            )
         if filesystem_registry is not None:
             filesystem_registry.record_change(relative_path, result.operation, session_id)
         _notify_file_written(relative_path, env)

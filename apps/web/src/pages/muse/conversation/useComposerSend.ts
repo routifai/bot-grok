@@ -34,9 +34,7 @@ import type { useThreadSync } from "./useThreadSync";
 
 /** The Computer is asleep and still waking: the upload could not land yet. */
 function isComputerStarting(error: unknown): boolean {
-  if (error instanceof ORPCError && error.code === "SERVICE_UNAVAILABLE") return true;
-  const message = error instanceof Error ? error.message : "";
-  return /\(503\)|computer is starting/i.test(message);
+  return error instanceof ORPCError && error.code === "SERVICE_UNAVAILABLE";
 }
 
 /** The Computer is awake but did not finish reading the file in time (not "starting"). */

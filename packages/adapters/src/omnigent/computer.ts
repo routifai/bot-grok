@@ -190,13 +190,14 @@ export async function readOmnigentFile(
 }
 
 /** `PUT .../filesystem/{path}` — writes bytes into the workspace (base64 on the wire, parent
- * folders created). Wakes a sleeping Computer; a 503 means it could not start. */
+ * folders created; `exclusive` fails instead of replacing). Wakes a sleeping Computer; a 503 means it could not start. */
 export async function writeOmnigentFile(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
   path: string,
   bytes: Uint8Array,
+  options: { exclusive?: boolean } = {},
 ): Promise<{ path: string; bytesWritten: number }> {
   const clean = confineWorkspacePath(path);
   if (!clean) throw new WorkspacePathError("Not a file");
@@ -207,6 +208,8 @@ export async function writeOmnigentFile(
       content: Buffer.from(bytes).toString("base64"),
       encoding: "base64",
       create_parents: true,
+      // An exclusive create fails (`already_exists`) rather than replace a file of that name.
+      ...(options.exclusive ? { if_exists: "fail" } : {}),
     }),
   });
   await throwOnError(response, "write file", config.secrets);

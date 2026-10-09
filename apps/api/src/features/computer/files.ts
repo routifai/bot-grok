@@ -23,6 +23,7 @@ import {
   AttachmentValidationError,
   attachmentExtensionForMimeType,
   decodeAttachmentBase64,
+  isIngestableAttachmentMimeType,
   validateAttachmentMimeType,
   WORKSPACE_UPLOADS_PREFIX,
 } from "@nova/core";
@@ -184,6 +185,20 @@ async function listOrEmpty(
   });
 }
 
+/** How many times an upload picks a name again when another upload took it first. */
+const UPLOAD_NAME_ATTEMPTS = 5;
+
+/** Whether `name` is `base` or one of its numbered copies (`base (2).ext`). */
+export function isCopyOf(name: string, base: string): boolean {
+  const stemAndExt = (value: string): [string, string] => {
+    const dot = value.lastIndexOf(".");
+    return dot > 0 ? [value.slice(0, dot), value.slice(dot).toLowerCase()] : [value, ""];
+  };
+  const [stem, ext] = stemAndExt(base);
+  const [candidateStem, candidateExt] = stemAndExt(name);
+  return ext === candidateExt && candidateStem.replace(/ \(\d+\)$/, "") === stem;
+}
+
 /** `name.ext` -> `name (2).ext`, `name (3).ext`, ... until it is not in `taken`. */
 export function dedupeUploadName(name: string, taken: ReadonlySet<string>): string {
   if (!taken.has(name)) return name;
@@ -223,26 +238,37 @@ export async function engineUploadAttachment(
   const { email, sessionId } = await resolveMuseSession(deps, client, actor);
   const dir = `${WORKSPACE_UPLOADS_PREFIX}${now.toISOString().slice(0, 10)}`;
   try {
-    // A folder that does not exist yet (404) simply has nothing to collide with.
-    // The same bytes attached again reuse the stored copy and its index entry: one call, by hash.
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const duplicate = await findOmnigentKnowledge(client, email, sessionId, { sha256 });
-    if (duplicate.found && duplicate.path && duplicate.name) {
-      return {
-        path: duplicate.path,
-        name: duplicate.name,
-        mimeType: input.mimeType,
-        size: bytes.byteLength,
-      };
+    const chosen = safeUploadName(input.name, input.mimeType);
+    // The same file attached again reuses the stored copy and its index entry. Only a file the
+    // Computer indexes is looked up (an image never is), and only a copy that carries the name the
+    // person chose is reused, so the name they see is the name they picked.
+    if (isIngestableAttachmentMimeType(input.mimeType)) {
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      const duplicate = await findOmnigentKnowledge(client, email, sessionId, { sha256 });
+      if (duplicate.found && duplicate.path && duplicate.name && isCopyOf(duplicate.name, chosen)) {
+        return {
+          path: duplicate.path,
+          name: duplicate.name,
+          mimeType: input.mimeType,
+          size: bytes.byteLength,
+        };
+      }
     }
-    const existing = await listOrEmpty(client, email, sessionId, dir);
-    const name = dedupeUploadName(
-      safeUploadName(input.name, input.mimeType),
-      new Set(existing.map((entry) => entry.name)),
-    );
-    const path = `${dir}/${name}`;
-    await writeOmnigentFile(client, email, sessionId, path, bytes);
-    return { path, name, mimeType: input.mimeType, size: bytes.byteLength };
+    // The name is picked from the folder and written with an exclusive create: two uploads that
+    // chose the same free name cannot overwrite each other, the loser picks the next number.
+    for (let attempt = 0; attempt < UPLOAD_NAME_ATTEMPTS; attempt += 1) {
+      const existing = await listOrEmpty(client, email, sessionId, dir);
+      const name = dedupeUploadName(chosen, new Set(existing.map((entry) => entry.name)));
+      const path = `${dir}/${name}`;
+      try {
+        await writeOmnigentFile(client, email, sessionId, path, bytes, { exclusive: true });
+      } catch (error) {
+        if (hasEngineCode(error, "already_exists")) continue;
+        throw error;
+      }
+      return { path, name, mimeType: input.mimeType, size: bytes.byteLength };
+    }
+    throw new ORPCError("CONFLICT", { message: "Could not pick a free name for this file" });
   } catch (error) {
     if (isComputerStarting(error)) {
       throw new ORPCError("SERVICE_UNAVAILABLE", {

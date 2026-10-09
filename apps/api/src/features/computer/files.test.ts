@@ -189,6 +189,7 @@ describe("engine attachment upload", () => {
       content: Buffer.from("%PDF-1.4").toString("base64"),
       encoding: "base64",
       create_parents: true,
+      if_exists: "fail",
     });
   });
 
@@ -282,6 +283,85 @@ describe("engine attachment upload", () => {
       const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
       expect(out.path).toBe(`${DAY}/report (2).pdf`);
       expect(puts).toEqual([`${FS}/${DAY}/report (2).pdf`]);
+    });
+  });
+
+  describe("names, images and races", () => {
+    const DAY = "your_files/uploads/2026-10-09";
+
+    it("keeps the name the person chose: a copy under another name is not reused", async () => {
+      const writes: string[] = [];
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) {
+          return json({ found: true, name: "report.pdf", path: `${DAY}/report.pdf` });
+        }
+        if (init?.method === "PUT") {
+          writes.push(decodeURIComponent(url.pathname));
+          return json({ bytes_written: 8 });
+        }
+        return json({ data: [] });
+      });
+      const out = await engineUploadAttachment(
+        upDeps,
+        client,
+        actor,
+        input({ name: "Q3-final.pdf" }),
+        day,
+      );
+      expect(out.name).toBe("Q3-final.pdf");
+      expect(writes).toEqual([`${FS}/${DAY}/Q3-final.pdf`]);
+    });
+
+    it("never hashes or looks up an image: it is not indexed", async () => {
+      const finds: string[] = [];
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) finds.push(url.pathname);
+        return init?.method === "PUT" ? json({ bytes_written: 3 }) : json({ data: [] });
+      });
+      const out = await engineUploadAttachment(
+        upDeps,
+        client,
+        actor,
+        input({ name: "pic.png", mimeType: "image/png" }),
+        day,
+      );
+      expect(out.path).toBe(`${DAY}/pic.png`);
+      expect(finds).toEqual([]);
+    });
+
+    it("picks the next name when another upload took the free one first", async () => {
+      const written: string[] = [];
+      let listed = 0;
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) return json({ found: false });
+        if (init?.method === "PUT") {
+          const path = decodeURIComponent(url.pathname);
+          if (path.endsWith("/report.pdf")) {
+            return json({ error: { code: "already_exists", message: "exists" } }, 409);
+          }
+          written.push(path);
+          return json({ bytes_written: 8 });
+        }
+        listed += 1;
+        // the folder listing is stale on the first look: the other upload is not in it yet
+        return json({
+          data:
+            listed === 1
+              ? []
+              : [
+                  {
+                    name: "report.pdf",
+                    path: `${DAY}/report.pdf`,
+                    type: "file",
+                    bytes: 8,
+                    modified_at: 1,
+                  },
+                ],
+        });
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.name).toBe("report (2).pdf");
+      expect(written).toEqual([`${FS}/${DAY}/report (2).pdf`]);
     });
   });
 

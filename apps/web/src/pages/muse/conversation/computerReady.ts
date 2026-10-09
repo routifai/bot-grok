@@ -45,12 +45,15 @@ export function waitForComputerUp(
       done();
     };
     const onAbort = () => finish(() => reject(signal.reason));
-    const unsubscribe = feed.subscribe((status) => {
+    const react = (status: ComputerStatus | null) => {
       if (computerIsUp(status)) finish(resolve);
       else if (launchFailed(status)) finish(() => reject(new ComputerStartTimeout()));
-    });
+    };
+    // An event that landed before this wait began is not lost: look at the status as it is now.
+    const unsubscribe = feed.subscribe(react);
     const timer = setTimeout(() => finish(() => reject(new ComputerStartTimeout())), windowMs);
     signal.addEventListener("abort", onAbort, { once: true });
+    react(feed.current());
   });
 }
 
