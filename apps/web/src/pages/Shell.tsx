@@ -738,6 +738,7 @@ export function ShellPage() {
     composerSeed,
     setComposerSeed,
     attachmentNotice,
+    uploadStatus,
     fileInputRef,
     followSignal,
     displayedRunError,
@@ -1208,6 +1209,7 @@ export function ShellPage() {
                       disabled={Boolean(recordingSkill)}
                       pendingAttachments={activePendingAttachments}
                       attachmentNotice={attachmentNotice}
+                      uploadStatus={uploadStatus}
                       sendError={sendError}
                       runError={displayedRunError}
                       runErrorId={displayedRunErrorId}

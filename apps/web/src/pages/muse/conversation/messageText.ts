@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import type { ThreadMessage } from "@nova/contracts";
-import { plainTextFromMarkdown } from "@nova/core";
+import { parseAttachmentReferences, plainTextFromMarkdown } from "@nova/core";
 import { splitComposerAttachments } from "../../../lib/composer-attachments";
 
 export function previewMessageText(message: ThreadMessage): string {
@@ -10,8 +10,11 @@ export function previewMessageText(message: ThreadMessage): string {
       if (block.kind === "text") {
         // Bot text is Markdown; user text is already plain.
         if (message.role === "bot") return plainTextFromMarkdown(block.text);
-        const ask = splitComposerAttachments(block.text);
-        return ask.chips.length ? ask.rest || (ask.chips[0]?.label ?? "") : block.text;
+        const files = parseAttachmentReferences(block.text);
+        const first = files.attachments[0]?.path.split("/").pop() ?? "";
+        const ask = splitComposerAttachments(files.caption);
+        if (ask.chips.length) return ask.rest || (ask.chips[0]?.label ?? "");
+        return files.caption || first;
       }
       return "";
     })

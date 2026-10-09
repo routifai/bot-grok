@@ -25,8 +25,8 @@ const A = "a".repeat(32);
 const B = "b".repeat(32);
 const data = {
   items: [
-    { artifactId: A, name: "finance.pdf", page: 2, hasThumbnail: true },
-    { artifactId: B, name: "notes.md", page: 1 },
+    { fileId: "f1", artifactId: A, name: "finance.pdf", page: 2, hasThumbnail: true },
+    { fileId: "f2", artifactId: B, name: "notes.md", page: 1 },
   ],
 };
 
@@ -58,7 +58,7 @@ it("draws a thumbnail chip per page, fetching each thumbnail once", async () => 
   expect(chips[0]?.textContent).toContain("p. 2");
   expect(chips[0]?.getAttribute("aria-label")).toBe("Open finance.pdf, page 2");
   expect(pageThumbnail).toHaveBeenCalledTimes(1);
-  expect(pageThumbnail).toHaveBeenCalledWith({ artifactId: A, page: 2 });
+  expect(pageThumbnail).toHaveBeenCalledWith({ fileId: "f1", page: 2 });
   expect(chips[0]?.querySelector("img")?.getAttribute("src")).toBe(
     "data:image/webp;base64,UklGRg==",
   );
@@ -90,4 +90,21 @@ it("keeps the placeholder when a thumbnail cannot be fetched", async () => {
   const host = await mount(<PassageChips data={data} />);
   expect(host.querySelector("img")).toBeNull();
   expect(host.querySelectorAll("button")).toHaveLength(2);
+});
+
+it("a Computer-only file is a non-interactive chip that still shows its thumbnail", async () => {
+  const open = vi.fn();
+  const host = await mount(
+    <ArtifactPanelProvider value={{ openId: null, open, close: vi.fn() }}>
+      <PassageChips
+        data={{ items: [{ fileId: "f9", name: "scan.pdf", page: 4, hasThumbnail: true }] }}
+      />
+    </ArtifactPanelProvider>,
+  );
+  expect(host.querySelector("button")).toBeNull();
+  expect(host.textContent).toContain("scan.pdf");
+  expect(host.textContent).toContain("p. 4");
+  expect(pageThumbnail).toHaveBeenCalledWith({ fileId: "f9", page: 4 });
+  expect(host.querySelector("img")).not.toBeNull();
+  expect(open).not.toHaveBeenCalled();
 });

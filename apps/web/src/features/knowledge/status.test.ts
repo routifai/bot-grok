@@ -19,6 +19,8 @@ vi.mock("../../lib/rpc", () => ({
 import { resetKnowledgeStatus, useKnowledgeFile } from "./status";
 
 const file = (id: string, over: Partial<KnowledgeFile> = {}): KnowledgeFile => ({
+  fileId: `f-${id}`,
+  path: `your_files/uploads/2026-10-09/${id}.pdf`,
   artifactId: id,
   name: `${id}.pdf`,
   kind: "pdf",
@@ -30,9 +32,15 @@ const file = (id: string, over: Partial<KnowledgeFile> = {}): KnowledgeFile => (
   error: null,
   ...over,
 });
-const answer = (files: KnowledgeFile[], available = true): KnowledgeStatus => ({
+const answer = (
+  files: KnowledgeFile[],
+  available = true,
+  computer: "awake" | "asleep" = "awake",
+): KnowledgeStatus => ({
   files,
   embeddings: { available, reason: available ? null : "no_connection" },
+  computer,
+  updatedAt: 1,
 });
 
 const hosts: HTMLElement[] = [];
@@ -116,4 +124,23 @@ it("does not ask to embed while the person still has no connection", async () =>
   status.mockResolvedValue(answer([file("a", { search: "keyword" })], false));
   await mount("a", vi.fn());
   expect(reindex).not.toHaveBeenCalled();
+});
+
+it("an asleep Computer is polled slowly and never asked to reindex", async () => {
+  status.mockResolvedValue(
+    answer([file("a", { state: "indexing", search: "keyword" })], true, "asleep"),
+  );
+  await mount("a", vi.fn());
+  await act(async () => vi.advanceTimersByTimeAsync(50_000));
+  expect(status).toHaveBeenCalledTimes(1);
+  await act(async () => vi.advanceTimersByTimeAsync(11_000));
+  expect(status).toHaveBeenCalledTimes(2);
+  expect(reindex).not.toHaveBeenCalled();
+});
+
+it("a Library card finds its file by artifact id, not by path", async () => {
+  status.mockResolvedValue(answer([file("a"), file("b", { artifactId: null })]));
+  const seen = vi.fn();
+  await mount("a", seen);
+  expect(seen).toHaveBeenLastCalledWith(expect.objectContaining({ fileId: "f-a" }));
 });

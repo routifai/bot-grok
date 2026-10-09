@@ -1,13 +1,19 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@nova/chat-ui/web";
 import type { ThreadMessage } from "@nova/contracts";
-import { ENGINE_ERROR_NOTE, isEngineErrorText, isToolActivityBlock } from "@nova/core";
+import {
+  ENGINE_ERROR_NOTE,
+  isEngineErrorText,
+  isToolActivityBlock,
+  parseAttachmentReferences,
+} from "@nova/core";
 import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@nova/ui-web";
 import { memo, useMemo } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
+import { WorkspaceAttachmentChip } from "../../../components/WorkspaceAttachmentChip";
 import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
 import { SkillDraftCard } from "../../../features/skills/teach/SkillDraftCard";
@@ -459,11 +465,20 @@ export const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text" && message.role === "user") {
-          const ask = splitComposerAttachments(block.text);
-          const hasChips = ask.chips.length > 0;
+          const files = parseAttachmentReferences(block.text);
+          const ask = splitComposerAttachments(files.caption);
+          const hasChips = ask.chips.length > 0 || files.attachments.length > 0;
           const body = hasChips ? ask.rest : block.text;
+          const fileBotId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
           return (
             <div key={i} className="flex w-fit max-w-full flex-col items-end gap-1.5">
+              {files.attachments.map((attachment) => (
+                <WorkspaceAttachmentChip
+                  key={attachment.path}
+                  botId={fileBotId}
+                  attachment={attachment}
+                />
+              ))}
               {ask.chips.map((chip) => (
                 <ComposerAttachmentChip
                   key={chip.kind}

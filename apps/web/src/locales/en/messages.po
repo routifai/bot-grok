@@ -4148,6 +4148,11 @@ msgstr "Updating Team Computer"
 msgid "Updating…"
 msgstr "Updating…"
 
+#. placeholder {0}: uploaded + 1
+#. placeholder {1}: attachments.length
+msgid "Uploading {0} of {1}"
+msgstr "Uploading {0} of {1}"
+
 msgid "Usage"
 msgstr "Usage"
 
@@ -4397,6 +4402,9 @@ msgstr "Your account is paused. Contact your admin."
 
 msgid "Your computer · Your model · Your say"
 msgstr "Your computer · Your model · Your say"
+
+msgid "Your Computer is starting. Try again in a moment."
+msgstr "Your Computer is starting. Try again in a moment."
 
 msgid "Your email address"
 msgstr "Your email address"
