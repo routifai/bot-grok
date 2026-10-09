@@ -5,7 +5,13 @@ import {
   ARTIFACT_NAME_MAX_LENGTH,
   ATTACHMENT_MAX_BASE64_LENGTH,
 } from "../attachments.js";
-import { ArtifactSchema, ArtifactVersionSchema, ArtifactWithContentSchema } from "../domain.js";
+import {
+  ArtifactPublishAudienceSchema,
+  ArtifactPublishSchema,
+  ArtifactSchema,
+  ArtifactVersionSchema,
+  ArtifactWithContentSchema,
+} from "../domain.js";
 import { Id } from "../ids.js";
 
 import { botId, threadTarget } from "./shared.js";
@@ -43,6 +49,17 @@ export const artifactsContract = {
     get: oc.input(threadTarget.and(z.object({ artifactId: Id }))).output(ArtifactWithContentSchema),
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
+    publish: oc
+      .input(
+        z.object({
+          artifactId: Id,
+          audience: ArtifactPublishAudienceSchema,
+          version: z.number().int().min(1).optional(),
+        }),
+      )
+      .output(ArtifactPublishSchema),
+    unpublish: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
+    publishState: oc.input(z.object({ artifactId: Id })).output(ArtifactPublishSchema.nullable()),
   },
   files: {
     list: oc.input(z.object({ botId: Id, path: z.string().max(1024).default("") })).output(

@@ -7,11 +7,22 @@ import {
   deleteOmnigentArtifact,
   fetchOmnigentArtifactContent,
   getOmnigentArtifact,
+  getOmnigentPublication,
   listOmnigentArtifacts,
   type OmnigentArtifact,
   type OmnigentClientConfig,
+  type OmnigentPublication,
+  publishOmnigentArtifact,
+  unpublishOmnigentArtifact,
 } from "@nova/adapters";
-import type { Actor, Artifact, ArtifactVersion, ArtifactWithContent } from "@nova/contracts";
+import type {
+  Actor,
+  Artifact,
+  ArtifactPublish,
+  ArtifactPublishAudience,
+  ArtifactVersion,
+  ArtifactWithContent,
+} from "@nova/contracts";
 import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
 
@@ -33,8 +44,24 @@ async function emailOf(deps: EngineArtifactsDeps, actor: Actor): Promise<string>
   return user.email;
 }
 
+export function toPublish(publication: OmnigentPublication): ArtifactPublish {
+  return {
+    slug: publication.slug,
+    urlPath: publication.url_path,
+    audience: publication.audience,
+    version: publication.version,
+    publishedAt: iso(publication.published_at),
+    stats: {
+      opensTotal: publication.stats.opens_total,
+      uniqueViewers: publication.stats.unique_viewers,
+      opens7d: publication.stats.opens_7d,
+    },
+  };
+}
+
 function toArtifact(item: OmnigentArtifact, botId: string | null): Artifact {
   return {
+    publish: item.publish ? toPublish(item.publish) : null,
     id: item.id,
     botId,
     groupId: null,
@@ -188,4 +215,50 @@ function notFound(error: unknown): never {
     throw new ORPCError("NOT_FOUND", { message: "Artifact not found" });
   }
   throw error;
+}
+
+/** Only the owner's own file is ever found: the engine 404s another owner's artifact. */
+export async function enginePublishArtifact(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  input: { artifactId: string; audience: ArtifactPublishAudience; version?: number },
+): Promise<ArtifactPublish> {
+  const email = await emailOf(deps, actor);
+  const published = await publishOmnigentArtifact(client, email, input.artifactId, {
+    audience: input.audience,
+    version: input.version,
+  }).catch(publishError);
+  return toPublish(published);
+}
+
+export async function engineUnpublishArtifact(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  artifactId: string,
+): Promise<{ ok: true }> {
+  await unpublishOmnigentArtifact(client, await emailOf(deps, actor), artifactId).catch(notFound);
+  return { ok: true as const };
+}
+
+export async function engineGetPublication(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  artifactId: string,
+): Promise<ArtifactPublish | null> {
+  const publication = await getOmnigentPublication(
+    client,
+    await emailOf(deps, actor),
+    artifactId,
+  ).catch(notFound);
+  return publication ? toPublish(publication) : null;
+}
+
+function publishError(error: unknown): never {
+  if (error instanceof Error && /\(400\)/.test(error.message)) {
+    throw new ORPCError("BAD_REQUEST", { message: "This file cannot be published" });
+  }
+  return notFound(error);
 }

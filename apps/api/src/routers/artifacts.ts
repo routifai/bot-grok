@@ -13,15 +13,24 @@ import {
 } from "../artifacts.js";
 import {
   engineGetArtifact,
+  engineGetPublication,
   engineListArtifacts,
   engineListArtifactVersions,
   engineListSpaceArtifacts,
+  enginePublishArtifact,
   engineRemoveArtifact,
+  engineUnpublishArtifact,
 } from "../engine-artifacts.js";
 import { engineComputerClient } from "../engine-computer.js";
 import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "../engine-files.js";
 
 import type { RouterContext } from "./context.js";
+
+function requireEngine(actor: Parameters<typeof engineComputerClient>[0]) {
+  const engine = engineComputerClient(actor);
+  if (!engine) throw new ORPCError("NOT_FOUND", { message: "Apps are not available" });
+  return engine;
+}
 
 export function artifactsRouter(c: RouterContext) {
   const { authed, repos, groupRepos, engineArtifactsDeps, engineFilesDeps, deps } = c;
@@ -143,6 +152,24 @@ export function artifactsRouter(c: RouterContext) {
         if (engine)
           return engineRemoveArtifact(engineArtifactsDeps, engine, context.actor, input.artifactId);
         return deleteArtifactFamily(deps, context.actor, { familyId: input.artifactId });
+      }),
+      publish: authed.artifacts.publish.handler(async ({ context, input }) => {
+        const engine = requireEngine(context.actor);
+        return enginePublishArtifact(engineArtifactsDeps, engine, context.actor, input);
+      }),
+      unpublish: authed.artifacts.unpublish.handler(async ({ context, input }) => {
+        const engine = requireEngine(context.actor);
+        return engineUnpublishArtifact(
+          engineArtifactsDeps,
+          engine,
+          context.actor,
+          input.artifactId,
+        );
+      }),
+      publishState: authed.artifacts.publishState.handler(async ({ context, input }) => {
+        const engine = engineComputerClient(context.actor);
+        if (!engine) return null;
+        return engineGetPublication(engineArtifactsDeps, engine, context.actor, input.artifactId);
       }),
     },
   };

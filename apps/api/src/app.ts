@@ -74,11 +74,13 @@ import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { engineComputerClient } from "./engine-computer.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { mountLocalSettings } from "./local-settings.js";
 import { createMessagingInboundHandler } from "./messaging-inbound.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
+import { mountPublishedApps } from "./published-apps.js";
 import { mountApiRequestBodyLimits } from "./request-body-limit.js";
 import { createRouter } from "./router.js";
 import { mountScreenTarget } from "./screen-proxy.js";
@@ -429,6 +431,17 @@ export async function createApp(
   }
   mountApiRequestBodyLimits(app);
   mountScreenTarget(app, prisma, env.screenProxySecret);
+  mountPublishedApps(app, {
+    prisma,
+    secret: env.authSecret,
+    // The engine only needs the connection for /v1/published; the tenant is not used there.
+    engine: () => engineComputerClient({ spaceId: "apps-gateway" }),
+    viewer: async (c) => {
+      const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
+      return session?.user ? { userId: session.user.id, email: session.user.email } : null;
+    },
+    onError: (error) => logUnexpectedRpcError(error, ["apps"]),
+  });
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname.replace("/api/auth", "");
     if (blockedAuthPaths.some((blocked) => path.startsWith(blocked))) {
