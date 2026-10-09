@@ -62,13 +62,13 @@ msgstr "{0} connection"
 msgid "{0} default"
 msgstr "{0} default"
 
+#. placeholder {0}: targets.length
+msgid "{0} elements"
+msgstr "{0} elements"
+
 #. placeholder {0}: sender.name
 msgid "{0} handling"
 msgstr "{0} handling"
-
-#. placeholder {0}: state.file.name
-msgid "{0} is ready"
-msgstr "{0} is ready"
 
 #. placeholder {0}: format(size / 1024)
 msgid "{0} KB"
@@ -136,6 +136,9 @@ msgstr "{minutes}m ago"
 
 msgid "{n} cells"
 msgstr "{n} cells"
+
+msgid "{n} elements"
+msgstr "{n} elements"
 
 #. js-lingui-explicit-id
 msgid "{name} failed"
@@ -349,8 +352,17 @@ msgstr "Added"
 msgid "Added to Conversation"
 msgstr "Added to Conversation"
 
+msgid "Added to your Library"
+msgstr "Added to your Library"
+
+msgid "Added to your message"
+msgstr "Added to your message"
+
 msgid "Adding…"
 msgstr "Adding…"
+
+msgid "Address"
+msgstr "Address"
 
 msgid "Admin"
 msgstr "Admin"
@@ -378,6 +390,15 @@ msgstr "Agent connections"
 
 msgid "Agents:"
 msgstr "Agents:"
+
+msgid "Align center"
+msgstr "Align center"
+
+msgid "Align left"
+msgstr "Align left"
+
+msgid "Align right"
+msgstr "Align right"
 
 msgid "All"
 msgstr "All"
@@ -549,8 +570,14 @@ msgstr "Ask me first"
 msgid "Ask me first before step {0}"
 msgstr "Ask me first before step {0}"
 
+msgid "Ask Nova"
+msgstr "Ask Nova"
+
 msgid "Ask Nova about {label}"
 msgstr "Ask Nova about {label}"
+
+msgid "Ask Nova instead"
+msgstr "Ask Nova instead"
 
 msgid "Ask once and get on with your day."
 msgstr "Ask once and get on with your day."
@@ -616,6 +643,9 @@ msgstr "Back to steps"
 msgid "Back to the conversation"
 msgstr "Back to the conversation"
 
+msgid "Background"
+msgstr "Background"
+
 msgid "Bearer token"
 msgstr "Bearer token"
 
@@ -656,6 +686,9 @@ msgstr "Bots act without asking by default. Add an exception only when you want 
 
 msgid "Bots are working"
 msgstr "Bots are working"
+
+msgid "Box"
+msgstr "Box"
 
 msgid "Branch"
 msgstr "Branch"
@@ -788,6 +821,9 @@ msgstr "Clear conversation"
 msgid "Clearing…"
 msgstr "Clearing…"
 
+msgid "Click an element on the slide. Double-click text to type."
+msgstr "Click an element on the slide. Double-click text to type."
+
 msgid "Client ID"
 msgstr "Client ID"
 
@@ -835,6 +871,9 @@ msgstr "Code"
 
 msgid "Collapse sidebar"
 msgstr "Collapse sidebar"
+
+msgid "Color"
+msgstr "Color"
 
 msgid "Coming soon"
 msgstr "Coming soon"
@@ -967,6 +1006,9 @@ msgstr "Copy"
 
 msgid "Copy link"
 msgstr "Copy link"
+
+msgid "Corner radius"
+msgstr "Corner radius"
 
 msgid "Could not add"
 msgstr "Could not add"
@@ -1320,11 +1362,11 @@ msgstr "Couldn't load messaging settings"
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
 
-msgid "Couldn't prepare the PDF. Nothing was changed."
-msgstr "Couldn't prepare the PDF. Nothing was changed."
+msgid "Couldn't prepare PDF"
+msgstr "Couldn't prepare PDF"
 
-msgid "Couldn't prepare the PowerPoint. Nothing was changed."
-msgstr "Couldn't prepare the PowerPoint. Nothing was changed."
+msgid "Couldn't prepare PowerPoint"
+msgstr "Couldn't prepare PowerPoint"
 
 msgid "Couldn’t reach Nova’s computer. Retrying…"
 msgstr "Couldn’t reach Nova’s computer. Retrying…"
@@ -1392,6 +1434,12 @@ msgstr "Cron expression"
 
 msgid "Current password"
 msgstr "Current password"
+
+msgid "Custom"
+msgstr "Custom"
+
+msgid "Custom color"
+msgstr "Custom color"
 
 msgid "Customer support"
 msgstr "Customer support"
@@ -1707,12 +1755,6 @@ msgstr "Export renewals"
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
 
-msgid "Export to PDF"
-msgstr "Export to PDF"
-
-msgid "Export to PowerPoint"
-msgstr "Export to PowerPoint"
-
 msgid "External conversation"
 msgstr "External conversation"
 
@@ -1743,6 +1785,12 @@ msgstr "File"
 
 msgid "Files"
 msgstr "Files"
+
+msgid "Fill"
+msgstr "Fill"
+
+msgid "Fill color"
+msgstr "Fill color"
 
 msgid "Filter by date"
 msgstr "Filter by date"
@@ -1802,6 +1850,12 @@ msgstr "Follow a topic"
 
 msgid "Follow a topic, like OSFI guidance"
 msgstr "Follow a topic, like OSFI guidance"
+
+msgid "Font"
+msgstr "Font"
+
+msgid "Font size"
+msgstr "Font size"
 
 msgid "Forget"
 msgstr "Forget"
@@ -1917,8 +1971,14 @@ msgstr "Header name"
 msgid "Header value"
 msgstr "Header value"
 
+msgid "Heading"
+msgstr "Heading"
+
 msgid "Hear a sample"
 msgstr "Hear a sample"
+
+msgid "Height"
+msgstr "Height"
 
 msgid "Here's a one-page brief for Maya. The two open points from last month are at the top."
 msgstr "Here's a one-page brief for Maya. The two open points from last month are at the top."
@@ -1968,6 +2028,9 @@ msgstr "How often"
 #. placeholder {0}: index + 1
 msgid "How to tell step {0} worked"
 msgstr "How to tell step {0} worked"
+
+msgid "HTML (source)"
+msgstr "HTML (source)"
 
 msgid "I ask before doing anything I can't undo."
 msgstr "I ask before doing anything I can't undo."
@@ -2026,6 +2089,12 @@ msgstr "If you heard that, voice is ready."
 msgid "Ignore"
 msgstr "Ignore"
 
+msgid "Image"
+msgstr "Image"
+
+msgid "Image description"
+msgstr "Image description"
+
 msgid "Images"
 msgstr "Images"
 
@@ -2083,6 +2152,9 @@ msgstr "It starts with a summary of this conversation."
 
 msgid "It won't be used anymore. This can't be undone."
 msgstr "It won't be used anymore. This can't be undone."
+
+msgid "Italic"
+msgstr "Italic"
 
 msgid "Its address stops working right away. You can publish it again later."
 msgstr "Its address stops working right away. You can publish it again later."
@@ -2158,6 +2230,9 @@ msgstr "Leave"
 msgid "Let's get started"
 msgstr "Let's get started"
 
+msgid "Letter spacing"
+msgstr "Letter spacing"
+
 msgid "Library"
 msgstr "Library"
 
@@ -2167,11 +2242,20 @@ msgstr "Library view"
 msgid "Light"
 msgstr "Light"
 
+msgid "Line height"
+msgstr "Line height"
+
 msgid "Linear issue"
 msgstr "Linear issue"
 
+msgid "Link"
+msgstr "Link"
+
 msgid "Link a chat app"
 msgstr "Link a chat app"
+
+msgid "Link address"
+msgstr "Link address"
 
 msgid "List view"
 msgstr "List view"
@@ -2381,6 +2465,9 @@ msgstr "Monthly limit"
 msgid "More"
 msgstr "More"
 
+msgid "More actions"
+msgstr "More actions"
+
 #. placeholder {0}: artifact.name
 #. placeholder {0}: data.name
 msgid "More actions for {0}"
@@ -2509,6 +2596,9 @@ msgstr "No exceptions. Actions run automatically."
 
 msgid "No files yet."
 msgstr "No files yet."
+
+msgid "No fill"
+msgstr "No fill"
 
 msgid "No forks match."
 msgstr "No forks match."
@@ -2682,6 +2772,15 @@ msgstr "Off"
 msgid "Offline"
 msgstr "Offline"
 
+msgid "Offset"
+msgstr "Offset"
+
+msgid "Offset X"
+msgstr "Offset X"
+
+msgid "Offset Y"
+msgstr "Offset Y"
+
 msgid "On a schedule"
 msgstr "On a schedule"
 
@@ -2709,6 +2808,9 @@ msgstr "Online"
 
 msgid "Only me"
 msgstr "Only me"
+
+msgid "Opacity"
+msgstr "Opacity"
 
 msgid "Open"
 msgstr "Open"
@@ -2801,6 +2903,9 @@ msgstr "Other model…"
 msgid "Outcome"
 msgstr "Outcome"
 
+msgid "Padding"
+msgstr "Padding"
+
 msgid "PagerDuty incident"
 msgstr "PagerDuty incident"
 
@@ -2842,6 +2947,9 @@ msgstr "Pause"
 
 msgid "Paused"
 msgstr "Paused"
+
+msgid "PDF"
+msgstr "PDF"
 
 msgid "Pending"
 msgstr "Pending"
@@ -2889,8 +2997,14 @@ msgstr "Playing…"
 msgid "Please propose a plan for my goal \"{0}\"."
 msgstr "Please propose a plan for my goal \"{0}\"."
 
+msgid "Position and size"
+msgstr "Position and size"
+
 msgid "POST to"
 msgstr "POST to"
+
+msgid "PowerPoint (.pptx)"
+msgstr "PowerPoint (.pptx)"
 
 msgid "Prep me for Thursday's call with Northwind."
 msgstr "Prep me for Thursday's call with Northwind."
@@ -2900,12 +3014,6 @@ msgstr "Preparing PDF…"
 
 msgid "Preparing PowerPoint…"
 msgstr "Preparing PowerPoint…"
-
-msgid "Preparing your PDF. This can take a minute."
-msgstr "Preparing your PDF. This can take a minute."
-
-msgid "Preparing your PowerPoint. This can take a minute."
-msgstr "Preparing your PowerPoint. This can take a minute."
 
 msgid "Present"
 msgstr "Present"
@@ -2995,6 +3103,9 @@ msgstr "Quiet hours start"
 msgid "Quote"
 msgstr "Quote"
 
+msgid "Radius"
+msgstr "Radius"
+
 msgid "Raise budget"
 msgstr "Raise budget"
 
@@ -3065,6 +3176,9 @@ msgstr "Recovery restores the last saved workspace. Unsaved work may be lost."
 
 msgid "Recreating the computer"
 msgstr "Recreating the computer"
+
+msgid "Redo"
+msgstr "Redo"
 
 msgid "Reflection"
 msgstr "Reflection"
@@ -3409,6 +3523,9 @@ msgstr "See summary"
 msgid "Select a bot"
 msgstr "Select a bot"
 
+msgid "Select an element"
+msgstr "Select an element"
+
 msgid "Send"
 msgstr "Send"
 
@@ -3524,6 +3641,9 @@ msgstr "Sign up"
 msgid "Sign-in for {host}"
 msgstr "Sign-in for {host}"
 
+msgid "Size"
+msgstr "Size"
+
 msgid "Skill"
 msgstr "Skill"
 
@@ -3558,6 +3678,9 @@ msgstr "Slack message"
 
 msgid "Slack not enabled"
 msgstr "Slack not enabled"
+
+msgid "Slide"
+msgstr "Slide"
 
 msgid "Slide deck"
 msgstr "Slide deck"
@@ -3594,6 +3717,9 @@ msgstr "Space interrupts · Esc hangs up"
 
 msgid "Spaces"
 msgstr "Spaces"
+
+msgid "Spacing"
+msgstr "Spacing"
 
 msgid "Speak"
 msgstr "Speak"
@@ -3689,6 +3815,9 @@ msgstr "Stored securely. Never shown here."
 msgid "Stream replies"
 msgstr "Stream replies"
 
+msgid "Style"
+msgstr "Style"
+
 msgid "subagent"
 msgstr "subagent"
 
@@ -3762,6 +3891,15 @@ msgstr "Test"
 msgid "Test run"
 msgstr "Test run"
 
+msgid "Text"
+msgstr "Text"
+
+msgid "Text color"
+msgstr "Text color"
+
+msgid "That change can't be made exactly by hand."
+msgstr "That change can't be made exactly by hand."
+
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
@@ -3820,6 +3958,9 @@ msgstr "This draft is from an earlier version"
 
 msgid "This file is not valid UTF-8 text."
 msgstr "This file is not valid UTF-8 text."
+
+msgid "This isn't the latest version of the deck. Open the latest to edit it."
+msgstr "This isn't the latest version of the deck. Open the latest to edit it."
 
 msgid "this Mac"
 msgstr "this Mac"
@@ -4084,6 +4225,9 @@ msgstr "Weekdays"
 msgid "Weekly renewal report"
 msgstr "Weekly renewal report"
 
+msgid "Weight"
+msgstr "Weight"
+
 msgid "Welcome back."
 msgstr "Welcome back."
 
@@ -4117,6 +4261,13 @@ msgstr "What Nova is"
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
 
+#. placeholder {0}: target.id
+msgid "What should change in {0}?"
+msgstr "What should change in {0}?"
+
+msgid "What should change?"
+msgstr "What should change?"
+
 msgid "What should this routine do each time it runs?"
 msgstr "What should this routine do each time it runs?"
 
@@ -4146,6 +4297,9 @@ msgstr "Who can open it"
 
 msgid "Why did churn rise in August?"
 msgstr "Why did churn rise in August?"
+
+msgid "Width"
+msgstr "Width"
 
 msgid "With context"
 msgstr "With context"

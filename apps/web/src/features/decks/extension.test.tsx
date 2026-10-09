@@ -3,7 +3,7 @@
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
 import type { Artifact } from "@nova/contracts";
-import { act } from "react";
+import { act, type ComponentProps, cloneElement, type ReactElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -25,7 +25,37 @@ vi.mock("@lingui/core/macro", () => ({
     parts.reduce((out, part, i) => out + part + (v[i] ?? ""), ""),
 }));
 
+vi.mock("@nova/ui-web", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@nova/ui-web")>();
+  const Passthrough = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
+  return {
+    ...actual,
+    DropdownMenu: Passthrough,
+    DropdownMenuContent: Passthrough,
+    DropdownMenuItem: ({
+      children,
+      onClick,
+      disabled,
+      render,
+    }: ComponentProps<"button"> & { render?: ReactElement }) =>
+      render ? (
+        cloneElement(render, undefined, children)
+      ) : (
+        <button type="button" role="menuitem" disabled={disabled} onClick={onClick}>
+          {children}
+        </button>
+      ),
+    DropdownMenuTrigger: ({ render, children }: { render?: ReactElement; children?: ReactNode }) =>
+      render ? (
+        cloneElement(render, undefined, children)
+      ) : (
+        <button type="button">{children}</button>
+      ),
+  };
+});
+
 import { FIXTURE_DECK } from "./deck-fixture";
+import { requestDeckPresent, resetDeckUi } from "./deck-ui-state";
 import { decksExtension } from "./extension";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
@@ -36,6 +66,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
   download.mockReset();
+  resetDeckUi();
   document.body.innerHTML = "";
 });
 
@@ -43,12 +74,16 @@ const file = (name: string, mimeType = "text/html"): Artifact =>
   ({ id: `id-${name}`, name, mimeType }) as Artifact;
 const deck = file("launch.deck.html");
 
+const SOURCE = new TextEncoder().encode("<html></html>");
+
 function Panel({ artifact }: { artifact: Artifact }) {
-  const parts = decksExtension.usePanel({ artifact });
+  const parts = decksExtension.usePanel({ artifact, bytes: SOURCE, openUrl: "blob:deck" });
   return (
     <div>
-      {parts.actions}
-      {parts.below}
+      <div data-testid="actions">{parts.actions}</div>
+      <div data-testid="overflow">{parts.overflow}</div>
+      <div data-testid="below">{parts.below}</div>
+      <span data-testid="hide">{String(!!parts.hideDefaults)}</span>
     </div>
   );
 }
@@ -66,8 +101,10 @@ async function mount(artifact: Artifact) {
   );
   return container;
 }
-const buttonText = (c: HTMLElement) =>
-  Array.from(c.querySelectorAll("button")).map((b) => b.textContent);
+const buttons = (c: HTMLElement) => Array.from(c.querySelectorAll("button"));
+const item = (c: HTMLElement, text: string) =>
+  buttons(c).find((b) => b.textContent === text) as HTMLButtonElement;
+const downloads = (c: HTMLElement) => c.querySelectorAll('[data-testid="deck-download"]');
 
 it("views and badges only decks", () => {
   const bytes = new TextEncoder().encode(FIXTURE_DECK);
@@ -78,45 +115,110 @@ it("views and badges only decks", () => {
   expect(decksExtension.card(deck)).toEqual({ meta: "Slide deck" });
 });
 
-it("offers the export buttons for a deck only", async () => {
-  expect(buttonText(await mount(file("page.html")))).toEqual([]);
-  expect(buttonText(await mount(deck))).toEqual(["Export to PowerPoint", "Export to PDF"]);
+it("leaves non-deck headers alone", async () => {
+  const c = await mount(file("page.html"));
+  expect(buttons(c)).toEqual([]);
+  expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("false");
 });
 
-it("exports in the chosen format, shows progress and then the new file", async () => {
+it("has Edit, Present and exactly one Download menu with the three formats", async () => {
+  const c = await mount(deck);
+  expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("true");
+  expect(downloads(c)).toHaveLength(1);
+  expect(buttons(c).map((b) => b.textContent)).toEqual([
+    "Edit",
+    "Present",
+    "Download",
+    "PowerPoint (.pptx)",
+    "PDF",
+    "HTML (source)",
+  ]);
+  expect(c.querySelector("a")?.textContent).toBe("Open in new tab");
+  expect(c.querySelector("a")?.getAttribute("href")).toBe("blob:deck");
+  expect(c.textContent).not.toContain("Export to");
+  expect(item(c, "Edit").getAttribute("aria-pressed")).toBe("false");
+  await act(async () => item(c, "Edit").click());
+  expect(item(c, "Edit").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("Present asks the viewer to present", async () => {
+  const c = await mount(deck);
+  const seen: number[] = [];
+  const { useDeckPresentRequest } = await import("./deck-ui-state");
+  function Spy() {
+    seen.push(useDeckPresentRequest(deck.name));
+    return null;
+  }
+  const holder = document.createElement("div");
+  await act(async () => createRoot(holder).render(<Spy />));
+  await act(async () => item(c, "Present").click());
+  expect(seen.at(-1)).toBe(1);
+  requestDeckPresent("other.deck.html");
+});
+
+it("downloads the HTML source straight away", async () => {
+  const c = await mount(deck);
+  await act(async () => item(c, "HTML (source)").click());
+  expect(download).toHaveBeenCalledWith("launch.deck.html", "text/html", SOURCE);
+  expect(api.export).not.toHaveBeenCalled();
+});
+
+it("exports PowerPoint, shows progress on the button, then downloads with no ready bar", async () => {
   let finish: (value: Artifact) => void = () => {};
   api.export.mockReturnValue(new Promise<Artifact>((resolve) => (finish = resolve)));
   api.getById.mockResolvedValue({ name: "launch.pptx", mimeType: "x", contentBase64: "AQ==" });
   const c = await mount(deck);
-  const [pptx, pdf] = Array.from(c.querySelectorAll("button"));
-
-  await act(async () => pptx?.click());
-  await act(async () => pptx?.click());
+  await act(async () => item(c, "PowerPoint (.pptx)").click());
   expect(api.export).toHaveBeenCalledTimes(1);
-  expect(api.export).toHaveBeenCalledWith({ artifactId: "id-launch.deck.html", format: "pptx" });
-  expect(buttonText(c)[0]).toBe("Preparing PowerPoint…");
-  expect((pdf as HTMLButtonElement).disabled).toBe(true);
-  expect(c.querySelector('[data-testid="deck-export-status"]')?.textContent).toContain(
-    "PowerPoint",
+  expect(api.export.mock.calls[0]?.[0]).toEqual({
+    artifactId: "id-launch.deck.html",
+    format: "pptx",
+  });
+  expect(downloads(c)).toHaveLength(1);
+  expect(c.querySelector('[data-testid="deck-download"]')?.textContent).toBe(
+    "Preparing PowerPoint…",
   );
+  expect(download).not.toHaveBeenCalled();
 
   await act(async () => finish(file("launch.pptx", "application/x")));
-  const status = c.querySelector('[data-testid="deck-export-status"]') as HTMLElement;
-  expect(status.textContent).toContain("launch.pptx is ready");
-  const get = Array.from(status.querySelectorAll("button")).find(
-    (b) => b.textContent === "Download",
-  );
-  await act(async () => get?.click());
+  expect(api.getById).toHaveBeenCalledWith({ artifactId: "id-launch.pptx" });
   expect(download).toHaveBeenCalledWith("launch.pptx", "x", expect.any(Uint8Array));
+  expect(c.querySelector('[data-testid="deck-export-status"]')).toBeNull();
+  expect(c.textContent).not.toContain("is ready");
+  expect(c.textContent).toContain("Added to your Library");
 });
 
-it("sends pdf for the PDF button and says calmly when it fails", async () => {
-  api.export.mockRejectedValue(new Error("engine exploded: stack trace"));
+it("sends pdf for the PDF pick and says calmly when it fails, with a retry", async () => {
+  api.export.mockRejectedValueOnce(new Error("engine exploded: stack trace"));
   const c = await mount(deck);
-  await act(async () => (c.querySelectorAll("button")[1] as HTMLButtonElement).click());
-  expect(api.export).toHaveBeenCalledWith({ artifactId: "id-launch.deck.html", format: "pdf" });
-  const text = c.querySelector('[data-testid="deck-export-status"]')?.textContent ?? "";
-  expect(text).toContain("Couldn't prepare the PDF");
+  await act(async () => item(c, "PDF").click());
+  expect(api.export.mock.calls[0]?.[0]).toEqual({
+    artifactId: "id-launch.deck.html",
+    format: "pdf",
+  });
+  const text = c.querySelector('[data-testid="deck-download"]')?.textContent ?? "";
+  expect(text).toContain("Couldn't prepare PDF");
   expect(text).not.toContain("stack trace");
-  expect((c.querySelectorAll("button")[1] as HTMLButtonElement).disabled).toBe(false);
+  expect(download).not.toHaveBeenCalled();
+  api.export.mockResolvedValueOnce(file("launch.pdf", "application/pdf"));
+  api.getById.mockResolvedValue({ name: "launch.pdf", mimeType: "p", contentBase64: "AQ==" });
+  await act(async () =>
+    (c.querySelector('[data-testid="deck-download"]') as HTMLButtonElement).click(),
+  );
+  expect(api.export).toHaveBeenCalledTimes(2);
+  expect(download).toHaveBeenCalledWith("launch.pdf", "p", expect.any(Uint8Array));
+});
+
+it("can cancel a running export and never downloads its result", async () => {
+  let finish: (value: Artifact) => void = () => {};
+  api.export.mockReturnValue(new Promise<Artifact>((resolve) => (finish = resolve)));
+  api.getById.mockResolvedValue({ name: "launch.pptx", mimeType: "x", contentBase64: "AQ==" });
+  const c = await mount(deck);
+  await act(async () => item(c, "PowerPoint (.pptx)").click());
+  await act(async () =>
+    (c.querySelector('button[aria-label="Cancel"]') as HTMLButtonElement).click(),
+  );
+  expect(c.querySelector('[data-testid="deck-download"]')?.textContent).toBe("Download");
+  await act(async () => finish(file("launch.pptx", "application/x")));
+  expect(download).not.toHaveBeenCalled();
 });

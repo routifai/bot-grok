@@ -5,6 +5,7 @@ import { useState } from "react";
 import { downloadArtifactBytes } from "../../../lib/artifact-open";
 import { ArtifactPreview } from "../Artifacts";
 import { FullScreenToggle } from "../FullScreenToggle";
+import { PanelOverflowMenu } from "../PanelOverflowMenu";
 import { useArtifactPanelParts } from "../registry";
 import { useArtifactContent } from "./useArtifactContent";
 
@@ -25,7 +26,7 @@ export function ArtifactPreviewDialog({
   const [fullScreen, setFullScreen] = useState(false);
   const ready = state.status === "ready" ? state : null;
   // Same registry parts as ArtifactPanel, so apps/sheets add their controls here too.
-  const extra = useArtifactPanelParts({ artifact: ready?.artifact });
+  const extra = useArtifactPanelParts({ artifact: ready?.artifact, bytes: ready?.bytes });
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -56,11 +57,12 @@ export function ArtifactPreviewDialog({
               ))}
             </select>
           ) : null}
-          {ready?.artifact.mimeType === "text/html" ? (
+          {ready?.artifact.mimeType === "text/html" && !extra.hideDefaults ? (
             <FullScreenToggle fullScreen={fullScreen} onToggle={() => setFullScreen((v) => !v)} />
           ) : null}
           {extra.actions}
-          {state.status === "ready" ? (
+          {extra.hasOverflow ? <PanelOverflowMenu>{extra.overflow}</PanelOverflowMenu> : null}
+          {state.status === "ready" && !extra.hideDefaults ? (
             <Button
               variant="outline"
               size="sm"
@@ -73,6 +75,7 @@ export function ArtifactPreviewDialog({
               <Trans>Download</Trans>
             </Button>
           ) : null}
+          {extra.hideDefaults ? <span aria-hidden="true" className="me-8" /> : null}
         </DialogHeader>
         {extra.below}
         {extra.overlay}

@@ -23,9 +23,9 @@ from omnigent.superchat import prompt_prefix
 from omnigent.superchat.artifact_kinds import KIND_MIME
 from omnigent.superchat.artifacts.routes import create_artifacts_router
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionConflictError
+from omnigent.superchat.artifacts.writeback import deliver_manual_edits
 from omnigent.superchat.sheets import table as tbl
 from omnigent.superchat.sheets.routes import create_sheets_router
-from omnigent.superchat.sheets.writeback import deliver_manual_edits
 
 _SESSION = uuid.uuid4().hex
 
@@ -356,7 +356,7 @@ def test_turn_prefix_carries_note_once(env, tmp_path: Path, monkeypatch) -> None
     store, client = env
     _manual(store, client, tmp_path)
     server = _FakeServer(client).client
-    import omnigent.superchat.sheets.writeback as wb
+    import omnigent.superchat.artifacts.writeback as wb
 
     monkeypatch.setattr(wb, "workspace_roots", lambda: [tmp_path.resolve()])
     first = asyncio.run(prompt_prefix.turn_prefix_blocks(server, _SESSION, None))

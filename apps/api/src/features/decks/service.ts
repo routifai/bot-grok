@@ -1,7 +1,13 @@
 // `decks.*` for Muses whose files the engine owns: a `.deck.html` exported to PowerPoint or PDF
 // in the person's Computer.
-import { exportOmnigentDeck, OmnigentApiError, type OmnigentClientConfig } from "@nova/adapters";
-import type { Actor, Artifact, DeckExportFormat } from "@nova/contracts";
+import {
+  editOmnigentDeck,
+  exportOmnigentDeck,
+  OmnigentApiError,
+  type OmnigentClientConfig,
+  OmnigentDeckConflictError,
+} from "@nova/adapters";
+import type { Actor, Artifact, DeckExportFormat, DeckPatch } from "@nova/contracts";
 import { ORPCError } from "@orpc/server";
 import { type EngineArtifactsDeps, emailOf, notFound, toArtifact } from "../artifacts/index.js";
 
@@ -32,6 +38,34 @@ export async function engineExportDeck(
           message: error.detail ?? "That deck couldn't be exported.",
         });
       }
+    }
+    return notFound(error);
+  }
+}
+
+/** Hand edits as source patches. A stale base and a patch the engine will not apply exactly are
+ * both CONFLICT; the message tells the web which (it reloads, or says "ask Nova instead"). */
+export async function engineEditDeck(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  input: { artifactId: string; baseVersion: number; patches: DeckPatch[] },
+): Promise<Artifact> {
+  try {
+    const created = await editOmnigentDeck(
+      client,
+      await emailOf(deps, actor),
+      input.artifactId,
+      input.baseVersion,
+      input.patches,
+    );
+    return toArtifact(created, null);
+  } catch (error) {
+    if (error instanceof OmnigentDeckConflictError) {
+      throw new ORPCError("CONFLICT", { message: error.message });
+    }
+    if (error instanceof OmnigentApiError && error.code === "invalid_input") {
+      throw new ORPCError("BAD_REQUEST", { message: error.detail ?? "That edit isn't allowed." });
     }
     return notFound(error);
   }

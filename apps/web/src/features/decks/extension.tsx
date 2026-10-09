@@ -1,18 +1,37 @@
 import { t } from "@lingui/core/macro";
 import { type Artifact, isDeckArtifactName } from "@nova/contracts";
-import type { ArtifactExtension, ArtifactPanelParts } from "../artifacts";
-import { DeckExportButtons, DeckExportStatus, useDeckExport } from "./DeckExport";
+import { DropdownMenuItem } from "@nova/ui-web";
+import { ExternalLink } from "lucide-react";
+import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from "../artifacts";
+import { useDeckExport } from "./DeckExport";
+import { DeckHeaderActions } from "./DeckHeaderActions";
 import { DeckViewer } from "./DeckViewer";
 
-/** The panel header actions of a deck: export to PowerPoint / PDF, and where the result lands. */
-function useDecksPanel({ artifact }: { artifact: Artifact | undefined }): ArtifactPanelParts {
-  const deck = artifact && isDeckArtifactName(artifact.name) ? artifact : undefined;
-  const { state, run, dismiss } = useDeckExport(deck?.id);
+/** The header of a deck: Edit, Present and one Download menu, plus Open in new tab in `⋯`
+ * (Publish… joins it from the apps extension). Replaces the panel's default buttons. */
+function useDecksPanel({ artifact, bytes, openUrl }: ArtifactPanelArgs): ArtifactPanelParts {
+  const deck: Artifact | undefined =
+    artifact && isDeckArtifactName(artifact.name) ? artifact : undefined;
+  const { state, run, cancel } = useDeckExport(deck?.id);
   if (!deck) return {};
   return {
     wide: true,
-    actions: <DeckExportButtons state={state} onExport={run} />,
-    below: <DeckExportStatus state={state} onDismiss={dismiss} onRetry={run} />,
+    hideDefaults: true,
+    actions: (
+      <DeckHeaderActions
+        deckKey={deck.name}
+        state={state}
+        onExport={run}
+        onCancel={cancel}
+        source={bytes ? { name: deck.name, mimeType: deck.mimeType, bytes } : undefined}
+      />
+    ),
+    overflow: openUrl ? (
+      <DropdownMenuItem render={<a href={openUrl} target="_blank" rel="noreferrer noopener" />}>
+        <ExternalLink />
+        {t`Open in new tab`}
+      </DropdownMenuItem>
+    ) : null,
   };
 }
 
@@ -20,9 +39,19 @@ function useDecksPanel({ artifact }: { artifact: Artifact | undefined }): Artifa
 export const decksExtension: ArtifactExtension = {
   usePanel: useDecksPanel,
   card: (artifact) => (isDeckArtifactName(artifact.name) ? { meta: t`Slide deck` } : null),
-  view: ({ artifact, bytes }) => {
+  view: ({ artifact, bytes, onEdited }) => {
     if (!isDeckArtifactName(artifact.name)) return null;
     const html = new TextDecoder("utf-8").decode(bytes);
-    return <DeckViewer key={artifact.id} html={html} title={artifact.name} />;
+    // Keyed by the file, not the version: a new version keeps the slide, the mode and the
+    // selection instead of starting the viewer over.
+    return (
+      <DeckViewer
+        key={artifact.name}
+        html={html}
+        title={artifact.name}
+        artifact={{ id: artifact.id, version: artifact.version }}
+        onEdited={onEdited}
+      />
+    );
   },
 };

@@ -21,6 +21,7 @@ export * from "./rpc/approvals.js";
 export * from "./rpc/apps.js";
 export * from "./rpc/artifacts.js";
 export * from "./rpc/computer.js";
+export * from "./rpc/deck-edit-protocol.js";
 export * from "./rpc/decks.js";
 export * from "./rpc/feed.js";
 export * from "./rpc/goals.js";

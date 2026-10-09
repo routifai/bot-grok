@@ -1,4 +1,4 @@
-"""Registration of the sheets primitive (table REST routes, hand-edit write-back note)."""
+"""Registration of the sheets primitive (table REST routes)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
-from omnigent.superchat.sheets.writeback import deliver_manual_edits
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -37,6 +36,5 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 SHEETS_FEATURE = Feature(
     name="sheets",
     tools=_tools,
-    turn_prefix=deliver_manual_edits,
     install=_install,
 )

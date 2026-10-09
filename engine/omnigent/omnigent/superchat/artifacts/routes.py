@@ -111,6 +111,25 @@ async def load_artifact(
     return item
 
 
+def _refuse_unseen_manual_edit(
+    store: SqlAlchemyArtifactStore, owner: str | None, session_id: str, name: str
+) -> None:
+    """409 when the newest version is a hand edit the Muse has not been told about yet.
+
+    A save built from an older copy of the file would silently overwrite the person's edit; the
+    write-back at the start of the Muse's turn marks the edit delivered, so a Muse that re-read
+    the file passes.
+    """
+    group = store.versions_of(user_id=owner, parent_session_id=session_id, name=name)
+    head = group[0] if group else None
+    if head is not None and head.origin == "manual" and head.delivered_at is None:
+        raise OmnigentError(
+            f"The person edited {name} by hand (v{head.version}); read the workspace file "
+            "again and apply your change on top of their edits before saving.",
+            code=ErrorCode.CONFLICT,
+        )
+
+
 def create_artifacts_router(
     store: SqlAlchemyArtifactStore,
     *,
@@ -155,11 +174,15 @@ def create_artifacts_router(
             raise OmnigentError("file is empty", code=ErrorCode.INVALID_INPUT)
         if len(data) > MAX_ARTIFACT_BYTES:
             raise OmnigentError("file too large (25 MB max)", code=ErrorCode.INVALID_INPUT)
+        clean_name = posixpath.basename(name)
+        await asyncio.to_thread(
+            _refuse_unseen_manual_edit, store, owner, parent_session_id, clean_name
+        )
         item = await asyncio.to_thread(
             store.create,
             user_id=owner,
             parent_session_id=parent_session_id,
-            name=posixpath.basename(name),
+            name=clean_name,
             title=title,
             kind=kind,
             mime=KIND_MIME[kind],
