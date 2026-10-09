@@ -1615,12 +1615,8 @@ function buildRadarChart(props: ResolvedProps) {
 
   return (
     <RadarChart data={data} accessibilityLayer margin={margin}>
-      <PolarGrid />
+      <PolarGrid stroke="var(--border)" />
       <PolarAngleAxis dataKey={xAxisKey} tick={AXIS_TICK} />
-      <PolarRadiusAxis
-        tick={AXIS_TICK}
-        tickFormatter={(value: number) => formatValueYAxisTick(value, chartLevelFormat)}
-      />
       {children}
       {series.map((s, i) => (
         <Radar
@@ -1633,6 +1629,15 @@ function buildRadarChart(props: ResolvedProps) {
           animationDuration={CHART_ANIMATION_DURATION_MS}
         />
       ))}
+      {/* Drawn after the polygons, with a halo in the surface color, so the tick values never
+          disappear under a series. */}
+      <PolarRadiusAxis
+        angle={90}
+        tickCount={4}
+        axisLine={false}
+        tick={{ ...AXIS_TICK, stroke: "var(--background)", strokeWidth: 3, paintOrder: "stroke" }}
+        tickFormatter={(value: number) => formatValueYAxisTick(value, chartLevelFormat)}
+      />
     </RadarChart>
   );
 }

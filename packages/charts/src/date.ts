@@ -19,8 +19,10 @@ export interface DisplaySettings {
   dateFormat?: DateFormatSettings;
 }
 
+/** "Jan 3, 2026": unlike DD/MM and MM/DD it cannot be read two ways. */
 export const DEFAULT_DATE_FORMAT_SETTINGS: DateFormatSettings = {
-  preset: "european",
+  preset: "custom",
+  customFormat: "MMM D, YYYY",
 };
 
 export const DATE_FORMAT_PRESET_PATTERNS: Record<Exclude<DateFormatPreset, "custom">, string> = {
@@ -83,7 +85,7 @@ export function resolveDateFormatPattern(settings?: DateFormatSettings | null): 
     if (trimmed) {
       return trimmed;
     }
-    return DATE_FORMAT_PRESET_PATTERNS.european;
+    return DEFAULT_DATE_FORMAT_SETTINGS.customFormat ?? DATE_FORMAT_PRESET_PATTERNS.iso;
   }
   return DATE_FORMAT_PRESET_PATTERNS[preset];
 }

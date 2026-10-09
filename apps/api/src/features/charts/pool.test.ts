@@ -85,10 +85,11 @@ describe("RenderPool", () => {
 });
 
 describe("ThumbnailCache", () => {
-  const entry = (n: number) => ({ bytes: new Uint8Array(n) });
+  const entry = (n: number) => ({ contentBase64: "x".repeat(n) });
+  const sizeOf = (value: { contentBase64: string }) => value.contentBase64.length;
 
   it("evicts the least recently used past the entry limit", () => {
-    const cache = new ThumbnailCache(2, 1000);
+    const cache = new ThumbnailCache(sizeOf, 2, 1000);
     cache.set("a", entry(1));
     cache.set("b", entry(1));
     cache.get("a");
@@ -98,12 +99,13 @@ describe("ThumbnailCache", () => {
     expect(cache.get("c")).toBeDefined();
   });
 
-  it("evicts past the byte budget but keeps the newest entry", () => {
-    const cache = new ThumbnailCache(10, 100);
+  it("evicts past the size budget, counted by what is stored, but keeps the newest entry", () => {
+    const cache = new ThumbnailCache(sizeOf, 10, 100);
     cache.set("a", entry(60));
     cache.set("b", entry(60));
     expect(cache.get("a")).toBeUndefined();
     expect(cache.get("b")).toBeDefined();
+    expect(cache.bytes).toBe(60);
     cache.set("huge", entry(500));
     expect(cache.get("huge")).toBeDefined();
   });

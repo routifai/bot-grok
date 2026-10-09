@@ -80,7 +80,7 @@ export const ChartSourceSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "Path of a result file in your workspace (.csv, .parquet, .json or .jsonl) that your own code (pandas, duckdb) already wrote. The chart reads its rows from here.",
+      "Path of a result file in your workspace (.csv, .json or .jsonl) that your own code (pandas, duckdb) already wrote. The chart reads its rows from here.",
     ),
   columns: z
     .array(z.string())

@@ -23,7 +23,8 @@ export interface ChartThumbnailInput {
 /** What draws a chart: the worker pool in the API, anything else in tests. */
 export type ChartRenderer = (job: RenderJob) => Promise<RenderedChart>;
 
-const cache = new ThumbnailCache<ChartThumbnail & { bytes: { length: number } }>();
+/** Holds the base64 the API returns, the only copy: the budget is what the cache really keeps. */
+const cache = new ThumbnailCache<ChartThumbnail>((thumbnail) => thumbnail.contentBase64.length);
 
 /**
  * A saved chart (`*.chart.json`) drawn as a PNG or SVG, for the Library card and the feed.
@@ -83,7 +84,7 @@ export async function engineChartThumbnail(
       width: image.width,
       height: image.height,
     };
-    cache.set(key, { ...result, bytes: image.bytes });
+    cache.set(key, result);
     return result;
   } catch (error) {
     if (error instanceof RenderBusyError) {

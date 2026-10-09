@@ -19,6 +19,8 @@ export const ChartDocumentSchema = z.object({
     columns: z.array(z.string()),
     rows: z.number().int(),
     truncated: z.boolean(),
+    /** The file held more rows than the engine reads; the chart covers only the first of them. */
+    read_cut: z.boolean().optional(),
   }),
   data: z.array(z.record(z.string(), z.unknown())).max(CHART_MAX_ROWS),
 });
