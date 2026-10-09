@@ -513,3 +513,27 @@ def require_agent_owner(
         f"{user_id!r} is not the owner of agent {agent.id!r}",
         code=ErrorCode.FORBIDDEN,
     )
+
+
+async def require_admin(
+    request: Request,
+    auth_provider: AuthProvider | None,
+    permission_store: PermissionStore | None,
+    *,
+    message: str = "Admin privileges required",
+) -> str | None:
+    """Return the caller's user id after checking they are an admin.
+
+    Single-user mode (no *permission_store*) skips the check. Routes pass a *message* that says
+    what the admin gate protects.
+
+    :raises OmnigentError: ``UNAUTHORIZED`` without an identity, ``FORBIDDEN`` for a non-admin.
+    """
+    user_id = get_user_id(request, auth_provider)
+    if permission_store is None:
+        return user_id
+    if user_id is None:
+        raise OmnigentError("Authentication required", code=ErrorCode.UNAUTHORIZED)
+    if not await asyncio.to_thread(permission_store.is_admin, user_id):
+        raise OmnigentError(message, code=ErrorCode.FORBIDDEN)
+    return user_id

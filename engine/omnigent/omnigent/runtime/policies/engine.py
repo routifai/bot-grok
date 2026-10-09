@@ -551,6 +551,7 @@ class PolicyEngine:
         if not updates:
             return
         from omnigent.policies.schema import (
+            OWNER_BUDGET_ASK_APPROVED_STATE_KEY,
             SESSION_COST_ASK_APPROVED_STATE_KEY,
             SESSION_COST_UNPRICED_APPROVED_KEY,
             USER_DAILY_ASK_APPROVED_STATE_KEY,
@@ -567,6 +568,8 @@ class PolicyEngine:
         for op in updates:
             if op.key == USER_DAILY_ASK_APPROVED_STATE_KEY:
                 self._record_user_daily_ask_approved(op.value)
+            elif op.key == OWNER_BUDGET_ASK_APPROVED_STATE_KEY:
+                self._record_owner_budget_ask_approved(op.value)
             elif (
                 op.key in (SESSION_COST_ASK_APPROVED_STATE_KEY, SESSION_COST_UNPRICED_APPROVED_KEY)
                 and self._root_conversation_id != self._conversation_id
@@ -637,6 +640,31 @@ class PolicyEngine:
         # approval stays current via _apply_one(self._session_state, ...).
         if self._user_daily_cost is not None:
             self._user_daily_cost["ask_approved_usd"] = approved
+
+    def _record_owner_budget_ask_approved(self, value: Any) -> None:
+        """
+        Persist the check-in level the owner approved for their monthly model budget.
+
+        Stored in the owner's month bucket of the daily rollup (see
+        :func:`omnigent.model_credentials.budget.approval_bucket`), so it holds across all their
+        sessions until the month ends. A no-op without an owner grant or a numeric *value*.
+
+        :param value: The approved level, e.g. ``1.25`` (spend reached 125% of the limit).
+        """
+        try:
+            level = float(value)
+        except (TypeError, ValueError):
+            return
+        owner = self._store.get_session_owner_authority(self._conversation_id)
+        if owner is None:
+            return
+        from omnigent.db.account_authority import target_account_scope
+        from omnigent.model_credentials.budget import approval_bucket
+
+        with target_account_scope(owner.user_id, owner.generation):
+            self._store.set_daily_ask_approved(owner.user_id, approval_bucket(), level)
+        if self._user_daily_cost is not None:
+            self._user_daily_cost["month_ask_level"] = level
 
     def record_usage(
         self,

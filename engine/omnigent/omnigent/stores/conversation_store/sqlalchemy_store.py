@@ -1838,6 +1838,16 @@ class SqlAlchemyConversationStore(ConversationStore):
             ).scalar_one()
             return float(total or 0.0)
 
+    def sum_workspace_cost(self, since_day_utc: str) -> float:
+        """Sum every user's spend over UTC days ``>= since_day_utc`` (see the abstract method)."""
+        with self._session("sum_workspace_cost") as session:
+            total = session.execute(
+                select(func.coalesce(func.sum(SqlUserDailyCost.cost_usd), 0.0))
+                .where(SqlUserDailyCost.workspace_id == current_workspace_id())
+                .where(SqlUserDailyCost.day_utc >= since_day_utc)
+            ).scalar_one()
+            return float(total or 0.0)
+
     def list_daily_costs(self, user_id: str, since_day_utc: str) -> list[tuple[str, float]]:
         with self._session("list_daily_costs") as session:
             rows = session.execute(

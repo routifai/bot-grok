@@ -105,6 +105,38 @@ _STEP_LIMIT_POLICY_SPEC = FunctionPolicySpec(
     ),
 )
 
+# Owner/organization monthly model budget (omnigent.policies.builtins.model_budget): installed
+# for a session only when its owner or the organization has a limit, so it costs nothing otherwise.
+_OWNER_BUDGET_POLICY_SPEC = FunctionPolicySpec(
+    name="__owner_model_budget",
+    on=None,
+    function=FunctionRef(
+        path="omnigent.policies.builtins.model_budget.owner_model_budget",
+        arguments=None,
+    ),
+)
+
+
+def _owner_budget_seed(
+    conversation_id: str, conversation_store: ConversationStore
+) -> dict[str, float | str] | None:
+    """The owner's monthly-budget context, or ``None`` when no limit applies to the session."""
+    from omnigent.model_credentials.budget import get_budgets
+
+    budgets = get_budgets()
+    owner = _resolve_session_owner_cached(conversation_id, conversation_store) if budgets else None
+    if budgets is None or owner is None:
+        return None
+    return budgets.seed_for_policy(owner, conversation_store)
+
+
+def _budgets_may_apply() -> bool:
+    """Whether any monthly budget exists in the workspace (the engine decides per owner)."""
+    from omnigent.model_credentials.budget import get_budgets
+
+    budgets = get_budgets()
+    return budgets is not None and budgets.store.any_limit()
+
 
 def _approvals_apply(conversation: Conversation | None, tree: list[Conversation] | None) -> bool:
     """Whether the approvals policy covers this conversation (store bound, Muse session)."""
@@ -313,6 +345,8 @@ def any_policies_apply(
         return True
     if _approvals_apply(conversation, None):
         return True
+    if _budgets_may_apply():
+        return True
     if conversation is not None and is_super_chat(conversation.labels):
         return True
     if _load_default_policy_specs(policy_store):
@@ -512,6 +546,10 @@ def build_policy_engine(
     if conv is not None and is_super_chat(conv.labels):
         all_policy_specs.append(_STEP_LIMIT_POLICY_SPEC)
 
+    budget_seed = _owner_budget_seed(conversation_id, conversation_store)
+    if budget_seed is not None:
+        all_policy_specs.append(_OWNER_BUDGET_POLICY_SPEC)
+
     label_defs = dict((guardrails.labels or {}) if guardrails else {})
     # One conversation read (``conv``, resolved above for policy
     # inheritance) and ONE spawn-tree load feed everything below: labels,
@@ -691,6 +729,8 @@ def build_policy_engine(
         if _needs_user_daily_cost(all_policy_specs)
         else None
     )
+    if budget_seed is not None:
+        initial_user_daily_cost = {**(initial_user_daily_cost or {}), **budget_seed}
     # Session model: the conversation's model_override (set when a user
     # picks a model mid-session) wins over the spec's llm.model; None when
     # neither is available and cost policies treat it as undeterminable.

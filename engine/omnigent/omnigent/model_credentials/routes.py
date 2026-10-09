@@ -1,7 +1,7 @@
 """Model connection routes: bring-your-own provider keys, per user or per organization.
 
 ``/v1/me/model-connections`` is the caller's own; ``/v1/admin/model-connections`` is the
-organization's (admin only, via the same gate as default policies). Each has ``GET`` (list of
+organization's (admin only). Each has ``GET`` (list of
 masked metadata ``{provider, hint, status, validated_at, label, scope}``), ``PUT /{provider}``
 (body ``{api_key, label?}``: probe with the provider, seal, store, replacing that provider's
 previous key) and ``DELETE /{provider}``. The key is never echoed, returned or logged: the body
@@ -31,8 +31,7 @@ from omnigent.model_credentials.store import (
 )
 from omnigent.model_credentials.upstreams import PROVIDERS
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
-from omnigent.server.routes._auth_helpers import require_user
-from omnigent.server.routes.default_policies import _require_admin
+from omnigent.server.routes._auth_helpers import require_admin, require_user
 from omnigent.superchat.vault.store import VaultUnavailableError
 
 
@@ -72,7 +71,12 @@ def create_model_connection_router(
         return SCOPE_USER, require_user(request, auth_provider) or RESERVED_USER_LOCAL
 
     async def _org(request: Request) -> tuple[str, str]:
-        await _require_admin(request, auth_provider, permission_store)
+        await require_admin(
+            request,
+            auth_provider,
+            permission_store,
+            message="Admin privileges required to manage the organization's model connections",
+        )
         return SCOPE_ORG, ORG_OWNER
 
     def _mount(prefix: str, owner: Callable[[Request], Awaitable[tuple[str, str]]]) -> None:

@@ -170,4 +170,5 @@ def test_proxy_forwards_an_openai_chat_completion_with_bearer_injected(store) ->
     (req,) = seen
     assert str(req.url) == "https://openrouter.ai/api/v1/chat/completions"
     assert req.headers["authorization"] == "Bearer sk-or-v1-BOB"
-    assert json.loads(req.read()) == body
+    # The proxy asks OpenRouter to report the charge; nothing else changes.
+    assert json.loads(req.read()) == {**body, "usage": {"include": True}}

@@ -1384,6 +1384,19 @@ class ConversationStore(ABC):
         ...
 
     @abstractmethod
+    def sum_workspace_cost(self, since_day_utc: str) -> float:
+        """
+        Sum every user's LLM spend in this workspace over UTC days ``>= since_day_utc``.
+
+        Backs the organization-wide model budget. Only full ``"YYYY-MM-DD"`` days are summed:
+        the ``"YYYY-MM"`` approval rows kept beside them carry no spend and sort below any day.
+
+        :param since_day_utc: Inclusive lower-bound UTC day, e.g. ``"2026-06-01"``.
+        :returns: The summed ``cost_usd``, or ``0.0`` when no rows fall in the range.
+        """
+        ...
+
+    @abstractmethod
     def list_daily_costs(self, user_id: str, since_day_utc: str) -> list[tuple[str, float]]:
         """
         Return per-day cost rows for a user from ``since_day_utc`` onward.

@@ -2,7 +2,9 @@
 
 Layout: ``upstreams`` (the provider registry), ``store`` (SQLAlchemy store, sealed with the vault's
 AES-GCM), ``probe`` (one cheap validation call), ``routes`` (``/v1/me/model-connections`` and
-``/v1/admin/model-connections``), ``proxy`` (the engine model proxy). The key goes in once, is
+``/v1/admin/model-connections``), ``budget``/``budget_routes`` (monthly limits and
+``/v1/me/budget``, ``/v1/admin/budget``), ``spend`` (what a proxied call cost), ``proxy`` (the
+engine model proxy). The key goes in once, is
 probed, sealed and never shown back; the run path reads it server-side through
 :func:`omnigent.model_credentials.store.resolve_model_connection`.
 """
@@ -44,6 +46,21 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         create_model_selection_router(preferences, auth_provider=deps.auth_provider),
         prefix="/v1",
         tags=["model-selection"],
+    )
+    from omnigent.model_credentials.budget import ModelBudgets, ModelBudgetStore, bind_budgets
+    from omnigent.model_credentials.budget_routes import create_budget_router
+
+    budgets = ModelBudgets(
+        ModelBudgetStore(deps.scheduled_task_store.storage_location), deps.conversation_store
+    )
+    app.state.model_budgets = budgets
+    bind_budgets(budgets)
+    app.include_router(
+        create_budget_router(
+            budgets, auth_provider=deps.auth_provider, permission_store=deps.permission_store
+        ),
+        prefix="/v1",
+        tags=["model-budget"],
     )
     app.include_router(
         create_model_connection_router(

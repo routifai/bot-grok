@@ -3112,6 +3112,8 @@ class UsageReport(BaseModel):
     :param cost_last_7d: Total spend over the last 7 UTC days (incl. today).
     :param cost_last_30d: Total spend over the last 30 UTC days (incl. today).
     :param total_cost_usd: All-time total spend from the daily rollup.
+    :param cost_month: Spend since the first of the current UTC month.
+    :param period_start: First day of the current UTC month, ``"YYYY-MM-DD"``.
     :param sessions: Per-session detail, newest activity first.
     """
 
@@ -3120,6 +3122,8 @@ class UsageReport(BaseModel):
     cost_last_7d: float = 0.0
     cost_last_30d: float = 0.0
     total_cost_usd: float = 0.0
+    cost_month: float = 0.0
+    period_start: str = ""
     daily_costs: list[DailyCost] = Field(default_factory=list)
     sessions: list[SessionUsage] = Field(default_factory=list)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
 
@@ -121,6 +121,7 @@ def _build_usage_report(
     user_id: str | None,
     *,
     include_page_details: bool = False,
+    window: str | None = None,
 ) -> UsageReport:
     """
     Build the usage report: a daily-rollup cost summary plus session detail.
@@ -145,6 +146,8 @@ def _build_usage_report(
         to the reserved local owner the daily rollup and grants are keyed by.
     :param include_page_details: Populate the timeline and display metadata
         used only by the release-gated web Usage page.
+    :param window: ``"month"`` returns the days of the current UTC month in ``daily_costs``
+        (whether or not the Usage page is enabled); ``None`` keeps the default view.
     :returns: The populated :class:`UsageReport`.
     """
     # The daily rollup and session-permission grants key spend by the resolved
@@ -158,6 +161,8 @@ def _build_usage_report(
     cost_7d = conversation_store.sum_daily_cost(rollup_user, _day_offset(today, days=6))
     cost_30d = conversation_store.sum_daily_cost(rollup_user, _day_offset(today, days=29))
     total = conversation_store.sum_daily_cost(rollup_user, _EPOCH_DAY)
+    period_start = today[:7] + "-01"
+    cost_month = conversation_store.sum_daily_cost(rollup_user, period_start)
 
     sessions: list[SessionUsage] = []
     after: str | None = None
@@ -212,17 +217,22 @@ def _build_usage_report(
             break
         after = page.last_id
 
-    daily_costs_raw = (
-        conversation_store.list_daily_costs(rollup_user, _EPOCH_DAY)
-        if include_page_details
-        else []
-    )
+    if window == "month":
+        daily_costs_raw = conversation_store.list_daily_costs(rollup_user, period_start)
+    elif include_page_details:
+        daily_costs_raw = conversation_store.list_daily_costs(rollup_user, _EPOCH_DAY)
+    else:
+        daily_costs_raw = []
+    # Rows keyed by a month ("YYYY-MM") only remember a budget approval; they are not days.
+    daily_costs_raw = [(day, cost) for day, cost in daily_costs_raw if len(day) == 10]
 
     return UsageReport(
         cost_today=cost_today,
         cost_last_7d=cost_7d,
         cost_last_30d=cost_30d,
         total_cost_usd=total,
+        cost_month=cost_month,
+        period_start=period_start,
         daily_costs=[DailyCost(day=d, cost_usd=c) for d, c in daily_costs_raw],
         sessions=sessions,
     )
@@ -251,7 +261,7 @@ def create_usage_router(
     router = APIRouter()
 
     @router.get("/usage", response_model=UsageReport)
-    async def get_usage(request: Request) -> UsageReport:
+    async def get_usage(request: Request, window: Literal["month"] | None = None) -> UsageReport:
         """
         Aggregate the calling user's LLM spend across their sessions.
 
@@ -266,6 +276,7 @@ def create_usage_router(
             conversation_store,
             user_id,
             include_page_details=flags.enabled(Feature.USAGE_PAGE),
+            window=window,
         )
 
     return router

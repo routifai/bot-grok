@@ -134,6 +134,26 @@ def _alias(model: str, tiers: dict[str, str]) -> str:
     return model
 
 
+def snapshot_uses_model_proxy(snapshot: dict[str, Any] | None) -> bool:
+    """Whether the session's harness reaches its model through the engine's model proxy.
+
+    Such a session's spend is recorded by the proxy (the one source of truth for its traffic), so
+    the per-turn pricing in the session relay must not add it again.
+    """
+    if not snapshot or not isinstance(snapshot.get("runtime_config"), dict):
+        return False
+    runtime = snapshot["runtime_config"]
+    try:
+        binding = binding_for_harness(runtime, snapshot["harness"])
+    except (KeyError, ValueError):
+        return False
+    provider = runtime.get("providers", {}).get(binding.provider) if binding else None
+    return isinstance(provider, dict) and any(
+        isinstance(family, dict) and family.get("auth_command") == MODEL_PROXY_AUTH_COMMAND
+        for family in provider.values()
+    )
+
+
 def _binding_key(config: dict[str, Any], harness: str) -> str:
     canonical = normalize_inference_harness(harness)
     for key in config["inference"]["harnesses"]:

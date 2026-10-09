@@ -14,7 +14,6 @@ session policies, with ``session_id IS NULL``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 import uuid
@@ -29,7 +28,7 @@ from omnigent.policies.registry import is_registered_handler, validate_factory_p
 from omnigent.runtime import get_caps
 from omnigent.runtime.policies.builder import invalidate_default_policy_specs_cache
 from omnigent.server.auth import AuthProvider
-from omnigent.server.routes._auth_helpers import get_user_id
+from omnigent.server.routes._auth_helpers import get_user_id, require_admin
 from omnigent.server.schemas import (
     _DOTTED_PATH_RE,
     CreateDefaultPolicyRequest,
@@ -133,21 +132,12 @@ async def _require_admin(
     :raises OmnigentError: 401 if unauthenticated, 403 if
         not an admin.
     """
-    user_id = get_user_id(request, auth_provider)
-    if permission_store is None:
-        return user_id
-    if user_id is None:
-        raise OmnigentError(
-            "Authentication required",
-            code=ErrorCode.UNAUTHORIZED,
-        )
-    is_admin = await asyncio.to_thread(permission_store.is_admin, user_id)
-    if not is_admin:
-        raise OmnigentError(
-            "Admin privileges required to manage default policies",
-            code=ErrorCode.FORBIDDEN,
-        )
-    return user_id
+    return await require_admin(
+        request,
+        auth_provider,
+        permission_store,
+        message="Admin privileges required to manage default policies",
+    )
 
 
 def create_default_policies_router(

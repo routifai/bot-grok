@@ -88,6 +88,10 @@ class UsageContext(TypedDict, total=False):
 # sessions, not just the one conversation.
 USER_DAILY_ASK_APPROVED_STATE_KEY = "_policy_user_daily_ask_approved_usd"
 
+# Same routing for the owner's monthly model budget (``owner_model_budget``): the engine records
+# the approved check-in level against the owner's month, so it holds across all their sessions.
+OWNER_BUDGET_ASK_APPROVED_STATE_KEY = "_policy_owner_budget_ask_level"
+
 # Reserved ``state_updates`` key the per-session cost-budget policy emits on
 # an ASK to record the highest soft checkpoint approved. The cost budget is
 # per-SESSION (the whole spawn tree), but a sub-agent runs as its own
@@ -130,6 +134,17 @@ class UserDailyCostContext(TypedDict, total=False):
     cost_usd: float
     ask_approved_usd: float
     user_id: str
+    # Monthly model budget (present only when the owner or the organization has a limit):
+    # ``month_*`` the owner's limit/action/spend, ``org_*`` the organization's, and
+    # ``month_ask_level`` the check-in level the owner already approved this month.
+    month_period: str
+    month_limit_usd: float
+    month_at_limit: str
+    month_cost_usd: float
+    month_ask_level: float
+    org_limit_usd: float
+    org_at_limit: str
+    org_cost_usd: float
 
 
 class EventContext(TypedDict, total=False):

@@ -1370,6 +1370,21 @@ def _sane_relay_token_count(value: object) -> int:
     return int(value)
 
 
+def _served_by_model_proxy(
+    conv: Conversation | None, conversation_store: ConversationStore
+) -> bool:
+    """Whether *conv* (its root, for a sub-agent without a snapshot) uses the model proxy."""
+    from omnigent.server.inference_catalog import snapshot_uses_model_proxy
+
+    if conv is None:
+        return False
+    snapshot = conv.inference_snapshot
+    if snapshot is None and conv.root_conversation_id != conv.id:
+        root = conversation_store.get_conversation(conv.root_conversation_id)
+        snapshot = root.inference_snapshot if root is not None else None
+    return snapshot_uses_model_proxy(snapshot)
+
+
 def _accumulate_session_usage(
     resp_obj: dict[str, Any],
     session_id: str,
@@ -1530,8 +1545,11 @@ def _accumulate_session_usage(
         delta["by_model"] = {llm_model: model_delta}
 
     new_current = conversation_store.increment_session_usage(session_id, delta)
-    # Per-user daily rollup (policy-gated; this is the per-turn delta).
-    _record_daily_cost(conv, cost_delta, conversation_store)
+    # Per-user daily rollup. A session whose model calls go through the engine's model proxy is
+    # recorded there (it reads the real charge off the response); adding it here would count the
+    # turn twice.
+    if not _served_by_model_proxy(conv, conversation_store):
+        _record_daily_cost(conv, cost_delta, conversation_store)
     return _priced_cost_for_display(new_current)
 
 
@@ -1768,7 +1786,8 @@ def _persist_native_cumulative_usage(
     new_cost = float(current.get("total_cost_usd", 0.0) or 0.0)
     # Non-negative by the monotonic clamp above; ``max(0.0, ...)`` keeps the
     # daily rollup from ever being clawed back even if that invariant changes.
-    _record_daily_cost(conv, max(0.0, new_cost - old_cost), conversation_store)
+    if not _served_by_model_proxy(conv, conversation_store):
+        _record_daily_cost(conv, max(0.0, new_cost - old_cost), conversation_store)
     return _priced_cost_for_display(current)
 
 
