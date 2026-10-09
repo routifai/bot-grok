@@ -14,6 +14,7 @@ import {
 } from "./lib/session-gate";
 import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
+import { DeckPreviewPage } from "./pages/dev/DeckPreviewPage";
 import { ForksPreviewPage } from "./pages/dev/ForksPreviewPage";
 import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
 import { SheetPreviewPage } from "./pages/dev/SheetPreviewPage";
@@ -62,6 +63,9 @@ export function App() {
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/sheet") {
     return <SheetPreviewPage />;
+  }
+  if (import.meta.env.DEV && window.location.pathname === "/dev/deck") {
+    return <DeckPreviewPage />;
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/memory") {
     return <MemoryPreviewPage />;
