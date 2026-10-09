@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { useEffect, useSyncExternalStore } from "react";
-import { parseRange, rangeCellCount } from "../components/sheets/sheet-model";
+import { parseRange, rangeCellCount } from "./sheet-model";
 
 /** A selection from a sheet the person wants Nova to look at: the chip label the composer shows
  * and the engine's untrusted-data block that travels ahead of their message. */

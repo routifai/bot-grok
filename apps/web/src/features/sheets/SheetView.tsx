@@ -13,8 +13,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { rpc } from "../../lib/rpc";
-import { setSheetAsk, sheetAskLabel, useSheetAskAvailable } from "../../lib/sheet-ask";
 import { createEvaluator } from "./formula-eval";
+import { setSheetAsk, sheetAskLabel, useSheetAskAvailable } from "./sheet-ask";
 import {
   type CellPos,
   type CellRange,
@@ -85,13 +85,21 @@ const NO_HISTORY: History = { newest: true, manual: false, changed: new Set(), r
 const isConflict = (error: unknown): boolean =>
   typeof error === "object" && error !== null && (error as { code?: unknown }).code === "CONFLICT";
 
+/** The table calls live on `sheets`, the version list on `artifacts`. */
+const defaultSource = {
+  table: (input: { artifactId: string }) => rpc.sheets.table(input),
+  editTable: (input: Parameters<typeof rpc.sheets.editTable>[0]) => rpc.sheets.editTable(input),
+  tableRange: (input: Parameters<typeof rpc.sheets.tableRange>[0]) => rpc.sheets.tableRange(input),
+  listVersions: (input: { familyId: string }) => rpc.artifacts.listVersions(input),
+};
+
 /** A CSV / XLSX as a grid: read, select, ask Nova about a range, and (behind Edit) change cells.
  * Every edit saves at once as a new version; `onEdited` hands the caller its id. */
 export function SheetView({
   artifact,
   onEdited,
   fallback,
-  source = rpc.artifacts,
+  source = defaultSource,
   toolbarHost,
 }: {
   artifact: Artifact;

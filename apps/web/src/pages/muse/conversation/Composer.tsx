@@ -25,10 +25,15 @@ import {
   useRef,
   useState,
 } from "react";
+import { SheetAskChip } from "../../../features/sheets/SheetAskChip";
+import {
+  setSheetAsk,
+  useSheetAsk,
+  useSheetAskTarget,
+  withSheetAsk,
+} from "../../../features/sheets/sheet-ask";
 import { requestOpenSettings } from "../../../lib/engine-models";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
-import { SheetAskChip } from "../../../components/sheets/SheetAskChip";
-import { setSheetAsk, useSheetAsk, useSheetAskTarget, withSheetAsk } from "../../../lib/sheet-ask";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
 import { previewMessageText } from "./messageText";
 import { ATTACHMENT_ACCEPT, NO_ATTACHMENTS, type PendingAttachment } from "./shared";

@@ -1,8 +1,13 @@
-import { useEffect, useState } from "react";
-import { SheetAskChip } from "../../components/sheets/SheetAskChip";
-import { SheetView } from "../../components/sheets/SheetView";
 import type { ThreadMessage } from "@nova/contracts";
-import { setSheetAsk, useSheetAsk, useSheetAskTarget, withSheetAsk } from "../../lib/sheet-ask";
+import { useEffect, useState } from "react";
+import { SheetAskChip } from "../../features/sheets/SheetAskChip";
+import { SheetView } from "../../features/sheets/SheetView";
+import {
+  setSheetAsk,
+  useSheetAsk,
+  useSheetAskTarget,
+  withSheetAsk,
+} from "../../features/sheets/sheet-ask";
 import { MessageView } from "../muse/conversation/MessageView";
 import { createSheetFixtureSource } from "./sheet-fixture";
 

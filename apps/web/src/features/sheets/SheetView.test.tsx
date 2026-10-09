@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
   tableRange: vi.fn(),
   listVersions: vi.fn(),
 }));
-vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api } }));
+vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api, sheets: api } }));
 vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({
     t: (parts: TemplateStringsArray, ...v: unknown[]) =>
@@ -20,8 +20,8 @@ vi.mock("@lingui/react/macro", () => ({
   }),
 }));
 
-import { setSheetAsk, useSheetAsk, useSheetAskTarget } from "../../lib/sheet-ask";
 import { SheetView } from "./SheetView";
+import { setSheetAsk, useSheetAsk, useSheetAskTarget } from "./sheet-ask";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 

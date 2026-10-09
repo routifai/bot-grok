@@ -12,8 +12,8 @@ from openpyxl.chart import BarChart, Reference
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font
 
-from omnigent.superchat.artifacts import table as tbl
-from omnigent.superchat.artifacts.xlsx_patch import XlsxPatchError, patch_cells
+from omnigent.superchat.sheets import table as tbl
+from omnigent.superchat.sheets.xlsx_patch import XlsxPatchError, patch_cells
 
 _PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"

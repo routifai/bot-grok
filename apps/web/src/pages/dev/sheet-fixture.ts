@@ -1,5 +1,5 @@
 import type { ArtifactTable, TableCell, TableCellEdit } from "@nova/contracts";
-import { cellFromValue } from "../../components/sheets/sheet-model";
+import { cellFromValue } from "../../features/sheets/sheet-model";
 
 const num = (v: number, z?: string): TableCell => ({ v, f: null, t: "n", ...(z ? { z } : {}) });
 const date = (iso: string): TableCell => ({

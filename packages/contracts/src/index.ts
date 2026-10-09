@@ -18,6 +18,7 @@ export * from "./reactions.js";
 export * from "./reply-cards.js";
 export * from "./rpc/apps.js";
 export * from "./rpc/engine-models.js";
+export * from "./rpc/sheets.js";
 export * from "./rpc.js";
 export * from "./runs.js";
 export * from "./search.js";

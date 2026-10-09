@@ -1,4 +1,5 @@
 import { appsRouter } from "./features/apps/router.js";
+import { sheetsRouter } from "./features/sheets/router.js";
 import { accountRouter } from "./routers/account.js";
 import { approvalsRouter } from "./routers/approvals.js";
 import { artifactsRouter } from "./routers/artifacts.js";
@@ -43,6 +44,7 @@ export function createRouter(deps: RouterDeps) {
     ...modelsRouter(c),
     ...scheduledRouter(c),
     ...sideChatsRouter(c),
+    ...sheetsRouter(c),
     ...skillsRouter(c),
     ...threadsRouter(c),
   });

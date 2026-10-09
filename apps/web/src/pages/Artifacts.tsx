@@ -34,9 +34,8 @@ import { AppRail } from "../components/AppRail";
 import { NovaOrb } from "../components/ai/orb";
 import { PdfViewer } from "../components/PdfViewer";
 import { SandboxedHtmlViewer } from "../components/SandboxedHtmlViewer";
-import { SheetView } from "../components/sheets/SheetView";
-import { SHEET_MIME_TYPES } from "../components/sheets/sheet-model";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../lib/artifact-open";
+import { useArtifactExtensions } from "../lib/artifact-registry";
 import { takeInitialBootstrap } from "../lib/bootstrap";
 import { formatRelativeTime } from "../lib/relative-time";
 import { rpc } from "../lib/rpc";
@@ -969,17 +968,13 @@ export function ArtifactPreview({
   /** Header slot for a sheet's Edit button and edited pill (see `SheetView`). */
   toolbarHost?: HTMLElement | null;
 }) {
-  if (SHEET_MIME_TYPES.has(artifact.mimeType)) {
-    return (
-      <SheetView
-        artifact={artifact}
-        onEdited={onEdited}
-        toolbarHost={toolbarHost}
-        fallback={<ArtifactPreviewBody artifact={artifact} bytes={bytes} />}
-      />
-    );
+  const extensions = useArtifactExtensions();
+  const fallback = <ArtifactPreviewBody artifact={artifact} bytes={bytes} />;
+  for (const extension of extensions) {
+    const view = extension.view?.({ artifact, bytes, onEdited, toolbarHost, fallback });
+    if (view) return view;
   }
-  return <ArtifactPreviewBody artifact={artifact} bytes={bytes} />;
+  return fallback;
 }
 
 function ArtifactPreviewBody({ artifact, bytes }: { artifact: Artifact; bytes: Uint8Array }) {

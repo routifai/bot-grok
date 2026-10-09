@@ -15,6 +15,8 @@ export interface ArtifactPanelParts {
   below?: ReactNode;
   /** A dialog over the panel. */
   overlay?: ReactNode;
+  /** The panel is wider for this file (a sheet). */
+  wide?: boolean;
   /** True while an overlay should take Escape instead of closing the panel. */
   holdsEscape?: boolean;
 }
@@ -25,11 +27,22 @@ export interface ArtifactCardParts {
   badge?: ReactNode;
 }
 
+export interface ArtifactViewProps {
+  artifact: Artifact;
+  bytes: Uint8Array;
+  onEdited?: (artifactId: string) => void;
+  toolbarHost?: HTMLElement | null;
+  /** What to show when the viewer cannot (e.g. the file is not readable as a table). */
+  fallback: ReactNode;
+}
+
 export interface ArtifactExtension {
   /** Called as a hook for every panel render; `artifact` is undefined until the file loads. */
   usePanel(args: { artifact: Artifact | undefined; title?: string }): ArtifactPanelParts;
   /** Plain function for a Library card. */
   card(artifact: Artifact): ArtifactCardParts | null;
+  /** A viewer for this file, or null to leave it to the default preview. */
+  view?(props: ArtifactViewProps): ReactNode | null;
 }
 
 const ArtifactRegistryContext = createContext<readonly ArtifactExtension[]>([]);
@@ -52,6 +65,7 @@ export function useArtifactPanelParts(args: {
     actions: slot((part) => part.actions),
     below: slot((part) => part.below),
     overlay: slot((part) => part.overlay),
+    wide: parts.some((part) => part.wide),
     holdsEscape: parts.some((part) => part.holdsEscape),
   };
 }

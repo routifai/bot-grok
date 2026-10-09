@@ -15,11 +15,11 @@ type LayerName = "engine" | "api" | "adapters" | "contracts" | "web";
 
 /** Capabilities already in capability layout, per layer. Add a name here as it moves. */
 const CAPABILITIES: Record<LayerName, readonly string[]> = {
-  engine: ["apps", "artifacts"],
-  api: ["apps"],
-  adapters: ["apps"],
-  contracts: ["apps"],
-  web: ["apps"],
+  engine: ["apps", "artifacts", "sheets"],
+  api: ["apps", "sheets"],
+  adapters: ["apps", "sheets"],
+  contracts: ["apps", "sheets"],
+  web: ["apps", "sheets"],
 };
 
 /** `capability -> capabilities it may import`, through their public entry point only. */
@@ -38,6 +38,11 @@ const BASELINE: readonly string[] = [
   // `ArtifactSchema.publish` embeds the apps publication shape; goes away when the artifact
   // schemas move into `rpc/artifacts.ts` and reach it as a base.
   "contracts:domain.ts -> apps",
+  // The sheet "ask about this selection" chip lives in the composer and the message view; it
+  // needs a composer/message extension point, which comes when those move into their folders.
+  "web:pages/muse/conversation/Composer.tsx -> sheets",
+  "web:pages/muse/conversation/MessageView.tsx -> sheets",
+  "web:pages/muse/conversation/messageText.ts -> sheets",
 ];
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));

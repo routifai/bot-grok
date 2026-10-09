@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import "../test/i18n";
+import "../../test/i18n";
 
 import { splitSheetAsk, withSheetAsk } from "./sheet-ask";
 

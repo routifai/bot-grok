@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from omnigent.superchat.artifacts.handlers import workspace_roots
+from omnigent.superchat.artifacts import workspace_roots
 
 _logger = logging.getLogger(__name__)
 

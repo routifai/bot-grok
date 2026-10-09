@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Any
 
-from omnigent.superchat.artifacts.xlsx_patch import XlsxPatchError, patch_cells
+from omnigent.superchat.sheets.xlsx_patch import XlsxPatchError, patch_cells
 
 MAX_ROWS = 2000
 MAX_COLS = 100

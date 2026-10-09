@@ -12,10 +12,7 @@ import {
   listSpaceArtifacts,
 } from "../artifacts.js";
 import {
-  engineEditTable,
   engineGetArtifact,
-  engineGetTable,
-  engineGetTableRange,
   engineListArtifacts,
   engineListArtifactVersions,
   engineListSpaceArtifacts,
@@ -147,31 +144,6 @@ export function artifactsRouter(c: RouterContext) {
           return engineRemoveArtifact(engineArtifactsDeps, engine, context.actor, input.artifactId);
         return deleteArtifactFamily(deps, context.actor, { familyId: input.artifactId });
       }),
-      table: authed.artifacts.table.handler(async ({ context, input }) =>
-        engineTableClient(context.actor, (engine) =>
-          engineGetTable(engineArtifactsDeps, engine, context.actor, input.artifactId),
-        ),
-      ),
-      editTable: authed.artifacts.editTable.handler(async ({ context, input }) =>
-        engineTableClient(context.actor, (engine) =>
-          engineEditTable(engineArtifactsDeps, engine, context.actor, input),
-        ),
-      ),
-      tableRange: authed.artifacts.tableRange.handler(async ({ context, input }) =>
-        engineTableClient(context.actor, (engine) =>
-          engineGetTableRange(engineArtifactsDeps, engine, context.actor, input),
-        ),
-      ),
     },
   };
-}
-
-/** Tables live only on the engine: without one there is no sheet to read or edit. */
-function engineTableClient<T>(
-  actor: Parameters<typeof engineComputerClient>[0],
-  run: (engine: NonNullable<ReturnType<typeof engineComputerClient>>) => Promise<T>,
-): Promise<T> {
-  const engine = engineComputerClient(actor);
-  if (!engine) throw new ORPCError("NOT_FOUND", { message: "No workspace" });
-  return run(engine);
 }

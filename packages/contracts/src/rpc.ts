@@ -13,6 +13,7 @@ import { memoryContract } from "./rpc/memory.js";
 import { messagingContract } from "./rpc/messaging.js";
 import { modelsContract } from "./rpc/models.js";
 import { scheduledContract } from "./rpc/scheduled.js";
+import { sheetsContract } from "./rpc/sheets.js";
 import { skillsContract } from "./rpc/skills.js";
 import { threadsContract } from "./rpc/threads.js";
 
@@ -32,6 +33,7 @@ export const appContract = {
   ...messagingContract,
   ...modelsContract,
   ...scheduledContract,
+  ...sheetsContract,
   ...skillsContract,
   ...threadsContract,
 };

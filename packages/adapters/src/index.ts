@@ -68,6 +68,7 @@ export * from "./omnigent/files.js";
 export * from "./omnigent/gateway.js";
 export * from "./omnigent/projects.js";
 export * from "./omnigent/redact.js";
+export * from "./omnigent/sheets.js";
 export * from "./omnigent/transcript.js";
 export * from "./openai-compatible-url.js";
 export * from "./openai-voice.js";

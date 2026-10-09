@@ -8,7 +8,6 @@ import { useObjectUrl } from "../lib/use-object-url";
 import { ArtifactPreview } from "../pages/Artifacts";
 import { useArtifactContent } from "../pages/muse/library/useArtifactContent";
 import { formatSize } from "./cards/catalog";
-import { SHEET_MIME_TYPES } from "./sheets/sheet-model";
 
 const EMPTY_BYTES = new Uint8Array(0);
 
@@ -60,10 +59,7 @@ export function ArtifactPanel({
         "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background",
         !fullScreen &&
           "md:relative md:inset-auto md:z-auto md:m-2 md:shrink-0 md:rounded-[18px] md:bg-glass md:ring-[0.5px] md:ring-glass-line md:ring-inset md:backdrop-blur-[30px] md:backdrop-saturate-[1.8]",
-        !fullScreen &&
-          (ready && SHEET_MIME_TYPES.has(ready.artifact.mimeType)
-            ? "md:w-[min(58vw,900px)]"
-            : "md:w-[min(46vw,640px)]"),
+        !fullScreen && (extra.wide ? "md:w-[min(58vw,900px)]" : "md:w-[min(46vw,640px)]"),
       )}
     >
       <header className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5">

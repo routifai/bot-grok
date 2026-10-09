@@ -1,7 +1,7 @@
 import { t } from "@lingui/core/macro";
 import type { ThreadMessage } from "@nova/contracts";
 import { plainTextFromMarkdown } from "@nova/core";
-import { splitSheetAsk } from "../../../lib/sheet-ask";
+import { splitSheetAsk } from "../../../features/sheets/sheet-ask";
 
 export function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks

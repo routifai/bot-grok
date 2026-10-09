@@ -4,15 +4,14 @@ import type { ThreadMessage } from "@nova/contracts";
 import { ENGINE_ERROR_NOTE, isEngineErrorText, isToolActivityBlock } from "@nova/core";
 import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@nova/ui-web";
 import { memo, useMemo } from "react";
-import { SheetAskChip } from "../../../components/sheets/SheetAskChip";
-import { splitSheetAsk } from "../../../lib/sheet-ask";
 import { ArtifactFileCard } from "../../../components/ArtifactFileCard";
-
 import { AskCard } from "../../../components/AskCard";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
 import { SkillDraftCard } from "../../../components/teach/SkillDraftCard";
+import { SheetAskChip } from "../../../features/sheets/SheetAskChip";
+import { splitSheetAsk } from "../../../features/sheets/sheet-ask";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { messageProviderLabel } from "../../../lib/messaging";
 import {
