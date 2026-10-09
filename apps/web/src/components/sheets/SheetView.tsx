@@ -11,8 +11,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { rpc } from "../../lib/rpc";
-import { setSheetAsk, useSheetAskAvailable } from "../../lib/sheet-ask";
+import { setSheetAsk, sheetAskLabel, useSheetAskAvailable } from "../../lib/sheet-ask";
 import { createEvaluator } from "./formula-eval";
 import {
   type CellPos,
@@ -38,6 +39,11 @@ const ROW_H = 30;
 const HEAD_H = 30;
 const GUTTER_W = 48;
 const COL_W = 140;
+const COL_MIN_W = 48;
+const COL_MAX_W = 520;
+/** A file's column width (characters, as Excel stores it) in pixels. */
+const columnPx = (chars: number | null | undefined): number =>
+  chars ? Math.max(COL_MIN_W, Math.min(COL_MAX_W, Math.round(chars * 7 + 5))) : COL_W;
 const OVERSCAN = 8;
 /** Used until the grid is measured (and where there is no layout, e.g. tests). */
 const FALLBACK_VIEW_H = 640;
@@ -86,12 +92,16 @@ export function SheetView({
   onEdited,
   fallback,
   source = rpc.artifacts,
+  toolbarHost,
 }: {
   artifact: Artifact;
   onEdited?: (artifactId: string) => void;
   /** Shown if the file cannot be read as a table. */
   fallback?: ReactNode;
   source?: SheetSource;
+  /** Where the Edit button and the "Edited by you" pill go (the panel's header). Undefined keeps
+   * them in a row above the grid; null waits for the host to mount. */
+  toolbarHost?: HTMLElement | null;
 }) {
   const { t } = useLingui();
   const askAvailable = useSheetAskAvailable();
@@ -154,6 +164,15 @@ export function SheetView({
   const colCount = Math.max(sheet?.rows[0]?.length ?? 0, 1);
   const rowCount = Math.max(sheet?.rows.length ?? 0, 1);
   const frozen = Math.min(sheet?.frozenRows ?? 0, rowCount);
+  // Column widths from the file (characters -> pixels), else the default.
+  const colLeft = useMemo(() => {
+    const lefts = [0];
+    for (let c = 0; c < colCount; c += 1) {
+      lefts.push((lefts[c] as number) + columnPx(sheet?.colWidths?.[c]));
+    }
+    return lefts;
+  }, [colCount, sheet]);
+  const colWidth = (c: number) => (colLeft[c + 1] as number) - (colLeft[c] as number);
 
   // Formulas the file holds no result for (or whose inputs were just edited) are worked out here.
   const evaluate = useMemo(
@@ -227,7 +246,10 @@ export function SheetView({
       setOverlay((current) => {
         const next = new Map(current);
         for (const edit of edits) {
-          next.set(cellKey(edit.sheet, edit.row, edit.col), cellFromValue(edit.value));
+          next.set(
+            cellKey(edit.sheet, edit.row, edit.col),
+            cellFromValue(edit.value, cell(edit.row, edit.col)),
+          );
         }
         return next;
       });
@@ -355,12 +377,14 @@ export function SheetView({
         node.scrollTop = top + ROW_H - node.clientHeight;
       }
     }
-    const left = GUTTER_W + head.c * COL_W;
+    const left = GUTTER_W + (colLeft[head.c] ?? 0);
+    const width = colLeft[head.c + 1] === undefined ? COL_W : colWidth(head.c);
     if (left < node.scrollLeft + GUTTER_W) node.scrollLeft = left - GUTTER_W;
-    else if (left + COL_W > node.scrollLeft + node.clientWidth) {
-      node.scrollLeft = left + COL_W - node.clientWidth;
+    else if (left + width > node.scrollLeft + node.clientWidth) {
+      node.scrollLeft = left + width - node.clientWidth;
     }
-  }, [head, frozen]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: colWidth reads colLeft
+  }, [head, frozen, colLeft]);
 
   // --- ask Nova -----------------------------------------------------------------------------
 
@@ -377,7 +401,7 @@ export function SheetView({
       });
       const n = rangeCellCount(selection);
       setSheetAsk({
-        label: `${sheetName}!${label} · ${cells(n)}`,
+        label: sheetAskLabel(sheetName, label, n),
         block,
       });
     } catch {
@@ -408,6 +432,30 @@ export function SheetView({
   const stats = rangeSum(cell, selection);
   const total = rangeCellCount(selection);
   const label = rangeLabel(selection);
+
+  const toolbar = (
+    <>
+      {history.manual ? (
+        <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] whitespace-nowrap text-warning">
+          {t`Edited by you`}
+        </span>
+      ) : null}
+      {canEdit ? (
+        <Button
+          variant={editMode ? "default" : "secondary"}
+          size="sm"
+          className="rounded-full"
+          aria-pressed={editMode}
+          onClick={() => {
+            setEditMode((on) => !on);
+            setEditing(null);
+          }}
+        >
+          {t`Edit`}
+        </Button>
+      ) : null}
+    </>
+  );
 
   const rowNodes: ReactNode[] = [];
   const pushRow = (r: number) => {
@@ -483,39 +531,11 @@ export function SheetView({
 
   return (
     <div data-testid="sheet-view" className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex shrink-0 items-center gap-2 px-4 pt-3">
-        {history.manual ? (
-          <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] text-warning">
-            {t`Edited by you`}
-          </span>
-        ) : null}
-        <span className="flex-1" />
-        {canEdit ? (
-          <Button
-            variant={editMode ? "default" : "secondary"}
-            size="sm"
-            className="rounded-full"
-            aria-pressed={editMode}
-            onClick={() => {
-              setEditMode((on) => !on);
-              setEditing(null);
-            }}
-          >
-            {t`Edit`}
-          </Button>
-        ) : null}
-        {undoEdits ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="rounded-full"
-            aria-label={t`Undo`}
-            onClick={undo}
-          >
-            {t`Undo`}
-          </Button>
-        ) : null}
-      </div>
+      {toolbarHost === undefined ? (
+        <div className="flex shrink-0 items-center justify-end gap-2 px-4 pt-3">{toolbar}</div>
+      ) : toolbarHost ? (
+        createPortal(toolbar, toolbarHost)
+      ) : null}
 
       {table.sheets.length > 1 ? (
         <Tabs
@@ -564,16 +584,16 @@ export function SheetView({
           if (pos) setHead((now) => (now.r === pos.r && now.c === pos.c ? now : pos));
         }}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-        className="relative mx-4 mt-2.5 min-h-0 flex-1 overflow-auto rounded-xl border border-border outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        className="relative mx-4 mt-2.5 min-h-0 flex-1 overflow-auto rounded-xl border border-border outline-none select-none focus-visible:border-ring/60"
       >
         <table
           className="border-separate border-spacing-0 table-fixed"
-          style={{ width: GUTTER_W + colCount * COL_W }}
+          style={{ width: GUTTER_W + (colLeft[colCount] ?? 0) }}
         >
           <colgroup>
             <col style={{ width: GUTTER_W }} />
             {Array.from({ length: colCount }, (_, c) => (
-              <col key={c} style={{ width: COL_W }} />
+              <col key={c} style={{ width: colWidth(c) }} />
             ))}
           </colgroup>
           <thead>

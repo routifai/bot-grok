@@ -32,6 +32,7 @@ export function ArtifactPanel({
   const ready = state.status === "ready" ? state : null;
   const url = useObjectUrl(ready?.bytes ?? EMPTY_BYTES, ready?.artifact.mimeType ?? "");
 
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publish, setPublish] = useState<ArtifactPublish | null>(null);
@@ -99,6 +100,8 @@ export function ArtifactPanel({
           </div>
           {meta ? <div className="truncate text-[12px] text-muted-foreground">{meta}</div> : null}
         </div>
+        {/* A sheet portals its Edit button and edited pill in here. */}
+        <div ref={setToolbarHost} className="contents" />
         {state.versions.length > 1 ? (
           <select
             aria-label={t`Version`}
@@ -195,6 +198,7 @@ export function ArtifactPanel({
               artifact={state.artifact}
               bytes={state.bytes}
               onEdited={state.adoptVersion}
+              toolbarHost={toolbarHost}
             />
             {state.artifact.mimeType === "text/html" ? (
               <Lock

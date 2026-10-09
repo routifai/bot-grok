@@ -12,7 +12,7 @@ import {
   truncateSlashDescription,
 } from "@nova/core";
 import { Button, cn } from "@nova/ui-web";
-import { ArrowUp, Box, Mic, Paperclip, Plus, Settings, Square, Table2, X } from "lucide-react";
+import { ArrowUp, Box, Mic, Paperclip, Plus, Settings, Square, X } from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -27,6 +27,7 @@ import {
 } from "react";
 import { requestOpenSettings } from "../../../lib/engine-models";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
+import { SheetAskChip } from "../../../components/sheets/SheetAskChip";
 import { setSheetAsk, useSheetAsk, useSheetAskTarget, withSheetAsk } from "../../../lib/sheet-ask";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
 import { previewMessageText } from "./messageText";
@@ -495,12 +496,7 @@ export const Composer = memo(function Composer({
         </div>
       ) : null}
       {sheetAsk ? (
-        <div
-          data-testid="sheet-ask-chip"
-          className="mb-2 flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[13px] text-foreground/75"
-        >
-          <Table2 size={14} strokeWidth={1.8} className="shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{sheetAsk.label}</span>
+        <SheetAskChip label={sheetAsk.label} className="mb-2 w-full">
           <button
             type="button"
             aria-label={t`Remove selection`}
@@ -509,7 +505,7 @@ export const Composer = memo(function Composer({
           >
             <X size={13} strokeWidth={2} />
           </button>
-        </div>
+        </SheetAskChip>
       ) : null}
       {attachmentNotice ? (
         <div className="mb-3 rounded-[14px] border border-warning/40 bg-warning/10 px-4 py-2 text-[13px] text-warning">

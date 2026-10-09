@@ -267,3 +267,113 @@ it("moves the active cell with the arrow keys and shows its source in the formul
   await key(grid(view), "ArrowLeft");
   expect(bar()).toBe("");
 });
+
+const formatted = () => {
+  const table = tableOf("a2", 2);
+  const sheet = table.sheets[0] as (typeof table.sheets)[0] & { colWidths?: number[] };
+  const rows = sheet.rows as Array<Array<Record<string, unknown>>>;
+  (rows[1] as Array<Record<string, unknown>>)[2] = { ...cell(64000), z: "$#,##0.00" };
+  (rows[2] as Array<Record<string, unknown>>)[1] = {
+    v: "2024-03-01T00:00:00",
+    f: null,
+    t: "d",
+    z: "mmm d, yyyy",
+  };
+  sheet.colWidths = [10, 30, 12];
+  return table;
+};
+
+it("shows numbers and dates through their format, but the formula bar and editor keep the raw value", async () => {
+  api.table.mockResolvedValue(formatted());
+  api.listVersions.mockResolvedValue([ver("a2", 2)]);
+  const view = await mount(<SheetView artifact={artifact} />);
+
+  expect(at(view, 1, 2).textContent).toBe("$64,000.00");
+  expect(at(view, 2, 1).textContent).toBe("Mar 1, 2024");
+  expect(at(view, 2, 1).className).toContain("text-right");
+
+  await mouse(at(view, 1, 2), "mousedown");
+  expect(view.querySelector('[data-testid="formula-bar"]')?.textContent).toBe("64000");
+  await mouse(at(view, 2, 1), "mousedown");
+  expect(view.querySelector('[data-testid="formula-bar"]')?.textContent).toBe(
+    "2024-03-01T00:00:00",
+  );
+
+  await act(async () => button(view, /^Edit$/).click());
+  await mouse(at(view, 1, 2), "mousedown");
+  await key(grid(view), "Enter");
+  expect((view.querySelector("input") as HTMLInputElement).value).toBe("64000");
+});
+
+it("sizes columns from the file's widths", async () => {
+  api.table.mockResolvedValue(formatted());
+  api.listVersions.mockResolvedValue([ver("a2", 2)]);
+  const view = await mount(<SheetView artifact={artifact} />);
+  const cols = [...view.querySelectorAll("colgroup col")].map(
+    (c) => (c as HTMLElement).style.width,
+  );
+  expect(cols).toEqual(["48px", "75px", "215px", "89px"]);
+});
+
+it("keeps the number format on an edited cell and the date type on an undone date", async () => {
+  const after = formatted();
+  (after.sheets[0]?.rows[2]?.[1] as { v: string }).v = "2025-01-15T00:00:00";
+  api.table.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
+    artifactId === "a3" ? { ...after, artifactId: "a3", version: 3 } : formatted(),
+  );
+  api.listVersions
+    .mockResolvedValueOnce([ver("a2", 2)])
+    .mockResolvedValue([ver("a3", 3, { origin: "manual", parentVersionId: "a2" }), ver("a2", 2)]);
+  api.editTable.mockResolvedValue({ id: "a3", version: 3 });
+  const view = await mount(<SheetView artifact={artifact} />);
+  await act(async () => button(view, /^Edit$/).click());
+  await mouse(at(view, 2, 1), "mousedown");
+  await key(grid(view), "Enter");
+  const input = view.querySelector("input") as HTMLInputElement;
+  await type(input, "2025-01-15T00:00:00");
+  await key(input, "Enter");
+  expect(at(view, 2, 1).textContent).toBe("Jan 15, 2025");
+  expect(api.editTable.mock.calls[0]?.[0].edits).toEqual([
+    { sheet: "Sales", row: 2, col: 1, value: "2025-01-15T00:00:00" },
+  ]);
+  await tick();
+  // Undo sends the old value back as the ISO text it was read as; the engine keeps it a date.
+  await act(async () => button(view, /^Undo$/).click());
+  expect(api.editTable.mock.calls[1]?.[0].edits).toEqual([
+    { sheet: "Sales", row: 2, col: 1, value: "2024-03-01T00:00:00" },
+  ]);
+});
+
+it("has one Undo, in the changes strip", async () => {
+  api.table.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
+    artifactId === "a3" ? tableOf("a3", 3, 1) : tableOf("a2", 2),
+  );
+  api.listVersions
+    .mockResolvedValueOnce([ver("a2", 2)])
+    .mockResolvedValue([ver("a3", 3, { origin: "manual", parentVersionId: "a2" }), ver("a2", 2)]);
+  api.editTable.mockResolvedValue({ id: "a3", version: 3 });
+  const view = await mount(<SheetView artifact={artifact} />);
+  await act(async () => button(view, /^Edit$/).click());
+  await mouse(at(view, 1, 2), "mousedown");
+  await key(grid(view), "Enter");
+  await type(view.querySelector("input") as HTMLInputElement, "1");
+  await key(view.querySelector("input") as HTMLInputElement, "Enter");
+  await tick();
+  const undos = [...view.querySelectorAll("button")].filter((b) =>
+    /^Undo$/.test(b.textContent ?? ""),
+  );
+  expect(undos).toHaveLength(1);
+  expect(view.querySelector('[data-testid="sheet-changes"]')?.contains(undos[0] as Node)).toBe(
+    true,
+  );
+});
+
+it("puts Edit in the host it is given instead of its own row", async () => {
+  api.table.mockResolvedValue(tableOf("a2", 2));
+  api.listVersions.mockResolvedValue([ver("a2", 2)]);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const view = await mount(<SheetView artifact={artifact} toolbarHost={host} />);
+  expect(button(view, /^Edit$/)).toBeUndefined();
+  expect(host.querySelector("button")?.textContent).toBe("Edit");
+});

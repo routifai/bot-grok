@@ -1,5 +1,7 @@
 import type { TableCell, TableCellEdit, TableSheet } from "@nova/contracts";
 
+import { formatCellValue } from "./number-format";
+
 export type CellPos = { r: number; c: number };
 export type CellRange = { r0: number; c0: number; r1: number; c1: number };
 
@@ -34,6 +36,18 @@ export function rangeLabel(range: CellRange): string {
     : `${from}:${cellRef(range.r1, range.c1)}`;
 }
 
+/** `C2:C8` or `C2` -> a range, or null when it is not one. */
+export function parseRange(text: string): CellRange | null {
+  const m = /^([A-Z]{1,3})([0-9]{1,7})(?::([A-Z]{1,3})([0-9]{1,7}))?$/.exec(text);
+  if (!m) return null;
+  const col = (letters: string) =>
+    [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+  const a = { r: Number(m[2]) - 1, c: col(m[1] ?? "") };
+  const b = m[3] ? { r: Number(m[4]) - 1, c: col(m[3]) } : a;
+  if (a.r < 0 || b.r < 0) return null;
+  return normalizeRange(a, b);
+}
+
 export const rangeCellCount = (range: CellRange): number =>
   (range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1);
 
@@ -46,8 +60,8 @@ const EMPTY: TableCell = { v: null, f: null, t: null };
 export const cellAt = (sheet: TableSheet, r: number, c: number): TableCell =>
   sheet.rows[r]?.[c] ?? EMPTY;
 
-/** The cell as shown: the value, or (a formula with no cached value) the formula text. */
-export function cellText(cell: TableCell): { text: string; muted: boolean } {
+/** The cell's value as plain text (no number format), or its formula text when it has no value. */
+function rawText(cell: TableCell): { text: string; muted: boolean } {
   if (cell.v === null || cell.v === undefined) {
     return cell.f ? { text: cell.f, muted: true } : { text: "", muted: false };
   }
@@ -55,12 +69,19 @@ export function cellText(cell: TableCell): { text: string; muted: boolean } {
   return { text: String(cell.v), muted: false };
 }
 
-/** What the formula bar and the editor start from: the formula, else the value. */
-export const cellSource = (cell: TableCell): string =>
-  cell.f ?? (cell.v === null || cell.v === undefined ? "" : cellText(cell).text);
+/** The cell as shown in the grid: the value through its number format (raw when unknown). */
+export function cellText(cell: TableCell): { text: string; muted: boolean } {
+  const shown = rawText(cell);
+  if (shown.muted) return shown;
+  const formatted = formatCellValue(cell);
+  return formatted === null ? shown : { text: formatted, muted: false };
+}
+
+/** What the formula bar and the editor start from: the formula, else the raw value. */
+export const cellSource = (cell: TableCell): string => cell.f ?? rawText(cell).text;
 
 export const isNumeric = (cell: TableCell): boolean =>
-  cell.t === "n" || (cell.t === null && typeof cell.v === "number");
+  cell.t === "n" || cell.t === "d" || (cell.t === null && typeof cell.v === "number");
 
 /** What a draft becomes in the file: a plain number when it reads as one (no leading zeros). */
 export function parseDraft(draft: string): TableCellEdit["value"] {
@@ -69,16 +90,25 @@ export function parseDraft(draft: string): TableCellEdit["value"] {
   return draft;
 }
 
-/** The cell a parsed edit produces, for the optimistic view. */
-export function cellFromValue(value: TableCellEdit["value"]): TableCell {
+/** The cell a parsed edit produces, for the optimistic view. It keeps the old cell's number
+ * format, and stays a date when a date cell is given date text (as the file does). */
+export function cellFromValue(value: TableCellEdit["value"], previous?: TableCell): TableCell {
   if (value === null) return EMPTY;
-  if (typeof value === "string" && value.startsWith("=")) return { v: null, f: value, t: null };
+  const z = previous?.z ? { z: previous.z } : {};
+  if (typeof value === "string" && value.startsWith("="))
+    return { v: null, f: value, t: null, ...z };
+  if (typeof value === "string" && previous?.t === "d" && ISO_DATE.test(value)) {
+    return { v: value, f: null, t: "d", ...z };
+  }
   return {
     v: value,
     f: null,
     t: typeof value === "number" ? "n" : typeof value === "boolean" ? "b" : "s",
+    ...z,
   };
 }
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?$/;
 
 /** Sum and count of the numeric cells in a selection. */
 export function rangeSum(

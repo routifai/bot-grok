@@ -960,17 +960,21 @@ export function ArtifactPreview({
   artifact,
   bytes,
   onEdited,
+  toolbarHost,
 }: {
   artifact: Artifact;
   bytes: Uint8Array;
   /** A new version was saved from the viewer (a sheet edit). */
   onEdited?: (artifactId: string) => void;
+  /** Header slot for a sheet's Edit button and edited pill (see `SheetView`). */
+  toolbarHost?: HTMLElement | null;
 }) {
   if (SHEET_MIME_TYPES.has(artifact.mimeType)) {
     return (
       <SheetView
         artifact={artifact}
         onEdited={onEdited}
+        toolbarHost={toolbarHost}
         fallback={<ArtifactPreviewBody artifact={artifact} bytes={bytes} />}
       />
     );

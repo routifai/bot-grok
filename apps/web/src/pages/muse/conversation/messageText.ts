@@ -1,6 +1,7 @@
 import { t } from "@lingui/core/macro";
 import type { ThreadMessage } from "@nova/contracts";
 import { plainTextFromMarkdown } from "@nova/core";
+import { splitSheetAsk } from "../../../lib/sheet-ask";
 
 export function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks
@@ -8,7 +9,9 @@ export function previewMessageText(message: ThreadMessage): string {
       if (block.kind === "channel_message") return block.text;
       if (block.kind === "text") {
         // Bot text is Markdown; user text is already plain.
-        return message.role === "bot" ? plainTextFromMarkdown(block.text) : block.text;
+        if (message.role === "bot") return plainTextFromMarkdown(block.text);
+        const ask = splitSheetAsk(block.text);
+        return ask ? ask.rest || ask.label : block.text;
       }
       return "";
     })
