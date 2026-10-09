@@ -1,10 +1,40 @@
 // @vitest-environment jsdom
 
-import type { Bot } from "@nova/contracts";
+import type { Bot, ComputerStatus } from "@nova/contracts";
 import { ORPCError } from "@orpc/client";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+/** The Computer status stream the composer listens to, driven by the tests. */
+const computerBus = (() => {
+  const listeners = new Set<(status: ComputerStatus | null) => void>();
+  const computerRef = { current: null as ComputerStatus | null };
+  return {
+    store: {
+      computerRef,
+      commitComputer: (next: ComputerStatus | null) => {
+        computerRef.current = next;
+        for (const listener of listeners) listener(next);
+      },
+      onComputerChange: (listener: (status: ComputerStatus | null) => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    emit(status: Partial<ComputerStatus> | null) {
+      this.store.commitComputer(status as ComputerStatus | null);
+    },
+    reset() {
+      listeners.clear();
+      computerRef.current = null;
+    },
+  };
+})();
+const STARTING = { state: "booting", launch: { stage: "starting" } } as const;
+const UP = { state: "running", runnerReady: true } as const;
 
 const api = vi.hoisted(() => ({
   files: { uploadAttachment: vi.fn(), ingestAttachment: vi.fn() },
@@ -53,7 +83,7 @@ function Harness() {
     },
     roster: { botsRef: { current: [] }, refreshBots: async () => undefined },
     flushPendingBrowserNotifications: () => undefined,
-    computerStore: { computerRef: { current: null }, commitComputer: () => undefined },
+    computerStore: computerBus.store,
     focusPrompt: { cancelFocusPrompt: () => undefined, focusPromptBotIdRef: { current: null } },
   } as never);
   return null;
@@ -67,6 +97,7 @@ async function pickFiles(...files: [string, string, string][]) {
 }
 
 beforeEach(() => {
+  computerBus.reset();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal(
     "URL",
@@ -165,12 +196,12 @@ it("goes uploading, reading, ready, and holds the message back until then", asyn
   expect(await act(async () => latest.sendMessage("hi"))).toBe(true);
 });
 
-it("waits for a starting Computer while uploading, and uploads nothing twice", async () => {
+it("waits for the Computer's own 'up' event while uploading, with no timer retry", async () => {
   vi.useFakeTimers();
   try {
     await mount();
     api.files.uploadAttachment
-      .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }))
+      .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }))
       .mockResolvedValueOnce({
         path: "p/a.pdf",
         name: "a.pdf",
@@ -179,21 +210,34 @@ it("waits for a starting Computer while uploading, and uploads nothing twice", a
       });
     await pickFiles(["a.pdf", "aaa", "application/pdf"]);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4000);
+      await vi.advanceTimersByTimeAsync(50);
     });
-    expect(statuses()).toEqual(["ready"]);
+    expect(statuses()).toEqual(["starting"]);
+    expect(await act(async () => latest.sendMessage("hi"))).toBe(false); // Send stays held
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000); // a minute passes: nothing retries by itself
+    });
+    expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
+    expect(statuses()).toEqual(["starting"]);
+    await act(async () => computerBus.emit(STARTING));
+    expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
+    await act(async () => computerBus.emit(UP));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
     expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2);
+    expect(statuses()).toEqual(["ready"]);
   } finally {
     vi.useRealTimers();
   }
 });
 
-it("shows a calm error on the chip when the Computer never starts, and retries", async () => {
+it("shows a calm error on the chip when the Computer never comes up, and retries", async () => {
   vi.useFakeTimers();
   try {
     await mount();
     api.files.uploadAttachment.mockRejectedValue(
-      new ORPCError("SERVICE_UNAVAILABLE", { message: "boom (503)" }),
+      new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }),
     );
     await pickFiles(["a.pdf", "aaa", "application/pdf"]);
     await act(async () => {
@@ -203,6 +247,7 @@ it("shows a calm error on the chip when the Computer never starts, and retries",
     expect(latest.pendingAttachments[0]?.error).toBe(
       "Your Computer is starting. Try again in a moment.",
     );
+    expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
     expect(await act(async () => latest.sendMessage("hi"))).toBe(false);
     api.files.uploadAttachment.mockReset().mockResolvedValue({
       path: "p/a.pdf",
@@ -242,4 +287,107 @@ it("sends an image without reading it", async () => {
   await settled();
   expect(statuses()).toEqual(["ready"]);
   expect(api.files.ingestAttachment).not.toHaveBeenCalled();
+});
+
+it("makes one ingest call and follows the Computer's status while it wakes", async () => {
+  await mount();
+  let finish: () => void = () => undefined;
+  api.files.ingestAttachment.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve({ fileId: "ab12", name: "a.pdf", pages: 1, chars: 3 });
+      }),
+  );
+  computerBus.emit(STARTING);
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["starting"]);
+  expect(await act(async () => latest.sendMessage("hi"))).toBe(false);
+  await act(async () => computerBus.emit(UP));
+  expect(statuses()).toEqual(["reading"]);
+  await act(async () => finish());
+  await settled();
+  expect(statuses()).toEqual(["ready"]);
+  expect(api.files.ingestAttachment).toHaveBeenCalledTimes(1); // never retried by the page
+});
+
+it("cancels the wait and the read when the chip is removed", async () => {
+  await mount();
+  let signal: AbortSignal | undefined;
+  api.files.ingestAttachment.mockImplementation(
+    (_input: unknown, options?: { signal?: AbortSignal }) => {
+      signal = options?.signal;
+      return new Promise(() => undefined);
+    },
+  );
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(signal?.aborted).toBe(false);
+  await act(async () => latest.removeAttachment(latest.pendingAttachments[0] as never));
+  expect(signal?.aborted).toBe(true);
+  expect(latest.pendingAttachments).toHaveLength(0);
+});
+
+it("cancels the wait for a starting Computer when the person leaves the chat", async () => {
+  await mount();
+  api.files.uploadAttachment.mockRejectedValue(
+    new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }),
+  );
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["starting"]);
+  for (const root of roots.splice(0)) await act(async () => root.unmount());
+  await act(async () => computerBus.emit(UP)); // too late: nobody is waiting any more
+  expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
+});
+
+it("says a slow read is slow, not that the Computer is starting", async () => {
+  await mount();
+  api.files.ingestAttachment.mockRejectedValueOnce(
+    new ORPCError("GATEWAY_TIMEOUT", { message: "slow" }),
+  );
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["error"]);
+  expect(latest.pendingAttachments[0]?.error).toBe(
+    "Reading a.pdf is taking too long. Try again in a moment.",
+  );
+});
+
+it("gives every picked attachment its own id, even for identical files picked together", async () => {
+  await mount();
+  await pickFiles(["a.pdf", "aaa", "application/pdf"], ["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  const ids = latest.pendingAttachments.map((a) => a.id);
+  expect(new Set(ids).size).toBe(2);
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  expect(new Set(latest.pendingAttachments.map((a) => a.id)).size).toBe(3);
+});
+
+it("decides a starting Computer by the error code, not by words in the message", async () => {
+  await mount();
+  api.files.ingestAttachment.mockRejectedValueOnce(
+    new ORPCError("INTERNAL_SERVER_ERROR", { message: "omnigent read failed (503): starting" }),
+  );
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["error"]);
+  expect(latest.pendingAttachments[0]?.error).not.toContain("Your Computer is starting");
+});
+
+it("does not wait for an 'up' event that already happened", async () => {
+  await mount();
+  api.files.uploadAttachment
+    .mockRejectedValueOnce(new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }))
+    .mockResolvedValueOnce({
+      path: "p/a.pdf",
+      name: "a.pdf",
+      mimeType: "application/pdf",
+      size: 3,
+    });
+  computerBus.emit(UP); // the Computer came up in the moment between the call and the wait
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(statuses()).toEqual(["ready"]);
+  expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2);
 });

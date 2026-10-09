@@ -3153,6 +3153,10 @@ msgid "read-only"
 msgstr "read-only"
 
 #. placeholder {0}: attachment.file.name
+msgid "Reading {0} is taking too long. Try again in a moment."
+msgstr "Reading {0} is taking too long. Try again in a moment."
+
+#. placeholder {0}: attachment.file.name
 msgid "Reading {0}…"
 msgstr "Reading {0}…"
 

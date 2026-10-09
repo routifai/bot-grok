@@ -588,11 +588,15 @@ export const Composer = memo(function Composer({
               <span className="max-w-[180px] truncate" dir="auto">
                 {attachment.status === "uploading"
                   ? t`Uploading ${attachment.file.name}…`
-                  : attachment.status === "reading"
-                    ? t`Reading ${attachment.file.name}…`
-                    : attachment.file.name}
+                  : attachment.status === "starting"
+                    ? t`Starting your Computer…`
+                    : attachment.status === "reading"
+                      ? t`Reading ${attachment.file.name}…`
+                      : attachment.file.name}
               </span>
-              {attachment.status === "uploading" || attachment.status === "reading" ? (
+              {attachment.status === "uploading" ||
+              attachment.status === "starting" ||
+              attachment.status === "reading" ? (
                 <Loader2
                   size={13}
                   strokeWidth={2}

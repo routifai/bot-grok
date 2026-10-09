@@ -7,7 +7,11 @@ The engine keeps no file, passage or index. Each route asks the Computer's runne
   state seen (kept in memory, so it is gone after an engine restart) and ``thumbnail`` answers 404
   unless that page was seen before.
 * ``ingest`` and ``search`` are the person acting: it wakes the Computer the way a message does.
-* ``ingest`` reads one attachment through every pass and answers when it is searchable.
+* ``ingest`` reads one attachment through every pass and answers when it is searchable. It
+  writes to the index and can return a file's text, so it needs write access and only reads
+  files under :data:`UPLOADS_PREFIX`.
+* Every call here is marked as a relay call (``_omnigent_relay``): the runner lets the relay-only
+  ops (:attr:`Feature.relay_ops`) through only when it sees that mark, never from a model.
 * ``reindex`` only runs on a Computer that is already awake.
 """
 
@@ -19,6 +23,7 @@ import json
 import time
 from collections import OrderedDict
 from collections.abc import Mapping
+from pathlib import PurePosixPath
 from typing import Any
 
 import httpx
@@ -26,19 +31,26 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.server.auth import LEVEL_READ, AuthProvider
+from omnigent.runner.knowledge.limits import INGEST_TIMEOUT_S
+from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ, AuthProvider
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
 from omnigent.server.routes._auth_helpers import require_access_and_level as _require_access
 from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat._handler_http import HEX_ID_RE
 from omnigent.superchat.artifacts import SqlAlchemyArtifactStore, request_owner
+from omnigent.superchat.feature import RELAY_MARK
+from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
 
 #: How long a search waits for the Computer to wake and its runner to connect.
 WAKE_TIMEOUT_S = 120.0
 CALL_TIMEOUT_S = 90.0
-#: Reading a big file (parse, embed, thumbnails) is one awaited call.
-INGEST_TIMEOUT_S = 300.0
+#: What a slow answer says, per op.
+_SLOW = {
+    "files_ingest": "Your Computer is taking too long to read this file",
+    "files_query": "The search is taking too long",
+    "files_find": "Your Computer is taking too long to check this file",
+}
 #: Sessions whose last status is remembered, and thumbnails kept for asleep Computers.
 _MAX_SNAPSHOTS = 256
 _MAX_THUMBNAILS = 256
@@ -61,8 +73,14 @@ class IngestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(min_length=1, max_length=1024)
-    #: Also return the Markdown when it is short enough to travel with the message.
-    inline: bool = False
+
+
+class FindBody(BaseModel):
+    """Body of ``POST /sessions/{id}/knowledge/find``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
 
 
 class _Remembered:
@@ -116,15 +134,37 @@ async def _call(
     try:
         resp = await client.post(
             f"/v1/sessions/{session_id}/mcp/execute",
-            json={"method": "tools/call", "params": {"name": tool, "arguments": dict(args)}},
+            json={
+                "method": "tools/call",
+                "params": {"name": tool, "arguments": dict(args)},
+                RELAY_MARK: True,
+            },
             timeout=timeout,
         )
         payload = resp.json()
+    except httpx.ReadTimeout as exc:
+        # Connected, then silent: the Computer is awake but slow. (Not being able to connect or to
+        # get a connection is "unavailable" below, never this.)
+        raise OmnigentError(
+            _SLOW.get(tool, "Your Computer is taking too long to answer"),
+            code=ErrorCode.KNOWLEDGE_TIMEOUT,
+        ) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise OmnigentError(
             "Your Computer didn't answer", code=ErrorCode.RUNNER_UNAVAILABLE
         ) from exc
     return _result(payload)
+
+
+def _is_upload_path(path: str) -> bool:
+    """``path`` is a normalised workspace path under :data:`UPLOADS_PREFIX` (no ``..``)."""
+    parts = PurePosixPath(path).parts
+    return (
+        not path.startswith("/")
+        and ".." not in parts
+        and path.startswith(UPLOADS_PREFIX)
+        and len(parts) > 2
+    )
 
 
 def create_knowledge_router(
@@ -262,15 +302,34 @@ def create_knowledge_router(
         enables Send. It wakes the Computer the way a message does. Idempotent: an unchanged
         file answers at once.
         """
-        conv = await _conversation(request, session_id, LEVEL_READ)
+        if not _is_upload_path(body.path):
+            raise OmnigentError(
+                "Only an uploaded file can be read here", code=ErrorCode.INVALID_INPUT
+            )
+        conv = await _conversation(request, session_id, LEVEL_EDIT)
         client = await _woken(request, session_id, conv)
         return await _call(
             client,
             session_id,
             "files_ingest",
-            {"path": body.path, "inline": body.inline},
+            {"path": body.path},
             timeout=INGEST_TIMEOUT_S,
         )
+
+    @router.post("/sessions/{session_id}/knowledge/find")
+    async def find(request: Request, session_id: str, body: FindBody) -> dict[str, Any]:
+        """The searchable upload that already holds exactly these bytes, if the Computer has one.
+
+        The composer asks before it stores a file, so attaching the same file again reuses the
+        stored copy and its index entry. Wakes the Computer (the upload that follows needs it).
+        """
+        conv = await _conversation(request, session_id, LEVEL_EDIT)
+        client = await _woken(request, session_id, conv)
+        found = await _call(client, session_id, "files_find", {"sha256": body.sha256})
+        return {
+            "found": found.get("file_id") is not None,
+            **{k: found[k] for k in ("file_id", "name", "path", "pages") if k in found},
+        }
 
     @router.get("/sessions/{session_id}/knowledge/files/{file_id}/pages/{page}/thumbnail")
     async def thumbnail(request: Request, session_id: str, file_id: str, page: int) -> Response:

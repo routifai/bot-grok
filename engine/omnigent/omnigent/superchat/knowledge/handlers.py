@@ -1,9 +1,9 @@
 """Runner-side handler for the knowledge tools: runs in the Computer, answers from its index.
 
 The Muse's tools are the qmd-style set in :mod:`omnigent.superchat.knowledge.tools`.
-``files_ingest`` / ``files_thumbnail`` / ``files_reindex`` are never offered to a model: the
-engine's relays call them (through the runner's ``/mcp/execute``) to read an attachment before
-its message is sent, and to answer Nova's Library badges and citation chips.
+``files_ingest`` / ``files_thumbnail`` / ``files_reindex`` / ``files_find`` are never offered to a
+model: the engine's relays call them (through the runner's ``/mcp/execute``) to read an
+attachment before its message is sent, and to answer Nova's Library badges and citation chips.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 from typing import Any
 
 from omnigent.runner.knowledge.db import FileRow
@@ -19,6 +20,7 @@ from omnigent.runner.knowledge.runtime import KnowledgeRuntime, configure, get_r
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
 from omnigent.superchat._handler_http import HEX_ID_RE, error
 from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
 
 #: Marks a ``files_search`` result so the transcript can show its pages as citation chips.
 SEARCH_RESULT_TYPE = "file_search"
@@ -26,13 +28,17 @@ SEARCH_RESULT_TYPE = "file_search"
 _SEARCH_MODES = {"files_search": "keyword", "files_vsearch": "vector", "files_query": "hybrid"}
 
 
-def _runtime(ctx: HandlerCtx) -> KnowledgeRuntime:
-    client = ctx.server_client
-    if client is not None:
-        configure(str(client.base_url))
+def runtime_for(server_client: Any) -> KnowledgeRuntime:
+    """The Computer's index service, started, pointed at the engine for the model proxy."""
+    if server_client is not None:
+        configure(str(server_client.base_url))
     runtime = get_runtime()
     runtime.start()
     return runtime
+
+
+def _runtime(ctx: HandlerCtx) -> KnowledgeRuntime:
+    return runtime_for(ctx.server_client)
 
 
 async def handle_knowledge_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
@@ -59,6 +65,8 @@ def _run(runtime: KnowledgeRuntime, tool_name: str, args: dict[str, Any]) -> str
         return _multi_get(runtime, args)
     if tool_name == "files_ingest":
         return _ingest(runtime, args)
+    if tool_name == "files_find":
+        return _find(runtime, args)
     if tool_name == "files_read_page":
         return _read_page(runtime, args)
     if tool_name == "files_status":
@@ -154,11 +162,18 @@ def _ingest(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
     if not isinstance(path, str) or not path.strip():
         return error("files_ingest requires a path")
     try:
-        return json.dumps(runtime.indexer.ingest(path.strip(), inline=args.get("inline") is True))
+        return json.dumps(runtime.indexer.ingest(path.strip(), within=UPLOADS_PREFIX))
     except FileNotFoundError:
         return error("That file isn't in your workspace")
     except ValueError as exc:
         return error(str(exc))
+
+
+def _find(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
+    digest = args.get("sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+        return error("files_find requires a sha256")
+    return json.dumps(runtime.indexer.find_upload(digest) or {})
 
 
 def _read_page(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:

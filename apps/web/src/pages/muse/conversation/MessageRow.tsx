@@ -1,5 +1,6 @@
 import { ChatMarkdown } from "@nova/chat-ui/web";
 import type { ThreadMessage } from "@nova/contracts";
+import { personText } from "../../../lib/message-text";
 
 /** A plain-text message bubble, matching the Conversation's own bubble tokens
  * (Shell.tsx's `message-user-bubble` / `message-bot-bubble`) since that rendering is
@@ -9,7 +10,7 @@ import type { ThreadMessage } from "@nova/contracts";
 export function MessageRow({ message }: { message: ThreadMessage }) {
   const text = message.blocks
     .filter((block): block is { kind: "text"; text: string } => block.kind === "text")
-    .map((block) => block.text)
+    .map((block) => (message.role === "user" ? personText(block.text) : block.text))
     .join("\n\n");
   if (!text) return null;
   if (message.role === "system") {

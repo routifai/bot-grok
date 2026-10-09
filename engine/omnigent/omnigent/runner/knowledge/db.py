@@ -65,7 +65,9 @@ CREATE TABLE IF NOT EXISTS files (
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
     next_attempt_at REAL NOT NULL DEFAULT 0,
-    updated_at REAL NOT NULL
+    updated_at REAL NOT NULL,
+    sha256 TEXT,
+    parser_version INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS files_state ON files (state, next_attempt_at);
 CREATE TABLE IF NOT EXISTS chunks (
@@ -167,6 +169,8 @@ class FileRow:
     last_error: str | None
     next_attempt_at: float
     updated_at: float
+    sha256: str | None = None
+    parser_version: int = 1
 
 
 @dataclass(frozen=True)
@@ -187,7 +191,7 @@ class ChunkRow:
 _FILE_COLUMNS = (
     "file_id, path, name, kind, size, mtime_ns, explicit, state, embed_status, "
     "embed_reason, page_count, text_pages, chunk_count, attempts, last_error, "
-    "next_attempt_at, updated_at"
+    "next_attempt_at, updated_at, sha256, parser_version"
 )
 _CHUNK_COLUMNS = "id, file_id, ord, page_start, page_end, kind, heading_path, text, embed_tag"
 
@@ -228,6 +232,18 @@ class KnowledgeDb:
         self._write = threading.RLock()
         with self._connection() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Add the columns an older index file lacks, then the index that needs them."""
+        have = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
+        if "sha256" not in have:
+            conn.execute("ALTER TABLE files ADD COLUMN sha256 TEXT")
+        if "parser_version" not in have:
+            # Files read by an older version count as version 1: only a kind whose reader has
+            # changed since (see ``indexer.PARSER_VERSIONS``) is read again.
+            conn.execute("ALTER TABLE files ADD COLUMN parser_version INTEGER NOT NULL DEFAULT 1")
+        conn.execute("CREATE INDEX IF NOT EXISTS files_sha256 ON files (sha256)")
 
     # ------------------------------------------------------------------ plumbing
 
@@ -341,18 +357,27 @@ class KnowledgeDb:
             self._delete_chunks(conn, fid)
             conn.execute(
                 "INSERT INTO files (file_id, path, name, kind, size, mtime_ns, explicit, state, "
-                "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "updated_at, parser_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) "
                 "ON CONFLICT (file_id) DO UPDATE SET name = excluded.name, kind = excluded.kind, "
                 "size = excluded.size, mtime_ns = excluded.mtime_ns, "
                 "explicit = MAX(files.explicit, excluded.explicit), state = excluded.state, "
                 "embed_status = 'keyword', embed_reason = NULL, page_count = 0, text_pages = 0, "
                 "chunk_count = 0, attempts = 0, last_error = NULL, next_attempt_at = 0, "
-                "updated_at = excluded.updated_at",
+                "sha256 = NULL, parser_version = 0, updated_at = excluded.updated_at",
                 (fid, path, name, kind, size, mtime_ns, int(explicit), STATE_QUEUED, now),
             )
         row = self.get_file(fid)
         assert row is not None
         return row
+
+    def ready_files_with_hash(self, sha256: str) -> list[FileRow]:
+        """Files whose bytes had this SHA-256 when they were read and that are searchable now."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                f"SELECT {_FILE_COLUMNS} FROM files WHERE sha256 = ? AND state = ? ORDER BY path",
+                (sha256, STATE_READY),
+            ).fetchall()
+        return [_file(r) for r in rows]
 
     def update_file(self, file_id: str, **fields: Any) -> None:
         """Set columns of one file (``updated_at`` is always refreshed)."""
@@ -390,6 +415,16 @@ class KnowledgeDb:
                     f"SELECT COUNT(*) FROM files WHERE state IN ({marks})", PENDING_STATES
                 ).fetchone()[0]
             )
+
+    def pending_names(self, limit: int = 10) -> list[str]:
+        """File names that still have a pass to run (path order), at most *limit*."""
+        marks = ", ".join("?" for _ in PENDING_STATES)
+        with self._connection() as conn:
+            rows = conn.execute(
+                f"SELECT name FROM files WHERE state IN ({marks}) ORDER BY path LIMIT ?",
+                (*PENDING_STATES, limit),
+            ).fetchall()
+        return [str(r[0]) for r in rows]
 
     # ------------------------------------------------------------------ passages
 

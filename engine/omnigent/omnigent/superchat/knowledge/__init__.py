@@ -15,8 +15,8 @@ the workspace path the artifact was saved from).
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 from omnigent.context.labels import is_superside_chat
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from omnigent.tools.base import Tool
 
 #: Handlers the engine's relays call; never offered to a model.
-_INTERNAL_OPS = ("files_ingest", "files_thumbnail", "files_reindex")
+_INTERNAL_OPS = ("files_ingest", "files_thumbnail", "files_reindex", "files_find")
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
@@ -48,6 +48,21 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
         tools.FilesReadPageTool(),
         tools.FilesStatusTool(),
     ]
+
+
+async def _message_prefix(
+    server_client: Any, _conversation_id: str, texts: Sequence[str]
+) -> list[str]:
+    """The framed text of the files the turn's message attaches (built here, never stored)."""
+    from omnigent.superchat.knowledge.attachment_context import (
+        attachment_context_blocks,
+        references,
+    )
+    from omnigent.superchat.knowledge.handlers import runtime_for
+
+    if not references(texts):
+        return []
+    return await attachment_context_blocks(runtime_for(server_client).indexer, texts)
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
@@ -93,5 +108,6 @@ FEATURE = Feature(
     handlers=dict.fromkeys((*KNOWLEDGE_TOOL_NAMES, *_INTERNAL_OPS), handle_knowledge_tool),
     relay_ops=frozenset(_INTERNAL_OPS),
     on_result=_on_result,
+    message_prefix=_message_prefix,
     install=_install,
 )

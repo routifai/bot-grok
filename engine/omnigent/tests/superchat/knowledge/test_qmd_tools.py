@@ -139,40 +139,42 @@ def test_status_lists_collections_files_and_the_embedding_mode(tmp_path, monkeyp
     assert status["embeddings"] == {"available": True, "reason": None}
 
 
-def test_ingest_reads_the_file_now_and_hands_back_the_markdown_when_short(
+def test_ingest_reads_the_file_now_and_never_returns_its_text_over_the_relay(
     tmp_path, monkeypatch
 ) -> None:
     runtime = make_runtime(tmp_path, monkeypatch)
     path = runtime.indexer.workspace / "your_files/uploads/2026-10-09/r.pdf"
     path.parent.mkdir(parents=True)
     path.write_bytes(make_pdf([[("Risks", 20), ("Currency exposure.", 11)], [("More.", 11)]]))
-    got = call("files_ingest", path="your_files/uploads/2026-10-09/r.pdf", inline=True)
-    assert got["pages"] == 2 and got["chars"] > 0 and "<!-- page 2 -->" in got["markdown"]
+    got = call("files_ingest", path="your_files/uploads/2026-10-09/r.pdf")
+    assert got["pages"] == 2 and got["chars"] > 0
+    assert "<!-- page 2 -->" in Path(got["markdown_path"]).read_text()
     assert Path(got["markdown_path"]).read_text().count("<!-- page") == 2
     assert Path(got["markdown_path"]).parent.name == "md"
-    assert "markdown" not in call("files_ingest", path="your_files/uploads/2026-10-09/r.pdf")
+    assert "markdown" not in got
     assert call("files_search", query="currency exposure")["results"]  # searchable at once
-    assert call("files_ingest", path="your_files/nope.pdf")["error"]
-    assert call("files_ingest", path="your_files/pic.png")["error"]
+    assert call("files_ingest", path="your_files/uploads/nope.pdf")["error"]
+    assert call("files_ingest", path="your_files/uploads/pic.png")["error"]
 
 
 def test_ingest_of_a_long_file_leaves_the_markdown_out_of_the_message(
     tmp_path, monkeypatch
 ) -> None:
     runtime = make_runtime(tmp_path, monkeypatch)
-    put(runtime, "your_files/long.txt", "word " * 20000)
-    got = call("files_ingest", path="your_files/long.txt", inline=True)
+    put(runtime, "your_files/uploads/2026-10-09/long.txt", "word " * 20000)
+    got = call("files_ingest", path="your_files/uploads/2026-10-09/long.txt")
     assert "markdown" not in got and got["chars"] > 32000
 
 
 def test_a_failed_file_reports_and_a_retry_reads_it_again(tmp_path, monkeypatch) -> None:
     runtime = make_runtime(tmp_path, monkeypatch)
-    path = runtime.indexer.workspace / "your_files/bad.pdf"
+    rel = "your_files/uploads/2026-10-09/bad.pdf"
+    path = runtime.indexer.workspace / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"not a pdf")
-    assert "not a readable PDF" in call("files_ingest", path="your_files/bad.pdf")["error"]
+    assert "not a readable PDF" in call("files_ingest", path=rel)["error"]
     path.write_bytes(make_pdf([[("Fixed", 20), ("Now it reads.", 11)]]))
-    assert call("files_ingest", path="your_files/bad.pdf")["pages"] == 1
+    assert call("files_ingest", path=rel)["pages"] == 1
 
 
 def test_the_search_wait_and_its_polling_are_gone() -> None:
@@ -181,3 +183,22 @@ def test_the_search_wait_and_its_polling_are_gone() -> None:
     for gone in ("SEARCH_WAIT_SECONDS", "still_indexing", "unsearchable", "time.sleep"):
         assert gone not in source and gone not in indexer, gone
     assert not re.search(r"while .*deadline", source)
+
+
+def test_ingest_only_reads_uploads_and_never_leaves_the_folder(tmp_path, monkeypatch) -> None:
+    runtime = make_runtime(tmp_path, monkeypatch)
+    put(runtime, "your_files/private.md", "# Secret\n\nSalary table.\n")
+    put(runtime, "goals/q3/files/plan.md", "# Plan\n\nBudget.\n")
+    outside = tmp_path / "workspace" / "your_files" / "uploads" / "2026-10-09"
+    outside.mkdir(parents=True)
+    (outside / "link.md").symlink_to(tmp_path / "workspace" / "your_files" / "private.md")
+    for path in (
+        "your_files/private.md",
+        "goals/q3/files/plan.md",
+        "your_files/uploads/../private.md",
+        "your_files/uploads/2026-10-09/link.md",  # a symlink out of the folder
+        "/etc/hosts",
+    ):
+        got = call("files_ingest", path=path)
+        assert "uploaded file" in got.get("error", "") or got.get("error"), path
+        assert "markdown" not in got, path

@@ -63,6 +63,7 @@ export async function engineKnowledgeSearch(
     mode: found.mode,
     keywordOnlyReason: found.keyword_only_reason,
     filesIndexing: found.files_indexing,
+    filesIndexingNames: found.files_indexing_names ?? [],
     results: found.results.map((hit) => ({
       fileName: hit.file_name,
       fileId: hit.file_id,

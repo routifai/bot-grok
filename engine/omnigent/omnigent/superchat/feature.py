@@ -11,7 +11,7 @@ per-primitive branch each:
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -132,10 +132,18 @@ class BackgroundJob(Protocol):
         """Stop the job (may be sync or return an awaitable)."""
 
 
+#: Top-level ``/mcp/execute`` body key the engine's relays set. The runner lets a relay op through
+#: its granted-tool gate only for a call that carries it; a model's tool call never does (the
+#: engine builds that body itself), so an injected model cannot reach a relay op by name.
+RELAY_MARK = "_omnigent_relay"
+
 Handler = Callable[[HandlerCtx, dict[str, Any]], Awaitable[str]]
 ResultListener = Callable[[HandlerCtx, str], None]
 #: ``(server_client, conversation_id) -> blocks`` prepended to a Super Chat turn (never raises).
 TurnPrefix = Callable[["httpx.AsyncClient | None", str], Awaitable[list[str]]]
+#: ``(server_client, conversation_id, texts of the turn's own message) -> blocks`` prepended to the
+#: harness body only, closest to the message (never stored; never raises).
+MessagePrefix = Callable[["httpx.AsyncClient | None", str, Sequence[str]], Awaitable[list[str]]]
 
 
 @dataclass(frozen=True)
@@ -146,12 +154,15 @@ class Feature:
     :param tools: ``(labels, ctx) -> tool defs`` (label-gated: Super Chat vs Helper).
     :param handlers: ``tool_name -> async handler`` run on the runner.
     :param relay_ops: Handler names only the engine's relays call (through the runner's
-        ``/mcp/execute``): never offered to a model, yet allowed through the runner's granted-tool
-        gate for a Super Chat session.
+        ``/mcp/execute`` with :data:`RELAY_MARK`): never offered to a model, and allowed through
+        the runner's granted-tool gate only for a marked relay call in a Super Chat session.
     :param on_result: Sees every feature handler's ``(ctx, output)`` after it ran (any feature's
         tool), so a feature can follow another's results without importing it.
     :param turn_prefix: Blocks this feature prepends to a Super Chat turn (e.g. one-shot notes),
         read by ``prompt_prefix`` in feature order; a failure never fails the turn.
+    :param message_prefix: Blocks this feature builds from the turn's own message (the files it
+        attaches), prepended for the model only: they sit closest to the message and are never
+        part of what is stored as the person's words.
     :param install: Wires stores + routers onto the FastAPI app.
     :param jobs: Returns background jobs (objects with ``start()`` / ``shutdown()``).
     """
@@ -162,5 +173,6 @@ class Feature:
     relay_ops: frozenset[str] = frozenset()
     on_result: ResultListener | None = None
     turn_prefix: TurnPrefix | None = None
+    message_prefix: MessagePrefix | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None

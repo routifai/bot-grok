@@ -9,6 +9,7 @@ profile means "no profile".
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
@@ -95,21 +96,45 @@ async def _feature_prefix_blocks(
     return blocks
 
 
+async def _message_prefix_blocks(
+    server_client: httpx.AsyncClient | None, conversation_id: str, texts: Sequence[str]
+) -> list[str]:
+    """Every feature's ``message_prefix`` blocks for the turn's own message. Never fails a turn."""
+    from omnigent.superchat.features import FEATURES
+
+    blocks: list[str] = []
+    for feature in FEATURES:
+        if feature.message_prefix is None:
+            continue
+        try:
+            blocks.extend(await feature.message_prefix(server_client, conversation_id, texts))
+        except Exception:  # noqa: BLE001 - a convenience, never a reason to fail a turn
+            _logger.warning(
+                "%s message prefix failed; proceeding without it", feature.name, exc_info=True
+            )
+    return blocks
+
+
 async def turn_prefix_blocks(
     server_client: httpx.AsyncClient | None,
     conversation_id: str,
     workspace: Path | None = None,
+    message_texts: Sequence[str] = (),
 ) -> list[str]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
-    Each block is prepended in turn, so the last one ends up first: ``[memory profile (when
-    any), Projects (when any), feature notes such as hand edits (when any), local time]``
-    renders as local time, then the feature notes, then the Projects, then the profile, then
-    the person's message.
+    Each block is prepended in turn, so the last one ends up first: ``[message blocks (the files
+    it attaches), memory profile (when any), Projects (when any), feature notes such as hand
+    edits (when any), local time]`` renders as local time, then the feature notes, then the
+    Projects, then the profile, then the message blocks, then the person's message.
 
     :param workspace: The session's current working directory (marks the open Project).
+    :param message_texts: Text parts of the turn's own message; features build blocks from them
+        (``Feature.message_prefix``) that go first, so they end up closest to the message.
     """
     blocks: list[str] = []
+    if message_texts:
+        blocks.extend(await _message_prefix_blocks(server_client, conversation_id, message_texts))
     profile = await fetch_memory_profile(server_client, conversation_id)
     if profile:
         blocks.append(profile)

@@ -1462,6 +1462,20 @@ def _apply_memory_profile_to_body(body: _JsonObject, block: str | None) -> _Json
     return new_body
 
 
+def _message_texts(content: object) -> list[str]:
+    """Every text part of a message's content (a string, or nested blocks/items)."""
+    if isinstance(content, str):
+        return [content]
+    if isinstance(content, list):
+        return [t for part in content for t in _message_texts(part)]
+    if isinstance(content, dict):
+        text = content.get("text")
+        if isinstance(text, str):
+            return [text]
+        return _message_texts(content.get("content"))
+    return []
+
+
 def _prepend_turn_blocks(body: _JsonObject, blocks: Sequence[str], conv_id: str) -> _JsonObject:
     """Prepend each of *blocks* to *body*'s content in turn (the last ends up first).
 
@@ -9376,15 +9390,21 @@ def create_runner_app(
                 extra={"session_id": conv_id},
             )
 
-    async def _apply_turn_prefix_blocks(body: _JsonObject, conv_id: str) -> _JsonObject:
+    async def _apply_turn_prefix_blocks(
+        body: _JsonObject, conv_id: str, message: _JsonObject | None = None
+    ) -> _JsonObject:
         """Prepend the Super Chat per-turn blocks (Memory Profile, Projects, local time).
+
+        *message* is this turn's own user message; features build blocks from its text
+        (``Feature.message_prefix``) that go in front of it, for the harness only.
 
         Called only for ``superside-chat`` turns; the blocks come from the one
         ``superchat.prompt_prefix`` hook, fetched fresh each turn (the SDK's system prompt is
         frozen per warm client, so a per-message block is the seam that still reaches it).
         """
         workspace = await _session_runtime_cwd(conv_id)
-        blocks = await turn_prefix_blocks(server_client, conv_id, workspace)
+        texts = _message_texts(message.get("content")) if message else []
+        blocks = await turn_prefix_blocks(server_client, conv_id, workspace, texts)
         return _prepend_turn_blocks(body, blocks, conv_id)
 
     def _discard_comment_relay(session_id: str, relay: ClaudeNativeToolRelay) -> None:
@@ -9938,7 +9958,7 @@ def create_runner_app(
                 [],
             )
         if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
-            harness_body = await _apply_turn_prefix_blocks(harness_body, conv)
+            harness_body = await _apply_turn_prefix_blocks(harness_body, conv, msg_body)
         _content = cast(list[object], harness_body.get("content", []))
         _content_summary = []
         for _ci in _content:
@@ -13128,6 +13148,8 @@ def create_runner_app(
             order=order,
         )
 
+    _exclusive_create_lock = asyncio.Lock()
+
     @app.put(
         "/v1/sessions/{session_id}/resources/environments"
         "/{environment_id}/filesystem/{relative_path:path}"
@@ -13163,21 +13185,32 @@ def create_runner_app(
                 )
         else:
             content_bytes = content_str.encode(encoding)
-        try:
-            existing = await fs.read(relative_path, limit=None)
-            if existing.encoding and filesystem_registry is not None:
-                filesystem_registry.seed_snapshot(
-                    relative_path,
-                    existing.data.decode(existing.encoding, errors="replace"),
-                    session_id=session_id,
+        # ``if_exists: "fail"`` is an exclusive create (two uploads that picked the same free name
+        # cannot overwrite each other): the check and the write happen under one lock.
+        exclusive = body.get("if_exists") == "fail"
+        async with _exclusive_create_lock if exclusive else contextlib.AsyncExitStack():
+            existed = False
+            try:
+                existing = await fs.read(relative_path, limit=None)
+                existed = True
+                if existing.encoding and filesystem_registry is not None:
+                    filesystem_registry.seed_snapshot(
+                        relative_path,
+                        existing.data.decode(existing.encoding, errors="replace"),
+                        session_id=session_id,
+                    )
+            except Exception:  # noqa: BLE001
+                pass
+            if exclusive and existed:
+                return JSONResponse(
+                    status_code=409,
+                    content={"error": {"message": "A file with that name already exists"}},
                 )
-        except Exception:  # noqa: BLE001
-            pass
-        result = await fs.write(
-            relative_path,
-            content_bytes,
-            create_parents=create_parents,
-        )
+            result = await fs.write(
+                relative_path,
+                content_bytes,
+                create_parents=create_parents,
+            )
         if filesystem_registry is not None:
             filesystem_registry.record_change(relative_path, result.operation, session_id)
         _notify_file_written(relative_path, env)
@@ -14122,6 +14155,18 @@ def create_runner_app(
         method: str = body.get("method") or ""
         params: _JsonObject = body.get("params") or {}
 
+        from omnigent.superchat.feature import RELAY_MARK
+
+        scope = getattr(request, "scope", None)  # absent on the retained-operation re-entry below
+        if (
+            RELAY_MARK in body
+            and scope is not None
+            and (scope.get("client") or (None,))[0] != "tunnel"
+        ):
+            # The relay mark is the server's: only a call that came through the server tunnel may
+            # carry it. Anything else (a direct connection) has it stripped.
+            body = {k: v for k, v in body.items() if k != RELAY_MARK}
+
         raw_operation = body.get("_omnigent_operation")
         if method == "tools/call" and raw_operation is not None:
             operation = raw_operation if isinstance(raw_operation, dict) else {}
@@ -14361,6 +14406,7 @@ def create_runner_app(
                         publish_event=_publish_event,
                         filesystem_registry=filesystem_registry,
                         effective_harness=_session_harness_name(session_id),
+                        relay=body.get(RELAY_MARK) is True,
                     )
                 except Exception as exc:
                     _logger.exception(
