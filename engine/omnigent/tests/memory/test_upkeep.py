@@ -584,6 +584,30 @@ async def test_apply_rejects_rather_than_inserts_on_unparseable_classification()
     assert memory.claims["existing"]["confidence"] == pytest.approx(0.9)
 
 
+async def test_apply_stores_nothing_for_a_withdrawal() -> None:
+    """A classifier-flagged withdrawal never becomes a negation beside the old instruction."""
+    memory = FakeMemory(
+        seed_claims=[
+            {
+                "claim_id": "existing",
+                "user_id": "alice",
+                "kind": "instruction",
+                "text": "The user wants replies in French.",
+                "status": "active",
+                "confidence": 0.9,
+            }
+        ]
+    )
+    llm = StubLLM(
+        extraction_response="{}",
+        classify_responses=['{"relation": "withdrawal", "claim_id": null}'],
+    )
+    outcome = await upkeep.apply_candidate(memory, "alice", _verified(), "run1", llm)
+    assert outcome == "withdrawal"
+    assert len(memory.claims) == 1
+    assert memory.claims["existing"]["status"] == "active"
+
+
 # ── classify_relation ─────────────────────────────────────────────────────
 
 
@@ -850,3 +874,40 @@ async def test_extract_candidates_reads_json_after_prose() -> None:
         return reply
 
     assert await upkeep.extract_candidates(caller, []) == [{"kind": "fact"}]
+
+
+def test_extraction_prompt_has_two_bars_and_keeps_unsignalled_instructions_as_inferred() -> None:
+    prompt = upkeep.MEMORY_UPKEEP_EXTRACTION_PROMPT
+    # One gate, on the instruction kind only; every other kind (incl. working style) needs none.
+    assert 'Profile facts (every kind except "instruction"' in prompt
+    assert "need no special wording" in prompt
+    for signal in ('"always"', '"never"', '"from now on"', '"every time"'):
+        assert signal in prompt
+    # Not dropped: an instruction without a signal is extracted as inferred evidence.
+    assert 'still extract it, but mark it "inferred"' in prompt
+    # Third person, never an order to the assistant.
+    assert "The user wants replies in French." in prompt
+    assert "never as an order to the assistant" in prompt
+    # The old blanket default must not come back.
+    assert "Default to extracting nothing" not in prompt
+    for kind in ("preference", "instruction", "fact", "decision", "person", "project"):
+        assert kind in prompt
+
+
+def test_classify_prompt_matches_what_the_service_does_with_edited_claims() -> None:
+    prompt = upkeep.MEMORY_UPKEEP_CLASSIFY_PROMPT
+    assert "superseded (kept as history, no longer active)" in prompt
+    assert "wrote or edited it themselves it is kept and the new claim sits beside it" in prompt
+    # A withdrawal is not a contradiction and never becomes a stored negation.
+    assert "never a recorded negation" in prompt
+    assert '"relation": "same"|"new"|"contradicts"|"withdrawal"' in prompt
+    assert 'use "new" and' not in prompt
+
+
+def test_extraction_prompt_skips_withdrawals_and_gates_stated_instructions() -> None:
+    prompt = upkeep.MEMORY_UPKEEP_EXTRACTION_PROMPT
+    assert "A withdrawal is not a claim" in prompt
+    assert "Forgetting is handled in the live conversation" in prompt
+    # "stated" for an instruction needs the permanence signal, as the gate says.
+    assert "for an instruction, only with the permanence signal" in prompt
+    assert "for every instruction that carries no such signal" in prompt

@@ -16,6 +16,7 @@ fire spawns a real agent session, so a runaway cadence is expensive.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -63,23 +64,46 @@ class _ParsedRRule(Protocol):
         raise NotImplementedError
 
 
-def _anchor_dtstart(after: datetime, tz: ZoneInfo) -> datetime:
-    """Localize ``after`` to ``tz`` and return midnight of that local day.
+_INTERVAL_PART = re.compile(r"(?:^|;)INTERVAL=(\d+)", re.IGNORECASE)
 
-    Anchoring at midnight gives occurrences a deterministic phase regardless of
-    the instant we happen to query at: an hourly rule lands on the hour and a
-    daily rule at its ``BYHOUR``/``BYMINUTE``.
 
-    Caveat for ``INTERVAL>1`` recurrences (e.g. biweekly
-    ``FREQ=WEEKLY;INTERVAL=2`` or interval-monthly): dateutil counts active
-    periods relative to ``dtstart``, so re-anchoring to midnight of the query
-    day ties the phase to whichever day the timer last re-armed. A restart on a
-    different weekday can slip such a rule by one period. ``INTERVAL=1`` rules
-    (hourly/daily/simple-weekly) are unaffected. This is acceptable for the
-    current preset set; a proper fix — persisting a stable per-task ``dtstart``
-    — is deferred to future work if unbounded-interval rules become user-facing.
+def _has_interval(rule_str: str) -> bool:
+    """Whether the rule skips periods (``INTERVAL`` above 1), so its phase depends on dtstart."""
+    match = _INTERVAL_PART.search(rule_str)
+    return match is not None and int(match.group(1)) > 1
+
+
+def _anchor_applies(rule_str: str, after: datetime, tz: ZoneInfo, anchor: datetime) -> bool:
+    """Whether the anchor shapes this rule: it skips periods, or its start day is still ahead."""
+    return _has_interval(rule_str) or anchor.astimezone(tz).date() > after.astimezone(tz).date()
+
+
+def _first_occurrence(rule_str: str, start: datetime) -> datetime:
+    """The first fire of the rule with ``INTERVAL`` removed, on or after ``start``.
+
+    An interval rule counts its periods from here, not from the raw start day: "every other
+    Friday starting Saturday the 17th" first fires on the first Friday after the 17th, and
+    counts fortnights from that Friday (dateutil would otherwise phase weeks from the 17th's
+    own week and skip that Friday).
     """
-    local = after.astimezone(tz)
+    unit_rule = _INTERVAL_PART.sub("", rule_str)
+    first = _parse(unit_rule, start).after(start, inc=True)
+    return first if first is not None else start
+
+
+def _anchor_dtstart(after: datetime, tz: ZoneInfo, anchor: datetime | None = None) -> datetime:
+    """Midnight of the local day that fixes the rule's phase.
+
+    Without ``anchor`` this is midnight of ``after``'s local day, which gives occurrences a
+    deterministic wall-clock phase whatever instant we query at: an hourly rule lands on the
+    hour and a daily rule at its ``BYHOUR``/``BYMINUTE``.
+
+    ``INTERVAL>1`` rules ("every other Friday", "every 5 hours") count periods from dtstart, so
+    anchoring at the query day would slip them after every restart. The scheduler therefore
+    passes the task's anchor (its start date, else the moment its rule was set): the phase is
+    fixed for the life of the rule. Any rule with an anchor day still ahead waits for it.
+    """
+    local = (anchor or after).astimezone(tz)
     return local.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
@@ -87,22 +111,30 @@ def get_next_fire_time(
     rule_str: str,
     after: datetime,
     tz: ZoneInfo,
+    anchor: datetime | None = None,
 ) -> datetime | None:
     """Compute the next fire strictly after ``after``, evaluated in ``tz``.
 
-    The rule is anchored at midnight of ``after``'s local day so occurrences
-    carry a deterministic wall-clock phase; the returned datetime is
-    timezone-aware in ``tz``. Returns ``None`` when the rule is exhausted (a
+    The rule is anchored at midnight (of ``after``'s local day, or of ``anchor``'s for an
+    ``INTERVAL>1`` rule) so occurrences carry a deterministic wall-clock phase; the returned
+    datetime is timezone-aware in ``tz``. Returns ``None`` when the rule is exhausted (a
     ``COUNT``/``UNTIL`` rule can legitimately end, unlike a bare cron).
 
     :param rule_str: An RFC 5545 recurrence rule, e.g. ``"FREQ=DAILY;BYHOUR=9"``.
     :param after: The instant to search after (any tz-aware datetime).
     :param tz: The IANA timezone occurrences are evaluated in.
-    :returns: The next fire as a tz-aware datetime, or ``None`` if the rule has
-        no further occurrences.
+    :param anchor: A stable instant (the task's start date, else when its rule was set) fixing
+        the phase of ``INTERVAL>1`` rules and holding any rule back until its day arrives.
+    :returns: The next fire as a tz-aware datetime, or ``None`` if the rule has no further
+        occurrences.
     :raises RRuleValidationError: If ``rule_str`` is malformed.
     """
-    dtstart = _anchor_dtstart(after, tz)
+    use_anchor = (
+        anchor if anchor is not None and _anchor_applies(rule_str, after, tz, anchor) else None
+    )
+    dtstart = _anchor_dtstart(after, tz, use_anchor)
+    if use_anchor is not None and _has_interval(rule_str):
+        dtstart = _first_occurrence(rule_str, dtstart)
     rule = _parse(rule_str, dtstart)
     # `rule.after` compares in dtstart's timezone, so localize `after` too. A
     # spring-forward "imaginary" wall time maps to some instant via zoneinfo and
@@ -112,11 +144,36 @@ def get_next_fire_time(
     return rule.after(after.astimezone(tz), inc=False)
 
 
+def next_fire_times(
+    rule_str: str,
+    after: datetime,
+    tz: ZoneInfo,
+    count: int = 3,
+    anchor: datetime | None = None,
+) -> list[datetime]:
+    """The next ``count`` fires after ``after`` in ``tz`` (fewer when the rule ends)."""
+    out: list[datetime] = []
+    cursor = after
+    while len(out) < count:
+        nxt = get_next_fire_time(rule_str, cursor, tz, anchor)
+        if nxt is None:
+            break
+        out.append(nxt)
+        cursor = nxt
+    return out
+
+
 @dataclass(frozen=True)
 class RRuleTrigger:
     """A validated RRULE string that can compute its next fire."""
 
     rule: str
+    #: Stable instant fixing the phase of ``INTERVAL>1`` rules (start date, else rule-set time).
+    anchor: datetime | None = None
+
+    def anchored(self, anchor: datetime) -> RRuleTrigger:
+        """This trigger with its phase fixed at ``anchor``."""
+        return RRuleTrigger(rule=self.rule, anchor=anchor)
 
     def next_fire_after(self, after: datetime, tz: ZoneInfo) -> datetime | None:
         """Return the next fire strictly after ``after`` in ``tz``.
@@ -125,7 +182,7 @@ class RRuleTrigger:
         :param tz: The timezone occurrences are evaluated in.
         :returns: The next fire, or ``None`` if the rule is exhausted.
         """
-        return get_next_fire_time(self.rule, after, tz)
+        return get_next_fire_time(self.rule, after, tz, self.anchor)
 
 
 def _parse(rule_str: str, dtstart: datetime) -> _ParsedRRule:
@@ -137,6 +194,22 @@ def _parse(rule_str: str, dtstart: datetime) -> _ParsedRRule:
         return cast(_ParsedRRule, rrulestr(rule_str, dtstart=dtstart))
     except (ValueError, TypeError) as exc:
         raise RRuleValidationError(f"Invalid RRULE {rule_str!r}: {exc}") from exc
+
+
+def _reject_embedded_dtstart(rule_str: str) -> None:
+    """Only a single bare ``RRULE`` is accepted; the start date is a separate field.
+
+    A ``DTSTART`` line (or any multi-line rule) would override the scheduler's anchor and carry
+    a naive datetime the scheduler cannot compare, so it is refused up front.
+
+    :raises RRuleValidationError: On a multi-line rule or one that mentions ``DTSTART``.
+    """
+    stripped = rule_str.strip()
+    if "\n" in stripped or "\r" in stripped or "DTSTART" in stripped.upper():
+        raise RRuleValidationError(
+            "send a single RRULE line without DTSTART (e.g. 'FREQ=WEEKLY;BYDAY=FR'); "
+            "give the first day as starts_on instead"
+        )
 
 
 def validate_rrule(rule_str: str, tz: ZoneInfo | None = None) -> RRuleTrigger:  # noqa: ARG001
@@ -157,6 +230,7 @@ def validate_rrule(rule_str: str, tz: ZoneInfo | None = None) -> RRuleTrigger:  
     :raises RRuleValidationError: On bad syntax, never-fires, fires-once, or a
         sub-minimum interval.
     """
+    _reject_embedded_dtstart(rule_str)
     rule = _parse(rule_str, _INTERVAL_ANCHOR)
 
     # Pull consecutive occurrences from the fixed anchor, bounded by the sample

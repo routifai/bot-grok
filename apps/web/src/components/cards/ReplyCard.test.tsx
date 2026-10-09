@@ -38,8 +38,8 @@ vi.mock("@nova/ui-web", () => {
   };
 });
 
-import { ReplyCardSendProvider } from "./context";
-import { ReplyCard } from "./ReplyCard";
+import { ReplyCardSendProvider, ReplyCardThreadProvider } from "./context";
+import { ReplyCard, ReplyCardBlockView } from "./ReplyCard";
 
 const mounted: HTMLElement[] = [];
 function mount(node: ReactNode) {
@@ -119,6 +119,22 @@ it("sends the option label and locks the card", () => {
   expect(send).toHaveBeenCalledTimes(1);
 });
 
+it("two clicks on different options in the same tick still send exactly once", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard block={ask} />
+    </ReplyCardSendProvider>,
+  );
+  const [berlin, seoul] = [...host.querySelectorAll("button")] as HTMLButtonElement[];
+  act(() => {
+    seoul?.click();
+    berlin?.click();
+    seoul?.click();
+  });
+  expect(send).toHaveBeenCalledExactlyOnceWith("Seoul");
+});
+
 it("shows an already answered ask locked on the chosen option", () => {
   const send = vi.fn();
   const host = mount(
@@ -142,4 +158,143 @@ it("draws the pages a file search found as chips", () => {
   );
   expect(host.querySelector("[data-testid=passage-chips]")?.textContent).toContain("finance.pdf");
   expect(host.querySelector("[data-md]")).toBeNull();
+});
+
+const followUps = block({
+  card: "follow_ups",
+  data: { suggestions: ["Compare with last year", "Show it by region"] },
+});
+
+it("clarification: renders 2-5 option buttons and the click is the person's reply", () => {
+  const send = vi.fn();
+  const five = block({
+    card: "ask",
+    data: {
+      question: "Which quarter?",
+      options: ["Q1", "Q2", "Q3", "Q4", "Full year"].map((label, i) => ({
+        id: `opt-${i + 1}`,
+        label,
+      })),
+    },
+  });
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard block={five} />
+    </ReplyCardSendProvider>,
+  );
+  expect(host.textContent).toContain("Which quarter?");
+  const buttons = [...host.querySelectorAll("button")];
+  expect(buttons.map((b) => b.textContent)).toEqual(["Q1", "Q2", "Q3", "Q4", "Full year"]);
+  act(() => buttons[4]?.click());
+  expect(send).toHaveBeenCalledExactlyOnceWith("Full year");
+  expect(buttons.every((b) => b.disabled || b.getAttribute("aria-pressed") === "true")).toBe(true);
+});
+
+it("follow-ups: chips send their text once and then lock", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard block={followUps} />
+    </ReplyCardSendProvider>,
+  );
+  const chips = [
+    ...host.querySelectorAll("[data-testid=follow-ups] button"),
+  ] as HTMLButtonElement[];
+  expect(chips.map((c) => c.textContent)).toEqual(["Compare with last year", "Show it by region"]);
+  act(() => chips[1]?.click());
+  expect(send).toHaveBeenCalledExactlyOnceWith("Show it by region");
+  expect(chips.every((c) => c.disabled)).toBe(true);
+  act(() => chips[0]?.click());
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it("follow-ups with no send path are inert and malformed data falls back to text", () => {
+  const inert = mount(<ReplyCard block={followUps} />);
+  expect(inert.querySelector<HTMLButtonElement>("[data-testid=follow-ups] button")?.disabled).toBe(
+    true,
+  );
+  const bad = mount(<ReplyCard block={{ ...followUps, data: { suggestions: [] } }} />);
+  expect(bad.querySelector("[data-testid=follow-ups]")).toBeNull();
+  expect(bad.querySelector("[data-md]")).not.toBeNull();
+});
+
+const thread = (role: "bot" | "user", id: string, ...blocks: ReplyCardBlock[]) => ({
+  id,
+  threadId: "t",
+  seq: Number(id.slice(1)),
+  role,
+  blocks: blocks as ReplyCardBlock[],
+  createdAt: "2026-10-09T10:00:00.000Z",
+});
+
+function viewOf(messages: ReturnType<typeof thread>[], running = false) {
+  return mount(
+    <ReplyCardThreadProvider messages={messages} running={running}>
+      <ReplyCardSendProvider send={vi.fn()}>
+        {messages.map((m) =>
+          m.blocks.map((b, i) => (
+            <ReplyCardBlockView
+              key={`${m.id}${i}`}
+              block={b as ReplyCardBlock}
+              messageId={m.id}
+              index={i}
+            />
+          )),
+        )}
+      </ReplyCardSendProvider>
+    </ReplyCardThreadProvider>,
+  );
+}
+
+it("follow-ups show on the latest answer only", () => {
+  const old = thread("bot", "m1", followUps);
+  const latest = thread("bot", "m3", followUps);
+  const reply = thread("user", "m2");
+  expect(viewOf([old, reply, latest]).querySelectorAll("[data-testid=follow-ups]")).toHaveLength(1);
+  // The person already replied: the earlier chips are gone.
+  expect(viewOf([old, reply]).querySelectorAll("[data-testid=follow-ups]")).toHaveLength(0);
+});
+
+it("follow-ups are hidden while the Muse is working, and outside a resolved thread", () => {
+  const only = thread("bot", "m1", followUps);
+  expect(viewOf([only], true).querySelector("[data-testid=follow-ups]")).toBeNull();
+  expect(viewOf([only], false).querySelector("[data-testid=follow-ups]")).not.toBeNull();
+  const bare = mount(<ReplyCardBlockView block={followUps} messageId="m1" index={0} />);
+  expect(bare.querySelector("[data-testid=follow-ups]")).toBeNull();
+});
+
+it("follow-ups: two clicks in the same tick still send exactly once", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard block={followUps} />
+    </ReplyCardSendProvider>,
+  );
+  const [first, second] = [
+    ...host.querySelectorAll("[data-testid=follow-ups] button"),
+  ] as HTMLButtonElement[];
+  act(() => {
+    first?.click();
+    second?.click();
+    first?.click();
+  });
+  expect(send).toHaveBeenCalledExactlyOnceWith("Compare with last year");
+});
+
+it("follow-ups: hidden control characters never reach the chip or the sent text", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard
+        block={block({
+          card: "follow_ups",
+          data: { suggestions: ["Show\u200b it\u202e by region\ufeff"] },
+        })}
+      />
+    </ReplyCardSendProvider>,
+  );
+  const chip = host.querySelector("[data-testid=follow-ups] button") as HTMLButtonElement;
+  expect(chip.textContent).toBe("Show it by region");
+  act(() => chip.click());
+  expect(send).toHaveBeenCalledWith("Show it by region");
 });

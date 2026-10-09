@@ -24,7 +24,7 @@ import {
   Minus,
   Phone,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { useReplyCardSend } from "./context";
 import { hostOf, mailtoHref, safeHttpUrl, telHref } from "./links";
 
@@ -223,6 +223,8 @@ function Ask({
 }) {
   const send = useReplyCardSend();
   const [picked, setPicked] = useState<string | null>(null);
+  // A second click can land before the locked state paints: the ref makes one send certain.
+  const pickedRef = useRef(false);
   const chosen = picked ?? answer?.trim() ?? null;
   const locked = chosen !== null || !send;
   return (
@@ -241,7 +243,8 @@ function Ask({
               disabled={locked && !isChosen}
               aria-pressed={locked ? isChosen : undefined}
               onClick={() => {
-                if (locked) return;
+                if (locked || pickedRef.current) return;
+                pickedRef.current = true;
                 setPicked(option.label);
                 send?.(option.label);
               }}
@@ -257,6 +260,46 @@ function Ask({
         })}
       </div>
     </Frame>
+  );
+}
+
+/** Zero-width and bidi controls (category Cf) can hide or reorder what a chip says. */
+const visibleText = (text: string) => text.replace(/\p{Cf}/gu, "").trim();
+
+/** Quiet next-message chips under the latest answer; a click sends the text as the person's reply. */
+function FollowUps({ data }: Props<"follow_ups">) {
+  const { t } = useLingui();
+  const send = useReplyCardSend();
+  const [sent, setSent] = useState(false);
+  // A second click can land before the disabled state paints: the ref makes one send certain.
+  const sentRef = useRef(false);
+  return (
+    <fieldset
+      data-testid="follow-ups"
+      className="m-0 flex min-w-0 max-w-full flex-wrap gap-1.5 border-0 p-0"
+    >
+      <legend className="sr-only">{t`Suggested follow-ups`}</legend>
+      {data.suggestions.map((suggestion) => {
+        const text = visibleText(suggestion);
+        return (
+          <button
+            key={text}
+            type="button"
+            disabled={!send || sent}
+            onClick={() => {
+              if (sentRef.current || !send) return;
+              sentRef.current = true;
+              setSent(true);
+              send(text);
+            }}
+            className="max-w-full cursor-pointer rounded-full border border-border/70 px-3 py-1 text-start text-[13px] leading-snug text-muted-foreground transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-default disabled:opacity-60"
+            dir="auto"
+          >
+            {text}
+          </button>
+        );
+      })}
+    </fieldset>
   );
 }
 
@@ -502,6 +545,7 @@ export const catalog = {
   compare: Compare,
   plan: Plan,
   ask: Ask,
+  follow_ups: FollowUps,
   quote: Quote,
   chart: Chart,
   person: Person,

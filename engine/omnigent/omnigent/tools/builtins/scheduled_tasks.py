@@ -21,7 +21,18 @@ from omnigent.tools.base import Tool
 _RRULE_DESC = (
     "RFC 5545 recurrence rule, e.g. 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0' (daily at "
     "9am) or 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0' (weekday "
-    "mornings). Must fire at least twice and no more often than once per hour."
+    "mornings). Must fire at least twice and no more often than once per hour. The rule's "
+    "clock times (BYHOUR/BYMINUTE) are in the task's timezone. The response lists "
+    "`next_fire_times` in that timezone: read them back to the person as the confirmation."
+)
+
+
+_STARTS_ON_DESC = (
+    "First day the schedule may fire, as YYYY-MM-DD in the task's timezone: pass the start the "
+    "person gave ('starting next week' -> that date). An interval rule such as "
+    "'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR' counts its periods from this day. Omit to start now; "
+    "changing 'rrule' without it restarts the count from the moment of the edit. Send the rule "
+    "alone: no DTSTART line."
 )
 
 
@@ -69,6 +80,7 @@ class SysScheduledTaskCreateTool(Tool):
                             ),
                         },
                         "rrule": {"type": "string", "description": _RRULE_DESC},
+                        "starts_on": {"type": "string", "description": _STARTS_ON_DESC},
                         "agent_id": {
                             "type": "string",
                             "description": (
@@ -238,6 +250,7 @@ class SysScheduledTaskUpdateTool(Tool):
                         "name": {"type": "string", "description": "New task name."},
                         "prompt": {"type": "string", "description": "New prompt."},
                         "rrule": {"type": "string", "description": _RRULE_DESC},
+                        "starts_on": {"type": "string", "description": _STARTS_ON_DESC},
                         "agent_id": {
                             "type": "string",
                             "description": (

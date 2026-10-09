@@ -44,6 +44,15 @@ export type ColorTokens = {
   overlay: string;
   scrollbar: string;
   scrollbarHover: string;
+  /** Chart series 1-8 (@nova/charts): ink first, then the accent and graphite tints. */
+  "chart-1"?: string;
+  "chart-2"?: string;
+  "chart-3"?: string;
+  "chart-4"?: string;
+  "chart-5"?: string;
+  "chart-6"?: string;
+  "chart-7"?: string;
+  "chart-8"?: string;
   /** Muse only: the ground the shell's panels float on. */
   ground?: string;
   /** Muse only: the ground's single soft radial wash, top right. */
@@ -308,6 +317,32 @@ export type ColorTokens = {
   "welcome-app-hint"?: string;
 };
 
+/**
+ * The chart series palette, one per theme. Series 1 is the ink, 2 the accent, the rest graphite
+ * and cool tints, so a chart reads monochrome with a single accent and stays legible in dark.
+ */
+export const chartLightPalette = {
+  "chart-1": "#1D1D1F",
+  "chart-2": "#0071E3",
+  "chart-3": "#8E8E93",
+  "chart-4": "#1D93C8",
+  "chart-5": "#48484A",
+  "chart-6": "#5856D6",
+  "chart-7": "#C93400",
+  "chart-8": "#1F9A3F",
+} as const;
+
+export const chartDarkPalette = {
+  "chart-1": "#F5F5F7",
+  "chart-2": "#0A84FF",
+  "chart-3": "#78787D",
+  "chart-4": "#64D2FF",
+  "chart-5": "#FFB830",
+  "chart-6": "#6462EC",
+  "chart-7": "#F0532B",
+  "chart-8": "#30D158",
+} as const;
+
 export const darkTokens = {
   background: "#0B0C0E",
   foreground: "#ECECEE",
@@ -341,6 +376,7 @@ export const darkTokens = {
   overlay: "rgba(4, 4, 5, 0.72)",
   scrollbar: "#1E2026",
   scrollbarHover: "#2E313A",
+  ...chartDarkPalette,
 } as const satisfies ColorTokens;
 
 export const lightTokens = {
@@ -376,6 +412,7 @@ export const lightTokens = {
   overlay: "rgba(20, 20, 22, 0.45)",
   scrollbar: "#C8C8C4",
   scrollbarHover: "#A8A8A4",
+  ...chartLightPalette,
 } as const satisfies ColorTokens;
 
 /**
@@ -617,6 +654,7 @@ export const museLightTokens = {
   scrollbar: "#D6D8DC",
   scrollbarHover: "#B6B9BF",
   ...novaLight,
+  ...chartLightPalette,
 } as const satisfies ColorTokens;
 
 export const museDarkTokens = {
@@ -653,6 +691,7 @@ export const museDarkTokens = {
   scrollbar: "#2F3036",
   scrollbarHover: "#43454C",
   ...novaDark,
+  ...chartDarkPalette,
 } as const satisfies ColorTokens;
 
 /** Dark palette. Prefer `tokensForAppearance` when theme-aware. */

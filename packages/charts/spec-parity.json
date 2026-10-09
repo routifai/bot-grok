@@ -1,0 +1,67 @@
+{
+  "chart_types": [
+    "bar",
+    "stacked_bar",
+    "stacked_bar_100",
+    "horizontal_bar",
+    "horizontal_bar_100",
+    "line",
+    "area",
+    "stacked_area",
+    "stacked_area_100",
+    "mixed",
+    "pie",
+    "donut",
+    "kpi_card",
+    "scatter",
+    "radar"
+  ],
+  "chart": {
+    "properties": [
+      "chart_type",
+      "comparison_mode",
+      "hide_total",
+      "series",
+      "show_data_labels",
+      "title",
+      "x_axis_key",
+      "x_axis_label",
+      "x_axis_type",
+      "y_axis_label",
+      "y_axis_max",
+      "y_axis_min",
+      "y_axis_right_label",
+      "y_axis_right_max",
+      "y_axis_right_min"
+    ],
+    "required": ["chart_type", "series", "title"]
+  },
+  "series": {
+    "properties": [
+      "color",
+      "data_key",
+      "is_total",
+      "label",
+      "series_type",
+      "value_format",
+      "y_axis"
+    ],
+    "required": ["data_key"]
+  },
+  "value_format": {
+    "properties": ["compact", "d3_format", "prefix", "suffix"],
+    "required": []
+  },
+  "source": {
+    "properties": ["columns", "max_rows", "path"],
+    "required": ["path"]
+  },
+  "enums": {
+    "x_axis_type": ["date", "number", "category"],
+    "series_type": ["bar", "line", "area"],
+    "y_axis": ["left", "right"],
+    "comparison_mode": ["percentage", "variation", "absolute", "none"],
+    "compact": ["financial", "si"]
+  },
+  "color_pattern": "^(#[0-9a-fA-F]{3,8}|rgba?\\([0-9.,%\\s/]{1,48}\\)|hsla?\\([0-9.,%\\sdeg/]{1,48}\\)|[a-zA-Z]{3,24}|var\\(--chart-[1-8]\\))$"
+}

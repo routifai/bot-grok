@@ -90,7 +90,12 @@ function main() {
   const decks = render(readFileSync(join(here, "templates/decks.md"), "utf8"), {
     DECK_LAYOUTS: deckLayouts,
   }).trimEnd();
-  const agentsMd = render(readFileSync(join(here, "templates/AGENTS.md"), "utf8"), {
+  // The template opens with a provenance comment for ported text; the prompt does not carry it.
+  const agentsTemplate = readFileSync(join(here, "templates/AGENTS.md"), "utf8").replace(
+    /^<!--[\s\S]*?-->\n/,
+    "",
+  );
+  const agentsMd = render(agentsTemplate, {
     FILESYSTEM: filesystem,
     DECKS: decks,
   });

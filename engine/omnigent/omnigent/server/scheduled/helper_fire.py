@@ -315,7 +315,10 @@ async def _post_failure_note(deps: FireDeps, task: ScheduledTask, reason: str) -
     again = "I'll try again at the next scheduled time."
     try:
         nxt = get_next_fire_time(
-            task.rrule, datetime.now(ZoneInfo(task.timezone)), ZoneInfo(task.timezone)
+            task.rrule,
+            datetime.now(ZoneInfo(task.timezone)),
+            ZoneInfo(task.timezone),
+            datetime.fromtimestamp(task.anchor_epoch, tz=ZoneInfo("UTC")),
         )
     except (ValueError, ZoneInfoNotFoundError, RRuleValidationError):
         nxt = None

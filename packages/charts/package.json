@@ -1,0 +1,32 @@
+{
+  "name": "@nova/charts",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "d3-format": "3.1.0",
+    "recharts": "2.15.4",
+    "zod": "4.6.2"
+  },
+  "peerDependencies": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/d3-format": "3.0.4",
+    "@types/react": "19.2.18",
+    "react": "19.2.3",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
+    "react-dom": "19.2.3",
+    "@types/react-dom": "19.2.7"
+  }
+}

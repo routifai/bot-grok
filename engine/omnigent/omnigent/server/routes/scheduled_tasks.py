@@ -17,6 +17,7 @@ import asyncio
 import logging
 import re
 import uuid
+from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -37,7 +38,11 @@ from omnigent.server.routes._session_create_validation import (
     validate_session_model_metadata,
     validate_session_permission_mode,
 )
-from omnigent.server.scheduled.rrule import RRuleValidationError, validate_rrule
+from omnigent.server.scheduled.rrule import (
+    RRuleValidationError,
+    next_fire_times,
+    validate_rrule,
+)
 from omnigent.server.scheduled.run_reconciler import force_fail_stale_runs
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
@@ -89,6 +94,9 @@ class CreateScheduledTaskRequest(BaseModel):
     # ``managed_sandbox`` runs the task in a fresh server-provisioned sandbox
     # (no host_id/workspace); default keeps the connected-host behavior.
     execution_target: str = "connected_host"
+    # First day the schedule may fire, in the task timezone. It also fixes the phase of an
+    # ``INTERVAL>1`` rule ("every other Friday starting next week"). Omit to start now.
+    starts_on: date | None = None
 
     @model_validator(mode="after")
     def _validate_create(self) -> CreateScheduledTaskRequest:
@@ -106,6 +114,21 @@ class CreateScheduledTaskRequest(BaseModel):
         elif self.agent_type is None:
             raise ValueError("agent_type is required with parent_session_id")
         return self
+
+
+class PreviewScheduleRequest(BaseModel):
+    """Body for ``POST /v1/scheduled-tasks/preview-schedule``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rrule: str
+    # ``None`` = the owner's preference timezone, else UTC (same as task creation).
+    timezone: str | None = None
+    # First day the schedule may fire, in the task timezone. It also fixes the phase of an
+    # ``INTERVAL>1`` rule ("every other Friday starting next week"). Omit to start now.
+    starts_on: date | None = None
+    # An existing task to preview an edit of: its own anchor applies while its rule is unchanged.
+    scheduled_task_id: str | None = None
 
 
 class UpdateScheduledTaskRequest(BaseModel):
@@ -132,6 +155,9 @@ class UpdateScheduledTaskRequest(BaseModel):
     # Rebind to another parent / Type; null for both unbinds the task.
     parent_session_id: str | None = Field(default=None, min_length=1)
     agent_type: str | None = Field(default=None, min_length=1)
+    # Re-anchor an interval rule on this day (task timezone). A changed ``rrule`` otherwise
+    # re-anchors at the moment of the edit.
+    starts_on: date | None = None
 
     @model_validator(mode="after")
     def _validate_patch(self) -> UpdateScheduledTaskRequest:
@@ -203,6 +229,31 @@ def _prefs_to_response(prefs: OwnerPreferences) -> dict[str, Any]:
     }
 
 
+def _anchor_epoch(starts_on: date, timezone: str) -> int:
+    """Midnight of ``starts_on`` in ``timezone`` as epoch seconds."""
+    return int(datetime.combine(starts_on, time.min, tzinfo=ZoneInfo(timezone)).timestamp())
+
+
+def _upcoming_fires(
+    rrule: str, timezone: str, anchor_epoch: int | None, count: int = 3
+) -> list[str]:
+    """The next ``count`` fire times as ISO-8601 strings in the task's own timezone.
+
+    The Muse reads these back to the person ("Mondays at 09:00, starting Oct 12"), so they are
+    local wall-clock times with the offset, never UTC. Uses the same stable anchor as the live
+    scheduler, so an ``INTERVAL>1`` rule previews exactly what will fire. A preview must never
+    take down the response around it, so any failure is logged and yields no fires.
+    """
+    try:
+        zone = ZoneInfo(timezone)
+        anchor = datetime.fromtimestamp(anchor_epoch, tz=zone) if anchor_epoch else None
+        fires = next_fire_times(rrule, datetime.now(zone), zone, count, anchor)
+    except Exception:
+        _logger.exception("could not preview fires for rrule %r", rrule)
+        return []
+    return [fire.isoformat(timespec="minutes") for fire in fires]
+
+
 def _to_response(
     task: ScheduledTask,
     *,
@@ -232,6 +283,7 @@ def _to_response(
         "agent_id": task.agent_id,
         "timezone": task.timezone,
         "created_at": task.created_at,
+        "anchor_at": task.anchor_epoch,
         "model_override": task.model_override,
         "reasoning_effort": task.reasoning_effort,
         "permission_mode": task.permission_mode,
@@ -247,6 +299,11 @@ def _to_response(
         "last_run_status": last_run_status,
         "last_run_conversation_id": task.last_run_conversation_id,
         "next_run_at": next_run_at,
+        "next_fire_times": (
+            _upcoming_fires(task.rrule, task.timezone, task.anchor_epoch)
+            if task.state == "active"
+            else []
+        ),
         "updated_at": task.updated_at,
     }
 
@@ -464,6 +521,32 @@ def create_scheduled_tasks_router(
             raise OmnigentError("Scheduled task not found", code=ErrorCode.NOT_FOUND)
         return task
 
+    @router.post("/scheduled-tasks/preview-schedule")
+    async def preview_schedule(request: Request, body: PreviewScheduleRequest) -> dict[str, Any]:
+        """Validate an RRULE and show its next fire times in the person's timezone, unsaved."""
+        owner = _owner(request)
+        timezone = body.timezone
+        if timezone is None:
+            prefs = await asyncio.to_thread(store.get_owner_preferences, owner)
+            timezone = prefs.timezone if prefs is not None else "UTC"
+        _validate_timezone_or_400(timezone)
+        _validate_rrule_or_400(body.rrule)
+        # Same anchor rules as saving: the given start day, else the task's own anchor while
+        # its rule is unchanged, else now (a new or edited rule counts from the moment it is set).
+        anchor: int | None = None
+        if body.starts_on is not None:
+            anchor = _anchor_epoch(body.starts_on, timezone)
+        elif body.scheduled_task_id is not None:
+            owner_id = None if owner == RESERVED_USER_LOCAL else owner
+            existing = _require_owned(body.scheduled_task_id, owner_id)
+            if existing.rrule == body.rrule:
+                anchor = existing.anchor_epoch
+        return {
+            "rrule": body.rrule,
+            "timezone": timezone,
+            "next_fire_times": _upcoming_fires(body.rrule, timezone, anchor),
+        }
+
     @router.post("/scheduled-tasks")
     async def create_scheduled_task(
         request: Request,
@@ -471,12 +554,13 @@ def create_scheduled_tasks_router(
     ) -> dict[str, Any]:
         """Create a scheduled task and arm it on the live scheduler."""
         owner = _owner(request)
-        _validate_rrule_or_400(body.rrule)
         timezone = body.timezone
         if timezone is None:
             prefs = await asyncio.to_thread(store.get_owner_preferences, owner)
             timezone = prefs.timezone if prefs is not None else "UTC"
         _validate_timezone_or_400(timezone)
+        rrule = body.rrule
+        _validate_rrule_or_400(rrule)
         permission_mode = validate_session_permission_mode(body.permission_mode)
         agent_id = body.agent_id
         if body.parent_session_id is not None and body.agent_type is not None:
@@ -499,7 +583,7 @@ def create_scheduled_tasks_router(
             scheduled_task_id=uuid.uuid4().hex,
             name=body.name,
             prompt=body.prompt,
-            rrule=body.rrule,
+            rrule=rrule,
             user_id=None if owner == RESERVED_USER_LOCAL else owner,
             agent_id=agent_id,
             parent_session_id=body.parent_session_id,
@@ -513,6 +597,9 @@ def create_scheduled_tasks_router(
             workspace=workspace,
             host_id=body.host_id,
             execution_target=body.execution_target,
+            anchor_at=(
+                _anchor_epoch(body.starts_on, timezone) if body.starts_on is not None else None
+            ),
         )
         scheduler = _scheduler(request)
         if scheduler is not None:
@@ -681,11 +768,21 @@ def create_scheduled_tasks_router(
         owner = _owner(request)
         owner_id = None if owner == RESERVED_USER_LOCAL else owner
         existing = _require_owned(scheduled_task_id, owner_id)
-        if body.rrule is not None:
-            _validate_rrule_or_400(body.rrule)
         if body.timezone is not None:
             _validate_timezone_or_400(body.timezone)
         fields = body.model_dump(exclude_unset=True)
+        starts_on = fields.pop("starts_on", None)
+        if starts_on is not None:
+            fields["anchor_at"] = _anchor_epoch(
+                starts_on, fields.get("timezone") or existing.timezone
+            )
+        if not fields:
+            raise OmnigentError(
+                "nothing to update: send at least one field to change",
+                code=ErrorCode.INVALID_INPUT,
+            )
+        if fields.get("rrule") is not None:
+            _validate_rrule_or_400(fields["rrule"])
         target_agent_id = fields.get("agent_id") or existing.agent_id
         agent_changed = target_agent_id != existing.agent_id
         if agent_changed:

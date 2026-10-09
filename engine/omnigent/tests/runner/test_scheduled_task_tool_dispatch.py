@@ -235,6 +235,7 @@ def test_create_tool_schema_makes_workspace_and_host_optional() -> None:
     assert "host_id" not in schema["required"]
     # agent_id is optional: a parent-bound task runs the parent's agent.
     assert set(schema["required"]) == {"name", "prompt", "rrule"}
+    assert "schedule" not in properties
 
 
 def test_update_tool_schema_allows_connected_host_changes() -> None:
@@ -308,3 +309,25 @@ async def test_self_parent_resolves_to_calling_session() -> None:
     assert body is not None
     assert body["parent_session_id"] == "conv_chat"
     assert body["agent_type"] == "researcher"
+
+
+@pytest.mark.asyncio
+async def test_update_forwards_a_new_rrule_and_timezone_and_nothing_else() -> None:
+    # A rule change must reach the server: dropping it would send an empty PATCH.
+    client = _RecordingClient(_Resp(body={"id": "t1"}))
+    await _execute_scheduled_task_tool(
+        "sys_scheduled_task_update",
+        json.dumps(
+            {
+                "scheduled_task_id": _TASK_ID,
+                "rrule": "FREQ=WEEKLY;BYDAY=FR;BYHOUR=17;BYMINUTE=0",
+                "timezone": "Europe/Paris",
+                "schedule": "dropped: the Muse writes the rule itself",
+            }
+        ),
+        server_client=client,
+    )
+    assert client.calls[0][2] == {
+        "rrule": "FREQ=WEEKLY;BYDAY=FR;BYHOUR=17;BYMINUTE=0",
+        "timezone": "Europe/Paris",
+    }
