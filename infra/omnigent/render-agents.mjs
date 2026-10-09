@@ -57,6 +57,8 @@ const MODEL_ENV = "NOVA_CLAUDE_MODEL";
 /** One directory per Sub-agent Type (CONTEXT.md), each a config.yaml template rendered with the
  * bundle's harness keys. */
 const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker", "goal", "teacher"];
+/** The deck kit's layout menu (engine/omnigent/omnigent/superchat/decks/kit/menu.md). */
+const DECK_LAYOUTS_PATH = "../../engine/omnigent/omnigent/superchat/decks/kit/menu.md";
 const GENERATED_HEADER =
   "# GENERATED FILE — do not edit by hand. Edit the matching file under\n" +
   "# infra/omnigent/templates/, then run `node infra/omnigent/render-agents.mjs`.\n\n";
@@ -82,8 +84,15 @@ function indent(text, spaces) {
 function main() {
   const configTemplate = readFileSync(join(here, "templates/config.yaml.tmpl"), "utf8");
   const filesystem = readFileSync(join(here, "templates/filesystem.md"), "utf8").trimEnd();
+  // The layout menu is the deck kit's own file (one source for the prompt and the deck_new
+  // result); the rules around it live in templates/decks.md.
+  const deckLayouts = readFileSync(join(here, DECK_LAYOUTS_PATH), "utf8").trimEnd();
+  const decks = render(readFileSync(join(here, "templates/decks.md"), "utf8"), {
+    DECK_LAYOUTS: deckLayouts,
+  }).trimEnd();
   const agentsMd = render(readFileSync(join(here, "templates/AGENTS.md"), "utf8"), {
     FILESYSTEM: filesystem,
+    DECKS: decks,
   });
 
   for (const bundle of MUSE_BUNDLES) {

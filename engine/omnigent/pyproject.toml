@@ -470,6 +470,8 @@ include = ["omnigent*"]
 "omnigent.resources.examples" = ["*.yaml", "*.sh", "debby/**/*", "polly/**/*"]
 "omnigent.resources.pi_native" = ["*.js"]
 "omnigent.resources.scripts" = ["*.sh"]
+# The deck kit: skeleton, layout vocabulary, templates (themes, licenses) and their embedded fonts.
+"omnigent.superchat.decks" = ["kit/**/*"]
 # include UI assets in build, plus the static API-only landing page served
 # at "/" when no web UI bundle is present
 "omnigent.server" = ["static/web-ui/**/*", "static/api_only_landing.html"]

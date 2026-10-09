@@ -4,3 +4,27 @@ Copyright 2026 the Nova authors
 Nova's 3D illustrations (apps/web/public/illustrations) are from Microsoft's
 Fluent Emoji (https://github.com/microsoft/fluentui-emoji), Copyright (c)
 Microsoft Corporation, licensed under the MIT License.
+
+Nova's decks (slide decks the Muse authors, the deck viewer, and the PowerPoint and PDF export)
+contain portions modified from Open Design (https://github.com/nexu-io/open-design, commit
+802708f), Copyright the Open Design authors, licensed under the Apache License 2.0 (see LICENSE).
+Each ported file carries a "Portions modified from nexu-io/open-design <path>@802708f,
+Apache-2.0; changes: ..." header naming its source file and what changed:
+apps/desktop/src/main/deck-capture.ts and pdf-export.ts (the page-side export logic and print
+rules, infra/sandboxes/computer/deck-export/deck-capture-page.js and nova-deck-export),
+apps/desktop/tests/main/pptx-editable-fidelity, pptx-layered-background and pptx-cjk-typeface
+tests (infra/sandboxes/computer/deck-export/*.test.ts), and packages/contracts/src/prompts/
+deck-framework.ts with runtime/deck-protocol.ts (the deck skeleton and navigation protocol,
+engine/omnigent/omnigent/superchat/decks/kit/skeleton.html).
+
+The PowerPoint export vendors dom-to-pptx 2.0.1 (https://github.com/atharva9167j/dom-to-pptx),
+MIT License, Copyright (c) 2025 Atharva Dharmendra Jagtap and dom-to-pptx contributors, as the
+browser bundle Open Design ships; its license is kept in
+infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/LICENSE.
+
+The deck templates (engine/omnigent/omnigent/superchat/decks/kit/templates) are rewritten from
+MIT-licensed Open Design design templates, each keeping its LICENSE file: Blue Professional and
+Editorial Tri-Tone from zarazhangrui/beautiful-html-templates (Copyright (c) 2026 Zara Zhang),
+and Magazine Mono from op7418/guizang-ppt-skill (Copyright (c) 2026 op7418). Their fonts are
+Latin subsets of Space Grotesk, Inter, Bricolage Grotesque, Instrument Serif, JetBrains Mono and
+Newsreader, each under the SIL Open Font License 1.1 with its license text beside the font files.

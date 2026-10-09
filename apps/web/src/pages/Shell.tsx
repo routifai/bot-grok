@@ -55,6 +55,7 @@ import { useComputer } from "../features/computer/useComputer";
 import { useComputerScreen } from "../features/computer/useComputerScreen";
 import { useComputerStore } from "../features/computer/useComputerStore";
 import { useComputerView } from "../features/computer/useComputerView";
+import { decksExtension } from "../features/decks";
 import { FeedScreen } from "../features/feed";
 import { GoalsScreen } from "../features/goals";
 import { IdeasScreen } from "../features/ideas";
@@ -175,7 +176,7 @@ function NovaPresence({
 const MUSE_CONTENT_PANE = "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
 
 /** What the capabilities built on artifacts add to the panel and the Library cards. */
-const ARTIFACT_EXTENSIONS = [appsExtension, sheetsExtension];
+const ARTIFACT_EXTENSIONS = [appsExtension, sheetsExtension, decksExtension];
 
 export function ShellPage() {
   const { t } = useLingui();

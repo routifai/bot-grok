@@ -66,6 +66,10 @@ msgstr "{0} default"
 msgid "{0} handling"
 msgstr "{0} handling"
 
+#. placeholder {0}: state.file.name
+msgid "{0} is ready"
+msgstr "{0} is ready"
+
 #. placeholder {0}: format(size / 1024)
 msgid "{0} KB"
 msgstr "{0} KB"
@@ -1316,6 +1320,12 @@ msgstr "Couldn't load messaging settings"
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
 
+msgid "Couldn't prepare the PDF. Nothing was changed."
+msgstr "Couldn't prepare the PDF. Nothing was changed."
+
+msgid "Couldn't prepare the PowerPoint. Nothing was changed."
+msgstr "Couldn't prepare the PowerPoint. Nothing was changed."
+
 msgid "Couldn’t reach Nova’s computer. Retrying…"
 msgstr "Couldn’t reach Nova’s computer. Retrying…"
 
@@ -1669,6 +1679,9 @@ msgstr "Executor token"
 msgid "Exit full screen"
 msgstr "Exit full screen"
 
+msgid "Exit present mode"
+msgstr "Exit present mode"
+
 msgid "Expand"
 msgstr "Expand"
 
@@ -1693,6 +1706,12 @@ msgstr "Export renewals"
 
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
+
+msgid "Export to PDF"
+msgstr "Export to PDF"
+
+msgid "Export to PowerPoint"
+msgstr "Export to PowerPoint"
 
 msgid "External conversation"
 msgstr "External conversation"
@@ -2452,6 +2471,9 @@ msgstr "New space"
 msgid "Newer version available, show it"
 msgstr "Newer version available, show it"
 
+msgid "Next slide"
+msgstr "Next slide"
+
 msgid "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 msgstr "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 
@@ -2873,6 +2895,21 @@ msgstr "POST to"
 msgid "Prep me for Thursday's call with Northwind."
 msgstr "Prep me for Thursday's call with Northwind."
 
+msgid "Preparing PDF…"
+msgstr "Preparing PDF…"
+
+msgid "Preparing PowerPoint…"
+msgstr "Preparing PowerPoint…"
+
+msgid "Preparing your PDF. This can take a minute."
+msgstr "Preparing your PDF. This can take a minute."
+
+msgid "Preparing your PowerPoint. This can take a minute."
+msgstr "Preparing your PowerPoint. This can take a minute."
+
+msgid "Present"
+msgstr "Present"
+
 #. placeholder {0}: props.name
 msgid "Preview {0}"
 msgstr "Preview {0}"
@@ -2882,6 +2919,9 @@ msgstr "Preview isn't available for this file type — download it to view it."
 
 msgid "Preview isn't available for this file type."
 msgstr "Preview isn't available for this file type."
+
+msgid "Previous slide"
+msgstr "Previous slide"
 
 msgid "Private"
 msgstr "Private"
@@ -3518,6 +3558,12 @@ msgstr "Slack message"
 
 msgid "Slack not enabled"
 msgstr "Slack not enabled"
+
+msgid "Slide deck"
+msgstr "Slide deck"
+
+msgid "Slides"
+msgstr "Slides"
 
 msgid "Something went wrong before it could start."
 msgstr "Something went wrong before it could start."

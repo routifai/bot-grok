@@ -1,3 +1,5 @@
+import type { Ref } from "react";
+
 const PREVIEW_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'";
 
@@ -31,16 +33,45 @@ function withPreviewDocument(html: string): string {
   return `${meta}${referrer}${PREVIEW_GUARD}${html}`;
 }
 
-function shellDocument(innerHtml: string): string {
+// Opt-in relay for a document that talks to its host (a deck): the preview is nested one frame
+// deep, so its messages would stop at this shell. Only `nova:`-typed messages cross, in both
+// directions, and only from the preview or the host.
+const RELAY_SCRIPT = `<script>
+(function () {
+  var preview = document.getElementById("preview");
+  window.addEventListener("message", function (event) {
+    var data = event.data;
+    if (!data || typeof data !== "object" || typeof data.type !== "string") return;
+    if (data.type.indexOf("nova:") !== 0) return;
+    if (event.source === preview.contentWindow) window.parent.postMessage(data, "*");
+    else if (event.source === window.parent) preview.contentWindow.postMessage(data, "*");
+  });
+})();
+</script>`;
+
+function shellDocument(innerHtml: string, relay: boolean): string {
   const payload = embedScriptString(innerHtml);
-  return `<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="${SHELL_CSP}"><meta name="referrer" content="no-referrer"><style>html,body{height:100%;margin:0}iframe{width:100%;height:100%;border:0;background:#fff}</style><iframe id="preview" sandbox="allow-scripts" referrerpolicy="no-referrer" csp="${PREVIEW_CSP}"></iframe><script>document.getElementById("preview").srcdoc=${payload};</script>`;
+  return `<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="${SHELL_CSP}"><meta name="referrer" content="no-referrer"><style>html,body{height:100%;margin:0}iframe{width:100%;height:100%;border:0;background:#fff}</style><iframe id="preview" sandbox="allow-scripts" referrerpolicy="no-referrer" csp="${PREVIEW_CSP}"></iframe><script>document.getElementById("preview").srcdoc=${payload};</script>${relay ? RELAY_SCRIPT : ""}`;
 }
 
-export function SandboxedHtmlViewer({ html, title }: { html: string; title: string }) {
+export function SandboxedHtmlViewer({
+  html,
+  title,
+  relay = false,
+  frameRef,
+}: {
+  html: string;
+  title: string;
+  /** Pass `nova:` messages between the host and the document (decks). */
+  relay?: boolean;
+  /** The outer frame, so the host can post to and recognise its window. */
+  frameRef?: Ref<HTMLIFrameElement>;
+}) {
   return (
     <iframe
+      ref={frameRef}
       title={title}
-      srcDoc={shellDocument(withPreviewDocument(html))}
+      srcDoc={shellDocument(withPreviewDocument(html), relay)}
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       className="h-full w-full border-0 bg-white"

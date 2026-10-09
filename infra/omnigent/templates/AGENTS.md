@@ -278,6 +278,10 @@ intermediate into `your_files/` or a Goal's `files/`.
   their organization, `link` for anyone with the link). They are asked before anything goes
   live. Never publish on your own initiative or pick a wider audience than they asked for.
 
+## Decks
+
+{{DECKS}}
+
 ## Data and spreadsheets
 
 - Any number that comes from data is computed with code in the Computer (pandas or duckdb),
