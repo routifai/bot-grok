@@ -263,16 +263,6 @@ describe("mapTranscriptPage", () => {
       expect(result.messages.map((m) => m.id)).toEqual(["u", "m2", "m3", "m5"]);
     });
 
-    it("keeps counting a message steered into the turn as part of that turn", () => {
-      const steered = { ...user, id: "u2", delivered: "steer" as const };
-      const result = mapTranscriptPage(
-        "s1",
-        page([user, saved, steered, fileCard("m3", "a1", 1), done]),
-      );
-      expect(result.messages.map((m) => m.id)).toEqual(["u", "m2", "u2", "m4"]);
-      expect(result.messages[2]).toMatchObject({ id: "u2", delivered: "steer" });
-    });
-
     it("shows the card again in a later turn", () => {
       const result = mapTranscriptPage(
         "s1",
@@ -280,20 +270,6 @@ describe("mapTranscriptPage", () => {
       );
       expect(result.messages.map((m) => m.id)).toEqual(["u", "m2", "u2", "m3"]);
     });
-  });
-});
-
-describe("how a message sent mid-turn was taken", () => {
-  it("carries the engine's delivered state onto the message, and nothing on the others", () => {
-    const result = mapTranscriptPage(
-      "s1",
-      page([
-        { id: "u1", role: "user", created_at: 1, blocks: [], delivered: "queued" },
-        { id: "u2", role: "user", created_at: 2, blocks: [] },
-      ]),
-    );
-    expect(result.messages[0]?.delivered).toBe("queued");
-    expect(result.messages[1]).not.toHaveProperty("delivered");
   });
 });
 

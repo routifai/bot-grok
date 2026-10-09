@@ -2487,7 +2487,7 @@ class TestStreamEventStreaming(unittest.TestCase):
             # which the spec's ``skills:`` field is the proper knob for.
             self.assertEqual(
                 query_calls[0]["extra_args"],
-                {"no-session-persistence": None, "replay-user-messages": None},
+                {"no-session-persistence": None},
             )
             # Skill remains available for configured skills; ToolSearch
             # keeps large MCP definitions deferred until they are needed.
@@ -6025,24 +6025,27 @@ def test_find_system_claude_delegates_to_shared_resolver(monkeypatch) -> None:
     assert captured == {"name": "claude", "env_var": "OMNIGENT_CLAUDE_PATH"}
 
 
-def test_claude_sdk_claims_live_message_queue() -> None:
-    """ClaudeSDKExecutor steers a running turn (see tests/inner/test_claude_sdk_steer.py).
+def test_claude_sdk_does_not_claim_live_message_queue() -> None:
+    """ClaudeSDKExecutor must not advertise live message queue support.
 
-    The one-turn-behind desync of issue #3472 came from writing to the CLI while nobody
-    read the extra answer; the stream now reads on until every pushed message is answered.
+    query() queues a new turn on stdin rather than injecting into the active
+    turn, so returning True from enqueue_session_message caused a permanent
+    one-turn-behind desync (issue #3472). The executor must return False from
+    both methods so the adapter keeps the message buffered and delivers it as
+    a continuation turn after the active turn ends.
     """
     from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
 
     executor = ClaudeSDKExecutor()
-    assert executor.supports_live_message_queue() is True
+    assert executor.supports_live_message_queue() is False
 
 
 @pytest.mark.asyncio
 async def test_enqueue_session_message_returns_false_without_queuing() -> None:
-    """With no turn running, enqueue_session_message returns False and never calls query().
+    """enqueue_session_message must return False and never call query().
 
-    A write to a CLI whose answer nobody reads is the desync from issue #3472; only a
-    running turn has a steer window (tests/inner/test_claude_sdk_steer.py).
+    Calling query() while a turn is active queues a new turn, not an
+    in-turn injection, which produces the desync from issue #3472.
     """
     from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
 

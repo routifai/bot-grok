@@ -54,14 +54,6 @@ export const FORK_ANCHOR_INVALID = "FORK_ANCHOR_INVALID";
 export const FamilyEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("open") }),
   z.object({ type: z.literal("messageDone"), chatId: z.string(), itemId: z.string() }),
-  /** A message the person sent during a turn was steered into it or is waiting for the next one
-   * (`delivered`: `steer` | `queued` | `turn`); its transcript message says which. */
-  z.object({
-    type: z.literal("messageDelivery"),
-    chatId: z.string(),
-    itemId: z.string(),
-    delivered: z.string(),
-  }),
   /** A turn in this chat ended (completed, failed, incomplete or cancelled); a failure's
    * error note is already in the transcript. */
   z.object({ type: z.literal("turnDone"), chatId: z.string(), status: z.string() }),
