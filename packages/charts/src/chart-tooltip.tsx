@@ -346,9 +346,8 @@ function formatTooltipValue(
   if (percent) {
     return formatPercentShare(value, shareBase);
   }
-  return valueFormatter
-    ? valueFormatter(value)
-    : formatChartValue(value, valueFormat, { compact: true });
+  // The tooltip is where a value is read exactly: the full number, not the axis's "5M".
+  return valueFormatter ? valueFormatter(value) : formatChartValue(value, valueFormat);
 }
 
 function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key: string) {
