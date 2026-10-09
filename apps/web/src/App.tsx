@@ -22,6 +22,7 @@ import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { IntegrationSetupPage } from "./pages/IntegrationSetup";
 import { LocalSettingsPage } from "./pages/LocalSettings";
 import { McpOAuthCallbackPage } from "./pages/McpOAuthCallback";
+import { isPendingApproval, PendingApprovalPage } from "./pages/PendingApproval";
 import { ShellPage } from "./pages/Shell";
 
 const AuthPage = lazy(() =>
@@ -106,6 +107,7 @@ function SessionApp() {
   }
 
   const user = session.data?.user;
+  if (isPendingApproval(user)) return <PendingApprovalPage refetch={session.refetch} />;
   return (
     <div className="h-full" data-nova-app-state="ready">
       {/* Signed out, every page wears the night welcome surface, so the loading frame does too. */}

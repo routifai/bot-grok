@@ -19,12 +19,13 @@ test("restricted signup waits for mailbox verification", async ({ page }, testIn
   await page.getByLabel("Password", { exact: true }).fill("password12");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  await expect(page.getByLabel("Code")).toBeVisible();
   await expect(page).toHaveURL(/\/sign-up\?verify=email$/);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   await captureScreenshot(page, testInfo, "signup-verification-required");
-  await page.getByRole("link", { name: "Back to sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
+  await page.getByRole("button", { name: "Use a different email" }).click();
+  await expect(page.getByLabel("Email")).toBeVisible();
 });
 
 test("logout protects bot deep links and sign-in restores the session", async ({

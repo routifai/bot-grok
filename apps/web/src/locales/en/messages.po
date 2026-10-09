@@ -433,6 +433,9 @@ msgstr "Allow once"
 msgid "Allow purchase actions without asking"
 msgstr "Allow purchase actions without asking"
 
+msgid "Allowed domains"
+msgstr "Allowed domains"
+
 msgid "Allowed models"
 msgstr "Allowed models"
 
@@ -487,6 +490,9 @@ msgstr "API keys"
 
 msgid "Appearance"
 msgstr "Appearance"
+
+msgid "Approval"
+msgstr "Approval"
 
 msgid "Approvals"
 msgstr "Approvals"
@@ -866,6 +872,9 @@ msgstr "Close user settings"
 msgid "Close voice settings"
 msgstr "Close voice settings"
 
+msgid "Closed"
+msgstr "Closed"
+
 msgid "Code"
 msgstr "Code"
 
@@ -995,6 +1004,12 @@ msgstr "Continue in Background"
 msgid "Continue with email"
 msgstr "Continue with email"
 
+msgid "Continue with Google"
+msgstr "Continue with Google"
+
+msgid "Continue with Microsoft"
+msgstr "Continue with Microsoft"
+
 msgid "Conversation"
 msgstr "Conversation"
 
@@ -1016,6 +1031,9 @@ msgstr "Could not add"
 msgid "Could not add MCP server"
 msgstr "Could not add MCP server"
 
+msgid "Could not approve this person."
+msgstr "Could not approve this person."
+
 msgid "Could not approve this server"
 msgstr "Could not approve this server"
 
@@ -1030,6 +1048,9 @@ msgstr "Could not change the default model"
 
 msgid "Could not change this account."
 msgstr "Could not change this account."
+
+msgid "Could not change this."
+msgstr "Could not change this."
 
 msgid "Could not check teaching status. Refresh the view to continue."
 msgstr "Could not check teaching status. Refresh the view to continue."
@@ -1170,6 +1191,9 @@ msgstr "Could not load models."
 msgid "Could not load people."
 msgstr "Could not load people."
 
+msgid "Could not load signups."
+msgstr "Could not load signups."
+
 msgid "Could not load skill"
 msgstr "Could not load skill"
 
@@ -1229,6 +1253,9 @@ msgstr "Could not reach the server"
 
 msgid "Could not reach this model server"
 msgstr "Could not reach this model server"
+
+msgid "Could not reject this person."
+msgstr "Could not reject this person."
 
 msgid "Could not remove"
 msgstr "Could not remove"
@@ -1322,6 +1349,9 @@ msgstr "Could not save. Try again."
 
 msgid "Could not search catalog"
 msgstr "Could not search catalog"
+
+msgid "Could not send a code"
+msgstr "Could not send a code"
 
 msgid "Could not send reset email"
 msgstr "Could not send reset email"
@@ -1606,6 +1636,9 @@ msgstr "Docker limits access to your computer for added security. Using {hostLab
 msgid "Documents"
 msgstr "Documents"
 
+msgid "Domain"
+msgstr "Domain"
+
 msgid "Don’t have an account?"
 msgstr "Don’t have an account?"
 
@@ -1668,6 +1701,9 @@ msgstr "Edited by you"
 
 msgid "Email"
 msgstr "Email"
+
+msgid "Email me a code"
+msgstr "Email me a code"
 
 msgid "Email the file to Maya"
 msgstr "Email the file to Maya"
@@ -2147,6 +2183,12 @@ msgstr "Interval amount"
 
 msgid "Interval unit"
 msgstr "Interval unit"
+
+msgid "Invite"
+msgstr "Invite"
+
+msgid "Invited emails"
+msgstr "Invited emails"
 
 msgid "Isolated preview"
 msgstr "Isolated preview"
@@ -2651,6 +2693,9 @@ msgstr "No messages with {peerBotName} yet."
 
 msgid "No model catalog is available."
 msgstr "No model catalog is available."
+
+msgid "No one is waiting."
+msgstr "No one is waiting."
 
 msgid "No plan yet"
 msgstr "No plan yet"
@@ -3221,6 +3266,9 @@ msgstr "Refresh view"
 msgid "Refreshing…"
 msgstr "Refreshing…"
 
+msgid "Reject"
+msgstr "Reject"
+
 msgid "Release"
 msgstr "Release"
 
@@ -3340,6 +3388,12 @@ msgstr "Research & writing"
 
 msgid "Research something for me"
 msgstr "Research something for me"
+
+msgid "Resend code"
+msgstr "Resend code"
+
+msgid "Resend in {cooldown}s"
+msgstr "Resend in {cooldown}s"
 
 msgid "Reset"
 msgstr "Reset"
@@ -3667,11 +3721,17 @@ msgstr "SIDE CHATS & FORKS"
 msgid "Sign in"
 msgstr "Sign in"
 
+msgid "Sign out"
+msgstr "Sign out"
+
 msgid "Sign up"
 msgstr "Sign up"
 
 msgid "Sign-in for {host}"
 msgstr "Sign-in for {host}"
+
+msgid "Signups"
+msgstr "Signups"
 
 msgid "Size"
 msgstr "Size"
@@ -3932,6 +3992,9 @@ msgstr "Text color"
 msgid "That change can't be made exactly by hand."
 msgstr "That change can't be made exactly by hand."
 
+msgid "That code did not work"
+msgstr "That code did not work"
+
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
@@ -4174,8 +4237,14 @@ msgstr "Usage"
 msgid "Use {hostLabel}"
 msgstr "Use {hostLabel}"
 
+msgid "Use a different email"
+msgstr "Use a different email"
+
 msgid "Use a found model"
 msgstr "Use a found model"
+
+msgid "Use a password"
+msgstr "Use a password"
 
 msgid "Use default guidance"
 msgstr "Use default guidance"
@@ -4237,6 +4306,9 @@ msgstr "Voice"
 
 msgid "Wait for Nova to finish, then clear."
 msgstr "Wait for Nova to finish, then clear."
+
+msgid "Waiting for approval"
+msgstr "Waiting for approval"
 
 msgid "Waiting for sign-in…"
 msgstr "Waiting for sign-in…"
@@ -4333,6 +4405,9 @@ msgstr "When to run"
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
 
+msgid "Who can join"
+msgstr "Who can join"
+
 msgid "Who can open it"
 msgstr "Who can open it"
 
@@ -4390,6 +4465,9 @@ msgstr "You can close this tab if it does not redirect automatically."
 
 msgid "You can close this window."
 msgstr "You can close this window."
+
+msgid "You can come back later."
+msgstr "You can come back later."
 
 msgid "You changed {changedCount} cells on {sheetName}. Nova sees this before its next reply."
 msgstr "You changed {changedCount} cells on {sheetName}. Nova sees this before its next reply."
