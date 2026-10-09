@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from omnigent.errors import OmnigentError
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat import prompt_prefix
 from omnigent.superchat.artifacts import table as tbl
+from omnigent.superchat.artifacts import writeback as wbmod
 from omnigent.superchat.artifacts.routes import create_artifacts_router
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionConflictError
 from omnigent.superchat.artifacts.types import KIND_MIME
@@ -370,6 +372,111 @@ def test_pending_edits_marks_superseded_versions_not_written_back(env, tmp_path:
         f"/v1/artifacts/pending-edits?parent_session_id={_SESSION}", headers=H
     ).json()["edits"]
     assert edit["write_back"] is False
+
+
+# ------------------------------------------------------------------------ recalculation
+
+
+def _manual_xlsx(store, client, tmp_path: Path):
+    target = tmp_path / "q3.xlsx"
+    v1 = _save(store, _xlsx(), "q3.xlsx", source_path=str(target))
+    body = {"base_version": 1, "edits": [{"sheet": "Sales", "row": 1, "col": 1, "value": 7}]}
+    assert client.patch(f"/v1/artifacts/{v1.id}/table", json=body, headers=H).status_code == 200
+    return target
+
+
+def _fake_recalc(
+    tmp_path: Path, monkeypatch, *, set_value: int | None, exit_code: int = 0
+) -> Path:
+    """A stand-in nova-recalc: fills the formula cell's cached value (or does nothing)."""
+    calls = tmp_path / "calls.txt"
+    script = tmp_path / "fake-recalc"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{calls}"\n'
+        + (
+            f'"{sys.executable}" - "$3" <<\'PY\'\n'
+            "import sys, zipfile, io\n"
+            "p = sys.argv[1]\n"
+            "src = zipfile.ZipFile(p)\n"
+            "out = io.BytesIO()\n"
+            "with zipfile.ZipFile(out, 'w') as z:\n"
+            "    for i in src.infolist():\n"
+            "        d = src.read(i.filename)\n"
+            "        if i.filename == 'xl/worksheets/sheet1.xml':\n"
+            f"            d = d.replace(b'<f>B2*2</f>', b'<f>B2*2</f><v>{set_value}</v>')\n"
+            "        z.writestr(i, d)\n"
+            "open(p, 'wb').write(out.getvalue())\n"
+            "PY\n"
+            if set_value is not None
+            else ""
+        )
+        + f"exit {exit_code}\n"
+    )
+    script.chmod(0o755)
+    monkeypatch.setattr(wbmod, "RECALC_COMMAND", str(script))
+    return calls
+
+
+def test_writeback_recalculates_xlsx_and_saves_new_ai_version(
+    env, tmp_path: Path, monkeypatch
+) -> None:
+    store, client = env
+    target = _manual_xlsx(store, client, tmp_path)
+    calls = _fake_recalc(tmp_path, monkeypatch, set_value=14)
+    server = _FakeServer(client).client
+    notes = asyncio.run(deliver_manual_edits(server, _SESSION, roots=[tmp_path.resolve()]))
+    assert calls.read_text().split()[-1] == str(target)
+    newest = store.list_latest(user_id="alice")[0][0]
+    assert newest.version == 3
+    assert newest.origin == "ai" and newest.edit_summary == "Recalculated formulas"
+    assert newest.source_path == str(target)
+    assert tbl.read_table(store.read(newest), "xlsx")[0]["rows"][1][2]["v"] == 14
+    assert target.read_bytes() == store.read(newest)  # workspace holds the saved version
+    assert "v1 → v2" in notes[0] and "recalculated (saved as v3)" in notes[0]
+    # Not pending again, and a second turn stays quiet and does not recalculate again.
+    assert store.pending_manual(user_id="alice", parent_session_id=_SESSION) == []
+    assert asyncio.run(deliver_manual_edits(server, _SESSION, roots=[tmp_path.resolve()])) == []
+    assert len(calls.read_text().splitlines()) == 1
+
+
+def test_writeback_recalc_without_value_change_restores_manual_bytes(
+    env, tmp_path: Path, monkeypatch
+) -> None:
+    store, client = env
+    target = _manual_xlsx(store, client, tmp_path)
+    manual = store.read(store.list_latest(user_id="alice")[0][0])
+    _fake_recalc(tmp_path, monkeypatch, set_value=None)
+    notes = asyncio.run(
+        deliver_manual_edits(_FakeServer(client).client, _SESSION, roots=[tmp_path.resolve()])
+    )
+    assert target.read_bytes() == manual and store.list_latest(user_id="alice")[0][1] == 2
+    assert "recalculated" not in notes[0] and "Treat v2 as current" in notes[0]
+
+
+def test_writeback_recalc_failure_or_missing_helper_is_silent(
+    env, tmp_path: Path, monkeypatch
+) -> None:
+    store, client = env
+    target = _manual_xlsx(store, client, tmp_path)
+    manual = store.read(store.list_latest(user_id="alice")[0][0])
+    _fake_recalc(tmp_path, monkeypatch, set_value=14, exit_code=1)
+    notes = asyncio.run(
+        deliver_manual_edits(_FakeServer(client).client, _SESSION, roots=[tmp_path.resolve()])
+    )
+    assert target.read_bytes() == manual and "Treat v2 as current" in notes[0]
+    assert store.list_latest(user_id="alice")[0][1] == 2
+
+    store2_target = tmp_path / "missing" / "b.xlsx"
+    store2_target.parent.mkdir()
+    v1 = _save(store, _xlsx(), "b.xlsx", source_path=str(store2_target))
+    body = {"base_version": 1, "edits": [{"sheet": "Sales", "row": 1, "col": 1, "value": 8}]}
+    client.patch(f"/v1/artifacts/{v1.id}/table", json=body, headers=H)
+    monkeypatch.setattr(wbmod, "RECALC_COMMAND", "definitely-not-installed")
+    notes = asyncio.run(
+        deliver_manual_edits(_FakeServer(client).client, _SESSION, roots=[tmp_path.resolve()])
+    )
+    assert "Treat v2 as current" in notes[0] and store2_target.is_file()
 
 
 # ----------------------------------------------------------------------------- range

@@ -292,6 +292,8 @@ intermediate into `your_files/` or a Goal's `files/`.
 - When the person gives you a CSV or XLSX, or asks for a table, deliver a real file with
   `artifact_save`: CSV for raw data; XLSX for anything presented, with live formulas, number
   formats and a frozen header row. Save charts as PNG next to the file.
+- After writing an XLSX that has formulas, run `nova-recalc <file>` in the Computer before
+  `artifact_save`, so the saved file carries real computed values (it recalculates in place).
 - When editing the person's sheet, keep its structure and change only what was asked.
 - If a note says the person edited a sheet by hand, their version is the current one.
 

@@ -120,6 +120,7 @@ def create_artifacts_router(
         name: str = Query(min_length=1, max_length=512),
         title: str | None = Query(default=None, max_length=256),
         source_path: str | None = Query(default=None, max_length=1024),
+        edit_summary: str | None = Query(default=None, max_length=200),
     ) -> dict[str, Any]:
         """Save the request body as the next version of ``name`` in a session the caller owns."""
         owner = _owner(request)
@@ -151,6 +152,7 @@ def create_artifacts_router(
             mime=KIND_MIME[kind],
             data=data,
             source_path=source_path,
+            edit_summary=edit_summary,
         )
         return artifact_to_response(item, versions=item.version)
 
