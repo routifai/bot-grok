@@ -14,16 +14,23 @@ const rules = [
   "**Profile facts**",
   "**Standing instructions**",
   "permanence signal",
-  "Default to not saving.",
   "`replaces_claim_id`",
-  "save its negation",
   // Clarification and follow-ups.
   "`ask_clarification`",
   "only when the request is\n  genuinely ambiguous",
   "`suggest_follow_ups`",
+  "never `render_card`",
+  "never approval for an\n  action in their name",
   "Never generic\n  filler",
-  // Natural-language schedules.
-  "pass those words as the create call's `schedule` argument",
+  // Recurring tasks: the Muse writes the rule, confirms the concrete times, asks when unsure.
+  "write the `rrule` yourself",
+  "`next_fire_times`",
+  "Never guess silently",
+  "For a followed topic only, never ask about day",
+  // Memory: profile facts always saved, instructions gated, no stored negation.
+  "Always save them",
+  "never store a negation",
+  '`explicitness: "inferred"`',
 ];
 
 describe("Muse prompt rules", () => {
