@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import io
+import os
 import threading
 import time
 from pathlib import Path
+
+import pytest
 
 from omnigent.runner.knowledge.db import STATE_QUEUED, STATE_READY
 from omnigent.runner.knowledge.indexer import Indexer
@@ -40,8 +43,14 @@ def _xlsx() -> bytes:
     return buffer.getvalue()
 
 
-def test_csv_profile_has_columns_types_rows_and_a_five_row_preview() -> None:
-    (sheet,) = profile_table("csv", CSV.encode(), name="s.csv").sheets
+def _file(tmp_path: Path, name: str, data: bytes | str) -> Path:
+    path = tmp_path / name
+    path.write_bytes(data if isinstance(data, bytes) else data.encode())
+    return path
+
+
+def test_csv_profile_has_columns_types_rows_and_a_five_row_preview(tmp_path: Path) -> None:
+    (sheet,) = profile_table("csv", _file(tmp_path, "s.csv", CSV), name="s.csv").sheets
     assert [(c.name, c.type) for c in sheet.columns] == [
         ("id", "integer"),
         ("region", "text"),
@@ -51,8 +60,8 @@ def test_csv_profile_has_columns_types_rows_and_a_five_row_preview() -> None:
     assert sheet.rows == 40 and len(sheet.preview) == 5 and sheet.preview[0][:2] == ["1", "north"]
 
 
-def test_xlsx_profile_is_per_sheet() -> None:
-    sales, costs = profile_table("xlsx", _xlsx()).sheets
+def test_xlsx_profile_is_per_sheet(tmp_path: Path) -> None:
+    sales, costs = profile_table("xlsx", _file(tmp_path, "b.xlsx", _xlsx())).sheets
     assert (sales.name, sales.rows) == ("Sales", 2)
     assert [(c.name, c.type) for c in sales.columns] == [
         ("region", "text"),
@@ -113,7 +122,7 @@ def test_tables_indexed_as_rows_by_an_older_version_are_read_again_as_a_schema(
     from omnigent.runner.knowledge.chunking import Chunk
 
     indexer.db.replace_chunks(row.file_id, [Chunk(1, 1, "csv", "", "id | north | 1.5")])
-    indexer.db.set_meta("tabular_schema_only", None)
+    indexer.db.update_file(row.file_id, parser_version=1)  # read by the old reader
     reopened = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
     assert reopened.db.file_by_path(f"{UPLOADS}/sales.csv").state == STATE_QUEUED
     run_all(reopened)
@@ -194,3 +203,204 @@ def test_search_names_the_files_still_indexing_and_multi_get_reports_them(tmp_pa
     assert "still being indexed" in got["note"]
     run_all(indexer)
     assert "not_ready" not in indexer.multi_get("*.md")
+
+
+# ---------------------------------------------------------------------------- real sheets
+
+
+def _book(tmp_path: Path, build) -> Path:
+    from openpyxl import Workbook
+
+    book = Workbook()
+    build(book)
+    path = tmp_path / "book.xlsx"
+    book.save(path)
+    return path
+
+
+def test_the_header_is_found_below_a_title_and_the_raw_top_rows_are_kept(tmp_path: Path) -> None:
+    def build(book) -> None:
+        sheet = book.active
+        sheet.append(["Quarterly report"])
+        sheet.append([])
+        sheet.append(["Confidential"])
+        sheet.append(["region", "units", "price", "day"])
+        sheet.append(["north", 3, 2.5, "2026-01-01"])
+
+    profile = profile_table("xlsx", _book(tmp_path, build))
+    (sheet,) = profile.sheets
+    assert [c.name for c in sheet.columns] == ["region", "units", "price", "day"]
+    assert sheet.header_row == 3 and sheet.rows == 1
+    assert sheet.top_rows == [["Quarterly report"], ["Confidential"]]
+    from omnigent.runner.knowledge.tabular import manifest_markdown
+
+    text = manifest_markdown(profile, "book.xlsx")
+    assert "Quarterly report" in text and "The header is row 3" in text
+
+
+def test_a_wide_sheet_reports_its_real_size_and_every_name_stays_searchable(
+    tmp_path: Path,
+) -> None:
+    names = [f"metric_{i:03d}" for i in range(300)]
+
+    def build(book) -> None:
+        book.active.append(names)
+        book.active.append(list(range(300)))
+        for i in range(14):
+            book.create_sheet(f"extra {i}").append(["a"])
+
+    profile = profile_table("xlsx", _book(tmp_path, build))
+    assert len(profile.sheets) == 10 and profile.sheets_total == 15
+    wide = profile.sheets[0]
+    assert wide.columns_total == 300 and len(wide.columns) == 60
+    from omnigent.runner.knowledge.tabular import manifest_markdown, schema_cards
+
+    text = manifest_markdown(profile, "book.xlsx")
+    assert "Columns (300)" in text and "and 240 more columns" in text
+    assert "and 5 more not shown" in text and "15 sheet(s)" in text
+    cards = "\n".join(c.text for c in schema_cards(profile, "book.xlsx"))
+    assert "metric_299" in cards and "extra 13" in cards  # beyond what the manifest shows
+    assert all(len(c.text) <= 1600 for c in schema_cards(profile, "book.xlsx"))
+
+
+def test_formula_columns_without_cached_values_are_named_not_called_empty(tmp_path: Path) -> None:
+    def build(book) -> None:
+        sheet = book.active
+        sheet.append(["item", "qty", "price", '=A1&"-total"'])
+        for i in range(1, 4):
+            sheet.append([f"x{i}", i, 2.0, f"=B{i + 1}*C{i + 1}"])
+
+    (sheet,) = profile_table("xlsx", _book(tmp_path, build)).sheets
+    types = {c.name: c.type for c in sheet.columns}
+    assert types["item"] == "text" and types["qty"] == "integer"
+    assert types['=A1&"-total"'] == "formula (not computed)"
+
+
+def test_a_utf16_csv_is_read_with_its_bom(tmp_path: Path) -> None:
+    raw = "id;région;montant\n1;nord;1,5\n2;sud;2,25\n".encode("utf-16")
+    (sheet,) = profile_table("csv", _file(tmp_path, "u.csv", raw), name="u.csv").sheets
+    assert [c.name for c in sheet.columns] == ["id", "région", "montant"]
+    assert sheet.columns[2].type == "number (decimal comma)" and sheet.rows == 2
+
+
+def test_leading_zero_ids_stay_text_and_big_cells_do_not_break_the_read(tmp_path: Path) -> None:
+    big = "x" * 300_000
+    data = f"zip,code,notes\n00123,A,{big}\n04567,B,short\n"
+    (sheet,) = profile_table("csv", _file(tmp_path, "z.csv", data), name="z.csv").sheets
+    assert [(c.name, c.type) for c in sheet.columns][:2] == [("zip", "text"), ("code", "text")]
+    assert sheet.rows == 2 and sheet.preview[0][0] == "00123"
+
+
+def test_a_csv_is_streamed_and_its_row_count_is_capped(tmp_path: Path, monkeypatch) -> None:
+    from omnigent.runner.knowledge import tabular
+
+    monkeypatch.setattr(tabular, "MAX_SCAN_ROWS", 500)
+    path = _file(tmp_path, "big.csv", "a,b\n" + "\n".join(f"{i},x" for i in range(5000)))
+    (sheet,) = profile_table("csv", path, name="big.csv").sheets
+    assert (sheet.rows, sheet.rows_note) == (500, "at_least")
+    assert "at least 500" in tabular.manifest_markdown(TableProfileOf(sheet), "big.csv")
+
+
+def TableProfileOf(sheet):
+    from omnigent.runner.knowledge.tabular import TableProfile
+
+    return TableProfile([sheet], [sheet.name])
+
+
+def test_a_workbook_that_unpacks_to_too_much_is_refused_before_it_is_opened(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from omnigent.runner.knowledge import tabular
+
+    monkeypatch.setattr(tabular, "MAX_UNPACKED_BYTES", 1000)
+    with pytest.raises(ValueError, match="too large"):
+        profile_table("xlsx", _file(tmp_path, "b.xlsx", _xlsx()))
+
+
+def test_a_value_is_not_a_zero_sum_trap_zeros_csv(tmp_path: Path) -> None:
+    (sheet,) = profile_table(
+        "csv", _file(tmp_path, "zeros.csv", "id,amount\n001,10\n002,20\n010,30\n"), name="z.csv"
+    ).sheets
+    assert sheet.columns[0].type == "text" and sheet.columns[1].type == "integer"
+
+
+# ---------------------------------------------------------------------------- hashes and find
+
+
+def test_find_upload_matches_by_content_and_rehashes_on_disk(tmp_path: Path) -> None:
+    import hashlib
+
+    indexer, ws = build_indexer(tmp_path)
+    data = b"the same bytes\n"
+    _put(ws, f"{UPLOADS}/a.txt", data)
+    _put(ws, "your_files/elsewhere.txt", data)  # not an upload: never offered
+    indexer.scan()
+    run_all(indexer)
+    digest = hashlib.sha256(data).hexdigest()
+    found = indexer.find_upload(digest)
+    assert found and found["path"] == f"{UPLOADS}/a.txt"
+    assert indexer.find_upload(hashlib.sha256(b"other").hexdigest()) is None
+    # The file changed after it was indexed (same size and mtime preserved): the stored hash is
+    # only a lead, so the answer must be no.
+    path = ws / UPLOADS / "a.txt"
+    stat = path.stat()
+    path.write_bytes(b"different byte\n")
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert indexer.find_upload(digest) is None
+
+
+def test_the_hash_is_kept_for_files_indexed_before_hashes_existed(tmp_path: Path) -> None:
+    import hashlib
+
+    indexer, ws = build_indexer(tmp_path)
+    _put(ws, f"{UPLOADS}/a.txt", "old\n")
+    indexer.scan()
+    run_all(indexer)
+    row = indexer.db.file_by_path(f"{UPLOADS}/a.txt")
+    indexer.db.update_file(row.file_id, sha256=None)
+    indexer.scan()
+    assert (
+        indexer.db.file_by_path(f"{UPLOADS}/a.txt").sha256 == hashlib.sha256(b"old\n").hexdigest()
+    )
+
+
+def test_only_files_read_by_an_older_reader_are_read_again(tmp_path: Path) -> None:
+    indexer, ws = build_indexer(tmp_path)
+    _put(ws, f"{UPLOADS}/a.txt", "text\n")
+    _put(ws, f"{UPLOADS}/t.csv", CSV)
+    indexer.scan()
+    run_all(indexer)
+    for name in ("a.txt", "t.csv"):
+        assert indexer.db.file_by_path(f"{UPLOADS}/{name}").parser_version >= 1
+    reopened = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
+    assert {r.state for r in reopened.db.files()} == {STATE_READY}  # nothing outdated: no rework
+    csv_row = reopened.db.file_by_path(f"{UPLOADS}/t.csv")
+    reopened.db.update_file(csv_row.file_id, parser_version=1)
+    again = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
+    assert again.db.file_by_path(f"{UPLOADS}/t.csv").state == STATE_QUEUED
+    assert again.db.file_by_path(f"{UPLOADS}/a.txt").state == STATE_READY
+
+
+def test_a_swapped_in_symlink_is_not_followed(tmp_path: Path) -> None:
+    from omnigent.runner.knowledge.fsio import open_nofollow
+
+    target = tmp_path / "secret.txt"
+    target.write_text("secret")
+    link = tmp_path / "link.txt"
+    link.symlink_to(target)
+    with pytest.raises(OSError):
+        open_nofollow(link)
+    with open_nofollow(target) as handle:
+        assert handle.read() == b"secret"
+
+
+def test_stopping_the_service_ends_the_wait_for_an_ingest(tmp_path: Path) -> None:
+    indexer, _ = build_indexer(tmp_path)
+    done = threading.Event()
+    with indexer._ingest_priority():
+        waiter = threading.Thread(target=lambda: (indexer._yield_to_ingest(), done.set()))
+        waiter.start()
+        assert not done.wait(0.2)
+        indexer.stop_event.set()
+        assert done.wait(3)
+    waiter.join()

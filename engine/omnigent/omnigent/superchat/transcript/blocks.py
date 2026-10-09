@@ -26,6 +26,7 @@ Wording stays with the client: nothing here is copy.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -79,8 +80,15 @@ def tool_outputs_by_call_id(items: list[Item]) -> dict[str, str]:
     }
 
 
+_LEGACY_CONTEXT = re.compile(r"<attachment_context>.*?</attachment_context>\n?", re.DOTALL)
+
+
 def item_text(item: Item) -> str:
-    """The text of a message item's ``input_text`` / ``output_text`` parts, joined and trimmed."""
+    """The text of a message item's ``input_text`` / ``output_text`` parts, joined and trimmed.
+
+    A user message stored by an older gateway carried the attached files' text in an
+    ``<attachment_context>`` block; that is document data, not the person's words, so it is cut.
+    """
     content = item.get("content")
     parts = [
         block["text"]
@@ -89,7 +97,10 @@ def item_text(item: Item) -> str:
         and block.get("type") in ("output_text", "input_text")
         and isinstance(block.get("text"), str)
     ]
-    return "\n\n".join(parts).strip()
+    text = "\n\n".join(parts).strip()
+    if item.get("role") == "user" and "<attachment_context>" in text:
+        text = re.sub(r"\n{3,}", "\n\n", _LEGACY_CONTEXT.sub("", text)).strip()
+    return text
 
 
 def _card_payload(payload: Mapping[str, Any]) -> dict[str, Any] | None:

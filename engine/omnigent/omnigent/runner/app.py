@@ -1462,6 +1462,20 @@ def _apply_memory_profile_to_body(body: _JsonObject, block: str | None) -> _Json
     return new_body
 
 
+def _message_texts(content: object) -> list[str]:
+    """Every text part of a message's content (a string, or nested blocks/items)."""
+    if isinstance(content, str):
+        return [content]
+    if isinstance(content, list):
+        return [t for part in content for t in _message_texts(part)]
+    if isinstance(content, dict):
+        text = content.get("text")
+        if isinstance(text, str):
+            return [text]
+        return _message_texts(content.get("content"))
+    return []
+
+
 def _prepend_turn_blocks(body: _JsonObject, blocks: Sequence[str], conv_id: str) -> _JsonObject:
     """Prepend each of *blocks* to *body*'s content in turn (the last ends up first).
 
@@ -9376,8 +9390,13 @@ def create_runner_app(
                 extra={"session_id": conv_id},
             )
 
-    async def _apply_turn_prefix_blocks(body: _JsonObject, conv_id: str) -> _JsonObject:
+    async def _apply_turn_prefix_blocks(
+        body: _JsonObject, conv_id: str, message: _JsonObject | None = None
+    ) -> _JsonObject:
         """Prepend the Super Chat per-turn blocks (Memory Profile, Projects, local time).
+
+        *message* is this turn's own user message: the files it refers to are read in the
+        Computer and their framed text goes in front of it (closest to it), for the harness only.
 
         Called only for ``superside-chat`` turns; the blocks come from the one
         ``superchat.prompt_prefix`` hook, fetched fresh each turn (the SDK's system prompt is
@@ -9385,7 +9404,36 @@ def create_runner_app(
         """
         workspace = await _session_runtime_cwd(conv_id)
         blocks = await turn_prefix_blocks(server_client, conv_id, workspace)
+        blocks = [*await _attachment_blocks(message, conv_id), *blocks]
         return _prepend_turn_blocks(body, blocks, conv_id)
+
+    async def _attachment_blocks(message: _JsonObject | None, conv_id: str) -> list[str]:
+        """The framed text of the files *message* attaches (never stored, never raises)."""
+        if not message:
+            return []
+        try:
+            from omnigent.runner.knowledge.runtime import configure, get_runtime
+            from omnigent.superchat.knowledge.attachment_context import (
+                attachment_context_blocks,
+                references,
+            )
+
+            texts = _message_texts(message.get("content"))
+            if not references(texts):
+                return []
+            if server_client is not None:
+                configure(str(server_client.base_url))
+            runtime = get_runtime()
+            runtime.start()
+            return await attachment_context_blocks(runtime.indexer, texts)
+        except Exception:  # noqa: BLE001 - a file that cannot be read must not fail the turn
+            _logger.warning(
+                "attachment context failed for %s",
+                conv_id,
+                exc_info=True,
+                extra={"session_id": conv_id},
+            )
+            return []
 
     def _discard_comment_relay(session_id: str, relay: ClaudeNativeToolRelay) -> None:
         """Unbind and close *relay*, unless another path already replaced it.
@@ -9938,7 +9986,7 @@ def create_runner_app(
                 [],
             )
         if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
-            harness_body = await _apply_turn_prefix_blocks(harness_body, conv)
+            harness_body = await _apply_turn_prefix_blocks(harness_body, conv, msg_body)
         _content = cast(list[object], harness_body.get("content", []))
         _content_summary = []
         for _ci in _content:

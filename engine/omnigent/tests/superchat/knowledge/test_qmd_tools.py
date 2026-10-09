@@ -139,18 +139,19 @@ def test_status_lists_collections_files_and_the_embedding_mode(tmp_path, monkeyp
     assert status["embeddings"] == {"available": True, "reason": None}
 
 
-def test_ingest_reads_the_file_now_and_hands_back_the_markdown_when_short(
+def test_ingest_reads_the_file_now_and_never_returns_its_text_over_the_relay(
     tmp_path, monkeypatch
 ) -> None:
     runtime = make_runtime(tmp_path, monkeypatch)
     path = runtime.indexer.workspace / "your_files/uploads/2026-10-09/r.pdf"
     path.parent.mkdir(parents=True)
     path.write_bytes(make_pdf([[("Risks", 20), ("Currency exposure.", 11)], [("More.", 11)]]))
-    got = call("files_ingest", path="your_files/uploads/2026-10-09/r.pdf", inline=True)
-    assert got["pages"] == 2 and got["chars"] > 0 and "<!-- page 2 -->" in got["markdown"]
+    got = call("files_ingest", path="your_files/uploads/2026-10-09/r.pdf")
+    assert got["pages"] == 2 and got["chars"] > 0
+    assert "<!-- page 2 -->" in Path(got["markdown_path"]).read_text()
     assert Path(got["markdown_path"]).read_text().count("<!-- page") == 2
     assert Path(got["markdown_path"]).parent.name == "md"
-    assert "markdown" not in call("files_ingest", path="your_files/uploads/2026-10-09/r.pdf")
+    assert "markdown" not in got
     assert call("files_search", query="currency exposure")["results"]  # searchable at once
     assert call("files_ingest", path="your_files/uploads/nope.pdf")["error"]
     assert call("files_ingest", path="your_files/uploads/pic.png")["error"]
@@ -161,7 +162,7 @@ def test_ingest_of_a_long_file_leaves_the_markdown_out_of_the_message(
 ) -> None:
     runtime = make_runtime(tmp_path, monkeypatch)
     put(runtime, "your_files/uploads/2026-10-09/long.txt", "word " * 20000)
-    got = call("files_ingest", path="your_files/uploads/2026-10-09/long.txt", inline=True)
+    got = call("files_ingest", path="your_files/uploads/2026-10-09/long.txt")
     assert "markdown" not in got and got["chars"] > 32000
 
 
@@ -198,6 +199,6 @@ def test_ingest_only_reads_uploads_and_never_leaves_the_folder(tmp_path, monkeyp
         "your_files/uploads/2026-10-09/link.md",  # a symlink out of the folder
         "/etc/hosts",
     ):
-        got = call("files_ingest", path=path, inline=True)
+        got = call("files_ingest", path=path)
         assert "uploaded file" in got.get("error", "") or got.get("error"), path
         assert "markdown" not in got, path

@@ -143,12 +143,10 @@ def test_ingest_wakes_the_computer_and_answers_when_the_file_is_searchable(world
     path = world.runtime.indexer.workspace / "your_files/uploads/2026-10-09/r.pdf"
     path.parent.mkdir(parents=True)
     path.write_bytes(PDF)
-    r = world.client.post(
-        f"{BASE}/ingest", json={"path": "your_files/uploads/2026-10-09/r.pdf", "inline": True}
-    )
+    r = world.client.post(f"{BASE}/ingest", json={"path": "your_files/uploads/2026-10-09/r.pdf"})
     assert r.status_code == 200 and world.awake
     body = r.json()
-    assert body["pages"] == 1 and "Currency exposure" in body["markdown"]
+    assert body["pages"] == 1 and "markdown" not in body
     assert world.runtime.indexer.db.file_by_path("your_files/uploads/2026-10-09/r.pdf").state == (
         "ready"
     )
@@ -207,7 +205,7 @@ def test_ingest_needs_write_access_and_only_reads_uploads(world: World, monkeypa
     )
     assert seen == [2]  # LEVEL_EDIT
     for bad in ("your_files/other.pdf", "your_files/uploads/../x.pdf", "/etc/passwd"):
-        r = world.client.post(f"{BASE}/ingest", json={"path": bad, "inline": True})
+        r = world.client.post(f"{BASE}/ingest", json={"path": bad})
         assert r.status_code == 400, bad
     assert seen == [2]  # refused before any access check or wake
 
@@ -245,3 +243,36 @@ def test_every_relay_call_carries_the_relay_mark(world: World) -> None:
     )
     world.client.get(f"{BASE}/status")
     assert bodies and all(b.get("_omnigent_relay") is True for b in bodies)
+
+
+def test_find_answers_with_the_stored_upload_that_has_these_bytes(world: World) -> None:
+    import hashlib
+
+    path = world.runtime.indexer.workspace / "your_files/uploads/2026-10-09/r.pdf"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(PDF)
+    world.runtime.indexer.scan()
+    from tests.runner.knowledge._fixtures import run_all
+
+    run_all(world.runtime.indexer)
+    digest = hashlib.sha256(PDF).hexdigest()
+    hit = world.client.post(f"{BASE}/find", json={"sha256": digest}).json()
+    assert hit["found"] is True and hit["path"] == "your_files/uploads/2026-10-09/r.pdf"
+    miss = world.client.post(f"{BASE}/find", json={"sha256": "0" * 64}).json()
+    assert miss == {"found": False}
+    assert world.client.post(f"{BASE}/find", json={"sha256": "xyz"}).status_code == 422
+
+
+def test_only_a_silent_runner_is_a_timeout_a_runner_that_cannot_be_reached_is_not(
+    world: World,
+) -> None:
+    import httpx
+
+    async def refuse(_request):
+        raise httpx.ConnectTimeout("no connection")
+
+    world.runner.client = lambda: httpx.AsyncClient(  # type: ignore[method-assign]
+        transport=httpx.MockTransport(refuse), base_url="http://runner"
+    )
+    r = world.client.post(f"{BASE}/search", json={"query": "x"})
+    assert r.status_code == 503 and r.json()["code"] == "runner_unavailable"

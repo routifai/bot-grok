@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from omnigent.tools.base import Tool
 
 #: Handlers the engine's relays call; never offered to a model.
-_INTERNAL_OPS = ("files_ingest", "files_thumbnail", "files_reindex")
+_INTERNAL_OPS = ("files_ingest", "files_thumbnail", "files_reindex", "files_find")
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:

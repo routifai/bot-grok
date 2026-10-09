@@ -17,10 +17,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from omnigent.runner.knowledge.limits import UPLOADS_PREFIX
 from omnigent.superchat.artifacts import ArtifactTool
 
-#: Where composer uploads land in the workspace; the only place an attachment ingest reads from.
-UPLOADS_PREFIX = "your_files/uploads/"
+__all__ = ["UPLOADS_PREFIX"]
+
 #: Tools whose results are passages: the transcript turns their pages into citation chips.
 SEARCH_TOOL_NAMES = ("files_search", "files_vsearch", "files_query")
 KNOWLEDGE_TOOL_NAMES = (

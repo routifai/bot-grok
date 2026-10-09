@@ -31,6 +31,7 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
+from omnigent.runner.knowledge.limits import INGEST_TIMEOUT_S
 from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ, AuthProvider
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
 from omnigent.server.routes._auth_helpers import require_access_and_level as _require_access
@@ -44,8 +45,12 @@ from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
 #: How long a search waits for the Computer to wake and its runner to connect.
 WAKE_TIMEOUT_S = 120.0
 CALL_TIMEOUT_S = 90.0
-#: Reading a big file (parse, embed, thumbnails) is one awaited call.
-INGEST_TIMEOUT_S = 300.0
+#: What a slow answer says, per op.
+_SLOW = {
+    "files_ingest": "Your Computer is taking too long to read this file",
+    "files_query": "The search is taking too long",
+    "files_find": "Your Computer is taking too long to check this file",
+}
 #: Sessions whose last status is remembered, and thumbnails kept for asleep Computers.
 _MAX_SNAPSHOTS = 256
 _MAX_THUMBNAILS = 256
@@ -68,8 +73,14 @@ class IngestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(min_length=1, max_length=1024)
-    #: Also return the Markdown when it is short enough to travel with the message.
-    inline: bool = False
+
+
+class FindBody(BaseModel):
+    """Body of ``POST /sessions/{id}/knowledge/find``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
 
 
 class _Remembered:
@@ -131,10 +142,11 @@ async def _call(
             timeout=timeout,
         )
         payload = resp.json()
-    except httpx.TimeoutException as exc:
-        # The Computer is awake but did not answer in time: not "starting", and not gone.
+    except httpx.ReadTimeout as exc:
+        # Connected, then silent: the Computer is awake but slow. (Not being able to connect or to
+        # get a connection is "unavailable" below, never this.)
         raise OmnigentError(
-            "Your Computer is taking too long to read this file",
+            _SLOW.get(tool, "Your Computer is taking too long to answer"),
             code=ErrorCode.KNOWLEDGE_TIMEOUT,
         ) from exc
     except (httpx.HTTPError, ValueError) as exc:
@@ -300,9 +312,24 @@ def create_knowledge_router(
             client,
             session_id,
             "files_ingest",
-            {"path": body.path, "inline": body.inline},
+            {"path": body.path},
             timeout=INGEST_TIMEOUT_S,
         )
+
+    @router.post("/sessions/{session_id}/knowledge/find")
+    async def find(request: Request, session_id: str, body: FindBody) -> dict[str, Any]:
+        """The searchable upload that already holds exactly these bytes, if the Computer has one.
+
+        The composer asks before it stores a file, so attaching the same file again reuses the
+        stored copy and its index entry. Wakes the Computer (the upload that follows needs it).
+        """
+        conv = await _conversation(request, session_id, LEVEL_EDIT)
+        client = await _woken(request, session_id, conv)
+        found = await _call(client, session_id, "files_find", {"sha256": body.sha256})
+        return {
+            "found": found.get("file_id") is not None,
+            **{k: found[k] for k in ("file_id", "name", "path", "pages") if k in found},
+        }
 
     @router.get("/sessions/{session_id}/knowledge/files/{file_id}/pages/{page}/thumbnail")
     async def thumbnail(request: Request, session_id: str, file_id: str, page: int) -> Response:

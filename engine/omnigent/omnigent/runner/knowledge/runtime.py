@@ -53,7 +53,7 @@ class KnowledgeRuntime:
         self.indexer = Indexer(home, workspace, embedder, reranker=reranker)
         self._idle = idle_seconds
         self._wake = threading.Event()
-        self._stop = threading.Event()
+        self._stop = self.indexer.stop_event
         self._thread: threading.Thread | None = None
         self.scanned = threading.Event()
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import fnmatch
+import hashlib
 import logging
 import os
 import threading
@@ -46,6 +47,8 @@ from omnigent.runner.knowledge.embedder import (
     Embedder,
     EmbeddingUnavailable,
 )
+from omnigent.runner.knowledge.fsio import read_bytes, sha256_of
+from omnigent.runner.knowledge.limits import INGEST_TIMEOUT_S, UPLOADS_PREFIX
 from omnigent.runner.knowledge.markdown import (
     parse_page_spec,
     select_pages,
@@ -59,7 +62,7 @@ from omnigent.runner.knowledge.tabular import (
     TABULAR_KINDS,
     manifest_pages,
     profile_table,
-    schema_card,
+    schema_cards,
 )
 
 _logger = logging.getLogger(__name__)
@@ -67,8 +70,11 @@ _logger = logging.getLogger(__name__)
 #: A file larger than this is not indexed (it shows as failed, with the reason).
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_ATTEMPTS = 3
-#: Longest the background loop holds back for an explicit ingest before it carries on.
-INGEST_YIELD_MAX_SECONDS = 300.0
+#: Longest the background loop holds back for an explicit ingest before it carries on (the same
+#: bound the relay waits for the ingest itself).
+INGEST_YIELD_MAX_SECONDS = INGEST_TIMEOUT_S
+#: How a kind's file is read. A file read by an older version of its kind's reader is read again.
+PARSER_VERSIONS = {"pdf": 1, "txt": 1, "md": 1, "csv": 2, "xlsx": 2}
 _BACKOFF_SECONDS = 30
 DEFAULT_K = 8
 MAX_K = 25
@@ -160,16 +166,15 @@ class Indexer:
         self.embedder = embedder
         self._thumbs = Path(home) / "thumbs"
         self._clock = clock
-        self._requeue_row_chunks()
+        #: Set by the service to end a wait early when it is asked to stop.
+        self.stop_event = threading.Event()
+        self._requeue_outdated()
 
-    def _requeue_row_chunks(self) -> None:
-        """Send tables indexed as rows of text (an older version) back to be read as a schema."""
-        if self.db.meta("tabular_schema_only") == "1":
-            return
+    def _requeue_outdated(self) -> None:
+        """Send files read by an older reader of their kind back to be read again."""
         for row in self.db.files():
-            if row.kind in TABULAR_KINDS:
+            if row.parser_version < PARSER_VERSIONS.get(row.kind, 1):
                 self.db.update_file(row.file_id, state=STATE_QUEUED, attempts=0, last_error=None)
-        self.db.set_meta("tabular_schema_only", "1")
 
     # ------------------------------------------------------------------ the files area
 
@@ -273,6 +278,9 @@ class Indexer:
         if unchanged:
             if explicit and not row.explicit:
                 self.db.update_file(row.file_id, explicit=1)
+            if row.sha256 is None and row.state == STATE_READY:
+                with contextlib.suppress(OSError):  # indexed before hashes were kept
+                    self.db.update_file(row.file_id, sha256=sha256_of(absolute))
             return None
         kind = kind_of(relative)
         assert kind is not None
@@ -299,11 +307,11 @@ class Indexer:
         """Hold the background loop back while an explicit ingest is waiting or running."""
         deadline = time.monotonic() + timeout
         with self._ingest_cv:
-            while self._ingest_waiting > 0:
+            while self._ingest_waiting > 0 and not self.stop_event.is_set():
                 left = deadline - time.monotonic()
                 if left <= 0:
                     return
-                self._ingest_cv.wait(timeout=left)
+                self._ingest_cv.wait(timeout=min(left, 1.0))
 
     @contextlib.contextmanager
     def _ingest_priority(self) -> Iterator[None]:
@@ -344,24 +352,29 @@ class Indexer:
             if current is None:
                 return
             row = current
-            data = absolute.read_bytes()
+            # A table is read as a stream and a PDF's thumbnails need the bytes; no other pass
+            # keeps them, so a big CSV never sits in memory.
+            data = None if row.kind in TABULAR_KINDS else read_bytes(absolute)
             if row.state == STATE_QUEUED:
-                row = self._text_pass(row, data)
+                row = self._text_pass(row, absolute, data)
             if row.state == STATE_TEXT_READY:
                 self._finish(row, data, retry=retry)
 
-    def _text_pass(self, row: FileRow, data: bytes) -> FileRow:
+    def _text_pass(self, row: FileRow, absolute: Path, data: bytes | None) -> FileRow:
         if row.kind in TABULAR_KINDS:
-            # A table is never read as rows of text: the index keeps its schema card, the
+            # A table is never read as rows of text: the index keeps its schema cards, the
             # Markdown version is the manifest (columns, types, row count, a few rows).
-            profile = profile_table(row.kind, data, name=row.name)
+            profile = profile_table(row.kind, absolute, name=row.name)
             pages = manifest_pages(profile, row.name)
-            chunks = [schema_card(profile, row.name)]
+            chunks = schema_cards(profile, row.name)
             markdown = to_markdown(pages, kind="sheet")
+            digest = sha256_of(absolute)
         else:
+            assert data is not None
             pages, chunk_kind = parse_file(row.kind, data)
             chunks = chunk_pages(pages, kind=chunk_kind)
             markdown = to_markdown(pages, kind=chunk_kind)
+            digest = hashlib.sha256(data).hexdigest()
         self._write_markdown(row.file_id, markdown)
         stored = self.db.replace_chunks(row.file_id, chunks)
         self.db.update_file(
@@ -370,15 +383,17 @@ class Indexer:
             page_count=len(pages),
             text_pages=sum(1 for page in pages if page.has_text),
             chunk_count=len(stored),
+            sha256=digest,
+            parser_version=PARSER_VERSIONS.get(row.kind, 1),
             last_error=None,
         )
         updated = self.db.get_file(row.file_id)
         assert updated is not None
         return updated
 
-    def _finish(self, row: FileRow, data: bytes, *, retry: bool = True) -> None:
+    def _finish(self, row: FileRow, data: bytes | None, *, retry: bool = True) -> None:
         status, reason = self._embed(row, self.db.chunks_for(row.file_id), retry=retry)
-        if row.kind == "pdf":
+        if row.kind == "pdf" and data is not None:
             self._write_thumbs(row.file_id, data)
         self.db.update_file(
             row.file_id,
@@ -708,6 +723,28 @@ class Indexer:
         if inline and len(text) <= INLINE_MAX_CHARS:
             out["markdown"] = text
         return out
+
+    def find_upload(self, sha256: str) -> dict[str, Any] | None:
+        """A searchable upload whose bytes have this SHA-256, or ``None``.
+
+        The stored hash is only a lead: the file is hashed again from disk, so a file changed
+        since it was indexed, or a link swapped in, never answers for bytes it no longer holds.
+        """
+        for row in self.db.ready_files_with_hash(sha256.lower()):
+            if not row.path.startswith(UPLOADS_PREFIX):
+                continue
+            try:
+                if sha256_of(self.absolute(row.path)) != sha256.lower():
+                    continue
+            except OSError:
+                continue
+            return {
+                "file_id": row.file_id,
+                "name": row.name,
+                "path": row.path,
+                "pages": row.page_count,
+            }
+        return None
 
     def get(
         self, row: FileRow, *, pages: object = None, max_chars: int | None = None

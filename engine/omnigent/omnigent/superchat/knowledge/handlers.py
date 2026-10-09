@@ -1,9 +1,9 @@
 """Runner-side handler for the knowledge tools: runs in the Computer, answers from its index.
 
 The Muse's tools are the qmd-style set in :mod:`omnigent.superchat.knowledge.tools`.
-``files_ingest`` / ``files_thumbnail`` / ``files_reindex`` are never offered to a model: the
-engine's relays call them (through the runner's ``/mcp/execute``) to read an attachment before
-its message is sent, and to answer Nova's Library badges and citation chips.
+``files_ingest`` / ``files_thumbnail`` / ``files_reindex`` / ``files_find`` are never offered to a
+model: the engine's relays call them (through the runner's ``/mcp/execute``) to read an
+attachment before its message is sent, and to answer Nova's Library badges and citation chips.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 from typing import Any
 
 from omnigent.runner.knowledge.db import FileRow
@@ -60,6 +61,8 @@ def _run(runtime: KnowledgeRuntime, tool_name: str, args: dict[str, Any]) -> str
         return _multi_get(runtime, args)
     if tool_name == "files_ingest":
         return _ingest(runtime, args)
+    if tool_name == "files_find":
+        return _find(runtime, args)
     if tool_name == "files_read_page":
         return _read_page(runtime, args)
     if tool_name == "files_status":
@@ -155,15 +158,18 @@ def _ingest(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
     if not isinstance(path, str) or not path.strip():
         return error("files_ingest requires a path")
     try:
-        return json.dumps(
-            runtime.indexer.ingest(
-                path.strip(), inline=args.get("inline") is True, within=UPLOADS_PREFIX
-            )
-        )
+        return json.dumps(runtime.indexer.ingest(path.strip(), within=UPLOADS_PREFIX))
     except FileNotFoundError:
         return error("That file isn't in your workspace")
     except ValueError as exc:
         return error(str(exc))
+
+
+def _find(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
+    digest = args.get("sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+        return error("files_find requires a sha256")
+    return json.dumps(runtime.indexer.find_upload(digest) or {})
 
 
 def _read_page(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
