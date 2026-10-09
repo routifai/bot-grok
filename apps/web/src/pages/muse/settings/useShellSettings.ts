@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useOpenSettingsRequests } from "../../../lib/engine-models";
 import { rpc } from "../../../lib/rpc";
 import type { SettingsSection } from "../../SettingsOverlay";
 
@@ -36,6 +37,8 @@ export function useShellSettings(user: unknown) {
     setSettingsSection(section);
     setSettingsOpen(true);
   }
+  // A note in the Conversation ("Add your API key") opens Settings at Models.
+  useOpenSettingsRequests(openSettings);
   return {
     pluginsOpen,
     setPluginsOpen,
