@@ -21,6 +21,7 @@ export function ArtifactPreviewCard({
   buttonRef,
   onOpen,
   actions,
+  badge,
   fallback,
   testId,
 }: {
@@ -36,6 +37,8 @@ export function ArtifactPreviewCard({
   /** Rendered top-right, over the preview; each action should be a small round glass button. */
   actions?: ReactNode;
   testId?: string;
+  /** A small state marker pinned top-left over the preview (e.g. "Published"). */
+  badge?: ReactNode;
 }) {
   const [loaded, setLoaded] = useState(false);
 
@@ -82,6 +85,9 @@ export function ArtifactPreviewCard({
           <p className="mt-0.5 truncate text-[12px] text-ink-3">{meta}</p>
         </div>
       </button>
+      {badge ? (
+        <div className="pointer-events-none absolute start-2 top-2 z-10">{badge}</div>
+      ) : null}
       {actions ? (
         <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end gap-1.5 p-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
           {actions}

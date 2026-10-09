@@ -27,6 +27,8 @@ vi.mock("@lingui/react/macro", () => {
 });
 vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray) => parts.join(""),
+  plural: (n: number, forms: { one: string; other: string }) =>
+    (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
 vi.mock("@nova/ui-web", () => {
   const cn = (...args: unknown[]) => args.filter(Boolean).join(" ");
@@ -275,6 +277,49 @@ it("shows a no-results state when the search matches nothing", async () => {
       typeSearch(page.container, "nonexistent-xyz");
     });
     expect(page.container.textContent).toContain("Nothing matches your search.");
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("marks published apps on their card with their opens and adds a Published facet", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.listSpace.mockResolvedValue({
+    items: [
+      {
+        ...artifact({ id: "a-1", name: "todo.html", mimeType: "text/html" }),
+        publish: {
+          slug: "todo-k3m9xq",
+          urlPath: "/apps/todo-k3m9xq",
+          audience: "org",
+          version: 1,
+          publishedAt: "",
+          stats: { opensTotal: 14, uniqueViewers: 5, opens7d: 9 },
+        },
+      },
+      artifact({ id: "a-2", name: "notes.html", mimeType: "text/html" }),
+    ],
+    nextCursor: null,
+  });
+  const page = await renderLibrary();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("todo.html");
+      });
+    });
+    const marks = page.container.querySelectorAll("[data-testid=library-card-published]");
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.textContent).toBe("Published");
+    expect(page.container.textContent).toContain("14 opens · 5 viewers");
+    const facet = findButton(page.container, "Published 1");
+    expect(facet).toBeTruthy();
+    act(() => {
+      facet?.click();
+    });
+    expect(page.container.textContent).toContain("todo.html");
+    expect(page.container.textContent).not.toContain("notes.html");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

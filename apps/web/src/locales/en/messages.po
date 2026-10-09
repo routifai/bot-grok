@@ -30,9 +30,17 @@ msgstr "{0, plural, one {# fork} other {# forks}}"
 msgid "{0, plural, one {# model} other {# models}}"
 msgstr "{0, plural, one {# model} other {# models}}"
 
+#. placeholder {0}: stats.opensTotal
+msgid "{0, plural, one {# open} other {# opens}}"
+msgstr "{0, plural, one {# open} other {# opens}}"
+
 #. placeholder {0}: row.replies
 msgid "{0, plural, one {# reply} other {# replies}}"
 msgstr "{0, plural, one {# reply} other {# replies}}"
+
+#. placeholder {0}: stats.uniqueViewers
+msgid "{0, plural, one {# viewer} other {# viewers}}"
+msgstr "{0, plural, one {# viewer} other {# viewers}}"
 
 #. placeholder {0}: file.name
 msgid "{0} (max {ATTACHMENT_MAX_COUNT} attachments)"
@@ -430,6 +438,12 @@ msgstr "Answered: {0}"
 
 msgid "Answered: {answer}"
 msgstr "Answered: {answer}"
+
+msgid "Anyone signed in to your organization"
+msgstr "Anyone signed in to your organization"
+
+msgid "Anyone with the link"
+msgstr "Anyone with the link"
 
 msgid "API key"
 msgstr "API key"
@@ -938,6 +952,9 @@ msgstr "Copied"
 msgid "Copy"
 msgstr "Copy"
 
+msgid "Copy link"
+msgstr "Copy link"
+
 msgid "Could not add"
 msgstr "Could not add"
 
@@ -1148,6 +1165,9 @@ msgstr "Could not play a sample."
 
 msgid "Could not play a test clip"
 msgstr "Could not play a test clip"
+
+msgid "Could not publish this."
+msgstr "Could not publish this."
 
 msgid "Could not reach the server"
 msgstr "Could not reach the server"
@@ -1625,6 +1645,9 @@ msgstr "Example: what a morning with me looks like"
 msgid "Executor token"
 msgstr "Executor token"
 
+msgid "Exit full screen"
+msgstr "Exit full screen"
+
 msgid "Expand"
 msgstr "Expand"
 
@@ -2009,6 +2032,9 @@ msgstr "Isolated preview"
 msgid "Isolated preview — no access to your account"
 msgstr "Isolated preview — no access to your account"
 
+msgid "It gets its own web address. It runs on its own, separate from Nova, and can't see your conversations or files."
+msgstr "It gets its own web address. It runs on its own, separate from Nova, and can't see your conversations or files."
+
 msgid "It starts fresh, with only what Nova knows about you."
 msgstr "It starts fresh, with only what Nova knows about you."
 
@@ -2017,6 +2043,9 @@ msgstr "It starts with a summary of this conversation."
 
 msgid "It won't be used anymore. This can't be undone."
 msgstr "It won't be used anymore. This can't be undone."
+
+msgid "Its address stops working right away. You can publish it again later."
+msgstr "Its address stops working right away. You can publish it again later."
 
 msgid "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
 msgstr "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
@@ -2040,6 +2069,9 @@ msgstr "Jump to replied message: {0}"
 
 msgid "just now"
 msgstr "just now"
+
+msgid "Just you, signed in"
+msgstr "Just you, signed in"
 
 msgid "Keep current"
 msgstr "Keep current"
@@ -2335,6 +2367,9 @@ msgstr "My computer restarted. Try again."
 msgid "My computer was replaced, so files I hadn't saved elsewhere are gone."
 msgstr "My computer was replaced, so files I hadn't saved elsewhere are gone."
 
+msgid "My organization"
+msgstr "My organization"
+
 msgid "Name"
 msgstr "Name"
 
@@ -2483,6 +2518,9 @@ msgstr "No results"
 msgid "No runs yet"
 msgstr "No runs yet"
 
+msgid "No sign-in needed"
+msgstr "No sign-in needed"
+
 msgid "No skills yet"
 msgstr "No skills yet"
 
@@ -2623,6 +2661,9 @@ msgstr "One yes before I send this"
 msgid "Online"
 msgstr "Online"
 
+msgid "Only me"
+msgstr "Only me"
+
 msgid "Open"
 msgstr "Open"
 
@@ -2641,6 +2682,9 @@ msgstr "Open {name} in new tab"
 
 msgid "Open as side chat"
 msgstr "Open as side chat"
+
+msgid "Open full screen"
+msgstr "Open full screen"
 
 msgid "Open in full window"
 msgstr "Open in full window"
@@ -2844,6 +2888,21 @@ msgstr "Provider"
 
 msgid "Providers"
 msgstr "Providers"
+
+msgid "Publish"
+msgstr "Publish"
+
+msgid "Publish {name}?"
+msgstr "Publish {name}?"
+
+msgid "Publish settings"
+msgstr "Publish settings"
+
+msgid "Publish…"
+msgstr "Publish…"
+
+msgid "Published"
+msgstr "Published"
 
 msgid "Pull holdings and returns for 12 clients"
 msgstr "Pull holdings and returns for 12 clients"
@@ -3784,6 +3843,12 @@ msgstr "Unlink"
 msgid "Unpin"
 msgstr "Unpin"
 
+msgid "Unpublish"
+msgstr "Unpublish"
+
+msgid "Unpublish this app?"
+msgstr "Unpublish this app?"
+
 msgid "Unread"
 msgstr "Unread"
 
@@ -3977,6 +4042,9 @@ msgstr "When to run"
 
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
+
+msgid "Who can open it"
+msgstr "Who can open it"
 
 msgid "Why did churn rise in August?"
 msgstr "Why did churn rise in August?"

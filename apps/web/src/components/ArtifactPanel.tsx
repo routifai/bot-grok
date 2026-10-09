@@ -1,12 +1,15 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button } from "@nova/ui-web";
-import { Download, ExternalLink, Lock, X } from "lucide-react";
-import { useEffect } from "react";
+import type { ArtifactPublish, ArtifactPublishAudience } from "@nova/contracts";
+import { Button, cn } from "@nova/ui-web";
+import { Download, ExternalLink, Lock, Maximize2, Minimize2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { downloadArtifactBytes } from "../lib/artifact-open";
+import { rpc } from "../lib/rpc";
 import { useObjectUrl } from "../lib/use-object-url";
 import { ArtifactPreview } from "../pages/Artifacts";
 import { useArtifactContent } from "../pages/muse/library/useArtifactContent";
 import { formatSize } from "./cards/catalog";
+import { PublishDialog, PublishedBar, PublishedPill } from "./PublishApp";
 
 const EMPTY_BYTES = new Uint8Array(0);
 
@@ -28,13 +31,41 @@ export function ArtifactPanel({
   const ready = state.status === "ready" ? state : null;
   const url = useObjectUrl(ready?.bytes ?? EMPTY_BYTES, ready?.artifact.mimeType ?? "");
 
+  const [fullScreen, setFullScreen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publish, setPublish] = useState<ArtifactPublish | null>(null);
+  const isApp = ready?.artifact.mimeType === "text/html";
+  const readyArtifact = ready?.artifact;
+  useEffect(() => {
+    setPublish(readyArtifact?.publish ?? null);
+  }, [readyArtifact]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) onClose();
+      if (event.key !== "Escape" || event.defaultPrevented || publishing) return;
+      if (fullScreen) setFullScreen(false);
+      else onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, fullScreen, publishing]);
+
+  async function publishWith(audience: ArtifactPublishAudience) {
+    if (!readyArtifact) return;
+    const published = await rpc.artifacts.publish({
+      artifactId: readyArtifact.id,
+      audience,
+      version: readyArtifact.version,
+    });
+    setPublish(published);
+    setPublishing(false);
+  }
+
+  async function unpublish() {
+    if (!readyArtifact) return;
+    await rpc.artifacts.unpublish({ artifactId: readyArtifact.id });
+    setPublish(null);
+  }
 
   const name = ready?.artifact.name ?? "";
   const meta = ready
@@ -47,12 +78,19 @@ export function ArtifactPanel({
     <section
       data-testid="artifact-panel"
       aria-label={title || name || t`Artifact`}
-      className="fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background md:relative md:inset-auto md:z-auto md:m-2 md:w-[min(46vw,640px)] md:shrink-0 md:rounded-[18px] md:bg-glass md:ring-[0.5px] md:ring-glass-line md:ring-inset md:backdrop-blur-[30px] md:backdrop-saturate-[1.8]"
+      className={cn(
+        "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background",
+        !fullScreen &&
+          "md:relative md:inset-auto md:z-auto md:m-2 md:w-[min(46vw,640px)] md:shrink-0 md:rounded-[18px] md:bg-glass md:ring-[0.5px] md:ring-glass-line md:ring-inset md:backdrop-blur-[30px] md:backdrop-saturate-[1.8]",
+      )}
     >
       <header className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[14px] font-medium" dir="auto">
-            {title || name || t`Loading…`}
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-[14px] font-medium" dir="auto">
+              {title || name || t`Loading…`}
+            </div>
+            {publish ? <PublishedPill /> : null}
           </div>
           {meta ? <div className="truncate text-[12px] text-muted-foreground">{meta}</div> : null}
         </div>
@@ -69,6 +107,22 @@ export function ArtifactPanel({
               </option>
             ))}
           </select>
+        ) : null}
+        {isApp ? (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-pressed={fullScreen}
+              onClick={() => setFullScreen((value) => !value)}
+            >
+              {fullScreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              {fullScreen ? t`Exit full screen` : t`Open full screen`}
+            </Button>
+            <Button size="sm" onClick={() => setPublishing(true)}>
+              {publish ? t`Publish settings` : t`Publish…`}
+            </Button>
+          </>
         ) : null}
         {ready ? (
           <>
@@ -106,6 +160,21 @@ export function ArtifactPanel({
           <X />
         </Button>
       </header>
+      {isApp && publish ? (
+        <PublishedBar
+          publish={publish}
+          onSettings={() => setPublishing(true)}
+          onUnpublish={unpublish}
+        />
+      ) : null}
+      {publishing && readyArtifact ? (
+        <PublishDialog
+          name={title || readyArtifact.name}
+          current={publish}
+          onClose={() => setPublishing(false)}
+          onConfirm={publishWith}
+        />
+      ) : null}
       <div className="relative min-h-0 flex-1">
         {state.status === "loading" ? (
           <div className="grid h-full place-items-center text-[13.5px] text-muted-foreground">

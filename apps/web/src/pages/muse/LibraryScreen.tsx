@@ -65,7 +65,7 @@ export function LibraryScreen({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [view, setView] = useState<"made" | "skills">("made");
   const [query, setQuery] = useState("");
-  const [selectedKind, setSelectedKind] = useState<ArtifactKind | "all">("all");
+  const [selectedKind, setSelectedKind] = useState<ArtifactKind | "published" | "all">("all");
   const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ArtifactSummary | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -110,11 +110,17 @@ export function LibraryScreen({
     return counts;
   }, [items]);
 
+  const publishedCount = useMemo(() => items?.filter((item) => item.publish).length ?? 0, [items]);
+
   const filtered = useMemo(() => {
     if (!items) return null;
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (selectedKind !== "all" && artifactKind(item.mimeType) !== selectedKind) return false;
+      if (selectedKind === "published") {
+        if (!item.publish) return false;
+      } else if (selectedKind !== "all" && artifactKind(item.mimeType) !== selectedKind) {
+        return false;
+      }
       if (!needle) return true;
       return (
         item.name.toLowerCase().includes(needle) ||
@@ -229,6 +235,18 @@ export function LibraryScreen({
                       </>
                     ),
                   })),
+                  ...(publishedCount > 0
+                    ? [
+                        {
+                          value: "published" as const,
+                          label: (
+                            <>
+                              {t`Published`} <Count n={publishedCount} />
+                            </>
+                          ),
+                        },
+                      ]
+                    : []),
                 ]}
               />
             ) : undefined
