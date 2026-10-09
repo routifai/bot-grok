@@ -73,7 +73,15 @@ export function DeckRail({
               className="text-muted-foreground"
               aria-label={pinned ? t`Collapse slides` : t`Expand slides`}
               aria-expanded={open}
-              onClick={() => setPinned((value) => !value)}
+              onClick={(event) => {
+                // Collapsing closes the rail even under the pointer; hovering again reopens it.
+                if (open && pinned) {
+                  setHover(false);
+                  setFocus(false);
+                  event.currentTarget.blur();
+                }
+                setPinned((value) => !value);
+              }}
             >
               {pinned ? <PanelLeftClose /> : <PanelLeftOpen />}
             </Button>

@@ -15,7 +15,7 @@ async function shot(page: Page, name: string) {
 async function openEditor(page: Page) {
   await page.setViewportSize({ width: 1470, height: 742 });
   await page.goto("/dev/deck");
-  await page.getByTestId("dev-edit-toggle").click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const frame = page.locator('[data-testid="deck-edit-frame"] iframe');
   await expect(frame).toBeVisible();
   // The bridge has reported in once the panel got the deck's theme (its font list).
@@ -29,7 +29,9 @@ async function titlePoint(page: Page) {
   if (!box) throw new Error("no edit frame");
   return { x: box.x + box.width * TITLE_AT.x, y: box.y + box.height * TITLE_AT.y };
 }
-const TITLE_AT = { x: 0.5, y: 0.5 };
+// The cover title's middle as a fraction of the edit frame, whose slide is letterboxed in the
+// widened panel.
+const TITLE_AT = { x: 0.41, y: 0.42 };
 const panelWidth = async (page: Page) =>
   (await page.getByTestId("dev-panel").boundingBox())?.width ?? 0;
 
@@ -48,7 +50,7 @@ test("edit widens the panel and leaving it restores the width and the full rail"
   const railBefore = (await rail.boundingBox())?.width ?? 0;
   await shot(page, "view");
 
-  await page.getByTestId("dev-edit-toggle").click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect.poll(() => panelWidth(page)).toBeGreaterThan(before + 200);
   await expect(rail).toHaveAttribute("data-slim", "true");
   expect((await rail.boundingBox())?.width ?? 999).toBeLessThan(railBefore / 2);
@@ -58,7 +60,7 @@ test("edit widens the panel and leaving it restores the width and the full rail"
   await page.waitForTimeout(1500);
   await shot(page, "edit");
 
-  await page.getByTestId("dev-edit-toggle").click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect.poll(() => panelWidth(page)).toBe(before);
   await expect(rail).not.toHaveAttribute("data-slim", "true");
   await expect.poll(async () => (await rail.boundingBox())?.width).toBe(railBefore);
@@ -145,4 +147,35 @@ test("the font size control saves a style patch after a pause", async ({ page })
     id: "cover-title",
     style: { "font-size": "72px" },
   });
+});
+
+test("the Theme gallery opens from the header, picking a theme sends one set-theme patch", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1470, height: 742 });
+  const themes = [
+    ["corporate-clean", "Corporate Clean", "professional", "light"],
+    ["nord", "Nord", "dark", "dark"],
+  ].map(([id, name, category, mode]) => ({
+    id,
+    name,
+    mood: `${name} mood`,
+    category,
+    mode,
+    bestFor: "",
+    preview: "",
+  }));
+  await page.exposeFunction("__deckThemes", () => ({ themes, defaultTheme: "corporate-clean" }));
+  await page.goto("/dev/deck");
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  const gallery = page.getByTestId("deck-theme-picker");
+  await expect(gallery.getByRole("radio")).toHaveCount(2);
+  await expect(gallery).toContainText("Nord mood");
+  await shot(page, "theme-gallery");
+  await gallery.getByTestId("deck-theme-nord").click();
+  await expect.poll(async () => (await edits(page)).length).toBe(1);
+  expect((await edits(page))[0]?.patches).toEqual([{ kind: "set-theme", theme: "nord" }]);
+  await expect(page.getByTestId("dev-version")).toHaveText("v2");
+  await page.keyboard.press("Escape");
+  await expect(gallery).toHaveCount(0);
 });

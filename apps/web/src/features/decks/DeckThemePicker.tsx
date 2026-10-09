@@ -84,16 +84,24 @@ export function DeckThemePicker({
       if (root.current?.contains(target) || target?.closest?.(`[${THEME_BUTTON_ATTR}]`)) return;
       close();
     };
-    // A click inside the slide frame never reaches the page; the window loses focus instead.
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown, true);
-    window.addEventListener("blur", close);
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onDown, true);
-      window.removeEventListener("blur", close);
     };
   }, [close]);
+
+  // The deck reloads in its frame after a switch and the frame takes the keyboard; bring it back
+  // to the gallery so Escape keeps working.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const checked = root.current?.querySelector<HTMLElement>('[aria-checked="true"]');
+      if (document.activeElement instanceof HTMLIFrameElement)
+        checked?.focus({ preventScroll: true });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [html]);
 
   const currentName = useMemo(() => readDeckThemeName(html), [html]);
   const current = themes?.find((theme) => theme.name === currentName)?.id ?? null;
@@ -152,127 +160,138 @@ export function DeckThemePicker({
   const canUndo = undo !== null && undo.version === artifact.version;
 
   return (
-    <div
-      ref={root}
-      role="dialog"
-      aria-label={t`Theme`}
-      data-testid="deck-theme-picker"
-      className="absolute end-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-[min(440px,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl bg-glass shadow-[0_12px_40px_rgb(0_0_0/0.16)] ring-[0.5px] ring-glass-line ring-inset backdrop-blur-[30px] backdrop-saturate-[1.8] motion-safe:animate-[deck-inspector-in_180ms_ease-out]"
-    >
-      <header className="flex items-center gap-1 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">{t`Theme`}</div>
-          <div className="truncate text-[11px] text-muted-foreground">
-            {t`Restyles every slide; your content stays as it is.`}
+    <>
+      {/* A click anywhere over the stage (a frame never reports clicks to the page) dismisses. */}
+      <div
+        aria-hidden="true"
+        data-testid="deck-theme-backdrop"
+        className="absolute inset-0 z-[25]"
+        onPointerDown={close}
+      />
+      <div
+        ref={root}
+        role="dialog"
+        aria-label={t`Theme`}
+        data-testid="deck-theme-picker"
+        className="absolute end-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-[min(440px,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl bg-glass shadow-[0_12px_40px_rgb(0_0_0/0.16)] ring-[0.5px] ring-glass-line ring-inset backdrop-blur-[30px] backdrop-saturate-[1.8] motion-safe:animate-[deck-inspector-in_180ms_ease-out]"
+      >
+        <header className="flex items-center gap-1 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium">{t`Theme`}</div>
+            <div className="truncate text-[11px] text-muted-foreground">
+              {t`Restyles every slide; your content stays as it is.`}
+            </div>
           </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground"
-          aria-label={t`Close`}
-          title={t`Close`}
-          onClick={close}
-        >
-          <X />
-        </Button>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">
-        {failed ? (
-          <p className="py-6 text-center text-[12px] text-muted-foreground">
-            {t`Couldn't load the themes. Try again in a moment.`}
-          </p>
-        ) : themes === null ? (
-          <div className="grid grid-cols-2 gap-3" aria-busy="true">
-            {[0, 1, 2, 3].map((n) => (
-              <div
-                key={n}
-                className="aspect-video animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
-              />
-            ))}
-          </div>
-        ) : (
-          groups.map((group) => (
-            <section key={group.category} className="mb-4 last:mb-1">
-              <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {categoryLabel[group.category]}
-              </h3>
-              <div
-                role="radiogroup"
-                aria-label={categoryLabel[group.category]}
-                className="grid grid-cols-2 gap-3"
-              >
-                {group.items.map((theme) => {
-                  const selected = theme.id === current;
-                  return (
-                    // biome-ignore lint/a11y/useSemanticElements: a styled card, not a form radio
-                    <button
-                      key={theme.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      data-testid={`deck-theme-${theme.id}`}
-                      disabled={busy !== null}
-                      onClick={() => void pick(theme)}
-                      className="group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-                    >
-                      <span
-                        className={cn(
-                          "relative block aspect-video overflow-hidden rounded-lg bg-muted ring-1 ring-inset motion-safe:transition-shadow",
-                          selected
-                            ? "ring-2 ring-foreground"
-                            : "ring-border group-hover:ring-foreground/40",
-                        )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            aria-label={t`Close`}
+            title={t`Close`}
+            onClick={close}
+          >
+            <X />
+          </Button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">
+          {failed ? (
+            <p className="py-6 text-center text-[12px] text-muted-foreground">
+              {t`Couldn't load the themes. Try again in a moment.`}
+            </p>
+          ) : themes === null ? (
+            <div className="grid grid-cols-2 gap-3" aria-busy="true">
+              {[0, 1, 2, 3].map((n) => (
+                <div
+                  key={n}
+                  className="aspect-video animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
+                />
+              ))}
+            </div>
+          ) : (
+            groups.map((group) => (
+              <section key={group.category} className="mb-4 last:mb-1">
+                <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {categoryLabel[group.category]}
+                </h3>
+                <div
+                  role="radiogroup"
+                  aria-label={categoryLabel[group.category]}
+                  className="grid grid-cols-2 gap-3"
+                >
+                  {group.items.map((theme) => {
+                    const selected = theme.id === current;
+                    return (
+                      // biome-ignore lint/a11y/useSemanticElements: a styled card, not a form radio
+                      <button
+                        key={theme.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        data-testid={`deck-theme-${theme.id}`}
+                        disabled={busy !== null}
+                        onClick={() => void pick(theme)}
+                        className="group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                       >
-                        {theme.preview ? (
-                          <img
-                            src={theme.preview}
-                            alt=""
-                            draggable={false}
-                            className="size-full object-cover"
-                          />
-                        ) : null}
-                        {selected ? (
-                          <span className="absolute end-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background shadow">
-                            <Check size={12} />
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="px-0.5">
-                        <span className="block truncate text-[12px] font-medium">{theme.name}</span>
-                        <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                          {theme.mood}
+                        <span
+                          className={cn(
+                            "relative block aspect-video overflow-hidden rounded-lg bg-muted ring-1 ring-inset motion-safe:transition-shadow",
+                            selected
+                              ? "ring-2 ring-foreground"
+                              : "ring-border group-hover:ring-foreground/40",
+                          )}
+                        >
+                          {theme.preview ? (
+                            <img
+                              src={theme.preview}
+                              alt=""
+                              draggable={false}
+                              className="size-full object-cover"
+                            />
+                          ) : null}
+                          {selected ? (
+                            <span className="absolute end-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background shadow">
+                              <Check size={12} />
+                            </span>
+                          ) : null}
                         </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))
-        )}
+                        <span className="px-0.5">
+                          <span className="block truncate text-[12px] font-medium">
+                            {theme.name}
+                          </span>
+                          <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                            {theme.mood}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
+        {error || canUndo ? (
+          <footer
+            role="status"
+            className="flex items-center gap-2 border-t border-border px-4 py-2 text-[12px]"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {error ?? t`Switched to ${undo?.name ?? ""}`}
+            </span>
+            {canUndo ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => void revert()}
+              >
+                <Undo2 />
+                {t`Undo`}
+              </Button>
+            ) : null}
+          </footer>
+        ) : null}
       </div>
-      {error || canUndo ? (
-        <footer
-          role="status"
-          className="flex items-center gap-2 border-t border-border px-4 py-2 text-[12px]"
-        >
-          <span className="min-w-0 flex-1 truncate">
-            {error ?? t`Switched to ${undo?.name ?? ""}`}
-          </span>
-          {canUndo ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy !== null}
-              onClick={() => void revert()}
-            >
-              <Undo2 />
-              {t`Undo`}
-            </Button>
-          ) : null}
-        </footer>
-      ) : null}
-    </div>
+    </>
   );
 }

@@ -99,7 +99,7 @@ export function DeckThumb({
               className="pointer-events-none absolute start-0 top-0 block origin-top-left"
               style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})` }}
             >
-              <SandboxedHtmlViewer html={html} title={label} relay frameRef={frame} />
+              <SandboxedHtmlViewer html={html} title={label} relay decorative frameRef={frame} />
             </span>
           ) : null}
         </span>

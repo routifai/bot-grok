@@ -156,4 +156,11 @@ it("closes on Escape and on a click outside, not on a click inside", async () =>
   await act(async () => setDeckThemeOpen(KEY, true));
   await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
   expect(open()).toBe("false");
+  await act(async () => setDeckThemeOpen(KEY, true));
+  await act(async () =>
+    container
+      .querySelector('[data-testid="deck-theme-backdrop"]')
+      ?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })),
+  );
+  expect(open()).toBe("false");
 });
