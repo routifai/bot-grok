@@ -68,10 +68,27 @@ it("shows a KPI card with its number, comparison and source", () => {
   expect(host.textContent).toContain("Source: kpi.csv");
 });
 
-it("says when the data was cut to its first rows", () => {
+it("says which rows a cut chart keeps", () => {
   const doc = documentOf("kpi");
-  render(<ChartView document={{ ...doc, source: { ...doc.source, truncated: true, rows: 6 } }} />);
+  const cut = (spec: Partial<typeof doc.spec>, source: Partial<typeof doc.source>) =>
+    render(
+      <ChartView
+        document={{
+          ...doc,
+          spec: { ...doc.spec, ...spec },
+          source: { ...doc.source, truncated: true, rows: 6, ...source },
+        }}
+      />,
+    );
+  const plain = cut({ x_axis_type: "category" }, {});
   expect(host.textContent).toContain("first 6 rows");
+  act(() => plain.unmount());
+  const dated = cut({ x_axis_type: "date" }, {});
+  expect(host.textContent).toContain("latest 6 rows");
+  expect(host.textContent).not.toContain("first 6 rows");
+  act(() => dated.unmount());
+  cut({ x_axis_type: "date" }, { read_cut: true });
+  expect(host.textContent).toContain("only its start was read");
 });
 
 it("draws every other chart type inside a responsive frame without throwing", () => {

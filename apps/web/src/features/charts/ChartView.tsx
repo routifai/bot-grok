@@ -16,6 +16,15 @@ import { cn } from "@nova/ui-web";
 import { cloneElement, useId, useMemo } from "react";
 
 /** The series' labels, colors and formats, which the tooltip and legend read by column name. */
+/** The source line: says which rows a cut chart keeps (a date chart keeps the newest). */
+function sourceCaption(source: ChartDocument["source"], dated: boolean): string {
+  if (source.read_cut) return t`Source: ${source.file} (long file, only its start was read)`;
+  if (!source.truncated) return t`Source: ${source.file}`;
+  return dated
+    ? t`Source: ${source.file} (latest ${source.rows} rows)`
+    : t`Source: ${source.file} (first ${source.rows} rows)`;
+}
+
 function configFor(document: Pick<ChartDocument, "spec" | "data">, categories: string[]) {
   const config: ChartConfig = {};
   document.spec.series.forEach((series, index) => {
@@ -96,9 +105,7 @@ export function ChartView({
     () => configFor({ spec, data }, isPieType(spec) ? categories : []),
     [spec, data, categories],
   );
-  const caption = source.truncated
-    ? t`Source: ${source.file} (first ${source.rows} rows)`
-    : t`Source: ${source.file}`;
+  const caption = sourceCaption(source, spec.x_axis_type === "date");
 
   return (
     <figure

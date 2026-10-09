@@ -3750,6 +3750,15 @@ msgstr "Source: {0}"
 msgid "Source: {0} (first {1} rows)"
 msgstr "Source: {0} (first {1} rows)"
 
+#. placeholder {0}: source.file
+#. placeholder {1}: source.rows
+msgid "Source: {0} (latest {1} rows)"
+msgstr "Source: {0} (latest {1} rows)"
+
+#. placeholder {0}: source.file
+msgid "Source: {0} (long file, only its start was read)"
+msgstr "Source: {0} (long file, only its start was read)"
+
 msgid "Sources"
 msgstr "Sources"
 
