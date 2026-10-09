@@ -218,6 +218,15 @@ def _date_text(value: Any) -> str | None:
     return midnight.group(1) if midnight else text
 
 
+def _instant(text: str) -> float:
+    """Seconds since the epoch for an ISO date or date-time (no offset means UTC)."""
+    padded = text + "-01" if re.fullmatch(r"\d{4}-\d{2}", text) else text
+    parsed = dt.datetime.fromisoformat(padded.replace(" ", "T").replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.UTC)
+    return parsed.timestamp()
+
+
 def _bad_cells(found: list[tuple[int, Any, str]], column: str, role: str) -> ChartDataError:
     shown = "; ".join(f"row {i}: {str(v)[:30]!r} ({why})" for i, v, why in found[:5])
     more = f" (and {len(found) - 5} more)" if len(found) > 5 else ""
@@ -268,17 +277,23 @@ def shape_rows(
     limit = max_rows or DEFAULT_MAX_ROWS
     if spec.x_axis_type == "date" and x_key:
         bad: list[tuple[int, Any, str]] = []
-        dated: list[tuple[str, int, Row]] = []
+        dated: list[tuple[float, int, str, Row]] = []
         for index, row in indexed:
             text = _date_text(row.get(x_key))
             if text is None:
                 bad.append((index, row.get(x_key), "not an ISO date like 2026-01-31"))
-            else:
-                dated.append((text, index, row))
+                continue
+            try:
+                instant = _instant(text)
+            except ValueError:
+                bad.append((index, row.get(x_key), "not a real date"))
+                continue
+            dated.append((instant, index, text, row))
         if bad:
             raise _bad_cells(bad, x_key, "x_axis_key (x_axis_type date)")
-        dated.sort(key=lambda item: item[0])  # stable; the newest rows are the last ones
-        indexed = [(index, {**row, x_key: text}) for text, index, row in dated]
+        # Sort by the instant, not the text: "…T10:00+02:00" is earlier than "…T09:00Z".
+        dated.sort(key=lambda item: (item[0], item[1]))  # the newest rows come last
+        indexed = [(index, {**row, x_key: text}) for _, index, text, row in dated]
         selected = indexed[-limit:]
     else:
         selected = indexed[:limit]

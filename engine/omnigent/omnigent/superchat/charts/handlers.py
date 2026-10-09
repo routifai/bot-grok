@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from omnigent.superchat._handler_http import error, finish, resolve_caller
 from omnigent.superchat.artifact_kinds import MAX_ARTIFACT_BYTES
 from omnigent.superchat.artifacts import resolve_workspace_file, workspace_roots
-from omnigent.superchat.charts.data import ChartDataError, read_rows, shape_rows
+from omnigent.superchat.charts.data import READ_CAP, ChartDataError, read_rows, shape_rows
 from omnigent.superchat.charts.names import chart_file_name
 from omnigent.superchat.charts.spec import ChartSpec, DisplayChartInput
 from omnigent.superchat.feature import HandlerCtx
@@ -36,7 +36,7 @@ def _validation_message(exc: ValidationError) -> str:
 
 
 def build_document(
-    *, source_name: str, source_path: str, truncated: bool, spec: ChartSpec,
+    *, source_name: str, source_path: str, truncated: bool, read_cut: bool, spec: ChartSpec,
     kept: list[str], rows: list[dict[str, Any]],
 ) -> dict[str, Any]:  # fmt: skip
     """The chart artifact's JSON: the spec (no source), where the data came from, the rows."""
@@ -49,6 +49,7 @@ def build_document(
             "columns": kept,
             "rows": len(rows),
             "truncated": truncated,
+            "read_cut": read_cut,
         },
         "data": rows,
     }
@@ -85,6 +86,7 @@ def prepare_chart(args: dict[str, Any]) -> tuple[DisplayChartInput, dict[str, An
         source_name=file.name,
         source_path=_workspace_relative(file),
         truncated=truncated,
+        read_cut=cut,
         spec=spec,
         kept=kept,
         rows=shaped,
@@ -130,6 +132,15 @@ async def handle_chart_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     if resp.status_code >= 400:
         return finish(resp)
     source = document["source"]
+    note = "The chart is shown to the person. Cite the source file and what you computed."
+    if source["read_cut"]:
+        note += (
+            f" WARNING: the file has more than {READ_CAP} rows and only the first {READ_CAP} were "
+            "read, so the chart covers just those (a date chart shows the newest of them). "
+            "Aggregate it in code and chart the result to cover everything."
+        )
+    elif source["truncated"]:
+        note += f" The chart shows {source['rows']} of the file's rows; say so if it matters."
     return json.dumps(
         {
             "type": "artifact",
@@ -141,6 +152,6 @@ async def handle_chart_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
                 "truncated": source["truncated"],
                 "source": source["file"],
             },
-            "note": "The chart is shown to the person. Cite the source file and what you computed.",  # noqa: E501
+            "note": note,
         }
     )

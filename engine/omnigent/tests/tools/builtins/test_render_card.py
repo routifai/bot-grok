@@ -18,7 +18,6 @@ _VALID: dict[str, dict] = {
     "plan": {"items": [{"text": "Do", "status": "doing"}]},
     "ask": {"question": "Which?", "options": [{"id": "a", "label": "A"}]},
     "quote": {"symbol": "ACME", "price": 12.5, "changePct": -1.2},
-    "chart": {"kind": "line", "x": ["a", "b"], "series": [{"name": "s", "values": [1, 2]}]},
     "person": {"name": "Ada"},
     "file": {"name": "report.pdf", "size": 1024},
     "progress": {"label": "Import", "value": 40, "status": "running"},
@@ -41,6 +40,24 @@ def test_living_card_does_not_end_the_turn(kind: str) -> None:
     # Mid-work plan/progress cards are re-rendered under the same id; the Muse keeps going.
     out = _call(card=kind, id="c1", data=_VALID[kind], fallback="s")
     assert "end your turn" not in out["note"]
+
+
+def test_chart_is_not_a_card_kind_any_more() -> None:
+    # Charts come from display_chart (a result file), never from numbers the model types.
+    assert "chart" not in CARD_DATA_SCHEMAS
+    out = _call(
+        card="chart",
+        data={"kind": "line", "x": ["a"], "series": [{"name": "s", "values": [1]}]},
+        fallback="s",
+    )
+    assert "card must be one of" in out["error"]
+    assert (
+        "chart"
+        not in RenderCardTool().get_schema()["function"]["parameters"]["properties"]["card"][
+            "enum"
+        ]
+    )
+    assert "display_chart" in RenderCardTool.description()
 
 
 def test_every_kind_has_a_valid_fixture() -> None:

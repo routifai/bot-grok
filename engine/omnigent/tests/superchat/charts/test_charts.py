@@ -425,3 +425,31 @@ def test_the_spec_matches_the_web_twin() -> None:
     assert json.loads(path.read_text()) == spec_surface(), (
         "the pydantic and zod chart specs drifted: update both, then regenerate spec-parity.json"
     )
+
+
+def test_dates_sort_by_instant_not_by_text(tmp_path: Path) -> None:
+    spec = _spec(x_axis_key="t", x_axis_type="date", series=[{"data_key": "v"}])
+    # 10:00+02:00 (08:00Z) is earlier than 09:00Z although it sorts later as text.
+    path = _csv(tmp_path, "t,v\n2026-01-01T09:00:00Z,1\n2026-01-01T10:00:00+02:00,2\n")
+    _, _, shaped, _ = _shape(spec, path)
+    assert [r["v"] for r in shaped] == [2, 1]
+    _, _, newest, truncated = _shape(spec, path, 1)
+    assert truncated and newest[0]["v"] == 1
+    impossible = _csv(tmp_path, "t,v\n2026-13-45,1\n", "bad.csv")
+    with pytest.raises(ChartDataError, match="not a real date"):
+        _shape(spec, impossible)
+
+
+@pytest.mark.asyncio
+async def test_a_file_past_the_read_cap_says_so(server, tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr("omnigent.superchat.charts.data.READ_CAP", 30)
+    monkeypatch.setattr("omnigent.superchat.charts.handlers.READ_CAP", 30)
+    (tmp_path / "big.csv").write_text("m,v\n" + "\n".join(f"{i},{i}" for i in range(80)))
+    out = json.loads(
+        await handle_chart_tool(
+            _ctx(server), _call("big.csv", x_axis_key="m", series=[{"data_key": "v"}])
+        )
+    )
+    assert out["chart"]["truncated"] is True
+    assert "only the first 30 were read" in out["note"]
