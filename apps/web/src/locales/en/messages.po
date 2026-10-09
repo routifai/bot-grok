@@ -3675,6 +3675,9 @@ msgstr "This file is not valid UTF-8 text."
 msgid "this Mac"
 msgstr "this Mac"
 
+msgid "This message can’t be forked. Pick another message, or ask in a side chat."
+msgstr "This message can’t be forked. Pick another message, or ask in a side chat."
+
 msgid "This model isn't available — pick another."
 msgstr "This model isn't available — pick another."
 
