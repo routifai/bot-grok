@@ -135,3 +135,14 @@ def test_helpers_are_offered_web_search_and_web_fetch(
     assert spec.name == helper
     tools = ToolManager(spec, os_env_schema_only=True, labels={SUBAGENT_LABEL_KEY: "1"})
     assert {"web_search", "web_fetch"} <= set(tools.get_tool_names())
+
+
+@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
+def test_the_muse_may_call_its_reply_tools(bundle: Path) -> None:
+    # A feature tool missing from the Muse's allow list is invisible to it: the charts merge
+    # shipped display_chart without this line and the Muse fell back to a hand-drawn page.
+    from omnigent.superchat.charts.tools import CHART_TOOL_NAMES
+
+    allow = {line.strip().removeprefix("- ") for line in _lines(bundle / "config.yaml")}
+    for name in (*CHART_TOOL_NAMES, "render_card", "ask_clarification", "suggest_follow_ups"):
+        assert name in allow, name
