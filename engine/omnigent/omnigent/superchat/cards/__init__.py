@@ -8,8 +8,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from omnigent.superchat.cards.handlers import handle_card_tool
-from omnigent.superchat.cards.tools import CARD_TOOL_NAME
+from omnigent.superchat.cards.handlers import (
+    handle_card_tool,
+    handle_clarification_tool,
+    handle_follow_ups_tool,
+)
+from omnigent.superchat.cards.tools import (
+    CARD_TOOL_NAME,
+    CLARIFICATION_TOOL_NAME,
+    FOLLOW_UPS_TOOL_NAME,
+)
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx, is_super_chat
 
 if TYPE_CHECKING:
@@ -19,10 +27,17 @@ if TYPE_CHECKING:
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
-    """``render_card`` for the Super Chat itself (never a Helper)."""
-    from omnigent.superchat.cards.tools import RenderCardTool
+    """``render_card``, ``ask_clarification`` and ``suggest_follow_ups`` for the Super Chat itself
+    (never a Helper)."""
+    from omnigent.superchat.cards.tools import (
+        AskClarificationTool,
+        RenderCardTool,
+        SuggestFollowUpsTool,
+    )
 
-    return [RenderCardTool()] if is_super_chat(labels) else []
+    if not is_super_chat(labels):
+        return []
+    return [RenderCardTool(), AskClarificationTool(), SuggestFollowUpsTool()]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
@@ -34,5 +49,12 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 
 
 FEATURE = Feature(
-    name="cards", tools=_tools, handlers={CARD_TOOL_NAME: handle_card_tool}, install=_install
+    name="cards",
+    tools=_tools,
+    handlers={
+        CARD_TOOL_NAME: handle_card_tool,
+        CLARIFICATION_TOOL_NAME: handle_clarification_tool,
+        FOLLOW_UPS_TOOL_NAME: handle_follow_ups_tool,
+    },
+    install=_install,
 )

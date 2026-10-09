@@ -17,14 +17,14 @@ def _tables(engine: sa.Engine) -> set[str]:
     return set(sa.inspect(engine).get_table_names())
 
 
-def test_drop_file_index_migration_is_the_head_and_round_trips(tmp_path: Path) -> None:
+def test_drop_file_index_migration_round_trips(tmp_path: Path) -> None:
     uri = f"sqlite:///{tmp_path / 'index.db'}"
     engine = get_or_create_engine(uri)
     config = _build_alembic_config(uri)
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
-        assert ScriptDirectory.from_config(config).get_heads() == [REVISION]
+        assert ScriptDirectory.from_config(config).get_revision(REVISION) is not None
     assert not INDEX_TABLES & _tables(engine)
     assert "artifact_publications" in _tables(engine)
 

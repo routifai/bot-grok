@@ -56,6 +56,24 @@ def test_remember_reinforces_a_near_duplicate(service: MemoryService) -> None:
     assert second["claim"]["confidence"] > first["claim"]["confidence"]
 
 
+def test_unsignalled_instruction_is_kept_as_low_confidence_inferred_evidence(
+    service: MemoryService,
+) -> None:
+    first = service.remember(
+        "alice", "The user wants replies in French", kind="instruction", explicitness="inferred"
+    )
+    assert first["action"] == "added"
+    assert first["claim"]["explicitness"] == "inferred"
+    assert first["claim"]["confidence"] == 0.4
+    # Saying it again in a later conversation builds the evidence instead of duplicating it.
+    again = service.remember(
+        "alice", "The user wants replies in french", kind="instruction", explicitness="inferred"
+    )
+    assert again["action"] == "reinforced"
+    assert again["claim"]["claim_id"] == first["claim"]["claim_id"]
+    assert again["claim"]["confidence"] > first["claim"]["confidence"]
+
+
 def test_remember_supersedes_only_the_named_claim(service: MemoryService) -> None:
     first = service.remember("alice", "Prefers figures in CAD", kind="preference")
     second = service.remember(

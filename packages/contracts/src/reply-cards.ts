@@ -2,7 +2,8 @@ import * as z from "zod";
 
 // Reply cards: the Muse's `render_card` engine tool (engine/omnigent/omnigent/tools/builtins/
 // render_card.py) names a card kind and a small data payload; clients draw it from their own
-// catalog (apps/web/src/components/cards). The engine validates with the same shapes, so these
+// catalog (apps/web/src/components/cards). `ask_clarification` (an `ask` card) and
+// `suggest_follow_ups` (a `follow_ups` card) travel the same path. The engine validates with the same shapes, so these
 // schemas are the client's second line: a card that does not parse renders its `fallback`.
 
 const Text = z.string().max(2000);
@@ -35,6 +36,11 @@ export const ReplyCardData = {
       .min(1)
       .max(8),
     allowFreeText: z.boolean().optional(),
+  }),
+  /** The Muse's `suggest_follow_ups`: 1-3 next messages shown as quiet chips under the latest
+   * answer. Clicking one sends it as the person's message. */
+  follow_ups: z.object({
+    suggestions: z.array(Text.min(1).max(120)).min(1).max(3),
   }),
   quote: z.object({
     symbol: Text,

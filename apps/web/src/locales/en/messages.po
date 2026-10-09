@@ -3877,6 +3877,9 @@ msgstr "subagent"
 msgid "Submit"
 msgstr "Submit"
 
+msgid "Suggested follow-ups"
+msgstr "Suggested follow-ups"
+
 #. placeholder {0}: formatSum(stats.sum)
 msgid "Sum {0}"
 msgstr "Sum {0}"

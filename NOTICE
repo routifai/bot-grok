@@ -61,6 +61,20 @@ and markitdown for it, each under its own permissive license, and applies the up
 fixes for gitbrent/PptxGenJS issue 1531 and pull requests 1537 and 1540
 (infra/sandboxes/computer/pptx/runtime/patches).
 
+Two small chat behaviors port ideas and wording from nao (https://github.com/getnao/nao, Copyright
+2025 nao Labs, commit 5bde830), Apache-2.0 (see LICENSE); only files without the "@license
+Enterprise" header were used. Each ported file carries a "Portions modified from getnao/nao
+<path>@5bde830, Apache-2.0; changes: ..." header:
+engine/omnigent/omnigent/superchat/cards/tools.py (the `ask_clarification` and `suggest_follow_ups`
+tools, from apps/shared/src/tools/clarification.ts and suggest-follow-ups.ts; they emit Nova's reply
+cards instead of nao's tool-call UI), and the memory extraction rules in
+engine/omnigent/omnigent/memory/upkeep.py, engine/omnigent/omnigent/superchat/daily_notes/
+quiet_moment.py and infra/omnigent/templates/AGENTS.md (from apps/backend/src/components/ai/
+memory-system-prompt.tsx and agents/memory/memory-extractor-llm.ts: standing instructions apart
+from profile facts, instructions gated on permanence signals, supersede on change). Nova's
+recurring-task support (the Muse writes the RRULE, the server validates it and previews the next
+fire times) is its own design: nao's cron-nlp.ts was read for the idea only and no code or prompt
+from it is used.
 
 Nova's file-search guidance (the "The person's files" section of infra/omnigent/templates/AGENTS.md)
 and the shape of its files_* tools (search by keywords, by meaning, hybrid with a model rerank; get
@@ -73,7 +87,7 @@ FTS5 and sqlite-vec (omnigent/runner/knowledge).
 
 Charts. The chart capability (packages/charts, engine/omnigent/omnigent/superchat/charts,
 apps/api/src/features/charts, apps/web/src/features/charts) contains portions modified from nao
-(https://github.com/getnao/nao, commit 5bde830), Copyright the nao authors, licensed under the Apache
+(https://github.com/getnao/nao, commit 5bde830), Copyright 2025 nao Labs, licensed under the Apache
 License 2.0 (see LICENSE); files under nao's `@license Enterprise` headers were not used. Each ported
 file carries a "Portions modified from getnao/nao <path>@5bde830, Apache-2.0; changes: ..." header:
 apps/shared/src/tools/display-chart.ts (the chart spec and its model-facing descriptions, ported to

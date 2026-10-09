@@ -19,7 +19,9 @@ function firstText(message: ThreadMessage): string {
  * Resolves every reply card in `messages` (oldest first):
  * - cards sharing an `id` collapse into the first one's position, showing the latest settled
  *   data (a still-pending update never replaces a finished card with a skeleton);
- * - the person's next message after a card is its answer.
+ * - the person's next message after a card is its answer;
+ * - follow-up chips belong to the latest answer only: any `follow_ups` card that is not in the
+ *   thread's final message (the person replied, or the Muse wrote more) is hidden.
  */
 export function resolveReplyCards(
   messages: readonly ThreadMessage[],
@@ -33,6 +35,7 @@ export function resolveReplyCards(
     }
   }
 
+  const lastMessage = messages.at(-1);
   const resolved = new Map<string, ResolvedReplyCard>();
   const seen = new Set<string>();
   const unanswered: string[] = [];
@@ -46,7 +49,9 @@ export function resolveReplyCards(
       if (block.kind !== "reply_card") return;
       const key = replyCardKey(message.id, index);
       if (message.role !== "user") unanswered.push(key);
-      if (!block.id) {
+      if (block.card === "follow_ups") {
+        resolved.set(key, { block: message === lastMessage ? block : null });
+      } else if (!block.id) {
         resolved.set(key, { block });
       } else if (seen.has(block.id)) {
         resolved.set(key, { block: null });
@@ -61,4 +66,24 @@ export function resolveReplyCards(
     if (entry) resolved.set(key, { ...entry, answer });
   }
   return resolved;
+}
+
+/**
+ * Messages that hold nothing but follow-up chips the thread does not show right now (not the
+ * final message, or the Muse is working). A transcript drops these rows entirely: no empty
+ * bubble, no gutter face, no hover actions (Copy has no text to copy).
+ */
+export function hiddenFollowUpMessageIds(
+  messages: readonly ThreadMessage[],
+  running: boolean,
+): Set<string> {
+  const last = messages.at(-1);
+  const hidden = new Set<string>();
+  for (const message of messages) {
+    const onlyChips =
+      message.blocks.length > 0 &&
+      message.blocks.every((block) => block.kind === "reply_card" && block.card === "follow_ups");
+    if (onlyChips && (running || message !== last)) hidden.add(message.id);
+  }
+  return hidden;
 }

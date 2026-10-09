@@ -22,6 +22,7 @@ import {
   ReplyCardSendProvider,
   ReplyCardThreadProvider,
 } from "../../../components/cards/context";
+import { hiddenFollowUpMessageIds } from "../../../components/cards/thread";
 import { forkAnchorFor } from "../../../features/side-chats/forkModel";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
@@ -45,6 +46,12 @@ export function Transcript({
   /** A reply card's button sends this text as the person's next message. */
   onSendCard?: (text: string) => void;
 }) {
+  // Follow-up chips that are not shown leave no row behind (no ghost bubble or Copy action).
+  const { messages: allMessages, running } = props;
+  const shownMessages = useMemo(() => {
+    const hidden = hiddenFollowUpMessageIds(allMessages, running);
+    return hidden.size === 0 ? allMessages : allMessages.filter((m) => !hidden.has(m.id));
+  }, [allMessages, running]);
   const view = (
     <ReplyCardBotProvider
       botId={
@@ -53,8 +60,8 @@ export function Transcript({
           : undefined
       }
     >
-      <ReplyCardThreadProvider messages={props.messages}>
-        <TranscriptView {...props} />
+      <ReplyCardThreadProvider messages={props.messages} running={props.running}>
+        <TranscriptView {...props} messages={shownMessages} />
       </ReplyCardThreadProvider>
     </ReplyCardBotProvider>
   );

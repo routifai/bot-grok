@@ -1634,6 +1634,9 @@ class SqlScheduledTask(OmnigentBase):
     agent_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Explicit product marker set at creation (e.g. ``followed_topic``); ``None`` = unmarked.
     kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Epoch seconds fixing the phase of INTERVAL>1 rules: the person's start date, else when the
+    # rule was set. ``None`` on rows that predate the column (read as ``created_at``).
+    anchor_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[int] = mapped_column(Integer)
     updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

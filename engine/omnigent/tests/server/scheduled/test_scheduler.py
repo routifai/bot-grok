@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field, replace
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from omnigent.server.scheduled.scheduler import (
     MISFIRE_GRACE_TIME_S,
@@ -25,7 +27,8 @@ class _FakeTask:
     """The slice of ``ScheduledTask`` the scheduler reads.
 
     The scheduler only touches ``id``, ``workspace_id``, ``rrule``,
-    ``timezone``, and ``state``, so the tests drive it with this local stand-in
+    ``timezone``, ``anchor_epoch`` (the stable phase of INTERVAL>1 rules) and ``state``, so the
+    tests drive it with this local stand-in
     rather than the full persisted entity — keeping the scheduler unit tests
     independent of the entity's field set.
     """
@@ -35,6 +38,12 @@ class _FakeTask:
     timezone: str
     state: str
     workspace_id: int = 0
+    created_at: int = 0
+    anchor_at: int | None = None
+
+    @property
+    def anchor_epoch(self) -> int:
+        return self.anchor_at if self.anchor_at is not None else self.created_at
 
 
 # ── Fakes ────────────────────────────────────────────────────────────────────
@@ -371,3 +380,26 @@ async def _fire_timer(timer) -> None:
 def scheduler_task_of(scheduler: ScheduledTaskScheduler, task_id: str) -> _FakeTask:
     """Reach into the fake store to get the seed task for update tests."""
     return scheduler._store.get(task_id)  # type: ignore[attr-defined]
+
+
+async def test_every_other_friday_fires_on_the_same_day_after_a_restart_mid_cycle() -> None:
+    # Created Fri 2026-10-09 10:00 Paris: fires Oct 23 whatever day the process restarts on.
+    created = int(datetime(2026, 10, 9, 10, tzinfo=ZoneInfo("Europe/Paris")).timestamp())
+    task = _FakeTask(
+        id="biweekly",
+        rrule="FREQ=WEEKLY;INTERVAL=2;BYDAY=FR;BYHOUR=9;BYMINUTE=0",
+        timezone="Europe/Paris",
+        state="active",
+        created_at=created,
+    )
+    armed: set[str] = set()
+    for restart_day in (10, 13, 16, 20, 22):
+        clock = FakeClock(
+            datetime(2026, 10, restart_day, 12, tzinfo=ZoneInfo("Europe/Paris")).timestamp()
+        )
+        scheduler, _clock, _seam, _fired = _make([task], clock=clock)
+        await scheduler.start()
+        nxt = scheduler.next_run_at("biweekly")
+        assert nxt is not None
+        armed.add(nxt)
+    assert armed == {"2026-10-23T09:00:00+02:00"}

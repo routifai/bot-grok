@@ -167,15 +167,23 @@ class MemoryService:
         speaker: str | None = None,
         evidence: list[MemoryEvidenceLink] | None = None,
         replaces_claim_id: str | None = None,
+        explicitness: str | None = None,
     ) -> dict[str, Any]:
-        """Write a ``stated`` claim, immediately indexed; reinforce a near-duplicate.
+        """Write a claim (``stated`` unless *explicitness* says ``inferred``), immediately
+        indexed; reinforce a near-duplicate.
 
-        Supersedes only the active claim named by ``replaces_claim_id``.
+        Supersedes only the active claim named by ``replaces_claim_id``. An ``inferred`` claim
+        starts at :data:`INFERRED_CONFIDENCE` (a standing instruction said without a permanence
+        signal), and repeating it reinforces it like any other claim.
 
         :returns: ``{"action": "added"|"reinforced"|"superseded", "claim": {...}}``.
         """
         resolved_kind: str = (
             kind if isinstance(kind, str) and kind in VALID_KINDS else DEFAULT_KIND
+        )
+        resolved_explicitness = "inferred" if explicitness == "inferred" else "stated"
+        confidence = (
+            _INFERRED_CONFIDENCE if resolved_explicitness == "inferred" else _STATED_CONFIDENCE
         )
         if replaces_claim_id:
             old = self._store.get(replaces_claim_id, user_id)
@@ -184,7 +192,13 @@ class MemoryService:
             if old.person_authored:
                 # The person wrote this: keep it and add the new text beside it.
                 result = self.remember(
-                    user_id, text, kind=kind, quote=quote, speaker=speaker, evidence=evidence
+                    user_id,
+                    text,
+                    kind=kind,
+                    quote=quote,
+                    speaker=speaker,
+                    evidence=evidence,
+                    explicitness=explicitness,
                 )
                 result["kept_person_authored"] = replaces_claim_id
                 return result
@@ -198,8 +212,8 @@ class MemoryService:
                 quote=quote,
                 speaker=speaker,
                 evidence=evidence,
-                explicitness="stated",
-                confidence=_STATED_CONFIDENCE,
+                explicitness=resolved_explicitness,
+                confidence=confidence,
             )
             self._index.delete(existing_id)
             self._index.upsert(new_claim)
@@ -228,8 +242,8 @@ class MemoryService:
             quote=quote,
             speaker=speaker,
             evidence=evidence,
-            explicitness="stated",
-            confidence=_STATED_CONFIDENCE,
+            explicitness=resolved_explicitness,
+            confidence=confidence,
         )
         self._index.upsert(new_claim)
         self._invalidate_profile(user_id)

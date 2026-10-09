@@ -122,6 +122,24 @@ def test_remember_writes_a_claim_scoped_to_the_session_owner(fixture: _Fixture) 
     assert fixture.service.get("bob", result["claim"]["claim_id"]) is None
 
 
+def test_remember_records_an_unsignalled_instruction_as_inferred(fixture: _Fixture) -> None:
+    tool = MemoryRememberTool()
+    schema = tool.get_schema()["function"]["parameters"]["properties"]["explicitness"]
+    assert schema["enum"] == ["stated", "inferred"]
+    inferred = json.dumps(
+        {
+            "text": "The user wants replies in French",
+            "kind": "instruction",
+            "explicitness": "inferred",
+        }
+    )
+    claim = json.loads(tool.invoke(inferred, fixture.ctx_alice))["claim"]
+    assert (claim["explicitness"], claim["confidence"]) == ("inferred", 0.4)
+    # Anything else (including a bogus value) stays a stated claim.
+    other = json.dumps({"text": "The user is a PM", "kind": "fact", "explicitness": "whatever"})
+    assert json.loads(tool.invoke(other, fixture.ctx_alice))["claim"]["explicitness"] == "stated"
+
+
 def test_remember_requires_non_empty_text(fixture: _Fixture) -> None:
     tool = MemoryRememberTool()
     result = json.loads(tool.invoke(json.dumps({"text": "   "}), fixture.ctx_alice))

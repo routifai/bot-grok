@@ -4,8 +4,8 @@ Pure: items in (the flat ``ConversationItem.to_api_dict()`` shape, oldest first)
 out. The rules a client would otherwise copy:
 
 * a message item is a ``text`` block; the runtime's own notices and hidden context are dropped;
-* ``render_card`` / ``vault_request_secret`` / ``artifact_save`` / ``deck_export`` /
-  ``display_chart`` calls become
+* ``render_card`` / ``ask_clarification`` / ``suggest_follow_ups`` / ``vault_request_secret`` /
+  ``artifact_save`` / ``deck_export`` / ``display_chart`` calls become
   ``card`` / ``secure_entry`` / ``file`` messages of their own (a call whose output says it
   failed shows nothing; a card still running is ``pending``);
 * a delivered file (a ``resource_event`` whose ``resource_type`` is ``artifact``: something the
@@ -33,7 +33,11 @@ from typing import Any
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.superchat.artifact_kinds import KIND_MIME
-from omnigent.superchat.cards.tools import CARD_TOOL_NAME
+from omnigent.superchat.cards.tools import (
+    CARD_TOOL_NAME,
+    CLARIFICATION_TOOL_NAME,
+    FOLLOW_UPS_TOOL_NAME,
+)
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
@@ -271,16 +275,36 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-def _final_text_ids(items: list[Item]) -> set[str]:
-    """Ids of the assistant text items that end their turn (a user message starts a turn)."""
+_TURN_ENDING_CARD_TOOLS = (CLARIFICATION_TOOL_NAME, FOLLOW_UPS_TOOL_NAME)
+
+
+def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
+    """Ids of the assistant text items that end their turn (a user message starts a turn).
+
+    A turn that shows an ``ask_clarification`` or ``suggest_follow_ups`` card ends there: the
+    card belongs to the answer written before it, so text the model adds after the card is
+    dropped instead of replacing the answer (and pushing the chips off the last message).
+    """
     final: dict[int, str] = {}
+    closed: set[int] = set()
     turn = 0
     for item in items:
+        if item.get("type") == "function_call":
+            if any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
+                result = _object(outputs.get(str(item.get("call_id") or "")))
+                if result and result.get("type") == "card":
+                    closed.add(turn)
+            continue
         if item.get("type") != "message" or item.get("is_meta") is True:
             continue
         if item.get("role") == "user":
             turn += 1
-        elif item.get("role") == "assistant" and item_text(item) and "id" in item:
+        elif (
+            item.get("role") == "assistant"
+            and turn not in closed
+            and item_text(item)
+            and "id" in item
+        ):
             final[turn] = item["id"]
     return set(final.values())
 
@@ -300,7 +324,7 @@ def project_items(
     helpers: list[dict[str, Any]] = []
     cited: list[dict[str, Any]] = []
     seen_calls: set[str] = set()
-    final_text = _final_text_ids(items)
+    final_text = _final_text_ids(items, outputs)
     for item in items:
         kind = item.get("type")
         if kind == "function_call":
@@ -321,6 +345,9 @@ def project_items(
                 continue
             if _is_call(item, CARD_TOOL_NAME):
                 block = _card_block(item, output)
+            elif _is_call(item, CLARIFICATION_TOOL_NAME) or _is_call(item, FOLLOW_UPS_TOOL_NAME):
+                # Instant tools: the card appears with its result, never as a skeleton.
+                block = _card_block(item, output) if output is not None else None
             elif _is_call(item, VAULT_REQUEST_TOOL_NAME):
                 block = _secure_entry_block(output)
             elif any(_is_call(item, name) for name in FILE_RESULT_TOOL_NAMES):

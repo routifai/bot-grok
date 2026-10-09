@@ -21,6 +21,7 @@ from omnigent.server.scheduled.rrule import (
     RRuleTrigger,
     RRuleValidationError,
     get_next_fire_time,
+    next_fire_times,
     validate_rrule,
 )
 from omnigent.server.scheduled.scheduler import (
@@ -37,5 +38,6 @@ __all__ = [
     "RRuleValidationError",
     "ScheduledTaskScheduler",
     "get_next_fire_time",
+    "next_fire_times",
     "validate_rrule",
 ]

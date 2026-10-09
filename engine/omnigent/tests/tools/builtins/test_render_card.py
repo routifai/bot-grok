@@ -16,7 +16,6 @@ _VALID: dict[str, dict] = {
     "sources": {"items": [{"title": "A", "url": "https://a.test", "snippet": "s"}]},
     "compare": {"columns": ["X", "Y"], "rows": [{"label": "Row", "cells": ["1", "2"]}]},
     "plan": {"items": [{"text": "Do", "status": "doing"}]},
-    "ask": {"question": "Which?", "options": [{"id": "a", "label": "A"}]},
     "quote": {"symbol": "ACME", "price": 12.5, "changePct": -1.2},
     "person": {"name": "Ada"},
     "file": {"name": "report.pdf", "size": 1024},
@@ -146,3 +145,19 @@ def test_registered_for_super_chat_and_side_chat_not_helpers() -> None:
     helper = {**mode, "omnigent.subagent": "researcher"}
     assert "render_card" not in ToolManager(_spec(), labels=helper).get_tool_names()
     assert "render_card" not in ToolManager(_spec()).get_tool_names()
+
+
+def test_ask_is_not_a_render_card_kind_there_is_one_way_to_ask() -> None:
+    assert "ask" not in CARD_DATA_SCHEMAS
+    out = _call(
+        card="ask",
+        data={"question": "Which?", "options": [{"id": "a", "label": "A"}]},
+        fallback="Which?",
+    )
+    assert "card must be one of" in out["error"]
+    assert (
+        "ask_clarification"
+        not in RenderCardTool().get_schema()["function"]["parameters"]["properties"]["card"][
+            "enum"
+        ]
+    )
