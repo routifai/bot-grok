@@ -198,3 +198,52 @@ export function userTurnMessageForRun<
       (sourceMessageId ? message.id === sourceMessageId : message.runId === runId),
   );
 }
+
+// Muse chats keep a person's files in their Computer workspace, not in Nova's database. A message
+// refers to such a file with one reference line; this is the only definition of that format (the
+// api writes it, the web and the worker parse it).
+
+/** Where composer uploads land in the workspace. */
+export const WORKSPACE_UPLOADS_PREFIX = "your_files/uploads/";
+
+export interface WorkspaceAttachmentRef {
+  path: string;
+  mimeType: string;
+  size: number;
+}
+
+const REFERENCE_PREFIX = "Attached file in your workspace: ";
+const REFERENCE_LINE = /^Attached file in your workspace: (.+) \(([^(),\s]+), (\d+) bytes\)$/;
+
+export function attachmentReferenceLine(ref: WorkspaceAttachmentRef): string {
+  return `${REFERENCE_PREFIX}${ref.path} (${ref.mimeType}, ${ref.size} bytes)`;
+}
+
+/** The leading reference lines of a message and the caption after them. Lines that do not match
+ * the format end the scan, so ordinary text is never mistaken for an attachment. */
+export function parseAttachmentReferences(text: string): {
+  attachments: WorkspaceAttachmentRef[];
+  caption: string;
+} {
+  const lines = text.split("\n");
+  const attachments: WorkspaceAttachmentRef[] = [];
+  let index = 0;
+  for (; index < lines.length; index += 1) {
+    const match = REFERENCE_LINE.exec(lines[index] ?? "");
+    if (!match) break;
+    attachments.push({ path: match[1] ?? "", mimeType: match[2] ?? "", size: Number(match[3]) });
+  }
+  if (attachments.length === 0) return { attachments, caption: text };
+  return { attachments, caption: lines.slice(index).join("\n").trim() };
+}
+
+/** The text a Muse turn carries for workspace attachments: one reference line each, a blank line,
+ * then the caption. */
+export function promptTextForWorkspaceAttachments(
+  text: string | undefined,
+  attachments: readonly WorkspaceAttachmentRef[],
+): string {
+  const caption = text?.trim() ?? "";
+  const lines = attachments.map(attachmentReferenceLine).join("\n");
+  return [lines, caption].filter(Boolean).join("\n\n");
+}

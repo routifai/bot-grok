@@ -7,6 +7,8 @@ import { rpc } from "../../lib/rpc";
 const FAST_MS = 3_000;
 const IDLE_MS = 20_000;
 const FAILED_MS = 60_000;
+/** The Computer is asleep: the answer is the last-known state and nothing is changing. */
+const ASLEEP_MS = 60_000;
 /** A card for a file the last answer didn't list asks again, but not more often than this. */
 const REFRESH_FLOOR_MS = 4_000;
 
@@ -22,13 +24,14 @@ function emit() {
 }
 
 function nextDelay(): number {
+  if (snapshot?.computer === "asleep") return ASLEEP_MS;
   return snapshot?.files.some((file) => file.state === "indexing") ? FAST_MS : IDLE_MS;
 }
 
 /** Keyword-only files get embedded once the person has a connection that can (their key was
  * added after the files were). Asked once per page load. */
 function maybeReindex(status: KnowledgeStatus) {
-  if (reindexAsked || !status.embeddings.available) return;
+  if (reindexAsked || status.computer === "asleep" || !status.embeddings.available) return;
   if (!status.files.some((file) => file.state === "searchable" && file.search === "keyword"))
     return;
   reindexAsked = true;
@@ -69,7 +72,7 @@ function subscribe(listener: () => void) {
 
 /** Ask for fresh state soon (a file just appeared): now, or once the floor has passed. */
 export function refreshKnowledge() {
-  if (listeners.size === 0 || inflight) return;
+  if (listeners.size === 0 || inflight || snapshot?.computer === "asleep") return;
   clearTimeout(timer);
   timer = setTimeout(() => void poll(), Math.max(0, REFRESH_FLOOR_MS - (Date.now() - fetchedAt)));
 }
@@ -85,7 +88,16 @@ export function resetKnowledgeStatus() {
   listeners.clear();
 }
 
-/** The index state of one file, or `undefined` when the engine doesn't list it (not indexable,
+/** Whether the Computer is asleep, so the shown state is the last-known one and not live. */
+export function useKnowledgeAsleep(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => snapshot?.computer === "asleep",
+    () => false,
+  );
+}
+
+/** The index state of one Library file (by artifact id), or `undefined` when the engine doesn't list it (not indexable,
  * or not known yet). */
 export function useKnowledgeFile(artifactId: string): KnowledgeFile | undefined {
   const status = useSyncExternalStore(

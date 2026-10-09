@@ -30,7 +30,6 @@ from omnigent.db.utils import (
     run_write_transaction,
 )
 from omnigent.stores.artifact_store import ArtifactStore
-from omnigent.superchat.artifacts.events import emit_created, emit_deleted
 
 _BLOB_PREFIX = "muse-artifacts"
 _CREATE_ATTEMPTS = 5
@@ -292,8 +291,6 @@ class SqlAlchemyArtifactStore:
         except Exception:
             blobs.delete(key)
             raise
-        siblings = [v.id for v in self.versions(saved) if v.id != saved.id]
-        emit_created(saved, data, siblings)
         return saved
 
     def newest(self, item: Artifact) -> Artifact | None:
@@ -604,5 +601,4 @@ class SqlAlchemyArtifactStore:
         blobs = self._blob_store()
         for version in group:
             blobs.delete(version.blob_key)
-        emit_deleted(group)
         return len(group)

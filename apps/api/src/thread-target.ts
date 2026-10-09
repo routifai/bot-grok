@@ -9,12 +9,14 @@ import {
   type MessageReaction,
   type RunStatus,
   type ThreadSnapshot,
+  type WorkspaceAttachment,
 } from "@nova/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   isActive,
   isConversationalRun,
   projectMessages,
+  promptTextForWorkspaceAttachments,
   resolveGroupTargetBotIds,
   runFailureError,
 } from "@nova/core";
@@ -44,6 +46,7 @@ import {
 import { resolveBusyBotName, toComputerStatus } from "./features/computer/status.js";
 import { withSerializableRetry } from "./serializable-retry.js";
 import { loadMessagePage } from "./thread-message-pages.js";
+import { validateWorkspaceAttachments } from "./workspace-attachments.js";
 
 export type ThreadTarget =
   | {
@@ -602,12 +605,22 @@ export async function sendThreadMessage(
   input: {
     text?: string;
     artifactIds?: string[];
+    /** Files already in the Muse's workspace (see `files.uploadAttachment`). */
+    attachments?: WorkspaceAttachment[];
     mentions?: MentionTargetInput[];
     replyToMessageId?: string;
     replyQuote?: string;
     clientNonce?: string;
   },
 ) {
+  if (input.attachments?.length && target.kind !== "bot") {
+    throw new ORPCError("BAD_REQUEST", { message: "Workspace attachments need a Muse chat." });
+  }
+  // The text a Muse turn carries when files are attached: one reference line per file, then the
+  // caption. It is both the stored message text and the task prompt (no Nova-side file rows).
+  const workspaceText = input.attachments?.length
+    ? promptTextForWorkspaceAttachments(input.text, validateWorkspaceAttachments(input.attachments))
+    : undefined;
   const existing = await replayExistingSend(deps, target.threadId, input.clientNonce);
   if (existing) return existing;
   const requestedReplyQuote = input.replyQuote?.trim() || undefined;
@@ -662,7 +675,7 @@ export async function sendThreadMessage(
           actor,
           mentionTargets.connectorMentionIds,
         );
-        const blocks = buildUserMessageBlocks(input.text, attachmentBlocks);
+        const blocks = buildUserMessageBlocks(workspaceText ?? input.text, attachmentBlocks);
         const message = await createThreadMessageInTransaction(tx, {
           threadId: target.threadId,
           role: "user",
@@ -764,7 +777,7 @@ export async function sendThreadMessage(
             botId: target.botId,
             threadId: target.threadId,
             userId: actor.userId,
-            prompt: buildSendPrompt(input.text, artifacts, connectorNames),
+            prompt: buildSendPrompt(workspaceText ?? input.text, artifacts, connectorNames),
             status: "queued",
           },
         });

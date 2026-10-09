@@ -1,6 +1,6 @@
-// `knowledge.*`: the person's file search, read from the engine (engine/omnigent/omnigent/
-// superchat/knowledge). Nova keeps no rows: the engine indexes every file it stores as an artifact
-// and answers status, search and page thumbnails; these are thin relays with the camelCase shapes.
+// `knowledge.*`: the person's file search. The index lives in their Computer; the engine relays
+// it through the Muse session's `/knowledge/*` routes. Nova keeps no rows: these are thin relays
+// with the camelCase shapes, scoped to the caller's Muse session.
 import {
   fetchOmnigentPageThumbnail,
   getOmnigentKnowledgeStatus,
@@ -9,10 +9,13 @@ import {
   searchOmnigentKnowledge,
 } from "@nova/adapters";
 import type { Actor, KnowledgeStatus } from "@nova/contracts";
+import type { PrismaClient } from "@nova/db";
 import { ORPCError } from "@orpc/server";
-import { type EngineArtifactsDeps, emailOf } from "../artifacts/index.js";
+import { resolveMuseSession } from "../computer/index.js";
 
-export type EngineKnowledgeDeps = EngineArtifactsDeps;
+export interface EngineKnowledgeDeps {
+  prisma: PrismaClient;
+}
 
 function notFound(error: unknown): never {
   if (error instanceof Error && /\(404\)/.test(error.message)) {
@@ -26,10 +29,12 @@ export async function engineKnowledgeStatus(
   client: OmnigentClientConfig,
   actor: Actor,
 ): Promise<KnowledgeStatus> {
-  const status = await getOmnigentKnowledgeStatus(client, await emailOf(deps, actor));
+  const { email, sessionId } = await resolveMuseSession(deps, client, actor);
+  const status = await getOmnigentKnowledgeStatus(client, email, sessionId);
   return {
     files: status.files.map((file) => ({
-      artifactId: file.artifact_id,
+      fileId: file.file_id,
+      path: file.path,
       name: file.name,
       kind: file.kind,
       state: file.state,
@@ -38,8 +43,11 @@ export async function engineKnowledgeStatus(
       pages: file.pages,
       pagesWithoutText: file.pages_without_text,
       error: file.error,
+      artifactId: file.artifact_id,
     })),
     embeddings: status.embeddings,
+    computer: status.computer,
+    updatedAt: status.updated_at,
   };
 }
 
@@ -49,13 +57,16 @@ export async function engineKnowledgeSearch(
   actor: Actor,
   input: { query: string; fileIds?: string[]; k?: number },
 ) {
-  const found = await searchOmnigentKnowledge(client, await emailOf(deps, actor), input);
+  const { email, sessionId } = await resolveMuseSession(deps, client, actor);
+  const found = await searchOmnigentKnowledge(client, email, sessionId, input);
   return {
     mode: found.mode,
     keywordOnlyReason: found.keyword_only_reason,
     filesIndexing: found.files_indexing,
     results: found.results.map((hit) => ({
       fileName: hit.file_name,
+      fileId: hit.file_id,
+      path: hit.path,
       artifactId: hit.artifact_id,
       page: hit.page,
       pageEnd: hit.page_end,
@@ -71,12 +82,14 @@ export async function engineKnowledgePageThumbnail(
   deps: EngineKnowledgeDeps,
   client: OmnigentClientConfig,
   actor: Actor,
-  input: { artifactId: string; page: number },
+  input: { fileId: string; page: number },
 ) {
+  const { email, sessionId } = await resolveMuseSession(deps, client, actor);
   const bytes = await fetchOmnigentPageThumbnail(
     client,
-    await emailOf(deps, actor),
-    input.artifactId,
+    email,
+    sessionId,
+    input.fileId,
     input.page,
   ).catch(notFound);
   return { contentBase64: Buffer.from(bytes).toString("base64"), mimeType: "image/webp" as const };
@@ -87,5 +100,6 @@ export async function engineKnowledgeReindex(
   client: OmnigentClientConfig,
   actor: Actor,
 ) {
-  return reindexOmnigentKnowledge(client, await emailOf(deps, actor));
+  const { email, sessionId } = await resolveMuseSession(deps, client, actor);
+  return reindexOmnigentKnowledge(client, email, sessionId);
 }

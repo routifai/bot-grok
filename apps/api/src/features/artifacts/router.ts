@@ -19,7 +19,6 @@ import {
   engineListArtifactVersions,
   engineListSpaceArtifacts,
   engineRemoveArtifact,
-  engineSaveUpload,
 } from "./service.js";
 
 export function artifactsRouter(c: RouterContext) {
@@ -84,16 +83,7 @@ export function artifactsRouter(c: RouterContext) {
           : (await groupRepos.getGroupTarget(context.actor, input.groupId!)).members[0]?.bot.id;
         if (!botId) throw new IsolationError();
         try {
-          const created = await createOwnedArtifact(deps, context.actor, { ...input, botId });
-          const engine = engineComputerClient(context.actor);
-          if (engine && input.botId) {
-            await engineSaveUpload(engineArtifactsDeps, engine, context.actor, {
-              botId,
-              name: input.name,
-              contentBase64: input.contentBase64,
-            });
-          }
-          return created;
+          return await createOwnedArtifact(deps, context.actor, { ...input, botId });
         } catch (error) {
           if (error instanceof AttachmentValidationError) {
             throw new ORPCError("BAD_REQUEST", { message: error.message });

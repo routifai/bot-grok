@@ -1,6 +1,13 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { engineListFiles, engineReadFile, engineSaveFileToLibrary } from "./files.js";
+import {
+  dedupeUploadName,
+  engineListFiles,
+  engineReadFile,
+  engineSaveFileToLibrary,
+  engineUploadAttachment,
+  safeUploadName,
+} from "./files.js";
 
 const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [] };
 const actor = { userId: "user-1", spaceId: "space-1" } as never;
@@ -129,5 +136,105 @@ describe("engine files", () => {
       path: "a/b.html",
     });
     expect(artifact).toMatchObject({ id: "a1", botId: "bot-1", mimeType: "text/html", size: 11 });
+  });
+});
+
+describe("engine attachment upload", () => {
+  const FS = "/v1/sessions/muse-1/resources/environments/default/filesystem";
+  const day = new Date("2026-10-09T12:00:00Z");
+  const uploadPrisma = {
+    bot: { findFirst: vi.fn(async () => ({ id: "bot-1" })) },
+    user: { findUnique: vi.fn(async () => ({ email: "p@example.test" })) },
+  } as unknown as PrismaClient;
+  const upDeps = { prisma: uploadPrisma };
+  const input = (over: Record<string, unknown> = {}) => ({
+    botId: "bot-1",
+    name: "report.pdf",
+    mimeType: "application/pdf",
+    contentBase64: Buffer.from("%PDF-1.4").toString("base64"),
+    ...over,
+  });
+  const museOr = (
+    handler: (url: URL, init?: RequestInit) => Response | Promise<Response>,
+  ): ReturnType<typeof vi.fn> => {
+    const fetchMock = vi.fn(async (url: URL, init?: RequestInit) =>
+      url.pathname === "/v1/me/muse"
+        ? json({ session_id: "muse-1", agent: "agent", created: false })
+        : handler(url, init),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+
+  it("PUTs base64 under your_files/uploads/<date>/ and returns the path", async () => {
+    const fetchMock = museOr((url, init) => {
+      if (init?.method === "PUT") return json({ bytes_written: 8, path: "x", created: true });
+      expect(url.pathname).toBe(`${FS}/your_files/uploads/2026-10-09`);
+      return json({}, 404);
+    });
+    const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+    expect(out).toEqual({
+      path: "your_files/uploads/2026-10-09/report.pdf",
+      name: "report.pdf",
+      mimeType: "application/pdf",
+      size: 8,
+    });
+    const [url, init] = fetchMock.mock.calls.at(-1) as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe(`${FS}/your_files/uploads/2026-10-09/report.pdf`);
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual({
+      content: Buffer.from("%PDF-1.4").toString("base64"),
+      encoding: "base64",
+      create_parents: true,
+    });
+  });
+
+  it("de-duplicates against the day's folder", async () => {
+    museOr((_url, init) =>
+      init?.method === "PUT"
+        ? json({ bytes_written: 8 })
+        : json({
+            data: ["report.pdf", "report (2).pdf"].map((name) => ({
+              name,
+              path: `your_files/uploads/2026-10-09/${name}`,
+              type: "file",
+              bytes: 1,
+              modified_at: 1,
+            })),
+          }),
+    );
+    const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+    expect(out.path).toBe("your_files/uploads/2026-10-09/report (3).pdf");
+    expect(out.name).toBe("report (3).pdf");
+  });
+
+  it("maps a 503 from the engine to the calm starting message", async () => {
+    museOr(() => json({ error: { code: "runner_unavailable" } }, 503));
+    await expect(engineUploadAttachment(upDeps, client, actor, input(), day)).rejects.toMatchObject(
+      {
+        code: "SERVICE_UNAVAILABLE",
+        message: "Your Computer is starting. Try again in a moment.",
+      },
+    );
+  });
+
+  it("rejects bad types and bad base64 before touching the engine", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      engineUploadAttachment(upDeps, client, actor, input({ mimeType: "application/zip" })),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      engineUploadAttachment(upDeps, client, actor, input({ contentBase64: "not base64!" })),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("makes names safe and numbers duplicates", () => {
+    expect(safeUploadName("../../etc/passwd", "text/plain")).toBe("passwd.txt");
+    expect(safeUploadName("..\\x\\.hidden.png", "image/png")).toBe("hidden.png");
+    expect(safeUploadName("", "application/pdf")).toBe("file.pdf");
+    expect(dedupeUploadName("a.pdf", new Set(["a.pdf"]))).toBe("a (2).pdf");
+    expect(dedupeUploadName("noext", new Set(["noext", "noext (2)"]))).toBe("noext (3)");
   });
 });

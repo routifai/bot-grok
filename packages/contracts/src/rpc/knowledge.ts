@@ -7,9 +7,12 @@ export const KNOWLEDGE_FILE_STATES = ["indexing", "searchable", "failed"] as con
 export const KnowledgeFileStateSchema = z.enum(KNOWLEDGE_FILE_STATES);
 export type KnowledgeFileState = z.infer<typeof KnowledgeFileStateSchema>;
 
-/** One indexed file's state (engine `GET /v1/knowledge/status`). */
+/** One indexed file's state (engine `GET /v1/sessions/{id}/knowledge/status`). */
 export const KnowledgeFileSchema = z.object({
-  artifactId: Id,
+  /** The Computer index's id for the file (a hex digest of its workspace path). */
+  fileId: z.string(),
+  /** Workspace-relative path, e.g. `your_files/uploads/2026-10-09/report.pdf`. */
+  path: z.string(),
   name: z.string(),
   kind: z.string(),
   state: KnowledgeFileStateSchema,
@@ -20,18 +23,25 @@ export const KnowledgeFileSchema = z.object({
   /** PDF pages with no text layer (scans): not searchable until the deep parse reads them. */
   pagesWithoutText: z.number().int(),
   error: z.string().nullable(),
+  /** Set when the file is also a Library artifact. */
+  artifactId: Id.nullable(),
 });
 export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
 
 export const KnowledgeStatusSchema = z.object({
   files: z.array(KnowledgeFileSchema),
   embeddings: z.object({ available: z.boolean(), reason: z.string().nullable() }),
+  /** `asleep`: the files are the last-known snapshot (possibly empty); status never wakes it. */
+  computer: z.enum(["awake", "asleep"]),
+  updatedAt: z.number().nullable(),
 });
 export type KnowledgeStatus = z.infer<typeof KnowledgeStatusSchema>;
 
 export const KnowledgePassageSchema = z.object({
   fileName: z.string(),
-  artifactId: Id,
+  fileId: z.string(),
+  path: z.string(),
+  artifactId: Id.nullable(),
   page: z.number().int(),
   pageEnd: z.number().int(),
   score: z.number(),
@@ -50,7 +60,10 @@ export const knowledgeContract = {
       .input(
         z.object({
           query: z.string().min(1).max(2000),
-          fileIds: z.array(Id).max(200).optional(),
+          fileIds: z
+            .array(z.string().regex(/^[0-9a-f]{8,128}$/))
+            .max(200)
+            .optional(),
           k: z.number().int().min(1).max(25).optional(),
         }),
       )
@@ -64,7 +77,9 @@ export const knowledgeContract = {
       ),
     /** A page's 256 px WebP thumbnail (a PDF's citation chip). */
     pageThumbnail: oc
-      .input(z.object({ artifactId: Id, page: z.number().int().min(1) }))
+      .input(
+        z.object({ fileId: z.string().regex(/^[0-9a-f]{8,128}$/), page: z.number().int().min(1) }),
+      )
       .output(z.object({ contentBase64: z.string(), mimeType: z.literal("image/webp") })),
     /** Re-embed files that were indexed without embeddings (the person has since added a key). */
     reindex: oc.input(z.object({})).output(z.object({ queued: z.number().int() })),

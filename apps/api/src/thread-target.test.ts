@@ -3221,3 +3221,120 @@ describe("stopThreadRuns", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 });
+
+describe("sendThreadMessage with workspace attachments", () => {
+  function setup() {
+    let messageSeq = 0;
+    let eventSeq = 0;
+    const tx = {
+      thread: {
+        update: vi.fn(async ({ data }: { data: { nextMessageSeq?: unknown } }) =>
+          data.nextMessageSeq ? { nextMessageSeq: ++messageSeq } : { nextEventSeq: ++eventSeq },
+        ),
+      },
+      message: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        update: vi.fn(),
+        create: vi.fn().mockResolvedValue({
+          id: "msg-1",
+          threadId: "thread-1",
+          seq: 1,
+          role: "user",
+          blocks: [],
+          botId: null,
+          replyToMessageId: null,
+          replyQuote: null,
+          runId: null,
+          createdAt: new Date(),
+        }),
+      },
+      run: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue({ status: "queued", startedAt: null }),
+        create: vi.fn().mockResolvedValue({ id: "run-1", taskId: "task-1", status: "queued" }),
+      },
+      task: { create: vi.fn().mockResolvedValue({ id: "task-1" }) },
+      event: {
+        create: vi.fn().mockResolvedValue({ id: "event-1", seq: 1, createdAt: new Date() }),
+      },
+      steeringMessage: { create: vi.fn() },
+    };
+    const prisma = {
+      message: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { notify: vi.fn().mockResolvedValue(undefined) } as never,
+      jobs: { enqueue: vi.fn().mockResolvedValue(undefined) } as never,
+    };
+    return { tx, deps };
+  }
+  const actor = { spaceId: "workspace-1", userId: "user-1" } as Actor;
+  const target = { kind: "bot", botId: "bot-1", threadId: "thread-1" } as ThreadTarget;
+  const pdf = {
+    path: "your_files/uploads/2026-10-09/report (2).pdf",
+    name: "report (2).pdf",
+    mimeType: "application/pdf",
+    size: 1234,
+  };
+  const expected =
+    "Attached file in your workspace: your_files/uploads/2026-10-09/report (2).pdf (application/pdf, 1234 bytes)\n\nsummarize it";
+
+  it("stores reference lines plus caption as one text block and the task prompt", async () => {
+    const { tx, deps } = setup();
+    await sendThreadMessage(deps, actor, target, {
+      text: " summarize it ",
+      attachments: [pdf],
+      clientNonce: "n1",
+    });
+    expect(tx.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ blocks: [{ kind: "text", text: expected }] }),
+    });
+    expect(tx.task.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ prompt: expected }),
+    });
+  });
+
+  it("accepts attachments without a caption", async () => {
+    const { tx, deps } = setup();
+    await sendThreadMessage(deps, actor, target, { attachments: [pdf], clientNonce: "n2" });
+    const call = tx.message.create.mock.calls[0]?.[0] as { data: { blocks: unknown[] } };
+    const blocks = call.data.blocks;
+    expect(blocks).toEqual([
+      {
+        kind: "text",
+        text: "Attached file in your workspace: your_files/uploads/2026-10-09/report (2).pdf (application/pdf, 1234 bytes)",
+      },
+    ]);
+  });
+
+  it("rejects paths outside your_files/uploads/ before writing anything", async () => {
+    const { tx, deps } = setup();
+    for (const path of [
+      "other/secret.pdf",
+      "your_files/uploads/../../x.pdf",
+      "/your_files/uploads/a.pdf",
+      "your_files/uploads/a\nb.pdf",
+    ]) {
+      await expect(
+        sendThreadMessage(deps, actor, target, { attachments: [{ ...pdf, path }] }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    }
+    await expect(
+      sendThreadMessage(deps, actor, target, {
+        attachments: [{ ...pdf, mimeType: "application/zip" }],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(tx.message.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses workspace attachments in a group chat", async () => {
+    const { deps } = setup();
+    await expect(
+      sendThreadMessage(deps, actor, { kind: "group", groupId: "g", threadId: "t" } as never, {
+        attachments: [pdf],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+});

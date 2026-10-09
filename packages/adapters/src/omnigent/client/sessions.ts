@@ -34,13 +34,21 @@ export async function getOmnigentSession(
   return (await response.json()) as OmnigentSessionSnapshot;
 }
 
-/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text. */
+/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and, optionally, images as `input_image` data URIs. */
 export async function postOmnigentMessage(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
   text: string,
+  images?: Array<{ mimeType: string; dataBase64: string }>,
 ): Promise<void> {
+  const content: Array<Record<string, string>> = [{ type: "input_text", text }];
+  for (const image of images ?? []) {
+    content.push({
+      type: "input_image",
+      image_url: `data:${image.mimeType};base64,${image.dataBase64}`,
+    });
+  }
   const response = await fetch(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/events`, config.baseUrl),
     {
@@ -48,7 +56,7 @@ export async function postOmnigentMessage(
       headers: omnigentHeaders(config, email),
       body: JSON.stringify({
         type: "message",
-        data: { role: "user", content: [{ type: "input_text", text }] },
+        data: { role: "user", content },
       }),
     },
   );

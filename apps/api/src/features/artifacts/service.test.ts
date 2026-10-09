@@ -5,7 +5,6 @@ import {
   engineListArtifactVersions,
   engineListSpaceArtifacts,
   engineRemoveArtifact,
-  engineSaveUpload,
 } from "./service.js";
 
 const client = {
@@ -185,43 +184,5 @@ describe("engine artifacts", () => {
     await expect(engineGetArtifact(deps, client, actor, "zz")).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
-  });
-});
-
-describe("engine upload mirror", () => {
-  const upload = (name: string) => ({
-    botId: "bot-1",
-    name,
-    contentBase64: Buffer.from("%PDF-1.4").toString("base64"),
-  });
-
-  it("saves a searchable attachment to the Library in the Muse's Conversation", async () => {
-    const fetchMock = vi.fn(async (_url: URL, init?: RequestInit) => {
-      expect(init?.method).toBe("POST");
-      return json({ ...row, id: "a9", name: "report.pdf" }, 201);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    await engineSaveUpload(deps, client, actor, upload("report.pdf"));
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/v1/artifacts");
-    expect(url.searchParams.get("parent_session_id")).toBe("sess-1");
-    expect(url.searchParams.get("name")).toBe("report.pdf");
-    expect(Buffer.from(init.body as Uint8Array).toString()).toBe("%PDF-1.4");
-  });
-
-  it("leaves other attachments to the chat alone", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    await engineSaveUpload(deps, client, actor, upload("photo.png"));
-    await engineSaveUpload(deps, client, actor, upload("page.html"));
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("never fails the attachment when the engine refuses", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("nope", { status: 503 })),
-    );
-    await expect(engineSaveUpload(deps, client, actor, upload("a.csv"))).resolves.toBeUndefined();
   });
 });

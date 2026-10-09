@@ -12,8 +12,8 @@ import io
 import re
 from collections.abc import Iterable, Iterator
 
-from omnigent.superchat.knowledge.chunking import TARGET_CHARS, Block, ParsedPage
-from omnigent.superchat.knowledge.pdf import extract_pages
+from omnigent.runner.knowledge.chunking import TARGET_CHARS, Block, ParsedPage
+from omnigent.runner.knowledge.pdf import extract_pages
 
 #: Artifact kinds this capability indexes.
 INDEXABLE_KINDS = frozenset({"pdf", "txt", "md", "csv", "xlsx"})

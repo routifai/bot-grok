@@ -9,6 +9,7 @@ GET /v1/agents/{id}/contents for out-of-process use).
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import dataclasses
 import functools
@@ -3155,6 +3156,17 @@ def normalize_anthropic_base_url(base_url: str) -> str:
     if parts.path not in ("", "/"):
         return base_url
     return urlunsplit((parts.scheme, parts.netloc, "/v1", parts.query, parts.fragment))
+
+
+def _notify_file_written(relative_path: str, env: Any) -> None:
+    """Tell the file search a file was written through the runner (an upload), if it runs here."""
+    from omnigent.runner.knowledge.runtime import notify_written
+
+    try:
+        root = getattr(env, "cwd", None)
+        notify_written(Path(root) / relative_path if root else relative_path)
+    except Exception:  # noqa: BLE001 - indexing must never fail a write
+        _logger.debug("knowledge: write notification failed", exc_info=True)
 
 
 def create_runner_app(
@@ -13141,7 +13153,16 @@ def create_runner_app(
         content_str = body.get("content", "")
         encoding = body.get("encoding", "utf-8")
         create_parents = body.get("create_parents", True)
-        content_bytes = content_str.encode(encoding)
+        if encoding == "base64":
+            # Binary content (an upload) travels as base64 inside the JSON body.
+            try:
+                content_bytes = base64.b64decode(content_str, validate=True)
+            except (ValueError, TypeError):
+                return JSONResponse(
+                    status_code=400, content={"error": {"message": "content is not valid base64"}}
+                )
+        else:
+            content_bytes = content_str.encode(encoding)
         try:
             existing = await fs.read(relative_path, limit=None)
             if existing.encoding and filesystem_registry is not None:
@@ -13159,6 +13180,7 @@ def create_runner_app(
         )
         if filesystem_registry is not None:
             filesystem_registry.record_change(relative_path, result.operation, session_id)
+        _notify_file_written(relative_path, env)
         return JSONResponse(
             status_code=200,
             content={

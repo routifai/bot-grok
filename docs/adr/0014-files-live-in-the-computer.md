@@ -1,0 +1,20 @@
+# A person's files, and the search over them, live in their Computer
+
+File search first shipped as an engine worker: a composer attachment went to Nova's database, a best-effort mirror copied searchable ones to the engine's Library, and an engine job parsed them into `file_chunks` and a per-person txtai index. That put one more copy of a person's files, and their retrieval, in the middle. The Computer already holds their workspace, persists their home, and is the one place the Muse can open a file. So there is one source of truth: the Computer.
+
+- **Attachments go to the Computer.** The composer uploads a file through Nova's API to the engine's existing workspace write (`PUT .../filesystem/<path>`, now binary-safe with `encoding: "base64"`), which wakes a sleeping Computer the way a message does. It lands at `your_files/uploads/<date>/<name>`. Nova's database stores no attachment bytes for Muse chats; the message the Muse reads carries `Attached file in your workspace: <path> (<type>, <n> bytes)` lines, and an image is also read back and sent as an image part. Old rows stay readable.
+- **Retrieval runs in the Computer.** `omnigent.runner.knowledge` (in the image that already carries the runner) parses (pypdfium2, openpyxl), cuts passages that keep page and heading, renders PDF thumbnails, and indexes into one SQLite file on the home volume, `~/.nova/knowledge/` (moves with a future per-Computer PVC). It indexes `your_files/` and each Goal's `files/`, plus any file the Muse saved as an artifact; a reconcile scan runs when the Computer starts and then on a slow tick, and an upload or a saved artifact nudges it at once.
+- **The index is SQLite FTS5 (BM25) plus sqlite-vec.** Both are tiny and permissive (SQLite is public domain; sqlite-vec is MIT OR Apache-2.0, one wheel with the extension inside). Neither pulls torch or numpy into the image, which txtai does (faiss and transformers at import, several GB). A person's corpus is small, and sqlite-vec's exact cosine scan is fast at that size. Rankings fuse by reciprocal rank fusion, so no score calibration is needed. The FTS table stores its own text rather than using contentless deletes, so it works on the SQLite that Debian ships.
+- **Embeddings go through the engine's model proxy.** The Computer presents its own launch token (as the harness does) to `GET /v1/model/embeddings` (which model, or why not) and `POST /v1/model/{provider}/v1/embeddings`. The model layer still resolves the connection (the person's, then the organization's), enforces suspension and budgets, and the proxy records the cost. No key enters the Computer, and without an embedding-capable connection the index is keyword-only with the reason; there is never an operator key.
+- **The engine only relays.** `/v1/sessions/{id}/knowledge/{status,search,files/.../thumbnail,reindex}` ask the Computer's runner (the `files_*` handlers over `/mcp/execute`). Status and thumbnails never wake a sleeping Computer: asleep, status answers the last state the engine saw (in memory only) and says so; search is the person acting and wakes it. `files_search` and `files_read_page` are runner-side tools, now addressed by `file_id` (a hash of the workspace path) because uploads are not artifacts; a Library file is matched to its row by the workspace path it was saved from.
+
+## Removed
+
+The engine worker, `file_chunks` / `file_index_jobs` (migration `kn2b3c4d5e6f`), the engine `knowledge_index`, blob-store thumbnails, the artifacts created/deleted event hook, the composer-to-Library mirror, and the `/v1/knowledge/*` routes.
+
+## Consequences
+
+- The engine needs a restart (relays, proxy route, migration, prompt bundles); the Computer image needs a rebuild (the runner venv gains sqlite-vec, about 0.2 MB, and drops nothing); running Computers pick up the new runner on their next launch.
+- An asleep Computer's Library shows last-known badges, or none after an engine restart, until it wakes.
+- Existing engine-indexed files are not migrated: a file is searchable once it is in the Computer's files area.
+- Mobile still uploads through the legacy artifact path until it adopts `files.uploadAttachment`.

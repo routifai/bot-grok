@@ -9,6 +9,7 @@
 // `ThreadEvents.finalizeRun` so the thread, task, and run rows land in the same state a normal
 // turn would.
 
+import { parseAttachmentReferences, WORKSPACE_UPLOADS_PREFIX } from "@nova/core";
 import type { PrismaClient, ThreadEvents } from "@nova/db";
 import { STEERING_CONTINUATION_PROMPT } from "@nova/db";
 import { getLogger } from "@nova/logging";
@@ -22,7 +23,9 @@ import {
   omnigentErrorCopy,
   postOmnigentMessage,
   putOmnigentTimezone,
+  readOmnigentFile,
   streamOmnigentSession,
+  WORKSPACE_FILE_MAX_BYTES,
 } from "./client.js";
 import { DEFAULT_OMNIGENT_SUPERCHAT_CONFIG, type OmnigentSuperChatConfig } from "./env.js";
 
@@ -328,6 +331,46 @@ async function adoptExistingConversation(
 }
 
 /**
+ * The images a turn refers to, read back from the Computer so the model sees them: every
+ * `image/*` attachment line under `your_files/uploads/` (<= 5 MiB each). Best effort: a file
+ * that cannot be read stays a path line in the text.
+ */
+export async function readTurnImages(
+  client: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  turnInput: string,
+): Promise<Array<{ mimeType: string; dataBase64: string }>> {
+  const images: Array<{ mimeType: string; dataBase64: string }> = [];
+  const seen = new Set<string>();
+  for (const line of turnInput.split("\n")) {
+    const { attachments } = parseAttachmentReferences(line);
+    for (const ref of attachments) {
+      if (!ref.mimeType.startsWith("image/") || ref.size > WORKSPACE_FILE_MAX_BYTES) continue;
+      if (!ref.path.startsWith(WORKSPACE_UPLOADS_PREFIX) || seen.has(ref.path)) continue;
+      seen.add(ref.path);
+      try {
+        const file = await readOmnigentFile(client, email, sessionId, ref.path);
+        if (
+          file.truncated ||
+          file.bytes.length === 0 ||
+          file.bytes.length > WORKSPACE_FILE_MAX_BYTES
+        ) {
+          continue;
+        }
+        images.push({
+          mimeType: ref.mimeType,
+          dataBase64: Buffer.from(file.bytes).toString("base64"),
+        });
+      } catch (error) {
+        getLogger().error("omnigent gateway: could not read an attached image back", error);
+      }
+    }
+  }
+  return images;
+}
+
+/**
  * Posts the turn's message, then reads the live stream until `response.completed`, so the run
  * tracks the turn (working row, stop, failure). The reply itself is not kept here: the engine's
  * transcript holds it (ADR 0009). The GET stream request is started (its body opened) before the
@@ -344,7 +387,9 @@ async function sendTurnAndAwaitCompletion(
   const signal = AbortSignal.timeout(config.turnTimeoutMs);
   const iterator = streamOmnigentSession(client, email, sessionId, signal)[Symbol.asyncIterator]();
   const first = iterator.next();
-  await postOmnigentMessage(client, email, sessionId, turnInput);
+  const images = await readTurnImages(client, email, sessionId, turnInput);
+  if (images.length) await postOmnigentMessage(client, email, sessionId, turnInput, images);
+  else await postOmnigentMessage(client, email, sessionId, turnInput);
 
   let step = await first;
   while (!step.done) {

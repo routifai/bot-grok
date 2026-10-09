@@ -49,6 +49,9 @@ vi.mock("@nova/ui-web", () => ({
   resolvePersonaColorDef: () => ({}),
 }));
 
+const filesRead = vi.hoisted(() => vi.fn());
+vi.mock("../../../lib/rpc", () => ({ rpc: { files: { read: filesRead } } }));
+
 import { MessageView } from "./MessageView";
 
 let lastHost: HTMLElement | null = null;
@@ -195,4 +198,54 @@ it("leaves ordinary text alone", async () => {
   expect(host.querySelector('[data-testid="message-user-bubble"]')?.textContent).toBe(
     "[selection] hello",
   );
+});
+
+it("shows workspace attachment lines as chips and the rest as the message", async () => {
+  filesRead.mockReset().mockResolvedValue({
+    path: "your_files/uploads/2026-10-09/shot.png",
+    name: "shot.png",
+    mimeType: "image/png",
+    size: 9,
+    tooLarge: false,
+    binary: true,
+    contentBase64: "iVBO",
+  });
+  const host = await mount(
+    userMessage(
+      [
+        "Attached file in your workspace: your_files/uploads/2026-10-09/report.pdf (application/pdf, 2048 bytes)",
+        "Attached file in your workspace: your_files/uploads/2026-10-09/shot.png (image/png, 9 bytes)",
+        "",
+        "summarise these",
+      ].join("\n"),
+    ),
+  );
+  const chips = host.querySelectorAll('[data-testid="message-attachment-chip"]');
+  expect(chips).toHaveLength(2);
+  expect(chips[0]?.textContent).toBe("report.pdf");
+  expect(chips[0]?.querySelector("img")).toBeNull();
+  expect(chips[1]?.textContent).toBe("shot.png");
+  expect(chips[1]?.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,iVBO");
+  expect(filesRead).toHaveBeenCalledTimes(1);
+  expect(filesRead).toHaveBeenCalledWith({
+    botId: "bot-1",
+    path: "your_files/uploads/2026-10-09/shot.png",
+  });
+  expect(host.querySelector('[data-testid="message-user-bubble"]')?.textContent).toBe(
+    "summarise these",
+  );
+  expect(host.textContent).not.toContain("Attached file in your workspace");
+});
+
+it("falls back to the plain chip when the image cannot be read, and omits an empty caption", async () => {
+  filesRead.mockReset().mockRejectedValue(new Error("asleep"));
+  const host = await mount(
+    userMessage(
+      "Attached file in your workspace: your_files/uploads/2026-10-09/photo (2).jpg (image/jpeg, 5 bytes)",
+    ),
+  );
+  const chip = host.querySelector('[data-testid="message-attachment-chip"]');
+  expect(chip?.textContent).toBe("photo (2).jpg");
+  expect(chip?.querySelector("img")).toBeNull();
+  expect(host.querySelector('[data-testid="message-user-bubble"]')).toBeNull();
 });

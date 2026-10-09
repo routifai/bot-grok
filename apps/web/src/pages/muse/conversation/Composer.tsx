@@ -47,6 +47,7 @@ export const Composer = memo(function Composer({
   disabled,
   pendingAttachments = NO_ATTACHMENTS,
   attachmentNotice,
+  uploadStatus,
   sendError,
   runError,
   runErrorId,
@@ -77,6 +78,8 @@ export const Composer = memo(function Composer({
   disabled?: boolean;
   pendingAttachments?: PendingAttachment[];
   attachmentNotice?: string | null;
+  /** Progress while attachments are written to the Computer ("Uploading 2 of 3"). */
+  uploadStatus?: string | null;
   sendError?: string | null;
   runError?: string | null;
   runErrorId?: string | null;
@@ -521,6 +524,15 @@ export const Composer = memo(function Composer({
       {attachmentNotice ? (
         <div className="mb-3 rounded-[14px] border border-warning/40 bg-warning/10 px-4 py-2 text-[13px] text-warning">
           {attachmentNotice}
+        </div>
+      ) : null}
+      {uploadStatus ? (
+        <div
+          role="status"
+          data-testid="composer-upload-status"
+          className="mb-3 px-1 text-[13px] text-muted-foreground"
+        >
+          {uploadStatus}
         </div>
       ) : null}
       {pendingAttachments.length ? (

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import io
 
-from omnigent.superchat.knowledge.chunking import MAX_CHARS, Block, ParsedPage, chunk_pages
-from omnigent.superchat.knowledge.parse import INDEXABLE_KINDS, parse_file
-from omnigent.superchat.knowledge.pdf import extract_pages, render_pages
-from tests.superchat.knowledge._fixtures import make_pdf
+from omnigent.runner.knowledge.chunking import MAX_CHARS, Block, ParsedPage, chunk_pages
+from omnigent.runner.knowledge.parse import INDEXABLE_KINDS, parse_file
+from omnigent.runner.knowledge.pdf import extract_pages, render_page, render_thumbnails
+from tests.runner.knowledge._fixtures import make_pdf
 
 
 def test_chunks_never_span_pages_and_keep_the_page_number() -> None:
@@ -83,15 +83,17 @@ def test_a_page_without_text_is_counted_but_has_no_chunks() -> None:
     assert len(chunk_pages(pages)) == 1
 
 
-def test_render_pages_makes_256px_thumbnail_and_1024px_page_webp() -> None:
+def test_thumbnails_are_256px_and_a_page_render_is_1024px_webp() -> None:
     from PIL import Image
 
-    renders = list(render_pages(make_pdf([[("page one", 12)], [("page two", 12)]])))
-    assert [r.page_no for r in renders] == [1, 2]
-    thumb = Image.open(io.BytesIO(renders[0].thumbnail))
-    page = Image.open(io.BytesIO(renders[0].page))
+    pdf = make_pdf([[("page one", 12)], [("page two", 12)]])
+    thumbs = list(render_thumbnails(pdf))
+    assert [n for n, _ in thumbs] == [1, 2]
+    thumb = Image.open(io.BytesIO(thumbs[0][1]))
+    page = Image.open(io.BytesIO(render_page(pdf, 2) or b""))
     assert (thumb.format, thumb.width) == ("WEBP", 256)
     assert (page.format, page.width) == ("WEBP", 1024)
+    assert render_page(pdf, 3) is None
 
 
 def test_unreadable_pdf_is_a_value_error() -> None:

@@ -7,11 +7,6 @@ edits -> the Computer workspace, run as a turn prefix), ``feature`` (registratio
 
 from __future__ import annotations
 
-from omnigent.superchat.artifacts.events import (
-    subscribe_created,
-    subscribe_deleted,
-    unsubscribe_all,
-)
 from omnigent.superchat.artifacts.feature import ARTIFACTS_FEATURE
 from omnigent.superchat.artifacts.handlers import workspace_roots
 from omnigent.superchat.artifacts.routes import (
@@ -49,8 +44,5 @@ __all__ = [
     "load_artifact",
     "publication_to_response",
     "request_owner",
-    "subscribe_created",
-    "subscribe_deleted",
-    "unsubscribe_all",
     "workspace_roots",
 ]

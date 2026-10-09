@@ -27,6 +27,8 @@ import { IndexBadge } from "./IndexBadge";
 import { resetKnowledgeStatus } from "./status";
 
 const file = (over: Partial<KnowledgeFile>): KnowledgeFile => ({
+  fileId: "f-1",
+  path: "your_files/uploads/2026-10-09/report.pdf",
   artifactId: "a-1",
   name: "report.pdf",
   kind: "pdf",
@@ -63,6 +65,8 @@ it.each([
   status.mockResolvedValue({
     files: [file({ state })],
     embeddings: { available: true, reason: null },
+    computer: "awake",
+    updatedAt: 1,
   });
   const host = await mount(<IndexBadge artifactId="a-1" />);
   const badge = host.querySelector("[data-testid=library-card-index]");
@@ -70,8 +74,30 @@ it.each([
   expect(badge?.getAttribute("data-state")).toBe(state);
 });
 
+it("pulses while indexing, but shows the last-known state calmly when the Computer sleeps", async () => {
+  const answer = (computer: "awake" | "asleep") => ({
+    files: [file({ state: "indexing" })],
+    embeddings: { available: true, reason: null },
+    computer,
+    updatedAt: 1,
+  });
+  status.mockResolvedValue(answer("awake"));
+  const awake = await mount(<IndexBadge artifactId="a-1" />);
+  expect(awake.querySelector("[aria-hidden]")?.className).toContain("animate-pulse");
+  resetKnowledgeStatus();
+  status.mockResolvedValue(answer("asleep"));
+  const asleep = await mount(<IndexBadge artifactId="a-1" />);
+  expect(asleep.querySelector("[data-state=indexing]")).not.toBeNull();
+  expect(asleep.querySelector("[aria-hidden]")?.className).not.toContain("animate-pulse");
+});
+
 it("shows nothing for a file the index does not hold", async () => {
-  status.mockResolvedValue({ files: [], embeddings: { available: true, reason: null } });
+  status.mockResolvedValue({
+    files: [],
+    embeddings: { available: true, reason: null },
+    computer: "awake",
+    updatedAt: 1,
+  });
   const host = await mount(<IndexBadge artifactId="a-1" />);
   expect(host.querySelector("[data-testid=library-card-index]")).toBeNull();
 });

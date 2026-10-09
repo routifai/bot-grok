@@ -148,6 +148,35 @@ def create_model_proxy_router(
     """Build the router, mounted with ``prefix="/v1"``. *transport* makes upstream injectable."""
     router = APIRouter()
 
+    @router.get("/model/embeddings", response_model=None)
+    async def embedding_plan(request: Request) -> JSONResponse:
+        """How the calling Computer's owner embeds (provider, model, size), or why they cannot."""
+        credential = split_credential(request)
+        if credential is None:
+            raise HTTPException(status_code=401, detail="missing host credential")
+        managed = await asyncio.to_thread(host_store.resolve_launch_token, *credential)
+        if managed is None:
+            raise HTTPException(status_code=401, detail="unauthenticated")
+        embeddings = getattr(request.app.state, "model_embeddings", None)
+        if embeddings is None:
+            return JSONResponse({"available": False, "reason": "no_connection"})
+        from omnigent.superchat.models.embeddings import EmbeddingUnavailable
+
+        try:
+            plan = await asyncio.to_thread(embeddings.plan, managed.user_id)
+        except EmbeddingUnavailable as exc:
+            return JSONResponse({"available": False, "reason": exc.reason})
+        return JSONResponse(
+            {
+                "available": True,
+                "reason": None,
+                "provider": plan.provider,
+                "model": plan.model,
+                "dimensions": plan.dimensions,
+                "tag": plan.tag,
+            }
+        )
+
     @router.api_route(
         "/model/{provider}/{path:path}", methods=["GET", "POST"], response_model=None
     )

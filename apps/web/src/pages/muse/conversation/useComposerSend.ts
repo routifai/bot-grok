@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, ThreadMessage, ThreadSnapshot } from "@nova/contracts";
+import type { Bot, ThreadMessage, ThreadSnapshot, WorkspaceAttachment } from "@nova/contracts";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type MessageReaction } from "@nova/contracts";
 import {
   attachmentsForThread,
@@ -7,6 +7,7 @@ import {
   inferAttachmentMimeType,
   resolveComposerSendPlan,
 } from "@nova/core";
+import { ORPCError } from "@orpc/client";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { notifyAsksChanged } from "../../../features/approvals";
@@ -28,6 +29,13 @@ import { quotedMessageText } from "./museTranscript";
 import { type PendingAttachment, readFileAsBase64 } from "./shared";
 import type { useThreadState } from "./useThreadState";
 import type { useThreadSync } from "./useThreadSync";
+
+/** The Computer is asleep and still waking: the upload could not land yet. */
+function isComputerStarting(error: unknown): boolean {
+  if (error instanceof ORPCError && error.code === "SERVICE_UNAVAILABLE") return true;
+  const message = error instanceof Error ? error.message : "";
+  return /\(503\)|computer is starting/i.test(message);
+}
 
 /** The composer's side of a conversation: attachments, replies, sending, stopping, answering
  * asks and reacting to messages. */
@@ -82,6 +90,10 @@ export function useComposerSend({
   // example rather than sending it, so the person sees it before it goes out.
   const [composerSeed, setComposerSeed] = useState<string | null>(null);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  // Files already written to the workspace, by pending id: a retry after a failed send does not
+  // upload them twice.
+  const uploadedRef = useRef(new Map<string, WorkspaceAttachment>());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dismissedRunErrorIds, setDismissedRunErrorIds] =
     useState<ReadonlySet<string>>(readSeenRunErrorIds);
@@ -201,6 +213,7 @@ export function useComposerSend({
   );
   const removeAttachment = useCallback((attachment: PendingAttachment) => {
     revokePendingAttachmentPreviews([attachment]);
+    uploadedRef.current.delete(attachment.id);
     setPendingAttachments((current) => current.filter((item) => item.id !== attachment.id));
   }, []);
   const sendMessage = useCallback(
@@ -273,10 +286,30 @@ export function useComposerSend({
           return;
         }
         const artifactIds: string[] = [];
+        const workspaceAttachments: WorkspaceAttachment[] = [];
+        const toWorkspace = Boolean(museMode && botTarget && !groupTarget);
+        let uploaded = 0;
         for (const pending of attachments) {
           const mimeType = inferAttachmentMimeType(pending.file.name, pending.file.type);
           if (!mimeType) {
             throw new Error(t`Unsupported file type: ${pending.file.name}`);
+          }
+          if (toWorkspace) {
+            let stored = uploadedRef.current.get(pending.id);
+            if (!stored) {
+              setUploadStatus(t`Uploading ${uploaded + 1} of ${attachments.length}`);
+              const contentBase64 = await readFileAsBase64(pending.file);
+              stored = await rpc.files.uploadAttachment({
+                botId: botTarget!,
+                name: pending.file.name,
+                mimeType,
+                contentBase64,
+              });
+              uploadedRef.current.set(pending.id, stored);
+            }
+            uploaded += 1;
+            workspaceAttachments.push(stored);
+            continue;
           }
           const contentBase64 = await readFileAsBase64(pending.file);
           const artifact = await rpc.artifacts.create(
@@ -286,6 +319,7 @@ export function useComposerSend({
           );
           artifactIds.push(artifact.id);
         }
+        setUploadStatus(null);
         const clientNonce = newClientId();
         if (groupTarget) {
           await rpc.threads.send({
@@ -307,6 +341,7 @@ export function useComposerSend({
             text: quoted || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
+            attachments: workspaceAttachments.length ? workspaceAttachments : undefined,
           });
           if (activeBotId.current === botTarget) {
             updateSnapshot((current) =>
@@ -325,6 +360,7 @@ export function useComposerSend({
         dropDelayedSetup();
         clearReply();
         revokePendingAttachmentPreviews(attachments);
+        for (const sentAttachment of attachments) uploadedRef.current.delete(sentAttachment.id);
         setPendingAttachments((current) =>
           current.filter((attachment) => attachment.threadKey !== originThreadKey),
         );
@@ -339,14 +375,18 @@ export function useComposerSend({
         if (groupTarget) await refreshGroupThreadRef.current(groupTarget);
         else if (botTarget) await refreshThreadRef.current(botTarget);
       } catch (error) {
+        const failure = isComputerStarting(error)
+          ? t`Your Computer is starting. Try again in a moment.`
+          : userFacingError(error, t`Failed to send message`);
         if (reroutedToGroup && groupTarget) {
-          setSendError(userFacingError(error, t`Failed to send message`));
+          setSendError(failure);
         } else if (groupTarget && activeGroupId.current === groupTarget) {
-          setSendError(userFacingError(error, t`Failed to send message`));
+          setSendError(failure);
         } else if (botTarget && activeBotId.current === botTarget) {
-          setSendError(userFacingError(error, t`Failed to send message`));
+          setSendError(failure);
         }
       } finally {
+        setUploadStatus(null);
         setSending(false);
       }
     },
@@ -461,6 +501,7 @@ export function useComposerSend({
     composerSeed,
     setComposerSeed,
     attachmentNotice,
+    uploadStatus,
     fileInputRef,
     followSignal,
     displayedRunError,
