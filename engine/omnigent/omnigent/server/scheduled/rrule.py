@@ -78,6 +78,19 @@ def _anchor_applies(rule_str: str, after: datetime, tz: ZoneInfo, anchor: dateti
     return _has_interval(rule_str) or anchor.astimezone(tz).date() > after.astimezone(tz).date()
 
 
+def _first_occurrence(rule_str: str, start: datetime) -> datetime:
+    """The first fire of the rule with ``INTERVAL`` removed, on or after ``start``.
+
+    An interval rule counts its periods from here, not from the raw start day: "every other
+    Friday starting Saturday the 17th" first fires on the first Friday after the 17th, and
+    counts fortnights from that Friday (dateutil would otherwise phase weeks from the 17th's
+    own week and skip that Friday).
+    """
+    unit_rule = _INTERVAL_PART.sub("", rule_str)
+    first = _parse(unit_rule, start).after(start, inc=True)
+    return first if first is not None else start
+
+
 def _anchor_dtstart(after: datetime, tz: ZoneInfo, anchor: datetime | None = None) -> datetime:
     """Midnight of the local day that fixes the rule's phase.
 
@@ -120,6 +133,8 @@ def get_next_fire_time(
         anchor if anchor is not None and _anchor_applies(rule_str, after, tz, anchor) else None
     )
     dtstart = _anchor_dtstart(after, tz, use_anchor)
+    if use_anchor is not None and _has_interval(rule_str):
+        dtstart = _first_occurrence(rule_str, dtstart)
     rule = _parse(rule_str, dtstart)
     # `rule.after` compares in dtstart's timezone, so localize `after` too. A
     # spring-forward "imaginary" wall time maps to some instant via zoneinfo and

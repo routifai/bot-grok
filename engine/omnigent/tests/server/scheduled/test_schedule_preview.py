@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from itertools import pairwise
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -251,17 +252,33 @@ def test_starts_on_next_week_gives_the_first_fire_next_week(client: TestClient) 
     assert resp.json()["next_fire_times"][0].startswith(start)
 
 
+@pytest.mark.parametrize("day", range(11, 25))  # Sun Oct 11 .. Sat Oct 24, 2026
+def test_interval_rule_starts_on_the_first_matching_day_on_or_after_the_start(day: int) -> None:
+    # Whatever weekday the start falls on (the Friday itself included), "every other Friday
+    # starting <day>" first fires on the first Friday on or after it, then every 2 weeks.
+    start = _at(2026, 10, day)
+    fires = next_fire_times(_EVERY_OTHER_FRIDAY, _at(2026, 10, 1, 8), _PARIS, 3, start)
+    first = fires[0].astimezone(_PARIS)
+    assert first.weekday() == 4 and 0 <= (first.date() - start.date()).days < 7
+    assert [(b - a).days for a, b in pairwise(fires)] == [14, 14]
+
+
+def test_interval_rule_starting_on_a_saturday_keeps_the_friday_after_it() -> None:
+    fires = next_fire_times(_EVERY_OTHER_FRIDAY, _at(2026, 10, 9, 8), _PARIS, 2, _at(2026, 10, 17))
+    assert _local(fires) == ["2026-10-23 09:00", "2026-11-06 09:00"]
+
+
 def test_starts_on_places_an_interval_rule_in_the_start_week(client: TestClient) -> None:
-    start = datetime.fromisoformat(_next_week())
     resp = client.post(
         "/v1/scheduled-tasks",
-        json=_task(
-            rrule=_EVERY_OTHER_FRIDAY, timezone="Europe/Paris", starts_on=start.date().isoformat()
-        ),
+        json=_task(rrule=_EVERY_OTHER_FRIDAY, timezone="Europe/Paris", starts_on="2099-10-17"),
     )
-    first = datetime.fromisoformat(resp.json()["next_fire_times"][0])
-    # The first Friday on or after the start day, never one before it.
-    assert first.weekday() == 4 and 0 <= (first.date() - start.date()).days < 7
+    assert resp.status_code == 200, resp.text
+    assert [f[:10] for f in resp.json()["next_fire_times"]] == [
+        "2099-10-23",
+        "2099-11-06",
+        "2099-11-20",
+    ]
 
 
 def test_editing_the_rule_re_anchors_it(client: TestClient, db_uri: str) -> None:
