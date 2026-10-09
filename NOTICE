@@ -60,3 +60,17 @@ PptxGenJS 4.0.1 (MIT, Copyright (c) Brent Ely), react, react-dom, react-icons, s
 and markitdown for it, each under its own permissive license, and applies the upstream PptxGenJS
 fixes for gitbrent/PptxGenJS issue 1531 and pull requests 1537 and 1540
 (infra/sandboxes/computer/pptx/runtime/patches).
+
+Four small chat behaviors port ideas and wording from nao (https://github.com/getnao/nao, Copyright 2025 nao Labs, commit
+5bde830), Apache-2.0 (see LICENSE); only files without the "@license Enterprise" header were used.
+Each ported file carries a "Portions modified from getnao/nao <path>@5bde830, Apache-2.0;
+changes: ..." header:
+engine/omnigent/omnigent/superchat/cards/tools.py (the `ask_clarification` and `suggest_follow_ups`
+tools, from apps/shared/src/tools/clarification.ts and suggest-follow-ups.ts; they emit Nova's reply
+cards instead of nao's tool-call UI), engine/omnigent/omnigent/server/scheduled/nlp.py (plain-words
+schedules, from apps/backend/src/services/cron-nlp.ts; it emits an RRULE through Nova's model layer),
+and the memory extraction rules in engine/omnigent/omnigent/memory/upkeep.py,
+engine/omnigent/omnigent/superchat/daily_notes/quiet_moment.py and
+infra/omnigent/templates/AGENTS.md (from apps/backend/src/components/ai/memory-system-prompt.tsx and
+agents/memory/memory-extractor-llm.ts: standing instructions apart from profile facts, instructions
+only on permanence signals, supersede on change, default to extracting nothing).
