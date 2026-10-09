@@ -1760,6 +1760,12 @@ class SqlArtifact(OmnigentBase):
     :param version: 1-based version number within the group.
     :param blob_key: Artifact-store key of the bytes.
     :param published: Reserved for a later "publish" feature.
+    :param origin: ``"ai"`` (saved by the Muse), ``"manual"`` (edited by hand) or ``"restore"``.
+    :param parent_version_id: The version this one was derived from, if any.
+    :param source_path: Computer workspace path the bytes were read from / are written back to.
+    :param edit_summary: Short human text describing a manual edit.
+    :param delivered_at: Epoch seconds when a manual version was written back to the Computer
+        and announced to the Muse; ``None`` while still pending.
     """
 
     __tablename__ = "artifacts"
@@ -1784,6 +1790,11 @@ class SqlArtifact(OmnigentBase):
     published: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ai")
+    parent_version_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    source_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    edit_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivered_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         Index(
@@ -1793,6 +1804,14 @@ class SqlArtifact(OmnigentBase):
             "parent_session_id",
             "name",
             "version",
+        ),
+        Index(
+            "uq_artifacts_session_name_version",
+            "workspace_id",
+            "parent_session_id",
+            "name",
+            "version",
+            unique=True,
         ),
         Index("ix_artifacts_owner", "workspace_id", "user_id", "created_at"),
     )

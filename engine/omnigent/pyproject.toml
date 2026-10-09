@@ -46,6 +46,8 @@ dependencies = [
     "websockets>=10.4,<15",
     "httpx>=0.27,<1",
     "ftfy>=6.0",
+    # Reading and editing .xlsx artifacts by hand (omnigent/superchat/artifacts/table.py).
+    "openpyxl>=3.1,<4",
     # Portable zombie-aware PID liveness checks for the host daemon
     # lifecycle (omnigent/host/local_server.py).
     "psutil>=5.9,<8",

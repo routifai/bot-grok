@@ -76,6 +76,19 @@ def _safe_projects_block(workspace: Path | None) -> str | None:
         return None
 
 
+async def _safe_manual_edit_notes(
+    server_client: httpx.AsyncClient | None, conversation_id: str
+) -> list[str]:
+    """Write the person's hand edits back to the workspace; one-shot notes. Never fails a turn."""
+    try:
+        from omnigent.superchat.artifacts.writeback import deliver_manual_edits
+
+        return await deliver_manual_edits(server_client, conversation_id)
+    except Exception:  # noqa: BLE001 - a convenience, never a reason to fail a turn
+        _logger.warning("Hand-edit write-back failed; proceeding without it", exc_info=True)
+        return []
+
+
 async def turn_prefix_blocks(
     server_client: httpx.AsyncClient | None,
     conversation_id: str,
@@ -84,8 +97,8 @@ async def turn_prefix_blocks(
     """The blocks to prepend to a Super Chat turn, in application order.
 
     Each block is prepended in turn, so the last one ends up first: ``[memory profile (when
-    any), Projects (when any), local time]`` renders as local time, then the Projects, then the
-    profile, then the person's message.
+    any), Projects (when any), hand-edit notes (when any), local time]`` renders as local time,
+    then the hand-edit notes, then the Projects, then the profile, then the person's message.
 
     :param workspace: The session's current working directory (marks the open Project).
     """
@@ -95,5 +108,6 @@ async def turn_prefix_blocks(
         blocks.append(profile)
     if (projects := _safe_projects_block(workspace)) is not None:
         blocks.append(projects)
+    blocks.extend(await _safe_manual_edit_notes(server_client, conversation_id))
     blocks.append(await fetch_local_time_line(server_client))
     return blocks

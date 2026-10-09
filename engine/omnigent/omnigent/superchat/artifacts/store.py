@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import desc, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from omnigent.db.db_models import SqlArtifact, current_workspace_id
@@ -23,6 +24,15 @@ from omnigent.db.utils import (
 from omnigent.stores.artifact_store import ArtifactStore
 
 _BLOB_PREFIX = "muse-artifacts"
+_CREATE_ATTEMPTS = 5
+
+
+class VersionConflictError(Exception):
+    """The base version of a manual edit is no longer the newest version of its group."""
+
+    def __init__(self, newest: int) -> None:
+        super().__init__(f"newest version is {newest}")
+        self.newest = newest
 
 
 @dataclass
@@ -42,6 +52,11 @@ class Artifact:
     :param published: Reserved for a later publish feature.
     :param created_at: Epoch seconds.
     :param updated_at: Epoch seconds of the last change, or ``None``.
+    :param origin: ``"ai"``, ``"manual"`` or ``"restore"``.
+    :param parent_version_id: Id of the version this one derives from, if any.
+    :param source_path: Computer workspace path the file came from / is written back to.
+    :param edit_summary: Short human text of a manual edit.
+    :param delivered_at: When a manual version was written back and announced, else ``None``.
     """
 
     id: str
@@ -57,6 +72,11 @@ class Artifact:
     published: bool
     created_at: int
     updated_at: int | None
+    origin: str = "ai"
+    parent_version_id: str | None = None
+    source_path: str | None = None
+    edit_summary: str | None = None
+    delivered_at: int | None = None
 
 
 def _to_entity(row: SqlArtifact) -> Artifact:
@@ -74,6 +94,11 @@ def _to_entity(row: SqlArtifact) -> Artifact:
         published=bool(row.published),
         created_at=row.created_at,
         updated_at=row.updated_at,
+        origin=row.origin,
+        parent_version_id=row.parent_version_id,
+        source_path=row.source_path,
+        edit_summary=row.edit_summary,
+        delivered_at=row.delivered_at,
     )
 
 
@@ -120,8 +145,20 @@ class SqlAlchemyArtifactStore:
         kind: str,
         mime: str,
         data: bytes,
+        origin: str = "ai",
+        parent_version_id: str | None = None,
+        source_path: str | None = None,
+        edit_summary: str | None = None,
+        base_version: int | None = None,
     ) -> Artifact:
-        """Store ``data`` as the next version of ``name`` in the session."""
+        """Store ``data`` as the next version of ``name`` in the session.
+
+        Safe under concurrent saves: the unique ``(session, name, version)`` index rejects a
+        duplicate number and the insert is retried with a fresh one.
+
+        :param base_version: When given, the save only succeeds while this is still the newest
+            version of the group; otherwise :class:`VersionConflictError` is raised.
+        """
         blobs = self._blob_store()
         artifact_id = uuid.uuid4().hex
         key = f"{_BLOB_PREFIX}/{artifact_id}"
@@ -132,11 +169,12 @@ class SqlAlchemyArtifactStore:
             latest = session.execute(
                 select(func.max(SqlArtifact.version)).where(
                     SqlArtifact.workspace_id == current_workspace_id(),
-                    _owner_clause(user_id),
                     SqlArtifact.parent_session_id == parent_session_id,
                     SqlArtifact.name == name,
                 )
             ).scalar()
+            if base_version is not None and (latest or 0) != base_version:
+                raise VersionConflictError(latest or 0)
             row = SqlArtifact(
                 id=artifact_id,
                 user_id=user_id,
@@ -151,16 +189,62 @@ class SqlAlchemyArtifactStore:
                 published=False,
                 created_at=now,
                 updated_at=None,
+                origin=origin,
+                parent_version_id=parent_version_id,
+                source_path=(source_path or None) and source_path[:1024],
+                edit_summary=edit_summary,
+                delivered_at=None,
             )
             session.add(row)
             session.flush()
             return _to_entity(row)
 
         try:
-            return run_write_transaction(self._session_immediate, "insert_artifact", write)
+            for attempt in range(_CREATE_ATTEMPTS):
+                try:
+                    return run_write_transaction(self._session_immediate, "insert_artifact", write)
+                except IntegrityError:
+                    if attempt == _CREATE_ATTEMPTS - 1:
+                        raise
+            raise AssertionError("unreachable")  # pragma: no cover
         except Exception:
             blobs.delete(key)
             raise
+
+    def newest(self, item: Artifact) -> Artifact | None:
+        """The newest version of ``item``'s group."""
+        group = self.versions(item)
+        return group[0] if group else None
+
+    def pending_manual(self, *, user_id: str | None, parent_session_id: str) -> list[Artifact]:
+        """Manual versions in the session not yet written back / announced, oldest first."""
+        with self._session("list_pending_manual_artifacts") as session:
+            stmt = (
+                select(SqlArtifact)
+                .where(
+                    SqlArtifact.workspace_id == current_workspace_id(),
+                    _owner_clause(user_id),
+                    SqlArtifact.parent_session_id == parent_session_id,
+                    SqlArtifact.origin == "manual",
+                    SqlArtifact.delivered_at.is_(None),
+                )
+                .order_by(SqlArtifact.created_at, SqlArtifact.version)
+            )
+            return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
+
+    def mark_delivered(self, artifact_id: str, *, user_id: str | None) -> bool:
+        """Mark a manual version delivered (idempotent); ``False`` when it is not the caller's."""
+        now = now_epoch()
+
+        def write(session: Session) -> bool:
+            row = session.get(SqlArtifact, (current_workspace_id(), artifact_id))
+            if row is None or row.user_id != user_id:
+                return False
+            if row.delivered_at is None:
+                row.delivered_at = now
+            return True
+
+        return run_write_transaction(self._session_immediate, "deliver_artifact", write)
 
     def get(self, artifact_id: str, *, user_id: str | None) -> Artifact | None:
         """Return the owner's artifact version, or ``None`` (also for another owner's)."""
