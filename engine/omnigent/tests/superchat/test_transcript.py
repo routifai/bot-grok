@@ -147,6 +147,17 @@ def test_refused_helper_call_shows_nothing() -> None:
     assert message["blocks"] == [{"type": "text", "text": "Sorry."}]
 
 
+def test_deck_export_becomes_a_file_block() -> None:
+    saved = {"type": "artifact", "id": "art_2", "name": "q3.pptx", "kind": "pptx", "size": 5}
+    items = [_call("d1", "deck_export", "kd"), _out("do", "kd", saved)]
+    [message] = project_items(items)
+    assert message["blocks"][0]["type"] == "file"
+    assert message["blocks"][0]["artifact_id"] == "art_2"
+    assert (
+        project_items([_call("d2", "deck_export", "ke"), _out("eo", "ke", {"error": "x"})]) == []
+    )
+
+
 def test_artifact_save_becomes_a_file_block_and_secret_request_a_secure_entry() -> None:
     saved = {"type": "artifact", "id": "art_1", "name": "r.pdf", "kind": "pdf", "size": 9}
     request = {"secure_entry": {"id": "req_1", "name": "Login", "site": "example.com"}}

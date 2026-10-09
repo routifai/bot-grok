@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from omnigent.entities import NewConversationItem
+from omnigent.entities.conversation import parse_item_data
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import AuthProvider
 from omnigent.stores import ConversationStore
@@ -23,6 +27,12 @@ from omnigent.superchat.artifacts import (
     request_owner,
 )
 from omnigent.superchat.decks.names import is_deck_name
+from omnigent.superchat.family.signals import notify_message_done
+
+logger = logging.getLogger(__name__)
+
+_TOOL = "deck_export"
+_AGENT = "nova-deck-export"
 
 #: How long the export waits for the Computer to wake and its runner to connect.
 WAKE_TIMEOUT_S = 120.0
@@ -90,7 +100,7 @@ def create_decks_router(
                 json={
                     "method": "tools/call",
                     "params": {
-                        "name": "deck_export",
+                        "name": _TOOL,
                         "arguments": {"artifact_id": item.id, "format": body.format},
                     },
                 },
@@ -113,10 +123,63 @@ def create_decks_router(
             raise OmnigentError("The export didn't finish", code=ErrorCode.INVALID_INPUT)
         if result.get("error"):
             raise OmnigentError(str(result["error"])[:300], code=ErrorCode.INVALID_INPUT)
+        await _show_in_chat(conversation_store, session_id, item.id, body.format, result)
         result.pop("type", None)
         return result
 
     return router
+
+
+async def _show_in_chat(
+    conversation_store: ConversationStore,
+    session_id: str,
+    deck_id: str,
+    fmt: str,
+    result: dict[str, Any],
+) -> None:
+    """Record the export as a ``deck_export`` call in the deck's chat, so its file shows as a card.
+
+    A ``deck_export`` the Muse makes lands in the chat as a tool call and its result; the panel's
+    export runs the same tool without a turn, so the same two items are stored. The transcript
+    then projects the same file card it does for ``artifact_save``. Best effort: the file is
+    already saved and in the Library, so a failure here never fails the export.
+    """
+    call_id = f"call_{uuid.uuid4().hex}"
+    response_id = f"deck-export-{uuid.uuid4().hex}"
+    try:
+        stored = await asyncio.to_thread(
+            conversation_store.append,
+            session_id,
+            [
+                NewConversationItem(
+                    type="function_call",
+                    response_id=response_id,
+                    data=parse_item_data(
+                        "function_call",
+                        {
+                            "agent": _AGENT,
+                            "name": _TOOL,
+                            "arguments": json.dumps({"artifact_id": deck_id, "format": fmt}),
+                            "call_id": call_id,
+                        },
+                    ),
+                ),
+                NewConversationItem(
+                    type="function_call_output",
+                    response_id=response_id,
+                    data=parse_item_data(
+                        "function_call_output",
+                        {"call_id": call_id, "output": json.dumps(result)},
+                    ),
+                ),
+            ],
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "deck_export: could not show the file in chat %s", session_id, exc_info=True
+        )
+        return
+    notify_message_done(session_id, stored[-1].id)
 
 
 def _failure(payload: Any) -> str | None:

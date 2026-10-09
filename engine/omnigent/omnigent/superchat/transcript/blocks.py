@@ -4,9 +4,9 @@ Pure: items in (the flat ``ConversationItem.to_api_dict()`` shape, oldest first)
 out. The rules a client would otherwise copy:
 
 * a message item is a ``text`` block; the runtime's own notices and hidden context are dropped;
-* ``render_card`` / ``vault_request_secret`` / ``artifact_save`` calls become ``card`` /
-  ``secure_entry`` / ``file`` messages of their own (a call whose output says it failed shows
-  nothing; a card still running is ``pending``);
+* ``render_card`` / ``vault_request_secret`` / ``artifact_save`` / ``deck_export`` calls become
+  ``card`` / ``secure_entry`` / ``file`` messages of their own (a call whose output says it
+  failed shows nothing; a card still running is ``pending``);
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
@@ -29,6 +29,8 @@ from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
 ARTIFACT_SAVE_TOOL_NAME = "artifact_save"
+#: Returns the same ``{"type": "artifact", ...}`` result, so its file shows as the same card.
+DECK_EXPORT_TOOL_NAME = "deck_export"
 
 Item = Mapping[str, Any]
 
@@ -225,7 +227,7 @@ def project_items(
                 block = _card_block(item, output)
             elif _is_call(item, VAULT_REQUEST_TOOL_NAME):
                 block = _secure_entry_block(output)
-            elif _is_call(item, ARTIFACT_SAVE_TOOL_NAME):
+            elif _is_call(item, ARTIFACT_SAVE_TOOL_NAME) or _is_call(item, DECK_EXPORT_TOOL_NAME):
                 block = _file_block(output)
             if block:
                 messages.append(_message(item, "assistant", [block]))

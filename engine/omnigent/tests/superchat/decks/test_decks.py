@@ -6,6 +6,7 @@ import json
 import stat
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -222,9 +223,17 @@ class _Runner:
 class _Convs:
     def __init__(self, found: bool = True) -> None:
         self.found = found
+        self.appended: list[tuple[str, list[Any]]] = []
+        self.fail = False
 
     def get_conversation(self, sid: str) -> Any:
         return object() if self.found else None
+
+    def append(self, sid: str, items: list[Any]) -> list[Any]:
+        if self.fail:
+            raise RuntimeError("db down")
+        self.appended.append((sid, items))
+        return [SimpleNamespace(id=f"item_{n}") for n, _ in enumerate(items)]
 
 
 @pytest.fixture()
@@ -246,6 +255,9 @@ def route_client(store, monkeypatch):
     class _Proxy:
         def get_conversation(self, sid: str) -> Any:
             return holder["convs"].get_conversation(sid)
+
+        def append(self, sid: str, items: list[Any]) -> list[Any]:
+            return holder["convs"].append(sid, items)
 
     app.include_router(
         create_decks_router(
@@ -275,6 +287,35 @@ def test_route_relays_runner_result(store, route_client) -> None:
         "name": "deck_export",
         "arguments": {"artifact_id": deck.id, "format": "pptx"},
     }
+
+
+def test_route_shows_the_export_as_a_file_card_in_the_deck_chat(store, route_client) -> None:
+    from omnigent.superchat.transcript.blocks import project_items
+
+    client, holder = route_client
+    deck = _save(store, "q3.deck.html")
+    saved = {"type": "artifact", "id": "abc", "name": "q3.pptx", "kind": "pptx", "title": "Q3"}
+    holder["runner"] = _Runner(_out(**saved))
+    assert client.post(
+        f"/v1/decks/{deck.id}/export", json={"format": "pptx"}, headers=H
+    ).is_success
+    [(sid, items)] = holder["convs"].appended
+    assert sid == _CHAT and [i.type for i in items] == ["function_call", "function_call_output"]
+    assert items[0].data.name == "deck_export"
+    assert json.loads(items[0].data.arguments) == {"artifact_id": deck.id, "format": "pptx"}
+    flat = [{"id": f"i{n}", "type": i.type, **i.data.model_dump()} for n, i in enumerate(items)]
+    [message] = project_items(flat)
+    [block] = message["blocks"]
+    assert block["type"] == "file" and block["artifact_id"] == "abc" and block["name"] == "q3.pptx"
+
+
+def test_route_export_still_succeeds_when_the_chat_cannot_be_written(store, route_client) -> None:
+    client, holder = route_client
+    deck = _save(store, "q3.deck.html")
+    holder["convs"].fail = True
+    holder["runner"] = _Runner(_out(type="artifact", id="abc", name="q3.pdf"))
+    resp = client.post(f"/v1/decks/{deck.id}/export", json={"format": "pdf"}, headers=H)
+    assert resp.status_code == 200 and resp.json()["id"] == "abc"
 
 
 def test_route_errors(store, route_client) -> None:
