@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import type { MuseState, Run, ThreadMessage } from "@nova/contracts";
-import { useAsks } from "../asks";
+import { useAsks } from "../../../features/approvals";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 import { useComputerLaunch } from "./useComputerLaunch";
 

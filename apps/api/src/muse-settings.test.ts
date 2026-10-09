@@ -63,32 +63,13 @@ async function updateSettings(
 }
 
 describe("muse.settings", () => {
-  it("returns DEFAULT_MUSE_SETTINGS when the bot has no settings saved", async () => {
-    const { handler, findFirst } = museSettingsDeps({
-      museProactivity: null,
-      museQuietHours: null,
-    });
+  it("answers SERVICE_UNAVAILABLE when no engine is configured, with no fallback to Bot", async () => {
+    const { handler, update } = museSettingsDeps({ museProactivity: "high", museQuietHours: "" });
 
     const { response } = await getSettings(handler, "bot-1");
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      json: { proactivity: "normal", quietHours: "22:00-08:00" },
-    });
-    expect(findFirst).toHaveBeenCalledWith({
-      where: { id: "bot-1", spaceId: "space-1", userId: "user-1" },
-      select: { museProactivity: true, museQuietHours: true },
-    });
-  });
-
-  it("returns saved settings, including quiet hours explicitly turned off", async () => {
-    const { handler } = museSettingsDeps({ museProactivity: "high", museQuietHours: "" });
-
-    const { response } = await getSettings(handler, "bot-1");
-
-    await expect(response.json()).resolves.toEqual({
-      json: { proactivity: "high", quietHours: null },
-    });
+    expect(response.status).toBe(503);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("rejects a bot outside the actor's space", async () => {
@@ -102,42 +83,16 @@ describe("muse.settings", () => {
 });
 
 describe("muse.updateSettings", () => {
-  it("updates only the given field, leaving the rest as saved", async () => {
+  it("answers SERVICE_UNAVAILABLE when no engine is configured, saving nothing on Bot", async () => {
     const { handler, update } = museSettingsDeps({
       museProactivity: "normal",
-      museQuietHours: "22:00-08:00",
+      museQuietHours: null,
     });
 
     const { response } = await updateSettings(handler, { botId: "bot-1", proactivity: "low" });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      json: { proactivity: "low", quietHours: "22:00-08:00" },
-    });
-    expect(update).toHaveBeenCalledWith({
-      where: { id: "bot-1" },
-      data: { museProactivity: "low" },
-      select: { museProactivity: true, museQuietHours: true },
-    });
-  });
-
-  it("turns quiet hours off by storing the empty-string sentinel, not null", async () => {
-    const { handler, update } = museSettingsDeps({
-      museProactivity: "normal",
-      museQuietHours: "22:00-08:00",
-    });
-
-    const { response } = await updateSettings(handler, { botId: "bot-1", quietHours: null });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      json: { proactivity: "normal", quietHours: null },
-    });
-    expect(update).toHaveBeenCalledWith({
-      where: { id: "bot-1" },
-      data: { museQuietHours: "" },
-      select: { museProactivity: true, museQuietHours: true },
-    });
+    expect(response.status).toBe(503);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed quiet-hours string before it reaches the handler", async () => {

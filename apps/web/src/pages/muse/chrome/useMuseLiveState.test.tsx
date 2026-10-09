@@ -13,7 +13,7 @@ vi.mock("react-dom/client", async (orig) =>
 
 const api = vi.hoisted(() => ({ computer: { status: vi.fn() } }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
-vi.mock("../asks", () => ({ useAsks: () => ({ count: 0 }) }));
+vi.mock("../../../features/approvals", () => ({ useAsks: () => ({ count: 0 }) }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root;

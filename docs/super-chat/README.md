@@ -492,7 +492,7 @@ bundle (`infra/omnigent/agents/nova-claude/`) or to the engine's always-on tools
 
 An **Ask** is anything the Muse is waiting on the person for. Open Asks are listed by
 `GET /v1/me/asks` and answered with `POST /v1/me/asks/{ask_id}/answer`
-(`engine/omnigent/omnigent/superchat/inbox/`). Approvals have their own routes under
+(`engine/omnigent/omnigent/superchat/approvals/`). Approvals have their own routes under
 `/v1/me/approvals/` (see the table in section 10).
 
 ## 6. Memory

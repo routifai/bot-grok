@@ -10,15 +10,15 @@ import type { Actor, MuseSettings } from "@nova/contracts";
 import { resolveMuseSettings } from "@nova/core";
 import { IsolationError, type PrismaClient } from "@nova/db";
 import { getLogger } from "@nova/logging";
+import { ORPCError } from "@orpc/server";
 
-// muse.settings / muse.updateSettings (packages/contracts/src/rpc.ts, docs/muse/PLAN.md B7).
+// muse.settings / muse.updateSettings (packages/contracts/src/rpc/muse.ts, docs/muse/PLAN.md B7).
 //
-// On the engine, the settings are the person's engine preferences (`/v1/me/proactivity`, ADR
-// 0009): the engine gates every proactive run with them, so it is the only copy.
-//
-// Without the engine they stay on Bot (museProactivity / museQuietHours). There, NULL means
-// "use DEFAULT_MUSE_SETTINGS" and the empty string is quiet hours explicitly turned off.
-// On the engine those columns are only read once, to carry values set before ADR 0009 over.
+// The settings are the person's engine preferences (`/v1/me/proactivity`, ADR 0009): the engine
+// gates every proactive run with them, so it is the only copy. Without an engine there is
+// nothing to read or save, so the routes answer SERVICE_UNAVAILABLE. The Bot columns
+// (museProactivity / museQuietHours) are only read once, to carry values set before ADR 0009
+// over; NULL there means "never set" and the empty string was quiet hours turned off.
 
 export interface MuseSettingsDeps {
   prisma: PrismaClient;
@@ -49,9 +49,11 @@ async function engineOf(
   deps: MuseSettingsDeps,
   actor: Actor,
   env: NodeJS.ProcessEnv,
-): Promise<Engine | null> {
+): Promise<Engine> {
   const connection = omnigentClientConfigFromEnv(env);
-  if (!connection) return null;
+  if (!connection) {
+    throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Muse settings need the engine" });
+  }
   const user = await deps.prisma.user.findUnique({
     where: { id: actor.userId },
     select: { email: true },
@@ -124,7 +126,6 @@ export async function getMuseSettings(
 ): Promise<MuseSettings> {
   const bot = await requireOwnBot(deps, actor, botId);
   const engine = await engineOf(deps, actor, env);
-  if (!engine) return resolveMuseSettings(bot);
   const prefs = await getOmnigentProactivity(engine.client, engine.email);
   return fromEngine(await carryOverBotSettings(deps, engine, botId, bot, prefs));
 }
@@ -138,24 +139,13 @@ export async function updateMuseSettings(
   const { botId, ...patch } = input;
   const bot = await requireOwnBot(deps, actor, botId);
   const engine = await engineOf(deps, actor, env);
-  if (engine) {
-    const saved = await putOmnigentProactivity(engine.client, engine.email, toEngine(patch));
-    if (bot.museProactivity !== null || bot.museQuietHours !== null) {
-      // The person chose on the engine: the pre-engine values must never be carried over.
-      await deps.prisma.bot.update({
-        where: { id: botId },
-        data: { museProactivity: null, museQuietHours: null },
-      });
-    }
-    return fromEngine(saved);
+  const saved = await putOmnigentProactivity(engine.client, engine.email, toEngine(patch));
+  if (bot.museProactivity !== null || bot.museQuietHours !== null) {
+    // The person chose on the engine: the pre-engine values must never be carried over.
+    await deps.prisma.bot.update({
+      where: { id: botId },
+      data: { museProactivity: null, museQuietHours: null },
+    });
   }
-  const data: { museProactivity?: string; museQuietHours?: string } = {};
-  if (patch.proactivity !== undefined) data.museProactivity = patch.proactivity;
-  if (patch.quietHours !== undefined) data.museQuietHours = patch.quietHours ?? "";
-  const updated = await deps.prisma.bot.update({
-    where: { id: botId },
-    data,
-    select: { museProactivity: true, museQuietHours: true },
-  });
-  return resolveMuseSettings(updated);
+  return fromEngine(saved);
 }
